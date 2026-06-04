@@ -1,9 +1,9 @@
-import funcy  # type: ignore
-import time
-import pytest
-import random
 import os
+import random
+import time
 
+import funcy  # type: ignore
+import pytest
 from conftest import (
     Cluster,
     Instance,
@@ -132,8 +132,7 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
 
     # wait for buckets to be rebalanced between 2 replicasets 1500 each
-    for i in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+    cluster.wait_until_buckets_balanced()
 
     # check vshard routes requests to both replicasets
     reached_instances = set()
@@ -160,8 +159,7 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     cluster.add_instance(wait_online=True)
 
     # buckets now must be rebalanced between 3 replicasets 1000 each
-    for i in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
+    cluster.wait_until_buckets_balanced()
 
     # check vshard routes requests to all 3 replicasets
     reached_instances = set()
@@ -267,8 +265,7 @@ def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Clus
     i1, i2, i3 = cluster.deploy(instance_count=3)
 
     # Wait until buckets are balanced
-    for i in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
+    cluster.wait_until_buckets_balanced()
 
     lc = log_crawler(i1, "ERROR INJECTION 'PROC_SHARDING_SPURIOUS_FAILURE'")
 
@@ -295,8 +292,7 @@ def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Clus
     i1.call("pico._inject_error", "PROC_SHARDING_SPURIOUS_FAILURE", False)
 
     # Wait until buckets are balanced
-    for i in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
+    cluster.wait_until_buckets_balanced()
 
     def check_available_buckets(i: Instance, count: int):
         info = vshard_router_info(i)
@@ -315,7 +311,7 @@ def get_table_size(instance: Instance, table_name: str):
 @pytest.mark.skip_asan("vshard's internal CALL_TIMEOUT_MIN (0.5s) is too short for ASan-instrumented bulk inserts")
 def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
     i1 = cluster.add_instance()
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql(
         """
@@ -352,8 +348,7 @@ def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
     others = cluster.instances[1:]
 
     # wait until vshard rebalancing done
-    for instance in others:
-        cluster.wait_until_instance_has_this_many_active_buckets(instance, 300, max_retries=100)
+    cluster.wait_until_buckets_balanced()
 
     for instance in others:
         assert get_table_size(instance, "sharded_table") > 0
@@ -377,9 +372,7 @@ def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
         i2.replicaset_name: 1.0,
         i3.replicaset_name: 1.0,
     }
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1000, max_retries=15)
-    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1000)
-    cluster.wait_until_instance_has_this_many_active_buckets(i3, 1000)
+    cluster.wait_until_buckets_balanced()
 
     # Add some data
     i1.sql("CREATE TABLE some_data (id INTEGER PRIMARY KEY, value TEXT)")
@@ -424,8 +417,7 @@ def assert_tier_bucket_count(cluster: Cluster, name: str, bucket_count: int, *in
     ]
 
     # 3000 bucket counts, 3 replicasets
-    for x in instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(x, int(bucket_count / len(instances)))
+    cluster.wait_until_buckets_balanced()
 
 
 @pytest.mark.flaky(reruns=3)

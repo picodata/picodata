@@ -2072,8 +2072,7 @@ def test_truncate_stops_rebalancing_after(cluster: Cluster):
 def test_truncate_deals_with_aba_problem(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
 
-    for i in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("CREATE TABLE t (id INT PRIMARY KEY)")
     assert ddl["row_count"] == 1
@@ -2112,11 +2111,10 @@ def test_truncate_deals_with_aba_problem(cluster: Cluster):
 
 def test_truncate_is_applied_during_replica_wakeup(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
-    i2 = cluster.add_instance(replicaset_name="r2", wait_online=True)
+    _i2 = cluster.add_instance(replicaset_name="r2", wait_online=True)
     i3 = cluster.add_instance(replicaset_name="r2", wait_online=True)
 
-    for instance in [i2, i3]:
-        cluster.wait_until_instance_has_this_many_active_buckets(instance, 1500)
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("CREATE TABLE t(a int primary key) WAIT APPLIED GLOBALLY")
     assert ddl["row_count"] == 1
@@ -2143,8 +2141,7 @@ def test_truncate_is_applied_during_replica_wakeup(cluster: Cluster):
 
 def test_truncate_is_applied_during_node_wakeup_for_sharded_table(cluster: Cluster):
     i1, i2, *_ = cluster.deploy(instance_count=5)
-    for instance in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(instance, 600)
+    cluster.wait_until_buckets_balanced()
 
     i1.sql("CREATE TABLE t(a int primary key)")
 
@@ -2219,8 +2216,7 @@ def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluste
 def test_truncate_is_applied_from_snapshot_for_sharded_table(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
 
-    for i in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("CREATE TABLE t(a int primary key)")
     assert ddl["row_count"] == 1
@@ -2567,8 +2563,7 @@ def test_drop_table_pause_rebalancing(cluster: Cluster):
     r1_leader = cluster.add_instance(replicaset_name="r1")
     _ = cluster.add_instance(replicaset_name="r2")
 
-    for instance in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(instance, 1500)
+    cluster.wait_until_buckets_balanced()
 
     ddl = r1_leader.sql(
         """

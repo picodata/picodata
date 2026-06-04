@@ -21,7 +21,7 @@ def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
     Primary key is equal to sharding key.
     """
     i1 = cluster.add_instance(replicaset_name="r1")
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql(
         f"""
@@ -39,7 +39,7 @@ def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
         assert response["row_count"] == BATCH_SIZE
 
     i2 = cluster.add_instance(replicaset_name="r2")
-    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+    cluster.wait_until_buckets_balanced()
 
     # check vshard rebalancing
     res = i1.eval("return box.space.sharded_table:count()")
@@ -123,8 +123,7 @@ def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
     response = i1.sql("INSERT INTO another_table VALUES " + (", ".join([f"({i},{i})" for i in range(0, table_size)])))
     assert response["row_count"] == table_size
     # check vshard rebalancing
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
-    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+    cluster.wait_until_buckets_balanced()
     res = i1.eval("return box.space.another_table:count()")
     assert math.isclose(res, table_size / 2, abs_tol=200)
     res = i2.eval("return box.space.another_table:count()")
@@ -172,7 +171,7 @@ def test_with_sk_prefix_of_pk(cluster: Cluster):
     Sharding key is prefix of primary key.
     """
     i1 = cluster.add_instance(replicaset_name="r1")
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql(
         """
@@ -190,7 +189,7 @@ def test_with_sk_prefix_of_pk(cluster: Cluster):
         assert response["row_count"] == BATCH_SIZE
 
     i2 = cluster.add_instance(replicaset_name="r2")
-    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+    cluster.wait_until_buckets_balanced()
 
     # check vshard rebalancing
     res = i1.eval("return box.space.sharded_table:count()")
@@ -215,7 +214,7 @@ def test_with_sk_and_pk_different(cluster: Cluster):
     Sharding key is completely different from primary key.
     """
     i1 = cluster.add_instance(replicaset_name="r1")
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql(
         """
@@ -233,7 +232,7 @@ def test_with_sk_and_pk_different(cluster: Cluster):
         assert response["row_count"] == BATCH_SIZE
 
     i2 = cluster.add_instance(replicaset_name="r2")
-    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+    cluster.wait_until_buckets_balanced()
 
     # check vshard rebalancing
     res = i1.eval("return box.space.sharded_table:count()")

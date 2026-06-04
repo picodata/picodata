@@ -1,18 +1,18 @@
+import json
 import ssl
 import time
-from typing import Dict, Any, Tuple, Optional
 from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
+import pytest
 from conftest import (
     Cluster,
     Instance,
     Retriable,
     TarantoolError,
 )
-from urllib.request import urlopen, Request
-from urllib.error import HTTPError
-import pytest
-import json
 
 USERNAME = "test_auth"
 PASSWORD = "test_auth1A!"
@@ -991,7 +991,7 @@ def test_healthcheck_status_api(cluster: Cluster):
 
     # Wait for startup and bucket distribution
     Retriable().call(lambda: get_authorized(f"http://{http_listen}/api/v1/health/startup", auth_token))
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1000)
+    cluster.wait_until_buckets_balanced()
 
     # Validate healthy status with data accuracy
     with get_authorized(status_url, auth_token) as response:
