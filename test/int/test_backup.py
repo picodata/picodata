@@ -12,6 +12,7 @@ from conftest import (
     TarantoolError,
     log_crawler,
 )
+from framework.util import SMALL_BUCKETS_COUNT
 
 
 def create_share_dir_in_tmp(cluster: Cluster):
@@ -543,7 +544,7 @@ def test_backup_aborts_on_instance_restart(cluster: Cluster):
     i3 = cluster.add_instance(replicaset_name="r2", wait_online=False)
     cluster.set_share_dir(shared_dir)
 
-    cluster.set_unique_configs_for_instances(share_dir_path=shared_dir)
+    cluster.set_unique_configs_for_instances(share_dir_path=shared_dir, default_bucket_count=SMALL_BUCKETS_COUNT)
 
     for i in [i1, i2, i3]:
         i.start()
@@ -552,7 +553,7 @@ def test_backup_aborts_on_instance_restart(cluster: Cluster):
         i.wait_online()
 
     for i in [i1, i2]:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+        cluster.wait_until_instance_has_this_many_active_buckets(i, SMALL_BUCKETS_COUNT // 2)
 
     # prevent backup from progressing
     error_injection = "ERROR_AFTER_DATA_IS_BACKUPED"
@@ -1002,7 +1003,7 @@ def test_backup_manual_abort(cluster: Cluster):
     i3 = cluster.add_instance(replicaset_name="r2", wait_online=False)
     cluster.set_share_dir(shared_dir)
 
-    cluster.set_unique_configs_for_instances(share_dir_path=shared_dir)
+    cluster.set_unique_configs_for_instances(share_dir_path=shared_dir, default_bucket_count=SMALL_BUCKETS_COUNT)
 
     for i in [i1, i2, i3]:
         i.start()
@@ -1011,7 +1012,7 @@ def test_backup_manual_abort(cluster: Cluster):
         i.wait_online()
 
     for i in [i1, i2]:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+        cluster.wait_until_instance_has_this_many_active_buckets(i, SMALL_BUCKETS_COUNT // 2)
 
     cluster.wait_leader_elected()
 
@@ -1071,7 +1072,7 @@ def test_backup_aborts_with_offline_nodes(cluster: Cluster):
     i3 = cluster.add_instance(replicaset_name="r2", wait_online=False)
     cluster.set_share_dir(shared_dir)
 
-    cluster.set_unique_configs_for_instances(share_dir_path=shared_dir)
+    cluster.set_unique_configs_for_instances(share_dir_path=shared_dir, default_bucket_count=SMALL_BUCKETS_COUNT)
 
     for i in [i1, i2, i3]:
         i.start()
@@ -1080,7 +1081,7 @@ def test_backup_aborts_with_offline_nodes(cluster: Cluster):
         i.wait_online()
 
     for i in [i1, i2]:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+        cluster.wait_until_instance_has_this_many_active_buckets(i, SMALL_BUCKETS_COUNT // 2)
 
     cluster.wait_leader_elected()
 

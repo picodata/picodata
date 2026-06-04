@@ -11,6 +11,9 @@ from typing import Union
 
 BASE_HOST = "127.0.0.1"
 
+# Useful for tests that flakes due to long rebalance
+SMALL_BUCKETS_COUNT = 30
+
 
 def eprint(*args, **kwargs):
     """
