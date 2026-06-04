@@ -21,7 +21,7 @@ from conftest import (
     assert_starts_with,
     log_crawler,
 )
-from framework.ldap import LdapServer, is_glauth_available
+from framework.ldap import LdapServer
 from framework.thread import spawn_thread
 from framework.util import copy_plugin_library
 from framework.util.build import Executable, cargo_build_path, project_tests_path
@@ -3075,21 +3075,25 @@ def test_sdk_authentication_classic(auth_method: str, cluster: Cluster):
     )
 
 
-@pytest.mark.skipif(
-    not is_glauth_available(),
-    reason="need installed glauth",
-)
-def test_sdk_authentication_ldap(cluster: Cluster, ldap_server: LdapServer):
-    inst = cluster.add_instance(wait_online=False)
+def test_sdk_authentication_ldap(cluster: Cluster, ldap_server_plaintext: LdapServer):
+    cluster.set_config_file(
+        config={
+            "cluster": {
+                "name": "test",
+            },
+            "instance": {
+                "ldap": ldap_server_plaintext.picodata_ldap_config(),
+            },
+        }
+    )
 
-    inst.env["TT_LDAP_URL"] = f"ldap://{ldap_server.host}:{ldap_server.port}"
-    inst.env["TT_LDAP_DN_FMT"] = "cn=$USER,dc=example,dc=org"
+    inst = cluster.add_instance(wait_online=False)
 
     inst.start()
     inst.wait_online()
 
-    inst.sql(f"CREATE USER {ldap_server.user} USING LDAP")
-    inst.sql(f"GRANT READ ON TABLE _pico_user TO {ldap_server.user}", sudo=True)
+    inst.sql(f"CREATE USER {ldap_server_plaintext.user} USING LDAP")
+    inst.sql(f"GRANT READ ON TABLE _pico_user TO {ldap_server_plaintext.user}", sudo=True)
 
     install_and_enable_plugin(
         inst,

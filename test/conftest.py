@@ -3561,34 +3561,33 @@ def copy_dir(src: Path, dst: Path, copy_socks: bool = False):
             shutil.copy2(source_item, dest_item)
 
 
+# expects the `mode` to be passed in request.param
+# use with @pytest.mark.parametrize("ldap_server", ["plaintext", "tls", "starttls"], indirect=True)
 @pytest.fixture
-def ldap_server(cluster: Cluster, port_distributor: PortDistributor) -> Generator[ldap.LdapServer, None, None]:
-    server = ldap.configure_ldap_server(
-        username="ldapuser",
-        password="ldappass",
-        data_dir=cluster.data_dir,
-        port=port_distributor.get(),
-        tls=False,
-    )
+def ldap_server(
+    request: pytest.FixtureRequest, cluster: Cluster, port_distributor: PortDistributor
+) -> Generator[ldap.LdapServer, None, None]:
+    requested_mode = getattr(request, "param", None)
+    assert requested_mode is not None, "ldap_server fixture has to be parametrized with a tls mode"
 
-    yield server
-
-    server.process.terminate()
+    yield from ldap.ldap_server_fixture_impl(cluster.data_dir, port_distributor.get(), mode=requested_mode)
 
 
 @pytest.fixture
-def ldap_server_with_tls(cluster: Cluster, port_distributor: PortDistributor) -> Generator[ldap.LdapServer, None, None]:
-    server = ldap.configure_ldap_server(
-        username="ldapuser",
-        password="ldappass",
-        data_dir=cluster.data_dir,
-        port=port_distributor.get(),
-        tls=True,
-    )
+def ldap_server_plaintext(
+    cluster: Cluster, port_distributor: PortDistributor
+) -> Generator[ldap.LdapServer, None, None]:
+    yield from ldap.ldap_server_fixture_impl(cluster.data_dir, port_distributor.get(), mode="plaintext")
 
-    yield server
 
-    server.process.terminate()
+@pytest.fixture
+def ldap_server_tls(cluster: Cluster, port_distributor: PortDistributor) -> Generator[ldap.LdapServer, None, None]:
+    yield from ldap.ldap_server_fixture_impl(cluster.data_dir, port_distributor.get(), mode="tls")
+
+
+@pytest.fixture
+def ldap_server_starttls(cluster: Cluster, port_distributor: PortDistributor) -> Generator[ldap.LdapServer, None, None]:
+    yield from ldap.ldap_server_fixture_impl(cluster.data_dir, port_distributor.get(), mode="starttls")
 
 
 GITLAB_URL = "https://git.picodata.io/"

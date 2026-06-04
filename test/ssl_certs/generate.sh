@@ -63,3 +63,17 @@ openssl req -new -key server.key -out server.csr -subj "/CN=pico_service@example
 openssl x509 -req -in server.csr -CA intermediate-ca.crt -CAkey intermediate-ca.key \
     -out server-with-ext.crt -days 36500 -sha256 \
     -extfile server_ext.cnf -extensions server_ext
+
+openssl req -new -key server.key -out server.csr -subj "/CN=ldap.picodata.int"
+# Generate server-ldap.crt with SAN.IP field (for LDAP tls)
+openssl x509 -req -in server.csr -CA intermediate-ca.crt -CAkey intermediate-ca.key \
+    -out server-ldap.crt -days 36500 -sha256 \
+    -extfile server_ldap.cnf -extensions server_ext
+
+rm -f server-ldap-fullchain.crt
+openssl x509 -in server-ldap.crt     >> server-ldap-fullchain.crt
+openssl x509 -in intermediate-ca.crt >> server-ldap-fullchain.crt
+openssl x509 -in root-ca.crt         >> server-ldap-fullchain.crt
+
+# Test
+openssl verify -CAfile server-ldap-fullchain.crt server-ldap-fullchain.crt
