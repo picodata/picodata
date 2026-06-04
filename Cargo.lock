@@ -2639,6 +2639,7 @@ dependencies = [
  "hmac 0.12.1",
  "http",
  "indoc",
+ "insta",
  "itoa",
  "jwt-compact",
  "ldap3",

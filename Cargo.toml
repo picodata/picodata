@@ -113,8 +113,9 @@ tarantool = { workspace = true, features = [
 
 [dev-dependencies]
 anyhow = "1.0"
-pretty_assertions = { workspace = true }
+insta = { workspace = true, features = ["yaml"] }
 pbkdf2 = { version = "0.12.1", features = ["simple", "std"] }
+pretty_assertions = { workspace = true }
 
 [build-dependencies]
 git-version = { workspace = true }
@@ -146,6 +147,7 @@ clap = "4.5"
 comfy-table = "7.2"
 git-version = "0.3"
 indenter = "0.3"
+insta = "1.42"
 openssl = "0.10"
 picodata-plugin = { path = "picodata-plugin" }
 postgres-types = { version = "0.2", features = [

@@ -3545,8 +3545,40 @@ mod tests {
     use crate::address::PgprotoAddress;
     use crate::util::{on_scope_exit, ScopeGuard};
     use clap::Parser as _;
+    use insta::{assert_snapshot, assert_yaml_snapshot};
     use pretty_assertions::assert_eq;
     use std::{str::FromStr, sync::Mutex};
+
+    struct EnvScope {
+        variable: String,
+        old_value: Option<std::ffi::OsString>,
+    }
+
+    impl Drop for EnvScope {
+        fn drop(&mut self) {
+            if let Some(old_value) = &self.old_value {
+                env::set_var(&self.variable, &old_value);
+            } else {
+                env::remove_var(&self.variable);
+            }
+        }
+    }
+
+    /// Set an environment variable and restore its original value at the end of the scope.
+    fn set_env_scoped(
+        _witness_guard: &ScopeGuard<impl FnOnce() -> ()>,
+        variable: &str,
+        value: impl AsRef<std::ffi::OsStr>,
+    ) -> EnvScope {
+        let old_value = env::var_os(variable);
+        env::remove_var(variable);
+        env::set_var(variable, value);
+
+        EnvScope {
+            variable: variable.to_string(),
+            old_value,
+        }
+    }
 
     #[test]
     fn config_from_yaml() {
@@ -3787,7 +3819,7 @@ cluster:
         _witness_guard: &ScopeGuard<impl FnOnce() -> ()>,
     ) -> Result<Box<PicodataConfig>, Error> {
         let mut config = if let Some(yaml) = yaml {
-            PicodataConfig::read_yaml_contents(yaml).unwrap()
+            PicodataConfig::read_yaml_contents(yaml)?
         } else {
             Default::default()
         };
@@ -5392,5 +5424,317 @@ instance:
         let config = PicodataConfig::read_yaml_contents(yaml).unwrap();
         assert_eq!(config.instance.memtx.max_tuple_size(), 5242880);
         assert_eq!(config.instance.vinyl.max_tuple_size(), 2621440);
+    }
+
+    #[test]
+    fn config_parameter_ldap_missing_parameters() {
+        let g = protect_env();
+
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    ldap:
+        enabled: true
+        connect: example.com:4242
+"###;
+
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+
+        let err = config.validate_ldap().unwrap_err();
+        assert_snapshot!(err, @"invalid configuration: instance.ldap.dn_format is required when ldap is enabled");
+
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    ldap:
+        enabled: true
+        dn_format: "cn=$USER,dc=example,dc=org"
+"###;
+
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+
+        let err = config.validate_ldap().unwrap_err();
+        assert_snapshot!(err, @"invalid configuration: instance.ldap.connect is required when ldap is enabled");
+    }
+
+    #[test]
+    fn config_parameter_ldap_invalid_dn_fmt() {
+        let g = protect_env();
+
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    ldap:
+        enabled: true
+        dn_format: "cn=4242,dc=example,dc=org"
+"###;
+
+        let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+
+        assert_snapshot!(err, @"invalid configuration: instance.ldap.dn_format: DN format string doesn't contain `$USER` at line 7 column 20");
+
+        // this gets enforced even when ldap is disabled
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    ldap:
+        enabled: false
+        dn_format: "cn=4242,dc=example,dc=org"
+"###;
+
+        let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+
+        assert_snapshot!(err, @"invalid configuration: instance.ldap.dn_format: DN format string doesn't contain `$USER` at line 7 column 20");
+
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    ldap:
+        enabled: true
+        dn_format: "cn=$USER,dc=$USER,dc=org"
+"###;
+
+        let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+
+        assert_snapshot!(err, @"invalid configuration: instance.ldap.dn_format: DN format string contains more than one `$USER` at line 7 column 20");
+    }
+
+    #[test]
+    fn config_parameter_ldap_defaults() {
+        let g = protect_env();
+
+        let yaml = r###"
+cluster:
+    name: test
+"###;
+
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+        config.validate_ldap().unwrap();
+
+        assert_yaml_snapshot!(config.instance.ldap, @r#"
+            enabled: false
+            dn_format: ~
+            connect: ~
+            tls:
+              enabled: false
+              method: implicit
+              ca_file: ~
+        "#);
+
+        let yaml = r###"
+cluster:
+    name: test
+instance:
+    ldap:
+        enabled: true
+        connect: "example.com:4242"
+        dn_format: "cn=$USER,dc=example,dc=org"
+"###;
+
+        let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+        config.validate_ldap().unwrap();
+
+        assert_yaml_snapshot!(config.instance.ldap, @r#"
+            enabled: true
+            dn_format: "cn=$USER,dc=example,dc=org"
+            connect: "example.com:4242"
+            tls:
+              enabled: false
+              method: implicit
+              ca_file: ~
+        "#);
+    }
+
+    #[test]
+    fn config_parameter_ldap_legacy_env_invalid() {
+        let g = protect_env();
+
+        let yaml = r###"
+cluster:
+    name: test
+"###;
+
+        // missing variables
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldap://127.0.0.1:4242");
+            let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+            assert_snapshot!(err, @"invalid configuration: a required LDAP environment variable TT_LDAP_DN_FMT is not configured, while some other LDAP environment variable is set.");
+        }
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=4242,dc=example,dc=org");
+            let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+            assert_snapshot!(err, @"invalid configuration: a required LDAP environment variable TT_LDAP_URL is not configured, while some other LDAP environment variable is set.");
+        }
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_ENABLE_TLS", "true");
+            let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+            assert_snapshot!(err, @"invalid configuration: a required LDAP environment variable TT_LDAP_URL is not configured, while some other LDAP environment variable is set.");
+        }
+
+        // invalid dn format
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldap://127.0.0.1:4242");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=4242,dc=example,dc=org");
+            let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+            assert_snapshot!(err, @"invalid configuration: TT_LDAP_DN_FMT is invalid: DN format string doesn't contain `$USER`");
+        }
+
+        // invalid url format
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldap://127.0.0.1:4242/bad");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+            let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+            assert_snapshot!(err, @"invalid configuration: TTL_LDAP_URL must not have a path, query or a fragment");
+        }
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "://127.0.0.1:4242/");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+            let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+            assert_snapshot!(err, @"invalid configuration: Could not parse TT_LDAP_URL: relative URL without a base");
+        }
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "://127.0.0.1:4242/bad");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+            let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+            assert_snapshot!(err, @"invalid configuration: Could not parse TT_LDAP_URL: relative URL without a base");
+        }
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldap:/");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+            let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+            assert_snapshot!(err, @"invalid configuration: TTL_LDAP_URL must have a host");
+        }
+
+        // ldaps URL when already using starttls
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldaps://127.0.0.1:4242");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+            let _guard = set_env_scoped(&g, "TT_LDAP_ENABLE_TLS", "true");
+            let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+            assert_snapshot!(err, @"invalid configuration: TT_LDAP_ENABLE_TLS cannot be used with an ldaps:// URL");
+        }
+    }
+
+    #[test]
+    fn config_parameter_ldap_legacy_env_valid() {
+        let g = protect_env();
+
+        let yaml = r###"
+cluster:
+    name: test
+"###;
+
+        // plaintext LDAP
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldap://example.com:4242");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+            config.validate_ldap().unwrap();
+
+            assert_yaml_snapshot!(config.instance.ldap, @r#"
+                enabled: true
+                dn_format: "cn=$USER,dc=example,dc=org"
+                connect: "example.com:4242"
+                tls:
+                  enabled: false
+                  method: implicit
+                  ca_file: ~
+            "#);
+        }
+        // implicit TLS (LDAPS)
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldaps://example.com:4242");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+            config.validate_ldap().unwrap();
+
+            assert_yaml_snapshot!(config.instance.ldap, @r#"
+                enabled: true
+                dn_format: "cn=$USER,dc=example,dc=org"
+                connect: "example.com:4242"
+                tls:
+                  enabled: true
+                  method: implicit
+                  ca_file: ~
+            "#);
+        }
+        // StartTLS
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldap://example.com:4242");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+            let _guard = set_env_scoped(&g, "TT_LDAP_ENABLE_TLS", "true");
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+            config.validate_ldap().unwrap();
+
+            assert_yaml_snapshot!(config.instance.ldap, @r#"
+                enabled: true
+                dn_format: "cn=$USER,dc=example,dc=org"
+                connect: "example.com:4242"
+                tls:
+                  enabled: true
+                  method: start_tls
+                  ca_file: ~
+            "#);
+        }
+
+        // TT_LDAP_ENABLE_TLS values other than "true" (case-insensitive) are treated as if the variable is unset
+        {
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldap://example.com:4242");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+            let _guard = set_env_scoped(&g, "TT_LDAP_ENABLE_TLS", "nice value");
+            let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+            config.validate_ldap().unwrap();
+
+            assert_yaml_snapshot!(config.instance.ldap, @r#"
+                enabled: true
+                dn_format: "cn=$USER,dc=example,dc=org"
+                connect: "example.com:4242"
+                tls:
+                  enabled: false
+                  method: implicit
+                  ca_file: ~
+            "#);
+        }
+    }
+
+    #[test]
+    fn config_parameter_ldap_legacy_and_yaml_conflict() {
+        let g = protect_env();
+
+        // setting any YAML option along with any LDAP environment variable is an error
+        {
+            let yaml = r###"
+cluster:
+    name: test
+instance:
+    ldap:
+        enabled: true
+"###;
+
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldap://example.com:4242");
+
+            let err = setup_for_tests(Some(yaml), &["run"], &g).unwrap_err();
+            assert_snapshot!(err, @"invalid configuration: LDAP cannot be configured both via the legacy environment variables (TT_LDAP_*) and via the yaml file. Offending variables: [\"TT_LDAP_URL\"]");
+        }
+
+        // just having an LDAP section in YAML is not an error though
+        {
+            let yaml = r###"
+cluster:
+    name: test
+instance:
+    ldap:
+"###;
+
+            let _guard = set_env_scoped(&g, "TT_LDAP_URL", "ldap://example.com:4242");
+            let _guard = set_env_scoped(&g, "TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+
+            let _config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
+        }
     }
 }
