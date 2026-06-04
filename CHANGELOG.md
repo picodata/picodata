@@ -202,6 +202,98 @@ with the `YY.MINOR.MICRO` scheme.
   `audit`, `log`, `vinyl`) and per-replica replication state from `box.info.replication`.
   Used by the new `GET /api/v1/instance/:uuid` HTTP endpoint.
 
+
+## [26.1.4] - 2026-05-28
+
+### Fixes
+
+- [picodata#2926] Reduced log verbosity in vshard for routine replicaset events.
+- Vinyl: fix page index min-key corruption in LCP groups
+
+## [26.1.3] - 2026-05-21
+
+### Breaking changes
+
+- `CancellationTokenHandle::cancel()` now returns `Rc<OnceEvent>` instead of
+  `Channel<()>`. Use `finish_event.is_finished()` to check completion or
+  `finish_event.wait_timeout(duration)` to wait with a timeout.
+- Rename fields in `/api/v1/health/status` response: `reasons` to `issues`,
+  status level `unhealthy` to `broken`.
+- `picodata demo` subcommand is now gated behind the `demo` Cargo feature,
+  disabled by default. To build with demo, use `CARGO_FLAGS_EXTRA="--features demo"`.
+
+### Features
+
+- Improved accuracy of `space:len()` for Vinyl tables.
+- Support `DELETE` statementes inside transactional `DO` blocks.
+- Support `INSERT` statements inside transactional `DO` blocks.
+- [picodata#1596] Added support for `ARRAY` columns in `CREATE TABLE` and
+  `ALTER TABLE ADD COLUMN`. Supported syntax: `T[]`, `T[N]`, `T[N][M]`,
+  `T[][]`, `T ARRAY`, `T ARRAY[N]`. Declared type and sizes are documentation
+  only and do not affect the internal implementation for now.
+
+### Fixes
+
+- Fixed crash when disabling a plugin with slow background jobs. Previously,
+  if a job didn't finish within the shutdown timeout, the plugin library could
+  be unloaded while the job fiber was still running.
+- Fixed the `NO_ROUTE_TO_BUCKET` error that occurred when sending a request to
+  the single node of a replicaset during its restart. This error is now retried
+  by the router.
+- [picodata#2842] Fixed the `schema version has changed: need to re-compile SQL statement`
+  error, which could occur when you execute multiple DQL queries due to
+  yield during cache eviction.
+- Fixed sentinel panic on long activation wait.
+- [picodata#2812] Use direct RPC for query metadata on DQL cache miss
+  - Replace vshard-based Lua dispatch with ConnectionPool::call_raw for
+    the proc_query_metadata callback. This fixes SQL query execution from
+    arbiter tier instances (bucket_count=0) where no vshard router exists.
+- [picodata#2888] Fixed a bug where cluster would fail to bootstrap if there were no voter
+  instances in the initial `--peer` set.
+- Revoking privileges from `admin` user caused a panic. Now, revoking priviliges
+  from `admin` user is forbidden, for same reasons as for the `pico_service` user.
+- Fixed `ALTER PLUGIN ADD SERVICE TO TIER` accepting nonexistent tier names.
+  Now validates that the specified tier exists and returns an error otherwise.
+- Backup operation will now be automatically aborted if there are offline instances.
+  This prevents cluster being locked in a readonly state.
+- [picodata#2732] Fixed a panic when attempting to inherit privileges via SQL
+  (e.g., `GRANT admin TO somebody`). We do not support privilege inheritance
+  via `GRANT user1 TO user2`. The system now validates the grantee type and
+  returns a proper `NoSuchRole` error instead of panicking.
+
+## [26.1.2] - 2026-04-14 
+
+### Changed
+
+- Optimize `/api/v1/tiers` and `/api/v1/cluster` endpoints to reduce RPC calls.
+  HTTP addresses are now read from `_pico_peer_address` storage instead of RPC,
+  and memory info is only fetched from replicaset leaders. This reduces the
+  number of RPC calls from O(N×RF) to O(N) where N is the number of replicasets.
+  Offline instances now show their HTTP address (from storage) instead of empty string.
+
+### Fixes
+
+- Fixed a SQL planner panic caused by stale type metadata after clone-based
+  rewrites such as `BETWEEN` normalization and `GROUP BY` alias expansion.
+- Fixed a bug with the storage cache that caused an error "Temporary table TMP_ not found".
+- Fixed a regression in config parsing. `--iproto-listen`, `--iproto-advertise` and
+  `--http-listen` were triggering an error instead of overriding corresponding value
+  in yaml config when deprecated listen options were used in the config.
+- Fixed a permission error occured during query planning for non-admin users.
+- Fix cold restart deadlock where all instances in a replicaset would get empty
+  replication configs, preventing synchronization. The governor now includes
+  only the master in the fallback replication config, preserving conflict
+  isolation while allowing the cluster to recover.
+- Fixed the errors `box.cfg.read_only is true` and `Failed to add a storage reference`,
+  which occurred when restarting a storage instance and previously required a retry.
+- Fixed the `query for request_id with plan_id not found` error that occurred
+  on queries with `UNION` of `CTE` on a cluster consisting of multiple instances.
+- Fixes an issue when http and plugin addresses were inserted into `_pico_peer_address`
+  when an instance joined a mixed-version cluster, causing a panic on older instances.
+  It is also now not possible to bootstrap an 26.1.x instance defining a plugin listener
+  address into a mixed 25.5.x and 26.1.x cluster - cluster has to be fully updated to do that.
+
+
 ## [26.1.1] - 2026-03-24
 
 ### Features
@@ -407,6 +499,54 @@ with the `YY.MINOR.MICRO` scheme.
   lookups like `SELECT * FROM t WHERE double_col = 1` to find rows inserted with
   `double_col = 1.0`. However, existing data sharded on `DOUBLE` keys containing
   integer values may have different bucket assignments after upgrade.
+
+
+## [25.5.9] - 2026-03-20
+
+### Fixes
+
+- Support cluster update to next major version (26.1.0).
+- Fixed incorrect filter pushdown into compound queries containing window functions.
+
+
+## [25.5.8] - 2026-02-25
+
+### Features
+
+- New ALTER SYSTEM parameter `sql_log` (default: false)
+  enables logging of all SQL statements to log file.
+- Introduce `sql_preemption_opcode_max` to control the VDBE opcode interval
+  between execution time checks when `sql_preemption` is enabled.
+- Fixed local SQL iterators to survive fiber yields during table truncation.
+
+### Fixes
+
+- Fixed that `--pg-advertise` CLI argument was erroneously disallowed to be used
+  simultaneously with `--iproto-advertise`.
+- Fixed an issue where upgrade operations were inserted incorrectly
+  when applying system catalog changes for several catalog versions.
+
+
+## [25.5.7] - 2026-02-10
+
+### Fixes
+
+- Fixed a number of vinyl issues by backporting upstream patches
+
+
+## [25.5.6] - 2026-02-06
+
+### WebUI
+- Webui now displays the value of `cluster_version` instead of current
+  instance's version. That way you can easily tell if the cluster has been
+  upgraded successfully or not yet.
+
+### Fixes
+
+- Fixed governor's `ConfigureReplication` step was broken during upgrade from before 25.5.3
+- Fixed that instances from tiers with can_vote=false attempting to promote to raft leader.
+- Fixed a crash in case of any error during TRUNCATE operation.
+- Fixed a race condition between DDL (i.e., TRUNCATE) and DQL when the preemption option is enabled.
 
 
 ## [25.5.5] - 2026-01-26
