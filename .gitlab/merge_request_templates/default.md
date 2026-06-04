@@ -7,7 +7,6 @@
 ---
 
 - [ ] Documentation updated
-- [ ] Changelog updated
 - [ ] Release note fragment added in `release_notes/unreleased/`
 - Closes: none / #?
 <!--
