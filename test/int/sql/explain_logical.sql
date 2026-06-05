@@ -163,9 +163,9 @@ DO $$ BEGIN
     DELETE FROM tt WHERE d = 42;
 END $$;
 -- EXPECTED:
-╭───────────────────────────────╮
-│ 1. Let "a" (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 1. Let "a" (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(42 AS int)
 ''
@@ -173,17 +173,17 @@ projection (tt.d::int -> d)
   selection (tt.d::int = 42::int)
     scan tt
 ''
-╭────────────────────────────────────╮
-│ 2. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 2. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT CAST(:a AS int) as "col_1"
 ''
 projection (:a::int -> col_1)
 ''
-╭─────────────────────────────╮
-│ 3. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 3. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 DELETE FROM "tt" WHERE "tt"."d" = CAST(42 AS int)
 ''
@@ -205,9 +205,9 @@ DO $$ BEGIN
     DELETE FROM tt WHERE d = 2;
 END $$;
 -- EXPECTED:
-╭───────────────────────────────╮
-│ 1. Let "a" (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 1. Let "a" (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(2 AS int) ) ORDER BY 1 LIMIT 1
 ''
@@ -219,17 +219,17 @@ limit 1
           selection (tt.d::int = 2::int)
             scan tt
 ''
-╭───────────────────────────────╮
-│ 2. If cond (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 2. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 SELECT CAST(:a AS int) = CAST(5 AS int) as "cond"
 ''
 projection (:a::int = 5::int -> cond)
 ''
-╭───────────────────────────────╮
-│ 3. If body (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 3. If body (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(2 AS int), 1410)
 ''
@@ -237,9 +237,9 @@ insert into tt on conflict: fail
   values
     value ROW(2::int)
 ''
-╭─────────────────────────────╮
-│ 4. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 4. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 DELETE FROM "tt" WHERE "tt"."d" = CAST(2 AS int)
 ''
@@ -257,9 +257,9 @@ DO $$ BEGIN
     RETURN QUERY SELECT a FROM g;
 END $$;
 -- EXPECTED:
-╭────────────────────────────────────╮
-│ 1. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "g"."a" FROM "g" INNER JOIN ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(42 AS int) ) as "ttt" ON CAST(true AS bool)
 ''
@@ -271,9 +271,9 @@ projection (g.a::int -> a)
         selection (tt.d::int = 42::int)
           scan tt
 ''
-╭────────────────────────────────────╮
-│ 2. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 2. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(42 AS int)
 ''
@@ -281,9 +281,9 @@ projection (tt.d::int -> d)
   selection (tt.d::int = 42::int)
     scan tt
 ''
-╭────────────────────────────────────╮
-│ 3. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 3. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "g"."a" FROM "g"
 ''
@@ -302,9 +302,9 @@ DO $$ BEGIN
     END IF;
 END $$;
 -- EXPECTED:
-╭──────────────────────────────────────────╮
-│ 1. **Unused** let "a" (FILTERED STORAGE) │
-╰──────────────────────────────────────────╯
+╭─────────────────────────────────────────────────────╮
+│ 1. **Unused** let "a" (CONST-FILTERED STORAGE, 1/1) │
+╰─────────────────────────────────────────────────────╯
 ''
 SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(2 AS int) ) ORDER BY 1 LIMIT 1
 ''
@@ -316,25 +316,25 @@ limit 1
           selection (tt.d::int = 2::int)
             scan tt
 ''
-╭───────────────────────────────╮
-│ 2. Let "a" (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 2. Let "a" (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 SELECT CAST(1 AS int) as "col_1"
 ''
 projection (1::int -> col_1)
 ''
-╭───────────────────────────────╮
-│ 3. If cond (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 3. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 SELECT CAST(:a AS int) = CAST(5 AS int) as "cond"
 ''
 projection (:a::int = 5::int -> cond)
 ''
-╭───────────────────────────────╮
-│ 4. If body (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 4. If body (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(2 AS int), 1410)
 ''
@@ -351,9 +351,9 @@ DO $$ BEGIN
     RETURN QUERY SELECT a;
 END $$;
 -- EXPECTED:
-╭──────────────────────────────────────────╮
-│ 1. **Unused** let "a" (FILTERED STORAGE) │
-╰──────────────────────────────────────────╯
+╭─────────────────────────────────────────────────────╮
+│ 1. **Unused** let "a" (CONST-FILTERED STORAGE, 1/1) │
+╰─────────────────────────────────────────────────────╯
 ''
 SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(2 AS int) ) ORDER BY 1 LIMIT 1
 ''
@@ -365,17 +365,17 @@ limit 1
           selection (tt.d::int = 2::int)
             scan tt
 ''
-╭───────────────────────────────╮
-│ 2. Let "a" (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 2. Let "a" (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 SELECT CAST(1 AS int) as "col_1"
 ''
 projection (1::int -> col_1)
 ''
-╭────────────────────────────────────╮
-│ 3. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 3. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT CAST(:a AS int) as "col_1"
 ''

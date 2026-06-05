@@ -674,12 +674,14 @@ impl Vshard for StorageRuntime {
                 sql: local_sql,
             };
 
+            let has_segment_motion = ex_plan.has_segment_motion(top_id);
             explain_execute(
                 self,
                 miss_info,
                 sql_params.params(),
                 sql_vdbe_opcode_max,
                 buckets,
+                has_segment_motion,
                 port,
             )?;
 
@@ -894,6 +896,8 @@ pub fn explain_execute_block<'p>(
     let params = &mut block.params.into_iter();
     let mut explain_one =
         |sql: String, params: Vec<Value>, kind: &str| -> Result<(), SbroadError> {
+            // `False` is passed since transactional blocks cannot contain queries with
+            // motions.
             explain_execute_guarded(
                 &sql,
                 &params,
@@ -901,6 +905,7 @@ pub fn explain_execute_block<'p>(
                 kind,
                 buckets,
                 bucket_count,
+                false,
                 port,
             )
         };

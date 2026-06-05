@@ -4,7 +4,9 @@ use crate::metrics::{
 use crate::preemption::scheduler_options;
 use crate::sql::lock::{lock_temp_table, TempTableLease, TempTableLockRef};
 use crate::sql::port::PicoPortOwned;
-use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
+use crate::sql::router::{
+    determine_exec_location, get_index_version_by_pk, get_table_version_by_id, VersionMap,
+};
 use crate::sql::storage::{
     ExpandedLocalExecutionInfo, ExpandedPlanInfo, FullDeleteInfo, LocalExecutionInfo, PlanInfo,
     StorageRuntime,
@@ -31,7 +33,7 @@ use sql::executor::vtable::{
     vtable_indexed_column_name, VTableTuple, VirtualTable, VirtualTableTupleEncoder,
 };
 use sql::executor::{Port, PortType};
-use sql::ir::bucket::Buckets;
+use sql::ir::bucket::{BucketSet, Buckets};
 use sql::ir::explain::buckets_repr;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
@@ -687,6 +689,24 @@ fn repack_raw_explain<'p>(dst_port: &mut impl Port<'p>, src_port: &impl Port<'p>
     }
 }
 
+fn format_buckets(buckets: &Buckets, bucket_count: u64, has_segment_motion: bool) -> String {
+    match buckets {
+        Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() && has_segment_motion => {
+            let buckets_repr = buckets_repr(&Buckets::All, bucket_count);
+            format!("buckets <= {buckets_repr}")
+        }
+        Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() => {
+            let buckets_repr = buckets_repr(buckets, bucket_count);
+            format!("buckets = {buckets_repr}")
+        }
+        _ => {
+            let sym = if has_segment_motion { "<=" } else { "=" };
+            let buckets_repr = buckets_repr(buckets, bucket_count);
+            format!("buckets {sym} {buckets_repr}")
+        }
+    }
+}
+
 pub fn explain_execute_guarded<'p>(
     explain: &str,
     params: &[Value],
@@ -694,16 +714,17 @@ pub fn explain_execute_guarded<'p>(
     query: &str,
     buckets: &Buckets,
     bucket_count: u64,
+    has_segment_motion: bool,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
     let mp_header = encode(&[query]);
     port.add_mp(&mp_header);
 
-    let location = buckets.determine_exec_location();
+    let location = determine_exec_location(buckets, has_segment_motion);
     let mp_location = encode(&[location]);
     port.add_mp(&mp_location);
 
-    let buckets_repr = buckets_repr(buckets, bucket_count);
+    let buckets_repr = format_buckets(buckets, bucket_count, has_segment_motion);
     let mp_buckets_repr = encode(&[buckets_repr]);
     port.add_mp(&mp_buckets_repr);
 
@@ -795,6 +816,7 @@ pub fn explain_execute<'p>(
     params: &[Value],
     sql_vdbe_opcode_max: u64,
     buckets: &Buckets,
+    has_segment_motion: bool,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
     let _plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
@@ -815,6 +837,7 @@ pub fn explain_execute<'p>(
         "Query",
         buckets,
         bucket_count,
+        has_segment_motion,
         port,
     )
 }

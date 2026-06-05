@@ -2070,6 +2070,10 @@ impl Router for RouterRuntimeMock {
     ) -> Result<Forward, SbroadError> {
         Ok(Forward::On)
     }
+
+    fn determine_exec_location(&self, _buckets: &Buckets, _has_segment_motion: bool) -> String {
+        String::from("MOCK")
+    }
 }
 
 impl<C: Router> ExecutingQuery<'_, C> {

@@ -757,13 +757,16 @@ where
             let should_fmt = explain_options.contains(ExplainOptions::Fmt);
 
             let mut stmt_idx = 0;
+            let coordinator = self.get_coordinator();
             let mut statements = block_statements.iter().enumerate().peekable();
             while let Some((idx, stmt)) = statements.next() {
                 let mut explain_one = |buf: &mut String,
                                        query: &(String, Vec<Value>),
                                        kind: &str| {
                     let (sql, params) = query;
-                    let source = buckets.determine_exec_location();
+                    // `False` is passed since transactional blocks cannot
+                    // contain queries with motions.
+                    let source = coordinator.determine_exec_location(&buckets, false);
                     write_explain_header2!(buf, "{}. {} ({source})", stmt_idx + 1, kind).unwrap();
                     writeln!(buf).unwrap();
 
@@ -1022,7 +1025,7 @@ fn write_raw_explain_entry(
     write!(f, "plan:\n{plan}")?;
 
     if show_buckets {
-        write!(f, "\n\nbuckets = {}", entry.buckets)?;
+        write!(f, "\n\n{}", entry.buckets)?;
     }
 
     Ok(())

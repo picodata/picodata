@@ -874,9 +874,9 @@ SELECT DISTINCT b FROM t0 WHERE a = 1;
 -- SQL:
 EXPLAIN (RAW) SELECT DISTINCT b FROM t0 WHERE a = 1;
 -- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 SELECT DISTINCT "t0"."b" FROM "t0" WHERE "t0"."a" = CAST(1 AS int)
 ''

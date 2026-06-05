@@ -573,6 +573,51 @@ impl Router for RouterRuntime {
             }
         }
     }
+
+    fn determine_exec_location(&self, buckets: &Buckets, has_segment_motion: bool) -> String {
+        determine_exec_location(buckets, has_segment_motion)
+    }
+}
+
+pub fn determine_exec_location(buckets: &Buckets, has_segment_motion: bool) -> String {
+    match buckets {
+        Buckets::Any => "ROUTER".to_string(),
+        Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() && has_segment_motion => {
+            "DYN-FILTERED STORAGE".to_string()
+        }
+        Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() => "ROUTER".to_string(),
+        Buckets::Filtered(_) => {
+            let (replicaset_count, all_replicasets) = match replicasets_by_buckets(buckets) {
+                Ok(replicasets) => {
+                    let node = node::global().expect("raft node must be initialized");
+                    let topology_ref = node.topology_cache.get();
+                    let all_replicasets = topology_ref.all_replicasets().count();
+                    (replicasets.len(), all_replicasets)
+                }
+                Err(_) => {
+                    // Defaults to (0, 0) when buckets routing is unavailable in vshard.
+                    (0, 0)
+                }
+            };
+
+            let storage = if has_segment_motion {
+                "DYN-FILTERED STORAGE, <="
+            } else {
+                "CONST-FILTERED STORAGE,"
+            };
+            format!("{storage} {replicaset_count}/{all_replicasets}")
+        }
+        Buckets::All if has_segment_motion => "DYN-FILTERED STORAGE".to_string(),
+        Buckets::All => "WHOLE STORAGE".to_string(),
+    }
+}
+
+fn replicasets_by_buckets(buckets: &Buckets) -> Result<Vec<String>, SbroadError> {
+    let lua = tarantool::lua_state();
+    let tier = get_current_tier_name()?;
+    let timeout = DEFAULT_QUERY_TIMEOUT;
+    let deadline = Instant::now_fiber().saturating_add(timeout);
+    replicasets_from_buckets(&lua, buckets, Some(tier), deadline)
 }
 
 pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result<u64, SbroadError> {

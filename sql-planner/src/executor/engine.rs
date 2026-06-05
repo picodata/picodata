@@ -461,6 +461,8 @@ pub trait Router: QueryCache {
         buckets: &Buckets,
         target_replicaset: &mut Option<String>,
     ) -> Result<Forward, SbroadError>;
+
+    fn determine_exec_location(&self, buckets: &Buckets, has_segment_motion: bool) -> String;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -476,9 +476,9 @@ BEGIN
   INSERT INTO t VALUES (400, 99 + 1, 1 + 1);
 END $$;
 -- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 INSERT INTO "t" ("pk", "a", "b", "bucket_id") VALUES ( CAST(400 AS int), CAST(99 AS int) + CAST(1 AS int), CAST(1 AS int) + CAST(1 AS int), 590 )
 ''
@@ -593,18 +593,18 @@ DO $$ BEGIN
   DELETE FROM t WHERE pk = 2;
 END $$;
 -- EXPECTED:
-╭────────────────────────────────────╮
-│ 1. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(2 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭─────────────────────────────╮
-│ 2. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 DELETE FROM "t" WHERE "t"."pk" = CAST(2 AS int)
 ''
@@ -624,18 +624,18 @@ DO $$ BEGIN
   RETURN QUERY SELECT * FROM t WHERE pk = 1;
 END $$;
 -- EXPECTED:
-╭────────────────────────────────────╮
-│ 1. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭────────────────────────────────────╮
-│ 2. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 2. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
@@ -650,18 +650,18 @@ DO $$ BEGIN
   DELETE FROM t WHERE pk = 1;
 END $$;
 -- EXPECTED:
-╭────────────────────────────────────╮
-│ 1. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭─────────────────────────────╮
-│ 2. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 DELETE FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
@@ -1114,27 +1114,27 @@ BEGIN
   END IF;
 END $$;
 -- EXPECTED:
-╭───────────────────────────────╮
-│ 1. If cond (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 SELECT CAST(true AS bool) as "cond"
 ''
 plan:
     [0] TRIVIAL
 ''
-╭───────────────────────────────╮
-│ 2. If body (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 2. If body (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 UPDATE "t2" SET "b" = CAST(1234 AS int) WHERE "t2"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t2 USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭───────────────────────────────╮
-│ 3. If body (FILTERED STORAGE) │
-╰───────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ 3. If body (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
 ''
 UPDATE "t3" SET "b" = CAST(5678 AS int) WHERE "t3"."pk" = CAST(1 AS int)
 ''

@@ -735,6 +735,29 @@ impl ExecutionPlan {
         FrozenPlan { exec_plan: self }
     }
 
+    pub fn has_segment_motion(&self, top_id: NodeId) -> bool {
+        let plan = self.get_ir_plan();
+        // We are looking for Segment motions since these are the only motion
+        // nodes whose bucket index is used for bucket calculation. See
+        // https://git.picodata.io/core/picodata/-/blob/b2ef583f174cf8e5e5806ae765ce81c9872deea3/sql-planner/src/execu/bucket_discovery.rs#L248.
+        let motion_filter = |id| {
+            matches!(
+                plan.get_node(id),
+                Ok(Node::Relational(Relational::Motion(Motion {
+                    policy: MotionPolicy::Segment(_),
+                    ..
+                })))
+            )
+        };
+        let dfs = PostOrderWithFilter::new(
+            |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
+            motion_filter,
+            plan.nodes.len(),
+        );
+
+        dfs.traverse_into_iter(top_id).next().is_some()
+    }
+
     /// Returns the bucket reference attached to `selection_id` by the active
     /// bucket filter overlay.
     pub(crate) fn get_bucket_ref(&self, selection_id: NodeId) -> Option<NodeId> {

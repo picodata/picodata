@@ -135,19 +135,31 @@ INSERT INTO t2 VALUES (1, 1), (2, 2), (3, 3);
 
 -- TEST: test-join-output-reduced-1.1
 -- SQL:
-EXPLAIN (RAW, FMT) SELECT
-	t1.a,
-	ROW_NUMBER() OVER (
-		PARTITION BY
-			t1.b
-		ORDER BY
-			t1.a
-	) AS rn
+EXPLAIN (RAW, FMT, BUCKETS, LOGICAL)
+SELECT t1.a, ROW_NUMBER() OVER (PARTITION BY t1.b ORDER BY t1.a) AS rn
 FROM t1 JOIN t2 ON t1.a = t2.a;
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (
+  a::int,
+  row_number() over (partition by (b::int) order by (a::int asc) ) -> rn
+)
+  motion [policy: segment([ref(b)]), program: ReshardIfNeeded]
+    projection (t1.a::int -> a, t1.b::int -> b)
+      join on (t1.a::int = t2.a::int)
+        scan t1
+        scan t2
+''
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "t1"."a", "t1"."b" FROM "t1" INNER JOIN "t2" ON "t1"."a" = "t2"."a"
 ''
@@ -155,9 +167,11 @@ plan:
     [0] SCAN TABLE t1 (~1048576 rows)
         [0] SEARCH TABLE t2 USING PRIMARY KEY (a=?) (~1 row)
 ''
-╭─────────────────────────────╮
-│ 2. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+buckets = [1-3000]
+''
+╭─────────────────────────────────╮
+│ 2. Query (DYN-FILTERED STORAGE) │
+╰─────────────────────────────────╯
 ''
 SELECT
   "COL_0" as "a",
@@ -180,3 +194,11 @@ plan:
     [1] SCAN TABLE TMP_10487422260307364639_1136 (~1048576 rows)
     [1] USE TEMP B-TREE FOR ORDER BY
     [0] SCAN SUBQUERY 1 (~1 row)
+''
+buckets <= [1-3000]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = unknown

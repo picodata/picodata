@@ -3,3 +3,5 @@
 - Support `LOGICAL`, `BUCKETS`, and `FORWARD` modes of EXPLAIN for transactions ([!3184]).
 - Add per query bucket estimation to EXPLAIN (RAW) output when BUCKETS mode is
   specified ([!3280]).
+- Provide more accurate info about query execution location in EXPLAIN (RAW)
+  output ([!3330]).

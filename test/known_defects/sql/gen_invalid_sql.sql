@@ -52,9 +52,9 @@ Failed to compile SQL statement: Failed to execute an empty SQL statement
 -- SQL:
 EXPLAIN (RAW) WITH a AS (SELECT 1 FROM t limit 1) SELECT 1 FROM t JOIN a ON (values (true));
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT CAST(1 AS int) as "col_1" FROM "t" LIMIT 1
 ''
@@ -88,9 +88,9 @@ plan:
 plan:
 Failed to compile SQL statement: Failed to execute an empty SQL statement
 ''
-╭────────────────────╮
-│ 5. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 5. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "TMP_7002119783055804240_2136" ) as "a" ON ( SELECT "COL_0" FROM "TMP_7002119783055804240_3136" )
 ''

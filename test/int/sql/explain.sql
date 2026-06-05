@@ -359,9 +359,9 @@ buckets = any
 -- SQL:
 EXPLAIN (RAW, FMT) SELECT "id" from testing_space UNION SELECT "id" from testing_space;
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT
   "testing_space"."id"
@@ -382,9 +382,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1;
 -- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int)
 ''
@@ -395,9 +395,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) ) ORDER BY 1 LIMIT 1
 ''
@@ -408,9 +408,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 GROUP BY 1, 2, 3 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) GROUP BY "testing_space"."id", "testing_space"."name", "testing_space"."product_units" ) ORDER BY 1 LIMIT 1
 ''
@@ -422,9 +422,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW, FMT) SELECT * from testing_space JOIN testing_space ON true GROUP BY 1, 2, 3, 4, 5, 6 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT
   "testing_space"."id",
@@ -437,9 +437,9 @@ FROM
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
 ''
-╭────────────────────╮
-│ 2. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 2. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT
   "gr_expr_1",
@@ -554,9 +554,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE "product_units" < 10 AND "name" = 'beluga';
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" < CAST(10 AS int) and "testing_space"."name" = CAST('beluga' AS string)
 ''
@@ -567,18 +567,18 @@ plan:
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE "name" IN (SELECT "name" FROM testing_space_hist WHERE "product_units" > 10);
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "testing_space_hist"."name" FROM "testing_space_hist" WHERE "testing_space_hist"."product_units" > CAST(10 AS int)
 ''
 plan:
     [0] SCAN TABLE testing_space_hist (~983040 rows)
 ''
-╭────────────────────╮
-│ 2. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 2. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."name" in ( SELECT "COL_0" FROM "TMP_3367743013833706193_0136" )
 ''
@@ -597,9 +597,9 @@ EXPLAIN (RAW) DELETE FROM testing_space;
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE id IN ( SELECT id FROM testing_space_hist GROUP BY id HAVING SUM(product_units) = 0 );
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "testing_space_hist"."id" as "gr_expr_1", sum ( CAST ("testing_space_hist"."product_units" as int) ) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
 ''
@@ -616,9 +616,9 @@ plan:
     [0] SCAN TABLE TMP_16257932469474110742_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
-╭────────────────────╮
-│ 3. Query (STORAGE) │
-╰────────────────────╯
+╭─────────────────────────────────╮
+│ 3. Query (DYN-FILTERED STORAGE) │
+╰─────────────────────────────────╯
 ''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "TMP_13972189527136072344_1136" )
 ''
@@ -631,9 +631,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) UPDATE testing_space SET product_units = 0 WHERE id IN ( SELECT id FROM testing_space_hist WHERE product_units < 0 );
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT CAST(0 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "testing_space_hist"."id" FROM "testing_space_hist" WHERE "testing_space_hist"."product_units" < CAST(0 AS int) )
 ''
@@ -646,9 +646,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) UPDATE testing_space SET product_units = -1 WHERE id IN ( SELECT id FROM testing_space_hist GROUP BY id HAVING SUM(product_units) = 0 );
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "testing_space_hist"."id" as "gr_expr_1", sum ( CAST ("testing_space_hist"."product_units" as int) ) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
 ''
@@ -665,9 +665,9 @@ plan:
     [0] SCAN TABLE TMP_15152002639147469178_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
-╭────────────────────╮
-│ 3. Query (STORAGE) │
-╰────────────────────╯
+╭─────────────────────────────────╮
+│ 3. Query (DYN-FILTERED STORAGE) │
+╰─────────────────────────────────╯
 ''
 SELECT CAST(-1 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "TMP_15112249614234427908_2136" )
 ''
@@ -676,41 +676,13 @@ plan:
     [0] EXECUTE LIST SUBQUERY 1
     [1] SCAN TABLE TMP_15112249614234427908_2136 (~1048576 rows)
 
--- TEST: test_raw_explain-13
--- SQL:
-EXPLAIN (RAW) DELETE FROM testing_space WHERE id IN (10, 15, 42);
--- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
-''
-SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."id" in ( CAST(10 AS int), CAST(15 AS int), CAST(42 AS int) )
-''
-plan:
-    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~3 rows)
-    [0] EXECUTE LIST SUBQUERY 1
-
--- TEST: test_raw_explain-14
--- SQL:
-EXPLAIN (RAW) UPDATE testing_space SET product_units = product_units + 10 WHERE id IN (10, 15, 42);
--- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
-''
-SELECT "testing_space"."product_units" + CAST(10 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( CAST(10 AS int), CAST(15 AS int), CAST(42 AS int) )
-''
-plan:
-    [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~3 rows)
-    [0] EXECUTE LIST SUBQUERY 1
-
 -- TEST: test_raw_explain-15
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 42;
 -- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(42 AS int)
 ''
@@ -721,9 +693,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW, FMT) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 42;
 -- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "testing_space"."id",
@@ -754,18 +726,18 @@ plan:
 -- SQL:
 EXPLAIN (RAW) DELETE FROM testing_space WHERE product_units IN ( SELECT id FROM testing_space );
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "testing_space"."id" FROM "testing_space"
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
 ''
-╭────────────────────╮
-│ 2. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 2. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" in ( SELECT "COL_0" FROM "TMP_10954093023257315680_0136" )
 ''
@@ -778,9 +750,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space WITH testing_space AS (SELECT * FROM testing_space) SELECT * FROM testing_space;
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space"
 ''
@@ -827,9 +799,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) SELECT g.name, COUNT(*) AS global_rows, SUM(g.product_units) AS global_units, SUM(l.product_units) AS local_units FROM testing_space_global g JOIN testing_space l ON g.name = l.name WHERE g.product_units > 5 GROUP BY g.name HAVING SUM(l.product_units) > SUM(g.product_units) ORDER BY global_units DESC LIMIT 10;
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "g"."name" as "gr_expr_1", count (*) as "count_1", sum (CAST ("l"."product_units" as int)) as "sum_3", sum (CAST ("g"."product_units" as int)) as "sum_2" FROM "testing_space_global" as "g" INNER JOIN "testing_space" as "l" ON "g"."name" = "l"."name" WHERE "g"."product_units" > CAST(5 AS int) GROUP BY "g"."name"
 ''
@@ -872,9 +844,9 @@ plan:
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space_global VALUES ((SELECT 1), (SELECT name FROM testing_space ORDER BY name LIMIT 1), 42 + 67);
 -- EXPECTED:
-╭────────────────────╮
-│ 1. Query (STORAGE) │
-╰────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT "name" FROM ( SELECT "testing_space"."name" FROM "testing_space" ) ORDER BY "name" LIMIT 1
 ''
@@ -942,9 +914,9 @@ buckets = [1934]
 -- SQL:
 EXPLAIN (RAW, FMT, FMT, RAW, FMT) SELECT * FROM testing_space WHERE id = 1;
 -- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "testing_space"."id",
@@ -973,18 +945,18 @@ BEGIN
   RETURN QUERY SELECT b + 2 FROM t WHERE pk = 1;
 END $$;
 -- EXPECTED:
-╭────────────────────────────────────╮
-│ 1. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/2) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "t"."a" + CAST(1 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭────────────────────────────────────╮
-│ 2. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 2. Return query (CONST-FILTERED STORAGE, 1/2) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
@@ -1045,27 +1017,27 @@ BEGIN
   RETURN QUERY SELECT 4;
 END $$;
 -- EXPECTED:
-╭────────────────────────────────────╮
-│ 1. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/2) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT CAST(2 AS int) as "col_1"
 ''
 plan:
     [0] TRIVIAL
 ''
-╭────────────────────────────────────╮
-│ 2. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 2. Return query (CONST-FILTERED STORAGE, 1/2) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭────────────────────────────────────╮
-│ 3. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 3. Return query (CONST-FILTERED STORAGE, 1/2) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT CAST(4 AS int) as "col_1"
 ''
@@ -1082,27 +1054,27 @@ BEGIN
   UPDATE t SET a = a + 1 WHERE pk = 1;
 END $$;
 -- EXPECTED:
-╭────────────────────────────────────╮
-│ 1. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/2) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭─────────────────────────────╮
-│ 2. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭─────────────────────────────╮
-│ 3. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 3. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
 ''
@@ -1119,27 +1091,27 @@ BEGIN
   UPDATE t SET a = a * 2 WHERE pk = 2;
 END $$;
 -- EXPECTED:
-╭────────────────────────────────────╮
-│ 1. Return query (FILTERED STORAGE) │
-╰────────────────────────────────────╯
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/2) │
+╰───────────────────────────────────────────────╯
 ''
 SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(2 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭─────────────────────────────╮
-│ 2. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(2 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭─────────────────────────────╮
-│ 3. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 3. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(2 AS int)
 ''
@@ -1154,18 +1126,18 @@ BEGIN
   UPDATE t SET a = a * 2 WHERE pk = 3;
 END $$;
 -- EXPECTED:
-╭─────────────────────────────╮
-│ 1. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(3 AS int)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭─────────────────────────────╮
-│ 2. Query (FILTERED STORAGE) │
-╰─────────────────────────────╯
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
 UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(3 AS int)
 ''

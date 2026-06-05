@@ -105,14 +105,6 @@ impl Buckets {
         }
     }
 
-    pub fn determine_exec_location(&self) -> &str {
-        match self {
-            Buckets::Any => "ROUTER",
-            Buckets::All => "STORAGE",
-            Buckets::Filtered(_) => "FILTERED STORAGE",
-        }
-    }
-
     /// Conjunction of two sets of buckets.
     ///
     /// # Errors
