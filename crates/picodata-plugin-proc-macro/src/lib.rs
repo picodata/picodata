@@ -73,6 +73,50 @@ fn create_plugin_proc_macro_fn(
     .into()
 }
 
+/// A procedural macro that marks the plugin's service registration entry point.
+///
+/// Apply this attribute to a function that registers all services provided by the plugin.
+/// The function receives a mutable reference to `ServiceRegistry` and should call
+/// `ServiceRegistry::add` for each service the plugin exposes. You may also call
+/// `ServiceRegistry::add_config_validator` to supply a custom configuration validator
+/// for any of those services.
+///
+/// The macro rewrites the annotated function into a `pub extern "C"` symbol exported
+/// under the name `pico_service_registrar`, which picodata looks up when loading the
+/// plugin shared library.
+///
+/// # Constraints
+///
+/// - Each crate must contain at most one function annotated with `#[service_registrar]`.
+/// - The function must not be `async`.
+/// - The function must accept exactly one parameter of type `&mut ServiceRegistry`.
+/// - The function must have no return value.
+/// - Generic functions are not supported.
+/// - Variadic functions are not supported.
+///
+/// # Example
+///
+/// A plugin can register multiple services in one call. Use `env!("CARGO_PKG_VERSION")`
+/// for `plugin_version` so the value stays in sync with `Cargo.toml` automatically.
+///
+/// ```ignore
+/// use picodata_plugin::plugin::prelude::*;
+///
+/// const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
+///
+/// #[service_registrar]
+/// pub fn service_registrar(reg: &mut ServiceRegistry) {
+///     reg.add("service_a", PLUGIN_VERSION, ServiceA::new);
+///     reg.add("service_b", PLUGIN_VERSION, ServiceB::default);
+///
+///     reg.add_config_validator::<ServiceA>("service_a", PLUGIN_VERSION, |cfg| {
+///         if cfg.timeout_ms == 0 {
+///             return Err("timeout_ms must be greater than zero".into());
+///         }
+///         Ok(())
+///     });
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn proc_service_registrar(_attr: TokenStream, input: TokenStream) -> TokenStream {
     create_plugin_proc_macro_fn(
