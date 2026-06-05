@@ -29,6 +29,7 @@ Picodata — это распределенная система промышле
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.76);
     padding: 20px;
     border-radius: 10px;
+    max-width: 30%;
     transition: transform 0.3s ease-in-out;
 }
 
