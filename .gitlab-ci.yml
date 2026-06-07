@@ -70,6 +70,8 @@ variables:
   SCCACHE_DIR: $CI_PROJECT_DIR/.sccache
   SCCACHE_CACHE_SIZE: "15G"
   COMPILER_LAUNCHER: "sccache"
+  RUSTC_WRAPPER: sccache
+  CARGO_INCREMENTAL: "0"
   ROLLING_BINARIES_DIR: $CI_PROJECT_DIR/.rolling_binaries
 
 # job:rules explained:
