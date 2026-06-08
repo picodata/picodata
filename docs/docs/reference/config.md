@@ -90,6 +90,7 @@ cluster:
 instance:
   instance_dir: . # (17)!
   backup_dir: ./backup # (48)!
+  wal_dir: . # (50)!
   name: null # (28)!
   replicaset_name: null # (35)!
   tier: default # (36)!
@@ -204,6 +205,7 @@ instance:
 47. [instance.vinyl.timeout](#instance_vinyl_timeout)
 48. [instance.backup_dir](#instance_backup_dir)
 49. [instance.plugin](#instance_plugin)
+50. [instance.wal_dir](#instance_wal_dir)
 
 См. также:
 
@@ -1327,4 +1329,24 @@ picodata run -c instance.vinyl.timeout=120.0
 
 ```bash
 picodata run -c instance.vinyl.write_threads=8
+```
+
+### instance.wal_dir {: #instance_wal_dir }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-wal_dir -->
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Директория для хранения файлов журнала упреждающей записи (WAL). Позволяет
+хранить WAL на отдельном диске от снапшотов и данных движка `vinyl`. Если
+директория не существует, она будет создана при запуске инстанса.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `<instance-dir>` (см. [instance.instance_dir](#instance_instance_dir))
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.wal_dir=/mnt/fast-disk/wal
 ```
