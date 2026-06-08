@@ -12,17 +12,16 @@
 # * Even though these executables are quite large, as long as we cache them
 #   throughout the CI, it is a considerable trade-off.
 
-import re
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
-
-from packaging.version import Version
 from pathlib import Path
 from subprocess import CalledProcessError
 
+from packaging.version import Version
 
 VERSIONS_FILE = Path("required_rolling_versions.txt")
 INSTALL_DIR = Path(os.environ["ROLLING_BINARIES_DIR"])
@@ -47,7 +46,7 @@ def download_rpm(version: Version, dest: Path) -> Path:
 
         rpms = list(dest.glob(f"picodata-{version}*.rpm"))
         if len(rpms) != 1:
-            error = f"Expected exactly one RPM"
+            error = "Expected exactly one RPM"
             hint = f"for version {version!r}, found: {rpms}"
             raise RuntimeError(f"{error} {hint}")
 
@@ -108,7 +107,7 @@ def install_binary(version: Version) -> None:
         dst = INSTALL_DIR / name
         shutil.move(src, dst)
 
-        print(f"Installed {name!r} to {dst.absolute!r}")
+        print(f"Installed {name!r} to {dst.absolute()!r}")
 
 
 def load_versions(file: Path) -> list[Version]:
