@@ -11,7 +11,7 @@ services:
     ports:
       - "13301:3301"
       - "18301:8001"
-      - "55432:5432"
+      - "55432:4327"
     build:
       context: ../
       dockerfile: docker/picodata.Dockerfile
