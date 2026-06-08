@@ -78,6 +78,8 @@ with the `YY.MINOR.MICRO` scheme.
   storage query in EXPLAIN (RAW).
 - [picodata#2764] Transactional blocks now support LET statements.
 - [picodata#2765] Transactional blocks now support IF statements.
+- [picodata#2952] Added the `instance.wal_dir` configuration parameter, which
+  sets the directory where WAL files are stored.
 
 ### WebUI
 - Added new instance filters: `isVoter` and `isRaftLeader`. Both support
