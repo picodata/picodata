@@ -97,6 +97,7 @@ variables:
         - docker-build-base/**
         - tools/clone.sh
         - .gitlab-ci.yml
+        - .pre-commit-config.yaml
 
   - &if-build-base-changes-on-dev-branch
     if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -105,6 +106,7 @@ variables:
         - docker-build-base/**
         - tools/clone.sh
         - .gitlab-ci.yml
+        - .pre-commit-config.yaml
       compare_to: *main-branch
 
   - &if-changes-on-docs
@@ -162,13 +164,6 @@ variables:
   key: "py_cache-$CI_COMMIT_REF_SLUG"
   fallback_keys:
     - py_cache-$MAIN_BRANCH_SLUG
-
-.pre_commit_cache: &pre_commit_cache
-  paths:
-    - .cache/pre-commit/
-  key: "pre_commit_cache-$CI_COMMIT_REF_SLUG"
-  fallback_keys:
-    - pre_commit_cache-$MAIN_BRANCH_SLUG
 
 .rolling_binaries_cache: &rolling_binaries_cache
   paths:
@@ -1181,22 +1176,17 @@ deploy-coverage:
 validate-commit-headers:
   stage: test
   rules:
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
     # Full clone: large MRs or branches rebased onto an older base can
     # have $CI_MERGE_REQUEST_DIFF_BASE_SHA outside a shallow window.
     GIT_DEPTH: 0
-  cache:
-    - <<: *py_cache
-      policy: pull
-    - <<: *pre_commit_cache
-      policy: pull-push
-  before_script:
-    - *poetry-install
-    - poetry run pre-commit install-hooks
   script:
     - |
-      ci-log-section start "validate-commit-headers" Validating commit subjects via pre-commit ...
+      ci-log-section start "validate-commit-headers" Validating commit subjects via prek ...
       set -u
       BASE="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
       HEAD_SHA="$(git rev-parse HEAD)"
@@ -1210,8 +1200,8 @@ validate-commit-headers:
         msg_file="$tmp/$sha"
         git log -1 --format=%B "$sha" > "$msg_file"
 
-        if ! poetry run pre-commit run \
-              --hook-stage commit-msg \
+        if ! prek run \
+              --stage commit-msg \
               --commit-msg-filename "$msg_file" \
               conventional-pre-commit; then
           subject="$(git log -1 --format=%s "$sha")"

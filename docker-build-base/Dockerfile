@@ -81,12 +81,31 @@ mv "${SCCACHE_BINARY}/sccache" /usr/local/bin/ && \
 chmod +x /usr/local/bin/sccache && \
 rm -rf "${SCCACHE_BINARY}"
 
+# install prek (used by the validate-commit-headers job)
+RUN set -e; \
+PREK_VERSION="v0.4.4"; \
+PREK_BINARY="prek-x86_64-unknown-linux-musl"; \
+curl -sSL "https://github.com/j178/prek/releases/download/${PREK_VERSION}/${PREK_BINARY}.tar.gz" | tar -xz && \
+mv "${PREK_BINARY}/prek" /usr/local/bin/ && \
+chmod +x /usr/local/bin/prek && \
+rm -rf "${PREK_BINARY}"
+
 COPY docker-build-base/ci-log-section /usr/bin/ci-log-section
 COPY tools/clone.sh /usr/bin/clone.sh
 
 # install poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -
 RUN poetry --version
+
+# Pre-build the hook environments so validate-commit-headers needs no network
+# at test time. prek fetches uv from GitHub (public PyPI is unreliable in CI)
+# and caches the hook repo and its venv under PREK_HOME.
+ENV PREK_HOME=/root/.cache/prek
+COPY .pre-commit-config.yaml /tmp/precommit/
+RUN cd /tmp/precommit \
+    && git init -q \
+    && PREK_UV_SOURCE=github prek prepare-hooks \
+    && rm -rf /tmp/precommit
 
 # install glauth for ldap tests
 RUN set -e; \
