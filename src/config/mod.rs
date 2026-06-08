@@ -1922,6 +1922,10 @@ pub struct InstanceConfig {
     #[introspection(ignore)]
     pub plugin: Option<HashMap<String, socket::PluginConfig>>,
 
+    // A directory where WAL files are stored. Defaults to `instance_dir`.
+    #[introspection(config_default = self.instance_dir.clone())]
+    pub wal_dir: Option<PathBuf>,
+
     /// Special catch-all field which will be filled by serde with all unknown
     /// fields from the yaml file.
     #[serde(flatten)]
@@ -1940,6 +1944,13 @@ impl InstanceConfig {
     #[inline]
     pub fn instance_dir(&self) -> &PathBuf {
         self.instance_dir
+            .as_ref()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
+
+    #[inline]
+    pub fn wal_dir(&self) -> &PathBuf {
+        self.wal_dir
             .as_ref()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }

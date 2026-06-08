@@ -8,6 +8,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [26.1.5] - Unreleased
+
+## Features
+
+- [picodata#2952] Added the `instance.wal_dir` configuration parameter, which
+  sets the directory where WAL files are stored.
+
 ## [26.1.4] - 2026-05-28
 
 ### Fixes
@@ -66,7 +73,7 @@ with the `YY.MINOR.MICRO` scheme.
   via `GRANT user1 TO user2`. The system now validates the grantee type and
   returns a proper `NoSuchRole` error instead of panicking.
 
-## [26.1.2] - 2026-04-14 
+## [26.1.2] - 2026-04-14
 
 ### Changed
 

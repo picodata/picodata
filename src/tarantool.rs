@@ -627,7 +627,7 @@ impl Cfg {
         const FIELDS: &[(&str, &str)] = &[
             // other instance.log.* parameters are set explicitly above
             ("log_format",                  config_parameter_path!(instance.log.format)),
-            ("wal_dir",                     config_parameter_path!(instance.instance_dir)),
+            ("wal_dir",                     config_parameter_path!(instance.wal_dir)),
             ("memtx_dir",                   config_parameter_path!(instance.instance_dir)),
             ("vinyl_dir",                   config_parameter_path!(instance.instance_dir)),
             ("vinyl_bloom_fpr",             config_parameter_path!(instance.vinyl.bloom_fpr)),

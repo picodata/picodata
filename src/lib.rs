@@ -1115,6 +1115,14 @@ fn init_common(
         ))
     })?;
 
+    std::fs::create_dir_all(config.instance.wal_dir()).map_err(|err| {
+        Error::other(format!(
+            "failed creating WAL directory {}: {}",
+            config.instance.wal_dir().display(),
+            err
+        ))
+    })?;
+
     if let Some(log_config) = &cfg.log {
         tlog!(Info, "switching to log configuration: {}", log_config);
     }

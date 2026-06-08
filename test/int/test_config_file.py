@@ -35,6 +35,37 @@ instance:
     assert instance.eval("return box.cfg.memtx_max_tuple_size") == 10485760
 
 
+def test_wal_dir_differs_from_instance_dir(cluster: Cluster):
+    wal_dir = f"{cluster.data_dir}/my-wal"
+
+    cluster.set_config_file(
+        yaml=f"""
+cluster:
+    tier:
+        default:
+instance:
+    cluster_name: test
+    name: from-config
+    wal_dir: {wal_dir}
+"""
+    )
+    [instance] = cluster.deploy(instance_count=1)
+    instance_dir = str(instance.instance_dir)
+
+    # By default, `wal_dir` is equal to `instance_dir`, but we've
+    # just changed this, so let's be sure that it also changed.
+    assert wal_dir != instance_dir
+
+    # `box.cfg` must have the configured `wal_dir`, while engines must still use `instance_dir`.
+    assert instance.eval("return box.cfg.wal_dir") == wal_dir
+    assert instance.eval("return box.cfg.memtx_dir") == instance_dir
+    assert instance.eval("return box.cfg.vinyl_dir") == instance_dir
+
+    # Check that WAL files are actually written to `wal_dir`, not `instance_dir`.
+    assert any(f.endswith(".xlog") for f in os.listdir(wal_dir))
+    assert not any(f.endswith(".xlog") for f in os.listdir(instance_dir))
+
+
 def test_pico_config(cluster: Cluster, port_distributor: PortDistributor):
     host = cluster.base_host
     port = port_distributor.get()
@@ -101,6 +132,7 @@ instance:
             config_file=dict(value=f"{instance.config_path}", source="commandline_or_environment"),
             instance_dir=dict(value=instance_dir, source="config_file"),
             backup_dir=dict(value=f"{instance_dir}/backup", source="default"),
+            wal_dir=dict(value=instance_dir, source="default"),
             log=dict(
                 level=dict(value="verbose", source="commandline_or_environment"),
                 format=dict(value="plain", source="default"),
