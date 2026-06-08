@@ -964,6 +964,17 @@ check-pycopin:
   trigger:
     project: "core/drivers/picopyn"
 
+examples:
+  stage: postpack-test
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_TAG
+  variables:
+    PICODATA_VERSION: $CI_COMMIT_TAG
+  trigger:
+    project: core/examples
+    branch: master
+
 publish-picodata-plugin:
   stage: pack
   variables:
