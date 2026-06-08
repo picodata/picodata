@@ -954,7 +954,7 @@ impl ExecutionPlan {
                 hash_plan_id_part(&mut hasher, node_id)?;
                 for column in vtable.get_columns() {
                     hash_plan_id_part(&mut hasher, column.name.as_str())?;
-                    hash_plan_id_part(&mut hasher, &u8::from(column.r#type))?;
+                    hash_plan_id_part(&mut hasher, &column.r#type)?;
                 }
                 Ok(())
             })?;

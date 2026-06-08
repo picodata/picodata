@@ -386,10 +386,10 @@ buckets = [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT min ("COL_0") as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_6332101395320054053_0136" )
+SELECT min ("COL_0") as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_11784939671160631390_0136" )
 ''
 plan:
-    [0] SEARCH TABLE _tmp_6332101395320054053_0136 USING PRIMARY KEY (~1048576 rows)
+    [0] SEARCH TABLE _tmp_11784939671160631390_0136 USING PRIMARY KEY (~1048576 rows)
 ''
 buckets = any
 ''
@@ -397,12 +397,12 @@ buckets = any
 │ 3.1. Query (DYN-FILTERED STORAGE, <= 1/2) │
 ╰───────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( SELECT "COL_0" FROM "_tmp_14386139170834652946_1136" ) UNION ALL SELECT * FROM "g"
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( SELECT "COL_0" FROM "_tmp_4072506348059201696_1136" ) UNION ALL SELECT * FROM "g"
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~24 rows)
     [1] EXECUTE LIST SUBQUERY 2
-    [2] SCAN TABLE _tmp_14386139170834652946_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_4072506348059201696_1136 (~1048576 rows)
     [3] SCAN TABLE g (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 3 (UNION ALL)
 ''
@@ -412,12 +412,12 @@ buckets <= [1-3000]
 │ 3.2. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰──────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( SELECT "COL_0" FROM "_tmp_14386139170834652946_1136" ) UNION ALL select cast(null as int) as "a", cast(null as int) as "b" where false
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( SELECT "COL_0" FROM "_tmp_4072506348059201696_1136" ) UNION ALL select cast(null as int) as "a", cast(null as int) as "b" where false
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~24 rows)
     [1] EXECUTE LIST SUBQUERY 2
-    [2] SCAN TABLE _tmp_14386139170834652946_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_4072506348059201696_1136 (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 3 (UNION ALL)
 ''
 buckets <= [1-3000]
@@ -452,10 +452,10 @@ buckets = [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT min ("COL_0") as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_6332101395320054053_0136" )
+SELECT min ("COL_0") as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_11784939671160631390_0136" )
 ''
 plan:
-    [0] SEARCH TABLE _tmp_6332101395320054053_0136 USING PRIMARY KEY (~1048576 rows)
+    [0] SEARCH TABLE _tmp_11784939671160631390_0136 USING PRIMARY KEY (~1048576 rows)
 ''
 buckets = any
 ''
@@ -463,12 +463,12 @@ buckets = any
 │ 3. Query (DYN-FILTERED STORAGE, <= 1/2) │
 ╰─────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" = CAST(5 AS int) and "t"."a" in ( SELECT "COL_0" FROM "_tmp_3894500812078124028_1136" ) UNION ALL SELECT * FROM "g"
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" = CAST(5 AS int) and "t"."a" in ( SELECT "COL_0" FROM "_tmp_16809533235020255237_1136" ) UNION ALL SELECT * FROM "g"
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~1 row)
     [1] EXECUTE LIST SUBQUERY 2
-    [2] SCAN TABLE _tmp_3894500812078124028_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_16809533235020255237_1136 (~1048576 rows)
     [3] SCAN TABLE g (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 3 (UNION ALL)
 ''
