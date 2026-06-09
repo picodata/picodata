@@ -84,6 +84,7 @@ cluster:
       replication_factor: 1 # (7)!
       bucket_count: 3000 # (5)!
       can_vote: true # (6)!
+      wal_mode: write # (57)!
   default_replication_factor: 1 # (1)!
   default_bucket_count: 3000 # (2)!
   shredding: false # (4)!
@@ -220,7 +221,7 @@ instance:
 54. [instance.ldap.tls.enabled](#instance_ldap_tls_enabled)
 55. [instance.ldap.tls.method](#instance_ldap_tls_method)
 56. [instance.ldap.tls.ca_file](#instance_ldap_tls_ca_file)
-
+57. [cluster.tier.wal_mode](#cluster_tier_tier_wal_mode)
 
 См. также:
 
@@ -361,6 +362,26 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": 
 
 ```bash
 picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": true}}'
+```
+
+### cluster.tier.<tier_name\>.wal_mode {: #cluster_tier_tier_wal_mode }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-wal_mode -->
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Определяет событие, которого ожидает обрабатывающий транзакцию файбер,
+прежде чем считать запись в журнал упреждающей записи (WAL) завершенной.
+
+Данные:
+
+* Тип: *str*
+* Возможные значения: `write`, `fsync`
+* Значение по умолчанию: `write`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c cluster.tier='{"default": {"replication_factor": 3, "wal_mode": "write"}}'
 ```
 
 ### instance.admin_socket {: #instance_admin_socket }
