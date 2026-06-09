@@ -23,6 +23,7 @@ RUN cargo build --locked --release --features webui
 FROM almalinux:8
 
 COPY --from=builder /build/picodata/target/release/picodata /usr/bin/picodata
+COPY --from=builder /build/picodata/docker/config.yaml /etc/picodata/config.yaml
 
 RUN chmod 755 /usr/bin/picodata \
     && mkdir -p /var/lib/picodata && mkdir -p /var/run/picodata \
@@ -32,8 +33,7 @@ RUN chmod 755 /usr/bin/picodata \
     && chown 1000:1000 -R /var/lib/picodata /usr/share/picodata
 
 USER 1000:1000
-ENV PICODATA_PG_LISTEN 0.0.0.0:4327
 WORKDIR /var/lib/picodata
 
 ENTRYPOINT ["/usr/bin/picodata"]
-CMD ["run"]
+CMD ["run", "--config", "/etc/picodata/config.yaml"]

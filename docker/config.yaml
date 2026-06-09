@@ -1,0 +1,5 @@
+cluster:
+  name: demo
+instance:
+  pgproto:
+    listen: 0.0.0.0:4327 # <https://git.picodata.io/core/picodata/-/issues/2927>

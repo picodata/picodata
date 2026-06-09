@@ -14,14 +14,13 @@ RUN curl -s ${REPO_URL}/tarantool-picodata/picodata.gpg.key | \
     apt-get update && \
     apt-get install -y --no-install-recommends picodata${PICODATA_VERSION:+=${PICODATA_VERSION}}
 
-
 FROM docker-public.binary.picodata.io/distroless/cc-debian13
 
 COPY --from=installer /usr/bin/picodata /usr/bin/picodata
 COPY --from=installer /usr/share/picodata /usr/share/picodata
+COPY docker/config.yaml /etc/picodata/config.yaml
 
-ENV PICODATA_PG_LISTEN 0.0.0.0:4327
 WORKDIR /var/lib/picodata
 
 ENTRYPOINT ["/usr/bin/picodata"]
-CMD ["run"]
+CMD ["run", "--config", "/etc/picodata/config.yaml"]
