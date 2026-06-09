@@ -472,6 +472,33 @@ invalid configuration: instance restarted with a different tier configuration, w
     instance.fail_to_start()
     assert crawler.matched
 
+    #
+    # Change tier configuration: wal_mode
+    #
+    cluster.config_path = None
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: default-cluster-name
+    default_replication_factor: 2
+    default_bucket_count: 3000
+    tier:
+        default:
+            bucket_count: 3000
+            wal_mode: write
+        new-tier:
+            can_vote: false
+            replication_factor: 1
+            wal_mode: fsync
+"""
+    )
+    err = """\
+invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'new-tier' `wal_mode` was persisted as `fsync`, but became `write`
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+
 
 def test_default_path_to_config_file(cluster: Cluster):
     instance = cluster.add_instance(wait_online=False)

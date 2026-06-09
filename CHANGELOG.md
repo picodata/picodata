@@ -264,7 +264,7 @@ with the `YY.MINOR.MICRO` scheme.
   via `GRANT user1 TO user2`. The system now validates the grantee type and
   returns a proper `NoSuchRole` error instead of panicking.
 
-## [26.1.2] - 2026-04-14 
+## [26.1.2] - 2026-04-14
 
 ### Changed
 

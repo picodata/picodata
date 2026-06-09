@@ -668,6 +668,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "sql_storage_cache_count_max",
         "sql_storage_cache_size_max",
         "sql_vdbe_opcode_max",
+        "wal_mode",
     ]
 
     data = i1.sql(

@@ -350,8 +350,6 @@ pub struct Cfg {
     /// See comments on [`WalMode`].
     ///
     /// This parameter is used in tests.
-    ///
-    /// Not configurable by user for now.
     pub wal_mode: WalMode,
 
     /// If disabled tarantool will not automatically create snapshots on regular
@@ -382,8 +380,7 @@ impl Cfg {
             bootstrap_strategy: Some(BootstrapStrategy::Auto),
             election_mode: ElectionMode::Off,
 
-            // We use `write` instead of `sync` because we want better perfomance by default
-            wal_mode: WalMode::Write,
+            wal_mode: config.this_instance_wal_mode(),
 
             // Disabling automatic snapshots doesn't make sense for us
             checkpoint_enabled: true,
@@ -426,8 +423,7 @@ impl Cfg {
 
             election_mode: ElectionMode::Off,
 
-            // We use `write` instead of `sync` because we want better perfomance by default
-            wal_mode: WalMode::Write,
+            wal_mode: config.this_instance_wal_mode(),
 
             // Disabling automatic snapshots doesn't make sense for us
             checkpoint_enabled: true,
@@ -462,10 +458,9 @@ impl Cfg {
             // so bootstrap strategy is irrelevant.
             bootstrap_strategy: Some(BootstrapStrategy::Auto),
 
-            election_mode: ElectionMode::Off,
+            wal_mode: config.this_instance_wal_mode(),
 
-            // We use `write` instead of `sync` because we want better perfomance by default
-            wal_mode: WalMode::Write,
+            election_mode: ElectionMode::Off,
 
             // Disabling automatic snapshots doesn't make sense for us
             checkpoint_enabled: true,
@@ -540,8 +535,7 @@ impl Cfg {
 
             election_mode: ElectionMode::Off,
 
-            // We use `write` instead of `sync` because we want better perfomance by default
-            wal_mode: WalMode::Write,
+            wal_mode: config.this_instance_wal_mode(),
 
             // Disabling automatic snapshots doesn't make sense for us
             checkpoint_enabled: true,
@@ -592,8 +586,10 @@ impl Cfg {
             // because we will rebootstrap a little bit later.
             replication: Vec::new(),
 
-            // We use `write` instead of `sync` because we want better perfomance by default
-            wal_mode: WalMode::Write,
+            // This storage is throw-away: it only exists to persist the
+            // instance's UUID before rebootstrap replaces it with real storage.
+            // Skipping the WAL here is safe and speeds up rebootstrap a bit.
+            wal_mode: WalMode::None,
 
             // Disabling automatic snapshots doesn't make sense for us
             checkpoint_enabled: true,

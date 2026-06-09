@@ -990,6 +990,20 @@ Using configuration file '{args_path}'.");
             if info.can_vote {
                 has_votable_tier = true;
             }
+
+            // `WalMode::None` is still used internally to speed up the throw-away
+            // storage in `Cfg::for_instance_pre_join`, but exposing `none` to users
+            // would break replication for their real, lasting configuration.
+            //
+            // In addition, WAL mode is effectively a tier-level setting rather than
+            // an instance-level one, so allowing `none` to be configured per instance
+            // would not be meaningful. Therefore, `none` is not accepted or supported.
+            if info.wal_mode == Some(WalMode::None) {
+                return Err(Error::InvalidConfiguration(format!(
+                    "tier '{name}' has `wal_mode = none`, which is not supported; \
+                     use 'write' or 'fsync'"
+                )));
+            }
         }
 
         if !has_votable_tier {
@@ -1368,6 +1382,20 @@ Using configuration file '{args_path}'.");
             ));
         }
 
+        let wal_mode_from_storage = tier_config.wal_mode.unwrap_or_default();
+        let wal_mode_from_config = storage
+            .db_config
+            .get(system_parameter_name!(wal_mode), tier_name)?
+            .unwrap_or_default();
+        if wal_mode_from_storage != wal_mode_from_config {
+            return Err(invalid_tier_parameter(
+                tier_name,
+                system_parameter_name!(wal_mode),
+                wal_mode_from_config,
+                wal_mode_from_storage,
+            ));
+        }
+
         Ok(())
     }
 
@@ -1470,6 +1498,27 @@ Using configuration file '{args_path}'.");
                 tlog!(Info, "'{}': {}", path, value);
             }
         }
+    }
+
+    /// Tier configuration of the current instance.
+    ///
+    /// Uses effective name of the instance's tier, which means that
+    /// if the instance's tier name is not set, default one is used.
+    pub fn this_instance_tier_config(&self) -> Option<&TierConfig> {
+        let this_tier_name = Some(self.effective_instance_tier());
+        let all_tier_defs = self.cluster.tier.as_ref()?;
+        let mut all_tier_cfgs = all_tier_defs.iter().map(|(_, tier_cfg)| tier_cfg);
+        all_tier_cfgs.find(|tier_cfg| tier_cfg.name.as_deref() == this_tier_name)
+    }
+
+    /// WAL mode of the current instance.
+    ///
+    /// Uses instance's tier configuration to retrieve this information.
+    pub fn this_instance_wal_mode(&self) -> WalMode {
+        self.this_instance_tier_config()
+            .map(|tier_cfg| tier_cfg.wal_mode)
+            .unwrap_or_default() // Tier was not set.
+            .unwrap_or_default() // Mode was not set.
     }
 
     // For the tests
@@ -1859,6 +1908,17 @@ impl ClusterConfig {
                     ),
                     initiator,
                 )?);
+                if tier_config.wal_mode != Some(Default::default()) {
+                    dmls.push(Dml::replace(
+                        DbConfig::TABLE_ID,
+                        &(
+                            system_parameter_name!(wal_mode),
+                            &tier_name,
+                            tier_config.wal_mode.unwrap_or_default(),
+                        ),
+                        initiator,
+                    )?);
+                }
             }
         }
 
@@ -2754,6 +2814,11 @@ pub struct AlterSystemParameters {
     #[introspection(scope = tier)]
     pub replication_mode: String,
 
+    #[introspection(sbroad_type = SbroadType::String)]
+    #[introspection(config_default = WalMode::Write)]
+    #[introspection(scope = tier)]
+    pub wal_mode: WalMode,
+
     // TODO: factor out all `scope = tier` parameters into a separate struct
     // and store them in this map, instead of simple the TierConfig.
     #[introspection(ignore)]
@@ -2766,6 +2831,7 @@ pub const READ_ONLY_ALTER_SYSTEM_PARAMETERS: &'static [&'static str] = &[
     SHREDDING_PARAM_NAME,
     system_parameter_name!(experimental_sharding_implementation),
     system_parameter_name!(replication_mode),
+    system_parameter_name!(wal_mode),
 ];
 
 fn generate_secure_token() -> String {
@@ -3146,6 +3212,21 @@ pub fn validate_alter_system_parameter_value<'v>(
         if opcode_count < 1 || opcode_count as u64 > max {
             return Err(Error::other(format!(
                 "invalid value for '{name}': value must be between 1 and {max}",
+            )));
+        }
+    }
+
+    if name == system_parameter_name!(wal_mode) {
+        // `WalMode::None` is still used internally to speed up the throw-away
+        // storage in `Cfg::for_instance_pre_join`, but exposing `none` to users
+        // would break replication for their real, lasting configuration.
+        //
+        // In addition, WAL mode is effectively a tier-level setting rather than
+        // an instance-level one, so allowing `none` to be configured per instance
+        // would not be meaningful. Therefore, `none` is not accepted or supported.
+        if matches!(value, Value::String(string) if string == WalMode::None.as_str()) {
+            return Err(Error::other(format!(
+                "invalid value for '{name}': 'none' is not supported, use 'write' or 'fsync'"
             )));
         }
     }
@@ -3599,7 +3680,11 @@ tarantool::define_str_enum! {
     /// See tarantool docs <https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-wal_mode>
     #[derive(Default)]
     pub enum WalMode {
-        /// Write-ahead log is not maintained. A node with wal_mode = none can’t be replication master;
+        /// Write-ahead log is not maintained.
+        ///
+        /// Can not be set by the user, since replication depends on the WAL to stream changes
+        /// to replicas. Nevertheless, might still be useful in cases like rebootstrap when
+        /// instance does not store any data and is not a part of any sort of a communication.
         None = "none",
         /// Fibers wait for their data to be written to the write-ahead log (no fsync(2));
         #[default]
@@ -3737,6 +3822,37 @@ cluster:
             err.to_string(),
             "invalid configuration: cluster.tier: duplicate key `voter` found at line 3 column 9"
         );
+    }
+
+    #[test]
+    fn wal_mode_none_is_rejected() {
+        // YAML config path.
+        let yaml = r###"
+cluster:
+    name: test
+    tier:
+        default:
+            can_vote: true
+            wal_mode: none
+"###;
+        let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
+        let err = config.validate_tiers().unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("`wal_mode = none`, which is not supported"),
+            "{err}"
+        );
+
+        // ALTER SYSTEM path.
+        let err = validate_alter_system_parameter_value(
+            system_parameter_name!(wal_mode),
+            &Value::String("none".into()),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("'none' is not supported"), "{err}");
+
+        // Backwards compat: stored "none" still parses.
+        assert_eq!(WalMode::from_str("none").unwrap(), WalMode::None);
     }
 
     #[test]

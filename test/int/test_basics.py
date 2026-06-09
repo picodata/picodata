@@ -336,7 +336,8 @@ Replace(_pico_db_config, ["jwt_secret","","<jwt_secret>"]),
 Replace(_pico_db_config, ["sql_log","",false]),
 Replace(_pico_db_config, ["sql_ddl_timeout","",86400.0]),
 Replace(_pico_db_config, ["experimental_sharding_implementation","default",false]),
-Replace(_pico_db_config, ["replication_mode","default","async"]))|
+Replace(_pico_db_config, ["replication_mode","default","async"]),
+Replace(_pico_db_config, ["wal_mode","default","write"]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_db_config, ["shredding","",false])
 )|

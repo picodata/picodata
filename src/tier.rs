@@ -1,5 +1,6 @@
 use crate::config::{
-    ReplicationMode, DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION, DEFAULT_REPLICATION_MODE,
+    ReplicationMode, WalMode, DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION,
+    DEFAULT_REPLICATION_MODE,
 };
 use ::tarantool::tlua;
 use smol_str::SmolStr;
@@ -185,6 +186,9 @@ pub struct TierConfig {
     #[serde(default = "default_can_vote")]
     pub can_vote: bool,
 
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wal_mode: Option<WalMode>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub experimental_sharding_implementation: Option<bool>,
 
@@ -212,6 +216,7 @@ impl TierConfig {
             replication_factor: Some(tier.replication_factor),
             bucket_count: Some(tier.bucket_count),
             can_vote: tier.can_vote,
+            wal_mode: None,
             experimental_sharding_implementation: Some(
                 DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION,
             ),

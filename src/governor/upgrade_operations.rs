@@ -122,6 +122,7 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("exec_script", InternalScript::InsertReplicationModeIntoPicoDbConfig.as_str()),
             ("proc_name", "proc_instance_details"),
             ("proc_name", "proc_resharding"),
+            ("exec_script", InternalScript::InsertWalModeIntoPicoDbConfig.as_str()),
         ]
     ),
 ];
@@ -201,6 +202,12 @@ tarantool::define_str_enum! {
         /// INSERT INTO _pico_db_config VALUES ('replication_mode', ?, 'async')
         /// ```
         InsertReplicationModeIntoPicoDbConfig = "insert_replication_mode_into_pico_db_config",
+
+        /// Schema upgrade operation equivalent to:
+        /// ```ignore
+        /// INSERT INTO _pico_db_config VALUES ('wal_mode', ?);
+        /// ```
+        InsertWalModeIntoPicoDbConfig = "insert_wal_mode_into_pico_db_config",
     }
 }
 
@@ -246,6 +253,9 @@ crate::define_rpc_request! {
 
             InternalScript::InsertReplicationModeIntoPicoDbConfig =>
                 insert_replication_mode_into_pico_db_config(),
+
+            InternalScript::InsertWalModeIntoPicoDbConfig =>
+                insert_wal_mode_into_pico_db_config(),
         }
     }
 
@@ -353,6 +363,23 @@ fn insert_replication_mode_into_pico_db_config() -> traft::Result<Response> {
             )?;
         }
 
+        Ok(())
+    })?;
+
+    Ok(Response {})
+}
+
+fn insert_wal_mode_into_pico_db_config() -> traft::Result<Response> {
+    let node = traft::node::global()?;
+    transaction::transaction(|| -> traft::Result<()> {
+        let topology = node.topology_cache.get();
+        for tier in topology.all_tiers() {
+            node.storage.db_config.replace(
+                system_parameter_name!(wal_mode),
+                &tier.name,
+                &crate::config::WalMode::default(),
+            )?;
+        }
         Ok(())
     })?;
 
