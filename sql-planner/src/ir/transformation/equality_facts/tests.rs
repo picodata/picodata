@@ -404,15 +404,18 @@ fn equality_facts_same_param_bridges_columns() {
 }
 
 #[test]
-fn equality_facts_param_blocks_const_propagation() {
+fn equality_facts_param_and_const_propagation() {
     // a = $1 AND a = 1: the equivalence class for "a" contains both a
     // parameter and a literal.  Since $1 is not a compile-time value, the
-    // class is not bound to the literal — no constant is attached to "a".
+    // class is bound to the literal 1.
     let input = r#"SELECT "a" FROM "t" WHERE "a" = $1 AND "a" = 1"#;
     let (plan, equalities_facts) = equalities_facts(input, vec![Value::Integer(1)]);
 
     let top_id = plan.top.unwrap();
-    assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
+    assert_eq!(
+        equalities_facts.const_of_slot(top_id, 0).unwrap(),
+        &Value::Integer(1)
+    );
 }
 
 // --- Simple vs. computed projection ---
@@ -1118,13 +1121,12 @@ fn equality_facts_select_from_values_no_facts() {
 // --- Parameter in one class must not leak into another ---
 
 #[test]
-fn equality_facts_param_blocks_const_in_multiple_classes() {
+fn equality_facts_param_and_const_in_multiple_classes() {
     // Two independent classes, each combining a parameter and a literal:
     //   {a, $1, 1} — "a" class also involves $1
     //   {b, $2, 2} — "b" class also involves $2
-    // Neither class can claim a known constant (each contains a
-    // parameter), but the rule must apply per class, not poison unrelated
-    // classes.
+    // Both class can claim a known constant, because the parameter is weaker
+    // than the literal.
     let input = r#"SELECT "a", "b" FROM "t"
     WHERE "a" = $1 AND "a" = 1 AND "b" = $2 AND "b" = 2"#;
     let (plan, equalities_facts) =
@@ -1133,11 +1135,17 @@ fn equality_facts_param_blocks_const_in_multiple_classes() {
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
     let b = equalities_facts.class_of_slot(top_id, 1).unwrap();
-    // Different parameters → distinct equivalence classes
+    // Different literals/parameters → distinct equivalence classes
     assert_ne!(a, b);
-    // Each class contains a parameter, so neither has a known constant
-    assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
-    assert!(equalities_facts.const_of_slot(top_id, 1).is_none());
+    // Each class contains a parameter and has a known constant
+    assert_eq!(
+        equalities_facts.const_of_slot(top_id, 0).unwrap(),
+        &Value::Integer(1)
+    );
+    assert_eq!(
+        equalities_facts.const_of_slot(top_id, 1).unwrap(),
+        &Value::Integer(2)
+    );
 }
 
 // --- Three-way constant conflict across nested WHERE clauses ---

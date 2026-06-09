@@ -1689,7 +1689,6 @@ impl LocalFacts {
         let n = self.members.len();
         let mut slots_by_root: Vec<Vec<SlotKey>> = (0..n).map(|_| Vec::new()).collect();
         let mut const_by_root: Vec<Option<Value>> = vec![None; n];
-        let mut param_roots: Vec<bool> = vec![false; n];
 
         for (atom, root) in self.members.into_groups() {
             let i = root.index();
@@ -1705,16 +1704,12 @@ impl LocalFacts {
                         }
                     }
                 },
-                // TODO: parameters die here — we only flag the root as
-                // param-tainted (to suppress unsound SlotConst emission)
-                // and forget the parameter index.  As a result, the same
-                // `$N` appearing in two different chains / expressions
-                // can't bridge their slots into one global class.
-                // Fix: emit a `DerivedFact::SlotParam(slot, param_index)`
-                // for each slot in a param-tainted root and let the
-                // global builder union slots that share a parameter.
-                // See the doc on [`DerivedFact`].
-                FactAtom::Param { .. } => param_roots[i] = true,
+                FactAtom::Param { .. } => {
+                    // TODO: parameters die here — we maybe should exposed
+                    // them later. We need to be careful with domains.
+                    // Param shouldn't connect classes out of the scope of
+                    // the current expression.
+                }
                 FactAtom::Other => {
                     unreachable!("FactAtom::Other should not be in LocalFacts");
                 }
@@ -1728,13 +1723,13 @@ impl LocalFacts {
                 continue;
             }
             slots.sort();
-            if !param_roots[i] {
-                if let Some(value) = &const_by_root[i] {
-                    for slot in slots.iter() {
-                        facts.insert(DerivedFact::SlotConst(slot.clone(), value.clone()));
-                    }
+
+            if let Some(value) = &const_by_root[i] {
+                for slot in slots.iter() {
+                    facts.insert(DerivedFact::SlotConst(slot.clone(), value.clone()));
                 }
             }
+
             for l in 0..slots.len() {
                 for r in (l + 1)..slots.len() {
                     facts.insert(DerivedFact::SlotEq(slots[l].clone(), slots[r].clone()));
