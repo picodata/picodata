@@ -293,6 +293,7 @@ struct MemoryInfo {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct InstanceInfo {
+    uuid: SmolStr,
     http_address: SmolStr,
     version: SmolStr,
     failure_domain: HashMap<Uppercase, Uppercase>,
@@ -604,6 +605,7 @@ fn get_replicasets_info(
         let is_raft_leader = raft_leader_id == Some(instance.raft_id);
 
         let instance_info = InstanceInfo {
+            uuid: instance.uuid.clone(),
             http_address: addrs.http,
             version: instance.picodata_version.clone(),
             failure_domain: instance.failure_domain.data,

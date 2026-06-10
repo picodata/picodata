@@ -34,6 +34,7 @@ def generate_instance(index: int, replicaset_num: int, instances_in_rs: int, pos
     is_leader = (position_in_rs == instances_in_rs - 1) and not is_offline
 
     return {
+        "uuid": f"00000000-0000-0000-0000-{instance_num:012d}",
         "httpAddress": f"0.0.0.0:{BASE_HTTP_PORT + index}",
         "version": "25.6.0-125-gc8649d493",
         "failureDomain": {

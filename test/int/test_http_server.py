@@ -131,6 +131,7 @@ def test_webui_basic(instance: Instance, auth_token: Optional[str]):
                         "version": instance_version,
                         "instances": [
                             {
+                                "uuid": instance.uuid(),
                                 "failureDomain": {},
                                 "isLeader": True,
                                 "isVoter": True,
@@ -339,6 +340,7 @@ def test_webui_with_plugin(cluster: Cluster):
     }
     instance_1 = {
         **instance_template,
+        "uuid": i1.uuid(),
         "name": "red_1_1",
         "isVoter": i1_raft_id in voter_ids,
         "isRaftLeader": i1_raft_id == leader_raft_id,
@@ -348,6 +350,7 @@ def test_webui_with_plugin(cluster: Cluster):
     }
     instance_2 = {
         **instance_template,
+        "uuid": i2.uuid(),
         "name": "blue_1_1",
         "isVoter": i2_raft_id in voter_ids,
         "isRaftLeader": i2_raft_id == leader_raft_id,
@@ -357,6 +360,7 @@ def test_webui_with_plugin(cluster: Cluster):
     }
     instance_3 = {
         **instance_template,
+        "uuid": i3.uuid(),
         "name": "green_1_1",
         "isVoter": i3_raft_id in voter_ids,
         "isRaftLeader": i3_raft_id == leader_raft_id,
@@ -499,6 +503,7 @@ def test_webui_replicaset_state(cluster: Cluster):
     i1_raft_id = i1.call(".proc_raft_info")["id"]
     i2_raft_id = i2.call(".proc_raft_info")["id"]
     i3_raft_id = i4.sql("SELECT raft_id FROM _pico_instance WHERE name = 'red_2_1'")[0][0]
+    i3_uuid = i4.sql("SELECT uuid FROM _pico_instance WHERE name = 'red_2_1'")[0][0]
     i4_raft_id = i4.call(".proc_raft_info")["id"]
 
     instance_template = {
@@ -509,6 +514,7 @@ def test_webui_replicaset_state(cluster: Cluster):
     }
     instance_1 = {
         **instance_template,
+        "uuid": i1.uuid(),
         "name": "red_1_1",
         "isLeader": True,
         "isVoter": i1_raft_id in voter_ids,
@@ -519,6 +525,7 @@ def test_webui_replicaset_state(cluster: Cluster):
     }
     instance_2 = {
         **instance_template,
+        "uuid": i2.uuid(),
         "name": "red_1_2",
         "isLeader": False,
         "isVoter": i2_raft_id in voter_ids,
@@ -529,6 +536,7 @@ def test_webui_replicaset_state(cluster: Cluster):
     }
     instance_3 = {
         **instance_template,
+        "uuid": i3_uuid,
         "name": "red_2_1",
         "isLeader": False,
         "isVoter": i3_raft_id in voter_ids,
@@ -542,6 +550,7 @@ def test_webui_replicaset_state(cluster: Cluster):
     }
     instance_4 = {
         **instance_template,
+        "uuid": i4.uuid(),
         "name": "red_2_2",
         "isLeader": True,
         "isVoter": i4_raft_id in voter_ids,
@@ -657,6 +666,7 @@ def test_webui_can_vote_flag(cluster: Cluster):
     }
     instance_1 = {
         **instance_template,
+        "uuid": i1.uuid(),
         "name": "red_1_1",
         # i1 is the only voter (red tier has can_vote=True, blue tier has can_vote=False)
         "isVoter": True,
@@ -667,6 +677,7 @@ def test_webui_can_vote_flag(cluster: Cluster):
     }
     instance_2 = {
         **instance_template,
+        "uuid": i2.uuid(),
         "name": "blue_1_1",
         # i2 is a learner (blue tier has can_vote=False)
         "isVoter": False,
