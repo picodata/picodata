@@ -38,9 +38,21 @@ search:
 
 ### pico_instance_state
 
-Текущее состояние инстанса (Online/Offline/Expelled)
+Текущее состояние инстанса (Online/Offline/Expelled).
+
+Состояние кодируется не числовым значением, а меткой `state`: значение метрики
+всегда равно `1`, а конкретное состояние определяется значением метки `state`.
+Каждый инстанс публикует состояние всех известных ему инстансов кластера,
+поэтому в выводе присутствует по одной строке на каждый инстанс с его текущим
+состоянием.
+
+Метки: `tier`, `instance`, `state` (`Online`, `Offline`, `Expelled`)
 
 Тип: gauge
+
+`pico_instance_state{tier="default",instance="i1",state="Online"} 1`<br>
+`pico_instance_state{tier="default",instance="i2",state="Offline"} 1`<br>
+`pico_instance_state{tier="storage",instance="i3",state="Expelled"} 1`
 
 ### pico_raft_applied_index
 
@@ -62,9 +74,16 @@ search:
 
 ### pico_raft_state
 
-Текущая роль Raft (Follower/Candidate/Leader/PreCandidate)
+Текущая роль Raft (Follower/Candidate/Leader/PreCandidate).
+
+Как и у [`pico_instance_state`](#pico_instance_state), роль кодируется меткой
+`state`, а значение метрики равно `1`.
+
+Метки: `state` (`Follower`, `Candidate`, `Leader`, `PreCandidate`)
 
 Тип: gauge
+
+`pico_raft_state{state="Leader"} 1`
 
 ### pico_raft_term
 
