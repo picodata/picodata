@@ -15,6 +15,10 @@ with the `YY.MINOR.MICRO` scheme.
 - [picodata#2952] Added the `instance.wal_dir` configuration parameter, which
   sets the directory where WAL files are stored.
 
+## Fixes
+
+- [picodata#3312] Discovery no longer panics on multi-address nodes.
+
 ## [26.1.4] - 2026-05-28
 
 ### Fixes

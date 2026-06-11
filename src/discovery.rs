@@ -10,7 +10,7 @@ use ::tarantool::uuid::Uuid;
 use either::{Either, Left, Right};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::error::Error as StdError;
 use std::sync::{LazyLock, Mutex as StdMutex};
 use std::time::{Duration, Instant};
@@ -63,7 +63,17 @@ pub type Response = State;
 pub struct Discovery {
     // BTreeSet for determinism
     visited: BTreeSet<Address>,
-    address: Option<Address>,
+    /// All addresses by which other peers can reach this node.
+    ///
+    /// Originally we expected every node to be known to the rest of the
+    /// cluster by exactly one address. In practice this does not hold:
+    /// the same node may be referred to by an FQDN and an IP at the same
+    /// time, may have several IPs (multiple network interfaces, which is
+    /// common in data centers). Hence a set instead of a single value.
+    /// See <https://git.picodata.io/core/picodata/-/issues/2935>.
+    ///
+    // Note that determinism here is not needed, thus plain hash set is used.
+    my_addresses: HashSet<Address>,
     state: State,
 }
 
@@ -78,7 +88,7 @@ impl Discovery {
         assert!(!peers.is_empty(), "peers should not be empty");
         Self {
             visited: [].into(),
-            address: None,
+            my_addresses: HashSet::new(),
             state: State::LeaderElection(LeaderElection {
                 tmp_id: tmp_id.into(),
                 peers,
@@ -108,13 +118,7 @@ impl Discovery {
                 }
 
                 if tmp_id == &request.tmp_id {
-                    match &self.address {
-                        Some(address) if address != &to => {
-                            todo!("current peer is reachable by multiple addresses")
-                        }
-                        Some(_) => {}
-                        None => self.address = Some(to),
-                    }
+                    self.my_addresses.insert(to);
                 }
             }
         }
@@ -139,15 +143,15 @@ impl Discovery {
                 peers.extend(response.peers);
                 votable_peers.extend(response.votable_peers);
 
-                if let Some(address) = &self.address {
-                    if peers.is_subset(&self.visited)
-                        && votable_peers.iter().next() == Some(address)
-                    {
-                        self.state = State::Done(Role::Leader {
-                            address: address.clone(),
-                        });
-                        self.visited.clear();
-                        self.address = None;
+                if peers.is_subset(&self.visited) {
+                    if let Some(min) = votable_peers.iter().next() {
+                        if self.my_addresses.contains(min) {
+                            self.state = State::Done(Role::Leader {
+                                address: min.clone(),
+                            });
+                            self.visited.clear();
+                            self.my_addresses.clear();
+                        }
                     }
                 }
             }
@@ -156,7 +160,7 @@ impl Discovery {
                     leader: role.leader_address().clone(),
                 });
                 self.visited.clear();
-                self.address = None;
+                self.my_addresses.clear();
             }
             (State::Done(_), _) => {}
         }
@@ -288,9 +292,19 @@ mod tests {
     use super::*;
     use rand::prelude::*;
 
-    fn run(
+    fn run_with_aliases(
         instances: impl IntoIterator<Item = (impl Into<Address>, Discovery)>,
+        aliases: impl IntoIterator<Item = (impl Into<Address>, impl Into<Address>)>,
     ) -> HashMap<Address, Role> {
+        let aliases: HashMap<Address, Address> = aliases
+            .into_iter()
+            .map(|(a, b)| (a.into(), b.into()))
+            .collect();
+
+        let resolve = |addr: &Address| -> Address {
+            aliases.get(addr).cloned().unwrap_or_else(|| addr.clone())
+        };
+
         let mut instances: BTreeMap<Address, Discovery> =
             instances.into_iter().map(|(k, v)| (k.into(), v)).collect();
         let mut done = HashMap::<Address, Role>::new();
@@ -310,7 +324,7 @@ mod tests {
             Response(Address, Response, Address),
         }
 
-        let mut network: Vec<Event> = [].into();
+        let mut network: Vec<Event> = vec![];
 
         while done.len() != len {
             if rand::random_bool(0.5) {
@@ -322,30 +336,38 @@ mod tests {
                 if let Left((request, peer_addrs)) = discovery.next_or_role() {
                     for dst in peer_addrs {
                         pending_requests.get_mut(src).unwrap().insert(dst.clone());
-                        network.push(Event::Request(src.clone(), request.clone(), dst))
+                        network.push(Event::Request(src.clone(), request.clone(), dst));
                     }
                 }
             } else {
                 match network.pop() {
                     Some(Event::Request(src, request, dst)) => {
-                        let peer = instances.get_mut(&dst).unwrap();
+                        let canonical = resolve(&dst);
+                        let peer = instances.get_mut(&canonical).unwrap();
                         let response = peer.handle_request(request, dst.clone()).clone();
-                        network.push(Event::Response(dst, response, src))
+                        network.push(Event::Response(dst, response, src));
                     }
                     Some(Event::Response(src, response, dst)) => {
-                        let peer = instances.get_mut(&dst).unwrap();
-                        pending_requests.get_mut(&dst).unwrap().remove(&src);
+                        let canonical = resolve(&dst);
+                        let peer = instances.get_mut(&canonical).unwrap();
+                        pending_requests.get_mut(&canonical).unwrap().remove(&src);
                         peer.handle_response(src, response);
                         if let State::Done(role) = &peer.state {
-                            done.insert(dst.clone(), role.clone());
+                            done.insert(canonical.clone(), role.clone());
                         }
                     }
                     None => {}
-                };
+                }
             }
         }
 
         done
+    }
+
+    fn run(
+        instances: impl IntoIterator<Item = (impl Into<Address>, Discovery)>,
+    ) -> HashMap<Address, Role> {
+        run_with_aliases(instances, std::iter::empty::<(Address, Address)>())
     }
 
     #[test]
@@ -424,6 +446,31 @@ mod tests {
                 ("host3:3", Discovery::new("3", ["host3:3"], can_vote[2])),
             ];
             let res = run(instances);
+            let first = res.values().next().unwrap().leader_address();
+            assert!(
+                res.values().map(Role::leader_address).all(|la| la == first),
+                "multiple leaders: {:#?}",
+                res
+            );
+        }
+    }
+
+    #[test]
+    fn test_discovery_multi_address() {
+        for _ in 0..999 {
+            let instances = [
+                (
+                    "host1:1",
+                    Discovery::new("1", ["host1:1", "host2:2", "host3:3"], true),
+                ),
+                (
+                    "host2:2",
+                    Discovery::new("2", ["host1-internal:1", "host3:3"], true),
+                ),
+                ("host3:3", Discovery::new("3", ["host1:1", "host2:2"], true)),
+            ];
+            // host1-internal:1 is an alias for host1:1 (same node, same tmp_id "1")
+            let res = run_with_aliases(instances, [("host1-internal:1", "host1:1")]);
             let first = res.values().next().unwrap().leader_address();
             assert!(
                 res.values().map(Role::leader_address).all(|la| la == first),
