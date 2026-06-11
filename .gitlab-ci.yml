@@ -1211,3 +1211,16 @@ validate-commit-headers:
       done
       ci-log-section end "validate-commit-headers"
       exit "$rc"
+
+validate-release-notes:
+  stage: test
+  rules:
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - |
+      ci-log-section start "validate-release-notes" Validating release-note fragments via prek ...
+      prek run --all-files --hook-stage pre-commit validate-release-notes
+      ci-log-section end "validate-release-notes"

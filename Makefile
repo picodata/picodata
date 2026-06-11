@@ -395,8 +395,8 @@ setup-hooks:
 		echo "error: pre-commit not installed in the project venv." >&2; \
 		echo "       run 'poetry install' first, then re-run 'make setup-hooks'." >&2; \
 		exit 2; }
-	poetry run pre-commit install --hook-type commit-msg
-	@echo "Installed: .git/hooks/commit-msg (config: .pre-commit-config.yaml)"
+	poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit
+	@echo "Installed: .git/hooks/commit-msg, .git/hooks/pre-commit (config: .pre-commit-config.yaml)"
 
 .PHONY: prepare-release
 prepare-release:

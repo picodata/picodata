@@ -1,13 +1,13 @@
 # Configuration for the `pre-commit` framework (https://pre-commit.com/).
-# Single source of truth for commit-subject validation, executed in two
-# places:
-#   * locally, via the `commit-msg` git hook installed by `make setup-hooks`
-#   * in CI, by the `validate-commit-headers` job in .gitlab-ci.yml
+# Single source of truth for two checks, each executed locally (via the git
+# hook installed by `make setup-hooks`) and in CI:
+#   * commit-subject validation: `commit-msg` hook / `validate-commit-headers`
+#   * release-note fragments:     `pre-commit` hook / `validate-release-notes`
 #
 # Bypass for emergencies only (CI gate still enforces):
 #   git commit --no-verify
 
-default_install_hook_types: [commit-msg]
+default_install_hook_types: [commit-msg, pre-commit]
 default_stages: [commit-msg]
 
 repos:
@@ -37,3 +37,13 @@ repos:
           - adr
           - git
           - empty
+
+  - repo: local
+    hooks:
+      - id: validate-release-notes
+        name: Validate release-note fragments
+        entry: python3 tools/release_notes.py --check
+        language: system
+        files: ^release_notes/unreleased/.*\.md$
+        pass_filenames: true
+        stages: [pre-commit]

@@ -139,6 +139,95 @@ def test_release_notes_parse_errors_are_exceptions_and_cli_errors(tmp_path: Path
     assert "no `## <type>[/<category>]` H2" in result.stderr
 
 
+def test_validate_fragments_flags_only_structural_errors(tmp_path: Path) -> None:
+    good = tmp_path / "good.md"
+    _write_fragment(
+        good,
+        """
+        ## feat/sql
+
+        - A change without any inline MR reference.
+        """,
+    )
+    single_hash = tmp_path / "single-hash.md"
+    _write_fragment(
+        single_hash,
+        """
+        # feat/sql
+
+        - Header uses one hash instead of two.
+        """,
+    )
+    unknown_type = tmp_path / "unknown-type.md"
+    _write_fragment(
+        unknown_type,
+        """
+        ## wibble
+
+        - Unknown change type.
+        """,
+    )
+    empty_body = tmp_path / "empty-body.md"
+    _write_fragment(empty_body, "## fix\n")
+
+    # A well-formed fragment passes even without an inline MR reference:
+    # a missing `[!N]` is a render-time warning, not a structural error.
+    assert release_notes.validate_fragments([good]) == []
+
+    errors = release_notes.validate_fragments([single_hash, unknown_type, empty_body])
+    assert len(errors) == 3
+    assert any("no `## <type>[/<category>]` H2" in e for e in errors)
+    assert any("unknown type `wibble`" in e for e in errors)
+    assert any("fragment body is empty" in e for e in errors)
+
+
+def test_release_notes_check_cli(tmp_path: Path) -> None:
+    fragment_dir = tmp_path / "fragments"
+    _write_fragment(
+        fragment_dir / "ok.md",
+        """
+        ## feat
+
+        - A well-formed fragment ([!1]).
+        """,
+    )
+
+    def run_check(*extra: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "release_notes.py"), "--check", *extra],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+
+    ok = run_check("--fragment-dir", str(fragment_dir))
+    assert ok.returncode == 0
+    assert ok.stderr == ""
+    assert "well-formed" in ok.stdout
+
+    _write_fragment(
+        fragment_dir / "bad.md",
+        """
+        # feat
+
+        - Single-hash header.
+        """,
+    )
+
+    # Whole-directory scan (the CI invocation) reports the bad fragment.
+    bad_dir = run_check("--fragment-dir", str(fragment_dir))
+    assert bad_dir.returncode == 1
+    assert bad_dir.stdout == ""
+    assert "error:" in bad_dir.stderr
+    assert "no `## <type>[/<category>]` H2" in bad_dir.stderr
+
+    # Explicit paths (how the pre-commit hook invokes it) are validated too.
+    bad_path = run_check(str(fragment_dir / "bad.md"))
+    assert bad_path.returncode == 1
+    assert "error:" in bad_path.stderr
+
+
 def test_release_changelog_calls_release_notes_renderer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     (tmp_path / "CHANGELOG.md").write_text("# Changelog\n\n", encoding="utf-8")
     (tmp_path / "RELEASE_NOTES.md").write_text("# Release Notes\n\n", encoding="utf-8")

@@ -23,6 +23,13 @@ Modes:
 
     release_notes.py --unreleased            # header: `## [unreleased]`
     release_notes.py --tag X.Y.Z             # header: `## [X.Y.Z] - DATE`
+    release_notes.py --check [PATHS...]      # validate fragments, no render
+
+`--check` parses each fragment without rendering, git lookups, or MR-ref
+warnings; it exits non-zero if any fragment is structurally malformed
+(wrong header level, unknown type, empty body). With no PATHS it checks
+every fragment in `--fragment-dir`; the pre-commit hook passes the staged
+fragment paths directly.
 
 Output goes to stdout by default; pass -o PATH to write to a file. The
 same renderer is importable from Python; consumed fragments are removed
@@ -204,6 +211,27 @@ def collect_fragments(fragment_dir: Path, *, repo_root: Path | None = None) -> l
     return fragments
 
 
+def validate_fragments(paths: Sequence[Path]) -> list[str]:
+    """Return one error message per structurally malformed fragment.
+
+    Each path is parsed with `parse_fragment`. Unlike `collect_fragments`,
+    this performs no git/MR lookups and emits no warnings, so it is safe to
+    run on an arbitrary file list (the pre-commit hook passes staged
+    fragments directly). A well-formed fragment yields no message.
+    """
+    errors: list[str] = []
+    for path in paths:
+        if path.name.lower() == "readme.md":
+            continue
+        try:
+            parse_fragment(path)
+        except ValueError as e:
+            errors.append(str(e))
+        except OSError as e:
+            errors.append(f"{path}: {e}")
+    return errors
+
+
 def render(header: str, fragments: list[Fragment], *, warn: Callable[[str], None] = _warn) -> str:
     by_type: dict[str, list[Fragment]] = defaultdict(list)
     notes: list[tuple[str, str]] = []
@@ -312,6 +340,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     mode.add_argument(
         "--tag", metavar="TAG", help="header: `## [TAG] - DATE` (DATE = tag date if it exists, else today)"
     )
+    mode.add_argument(
+        "--check", action="store_true", help="validate fragments structurally and exit non-zero on any error"
+    )
     p.add_argument(
         "--fragment-dir",
         type=Path,
@@ -319,7 +350,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=f"directory with *.md fragments (default: {DEFAULT_FRAGMENT_DIR})",
     )
     p.add_argument("-o", "--output", default="-", help="output file (default: stdout)")
+    p.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        help="fragment files to validate (only with --check); default: all *.md in --fragment-dir",
+    )
     args = p.parse_args(argv)
+
+    if args.check:
+        if args.paths:
+            targets = list(args.paths)
+        elif args.fragment_dir.is_dir():
+            targets = sorted(args.fragment_dir.glob("*.md"))
+        else:
+            targets = []
+        errors = validate_fragments(targets)
+        if errors:
+            for msg in errors:
+                for line in msg.splitlines():
+                    print(f"error: {line}", file=sys.stderr)
+            return 1
+        print(f"ok: {len(targets)} release-note fragment(s) are well-formed")
+        return 0
 
     try:
         output = render_release_notes_section(
