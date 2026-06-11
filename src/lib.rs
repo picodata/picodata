@@ -336,16 +336,16 @@ fn preload_http() {
 
 fn start_http_server(
     HttpAddress { host, port, .. }: &HttpAddress,
-    tls: config::socket::TlsSettings,
+    tls: config::TlsListenerSettings,
     kubernetes_probes: bool,
     registry: &'static prometheus::Registry,
 ) -> Result<(), Error> {
     // load the TLS settings to log them to console
     // we won't use the openssl objects right here, the lua codebase will load its own copy
     let _ = tls::load_listener_tls_config_from_files(
-        &tls::TlsConfigurationSource::Http,
+        &tls::TlsListenerConfigurationSource::Http,
         &tls,
-        tls::ConfigLoadOptions {
+        tls::ListenerConfigLoadOptions {
             allow_missing_ca: false,
             should_log: true,
         },
@@ -1504,9 +1504,9 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
     // load the TLS settings to log them to console
     // we won't use the openssl objects right here, tarantool codebase will load its own copy from the files
     let _ = tls::load_listener_tls_config_from_files(
-        &tls::TlsConfigurationSource::Iproto,
+        &tls::TlsListenerConfigurationSource::Iproto,
         tls_config,
-        tls::ConfigLoadOptions {
+        tls::ListenerConfigLoadOptions {
             allow_missing_ca: false,
             should_log: true,
         },
@@ -2206,9 +2206,9 @@ fn postjoin(
     // load the TLS settings to log them to console
     // we won't use the openssl objects right here, tarantool codebase will load its own copy from the files
     let _ = tls::load_listener_tls_config_from_files(
-        &tls::TlsConfigurationSource::Iproto,
+        &tls::TlsListenerConfigurationSource::Iproto,
         tls_config,
-        tls::ConfigLoadOptions {
+        tls::ListenerConfigLoadOptions {
             allow_missing_ca: false,
             should_log: true,
         },

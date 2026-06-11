@@ -510,12 +510,12 @@ fn load_plugin_listener_config(
         .to_string();
 
     let tls = crate::tls::load_listener_tls_config_from_files(
-        &crate::tls::TlsConfigurationSource::Plugin {
+        &crate::tls::TlsListenerConfigurationSource::Plugin {
             plugin: plugin_name,
             service: service_name,
         },
         &config.tls,
-        crate::tls::ConfigLoadOptions {
+        crate::tls::ListenerConfigLoadOptions {
             allow_missing_ca: false,
             // we didn't log this during validation, so make sure to log it now
             should_log: true,

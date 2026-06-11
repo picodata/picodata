@@ -177,6 +177,13 @@ instance:
                 tls=dict(enabled=dict(source="default", value=False)),
             ),
             boot_timeout=dict(value=7200, source="default"),
+            ldap=dict(
+                enabled=dict(source="default", value=False),
+                tls=dict(
+                    enabled=dict(source="default", value=False),
+                    method=dict(source="default", value="implicit"),
+                ),
+            ),
         ),
     )
 

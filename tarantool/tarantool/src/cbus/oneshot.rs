@@ -264,4 +264,31 @@ mod tests {
         thread.join().unwrap();
         assert!(fiber::cancel(cbus_fiber_id));
     }
+
+    #[crate::test(tarantool = "crate")]
+    pub fn oneshot_tokio_test() {
+        // check that oneshot channel can be used in a tokio runtime
+        let cbus_fiber_id = run_cbus_endpoint("oneshot_tokio_test");
+
+        let (tx, rx) = oneshot::channel::<u32>("oneshot_tokio_test");
+
+        let tokio_rt = thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async move {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    tx.send(42);
+                });
+        });
+
+        assert_eq!(
+            check_yield(|| { rx.receive().unwrap() }),
+            YieldResult::Yielded(42)
+        );
+
+        tokio_rt.join().unwrap();
+        assert!(fiber::cancel(cbus_fiber_id));
+    }
 }

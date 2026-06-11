@@ -1,6 +1,8 @@
+pub mod ldap;
 mod legacy;
+pub mod listener;
 pub mod observer;
-pub mod socket;
+pub mod tls;
 
 use crate::access_control::validate_password;
 use crate::address::{
@@ -60,9 +62,9 @@ pub use crate::address::{
     DEFAULT_IPROTO_PORT, DEFAULT_LISTEN_HOST, DEFAULT_PGPROTO_PORT, DEFAULT_USERNAME,
 };
 
-pub use socket::{
+pub use listener::{
     HttpConfig, IprotoConfig, PgprotoConfig, PluginConfig, PluginListenerConfig,
-    PluginServiceConfig, TlsSettings,
+    PluginServiceConfig,
 };
 
 pub const DEFAULT_CONFIG_FILE_NAME: &str = "picodata.yaml";
@@ -74,6 +76,7 @@ pub(crate) const DEFAULT_SQL_RUNTIME_CONCURRENCY_MAX: u64 = 50;
 pub const DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION: bool = false;
 
 pub use ::sql::ir::types::DomainType as SbroadType;
+pub use tls::{TlsClientMethod, TlsClientSettings, TlsListenerSettings};
 ////////////////////////////////////////////////////////////////////////////////
 // PicodataConfig
 ////////////////////////////////////////////////////////////////////////////////
@@ -257,6 +260,14 @@ Using configuration file '{args_path}'.");
         self.set_defaults_explicitly(&parameter_sources);
 
         Ok(())
+    }
+
+    #[inline(always)]
+    pub fn try_get() -> Option<&'static Self> {
+        // SAFETY:
+        // - only called from main thread
+        // - never mutated after initialization
+        unsafe { static_ref!(const GLOBAL_CONFIG).as_deref() }
     }
 
     #[inline(always)]
@@ -502,6 +513,33 @@ Using configuration file '{args_path}'.");
 
         if let Some(memtx_max_tuple_size) = args.memtx_max_tuple_size {
             config_from_args.instance.memtx.max_tuple_size = Some(memtx_max_tuple_size);
+        }
+
+        if let Some(present_legacy_vars) = ldap::LdapSection::check_for_legacy_env() {
+            let have_ldap_configuration = leaf_field_paths::<PicodataConfig>()
+                .iter()
+                .filter(|v| v.starts_with(config_parameter_path!(instance.ldap)))
+                .into_iter()
+                .any(|key| parameter_sources.contains_key(key));
+
+            if have_ldap_configuration {
+                return Err(Error::InvalidConfiguration(format!(
+                    "LDAP cannot be configured both via the legacy environment variables \
+                        (TT_LDAP_*) and via the yaml file. Offending variables: {:?}",
+                    present_legacy_vars
+                )));
+            }
+
+            tlog!(
+                Warning,
+                "Configuring LDAP via TT_LDAP_* environment variables is deprecated. \
+                Migrate to using the yaml file or other regular means.\
+                Offending variables: {:?}",
+                present_legacy_vars
+            );
+
+            config_from_args.instance.ldap = ldap::LdapSection::migrate_from_legacy_env()
+                .map_err(Error::InvalidConfiguration)?;
         }
 
         // --config-parameter has higher priority than other command line
@@ -899,6 +937,8 @@ Using configuration file '{args_path}'.");
         self.validate_plugin_listeners_configuration()?;
         self.validate_listener_conflicts()?;
 
+        self.validate_ldap()?;
+
         Ok(())
     }
 
@@ -949,9 +989,9 @@ Using configuration file '{args_path}'.");
             }
 
             if let Err(err) = crate::tls::load_listener_tls_config_from_files(
-                &crate::tls::TlsConfigurationSource::Plugin { plugin, service },
+                &crate::tls::TlsListenerConfigurationSource::Plugin { plugin, service },
                 &listener.tls,
-                crate::tls::ConfigLoadOptions {
+                crate::tls::ListenerConfigLoadOptions {
                     allow_missing_ca: false,
                     // plugin will call `load_listener_tls_config_from_files` once more when creating the listener,
                     // so don't want to log anything here
@@ -1005,6 +1045,21 @@ Using configuration file '{args_path}'.");
                          `instance.{source_b}` ({host_b}:{port_b}): both bind to the same address"
             )));
         }
+
+        Ok(())
+    }
+
+    /// Validates LDAP configuration.
+    ///
+    /// Returns an error if:
+    /// - LDAP is enabled, but `dn_format` or `connect` is not specified
+    /// - the TLS config cannot be loaded
+    fn validate_ldap(&self) -> Result<(), Error> {
+        crate::auth::methods::ldap::LdapRuntimeConfiguration::from_config_section(
+            &self.instance.ldap,
+            false,
+        )
+        .map_err(Error::invalid_configuration)?;
 
         Ok(())
     }
@@ -1375,8 +1430,11 @@ Using configuration file '{args_path}'.");
     }
 
     // For the tests
-    pub(crate) fn init_for_tests() {
-        let config = Box::new(Self::with_defaults());
+    pub(crate) fn init_for_tests(modify: impl FnOnce(&mut PicodataConfig)) {
+        let mut config = Box::new(Self::with_defaults());
+
+        modify(&mut config);
+
         // Safe, because we only initialize config once in a single thread.
         unsafe {
             assert!(static_ref!(const GLOBAL_CONFIG).is_none());
@@ -1865,23 +1923,23 @@ pub struct InstanceConfig {
     /// HTTP listener configuration.
     ///
     /// When present, replaces `http_listen` and `https` settings.
-    #[serde(default, skip_serializing_if = "socket::HttpConfig::is_default")]
+    #[serde(default, skip_serializing_if = "listener::HttpConfig::is_default")]
     #[introspection(nested)]
-    pub http: socket::HttpConfig,
+    pub http: listener::HttpConfig,
 
     /// Iproto listener configuration.
     ///
     /// When present, replaces `iproto_listen`, `iproto_advertise`, and `iproto_tls` settings.
-    #[serde(default, skip_serializing_if = "socket::IprotoConfig::is_default")]
+    #[serde(default, skip_serializing_if = "listener::IprotoConfig::is_default")]
     #[introspection(nested)]
-    pub iproto: socket::IprotoConfig,
+    pub iproto: listener::IprotoConfig,
 
     /// Pgproto listener configuration.
     ///
     /// When present, replaces the `pg` section.
-    #[serde(default, skip_serializing_if = "socket::PgprotoConfig::is_default")]
+    #[serde(default, skip_serializing_if = "listener::PgprotoConfig::is_default")]
     #[introspection(nested)]
-    pub pgproto: socket::PgprotoConfig,
+    pub pgproto: listener::PgprotoConfig,
 
     // NB: this parameter has to be defined after the `iproto` section. Its default value may depend on
     // the default value for `iproto.advertise`, and default evaluation order is defined by definition order.
@@ -1889,11 +1947,15 @@ pub struct InstanceConfig {
     #[introspection(config_default = vec![self.iproto.advertise()])]
     pub peer: Option<Vec<IprotoAddress>>,
 
+    #[serde(default)]
+    #[introspection(nested)]
+    pub ldap: ldap::LdapSection,
+
     /// Plugin listener configurations.
     /// Maps plugin names to their configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[introspection(ignore)]
-    pub plugin: Option<HashMap<String, socket::PluginConfig>>,
+    pub plugin: Option<HashMap<String, listener::PluginConfig>>,
 
     // A directory where WAL files are stored. Defaults to `instance_dir`.
     #[introspection(config_default = self.instance_dir.clone())]

@@ -54,12 +54,8 @@ BuildRequires: lib64clang-devel
 BuildRequires: zlib-devel
 %if "%{?_build_vendor}" == "alt"
 BuildRequires: libluajit-devel
-BuildRequires: libsasl2-devel
-BuildRequires: libldap-devel
 %else
 BuildRequires: luajit-devel
-BuildRequires: cyrus-sasl-devel
-BuildRequires: openldap-devel
 BuildRequires: libstdc++-devel
 %endif
 

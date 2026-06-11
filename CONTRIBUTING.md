@@ -62,7 +62,7 @@ dnf install cmake gcc gcc-c++ git libstdc++-static perl clang-devel
 #### Dynamic build
 
 ```shell
-dnf install curl-devel libicu-devel libyaml-devel libzstd-devel openldap-devel openssl-devel readline-devel zlib-devel
+dnf install curl-devel libicu-devel libyaml-devel libzstd-devel openssl-devel readline-devel zlib-devel
 ```
 
 #### Build with Web UI
@@ -242,12 +242,12 @@ This may look something like this:
 
 ```
 FAILED test/int/sql/test_eliminate_motion.py::TestEliminateMotion::test_sql[group-by-1-explain-PgprotoRunner] - assert == failed. [pytest-clarity diff shown]
-  
+
   LHS vs RHS shown below
-  
+
     [
         'projection (count((*::int))::int -> "col_1")',
-        '    group by ("t1"."a"::int) output: ("t1"."a"::int -> "a", 
+        '    group by ("t1"."a"::int) output: ("t1"."a"::int -> "a",
   "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")',
         '        selection "t1"."a"::int = 1::int',
   +     '            scan "t1"',

@@ -1039,7 +1039,7 @@ mod tests {
         let r = Replicaset::for_tests();
         storage.replicasets.space.insert(&r).unwrap();
 
-        PicodataConfig::init_for_tests();
+        PicodataConfig::init_for_tests(|_| {});
         let parameters = crate::config::AlterSystemParameters::for_tests();
 
         let (snapshot_data, _) = storage

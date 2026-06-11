@@ -358,6 +358,63 @@ impl ListenAddress for PluginAddress {
     }
 }
 
+//////////////////////
+// LDAP ADDRESS     //
+//////////////////////
+
+/// Address type for LDAP client configuration.
+///
+/// Validates HOST:PORT format during deserialization.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LdapAddress {
+    pub host: String,
+    pub port: String,
+}
+
+impl LdapAddress {
+    #[inline(always)]
+    pub fn to_host_port(&self) -> SmolStr {
+        format_smolstr!("{}:{}", self.host, self.port)
+    }
+}
+
+impl std::fmt::Display for LdapAddress {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.host, self.port)
+    }
+}
+
+impl FromStr for LdapAddress {
+    type Err = String;
+
+    fn from_str(addr: &str) -> Result<Self, Self::Err> {
+        let (host, port) = parse_host_and_port(addr)?;
+        Ok(Self { host, port })
+    }
+}
+
+impl serde::Serialize for LdapAddress {
+    #[inline(always)]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_string().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for LdapAddress {
+    #[inline(always)]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s: &str = serde::Deserialize::deserialize(deserializer)?;
+        Self::from_str(s).map_err(serde::de::Error::custom)
+    }
+}
+
 ///////////////////////////////
 // Address conflict checking //
 ///////////////////////////////

@@ -243,7 +243,6 @@ impl TarantoolBuildRoot {
                         cmake::print_bool(!have_system_curl),
                     ))
                     .args([
-                        "-DENABLE_BUNDLED_LDAP=OFF",
                         "-DENABLE_BUNDLED_LIBUNWIND=OFF",
                         "-DENABLE_BUNDLED_LIBYAML=OFF",
                         "-DENABLE_BUNDLED_OPENSSL=OFF",
@@ -463,18 +462,6 @@ impl TarantoolBuildRoot {
             rustc::link_lib_static_whole_archive("z");
         } else {
             rustc::link_lib_dynamic("z");
-        }
-
-        // Add LDAP authentication support libraries.
-        if use_static_build {
-            rustc::link_search(tarantool_build.join("bundled-ldap-prefix/lib"));
-            rustc::link_lib_static("ldap");
-            rustc::link_lib_static("lber");
-            rustc::link_search(tarantool_build.join("bundled-sasl-prefix/lib"));
-            rustc::link_lib_static("sasl2");
-        } else {
-            rustc::link_lib_dynamic("sasl2");
-            rustc::link_lib_dynamic("ldap");
         }
 
         // Previously in static build mode we used to link both libssl

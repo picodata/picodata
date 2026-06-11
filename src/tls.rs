@@ -1,12 +1,12 @@
 //! This module provides functions for loading and validating picodata TLS configuration.
 
+use crate::config::TlsClientMethod;
 use crate::tlog;
 use openssl::pkey::PKey;
 use openssl::x509::{X509NameEntries, X509};
 use picodata_plugin::transport::listener::LoadedListenerTlsConfig;
 use std::fmt;
 use thiserror::Error;
-
 ////////////////////////////////////////////////////////////////////////////////
 // Certificate formatting helpers
 ////////////////////////////////////////////////////////////////////////////////
@@ -61,28 +61,41 @@ fn certs_to_string(certs: &[X509]) -> Result<String, openssl::error::ErrorStack>
 }
 
 #[derive(Copy, Clone)]
-pub enum TlsConfigurationSource<'a> {
+pub enum TlsListenerConfigurationSource<'a> {
     Iproto,
     Pgproto,
     Http,
     Plugin { plugin: &'a str, service: &'a str },
 }
 
-impl<'a> fmt::Display for TlsConfigurationSource<'a> {
+impl<'a> fmt::Display for TlsListenerConfigurationSource<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TlsConfigurationSource::Iproto => write!(f, "iproto"),
-            TlsConfigurationSource::Pgproto => write!(f, "pgproto"),
-            TlsConfigurationSource::Http => write!(f, "http"),
-            TlsConfigurationSource::Plugin { plugin, service } => {
+            TlsListenerConfigurationSource::Iproto => write!(f, "iproto"),
+            TlsListenerConfigurationSource::Pgproto => write!(f, "pgproto"),
+            TlsListenerConfigurationSource::Http => write!(f, "http"),
+            TlsListenerConfigurationSource::Plugin { plugin, service } => {
                 write!(f, "plugin {plugin}.{service}")
             }
         }
     }
 }
 
-fn log_cert_info(
-    source: &TlsConfigurationSource,
+#[derive(Copy, Clone)]
+pub enum TlsClientConfigurationSource {
+    Ldap,
+}
+
+impl fmt::Display for TlsClientConfigurationSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TlsClientConfigurationSource::Ldap => write!(f, "ldap"),
+        }
+    }
+}
+
+fn log_listener_cert_info(
+    source: &TlsListenerConfigurationSource,
     config: &LoadedListenerTlsConfig,
 ) -> Result<(), openssl::error::ErrorStack> {
     tlog!(
@@ -111,8 +124,33 @@ fn log_cert_info(
     Ok(())
 }
 
+fn log_client_cert_info(
+    source: &TlsClientConfigurationSource,
+    config: &LoadedClientTlsConfig,
+) -> Result<(), openssl::error::ErrorStack> {
+    if let Some(mtls_ca_chain) = &config.alternative_trusted_root_cas {
+        tlog!(
+            Info,
+            "TLS({source}): CA certificate chain is configured, only configured certificates will be trusted"
+        );
+
+        tlog!(
+            Info,
+            "TLS({source}): trusted root CA certificates: {}",
+            certs_to_string(mtls_ca_chain)?
+        );
+    } else {
+        tlog!(
+            Info,
+            "TLS({source}): CA certificate chain is not configured, OS trust store will be used"
+        );
+    }
+
+    Ok(())
+}
+
 ////////////////////////////////////////////////////////////////////////////////
-// TLS configuration loading
+// TLS listener configuration loading
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Error, Debug)]
@@ -145,7 +183,7 @@ pub enum TlsConfigLoadError {
     LoggingCerts(openssl::error::ErrorStack),
 }
 
-fn validate_config(config: &LoadedListenerTlsConfig) -> Result<(), TlsConfigLoadError> {
+fn validate_listener_config(config: &LoadedListenerTlsConfig) -> Result<(), TlsConfigLoadError> {
     use TlsConfigLoadError::Validation;
 
     // 1. The server certificate chain is non-empty.
@@ -178,7 +216,7 @@ fn validate_config(config: &LoadedListenerTlsConfig) -> Result<(), TlsConfigLoad
     Ok(())
 }
 
-pub struct ConfigLoadOptions {
+pub struct ListenerConfigLoadOptions {
     /// If `true`, CA file is allowed to not exist even if its path was specified. mTLS will be disabled in this case.
     ///
     /// If `false`, a configured but nonexistent CA file will lead to an error.
@@ -193,7 +231,7 @@ pub struct ConfigLoadOptions {
     pub should_log: bool,
 }
 
-/// Reads certificate files specified by the [`crate::config::TlsSettings`] into memory.
+/// Reads certificate files specified by the [`crate::config::TlsListenerSettings`] into memory.
 ///
 /// This function will also attempt to validate the provided files:
 /// 1. The server certificate chain is non-empty.
@@ -211,9 +249,9 @@ pub struct ConfigLoadOptions {
 ///
 /// The function will also log information about the loaded certificates for ease of debugging.
 pub fn load_listener_tls_config_from_files(
-    source: &TlsConfigurationSource,
-    config: &crate::config::TlsSettings,
-    options: ConfigLoadOptions,
+    source: &TlsListenerConfigurationSource,
+    config: &crate::config::TlsListenerSettings,
+    options: ListenerConfigLoadOptions,
 ) -> Result<Option<LoadedListenerTlsConfig>, TlsConfigLoadError> {
     use TlsConfigLoadError::InvalidConfiguration;
 
@@ -295,9 +333,134 @@ pub fn load_listener_tls_config_from_files(
 
     // Log certificate information and validate
     if options.should_log {
-        log_cert_info(source, &config).map_err(TlsConfigLoadError::LoggingCerts)?;
+        log_listener_cert_info(source, &config).map_err(TlsConfigLoadError::LoggingCerts)?;
     }
-    validate_config(&config)?;
+    validate_listener_config(&config)?;
+
+    Ok(Some(config))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TLS client configuration loading
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug)]
+pub struct LoadedClientTlsConfig {
+    pub method: TlsClientMethod,
+    /// Custom root CA certificates to trust instead of system ones.
+    pub alternative_trusted_root_cas: Option<Vec<X509>>,
+}
+
+pub struct ClientConfigLoadOptions {
+    /// If `false`, fails validation when method is [`TlsClientMethod::StartTls`].
+    pub allow_starttls: bool,
+    /// Specifies whether the function should log the paths it tries to access
+    /// and the loaded certificate chain.
+    pub should_log: bool,
+}
+
+fn validate_client_config(
+    config: &LoadedClientTlsConfig,
+    options: &ClientConfigLoadOptions,
+) -> Result<(), TlsConfigLoadError> {
+    use TlsConfigLoadError::Validation;
+
+    // 1. The CA certificate chain (if provided) is non-empty.
+    if let Some(alternative_trusted_root_cas) = &config.alternative_trusted_root_cas {
+        if alternative_trusted_root_cas.is_empty() {
+            return Err(Validation(
+                "The provided trusted root CA certificates file contains no certificates"
+                    .to_string(),
+            ));
+        }
+    }
+
+    match config.method {
+        TlsClientMethod::Implicit => {
+            // valid
+        }
+        TlsClientMethod::StartTls if !options.allow_starttls => {
+            return Err(Validation(
+                "Using StartTLS is not allowed for this protocol".to_string(),
+            ));
+        }
+        TlsClientMethod::StartTls => {
+            // valid
+        }
+    }
+
+    Ok(())
+}
+
+/// Reads certificate files specified by the [`crate::config::TlsClientSettings`] into memory.
+///
+/// This function will also attempt to validate the provided configuration:
+/// 1. The CA certificate chain (if provided) is non-empty.
+/// 2. If `options.allow_starttls` option is true, StartTLS is not used as TLS method.
+///
+/// The `source` option is used for logging and should specify the picodata subsystem for which
+///  the TLS configuration is being loaded.
+///
+/// The `should_log` option specifies whether the function should log the paths it tries to access
+///  and the loaded configuration. It exists because for some code paths we load the configuration
+///  twice: once during config validation and once during actual config creation.
+///  Having it logged twice is confusing, so we only do so when actually creating the listener for those code paths.
+///
+/// The function will also log information about the loaded certificates for ease of debugging.
+pub fn load_client_tls_config_from_files(
+    source: &TlsClientConfigurationSource,
+    config: &crate::config::TlsClientSettings,
+    options: ClientConfigLoadOptions,
+) -> Result<Option<LoadedClientTlsConfig>, TlsConfigLoadError> {
+    macro_rules! log {
+        ($($args:tt)*) => {
+            if options.should_log {
+                tlog!(Info, $($args)*);
+            }
+        };
+    }
+
+    if !config.enabled() {
+        log!("TLS({source}): disabled");
+        return Ok(None);
+    }
+
+    match config.method() {
+        TlsClientMethod::Implicit => log!("TLS({source}): using implicit TLS"),
+        TlsClientMethod::StartTls => log!("TLS({source}): using StartTLS"),
+    }
+
+    let alternative_trusted_root_cas = if let Some(ca_file) = &config.ca_file {
+        log!(
+            "TLS({source}): reading custom trusted CA roots {}",
+            ca_file.display()
+        );
+
+        match std::fs::read(ca_file) {
+            Ok(ca_pem) => Some(ca_pem),
+            Err(e) => return Err(TlsConfigLoadError::ReadCa(e)),
+        }
+    } else {
+        log!("TLS({source}): using system trusted CA roots");
+
+        None
+    };
+    let alternative_trusted_root_cas = if let Some(mtls_ca_chain_pem) = alternative_trusted_root_cas
+    {
+        Some(X509::stack_from_pem(&mtls_ca_chain_pem).map_err(TlsConfigLoadError::LoadCa)?)
+    } else {
+        None
+    };
+
+    let config = LoadedClientTlsConfig {
+        method: config.method(),
+        alternative_trusted_root_cas,
+    };
+
+    validate_client_config(&config, &options)?;
+    if options.should_log {
+        log_client_cert_info(source, &config).map_err(TlsConfigLoadError::LoggingCerts)?;
+    }
 
     Ok(Some(config))
 }

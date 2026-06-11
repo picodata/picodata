@@ -1,4 +1,4 @@
-use crate::config::TlsSettings;
+use crate::config::TlsListenerSettings;
 use crate::traft::error::Error;
 use crate::{static_ref, tlog};
 use tarantool::network::client::tls;
@@ -9,7 +9,7 @@ struct TlsContext {
     tls_connector: Option<tls::TlsConnector>,
 }
 
-pub fn tls_init_once(config: &TlsSettings) -> Result<(), Error> {
+pub fn tls_init_once(config: &TlsListenerSettings) -> Result<(), Error> {
     let context = TlsContext::new(config.clone())?;
 
     // SAFETY: safe as long as only called from tx thread.
@@ -32,7 +32,7 @@ pub fn get_tls_connector() -> Option<&'static tls::TlsConnector> {
 }
 
 impl TlsContext {
-    fn new(config: TlsSettings) -> Result<Self, Error> {
+    fn new(config: TlsListenerSettings) -> Result<Self, Error> {
         if !config.enabled() {
             return Ok(Self {
                 tls_connector: None,

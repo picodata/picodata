@@ -4,67 +4,8 @@
 //! (iproto, http, pgproto) and plugin listeners.
 
 use crate::address::{HttpAddress, IprotoAddress, PgprotoAddress, PluginAddress};
+use crate::config::tls::TlsListenerSettings;
 use crate::introspection::Introspection;
-use std::path::PathBuf;
-
-////////////////////////////////////////////////////////////////////////////////
-// TlsSettings
-////////////////////////////////////////////////////////////////////////////////
-
-/// Unified TLS configuration for all protocols.
-///
-/// This structure is used by `http`, `iproto`, `pgproto`, and plugin listeners.
-#[derive(
-    Clone, Debug, Default, Eq, PartialEq, Introspection, serde::Deserialize, serde::Serialize,
-)]
-#[serde(deny_unknown_fields)]
-pub struct TlsSettings {
-    /// Whether TLS is enabled for this listener.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[introspection(config_default = false)]
-    pub enabled: Option<bool>,
-
-    /// Path to the certificate file (PEM format).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cert_file: Option<PathBuf>,
-
-    /// Path to the private key file (PEM format).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_file: Option<PathBuf>,
-
-    /// Path to the CA certificate file for mTLS (PEM format).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ca_file: Option<PathBuf>,
-
-    /// Path to the password file for encrypted private keys.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub password_file: Option<PathBuf>,
-}
-
-impl TlsSettings {
-    // NOTE: here we implement option defaults as methods instead of relying on `#[introspection(config_default = ...)]`
-    // because the structure maybe be part of `PluginListenerConfig` living inside a `HashMap`, which is not supported well by the introspection library
-    /// Returns whether TLS is enabled.
-    #[inline]
-    pub fn enabled(&self) -> bool {
-        self.enabled.unwrap_or(false)
-    }
-
-    /// Returns true if any TLS-related field is set.
-    pub fn has_any_setting(&self) -> bool {
-        self.enabled.is_some()
-            || self.cert_file.is_some()
-            || self.key_file.is_some()
-            || self.ca_file.is_some()
-            || self.password_file.is_some()
-    }
-
-    /// Returns true if this is the default (empty) TLS configuration.
-    /// Used for skip_serializing_if.
-    pub fn is_default(&self) -> bool {
-        !self.has_any_setting()
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // HttpConfig (new unified http section)
@@ -96,9 +37,9 @@ pub struct HttpConfig {
     pub advertise: Option<HttpAddress>,
 
     /// TLS configuration for HTTPS.
-    #[serde(default, skip_serializing_if = "TlsSettings::is_default")]
+    #[serde(default, skip_serializing_if = "TlsListenerSettings::is_default")]
     #[introspection(nested)]
-    pub tls: TlsSettings,
+    pub tls: TlsListenerSettings,
 
     /// Whether Kubernetes health probe endpoints are enabled.
     /// When false, /health/live, /health/ready, and /health/startup return 404.
@@ -184,9 +125,9 @@ pub struct IprotoConfig {
     pub advertise: Option<IprotoAddress>,
 
     /// TLS configuration.
-    #[serde(default, skip_serializing_if = "TlsSettings::is_default")]
+    #[serde(default, skip_serializing_if = "TlsListenerSettings::is_default")]
     #[introspection(nested)]
-    pub tls: TlsSettings,
+    pub tls: TlsListenerSettings,
 }
 
 impl IprotoConfig {
@@ -254,9 +195,9 @@ pub struct PgprotoConfig {
     pub advertise: Option<PgprotoAddress>,
 
     /// TLS configuration.
-    #[serde(default, skip_serializing_if = "TlsSettings::is_default")]
+    #[serde(default, skip_serializing_if = "TlsListenerSettings::is_default")]
     #[introspection(nested)]
-    pub tls: TlsSettings,
+    pub tls: TlsListenerSettings,
 }
 
 impl PgprotoConfig {
@@ -321,9 +262,9 @@ pub struct PluginListenerConfig {
     pub advertise: Option<PluginAddress>,
 
     /// TLS configuration.
-    #[serde(default, skip_serializing_if = "TlsSettings::is_default")]
+    #[serde(default, skip_serializing_if = "TlsListenerSettings::is_default")]
     #[introspection(nested)]
-    pub tls: TlsSettings,
+    pub tls: TlsListenerSettings,
 }
 
 impl PluginListenerConfig {
@@ -419,7 +360,7 @@ mod tests {
             enabled: None,
             listen: Some(addr.clone()),
             advertise: None,
-            tls: TlsSettings::default(),
+            tls: TlsListenerSettings::default(),
         };
         assert!(listener.enabled());
         assert_eq!(listener.listen, Some(addr.clone()));

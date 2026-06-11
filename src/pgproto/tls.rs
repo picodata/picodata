@@ -1,4 +1,4 @@
-use crate::config::TlsSettings;
+use crate::config::TlsListenerSettings;
 use crate::tlog;
 use crate::traft::error::Error;
 use openssl::ssl::SslStream;
@@ -7,9 +7,9 @@ use std::path::Path;
 /// If some TLS paths are not configured explicitly, fall back to fixed filenames in the instance directory. NB: this is only done by pgproto.
 fn apply_pgproto_tls_default_paths(
     instance_dir: &Path,
-    tls_settings: TlsSettings,
-) -> (TlsSettings, bool) {
-    let TlsSettings {
+    tls_settings: TlsListenerSettings,
+) -> (TlsListenerSettings, bool) {
+    let TlsListenerSettings {
         enabled,
         cert_file,
         key_file,
@@ -40,7 +40,7 @@ fn apply_pgproto_tls_default_paths(
     };
 
     (
-        TlsSettings {
+        TlsListenerSettings {
             enabled,
             cert_file: Some(cert_file),
             key_file: Some(key_file),
@@ -56,15 +56,15 @@ fn apply_pgproto_tls_default_paths(
 /// If TLS is disabled will return [`None`]
 pub fn configure_tls_acceptor(
     instance_dir: &Path,
-    config: &TlsSettings,
+    config: &TlsListenerSettings,
 ) -> Result<Option<TlsAcceptor>, Error> {
     let (tls_config, ca_path_configured) =
         apply_pgproto_tls_default_paths(instance_dir, config.clone());
 
     let loaded_tls_config = crate::tls::load_listener_tls_config_from_files(
-        &crate::tls::TlsConfigurationSource::Pgproto,
+        &crate::tls::TlsListenerConfigurationSource::Pgproto,
         &tls_config,
-        crate::tls::ConfigLoadOptions {
+        crate::tls::ListenerConfigLoadOptions {
             // only allow a missing CA if we have fell back to the `instance_dir/ca.crt` default.
             allow_missing_ca: !ca_path_configured,
             should_log: true,

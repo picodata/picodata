@@ -158,7 +158,8 @@ def test_auth_ldap(cluster: Cluster, ldap_server: LdapServer, port_distributor: 
 
     # invalid creds
     with pytest.raises(
-        pg.DatabaseError, match=f"authentication failed for user '{ldap_server.user}': LDAP: Invalid credentials"
+        pg.DatabaseError,
+        match=f"authentication failed for user '{ldap_server.user}': LDAP: User not found or supplied credentials are invalid",
     ):
         pg.Connection(
             ldap_server.user,
@@ -202,7 +203,8 @@ def test_auth_ldap_server_down(cluster: Cluster, port_distributor: PortDistribut
     )
 
     with pytest.raises(
-        pg.DatabaseError, match=f"authentication failed for user '{ldap_server.user}': LDAP: Can't contact LDAP server"
+        pg.DatabaseError,
+        match=f"authentication failed for user '{ldap_server.user}': LDAP: authentication failed: I/O error: Connection refused",
     ):
         pg.Connection(
             ldap_server.user,
@@ -286,7 +288,8 @@ def test_auth_ldap_starttls_bad_cert(
         """
     )
     with pytest.raises(
-        pg.DatabaseError, match=f"authentication failed for user '{ldap_server_with_tls.user}': LDAP: Connect error"
+        pg.DatabaseError,
+        match=f"authentication failed for user '{ldap_server_with_tls.user}': LDAP: authentication failed: native TLS error: error:.*:certificate verify failed",
     ):
         pg.Connection(
             ldap_server_with_tls.user,

@@ -1,4 +1,4 @@
-mod methods;
+pub mod methods;
 mod msgpack_helpers;
 mod tarantool;
 mod tests;
@@ -113,7 +113,9 @@ pub(crate) fn authenticate_with_password(
 fn register_picodata_auth_methods() {
     let scram = typed_method::TypedAuthMethodWrapper(methods::scram::ScramAuthMethod);
     let md5 = typed_method::TypedAuthMethodWrapper(methods::md5::Md5AuthMethod);
+    let ldap = typed_method::TypedAuthMethodWrapper(methods::ldap::LdapAuthMethod);
 
     tarantool::auth_method_register(scram);
     tarantool::auth_method_register(md5);
+    tarantool::auth_method_register(ldap);
 }

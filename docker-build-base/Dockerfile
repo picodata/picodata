@@ -17,7 +17,6 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
     && dnf install -y --nobest \
            bzip2-devel \
            cmake \
-           cyrus-sasl-devel \
            curl-devel \
            findutils \
            git \
@@ -36,7 +35,6 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
            libzstd-devel \
            make \
            nodejs \
-           openldap-devel \
            openssl-devel \
            patch \
            python3.11 \

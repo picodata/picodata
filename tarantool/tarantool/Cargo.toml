@@ -65,7 +65,7 @@ tokio_components = ["picodata", "tokio"]
 network_client = ["openssl"]
 test = ["tester"]
 all = ["default", "test"]
-internal_test = ["test", "tlua/internal_test", "pretty_assertions", "tempfile"]
+internal_test = ["test", "tlua/internal_test", "pretty_assertions", "tempfile", "tokio"]
 # This feature switches tarantool module decimal support to use rust dec crate
 # instead of decimal impl available in tarantool.
 # This feature has two use cases,the primary one is decimal support for rust module used with

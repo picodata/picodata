@@ -6,6 +6,10 @@ use std::ptr;
 use std::ptr::NonNull;
 use tarantool::error::IntoBoxError;
 
+/// Set if the authentication method does not need a password in auth_method::auth_data_prepare.
+/// This is opt-in because most methods require password.
+const AUTH_METHOD_PASSWORDLESS_DATA_PREPARE: std::ffi::c_uint = 1 << 1;
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum AuthenticationVerdict {
     /// The authentication request is valid and the user should be authenticated.
@@ -18,6 +22,13 @@ pub enum AuthenticationVerdict {
 pub trait RawAuthMethod {
     /// Auth method name. This is the name to use for the method's registration with tarantool.
     const NAME: &'static std::ffi::CStr;
+
+    /// Set if the authentication method does not need a password in [`RawAuthMethod::auth_data_prepare`].
+    ///
+    /// Tarantool will pass an empty slice for `password` if this flag is set to true.
+    ///
+    /// This is an opt-in because most methods require password.
+    const PASSWORDLESS_DATA_PREPARE: bool = false;
 
     type Authenticator: RawAuthenticator<Method = Self>;
 
@@ -92,8 +103,11 @@ impl<T: RawAuthMethod> AuthMethodWrapper<T> {
         let this = Self {
             base: TarantoolAuthMethod {
                 name: T::NAME.as_ptr(),
-                // FIXME: make it possible to set flags with the trait
-                flags: 0,
+                flags: if T::PASSWORDLESS_DATA_PREPARE {
+                    AUTH_METHOD_PASSWORDLESS_DATA_PREPARE
+                } else {
+                    0
+                },
                 auth_method_delete: Some(auth_method_delete::<T>),
                 auth_data_prepare: Some(auth_data_prepare::<T>),
                 auth_request_prepare: Some(auth_request_prepare::<T>),

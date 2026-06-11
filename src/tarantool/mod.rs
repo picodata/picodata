@@ -1,8 +1,10 @@
 pub mod box_region;
 pub mod test_util;
 
-use crate::config::{BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig};
-use crate::config::{TlsSettings, WalMode};
+use crate::config::WalMode;
+use crate::config::{
+    BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig, TlsListenerSettings,
+};
 use crate::instance::Instance;
 use crate::introspection::Introspection;
 use crate::pico_service::pico_service_password;
@@ -293,7 +295,7 @@ pub struct ListenConfig {
 }
 
 impl ListenConfig {
-    pub fn new(uri: String, config: &TlsSettings) -> Self {
+    pub fn new(uri: String, config: &TlsListenerSettings) -> Self {
         let mut result = Self { uri, params: None };
         if config.enabled() {
             if config.password_file.is_some() {
@@ -313,7 +315,7 @@ impl ListenConfig {
         result
     }
 
-    pub fn new_for_pico_service(uri: &str, tls_config: &TlsSettings) -> Self {
+    pub fn new_for_pico_service(uri: &str, tls_config: &TlsListenerSettings) -> Self {
         if tls_config.enabled() {
             return Self::new(format!("{PICO_SERVICE_USER_NAME}@{uri}"), tls_config);
         }
@@ -489,9 +491,9 @@ impl Cfg {
         // load the TLS settings to log them to console
         // we won't use the openssl objects right here, tarantool codebase will load its own copy from the files
         let _ = tls::load_listener_tls_config_from_files(
-            &tls::TlsConfigurationSource::Iproto,
+            &tls::TlsListenerConfigurationSource::Iproto,
             tls_config,
-            tls::ConfigLoadOptions {
+            tls::ListenerConfigLoadOptions {
                 allow_missing_ca: false,
                 should_log: true,
             },

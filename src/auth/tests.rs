@@ -196,13 +196,26 @@ pub fn setup_ldap_auth(username: &str, password: &str) -> Result<impl Drop, Stri
     cleanup.push(Box::new(guard));
 
     //
-    // Configure tarantool
+    // Configure picodata
     //
-    std::env::set_var(
-        "TT_LDAP_URL",
-        format!("ldap://{LDAP_SERVER_HOST}:{LDAP_SERVER_PORT}"),
-    );
-    std::env::set_var("TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+    crate::config::PicodataConfig::init_for_tests(|config| {
+        config.instance.ldap = crate::config::ldap::LdapSection {
+            enabled: Some(true),
+            dn_format: Some(
+                crate::auth::methods::ldap::LdapDnFormatString::parse("cn=$USER,dc=example,dc=org")
+                    .unwrap(),
+            ),
+            connect: Some(crate::address::LdapAddress {
+                host: LDAP_SERVER_HOST.to_string(),
+                port: LDAP_SERVER_PORT.to_string(),
+            }),
+            tls: crate::config::TlsClientSettings {
+                enabled: Some(false),
+                method: None,
+                ca_file: None,
+            },
+        };
+    });
 
     tarantool::lua_state()
         .exec_with(
@@ -386,7 +399,7 @@ async fn ldap_net_box() {
             .to_string();
         assert_eq!(
             err,
-            "server responded with error: System: Invalid credentials"
+            "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid"
         );
     }
 
@@ -659,7 +672,7 @@ async fn ldap_auth_method() {
         // first request
         let err = client.eval("return", &()).await.unwrap_err().to_string();
         #[rustfmt::skip]
-            assert_eq!(err, "server responded with error: System: Invalid credentials");
+            assert_eq!(err, "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid");
     }
 
     // Wrong auth method
