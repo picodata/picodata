@@ -726,7 +726,7 @@ fn join_chain_1() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op)
       join on (t3.id::int = 1::int)
-        join on ((t1.id::int = t2.id::int and ROW(t1.id::int, t2.id::int) = ROW(1::int, 1::int)))
+        join on (ROW(t1.id::int, t2.id::int) = ROW(1::int, 1::int))
           scan test_space -> t1
           scan test_space -> t2
         scan test_space -> t3
@@ -743,7 +743,7 @@ fn join_chain_2() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op)
       join on ((t2."sysFrom"::int = t3."sysFrom"::int and t3.id::int = 1::int))
-        join on ((ROW(t1.id::int, t1."sysFrom"::int) = ROW(t2.id::int, t2."sysFrom"::int) and ROW(t1.id::int, t2.id::int) = ROW(1::int, 1::int)))
+        join on ((t1."sysFrom"::int = t2."sysFrom"::int and ROW(t2.id::int, t1.id::int) = ROW(1::int, 1::int)))
           scan test_space -> t1
           scan test_space -> t2
         scan test_space -> t3
@@ -760,7 +760,7 @@ fn join_chain_3() {
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
     projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op)
       join on ((t2."sysFrom"::int = t3."sysFrom"::int and t3.id::int = 2::int))
-        join on ((ROW(t1.id::int, t1."sysFrom"::int) = ROW(t2.id::int, t2."sysFrom"::int) and ROW(t1.id::int, t2.id::int) = ROW(1::int, 1::int)))
+        join on ((t1."sysFrom"::int = t2."sysFrom"::int and ROW(t2.id::int, t1.id::int) = ROW(1::int, 1::int)))
           scan test_space -> t1
           scan test_space -> t2
         motion [policy: full, program: ReshardIfNeeded]

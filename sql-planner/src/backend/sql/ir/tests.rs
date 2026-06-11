@@ -28,8 +28,6 @@ fn check_sql_with_snapshot(
         .unwrap()
         .analyze_equality_facts()
         .unwrap()
-        .derive_equalities()
-        .unwrap()
         .merge_tuples()
         .unwrap();
     let ex_plan = ExecutionPlan::new(plan);

@@ -83,7 +83,6 @@ impl Plan {
             .split_columns_in_subtree(top_id)?
             .set_dnf_in_subtree(top_id)?
             .analyze_equality_facts_in_subtree(top_id)?
-            .derive_equalities_in_subtree(top_id)?
             .merge_tuples_in_subtree(top_id)?
             .add_motions_to_subtree(top_id)?
             .update_substring()?

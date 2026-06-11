@@ -30,8 +30,6 @@ fn sql_to_optimized_ir_add_motions_err(query: &str) -> SbroadError {
         .unwrap()
         .analyze_equality_facts()
         .unwrap()
-        .derive_equalities()
-        .unwrap()
         .merge_tuples()
         .unwrap()
         .add_motions()
