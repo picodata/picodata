@@ -1,69 +1,71 @@
+default:
+  image:
+    name: ${BASE_IMAGE_DOCS}:${BASE_IMAGE_TAG}
+    pull_policy: always
+  tags:
+    - docker-k8s
+
 variables:
-  MAIN_BRANCH: &main-branch main
-  BASE_IMAGE_NAME: $CI_REGISTRY_IMAGE
-  BASE_IMAGE_TAG: $CI_COMMIT_SHA
-  DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
+  BASE_IMAGE_DOCS: ${CI_REGISTRY_IMAGE}/docs
   KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
 
-
 workflow:
-  # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
   rules:
-    # To avoid duplicate pipelines we disable merge request events,
-    # leaving only pushes and manual triggering.
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      when: never
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "web"
-
-default:
-  tags:
-    - docker
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
 
 stages:
   - build-base-image
   - lint
-  - pack-doc
+  - pack
   - upload
   - deploy
 
-build-base-image:
+build-docs-image:
   stage: build-base-image
+  image:
+    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.23.1-debug
+    entrypoint: [""]
+    pull_policy: [if-not-present]
   variables:
-    DOCKERFILE: "Dockerfile"
-    PUSH_DOCKER: ""
     GIT_USERNAME: $CI_REGISTRY_USER
     GIT_PASSWORD: $CI_REGISTRY_PASSWORD
-  image:
-    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.20.1-debug
-    entrypoint: ['']
-    pull_policy: [if-not-present]
+    DOCKERFILE: docker-build-base/docs.Dockerfile
+    DESTINATION: ${BASE_IMAGE_DOCS}:${BASE_IMAGE_TAG}
+  rules:
+    - changes:
+        paths:
+          - docker-build-base/docs.Dockerfile
+          - docs/.gitlab-ci.yml
+        # we can use variable for compare_to option in downstream pipeline
+        compare_to: $MAIN_BRANCH
+    - changes:
+        paths:
+          - docker-build-base/docs.Dockerfile
+          - docs/.gitlab-ci.yml
+    - when: manual
+      allow_failure: true
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
   script:
-    - echo "Build picodata doc..."
-    - cd docker/static
     - >
       /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
-      --build-arg IMAGE_DIR=$CI_PROJECT_DIR
-      --build-arg COMMIT_HASH=${CI_COMMIT_SHA} ${PUSH_DOCKER}
       --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
-      --destination ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
+      --destination ${DESTINATION}
 
-lint:
-  image: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
+lint-docs:
   stage: lint
   script:
     - echo "Checking picodata doc..."
-    - pipenv run lint
+    - pushd docs && pipenv run lint
     - echo "Picodata doc successfully checked"
 
 pack-doc:
-  image: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
-  stage: pack-doc
+  stage: pack
   variables:
-    SED_SLUG: 's/[^a-zA-Z0-9.]+/_/g'
+    SED_SLUG: "s/[^a-zA-Z0-9.]+/_/g"
   before_script:
     - |
-      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+      if [ "$CI_COMMIT_BRANCH" == "master" ]; then
         PICODATA_DOC_VER="devel"
       elif [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
         PICODATA_DOC_VER="$MAIN_BRANCH"
@@ -76,6 +78,7 @@ pack-doc:
       else
         SITE_URL="https://docs.binary.picodata.io/picodata/$PICODATA_DOC_VER"
       fi
+    - cd docs/
   script:
     # Automatic Loading of .env — https://pipenv.pypa.io/en/stable/shell.html
     - echo "Pack picodata doc..."
@@ -91,50 +94,51 @@ pack-doc:
       chromium --headless --disable-gpu --no-sandbox --no-zygote
       --disable-software-rasterizer --disable-dev-shm-usage --no-pdf-header-footer
       --print-to-pdf=picodata_docs.pdf picodata_docs.html
+    - cp picodata_docs.pdf ../
     - tar -cvzf ../$FNAME .
     - popd
     - echo "Picodata doc successfully packed."
   artifacts:
     name: "artifacts-vars-${CI_PIPELINE_ID}"
     paths:
-      - picodata-doc-*.tgz
+      - docs/picodata-doc-*.tgz
+      - docs/picodata_docs.pdf
     reports:
-      dotenv: .env
+      dotenv: docs/.env
 
 upload-doc-to-binary:
   image: docker.binary.picodata.io/curlimages/curl
   stage: upload
+  variables:
+    GIT_STRATEGY: none
   script:
+    - cd docs/
     - echo "Upload picodata doc to binary..."
     - echo "FNAME=$FNAME"
     - 'curl --fail -H "Authorization: Basic ${WWW_RAW_RW}" --upload-file $FNAME https://binary.picodata.io/repository/www-raw/$FNAME'
     - echo "Picodata doc successfully uploaded to binary."
-  needs:
-    - job: pack-doc
-      artifacts: true
 
-.deploy:
+.deploy-doc:
   stage: deploy
   variables:
-    STAGE: TEST
     PICODATA_DOC: $FNAME
     PICODATA_DOC_SUBDIR: $PICODATA_DOC_VER
   trigger:
-    project: 'picodata/web-site/infra'
+    project: "picodata/web-site/infra"
     strategy: depend
-  needs:
-    - job: pack-doc
-      artifacts: true
-    - job: upload-doc-to-binary
 
-deploy-staging:
+deploy-doc-staging:
   extends:
-    - .deploy
-
-deploy-prod:
-  extends:
-    - .deploy
+    - .deploy-doc
   rules:
-    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+    - if: $PARENT_CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    STAGE: TEST
+
+deploy-doc-prod:
+  extends:
+    - .deploy-doc
+  rules:
+    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($PARENT_CI_PIPELINE_SOURCE != "schedule")
   variables:
     STAGE: PROD

@@ -35,7 +35,6 @@ workflow:
 variables:
   REGISTRY: docker-public.binary.picodata.io
   BASE_IMAGE: ${CI_REGISTRY_IMAGE}/picodata-build-base
-  BASE_IMAGE_DOCS: ${CI_REGISTRY_IMAGE}/docs
   BASE_IMAGE_LATEST: latest
   BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
 
@@ -108,23 +107,6 @@ variables:
         - .gitlab-ci.yml
         - .pre-commit-config.yaml
       compare_to: *main-branch
-
-  - &if-changes-on-docs
-    if: $CI_PIPELINE_SOURCE != "schedule"
-    changes:
-      paths:
-        - docs/**/*
-      compare_to: *main-branch
-
-  - &if-changes-on-docs-base-image
-    if: $CI_PIPELINE_SOURCE != "schedule"
-    changes:
-      paths:
-        - docker-build-base/docs.Dockerfile
-        - .gitlab-ci.yml
-      compare_to: *main-branch
-    variables:
-      BASE_IMAGE_TAG: ${PARENT_CI_COMMIT_SHA}
 
   - &if-no-docs
     if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME !~ /^docs/
@@ -241,6 +223,37 @@ certlinters:
     project: "picodata/devops/builder"
     strategy: depend
 
+docs:
+  needs: []
+  trigger:
+    include: docs/.gitlab-ci.yml
+    strategy: depend
+  variables:
+    PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - changes:
+        paths:
+          - docker-build-base/docs.Dockerfile
+          - docs/.gitlab-ci.yml
+        compare_to: *main-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - changes:
+        paths:
+          - docs/**/*
+        compare_to: *main-branch
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+  inherit:
+    variables:
+      - MAIN_BRANCH
+      - MAIN_BRANCH_SLUG
+      - RUST_VERSION
+      - TARANTOOL_VERSION
+      - BASE_IMAGE_TAG
+      - BASE_IMAGE_LATEST
+
 build-base-image:
   stage: build-base-image
   <<: *kaniko_image
@@ -256,19 +269,6 @@ build-base-image:
   variables:
     DOCKERFILE: docker-build-base/Dockerfile
     DESTINATION: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-
-build-docs-image:
-  stage: build-base-image
-  <<: *kaniko_image
-  rules:
-    - <<: *if-changes-on-docs-base-image
-    - when: manual
-      allow_failure: true
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
-  variables:
-    DOCKERFILE: docker-build-base/docs.Dockerfile
-    DESTINATION: ${BASE_IMAGE_DOCS}:${BASE_IMAGE_TAG}
 
 # When on master, the job creates cache containing fully fetched repository in working directory.
 # The cache includes submodules. This will happen once
@@ -689,22 +689,6 @@ lint:
       sccache --show-stats
       ci-log-section end "sccache-stats"
 
-lint-docs:
-  image:
-    name: ${BASE_IMAGE_DOCS}:${BASE_IMAGE_TAG}
-    pull_policy: always
-  stage: test
-  tags:
-    - docker-k8s
-  rules:
-    - <<: *if-changes-on-docs-base-image
-    - <<: *if-changes-on-docs
-    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
-  script:
-    - echo "Checking picodata doc..."
-    - pushd docs && pipenv run lint
-    - echo "Picodata doc successfully checked"
-
 .test-patch-rules: &test-patch-rules
   rules:
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE == "schedule")
@@ -715,113 +699,6 @@ lint-docs:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
     - when: manual
       allow_failure: true
-
-pack-doc:
-  image:
-    name: ${BASE_IMAGE_DOCS}:${BASE_IMAGE_TAG}
-    pull_policy: always
-  stage: pack
-  tags:
-    - docker-k8s
-  needs: [lint-docs]
-  rules:
-    - <<: *if-changes-on-docs-base-image
-    - <<: *if-changes-on-docs
-    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
-  variables:
-    SED_SLUG: "s/[^a-zA-Z0-9.]+/_/g"
-  before_script:
-    - |
-      if [ "$CI_COMMIT_BRANCH" == "master" ]; then
-        PICODATA_DOC_VER="devel"
-      elif [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
-        PICODATA_DOC_VER="$MAIN_BRANCH"
-      else
-        PICODATA_DOC_VER="$(echo $CI_COMMIT_REF_NAME | sed -E "$SED_SLUG")"
-      fi
-    - |
-      if [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
-        SITE_URL="https://docs.picodata.io/picodata/$PICODATA_DOC_VER"
-      else
-        SITE_URL="https://docs.binary.picodata.io/picodata/$PICODATA_DOC_VER"
-      fi
-    - cd docs/
-  script:
-    # Automatic Loading of .env — https://pipenv.pypa.io/en/stable/shell.html
-    - echo "Pack picodata doc..."
-    - echo "PICODATA_DOC_VER=$PICODATA_DOC_VER" | tee .env
-    - echo "SITE_URL=$SITE_URL" | tee -a .env
-    - DATE=$(date +%Y%m%d%H%M%S)
-    - FNAME="picodata-doc-${DATE}-${PICODATA_DOC_VER}-${CI_COMMIT_SHA}.tgz"
-    - echo "FNAME=$FNAME" | tee -a .env
-    - echo "GIT_DESCRIBE=$(git describe --always)" | tee -a .env
-    - pipenv run mkdocs build -sd build
-    - pushd build
-    - >
-      chromium --headless --disable-gpu --no-sandbox --no-zygote
-      --disable-software-rasterizer --disable-dev-shm-usage --no-pdf-header-footer
-      --print-to-pdf=picodata_docs.pdf picodata_docs.html
-    - cp picodata_docs.pdf ../
-    - tar -cvzf ../$FNAME .
-    - popd
-    - echo "Picodata doc successfully packed."
-  artifacts:
-    name: "artifacts-vars-${CI_PIPELINE_ID}"
-    paths:
-      - docs/picodata-doc-*.tgz
-      - docs/picodata_docs.pdf
-    reports:
-      dotenv: docs/.env
-
-upload-doc-to-binary:
-  image: docker.binary.picodata.io/curlimages/curl
-  stage: pack
-  tags:
-    - docker-k8s
-  rules:
-    - <<: *if-changes-on-docs-base-image
-    - <<: *if-changes-on-docs
-    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
-  variables:
-    GIT_STRATEGY: none
-  script:
-    - cd docs/
-    - echo "Upload picodata doc to binary..."
-    - echo "FNAME=$FNAME"
-    - 'curl --fail -H "Authorization: Basic ${WWW_RAW_RW}" --upload-file $FNAME https://binary.picodata.io/repository/www-raw/$FNAME'
-    - echo "Picodata doc successfully uploaded to binary."
-  needs:
-    - job: pack-doc
-      artifacts: true
-
-.deploy-doc:
-  stage: deploy
-  rules:
-    - <<: *if-changes-on-docs-base-image
-    - <<: *if-changes-on-docs
-  variables:
-    STAGE: TEST
-    PICODATA_DOC: $FNAME
-    PICODATA_DOC_SUBDIR: $PICODATA_DOC_VER
-  trigger:
-    project: "picodata/web-site/infra"
-    strategy: depend
-  needs:
-    - job: pack-doc
-      artifacts: true
-    - job: upload-doc-to-binary
-
-deploy-doc-staging:
-  extends:
-    - .deploy-doc
-
-deploy-doc-prod:
-  extends:
-    - .deploy-doc
-  rules:
-    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
-  variables:
-    STAGE: PROD
 
 test-patch-picodata:
   stage: test
