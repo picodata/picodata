@@ -89,8 +89,8 @@ Picodata — это распределенная система промышле
             <h3>Развёртывание</h3>
             <p><ul>
             <li><a href="admin/deploy_ansible/">Развёртывание в Ansible</a></li>
-            <li><a href="admin/deploy_kubernetes/">Развёртывание в Kubernetes</a></li>
             <li><a href="admin/server_setup/">Настройка серверов для кластера</a></li>
+            <li><a href="admin/cluster_update/">Обновление кластера</a></li>
             </ul></p>
             <h3>Настройка и обслуживание</h3>
             <p><ul>
