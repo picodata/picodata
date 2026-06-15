@@ -314,7 +314,7 @@ curl -s "http://127.0.0.1:8081/api/v1/session"     -H "Authorization: Bearer eyJ
 
 ### Оценка состояния инстанса для Kubernetes {: #k8s_endpoints }
 
-Эндпоинты, предназначенные для оценки состояния инстанса в [Kubernetes],
+Эндпоинты, предназначенные для оценки состояния инстанса в Kubernetes,
 не требуют авторизации и могут использоваться как в адресной строке
 веб-браузера, так и в терминале (например, с `curl`). Доступны следующие
 эндпоинты:
@@ -335,7 +335,6 @@ curl -s "http://127.0.0.1:8081/api/v1/session"     -H "Authorization: Bearer eyJ
 
 [`instance.http.kubernetes_probes`]: ../reference/config.md#instance_http_kubernetes_probes
 [файле конфигурации]: ../reference/config.md
-[Kubernetes]: deploy_kubernetes.md
 
 Оценка успешного запуска инстанса (`startup`) строится на следующих
 критериях:
