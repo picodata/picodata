@@ -183,12 +183,6 @@ fn get_replicaset_to_configure<'t>(
         // cluster per each replicaset
         for instance in topology_ref.all_instances() {
             let instance_name = &instance.name;
-            if has_states!(instance, Expelled -> *) {
-                // Expelled instances are ignored for everything,
-                // we only store them for history
-                continue;
-            }
-
             if instance.replicaset_name != replicaset_name {
                 continue;
             }

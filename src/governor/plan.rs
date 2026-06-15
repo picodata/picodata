@@ -1319,10 +1319,6 @@ fn get_replicaset_state_change<'i>(
     let mut replicaset_sizes = HashMap::new();
     for instance in maybe_responding(instances) {
         let instance_name = &instance.name;
-        if has_states!(instance, Expelled -> *) {
-            continue;
-        }
-
         let replicaset_name = &instance.replicaset_name;
         let tier = &instance.tier;
 

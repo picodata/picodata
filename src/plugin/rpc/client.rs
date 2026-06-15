@@ -393,7 +393,7 @@ fn filter_instances_by_state(
     while index < instance_names.len() {
         let name = &instance_names[index];
         let instance = topology_ref.instance_by_name(name)?;
-        if has_states!(instance, Expelled -> *) || !instance.may_respond() {
+        if !instance.may_respond() {
             instance_names.swap_remove(index);
         } else {
             index += 1;
