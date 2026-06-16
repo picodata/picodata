@@ -3,13 +3,13 @@
 // However, implementation of some auth methods (md5, scram, ldap) was moved to picodata,
 // so now these tests have to live in picodata with the auth methods they test.
 
-use crate::tarantool::test_util::{listen_port, tls_listen_port};
-use std::{io::Write as _, path::PathBuf, time::Duration};
+use crate::tarantool::test_util::{get_tls_connector, listen_port, tls_listen_port};
+use std::{io::Write as _, time::Duration};
 use tarantool::{
     auth::{AuthData, AuthMethod},
     fiber::{self, r#async::timeout::IntoTimeout as _},
     net_box::{Conn, ConnOptions},
-    network::{client::tls, protocol, AsClient as _, Client},
+    network::{protocol, AsClient as _, Client},
 };
 
 #[tarantool::test]
@@ -24,21 +24,6 @@ pub fn auth_data() {
     // Scram generates a random secret every time auth data is constructed,
     //  so we cannot have a fixed value to compare with here.
     assert!(&data.into_string().starts_with("SCRAM-SHA-256$4096:"));
-}
-
-/// Returns TLS connector.
-pub fn get_tls_connector() -> tls::TlsConnector {
-    let cargo_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = cargo_path.join("tarantool/tests/ssl_certs");
-    let cert_file = path.join("server.crt");
-    let key_file = path.join("server.key");
-    let ca_file = path.join("combined-ca.crt");
-    let tls_config = tls::TlsConfig {
-        cert_file: &cert_file,
-        key_file: &key_file,
-        ca_file: Some(&ca_file),
-    };
-    tls::TlsConnector::new(tls_config).unwrap()
 }
 
 pub fn sha256_hex(s: &str) -> String {

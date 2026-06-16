@@ -189,11 +189,11 @@ fn test_one(test: &TestCase) {
 
     crate::set_tarantool_compat_options();
 
-    let cargo_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = cargo_path.join("tarantool/tests/ssl_certs");
-    let cert_file = path.join("server.crt");
-    let key_file = path.join("server.key");
-    let ca_file = path.join("combined-ca.crt");
+    let cert_paths = tarantool::test_util::TEST_TLS_CERT_PATHS.get_or_init(|| {
+        tarantool::test_util::TEST_TLS_CERTS
+            .write_to(&temp.path().join("ssl_certs"))
+            .expect("failed to write TLS certs to the temp directory")
+    });
 
     let cfg = tarantool::Cfg {
         listen: vec![
@@ -205,9 +205,9 @@ fn test_one(test: &TestCase) {
                 uri: "127.0.0.1:0".to_string(),
                 params: Some(tarantool::ListenConfigParams {
                     transport: "ssl".to_string(),
-                    ssl_cert_file: Some(cert_file),
-                    ssl_key_file: Some(key_file),
-                    ssl_ca_file: Some(ca_file),
+                    ssl_cert_file: Some(cert_paths.cert_file.clone()),
+                    ssl_key_file: Some(cert_paths.key_file.clone()),
+                    ssl_ca_file: Some(cert_paths.ca_file.clone()),
                 }),
             },
         ],
