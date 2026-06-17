@@ -88,6 +88,7 @@ sqlformat = "0.4"
 sqlparser = { version = "0.40", features = ["visitor"] }
 stringprep = "0.1"
 subtle = "2.5"
+symbolic-demangle = { version = "13.2", default-features = false, features = ["rust", "cpp"] }
 tempfile = "3.8"
 thiserror = { workspace = true }
 time = { workspace = true, features = ["parsing", "formatting", "macros"] }

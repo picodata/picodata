@@ -77,6 +77,7 @@ pub mod cbus;
 pub mod cli;
 mod compatibility;
 pub mod config;
+mod demangle;
 pub mod discovery;
 pub mod error_code;
 pub mod error_injection;
