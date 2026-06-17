@@ -1136,6 +1136,34 @@ impl Service for CustomListenerService {
     }
 }
 
+/// Used to test that the transaction that accesses a vinyl space it doesn't have access to, picodata doesn't crash
+struct VinylTxDenialService;
+
+impl Service for VinylTxDenialService {
+    type Config = ();
+
+    fn on_start(&mut self, _ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult<()> {
+        picodata_plugin::authentication::authenticate("my_user", "T0pSecret!").unwrap();
+
+        // check that the read fails without crashing
+        _ = tarantool::transaction::transaction::<(), BoxError, _>(|| {
+            let cool_space = tarantool::space::Space::find("my_cool_space").unwrap();
+
+            // have read access on the table to make the transaction multi-statement
+            assert!(cool_space.get(&(2,)).is_ok());
+
+            let mut ops = UpdateOps::new();
+            ops.add(2, 123).expect("the op is fine");
+            // no write access on the table
+            assert!(cool_space.update(&(1,), ops).is_err());
+
+            Ok(())
+        });
+
+        Ok(())
+    }
+}
+
 // Ensures that macros usage at least compiles.
 #[tarantool::proc]
 fn example_stored_proc() {}
@@ -1184,4 +1212,6 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
 
     reg.add("listenerservice", "0.1.0", || ListenerService);
     reg.add("customlistenerservice", "0.1.0", || CustomListenerService);
+
+    reg.add("vinyl_tx_denial_service", "0.1.0", || VinylTxDenialService);
 }

@@ -1,0 +1,7 @@
+description: plugin for checking that vinyl tx denial does not crash picodata
+name: testplug_vinyl_tx_denial
+version: 0.1.0
+services:
+  - name: vinyl_tx_denial_service
+    description: test that a transaction that fails with "access denied" that touches the vinyl space does not crash picodata
+    default_configuration:

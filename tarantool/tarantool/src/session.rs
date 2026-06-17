@@ -92,7 +92,8 @@ mod picodata {
     use crate::{
         error::{Error, TarantoolError},
         ffi::tarantool::{
-            box_effective_user_id, box_session_su, box_session_user_id, box_user_id_by_name,
+            box_effective_user_id, box_session_su, box_session_user_id, box_session_user_name,
+            box_user_id_by_name,
         },
     };
 
@@ -137,6 +138,24 @@ mod picodata {
             return Err(Error::Tarantool(TarantoolError::last()));
         }
         Ok(uid)
+    }
+
+    #[inline]
+    pub fn user_name() -> Result<String, Error> {
+        // SAFETY: absence of session and the user are handled in the C code, so the output of this
+        // function is always valid. It might be NULL, but this case is handled on the next line
+        let user_ptr = unsafe { box_session_user_name() };
+        if user_ptr.is_null() {
+            return Err(Error::Tarantool(TarantoolError::last()));
+        }
+        // SAFETY: the ptr is not null, the string is allocated in continuous memory, the string is
+        // NULL-terminated because the `user_def`'s name is allocated via `grp_alloc_create_str` in
+        // `user_def_new`, so it is safe
+        let user = unsafe { std::ffi::CStr::from_ptr(user_ptr) }
+            .to_str()
+            .map_err(Error::Unicode)?
+            .to_owned();
+        Ok(user)
     }
 }
 

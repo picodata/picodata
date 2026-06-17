@@ -3765,3 +3765,27 @@ def test_plugin_listener_config_validation(cluster: Cluster):
     # Plugin should handle missing config gracefully
     # Instance should still be online
     i1.wait_online()
+
+
+def test_plugin_vinyl_tx_access_denial_crash_gl_2914(cluster: Cluster):
+    plugin = "testplug_vinyl_tx_denial"
+    version = "0.1.0"
+    service = "vinyl_tx_denial_service"
+
+    i1 = cluster.add_instance()
+
+    # create a vinyl table and fill it with data
+    i1.sql('CREATE TABLE my_cool_space (a INT PRIMARY KEY, b INT) USING vinyl DISTRIBUTED BY ("a")')
+    i1.sql("INSERT INTO my_cool_space VALUES (1, 11), (2, 22), (3, 33)")
+    # create a user that doesn't have read and write access to the said table
+    i1.sql("CREATE USER my_user WITH PASSWORD 'T0pSecret!' WAIT APPLIED GLOBALLY")
+    # give read access to make the transaction multi-statement without crashing on the first statement
+    i1.sql("GRANT READ ON TABLE my_cool_space TO my_user")
+
+    # create the plugin and enable it
+    i1.sql(f"CREATE PLUGIN {plugin} {version}")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ADD SERVICE {service} TO TIER default")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ENABLE")
+
+    # if the fix doesn't work, the instance should crash
+    i1.wait_online()

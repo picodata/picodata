@@ -13,7 +13,6 @@
 // Prevents ok_or(BoxError::new(...))
 #![warn(clippy::or_fun_call)]
 
-use crate::access_control::user_by_id;
 use crate::address::HttpAddress;
 use crate::instance::Instance;
 use crate::instance::StateVariant::*;
@@ -32,7 +31,6 @@ use crate::tarantool::{rm_tarantool_files, ListenConfig};
 use crate::traft::error::Error;
 use crate::traft::op;
 use crate::traft::Result;
-use crate::util::effective_user_id;
 use ::raft::prelude as raft;
 use ::raft::Storage;
 use ::sql::frontend::sql::transform_to_regex_pattern;
@@ -1005,16 +1003,9 @@ fn set_on_access_denied_audit_trigger() {
                   object_type: String, // dummy comment praising rustfmt
                   object: String,
                   _lua: tlua::LuaState| {
-                let effective_user = effective_user_id();
                 let privilege = privilege.to_lowercase();
 
-                // we do not have box.session.user() equivalent that returns an id straight away
-                // so we look up the user by id.
-                // Note: since we're in a user context we may not have access to use space.
-                let user = session::with_su(ADMIN_ID, || {
-                    user_by_id(effective_user).expect("user exists").name
-                })
-                .expect("must be able to su into admin");
+                let user = session::user_name().expect("user exists");
 
                 crate::audit!(
                     message: "{privilege} access denied \
