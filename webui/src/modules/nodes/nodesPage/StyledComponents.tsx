@@ -14,10 +14,3 @@ export const NodesPageContainer = styled(Box)({
 export const ContentContainer = styled(Box)({
   overflow: "hidden",
 });
-export const LoadContainer = styled(Box)({
-  overflow: "hidden",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: "100%",
-});

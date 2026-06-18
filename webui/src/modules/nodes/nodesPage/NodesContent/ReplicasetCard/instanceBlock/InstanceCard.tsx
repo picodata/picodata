@@ -11,12 +11,13 @@ import {
   Cell,
   CellCenter,
   CellLabel,
-  CellValue,
   ContentFlexCell,
   ContentFlexCenteredCell,
   Ellipsis,
+  LinkCellValue,
   VotersStatusBlock,
 } from "../../common";
+import { useOpenFullInstanceCard } from "../../FullInstanceCard";
 
 import { FailureDomainLabel } from "./FailureDomainLabel/FailureDomainLabel";
 import { AddressBlock } from "./AddressBlock/AddressBlock";
@@ -54,6 +55,12 @@ export const InstanceCardAlt = memo(
   }: InstanceCardAltProps) => {
     const { translation } = useTranslation();
     const instanceTranslations = translation.pages.instances.list.instanceCard;
+    const { openFullInstanceCard } = useOpenFullInstanceCard();
+
+    const instanceNameClickHandler = () => {
+      openFullInstanceCard(instance.uuid);
+    };
+
     return (
       <InstanceBackground
         className={"item"}
@@ -95,13 +102,18 @@ export const InstanceCardAlt = memo(
                     </LeaderBlock>
                   ) : null}
                 </InstanceTypeBlock>
-                <ContentFlexCenteredNameCell $fromReplicaset={fromReplicaset}>
+                <ContentFlexCenteredNameCell
+                  $fromReplicaset={fromReplicaset}
+                  onClick={instanceNameClickHandler}
+                >
                   {!fromReplicaset ? (
                     <CellLabel>{instanceTranslations.name.label}</CellLabel>
                   ) : null}
                   <Ellipsis>
                     <Tooltip title={instance.name}>
-                      <CellValue>{instance.name}</CellValue>
+                      <LinkCellValue className={"instance-name"}>
+                        {instance.name}
+                      </LinkCellValue>
                     </Tooltip>
                   </Ellipsis>
                 </ContentFlexCenteredNameCell>

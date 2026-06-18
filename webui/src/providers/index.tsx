@@ -1,5 +1,7 @@
 import { ReactNode } from "react";
 
+import { SnackBarProvider } from "../shared/ui/SnackBar/SnackBar";
+
 import { ApiProvider } from "./ApiProvider";
 import { AppConfigProvider } from "./AppConfigProvider";
 import { IntlProvider } from "./IntlProvider";
@@ -9,7 +11,9 @@ export const AppProviders = (props: { children: ReactNode }) => (
   <IntlProvider>
     <ApiProvider>
       <AppConfigProvider>
-        <RefreshProvider>{props.children}</RefreshProvider>
+        <RefreshProvider>
+          <SnackBarProvider>{props.children}</SnackBarProvider>
+        </RefreshProvider>
       </AppConfigProvider>
     </ApiProvider>
   </IntlProvider>

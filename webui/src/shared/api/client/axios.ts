@@ -1,4 +1,4 @@
-import axios, { AxiosError, AxiosRequestConfig } from "axios";
+import axios, { AxiosError, AxiosRequestConfig, create } from "axios";
 import { useContext, useMemo } from "react";
 
 import { useAppConfig } from "shared/entity/config";
@@ -15,8 +15,7 @@ export const useAuthAxios = () => {
       return axios;
     }
 
-    // eslint-disable-next-line import/no-named-as-default-member
-    const instance = axios.create(withToken(() => tokens.auth));
+    const instance = create(withToken(() => tokens.auth));
     // Use axios interceptor instead of QueryConfig.onError or QueryConfig.retry
     // because we need the original request semantics to be intact
     // plus make it appear as if the request has succeeded when refresh happens

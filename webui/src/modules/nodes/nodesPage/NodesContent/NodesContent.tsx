@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 
 import { TierNodeType, TierType } from "shared/entity/tier";
@@ -13,7 +13,7 @@ import { NodesFork } from "./NodesFork";
 import { ContentWrapper } from "./Content";
 import { NodesNoData } from "./StyledComponents";
 import { useFilterTags, useFilterValue } from "./hooks";
-
+import { FullInstanceCard, useOpenFullInstanceCard } from "./FullInstanceCard";
 type NodesContentProps = {
   data?: {
     tiers: TierType[];
@@ -27,6 +27,7 @@ export const NodesContent = memo(({ data }: NodesContentProps) => {
   const filterTags = useFilterTags(data);
   const [filterValue, setFilterValue] = useFilterValue();
   const { translation } = useTranslation();
+  const { fullInstanceId, closeFullInstanceCard } = useOpenFullInstanceCard();
   const instancesTranslations = translation.pages.instances;
   const groupedByTiers = groupByFilterValue === "TIERS";
 
@@ -79,6 +80,11 @@ export const NodesContent = memo(({ data }: NodesContentProps) => {
     [nodesList, nodeClickHandler, groupedByTiers]
   );
 
+  const openedInstance = useMemo(
+    () => (data?.instances || []).find(({ uuid }) => uuid === fullInstanceId),
+    [data, fullInstanceId]
+  );
+
   return (
     <>
       <ContentWrapper
@@ -104,6 +110,13 @@ export const NodesContent = memo(({ data }: NodesContentProps) => {
           <NodesNoData>{instancesTranslations.noData.text}</NodesNoData>
         )}
       </ContentWrapper>
+      {openedInstance ? (
+        <FullInstanceCard
+          instance={openedInstance}
+          onClose={closeFullInstanceCard}
+          instances={data?.instances || []}
+        />
+      ) : null}
     </>
   );
 });

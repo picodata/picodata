@@ -112,14 +112,20 @@ export const InstanceNameCell = styled(CommonCell)<{
 
 export const ContentFlexCenteredNameCell = styled(ContentFlexCenteredCell)<{
   $fromReplicaset: boolean;
-}>(({ $fromReplicaset }) =>
-  $fromReplicaset
+}>(({ $fromReplicaset, theme }) => ({
+  ...($fromReplicaset
     ? {
         alignItems: "flex-start",
         justifyContent: "center",
       }
-    : {}
-);
+    : {}),
+  cursor: "pointer",
+  "&:hover": {
+    "& .instance-name": {
+      color: theme.palette.primary.main,
+    },
+  },
+}));
 
 export const InstanceBackground = styled(Background)<{
   $withBottomPadding: boolean;

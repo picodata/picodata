@@ -31,6 +31,12 @@ export const CellValue = styled(Box)({
   lineHeight: "16px",
   overflow: "hidden",
 });
+export const LinkCellValue = styled(CellValue)(({ theme }) => ({
+  cursor: "pointer",
+  "&:hover": {
+    color: theme.palette.primary.main,
+  },
+}));
 
 export const Cell = styled(Box)({
   cursor: "pointer",
