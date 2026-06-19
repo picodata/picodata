@@ -469,37 +469,45 @@ $ <picodata_share_dir>/radix/1.0.4/radix-cli migrate redis://localhost:7379/1 re
 ## Настройка плагина {: #configuration }
 
 Для настройки плагина используйте файл конфигурации, который можно
-применить к плагину с помощью [Picodata Pike] или [инвентарного файла
-Ansible].
+применить к плагину с помощью команды [`picodata plugin
+configure`], [инвентарного файла Ansible] или [Picodata Pike].
 
 Пример файла конфигурации:
 
 ```yaml
-clients: # ограничения клиентских соединений
-  max_clients: 10000
-  max_input_buffer_size: 1073741824
-  max_output_buffer_size: 1073741824
-redis_compatibility: # совместимость с разными версиями Редиса
-  enabled_deprecated_commands: []
-  enforce_one_slot_transactions: false
-  push_result_includes_popped_items: true
-  disable_scatter_gather: true
-cluster_mode: true
-sentinel_enabled: false
-max_defer_actions_per_iteration: 100
-authorization_mode: # авторизация
-  state: disabled
-eviction: # вытеснение ключей
-  policy: volatile-ttl
-  max_samples: 5
-  lfu_decay_time: 60
-  lfu_log_factor: 10
-  watermark: 0.81
-  tenacity: 10
+radix:
+  clients: # ограничения клиентских соединений
+    max_clients: 10000
+    max_input_buffer_size: 1073741824
+    max_output_buffer_size: 1073741824
+  redis_compatibility: # совместимость с разными версиями Редиса
+    enabled_deprecated_commands: []
+    enforce_one_slot_transactions: false
+    push_result_includes_popped_items: true
+    disable_scatter_gather: true
+  cluster_mode: true
+  sentinel_enabled: false
+  max_defer_actions_per_iteration: 100
+  authorization_mode: # авторизация
+    state: disabled
+  eviction: # вытеснение ключей
+    policy: volatile-ttl
+    max_samples: 5
+    lfu_decay_time: 60
+    lfu_log_factor: 10
+    watermark: 0.81
+    tenacity: 10
 ```
 
 [Picodata Pike]: ../dev/plugin_create.md#pike_plugin_config_apply
+[`picodata plugin configure`]: ../reference/cli.md#plugin_configure
 [инвентарного файла Ansible]: ../admin/deploy_ansible.md#plugin_management
+
+Пример команды, применяющей файл конфигурации:
+
+```shell
+picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file radix/secret.txt radix 1.0.4 radix/plugin_config.yaml
+```
 
 ### Настройка адресов и TLS {: #tls_settings }
 
