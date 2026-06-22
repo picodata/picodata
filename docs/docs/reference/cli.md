@@ -891,6 +891,17 @@ picodata plugin configure <ADDRESS> <PLUGIN_NAME> <PLUGIN_VERSION> <PLUGIN_CONFI
 [p]: ../overview/glossary.md#plugin
 [m]: ../architecture/plugins.md#manifest
 
+### --peer {: #plugin_configure_peer }
+
+`--peer <HOST:PORT>`
+
+Адрес любого инстанса из состава кластера.
+
+Значение по умолчанию: `127.0.0.1:3301`
+
+Аналогичная переменная окружения: `PICODATA_PEER`<br>
+Аналогичный параметр файла конфигурации: [`instance.peer`]
+
 ### --service-names {: #plugin_configure_service_names }
 
 `--service-names <SERVICE_NAMES>`
