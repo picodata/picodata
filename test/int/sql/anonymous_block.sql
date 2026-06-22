@@ -1227,3 +1227,43 @@ END $$;
 SELECT a FROM tc WHERE pk = 1;
 -- EXPECTED:
 40,
+
+-- TEST: multiple-rows-in-let-subquery-1
+-- SQL:
+DO $$
+BEGIN
+    let x = (values (1), (2));
+END $$;
+-- ERROR:
+Expression subquery returned more than 1 row
+
+-- TEST: multiple-rows-in-if-subquery-2
+-- SQL:
+DO $$
+BEGIN
+    let x = (select id from _pico_table);
+END $$;
+-- ERROR:
+Expression subquery returned more than 1 row
+
+-- TEST: multiple-rows-in-if-subquery-1
+-- SQL:
+DO $$
+BEGIN
+    if (select 1 union all select 2) > 0 then
+        UPDATE t SET a = a + 1 WHERE pk = 1;
+    end if;
+END $$;
+-- ERROR:
+Expression subquery returned more than 1 row
+
+-- TEST: multiple-rows-in-if-subquery-2
+-- SQL:
+DO $$
+BEGIN
+    if (select id from _pico_table) > 0 then
+        UPDATE t SET a = a + 1 WHERE pk = 1;
+    end if;
+END $$;
+-- ERROR:
+Expression subquery returned more than 1 row
