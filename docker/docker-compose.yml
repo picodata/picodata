@@ -6,7 +6,7 @@ services:
     environment:
       PICODATA_ADMIN_PASSWORD: T0psecret
     volumes:
-      - $PWD:/data
+      - $PWD/pico:/data
       - $PWD/picodata-1-1.conf:/var/lib/picodata/picodata.yaml
     ports:
       - "13301:3301"
@@ -23,7 +23,7 @@ services:
     container_name: picodata-1-2
     hostname: picodata-1-2
     volumes:
-      - $PWD:/data
+      - $PWD/pico:/data
       - $PWD/picodata-1-2.conf:/var/lib/picodata/picodata.yaml
     ports:
       - "13302:3301"
@@ -34,7 +34,7 @@ services:
     container_name: picodata-2-1
     hostname: picodata-2-1
     volumes:
-      - $PWD:/data
+      - $PWD/pico:/data
       - $PWD/picodata-2-1.conf:/var/lib/picodata/picodata.yaml
     ports:
       - "13303:3301"
@@ -45,7 +45,7 @@ services:
     container_name: picodata-2-2
     hostname: picodata-2-2
     volumes:
-      - $PWD:/data
+      - $PWD/pico:/data
       - $PWD/picodata-2-2.conf:/var/lib/picodata/picodata.yaml
     ports:
       - "13304:3301"

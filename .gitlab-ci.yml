@@ -942,12 +942,15 @@ docker-compose:
     - when: manual
       allow_failure: true
   script:
+    - cd docker
     - mkdir --mode=777 pico/
-    - cd docker && docker-compose up -d --wait
+    - docker-compose up -d --wait
     - sleep 30 # the cluster does not manage to assemble quickly enough
     - count=$(psql "user=admin host=127.0.0.1 port=55432 password=T0psecret sslmode=disable" -t -A -c "select count(*) from \"_pico_instance\"") && if [[ $count -eq 4 ]] ; then echo "OK"; else echo count=$count; exit 2; fi
   after_script:
-    - cd docker && docker-compose rm -fsv
+    - cd docker
+    - docker-compose logs
+    - docker-compose rm -fsv
     - sudo rm -rf pico/
 
 check-pycopin:
