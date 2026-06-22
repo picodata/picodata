@@ -26,7 +26,7 @@ pub struct RaftSpaceAccess {
 
 impl RaftSpaceAccess {
     const SPACE_RAFT_LOG: &'static str = "_raft_log";
-    const SPACE_ID_RAFT_LOG: SpaceId = 518;
+    pub const SPACE_ID_RAFT_LOG: SpaceId = 518;
     pub const SPACE_RAFT_STATE: &'static str = "_raft_state";
     const SPACE_ID_RAFT_STATE: SpaceId = 519;
     const FIELD_STATE_VALUE: u32 = 1;

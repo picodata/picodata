@@ -26,6 +26,7 @@ use crate::error::{self, Error, Result, TarantoolError};
 use crate::ffi::sql::PortC;
 use crate::ffi::tarantool as ffi;
 use crate::index;
+use crate::space::SpaceId;
 use crate::tlua;
 
 /// Tuple
@@ -318,6 +319,24 @@ impl Tuple {
     #[inline(always)]
     pub fn as_ptr(&self) -> *mut ffi::BoxTuple {
         self.ptr.as_ptr()
+    }
+
+    /// Checks whether a tuple of `size` bytes would fit into `space`.
+    ///
+    /// Returns an error both when the tuple is too big for the space's
+    /// engine and when `space` itself doesn't exist, since both cases
+    /// set the same diagnostics and are indistinguishable through the
+    /// return code alone.
+    #[cfg(feature = "picodata")]
+    pub fn check_size(space: SpaceId, size: usize) -> Result<()> {
+        // SAFETY: It just compares `size` against a limit, so
+        // any value of `size` is safe, as well as `space` values
+        // because it is checked at the C side and returns an error.
+        let rc = unsafe { ffi::box_tuple_check_size(space, size) };
+        if rc != 0 {
+            return Err(TarantoolError::last().into());
+        }
+        Ok(())
     }
 }
 

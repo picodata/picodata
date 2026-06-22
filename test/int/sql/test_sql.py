@@ -7359,3 +7359,56 @@ def test_gl2626(cluster: Cluster):
         """
     )
     assert result == [[1]]
+
+
+# This is a regression test on
+# <https://git.picodata.io/core/picodata/-/issues/2825>:
+#
+# DML on a globally distributed table goes through the Raft log,
+# which adds its own small overhead on top of the tuple data.
+#
+# Before the fix, the pre-commit size check estimated the encoded
+# tuple size by hand and compared it to `max_tuple_size`, ignoring
+# the engine's per-tuple header and field map. A tuple just under
+# the limit passed the check but was then rejected by the actual
+# insert inside the Raft transaction, crashing the instance.
+#
+# After the fix, the check calls the engine's own `box_tuple_check_size`
+# API, so it matches what a real insert enforces and the oversized
+# tuple is rejected before commit, without crashing the instance.
+def test_gl2825_oversized_tuple_in_raft_log(cluster: Cluster):
+    cluster.deploy(instance_count=3)
+    instance = cluster.instances[0]
+
+    instance.sql(
+        """
+        CREATE TABLE t (
+            id INTEGER,
+            data TEXT,
+            PRIMARY KEY (id)
+        ) USING memtx
+        DISTRIBUTED GLOBALLY;
+        """
+    )
+
+    # XXX(kbezuglyi): 108 is the offset used in `test_cas_errors` for a direct
+    # `.cas()` call, which builds `Op::Dml`. SQL's INSERT never collapses, thus
+    # always builds `Op::BatchDml { ops }`, even for one row. This wraps the
+    # encoded Raft log context in an extra array + tag string instead of merging
+    # into one map, adding a fixed 2 bytes of overhead.
+    size = 1024 * 1024 - 108 + 2
+    data = "x" * size
+    with pytest.raises(
+        expected_exception=TarantoolError,
+        match="MemtxMaxTupleSize",
+    ):
+        instance.sql(
+            """
+            INSERT INTO t
+            VALUES (?, ?);
+            """,
+            1,
+            data,
+        )
+
+    cluster.check_health()

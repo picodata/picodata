@@ -1124,6 +1124,18 @@ extern "C" {
     ) -> c_int;
     #[cfg(feature = "picodata")]
     pub fn box_tuple_hash(tuple: *mut BoxTuple, key_def: *mut BoxKeyDef) -> c_uint;
+    /// Check whether a tuple of the given MsgPack data would fit within the
+    /// configured `max_tuple_size` of the space's engine. The check is
+    /// constant-time: it adds the engine's per-tuple header and the format's
+    /// field map size to the data length, without allocating the tuple or
+    /// walking its fields. The result is exact, except for a space with a
+    /// multikey index, where the field map size is bounded conservatively
+    /// and a tuple close to the limit may be reported as oversized.
+    #[cfg(feature = "picodata")]
+    pub fn box_tuple_check_size(
+        space_id: u32,    /* uint32_t */
+        tuple_len: usize, /* size_t */
+    ) -> c_int;
 }
 
 pub(crate) const TUPLE_FIELD_BY_PATH_OLD_API: &str = "tuple_field_raw_by_full_path\0";

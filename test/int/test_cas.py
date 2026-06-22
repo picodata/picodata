@@ -166,15 +166,17 @@ def test_cas_errors(instance: Instance):
         # NOTE: this size is carefully chosen so that the inserted tuple doesn't
         # exceed the threshold, but the raft log tuple (which also contains some
         # additional metadata) does exceed the limit.
-        size = 1024 * 1024 - 79
+        size = 1024 * 1024 - 108
         instance.cas(
             "insert",
             "_pico_property",
             ["X", "X" * size],
         )
+    # NOTE: The connector labels error code 110 as ER_SLAB_ALLOC_MAX (legacy
+    # name), but actual server-side code 110 is ER_MEMTX_MAX_TUPLE_SIZE.
     assert error.value.args[:2] == (
         "ER_SLAB_ALLOC_MAX",
-        "tuple size 1048592 exceeds the allowed limit",  # noqa: E501
+        "box error: MemtxMaxTupleSize: Failed to allocate 1048577 bytes for tuple: tuple is too large. Check 'memtx_max_tuple_size' configuration option.",  # noqa: E501
     )
 
 

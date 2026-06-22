@@ -294,9 +294,16 @@ impl Encode for Entry {}
 
 impl Entry {
     /// Computes the number of bytes the entry with these fields will take up
-    /// when encoded into a tuple. This function is used to catch early the
-    /// entries which exceed the max_tuple_size threshold.
-    pub fn tuple_size(index: RaftIndex, term: RaftTerm, data: &[u8], context: &[u8]) -> usize {
+    /// when encoded into a tuple and checks whether this tuple will fit.
+    /// This function is used to catch early the entries which exceed the
+    /// max_tuple_size threshold.
+    pub fn check_tuple_size(
+        space: tarantool::space::SpaceId,
+        index: RaftIndex,
+        term: RaftTerm,
+        data: &[u8],
+        context: &[u8],
+    ) -> tarantool::Result<()> {
         // This capacity fits any msgpack value header and then some
         const CAPACITY: usize = 16;
         let mut dummy = [0_u8; CAPACITY];
@@ -326,7 +333,13 @@ impl Entry {
         // Context is already encoded as msgpack value, so we use it's length as is
         let context_size = context.len();
 
-        msgpack_header_size + entry_type_size + index_size + term_size + data_size + context_size
+        let total_size = msgpack_header_size
+            + entry_type_size
+            + index_size
+            + term_size
+            + data_size
+            + context_size;
+        tarantool::tuple::Tuple::check_size(space, total_size)
     }
 }
 
@@ -929,8 +942,14 @@ mod test {
     // Existing tests
     // =========================================================================
 
-    #[test]
+    #[::tarantool::test]
     fn traft_entry_tuple_size_calculation() {
+        // `Entry::check_tuple_size` calls into the live `box` via
+        // FFI, so the `_raft_log` space must exist before the check
+        // and the Tarantool itself must be initialized via `box.cfg`.
+
+        let _ = RaftSpaceAccess::new().unwrap();
+
         let entry = Entry {
             entry_type: raft::EntryType::EntryNormal,
             index: 420,
@@ -955,7 +974,13 @@ mod test {
         #[rustfmt::skip]
         eprintln!("{}", tarantool::util::DisplayAsHexBytes(&encoded_context));
 
-        let fast_size = Entry::tuple_size(entry.index, entry.term, &entry.data, &encoded_context);
-        assert_eq!(entry_tuple.len(), fast_size);
+        Entry::check_tuple_size(
+            RaftSpaceAccess::SPACE_ID_RAFT_LOG,
+            entry.index,
+            entry.term,
+            &entry.data,
+            &encoded_context,
+        )
+        .unwrap();
     }
 }

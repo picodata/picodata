@@ -15,7 +15,6 @@ use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::config::apply_parameter;
 use crate::config::AlterSystemParametersRef;
-use crate::config::PicodataConfig;
 use crate::error_code::ErrorCode;
 use crate::governor;
 use crate::has_states;
@@ -852,11 +851,15 @@ impl NodeImpl {
 
         // Check resulting raft log entry does not exceed the maximum tuple size limit.
         let entry = context.to_raft_entry();
-        let tuple_size = traft::Entry::tuple_size(index_before + 1, term, &[], &entry.context);
-        if tuple_size > PicodataConfig::get().instance.memtx.max_tuple_size() {
-            let message = format!("tuple size {tuple_size} exceeds the allowed limit");
-            tlog!(Warning, "{message}");
-            return Err(BoxError::new(TarantoolErrorCode::MemtxMaxTupleSize, message).into());
+        if let Err(e) = traft::Entry::check_tuple_size(
+            RaftSpaceAccess::SPACE_ID_RAFT_LOG,
+            index_before + 1,
+            term,
+            &[],
+            &entry.context,
+        ) {
+            tlog!(Warning, "tuple size exceeds the allowed limit: {e}");
+            return Err(BoxError::new(TarantoolErrorCode::MemtxMaxTupleSize, e.to_string()).into());
         }
 
         // Copy-pasted from `raft::raw_node::RawNode::propose`
