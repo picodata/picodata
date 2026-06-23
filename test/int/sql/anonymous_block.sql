@@ -63,6 +63,14 @@ END $$;
 3,
 4,
 
+-- TEST: return query-6
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT 1 LIMIT 0;
+END $$;
+-- EXPECTED:
+
 -- TEST: return query-different-buckets
 -- SQL:
 DO $$
@@ -710,6 +718,26 @@ BEGIN
 END $$;
 -- EXPECTED:
 0,
+
+-- TEST: let-no-rows-1
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT 1 LIMIT 0);
+  RETURN QUERY SELECT v;
+END $$;
+-- EXPECTED:
+NULL
+
+-- TEST: let-no-rows-2
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT '' LIMIT 0);
+  RETURN QUERY SELECT v || 'foo';
+END $$;
+-- EXPECTED:
+NULL
 
 -- TEST: let-feeds-update
 -- SQL:
