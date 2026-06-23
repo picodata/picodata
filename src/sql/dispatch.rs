@@ -75,8 +75,17 @@ type CacheMissResponse = LazyCell<
     Result<ExecutionCacheMissData, SbroadError>,
     Box<dyn FnOnce() -> Result<ExecutionCacheMissData, SbroadError>>,
 >;
-/// Weak reference allows entries to be dropped when no longer in use by any execution.
-type MetadataHashMap = HashMap<u64, Weak<CacheMissResponse>>; // plan_id -> CacheMissResponse
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct MetaKey(SmolStr, u64);
+
+impl MetaKey {
+    fn new(request_id: &str, plan_id: u64) -> MetaKey {
+        MetaKey(request_id.into(), plan_id)
+    }
+}
+
+type MetadataHashMap = HashMap<MetaKey, Weak<CacheMissResponse>>;
 const QUERY_METADATA_CAPACITY: usize = 100;
 
 thread_local! {
@@ -85,7 +94,7 @@ thread_local! {
 
 pub struct CacheGuard {
     storage: Rc<Mutex<MetadataHashMap>>,
-    plan_id: u64,
+    key: MetaKey,
     handle: Rc<CacheMissResponse>,
 }
 
@@ -93,7 +102,7 @@ impl Drop for CacheGuard {
     fn drop(&mut self) {
         let mut cache = self.storage.lock();
         if Rc::strong_count(&self.handle) == 1 {
-            cache.remove(&self.plan_id);
+            cache.remove(&self.key);
         }
     }
 }
@@ -110,8 +119,9 @@ impl QueryMetaStorage {
         }
     }
     fn get(&self, request_id: &str, plan_id: u64) -> Result<Rc<CacheMissResponse>, SbroadError> {
+        let key = MetaKey::new(request_id, plan_id);
         let mut metadata = self.query_meta.lock();
-        let Some(value) = metadata.get(&plan_id) else {
+        let Some(value) = metadata.get(&key) else {
             return Err(SbroadError::NotFound(
                 Entity::Query,
                 format_smolstr!("for request_id {} with plan_id {}", request_id, plan_id),
@@ -119,7 +129,7 @@ impl QueryMetaStorage {
         };
         let Some(rc_value) = value.upgrade() else {
             // Stale entry — clean up and report not found
-            metadata.remove(&plan_id);
+            metadata.remove(&key);
             return Err(SbroadError::NotFound(
                 Entity::Query,
                 format_smolstr!("for request_id {} with plan_id {}", request_id, plan_id),
@@ -131,9 +141,10 @@ impl QueryMetaStorage {
         return Ok(rc_value.clone());
     }
 
-    fn put(&self, plan_id: u64, plan: DqlProtocol) -> Result<CacheGuard, SbroadError> {
+    fn put(&self, plan: DqlProtocol) -> Result<CacheGuard, SbroadError> {
+        let key = MetaKey::new(plan.get_request_id(), plan.get_plan_id());
         let mut metadata = self.query_meta.lock();
-        let handle = match metadata.entry(plan_id) {
+        let handle = match metadata.entry(key.clone()) {
             Entry::Vacant(e) => {
                 let rc = Rc::new(CacheMissResponse::new(Box::new(move || {
                     ExecutionCacheMissData::try_from(&plan)
@@ -155,7 +166,7 @@ impl QueryMetaStorage {
 
         Ok(CacheGuard {
             storage: self.query_meta.clone(),
-            plan_id,
+            key,
             handle,
         })
     }
@@ -199,9 +210,8 @@ fn put_query_meta(plan: Option<DqlProtocol>) -> SqlResult<Option<CacheGuard>> {
     let Some(plan) = plan else {
         return Ok(None);
     };
-    let key = plan.get_plan_id();
     let query_meta_storage = QueryMetaStorage::new();
-    Ok(Some(query_meta_storage.put(key, plan)?))
+    Ok(Some(query_meta_storage.put(plan)?))
 }
 
 enum DmlRequest {
@@ -1114,6 +1124,8 @@ fn single_plan_dispatch_dql<'lua, 'p>(
         .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
     let tuple = encode_dql_tuple(&data_source)?;
     let _guard = put_query_meta(Some(data_source))?;
+
+    crate::error_injection!(block "BLOCK_SQL_DISPATCH_AFTER_PUT_META");
 
     let lua_table = lua_single_plan_dispatch(
         lua,
