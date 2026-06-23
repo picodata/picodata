@@ -258,6 +258,14 @@ table.legend {
             <td></td>
         </tr>
         <tr>
+            <td><span class="cluster">can_vote</span></td>
+            <td>Признак тира, определяющий возможность инстансов участвовать в голосовании на выборах raft-лидера.</td>
+            <td>true</td>
+            <td>[picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": false}}'](cli.md#run_config_parameter)</td>
+            <td>[cluster.tier.<tier_name\>.can_vote](config.md#cluster_tier_tier_can_vote)</td>
+            <td></td>
+        </tr>
+        <tr>
             <td><span class="cluster">cluster.name</span></td>
             <td>Имя кластера</td>
             <td>demo</td>
@@ -599,6 +607,22 @@ table.legend {
             <td>PICODATA_REPLICASET_NAME</td>
         </tr>
         <tr>
+            <td><span class="cluster">replication_factor</span></td>
+            <td>Фактор репликации тира.</td>
+            <td>1</td>
+            <td>[picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": true}}'](cli.md#run_config_parameter)</td>
+            <td>[cluster.tier.<tier_name\>.replication_factor](config.md#cluster_tier_tier_replication_factor)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="cluster">replication_mode</span></td>
+            <td>Режим репликации тира (синхронный/асинхронный).</td>
+            <td>async</td>
+            <td>[picodata run -c cluster.tier='{"default": {"replication_mode": "sync", "can_vote": true}}'](cli.md#run_config_parameter)</td>
+            <td>[cluster.tier.<tier_name\>.replication_mode](config.md#cluster_tier_tier_replication_mode)</td>
+            <td></td>
+        </tr>
+        <tr>
             <td><span class="instance">service-password-file</span></td>
             <td>Путь к текстовому файлу с паролем для системного пользователя pico_service</td>
             <td>null</td>
@@ -774,6 +798,14 @@ table.legend {
             <td>4</td>
             <td>[picodata run -c instance.vinyl.write_threads=8](cli.md#run_config_parameter)</td>
             <td>[instance.vinyl.write_threads](config.md#instance_vinyl_write_threads)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">wal_dir</span></td>
+            <td>Директория для хранения файлов журнала упреждающей записи (WAL)</td>
+            <td>значение `instance-dir`</td>
+            <td>[picodata run -c instance.wal_dir=/mnt/fast-disk/wal](cli.md#run_config_parameter)</td>
+            <td>[instance.wal_dir](config.md#instance_wal_dir)</td>
             <td></td>
         </tr>
     </tbody>

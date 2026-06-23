@@ -27,7 +27,7 @@ picodata run --config <PATH>
 
 См. также:
 
-* [`picodata run --config`](cli.md#run_config)
+- [`picodata run --config`](cli.md#run_config)
 
 ## Порядок применения параметров {: #params_priority }
 
@@ -84,66 +84,68 @@ cluster:
       replication_factor: 1 # (7)!
       bucket_count: 3000 # (5)!
       can_vote: true # (6)!
-      wal_mode: write # (57)!
+      wal_mode: write # (9)!
+      replication_mode: async # (8)!
   default_replication_factor: 1 # (1)!
   default_bucket_count: 3000 # (2)!
   shredding: false # (4)!
 instance:
-  instance_dir: . # (17)!
-  backup_dir: ./backup # (48)!
-  wal_dir: . # (50)!
-  name: null # (28)!
-  replicaset_name: null # (35)!
-  tier: default # (36)!
-  failure_domain: {} # (11)!
-  admin_socket: ./admin.sock # (8)!
-  share_dir: null # (34)!
-  audit: null # (9)!
+  instance_dir: . # (19)!
+  backup_dir: ./backup # (50)!
+  wal_dir: . # (52)!
+  name: null # (30)!
+  replicaset_name: null # (37)!
+  tier: default # (38)!
+  failure_domain: {} # (13)!
+  admin_socket: ./admin.sock # (10)!
+  share_dir: null # (36)!
+  audit: null # (11)!
   log:
-    level: info # (24)!
-    destination: null # (22)!
-    format: plain # (23)!
+    level: info # (26)!
+    destination: null # (24)!
+    format: plain # (25)!
   memtx:
-    memory: 64M # (26)!
-    system_memory: 256M # (27)!
-    max_tuple_size: 1M # (25)!
-    dir: . # (58)!
-  vinyl:
-    memory: 128M # (38)!
-    cache: 128M # (37)!
-    bloom_fpr: 0.05 # (39)!
-    max_tuple_size: 1M # (40)!
-    page_size: 8K # (41)!
-    range_size: 1G # (42)!
-    run_count_per_level: 2 # (43)!
-    run_size_ratio: 3.5 # (44)!
-    read_threads: 1 # (45)!
-    write_threads: 4 # (46)!
-    timeout: 60.0 # (47)!
+    memory: 64M # (28)!
+    system_memory: 256M # (29)!
+    max_tuple_size: 1M # (27)!
     dir: . # (59)!
-  boot_timeout: 7200 # (10)!
+  vinyl:
+    memory: 128M # (40)!
+    cache: 128M # (39)!
+    bloom_fpr: 0.05 # (41)!
+    max_tuple_size: 1M # (42)!
+    page_size: 8K # (43)!
+    range_size: 1G # (44)!
+    run_count_per_level: 2 # (45)!
+    run_size_ratio: 3.5 # (46)!
+    read_threads: 1 # (47)!
+    write_threads: 4 # (48)!
+    timeout: 60.0 # (49)!
+    dir: . # (60)!
+  boot_timeout: 7200 # (12)!
   http:
-    enabled: true # (13)!
-    listen: 127.0.0.1:5327 # (15)!
-    advertise: 127.0.0.1:5327 # (12)!
+    enabled: true # (15)!
+    listen: 127.0.0.1:5327 # (17)!
+    advertise: 127.0.0.1:5327 # (14)!
     tls:
-      enabled: false # (16)!
-    kubernetes_probes: true # (14)!
+      enabled: false # (18)!
+    kubernetes_probes: true # (16)!
   iproto:
-    enabled: true # (19)!
-    listen: 127.0.0.1:3301 # (20)!
-    advertise: 127.0.0.1:3301 # (18)!
+    enabled: true # (21)!
+    listen: 127.0.0.1:3301 # (22)!
+    advertise: 127.0.0.1:3301 # (20)!
     tls:
-      enabled: false # (21)!
+      enabled: false # (23)!
   pgproto:
-    enabled: true # (31)!
-    listen: 127.0.0.1:4327 # (32)!
-    advertise: 127.0.0.1:4327 # (30)!
+    enabled: true # (33)!
+    listen: 127.0.0.1:4327 # (34)!
+    advertise: 127.0.0.1:4327 # (32)!
     tls:
-      enabled: false # (33)!
-  peer: # (29)!
+      enabled: false # (35)!
+  peer: # (31)!
   - 127.0.0.1:3301
-  plugin: # (49)!
+  wal_dir: . # (52)!
+  plugin: # (51)!
     plugin-name:
       service:
         service-name:
@@ -158,13 +160,13 @@ instance:
               ca_file: tls_2/ca.crt
               password_file: tls_2/pass.txt
   ldap:
-    enabled: false # (51)!
-    dn_format: null # (52)!
-    connect: null # (53)!
+    enabled: false # (53)!
+    dn_format: null # (54)!
+    connect: null # (55)!
     tls:
-      enabled: false # (54)!
-      method: implicit # (55)!
-      ca_file: null # (56)!
+      enabled: false # (56)!
+      method: implicit # (57)!
+      ca_file: null # (58)!
 ```
 
 1. [cluster.default_replication_factor](#cluster_default_replication_factor)
@@ -174,62 +176,63 @@ instance:
 5. [cluster.tier.<tier_name\>.bucket_count](#cluster_tier_tier_bucket_count)
 6. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
 7. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
-8. [instance.admin_socket](#instance_admin_socket)
-9. [instance.audit](#instance_audit)
-10. [instance.boot_timeout](#instance_boot_timeout)
-11. [instance.failure_domain](#instance_failure_domain)
-12. [instance.http.advertise](#instance_http_advertise)
-13. [instance.http.enabled](#instance_http_enabled)
-14. [instance.http.kubernetes_probes](#instance_http_kubernetes_probes)
-15. [instance.http.listen](#instance_http_listen)
-16. [instance.http.tls](#instance_http_tls)
-17. [instance.instance_dir](#instance_instance_dir)
-18. [instance.iproto.advertise](#instance_iproto_advertise)
-19. [instance.iproto.enabled](#instance_iproto_enabled)
-20. [instance.iproto.listen](#instance_iproto_listen)
-21. [instance.iproto.tls](#instance_iproto_tls)
-22. [instance.log.destination](#instance_log_destination)
-23. [instance.log.format](#instance_log_format)
-24. [instance.log.level](#instance_log_level)
-25. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
-26. [instance.memtx.memory](#instance_memtx_memory)
-27. [instance.memtx.system_memory](#instance_memtx_system_memory)
-28. [instance.name](#instance_name)
-29. [instance.peer](#instance_peer)
-30. [instance.pgproto.advertise](#instance_pgproto_advertise)
-31. [instance.pgproto.enabled](#instance_pgproto_enabled)
-32. [instance.pgproto.listen](#instance_pgproto_listen)
-33. [instance.pgproto.tls](#instance_pgproto_tls)
-34. [instance.share_dir](#instance_share_dir)
-35. [instance.replicaset_name](#instance_replicaset_name)
-36. [instance.tier](#instance_tier)
-37. [instance.vinyl.cache](#instance_vinyl_cache)
-38. [instance.vinyl.memory](#instance_vinyl_memory)
-39. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
-40. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
-41. [instance.vinyl.page_size](#instance_vinyl_page_size)
-42. [instance.vinyl.range_size](#instance_vinyl_range_size)
-43. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
-44. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
-45. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
-46. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
-47. [instance.vinyl.timeout](#instance_vinyl_timeout)
-48. [instance.backup_dir](#instance_backup_dir)
-49. [instance.plugin](#instance_plugin)
-50. [instance.wal_dir](#instance_wal_dir)
-51. [instance.ldap.enabled](#instance_ldap_enabled)
-52. [instance.ldap.dn_format](#instance_ldap_dn_format)
-53. [instance.ldap.connect](#instance_ldap_connect)
-54. [instance.ldap.tls.enabled](#instance_ldap_tls_enabled)
-55. [instance.ldap.tls.method](#instance_ldap_tls_method)
-56. [instance.ldap.tls.ca_file](#instance_ldap_tls_ca_file)
-57. [cluster.tier.wal_mode](#cluster_tier_tier_wal_mode)
-58. [instance.memtx.dir](#instance_memtx_dir)
-59. [instance.vinyl.dir](#instance_vinyl_dir)
+8. [cluster.tier.<tier_name\>.replication_mode](#cluster_tier_tier_replication_mode)
+9. [cluster.tier.wal_mode](#cluster_tier_tier_wal_mode)
+10. [instance.admin_socket](#instance_admin_socket)
+11. [instance.audit](#instance_audit)
+12. [instance.boot_timeout](#instance_boot_timeout)
+13. [instance.failure_domain](#instance_failure_domain)
+14. [instance.http.advertise](#instance_http_advertise)
+15. [instance.http.enabled](#instance_http_enabled)
+16. [instance.http.kubernetes_probes](#instance_http_kubernetes_probes)
+17. [instance.http.listen](#instance_http_listen)
+18. [instance.http.tls](#instance_http_tls)
+19. [instance.instance_dir](#instance_instance_dir)
+20. [instance.iproto.advertise](#instance_iproto_advertise)
+21. [instance.iproto.enabled](#instance_iproto_enabled)
+22. [instance.iproto.listen](#instance_iproto_listen)
+23. [instance.iproto.tls](#instance_iproto_tls)
+24. [instance.log.destination](#instance_log_destination)
+25. [instance.log.format](#instance_log_format)
+26. [instance.log.level](#instance_log_level)
+27. [instance.memtx.max_tuple_size](#instance_memtx_max_tuple_size)
+28. [instance.memtx.memory](#instance_memtx_memory)
+29. [instance.memtx.system_memory](#instance_memtx_system_memory)
+30. [instance.name](#instance_name)
+31. [instance.peer](#instance_peer)
+32. [instance.pgproto.advertise](#instance_pgproto_advertise)
+33. [instance.pgproto.enabled](#instance_pgproto_enabled)
+34. [instance.pgproto.listen](#instance_pgproto_listen)
+35. [instance.pgproto.tls](#instance_pgproto_tls)
+36. [instance.share_dir](#instance_share_dir)
+37. [instance.replicaset_name](#instance_replicaset_name)
+38. [instance.tier](#instance_tier)
+39. [instance.vinyl.cache](#instance_vinyl_cache)
+40. [instance.vinyl.memory](#instance_vinyl_memory)
+41. [instance.vinyl.bloom_fpr](#instance_vinyl_bloom_fpr)
+42. [instance.vinyl.max_tuple_size](#instance_vinyl_max_tuple_size)
+43. [instance.vinyl.page_size](#instance_vinyl_page_size)
+44. [instance.vinyl.range_size](#instance_vinyl_range_size)
+45. [instance.vinyl.run_count_per_level](#instance_vinyl_run_count_per_level)
+46. [instance.vinyl.run_size_ratio](#instance_vinyl_run_size_ratio)
+47. [instance.vinyl.read_threads](#instance_vinyl_read_threads)
+48. [instance.vinyl.write_threads](#instance_vinyl_write_threads)
+49. [instance.vinyl.timeout](#instance_vinyl_timeout)
+50. [instance.backup_dir](#instance_backup_dir)
+51. [instance.plugin](#instance_plugin)
+52. [instance.wal_dir](#instance_wal_dir)
+53. [instance.ldap.enabled](#instance_ldap_enabled)
+54. [instance.ldap.dn_format](#instance_ldap_dn_format)
+55. [instance.ldap.connect](#instance_ldap_connect)
+56. [instance.ldap.tls.enabled](#instance_ldap_tls_enabled)
+57. [instance.ldap.tls.method](#instance_ldap_tls_method)
+58. [instance.ldap.tls.ca_file](#instance_ldap_tls_ca_file)
+59. [instance.memtx.dir](#instance_memtx_dir)
+60. [instance.vinyl.dir](#instance_vinyl_dir)
 
 См. также:
 
-* [`picodata config default`](cli.md#config_default)
+- [`picodata config default`](cli.md#config_default)
 
 ## Описание параметров файла конфигурации {: #config_file_description }
 
@@ -341,13 +344,13 @@ instance:
 
 [`picodata run --config-parameter`]: cli.md#run_config_parameter
 
-```bash
+```shell
 picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": false}}'
 ```
 
 См. также:
 
-* [Динамическое переключение голосующих узлов в Raft](../architecture/raft_failover.md#raft_voter_failover)
+- [Динамическое переключение голосующих узлов в Raft](../architecture/raft_failover.md#raft_voter_failover)
 
 [тира]: ../overview/glossary.md#tier
 
@@ -364,9 +367,43 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": 
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": true}}'
 ```
+
+### cluster.tier.<tier_name\>.replication_mode {: #cluster_tier_tier_replication_mode }
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Режим [репликации] для шардированных таблиц. У этого параметра может быть
+два значения:
+
+- `async` — использовать асинхронную репликацию
+- `sync` — использовать синхронную репликацию
+
+По умолчанию (а также если параметр не задан) используется асинхронный режим.
+
+Данный параметр используется только при первоначальном развёртывании
+кластера ([bootstrap]). Изменить значение этого параметра для уже
+развёрнутого кластера нельзя.
+
+Данные:
+
+* Тип: *sting*
+* Значение по умолчанию: `async`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```shell
+picodata run -c cluster.tier='{"default": {"replication_mode": "sync", "can_vote": true}}'
+```
+
+См. также:
+
+- [Синхронная репликация](../basics/sync_replication.md)
+
+[репликации]: ../overview/glossary.md#replication
+[bootstrap]: ../overview/glossary.md#bootstrap
 
 ### cluster.tier.<tier_name\>.wal_mode {: #cluster_tier_tier_wal_mode }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-wal_mode -->
@@ -374,7 +411,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 <span class="supported">поддерживается с версии 26.2.1</span>
 
 Определяет событие, которого ожидает обрабатывающий транзакцию файбер,
-прежде чем считать запись в журнал упреждающей записи (WAL) завершенной.
+прежде чем считать запись в журнал упреждающей записи (WAL) завершённой.
 
 Данные:
 
@@ -384,7 +421,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c cluster.tier='{"default": {"replication_factor": 3, "wal_mode": "write"}}'
 ```
 
@@ -461,7 +498,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "wal_mode": 
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.boot_timeout=3600
 ```
 
@@ -506,11 +543,11 @@ failure_domain: { "rack":"['12-90']","server":"srv_007", "vm":"rhel8" }
 
 Использование в командной строке:
 
-```bash
+```shell
 picodata run --failure-domain=region=us,zone=us-west-1
 ```
 
-```bash
+```shell
 picodata run --failure-domain=rack=12-90,server=srv_007,vm=rhel8
 ```
 
@@ -789,7 +826,7 @@ picodata run -c instance.iproto.tls.enabled=true -c instance.iproto.tls.cert_fil
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.ldap.connect=ldap.picodata.int:389
 ```
 
@@ -825,7 +862,7 @@ picodata run -c instance.ldap.connect=ldap.picodata.int:389
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.ldap.dn_format='cn=$USER,ou=users,dc=example,dc=org'
 ```
 
@@ -864,7 +901,7 @@ picodata run -c instance.ldap.dn_format='cn=$USER,ou=users,dc=example,dc=org'
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.ldap.enabled=true
 ```
 
@@ -900,7 +937,7 @@ picodata run -c instance.ldap.enabled=true
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.ldap.tls.ca_file=/etc/picodata/ldap-ca.pem
 ```
 
@@ -941,7 +978,7 @@ picodata run -c instance.ldap.tls.ca_file=/etc/picodata/ldap-ca.pem
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.ldap.tls.enabled=true
 ```
 
@@ -983,7 +1020,7 @@ TLS-соединение с настроенным в [instance.ldap.connect](#i
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.ldap.tls.method=start_tls
 ```
 
@@ -1030,7 +1067,7 @@ picodata run -c instance.ldap.tls.method=start_tls
 Аналогичная переменная окружения: `PICODATA_LOG`<br>
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.log.format=json
 ```
 
@@ -1069,7 +1106,7 @@ picodata run -c instance.log.format=json
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.memtx.dir=/mnt/fast-disk/memtx
 ```
 
@@ -1089,7 +1126,7 @@ picodata run -c instance.memtx.dir=/mnt/fast-disk/memtx
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.memtx.max_tuple_size=2M
 ```
 
@@ -1121,7 +1158,7 @@ picodata run -c instance.memtx.max_tuple_size=2M
 
 Пример:
 
-```bash
+```shell
 picodata run -c instance.memtx.memory=128M
 ```
 
@@ -1153,7 +1190,7 @@ picodata run -c instance.memtx.memory=128M
 
 Пример:
 
-```bash
+```shell
 picodata run -c instance.memtx.system_memory=128M
 ```
 
@@ -1200,7 +1237,7 @@ picodata run -c instance.memtx.system_memory=128M
 
 Пример:
 
-```bash
+```shell
 picodata run -c instance.peer='["127.0.0.1:3301", "127.0.0.1:3302"]'
 ```
 
@@ -1418,7 +1455,7 @@ picodata run -c instance.pgproto.tls.enabled=true -c instance.pgproto.tls.cert_f
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.bloom_fpr=0.10
 ```
 
@@ -1441,7 +1478,7 @@ picodata run -c instance.vinyl.bloom_fpr=0.10
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.cache=256M
 ```
 
@@ -1461,7 +1498,7 @@ picodata run -c instance.vinyl.cache=256M
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.dir=/mnt/fast-disk/vinyl
 ```
 
@@ -1482,7 +1519,7 @@ picodata run -c instance.vinyl.dir=/mnt/fast-disk/vinyl
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.max_tuple_size=2M
 ```
 
@@ -1504,7 +1541,7 @@ picodata run -c instance.vinyl.max_tuple_size=2M
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.memory=256M
 ```
 
@@ -1526,7 +1563,7 @@ picodata run -c instance.vinyl.memory=256M
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.page_size=16M
 ```
 
@@ -1548,7 +1585,7 @@ picodata run -c instance.vinyl.page_size=16M
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.range_size=2G
 ```
 
@@ -1566,7 +1603,7 @@ picodata run -c instance.vinyl.range_size=2G
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.read_threads=2
 ```
 
@@ -1585,7 +1622,7 @@ picodata run -c instance.vinyl.read_threads=2
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.run_count_per_level=4
 ```
 
@@ -1604,7 +1641,7 @@ picodata run -c instance.vinyl.run_count_per_level=4
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.run_size_ratio=7.0
 ```
 
@@ -1622,7 +1659,7 @@ picodata run -c instance.vinyl.run_size_ratio=7.0
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.timeout=120.0
 ```
 
@@ -1640,7 +1677,7 @@ picodata run -c instance.vinyl.timeout=120.0
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.vinyl.write_threads=8
 ```
 
@@ -1660,6 +1697,6 @@ picodata run -c instance.vinyl.write_threads=8
 
 Аналогичная команда — [`picodata run --config-parameter`]. Пример:
 
-```bash
+```shell
 picodata run -c instance.wal_dir=/mnt/fast-disk/wal
 ```

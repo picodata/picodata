@@ -39,6 +39,7 @@ nav:
       - overview/versioning.md
   - Основные понятия:
       - basics/table_types.md
+      - basics/sync_replication.md
   - Установка и первые шаги:
       - tutorial/install.md
       - tutorial/run.md
