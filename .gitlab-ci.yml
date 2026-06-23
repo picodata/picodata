@@ -866,6 +866,8 @@ audit:
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
     - if: ($CI_COMMIT_BRANCH =~ /^\d+\.\d+$/) && ($CI_PIPELINE_SOURCE == "schedule")
       allow_failure: true
+    - when: manual
+      allow_failure: true
   script:
     - make audit
   after_script:
