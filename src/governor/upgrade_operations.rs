@@ -144,6 +144,10 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
                 "exec_script",
                 InternalScript::UpdateGovernorCommonRpcTimeoutInPicoDbConfig.as_str(),
             ),
+            (
+                "exec_script",
+                InternalScript::AlterSystemSpacesIsSync.as_str(),
+            )
         ],
     ),
 ];
@@ -247,6 +251,9 @@ tarantool::define_str_enum! {
 
         /// Drop obsolete versions of internal procedures from `_func`.
         DropObsoleteProcedures = "drop_obsolete_procedures",
+
+        /// Make system tarantool spaces synchronous (`is_sync = true`).
+        AlterSystemSpacesIsSync = "alter_system_spaces_is_sync",
     }
 }
 
@@ -304,6 +311,9 @@ crate::define_rpc_request! {
 
             InternalScript::DropObsoleteProcedures =>
                 execute_drop_obsolete_procedures(),
+
+            InternalScript::AlterSystemSpacesIsSync =>
+                alter_system_spaces_is_sync(),
         }
     }
 
@@ -580,5 +590,23 @@ fn execute_create_lua_procs() -> traft::Result<Response> {
     }
     let lua = tarantool::lua_state();
     lua.exec(r#" require('sbroad.builtins').create_functions() "#)?;
+    Ok(Response {})
+}
+
+fn alter_system_spaces_is_sync() -> traft::Result<Response> {
+    let node = traft::node::global()?;
+    let is_master = !node.is_readonly();
+    if !is_master {
+        return Ok(Response {});
+    }
+    if !node
+        .alter_system_parameters
+        .borrow()
+        .is_synchronous_replication()
+    {
+        return Ok(Response {});
+    }
+
+    crate::sync_replication::make_system_spaces_sync()?;
     Ok(Response {})
 }

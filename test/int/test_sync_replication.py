@@ -317,7 +317,7 @@ cluster:
     Retriable().call(check_master_box_info)
 
     # Writes are rejected.
-    with pytest.raises(TarantoolError):
+    with pytest.raises(TimeoutError):
         master.sql("INSERT INTO t VALUES (3, 'should_fail')", timeout=1)
     assert master.eval("return box.info.synchro.queue.len") == 0
 
@@ -347,11 +347,9 @@ cluster:
         for i in [i1, i2, i3]:
             rows = i.eval("return box.space.t:select()")
             ids = {row[0] for row in rows}
-            # Rows 1 and 2 were written normally, row 4 after the recovery.
-            # Row 3 is absent because the quorum gate removed the vshard
-            # master and rejected that write before it reached storage.
-            assert {1, 2, 4} <= ids
-            assert 3 not in ids
+            # Row 3 is here,
+            # see https://git.picodata.io/core/picodata/-/work_items/2989.
+            assert {1, 2, 3, 4} == ids
             # DDL was written in the raft log, so it was retried when the
             # quorum was restored
             assert i.eval("return box.space.t2:select()") == []
@@ -418,7 +416,7 @@ cluster:
     Retriable().call(check_master_box_info)
 
     # Writes are rejected.
-    with pytest.raises(TarantoolError):
+    with pytest.raises(TimeoutError):
         master.sql("INSERT INTO t VALUES (2, 'not_ok')", timeout=1)
     assert master.eval("return box.info.synchro.queue.len") == 0
 
@@ -448,6 +446,9 @@ cluster:
             res = i.eval("return box.space.t:select()")
             assert res == [
                 [1, 14, "initial"],
+                # Row 2 is here,
+                # see https://git.picodata.io/core/picodata/-/work_items/2989
+                [2, 30, "not_ok"],
                 [3, 8, "ok"],
             ]
             # DDL is okay because it was written in the raft log and retried
@@ -664,9 +665,8 @@ cluster:
 
     Retriable().call(check_master_box_info)
 
-    # Writes are rejected before reaching storage: below quorum the generated
-    # vshard configuration does not advertise a master for this replicaset.
-    with pytest.raises(TarantoolError):
+    # Writes are rejected.
+    with pytest.raises(TimeoutError):
         master.sql("INSERT INTO t VALUES (2, 'not_ok')", timeout=1)
     assert master.eval("return box.info.synchro.queue.len") == 1
 
@@ -772,9 +772,8 @@ cluster:
 
     Retriable().call(check_master_box_info)
 
-    # Writes are rejected before reaching storage because the vshard master is
-    # not advertised below quorum.
-    with pytest.raises(TarantoolError):
+    # Writes are rejected.
+    with pytest.raises(TimeoutError):
         master.sql("INSERT INTO t VALUES (42, 'not_ok')", timeout=1)
     assert master.eval("return box.info.synchro.queue.len") == 0
     assert master.eval("return box.space.t:count()") == 16
@@ -1578,26 +1577,19 @@ cluster:
     master = cluster.add_instance(tier="sync_tier")
     cluster.wait_governor_status("idle")
 
-    # The governor may become idle before the election worker has promoted the
-    # designated first member.
     master = Retriable().call(get_master_instance, master)
     master_id = master.eval("return box.info.id")
     assert master.eval("return box.info.synchro.queue.owner") == master_id
     assert master.eval("return box.info.synchro.queue.len") == 0
     assert master.eval("return box.info.synchro.quorum") == 2
     assert master.eval("return box.info.election.leader") == master_id
-
-    master.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
-
     assert not master.eval("return box.info.ro")
-    assert master.eval("return box.info.synchro.queue.len") == 0
 
-    # Replicaset is not ready yet.
-    with pytest.raises(Exception, match="Failed to get replicaset from bucket"):
-        master.sql("INSERT INTO t VALUES (1, 'initial')")
+    # DDL is timeouted. Replicaset is not ready, no quorum to
+    # confirm sync transaction to `_space` space.
+    with pytest.raises(TimeoutError):
+        master.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"', timeout=1)
 
-    # Once the new instance is online, the replicaset is ready and the writes
-    # work.
     replica = cluster.add_instance(tier="sync_tier")
     cluster.wait_governor_status("idle")
 
@@ -1686,7 +1678,7 @@ cluster:
 
     # Writes are rejected before reaching storage because the vshard master is
     # not advertised below quorum.
-    with pytest.raises(TarantoolError):
+    with pytest.raises(TimeoutError):
         master.sql("INSERT INTO t VALUES (2, 'should_fail')", timeout=1)
     assert master.eval("return box.info.synchro.queue.len") == 0
 
@@ -1974,10 +1966,6 @@ cluster:
     with pytest.raises((TimeoutError, TarantoolError)):
         master.sql("INSERT INTO t VALUES (17, 'initial')", timeout=1)
 
-    # A distributed read also refuses to route through the fenced r1
-    # replicaset. Verify the storage state locally instead.
-    with pytest.raises(TarantoolError):
-        master.sql("SELECT id FROM t ORDER BY id")
     assert master.eval("return box.space.t:get{17}") is None
     assert i3.eval("return box.space.t:get{17}") is None
     assert master.eval("return box.space.t:count()") == 9
@@ -2590,3 +2578,63 @@ cluster:
     with pytest.raises(TimeoutError):
         loser.sql("INSERT INTO t VALUES (42, 'ok')", timeout=1)
     assert loser.eval("return box.space.t:count()") == 1
+
+
+def test_sync_replication_sync_schema(cluster: Cluster):
+    """
+    Test that a sync tier makes the tarantool system spaces synchronous.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        sync_tier:
+            replication_factor: 2
+            can_vote: false
+            replication_mode: sync
+            bucket_count: 30
+"""
+    )
+
+    cluster.deploy(instance_count=3, tier="arbiter")
+    leader = cluster.leader()
+
+    i1 = cluster.add_instance(tier="sync_tier", replicaset_name="r1")
+    cluster.wait_governor_status("idle")
+
+    def system_spaces_are_sync(instance: Instance):
+        for space in ["_space", "_index", "_user", "_priv", "_func"]:
+            assert instance.eval(f"return box.space.{space}.is_sync") is True, space
+        # `_cluster` must stay asynchronous for now
+        assert instance.eval("return box.space._cluster.is_sync") is False
+
+    Retriable().call(system_spaces_are_sync, i1)
+
+    i2 = cluster.add_instance(tier="sync_tier", replicaset_name="r1")
+    cluster.wait_governor_status("idle")
+
+    leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
+
+    master_name = i1.replicaset_master_name()
+    master = next(i for i in [i1, i2] if i.name == master_name)
+    replica = next(i for i in [i1, i2] if i.name != master_name)
+
+    for i in [master, replica]:
+        Retriable().call(system_spaces_are_sync, i)
+
+    # DDL and writes still pass.
+    leader.sql('CREATE TABLE t2 (id INT NOT NULL, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
+    sql_insert_retried(master, "INSERT INTO t VALUES (1, 'ok')")
+
+    def replicaset_converged():
+        for i in [master, replica]:
+            assert i.eval("return box.space.t:count()") == 1
+            assert i.eval("return box.space.t2:count()") == 0
+            assert i.eval("return box.info.synchro.queue.len") == 0
+
+    Retriable().call(replicaset_converged)

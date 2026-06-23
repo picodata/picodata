@@ -1,5 +1,6 @@
 use crate::catalog::governor_queue::GovernorOpFormat;
 use crate::op::Ddl;
+use crate::replicaset::ReplicasetState;
 use crate::storage::schema::ddl_change_format_on_master;
 use crate::storage::schema::ddl_create_function_on_master;
 use crate::storage::schema::ddl_create_index_on_master;
@@ -70,6 +71,13 @@ crate::define_rpc_request! {
                 "cannot apply schema change on a read only instance"
             );
             return Err(e.into());
+        }
+        if node.alter_system_parameters.borrow().is_synchronous_replication() {
+            let topology_ref = node.topology_cache.get();
+            let this_replicaset = topology_ref.this_replicaset();
+            if this_replicaset.state != ReplicasetState::Ready {
+                return Err(TraftError::other("cannot apply schema change on not-ready replicaset with synchronous replication enabled"))
+            }
         }
 
         let Some(pending_schema_version) = storage.properties.pending_schema_version()? else {

@@ -165,11 +165,18 @@ crate::define_rpc_request! {
                     )
                     .map_err(tlua::LuaError::from)?;
 
-                    // We explicitly pass TABLE_ID_BUCKET as id of space _bucket
-                    // in the `config` above, but just to make it explicit here we
-                    // add an assert.
-                    let space = space_by_name("_bucket")?;
-                    assert_eq!(space.id(), TABLE_ID_BUCKET);
+                    let synchronous_replication = node.alter_system_parameters.borrow().is_synchronous_replication();
+                    // For synchronous replication it can be that
+                    // we cannot create `_bucket` space on current RPC call.
+                    // We will retry and create this space the next time.
+                    // So, no assert.
+                    if !synchronous_replication {
+                        // We explicitly pass TABLE_ID_BUCKET as id of space _bucket
+                        // in the `config` above, but just to make it explicit here we
+                        // add an assert.
+                        let space = space_by_name("_bucket")?;
+                        assert_eq!(space.id(), TABLE_ID_BUCKET);
+                    }
                 }
             }
 

@@ -3,7 +3,7 @@ use crate::config::PicodataConfig;
 use crate::instance::InstanceName;
 use crate::luamod::lua_function;
 use crate::pico_service::pico_service_password;
-use crate::replicaset::{has_synchro_quorum, Weight};
+use crate::replicaset::{ReplicasetState, Weight};
 use crate::rpc::ddl_apply::Response;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::router;
@@ -367,13 +367,15 @@ impl VshardConfig {
                 continue;
             };
 
-            // A synchronous replicaset without a responsive majority is
-            // fenced by Tarantool elections. Do not let vshard route writes
-            // to the catalog-designated master while no instance can
-            // actually hold election leadership.
-            let has_write_quorum =
-                !db_config.replication_mode(&r.tier).is_sync() || has_synchro_quorum(r, &topology);
-            let is_master = has_write_quorum && Some(&peer.name) == r.effective_master_name();
+            // If a synchronous replicaset is in non-Ready state then it means that
+            // the replicaset is on bootstrap stage, so not all instances of the replicaset
+            // are Online, so there may be no synchro quorum.
+            // Do not set `is_master = true` during this stage.
+            // `is_master = true` causes run of vshard DDL (creation of `_bucket`) that
+            // cannot be run successfully with no synchro quorum.
+            let synchronous_replication = db_config.replication_mode(&r.tier).is_sync();
+            let is_master = (!synchronous_replication || r.state == ReplicasetState::Ready)
+                && Some(&peer.name) == r.effective_master_name();
 
             let replicaset = sharding
                 .entry(peer.replicaset_uuid.clone())

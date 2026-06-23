@@ -110,6 +110,7 @@ pub mod sharding;
 pub mod sql;
 pub mod storage;
 pub mod sync;
+mod sync_replication;
 mod synchro_election_watcher;
 pub mod tarantool;
 pub mod tier;
@@ -1301,6 +1302,8 @@ fn bootstrap_storage_on_master() -> Result<(Catalog, RaftSpaceAccess)> {
     // Create a stored procedure records in `_func` tarantool space.
     assert!(!stored_procedures_are_initialized(false)?);
     init_stored_procedures();
+
+    sync_replication::maybe_make_system_spaces_sync()?;
 
     tlog!(Info, "initialized picodata storage");
 

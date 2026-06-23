@@ -771,3 +771,48 @@ def test_upgrade_governor_rpc_timeouts(cluster: Cluster, registry: Registry):
 
     assert read_parameter(i1, "governor_ddl_rpc_timeout") == 30.0
     assert read_parameter(i1, "governor_common_rpc_timeout") == 5.0
+
+
+@pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version("26.2.1"),
+        get_or_make_registry().next_version(Version("26.2.1"), skip_on_gap=False),
+    ]
+)
+def test_upgrade_from_26_2_1_synchronous_spaces(cluster: Cluster, registry: Registry):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+        storage:
+            can_vote: true
+            replication_factor: 2
+            replication_mode: sync
+        """
+    )
+
+    from_version = Version("26.2.1")
+    from_executable = registry.get(from_version)
+    assert from_executable is not None
+
+    a1 = cluster.add_instance(wait_online=False, tier="arbiter", executable=from_executable)
+    i1 = cluster.add_instance(wait_online=False, tier="storage", executable=from_executable)
+    i2 = cluster.add_instance(wait_online=False, tier="storage", executable=from_executable)
+    cluster.wait_online()
+
+    for i in [a1, i1, i2]:
+        assert i.eval("return box.space._space.is_sync") is False
+
+    to_version = registry.next_version(from_version)
+    to_executable = registry.get(to_version)
+    assert to_executable is not None
+
+    cluster.change_executable(to_executable)
+
+    assert a1.eval("return box.space._space.is_sync") is False
+    for i in [i1, i2]:
+        assert i.eval("return box.space._space.is_sync") is True
