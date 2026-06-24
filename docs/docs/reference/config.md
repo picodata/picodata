@@ -154,6 +154,14 @@ instance:
               key_file: tls_2/server.key
               ca_file: tls_2/ca.crt
               password_file: tls_2/pass.txt
+  ldap:
+    enabled: false # (51)!
+    dn_format: null # (52)!
+    connect: null # (53)!
+    tls:
+      enabled: false # (54)!
+      method: implicit # (55)!
+      ca_file: null # (56)!
 ```
 
 1. [cluster.default_replication_factor](#cluster_default_replication_factor)
@@ -206,6 +214,13 @@ instance:
 48. [instance.backup_dir](#instance_backup_dir)
 49. [instance.plugin](#instance_plugin)
 50. [instance.wal_dir](#instance_wal_dir)
+51. [instance.ldap.enabled](#instance_ldap_enabled)
+52. [instance.ldap.dn_format](#instance_ldap_dn_format)
+53. [instance.ldap.connect](#instance_ldap_connect)
+54. [instance.ldap.tls.enabled](#instance_ldap_tls_enabled)
+55. [instance.ldap.tls.method](#instance_ldap_tls_method)
+56. [instance.ldap.tls.ca_file](#instance_ldap_tls_ca_file)
+
 
 См. также:
 
@@ -717,6 +732,233 @@ picodata run -c instance.iproto.tls.enabled=true -c instance.iproto.tls.cert_fil
 Режим mTLS настраивается глобально во всем кластере. Для параметров
 `instance.iproto.tls.cert_file` и `instance.iproto.tls.key_file`
 содержимое файлов должно быть идентичным на каждом инстансе.
+
+### instance.ldap.connect {: #instance_ldap_connect }
+
+!!! note "Примечание"
+    Блок параметров `instance.ldap` приходит на смену переменным окружения
+    `TT_LDAP_URL`, `TT_LDAP_DN_FMT` и `TT_LDAP_ENABLE_TLS`, которые объявлены устаревшими
+    и будут удалены в будущих релизах Picodata. Допускается использование
+    устаревших переменных окружения, но сочетать их с опциями в файле конфигурации нельзя.
+
+!!! tip "Picodata Enterprise"
+    Данная функция доступна только в коммерческой версии Picodata.
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Адрес LDAP-сервера, к которому Picodata будет подключаться для аутентификации
+пользователей методом `ldap`.
+
+Параметр является обязательным при включённом [instance.ldap.enabled](#instance_ldap_enabled).
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.ldap.connect=ldap.picodata.int:389
+```
+
+См. также:
+
+- [Аутентификация с помощью LDAP](../admin/ldap.md)
+
+### instance.ldap.dn_format {: #instance_ldap_dn_format }
+
+!!! note "Примечание"
+    Блок параметров `instance.ldap` приходит на смену переменным окружения
+    `TT_LDAP_URL`, `TT_LDAP_DN_FMT` и `TT_LDAP_ENABLE_TLS`, которые объявлены устаревшими
+    и будут удалены в будущих релизах Picodata. Допускается использование
+    устаревших переменных окружения, но сочетать их с опциями в файле конфигурации нельзя.
+
+!!! tip "Picodata Enterprise"
+    Данная функция доступна только в коммерческой версии Picodata.
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Произвольная формат-строка, используемая для формирования DN для LDAP-запроса `BIND`.
+Пример: `cn=$USER,ou=users,dc=example,dc=org`. Вместо `$USER` будет подставлено
+фактическое имя пользователя Picodata. Параметр должен содержать ровно одно вхождение
+подстроки `$USER`.
+
+При передаче значения через командную строку его необходимо заключать в одинарные
+кавычки, чтобы предотвратить раскрытие `$USER` командной оболочкой (см. пример ниже).
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.ldap.dn_format='cn=$USER,ou=users,dc=example,dc=org'
+```
+
+См. также:
+
+- [Аутентификация с помощью LDAP](../admin/ldap.md)
+
+### instance.ldap.enabled {: #instance_ldap_enabled }
+
+!!! note "Примечание"
+    Блок параметров `instance.ldap` приходит на смену переменным окружения
+    `TT_LDAP_URL`, `TT_LDAP_DN_FMT` и `TT_LDAP_ENABLE_TLS`, которые объявлены устаревшими
+    и будут удалены в будущих релизах Picodata. Допускается использование
+    устаревших переменных окружения, но сочетать их с опциями в файле конфигурации нельзя.
+
+!!! tip "Picodata Enterprise"
+    Данная функция доступна только в коммерческой версии Picodata.
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Признак поддержки LDAP-аутентификации на стороне Picodata.
+
+При установке значения `false` пользователи с установленным методом аутентификации `ldap`
+не смогут быть аутенфицированными.
+
+При установке значения `true` требуется использовать дополнительные параметры:
+
+- [instance.ldap.connect](#instance_ldap_connect) — адрес LDAP-сервера
+- [instance.ldap.dn_format](#instance_ldap_dn_format) — формат-строка для формирования DN
+- [instance.ldap.tls.enabled](#instance_ldap_tls_enabled) — (опционально) шифрование соединения
+
+Данные:
+
+* Тип: *bool*
+* Значение по умолчанию: `false`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.ldap.enabled=true
+```
+
+См. также:
+
+- [Аутентификация с помощью LDAP](../admin/ldap.md)
+
+### instance.ldap.tls.ca_file {: #instance_ldap_tls_ca_file }
+
+!!! note "Примечание"
+    Блок параметров `instance.ldap` приходит на смену переменным окружения
+    `TT_LDAP_URL`, `TT_LDAP_DN_FMT` и `TT_LDAP_ENABLE_TLS`, которые объявлены устаревшими
+    и будут удалены в будущих релизах Picodata. Допускается использование
+    устаревших переменных окружения, но сочетать их с опциями в файле конфигурации нельзя.
+
+!!! tip "Picodata Enterprise"
+    Данная функция доступна только в коммерческой версии Picodata.
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Путь к файлу с альтернативными доверенными корневыми сертификатами (CA).
+
+При указании этого параметра для проверки TLS-сертификата LDAP-сервера будут
+использованы сертификаты из указанного файла вместо сертификатов из
+системного хранилища доверенных корневых сертификатов.
+
+Файл должен содержать один или несколько сертификатов в формате PEM.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.ldap.tls.ca_file=/etc/picodata/ldap-ca.pem
+```
+
+См. также:
+
+- [Аутентификация с помощью LDAP](../admin/ldap.md)
+
+### instance.ldap.tls.enabled {: #instance_ldap_tls_enabled }
+
+!!! note "Примечание"
+    Блок параметров `instance.ldap` приходит на смену переменным окружения
+    `TT_LDAP_URL`, `TT_LDAP_DN_FMT` и `TT_LDAP_ENABLE_TLS`, которые объявлены устаревшими
+    и будут удалены в будущих релизах Picodata. Допускается использование
+    устаревших переменных окружения, но сочетать их с опциями в файле конфигурации нельзя.
+
+!!! tip "Picodata Enterprise"
+    Данная функция доступна только в коммерческой версии Picodata.
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Признак использования шифрования TLS при подключении к LDAP-серверу. При установке
+значения `true` метод подключения по TLS определяется параметром [instance.ldap.tls.method](#instance_ldap_tls_method).
+
+При значении `false` соединение с LDAP-сервером, включая отправку учётных
+данных пользователя, выполняется по незащищённому протоколу LDAP без шифрования.
+
+При включённом TLS Picodata всегда проверяет, что имя хоста из
+[instance.ldap.connect](#instance_ldap_connect) совпадает с именем, указанным
+в сертификате LDAP-сервера (SAN или CN).
+
+Для использования собственного набора доверенных CA вместо системного хранилища
+см. [instance.ldap.tls.ca_file](#instance_ldap_tls_ca_file).
+
+Данные:
+
+* Тип: *bool*
+* Значение по умолчанию: `false`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.ldap.tls.enabled=true
+```
+
+См. также:
+
+- [Аутентификация с помощью LDAP](../admin/ldap.md)
+
+### instance.ldap.tls.method {: #instance_ldap_tls_method }
+
+!!! note "Примечание"
+    Блок параметров `instance.ldap` приходит на смену переменным окружения
+    `TT_LDAP_URL`, `TT_LDAP_DN_FMT` и `TT_LDAP_ENABLE_TLS`, которые объявлены устаревшими
+    и будут удалены в будущих релизах Picodata. Допускается использование
+    устаревших переменных окружения, но сочетать их с опциями в файле конфигурации нельзя.
+
+!!! tip "Picodata Enterprise"
+    Данная функция доступна только в коммерческой версии Picodata.
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Определяет метод подключения при использовании TLS с LDAP.
+
+Возможные значения: `implicit`, `start_tls`
+
+При указании `implicit` (значение по умолчанию) Picodata установит защищённое
+TLS-соединение с настроенным в [instance.ldap.connect](#instance_ldap_connect)
+адресом, а затем внутри защищённого подключения начнёт следовать протоколу LDAP.
+Это соответствует нестандартизированному протоколу [LDAPS](https://en.wikipedia.org/wiki/Lightweight_Directory_Access_Protocol#StartTLS).
+
+При указании `start_tls` Picodata установит с LDAP-сервером подключение
+по незащищённому протоколу LDAP, а затем, до отправки каких-либо
+аутентификационных данных, задействует механизм StartTLS для установления
+защищённого TLS-соединения. Это соответствует механизму, описанному в разделе 3 [RFC 4513](https://datatracker.ietf.org/doc/html/rfc4513#section-3).
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `implicit`
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.ldap.tls.method=start_tls
+```
+
+См. также:
+
+- [Аутентификация с помощью LDAP](../admin/ldap.md)
 
 ### instance.log.destination {: #instance_log_destination }
 

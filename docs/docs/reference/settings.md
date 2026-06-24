@@ -426,6 +426,54 @@ table.legend {
             <td></td>
         </tr>
         <tr>
+            <td><span class="instance">ldap.connect</span></td>
+            <td>Адрес LDAP-сервера, к которому Picodata будет подключаться для аутентификации пользователей методом `ldap`</td>
+            <td>null</td>
+            <td>[picodata run -c instance.ldap.connect=ldap.picodata.int:389](cli.md#run_config_parameter)</td>
+            <td>[instance.ldap.connect](config.md#instance_ldap_connect)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">ldap.dn_format</span></td>
+            <td>Произвольная формат-строка, используемая для формирования DN для LDAP-запроса `BIND`</td>
+            <td>null</td>
+            <td>[picodata run -c instance.ldap.dn_format='cn=$USER,ou=users,dc=example,dc=org'](cli.md#run_config_parameter)</td>
+            <td>[instance.ldap.dn_format](config.md#instance_ldap_dn_format)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">ldap.enabled</span></td>
+            <td>Признак поддержки LDAP-аутентификации на стороне Picodata</td>
+            <td>false</td>
+            <td>[picodata run -c instance.ldap.enabled=true](cli.md#run_config_parameter)</td>
+            <td>[instance.ldap.enabled](config.md#instance_ldap_enabled)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">ldap.tls.ca_file</span></td>
+            <td>Путь к файлу с альтернативными доверенными корневыми сертификатами (CA) для LDAP</td>
+            <td>null</td>
+            <td>[picodata run -c instance.ldap.tls.ca_file=/etc/picodata/ldap-ca.pem](cli.md#run_config_parameter)</td>
+            <td>[instance.ldap.tls.ca_file](config.md#instance_ldap_tls_ca_file)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">ldap.tls.enabled</span></td>
+            <td>Признак использования шифрования TLS при подключении к LDAP-серверу</td>
+            <td>false</td>
+            <td>[picodata run -c instance.ldap.tls.enabled=true](cli.md#run_config_parameter)</td>
+            <td>[instance.ldap.tls.enabled](config.md#instance_ldap_tls_enabled)</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span class="instance">ldap.tls.method</span></td>
+            <td>Метод подключения при использовании TLS с LDAP</td>
+            <td>implicit</td>
+            <td>[picodata run -c instance.ldap.tls.method=start_tls](cli.md#run_config_parameter)</td>
+            <td>[instance.ldap.tls.method](config.md#instance_ldap_tls_method)</td>
+            <td></td>
+        </tr>
+        <tr>
             <td><span class="instance">log</span></td>
             <td>Конфигурация отладочного журнала</td>
             <td>null</td>
