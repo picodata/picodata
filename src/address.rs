@@ -1,5 +1,6 @@
 use smol_str::format_smolstr;
 use smol_str::SmolStr;
+use std::fmt::Display;
 use std::str::FromStr;
 use tarantool::tlua;
 
@@ -25,9 +26,144 @@ pub trait ListenAddress {
     fn port(&self) -> &str;
 }
 
+/// Implements [`Display`], [`FromStr`] traits and `to_host_port` method for an address new-type.
+macro_rules! impl_conversions {
+    ($name:ident) => {
+        impl $name {
+            #[inline(always)]
+            pub fn to_host_port(&self) -> SmolStr {
+                format_smolstr!("{}:{}", self.host, self.port)
+            }
+        }
+
+        impl Display for $name {
+            #[inline(always)]
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}:{}", self.host, self.port)
+            }
+        }
+
+        impl FromStr for $name {
+            type Err = String;
+
+            fn from_str(addr: &str) -> Result<Self, Self::Err> {
+                let (host, port) = parse_host_and_port(addr)?;
+                Ok(Self { host, port })
+            }
+        }
+    };
+}
+/// Implements [`serde::Serialize`] and [`serde::Deserialize`] via [`Display`] and [`FromStr`].
+macro_rules! impl_serde {
+    ($name:ident) => {
+        impl serde::Serialize for $name {
+            #[inline(always)]
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                self.to_string().serialize(serializer)
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            #[inline(always)]
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let s: &str = serde::Deserialize::deserialize(deserializer)?;
+                Self::from_str(s).map_err(serde::de::Error::custom)
+            }
+        }
+    };
+}
+/// Implements [`ListenAddress`] for an address new-type.
+macro_rules! impl_listen_address {
+    ($name:ident) => {
+        impl ListenAddress for $name {
+            fn host(&self) -> &str {
+                &self.host
+            }
+            fn port(&self) -> &str {
+                &self.port
+            }
+        }
+    };
+}
+/// Implements [`Default`] for an address new-type.
+macro_rules! impl_default {
+    ($name:ident => DEFAULT_LISTEN_HOST:$port:expr) => {
+        impl Default for $name {
+            fn default() -> Self {
+                Self {
+                    host: DEFAULT_LISTEN_HOST.into(),
+                    port: $port.into(),
+                }
+            }
+        }
+    };
+}
+
+/// Defines an address newtype.
+///
+/// The generated struct has the following shape:
+///
+/// ```ignore
+/// pub struct SomeAddress {
+///     pub host: String,
+///     pub port: String,
+/// }
+///
+/// impl SomeAddress {
+///     pub fn to_host_port(&self) -> SmolStr;
+/// }
+/// ```
+///
+/// It implements the following traits:
+/// - [`Debug`], [`Clone`], [`PartialEq`], [`Eq`]
+/// - [`Display`] and [`FromStr`]
+/// - [`serde::Serialize`] and [`serde::Deserialize`]
+/// - [`tlua::Push`] and [`tlua::PushInto`]
+///
+/// If you specify `impl Default`, it will implement the [`Default`] trait. The default value
+///  uses [`DEFAULT_LISTEN_HOST`] as the hostname and the passed port as the port.
+///
+/// If you specify `impl ListenAddress`, it will implement [`ListenAddress`].
+macro_rules! define_address_newtype {
+    ($name:ident {
+        doc => $doc:literal;
+        $(impl Default => DEFAULT_LISTEN_HOST:$default_port:expr;)?
+        $(impl ListenAddress => $listen:tt;)?
+    }) => {
+        #[doc = $doc]
+        #[derive(Debug, Clone, PartialEq, Eq, tlua::Push, tlua::PushInto)]
+        pub struct $name {
+            pub host: String,
+            pub port: String,
+        }
+
+        $(
+            impl_default!($name => DEFAULT_LISTEN_HOST:$default_port);
+        )?
+        impl_conversions!($name);
+        impl_serde!($name);
+
+        $(
+            define_address_newtype!(@listen $name $listen);
+        )?
+    };
+    (@listen $name:ident $listen:tt) => {
+        impl_listen_address!($name);
+    };
+}
+
 ////////////////////
 // IPROTO ADDRESS //
 ////////////////////
+
+// Iproto address needs to support an optional `user@` prefix,
+//  so it cannot use most of the macros defined above.
 
 #[derive(Debug, Clone, PartialEq, Eq, tlua::Push, tlua::PushInto)]
 pub struct IprotoAddress {
@@ -47,13 +183,6 @@ impl Default for IprotoAddress {
 }
 
 impl IprotoAddress {
-    #[inline(always)]
-    pub const fn default_host_port() -> &'static str {
-        // TODO: "only literals can be passed to `concat!()`"
-        // concat!(DEFAULT_LISTEN_HOST, ":", DEFAULT_IPROTO_PORT)
-        "127.0.0.1:3301"
-    }
-
     #[inline(always)]
     pub fn to_host_port(&self) -> SmolStr {
         format_smolstr!("{}:{}", self.host, self.port)
@@ -84,7 +213,7 @@ impl IprotoAddress {
     }
 }
 
-impl std::fmt::Display for IprotoAddress {
+impl Display for IprotoAddress {
     #[inline(always)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(user) = &self.user {
@@ -103,317 +232,33 @@ impl FromStr for IprotoAddress {
     }
 }
 
-impl serde::Serialize for IprotoAddress {
-    #[inline(always)]
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.to_string().serialize(serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for IprotoAddress {
-    #[inline(always)]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s: &str = serde::Deserialize::deserialize(deserializer)?;
-        Self::from_str(s).map_err(serde::de::Error::custom)
-    }
-}
-
-impl ListenAddress for IprotoAddress {
-    fn host(&self) -> &str {
-        &self.host
-    }
-    fn port(&self) -> &str {
-        &self.port
-    }
-}
-
-//////////////////
-// HTTP ADDRESS //
-//////////////////
-
-#[derive(Debug, Clone, PartialEq, Eq, tlua::Push, tlua::PushInto)]
-pub struct HttpAddress {
-    pub host: String,
-    pub port: String,
-}
-
-impl Default for HttpAddress {
-    fn default() -> Self {
-        Self {
-            host: DEFAULT_LISTEN_HOST.into(),
-            port: DEFAULT_HTTP_PORT.into(),
-        }
-    }
-}
-
-impl HttpAddress {
-    #[inline(always)]
-    pub const fn default_host_port() -> &'static str {
-        // TODO: "only literals can be passed to `concat!()`"
-        // concat!(DEFAULT_LISTEN_HOST, ":", DEFAULT_HTTP_PORT)
-        "127.0.0.1:5327"
-    }
-
-    #[inline(always)]
-    pub fn to_host_port(&self) -> SmolStr {
-        format_smolstr!("{}:{}", self.host, self.port)
-    }
-}
-
-impl std::fmt::Display for HttpAddress {
-    #[inline(always)]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.host, self.port)
-    }
-}
-
-impl FromStr for HttpAddress {
-    type Err = String;
-
-    fn from_str(addr: &str) -> Result<Self, Self::Err> {
-        let (host, port) = parse_host_and_port(addr)?;
-        Ok(Self { host, port })
-    }
-}
-
-impl serde::Serialize for HttpAddress {
-    #[inline(always)]
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.to_string().serialize(serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for HttpAddress {
-    #[inline(always)]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s: &str = serde::Deserialize::deserialize(deserializer)?;
-        Self::from_str(s).map_err(serde::de::Error::custom)
-    }
-}
-
-impl ListenAddress for HttpAddress {
-    fn host(&self) -> &str {
-        &self.host
-    }
-    fn port(&self) -> &str {
-        &self.port
-    }
-}
+impl_serde!(IprotoAddress);
+impl_listen_address!(IprotoAddress);
 
 /////////////////////
-// PGPROTO ADDRESS //
+// Other Addresses //
 /////////////////////
 
-#[derive(Debug, Clone, PartialEq, Eq, tlua::Push, tlua::PushInto)]
-pub struct PgprotoAddress {
-    pub host: String,
-    pub port: String,
-}
+define_address_newtype!(HttpAddress {
+    doc => "Http listen address";
+    impl Default => DEFAULT_LISTEN_HOST:DEFAULT_HTTP_PORT;
+    impl ListenAddress => {};
+});
 
-impl Default for PgprotoAddress {
-    fn default() -> Self {
-        Self {
-            host: DEFAULT_LISTEN_HOST.into(),
-            port: DEFAULT_PGPROTO_PORT.into(),
-        }
-    }
-}
+define_address_newtype!(PgprotoAddress {
+    doc => "Pgproto listen address";
+    impl Default => DEFAULT_LISTEN_HOST:DEFAULT_PGPROTO_PORT;
+    impl ListenAddress => {};
+});
 
-impl PgprotoAddress {
-    #[inline(always)]
-    pub const fn default_host_port() -> &'static str {
-        // TODO: "only literals can be passed to `concat!()`"
-        // concat!(DEFAULT_LISTEN_HOST, ":", DEFAULT_PGPROTO_PORT)
-        "127.0.0.1:4327"
-    }
+define_address_newtype!(PluginAddress {
+    doc => "Plugin listen address";
+    impl ListenAddress => {};
+});
 
-    #[inline(always)]
-    pub fn to_host_port(&self) -> SmolStr {
-        format_smolstr!("{}:{}", self.host, self.port)
-    }
-}
-
-impl std::fmt::Display for PgprotoAddress {
-    #[inline(always)]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.host, self.port)
-    }
-}
-
-impl FromStr for PgprotoAddress {
-    type Err = String;
-
-    fn from_str(addr: &str) -> Result<Self, Self::Err> {
-        let (host, port) = parse_host_and_port(addr)?;
-        Ok(Self { host, port })
-    }
-}
-
-impl serde::Serialize for PgprotoAddress {
-    #[inline(always)]
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.to_string().serialize(serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for PgprotoAddress {
-    #[inline(always)]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s: &str = serde::Deserialize::deserialize(deserializer)?;
-        Self::from_str(s).map_err(serde::de::Error::custom)
-    }
-}
-
-impl ListenAddress for PgprotoAddress {
-    fn host(&self) -> &str {
-        &self.host
-    }
-    fn port(&self) -> &str {
-        &self.port
-    }
-}
-
-//////////////////////
-// PLUGIN ADDRESS //
-//////////////////////
-
-/// Address type for plugin listener configuration.
-///
-/// Validates HOST:PORT format during deserialization, consistent with
-/// `IprotoAddress`, `HttpAddress`, and `PgprotoAddress`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginAddress {
-    pub host: String,
-    pub port: String,
-}
-
-impl PluginAddress {
-    #[inline(always)]
-    pub fn to_host_port(&self) -> SmolStr {
-        format_smolstr!("{}:{}", self.host, self.port)
-    }
-}
-
-impl std::fmt::Display for PluginAddress {
-    #[inline(always)]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.host, self.port)
-    }
-}
-
-impl FromStr for PluginAddress {
-    type Err = String;
-
-    fn from_str(addr: &str) -> Result<Self, Self::Err> {
-        let (host, port) = parse_host_and_port(addr)?;
-        Ok(Self { host, port })
-    }
-}
-
-impl serde::Serialize for PluginAddress {
-    #[inline(always)]
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.to_string().serialize(serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for PluginAddress {
-    #[inline(always)]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s: &str = serde::Deserialize::deserialize(deserializer)?;
-        Self::from_str(s).map_err(serde::de::Error::custom)
-    }
-}
-
-impl ListenAddress for PluginAddress {
-    fn host(&self) -> &str {
-        &self.host
-    }
-    fn port(&self) -> &str {
-        &self.port
-    }
-}
-
-//////////////////////
-// LDAP ADDRESS     //
-//////////////////////
-
-/// Address type for LDAP client configuration.
-///
-/// Validates HOST:PORT format during deserialization.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LdapAddress {
-    pub host: String,
-    pub port: String,
-}
-
-impl LdapAddress {
-    #[inline(always)]
-    pub fn to_host_port(&self) -> SmolStr {
-        format_smolstr!("{}:{}", self.host, self.port)
-    }
-}
-
-impl std::fmt::Display for LdapAddress {
-    #[inline(always)]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.host, self.port)
-    }
-}
-
-impl FromStr for LdapAddress {
-    type Err = String;
-
-    fn from_str(addr: &str) -> Result<Self, Self::Err> {
-        let (host, port) = parse_host_and_port(addr)?;
-        Ok(Self { host, port })
-    }
-}
-
-impl serde::Serialize for LdapAddress {
-    #[inline(always)]
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.to_string().serialize(serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for LdapAddress {
-    #[inline(always)]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s: &str = serde::Deserialize::deserialize(deserializer)?;
-        Self::from_str(s).map_err(serde::de::Error::custom)
-    }
-}
+define_address_newtype!(LdapAddress {
+    doc => "LDAP connection address";
+});
 
 ///////////////////////////////
 // Address conflict checking //
@@ -594,22 +439,6 @@ mod tests {
         assert!(pg_conflict_with_iproto.parse::<PgprotoAddress>().is_ok(),);
         let pg_conflict_with_http = format!("host:{DEFAULT_HTTP_PORT}");
         assert!(pg_conflict_with_http.parse::<PgprotoAddress>().is_ok(),);
-
-        //
-        // check correctness of default values to avoid human factor
-        //
-
-        let default_http_addr = HttpAddress::default_host_port()
-            .parse::<HttpAddress>()
-            .unwrap();
-        assert!(default_http_addr.host == DEFAULT_LISTEN_HOST);
-        assert!(default_http_addr.port == DEFAULT_HTTP_PORT);
-
-        let default_pgproto_addr = PgprotoAddress::default_host_port()
-            .parse::<PgprotoAddress>()
-            .unwrap();
-        assert!(default_pgproto_addr.host == DEFAULT_LISTEN_HOST);
-        assert!(default_pgproto_addr.port == DEFAULT_PGPROTO_PORT);
     }
     #[test]
     fn addresses_conflict_same() {

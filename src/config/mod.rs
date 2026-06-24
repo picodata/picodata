@@ -3879,10 +3879,10 @@ cluster:
                 vec![IprotoAddress::default()]
             );
             assert_eq!(config.instance.name(), None);
-            assert_eq!(config.instance.iproto.listen().to_host_port(), IprotoAddress::default_host_port());
-            assert_eq!(config.instance.iproto.advertise().to_host_port(), IprotoAddress::default_host_port());
-            assert_eq!(config.instance.pgproto.listen().to_host_port(), PgprotoAddress::default_host_port());
-            assert_eq!(config.instance.pgproto.advertise().to_host_port(), PgprotoAddress::default_host_port());
+            assert_eq!(config.instance.iproto.listen(), IprotoAddress::default());
+            assert_eq!(config.instance.iproto.advertise(), IprotoAddress::default());
+            assert_eq!(config.instance.pgproto.listen(), PgprotoAddress::default());
+            assert_eq!(config.instance.pgproto.advertise(), PgprotoAddress::default());
             assert_eq!(config.instance.log_level(), SayLevel::Info);
             assert!(config.instance.failure_domain().data.is_empty());
         }
@@ -4226,10 +4226,7 @@ instance:
         let config = setup_for_tests(Some(yaml), &["run"], &g).unwrap();
         let pgproto = config.instance.pgproto;
         // pg section wasn't specified, but it should be enabled by default
-        assert_eq!(
-            pgproto.listen().to_host_port(),
-            PgprotoAddress::default_host_port()
-        );
+        assert_eq!(pgproto.listen(), PgprotoAddress::default());
 
         let yaml = r###"
 instance:
