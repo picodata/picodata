@@ -881,3 +881,55 @@ def test_dql_schema_version_bump(cluster: Cluster):
     assert errors == [], f"unexpected errors: {errors[:3]}"
 
     i1.check_process_alive()
+
+
+def test_no_yields_in_transaction_blocks(cluster: Cluster):
+    """
+    Check that yields do not happen in transactional blocks.
+    """
+    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1, enable_http=True)
+    cluster.wait_until_buckets_balanced()
+
+    # Set preemption settings to an extreme value. This will make sure attempts to yield are made every opcode.
+    enable_preemption(i1, True, 0, 1)
+
+    # Make an implicitly distributed table to run transactional blocks on.
+    ddl = i1.sql("""
+        create table money (id int primary key, value int)
+            using memtx
+        option (timeout = 3)
+    """)
+    assert ddl["row_count"] == 1
+
+    values = ",".join(f"({i}, 40)" for i in range(500))
+    i1.sql(f"insert into money values {values}")
+
+    install_sql_cancel_helper(i1)
+
+    sql = """
+        DO $$ BEGIN
+            RETURN QUERY SELECT value FROM money WHERE id = 1;
+            LET cur = (SELECT value FROM money WHERE id = 1);
+            IF cur >= $1 THEN
+                UPDATE money SET value = cur - $1 WHERE id = 1;
+            END IF;
+        END $$
+    """
+
+    sql_yield_count_before_block = int(total_samples(i1.get_metrics(), "pico_sql_yields"))
+
+    [[res]] = i1.sql(sql, 20)
+    assert res == 40
+
+    sql_yield_count_after_block = int(total_samples(i1.get_metrics(), "pico_sql_yields"))
+
+    # No yields should have happened when running a transactional block.
+    # This relies on the instance having no background SQL activity between metric reads.
+    assert sql_yield_count_before_block == sql_yield_count_after_block
+
+    # Check that the effects of the DML can be observed.
+    [[res]] = i1.sql("SELECT value FROM money WHERE id = 1")
+    assert res == 20
+
+    # The instance must not crash.
+    i1.check_process_alive()
