@@ -475,9 +475,12 @@ impl PluginManager {
                 }
             }
             PluginAsyncEvent::RaftLeaderChanged => {
-                let res = self.handle_raft_leader_change();
+                let res = self.handle_cluster_leader_change();
                 if let Err(e) = res {
-                    tlog!(Error, "plugins on_raft_leader_change callback error: {e}");
+                    tlog!(
+                        Error,
+                        "plugins on_cluster_leader_change callback error: {e}"
+                    );
                 }
             }
         }
@@ -617,8 +620,8 @@ impl PluginManager {
         Ok(())
     }
 
-    /// Call `on_leader_change` at services. Poison services if error at callbacks happens.
-    pub(crate) fn handle_rs_leader_change(&self) -> traft::Result<()> {
+    /// Call `on_leader_change` and `on_replicaset_leader_change` at services. Poison services if error at callbacks happens.
+    pub(crate) fn handle_replicaset_leader_change(&self) -> traft::Result<()> {
         let node = node::global()?;
         let deadline = fiber::clock().saturating_add(Duration::from_secs(10));
         let check_and_make_op = || {
@@ -645,38 +648,54 @@ impl PluginManager {
                     let id = &service.id;
                     context_set_service_info(&mut ctx, service);
 
+                    let mut guard = service.volatile_state.lock();
+
                     #[rustfmt::skip]
                     tlog!(Debug, "calling {id}.on_leader_change");
+                    let on_leader_change_result = guard.inner.on_leader_change(&ctx);
 
-                    let mut guard = service.volatile_state.lock();
-                    let result = guard.inner.on_leader_change(&ctx);
+                    #[rustfmt::skip]
+                    tlog!(Debug, "calling {id}.on_replicaset_leader_change");
+                    let on_replicaset_leader_change_result =
+                        guard.inner.on_replicaset_leader_change(&ctx);
+
                     // Release the lock
                     drop(guard);
 
-                    match result {
-                        RResult::ROk(_) => {
-                            let current_instance_poisoned = storage
-                                .service_route_table
-                                .get(&ServiceRouteKey::new(instance_name, id))?
-                                .map(|route| route.poison);
+                    if on_leader_change_result.is_err()
+                        || on_replicaset_leader_change_result.is_err()
+                    {
+                        let error = BoxError::last();
 
-                            if current_instance_poisoned == Some(true) {
-                                // now the route is healthy
-                                routes_to_replace.push(ServiceRouteItem::new_healthy(
-                                    instance_name.into(),
-                                    &plugin_identity,
-                                    id.service.clone(),
-                                ));
-                            }
-                        }
-                        RErr(_) => {
-                            let error = BoxError::last();
+                        if on_leader_change_result.is_err() {
                             tlog!(
                                 Warning,
                                 "service poisoned, {id}.on_leader_change error: {error}"
                             );
-                            // now the route is poison
-                            routes_to_replace.push(ServiceRouteItem::new_poison(
+                        }
+
+                        if on_replicaset_leader_change_result.is_err() {
+                            tlog!(
+                                Warning,
+                                "service poisoned, {id}.on_replicaset_leader_change error: {error}"
+                            );
+                        }
+
+                        // now the route is poisoned
+                        routes_to_replace.push(ServiceRouteItem::new_poison(
+                            instance_name.into(),
+                            &plugin_identity,
+                            id.service.clone(),
+                        ));
+                    } else {
+                        let current_instance_poisoned = storage
+                            .service_route_table
+                            .get(&ServiceRouteKey::new(instance_name, id))?
+                            .map(|route| route.poison);
+
+                        if current_instance_poisoned == Some(true) {
+                            // now the route is healthy
+                            routes_to_replace.push(ServiceRouteItem::new_healthy(
                                 instance_name.into(),
                                 &plugin_identity,
                                 id.service.clone(),
@@ -702,8 +721,8 @@ impl PluginManager {
     }
 
     // TODO(v.klimenko): move common parts of this function and handle_rs_leader_change to functions
-    /// Call `on_raft_leader_change` on services. Poison services if error at callbacks happens.
-    pub(crate) fn handle_raft_leader_change(&self) -> traft::Result<()> {
+    /// Call `on_cluster_leader_change` on services. Poison services if error at callbacks happens.
+    pub(crate) fn handle_cluster_leader_change(&self) -> traft::Result<()> {
         let node = node::global()?;
 
         let deadline = fiber::clock().saturating_add(Duration::from_secs(10));
@@ -732,10 +751,10 @@ impl PluginManager {
                     context_set_service_info(&mut ctx, service);
 
                     #[rustfmt::skip]
-                    tlog!(Debug, "calling {id}.on_raft_leader_change");
+                    tlog!(Debug, "calling {id}.on_cluster_leader_change");
 
                     let mut guard = service.volatile_state.lock();
-                    let result = guard.inner.on_raft_leader_change(&ctx);
+                    let result = guard.inner.on_cluster_leader_change(&ctx);
                     // Release the lock
                     drop(guard);
 
@@ -759,7 +778,7 @@ impl PluginManager {
                             let error = BoxError::last();
                             tlog!(
                                 Warning,
-                                "service poisoned, {id}.on_raft_leader_change error: {error}"
+                                "service poisoned, {id}.on_cluster_leader_change error: {error}"
                             );
                             // now the route is poison
                             routes_to_replace.push(ServiceRouteItem::new_poison(

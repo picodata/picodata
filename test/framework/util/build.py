@@ -20,7 +20,6 @@ from framework.util.git import project_git_version
 from framework.util.path import project_tests_path
 from framework.util.version import VersionAlias
 
-
 BinaryLookup = Callable[[Version], Path | None]
 
 
@@ -135,7 +134,7 @@ def copy_testable_plugins() -> None:
         f"{tests_path}/testplug_listener/0.1.0",
         f"{tests_path}/testplug_custom_listener/0.1.0",
         f"{tests_path}/testplug_vinyl_tx_denial/0.1.0",
-        f"{tests_path}/testplug_on_raft_leader_change/0.1.0",
+        f"{tests_path}/testplug_on_cluster_leader_change/0.1.0",
     ]
     for destination_directory in plugin_destinations:
         copy_plugin_library(source_directory, destination_directory, "libtestplug")

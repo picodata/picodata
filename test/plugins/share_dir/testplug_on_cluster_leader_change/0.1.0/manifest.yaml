@@ -1,0 +1,14 @@
+description: plugin for testing ABI-breaking changes the on_cluster_leader_change callback and the rename of on_leader_change
+name: testplug_on_cluster_leader_change
+version: 0.1.0
+services:
+  - name: on_cluster_leader_change_service
+    description: check the new on_cluster_leader_change callback
+    default_configuration:
+      on_cluster_leader_change_should_return_error: false
+      dummy_value_to_change: 1337
+  - name: two_callbacks_on_replicaset_leader_change_service
+    description: check that the callback rename is not a breaking change, and everything works properly
+    default_configuration:
+      on_leader_change_should_return_error: false
+      on_replicaset_leader_change_should_return_error: false

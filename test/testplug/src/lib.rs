@@ -1164,15 +1164,15 @@ impl Service for VinylTxDenialService {
     }
 }
 
-/// Test `on_raft_leader_change` callback
+/// Test `on_cluster_leader_change` callback
 struct OnRaftLeaderChangeService {
-    on_raft_leader_change_should_return_error: bool,
+    on_cluster_leader_change_should_return_error: bool,
 }
 
 impl OnRaftLeaderChangeService {
     fn new() -> Self {
         OnRaftLeaderChangeService {
-            on_raft_leader_change_should_return_error: false,
+            on_cluster_leader_change_should_return_error: false,
         }
     }
 }
@@ -1180,7 +1180,7 @@ impl OnRaftLeaderChangeService {
 #[allow(unused)]
 #[derive(Deserialize)]
 struct OnRaftLeaderChangeServiceConfig {
-    on_raft_leader_change_should_return_error: bool,
+    on_cluster_leader_change_should_return_error: bool,
     dummy_value_to_change: i64,
 }
 
@@ -1192,21 +1192,21 @@ impl Service for OnRaftLeaderChangeService {
         let code = format!("_G['on_start_got_raft_leader'] = {}", ctx.is_raft_leader());
         lua.exec(&code).unwrap();
 
-        self.on_raft_leader_change_should_return_error =
-            config.on_raft_leader_change_should_return_error;
+        self.on_cluster_leader_change_should_return_error =
+            config.on_cluster_leader_change_should_return_error;
         Ok(())
     }
 
-    fn on_raft_leader_change(&mut self, ctx: &PicoContext) -> CallbackResult<()> {
+    fn on_cluster_leader_change(&mut self, ctx: &PicoContext) -> CallbackResult<()> {
         let lua = tarantool::lua_state();
         let code = format!(
-            "_G['on_raft_leader_change_got_raft_leader'] = {}",
+            "_G['on_cluster_leader_change_got_raft_leader'] = {}",
             ctx.is_raft_leader()
         );
         lua.exec(&code).unwrap();
 
-        if self.on_raft_leader_change_should_return_error {
-            return Err("the error that should happen in on_raft_leader_change".into());
+        if self.on_cluster_leader_change_should_return_error {
+            return Err("the error that should happen in on_cluster_leader_change".into());
         }
         Ok(())
     }
@@ -1224,15 +1224,15 @@ impl Service for OnRaftLeaderChangeService {
         );
         lua.exec(&code).unwrap();
 
-        self.on_raft_leader_change_should_return_error =
-            new_config.on_raft_leader_change_should_return_error;
+        self.on_cluster_leader_change_should_return_error =
+            new_config.on_cluster_leader_change_should_return_error;
         Ok(())
     }
 
-    fn on_leader_change(&mut self, ctx: &PicoContext) -> CallbackResult<()> {
+    fn on_replicaset_leader_change(&mut self, ctx: &PicoContext) -> CallbackResult<()> {
         let lua = tarantool::lua_state();
         let code = format!(
-            "_G['on_leader_change_got_raft_leader'] = {}",
+            "_G['on_replicaset_leader_change_got_raft_leader'] = {}",
             ctx.is_raft_leader()
         );
         lua.exec(&code).unwrap();
@@ -1256,6 +1256,60 @@ impl Service for OnRaftLeaderChangeService {
         let code = format!("_G['on_stop_got_raft_leader'] = {}", ctx.is_raft_leader());
         lua.exec(&code).unwrap();
 
+        Ok(())
+    }
+}
+
+/// Test `on_leader_change` and `on_replicaset_leader_change` callbacks
+#[derive(Default)]
+struct TwoCallbacksOnReplicasetLeaderChangeService {
+    on_leader_change_should_return_error: bool,
+    on_replicaset_leader_change_should_return_error: bool,
+}
+
+#[allow(unused)]
+#[derive(Deserialize)]
+struct TwoCallbacksOnReplicasetLeaderChangeConfig {
+    on_leader_change_should_return_error: bool,
+    on_replicaset_leader_change_should_return_error: bool,
+}
+
+impl Service for TwoCallbacksOnReplicasetLeaderChangeService {
+    type Config = TwoCallbacksOnReplicasetLeaderChangeConfig;
+
+    fn on_replicaset_leader_change(&mut self, _ctx: &PicoContext) -> CallbackResult<()> {
+        let lua = tarantool::lua_state();
+        if self.on_replicaset_leader_change_should_return_error {
+            lua.exec("_G['on_replicaset_leader_change_res'] = 'err'")
+                .unwrap();
+            Err("on_replicaset_leader_change returned an error!1!!".into())
+        } else {
+            lua.exec("_G['on_replicaset_leader_change_res'] = 'ok'")
+                .unwrap();
+            Ok(())
+        }
+    }
+
+    fn on_leader_change(&mut self, _ctx: &PicoContext) -> CallbackResult<()> {
+        let lua = tarantool::lua_state();
+        if self.on_leader_change_should_return_error {
+            lua.exec("_G['on_leader_change_res'] = 'err'").unwrap();
+            Err("on_leader_change returned an error!!!".into())
+        } else {
+            lua.exec("_G['on_leader_change_res'] = 'ok'").unwrap();
+            Ok(())
+        }
+    }
+
+    fn on_config_change(
+        &mut self,
+        _ctx: &PicoContext,
+        new_config: Self::Config,
+        _old_config: Self::Config,
+    ) -> CallbackResult<()> {
+        self.on_leader_change_should_return_error = new_config.on_leader_change_should_return_error;
+        self.on_replicaset_leader_change_should_return_error =
+            new_config.on_replicaset_leader_change_should_return_error;
         Ok(())
     }
 }
@@ -1312,8 +1366,14 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
     reg.add("vinyl_tx_denial_service", "0.1.0", || VinylTxDenialService);
 
     reg.add(
-        "on_raft_leader_change_service",
+        "on_cluster_leader_change_service",
         "0.1.0",
         OnRaftLeaderChangeService::new,
+    );
+
+    reg.add(
+        "two_callbacks_on_replicaset_leader_change_service",
+        "0.1.0",
+        TwoCallbacksOnReplicasetLeaderChangeService::default,
     );
 }

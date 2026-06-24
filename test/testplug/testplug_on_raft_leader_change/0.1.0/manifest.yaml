@@ -1,9 +1,0 @@
-description: plugin for testing the on_raft_leader_change callback
-name: testplug_on_raft_leader_change
-version: 0.1.0
-services:
-  - name: on_raft_leader_change_service
-    description: on_raft_leader_change_service description
-    default_configuration:
-      on_raft_leader_change_should_return_error: false
-      dummy_value_to_change: 1337

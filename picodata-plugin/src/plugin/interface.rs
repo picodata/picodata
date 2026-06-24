@@ -19,10 +19,11 @@ use tarantool::error::{BoxError, IntoBoxError};
 #[derive(StableAbi, Debug)]
 pub struct PicoContext {
     is_master: bool,
-    is_raft_leader: bool,
     pub plugin_name: FfiSafeStr,
     pub service_name: FfiSafeStr,
     pub plugin_version: FfiSafeStr,
+    #[sabi(last_prefix_field)]
+    is_raft_leader: bool,
 }
 
 impl PicoContext {
@@ -30,20 +31,21 @@ impl PicoContext {
     pub fn new(is_master: bool) -> PicoContext {
         Self {
             is_master,
-            is_raft_leader: false,
             plugin_name: "<unset>".into(),
             service_name: "<unset>".into(),
             plugin_version: "<unset>".into(),
+            is_raft_leader: false,
         }
     }
 
+    #[inline]
     pub fn with_is_raft_leader(is_master: bool, is_raft_leader: bool) -> PicoContext {
         Self {
             is_master,
-            is_raft_leader,
             plugin_name: "<unset>".into(),
             service_name: "<unset>".into(),
             plugin_version: "<unset>".into(),
+            is_raft_leader,
         }
     }
 
@@ -55,10 +57,10 @@ impl PicoContext {
     pub unsafe fn clone(&self) -> Self {
         Self {
             is_master: self.is_master,
-            is_raft_leader: self.is_raft_leader,
             plugin_name: self.plugin_name,
             service_name: self.service_name,
             plugin_version: self.plugin_version,
+            is_raft_leader: self.is_raft_leader,
         }
     }
 
@@ -270,7 +272,7 @@ pub trait Service {
     /// but will mark instance as unavailable for rpc messaging.
     ///
     /// Instance can be "healed"
-    /// if any of `on_leader_change`, `on_config_change` or `on_raft_leader_change`
+    /// if any of `on_replicaset_leader_change`, `on_config_change` or `on_cluster_leader_change`
     /// callbacks in the future return `Ok`.
     ///
     /// # Arguments
@@ -327,34 +329,21 @@ pub trait Service {
         Ok(())
     }
 
-    /// Called when replicaset leader is changed.
-    /// This callback will be called exactly on two instances - the old leader and the new one.
-    ///
-    /// # Idempotency
-    ///
-    /// **WARNING** This callback may be called several times in a row.
-    /// It is the responsibility of the plugin author to make this function idempotent.
-    ///
-    /// # Poison
-    ///
-    /// Return an error here to poison current instance.
-    /// This will not cancel reconfiguration process,
-    /// but will mark instance as unavailable for rpc messaging.
-    ///
-    /// Instance can be "healed"
-    /// if any of `on_leader_change`, `on_config_change` or `on_raft_leader_change`
-    /// callbacks in the future return `Ok`.
-    ///
-    /// # Arguments
-    ///
-    /// * `context`: instance context
+    /// This method will be deprecated in the next major release in favor of
+    /// `on_replicaset_leader_change`. Only the name is changed, so you can easily migrate
+    /// to the new method.
+    #[deprecated(
+        since = "26.2.1",
+        note = "this method gets deprecated, in favor of on_replicaset_leader_change for better naming. Both callbacks will be called until the next major release"
+    )]
     fn on_leader_change(&mut self, context: &PicoContext) -> CallbackResult<()> {
         _ = context;
         Ok(())
     }
 
-    /// Called when raft leader is changed.
-    /// This callback will be called exactly on two instances - the old raft leader and the new one.
+    /// Called when the replicaset master is changed.
+    /// This callback will be called on two instances at max - the old replicaset
+    /// master (if it is accessible) and the new one.
     ///
     /// # Idempotency
     ///
@@ -368,13 +357,40 @@ pub trait Service {
     /// but will mark instance as unavailable for rpc messaging.
     ///
     /// Instance can be "healed"
-    /// if any of `on_leader_change`, `on_config_change` or `on_raft_leader_change`
+    /// if any of `on_replicaset_leader_change`, `on_config_change` or `on_cluster_leader_change`
     /// callbacks in the future return `Ok`.
     ///
     /// # Arguments
     ///
     /// * `context`: instance context
-    fn on_raft_leader_change(&mut self, context: &PicoContext) -> CallbackResult<()> {
+    fn on_replicaset_leader_change(&mut self, context: &PicoContext) -> CallbackResult<()> {
+        _ = context;
+        Ok(())
+    }
+
+    /// Called when the raft leader of the cluster is changed
+    /// This callback will be called on two instances at max - the old cluster
+    /// leader (if it is accessible) and the new one.
+    ///
+    /// # Idempotency
+    ///
+    /// **WARNING** This callback may be called several times in a row.
+    /// It is the responsibility of the plugin author to make this function idempotent.
+    ///
+    /// # Poison
+    ///
+    /// Return an error here to poison current instance.
+    /// This will not cancel reconfiguration process,
+    /// but will mark instance as unavailable for rpc messaging.
+    ///
+    /// Instance can be "healed"
+    /// if any of `on_replicaset_leader_change`, `on_config_change` or `on_cluster_leader_change`
+    /// callbacks in the future return `Ok`.
+    ///
+    /// # Arguments
+    ///
+    /// * `context`: instance context
+    fn on_cluster_leader_change(&mut self, context: &PicoContext) -> CallbackResult<()> {
         _ = context;
         Ok(())
     }
@@ -404,13 +420,22 @@ pub trait ServiceStable {
     fn on_start(&mut self, context: &PicoContext, configuration: RSlice<u8>) -> RResult<(), ()>;
     fn on_stop(&mut self, context: &PicoContext) -> RResult<(), ()>;
     fn on_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()>;
-    fn on_raft_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()>;
+    // this macro should be moved to the last method on a major release
+    #[sabi(last_prefix_field)]
     fn on_config_change(
         &mut self,
         ctx: &PicoContext,
         new_config: RSlice<u8>,
         old_config: RSlice<u8>,
     ) -> RResult<(), ()>;
+    fn on_replicaset_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()> {
+        _ = context;
+        ROk(())
+    }
+    fn on_cluster_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()> {
+        _ = context;
+        ROk(())
+    }
 }
 
 /// Implementation of [`ServiceStable`]
@@ -468,14 +493,22 @@ impl<C: DeserializeOwned> ServiceStable for ServiceProxy<C> {
     }
 
     fn on_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()> {
+        #[allow(deprecated)]
         match self.service.on_leader_change(context) {
             Ok(_) => ROk(()),
             Err(e) => error_into_tt_error(e),
         }
     }
 
-    fn on_raft_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()> {
-        match self.service.on_raft_leader_change(context) {
+    fn on_replicaset_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()> where {
+        match self.service.on_replicaset_leader_change(context) {
+            Ok(_) => ROk(()),
+            Err(e) => error_into_tt_error(e),
+        }
+    }
+
+    fn on_cluster_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()> {
+        match self.service.on_cluster_leader_change(context) {
             Ok(_) => ROk(()),
             Err(e) => error_into_tt_error(e),
         }

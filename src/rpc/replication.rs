@@ -316,7 +316,7 @@ pub fn set_read_only(new_read_only: bool) -> Result<()> {
 
     if old_read_only != new_read_only {
         // errors ignored because it must be already handled by plugin manager itself
-        let res = node.plugin_manager.handle_rs_leader_change();
+        let res = node.plugin_manager.handle_replicaset_leader_change();
         if let Err(e) = res {
             tlog!(Error, "on_leader_change error: {e}");
         }
