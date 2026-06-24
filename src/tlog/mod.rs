@@ -1,3 +1,5 @@
+pub mod ratelimit;
+
 use crate::config::LogFormat;
 use ::tarantool::log::{say, SayLevel};
 use once_cell::sync::Lazy;
@@ -114,7 +116,6 @@ pub fn root() -> &'static slog::Logger {
 #[macro_export]
 macro_rules! tlog {
     ($lvl:ident, $($args:tt)*) => {{
-        // Safety: always safe
         let logger = &$crate::tlog::root();
         slog::log!(logger, slog::Level::$lvl, "", $($args)*);
     }}
@@ -142,6 +143,11 @@ impl slog::Drain for Drain {
         say(level, record.file(), record.line() as i32, None, &msg);
 
         Ok(())
+    }
+
+    fn is_enabled(&self, level: slog::Level) -> bool {
+        let level = slog_level_to_say_level(level);
+        level <= tarantool::log::current_level()
     }
 }
 
