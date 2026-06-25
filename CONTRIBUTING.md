@@ -21,10 +21,10 @@ sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static clang-devel
 sudo dnf module install nodejs:19
 sudo corepack enable
 ```
-### Prerequisites for Ubuntu 22.04 and 24.04
+### Prerequisites for Ubuntu 22.04, 24.04, and 26.04
 Use the following command to install the required build prerequisites. Note that Ubuntu 22.04 provides recent Rust and Cargo versions, so it's preferable to install it via `apt-get`:
 ```bash
-sudo apt-get install build-essential git cmake autoconf libtool curl pkg-config libclang-dev -y
+sudo apt-get install build-essential git cmake autoconf libtool curl pkg-config libclang-dev libssl-dev -y
 
 # Optional - to build with Web UI
 curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
@@ -32,6 +32,13 @@ echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/source
 sudo apt install yarn npm -y
 sudo curl --compressed -o- -L https://yarnpkg.com/install.sh | bash
 ```
+> NOTE:<br>
+> `libssl-dev` is required even for the default static build. The `openssl` crate always
+> links against the system OpenSSL, and Tarantool is intentionally configured to link the
+> same library instead of bundling its own, so the two don't conflict. Other `-dev`
+> packages (curl, ICU, libyaml, zstd, OpenLDAP, readline, zlib, see the Fedora
+> [Dynamic build](#dynamic-build) section) are only needed when building with
+> `--features dynamic_build`.
 
 ### Prerequisites for Alt Workstation p10
 Use the following commands to install the required build prerequisites. Note that you'll need recent Rust and Cargo versions installed using the recommended way from [rustup.rs](rustup.rs):
