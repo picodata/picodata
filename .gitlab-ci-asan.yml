@@ -74,7 +74,7 @@ asan-build-dev:
     paths:
       - target/asan-dev/*/debug/picodata
       - target/asan-dev/*/debug/libtestplug.so
-      - test/plug_wrong_version/target/debug/libplug_wrong_version.so
+      - test/plugins/plug_*/target/debug/libplug_*.so
 
 asan-test-rs:
   stage: test

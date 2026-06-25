@@ -22,9 +22,12 @@ from conftest import (
     log_crawler,
 )
 from framework.ldap import LdapServer
+from framework.log import log
+from framework.registry import Registry, get_or_make_registry
 from framework.thread import spawn_thread
 from framework.util import copy_plugin_library
-from framework.util.build import Executable, cargo_build_path, project_tests_path
+from framework.util.build import Executable, cargo_build_path, project_plugins_path
+from packaging.version import Version
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -48,12 +51,9 @@ _PLUGIN_ON_CLUSTER_LEADER_CHANGE = "testplug_on_cluster_leader_change"
 _SERVICE_ON_CLUSTER_LEADER_CHANGE = "on_cluster_leader_change_service"
 _SERVICE_TWO_CALLBACKS_ON_REPLICASET_LEADER_CHANGE = "two_callbacks_on_replicaset_leader_change_service"
 
-<<<<<<< HEAD
-=======
 _PLUGIN_26_1 = "plug_26_1"
 _SERVICE_NO_ON_CLUSTER_LEADER_CHANGE = "no_on_cluster_leader_change_service"
 
->>>>>>> 67d936dec (fixuponclusterleader)
 REQUEST_ID = 1
 PLUGIN_NAME = 2
 SERVICE_NAME = 3
@@ -396,6 +396,7 @@ def init_dummy_plugin(
     # **DO NOT** modify `services` or `migrations` within this function!
     # See https://florimond.dev/en/posts/2018/08/python-mutable-defaults-are-the-source-of-all-evil  # noqa: E501
     services: list[str] = [],
+    configuration: dict[str, Any] = {},
     migrations: list[str] = [],
     library_name: str = "libtestplug",
     cargo_target_dir: Optional[Path] = None,
@@ -403,8 +404,8 @@ def init_dummy_plugin(
     """Does the following:
     - Setup --share-dir option for the cluster
     - Create plugin directory <share-dir>/<plugin>/<version>
-    - Create manifest.yaml in that directory with provided info
-    - Copy the <library_name>.so into that directory
+    - Create manifest.yaml in that directory with the provided info
+    - Copy the <library_name>.so, if it exists, into that directory
 
     Returns the path to the newly created plugin directory.
 
@@ -433,11 +434,51 @@ def init_dummy_plugin(
             print(f"  - name: {service}", file=f)
             print("    description:", file=f)
             print("    default_configuration:", file=f)
+            for parameter, value in configuration.items():
+                print(f"      {parameter}: {value}", file=f)
         print("migration:", file=f)
         for migration in migrations:
             print(f"  - {migration}", file=f)
 
     return plugin_dir
+
+
+def init_separate_crate_plugin(
+    cluster: Cluster,
+    plugin: str,
+    version: str,
+    *,
+    services: list[str] = [],
+    configuration: dict[str, Any] = {},
+    migrations: list[str] = [],
+):
+    """
+    Init a plugin that is a separate non-workspace crate
+    under /test/plugins/, for examples see plug_wrong_version
+    and plug_26_1
+
+    The plugin name should match the folder name
+    """
+
+    cargo_target_dir = cargo_build_path(
+        cwd=project_plugins_path() / plugin,
+        build_profile="debug",
+    )
+    library_name = "lib" + plugin
+
+    # this is in fact not a dummy plugin, because
+    # copy_plugin_library will actually copy the compiled
+    # .so to the cluster's share_dir
+    return init_dummy_plugin(
+        cluster,
+        plugin,
+        version,
+        services=services,
+        migrations=migrations,
+        library_name=library_name,
+        cargo_target_dir=cargo_target_dir,
+        configuration=configuration,
+    )
 
 
 def test_invalid_manifest_plugin(cluster: Cluster):
@@ -3364,19 +3405,11 @@ def test_create_plugin_too_many_versions(cluster: Cluster):
 
 @pytest.mark.skip_asan("plug_wrong_version is a standalone workspace built without ASan profiles")
 def test_picoplugin_version_compatibility_check(cluster: Cluster):
-    cargo_target_dir = cargo_build_path(
-        cwd=project_tests_path() / "plug_wrong_version",
-        build_profile="debug",
-    )
-
-    # TODO: implement a proper plugin installation routine for tests
-    cargo_target_dir = init_dummy_plugin(
+    init_separate_crate_plugin(
         cluster,
         "plug_wrong_version",
         "0.1.0",
         services=["testservice"],
-        library_name="libplug_wrong_version",
-        cargo_target_dir=cargo_target_dir,
     )
 
     instance = cluster.add_instance()
@@ -3865,6 +3898,10 @@ def test_plugin_on_cluster_leader_change_err(cluster: Cluster):
     version = "0.1.0"
     service = _SERVICE_ON_CLUSTER_LEADER_CHANGE
 
+    def global_wait():
+        i1.sql("create table _t (a int primary key);")
+        i1.sql("drop table _t wait applied globally;")
+
     # wait for the first instance to be the raft leader
     i1 = cluster.add_instance(wait_online=True)
     i2 = cluster.add_instance()
@@ -3902,16 +3939,16 @@ def test_plugin_on_cluster_leader_change_err(cluster: Cluster):
 
     # cure the routes by running .on_config_change
     i1.sql(f"ALTER PLUGIN {plugin} {version} SET {service}.on_cluster_leader_change_should_return_error='true'")
+    # not all services were able to get the config change to call on_config_change before adding this hack
+    global_wait()
 
     [[poisoned]] = i2.sql("SELECT COUNT(*) FROM _pico_service_route WHERE poison = true")
     assert poisoned == 0
 
     # make i1 leader again
     i2.raft_transfer_leadership(i1.raft_id)
+    time.sleep(1)
     assert i1.raft_leader_id() == 1
-
-    # switch the leader involuntarily
-    i1.kill()
 
     lc2 = log_crawler(
         i2,
@@ -3923,6 +3960,9 @@ def test_plugin_on_cluster_leader_change_err(cluster: Cluster):
         f"service poisoned, {plugin}.{service}:v{version}.on_cluster_leader_change error:.*the error that should happen in on_cluster_leader_change",
         use_regex=True,
     )
+
+    # switch the leader involuntarily
+    i1.kill()
 
     # advance the raft clock on the surviving instances to trigger an immediate election
     for i in [i2, i3]:
@@ -4082,6 +4122,7 @@ def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
         ops=[("=", "target_master_name", i3.name)],
     )
     cluster.raft_wait_index(index)
+
     i1.wait_governor_status("idle")
     assert i1.replicaset_master_name() == i3.name
 
@@ -4173,3 +4214,91 @@ def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
     # check that the service routes became poisoned
     [[poisoned]] = i2.sql("SELECT COUNT(*) FROM _pico_service_route WHERE poison = true")
     assert poisoned == 2
+
+
+@pytest.mark.required_rolling_versions(
+    versions=[
+        get_or_make_registry().next_version(Version("26.1.4")),
+    ]
+)
+@pytest.mark.skip_asan("plug_26_1 is a standalone workspace built without ASan profiles")
+def test_plugin_on_cluster_leader_change_not_present(cluster: Cluster, registry: Registry):
+    """
+    Check that the absence of the new callback on_cluster_leader_change in a plugin
+    built with picodata-plugin of version 26.1, but on picodata of version 26.2 does
+    not break the database
+    """
+    plugin = _PLUGIN_26_1
+    version = "0.1.0"
+    service = _SERVICE_NO_ON_CLUSTER_LEADER_CHANGE
+
+    init_separate_crate_plugin(
+        cluster, plugin, version, services=[service], configuration={"dummy_value_to_change": 80085}
+    )
+
+    executable = registry.get(registry.next_version(Version("26.1.4")))
+    log.info(f"executable is {executable}")
+
+    # wait for the first instance to be the raft leader
+    i1 = cluster.add_instance(wait_online=True, init_replication_factor=3, executable=executable)
+    i2 = cluster.add_instance(wait_online=True, executable=executable)
+    i3 = cluster.add_instance(wait_online=True, executable=executable)
+
+    assert i1.raft_leader_id() == 1
+
+    i1.sql(f"CREATE PLUGIN {plugin} {version}")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ADD SERVICE {service} TO TIER default")
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ENABLE")
+
+    def check_on_start():
+        assert i1.eval("return _G['on_start_no_on_cluster_leader_change']") == "was set"
+        assert i2.eval("return _G['on_start_no_on_cluster_leader_change']") == "was set"
+        assert i3.eval("return _G['on_start_no_on_cluster_leader_change']") == "was set"
+
+    Retriable().call(check_on_start)
+
+    # TODO(v.klimenko): uncomment this when on_health_check callback is implemented
+    # def check_on_healthcheck():
+    #     assert i1.eval("return _G['on_healthcheck_no_on_cluster_leader_change']") == 'was set'
+    #     assert i2.eval("return _G['on_healthcheck_no_on_cluster_leader_change']") == 'was set'
+    #     assert i3.eval("return _G['on_healthcheck_no_on_cluster_leader_change']") == 'was set'
+    #
+    # Retriable().call(check_on_healthcheck)
+
+    i1.sql(f"ALTER PLUGIN {plugin} {version} SET {service}.dummy_value_to_change ='67'")
+
+    def check_on_config_change():
+        assert i1.eval("return _G['on_config_change_no_on_cluster_leader_change']") == "was set"
+        assert i2.eval("return _G['on_config_change_no_on_cluster_leader_change']") == "was set"
+        assert i3.eval("return _G['on_config_change_no_on_cluster_leader_change']") == "was set"
+
+    Retriable().call(check_on_config_change)
+
+    i1.raft_transfer_leadership(i2.raft_id)
+    # the instance would panic if the on_cluster_leader_change was expected to be implemented
+    i1.check_process_alive()
+
+    # switch the master to i3
+    index, _ = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["default_1"],
+        ops=[("=", "target_master_name", i3.name)],
+    )
+    cluster.raft_wait_index(index)
+    i2.wait_governor_status("idle")
+    assert i2.replicaset_master_name() == i3.name
+
+    def check_on_leader_change():
+        assert i1.eval("return _G['on_leader_change_no_on_cluster_leader_change']") == "was set"
+        assert i3.eval("return _G['on_leader_change_no_on_cluster_leader_change']") == "was set"
+
+    Retriable().call(check_on_leader_change)
+
+    i2.sql(f"ALTER PLUGIN {plugin} {version} DISABLE")
+
+    def check_on_stop():
+        assert i2.eval("return _G['on_stop_no_on_cluster_leader_change']") == "was set"
+        assert i3.eval("return _G['on_stop_no_on_cluster_leader_change']") == "was set"
+
+    Retriable().call(check_on_stop)

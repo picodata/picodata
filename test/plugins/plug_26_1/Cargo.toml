@@ -1,0 +1,13 @@
+[package]
+name = "plug_26_1"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+picodata-plugin = "=26.1"
+serde = { version = "1.0.197", features = ["derive"] }
+
+[lib]
+crate-type = ["lib", "cdylib"]

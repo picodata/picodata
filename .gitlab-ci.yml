@@ -432,8 +432,8 @@ build-linux:
   artifacts:
     paths:
       - target
-      - test/plug_wrong_version/target/debug/libplug_wrong_version.so
-      - test/plug_wrong_version/target/cov/x86_64-unknown-linux-gnu/debug/libplug_wrong_version.so
+      - test/plugins/plug_*/target/debug/libplug_*.so
+      - test/plugins/plug_*/target/cov/x86_64-unknown-linux-gnu/debug/libplug_*.so
     expire_in: 3 days
 
 test-rs-linux:

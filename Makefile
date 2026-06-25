@@ -50,11 +50,17 @@ tarantool-patch:
 		echo "${VER_TNT}" > tarantool-sys/VERSION; \
 	fi
 
-# XXX: All targets but build-release-pkg should trigger this one!
+# XXX: All targets but build-release-pkg should trigger build-plug-*!
 # XXX: We can't use CARGO_FLAGS here since it's a standalone project w/o profile definitions etc.
 .PHONY: build-plug-wrong-version
 build-plug-wrong-version:
-	cd test/plug_wrong_version && \
+	cd test/plugins/plug_wrong_version && \
+		$(CARGO_ENV) \
+		cargo build $(LOCKED) $(MAKE_JOBSERVER_ARGS) --profile=dev
+
+.PHONY: build-plug-26-1
+build-plug-26-1:
+	cd test/plugins/plug_26_1 && \
 		$(CARGO_ENV) \
 		cargo build $(LOCKED) $(MAKE_JOBSERVER_ARGS) --profile=dev
 
@@ -74,6 +80,7 @@ build-$(1): override CARGO_FLAGS += $$(ERROR_INJECTION)
 build-$(1): override CARGO_FLAGS += --profile=$(1)
 build-$(1): build
 build-$(1): build-plug-wrong-version
+build-$(1): build-plug-26-1
 
 .PHONY: coverage-build-$(1)
 coverage-build-$(1): export CARGO_TARGET_DIR = $$(TARGET_DIR_COV)

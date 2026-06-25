@@ -204,7 +204,7 @@ members = [
     "sql-protocol",
     "sql-type-system",
     "tarantool-build",
-    "test/testplug",
+    "test/plugins/testplug",
 ]
 
 # For releases, we prioritize performance over compilation time.

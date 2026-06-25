@@ -16,3 +16,12 @@ def project_tests_path() -> Path:
     assert tests_path.exists(), error
 
     return tests_path
+
+
+def project_plugins_path() -> Path:
+    plugins_path = project_tests_path() / "plugins"
+
+    error = "plugin directory of the project must exist"
+    assert plugins_path.exists(), error
+
+    return plugins_path

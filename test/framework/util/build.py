@@ -17,7 +17,7 @@ from framework.util import (
     should_perform_cargo_build,
 )
 from framework.util.git import project_git_version
-from framework.util.path import project_tests_path
+from framework.util.path import project_plugins_path
 from framework.util.version import VersionAlias
 
 BinaryLookup = Callable[[Version], Path | None]
@@ -117,24 +117,26 @@ def copy_testable_plugins() -> None:
     Copy compiled test plugin shared libraries into the expected test fixture directories.
     Must be called after `perform_cargo_build` so that the compiled library already exists.
     """
+
+    share_dir = project_plugins_path() / "share_dir"
+
     source_directory = cargo_build_path()
-    tests_path = project_tests_path() / "testplug"
     plugin_destinations = [
-        f"{tests_path}/testplug/0.1.0",
-        f"{tests_path}/testplug/0.2.0",
-        f"{tests_path}/testplug/0.3.0",
-        f"{tests_path}/testplug/0.4.0",
-        f"{tests_path}/testplug_small/0.1.0",
-        f"{tests_path}/testplug_small_svc2/0.1.0",
-        f"{tests_path}/testplug_w_migration/0.1.0",
-        f"{tests_path}/testplug_w_migration_2/0.1.0",
-        f"{tests_path}/testplug_w_migration/0.2.0",
-        f"{tests_path}/testplug_w_migration/0.2.0_changed",
-        f"{tests_path}/testplug_sdk/0.1.0",
-        f"{tests_path}/testplug_listener/0.1.0",
-        f"{tests_path}/testplug_custom_listener/0.1.0",
-        f"{tests_path}/testplug_vinyl_tx_denial/0.1.0",
-        f"{tests_path}/testplug_on_cluster_leader_change/0.1.0",
+        f"{share_dir}/testplug/0.1.0",
+        f"{share_dir}/testplug/0.2.0",
+        f"{share_dir}/testplug/0.3.0",
+        f"{share_dir}/testplug/0.4.0",
+        f"{share_dir}/testplug_small/0.1.0",
+        f"{share_dir}/testplug_small_svc2/0.1.0",
+        f"{share_dir}/testplug_w_migration/0.1.0",
+        f"{share_dir}/testplug_w_migration_2/0.1.0",
+        f"{share_dir}/testplug_w_migration/0.2.0",
+        f"{share_dir}/testplug_w_migration/0.2.0_changed",
+        f"{share_dir}/testplug_sdk/0.1.0",
+        f"{share_dir}/testplug_listener/0.1.0",
+        f"{share_dir}/testplug_custom_listener/0.1.0",
+        f"{share_dir}/testplug_vinyl_tx_denial/0.1.0",
+        f"{share_dir}/testplug_on_cluster_leader_change/0.1.0",
     ]
     for destination_directory in plugin_destinations:
         copy_plugin_library(source_directory, destination_directory, "libtestplug")

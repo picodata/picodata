@@ -3254,7 +3254,7 @@ def cluster_factory(class_tmp_dir, cluster_names, port_distributor, cargo_build_
     def cluster_factory_():
         # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
         # see how it's done in def binary_path()
-        share_dir = os.getcwd() + "/test/testplug"
+        share_dir = os.getcwd() + "/test/plugins/share_dir"
         cluster = Cluster(
             id=next(cluster_names),
             data_dir=class_tmp_dir,

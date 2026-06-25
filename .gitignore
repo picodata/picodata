@@ -31,10 +31,10 @@ tmp/
 tags
 test/manual/sql/*.json
 *.pending-snap
-**/libtestplug.so
-**/libtestplug.dylib
-**/libplug_wrong_version.so
-**/libplug_wrong_version.dylib
+**/libtestplug*.so
+**/libtestplug*.dylib
+**/libplug_*.so
+**/libplug_*.dylib
 .direnv
 .envrc
 
