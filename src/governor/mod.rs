@@ -233,6 +233,28 @@ impl Loop {
             last_step_info,
         );
 
+        // Every RPC from governor has 2 timeout parameters: one for the sender
+        // side, and one for the receiver side. The receiver-side timeouts are
+        // passed inside the RPC fields returned from `action_plan`, and the
+        // sender-side timeouts are passed as parameters to `ConnectionPool::call`.
+        //
+        // In general the sender-side timeout is needed to limit exposure to
+        // network failures as well as event-loop blocks on the receiver side.
+        //
+        // But the receiver's side timeouts can be used to diagnose the problems
+        // with higher precision, because that instance is able to determine
+        // which specific subsystem timed out. In general this allows receivers
+        // to send an RPC response with a specific error message in case of
+        // timeouts.
+        //
+        // In order for governor to be able to receive these specific timeout
+        // error messages, we use a slightly increased sender-side timeout
+        // value.
+        //
+        // Governor uses the RPC error messages to log them and to save
+        // them in the `governor_loop_last_error` field of `proc_runtime_info`.
+        let rpc_timeout = rpc_timeout.saturating_add(Duration::from_secs(1));
+
         // Must be dropped before yielding
         drop(topology_ref);
         drop(db_config);
@@ -775,15 +797,6 @@ impl Loop {
                 governor_substep! {
                     "awaiting resharding to finish"
                     async {
-                        // Add an extra second so that the receivers have time
-                        // to detect timeout and sends their resharding_loop's
-                        // last error info. This is mainly needed for debugging
-                        // so that in logs and last_error of this instance we
-                        // can see the actual error from the peer possibly with
-                        // source location, instead of a generic timeout.
-                        // Correctness is not affected
-                        let rpc_timeout = rpc_timeout.saturating_add(Duration::from_secs(1));
-
                         let mut fs = FuturesUnordered::new();
                         for master_name in targets_batch {
                             tlog!(Info, "calling proc_resharding"; "instance_name" => %master_name);
