@@ -347,7 +347,6 @@ impl Plan {
         subqueries: &[NodeId],
         resolver: &impl BucketsResolver,
     ) -> Result<Buckets, SbroadError> {
-        let chains = self.get_dnf_chains(expr_id)?;
         // When we can't extract buckets from expression,
         // we use default buckets for that expression with
         // idea that expression does not influence the result
@@ -376,6 +375,9 @@ impl Plan {
                 }
             }
             default_buckets
+        };
+        let Some(chains) = self.get_dnf_chains(expr_id)? else {
+            return Ok(default_buckets);
         };
         let mut result = Vec::with_capacity(chains.len());
         for mut chain in chains {

@@ -1325,10 +1325,9 @@ impl<'p> EqualityAnalysis<'p> {
     /// The expression is first analyzed per DNF chain; then only the
     /// intersection of facts that hold in every satisfiable chain is merged into
     /// the global builder.
-    // TODO: DNF can blow up exponentially on deeply nested OR expressions.
-    // PostgreSQL avoids DNF explicitly for eclass derivation.  We should either
-    // bound the number of chains returned by get_dnf_chains() or fall back to
-    // analyzing only the top-level AND chain when the DNF expansion is too large.
+    // DNF can blow up exponentially on deeply nested OR expressions, so
+    // `get_dnf_chains` is bounded by `MAX_DNF_CHAINS`. When that bound is hit we
+    // derive no equality facts for the expression.
     fn apply_expr_facts(&mut self, expr_id: NodeId, domain: DomainId) -> Result<(), SbroadError> {
         let Some(facts) = self.derive_expr_facts(expr_id, domain)? else {
             return Ok(());
@@ -1353,7 +1352,9 @@ impl<'p> EqualityAnalysis<'p> {
         expr_id: NodeId,
         domain: DomainId,
     ) -> Result<Option<HashSet<DerivedFact>>, SbroadError> {
-        let chains = self.plan.get_dnf_chains(expr_id)?;
+        let Some(chains) = self.plan.get_dnf_chains(expr_id)? else {
+            return Ok(None);
+        };
         let mut intersection: Option<HashSet<DerivedFact>> = None;
         for chain in chains {
             let ChainOutcome::Facts(facts) = self.collect_chain_facts(chain, domain)? else {
