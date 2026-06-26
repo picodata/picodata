@@ -1780,7 +1780,9 @@ impl Plan {
         expr_id: NodeId,
         strategy: &mut Strategy,
     ) -> Result<(), SbroadError> {
-        let chains = self.get_dnf_chains(expr_id)?;
+        let Some(chains) = self.get_dnf_chains(expr_id)? else {
+            return Ok(());
+        };
         let mut subqueries: Vec<NodeId> = vec![];
         let mut chain_count: usize = 0;
         for mut chain in chains {

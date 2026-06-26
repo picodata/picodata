@@ -1,3 +1,5 @@
+use crate::ir::node::NodeId;
+use crate::ir::operator::Bool;
 use crate::ir::transformation::helpers::check_transformation;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -5,6 +7,45 @@ use pretty_assertions::assert_eq;
 
 pub fn set_dnf(plan: Plan) -> Plan {
     plan.set_dnf().unwrap()
+}
+
+/// Build a single two-way OR group `(true OR true)`.
+fn or_group(plan: &mut Plan) -> NodeId {
+    let left = plan.add_const(Value::Boolean(true));
+    let right = plan.add_const(Value::Boolean(true));
+    plan.add_bool(left, Bool::Or, right).unwrap()
+}
+
+/// Build `(true OR true) AND (true OR true) AND ...` with `groups`.
+fn and_of_or_groups(plan: &mut Plan, groups: usize) -> NodeId {
+    let mut top = or_group(plan);
+    for _ in 1..groups {
+        let next = or_group(plan);
+        top = plan.add_bool(top, Bool::And, next).unwrap();
+    }
+    top
+}
+
+#[test]
+fn dnf_chains_at_limit() {
+    let mut plan = Plan::default();
+    let top = and_of_or_groups(&mut plan, 9);
+    let chains = plan.get_dnf_chains(top).unwrap();
+    assert_eq!(chains.map(|c| c.len()), Some(512));
+}
+
+#[test]
+fn dnf_chains_over_limit() {
+    let mut plan = Plan::default();
+    let top = and_of_or_groups(&mut plan, 10);
+    assert!(plan.get_dnf_chains(top).unwrap().is_none());
+}
+
+#[test]
+fn dnf_chains_much_over_limit() {
+    let mut plan = Plan::default();
+    let top = and_of_or_groups(&mut plan, 30);
+    assert!(plan.get_dnf_chains(top).unwrap().is_none());
 }
 
 #[test]

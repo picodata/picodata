@@ -79,6 +79,16 @@ use std::collections::VecDeque;
 
 use super::{ExprId, TransformationOldNewPair};
 
+/// Upper bound on the number of DNF chains produced by [`Plan::get_dnf_chains`].
+///
+/// For expressions of the form `(a OR b) AND (c OR d) AND ...`, DNF generates an exponential
+/// number of disjunctions. This constant limits that number. The size of the stack frame for
+/// `PostOrderWithFilter::traverse` is 232 bytes at the time of writing this comment
+/// (release build) and 280 bytes (debug build). The size of the fiber stack is 512 KB.
+/// We leave a gap of x4 bytes and obtain an estimate for the constant:
+/// `512 * 1024 / 232 / 4 = 565 ~= 512`.
+const MAX_DNF_CHAINS: usize = 512;
+
 /// A chain of the trivalents (boolean or NULL expressions) concatenated by AND.
 #[derive(Clone, Debug)]
 pub struct Chain {
@@ -187,7 +197,8 @@ fn call_expr_tree_to_dnf(
 
 impl Plan {
     /// Get the DNF "AND" chains from the expression tree.
-    pub fn get_dnf_chains(&self, top_id: NodeId) -> Result<VecDeque<Chain>, SbroadError> {
+    /// Returns `None` when the DNF expansion would exceed [`MAX_DNF_CHAINS`].
+    pub fn get_dnf_chains(&self, top_id: NodeId) -> Result<Option<VecDeque<Chain>>, SbroadError> {
         let capacity: usize = self.nodes.arena32.iter().fold(0_usize, |acc, node| {
             acc + match node {
                 Node32::Bool(BoolExpr {
@@ -205,6 +216,11 @@ impl Plan {
         stack.push(top_chain);
 
         while let Some(mut chain) = stack.pop() {
+            // We've already added `result.len()` disjunctions, and in the worst case,
+            // `stack.len()` disjunctions will be added.
+            if result.len() + stack.len() > MAX_DNF_CHAINS {
+                return Ok(None);
+            }
             let Some(expr_id) = chain.pop_back(self)? else {
                 result.push_back(chain);
                 continue;
@@ -237,7 +253,7 @@ impl Plan {
             stack.push(chain);
         }
 
-        Ok(result)
+        Ok(Some(result))
     }
 
     /// Convert an expression tree of trivalent nodes to a disjunctive normal form (DNF).
@@ -247,7 +263,9 @@ impl Plan {
     /// - Failed to convert the AND chain to a new expression tree.
     /// - Failed to concatenate the AND expression trees to the OR tree.
     pub fn expr_tree_to_dnf(&mut self, top_id: NodeId) -> Result<ExprId, SbroadError> {
-        let mut result = self.get_dnf_chains(top_id)?;
+        let Some(mut result) = self.get_dnf_chains(top_id)? else {
+            return Ok(top_id);
+        };
 
         let mut new_top_id: Option<NodeId> = None;
         while let Some(mut chain) = result.pop_front() {
