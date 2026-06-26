@@ -394,7 +394,7 @@ where
         self.coordinator
     }
 
-    fn materilize_subtree_impl<'p>(
+    fn materialize_subtree_impl<'p>(
         &mut self,
         slices: Slices,
         mut port: Option<&mut impl Port<'p>>,
@@ -412,8 +412,6 @@ where
                     continue;
                 }
 
-                *vtab_count += 1;
-
                 let motion = self.exec_plan.get_ir_plan().get_relation_node(*motion_id)?;
                 if let Relational::Motion(Motion { policy, .. }) = motion {
                     match policy {
@@ -429,6 +427,7 @@ where
                             let motion_child = plan.get_relation_node(motion_child_id)?;
 
                             if matches!(motion_child, Relational::Values { .. }) {
+                                *vtab_count += 1;
                                 let virtual_table = coordinator.materialize_values(&mut self.exec_plan, motion_child_id)?;
 
                                 self.exec_plan.set_motion_vtable(
@@ -455,6 +454,8 @@ where
                         _ => {}
                     }
                 }
+
+                *vtab_count += 1;
 
                 let top_id = self
                     .exec_plan
@@ -493,7 +494,7 @@ where
         port: Option<&mut impl Port<'p>>,
     ) -> Result<(), SbroadError> {
         let mut vtab_count = 0;
-        self.materilize_subtree_impl(slices, port, &mut vtab_count)
+        self.materialize_subtree_impl(slices, port, &mut vtab_count)
             .map_err(|err| match err {
                 SbroadError::ExecutionError(err) | SbroadError::VdbeError(err) => {
                     SbroadError::TaggedExecutionError(vtab_count, err)

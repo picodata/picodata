@@ -99,3 +99,54 @@ plan:
     [0] EXECUTE SCALAR SUBQUERY 1
     [1] SCAN TABLE TMP_7002119783055804240_3136 (~1048576 rows)
         [0] SCAN TABLE TMP_7002119783055804240_2136 (~1048576 rows)
+
+
+-- TEST: intersect-without-braces
+-- SQL:
+SELECT 1 from t UNION SELECT 0 EXCEPT SELECT 1 from t;
+-- ERROR:
+Query 3 from EXPLAIN \(RAW\): Failed to compile SQL statement: Syntax error at line 1 near '\(\'
+
+-- TEST: explain-intersect-without-braces
+-- SQL:
+EXPLAIN (RAW) SELECT 1 from t UNION SELECT 0 EXCEPT SELECT 1 from t;
+-- EXPECTED:
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1" FROM "t" UNION select cast(null as int) as "col_1" where false
+''
+plan:
+    [1] SCAN TABLE t (~1048576 rows)
+    [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION)
+''
+╭──────────────────────────╮
+│ 2. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1" FROM "t" UNION select cast(null as int) as "col_1" where false
+''
+plan:
+    [1] SCAN TABLE t (~1048576 rows)
+    [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION)
+''
+╭──────────────────────────╮
+│ 3. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1" FROM "t" INTERSECT ( SELECT "COL_0" FROM "TMP_9162583575142203342_3136" )
+''
+plan:
+Failed to compile SQL statement: Syntax error at line 1 near '('
+''
+╭───────────────────╮
+│ 4. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT "COL_0" FROM "TMP_15197742904724328793_1136" EXCEPT SELECT "COL_0" FROM "TMP_15197742904724328793_4136"
+''
+plan:
+    [1] SCAN TABLE TMP_15197742904724328793_1136 (~1048576 rows)
+    [2] SCAN TABLE TMP_15197742904724328793_4136 (~1048576 rows)
+    [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (EXCEPT)
