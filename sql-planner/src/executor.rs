@@ -302,13 +302,15 @@ pub trait Port<'p>: io::Write {
 
     fn size(&self) -> u32;
 
-    /// Execute an assembled block VDBE inside a transaction.
+    /// Execute an assembled block VDBE inside a transaction. The returned
+    /// [`ExecutionInsight`] lets the caller report cache metrics (a stale or
+    /// busy statement is recompiled and counts as a miss).
     fn process_txn(
         &mut self,
         stmt: &mut SqlStmt,
         params: &[&Value],
         vdbe_max_steps: u64,
-    ) -> Result<(), SbroadError>
+    ) -> Result<ExecutionInsight, SbroadError>
     where
         Self: Sized;
 }

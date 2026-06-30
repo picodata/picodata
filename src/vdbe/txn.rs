@@ -476,5 +476,9 @@ pub(crate) fn compile_transactional_block(
         )
     };
     // SAFETY: `assemble_block_vdbe` produces a freshly-prepared VDBE owned by us.
-    Ok(unsafe { SqlStmt::from_raw(vdbe.cast()) })
+    // The statements and this routine let the VDBE re-assemble itself when its
+    // schema version goes stale (any DDL bumps the global SQL schema version).
+    Ok(unsafe {
+        SqlStmt::new_transactional(vdbe.cast(), stmts.to_vec(), compile_transactional_block)
+    })
 }

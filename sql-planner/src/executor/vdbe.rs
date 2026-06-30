@@ -1,5 +1,6 @@
 use crate::{
     backend::sql::ADMIN_ID,
+    ir::node::BlockStatement,
     ir::value::{EncodedValue, Value},
 };
 use std::{
@@ -45,6 +46,8 @@ pub enum SqlError {
     FailedToExecuteStmt(TarantoolError),
     #[error("Failed to encode SQL statement parameters: {0}")]
     FailedToEncodeStmtParams(rmp_serde::encode::Error),
+    #[error("Failed to reassemble VDBE program: {0}")]
+    FailedToReassembleProgram(String),
 }
 
 type SqlResult<T> = Result<T, SqlError>;
@@ -62,9 +65,12 @@ pub enum ExecutionInsight {
     StaleStmt,
 }
 
-/// Compiled SQL statement from tarantool (struct Vdbe).
+/// Owned tarantool VDBE pointer (struct Vdbe) with its cached size estimate.
+/// The recompilation strategy lives in [`SqlStmt`], which wraps this. Public
+/// only because it appears in the public [`SqlStmt`] enum; its fields are
+/// private, so it stays opaque.
 #[derive(Debug)]
-pub struct SqlStmt {
+pub struct RawStmt {
     ptr: NonNull<c_void>,
     // Estimated statement size returned by `sql_stmt_est_size()` when it was created.
     // Storing this value in the statement itself ensures that we will get the same value when
@@ -72,9 +78,9 @@ pub struct SqlStmt {
     size_estimate: usize,
 }
 
-impl SqlStmt {
+impl RawStmt {
     /// Compile SQL query into an SQL statement.
-    pub fn compile(sql: &str) -> SqlResult<Self> {
+    fn compile(sql: &str) -> SqlResult<Self> {
         let mut stmt: *mut c_void = ptr::null_mut();
         // SAFETY: Safe as all arguments are valid.
         let rc = unsafe {
@@ -90,17 +96,6 @@ impl SqlStmt {
         Ok(unsafe { Self::wrap_stmt_ptr(stmt) })
     }
 
-    /// Wrap an externally-prepared VDBE pointer.
-    ///
-    /// Takes ownership: the statement will be finalized on drop.
-    ///
-    /// # Safety
-    /// `ptr` must be a non-null, owned VDBE that has been made ready (e.g.
-    /// via `sqlVdbeMakeReady`) and is not currently executing.
-    pub unsafe fn from_raw(ptr: *mut c_void) -> Self {
-        Self::wrap_stmt_ptr(ptr)
-    }
-
     /// # Safety
     /// `ptr` must be a non-null, owned VDBE statement pointer.
     unsafe fn wrap_stmt_ptr(ptr: *mut c_void) -> Self {
@@ -110,19 +105,6 @@ impl SqlStmt {
             ptr: NonNull::new(ptr).expect("non-null vdbe ptr"),
             size_estimate: size,
         }
-    }
-
-    /// Execute statement with given parameters into a port.
-    pub fn execute(
-        &mut self,
-        params: &[Value],
-        opcode_max: u64,
-        port: &mut PortC,
-    ) -> SqlResult<ExecutionInsight> {
-        let params: Vec<_> = params.iter().map(EncodedValue::from).collect();
-        let param_data =
-            Cow::from(rmp_serde::to_vec(&params).map_err(SqlError::FailedToEncodeStmtParams)?);
-        self.execute_with_raw_params(param_data.iter().as_slice(), opcode_max, port)
     }
 
     fn execute_raw(
@@ -150,29 +132,165 @@ impl SqlStmt {
         Ok(())
     }
 
+    /// Check if statement is currently executed by another thread.
+    fn is_busy(&self) -> bool {
+        // SAFETY: Safe as it is asserted that ptr is not null in `wrap_stmt_ptr`.
+        unsafe { sql_stmt_busy(self.ptr.as_ptr()) }
+    }
+
+    /// Check if statement schema version is valid.
+    fn is_schema_version_valid(&self) -> bool {
+        // SAFETY: Safe as it is asserted that ptr is not null in `wrap_stmt_ptr`.
+        unsafe { sql_stmt_schema_version_is_valid(self.ptr.as_ptr()) }
+    }
+
+    /// Get the query string used for compiling this statement.
+    fn as_str(&self) -> &str {
+        // SAFETY: Safe as it is asserted that ptr is not null in `wrap_stmt_ptr`.
+        let query = unsafe { sql_stmt_query_str(self.ptr.as_ptr()) };
+        // SAFETY: Safe as statements stores valid query string.
+        let cstr = unsafe { CStr::from_ptr(query) };
+        cstr.to_str().expect("bad query encoding")
+    }
+}
+
+impl Drop for RawStmt {
+    fn drop(&mut self) {
+        assert!(
+            !self.is_busy(),
+            "mustn't drop statement that is being executed"
+        );
+
+        // SAFETY: safe as it is asserted that ptr is not null in wrap_stmt_ptr
+        let rc = unsafe { sql_stmt_finalize(self.ptr.as_ptr()) };
+        if rc != 0 {
+            match TarantoolError::maybe_last() {
+                Ok(_) => tarantool::say_warn!("sql_stmt_finalize failed"),
+                Err(err) => tarantool::say_warn!("sql_stmt_finalize failed: {}", err),
+            }
+        }
+    }
+}
+
+/// Re-assembles a block VDBE from its rendered per-statement patterns. Block
+/// assembly needs the VDBE FFI, which lives in the picodata crate, so a
+/// transactional statement carries a pointer to it set at construction.
+type RecompileBlockFn = fn(&[BlockStatement<String>]) -> Result<SqlStmt, String>;
+
+/// An assembled block VDBE plus what it needs to rebuild itself when its schema
+/// version goes stale: the rendered patterns and the assembly routine.
+#[derive(Debug)]
+pub struct TxnStmt {
+    raw: RawStmt,
+    statements: Vec<BlockStatement<String>>,
+    recompile: RecompileBlockFn,
+}
+
+/// Compiled SQL statement from tarantool (struct Vdbe). A regular statement was
+/// compiled from a SQL source string and recompiles from it; a transactional
+/// statement is an assembled block program that recompiles from its patterns.
+#[derive(Debug)]
+pub enum SqlStmt {
+    Regular(RawStmt),
+    Transactional(TxnStmt),
+}
+
+impl SqlStmt {
+    /// Compile SQL query into an SQL statement.
+    pub fn compile(sql: &str) -> SqlResult<Self> {
+        Ok(Self::Regular(RawStmt::compile(sql)?))
+    }
+
+    /// Wrap an externally-assembled block VDBE pointer together with the
+    /// patterns and assembly routine needed to recompile it.
+    ///
+    /// Takes ownership: the statement will be finalized on drop.
+    ///
+    /// # Safety
+    /// `ptr` must be a non-null, owned VDBE that has been made ready (e.g.
+    /// via `sqlVdbeMakeReady`) and is not currently executing.
+    pub unsafe fn new_transactional(
+        ptr: *mut c_void,
+        statements: Vec<BlockStatement<String>>,
+        recompile: RecompileBlockFn,
+    ) -> Self {
+        Self::Transactional(TxnStmt {
+            raw: RawStmt::wrap_stmt_ptr(ptr),
+            statements,
+            recompile,
+        })
+    }
+
+    fn raw(&self) -> &RawStmt {
+        match self {
+            Self::Regular(raw) => raw,
+            Self::Transactional(txn) => &txn.raw,
+        }
+    }
+
+    fn raw_mut(&mut self) -> &mut RawStmt {
+        match self {
+            Self::Regular(raw) => raw,
+            Self::Transactional(txn) => &mut txn.raw,
+        }
+    }
+
+    /// Rebuild a fresh statement of the same kind against the current schema
+    /// version. A regular statement recompiles from its SQL source; a block
+    /// statement re-assembles from its rendered patterns.
+    fn recompile(&self) -> SqlResult<Self> {
+        match self {
+            Self::Regular(raw) => Ok(Self::Regular(RawStmt::compile(raw.as_str())?)),
+            Self::Transactional(txn) => {
+                (txn.recompile)(&txn.statements).map_err(SqlError::FailedToReassembleProgram)
+            }
+        }
+    }
+
+    /// Execute statement with given parameters into a port, recompiling first
+    /// if it is busy or its schema version is stale. Recompilation is
+    /// variant-specific (see [`recompile`](Self::recompile)), so an assembled
+    /// block VDBE refreshes itself just like a regular statement does.
+    pub fn execute<P: AsRef<Value>>(
+        &mut self,
+        params: &[P],
+        opcode_max: u64,
+        port: &mut PortC,
+    ) -> SqlResult<ExecutionInsight> {
+        let encoded: Vec<EncodedValue> = params
+            .iter()
+            .map(|p| EncodedValue::from(p.as_ref()))
+            .collect();
+        let param_data =
+            Cow::from(rmp_serde::to_vec(&encoded).map_err(SqlError::FailedToEncodeStmtParams)?);
+        self.execute_with_raw_params(param_data.iter().as_slice(), opcode_max, port)
+    }
+
     pub fn execute_with_raw_params(
         &mut self,
         params: &[u8],
         opcode_max: u64,
         port: &mut PortC,
     ) -> SqlResult<ExecutionInsight> {
-        if self.is_busy() {
+        if self.raw().is_busy() {
             // Compile and execute a new statement that is not busy.
-            let mut stmt = Self::compile(self.as_str())?;
-            debug_assert!(!stmt.is_busy());
+            let mut stmt = self.recompile()?;
+            debug_assert!(!stmt.raw().is_busy());
             stmt.execute_with_raw_params(params, opcode_max, port)?;
             return Ok(ExecutionInsight::BusyStmt);
         }
 
-        let is_version_stale = !self.is_schema_version_valid();
+        let is_version_stale = !self.raw().is_schema_version_valid();
         if is_version_stale {
             // Recompile this statement with current version.
-            *self = Self::compile(self.as_str())?;
-            debug_assert!(self.is_schema_version_valid());
+            *self = self.recompile()?;
+            debug_assert!(self.raw().is_schema_version_valid());
         }
 
-        with_su(ADMIN_ID, || self.execute_raw(params, opcode_max, port))
-            .expect("must be able to su into admin")?;
+        with_su(ADMIN_ID, || {
+            self.raw_mut().execute_raw(params, opcode_max, port)
+        })
+        .expect("must be able to su into admin")?;
 
         match is_version_stale {
             true => Ok(ExecutionInsight::StaleStmt),
@@ -180,62 +298,14 @@ impl SqlStmt {
         }
     }
 
-    /// Execute the statement once with high-level params, without busy or
-    /// stale-schema retry.
-    ///
-    /// Suited for VDBEs that were not produced by `compile()` and so have no
-    /// SQL source string to recompile from (e.g. assembled block programs).
-    pub fn execute_once<P: AsRef<Value>>(
-        &mut self,
-        params: &[P],
-        opcode_max: u64,
-        port: &mut PortC,
-    ) -> SqlResult<()> {
-        let encoded: Vec<EncodedValue> = params
-            .iter()
-            .map(|p| EncodedValue::from(p.as_ref()))
-            .collect();
-        let param_data =
-            Cow::from(rmp_serde::to_vec(&encoded).map_err(SqlError::FailedToEncodeStmtParams)?);
-        self.execute_once_with_raw_params(param_data.iter().as_slice(), opcode_max, port)
-    }
-
-    /// Execute the statement once with pre-encoded msgpack params, without
-    /// busy or stale-schema retry. See [`Self::execute_once`] for the rationale.
-    pub fn execute_once_with_raw_params(
-        &mut self,
-        params: &[u8],
-        opcode_max: u64,
-        port: &mut PortC,
-    ) -> SqlResult<()> {
-        with_su(ADMIN_ID, || self.execute_raw(params, opcode_max, port))
-            .expect("must be able to su into admin")
-    }
-
-    /// Check if statement is currently executed by another thread.
-    fn is_busy(&self) -> bool {
-        // SAFETY: Safe as it is asserted that ptr is not null in `Self::new`.
-        unsafe { sql_stmt_busy(self.ptr.as_ptr()) }
-    }
-
-    /// Check if statement schema version is valid.
-    fn is_schema_version_valid(&self) -> bool {
-        // SAFETY: Safe as it is asserted that ptr is not null in `Self::new`.
-        unsafe { sql_stmt_schema_version_is_valid(self.ptr.as_ptr()) }
-    }
-
     /// Get the query string used for compiling this statement.
     pub fn as_str(&self) -> &str {
-        // SAFETY: Safe as it is asserted that ptr is not null in `Self::new`.
-        let query = unsafe { sql_stmt_query_str(self.ptr.as_ptr()) };
-        // SAFETY: Safe as statements stores valid query string.
-        let cstr = unsafe { CStr::from_ptr(query) };
-        cstr.to_str().expect("bad query encoding")
+        self.raw().as_str()
     }
 
     /// Get estimated amount of memory occupied by this statement.
     pub fn estimated_size(&self) -> usize {
-        self.size_estimate
+        self.raw().size_estimate
     }
 
     /// Raw pointer to the underlying tarantool VDBE statement.
@@ -244,24 +314,6 @@ impl SqlStmt {
     /// to this crate (its bindings live in the picodata crate's bindgen).
     /// Callers that need the typed `*mut Vdbe` cast it themselves.
     pub fn as_ptr(&self) -> *mut c_void {
-        self.ptr.as_ptr()
-    }
-}
-
-impl Drop for SqlStmt {
-    fn drop(&mut self) {
-        assert!(
-            !self.is_busy(),
-            "mustn't drop statement that is being executed"
-        );
-
-        // SAFETY: safe as it is asserted that ptr is not null in Self::new
-        let rc = unsafe { sql_stmt_finalize(self.ptr.as_ptr()) };
-        if rc != 0 {
-            match TarantoolError::maybe_last() {
-                Ok(_) => tarantool::say_warn!("sql_stmt_finalize failed"),
-                Err(err) => tarantool::say_warn!("sql_stmt_finalize failed: {}", err),
-            }
-        }
+        self.raw().ptr.as_ptr()
     }
 }

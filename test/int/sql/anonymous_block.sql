@@ -1256,6 +1256,125 @@ SELECT a FROM tc WHERE pk = 1;
 -- EXPECTED:
 40,
 
+-- TEST: schema-change-init
+-- SQL:
+DROP TABLE IF EXISTS sc;
+CREATE TABLE sc (pk INT PRIMARY KEY, a INT);
+INSERT INTO sc VALUES (1, 10);
+
+-- TEST: schema-change-dql-warmup
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT a FROM sc WHERE pk = 1; END $$;
+-- EXPECTED:
+10,
+
+-- TEST: schema-change-dql-bump-version
+-- SQL:
+DROP TABLE IF EXISTS sc_unrelated_dql;
+CREATE TABLE sc_unrelated_dql (pk INT PRIMARY KEY, a INT);
+
+-- TEST: schema-change-dql-after-bump
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT a FROM sc WHERE pk = 1; END $$;
+-- EXPECTED:
+10,
+
+-- TEST: schema-change-dql-after-bump-again
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT a FROM sc WHERE pk = 1; END $$;
+-- EXPECTED:
+10,
+
+-- TEST: schema-change-dml-warmup
+-- SQL:
+DO $$ BEGIN UPDATE sc SET a = a + 1 WHERE pk = 1; END $$;
+
+-- TEST: schema-change-dml-bump-version
+-- SQL:
+DROP TABLE IF EXISTS sc_unrelated_dml;
+CREATE TABLE sc_unrelated_dml (pk INT PRIMARY KEY, a INT);
+
+-- TEST: schema-change-dml-after-bump
+-- SQL:
+DO $$ BEGIN UPDATE sc SET a = a + 1 WHERE pk = 1; END $$;
+
+-- TEST: schema-change-dml-check
+-- SQL:
+SELECT a FROM sc WHERE pk = 1;
+-- EXPECTED:
+12,
+
+-- TEST: schema-change-let-if-warmup
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM sc WHERE pk = 1);
+  IF v > 0 THEN
+    UPDATE sc SET a = a + v WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: schema-change-let-if-bump-version
+-- SQL:
+DROP TABLE IF EXISTS sc_unrelated_let_if;
+CREATE TABLE sc_unrelated_let_if (pk INT PRIMARY KEY, a INT);
+
+-- TEST: schema-change-let-if-after-bump
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM sc WHERE pk = 1);
+  IF v > 0 THEN
+    UPDATE sc SET a = a + v WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: schema-change-let-if-check
+-- SQL:
+SELECT a FROM sc WHERE pk = 1;
+-- EXPECTED:
+48,
+
+-- TEST: schema-change-index-bump-version
+-- SQL:
+CREATE INDEX sc_unrelated_idx ON sc_unrelated_dql(a);
+
+-- TEST: schema-change-after-index-bump
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT a FROM sc WHERE pk = 1; END $$;
+-- EXPECTED:
+48,
+
+-- TEST: schema-change-drop-unrelated
+-- SQL:
+DROP TABLE sc_unrelated_dml;
+
+-- TEST: schema-change-after-drop-unrelated
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT a FROM sc WHERE pk = 1; END $$;
+-- EXPECTED:
+48,
+
+-- TEST: schema-change-alter-own-table
+-- SQL:
+ALTER TABLE sc ADD COLUMN d INT;
+
+-- TEST: schema-change-after-alter-own-table-dql
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT a FROM sc WHERE pk = 1; END $$;
+-- EXPECTED:
+48,
+
+-- TEST: schema-change-after-alter-own-table-dml
+-- SQL:
+DO $$ BEGIN UPDATE sc SET a = a + 1 WHERE pk = 1; END $$;
+
+-- TEST: schema-change-after-alter-own-table-check
+-- SQL:
+SELECT a FROM sc WHERE pk = 1;
+-- EXPECTED:
+49,
+
 -- TEST: multiple-rows-in-let-subquery-1
 -- SQL:
 DO $$

@@ -106,7 +106,7 @@ impl Port<'_> for PortMocked {
         _stmt: &mut SqlStmt,
         _params: &[&Value],
         _vdbe_max_steps: u64,
-    ) -> Result<(), SbroadError>
+    ) -> Result<ExecutionInsight, SbroadError>
     where
         Self: Sized,
     {

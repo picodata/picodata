@@ -843,12 +843,17 @@ impl StorageRuntime {
         let key = block_vdbe_key(&block.statements);
         let merged: Vec<&Value> = block.params.iter().flat_map(|p| p.iter()).collect();
 
+        use sql::executor::vdbe::ExecutionInsight::*;
+
         let maybe_cached = { self.cache.lock().get(&key)? };
-        let stmt_rc = if let Some(cached) = maybe_cached {
-            report_storage_cache_hit("txn", "local");
-            cached.stmt
+        if let Some(cached) = maybe_cached {
+            let mut stmt = cached.stmt.lock();
+            match port.process_txn(&mut stmt, &merged, block.vdbe_max_steps)? {
+                Nothing => report_storage_cache_hit("txn", "local"),
+                BusyStmt => report_storage_cache_miss("txn", "local", "busy"),
+                StaleStmt => report_storage_cache_miss("txn", "local", "stale"),
+            }
         } else {
-            report_storage_cache_miss("txn", "local", "true");
             let stmt = compile_transactional_block(&block.statements)
                 .map_err(|e| SbroadError::FailedTo(Action::Build, Some(Entity::Query), e.into()))?;
             let schema_info =
@@ -859,11 +864,13 @@ impl StorageRuntime {
                 cache.get(&key)?.expect("just inserted")
             };
             process_deferred_evictions()?;
-            cached.stmt
-        };
-
-        let mut stmt = stmt_rc.lock();
-        port.process_txn(&mut stmt, &merged, block.vdbe_max_steps)?;
+            let mut stmt = cached.stmt.lock();
+            match port.process_txn(&mut stmt, &merged, block.vdbe_max_steps)? {
+                Nothing => report_storage_cache_miss("txn", "local", "true"),
+                BusyStmt => report_storage_cache_miss("txn", "local", "busy"),
+                StaleStmt => report_storage_cache_miss("txn", "local", "stale"),
+            }
+        }
 
         Ok(())
     }

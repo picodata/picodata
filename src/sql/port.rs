@@ -212,7 +212,7 @@ impl SqlPort<'_> for PicoPortOwned {
         stmt: &mut SqlStmt,
         params: &[&Value],
         vdbe_max_steps: u64,
-    ) -> Result<(), SbroadError> {
+    ) -> Result<ExecutionInsight, SbroadError> {
         execute_block_in_txn(self.port_c_mut(), stmt, params, vdbe_max_steps)
     }
 }
@@ -222,12 +222,12 @@ fn execute_block_in_txn(
     stmt: &mut SqlStmt,
     params: &[&Value],
     vdbe_max_steps: u64,
-) -> Result<(), SbroadError> {
-    tarantool::transaction::transaction(|| {
-        stmt.execute_once(params, vdbe_max_steps, port)
+) -> Result<ExecutionInsight, SbroadError> {
+    let insight = tarantool::transaction::transaction(|| {
+        stmt.execute(params, vdbe_max_steps, port)
             .map_err(|e| SbroadError::Other(e.to_smolstr()))
     })?;
-    Ok(())
+    Ok(insight)
 }
 
 impl Write for PicoPortOwned {
@@ -301,7 +301,7 @@ impl<'p> SqlPort<'p> for PicoPortC<'p> {
         stmt: &mut SqlStmt,
         params: &[&Value],
         vdbe_max_steps: u64,
-    ) -> Result<(), SbroadError> {
+    ) -> Result<ExecutionInsight, SbroadError> {
         execute_block_in_txn(self.port, stmt, params, vdbe_max_steps)
     }
 }

@@ -372,28 +372,52 @@ def test_storage_block_vdbe_cache_metrics(instance: Instance):
     def hits():
         return metric_total("pico_storage_cache_hits", query_type="txn")
 
-    def misses():
-        return metric_total("pico_storage_cache_misses", query_type="txn")
+    def misses(miss_type=None):
+        labels = {"query_type": "txn"}
+        if miss_type is not None:
+            labels["miss_type"] = miss_type
+        return metric_total("pico_storage_cache_misses", **labels)
 
     # First block execution misses, compiles and caches the block VDBE.
     instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1; END $$;")
     assert metric_total(added) == base + 1
-    assert (hits(), misses()) == (0, 1)
+    assert (hits(), misses("true")) == (0, 1)
 
     # Re-running the identical block is served from the cache: a hit, nothing added.
     instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1; END $$;")
     assert metric_total(added) == base + 1
-    assert (hits(), misses()) == (1, 1)
+    assert (hits(), misses("true")) == (1, 1)
 
     # Only the parameter value differs: the rendered pattern (and VDBE) is reused.
     instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 2; END $$;")
     assert metric_total(added) == base + 1
-    assert (hits(), misses()) == (2, 1)
+    assert (hits(), misses("true")) == (2, 1)
 
     # A structurally different block misses and is cached under a separate key.
     instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1 LIMIT 1; END $$;")
     assert metric_total(added) == base + 2
-    assert (hits(), misses()) == (2, 2)
+    assert (hits(), misses("true")) == (2, 2)
+
+    # An unrelated DDL bumps tarantool's global SQL schema version, so the next
+    # run finds a valid cache entry but a stale VDBE: it is recompiled in place
+    # and reported as a stale miss, not a hit and not a newly added entry.
+    instance.sql("CREATE TABLE bc_unrelated (pk INT PRIMARY KEY)")
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1; END $$;")
+    assert metric_total(added) == base + 2
+    assert (hits(), misses("stale")) == (2, 1)
+
+    # The recompiled entry is now fresh, so re-running it is a plain hit.
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1; END $$;")
+    assert metric_total(added) == base + 2
+    assert (hits(), misses("stale")) == (3, 1)
+
+    # A DDL on the block's own table changes its per-table schema version, which
+    # invalidates the cache entry itself (rather than just the global version):
+    # the next run is a true miss that recompiles and re-adds the entry.
+    instance.sql("CREATE INDEX bc_a ON bc (a)")
+    instance.sql("DO $$ BEGIN RETURN QUERY SELECT a FROM bc WHERE pk = 1; END $$;")
+    assert metric_total(added) == base + 3
+    assert (hits(), misses("true"), misses("stale")) == (3, 3, 1)
 
     # Shrinking the cache below its current size evicts entries.
     evicted = "pico_storage_cache_statements_evicted"
