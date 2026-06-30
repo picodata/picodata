@@ -1403,26 +1403,27 @@ impl NodeImpl {
                     .expect("storage should not fail")
                     .expect("granted we don't mess up log compaction, this should not be None");
 
-                let is_truncate = matches!(ddl, Ddl::TruncateTable { .. });
-                if is_truncate {
-                    // Truncate is not a DDL from the user's POV and is much more frequent
-                } else {
-                    tlog!(Info, "Applying DdlCommit for {ddl:?}");
-                }
+                // Check if we are doing a TRUNCATE operation and reduce logging if this is the case.
+                // TRUNCATE is not a DDL from the user's POV and is much more frequent.
+                let should_log = !matches!(ddl, Ddl::TruncateTable { .. });
 
                 // This instance is catching up to the cluster.
                 if v_local < v_pending {
-                    if !is_truncate {
-                        tlog!(
-                            Info,
-                            "Catching up from {v_local} to {v_pending} for {ddl:?}"
-                        );
-                    }
                     if self.is_readonly() {
+                        // Do not log anything while a replica is waiting for DDL results from master.
+                        // This is likely to happen multiple times and will add noise to logs.
                         return SleepAndRetry(read_only(
                             "awaiting DDL results from master replica",
                         ));
                     } else {
+                        if should_log {
+                            tlog!(
+                                Info,
+                                "Catching up on master for DdlCommit {ddl:?}";
+                                    "local_schema_version" => v_local,
+                                    "pending_schema_version" => v_pending
+                            );
+                        }
                         // Master applies schema change at this point.
                         // Note: Unlike RPC handler `proc_apply_schema_change`, there is no need
                         // for a schema change lock. When instance is catching up to the cluster,
@@ -1452,12 +1453,11 @@ impl NodeImpl {
                             Ok(_) => {}
                         }
                     }
-                } else if self.is_readonly() {
-                    if !is_truncate {
-                        tlog!(
-                            Info,
-                            "local_schema_version = {v_local} (replica, ddl commit)"
-                        );
+                } else if should_log {
+                    if self.is_readonly() {
+                        tlog!(Info, "Applying DdlCommit on replica for {ddl:?}"; "local_schema_version" => v_local);
+                    } else {
+                        tlog!(Info, "Applying DdlCommit on master for {ddl:?}");
                     }
                 }
 
