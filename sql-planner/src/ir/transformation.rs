@@ -10,6 +10,7 @@ pub mod equality_facts;
 mod merge_tuples;
 mod not_push_down;
 pub mod redistribution;
+pub mod restriction;
 mod split_columns;
 
 use ahash::AHashMap;

@@ -41,6 +41,7 @@ use crate::ir::node::{
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity};
 use crate::ir::relation::Column;
 use crate::ir::transformation::equality_facts::EqualityFacts;
+use crate::ir::transformation::restriction::Restrictions;
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::undo::TransformationLog;
 use crate::ir::value::Value;
@@ -726,6 +727,8 @@ pub struct Plan {
     pub(crate) block_pattern_hash: BlockPatternHashCache,
     /// Equality facts
     pub facts: Option<EqualityFacts>,
+    /// Per-relational-node value restrictions (PG `RestrictInfo` analog).
+    pub restrictions: Option<Restrictions>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -950,6 +953,7 @@ impl Plan {
             subtree_hash_cache: SubtreeHashCache::default(),
             block_pattern_hash: BlockPatternHashCache::default(),
             facts: None,
+            restrictions: None,
         }
     }
 

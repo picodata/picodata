@@ -83,6 +83,9 @@ impl Plan {
             .cast_constants()?
             .fold_boolean_tree()?
             .split_columns_in_subtree(top_id)?
+            // Build per-node restrictions over the raw boolean tree (before DNF
+            // blow-up).
+            .analyze_restrictions_in_subtree(top_id)?
             .set_dnf_in_subtree(top_id)?
             .analyze_equality_facts_in_subtree(top_id)?
             .merge_tuples_in_subtree(top_id)?
@@ -94,6 +97,9 @@ impl Plan {
         // Facts are only used during planning. Afterward they're dead state. Drop them
         // so they don't bloat the plan clones made on the execution/dispatch path.
         plan.facts = None;
+        // Restrictions are planning-only too. Clear them
+        // for the same reason.
+        plan.restrictions = None;
 
         Ok(plan)
     }
