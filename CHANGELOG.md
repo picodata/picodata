@@ -8,6 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [25.5.10] - Unreleased
+
+### Fixes
+
+- Fixed excessive logging when DdlCommit could not be applied on a replica.
+
 ## [25.5.9] - 2026-03-20
 
 ### Fixes
