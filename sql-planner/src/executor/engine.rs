@@ -21,6 +21,7 @@ use crate::errors::SbroadError;
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::protocol::SchemaInfo;
 use crate::executor::vtable::VirtualTable;
+use crate::executor::{ExplainQueryLocation, MotionInfo};
 use crate::ir::bucket::Buckets;
 use crate::ir::function::Function;
 use crate::ir::options::Forward;
@@ -461,7 +462,11 @@ pub trait Router: QueryCache {
         target_replicaset: &mut Option<String>,
     ) -> Result<Forward, SbroadError>;
 
-    fn determine_exec_location(&self, buckets: &Buckets, has_segment_motion: bool) -> String;
+    /// Create an instance of `ExplainQueryLocation` from `Buckets` and `MotionInfo`.
+    fn build_explain_query_location(
+        buckets: &Buckets,
+        motion_info: &MotionInfo,
+    ) -> ExplainQueryLocation;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

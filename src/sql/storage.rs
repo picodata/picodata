@@ -5,21 +5,23 @@
 use crate::sql::dispatch::port_write_metadata_for_top;
 use crate::sql::router::{
     calculate_bucket_id, get_index_version_by_pk, get_table_name_and_version, get_table_version,
-    get_table_version_by_id, VersionMap,
+    get_table_version_by_id, replicasets_by_buckets, VersionMap,
 };
 use crate::traft::node;
 use serde::{Deserialize, Serialize};
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
+use sql::executor::engine::helpers::vshard::serialize_as_empty_motions_to_disable;
 use sql::executor::engine::helpers::{
     set_block_pattern_cache_hooks, table_name, vshard::get_random_bucket, BlockPatternCacheHooks,
 };
 use sql::executor::engine::{CachedStmt, CachedStmtRef, QueryCache, StorageCache, Vshard};
-use sql::executor::ir::ExecutionPlan;
+use sql::executor::ir::{ExecutionPlan, LocalSqlParams};
 use sql::executor::lru::{Cache, EvictFn, LRUCache};
 use sql::executor::protocol::SchemaInfo;
-use sql::executor::{format_let_entry, Port, PortType};
+use sql::executor::{Port, PortType};
 use sql::ir::bucket::Buckets;
+use sql::ir::explain::execution_info::BoundedBuckets;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::BlockStatement;
 use sql::ir::options::Options;
@@ -36,6 +38,7 @@ use crate::metrics::{
 use smol_str::{format_smolstr, SmolStr};
 use sql::executor::vdbe::SqlStmt;
 use sql::executor::vtable::{VirtualTable, VirtualTableTupleEncoder};
+use sql::executor::MotionInfo;
 use sql::ir::node::NodeId;
 use sql::ir::tree::Snapshot;
 use sql::ir::value::Value;
@@ -50,8 +53,7 @@ use tarantool::space::SpaceId;
 use crate::schema::{ADMIN_ID, SPACE_ID_TEMPORARY_MIN};
 use crate::sql::execute::{
     acquire_cached_stmt_or_retry, dml_execute, dql_execute, drop_temp_tables, explain_execute,
-    explain_execute_guarded, sql_execute, stmt_execute, LazyVirtualTableEncoder,
-    LendingTupleIterator,
+    sql_execute, stmt_execute, ExplainQuery, LazyVirtualTableEncoder, LendingTupleIterator,
 };
 use crate::sql::lock::{
     new_temp_table_lock, try_lock_temp_table, TempTableLockRef, TempTableLockWeak,
@@ -649,8 +651,6 @@ impl Vshard for StorageRuntime {
         let plan = ex_plan.get_ir_plan();
 
         if plan.is_raw_explain() {
-            let sql_vdbe_opcode_max = plan.effective_options.sql_vdbe_opcode_max as u64;
-
             let plan_id = ex_plan.get_plan_id()?;
             let vtables = ex_plan
                 .get_vtables()
@@ -658,32 +658,109 @@ impl Vshard for StorageRuntime {
                 .map(|(node_id, table)| (table_name(plan_id, *node_id), table.clone()))
                 .collect::<HashMap<_, _>>();
 
-            let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
-            let local_sql =
-                generate_local_dql_sql(ex_plan, top_id, plan_id, sql_params.constant_ids())?;
-
-            let schema_info = SchemaInfo::new(
-                ex_plan.get_ir_plan().table_version_map.clone(),
-                ex_plan.get_ir_plan().index_version_map.clone(),
-            );
-
-            let miss_info = ExpandedLocalExecutionInfo {
-                schema_info,
-                plan_id,
-                vtables: &vtables,
-                sql: local_sql,
-            };
-
             let has_segment_motion = ex_plan.has_segment_motion(top_id);
-            explain_execute(
-                self,
-                miss_info,
-                sql_params.params(),
-                sql_vdbe_opcode_max,
-                buckets,
-                has_segment_motion,
-                port,
-            )?;
+            if ex_plan.has_serialize_as_empty_motion(top_id) {
+                let replicasets = replicasets_by_buckets(buckets)?;
+                // If motion has serialize_as_empty opcode and it's executed on
+                // multiple replicasets, Picodata will generate two different
+                // SQL queries for its subtree. We have to include each of them
+                // in EXPLAIN (RAW). Here we append the number of queries to
+                // port to successfully decode it later.
+                if replicasets.len() > 1 {
+                    let mp_num = tarantool::msgpack::encode(&[2]);
+                    port.add_mp(&mp_num);
+                }
+
+                let mut explain_once =
+                    |sql: String,
+                     params: LocalSqlParams,
+                     buckets: &Buckets,
+                     motion_info: MotionInfo| {
+                        let schema_info = SchemaInfo::new(
+                            plan.table_version_map.clone(),
+                            plan.index_version_map.clone(),
+                        );
+                        let miss_info = ExpandedLocalExecutionInfo {
+                            schema_info,
+                            plan_id,
+                            vtables: &vtables,
+                            sql,
+                        };
+
+                        explain_execute(
+                            self,
+                            miss_info,
+                            params.params(),
+                            buckets,
+                            motion_info,
+                            port,
+                        )
+                    };
+
+                let mut sub_plan = ex_plan.clone();
+
+                // The presence of `serialize_as_empty` opcode often leads to
+                // the two different SQL queries generated for the same motion
+                // subtree. Ordinarily, this happens to queries with UNION of
+                // global and sharded tables. Consider following query, assuming
+                // `t` is sharded table and `g` is global.
+                //
+                // `SELECT * FROM t UNION ALL SELECT * FROM g`
+                //
+                // Picodata executes it via submitting local SQL query
+                //
+                // `SELECT * FROM t UNION ALL SELECT * FROM g`
+                //
+                // to one random replicaset. The query
+                //
+                // `SELECT "t"."a" FROM "t" UNION ALL select cast(null as int) as "b" where false`
+                //
+                // is executed on all remaining replicasets. The purpose of the code below is
+                // to reflect these caveats in EXPLAIN (RAW).
+                let sae_info = sub_plan.get_ir_plan().serialize_as_empty_info(top_id)?;
+                if let Some(ref info) = sae_info {
+                    let disabled_motions =
+                        serialize_as_empty_motions_to_disable(sub_plan.get_ir_plan(), info)?;
+                    sub_plan.disable_serialize_as_empty_for_motions(disabled_motions);
+                }
+                let sql_params = sub_plan.local_sql_params(top_id, Snapshot::Oldest)?;
+                let ids = sql_params.constant_ids();
+                let local_sql = generate_local_dql_sql(&sub_plan, top_id, plan_id, ids)?;
+                let motion_info = MotionInfo::new_for_query(has_segment_motion, Some(false));
+                explain_once(local_sql, sql_params, buckets, motion_info)?;
+
+                if replicasets.len() > 1 {
+                    let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
+                    let ids = sql_params.constant_ids();
+                    let local_sql = generate_local_dql_sql(ex_plan, top_id, plan_id, ids)?;
+                    let motion_info = MotionInfo::new_for_query(has_segment_motion, Some(true));
+                    explain_once(local_sql, sql_params, &Buckets::All, motion_info)?;
+                }
+            } else {
+                let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
+                let ids = sql_params.constant_ids();
+                let sql = generate_local_dql_sql(ex_plan, top_id, plan_id, ids)?;
+                let schema_info = SchemaInfo::new(
+                    plan.table_version_map.clone(),
+                    plan.index_version_map.clone(),
+                );
+                let miss_info = ExpandedLocalExecutionInfo {
+                    schema_info,
+                    plan_id,
+                    vtables: &vtables,
+                    sql,
+                };
+
+                let motion_info = MotionInfo::new_for_query(has_segment_motion, None);
+                explain_execute(
+                    self,
+                    miss_info,
+                    sql_params.params(),
+                    buckets,
+                    motion_info,
+                    port,
+                )?;
+            }
 
             return Ok(());
         }
@@ -898,39 +975,46 @@ pub fn explain_execute_block<'p>(
     buckets: &Buckets,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
-    let vdbe_max_steps = block.vdbe_max_steps;
     let bucket_count = block.bucket_count;
     let params = &mut block.params.into_iter();
+
+    let bucket_info = BoundedBuckets {
+        buckets: buckets.clone(),
+        bucket_count,
+    };
+    let motion_info = MotionInfo::new_for_transaction();
+
     let mut explain_one =
-        |sql: String, params: Vec<Value>, kind: &str| -> Result<(), SbroadError> {
-            // `False` is passed since transactional blocks cannot contain queries with
-            // motions.
-            explain_execute_guarded(
-                &sql,
-                &params,
-                vdbe_max_steps,
-                kind,
-                buckets,
-                bucket_count,
-                false,
-                port,
-            )
+        |explain_query: ExplainQuery, params: &[Value]| -> Result<(), SbroadError> {
+            explain_query.execute_guarded(params, &bucket_info, motion_info, port)
         };
 
     let next_params = |params: &mut IntoIter<_>| params.next().expect("not enough params");
     for (idx, stmt) in block.statements.into_iter().enumerate() {
         match stmt {
-            BlockStatement::ReturnQuery(p) => explain_one(p, next_params(params), "Return query")?,
-            BlockStatement::Query(p) => explain_one(p, next_params(params), "Query")?,
-            BlockStatement::Let { query, var } => {
-                let var = var.strip_prefix(':').unwrap_or(&var);
-                let kind = format_let_entry(block.unused_lets.contains(&idx), var);
-                explain_one(query, next_params(params), &kind)?
+            BlockStatement::ReturnQuery(p) => {
+                let explain_query = ExplainQuery::ReturnQuery(&p);
+                explain_one(explain_query, &next_params(params))?;
+            }
+            BlockStatement::Query(p) => {
+                let explain_query = ExplainQuery::Query(&p);
+                explain_one(explain_query, &next_params(params))?;
+            }
+            BlockStatement::Let { ref query, var } => {
+                let is_used = block.unused_lets.contains(&idx);
+                let explain_query = ExplainQuery::Let {
+                    query,
+                    var,
+                    is_used,
+                };
+                explain_one(explain_query, &next_params(params))?;
             }
             BlockStatement::If { cond, body } => {
-                explain_one(cond, next_params(params), "If cond")?;
+                let explain_query = ExplainQuery::IfCond(&cond);
+                explain_one(explain_query, &next_params(params))?;
                 for p in body {
-                    explain_one(p, next_params(params), "If body")?;
+                    let explain_query = ExplainQuery::IfBody(&p);
+                    explain_one(explain_query, &next_params(params))?;
                 }
             }
         }

@@ -5,7 +5,8 @@ use crate::preemption::scheduler_options;
 use crate::sql::lock::{lock_temp_table, TempTableLease, TempTableLockRef};
 use crate::sql::port::PicoPortOwned;
 use crate::sql::router::{
-    determine_exec_location, get_index_version_by_pk, get_table_version_by_id, VersionMap,
+    build_explain_query_location, get_index_version_by_pk, get_table_version_by_id,
+    replicasets_by_buckets, VersionMap,
 };
 use crate::sql::storage::{
     ExpandedLocalExecutionInfo, ExpandedPlanInfo, FullDeleteInfo, LocalExecutionInfo, PlanInfo,
@@ -32,9 +33,10 @@ use sql::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
 use sql::executor::vtable::{
     vtable_indexed_column_name, VTableTuple, VirtualTable, VirtualTableTupleEncoder,
 };
-use sql::executor::{Port, PortType};
+use sql::executor::{MotionInfo, Port, PortType};
 use sql::ir::bucket::{BucketSet, Buckets};
 use sql::ir::explain::buckets_repr;
+use sql::ir::explain::execution_info::BoundedBuckets;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
 use sql::ir::relation::SpaceEngine;
@@ -689,69 +691,151 @@ fn repack_raw_explain<'p>(dst_port: &mut impl Port<'p>, src_port: &impl Port<'p>
     }
 }
 
-fn format_buckets(buckets: &Buckets, bucket_count: u64, has_segment_motion: bool) -> String {
+/// Generate buckets representation for EXPLAIN. "<=" in generated string
+/// indicates that this is an upper bound.
+fn format_explain_buckets(
+    bucket_info: &BoundedBuckets,
+    motion_info: &MotionInfo,
+) -> Result<String, SbroadError> {
+    let buckets = &bucket_info.buckets;
+    let bucket_count = bucket_info.bucket_count;
+    let is_dyn_filtered = motion_info.has_segment_motion;
+
+    if let Some(as_empty) = motion_info.has_serialize_as_empty_opcode {
+        let repr = match buckets {
+            Buckets::All => {
+                format!("buckets <= [1-{bucket_count}]")
+            }
+            Buckets::Filtered(_) if !as_empty => {
+                let replicasets = replicasets_by_buckets(buckets)?;
+                if replicasets.len() > 1 {
+                    format!("buckets <= [1-{bucket_count}]")
+                } else {
+                    let sym = if is_dyn_filtered { "<=" } else { "=" };
+                    let repr = buckets_repr(buckets, bucket_count);
+                    format!("buckets {sym} {repr}")
+                }
+            }
+            _ => {
+                let sym = if is_dyn_filtered { "<=" } else { "=" };
+                let repr = buckets_repr(buckets, bucket_count);
+                format!("buckets {sym} {repr}")
+            }
+        };
+
+        return Ok(repr);
+    }
+
     match buckets {
-        Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() && has_segment_motion => {
+        Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() && is_dyn_filtered => {
             let buckets_repr = buckets_repr(&Buckets::All, bucket_count);
-            format!("buckets <= {buckets_repr}")
+            Ok(format!("buckets <= {buckets_repr}"))
         }
         Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() => {
             let buckets_repr = buckets_repr(buckets, bucket_count);
-            format!("buckets = {buckets_repr}")
+            Ok(format!("buckets = {buckets_repr}"))
         }
         _ => {
-            let sym = if has_segment_motion { "<=" } else { "=" };
+            let sym = if is_dyn_filtered { "<=" } else { "=" };
             let buckets_repr = buckets_repr(buckets, bucket_count);
-            format!("buckets {sym} {buckets_repr}")
+            Ok(format!("buckets {sym} {buckets_repr}"))
         }
     }
 }
 
-pub fn explain_execute_guarded<'p>(
-    explain: &str,
-    params: &[Value],
-    sql_vdbe_opcode_max: u64,
-    query: &str,
-    buckets: &Buckets,
-    bucket_count: u64,
-    has_segment_motion: bool,
-    port: &mut impl Port<'p>,
-) -> Result<(), SbroadError> {
-    let mp_header = encode(&[query]);
-    port.add_mp(&mp_header);
+/// Contains the SQL query that is executed in VDBE.
+pub enum ExplainQuery<'a> {
+    IfCond(&'a str),
+    IfBody(&'a str),
+    Let {
+        query: &'a str,
+        var: SmolStr,
+        is_used: bool,
+    },
+    Query(&'a str),
+    ReturnQuery(&'a str),
+}
 
-    let location = determine_exec_location(buckets, has_segment_motion);
-    let mp_location = encode(&[location]);
-    port.add_mp(&mp_location);
-
-    let buckets_repr = format_buckets(buckets, bucket_count, has_segment_motion);
-    let mp_buckets_repr = encode(&[buckets_repr]);
-    port.add_mp(&mp_buckets_repr);
-
-    let mp_query = encode(&[explain]);
-    port.add_mp(&mp_query);
-
-    let mp_params = encode(&params.to_vec());
-    port.add_mp(&mp_params);
-
-    match SqlStmt::compile(explain) {
-        Ok(mut stmt) => {
-            let mut tmp_port = PicoPortOwned::new();
-            tmp_port.process_stmt(&mut stmt, params, sql_vdbe_opcode_max)?;
-
-            // At this point we have to save the port size as it will further be used to iterate over port contents.
-            repack_raw_explain(port, &tmp_port);
-        }
-        Err(err) => {
-            let num_serialized = encode(&[1]);
-            port.add_mp(&num_serialized);
-
-            let err_serialized = encode(&[err.to_string()]);
-            port.add_mp(&err_serialized);
+impl<'p> ExplainQuery<'_> {
+    fn kind(&self) -> String {
+        match self {
+            Self::Let { var, is_used, .. } => {
+                let var = var.strip_prefix(':').unwrap_or(var.as_str());
+                if *is_used {
+                    format!("**Unused** let \"{var}\"")
+                } else {
+                    format!("Let \"{var}\"")
+                }
+            }
+            Self::IfCond(_) => "If cond".to_string(),
+            Self::IfBody(_) => "If body".to_string(),
+            Self::Query(_) => "Query".to_string(),
+            Self::ReturnQuery(_) => "Return query".to_string(),
         }
     }
 
-    Ok(())
+    fn sql_query(&self) -> String {
+        match self {
+            Self::IfCond(sql) | Self::Query(sql) | Self::IfBody(sql) | Self::ReturnQuery(sql) => {
+                sql.to_string()
+            }
+            Self::Let { query, .. } => query.to_string(),
+        }
+    }
+
+    /// Execute explain query in VDBE and append result to port.
+    ///
+    /// # Preconditions
+    ///
+    /// - All temporary tables that are present in query
+    ///   must be created before calling that function.
+    pub fn execute_guarded(
+        self,
+        params: &[Value],
+        bucket_info: &BoundedBuckets,
+        motion_info: MotionInfo,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError> {
+        let kind = self.kind();
+        let mp_header = encode(&[kind]);
+        port.add_mp(&mp_header);
+
+        let location = build_explain_query_location(&bucket_info.buckets, &motion_info);
+        let mp_location = encode(&[location.to_string()]);
+        port.add_mp(&mp_location);
+
+        let buckets_repr = format_explain_buckets(bucket_info, &motion_info)?;
+        let mp_buckets_repr = encode(&[buckets_repr]);
+        port.add_mp(&mp_buckets_repr);
+
+        let sql_query = self.sql_query();
+        let mp_query = encode(&[&sql_query]);
+        port.add_mp(&mp_query);
+
+        let mp_params = encode(&params.to_vec());
+        port.add_mp(&mp_params);
+
+        match SqlStmt::compile(&sql_query) {
+            Ok(mut stmt) => {
+                let mut tmp_port = PicoPortOwned::new();
+                // `0` is passed since it should always be possible to execute
+                // EXPLAIN(RAW).
+                tmp_port.process_stmt(&mut stmt, params, 0)?;
+
+                // At this point we have to save the port size as it will further be used to iterate over port contents.
+                repack_raw_explain(port, &tmp_port);
+            }
+            Err(err) => {
+                let num_serialized = encode(&[1]);
+                port.add_mp(&num_serialized);
+
+                let err_serialized = encode(&[err.to_string()]);
+                port.add_mp(&err_serialized);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 fn generate_pk_for_tmp_table(table_name: &str) -> String {
@@ -814,9 +898,8 @@ pub fn explain_execute<'p>(
     runtime: &StorageRuntime,
     miss_info: impl ExpandedPlanInfo,
     params: &[Value],
-    sql_vdbe_opcode_max: u64,
     buckets: &Buckets,
-    has_segment_motion: bool,
+    motion_info: MotionInfo,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
     let _plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
@@ -830,16 +913,13 @@ pub fn explain_execute<'p>(
     }
 
     let bucket_count = runtime.bucket_count();
-    explain_execute_guarded(
-        miss_info.sql(),
-        params,
-        sql_vdbe_opcode_max,
-        "Query",
-        buckets,
+    let buckets_info = BoundedBuckets {
+        buckets: buckets.clone(),
         bucket_count,
-        has_segment_motion,
-        port,
-    )
+    };
+
+    let explain_query = ExplainQuery::Query(miss_info.sql());
+    explain_query.execute_guarded(params, &buckets_info, motion_info, port)
 }
 
 fn table_create_impl(name: &str, pk_name: &str, fields: Vec<Field>) -> Result<(), SbroadError> {

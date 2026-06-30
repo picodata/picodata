@@ -18,7 +18,7 @@ use crate::executor::ir::ExecutionPlan;
 use crate::executor::lru::{Cache as _, LRUCache, DEFAULT_CAPACITY};
 use crate::executor::preemption::{SchedulerMetrics, SchedulerOptions};
 use crate::executor::vtable::VirtualTable;
-use crate::executor::ExecutingQuery;
+use crate::executor::{ExecutingQuery, ExplainQueryLocation, MotionInfo};
 use crate::executor::{Port, PortType};
 use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::explain::LogicalExplain;
@@ -2069,8 +2069,11 @@ impl Router for RouterRuntimeMock {
         Ok(Forward::On)
     }
 
-    fn determine_exec_location(&self, _buckets: &Buckets, _has_segment_motion: bool) -> String {
-        String::from("MOCK")
+    fn build_explain_query_location(
+        _buckets: &Buckets,
+        _motion_info: &MotionInfo,
+    ) -> ExplainQueryLocation {
+        ExplainQueryLocation::Whole
     }
 }
 

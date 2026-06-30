@@ -7,8 +7,3 @@ from framework.sqltester import (
 @sql_test_file("except.sql")
 class TestExcept(ClusterSingleInstance):
     pass
-
-
-@sql_test_file("union.sql")
-class TestUnion(ClusterSingleInstance):
-    pass

@@ -25,7 +25,7 @@ tarantool::define_str_enum! {
 // Helper struct to hold information
 // needed to apply SerializeAsEmpty opcode
 // to subtree.
-struct SerializeAsEmptyInfo {
+pub struct SerializeAsEmptyInfo {
     // ids of motions which have this opcode
     target_motion_ids: Vec<NodeId>,
     unused_motions: Vec<NodeId>,
@@ -39,7 +39,7 @@ struct SerializeAsEmptyInfo {
 impl Plan {
     // return true if given node is Motion containing seriliaze as empty
     // opcode. If `check_enabled` is true checks that the opcode is enabled.
-    fn is_serialize_as_empty_motion(&self, node_id: NodeId, check_enabled: bool) -> bool {
+    pub fn is_serialize_as_empty_motion(&self, node_id: NodeId, check_enabled: bool) -> bool {
         if let Ok(Node::Relational(Relational::Motion(Motion { program, .. }))) =
             self.get_node(node_id)
         {
@@ -72,7 +72,7 @@ impl Plan {
         Ok(dfs.traverse_into_iter(top_id).map(|id| id.1).collect())
     }
 
-    fn serialize_as_empty_info(
+    pub fn serialize_as_empty_info(
         &self,
         top_id: NodeId,
     ) -> Result<Option<SerializeAsEmptyInfo>, SbroadError> {
@@ -238,7 +238,7 @@ fn trim_serialize_as_empty_vtables(
     Ok(())
 }
 
-fn serialize_as_empty_motions_to_disable(
+pub fn serialize_as_empty_motions_to_disable(
     plan: &Plan,
     info: &SerializeAsEmptyInfo,
 ) -> Result<Vec<NodeId>, SbroadError> {

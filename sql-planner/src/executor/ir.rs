@@ -721,6 +721,18 @@ impl ExecutionPlan {
         }
     }
 
+    pub fn has_serialize_as_empty_motion(&self, top_id: NodeId) -> bool {
+        let plan = self.get_ir_plan();
+        let motion_filter = |id| plan.is_serialize_as_empty_motion(id, false);
+        let dfs = PostOrderWithFilter::new(
+            |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
+            motion_filter,
+            plan.nodes.len(),
+        );
+
+        dfs.traverse_into_iter(top_id).next().is_some()
+    }
+
     #[must_use]
     pub fn get_request_id(&self) -> &str {
         &self.request_id
@@ -793,7 +805,7 @@ impl ExecutionPlan {
     ///
     /// Cached effective subtree and plan-id metadata is cleared because SQL
     /// shape can change.
-    pub(crate) fn disable_serialize_as_empty_for_motions(
+    pub fn disable_serialize_as_empty_for_motions(
         &mut self,
         motion_ids: impl IntoIterator<Item = NodeId>,
     ) {

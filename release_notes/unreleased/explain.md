@@ -5,3 +5,5 @@
   specified ([!3280]).
 - Provide more accurate info about query execution location in EXPLAIN (RAW)
   output ([!3330]).
+- Reflect the planning caveats for queries with UNION of global and sharded
+  tables in EXPLAIN(RAW) ([!3357]).

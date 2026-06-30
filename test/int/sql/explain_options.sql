@@ -831,10 +831,11 @@ explain (raw, forward) select a from t where a = 1 and c = '2' union select id::
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST(1 AS int) and "t"."c" = CAST('2' AS string) UNION select cast(null as int) as "col_1" where false
+SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST(1 AS int) and "t"."c" = CAST('2' AS string) UNION SELECT CAST ("_pico_table"."id" as int) as "col_1" FROM "_pico_table"
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+    [2] SCAN TABLE _pico_table (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION)
 ''
 ──────────────────────────────────────────────────────────────────────
