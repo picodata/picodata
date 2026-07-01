@@ -800,6 +800,17 @@ cluster:
     # Kill master
     master.kill()
     cluster.wait_has_states(master, "Offline", "Offline")
+
+    # Restore the default auto-offline timeout now that the dead master has been
+    # detected. The aggressive value above is only needed to notice the master's
+    # death quickly; if it stays in effect it also spuriously auto-offlines the
+    # newly-promoted replica. The replica transiently lags on its applied index
+    # while promoting to master and applying the pending sync DDL without quorum
+    # (the old master is dead), which trips the applied-index-lag heuristic. That
+    # reverts the failover, so the old master comes back writable and the checks
+    # below fail.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 30")
+
     leader.wait_governor_status("idle")
 
     # Check RO, limbo owner and length
