@@ -1289,26 +1289,43 @@ cluster:
     assert cluster.leader() == master
     master_id = master.eval("return box.info.id")
 
+    # While the killed replicas restart, replication on the still-alive master is
+    # transiently broken. With the replication-error check enabled (the default)
+    # the governor would auto-offline the master and fail the replicaset master
+    # over to a replica — which for a synchronous replicaset rolls back the
+    # in-limbo write. Disable the check so the original master is preserved.
+    # TODO: fix auto-offline strategy for this case
+    # (https://git.picodata.io/core/picodata/-/issues/3002)
+    master.sql("ALTER SYSTEM SET governor_check_replication_error = false")
+
     # Create table and write initial data.
     master.sql("CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id))")
     master.sql("INSERT INTO t VALUES (1, 'initial')")
 
     replicas[0].kill()
     replicas[1].kill()
-    master.wait_governor_status("idle")
 
     # Writes are blocked, no synchro quorum.
     with pytest.raises(TimeoutError):
         master.sql("INSERT INTO t VALUES (2, 'should_fail')", timeout=1)
-    # Fencing does not work, no raft quorum.
-    assert not master.eval("return box.info.ro")
-    # The transaction is in the limbo.
-    assert master.eval("return box.info.synchro.queue.len") == 1
+
+    def check_ro_and_synchro_queue():
+        # Fencing does not work, no raft quorum.
+        assert not master.eval("return box.info.ro")
+        # The transaction is in the limbo.
+        assert master.eval("return box.info.synchro.queue.len") == 1
+
+    Retriable().call(check_ro_and_synchro_queue)
 
     # Restart the replicas — the quorums are restored.
     replicas[0].start_and_wait()
     replicas[1].start_and_wait()
-    cluster.leader().wait_governor_status("idle")
+
+    # Both restarted voters can trigger raft re-elections, so the raft leader
+    # may change several times before the cluster settles. Re-resolve the
+    # leader on every attempt instead of pinning a possibly-stale one: a stale
+    # leader makes wait_governor_status raise the fatal NotALeader right away.
+    Retriable().call(lambda: cluster.leader().wait_governor_status("idle"))
 
     assert not master.eval("return box.info.ro")
 
