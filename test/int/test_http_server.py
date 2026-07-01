@@ -1179,6 +1179,12 @@ def test_instance_detail_api(instance: Instance, auth_token: Optional[str]):
     assert "level" in log
     assert "format" in log
 
+    # Memtx section
+    memtx = body["memtx"]
+    assert "memory" in memtx
+    assert "systemMemory" in memtx
+    assert "maxTupleSize" in memtx
+
     # Vinyl section
     vinyl = body["vinyl"]
     assert "memory" in vinyl

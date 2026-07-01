@@ -31,6 +31,7 @@ pub(crate) struct InstanceResponse {
     audit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     log: Option<crate::info::LogDetails>,
+    memtx: crate::info::MemtxDetails,
     #[serde(skip_serializing_if = "Option::is_none")]
     vinyl: Option<crate::info::VinylDetails>,
     replication: HashMap<u64, crate::info::ReplicationDetails>,
@@ -87,6 +88,7 @@ fn http_api_instance_detail(uuid: String) -> ApiResult<InstanceResponse> {
         share_dir: info.share_dir,
         audit: info.audit,
         log: info.log.into_option(),
+        memtx: info.memtx,
         vinyl: info.vinyl.into_option(),
         replication: info.replication,
     })

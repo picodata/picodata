@@ -890,6 +890,15 @@ pub struct LogDetails {
     pub format: Option<String>,
 }
 
+/// Memtx configuration info for [InstanceDetails].
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemtxDetails {
+    pub memory: String,
+    pub system_memory: String,
+    pub max_tuple_size: String,
+}
+
 /// Vinyl configuration info for [InstanceDetails].
 #[derive(Clone, Debug, Default, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -928,6 +937,7 @@ pub struct InstanceDetails {
     pub share_dir: String,
     pub audit: Option<String>,
     pub log: LogDetails,
+    pub memtx: MemtxDetails,
     pub vinyl: VinylDetails,
     pub replication: HashMap<u64, ReplicationDetails>,
 }
@@ -945,6 +955,7 @@ pub fn impl_proc_instance_details() -> Result<InstanceDetails, Error> {
     let picodata_config = PicodataConfig::get();
     let instance = &picodata_config.instance;
     let vinyl = &instance.vinyl;
+    let memtx = &instance.memtx;
     let log = &instance.log;
 
     let replication = get_replication()?;
@@ -959,6 +970,23 @@ pub fn impl_proc_instance_details() -> Result<InstanceDetails, Error> {
             level: log.level.map(|l| l.to_string()),
             destination: log.destination.clone(),
             format: log.format.map(|f| f.to_string()),
+        },
+        memtx: MemtxDetails {
+            memory: memtx
+                .memory
+                .as_ref()
+                .expect("is set in PicodataConfig::set_defaults_explicitly")
+                .to_string(),
+            system_memory: memtx
+                .system_memory
+                .as_ref()
+                .expect("is set in PicodataConfig::set_defaults_explicitly")
+                .to_string(),
+            max_tuple_size: memtx
+                .max_tuple_size
+                .as_ref()
+                .expect("is set in PicodataConfig::set_defaults_explicitly")
+                .to_string(),
         },
         vinyl: VinylDetails {
             memory: vinyl.memory.as_ref().map(|b| b.to_string()),
