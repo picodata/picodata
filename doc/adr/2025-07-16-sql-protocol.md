@@ -48,11 +48,11 @@ pub struct EncodedRows {
 
 ```rust
 pub struct OptionalData {
-    // ExecutionPlan have all nodes, relation, vtables, undo transformation 
+    // ExecutionPlan have all nodes, relation, vtables, undo transformation
     pub exec_plan: ExecutionPlan,
     // Lightweight tree that indicates order of nodes
     pub ordered: OrderedSyntaxNodes,
-    // Meta of vtables. The meta is used to create vtables 
+    // Meta of vtables. The meta is used to create vtables
     pub vtables_meta: VTablesMeta,
 }
 ```
@@ -142,14 +142,14 @@ pub struct OptionalData {
 
 DQL payload выглядит так:
 
-| Field         | MsgPack Type            | Example Value                     |
-|---------------|-------------------------|-----------------------------------|
-| schema_info   | map (u32, u64)          | 10, [1..20]                       |
-| plan_id       | u64                     | 0                                 |
-| sender_id     | u64                     | 3 (router raft id)                |
-| vtables' data | map(str, EncodedTuples) | 10, ["TMP_13", EncodedTuples] ... |
-| options       | [u64, u64]              | [100, 200]                        |
-| params        | array of values         | 3, true, 1.0, 10                  |
+| Field         | MsgPack Type            | Example Value                      |
+|---------------|-------------------------|------------------------------------|
+| schema_info   | map (u32, u64)          | 10, [1..20]                        |
+| plan_id       | u64                     | 0                                  |
+| sender_id     | u64                     | 3 (router raft id)                 |
+| vtables' data | map(str, EncodedTuples) | 10, ["_tmp_13", EncodedTuples] ... |
+| options       | [u64, u64]              | [100, 200]                         |
+| params        | array of values         | 3, true, 1.0, 10                   |
 
 EncodedTuples
 
@@ -171,11 +171,11 @@ sender_id и
 
 Пакет с дополнительными данными выглядит так:
 
-| Field         | MsgPack Type                   | Example Value                            |
-|---------------|--------------------------------|------------------------------------------|
-| schema_info   | map (u32, u64)                 | 10, [1..20]                              |
-| vtables' meta | map (string, array of Columns) | 10, ["TMP_10321", 10, [Column, ...]] ... |
-| sql           | string                         | 10, "SELECT * FROM t"                    |
+| Field         | MsgPack Type                   | Example Value                             |
+|---------------|--------------------------------|-------------------------------------------|
+| schema_info   | map (u32, u64)                 | 10, [1..20]                               |
+| vtables' meta | map (string, array of Columns) | 10, ["_tmp_10321", 10, [Column, ...]] ... |
+| sql           | string                         | 10, "SELECT * FROM t"                     |
 
 Column
 

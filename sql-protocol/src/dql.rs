@@ -621,7 +621,7 @@ mod tests {
             .set_schema_info((HashMap::from([(12, 138)]), HashMap::from([([12, 12], 138)])))
             .set_sender_id(42)
             .set_vtables(HashMap::from([(
-                "TMP_1302_".to_string(),
+                "_tmp_1302_".to_string(),
                 vec![vec![1, 2, 3], vec![3, 2, 1]],
             )]))
             .set_options(DQLOptions {
@@ -634,14 +634,14 @@ mod tests {
         let mut writer = Vec::new();
 
         write_dql_packet(&mut writer, &data).unwrap();
-        let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+        let expected: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xaa_tmp_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         assert_eq!(writer, expected);
     }
 
     #[test]
     fn test_execute_dql_cache_hit() {
-        let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xa9TMP_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
+        let mut data: &[u8] = b"\x93\xd9$14e84334-71df-4e69-8c85-dc2707a390c6\x00\x97\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\xcfI\x10 \x84\xb0h\xbbw\x2a\x81\xaa_tmp_1302_\x92\xc4\x05\x94\x01\x02\x03\x00\xc4\x05\x94\x03\x02\x01\x01\x92{\xcd\x01\xc8\x93\xcc\x8a{\xcd\x01\xb0";
 
         let l = read_array_len(&mut data).unwrap();
         assert_eq!(l, 3);
@@ -682,7 +682,7 @@ mod tests {
                 DQLResult::Vtables(vtables) => {
                     for result in vtables {
                         let (name, tuples) = result.unwrap();
-                        assert_eq!(name, "TMP_1302_");
+                        assert_eq!(name, "_tmp_1302_");
                         assert_eq!(tuples.len(), 2);
                         let mut actual = Vec::with_capacity(2);
                         for tuple in tuples {
@@ -710,24 +710,24 @@ mod tests {
         let data = TestDQLEncoderBuilder::new()
             .set_schema_info((HashMap::from([(12, 138)]), HashMap::from([([12, 12], 138)])))
             .set_meta(HashMap::from([(
-                "TMP_1302_".to_string(),
+                "_tmp_1302_".to_string(),
                 vec![
                     ("a".to_string(), ColumnType::Integer),
                     ("b".to_string(), ColumnType::Integer),
                 ],
             )]))
-            .set_sql("select * from TMP_1302_;".to_string())
+            .set_sql("select * from _tmp_1302_;".to_string())
             .build();
 
         let mut writer = Vec::new();
         write_dql_cache_miss_packet(&mut writer, &data).unwrap();
-        let expected: &[u8] = b"\x94\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\x81\xa9TMP_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb8select * from TMP_1302_;";
+        let expected: &[u8] = b"\x94\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\x81\xaa_tmp_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb9select * from _tmp_1302_;";
         assert_eq!(writer, expected);
     }
 
     #[test]
     fn test_handle_dql_cache_miss() {
-        let data: &[u8] = b"\x94\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\x81\xa9TMP_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb8select * from TMP_1302_;";
+        let data: &[u8] = b"\x94\x81\x0c\xcc\x8a\x81\x92\x0c\x0c\xcc\x8a\x81\xaa_tmp_1302_\x92\x92\xa1a\x05\x92\xa1b\x05\xb9select * from _tmp_1302_;";
 
         let package = DQLCacheMissPayloadIterator::new(data).unwrap();
 
@@ -753,13 +753,13 @@ mod tests {
                     assert_eq!(vtables_metadata.len(), 1);
                     for res in vtables_metadata {
                         let (table_name, columns) = res.unwrap();
-                        assert_eq!(table_name, "TMP_1302_");
+                        assert_eq!(table_name, "_tmp_1302_");
                         let expected = vec![("a", ColumnType::Integer), ("b", ColumnType::Integer)];
                         assert_eq!(columns, expected);
                     }
                 }
                 DQLCacheMissResult::Sql(sql) => {
-                    assert_eq!(sql, "select * from TMP_1302_;");
+                    assert_eq!(sql, "select * from _tmp_1302_;");
                 }
             }
         }

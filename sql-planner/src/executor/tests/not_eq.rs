@@ -77,7 +77,7 @@ fn not_eq2_test() {
     let info = info.get(0).unwrap();
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE \"t\".\"identification_number\" <> (SELECT \"COL_1\" FROM \"TMP_0_0136\")"
+      - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE \"t\".\"identification_number\" <> (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
       - []
     "#);
 }

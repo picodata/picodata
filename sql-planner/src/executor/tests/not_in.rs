@@ -48,7 +48,7 @@ fn not_in1_test() {
     let info = info.get(0).unwrap();
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE not \"t\".\"identification_number\" in (SELECT \"COL_1\" FROM \"TMP_0_0136\")"
+      - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE not \"t\".\"identification_number\" in (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
       - []
     "#);
 }

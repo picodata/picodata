@@ -128,7 +128,7 @@ fn linker_test() {
     assert_eq!(1, filtered.len());
 
     let (sql, params, _, ref mut buckets) = filtered.get_mut(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_0_0136")"#);
+    assert_snapshot!(sql, @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "_tmp_0_0136")"#);
     assert!(params.is_empty());
     let param3 = Value::from(3);
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
@@ -177,7 +177,7 @@ fn union_linker_test() {
     assert_eq!(1, filtered.len());
 
     let (sql, params, _, ref mut buckets) = filtered.get_mut(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id", "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."sys_op" < CAST($1 AS int) UNION ALL SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME" FROM "test_space_hist" WHERE "test_space_hist"."sys_op" > CAST($2 AS int)) as "t1" WHERE "t1"."id" in (SELECT "COL_1" FROM "TMP_0_0136")"#);
+    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id", "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."sys_op" < CAST($1 AS int) UNION ALL SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME" FROM "test_space_hist" WHERE "test_space_hist"."sys_op" > CAST($2 AS int)) as "t1" WHERE "t1"."id" in (SELECT "COL_1" FROM "_tmp_0_0136")"#);
     assert_eq!(params, &vec![Value::from(0), Value::from(0)]);
     let param3 = Value::from(3);
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
@@ -234,7 +234,7 @@ WHERE "t3"."id" = 2 AND "t8"."identification_number" = 2"#;
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id", "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."sys_op" < CAST($1 AS int) and "test_space"."sysFrom" >= CAST($2 AS int) UNION ALL SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME" FROM "test_space_hist" WHERE "test_space_hist"."sysFrom" <= CAST($3 AS int)) as "t3" INNER JOIN (SELECT "COL_1" FROM "TMP_0_0136") as "t8" ON "t3"."id" = "t8"."COL_1" WHERE "t3"."id" = CAST($4 AS int) and "t8"."COL_1" = CAST($5 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id", "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."sys_op" < CAST($1 AS int) and "test_space"."sysFrom" >= CAST($2 AS int) UNION ALL SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME" FROM "test_space_hist" WHERE "test_space_hist"."sysFrom" <= CAST($3 AS int)) as "t3" INNER JOIN (SELECT "COL_1" FROM "_tmp_0_0136") as "t8" ON "t3"."id" = "t8"."COL_1" WHERE "t3"."id" = CAST($4 AS int) and "t8"."COL_1" = CAST($5 AS int)"#);
     assert_eq!(
         params,
         &[
@@ -286,7 +286,7 @@ fn join_linker2_test() {
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT "t1"."id" FROM "test_space" as "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_0_0136") as "t2" ON "t1"."id" = CAST($1 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "t1"."id" FROM "test_space" as "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "_tmp_0_0136") as "t2" ON "t1"."id" = CAST($1 AS int)"#);
     let param1 = Value::from(1);
     let bucket1 = query.coordinator.determine_bucket_id(&[&param1]).unwrap();
     assert_eq!(params, &[param1]);
@@ -324,7 +324,7 @@ fn join_linker3_test() {
     let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
         panic!("Expected a single dispatch on all replicasets");
     };
-    assert_snapshot!(sql, @r#"SELECT "t2"."COL_1" as "id1" FROM (SELECT "test_space"."id" FROM "test_space") as "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_0_0136") as "t2" ON "t2"."COL_1" = CAST($1 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "t2"."COL_1" as "id1" FROM (SELECT "test_space"."id" FROM "test_space") as "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "_tmp_0_0136") as "t2" ON "t2"."COL_1" = CAST($1 AS int)"#);
     assert_eq!(params, &[Value::from(1)]);
 }
 
@@ -379,7 +379,7 @@ fn join_linker4_test() {
     assert_eq!(1, filtered.len());
 
     let (sql, params, _, ref mut buckets) = filtered.first_mut().unwrap();
-    assert_snapshot!(sql, @r#"SELECT "T1"."id" FROM "test_space" as "T1" INNER JOIN (SELECT "COL_1" FROM "TMP_0_0136") as "T2" ON "T1"."id" = "T2"."COL_1" and "T1"."FIRST_NAME" = (SELECT "COL_1" FROM "TMP_0_1136")"#);
+    assert_snapshot!(sql, @r#"SELECT "T1"."id" FROM "test_space" as "T1" INNER JOIN (SELECT "COL_1" FROM "_tmp_0_0136") as "T2" ON "T1"."id" = "T2"."COL_1" and "T1"."FIRST_NAME" = (SELECT "COL_1" FROM "_tmp_0_1136")"#);
     assert!(params.is_empty());
     let param2 = Value::from(2);
     let bucket2 = query.coordinator.determine_bucket_id(&[&param2]).unwrap();
@@ -436,7 +436,7 @@ on q."f" = "t1"."b""#;
     let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
         panic!("Expected a single dispatch on all replicasets");
     };
-    assert_snapshot!(sql, @r#"SELECT "t1"."a", "t1"."b", "q".* FROM "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "TMP_0_1136") as "q" ON "q"."COL_1" = "t1"."b""#);
+    assert_snapshot!(sql, @r#"SELECT "t1"."a", "t1"."b", "q".* FROM "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "_tmp_0_1136") as "q" ON "q"."COL_1" = "t1"."b""#);
     assert!(params.is_empty());
 }
 
@@ -462,7 +462,7 @@ fn dispatch_order_by() {
     let DispatchInfo::Any(sql, params) = info.get(0).unwrap() else {
         panic!("Expected a single local dispatch");
     };
-    assert_snapshot!(sql, @r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "TMP_0_0136") ORDER BY "COL_1""#);
+    assert_snapshot!(sql, @r#"SELECT "COL_1" as "id" FROM (SELECT "COL_1" FROM "_tmp_0_0136") ORDER BY "COL_1""#);
     assert!(params.is_empty());
 }
 
@@ -503,7 +503,7 @@ fn anonymous_col_index_test() {
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, ref mut buckets) = filtered.first_mut().unwrap();
-    assert_snapshot!(sql, @r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_0_0136") or "test_space"."id" in (SELECT "COL_1" FROM "TMP_0_1136")"#);
+    assert_snapshot!(sql, @r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "_tmp_0_0136") or "test_space"."id" in (SELECT "COL_1" FROM "_tmp_0_1136")"#);
     assert!(params.is_empty());
     let param3 = Value::from(3);
     let bucket3 = query.coordinator.determine_bucket_id(&[&param3]).unwrap();
@@ -639,7 +639,7 @@ fn groupby_linker_test() {
     let DispatchInfo::Any(sql, params) = info.get(0).unwrap() else {
         panic!("Expected local dispatch");
     };
-    assert_snapshot!(sql, @r#"SELECT "COL_1" as "ii" FROM (SELECT "COL_1" FROM "TMP_0_0136") GROUP BY "COL_1""#);
+    assert_snapshot!(sql, @r#"SELECT "COL_1" as "ii" FROM (SELECT "COL_1" FROM "_tmp_0_0136") GROUP BY "COL_1""#);
     assert!(params.is_empty());
 }
 

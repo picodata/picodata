@@ -210,7 +210,7 @@ fn exec_plan_subtree_test() {
     assert_eq!(sql.params, vec![]);
     assert_snapshot!(
         sql.pattern,
-        @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "TMP_0_0136")"#,
+        @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "_tmp_0_0136")"#,
     )
 }
 
@@ -358,7 +358,7 @@ fn exec_plan_subtree_two_stage_groupby_test() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\") GROUP BY \"COL_1\""
+    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\""
     params: []
     "#);
 }
@@ -401,7 +401,7 @@ fn exec_plan_subtree_two_stage_groupby_test_2() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\", \"COL_2\" as \"sys_op\", \"COL_3\" as \"sysFrom\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"TMP_0_0136\") GROUP BY \"COL_1\", \"COL_2\", \"COL_3\""
+    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\", \"COL_2\" as \"sys_op\", \"COL_3\" as \"sysFrom\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\", \"COL_2\", \"COL_3\""
     params: []
     "#);
 }
@@ -452,7 +452,7 @@ fn exec_plan_subtree_aggregates() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(sql.params, vec![Value::Integer(2), Value::from("o")]);
-    assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", "COL_1" * CAST($1 AS int) + sum ("COL_5") as "col_2", sum ("COL_4") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "TMP_0_0136") GROUP BY "COL_1""#);
+    assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", "COL_1" * CAST($1 AS int) + sum ("COL_5") as "col_2", sum ("COL_4") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "_tmp_0_0136") GROUP BY "COL_1""#);
 }
 
 #[test]
@@ -492,7 +492,7 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT sum (\"COL_2\") as \"col_1\", sum (DISTINCT \"COL_1\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"TMP_0_0136\")"
+    pattern: "SELECT sum (\"COL_2\") as \"col_1\", sum (DISTINCT \"COL_1\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"_tmp_0_0136\")"
     params: []
     "#);
 }
@@ -522,7 +522,7 @@ fn exec_plan_subquery_under_motion_without_alias() {
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT * FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"unnamed_subquery_1\" ON CAST($1 AS bool)"
+    pattern: "SELECT * FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"unnamed_subquery_1\" ON CAST($1 AS bool)"
     params:
       - Boolean: true
     "#);
@@ -552,7 +552,7 @@ fn exec_plan_subquery_under_motion_with_alias() {
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT * FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"hti\" ON CAST($1 AS bool)"
+    pattern: "SELECT * FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hti\" ON CAST($1 AS bool)"
     params:
       - Boolean: true
     "#);
@@ -576,7 +576,7 @@ fn exec_plan_motion_under_in_operator() {
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"id\" in (SELECT \"COL_1\" FROM \"TMP_0_0136\")"
+    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"id\" in (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
     params: []
     "#);
 }
@@ -603,7 +603,7 @@ fn exec_plan_motion_under_except() {
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" EXCEPT SELECT \"COL_1\" FROM \"TMP_0_0136\""
+    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" EXCEPT SELECT \"COL_1\" FROM \"_tmp_0_0136\""
     params: []
     "#);
 }
@@ -644,7 +644,7 @@ fn exec_plan_subtree_count_asterisk() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT sum (\"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\")"
+    pattern: "SELECT sum (\"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
     params: []
     "#);
 }
@@ -696,7 +696,7 @@ fn exec_plan_subtree_having() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" + \"COL_1\" as \"col_1\", sum (\"COL_3\") + count (DISTINCT \"COL_2\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"TMP_0_0136\") GROUP BY \"COL_1\" HAVING sum (DISTINCT \"COL_2\") > CAST($1 AS int)"
+    pattern: "SELECT \"COL_1\" + \"COL_1\" as \"col_1\", sum (\"COL_3\") + count (DISTINCT \"COL_2\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\" HAVING sum (DISTINCT \"COL_2\") > CAST($1 AS int)"
     params:
       - Integer: 1
     "#);
@@ -749,7 +749,7 @@ fn exec_plan_subtree_having_without_groupby() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT sum (\"COL_2\") + count (DISTINCT \"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"TMP_0_0136\") HAVING sum (DISTINCT \"COL_1\") > CAST($1 AS int)"
+    pattern: "SELECT sum (\"COL_2\") + count (DISTINCT \"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") HAVING sum (DISTINCT \"COL_1\") > CAST($1 AS int)"
     params:
       - Integer: 1
     "#);
@@ -854,7 +854,7 @@ fn global_union_all2() {
     let (sql, _, rs, _) = filtered.get(2).unwrap();
     assert_eq!(
         sql,
-        r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" WHERE "global_t"."b" in (SELECT "COL_1" FROM "TMP_0_0136") UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
+        r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" WHERE "global_t"."b" in (SELECT "COL_1" FROM "_tmp_0_0136") UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
     );
     assert_eq!(rs, "replicaset_2");
 }
@@ -1001,7 +1001,7 @@ fn global_except() {
     };
     assert_eq!(
         sql,
-        r#"SELECT "global_t"."a" FROM "global_t" EXCEPT SELECT "COL_1" FROM "TMP_0_0136""#,
+        r#"SELECT "global_t"."a" FROM "global_t" EXCEPT SELECT "COL_1" FROM "_tmp_0_0136""#,
     );
     assert_eq!(params, &vec![]);
 }
@@ -1111,7 +1111,7 @@ fn exec_plan_order_by() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
+    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
     params: []
     "#);
 }
@@ -1331,7 +1331,7 @@ fn exec_plan_order_by_with_subquery() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
+    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
     params: []
     "#);
 }
@@ -1402,7 +1402,7 @@ fn exec_plan_order_by_with_join() {
         TEMPLATE,
     );
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT * FROM (SELECT \"t\".\"a\" FROM \"t\") as \"f\" INNER JOIN (SELECT \"COL_1\" FROM \"TMP_0_0136\") as \"s\" ON CAST($1 AS bool)"
+    pattern: "SELECT * FROM (SELECT \"t\".\"a\" FROM \"t\") as \"f\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"s\" ON CAST($1 AS bool)"
     params:
       - Boolean: true
     "#);
@@ -1410,7 +1410,7 @@ fn exec_plan_order_by_with_join() {
     // Check main query.
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" as \"a\", \"COL_2\" as \"a\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"TMP_0_1136\") ORDER BY 1"
+    pattern: "SELECT \"COL_1\" as \"a\", \"COL_2\" as \"a\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"_tmp_0_1136\") ORDER BY 1"
     params: []
     "#);
 }

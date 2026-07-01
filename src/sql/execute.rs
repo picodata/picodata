@@ -757,7 +757,7 @@ pub fn explain_execute_guarded<'p>(
 fn generate_pk_for_tmp_table(table_name: &str) -> String {
     format!(
         "PK_{}",
-        table_name.strip_prefix("TMP_").unwrap_or(table_name)
+        table_name.strip_prefix("_tmp_").unwrap_or(table_name)
     )
 }
 

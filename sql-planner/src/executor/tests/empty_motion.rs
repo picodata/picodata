@@ -43,7 +43,7 @@ fn empty_motion1_test() {
     let info = info.get(0).unwrap();
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT * FROM (SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"TMP_0_0136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = CAST($1 AS int) EXCEPT SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"TMP_0_1136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = CAST($2 AS int)) as \"Q\""
+      - "SELECT * FROM (SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"_tmp_0_0136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = CAST($1 AS int) EXCEPT SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"_tmp_0_1136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = CAST($2 AS int)) as \"Q\""
       - - Integer: 0
         - Integer: 1
     "#);

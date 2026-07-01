@@ -43,7 +43,7 @@ fn between1_test() {
     assert_eq!(1, info.len());
     assert_yaml_snapshot!(info, @r#"
     - All:
-        - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE \"t\".\"identification_number\" >= CAST($1 AS int) and \"t\".\"identification_number\" <= (SELECT \"COL_1\" FROM \"TMP_0_0136\")"
+        - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE \"t\".\"identification_number\" >= CAST($1 AS int) and \"t\".\"identification_number\" <= (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
         - - Integer: 1
     "#);
 }
@@ -87,7 +87,7 @@ fn between2_test() {
     assert_eq!(1, info.len());
     assert_yaml_snapshot!(info, @r#"
     - All:
-        - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE (SELECT \"COL_1\" FROM \"TMP_0_0136\") >= CAST($1 AS int) and (SELECT \"COL_1\" FROM \"TMP_0_0136\") <= CAST($2 AS int)"
+        - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE (SELECT \"COL_1\" FROM \"_tmp_0_0136\") >= CAST($1 AS int) and (SELECT \"COL_1\" FROM \"_tmp_0_0136\") <= CAST($2 AS int)"
         - - Integer: 1
           - Integer: 3
     "#);

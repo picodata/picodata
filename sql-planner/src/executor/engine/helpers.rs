@@ -106,7 +106,7 @@ fn xx_hash(s: &str) -> SmolStr {
 
 #[must_use]
 pub fn table_name(plan_id: u64, node_id: NodeId) -> SmolStr {
-    format_smolstr!("TMP_{plan_id}_{node_id}")
+    format_smolstr!("_tmp_{plan_id}_{node_id}")
 }
 
 /// Generate a primary key name for the specified motion node.
