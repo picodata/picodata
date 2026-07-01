@@ -55,7 +55,7 @@ openssl = { version = "0.10", optional = true }
 [features]
 default = ["net_box", "network_client"]
 net_box = ["refpool"]
-picodata = ["crossbeam-queue"]
+picodata = ["crossbeam-queue", "tlua/picodata"]
 # This feature is enabled when `tarantool-module` is being compiled as part of
 # the picodata binary itself. This allows for a number of optimizations, for
 # example we can link against symbols which aren't exported dynamically and

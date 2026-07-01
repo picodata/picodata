@@ -2389,19 +2389,14 @@ fn set_tarantool_compat_options() {
     // rebase of tarantool-sys onto a newer release branch, so
     // we list their names instead.
     //
-    // Turns out those commits break traft & network.rs due
-    // to the changes around MP_BIN and varbinary.
+    // Those commits introduce the varbinary Lua type and change how
+    // MP_BIN values are decoded, which used to break traft & network.rs
+    // (raft messages are passed to Lua as MP_BIN). This is now handled
+    // on the Rust side via `tlua::LuaVarbinary`.
     //
-    // The affected tests include:
-    //
-    // - picodata::traft::network::tests::multiple_messages
-    // - picodata::traft::network::tests::unresponsive_connection
-    //
-    // TODO: properly support varbinary in crates tlua & tarantool.
-    // TODO: https://git.picodata.io/core/tarantool-module/-/issues/239
     tarantool::exec(
         "require 'compat' {
-            binary_data_decoding = 'old',
+            binary_data_decoding = 'new',
         }",
     )
     .unwrap();

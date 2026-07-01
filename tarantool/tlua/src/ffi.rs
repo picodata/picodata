@@ -742,3 +742,15 @@ extern "C-unwind" {
     /// *[-0, +1, m]*
     pub fn luaT_tolstring(l: *mut lua_State, idx: c_int, len: *mut usize) -> *const c_char;
 }
+
+// These are only exported by picodata's patched Tarantool fork, vanilla
+// Tarantool doesn't have them.
+#[cfg(feature = "picodata")]
+extern "C-unwind" {
+    /// Pushes a new varbinary object with the given content to the Lua stack.
+    pub fn luaT_pushvarbinary(l: *mut lua_State, data: *const c_char, len: u32);
+
+    /// If the value stored in the Lua stack at the given index is a varbinary
+    /// object, returns its content, otherwise returns NULL.
+    pub fn luaT_tovarbinary(l: *mut lua_State, index: c_int, len: *mut u32) -> *const c_char;
+}

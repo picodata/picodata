@@ -595,6 +595,87 @@ cluster:
     Retriable().call(assert_version, cluster, VersionAlias.CURRENT, registry)
 
 
+@pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        VersionAlias.PREVIOUS_MINOR,
+        VersionAlias.CURRENT,
+    ]
+)
+def test_mixed_binary_data_decoding_compat_during_upgrade(cluster: Cluster, registry: Registry):
+    """
+    CURRENT switched the tarantool `binary_data_decoding` compat option from
+    'old' to 'new' (see `set_tarantool_compat_options` in src/lib.rs). Each
+    instance applies this compat setting locally based on its own binary, so
+    during a rolling upgrade some instances decode MP_BIN as a plain Lua
+    string ('old', on PREVIOUS_MINOR) while others decode it as `varbinary`
+    cdata ('new', on CURRENT). This affects the raft network Lua bridge
+    (src/traft/network.rs), so verify that SQL and raft leadership keep
+    working correctly while the cluster is genuinely mixed:
+    1. Deploy a cluster on PREVIOUS_MINOR ('old' compat everywhere).
+    2. Upgrade half the instances to CURRENT ('new' compat), leaving the
+       rest on PREVIOUS_MINOR - a genuinely mixed-compat cluster.
+    3. Force a leader re-election so raft messages get routed through
+       instances with both compat settings.
+    4. Confirm SQL DML keeps working regardless of which instance serves it.
+    5. Finish the upgrade and confirm the cluster is healthy.
+    """
+
+    # step 1
+
+    executable = registry.get_or_skip(VersionAlias.PREVIOUS_MINOR)
+    current = registry.get(VersionAlias.CURRENT)
+    assert current is not None
+
+    cluster.deploy(
+        executable=executable,
+        instance_count=4,
+        init_replication_factor=2,
+    )
+    cluster.check_health()
+
+    # DDL must happen while the cluster is still homogeneous.
+    cluster.instances[0].sql(
+        "CREATE TABLE compat_check (a INT PRIMARY KEY, b STRING) DISTRIBUTED BY (a) WAIT APPLIED GLOBALLY"
+    )
+
+    upgraded, not_upgraded = cluster.instances[:2], cluster.instances[2:]
+    for instance in upgraded:
+        instance.change_executable(current)
+
+    cluster.check_health(homogeneous=False)
+
+    # step 3
+
+    old_leader = Retriable().call(cluster.leader)
+    observer = cluster.pick_random_instance(exclude=[old_leader])
+    old_leader.terminate()
+    observer.wait_has_states("Offline", "Offline", target=old_leader)
+
+    new_leader = Retriable().call(cluster.leader)
+    assert new_leader is not old_leader
+
+    old_leader.start_and_wait()
+
+    # step 4
+
+    for instance in cluster.instances:
+        instance.sql("INSERT INTO compat_check VALUES (?, ?)", instance.raft_id, instance.name)
+
+    rows = cluster.instances[0].sql("SELECT a, b FROM compat_check ORDER BY a")
+    assert len(rows) == len(cluster.instances)
+
+    # step 5
+
+    for instance in not_upgraded:
+        instance.change_executable(current)
+
+    cluster.check_health()
+
+    rows = cluster.instances[0].sql("SELECT a, b FROM compat_check ORDER BY a")
+    assert len(rows) == len(cluster.instances)
+
+
 # Changes to the bootstrap schema and data must have matching upgrade
 # operations. Otherwise, an upgraded cluster may silently end up with
 # a different state than a cluster bootstrapped directly on the same

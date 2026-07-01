@@ -26,3 +26,8 @@ smol_str = { version = "0.3", optional = true }
 [features]
 internal_test = ["linkme", "tester"]
 extra_impls = ["smol_str"]
+# Enabled when tlua is being built against picodata's patched Tarantool fork,
+# which exports `luaT_pushvarbinary`/`luaT_tovarbinary`. Vanilla Tarantool
+# doesn't have these symbols, so `LuaVarbinary` falls back to round-tripping
+# as a plain Lua string when this feature is disabled.
+picodata = []

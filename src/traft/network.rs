@@ -839,7 +839,7 @@ mod tests {
         let (tx, rx) = fiber::Channel::new(0).into_clones();
         l.set(
             "test_interact",
-            tlua::function1(move |pb: tlua::AnyLuaString| {
+            tlua::function1(move |pb: tlua::LuaVarbinary| {
                 use protobuf::Message as _;
                 let mut msg = raft::Message::default();
                 msg.merge_from_bytes(pb.as_bytes()).unwrap();
@@ -946,7 +946,7 @@ mod tests {
         let (tx, rx) = fiber::Channel::new(0).into_clones();
         l.set(
             "test_interact",
-            tlua::function1(move |pb: tlua::AnyLuaString| {
+            tlua::function1(move |pb: tlua::LuaVarbinary| {
                 use protobuf::Message as _;
                 let mut msg = raft::Message::default();
                 msg.merge_from_bytes(pb.as_bytes()).unwrap();
@@ -1053,7 +1053,7 @@ mod tests {
         let counter_moved = counter.clone();
         l.set(
             "test_interact",
-            tlua::function1(move |pb: tlua::AnyLuaString| {
+            tlua::function1(move |pb: tlua::LuaVarbinary| {
                 use protobuf::Message as _;
                 let mut msg = raft::Message::default();
                 msg.merge_from_bytes(pb.as_bytes()).unwrap();

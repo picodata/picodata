@@ -150,7 +150,7 @@ pub use tuples::{AsTable, TuplePushError};
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_some_userdata, push_userdata, read_userdata};
 pub use values::BytesInLua;
-pub use values::{False, Nil, Null, Strict, StringInLua, ToString, True, Typename};
+pub use values::{False, LuaVarbinary, Nil, Null, Strict, StringInLua, ToString, True, Typename};
 
 #[deprecated = "Use `CallError` instead"]
 pub type LuaFunctionCallError<E> = CallError<E>;

@@ -1103,3 +1103,51 @@ impl_push_read! {ToString,
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// LuaVarbinary
+////////////////////////////////////////////////////////////////////////////////
+
+/// A byte string that is pushed to and read from Lua as Tarantool's
+/// `varbinary` cdata type, rather than as a plain Lua string.
+///
+/// Use this (instead of a plain `Vec<u8>`/`String`, which round-trip as Lua
+/// strings) when the distinction between a Lua string and a `varbinary`
+/// value matters, e.g. when the data must decode to MessagePack `BIN`
+/// instead of `STR`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LuaVarbinary(pub(crate) Vec<u8>);
+
+impl LuaVarbinary {
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
+#[cfg(feature = "picodata")]
+impl_push_read! {LuaVarbinary,
+    push_to_lua(&self, lua) {
+        unsafe {
+            ffi::luaT_pushvarbinary(lua.as_lua(), self.0.as_ptr() as _, self.0.len() as _);
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+    push_into_lua(self, lua) {
+        self.push_to_lua(lua)
+    }
+    read_at_position(lua, index) {
+        unsafe {
+            let mut size = MaybeUninit::uninit();
+            let c_ptr = ffi::luaT_tovarbinary(lua.as_lua(), index.into(), size.as_mut_ptr());
+            if !c_ptr.is_null() {
+                let slice = slice::from_raw_parts(c_ptr as _, size.assume_init() as usize);
+                return Ok(Self(slice.to_vec()));
+            }
+        }
+
+        let e = WrongType::default()
+            .expected_type::<Self>()
+            .actual_single_lua(&lua, index);
+        Err((lua, e))
+    }
+}

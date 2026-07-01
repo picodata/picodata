@@ -1,5 +1,7 @@
 use std::num::NonZeroI32;
 
+#[cfg(feature = "picodata")]
+use crate::LuaVarbinary;
 use crate::{
     AsLua, LuaRead, LuaTable, Nil, Push, PushGuard, PushInto, PushOne, PushOneInto, ReadResult,
     Void,
@@ -20,6 +22,8 @@ pub enum AnyHashableLuaValue {
     // TODO(gmoshkin): remove Lua prefix
     LuaString(String),
     LuaAnyString(AnyLuaString),
+    #[cfg(feature = "picodata")]
+    LuaVarbinary(LuaVarbinary),
     LuaNumber(i32),
     // TODO(gmoshkin): True, False
     LuaBoolean(bool),
@@ -37,6 +41,8 @@ pub enum AnyLuaValue {
     // TODO(gmoshkin): remove Lua prefix
     LuaString(String),
     LuaAnyString(AnyLuaString),
+    #[cfg(feature = "picodata")]
+    LuaVarbinary(LuaVarbinary),
     LuaNumber(f64),
     // TODO(gmoshkin): True, False
     LuaBoolean(bool),
@@ -53,6 +59,8 @@ macro_rules! impl_any_lua_value {
         Ok(match $self {
             Self::LuaString(val) => val.$push($lua),
             Self::LuaAnyString(val) => val.$push($lua),
+            #[cfg(feature = "picodata")]
+            Self::LuaVarbinary(val) => val.$push($lua),
             Self::LuaNumber(val) => val.$push($lua),
             Self::LuaBoolean(val) => val.$push($lua),
             Self::LuaArray(val) => val.$push($lua),
@@ -93,6 +101,12 @@ macro_rules! impl_any_lua_value {
 
                 let lua = match LuaRead::lua_read_at_position(lua, index) {
                     Ok(v) => return Ok(Self::LuaAnyString(v)),
+                    Err((lua, _)) => lua,
+                };
+
+                #[cfg(feature = "picodata")]
+                let lua = match LuaRead::lua_read_at_position(lua, index) {
+                    Ok(v) => return Ok(Self::LuaVarbinary(v)),
                     Err((lua, _)) => lua,
                 };
 
