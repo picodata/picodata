@@ -130,12 +130,6 @@ pub struct PicodataConfig {
 }
 
 fn validate_args(args: &args::Run) -> Result<(), Error> {
-    if args.init_config.is_some() {
-        return Err(Error::other(
-            "error: option `--init-cfg` is removed, use `--config` instead",
-        ));
-    }
-
     if args.init_replication_factor.is_some() && args.config.is_some() {
         return Err(Error::other("error: option `--init-replication-factor` cannot be used with `--config` simultaneously"));
     }

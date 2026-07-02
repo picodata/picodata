@@ -235,7 +235,7 @@ pub struct Run {
     /// By default "info" is used.
     pub log_level: Option<LogLevel>,
 
-    #[clap(long, env = "PICODATA_INIT_REPLICATION_FACTOR", group = "init_cfg")]
+    #[clap(long, env = "PICODATA_INIT_REPLICATION_FACTOR")]
     /// Total number of replicas (copies of data) for each replicaset.
     ///
     /// By default 1 is used.
@@ -280,16 +280,6 @@ pub struct Run {
     ///
     /// By default "default" is used.
     pub tier: Option<String>,
-
-    /// Filepath to configuration file in yaml format.
-    #[clap(
-        hide = true,
-        long = "init-cfg",
-        value_name = "PATH",
-        env = "PICODATA_INIT_CFG",
-        group = "init_cfg"
-    )]
-    pub init_config: Option<String>,
 
     #[clap(long = "audit", value_name = "PATH", env = "PICODATA_AUDIT_LOG")]
     // As it's not always a path the value type is left as `String`.

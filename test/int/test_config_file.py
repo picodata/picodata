@@ -587,18 +587,6 @@ Using configuration file '{config_path}'.
     instance.terminate()
 
 
-def test_init_cfg_is_removed(cluster: Cluster):
-    i1 = cluster.add_instance(wait_online=False)
-
-    i1.env["PICODATA_INIT_CFG"] = "any-path"
-    err = """\
-error: option `--init-cfg` is removed, use `--config` instead
-"""
-    crawler = log_crawler(i1, err)
-    i1.fail_to_start()
-    assert crawler.matched
-
-
 def test_config_file_enoent(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.env.update({"PICODATA_CONFIG_FILE": "./unexisting_dir/trash.yaml"})
