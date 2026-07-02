@@ -1198,6 +1198,14 @@ END $$;
 -- ERROR:
 statement 1 \(IF body, query 1\) and statement 1 \(IF body, query 2\): different buckets: \[1934\] and \[1410\]
 
+-- TEST: error-with-let-location
+-- SQL:
+DO $$ BEGIN
+  LET a = (SELECT a FROM t);
+END $$;
+-- ERROR:
+statement 1 \(LET "a"\): transaction cannot be executed on all buckets
+
 -- TEST: cache-init
 -- SQL:
 DROP TABLE IF EXISTS tc;
@@ -1255,6 +1263,33 @@ END $$;
 SELECT a FROM tc WHERE pk = 1;
 -- EXPECTED:
 40,
+
+-- TEST: let-var-names-affect-cache-keys-init-gl3001
+-- SQL:
+DROP TABLE IF EXISTS dql_let_cache;
+CREATE TABLE dql_let_cache (pk INT PRIMARY KEY, marker INT);
+INSERT INTO dql_let_cache VALUES (1, 0);
+
+-- TEST: cache-ab-block-gl3001
+-- SQL:
+DO $$ BEGIN
+  LET a = (SELECT 10 FROM dql_let_cache WHERE pk = 1);
+  LET b = (SELECT 20 FROM dql_let_cache WHERE pk = 1);
+  RETURN QUERY SELECT a FROM dql_let_cache WHERE pk = 1;
+END $$;
+-- EXPECTED:
+10,
+
+-- TEST: ensure-ba-block-does-not-collide-with-ab-block-gl3001
+-- SQL:
+DO $$ BEGIN
+  LET b = (SELECT 10 FROM dql_let_cache WHERE pk = 1);
+  LET a = (SELECT 20 FROM dql_let_cache WHERE pk = 1);
+  RETURN QUERY SELECT a FROM dql_let_cache WHERE pk = 1;
+END $$;
+-- EXPECTED:
+20,
+
 
 -- TEST: schema-change-init
 -- SQL:

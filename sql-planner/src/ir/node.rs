@@ -1440,10 +1440,14 @@ impl<T> BlockStatement<T> {
 /// error messages that point at the offending statement.
 ///
 /// Top-level statements and IF body items are reported with 1-based indices.
-#[derive(Debug, Clone, Copy, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub enum StatementLocation {
-    /// `statement N (KIND)` for top-level RETURN QUERY / Query / LET.
-    TopLevel { stmt_idx: usize, kind: &'static str },
+    /// `statement N (RETURN QUERY)`
+    ReturnQuery { stmt_idx: usize },
+    /// `statement N (DML)`
+    Query { stmt_idx: usize },
+    /// `statement N (LET <name>)`
+    Let { stmt_idx: usize, name: SmolStr },
     /// `statement N (IF condition)`.
     IfCondition { stmt_idx: usize },
     /// `statement N (IF body, query M)`.
@@ -1531,8 +1535,15 @@ impl<'a, T> BlockEntryMut<'a, T> {
 impl Display for StatementLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::TopLevel { stmt_idx, kind } => {
-                write!(f, "statement {} ({kind})", stmt_idx + 1)
+            Self::ReturnQuery { stmt_idx } => {
+                write!(f, "statement {} (RETURN QUERY)", stmt_idx + 1)
+            }
+            Self::Query { stmt_idx } => {
+                write!(f, "statement {} (DML)", stmt_idx + 1)
+            }
+            Self::Let { stmt_idx, name } => {
+                let name = name.strip_prefix(":").expect("name always has ':' prefix");
+                write!(f, "statement {} (LET \"{}\")", stmt_idx + 1, name)
             }
             Self::IfCondition { stmt_idx } => {
                 write!(f, "statement {} (IF condition)", stmt_idx + 1)
@@ -1546,16 +1557,6 @@ impl Display for StatementLocation {
                 )
             }
         }
-    }
-}
-
-/// Static user-facing label for a [`BlockStatement`] variant.
-fn block_statement_kind<T>(stmt: &BlockStatement<T>) -> &'static str {
-    match stmt {
-        BlockStatement::ReturnQuery(_) => "RETURN QUERY",
-        BlockStatement::Query(_) => "DML",
-        BlockStatement::Let { .. } => "LET",
-        BlockStatement::If { .. } => "IF",
     }
 }
 
@@ -1613,13 +1614,21 @@ impl<'a, T> Iterator for BlockEntries<'a, T> {
             self.if_body = None;
         }
         let (stmt_idx, stmt) = self.stmts.next()?;
-        let kind = block_statement_kind(stmt);
         match stmt {
-            BlockStatement::ReturnQuery(query)
-            | BlockStatement::Query(query)
-            | BlockStatement::Let { query, .. } => Some(BlockEntry {
+            BlockStatement::ReturnQuery(query) => Some(BlockEntry {
                 query,
-                location: StatementLocation::TopLevel { stmt_idx, kind },
+                location: StatementLocation::ReturnQuery { stmt_idx },
+            }),
+            BlockStatement::Query(query) => Some(BlockEntry {
+                query,
+                location: StatementLocation::Query { stmt_idx },
+            }),
+            BlockStatement::Let { query, var } => Some(BlockEntry {
+                query,
+                location: StatementLocation::Let {
+                    stmt_idx,
+                    name: SmolStr::clone(var),
+                },
             }),
             BlockStatement::If { cond, body } => {
                 self.if_body = Some(IfBodyCursor {
@@ -1652,13 +1661,21 @@ impl<'a, T> Iterator for BlockEntriesMut<'a, T> {
             self.if_body = None;
         }
         let (stmt_idx, stmt) = self.stmts.next()?;
-        let kind = block_statement_kind(stmt);
         match stmt {
-            BlockStatement::ReturnQuery(query)
-            | BlockStatement::Query(query)
-            | BlockStatement::Let { query, .. } => Some(BlockEntryMut {
+            BlockStatement::ReturnQuery(query) => Some(BlockEntryMut {
                 query,
-                location: StatementLocation::TopLevel { stmt_idx, kind },
+                location: StatementLocation::ReturnQuery { stmt_idx },
+            }),
+            BlockStatement::Query(query) => Some(BlockEntryMut {
+                query,
+                location: StatementLocation::Query { stmt_idx },
+            }),
+            BlockStatement::Let { query, var } => Some(BlockEntryMut {
+                query,
+                location: StatementLocation::Let {
+                    stmt_idx,
+                    name: SmolStr::clone(var),
+                },
             }),
             BlockStatement::If { cond, body } => {
                 self.if_body = Some(IfBodyCursor {
