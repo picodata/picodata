@@ -356,7 +356,6 @@ fn compute_bucket_distribution_imbalance<'t>(
 
     // No imbalance detected
     if res.need_more_buckets.is_empty() && res.have_extra_buckets.is_empty() {
-        tlog!(Info, "nobody needs bucket changes");
         return Ok(None);
     }
 
@@ -459,6 +458,8 @@ mod tests {
     use super::*;
     use crate::instance::Instance;
     use crate::topology_cache::TopologyCache;
+    use rand::RngExt;
+    use rand::SeedableRng;
     use smol_str::format_smolstr;
     use smol_str::ToSmolStr;
     use std::rc::Rc;
@@ -490,13 +491,45 @@ mod tests {
         replicaset
     }
 
+    /// See `wrap_compute_bucket_distribution_imbalance` for parameter meaning
     fn check_compute_bucket_distribution_imbalance(
         total_bucket_count: u64,
         replicaset_weights: &[f64],
         current_distribution: &[u64],
         expected_imbalance: Option<&[i64]>,
     ) {
+        let actual_imbalance = wrap_compute_bucket_distribution_imbalance(
+            total_bucket_count,
+            replicaset_weights,
+            current_distribution,
+        );
+
+        assert_eq!(actual_imbalance.as_deref(), expected_imbalance);
+    }
+
+    /// - `total_bucket_count`: total bucket count of given tier
+    /// - `replicaset_weights`: weight configuration of replicasets in a given tier
+    /// - `current_distribution`: current bucket distribution among replicasets in a given tier
+    ///
+    /// Returns result of `compute_bucket_distribution_imbalance` in the
+    /// following format:
+    ///
+    /// `None`, then all replicasets are well balanced.
+    ///
+    /// Otherwise `Some(imbalance)`, where for `imbalance[i] = X`
+    /// If `X > 0`, then `replicaset[i]` needs `X` more buckets
+    /// Else if `X < 0`, then it has `X` extra buckets
+    /// Else it's currently well balanced.
+    fn wrap_compute_bucket_distribution_imbalance(
+        total_bucket_count: u64,
+        replicaset_weights: &[f64],
+        current_distribution: &[u64],
+    ) -> Option<Vec<i64>> {
         assert_eq!(replicaset_weights.len(), current_distribution.len());
+
+        //
+        // Setup a pretend topology based on provided current distribution
+        //
 
         let topology = Rc::new(TopologyCache::for_tests());
 
@@ -505,6 +538,9 @@ mod tests {
 
         let mut info = test_tier_buckets_info(&tier);
 
+        // Order of `replicaset_names` matches order of `replicaset_weights` &
+        // `current_distribution`. This is important for correctness and test
+        // output readabilty
         let mut replicaset_names = vec![];
 
         for ((weight, buckets), i) in replicaset_weights.iter().zip(current_distribution).zip(1..) {
@@ -517,24 +553,28 @@ mod tests {
 
         let topology_ref = topology.get();
 
-        let imbalance = compute_bucket_distribution_imbalance(&info, &topology_ref).unwrap();
+        //
+        // Call the function under test
+        //
 
-        let Some(expected_imbalance) = expected_imbalance else {
-            assert!(
-                imbalance.is_none(),
-                "expected no imbalance, got {imbalance:?}"
-            );
-            return;
-        };
+        let imbalance = compute_bucket_distribution_imbalance(&info, &topology_ref).unwrap()?;
 
-        let imbalance = imbalance.unwrap();
+        //
+        // Check result invariants
+        //
 
+        // Check `actual_total` is computed correctly
         assert_eq!(
             imbalance.actual_total,
             current_distribution.iter().copied().sum::<u64>()
         );
 
+        // Order of `actual_imbalance` matches order of `replicaset_names` and others
         let mut actual_imbalance = vec![];
+
+        let mut sum_need = 0;
+        let mut sum_extra = 0;
+
         for replicaset_name in &replicaset_names {
             let needs_more = imbalance
                 .need_more_buckets
@@ -543,20 +583,37 @@ mod tests {
                 .map(|(_, count)| *count);
             let has_extra = imbalance.have_extra_buckets.get(replicaset_name).copied();
 
-            let value;
-            match (needs_more, has_extra) {
-                (Some(_), Some(_)) => {
-                    panic!("cannot be true at the same time");
-                }
-                (Some(needs_more), _) => value = needs_more as _,
-                (_, Some(has_extra)) => value = -(has_extra as i64),
-                (None, None) => value = 0,
+            if needs_more.is_some() && has_extra.is_some() {
+                panic!("cannot be true at the same time");
+            }
+
+            // Normalize back to a single value for ease of testing
+            let mut value = 0;
+
+            if let Some(needs_more) = needs_more {
+                assert!(needs_more > 0, "{imbalance:?}");
+                value = needs_more as _;
+                sum_need += needs_more;
+            }
+
+            if let Some(has_extra) = has_extra {
+                assert!(has_extra > 0, "{imbalance:?}");
+                value = -(has_extra as i64);
+                sum_extra += has_extra;
             }
 
             actual_imbalance.push(value);
         }
 
-        assert_eq!(actual_imbalance, expected_imbalance);
+        // Conservation law: the net signed delta equals the gap between the
+        // desired total and what is actually allocated.
+        assert_eq!(
+            sum_need as i64 - sum_extra as i64,
+            total_bucket_count as i64 - imbalance.actual_total as i64,
+            "{imbalance:?}, total_bucket_count: {total_bucket_count}, sum_need: {sum_need}, sum_extra: {sum_extra}"
+        );
+
+        Some(actual_imbalance)
     }
 
     #[test]
@@ -609,5 +666,95 @@ mod tests {
             &[1000, 1000, 1000, 1000, 1000],
             Some(&[29000, 14000, 6500, 2750, 2750]),
         );
+    }
+
+    fn init_rng() -> rand::rngs::StdRng {
+        let time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        // And also run with a random seed for chaos
+        let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+
+        tlog!(Info, "rng seed: {seed}");
+
+        let rng = rand::rngs::StdRng::seed_from_u64(seed);
+
+        rng
+    }
+
+    #[test]
+    fn test_compute_bucket_distribution_imbalance_randomized_single_replicaset() {
+        let mut rng = init_rng();
+
+        const N_ROUNDS: usize = 100;
+
+        for _ in 0..N_ROUNDS {
+            let total_count = rng.random_range(0..=60_000);
+            let weight = rng.random_range(1.0..=100.0);
+            let current_count = rng.random_range(0..=60_000);
+
+            let actual_imbalance = wrap_compute_bucket_distribution_imbalance(
+                total_count,
+                &[weight],
+                &[current_count],
+            );
+
+            let expected_imbalance = total_count as i64 - current_count as i64;
+            if expected_imbalance == 0 {
+                assert_eq!(actual_imbalance, None);
+            } else {
+                assert_eq!(
+                    actual_imbalance.as_deref(),
+                    Some([expected_imbalance].as_slice())
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_compute_bucket_distribution_imbalance_invariants_randomized() {
+        let mut rng = init_rng();
+
+        const N_ROUNDS: usize = 100;
+
+        for _ in 0..N_ROUNDS {
+            let replication_factor = rng.random_range(1..=8);
+            let total_count = rng.random_range(0..=60_000);
+            let replicaset_weights: Vec<_> = (0..replication_factor)
+                .map(|_| rng.random_range(1.0..=100.0))
+                .collect();
+            let current_distribution: Vec<_> = (0..replication_factor)
+                .map(|_| rng.random_range(0..=60_000))
+                .collect();
+
+            // Run `compute_bucket_distribution_imbalance` and check invariants.
+            let actual_imbalance = wrap_compute_bucket_distribution_imbalance(
+                total_count,
+                &replicaset_weights,
+                &current_distribution,
+            );
+
+            let Some(actual_imbalance) = actual_imbalance else {
+                continue;
+            };
+
+            // Apply the imbalance
+            let mut next_distribution = vec![];
+            for (current_count, delta) in current_distribution.into_iter().zip(actual_imbalance) {
+                let next_count = (current_count as i64 + delta) as u64;
+                next_distribution.push(next_count);
+            }
+
+            // Run `compute_bucket_distribution_imbalance` and check invariants.
+            let next_imbalance = wrap_compute_bucket_distribution_imbalance(
+                total_count,
+                &replicaset_weights,
+                &next_distribution,
+            );
+
+            // The constructed imbalance when applied always makes a balanced
+            // distribution in one iteration
+            assert_eq!(next_imbalance, None);
+        }
     }
 }
