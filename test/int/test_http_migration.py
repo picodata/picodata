@@ -6,10 +6,10 @@ def test_http_address_migration_on_restart(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
 """
     )
 
@@ -50,10 +50,10 @@ def test_http_address_migration_multiple_restarts(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
 """
     )
 
@@ -84,10 +84,10 @@ def test_http_address_no_migration_if_exists(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
 """
     )
 

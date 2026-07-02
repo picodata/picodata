@@ -42,10 +42,10 @@ def test_plugin_listener_disabled(cluster: Cluster, port_distributor: PortDistri
     cluster.set_config_file(
         yaml="""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -70,10 +70,10 @@ def test_plugin_listener_plaintext(cluster: Cluster, port_distributor: PortDistr
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -120,10 +120,10 @@ def test_plugin_listener_with_tls(cluster: Cluster, port_distributor: PortDistri
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -179,10 +179,10 @@ def test_plugin_listener_advertise_address(cluster: Cluster, port_distributor: P
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -209,10 +209,10 @@ def test_plugin_listener_peer_address_stored(cluster: Cluster, port_distributor:
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -244,10 +244,10 @@ def test_plugin_listener_system_types_only(cluster: Cluster, port_distributor: P
     cluster.set_config_file(
         yaml="""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
 """
     )
 
@@ -278,10 +278,10 @@ def test_plugin_listener_with_mtls(cluster: Cluster, port_distributor: PortDistr
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -337,10 +337,10 @@ def test_plugin_listener_invalid_cert_file(cluster: Cluster, port_distributor: P
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -376,10 +376,10 @@ def test_plugin_listener_restart(cluster: Cluster, port_distributor: PortDistrib
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -431,10 +431,10 @@ def test_plugin_listener_advertise_in_peer_address(cluster: Cluster, port_distri
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -467,10 +467,10 @@ def test_plugin_listener_port_conflict(cluster: Cluster, port_distributor: PortD
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     iproto:
         listen: "{host}:{conflict_port}"
     plugin:
@@ -502,10 +502,10 @@ def test_plugin_listener_fallback_listen_to_advertise(cluster: Cluster, port_dis
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -538,10 +538,10 @@ def test_plugin_listener_advertise_change_rejected(cluster: Cluster, port_distri
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -569,10 +569,10 @@ instance:
     with open(cluster.config_path, "w") as f:
         f.write(f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -597,10 +597,10 @@ def test_plugin_listener_add_new_on_restart(cluster: Cluster, port_distributor: 
     cluster.set_config_file(
         yaml="""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
 """
     )
 
@@ -618,10 +618,10 @@ instance:
     with open(cluster.config_path, "w") as f:
         f.write(f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -648,10 +648,10 @@ def test_plugin_listener_cluster_propagation(cluster: Cluster, port_distributor:
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -672,10 +672,10 @@ instance:
         f.write(
             """
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -726,10 +726,10 @@ def test_plugin_listener_tls_with_password_file(cluster: Cluster, port_distribut
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -796,10 +796,10 @@ def test_plugin_listener_tls_with_intermediate_ca(cluster: Cluster, port_distrib
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_listener:
             service:
@@ -852,10 +852,10 @@ def test_plugin_custom_listener(cluster: Cluster, port_distributor: PortDistribu
     cluster.set_config_file(
         yaml="""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         testplug_custom_listener:
             service:

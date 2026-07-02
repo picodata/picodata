@@ -2867,10 +2867,10 @@ def test_panic_in_plugin(cluster: Cluster):
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     tier: default
     log:
         destination: {log_file}

@@ -398,8 +398,7 @@ Using configuration file '{args_path}'.");
         }
 
         if let Some(cluster_name) = args.cluster_name {
-            config_from_args.cluster.name = Some(cluster_name.clone());
-            config_from_args.instance.cluster_name = Some(cluster_name);
+            config_from_args.cluster.name = Some(cluster_name);
         }
 
         if args.shredding {
@@ -650,18 +649,10 @@ Using configuration file '{args_path}'.");
             }
         }
 
-        match (&self.cluster.name, &self.instance.cluster_name) {
-            (Some(from_cluster), Some(from_instance)) if from_cluster != from_instance => {
-                return Err(Error::InvalidConfiguration(format!(
-                    "`cluster.name` ({from_cluster}) conflicts with `instance.cluster_name` ({from_instance})",
-                )));
-            }
-            (None, None) => {
-                return Err(Error::invalid_configuration(
-                    "either `cluster.name` or `instance.cluster_name` must be specified",
-                ));
-            }
-            _ => {}
+        if self.cluster.name.is_none() {
+            return Err(Error::invalid_configuration(
+                "empty `cluster.name` parameter which is required to define instance membership",
+            ));
         }
 
         let mut unknown_parameters = vec![];
@@ -1408,15 +1399,7 @@ Using configuration file '{args_path}'.");
 
     #[inline]
     pub fn cluster_name(&self) -> &str {
-        match (&self.instance.cluster_name, &self.cluster.name) {
-            (Some(instance_cluster_name), Some(cluster_name)) => {
-                assert_eq!(instance_cluster_name, cluster_name);
-                instance_cluster_name
-            }
-            (Some(instance_cluster_name), None) => instance_cluster_name,
-            (None, Some(cluster_name)) => cluster_name,
-            (None, None) => "demo",
-        }
+        self.cluster.name.as_deref().unwrap_or("demo")
     }
 
     #[inline]
@@ -1962,11 +1945,6 @@ pub struct InstanceConfig {
     // which isn't allowed to be set from file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_file: Option<PathBuf>,
-
-    // Skip serializing, so that default config doesn't contain duplicate
-    // cluster_name fields.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cluster_name: Option<String>,
 
     pub name: Option<String>,
     pub replicaset_name: Option<String>,
@@ -3901,19 +3879,7 @@ instance:
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
         let err = config.validate_from_file().unwrap_err();
-        assert_eq!(err.to_string(), "invalid configuration: either `cluster.name` or `instance.cluster_name` must be specified");
-
-        let yaml = r###"
-cluster:
-    name: foo
-    tier:
-        default:
-instance:
-    cluster_name: bar
-"###;
-        let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
-        let err = config.validate_from_file().unwrap_err();
-        assert_eq!(err.to_string(), "invalid configuration: `cluster.name` (foo) conflicts with `instance.cluster_name` (bar)");
+        assert_eq!(err.to_string(), "invalid configuration: empty `cluster.name` parameter which is required to define instance membership");
     }
 
     #[test]

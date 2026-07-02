@@ -11,10 +11,10 @@ def test_http_unified_config(cluster: Cluster, port_distributor: PortDistributor
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     http:
         enabled: true
         listen: {host}:{http_port}
@@ -41,10 +41,10 @@ def test_http_with_tls(cluster: Cluster, port_distributor: PortDistributor):
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     http:
         enabled: true
         listen: {host}:{http_port}
@@ -70,10 +70,10 @@ def test_conflict_old_and_new_iproto_config(cluster: Cluster, port_distributor: 
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     peer:
         - {host}:{iproto_port}
     iproto_listen: {host}:{iproto_port}
@@ -99,10 +99,10 @@ def test_conflict_old_and_new_http_config(cluster: Cluster, port_distributor: Po
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     http_listen: {host}:{http_port}
     http:
         enabled: true
@@ -126,10 +126,10 @@ def test_conflict_old_and_new_pg_config(cluster: Cluster, port_distributor: Port
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     pg:
         listen: {host}:{pg_port}
     pgproto:
@@ -154,10 +154,10 @@ def test_plugin_listener_config(cluster: Cluster, port_distributor: PortDistribu
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         test_plugin:
             service:
@@ -188,10 +188,10 @@ def test_plugin_listener_tls_config(cluster: Cluster, port_distributor: PortDist
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         test_plugin:
             service:
@@ -218,10 +218,10 @@ def test_http_disabled(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     http:
         enabled: false
 """
@@ -241,10 +241,10 @@ def test_iproto_new_section_with_enabled_true_conflicts(cluster: Cluster, port_d
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     peer:
         - {host}:{iproto_port}
     iproto_listen: {host}:{iproto_port}
@@ -273,10 +273,10 @@ def test_iproto_new_section_with_enabled_false_conflicts(cluster: Cluster, port_
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     peer:
         - {host}:{iproto_port}
     iproto_listen: {host}:{iproto_port}
@@ -301,10 +301,10 @@ def test_http_section_defaults_to_enabled(cluster: Cluster, port_distributor: Po
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     http:
         listen: {host}:{http_port}
         advertise: {host}:{http_port}
@@ -325,10 +325,10 @@ def test_plugin_listener_section_defaults_to_enabled(cluster: Cluster, port_dist
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     plugin:
         test_plugin:
             service:
@@ -355,10 +355,10 @@ def test_pgproto_new_section_conflicts_with_old_pg(cluster: Cluster, port_distri
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     pg:
         listen: {host}:{pg_port}
         advertise: {host}:{pg_port}
@@ -394,10 +394,10 @@ def test_http_tls_with_password_file(cluster: Cluster, port_distributor: PortDis
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     http:
         enabled: true
         listen: {host}:{http_port}
@@ -426,10 +426,10 @@ def test_http_only_old_keys_starts(cluster: Cluster, port_distributor: PortDistr
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     http_listen: {host}:{http_port}
 """
     )
@@ -454,10 +454,10 @@ def test_http_no_config_uses_defaults(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
 """
     )
 

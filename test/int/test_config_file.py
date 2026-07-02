@@ -11,10 +11,10 @@ def test_config_works(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     name: from-config
     replicaset_name: with-love
 
@@ -41,10 +41,10 @@ def test_wal_dir_differs_from_instance_dir(cluster: Cluster):
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     name: from-config
     wal_dir: {wal_dir}
 """
@@ -105,6 +105,7 @@ def test_pico_config(cluster: Cluster, port_distributor: PortDistributor):
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: my-cluster
     tier:
         deluxe:
 instance:
@@ -113,7 +114,6 @@ instance:
         listen: {listen}
     peer:
         - {listen}
-    cluster_name: my-cluster
     name: my-instance
     replicaset_name: my-replicaset
     tier: deluxe
@@ -143,6 +143,7 @@ instance:
     config = instance.call(".proc_get_config")
     assert config == dict(
         cluster=dict(
+            name=dict(value="my-cluster", source="config_file"),
             tier=dict(
                 value=dict(deluxe=dict(can_vote=True, replication_mode="async")),
                 source="config_file",
@@ -154,7 +155,6 @@ instance:
         instance=dict(
             admin_socket=dict(value=f"{instance_dir}/admin.sock", source="default"),
             failure_domain=dict(value=dict(), source="default"),
-            cluster_name=dict(value="my-cluster", source="config_file"),
             name=dict(value="my-instance", source="config_file"),
             replicaset_name=dict(value="my-replicaset", source="config_file"),
             tier=dict(value="deluxe", source="config_file"),
@@ -905,10 +905,10 @@ def test_output_config_parameters(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
     cluster:
+        name: test
         tier:
             default:
     instance:
-        cluster_name: test
         name: from-config
         replicaset_name: with-love
         memtx:
@@ -923,7 +923,6 @@ def test_output_config_parameters(cluster: Cluster):
         'cluster.shredding':
         'instance.instance_dir':
         'instance.config_file':
-        'instance.cluster_name':
         'instance.name': "from-config"
         'instance.replicaset_name': "with-love"
         'instance.failure_domain': {}
@@ -961,10 +960,10 @@ def test_logger_configuration(cluster: Cluster):
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: test
     tier:
         default:
 instance:
-    cluster_name: test
     log:
         destination: {log_file}
 """
@@ -1002,8 +1001,11 @@ def test_iproto_tls_parameters(cluster: Cluster):
 
     cluster.set_config_file(
         yaml=f"""
+cluster:
+    name: test
+    tier:
+        default:
 instance:
-    cluster_name: test
     iproto:
         tls:
             enabled: true
