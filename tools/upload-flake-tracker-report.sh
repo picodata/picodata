@@ -8,15 +8,23 @@ if [ -z "$CI" ]; then
   exit 1
 fi
 
+# We only want reports from the default branch (master) for now. `flake-tracker` doesn't support tracking different branches
+# separately, so submitting reports from multiple branches will muddy the data.
+if [ "$CI_COMMIT_BRANCH" != "$CI_DEFAULT_BRANCH" ]; then
+  echo "\$CI_COMMIT_BRANCH ('$CI_COMMIT_BRANCH') is not '$CI_DEFAULT_BRANCH', skipping"
+  exit 0
+fi
+
 # This script relies on $FLAKE_TRACKER_TOKEN to determine whether to send reports to grafana or not.
 # The idea is that $FLAKE_TRACKER_TOKEN should only be exposed to protected gitlab branches that have stabilized code, like `master` branch or minor release branches.
 # This means that test failures are unlikely to be due to the code being worked on, but are flakes - faulty tests or bugs in the product causing the test to sometimes fail.
-if [ ! -z "$FLAKE_TRACKER_TOKEN" ]; then
-  # $CI_JOB_NAME can contain special characters (like []), so urlencode it with python
-  ENCODED_JOB_NAME=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$CI_JOB_NAME")
-  curl --globoff "https://flake-tracker.picodata.io/submit-report?job=$ENCODED_JOB_NAME" -H "Authorization: Bearer $FLAKE_TRACKER_TOKEN" --data-binary '@junit_pytest.xml' &&
-    echo -e "\nFinished uploading test report to flake-tracker" ||
-    echo -e "\nFailed uploading test report to flake-tracker"
-else
+if [ -z "$FLAKE_TRACKER_TOKEN" ]; then
   echo "FLAKE_TRACKER_TOKEN is not set, skipping uploading test report to flake-tracker"
+  exit 0
 fi
+
+# $CI_JOB_NAME can contain special characters (like []), so urlencode it with python
+ENCODED_JOB_NAME=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$CI_JOB_NAME")
+curl --globoff "https://flake-tracker.picodata.io/submit-report?job=$ENCODED_JOB_NAME" -H "Authorization: Bearer $FLAKE_TRACKER_TOKEN" --data-binary '@junit_pytest.xml' &&
+  echo -e "\nFinished uploading test report to flake-tracker" ||
+  echo -e "\nFailed uploading test report to flake-tracker"
