@@ -212,8 +212,9 @@ impl PicodataConfig {
         let mut parameter_sources = ParameterSourcesMap::default();
         // Initialize the logger as soon as possible so that as many messages as possible
         // go into the destination expected by user.
-        init_core_logger_from_args_env_or_config(
-            &args,
+        init_core_logger(
+            args.log.as_deref(),
+            args.log_level,
             config_from_file.as_deref(),
             &mut parameter_sources,
         )?;
@@ -1568,12 +1569,13 @@ fn invalid_tier_parameter(
 /// Gets the logging configuration from all possible sources and initializes the core logger.
 ///
 /// Note that this function is an exception to the rule of how we do parameter
-/// handling. This is needed because we the logger must be set up as soon as
+/// handling. This is needed because the logger must be set up as soon as
 /// possible so that logging messages during handling of other parameters go
 /// into the destination expected by user. All other parameter handling is done
 /// elsewhere in [`PicodataConfig::set_from_args_and_env`].
-fn init_core_logger_from_args_env_or_config(
-    args: &args::Run,
+fn init_core_logger(
+    args_destination: Option<&str>,
+    args_level: Option<args::LogLevel>,
     config: Option<&PicodataConfig>,
     sources: &mut ParameterSourcesMap,
 ) -> Result<(), Error> {
@@ -1625,14 +1627,14 @@ fn init_core_logger_from_args_env_or_config(
     }
 
     // Arguments have higher priority than env.
-    if let Some(args_destination) = &args.log {
+    if let Some(dest) = args_destination {
         destination_source = ParameterSource::CommandlineOrEnvironment;
-        destination = Some(args_destination);
+        destination = Some(dest);
     }
 
-    if let Some(args_level) = args.log_level {
+    if let Some(lvl) = args_level {
         level_source = ParameterSource::CommandlineOrEnvironment;
-        level = args_level;
+        level = lvl;
     }
 
     // Format is not configurable from commandline options
