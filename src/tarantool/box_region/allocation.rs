@@ -18,7 +18,16 @@ use tarantool::ffi::tarantool::box_region_alloc;
 ///
 /// The allocated memory is not initialized, so it is not safe
 ///  to dereference the returned slice right away.
+///
+/// If the passed size is `0`, this skips the call to tarantool allocator and directly returns
+/// `NonNull::slice_from_raw_parts(NonNull::dangling(), 0)`.
 pub fn alloc_unaligned(size: usize) -> Option<NonNull<[u8]>> {
+    // When built under ASAN, small doesn't allow the allocated capacity to be zero.
+    // Handle the zero case without calling into box region.
+    if size == 0 {
+        return Some(NonNull::slice_from_raw_parts(NonNull::dangling(), 0));
+    }
+
     let ptr = unsafe { box_region_alloc(size) } as *mut u8;
     // Check for allocation error.
     let ptr = NonNull::new(ptr)?;
@@ -139,6 +148,7 @@ mod tests {
         assert_eq!(unsafe { buf.as_ref() }, &[42; SZ]);
 
         // Allocations can fail
+        #[cfg(not(asan))] // ASAN box_region implementation will panic from this allocation request.
         assert_eq!(alloc_unaligned(isize::MAX as usize), None);
 
         // Objects allocated in the box region allocator are not used anymore,
@@ -158,17 +168,29 @@ mod tests {
             const NEW_SZ: usize = 32;
 
             let buf = alloc_unaligned(INIT_SZ).unwrap();
+
+            unsafe { std::ptr::write_bytes(buf.cast::<u8>().as_ptr(), 42, buf.len()) };
+            assert_eq!(unsafe { buf.as_ref() }, &[42; INIT_SZ]);
+
             // SAFETY: buf was allocated through the box region
-            let buf_grown = unsafe { grow_unaligned(buf, 0, NEW_SZ) }.unwrap();
+            let buf_grown = unsafe { grow_unaligned(buf, INIT_SZ, NEW_SZ) }.unwrap();
 
             // the returned slice pointer has correct size
             assert_eq!(buf_grown.len(), NEW_SZ);
 
-            // The initial allocation was grown, no copy was made.
-            assert_eq!(buf.cast::<u8>(), buf_grown.cast::<u8>());
+            if !cfg!(asan) {
+                // The initial allocation was grown, no copy was made.
+                assert_eq!(buf.cast::<u8>(), buf_grown.cast::<u8>());
+                assert_eq!(unsafe { buf.as_ref() }, &[42; INIT_SZ]);
+            } else {
+                // ASAN uses a different `box_region` implementation, which won't let us grow an
+                // allocation. However, `grow_unaligned` should still handle that and copy the data.
+                assert_eq!(unsafe { buf.as_ref() }, &[42; INIT_SZ]);
+            }
 
             // Growing can fail
             // SAFETY: buf was allocated through the box region
+            #[cfg(not(asan))] // ASAN box_region implementation will panic from this allocation request.
             assert_eq!(
                 unsafe { grow_unaligned(buf_grown, 0, isize::MAX as usize) },
                 None
