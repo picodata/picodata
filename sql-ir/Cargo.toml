@@ -1,0 +1,40 @@
+[package]
+name = "sql-ir"
+version = "0.1.0"
+rust-version.workspace = true
+authors = ["Picodata"]
+license-file.workspace = true
+edition.workspace = true
+
+[dependencies]
+ahash = { workspace = true }
+bitflags = { version = "2.9.1", features = ["serde"] }
+chrono = { workspace = true }
+comfy-table = { workspace = true }
+indenter = { workspace = true }
+itertools = "0.10"
+rand = { workspace = true }
+rmp = { workspace = true }
+rmp-serde = { workspace = true }
+rmpv = { workspace = true }
+serde = { workspace = true, features = ["derive", "rc"] }
+smallvec = { workspace = true }
+smol_str = { workspace = true }
+sql-protocol = { workspace = true }
+sql-type-system = { path = "../sql-type-system" }
+tarantool = { workspace = true, features = ["extra_impls"] }
+time = { workspace = true, features = ["parsing", "formatting", "macros"] }
+twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_64", "std"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serde_yaml = "0.9.34"
+insta = { workspace = true, features = ["yaml"] }
+tarantool = { workspace = true, features = ["standalone_decimal", "extra_impls"] }
+uuid = { version = "1.1", features = ["v4", "fast-rng", "macro-diagnostics"] }
+# Self-referential dev-dependency: forces the `mock` feature on for this
+# crate's own tests and benches without affecting downstream builds.
+sql-ir = { path = ".", features = ["mock"] }
+
+[features]
+mock = []

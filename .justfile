@@ -78,6 +78,9 @@ test-rust *ARGS:
 		{{ CARGO_FLAGS_EXTRA }} \
 		--workspace \
 		--exclude sql-planner \
+		--exclude sql-ir \
+		--exclude sql-executor \
+		--exclude sql-frontend \
 		--exclude tarantool \
 		--exclude tlua \
 		--tests
@@ -86,6 +89,9 @@ test-rust *ARGS:
 		{{ CARGO_FLAGS_EXTRA }} \
 		--workspace \
 		--exclude sql-planner \
+		--exclude sql-ir \
+		--exclude sql-executor \
+		--exclude sql-frontend \
 		--exclude tarantool \
 		--exclude tlua \
 		--doc -- --test-threads 2
@@ -112,9 +118,17 @@ alias lr := lint-rust
 [doc("`lr`: rust lints")]
 lint-rust *ARGS:
 	cargo fmt --check
+	# The sql crates are excluded because their test targets enable the
+	# `mock` feature via self-referential dev-dependencies, which would
+	# unify into the sql libs picodata links against.
 	RUSTFLAGS="-Dwarnings -Adeprecated" \
 		cargo check {{ LOCKED }} {{ ARGS }} {{ CARGO_FLAGS }} \
-		--workspace --benches --tests
+		--workspace \
+		--exclude sql-planner \
+		--exclude sql-ir \
+		--exclude sql-executor \
+		--exclude sql-frontend \
+		--benches --tests
 	cargo clippy --version
 	cargo clippy {{ LOCKED }} {{ ARGS }} {{ CARGO_FLAGS }} \
 		--workspace --features=load_test,error_injection \
@@ -122,7 +136,7 @@ lint-rust *ARGS:
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" \
 		cargo doc {{ LOCKED }} {{ ARGS }} \
 		--workspace --no-deps --document-private-items \
-		--exclude=tlua --exclude=sbroad-core --exclude=tarantool
+		--exclude=tlua --exclude=sql-planner --exclude=tarantool
 
 alias lp := lint-python
 [group("lint")]

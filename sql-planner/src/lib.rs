@@ -1,7 +1,4 @@
 //! Tarantool planner and executor for a distributed SQL.
-#[macro_use]
-extern crate pest_derive;
-extern crate core;
 
 use crate::errors::SbroadError;
 use crate::executor::engine::{query_id, Router, VersionMap};
@@ -13,18 +10,20 @@ use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::MutexLike;
-use ir::node::block::Block;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub mod backend;
-pub mod errors;
-pub mod executor;
-pub mod frontend;
-pub mod ir;
-pub mod log;
-pub mod utils;
+#[cfg(feature = "mock")]
+pub mod helpers;
+
+pub use sql_executor::{backend, executor};
+pub use sql_frontend::frontend;
+pub use sql_ir::{
+    collection, crit, debug, error, fatal, info, system, verbose, warn, write_explain_header1,
+    write_explain_header2,
+};
+pub use sql_ir::{errors, ir, log, utils};
 
 /// A parsed parameterized query. It still has parameter placeholders instead of actual parameter values.
 #[derive(Debug)]
@@ -102,18 +101,7 @@ impl PreparedStatement {
                 plan.index_version_map = index_version_map;
             }
 
-            if plan.is_dql_or_dml()? {
-                plan.check_raw_options()?;
-                plan = plan.optimize()?;
-            } else if plan.is_block()? {
-                plan.check_raw_options()?;
-                let top = plan.get_top().expect("must be set");
-                if let Block::Anonymous(_) = plan.get_block_node(top)? {
-                    plan = plan.optimize_block()?;
-                };
-            }
-
-            Ok(plan)
+            plan.optimize_statement()
         })??;
 
         let new_plan = Rc::new(new_plan);
@@ -170,8 +158,6 @@ impl PreparedStatement {
         params: Vec<Value>,
         default_options: Options,
     ) -> Result<BoundStatement, SbroadError> {
-        let mut plan = Box::new(self.plan.as_ref().clone());
-
         let params_for_audit = if self.query_for_audit.is_some() {
             // TODO: Try to find a way to avoid this cloning.
             Some(params.clone())
@@ -179,23 +165,14 @@ impl PreparedStatement {
             None
         };
 
-        // Replace parser default timeouts with system defaults
-        // from ALTER SYSTEM settings. Must be done before bind_params
-        // which consumes default_options.
-        plan.resolve_default_timeout(&default_options);
-
-        if plan.is_empty() {
-            // Empty query, do nothing
-        } else if plan.is_dql_or_dml()? || plan.is_block()? {
-            plan.bind_params(params, default_options)?;
-            *plan = plan
-                .update_timestamps()?
-                .cast_constants()?
-                .fold_boolean_tree()?;
-        }
+        let plan = self
+            .plan
+            .as_ref()
+            .clone()
+            .bind_statement(params, default_options)?;
 
         Ok(BoundStatement {
-            plan,
+            plan: Box::new(plan),
             params_for_audit,
         })
     }
@@ -209,6 +186,51 @@ pub struct BoundStatement {
     plan: Box<Plan>,
     /// This is for audit logging of SQL statement params.
     params_for_audit: Option<Vec<Value>>,
+}
+
+/// Constructors of [`executor::ExecutingQuery`] that start from SQL text or a
+/// [`BoundStatement`]. They live in a separate trait because `ExecutingQuery`
+/// is defined below the statement types in the crate stack.
+pub trait ExecutingQueryExt<'a, C>: Sized
+where
+    C: Router,
+{
+    /// Create a query ready for execution from a bound statement.
+    fn from_bound_statement(runtime: &'a C, statement: BoundStatement) -> Self;
+
+    /// A shorthand to create a query directly from SQL text.
+    /// Equivalent to chaining [`BoundStatement::parse_and_bind`] and
+    /// [`ExecutingQueryExt::from_bound_statement`].
+    fn from_text_and_params(
+        coordinator: &'a C,
+        query_text: &str,
+        params: Vec<Value>,
+    ) -> Result<Self, SbroadError>
+    where
+        C::Cache: Cache<SmolStr, Rc<Plan>>;
+}
+
+impl<'a, C> ExecutingQueryExt<'a, C> for executor::ExecutingQuery<'a, C>
+where
+    C: Router,
+{
+    fn from_bound_statement(runtime: &'a C, statement: BoundStatement) -> Self {
+        Self::from_plan(runtime, *statement.plan)
+    }
+
+    fn from_text_and_params(
+        coordinator: &'a C,
+        query_text: &str,
+        params: Vec<Value>,
+    ) -> Result<Self, SbroadError>
+    where
+        C::Cache: Cache<SmolStr, Rc<Plan>>,
+    {
+        let bound_statement =
+            BoundStatement::parse_and_bind(coordinator, query_text, params, Options::default())?;
+
+        Ok(Self::from_bound_statement(coordinator, bound_statement))
+    }
 }
 
 impl BoundStatement {

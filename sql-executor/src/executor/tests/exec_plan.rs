@@ -1,0 +1,1900 @@
+use super::*;
+use crate::backend::sql::ir::block_pattern_key;
+use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
+use crate::executor::engine::helpers::table_name;
+use crate::executor::engine::mock::TEMPLATE;
+use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
+use crate::ir::node::block::BlockOwned;
+use crate::ir::node::relational::Relational;
+use crate::ir::node::{ArenaType, Motion, Node, Over, Projection, ReferenceTarget, Window};
+use crate::ir::operator::{OrderByElement, OrderByEntity};
+use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
+use crate::ir::tree::Snapshot;
+use crate::ir::types::{CastType, DerivedType, UnrestrictedType as Type};
+use crate::ir::Slice;
+use crate::test_helpers::sql_to_optimized_ir;
+use crate::test_helpers::ExecutingQueryExt;
+use crate::test_helpers::{vcolumn_integer_user_non_null, vcolumn_user_non_null};
+use insta::{assert_snapshot, assert_yaml_snapshot};
+use pretty_assertions::assert_eq;
+use smol_str::SmolStr;
+use std::rc::Rc;
+
+fn reshard_vtable(
+    query: &ExecutingQuery<RouterRuntimeMock>,
+    motion_id: NodeId,
+    virtual_table: &mut VirtualTable,
+) {
+    if let MotionPolicy::Segment(key) =
+        get_motion_policy(query.get_exec_plan().get_ir_plan(), motion_id)
+    {
+        virtual_table.reshard(key, query.get_coordinator()).unwrap();
+    }
+}
+
+/// Helper function to generate sql from `exec_plan` from given `top_id` node.
+/// Used for testing.
+fn get_sql_from_execution_plan(
+    exec_plan: &ExecutionPlan,
+    top_id: NodeId,
+    snapshot: Snapshot,
+    name_base: u64,
+) -> PatternWithParams {
+    let subtree = exec_plan
+        .freeze()
+        .execution_view()
+        .dql_subtree(top_id)
+        .unwrap();
+    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, snapshot, false).unwrap();
+    let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
+    let nodes = ordered.to_syntax_data().unwrap();
+    let params = exec_plan.local_sql_params(top_id, snapshot).unwrap();
+    let sql = subtree
+        .generate_sql(&nodes, name_base, table_name, Some(params.constant_ids()))
+        .unwrap();
+    PatternWithParams::new(sql, params.params().to_vec())
+}
+
+#[test]
+fn frozen_plan_borrows_execution_plan_read_only() {
+    let plan = sql_to_optimized_ir(r#"select "id" from "test_space""#, vec![]);
+    let mut exec_plan = ExecutionPlan::new(plan);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    exec_plan.set_plan_id(top_id).unwrap();
+
+    let view = exec_plan.freeze().execution_view();
+
+    assert_eq!(top_id, view.get_ir_plan().get_top().unwrap());
+    assert_eq!(
+        exec_plan.get_ir_plan().get_top().unwrap(),
+        view.as_execution_plan().get_ir_plan().get_top().unwrap()
+    );
+
+    drop(view);
+
+    exec_plan.set_plan_id(top_id).unwrap();
+}
+
+#[test]
+fn dql_subtree_borrows_execution_view_read_only() {
+    let plan = sql_to_optimized_ir(r#"select "id" from "test_space""#, vec![]);
+    let mut exec_plan = ExecutionPlan::new(plan);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    exec_plan.set_plan_id(top_id).unwrap();
+
+    let subtree = exec_plan
+        .freeze()
+        .execution_view()
+        .dql_subtree(top_id)
+        .unwrap();
+
+    assert_eq!(top_id, subtree.sql_top_id());
+    assert_eq!(top_id, subtree.get_ir_plan().get_top().unwrap());
+    assert_eq!(
+        exec_plan.get_ir_plan().get_top().unwrap(),
+        subtree.as_execution_plan().get_ir_plan().get_top().unwrap()
+    );
+
+    drop(subtree);
+
+    exec_plan.set_plan_id(top_id).unwrap();
+}
+
+#[test]
+fn dql_subtree_generates_same_sql_as_execution_plan() {
+    let exec_plan = ExecutionPlan::new(sql_to_optimized_ir(
+        r#"select "id" from "test_space" where "id" = 1"#,
+        vec![],
+    ));
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let params = exec_plan
+        .local_sql_params(top_id, Snapshot::Oldest)
+        .unwrap();
+
+    let old_sp = SyntaxPlan::new(&exec_plan, top_id, Snapshot::Oldest, false).unwrap();
+    let old_ordered = OrderedSyntaxNodes::try_from(old_sp).unwrap();
+    let old_nodes = old_ordered.to_syntax_data().unwrap();
+    let old_sql = exec_plan
+        .generate_sql(
+            &old_nodes,
+            TEMPLATE,
+            table_name,
+            Some(params.constant_ids()),
+        )
+        .unwrap();
+
+    let subtree = exec_plan
+        .freeze()
+        .execution_view()
+        .dql_subtree(top_id)
+        .unwrap();
+    let new_sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false).unwrap();
+    let new_ordered = OrderedSyntaxNodes::try_from(new_sp).unwrap();
+    let new_nodes = new_ordered.to_syntax_data().unwrap();
+    let new_sql = subtree
+        .generate_sql(
+            &new_nodes,
+            TEMPLATE,
+            table_name,
+            Some(params.constant_ids()),
+        )
+        .unwrap();
+
+    assert_eq!(old_sql, new_sql);
+}
+
+#[test]
+fn execution_plan_clone_shares_ir_until_mutation() {
+    let mut plan = ExecutionPlan::new(Plan::default());
+    let cloned = plan.clone();
+
+    assert!(Rc::ptr_eq(&plan.plan, &cloned.plan));
+
+    plan.get_mut_ir_plan().tier = Some(SmolStr::from("test_tier"));
+
+    assert!(!Rc::ptr_eq(&plan.plan, &cloned.plan));
+    assert_eq!(
+        Some(&SmolStr::from("test_tier")),
+        plan.get_ir_plan().tier.as_ref()
+    );
+    assert_eq!(None, cloned.get_ir_plan().tier.as_ref());
+}
+
+#[test]
+fn update_delete_tuple_len_overlay_keeps_ir_intact() {
+    let plan = sql_to_optimized_ir(r#"explain (logical) update "t" set "a" = 1"#, vec![]);
+    let mut exec_plan = ExecutionPlan::new(plan);
+    let update_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let explain_before = exec_plan.get_ir_plan().explain_logical().unwrap();
+
+    exec_plan.set_update_delete_tuple_len(update_id, 2).unwrap();
+
+    assert_eq!(2, exec_plan.get_update_delete_tuple_len(update_id).unwrap());
+    assert_eq!(
+        explain_before,
+        exec_plan.get_ir_plan().explain_logical().unwrap()
+    );
+
+    let view = exec_plan.freeze().execution_view();
+    assert_eq!(update_id, view.get_ir_plan().get_top().unwrap());
+}
+
+#[test]
+fn exec_plan_subtree_test() {
+    let sql = r#"SELECT "FIRST_NAME" FROM "test_space" where "id" in
+    (SELECT "identification_number" FROM "hash_testing" where "identification_number" > 1)"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = virtual_table_23(None);
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    // Check sub-query
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+
+    assert_eq!(sql.params, vec![Value::from(1)]);
+    assert_snapshot!(
+        sql.pattern,
+        @r#"SELECT "hash_testing"."identification_number" FROM "hash_testing" WHERE "hash_testing"."identification_number" > CAST($1 AS int)"#,
+    );
+
+    // Check main query
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+
+    assert_eq!(sql.params, vec![]);
+    assert_snapshot!(
+        sql.pattern,
+        @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" in (SELECT "COL_1" FROM "_tmp_0_0136")"#,
+    )
+}
+
+#[test]
+fn mark_motion_unlinked_keeps_ir_child() {
+    let sql = r#"SELECT "FIRST_NAME" FROM "test_space" where "id" in
+    (SELECT "identification_number" FROM "hash_testing" where "identification_number" > 1)"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let raw_child = query
+        .get_exec_plan()
+        .get_ir_plan()
+        .get_motion_child(motion_id)
+        .unwrap();
+
+    let mut virtual_table = virtual_table_23(None);
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan
+        .set_motion_vtable(&motion_id, virtual_table, &coordinator)
+        .unwrap();
+    exec_plan.mark_motion_subtree_unlinked(motion_id).unwrap();
+
+    let Relational::Motion(Motion { child, .. }) = exec_plan
+        .get_ir_plan()
+        .get_relation_node(motion_id)
+        .unwrap()
+    else {
+        panic!("expected motion node");
+    };
+    assert_eq!(*child, Some(raw_child));
+    assert_eq!(exec_plan.effective_motion_child(motion_id).unwrap(), None);
+
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let constants = exec_plan
+        .get_ir_plan()
+        .get_const_list(top_id, Snapshot::Oldest);
+    let sp = SyntaxPlan::new(exec_plan, top_id, Snapshot::Oldest, false).unwrap();
+    let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
+    let nodes = ordered.to_syntax_data().unwrap();
+    let sql = exec_plan
+        .generate_sql(&nodes, TEMPLATE, table_name, Some(constants))
+        .unwrap();
+
+    assert!(sql.contains(table_name(TEMPLATE, motion_id).as_str()));
+    assert!(!sql.contains("hash_testing"));
+}
+
+#[test]
+fn subtree_dispatch_flags_track_segmented_vtables() {
+    let sql = r#"SELECT "FIRST_NAME" FROM "test_space" where "id" in
+    (SELECT "identification_number" FROM "hash_testing" where "identification_number" > 1)"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let top_id = query.get_exec_plan().get_ir_plan().get_top().unwrap();
+    let flags = query
+        .get_exec_plan()
+        .subtree_dispatch_flags_at(top_id)
+        .unwrap();
+    assert!(!flags.has_segmented_tables);
+    assert!(!flags.has_customization_opcodes);
+
+    let mut virtual_table = virtual_table_23(None);
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let exec_plan = query.get_mut_exec_plan();
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+    exec_plan.set_vtables(vtables);
+
+    let flags = exec_plan.subtree_dispatch_flags_at(top_id).unwrap();
+    assert!(flags.has_segmented_tables);
+    assert!(!flags.has_customization_opcodes);
+
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+    let flags = exec_plan
+        .subtree_dispatch_flags_at(motion_child_id)
+        .unwrap();
+    assert!(!flags.has_segmented_tables);
+
+    exec_plan.set_vtables(HashMap::new());
+    let flags = exec_plan.subtree_dispatch_flags_at(top_id).unwrap();
+    assert!(!flags.has_segmented_tables);
+}
+
+#[test]
+fn subtree_dispatch_flags_find_customization_opcodes() {
+    let plan = sql_to_optimized_ir(
+        r#"select "a", "b" from "global_t"
+        union all
+        select "e", "f" from "t2""#,
+        vec![],
+    );
+    let exec_plan = ExecutionPlan::new(plan);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let flags = exec_plan.subtree_dispatch_flags_at(top_id).unwrap();
+    assert!(!flags.has_segmented_tables);
+    assert!(flags.has_customization_opcodes);
+}
+
+#[test]
+fn exec_plan_subtree_two_stage_groupby_test() {
+    let sql = r#"SELECT "T1"."FIRST_NAME" FROM "test_space" as "T1" group by "T1"."FIRST_NAME""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+
+    let mut virtual_table = VirtualTable::new();
+    virtual_table.add_column(vcolumn_user_non_null(Type::String));
+
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
+    } else {
+        panic!("Expected MotionPolicy::Full for local aggregation stage");
+    };
+
+    // Check groupby local stage
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"T1\".\"FIRST_NAME\" as \"gr_expr_1\" FROM \"test_space\" as \"T1\" GROUP BY \"T1\".\"FIRST_NAME\""
+    params: []
+    "#);
+
+    // Check main query
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\""
+    params: []
+    "#);
+}
+
+#[test]
+fn exec_plan_subtree_two_stage_groupby_test_2() {
+    let sql = r#"SELECT "T1"."FIRST_NAME", "T1"."sys_op", "T1"."sysFrom" FROM "test_space" as "T1" GROUP BY "T1"."FIRST_NAME", "T1"."sys_op", "T1"."sysFrom""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = VirtualTable::new();
+    virtual_table.add_column(vcolumn_user_non_null(Type::String));
+    virtual_table.add_column(vcolumn_user_non_null(Type::String));
+    virtual_table.add_column(vcolumn_user_non_null(Type::String));
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    // Check groupby local stage
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
+    } else {
+        panic!("Expected MotionPolicy::Full for local aggregation stage");
+    };
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"T1\".\"FIRST_NAME\" as \"gr_expr_1\", \"T1\".\"sys_op\" as \"gr_expr_2\", \"T1\".\"sysFrom\" as \"gr_expr_3\" FROM \"test_space\" as \"T1\" GROUP BY \"T1\".\"FIRST_NAME\", \"T1\".\"sys_op\", \"T1\".\"sysFrom\""
+    params: []
+    "#);
+
+    // Check main query
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\", \"COL_2\" as \"sys_op\", \"COL_3\" as \"sysFrom\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\", \"COL_2\", \"COL_3\""
+    params: []
+    "#);
+}
+
+#[test]
+fn exec_plan_subtree_aggregates() {
+    let sql = r#"SELECT "T1"."sys_op" + "T1"."sys_op", "T1"."sys_op"*2 + count("T1"."sysFrom"),
+                      sum("T1"."id"), sum(distinct "T1"."id"*"T1"."sys_op") / count(distinct "id"),
+                      group_concat("T1"."FIRST_NAME", 'o'), avg("T1"."id"), total("T1"."id"), min("T1"."id"), max("T1"."id")
+                      FROM "test_space" as "T1" group by "T1"."sys_op""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = VirtualTable::new();
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_user_non_null(Type::String));
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    // Check groupby local stage
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
+    } else {
+        panic!("Expected MotionPolicy::Full for local aggregation stage");
+    };
+    assert_eq!(sql.params, vec![Value::from("o")]);
+    assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", CAST (("T1"."id" * "T1"."sys_op") as int) as "gr_expr_2", CAST ("T1"."id" as int) as "gr_expr_3", sum (CAST ("T1"."id" as int)) as "sum_2", count (CAST ("T1"."sysFrom" as int)) as "count_1", count (CAST ("T1"."id" as int)) as "avg_4", group_concat (CAST ("T1"."FIRST_NAME" as string), CAST($1 AS string)) as "group_concat_3", max (CAST ("T1"."id" as int)) as "max_7", min (CAST ("T1"."id" as int)) as "min_6", total (CAST ("T1"."id" as int)) as "total_5" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", CAST (("T1"."id" * "T1"."sys_op") as int), CAST ("T1"."id" as int)"#);
+
+    // Check main query
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_eq!(sql.params, vec![Value::Integer(2), Value::from("o")]);
+    assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", "COL_1" * CAST($1 AS int) + sum ("COL_5") as "col_2", sum ("COL_4") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "_tmp_0_0136") GROUP BY "COL_1""#);
+}
+
+#[test]
+fn exec_plan_subtree_aggregates_no_groupby() {
+    let sql = r#"SELECT count("T1"."sysFrom"), sum(distinct "T1"."id" + "T1"."sysFrom") FROM "test_space" as "T1""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = VirtualTable::new();
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    // Check groupby local stage
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
+    } else {
+        panic!("Expected MotionPolicy::Full for local aggregation stage");
+    };
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT CAST ((\"T1\".\"id\" + \"T1\".\"sysFrom\") as int) as \"gr_expr_1\", count (CAST (\"T1\".\"sysFrom\" as int)) as \"count_1\" FROM \"test_space\" as \"T1\" GROUP BY CAST ((\"T1\".\"id\" + \"T1\".\"sysFrom\") as int)"
+    params: []
+    "#);
+
+    // Check main query
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT sum (\"COL_2\") as \"col_1\", sum (DISTINCT \"COL_1\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"_tmp_0_0136\")"
+    params: []
+    "#);
+}
+
+#[test]
+fn exec_plan_subquery_under_motion_without_alias() {
+    let sql = r#"
+    SELECT * FROM
+            (SELECT "id" as "tid" FROM "test_space")
+    INNER JOIN
+            (SELECT "identification_number" as "sid" FROM "hash_testing")
+    ON true
+    "#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    // name would be added during materialization from subquery
+    let mut virtual_table = virtual_table_23(Some("unnamed_subquery_1"));
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT * FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"unnamed_subquery_1\" ON CAST($1 AS bool)"
+    params:
+      - Boolean: true
+    "#);
+}
+
+#[test]
+fn exec_plan_subquery_under_motion_with_alias() {
+    let sql = r#"
+    SELECT * FROM
+            (SELECT "id" as "tid" FROM "test_space")
+    INNER JOIN
+            (SELECT "identification_number" as "sid" FROM "hash_testing") AS "hti"
+    ON true
+    "#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = virtual_table_23(Some("hti"));
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT * FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hti\" ON CAST($1 AS bool)"
+    params:
+      - Boolean: true
+    "#);
+}
+
+#[test]
+fn exec_plan_motion_under_in_operator() {
+    let sql = r#"SELECT "id" FROM "test_space" WHERE "id" in (SELECT "identification_number" FROM "hash_testing")"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = virtual_table_23(None);
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"id\" in (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
+    params: []
+    "#);
+}
+
+#[test]
+fn exec_plan_motion_under_except() {
+    let sql = r#"
+    SELECT "id" FROM "test_space"
+    EXCEPT
+    SELECT "identification_number" FROM "hash_testing"
+    "#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = virtual_table_23(None);
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" EXCEPT SELECT \"COL_1\" FROM \"_tmp_0_0136\""
+    params: []
+    "#);
+}
+
+#[test]
+fn exec_plan_subtree_count_asterisk() {
+    let sql = r#"SELECT count(*) FROM "test_space""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = VirtualTable::new();
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    // Check groupby local stage
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
+    } else {
+        panic!("Expected MotionPolicy::Full for local aggregation stage");
+    };
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT count (*) as \"count_1\" FROM \"test_space\""
+    params: []
+    "#);
+
+    // Check main query
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT sum (\"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
+    params: []
+    "#);
+}
+
+#[test]
+fn exec_plan_subtree_having() {
+    let sql = format!(
+        "{} {} {}",
+        r#"SELECT "T1"."sys_op" + "T1"."sys_op", count("T1"."sys_op"*2) + count(distinct "T1"."sys_op"*2)"#,
+        r#"FROM "test_space" as "T1" group by "T1"."sys_op""#,
+        r#"HAVING sum(distinct "T1"."sys_op"*2) > 1"#
+    );
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query =
+        ExecutingQuery::from_text_and_params(&coordinator, sql.as_str(), vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = VirtualTable::new();
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    // Check groupby local stage
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
+    } else {
+        panic!("Expected MotionPolicy::Full for local aggregation stage");
+    };
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"T1\".\"sys_op\" as \"gr_expr_1\", CAST ((\"T1\".\"sys_op\" * CAST($1 AS int)) as int) as \"gr_expr_2\", count (CAST ((\"T1\".\"sys_op\" * CAST($2 AS int)) as int)) as \"count_1\" FROM \"test_space\" as \"T1\" GROUP BY \"T1\".\"sys_op\", CAST ((\"T1\".\"sys_op\" * CAST($3 AS int)) as int)"
+    params:
+      - Integer: 2
+      - Integer: 2
+      - Integer: 2
+    "#);
+
+    // Check main query
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"COL_1\" + \"COL_1\" as \"col_1\", sum (\"COL_3\") + count (DISTINCT \"COL_2\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\" HAVING sum (DISTINCT \"COL_2\") > CAST($1 AS int)"
+    params:
+      - Integer: 1
+    "#);
+}
+
+#[test]
+fn exec_plan_subtree_having_without_groupby() {
+    let sql = format!(
+        "{} {} {}",
+        r#"SELECT count("T1"."sys_op"*2) + count(distinct "T1"."sys_op"*2)"#,
+        r#"FROM "test_space" as "T1""#,
+        r#"HAVING sum(distinct "T1"."sys_op"*2) > 1"#
+    );
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query =
+        ExecutingQuery::from_text_and_params(&coordinator, sql.as_str(), vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = VirtualTable::new();
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    // Check groupby local stage
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    if let MotionPolicy::Full = exec_plan.get_motion_policy(motion_id).unwrap() {
+    } else {
+        panic!("Expected MotionPolicy::Full after local stage");
+    };
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT CAST ((\"T1\".\"sys_op\" * CAST($1 AS int)) as int) as \"gr_expr_1\", count (CAST ((\"T1\".\"sys_op\" * CAST($2 AS int)) as int)) as \"count_1\" FROM \"test_space\" as \"T1\" GROUP BY CAST ((\"T1\".\"sys_op\" * CAST($3 AS int)) as int)"
+    params:
+      - Integer: 2
+      - Integer: 2
+      - Integer: 2
+    "#);
+
+    // Check main query
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT sum (\"COL_2\") + count (DISTINCT \"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") HAVING sum (DISTINCT \"COL_1\") > CAST($1 AS int)"
+    params:
+      - Integer: 1
+    "#);
+}
+
+#[test]
+fn global_table_scan() {
+    let sql = r#"SELECT * from "global_t""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let exec_plan = query.get_mut_exec_plan();
+    assert_eq!(
+        Vec::<Slice>::new(),
+        exec_plan.get_ir_plan().slices().slices()
+    );
+
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let buckets = query.bucket_discovery(top_id).unwrap();
+    assert_eq!(Buckets::Any, buckets);
+    let exec_plan = query.get_mut_exec_plan();
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT * FROM \"global_t\""
+    params: []
+    "#);
+}
+
+#[test]
+fn global_union_all() {
+    let sql = r#"SELECT "a", "b" from "global_t" union all select "e", "f" from "t2""#;
+    let mut coordinator = RouterRuntimeMock::new();
+    coordinator.set_vshard_mock(2);
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch with custom plan");
+    };
+    assert_eq!(2, filtered.len());
+
+    let (sql, _, rs, _) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        r#" select cast(null as int) as "a",cast(null as int) as "b" where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#
+    );
+    assert_eq!(rs, "replicaset_0");
+
+    let (sql, _, rs, _) = filtered.get(1).unwrap();
+    assert_eq!(
+        sql,
+        r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#
+    );
+    assert_eq!(rs, "replicaset_1");
+}
+
+#[test]
+fn global_union_all2() {
+    // check that we don't send virtual table to replicasets, where
+    // global child is not materialized.
+    let sql = r#"SELECT "a", "b" from "global_t" where "b"
+    in (select "e" from "t2")
+    union all select "e", "f" from "t2""#;
+    let mut coordinator = RouterRuntimeMock::new();
+    coordinator.set_vshard_mock(3);
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+
+    let motion_id = query.get_motion_id(0, 0);
+    let mut virtual_table = VirtualTable::new();
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_tuple(vec![Value::Integer(1)]);
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan
+        .set_motion_vtable(&motion_id, virtual_table, &coordinator)
+        .unwrap();
+
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch with custom plan");
+    };
+    assert_eq!(3, filtered.len());
+
+    let (sql, _, rs, _) = filtered.get(0).unwrap();
+    assert_eq!(
+        sql,
+        r#" select cast(null as int) as "a",cast(null as int) as "b" where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
+    );
+    assert_eq!(rs, "replicaset_0");
+
+    let (sql, _, rs, _) = filtered.get(1).unwrap();
+    assert_eq!(
+        sql,
+        r#" select cast(null as int) as "a",cast(null as int) as "b" where false UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
+    );
+    assert_eq!(rs, "replicaset_1");
+
+    let (sql, _, rs, _) = filtered.get(2).unwrap();
+    assert_eq!(
+        sql,
+        r#"SELECT "global_t"."a", "global_t"."b" FROM "global_t" WHERE "global_t"."b" in (SELECT "COL_1" FROM "_tmp_0_0136") UNION ALL SELECT "t2"."e", "t2"."f" FROM "t2""#,
+    );
+    assert_eq!(rs, "replicaset_2");
+}
+
+#[test]
+fn global_union_all3() {
+    // check correct distribution on union all with group by
+    let sql = r#"
+    select "a" from "global_t" where "b"
+    in (select "e" from "t2")
+    union all
+    select "f" from "t2"
+    group by "f""#;
+    let mut coordinator = RouterRuntimeMock::new();
+    coordinator.set_vshard_mock(2);
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+
+    let slices = query.get_exec_plan().get_ir_plan().clone_slices();
+    let sq_motion_id = *slices.slice(0).unwrap().position(0).unwrap();
+    let mut sq_vtable = VirtualTable::new();
+    sq_vtable.add_column(vcolumn_integer_user_non_null());
+    sq_vtable.add_tuple(vec![Value::Integer(1)]);
+    query
+        .get_mut_exec_plan()
+        .set_motion_vtable(&sq_motion_id, sq_vtable.clone(), &coordinator)
+        .unwrap();
+    query
+        .get_mut_exec_plan()
+        .mark_motion_subtree_unlinked(sq_motion_id)
+        .unwrap();
+
+    let groupby_motion_id = *slices.slice(0).unwrap().position(1).unwrap();
+    let mut groupby_vtable = VirtualTable::new();
+    // these tuples must belong to different replicasets
+    let tuple1 = vec![Value::Integer(3)];
+    let tuple2 = vec![Value::Integer(2929)];
+    groupby_vtable.add_column(vcolumn_integer_user_non_null());
+    groupby_vtable.add_tuple(tuple1.clone());
+    groupby_vtable.add_tuple(tuple2.clone());
+    reshard_vtable(&query, groupby_motion_id, &mut groupby_vtable);
+    query
+        .get_mut_exec_plan()
+        .set_motion_vtable(&groupby_motion_id, groupby_vtable.clone(), &coordinator)
+        .unwrap();
+    query
+        .get_mut_exec_plan()
+        .mark_motion_subtree_unlinked(groupby_motion_id)
+        .unwrap();
+
+    let top_id = query.get_exec_plan().get_ir_plan().get_top().unwrap();
+    let buckets = query.bucket_discovery(top_id).unwrap();
+    assert_eq!(Buckets::Any, buckets);
+}
+
+#[test]
+fn global_union_all4() {
+    let sql = r#"
+    select "b" from "global_t"
+    union all
+    select * from (
+        select "a" from "global_t"
+        union all
+        select "f" from "t2"
+    )
+    "#;
+    let mut coordinator = RouterRuntimeMock::new();
+    coordinator.set_vshard_mock(2);
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Filtered(filtered) = info.first().unwrap() else {
+        panic!(
+            "{}",
+            format!("Expected a single dispatch with custom plan, port: {info:?}")
+        );
+    };
+    assert_eq!(2, filtered.len());
+
+    let (sql, _, rs, _) = filtered.first().unwrap();
+    assert_eq!(
+        sql,
+        r#" select cast(null as int) as "b" where false UNION ALL SELECT * FROM (select cast(null as int) as "a" where false UNION ALL SELECT "t2"."f" FROM "t2") as "unnamed_subquery""#,
+    );
+    assert_eq!(rs, "replicaset_0");
+
+    let (sql, _, rs, _) = filtered.get(1).unwrap();
+    assert_eq!(
+        sql,
+        r#"SELECT "global_t"."b" FROM "global_t" UNION ALL SELECT * FROM (SELECT "global_t"."a" FROM "global_t" UNION ALL SELECT "t2"."f" FROM "t2") as "unnamed_subquery""#,
+    );
+    assert_eq!(rs, "replicaset_1");
+}
+
+#[test]
+fn global_except() {
+    let sql = r#"select "a" from "global_t"
+    except select "e" from "t2""#;
+    let mut coordinator = RouterRuntimeMock::new();
+    coordinator.set_vshard_mock(3);
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+
+    let intersect_motion_id = query.get_motion_id(0, 0);
+
+    {
+        // check map stage
+        let motion_child = query
+            .get_exec_plan()
+            .get_ir_plan()
+            .get_motion_subtree_root(intersect_motion_id)
+            .unwrap();
+        let sql = get_sql_from_execution_plan(
+            query.get_mut_exec_plan(),
+            motion_child,
+            Snapshot::Oldest,
+            TEMPLATE,
+        );
+        assert_yaml_snapshot!(sql, @r#"
+        pattern: "SELECT \"t2\".\"e\" FROM \"t2\" INTERSECT SELECT \"global_t\".\"a\" FROM \"global_t\""
+        params: []
+        "#);
+
+        let mut virtual_table = VirtualTable::new();
+        virtual_table.add_column(vcolumn_integer_user_non_null());
+        virtual_table.add_tuple(vec![Value::Integer(1)]);
+        query
+            .get_mut_exec_plan()
+            .set_motion_vtable(&intersect_motion_id, virtual_table.clone(), &coordinator)
+            .unwrap();
+    }
+
+    // check reduce stage
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    let DispatchInfo::Any(sql, params) = info.get(0).unwrap() else {
+        panic!("Expected a single dispatch to any node");
+    };
+    assert_eq!(
+        sql,
+        r#"SELECT "global_t"."a" FROM "global_t" EXCEPT SELECT "COL_1" FROM "_tmp_0_0136""#,
+    );
+    assert_eq!(params, &vec![]);
+}
+
+#[test]
+fn local_translation_asterisk_single() {
+    let sql = r#"SELECT * from "t3""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let exec_plan = query.get_mut_exec_plan();
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t3\".\"a\", \"t3\".\"b\" FROM \"t3\""
+    params: []
+    "#);
+}
+
+#[test]
+fn local_translation_asterisk_several() {
+    let sql = r#"SELECT *, * from "t3""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let exec_plan = query.get_mut_exec_plan();
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t3\".\"a\", \"t3\".\"b\", \"t3\".\"a\", \"t3\".\"b\" FROM \"t3\""
+    params: []
+    "#);
+}
+
+#[test]
+fn local_translation_asterisk_named() {
+    let sql = r#"SELECT *, "t3".*, * from "t3""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let exec_plan = query.get_mut_exec_plan();
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t3\".\"a\", \"t3\".\"b\", \"t3\".\"a\", \"t3\".\"b\", \"t3\".\"a\", \"t3\".\"b\" FROM \"t3\""
+    params: []
+    "#);
+}
+
+#[test]
+fn local_translation_asterisk_with_additional_columns() {
+    let sql = r#"SELECT "a", *, "t3"."b", "t3".*, * from "t3""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let exec_plan = query.get_mut_exec_plan();
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t3\".\"a\", \"t3\".\"a\", \"t3\".\"b\", \"t3\".\"b\", \"t3\".\"a\", \"t3\".\"b\", \"t3\".\"a\", \"t3\".\"b\" FROM \"t3\""
+    params: []
+    "#);
+}
+
+#[test]
+fn exec_plan_order_by() {
+    let sql = r#"SELECT "identification_number" from "hash_testing"
+                      ORDER BY "identification_number""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = *query
+        .get_exec_plan()
+        .get_ir_plan()
+        .clone_slices()
+        .slice(0)
+        .unwrap()
+        .position(0)
+        .unwrap();
+    let mut virtual_table = virtual_table_23(Some("hash_testing"));
+    if let MotionPolicy::Segment(key) =
+        get_motion_policy(query.get_exec_plan().get_ir_plan(), motion_id)
+    {
+        virtual_table.reshard(key, query.get_coordinator()).unwrap();
+    }
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    // Check sub-query
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"hash_testing\".\"identification_number\" FROM \"hash_testing\""
+    params: []
+    "#);
+
+    // Check main query
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
+    params: []
+    "#);
+}
+
+#[test]
+fn exec_plan_order_by_limit_pushdown() {
+    let sql = r#"SELECT "a", "b" FROM "t" ORDER BY "b" LIMIT 5"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.params.is_empty());
+    assert!(sql.pattern.contains(r#"ORDER BY "b""#), "{}", sql.pattern);
+    assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
+}
+
+#[test]
+fn exec_plan_distinct_order_by_limit_pushdown_alias() {
+    let sql = r#"SELECT DISTINCT "a" AS "x" FROM "t" ORDER BY "x" LIMIT 5"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.params.is_empty());
+    assert!(
+        sql.pattern.contains(r#"ORDER BY "gr_expr_1""#),
+        "{}",
+        sql.pattern
+    );
+    assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
+    assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1" FROM (SELECT "t"."a" as "gr_expr_1" FROM "t" GROUP BY "t"."a") ORDER BY "gr_expr_1" LIMIT 5"#);
+}
+
+#[test]
+fn exec_plan_distinct_order_by_limit_pushdown_expr_over_duplicated_aliases() {
+    let sql = r#"
+        SELECT DISTINCT "a" AS "c0", "b" AS "c1", "a" AS "c2"
+        FROM "t"
+        ORDER BY "c0" + "c2" LIMIT 5
+    "#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.params.is_empty());
+    assert!(
+        sql.pattern
+            .contains(r#"ORDER BY "gr_expr_1" + "gr_expr_1""#),
+        "{}",
+        sql.pattern
+    );
+    assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
+    assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1", "gr_expr_2" FROM (SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2" FROM "t" GROUP BY "t"."a", "t"."b") ORDER BY "gr_expr_1" + "gr_expr_1" LIMIT 5"#);
+}
+
+#[test]
+fn exec_plan_distinct_order_by_limit_pushdown_ordinal_position() {
+    let sql = r#"
+        SELECT DISTINCT "a" AS "c0", "b" AS "c1", "a" AS "c2"
+        FROM "t"
+        ORDER BY 3 DESC LIMIT 5
+    "#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.params.is_empty());
+    assert!(sql.pattern.contains("ORDER BY 1 DESC"), "{}", sql.pattern);
+    assert!(sql.pattern.contains("LIMIT 5"), "{}", sql.pattern);
+    assert_snapshot!(sql.pattern, @r#" SELECT "gr_expr_1", "gr_expr_2" FROM (SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2" FROM "t" GROUP BY "t"."a", "t"."b") ORDER BY 1 DESC LIMIT 5"#);
+}
+
+#[test]
+fn exec_plan_order_by_subquery_limit_no_pushdown() {
+    let sql = r#"SELECT "a" FROM "t" ORDER BY (SELECT 1), "a" LIMIT 5"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.params.is_empty());
+    assert!(!sql.pattern.contains("ORDER BY"), "{}", sql.pattern);
+    assert!(!sql.pattern.contains("LIMIT "), "{}", sql.pattern);
+    assert_snapshot!(sql.pattern, @r#"SELECT "t"."a" FROM "t""#);
+}
+
+#[test]
+fn exec_plan_aggregate_limit_no_pushdown() {
+    let sql = r#"SELECT min("b"), min(distinct "b") FROM "t" LIMIT 1"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.pattern.contains("GROUP BY"), "{}", sql.pattern);
+    assert!(!sql.pattern.contains("LIMIT "), "{}", sql.pattern);
+}
+
+#[test]
+fn exec_plan_window_limit_no_pushdown() {
+    let sql = r#"SELECT count(*) OVER () AS "c" FROM "t" LIMIT 1"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t\".\"a\" FROM \"t\""
+    params: []
+    "#);
+}
+
+#[test]
+fn exec_plan_aggregate_in_order_by_limit_no_pushdown() {
+    let sql = r#"SELECT "b" FROM "t" GROUP BY "b" ORDER BY sum("b") LIMIT 5"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let exec_plan = query.get_mut_exec_plan();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert!(sql.pattern.contains("GROUP BY"), "{}", sql.pattern);
+    assert!(!sql.pattern.contains("ORDER BY"), "{}", sql.pattern);
+    assert!(!sql.pattern.contains("LIMIT "), "{}", sql.pattern);
+}
+
+#[test]
+fn exec_plan_order_by_with_subquery() {
+    let sql = r#"SELECT "identification_number"
+                      FROM (select "identification_number" from "hash_testing")
+                      ORDER BY "identification_number""#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = *query
+        .get_exec_plan()
+        .get_ir_plan()
+        .clone_slices()
+        .slice(0)
+        .unwrap()
+        .position(0)
+        .unwrap();
+    let mut virtual_table = virtual_table_23(Some("hash_testing"));
+    if let MotionPolicy::Segment(key) =
+        get_motion_policy(query.get_exec_plan().get_ir_plan(), motion_id)
+    {
+        virtual_table.reshard(key, query.get_coordinator()).unwrap();
+    }
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    // Check sub-query
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"unnamed_subquery\".\"identification_number\" FROM (SELECT \"hash_testing\".\"identification_number\" FROM \"hash_testing\") as \"unnamed_subquery\""
+    params: []
+    "#);
+
+    // Check main query
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
+    params: []
+    "#);
+}
+
+#[test]
+fn exec_plan_order_by_with_join() {
+    let sql = r#"SELECT * FROM
+                      (SELECT "a" FROM "t") AS "f"
+                      JOIN
+                      (SELECT "a" FROM "t") AS "s"
+                      ON true
+                      ORDER BY 1"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let slices = query.get_exec_plan().get_ir_plan().clone_slices();
+    let mut sq_vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+
+    let sq_motion_id = *slices.slice(0).unwrap().position(0).unwrap();
+    let mut sq_vtable = VirtualTable::new();
+    sq_vtable.add_column(vcolumn_integer_user_non_null());
+    sq_vtable.add_tuple(vec![Value::Integer(1)]);
+    sq_vtable.set_alias("s");
+    if let MotionPolicy::Segment(key) =
+        get_motion_policy(query.get_exec_plan().get_ir_plan(), sq_motion_id)
+    {
+        sq_vtable.reshard(key, query.get_coordinator()).unwrap();
+    }
+    sq_vtables.insert(sq_motion_id, Rc::new(sq_vtable));
+
+    let order_by_motion_id = *slices.slice(1).unwrap().position(0).unwrap();
+    let mut order_by_vtable = VirtualTable::new();
+    order_by_vtable.add_column(vcolumn_integer_user_non_null());
+    order_by_vtable.add_column(vcolumn_integer_user_non_null());
+    order_by_vtable.add_tuple(vec![Value::Integer(1), Value::Integer(2)]);
+    if let MotionPolicy::Segment(key) =
+        get_motion_policy(query.get_exec_plan().get_ir_plan(), sq_motion_id)
+    {
+        order_by_vtable
+            .reshard(key, query.get_coordinator())
+            .unwrap();
+    }
+    sq_vtables.insert(order_by_motion_id, Rc::new(order_by_vtable));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(sq_vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    // Check sub-query.
+    let sq_motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(sq_motion_id)
+        .unwrap();
+    let sql =
+        get_sql_from_execution_plan(exec_plan, sq_motion_child_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"t\".\"a\" FROM \"t\""
+    params: []
+    "#);
+
+    // Check order by subtree.
+    let order_by_motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(order_by_motion_id)
+        .unwrap();
+    let sql = get_sql_from_execution_plan(
+        exec_plan,
+        order_by_motion_child_id,
+        Snapshot::Oldest,
+        TEMPLATE,
+    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT * FROM (SELECT \"t\".\"a\" FROM \"t\") as \"f\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"s\" ON CAST($1 AS bool)"
+    params:
+      - Boolean: true
+    "#);
+
+    // Check main query.
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"COL_1\" as \"a\", \"COL_2\" as \"a\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"_tmp_0_1136\") ORDER BY 1"
+    params: []
+    "#);
+}
+
+/// # Panics
+/// If plan has at least one child motions.
+fn get_top_plan_id(sql: &str, values: Vec<Value>) -> u64 {
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, values).unwrap();
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+    let cache = &query.get_exec_plan().plan_id_cache;
+    assert_eq!(1, cache.len());
+    cache.values().map(|plan_id| *plan_id).next().unwrap()
+}
+
+fn check_subtree_plan_ids_are_equal(
+    sql1: &str,
+    values1: Vec<Value>,
+    sql2: &str,
+    values2: Vec<Value>,
+) {
+    let plan_id1 = get_top_plan_id(sql1, values1);
+    let plan_id2 = get_top_plan_id(sql2, values2);
+    assert_eq!(plan_id1, plan_id2);
+}
+
+fn check_subtree_plan_ids_not_equal(
+    sql1: &str,
+    values1: Vec<Value>,
+    sql2: &str,
+    values2: Vec<Value>,
+) {
+    let plan_id1 = get_top_plan_id(sql1, values1);
+    let plan_id2 = get_top_plan_id(sql2, values2);
+    assert_ne!(plan_id1, plan_id2);
+}
+
+fn get_block_pattern_key(sql: &str, values: Vec<Value>) -> u64 {
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, values).unwrap();
+    get_block_pattern_key_from_query(&mut query)
+}
+
+fn get_block_pattern_key_from_query(query: &mut ExecutingQuery<RouterRuntimeMock>) -> u64 {
+    let exec_plan = query.get_mut_exec_plan();
+    let table_id = exec_plan.get_ir_plan().relations.get("t").unwrap().id;
+    exec_plan
+        .get_mut_ir_plan()
+        .table_version_map
+        .insert(table_id, 1);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let BlockOwned::Anonymous(block) = exec_plan
+        .get_ir_plan()
+        .get_owned_block_node(top_id)
+        .unwrap()
+    else {
+        panic!("expected anonymous block");
+    };
+    block_pattern_key(exec_plan, &block.statements).unwrap()
+}
+
+#[test]
+fn block_pattern_key_hashes_insert_do_update_literal_rhs_value() {
+    let key1 = get_block_pattern_key(
+        r#"do $$ begin
+           insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" + 1;
+           end $$"#,
+        vec![],
+    );
+    let key2 = get_block_pattern_key(
+        r#"do $$ begin
+           insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" + 2;
+           end $$"#,
+        vec![],
+    );
+    assert_ne!(key1, key2);
+}
+
+#[test]
+fn subtree_plan_id_1() {
+    check_subtree_plan_ids_are_equal(
+        r#"select 1, 2 from "t""#,
+        vec![],
+        r#"select 1, 1 from "t""#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_2() {
+    check_subtree_plan_ids_not_equal(
+        r#"select * from "global_t" where "a" in (select 1 order by 1)"#,
+        vec![],
+        r#"select "a", "b" from "global_t" where "a" in (select 2 order by 1)"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_3() {
+    check_subtree_plan_ids_are_equal(
+        r#"select "a" from "global_t" where "a" = 1"#,
+        vec![],
+        r#"select "a" from "global_t" where "a" = 2"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_4() {
+    check_subtree_plan_ids_not_equal(
+        r#"select "a" from "global_t" order by "a" limit 5"#,
+        vec![],
+        r#"select "a" from "global_t" order by "a" limit 10"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_5() {
+    check_subtree_plan_ids_are_equal(r#"select 1"#, vec![], r#"select 2"#, vec![]);
+}
+
+#[test]
+fn subtree_plan_id_6() {
+    check_subtree_plan_ids_are_equal(
+        r#"values (1, 2, 3, 4)"#,
+        vec![],
+        r#"values (100, 101, 102, 103)"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_7() {
+    check_subtree_plan_ids_are_equal(
+        r#"select 1, 2+2, ?, 5 from "t""#,
+        vec![Value::Integer(8)],
+        r#"select 1, $1+$2, 7, 5 from "t""#,
+        vec![Value::Integer(9), Value::Integer(10)],
+    );
+}
+
+#[test]
+fn subtree_plan_id_8() {
+    check_subtree_plan_ids_not_equal(
+        r#"select distinct "a" from "global_t" order by 1"#,
+        vec![],
+        r#"select "a" from "global_t" group by "a" order by 1"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_9() {
+    check_subtree_plan_ids_are_equal(
+        r#"select * from "t" where "a" = 1"#,
+        vec![],
+        r#"select "a", "b", "c", "d" from "t" where "a" = 2"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_plan_id_10() {
+    check_subtree_plan_ids_are_equal(
+        r#"select "a", 1, 2+2, ? as a from "global_t""#,
+        vec![Value::Integer(8)],
+        r#"select "a", 1, $1+$2, 7 as a from "global_t""#,
+        vec![Value::Integer(9), Value::Integer(10)],
+    );
+}
+
+#[test]
+fn subtree_plan_id_11() {
+    check_subtree_plan_ids_not_equal(
+        r#"select "a" as "aa" from "global_t" where "a" < 15"#,
+        vec![],
+        r#"select "a" as "bb" from "global_t" where "a" < 15"#,
+        vec![],
+    )
+}
+
+#[test]
+fn subtree_plan_id_12() {
+    check_subtree_plan_ids_not_equal(
+        r#"select * from "global_t" where "a" < $1"#,
+        vec![Value::Integer(8)],
+        r#"select * from "global_t" where "a" < $1"#,
+        vec![Value::Double(8_f64.into())],
+    )
+}
+
+#[test]
+fn subtree_plan_id_raw_explain() {
+    check_subtree_plan_ids_not_equal(
+        r#"select * from "t" where "a" = 1"#,
+        vec![],
+        r#"explain (raw) select * from "t" where "a" = 1"#,
+        vec![],
+    );
+}
+
+#[test]
+fn subtree_hash1() {
+    check_subtree_plan_ids_are_equal(
+        r#"select ?, ? from "t""#,
+        vec![Value::Integer(1), Value::Integer(1)],
+        r#"select $1, $2 from "t""#,
+        vec![Value::Integer(1), Value::Integer(1)],
+    );
+}
+
+#[test]
+fn subtree_hash2() {
+    check_subtree_plan_ids_are_equal(
+        r#"select ?, ? from "t"
+        option(sql_vdbe_opcode_max = ?, sql_motion_row_max = ?)"#,
+        vec![
+            Value::Integer(1),
+            Value::Integer(11),
+            Value::Integer(3),
+            Value::Integer(10),
+        ],
+        r#"select $1, $2 from "t"
+        option(sql_vdbe_opcode_max = $3, sql_motion_row_max = $4)"#,
+        vec![
+            Value::Integer(1),
+            Value::Integer(11),
+            Value::Integer(3),
+            Value::Integer(10),
+        ],
+    );
+}
+
+#[test]
+fn check_parentheses() {
+    let query = r#"SELECT "id" from "test_space" WHERE "sysFrom" = ((1) + (3)) + 2"#;
+
+    let rt = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&rt, query, vec![]).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top_id = plan.get_top().unwrap();
+
+    let sql = get_sql_from_execution_plan(
+        query.get_mut_exec_plan(),
+        top_id,
+        Snapshot::Oldest,
+        TEMPLATE,
+    );
+    assert_yaml_snapshot!(sql, @r#"
+    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"sysFrom\" = CAST($1 AS int) + CAST($2 AS int) + CAST($3 AS int)"
+    params:
+      - Integer: 1
+      - Integer: 3
+      - Integer: 2
+    "#);
+}
+
+#[test]
+fn subtree_hash3() {
+    check_subtree_plan_ids_are_equal(
+        r#"select ?, ? from "t"
+        option(sql_vdbe_opcode_max = ?)"#,
+        vec![Value::Integer(1), Value::Integer(11), Value::Integer(10)],
+        r#"select ?, ? from "t""#,
+        vec![Value::Integer(1), Value::Integer(1)],
+    );
+}
+
+#[test]
+fn subtree_hash4() {
+    check_subtree_plan_ids_are_equal(
+        r#"VALUES (1)"#,
+        vec![],
+        r#"VALUES (?)"#,
+        vec![Value::Integer(1)],
+    );
+}
+
+#[test]
+fn subtree_hash5() {
+    check_subtree_plan_ids_are_equal(
+        r#"VALUES (-1)"#,
+        vec![],
+        r#"VALUES (?)"#,
+        vec![Value::Integer(-1)],
+    );
+}
+
+#[test]
+fn subtree_hash6() {
+    check_subtree_plan_ids_are_equal(
+        r#"VALUES ('abc')"#,
+        vec![],
+        r#"VALUES (?)"#,
+        vec![Value::String("abc".to_string())],
+    );
+}
+
+#[test]
+fn subtree_hash7() {
+    check_subtree_plan_ids_are_equal(
+        r#"VALUES (0, True, 'abc')"#,
+        vec![],
+        r#"VALUES ($1, $2, $3)"#,
+        vec![
+            Value::Integer(0),
+            Value::Boolean(true),
+            Value::String("abc".to_string()),
+        ],
+    );
+}
+
+#[test]
+fn dql_subtree_projection_windows_stay_in_original_plan() {
+    let mut plan = Plan::default();
+
+    let a_value = plan.nodes.add_const(1.into());
+    let a = plan.nodes.add_alias("a", a_value).unwrap();
+    let b_value = plan.nodes.add_const(2.into());
+    let b = plan.nodes.add_alias("b", b_value).unwrap();
+    let scan_relation = plan.add_select_without_scan(&[a, b]).unwrap();
+    let window = {
+        let ordering = [0, 1]
+            .iter()
+            .map(|n| {
+                let new_ref = plan.nodes.add_ref(
+                    ReferenceTarget::Single(scan_relation),
+                    *n,
+                    DerivedType::new(Type::Integer),
+                    None,
+                    false,
+                );
+                OrderByElement {
+                    entity: OrderByEntity::Expression { expr_id: new_ref },
+                    order_type: None,
+                }
+            })
+            .collect();
+        let window = Window {
+            partition: None,
+            ordering: Some(ordering),
+            frame: None,
+        };
+        plan.nodes.push(window.into())
+    };
+    let stable_func_id = {
+        let r#ref = plan.nodes.add_ref(
+            ReferenceTarget::Single(scan_relation),
+            1,
+            DerivedType::new(Type::Integer),
+            None,
+            false,
+        );
+        let cast = plan.add_cast(r#ref, CastType::String).unwrap();
+        let r#const = plan.nodes.add_const(".".into());
+        plan.add_builtin_window_function("group_concat".into(), vec![cast, r#const])
+            .unwrap()
+    };
+    let over = {
+        let over = Over {
+            stable_func: stable_func_id,
+            window,
+            filter: None,
+        };
+
+        plan.nodes.push(over.into())
+    };
+    let col_1 = plan.nodes.add_alias("col_1", over).unwrap();
+
+    let projection = {
+        let output = plan.nodes.add_row(vec![col_1], None);
+
+        let projection = Projection {
+            child: Some(scan_relation),
+            subqueries: vec![],
+            windows: vec![window],
+            output,
+            is_distinct: false,
+            group_by: None,
+            having: None,
+        };
+
+        plan.nodes.push(projection.into())
+    };
+
+    plan.set_top(projection).unwrap();
+
+    // apply motion
+
+    let motion = {
+        let motion_refs = [0, 1]
+            .iter()
+            .map(|n| {
+                let new_ref = plan.nodes.add_ref(
+                    ReferenceTarget::Single(scan_relation),
+                    *n,
+                    DerivedType::new(Type::Integer),
+                    None,
+                    false,
+                );
+                plan.nodes
+                    .add_alias(format!("col_{n}").as_str(), new_ref)
+                    .unwrap()
+            })
+            .collect();
+        let motion_output = plan.nodes.add_row(motion_refs, None);
+
+        let motion = Motion {
+            alias: None,
+            child: Some(scan_relation),
+            policy: MotionPolicy::Full,
+            program: Program::new(vec![MotionOpcode::ReshardIfNeeded]),
+            output: motion_output,
+        };
+        plan.add_relational(motion.into()).unwrap()
+    };
+
+    plan.change_child(projection, scan_relation, motion)
+        .unwrap();
+    plan.replace_target_in_relational(projection, scan_relation, motion)
+        .unwrap();
+
+    {
+        let Node::Relational(Relational::Projection(Projection { windows, .. })) =
+            plan.get_node(projection).unwrap()
+        else {
+            panic!("should be projection")
+        };
+
+        let Some(window) = windows.get(0) else {
+            panic!("should be at least one window")
+        };
+
+        assert_eq!(
+            *window,
+            NodeId {
+                offset: 0,
+                arena_type: ArenaType::Arena136
+            }
+        );
+    }
+
+    let execution_plan = ExecutionPlan::new(plan);
+    let subtree = execution_plan
+        .freeze()
+        .execution_view()
+        .dql_subtree(projection)
+        .unwrap();
+    SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false).unwrap();
+
+    {
+        let Node::Relational(Relational::Projection(Projection { windows, .. })) =
+            execution_plan.get_ir_plan().get_node(projection).unwrap()
+        else {
+            panic!("should be projection")
+        };
+
+        let Some(window) = windows.get(0) else {
+            panic!("should be at least one window")
+        };
+
+        assert_eq!(
+            *window,
+            NodeId {
+                offset: 0,
+                arena_type: ArenaType::Arena136
+            }
+        );
+    }
+}

@@ -1,0 +1,142 @@
+use pretty_assertions::assert_eq;
+use sql::helpers::check_transformation;
+use sql::ir::value::Value;
+use sql::ir::Plan;
+
+fn merge_tuples(plan: Plan) -> Plan {
+    plan.merge_tuples().unwrap()
+}
+
+#[test]
+fn merge_tuples1() {
+    let input = r#"SELECT "a" FROM "t" WHERE "a" = 1 and "b" = 2 and "c" < 3 and 4 < "a""#;
+    let actual_pattern_params = check_transformation(input, vec![], &merge_tuples);
+
+    assert_eq!(
+        actual_pattern_params.params,
+        vec![
+            Value::from(1),
+            Value::from(2),
+            Value::from(3),
+            Value::from(4),
+        ]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b") = (CAST($1 AS int), CAST($2 AS int)) and "t"."c" < CAST($3 AS int) and CAST($4 AS int) < "t"."a""#
+    );
+}
+
+#[test]
+fn merge_tuples2() {
+    let input = r#"SELECT "a" FROM "t"
+        WHERE "a" = 1 and null and "b" = 2
+        or true and "c" >= 3 and 4 <= "a""#;
+    let actual_pattern_params = check_transformation(input, vec![], &merge_tuples);
+
+    assert_eq!(
+        actual_pattern_params.params,
+        vec![
+            Value::from(2),
+            Value::from(1),
+            Value::Null,
+            Value::from(3),
+            Value::Boolean(true),
+            Value::from(4),
+        ]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."b", "t"."a") = (CAST($1 AS int), CAST($2 AS int)) and $3 or "t"."c" >= CAST($4 AS int) and CAST($5 AS bool) and CAST($6 AS int) <= "t"."a""#
+    );
+}
+
+#[test]
+fn merge_tuples3() {
+    let input = r#"SELECT "a" FROM "t" WHERE true"#;
+    let actual_pattern_params = check_transformation(input, vec![], &merge_tuples);
+
+    assert_eq!(actual_pattern_params.params, vec![Value::Boolean(true)]);
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE CAST($1 AS bool)"#
+    );
+}
+
+#[test]
+fn merge_tuples4() {
+    let input = r#"SELECT "a" FROM "t" WHERE ("a", "b") = (1, 2) and 3 = "c""#;
+    let actual_pattern_params = check_transformation(input, vec![], &merge_tuples);
+
+    assert_eq!(
+        actual_pattern_params.params,
+        vec![Value::from(1), Value::from(2), Value::from(3)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b", "t"."c") = (CAST($1 AS int), CAST($2 AS int), CAST($3 AS int))"#
+    );
+}
+
+#[test]
+fn merge_tuples5() {
+    let input = r#"SELECT "a" FROM "t" WHERE 3 < "c" and ("a", "b") > (1, 2)"#;
+    let actual_pattern_params = check_transformation(input, vec![], &merge_tuples);
+
+    assert_eq!(
+        actual_pattern_params.params,
+        vec![Value::from(1), Value::from(2), Value::from(3)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b") > (CAST($1 AS int), CAST($2 AS int)) and CAST($3 AS int) < "t"."c""#
+    );
+}
+
+#[test]
+fn merge_tuples6() {
+    let input = r#"SELECT "a" FROM "t" WHERE "a" <> 1 and "b" <> 2"#;
+    let actual_pattern_params = check_transformation(input, vec![], &merge_tuples);
+
+    assert_eq!(
+        actual_pattern_params.params,
+        vec![Value::from(2), Value::from(1)]
+    );
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."b" <> CAST($1 AS int) and "t"."a" <> CAST($2 AS int)"#
+    );
+}
+
+#[test]
+fn merge_tuples7() {
+    let input = r#"
+    select "a", "f" from "t" inner join "t2"
+    on "t"."a" = "t2"."e" and "t2"."f" = "t"."b"
+"#;
+    // merge_tuples must group rows of the same table on the same
+    // side of the equality for join conflict resultion to work
+    // correctly, otherwise we will get Motion(Full) instead
+    // local join here
+    let actual_pattern_params = check_transformation(input, vec![], &merge_tuples);
+
+    assert_eq!(actual_pattern_params.params, vec![]);
+    insta::assert_snapshot!(
+        actual_pattern_params.pattern,
+        @r#"SELECT "t"."a", "t2"."f" FROM "t" INNER JOIN "t2" ON ("t"."a", "t"."b") = ("t2"."e", "t2"."f")"#
+    );
+}
+
+#[test]
+fn merge_tuples8() {
+    let input = r#"
+    select "a", "f" from "t" inner join "t2"
+    on "t"."a" = "t"."b" and "t"."a" = "t2"."e" and "t2"."f" = "t"."b" and "t2"."f" = "t2"."e"
+"#;
+    // check merge tuple will create two groupes:
+    // one with grouped columns and other group with all other equalities
+    let actual_pattern_params = check_transformation(input, vec![], &merge_tuples);
+
+    assert_eq!(actual_pattern_params.params, vec![]);
+    insta::assert_snapshot!(actual_pattern_params.pattern, @r#"SELECT "t"."a", "t2"."f" FROM "t" INNER JOIN "t2" ON ("t"."b", "t"."a") = ("t2"."f", "t2"."e") and ("t2"."f", "t"."a") = ("t2"."e", "t"."b")"#);
+}

@@ -1,0 +1,522 @@
+//! Coordinator module.
+//!
+//! Traits that define an execution engine interface.
+
+use base64ct::{Base64, Encoding};
+use serde::{Deserialize, Serialize};
+use smol_str::{SmolStr, ToSmolStr};
+
+use crate::ir::function::get_real_function_name;
+use crate::ir::node::NodeId;
+use crate::ir::types::{DerivedType, NestedType};
+use crate::utils::MutexLike;
+use crate::{ir::helpers::RepeatableState, ir::node::BlockStatement};
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+use std::sync::OnceLock;
+
+use crate::errors::SbroadError;
+use crate::executor::ir::ExecutionPlan;
+use crate::executor::protocol::SchemaInfo;
+use crate::executor::vtable::VirtualTable;
+use crate::executor::{ExplainQueryLocation, MotionInfo};
+use crate::ir::bucket::Buckets;
+use crate::ir::function::Function;
+use crate::ir::operator::BlockConflictDoUpdate;
+use crate::ir::options::Forward;
+use crate::ir::types::UnrestrictedType;
+use crate::ir::value::Value;
+use crate::ir::ExplainOptions;
+
+use super::preemption::SchedulerOptions;
+use super::Port;
+
+use super::result::MetadataColumn;
+use crate::executor::vdbe::SqlStmt;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use tarantool::fiber::Mutex;
+use tarantool::space::SpaceId;
+
+pub mod helpers;
+#[cfg(feature = "mock")]
+pub mod mock;
+pub mod protocol;
+
+pub use crate::ir::metadata::Metadata;
+
+pub fn get_builtin_functions() -> &'static [Function] {
+    // Once lock is used because of concurrent access in tests.
+    static BUILTINS: OnceLock<Vec<Function>> = OnceLock::new();
+
+    BUILTINS.get_or_init(|| {
+        vec![
+            // stable functions
+            Function::new_stable(
+                get_real_function_name("version")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_stable(
+                "to_date".into(),
+                DerivedType::new(UnrestrictedType::Datetime),
+                false,
+            ),
+            Function::new_stable(
+                "to_char".into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_stable(
+                "substring".into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            // stable system functions
+            Function::new_stable(
+                "substr".into(),
+                DerivedType::new(UnrestrictedType::String),
+                true,
+            ),
+            Function::new_stable(
+                "lower".into(),
+                DerivedType::new(UnrestrictedType::String),
+                true,
+            ),
+            Function::new_stable(
+                "upper".into(),
+                DerivedType::new(UnrestrictedType::String),
+                true,
+            ),
+            Function::new_stable(
+                "coalesce".into(),
+                DerivedType::new(UnrestrictedType::Any),
+                true,
+            ),
+            Function::new_stable(
+                "abs".into(),
+                DerivedType::new(UnrestrictedType::Any), // any numeric type
+                true,
+            ),
+            Function::new_stable(
+                "json_extract_path".into(),
+                DerivedType::new(UnrestrictedType::Any),
+                false,
+            ),
+            // volatile functions
+            Function::new_volatile(
+                "_pico_bucket".into(),
+                DerivedType::new(UnrestrictedType::Array(NestedType::Map)),
+                false,
+            ),
+            Function::new_volatile(
+                // TODO: deprecated, remove in future version
+                get_real_function_name("instance_uuid")
+                    .expect("shouldn't fail")
+                    .into(),
+                // TODO: use `Type::UUID`, to learn more see
+                // <https://git.picodata.io/core/picodata/-/issues/2027>
+                DerivedType::new(UnrestrictedType::String), // TODO: use `Type::UUID`
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_config_file_path")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_instance_dir")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_instance_name")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_instance_uuid")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String), // TODO: use `Type::UUID`
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_raft_leader_id")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::Integer),
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_raft_leader_uuid")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String), // TODO: use `Type::UUID`
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_replicaset_name")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_tier_name")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_volatile(
+                "pico_instance_health_status".into(),
+                DerivedType::new(UnrestrictedType::Map),
+                false,
+            ),
+        ]
+    })
+}
+
+pub trait StorageCache {
+    type LockRef: Clone;
+
+    /// Put the prepared statement with given key in cache,
+    /// remembering its version.
+    fn put(
+        &mut self,
+        plan_id: u64,
+        stmt: SqlStmt,
+        schema_info: &SchemaInfo,
+        motion_ids: Vec<SmolStr>,
+    ) -> Result<(), SbroadError>;
+
+    /// Get the prepared statement and corresponding temporary-table lock from cache.
+    /// If the schema version for some virtual table (corresponding to some Motion)
+    /// has been changed, `None` is returned.
+    #[allow(clippy::ptr_arg)]
+    fn get(&mut self, plan_id: &u64) -> Result<Option<CachedStmtRef<Self::LockRef>>, SbroadError>;
+
+    /// Get or create lock for a plan. Used to serialize temporary table
+    /// lifecycle across concurrent cache misses.
+    fn get_or_create_lock(&mut self, plan_id: u64) -> Self::LockRef;
+}
+
+pub type CachedStmt = Rc<Mutex<SqlStmt>>;
+pub struct CachedStmtRef<L> {
+    pub stmt: CachedStmt,
+    pub table_lock: L,
+}
+
+impl<L> CachedStmtRef<L> {
+    pub fn new(stmt: CachedStmt, table_lock: L) -> Self {
+        Self { stmt, table_lock }
+    }
+}
+
+pub use crate::ir::VersionMap;
+
+pub trait QueryCache {
+    type Cache;
+    type Mutex: MutexLike<Self::Cache> + Sized;
+
+    /// Get the cache.
+    ///
+    /// # Errors
+    /// - Failed to get the cache.
+    fn cache(&self) -> &Self::Mutex;
+
+    /// `true` if cache can provide a schema version for given table.
+    fn provides_versions(&self) -> bool;
+
+    /// Return current schema version of given table.
+    ///
+    /// Must be called only if `provides_versions` returns
+    /// `true`.
+    ///
+    /// # Errors
+    /// - table was not found in system space
+    /// - could not access the system space
+    fn get_table_version(&self, _: &str) -> Result<u64, SbroadError>;
+
+    /// Return current schema version of given index.
+    ///
+    /// Must be called only if `provides_versions` returns
+    /// `true`.
+    ///
+    /// # Errors
+    /// - index was not found in system space
+    /// - could not access the system space
+    fn get_index_version_by_pk(&self, space_id: u32, index_id: u32) -> Result<u64, SbroadError>;
+
+    /// Return current schema version of given table.
+    ///
+    /// Must be called only if `provides_versions` returns
+    /// `true`.
+    ///
+    /// # Errors
+    /// - table was not found in system space
+    /// - could not access the system space
+    fn get_table_version_by_id(&self, _: SpaceId) -> Result<u64, SbroadError>;
+
+    fn get_table_name_and_version(&self, _: SpaceId) -> Result<(SmolStr, u64), SbroadError>;
+}
+
+/// Compute a query cache key from the query pattern and parameter types.
+/// Parameter types affect column types and query validity, so they must be included.
+/// Some parameter types can be left unspecified. Such parameters will be inferred during
+/// type analysis and they are uniquely determined by the query and initial parameters.
+#[inline]
+#[must_use]
+pub fn query_id(pattern: &str, params: &[DerivedType]) -> SmolStr {
+    let params_hash = {
+        let mut hasher = DefaultHasher::new();
+        params.hash(&mut hasher);
+        hasher.finish()
+    };
+
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(pattern.as_bytes());
+    hasher.update(&params_hash.to_ne_bytes());
+    let hash = hasher.finalize();
+    Base64::encode_string(hash.to_hex().as_bytes()).to_smolstr()
+}
+
+/// A router trait.
+pub trait Router: QueryCache {
+    type MetadataProvider: Metadata;
+    type VshardImplementor: Vshard;
+
+    /// Get the metadata provider (tables, functions, etc.).
+    fn metadata(&self) -> &impl MutexLike<Self::MetadataProvider>;
+
+    fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError>;
+
+    /// Extract a list of the sharding key values from a map for the given space.
+    ///
+    /// # Errors
+    /// - Columns are not present in the sharding key of the space.
+    fn extract_sharding_key_from_map<'rec>(
+        &self,
+        space: SmolStr,
+        args: &'rec HashMap<SmolStr, Value>,
+    ) -> Result<Vec<&'rec Value>, SbroadError>;
+
+    /// Extract a list of the sharding key values from a tuple for the given space.
+    ///
+    /// # Errors
+    /// - Internal error in the table (should never happen, but we recheck).
+    fn extract_sharding_key_from_tuple<'rec>(
+        &self,
+        space: SmolStr,
+        args: &'rec [Value],
+    ) -> Result<Vec<&'rec Value>, SbroadError>;
+
+    /// Dispatch a sql query to the shards in cluster and get the results.
+    ///
+    /// # Errors
+    /// - internal executor errors
+    fn dispatch<'p>(
+        &self,
+        plan: &mut ExecutionPlan,
+        top_id: NodeId,
+        buckets: &Buckets,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError>;
+
+    fn new_port<'p>(&self) -> impl Port<'p>;
+
+    /// Materialize result motion node to virtual table
+    ///
+    /// # Errors
+    /// - internal executor errors
+    fn materialize_motion(
+        &self,
+        plan: &mut ExecutionPlan,
+        motion_node_id: &NodeId,
+        buckets: &Buckets,
+    ) -> Result<VirtualTable, SbroadError>;
+
+    /// Get tier name to which the coordinator belongs
+    ///
+    /// # Errors
+    /// - internal executor errors
+    /// - storage errors
+    fn get_current_tier_name(&self) -> Result<Option<SmolStr>, SbroadError>;
+
+    /// Get vshard object which is responsible for tier with corresponding name
+    ///
+    /// # Errors
+    /// - internal executor errors
+    fn get_vshard_object_by_tier(
+        &self,
+        tier_name: Option<&SmolStr>,
+    ) -> Result<Self::VshardImplementor, SbroadError>;
+
+    /// Get vshard object name to which the coordinator belongs
+    ///
+    /// # Errors
+    /// - internal executor errors
+    fn get_current_vshard_object(&self) -> Result<Self::VshardImplementor, SbroadError> {
+        self.get_vshard_object_by_tier(self.get_current_tier_name()?.as_ref())
+    }
+
+    /// Materialize values (on router).
+    /// We have two scenarios of vtable materialization:
+    /// 1.) In case we're working with VALUES containing **only** constants, we copy them
+    ///     directly into the structure of Vtable.
+    /// 2.) In case we met under VALUES smth different from constants we execute local
+    ///     SQL on the router and fill the vtable with result.
+    ///
+    /// # Errors
+    /// - Values of inconsistent types met.
+    fn materialize_values(
+        &self,
+        exec_plan: &mut ExecutionPlan,
+        values_id: NodeId,
+    ) -> Result<VirtualTable, SbroadError>;
+
+    /// Determines whether audit logging should be performed for the given query plan.
+    ///
+    /// This function evaluates the query plan against configured audit policies
+    /// of current user to decide if the operation requires audit trail generation.
+    fn is_audit_enabled(&self, plan: &crate::ir::Plan) -> Result<bool, SbroadError>;
+
+    /// Determines whether SQL statement logging should be performed  for the given query plan.
+    fn is_sql_log_enabled(&self, plan: &crate::ir::Plan) -> Result<bool, SbroadError>;
+
+    /// Get scheduler options from the runtime.
+    fn get_scheduler_options(&self) -> SchedulerOptions;
+
+    /// Enforces the user-requested `FORWARD` option against the actual
+    /// buckets for a single execution step.
+    fn enforce_forward_option(
+        &self,
+        forward_option: Forward,
+        buckets: &Buckets,
+        target_replicaset: &mut Option<String>,
+    ) -> Result<(), SbroadError>;
+
+    /// Determines the strictest FORWARD option that can be satisfied
+    /// for the given bucket set on the current node.
+    /// The `target_replicaset` parameter serves as cross-step memory:
+    /// on the first call it is set to the resolved replicaset; on
+    /// subsequent calls within the same query it is compared against
+    /// the new resolution to detect multi-replicaset access that would
+    /// break the `ro_to_rw` guarantee.
+    fn get_possible_forward_option(
+        &self,
+        buckets: &Buckets,
+        target_replicaset: &mut Option<String>,
+    ) -> Result<Forward, SbroadError>;
+
+    /// Create an instance of `ExplainQueryLocation` from `Buckets` and `MotionInfo`.
+    fn build_explain_query_location(
+        buckets: &Buckets,
+        motion_info: &MotionInfo,
+    ) -> ExplainQueryLocation;
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Hash)]
+pub struct BlockQuery {
+    pub pattern: String,
+    /// Opcode-level hooks that must be attached after this statement is
+    /// compiled to VDBE.
+    pub hooks: Vec<BlockRuntimeHook>,
+}
+
+/// Runtime hooks attached to block VDBE opcodes.
+///
+/// These hooks affect statement execution. RAW EXPLAIN uses their metadata to
+/// show the same behavior in the plan, but installs its own provider while the
+/// explain statement is being compiled.
+#[derive(Debug, Clone, Deserialize, Serialize, Hash)]
+pub enum BlockRuntimeHook {
+    /// `ON CONFLICT DO UPDATE` hook attached to the statement's final
+    /// `OP_IdxInsert` opcode.
+    IdxInsertOnConflictDoUpdate {
+        table_id: u32,
+        update: BlockConflictDoUpdate,
+        /// Rendered `picodata: ON CONFLICT ...` row for RAW EXPLAIN output.
+        /// `None` unless the plan is a raw explain — execution never reads it.
+        raw_explain_detail: Option<SmolStr>,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BlockExecData {
+    pub statements: Vec<BlockStatement<BlockQuery>>,
+    /// Per-query parameters in `BlockStatement::iter()` order.
+    pub params: Vec<Vec<Value>>,
+    pub unused_lets: HashSet<usize>,
+    pub table_versions: VersionMap,
+    pub index_versions: HashMap<[u32; 2], u64, RepeatableState>,
+    pub vdbe_max_steps: u64,
+    pub returns_rows: bool,
+    pub explain_options: ExplainOptions,
+    pub bucket_count: u64,
+}
+
+/// Key for the storage-side cache of assembled block VDBEs.
+pub fn block_vdbe_key(stmts: &[BlockStatement<BlockQuery>]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    stmts.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub trait Vshard {
+    /// Execute a query on a given buckets.
+    ///
+    /// # Errors
+    /// - Execution errors
+    fn exec_ir_on_buckets<'p>(
+        &self,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
+        buckets: &Buckets,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError>;
+
+    /// Execute query on any node.
+    /// All the data needed to execute query
+    /// is already in the plan.
+    ///
+    /// # Errors
+    /// - Execution errors
+    fn exec_ir_on_any_node<'p>(
+        &self,
+        sub_plan: Rc<ExecutionPlan>,
+        top_id: NodeId,
+        buckets: &Buckets,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError>;
+
+    fn exec_block_on_buckets<'p>(
+        &self,
+        metadata: Vec<MetadataColumn>,
+        block: BlockExecData,
+        buckets: &Buckets,
+        request_id: &str,
+        port: &mut impl Port<'p>,
+    ) -> Result<(), SbroadError>;
+
+    /// Get the amount of buckets in the cluster.
+    fn bucket_count(&self) -> u64;
+
+    /// Get a random bucket from the cluster.
+    fn get_random_bucket(&self) -> Buckets;
+
+    /// Determine shard for query execution by sharding key value
+    ///
+    /// # Errors
+    /// - Internal error. Under normal conditions we should always return
+    ///   bucket id successfully.
+    fn determine_bucket_id(&self, s: &[&Value]) -> Result<u64, SbroadError>;
+}

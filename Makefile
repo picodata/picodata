@@ -120,7 +120,7 @@ DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 # memory usage caused by doc tests compilation model. Doc tests are compiled as part of actual test run.
 # So, each parallel thread lanuched by cargo test spawns full blown compiler for each doctest
 # which at the end leads to OOM.
-CARGO_TEST_FLAGS ?= --workspace --exclude sql-planner --exclude tarantool --exclude tlua
+CARGO_TEST_FLAGS ?= --workspace --exclude sql-planner --exclude sql-ir --exclude sql-executor --exclude sql-frontend --exclude tarantool --exclude tlua
 
 .PHONY: test-rs
 test-rs:

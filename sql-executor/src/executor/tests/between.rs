@@ -1,0 +1,95 @@
+use super::*;
+use crate::executor::engine::mock::{PortMocked, RouterRuntimeMock};
+use crate::executor::vtable::VirtualTable;
+use crate::ir::transformation::redistribution::MotionPolicy;
+use crate::ir::value::Value;
+use crate::test_helpers::get_motion_id;
+use crate::test_helpers::vcolumn_integer_user_non_null;
+use crate::test_helpers::ExecutingQueryExt;
+use insta::assert_yaml_snapshot;
+
+#[test]
+fn between1_test() {
+    let sql = r#"
+        SELECT "identification_number" FROM "hash_testing" AS "t"
+        WHERE "identification_number" BETWEEN 1 AND (
+            SELECT "identification_number" as "id" FROM "hash_testing_hist"
+            WHERE "identification_number" = 2
+        )
+        "#;
+
+    // Initialize the query.
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+
+    // Validate the motion type.
+    let motion_id = *get_motion_id(plan, 0, 0).unwrap();
+    assert_eq!(&MotionPolicy::Full, get_motion_policy(plan, motion_id));
+
+    // Mock a virtual table.
+    let mut virtual_table = VirtualTable::new();
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_tuple(vec![Value::from(2)]);
+    query
+        .get_coordinator()
+        .add_virtual_table(motion_id, virtual_table);
+
+    // Execute the query.
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+
+    // Validate the result.
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    assert_yaml_snapshot!(info, @r#"
+    - All:
+        - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE \"t\".\"identification_number\" >= CAST($1 AS int) and \"t\".\"identification_number\" <= (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
+        - - Integer: 1
+    "#);
+}
+
+#[test]
+fn between2_test() {
+    let sql = r#"
+        SELECT "identification_number" FROM "hash_testing" AS "t"
+        WHERE (
+            SELECT "identification_number" as "id" FROM "hash_testing_hist"
+            WHERE "identification_number" = 2
+        ) BETWEEN 1 and 3
+        "#;
+
+    // Initialize the query.
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+
+    // Validate the motion type.
+    let motion1_id = *get_motion_id(plan, 0, 0).unwrap();
+    assert_eq!(&MotionPolicy::Full, get_motion_policy(plan, motion1_id));
+    assert_eq!(true, get_motion_id(plan, 0, 2).is_none());
+
+    // Mock a virtual table.
+    let mut virtual_table = VirtualTable::new();
+    virtual_table.add_column(vcolumn_integer_user_non_null());
+    virtual_table.add_tuple(vec![Value::from(2)]);
+
+    // Bind the virtual table to both motions.
+    query
+        .get_coordinator()
+        .add_virtual_table(motion1_id, virtual_table.clone());
+
+    // Execute the query.
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+
+    // Validate the result.
+    let info = port.decode();
+    assert_eq!(1, info.len());
+    assert_yaml_snapshot!(info, @r#"
+    - All:
+        - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE (SELECT \"COL_1\" FROM \"_tmp_0_0136\") >= CAST($1 AS int) and (SELECT \"COL_1\" FROM \"_tmp_0_0136\") <= CAST($2 AS int)"
+        - - Integer: 1
+          - Integer: 3
+    "#);
+}

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::vshard::serialize_as_empty_motions_to_disable;
+use sql::executor::engine::helpers::vshard::PlanSerializeAsEmptyExt;
 use sql::executor::engine::helpers::{
     set_block_pattern_cache_hooks, table_name, vshard::get_random_bucket, BlockPatternCacheHooks,
 };

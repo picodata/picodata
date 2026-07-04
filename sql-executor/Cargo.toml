@@ -1,0 +1,49 @@
+[package]
+name = "sql-executor"
+version = "0.1.0"
+rust-version.workspace = true
+authors = ["Picodata"]
+license-file.workspace = true
+edition.workspace = true
+
+[dependencies]
+ahash = { workspace = true }
+base64ct = { version = "1.5", features = ["alloc"] }
+bincode = "1.3"
+bitflags = "2.9.1"
+blake3 = "1.3"
+comfy-table = { workspace = true }
+hash32 = "0.2"
+itertools = "0.10"
+lru = "0.16.0"
+rand = { workspace = true }
+rmp = { workspace = true }
+rmp-serde = { workspace = true }
+rmpv = { workspace = true }
+serde = { workspace = true, features = ["derive", "rc"] }
+smallvec = { workspace = true }
+smol_str = { workspace = true }
+sql-frontend = { path = "../sql-frontend", optional = true }
+sql-ir = { path = "../sql-ir" }
+sql-protocol = { workspace = true }
+sqlformat = "0.4"
+tarantool = { workspace = true, features = ["extra_impls"] }
+thiserror = { workspace = true }
+time = { workspace = true, features = ["parsing", "formatting", "macros"] }
+twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_64", "std"] }
+uuid = { version = "1.1", features = ["v4", "fast-rng", "macro-diagnostics"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serde_yaml = "0.9.34"
+insta = { workspace = true, features = ["yaml"] }
+tarantool = { workspace = true, features = ["standalone_decimal", "extra_impls"] }
+# Self-referential dev-dependency: forces the `mock` feature on for this
+# crate's own tests and benches without affecting downstream builds.
+sql-executor = { path = ".", features = ["mock"] }
+
+[features]
+# The `mock` feature additionally pulls in the SQL frontend so that the
+# `test_helpers` module can parse SQL text into IR plans. Production builds
+# (mock off) never compile sql-frontend into this crate.
+mock = ["sql-ir/mock", "dep:sql-frontend", "sql-frontend?/mock"]

@@ -1,0 +1,28 @@
+use crate::ir::value::Value;
+use sql_executor::test_helpers::sql_to_optimized_ir;
+
+#[test]
+fn update1() {
+    let pattern = r#"explain (logical) UPDATE "test_space" SET "FIRST_NAME" = 'test'"#;
+    let plan = sql_to_optimized_ir(pattern, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    update test_space ("FIRST_NAME" = col_0)
+      motion [policy: local, program: ReshardIfNeeded]
+        projection ('test'::string -> col_0, test_space.id::int -> col_1)
+          scan test_space
+    "#);
+}
+
+#[test]
+fn update2() {
+    let pattern = r#"explain (logical) UPDATE "test_space" SET "FIRST_NAME" = ?"#;
+    let plan = sql_to_optimized_ir(pattern, vec![Value::from("test")]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    update test_space ("FIRST_NAME" = col_0)
+      motion [policy: local, program: ReshardIfNeeded]
+        projection ('test'::string -> col_0, test_space.id::int -> col_1)
+          scan test_space
+    "#);
+}

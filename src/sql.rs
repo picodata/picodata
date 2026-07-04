@@ -83,6 +83,7 @@ use sql::ir::operator::ConflictStrategy;
 use sql::ir::types::{NestedType, UnrestrictedType};
 use sql::ir::value::Value;
 use sql::ir::Plan as IrPlan;
+use sql::ExecutingQueryExt;
 use sql_protocol::decode::{
     execute_args_split, query_meta_args_split, ProtocolMessage, ProtocolMessageType, QueryMetaArgs,
 };

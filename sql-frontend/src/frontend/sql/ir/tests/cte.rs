@@ -1,0 +1,639 @@
+use crate::errors::{Entity, SbroadError};
+use crate::frontend::sql::transform_into_plan;
+use pretty_assertions::assert_eq;
+use sql_executor::executor::engine::mock::RouterConfigurationMock;
+use sql_executor::test_helpers::sql_to_optimized_ir;
+
+#[test]
+fn cte() {
+    let sql = r#"explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space") SELECT * FROM cte"#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (cte.a::string -> a)
+      scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (test_space."FIRST_NAME"::string -> a)
+          scan test_space
+    "#);
+}
+
+#[test]
+fn global_cte() {
+    let sql = r#"explain (logical) WITH cte (a) AS (SELECT "a" FROM "global_t") SELECT * FROM cte"#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (cte.a::int -> a)
+      scan cte cte($0)
+    subquery $0:
+      projection (global_t.a::int -> a)
+        scan global_t
+    ");
+}
+
+#[test]
+fn nested_cte() {
+    let sql = r#"
+        explain (logical) WITH cte1 (a) AS (SELECT "FIRST_NAME" FROM "test_space"),
+        cte2 AS (SELECT * FROM cte1)
+        SELECT * FROM cte2
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (cte2.a::string -> a)
+      scan cte cte2($1)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (test_space."FIRST_NAME"::string -> a)
+          scan test_space
+    subquery $1:
+      projection (cte1.a::string -> a)
+        scan cte cte1($0)
+    "#);
+}
+
+#[test]
+fn reuse_cte_union_all() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space")
+        SELECT * FROM cte
+        UNION ALL
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    union all
+      projection (cte.a::string -> a)
+        scan cte cte($0)
+      projection (cte.a::string -> a)
+        scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (test_space."FIRST_NAME"::string -> a)
+          scan test_space
+    "#);
+}
+
+#[test]
+fn reuse_func_in_cte() {
+    // assume that the function is random
+    // we expect that function will be executed only once (materialized)
+    // otherwise, it will be executed twice and results for scan would be different
+    let sql = r#"
+        explain (logical) WITH cte AS (select trim('some'))
+        SELECT * FROM cte
+        UNION
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    motion [policy: full, program: RemoveDuplicates]
+      union
+        projection (cte.col_1::string -> col_1)
+          scan cte cte($0)
+        projection (cte.col_1::string -> col_1)
+          scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (TRIM('some'::string) -> col_1)
+    ");
+}
+
+#[test]
+fn reuse_union_in_cte() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (
+            SELECT "FIRST_NAME" FROM "test_space"
+            UNION
+            SELECT "FIRST_NAME" FROM "test_space"
+        )
+        SELECT * FROM cte
+        UNION
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    motion [policy: full, program: RemoveDuplicates]
+      union
+        projection (cte.a::string -> a)
+          scan cte cte($0)
+        projection (cte.a::string -> a)
+          scan cte cte($0)
+    subquery $0:
+      projection (cte."FIRST_NAME"::string -> a)
+        scan cte
+          motion [policy: full, program: RemoveDuplicates]
+            union
+              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+                scan test_space
+              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+                scan test_space
+    "#);
+}
+
+#[test]
+fn reuse_union_in_cte_without_rename() {
+    let sql = r#"
+        explain (logical) WITH cte AS (
+            SELECT "FIRST_NAME" FROM "test_space"
+            UNION
+            SELECT "FIRST_NAME" FROM "test_space"
+        )
+        SELECT * FROM cte
+        UNION
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    motion [policy: full, program: RemoveDuplicates]
+      union
+        projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
+          scan cte cte($0)
+        projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
+          scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: RemoveDuplicates]
+        union
+          projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+            scan test_space
+          projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+            scan test_space
+    "#);
+}
+
+#[test]
+fn reuse_union_in_cte_with_projection() {
+    let sql = r#"
+        explain (logical) WITH cte AS (
+            SELECT "FIRST_NAME" AS another
+            FROM (
+                SELECT "FIRST_NAME" FROM "test_space"
+                UNION
+                SELECT "FIRST_NAME" FROM "test_space"
+                )
+        )
+        SELECT * FROM cte
+        UNION
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    motion [policy: full, program: RemoveDuplicates]
+      union
+        projection (cte.another::string -> another)
+          scan cte cte($0)
+        projection (cte.another::string -> another)
+          scan cte cte($0)
+    subquery $0:
+      projection (unnamed_subquery."FIRST_NAME"::string -> another)
+        scan unnamed_subquery
+          motion [policy: full, program: RemoveDuplicates]
+            union
+              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+                scan test_space
+              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+                scan test_space
+    "#);
+}
+
+#[test]
+fn reuse_cte_values() {
+    let sql = r#"
+        explain (logical) WITH cte (b) AS (VALUES(1))
+        SELECT t.c FROM (SELECT count(*) as c FROM cte c1 JOIN cte c2 ON true) t
+        JOIN cte ON true
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (t.c::int -> c)
+      join on (true::bool)
+        scan t
+          projection (count(*)::int -> c)
+            join on (true::bool)
+              scan cte c1($0)
+              scan cte c2($0)
+        scan cte cte($0)
+    subquery $0:
+      projection (cte."COLUMN_1"::int -> b)
+        scan cte
+          motion [policy: full, program: ReshardIfNeeded]
+            values
+              value ROW(1::int)
+    "#);
+}
+
+#[test]
+fn reuse_cte_values_without_rename() {
+    let sql = r#"
+        explain (logical) WITH cte AS (VALUES(1))
+        SELECT t.c FROM (SELECT count(*) as c FROM cte c1 JOIN cte c2 ON true) t
+        JOIN cte ON true
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (t.c::int -> c)
+      join on (true::bool)
+        scan t
+          projection (count(*)::int -> c)
+            join on (true::bool)
+              scan cte c1($0)
+              scan cte c2($0)
+        scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        values
+          value ROW(1::int)
+    ");
+}
+
+#[test]
+fn reuse_cte_values_with_projection_and_function() {
+    let sql = r#"
+        explain (logical) WITH cte AS (SELECT instance_uuid() FROM (VALUES(1)) s)
+        SELECT * FROM cte
+        UNION  ALL
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    union all
+      projection (cte.col_1::string -> col_1)
+        scan cte cte($0)
+      projection (cte.col_1::string -> col_1)
+        scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (".proc_instance_uuid"()::string -> col_1)
+          scan s
+            motion [policy: full, program: ReshardIfNeeded]
+              values
+                value ROW(1::int)
+    "#);
+}
+
+#[test]
+fn reuse_single_node_cte_does_not_materialize() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (
+            SELECT a FROM t
+            WHERE (a, b) = (1, 2)
+            LIMIT 1
+        )
+        SELECT * FROM cte c1 JOIN cte c2 ON true
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+    let explain = plan.explain_logical().unwrap();
+
+    assert!(
+        explain.contains(r#"scan cte c1($0)"#),
+        "expected the first reused CTE reference to read from the shared subquery:\n{explain}"
+    );
+    assert!(
+        explain.contains(r#"scan cte c2($0)"#),
+        "expected the second reused CTE reference to read from the shared subquery:\n{explain}"
+    );
+    assert!(
+        !explain.contains("subquery $0:\nmotion [policy: full, program: ReshardIfNeeded]"),
+        "expected the reused single-node CTE to stay local without CTE-level full motion:\n{explain}"
+    );
+}
+
+#[test]
+fn join_cte() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space")
+        SELECT t."FIRST_NAME" FROM "test_space" t
+        JOIN cte ON t."FIRST_NAME" = cte.a
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (t."FIRST_NAME"::string -> "FIRST_NAME")
+      join on (t."FIRST_NAME"::string = cte.a::string)
+        scan test_space -> t
+        scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (test_space."FIRST_NAME"::string -> a)
+          scan test_space
+    "#);
+}
+
+#[test]
+fn agg_cte() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space")
+        SELECT count(a) FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (count(cte.a::string::string)::int -> col_1)
+      scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (test_space."FIRST_NAME"::string -> a)
+          scan test_space
+    "#);
+}
+
+#[test]
+fn limit_pushdown_does_not_mutate_cte() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (SELECT a FROM t)
+        SELECT (SELECT * FROM cte), (SELECT a FROM cte ORDER BY a LIMIT 1)
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (ROW($2) -> col_1, ROW($1) -> col_2)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (t.a::int -> a)
+          scan t
+    subquery $1:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          limit 1
+            projection (a::int)
+              order by (a::int)
+                scan
+                  projection (cte.a::int -> a)
+                    scan cte cte($0)
+    subquery $2:
+      scan
+        projection (cte.a::int -> a)
+          scan cte cte($0)
+    ");
+}
+
+#[test]
+fn limit_pushdown_does_not_mutate_used_once_cte() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (SELECT a FROM t)
+        SELECT a FROM cte ORDER BY a LIMIT 1
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    limit 1
+      projection (a::int)
+        order by (a::int)
+          scan
+            projection (cte.a::int -> a)
+              scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (t.a::int -> a)
+          scan t
+    ");
+}
+
+#[test]
+fn limit_pushdown_does_not_mutate_used_once_cte_with_aggr_over_it() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (SELECT a FROM t)
+        SELECT count(*) FROM cte LIMIT 1
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    limit 1
+      projection (count(*)::int -> col_1)
+        scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (t.a::int -> a)
+          scan t
+    ");
+}
+
+#[test]
+fn used_once_single_node_cte_does_not_materialize() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (
+            SELECT a FROM t
+            WHERE (a, b) = (1, 2)
+            LIMIT 1
+        )
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (cte.a::int -> a)
+      scan cte cte($0)
+    subquery $0:
+      projection (cte.a::int -> a)
+        scan cte
+          limit 1
+            projection (t.a::int -> a)
+              selection (ROW(t.a::int, t.b::int) = ROW(1::int, 2::int))
+                scan t
+    ");
+}
+
+#[test]
+fn sq_cte() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space" WHERE "FIRST_NAME" = 'hi')
+        SELECT "FIRST_NAME" FROM "test_space" WHERE "FIRST_NAME" IN (SELECT a FROM cte)
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+      selection (test_space."FIRST_NAME"::string in ROW($1))
+        scan test_space
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (test_space."FIRST_NAME"::string -> a)
+          selection (test_space."FIRST_NAME"::string = 'hi'::string)
+            scan test_space
+    subquery $1:
+      scan
+        projection (cte.a::string -> a)
+          scan cte cte($0)
+    "#);
+}
+
+#[test]
+fn values_in_cte() {
+    let sql = r#"
+        explain (logical) WITH cte (a) AS (VALUES ('a'))
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (cte.a::string -> a)
+      scan cte cte($0)
+    subquery $0:
+      projection (cte."COLUMN_1"::string -> a)
+        scan cte
+          motion [policy: full, program: ReshardIfNeeded]
+            values
+              value ROW('a'::string)
+    "#);
+}
+
+#[test]
+fn union_all_in_cte() {
+    let sql = r#"
+        explain (logical) WITH cte1 (a) AS (VALUES ('a')),
+        cte2 as (SELECT * FROM cte1 UNION ALL SELECT * FROM cte1)
+        SELECT * FROM cte2
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (cte2.a::string -> a)
+      scan cte cte2($1)
+    subquery $0:
+      projection (cte1."COLUMN_1"::string -> a)
+        scan cte1
+          motion [policy: full, program: ReshardIfNeeded]
+            values
+              value ROW('a'::string)
+    subquery $1:
+      motion [policy: full, program: ReshardIfNeeded]
+        union all
+          projection (cte1.a::string -> a)
+            scan cte cte1($0)
+          projection (cte1.a::string -> a)
+            scan cte cte1($0)
+    "#);
+}
+
+#[test]
+fn join_in_cte() {
+    let sql = r#"
+        explain (logical) WITH cte AS (
+            SELECT t1."FIRST_NAME" FROM "test_space" t1
+            JOIN "test_space" t2 ON t1."FIRST_NAME" = t2."id"::text
+        )
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
+      scan cte cte($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (t1."FIRST_NAME"::string -> "FIRST_NAME")
+          join on (t1."FIRST_NAME"::string = t2.id::int::string)
+            scan test_space -> t1
+            motion [policy: full, program: ReshardIfNeeded]
+              projection (t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t2.bucket_id::int -> bucket_id)
+                scan test_space -> t2
+    "#);
+}
+
+#[test]
+fn order_by_in_cte() {
+    let sql = r#"
+        explain (logical) WITH cte AS (
+            SELECT "FIRST_NAME" FROM "test_space"
+            ORDER BY 1
+        )
+        SELECT * FROM cte
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
+      scan cte cte($0)
+    subquery $0:
+      projection ("FIRST_NAME"::string)
+        order by (1)
+          motion [policy: full, program: ReshardIfNeeded]
+            scan
+              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+                scan test_space
+    "#);
+}
+
+#[test]
+fn table_name_conflict() {
+    let sql = r#"
+        explain (logical) WITH "test_space" AS (SELECT "FIRST_NAME" FROM "test_space")
+        SELECT * FROM "test_space"
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+      scan cte test_space($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+          scan test_space
+    "#);
+}
+
+#[test]
+fn cte_name_conflict() {
+    let sql = r#"
+        WITH cte AS (SELECT "FIRST_NAME" FROM "test_space"),
+        cte as (SELECT 'a' as a from "test_space")
+        SELECT * FROM cte
+    "#;
+    let metadata = &RouterConfigurationMock::new();
+    let plan_error = transform_into_plan(sql, &[], metadata);
+    assert_eq!(
+        plan_error.unwrap_err(),
+        SbroadError::Invalid(
+            Entity::Cte,
+            Some(r#"CTE with name "cte" is already defined"#.into())
+        )
+    );
+}
+
+#[test]
+fn cte_column_mismatch() {
+    let sql = r#"
+        WITH cte(a) AS (SELECT "FIRST_NAME", "FIRST_NAME" FROM "test_space")
+        SELECT * FROM cte
+    "#;
+    let metadata = &RouterConfigurationMock::new();
+    let plan_error = transform_into_plan(sql, &[], metadata);
+    assert_eq!(
+        plan_error.unwrap_err(),
+        SbroadError::UnexpectedNumberOfValues("expected 2 columns in CTE, got 1".into())
+    );
+}
+
+#[test]
+fn cte_with_left_join() {
+    let sql = r#"
+        explain (logical) with cte as (select "e" as "E" from "t2")
+        select "E" from cte left join "t2"
+        on true
+    "#;
+
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    projection (unnamed_join."E"::int -> "E")
+      motion [policy: full, program: AddMissingRowsForLeftJoin]
+        projection (cte."E"::int -> "E", t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
+          join on (true::bool)
+            scan cte cte($0)
+            scan t2
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (t2.e::int -> "E")
+          scan t2
+    "#);
+}

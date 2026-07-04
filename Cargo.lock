@@ -3753,7 +3753,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sql-planner"
+name = "sql-executor"
 version = "0.1.0"
 dependencies = [
  "ahash 0.8.12",
@@ -3761,35 +3761,97 @@ dependencies = [
  "bincode",
  "bitflags 2.11.1",
  "blake3",
- "chrono",
  "comfy-table",
  "hash32",
- "indenter",
  "insta",
  "itertools 0.10.5",
- "lazy_static",
  "lru",
- "pest",
- "pest_derive",
  "pretty_assertions",
  "rand 0.10.1",
- "regex",
  "rmp",
  "rmp-serde",
  "rmpv",
  "serde",
- "serde_bytes",
  "serde_yaml",
  "smallvec",
  "smol_str",
+ "sql-executor",
+ "sql-frontend",
+ "sql-ir",
  "sql-protocol",
- "sql-type-system",
  "sqlformat",
  "tarantool",
  "thiserror 2.0.18",
  "time",
  "twox-hash",
  "uuid 1.23.1",
+]
+
+[[package]]
+name = "sql-frontend"
+version = "0.1.0"
+dependencies = [
+ "ahash 0.8.12",
+ "chrono",
+ "insta",
+ "itertools 0.10.5",
+ "lazy_static",
+ "pest",
+ "pest_derive",
+ "pretty_assertions",
+ "smol_str",
+ "sql-executor",
+ "sql-frontend",
+ "sql-ir",
+ "sql-type-system",
+ "sqlformat",
+ "tarantool",
+ "thiserror 2.0.18",
+ "time",
+]
+
+[[package]]
+name = "sql-ir"
+version = "0.1.0"
+dependencies = [
+ "ahash 0.8.12",
+ "bitflags 2.11.1",
+ "chrono",
+ "comfy-table",
+ "indenter",
+ "insta",
+ "itertools 0.10.5",
+ "pretty_assertions",
+ "rand 0.10.1",
+ "rmp",
+ "rmp-serde",
+ "rmpv",
+ "serde",
+ "serde_yaml",
+ "smallvec",
+ "smol_str",
+ "sql-ir",
+ "sql-protocol",
+ "sql-type-system",
+ "tarantool",
+ "time",
+ "twox-hash",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "sql-planner"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "pretty_assertions",
+ "rand 0.10.1",
+ "smol_str",
+ "sql-executor",
+ "sql-frontend",
+ "sql-ir",
+ "sql-planner",
+ "tarantool",
 ]
 
 [[package]]

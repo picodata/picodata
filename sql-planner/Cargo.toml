@@ -9,46 +9,24 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ahash = { workspace = true }
-base64ct = { version = "1.5", features = ["alloc"] }
-bincode = "1.3"
-bitflags = { version = "2.9.1", features = ["serde"] }
-blake3 = "1.3"
-chrono = { workspace = true }
-comfy-table = { workspace = true }
-hash32 = "0.2"
-indenter = { workspace = true }
-itertools = "0.10"
-lazy_static = "1.4"
-lru = "0.16.0"
-pest = "2.0"
-pest_derive = "2.0"
-rand = { workspace = true }
-regex = { workspace = true }
-rmp = { workspace = true }
-rmp-serde = { workspace = true }
-rmpv = { workspace = true }
-serde = { workspace = true, features = ["derive", "rc"] }
-sql-protocol = { workspace = true }
-serde_bytes = { workspace = true }
+sql-executor = { path = "../sql-executor" }
+sql-frontend = { path = "../sql-frontend" }
+sql-ir = { path = "../sql-ir" }
 smol_str = { workspace = true }
-twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_64", "std"] }
-sqlformat = "0.4"
-sql-type-system = { path = "../sql-type-system" }
 tarantool = { workspace = true, features = ["extra_impls"] }
-thiserror = { workspace = true }
-time = { workspace = true, features = ["parsing", "formatting", "macros"] }
-uuid = { version = "1.1", features = ["v4", "fast-rng", "macro-diagnostics"] }
-smallvec = { workspace = true }
 
 [dev-dependencies]
-pretty_assertions = { workspace = true }
-serde_yaml = "0.9.34"
 insta = { workspace = true, features = ["yaml"] }
+pretty_assertions = { workspace = true }
+rand = { workspace = true }
+smol_str = { workspace = true }
 tarantool = { workspace = true, features = ["standalone_decimal","extra_impls"] }
+# Self-referential dev-dependency: forces the `mock` feature on for the
+# whitebox test suite in tests/ without affecting downstream builds.
+sql-planner = { path = ".", features = ["mock"] }
 
 [lib]
 name = "sql"
 
 [features]
-mock = []
+mock = ["sql-ir/mock", "sql-executor/mock", "sql-frontend/mock"]
