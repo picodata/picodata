@@ -3,7 +3,6 @@ use crate::ir::distribution::{Distribution, Key};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::{Node64, NodeId};
 use crate::ir::relation::Column;
-use crate::ir::transformation::helpers::sql_to_ir;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
 use pretty_assertions::assert_eq;
 use std::collections::HashSet;
@@ -17,11 +16,7 @@ fn inner_join1() {
         (SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist2") AS "t2"
         ON ("t1"."identification_number", "t1"."product_code") = ("t2"."pc", "t2"."id")"#;
 
-    let plan = sql_to_ir(query, vec![])
-        .analyze_equality_facts()
-        .unwrap()
-        .add_motions()
-        .unwrap();
+    let plan = super::optimized_to_motions(query);
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -49,11 +44,7 @@ fn inner_join2() {
         UNION ALL
         SELECT "hash_testing_hist2"."product_code", "hash_testing_hist2"."identification_number" FROM "hash_testing_hist2")"#;
 
-    let plan = sql_to_ir(query, vec![])
-        .analyze_equality_facts()
-        .unwrap()
-        .add_motions()
-        .unwrap();
+    let plan = super::optimized_to_motions(query);
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -108,11 +99,7 @@ fn inner_join3() {
             ON "t3"."id" = "t8"."identification_number"
         WHERE "t3"."id" = 1 AND "t8"."identification_number" = 1"#;
 
-    let plan = sql_to_ir(query, vec![])
-        .analyze_equality_facts()
-        .unwrap()
-        .add_motions()
-        .unwrap();
+    let plan = super::optimized_to_motions(query);
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -150,11 +137,7 @@ fn inner_join4() {
         INNER JOIN "t" as "t2"
         ON ("t1"."identification_number", "t1"."product_code") = ("t2"."d", "t2"."a")"#;
 
-    let plan = sql_to_ir(query, vec![])
-        .analyze_equality_facts()
-        .unwrap()
-        .add_motions()
-        .unwrap();
+    let plan = super::optimized_to_motions(query);
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -176,7 +159,7 @@ fn inner_join4() {
 fn insert1() {
     let query = r#"INSERT INTO "t" SELECT "d", "c", "b", "a" FROM "t""#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let plan = super::optimized_to_motions(query);
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -198,7 +181,7 @@ fn insert1() {
 fn insert2() {
     let query = r#"INSERT INTO "t" SELECT * FROM "t""#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let plan = super::optimized_to_motions(query);
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -220,7 +203,7 @@ fn insert2() {
 fn insert3() {
     let query = r#"INSERT INTO "t" ("a", "b") SELECT "a", "b" FROM "t""#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let plan = super::optimized_to_motions(query);
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -242,7 +225,7 @@ fn insert3() {
 fn insert4() {
     let query = r#"INSERT INTO "t" ("b", "a") SELECT "a", "b" FROM "t""#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let plan = super::optimized_to_motions(query);
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -264,7 +247,7 @@ fn insert4() {
 fn insert5() {
     let query = r#"INSERT INTO "t" ("c", "d", "b") SELECT "a", "c", "b" FROM "t""#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let plan = super::optimized_to_motions(query);
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -283,7 +266,7 @@ fn insert5() {
 fn insert6() {
     let query = r#"INSERT INTO "t" ("c", "b") SELECT "b", "c" FROM "t""#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let plan = super::optimized_to_motions(query);
     let motion_id = *plan.slices.slice(0).unwrap().position(0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {

@@ -3,6 +3,7 @@ use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::executor::engine::helpers::table_name;
 use crate::executor::ir::ExecutionPlan;
 
+use crate::executor::Stage;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::Node;
 use crate::ir::transformation::helpers::sql_to_ir;
@@ -17,19 +18,10 @@ fn check_sql_with_snapshot(
     params: Vec<Value>,
     snapshot: Snapshot,
 ) -> PatternWithParams {
-    let plan = sql_to_ir(query, params)
-        .replace_in_operator()
-        .unwrap()
-        .push_down_not()
-        .unwrap()
-        .split_columns()
-        .unwrap()
-        .set_dnf()
-        .unwrap()
-        .analyze_equality_facts()
-        .unwrap()
-        .merge_tuples()
-        .unwrap();
+    let plan = sql_to_ir(query, params);
+    let top_id = plan.get_top().unwrap();
+    // Render the plan as it stands just before motion planning.
+    let plan = plan.optimize_before(top_id, Stage::AddMotions).unwrap();
     let ex_plan = ExecutionPlan::new(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
 

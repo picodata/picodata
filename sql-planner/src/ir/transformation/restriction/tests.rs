@@ -1,28 +1,24 @@
+use crate::executor::Stage;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{BoolExpr, NodeId};
 use crate::ir::operator::Bool;
 use crate::ir::transformation::helpers::sql_to_ir_without_bind;
-use crate::ir::transformation::restriction::{Restriction, RestrictionBuilder, Restrictions};
+use crate::ir::transformation::restriction::{Restriction, Restrictions};
 use crate::ir::Plan;
 
-/// Build a plan, run the same prefix passes the optimizer runs before the
-/// restriction pass (so `IN` is already `OR`-expanded and `(a, b) = (1, 2)` is
-/// already split into per-column equalities), then build the restrictions.
+/// Build the input the restriction pass sees in production (`IN` already
+/// `OR`-expanded, `(a, b) = (1, 2)` already split into per-column equalities)
+/// via [`Plan::optimize_before`], then run the restriction pass itself and
+/// return the restrictions it stored on the plan.
 fn restrictions(query: &str) -> (Plan, Restrictions) {
     let plan = sql_to_ir_without_bind(query, &[]);
     let top = plan.top.unwrap();
     let plan = plan
-        .replace_in_operator_in_subtree(top)
+        .optimize_before(top, Stage::Restrictions)
         .unwrap()
-        .push_down_not_in_subtree(top)
-        .unwrap()
-        .cast_constants()
-        .unwrap()
-        .fold_boolean_tree()
-        .unwrap()
-        .split_columns_in_subtree(top)
+        .analyze_restrictions_in_subtree(top)
         .unwrap();
-    let restrictions = RestrictionBuilder::build(&plan, top).unwrap();
+    let restrictions = plan.restrictions.clone().unwrap();
     (plan, restrictions)
 }
 

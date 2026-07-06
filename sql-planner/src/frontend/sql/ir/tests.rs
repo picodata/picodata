@@ -1,5 +1,6 @@
 use crate::errors::SbroadError;
 use crate::executor::engine::mock::RouterConfigurationMock;
+use crate::executor::Stage;
 use crate::frontend::sql::ast::{AbstractSyntaxTree, ParseTree, ParsingPairsMap, Rule};
 use crate::frontend::sql::transform_into_plan;
 use crate::ir::node::relational::Relational;
@@ -17,19 +18,11 @@ use std::collections::HashMap;
 
 fn sql_to_optimized_ir_add_motions_err(query: &str) -> SbroadError {
     let metadata = &RouterConfigurationMock::new();
-    transform_into_plan(query, &[], metadata)
-        .unwrap()
-        .replace_in_operator()
-        .unwrap()
-        .push_down_not()
-        .unwrap()
-        .split_columns()
-        .unwrap()
-        .set_dnf()
-        .unwrap()
-        .analyze_equality_facts()
-        .unwrap()
-        .merge_tuples()
+    let plan = transform_into_plan(query, &[], metadata).unwrap();
+    let top_id = plan.get_top().unwrap();
+    // Everything up to motion planning succeeds; the error we assert on is
+    // produced by `add_motions` itself.
+    plan.optimize_before(top_id, Stage::AddMotions)
         .unwrap()
         .add_motions()
         .unwrap_err()

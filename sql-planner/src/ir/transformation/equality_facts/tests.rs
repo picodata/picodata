@@ -1,14 +1,20 @@
+use crate::executor::Stage;
 use crate::ir::node::NodeId;
-use crate::ir::transformation::equality_facts::{EqualityAnalysis, EqualityFacts, Slot};
+use crate::ir::transformation::equality_facts::Slot;
 use crate::ir::transformation::helpers::sql_to_ir_without_bind;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
-fn equalities_facts(query: &str, params: Vec<Value>) -> (Plan, EqualityFacts) {
+fn optimized_to_equality_facts(query: &str, params: Vec<Value>) -> Plan {
     let params_types: Vec<_> = params.iter().map(|v| v.get_type()).collect();
     let plan = sql_to_ir_without_bind(query, &params_types);
-    let facts = EqualityAnalysis::get_equality_facts(&plan, plan.top.unwrap()).unwrap();
-    (plan, facts)
+    let top_id = plan.get_top().unwrap();
+    // Build the input the equality-facts pass sees in production, then run the
+    // pass itself so it is explicit in the test.
+    plan.optimize_before(top_id, Stage::EqualityFacts)
+        .unwrap()
+        .analyze_equality_facts_in_subtree(top_id)
+        .unwrap()
 }
 
 #[test]
@@ -16,7 +22,8 @@ fn equality_facts_1() {
     let input = r#"SELECT "a" FROM "t"
     WHERE "a" = 1 AND "b" = 2 AND "c" = 1 OR "d" = 1"#;
 
-    let (_, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     // we have 2 DNF chains:
     // 1) "a" = 1 AND "b" = 2 AND "c" = 1
@@ -32,7 +39,8 @@ fn equality_facts_1() {
 fn equality_facts_2() {
     let input = r#"SELECT "a", "b" FROM "t"
     WHERE "a" = NULL AND NULL = "b""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     // Both predicates compare against NULL.  Since `x = NULL` evaluates to
     // UNKNOWN (never TRUE), the WHERE clause is unsatisfiable — no row can
@@ -53,7 +61,8 @@ fn equality_facts_2() {
 fn equality_facts_3() {
     let input = r#"SELECT "a" FROM "t"
     WHERE "a" = 1 AND "b" = null AND "a" = null"#;
-    let (_, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     // Any `= NULL` conjunct makes the entire AND-chain unsatisfiable (that
     // conjunct is UNKNOWN, so the whole AND is UNKNOWN and no row matches).
@@ -69,7 +78,8 @@ fn equality_facts_3() {
 fn equality_facts_4() {
     let input = r#"SELECT "a", "b" FROM "t"
     WHERE "a" = 1 AND "b" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     // Both "a" and "b" equal the same literal 1, so they are transitively
     // equal to each other and land in the same equivalence class with const = 1.
@@ -84,7 +94,8 @@ fn equality_facts_4() {
 fn equality_facts_5() {
     let input = r#"SELECT "a", "b", "c", "d" FROM "t"
     WHERE "a" = 1 AND "b" = 1 AND "c" = 2 AND "d" = 2"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     // Two independent constant groups: {a, b} = 1 and {c, d} = 2.
     // Columns within each group share the same equivalence class; columns
@@ -113,7 +124,8 @@ fn equality_facts_6() {
     let input = r#"SELECT "t"."a", "t"."b", "t1"."a", "t1"."b"
     FROM "t" join "t1_2" as "t1"
         ON "t1"."a" = 1 AND "t"."a" = 1 AND "t1"."b" = 2 AND "t"."b" = 2"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     // An INNER JOIN's ON condition behaves like a WHERE for fact derivation.
     // All four constants (t.a = 1, t.b = 2, t1.a = 1, t1.b = 2) flow to the
@@ -142,7 +154,8 @@ fn equality_facts_7() {
     let input = r#"SELECT "t"."a", "t"."b", "t1"."a", "t1"."b"
     FROM "t" left join "t1_2" as "t1"
         ON "t1"."a" = 1 AND "t"."a" = 1 AND "t1"."b" = 2 AND "t"."b" = 2"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     // Condition in outer join doesn't affect equality facts
     let top_id = plan.top.unwrap();
@@ -164,8 +177,8 @@ fn equality_facts_8() {
     let input = r#"SELECT "t"."a", "t1"."a", "t"."b", "t1"."b"
     FROM "t" join "t1_2" as "t1"
         ON "t1"."a" = $1 AND "t"."a" = $1 AND "t1"."b" = $2 AND "t"."b" = $2"#;
-    let (plan, equalities_facts) =
-        equalities_facts(input, vec![Value::Integer(1), Value::Integer(2)]);
+    let plan = optimized_to_equality_facts(input, vec![Value::Integer(1), Value::Integer(2)]);
+    let equalities_facts = plan.facts.unwrap();
 
     // $1 appears on both sides of the join condition for column "a", and $2
     // for column "b".  The same parameter on both sides bridges the two
@@ -188,8 +201,8 @@ fn equality_facts_8() {
 fn equality_facts_9() {
     let input = r#"SELECT "a", "b" FROM "t"
     WHERE "a" = $1 AND "b" = $2"#;
-    let (plan, equalities_facts) =
-        equalities_facts(input, vec![Value::Integer(1), Value::Integer(1)]);
+    let plan = optimized_to_equality_facts(input, vec![Value::Integer(1), Value::Integer(1)]);
+    let equalities_facts = plan.facts.unwrap();
 
     // $1 and $2 are different parameter indices, so "a" = $1 and "b" = $2
     // place a and b into separate equivalence classes even when the runtime
@@ -207,7 +220,8 @@ fn equality_facts_9() {
 fn equality_facts_col_eq_col_basic() {
     // "a" = "b" → a and b are in the same class, no const binding
     let input = r#"SELECT "a", "b" FROM "t" WHERE "a" = "b""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -221,7 +235,8 @@ fn equality_facts_col_eq_col_basic() {
 fn equality_facts_col_eq_col_transitivity() {
     // a=b AND b=c → all three in the same class
     let input = r#"SELECT "a", "b", "c" FROM "t" WHERE "a" = "b" AND "b" = "c""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -235,7 +250,8 @@ fn equality_facts_col_eq_col_transitivity() {
 fn equality_facts_col_eq_col_with_const() {
     // a=b AND a=1 → a and b in same class with const=1
     let input = r#"SELECT "a", "b" FROM "t" WHERE "a" = "b" AND "a" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -258,7 +274,8 @@ fn equality_facts_or_col_eq_col_survives() {
     // (a=b AND c=1) OR (a=b AND d=2) → a=b survives, c=1 and d=2 do not
     let input = r#"SELECT "a", "b", "c", "d" FROM "t"
     WHERE "a" = "b" AND "c" = 1 OR "a" = "b" AND "d" = 2"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -277,7 +294,8 @@ fn equality_facts_dead_or_branch_skipped() {
     // If intersection were used instead of skip, the result would be empty.
     let input = r#"SELECT "a", "b" FROM "t"
     WHERE ("a" = 1 AND "a" = 2) OR "b" = 3"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -292,7 +310,8 @@ fn equality_facts_all_or_branches_dead() {
     // All branches are contradictions → no facts at all
     let input = r#"SELECT "a", "b" FROM "t"
     WHERE ("a" = 1 AND "a" = 2) OR ("b" = 1 AND "b" = 2)"#;
-    let (_, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     assert!(equalities_facts
         .classes
@@ -306,7 +325,8 @@ fn equality_facts_dead_null_branch() {
     // the surviving branch b = 5 is the only live one → b = 5 is derived
     let input = r#"SELECT "a", "b" FROM "t"
     WHERE a = NULL and b = 1 or b = 5"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.const_of_slot(top_id, 0);
@@ -321,7 +341,8 @@ fn equality_facts_dead_branch_with_null() {
     // the surviving branch b = 5 is the only live one → b = 5 is derived
     let input = r#"SELECT "a", "b" FROM "t"
     WHERE NULL and b = 1 or b = 5"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.const_of_slot(top_id, 0);
@@ -336,7 +357,8 @@ fn equality_facts_dead_branch_with_false() {
     // the surviving branch b = 5 is the only live one → b = 5 is derived
     let input = r#"SELECT "a", "b" FROM "t"
     WHERE false and b = 1 or b = 5"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.const_of_slot(top_id, 0);
@@ -352,7 +374,8 @@ fn equality_facts_row_eq_row() {
     // (a, b) = (c, d) → two independent classes: {a,c} and {b,d}
     let input = r#"SELECT "a", "b", "c", "d" FROM "t"
     WHERE ("a", "b") = ("c", "d")"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -368,7 +391,8 @@ fn equality_facts_row_eq_row() {
 fn equality_facts_row_eq_const_row() {
     // (a, b) = (1, 2) → a=1, b=2 in separate classes
     let input = r#"SELECT "a", "b" FROM "t" WHERE ("a", "b") = (1, 2)"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -392,7 +416,8 @@ fn equality_facts_same_param_bridges_columns() {
     // shared parameter), but the class has no known constant because $1 is
     // a parameter, not a literal.
     let input = r#"SELECT "a", "b" FROM "t" WHERE "a" = $1 AND "b" = $1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![Value::Integer(42)]);
+    let plan = optimized_to_equality_facts(input, vec![Value::Integer(42)]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -409,7 +434,8 @@ fn equality_facts_param_and_const_propagation() {
     // parameter and a literal.  Since $1 is not a compile-time value, the
     // class is bound to the literal 1.
     let input = r#"SELECT "a" FROM "t" WHERE "a" = $1 AND "a" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![Value::Integer(1)]);
+    let plan = optimized_to_equality_facts(input, vec![Value::Integer(1)]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -425,7 +451,8 @@ fn equality_facts_safe_projection_passthrough() {
     // A subquery that simply re-selects its columns preserves equality
     // facts: the inner WHERE's `a = 1` is visible on the outer SELECT's output.
     let input = r#"SELECT "a", "b" FROM (SELECT "a", "b" FROM "t" WHERE "a" = 1)"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -440,7 +467,8 @@ fn equality_facts_computed_projection_breaks_chain() {
     // column reference, so the outer "x" is a new column unrelated to "a".
     // The inner fact `a = 1` cannot be restated as `x = anything`.
     let input = r#"SELECT "x" FROM (SELECT "a" + 1 as "x" FROM "t" WHERE "a" = 1)"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -453,7 +481,8 @@ fn equality_facts_inner_join_col_eq_col() {
     // INNER JOIN ON t.a = t1.b → the two output slots are in the same class
     let input = r#"SELECT "t"."a", "t1"."b"
     FROM "t" JOIN "t1_2" AS "t1" ON "t"."a" = "t1"."b""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -468,7 +497,8 @@ fn equality_facts_inner_join_transitivity_through_join() {
     FROM "t"
     JOIN "t" AS "t1" ON "t"."a" = "t1"."b"
     JOIN "t" AS "t2" ON "t1"."b" = "t2"."c""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -486,7 +516,8 @@ fn equality_facts_subquery_is_isolated() {
     // The outer column "a" should not get const=1 just because "b"=1 inside.
     let input = r#"SELECT "a" FROM "t"
     WHERE "a" = (SELECT "b" FROM "t1_2" WHERE "b" = 1)"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     // Outer "a" has no const fact (the subquery result is opaque)
@@ -501,7 +532,8 @@ fn equality_facts_same_subqueries_are_isolated() {
         FROM (SELECT a FROM t) AS l
         JOIN (SELECT a FROM t) AS r ON true
         WHERE l.a = 5;"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -517,7 +549,8 @@ fn equality_facts_same_subqueries_are_isolated() {
 fn equality_facts_self_equality_is_noop() {
     // "a" = "a" — both sides are the same slot, union-find is idempotent, no crash
     let input = r#"SELECT "a" FROM "t" WHERE "a" = "a""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     // No const fact, but also no panic
@@ -530,7 +563,8 @@ fn equality_facts_self_equality_is_noop() {
 fn equality_facts_non_eq_predicate_generates_no_fact() {
     // "a" > 1 is not an equality → no facts at all
     let input = r#"SELECT "a" FROM "t" WHERE "a" > 1"#;
-    let (_, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     assert!(equalities_facts
         .classes
@@ -546,7 +580,8 @@ fn equality_facts_projection_reorders_columns() {
     // `a = 1` must follow column "a" to its new output position (slot 1),
     // not stay at slot 0 (now "b").
     let input = r#"SELECT "b", "a" FROM "t" WHERE "a" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none()); // b
@@ -563,7 +598,8 @@ fn equality_facts_nested_selections_merge_facts() {
     // Two Selection nodes stacked: inner adds b=2, outer adds a=1.
     // Both facts must appear on the outermost output.
     let input = r#"SELECT "a", "b" FROM (SELECT "a", "b" FROM "t" WHERE "b" = 2) WHERE "a" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -582,7 +618,8 @@ fn equality_facts_nested_selections_merge_facts() {
 fn equality_facts_long_transitivity_chain() {
     // a=b AND b=c AND c=1 — const must propagate through the full chain to a and b.
     let input = r#"SELECT "a", "b", "c" FROM "t" WHERE "a" = "b" AND "b" = "c" AND "c" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -612,7 +649,8 @@ fn equality_facts_distinct_breaks_propagation() {
     // fact about an input row's value does not translate to a fact about
     // the DISTINCT output.  The inner `a = 1` must not reach the outer output.
     let input = r#"SELECT DISTINCT "a" FROM "t" WHERE "a" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -630,7 +668,8 @@ fn equality_facts_left_join_left_where_flows_right_join_does_not() {
     let input = r#"SELECT "t"."a", "t2"."b"
     FROM "t" LEFT JOIN "t1_2" AS "t2" ON "t2"."b" = 1
     WHERE "t"."a" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -648,7 +687,8 @@ fn equality_facts_or_const_survives_when_in_all_branches() {
     // b=2 and c=3 are branch-local and must not survive.
     let input = r#"SELECT "a", "b", "c" FROM "t"
     WHERE "a" = 1 AND "b" = 2 OR "a" = 1 AND "c" = 3"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -670,7 +710,8 @@ fn equality_facts_union_all_no_facts_on_output() {
     let input = r#"SELECT "a" FROM "t" WHERE "a" = 1
     UNION ALL
     SELECT "a" FROM "t1_2" WHERE "a" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -684,7 +725,8 @@ fn equality_facts_union_branches_with_different_consts_no_facts() {
     let input = r#"SELECT "a", "b" FROM "t" WHERE "a" = 1 AND "b" = 2
     UNION
     SELECT "a", "b" FROM "t1_2" WHERE "a" = 3 AND "b" = 4"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -699,7 +741,8 @@ fn equality_facts_limit_breaks_propagation() {
     // from inside the LIMIT do not describe the outer result.  The inner
     // `a = 1` must not reach the outer output.
     let input = r#"SELECT "a" FROM (SELECT "a" FROM "t" WHERE "a" = 1 LIMIT 10)"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -712,7 +755,8 @@ fn equality_facts_order_by_breaks_propagation() {
     // treats Sort nodes as opaque barriers anyway (conservative choice): facts
     // are not propagated through them.
     let input = r#"SELECT "a" FROM (SELECT "a" FROM "t" WHERE "a" = 1 ORDER BY "a")"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -729,7 +773,8 @@ fn equality_facts_subquery_with_union_inside_is_unsafe() {
     WHERE "a" = (SELECT "a" FROM "t1_2" WHERE "a" = 1
                  UNION ALL
                  SELECT "a" FROM "t1_2" WHERE "a" = 1)"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -744,7 +789,8 @@ fn equality_facts_cte_isolation() {
     // inside the CTE body (a = 1) must not be claimed about the outer
     // SELECT's output, even when the CTE is the only source.
     let input = r#"WITH cte (a) AS (SELECT "a" FROM "t" WHERE "a" = 1) SELECT * FROM cte"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -764,7 +810,8 @@ fn equality_facts_cte_referenced_twice_in_join() {
         SELECT "l"."a", "r"."a"
         FROM cte AS "l" JOIN cte AS "r" ON "l"."a" = "r"."a"
     "#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -787,7 +834,8 @@ fn equality_facts_cte_referenced_twice_outer_facts_are_per_site() {
         FROM cte AS "l" JOIN cte AS "r" ON true
         WHERE "l"."a" = 5 AND "r"."a" = 7
     "#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let l_const = equalities_facts.const_of_slot(top_id, 0).unwrap();
@@ -812,7 +860,8 @@ fn equality_facts_cte_referenced_twice_body_fact_does_not_leak_across_sites() {
         FROM cte AS "l" JOIN cte AS "r" ON true
         WHERE "l"."a" = 2
     "#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -830,7 +879,8 @@ fn equality_facts_multi_level_safe_subquery() {
     // outer column "a" is the same column as the innermost one.  The
     // WHERE fact `a = 1` must reach the outermost output through both layers.
     let input = r#"SELECT "a" FROM (SELECT "a" FROM (SELECT "a" FROM "t" WHERE "a" = 1))"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -846,7 +896,8 @@ fn equality_facts_is_null_with_eq_same_slot_makes_chain_dead() {
     // "a" IS NULL AND "a" = "b": since "a" IS NULL, "a" = "b" evaluates to
     // NULL (not TRUE), so the chain is unsatisfiable → no facts at all.
     let input = r#"SELECT "a", "b" FROM "t" WHERE "a" IS NULL AND "a" = "b""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -863,7 +914,8 @@ fn equality_facts_is_null_with_eq_own_slot_makes_chain_dead() {
     // NULL = NULL evaluates to UNKNOWN, not TRUE.  The surviving branch
     // "b" = 5 must surface as the only live fact.
     let input = r#"SELECT "a", "b" FROM "t" WHERE "a" IS NULL AND "a" = "a" OR "b" = 5"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -882,7 +934,8 @@ fn equality_facts_is_null_with_eq_wrapped_self_makes_chain_dead() {
     // must produce a fact.
     let input =
         r#"SELECT "a", "b" FROM "t" WHERE "a" IS NULL AND cast("a" as int) = "a" OR "b" = 5"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let b = equalities_facts.const_of_slot(top_id, 1).unwrap();
@@ -894,7 +947,8 @@ fn equality_facts_is_null_does_not_invalidate_unrelated_eq() {
     // "a" IS NULL AND "b" = "c": "a" IS NULL does not affect "b" = "c",
     // so the fact b ≡ c must still be derived.
     let input = r#"SELECT "a", "b", "c" FROM "t" WHERE "a" IS NULL AND "b" = "c""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let b = equalities_facts.class_of_slot(top_id, 1).unwrap();
@@ -913,7 +967,8 @@ fn equality_facts_inner_join_inside_safe_subquery() {
     let input = r#"SELECT "t"."a" FROM (
         SELECT "t"."a" FROM "t" JOIN "t1_2" AS "t1" ON "t"."a" = "t1"."a" WHERE "t"."a" = 5
     ) AS "t""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -931,8 +986,8 @@ fn equality_facts_row_eq_params_no_const() {
     // equivalence classes, and neither class has a known constant since
     // the right-hand sides are parameters, not literals.
     let input = r#"SELECT "a", "b" FROM "t" WHERE ("a", "b") = ($1, $2)"#;
-    let (plan, equalities_facts) =
-        equalities_facts(input, vec![Value::Integer(1), Value::Integer(2)]);
+    let plan = optimized_to_equality_facts(input, vec![Value::Integer(1), Value::Integer(2)]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -954,7 +1009,8 @@ fn equality_facts_conflicting_consts_across_selections() {
     // value — no constant is reported, and the class is marked
     // contradictory (ec_broken) so consumers can prune to empty.
     let input = r#"SELECT "a" FROM (SELECT "a" FROM "t" WHERE "a" = 1) WHERE "a" = 2"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -967,7 +1023,8 @@ fn equality_facts_non_conflicting_consts_are_not_contradictory() {
     // constant must not be marked contradictory.  The conflict flag is
     // strictly for the `ec_broken` case (two non-equal constants merged).
     let input = r#"SELECT "a", "b" FROM "t" WHERE "a" = 1 AND "b" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert_eq!(
@@ -989,7 +1046,8 @@ fn equality_facts_window_breaks_propagation() {
     let input = r#"SELECT "a" FROM (
         SELECT "a", count(*) OVER () AS "cnt" FROM "t" WHERE "a" = 1
     )"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -1006,7 +1064,8 @@ fn equality_facts_group_by_breaks_propagation() {
     let input = r#"SELECT "a" FROM (
         SELECT "a" FROM "t" WHERE "a" = 1 GROUP BY "a"
     )"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -1019,7 +1078,8 @@ fn equality_facts_having_breaks_propagation() {
     let input = r#"SELECT "a" FROM (
         SELECT "a" FROM "t" WHERE "a" = 1 GROUP BY "a" HAVING count(*) > 0
     )"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -1033,7 +1093,8 @@ fn equality_facts_is_not_null_does_not_poison_eq() {
     // not restrict "a" to be NULL, so it must not prevent `a = b` from
     // unifying a and b into one equivalence class.
     let input = r#"SELECT "a", "b" FROM "t" WHERE "a" IS NOT NULL AND "a" = "b""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -1049,7 +1110,8 @@ fn equality_facts_is_null_invalidates_slot_const() {
     // equal to 1.  No row matches, so no equality facts can be derived —
     // in particular, "a" must not be reported as bound to 1.
     let input = r#"SELECT "a" FROM "t" WHERE "a" IS NULL AND "a" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -1063,7 +1125,8 @@ fn equality_facts_computed_expr_side_yields_no_fact() {
     // does NOT mean `a = b` (e.g., a=1, b=2 satisfies it).  Columns a and
     // b must remain in separate equivalence classes.
     let input = r#"SELECT "a", "b" FROM "t" WHERE "a" + 1 = "b""#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -1081,7 +1144,8 @@ fn equality_facts_except_no_facts_on_output() {
     let input = r#"SELECT "a" FROM "t" WHERE "a" = 1
     EXCEPT
     SELECT "a" FROM "t1_2" WHERE "a" = 2"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -1096,7 +1160,8 @@ fn equality_facts_update_with_where_does_not_panic() {
     // so facts from the WHERE clause must not be claimed about UPDATE's
     // output columns.
     let input = r#"UPDATE "t" SET "c" = 0 WHERE "a" = 1"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     // UPDATE's own output column 0 must not inherit the WHERE constant.
     let top_id = plan.top.unwrap();
@@ -1111,7 +1176,8 @@ fn equality_facts_select_from_values_no_facts() {
     // conditions — there are no equality predicates to derive facts from.
     // The analyzer must walk this plan without emitting any facts.
     let input = r#"SELECT * FROM (VALUES (1, 2))"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -1129,8 +1195,8 @@ fn equality_facts_param_and_const_in_multiple_classes() {
     // than the literal.
     let input = r#"SELECT "a", "b" FROM "t"
     WHERE "a" = $1 AND "a" = 1 AND "b" = $2 AND "b" = 2"#;
-    let (plan, equalities_facts) =
-        equalities_facts(input, vec![Value::Integer(1), Value::Integer(2)]);
+    let plan = optimized_to_equality_facts(input, vec![Value::Integer(1), Value::Integer(2)]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
@@ -1161,7 +1227,8 @@ fn equality_facts_three_way_const_conflict() {
             SELECT "a" FROM "t" WHERE "a" = 1
         ) WHERE "a" = 2
     ) WHERE "a" = 3"#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -1181,7 +1248,8 @@ fn equality_facts_subquery_between_literals() {
         SELECT "a" FROM "t"
         WHERE (SELECT "a" FROM "t" WHERE "a" = 5) BETWEEN 1 AND 2
     "#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -1198,7 +1266,8 @@ fn equality_facts_subquery_between_literals_with_sibling_eq() {
         WHERE (SELECT "a" FROM "t" WHERE "a" = 5) BETWEEN 1 AND 2
           AND "b" = 7
     "#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
 
     let top_id = plan.top.unwrap();
     assert!(equalities_facts.const_of_slot(top_id, 0).is_none());
@@ -1261,7 +1330,8 @@ fn equality_facts_lj_scope_built_for_cross_side_eq() {
         SELECT "t"."a", "t1"."a"
         FROM "t" LEFT JOIN "t1_2" AS "t1" ON "t"."a" = "t1"."a"
     "#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.clone().unwrap();
     assert_eq!(
         equalities_facts.scopes.len(),
         1,
@@ -1307,7 +1377,8 @@ fn equality_facts_lj_scope_promotes_global_const_to_group() {
         FROM "t" LEFT JOIN "t1_2" AS "t1" ON "t"."a" = "t1"."a"
         WHERE "t"."a" = 5
     "#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.clone().unwrap();
     let scope = equalities_facts.scopes.values().next().unwrap();
     let info = scope.repr_info.iter().next().unwrap();
     assert_eq!(info.constant.as_ref(), Some(&Value::from(5)));
@@ -1339,7 +1410,8 @@ fn equality_facts_lj_scope_only_constant_in_on() {
         SELECT "t1"."a"
         FROM "t" LEFT JOIN "t1_2" AS "t1" ON "t1"."a" = 5
     "#;
-    let (plan, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.clone().unwrap();
     let scope = equalities_facts.scopes.values().next().unwrap();
     let info = scope.repr_info.iter().next().unwrap();
     assert_eq!(info.constant.as_ref(), Some(&Value::from(5)));
@@ -1369,7 +1441,8 @@ fn equality_facts_lj_scope_absent_when_on_has_no_eq() {
         SELECT "t"."a", "t1"."a"
         FROM "t" LEFT JOIN "t1_2" AS "t1" ON "t"."a" > "t1"."a"
     "#;
-    let (_, equalities_facts) = equalities_facts(input, vec![]);
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let equalities_facts = plan.facts.unwrap();
     assert!(
         equalities_facts.scopes.is_empty(),
         "no eq facts in ON => no scope entry"

@@ -64,6 +64,34 @@ pub mod result;
 pub mod vdbe;
 pub mod vtable;
 
+/// A pass in the [`Plan::optimize_before`] transformation pipeline, used as a
+/// stop point when running the pipeline only partway (e.g. in tests):
+/// `optimize_before(Stage::X)` runs everything up to but *not including* `X`.
+/// The variants are listed in the order the passes run.
+//
+// Only referenced by the `cfg(test)` early-returns in `optimize_before`, so the
+// pass variants read as dead code in production builds.
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Stage {
+    ReplaceInOperator,
+    PushDownNot,
+    CastConstants,
+    FoldBooleanTree,
+    SplitColumns,
+    Restrictions,
+    Dnf,
+    EqualityFacts,
+    MergeTuples,
+    AddMotions,
+    UpdateSubstring,
+    MarkUniqueParameters,
+    /// Terminal sentinel: comes after every pass, so `optimize_before(End)`
+    /// stops before nothing and runs the whole pipeline. This is what
+    /// production (`optimize_subtree`) passes.
+    End,
+}
+
 impl Plan {
     /// Apply optimization rules to the plan.
     ///
@@ -74,25 +102,90 @@ impl Plan {
         self.optimize_subtree(top_id)
     }
 
+    /// Run the optimizer transformation passes in order, stopping *right before*
+    /// `stop` runs — so `stop` itself is NOT applied. This is the single source
+    /// of truth for the pass sequence: [`Plan::optimize_subtree`] runs the whole
+    /// chain, while a test uses it to build the input for the pass it exercises
+    /// (e.g. `optimize_before(top, Stage::Dnf)`), then runs that pass itself and
+    /// inspects the result. Deriving the prefix here keeps the test input in
+    /// lockstep with production and robust to pass reordering.
+    ///
+    /// # Errors
+    /// - A pass failed.
+    // Outside test builds `stop` is always `Stage::End` (from `optimize_subtree`)
+    // and the early-returns are compiled out, so production runs a plain pass
+    // chain. The param is only honored under `cfg(test)`.
+    #[cfg_attr(not(test), allow(unused_variables))]
+    pub(crate) fn optimize_before(self, top_id: NodeId, stop: Stage) -> Result<Self, SbroadError> {
+        let mut plan = self;
+        // Each `stage!`, in test builds, returns the current plan right before
+        // its pass would run. The order of these lines *is* the pipeline order.
+        // `plan` is threaded through as an ident arg so the assignment target and
+        // the `$call` both bind to this function's `plan` (macro hygiene).
+        macro_rules! stage {
+            ($plan:ident, $s:expr, $call:expr) => {
+                #[cfg(test)]
+                if stop == $s {
+                    return Ok($plan);
+                }
+                $plan = $call;
+            };
+        }
+
+        stage!(
+            plan,
+            Stage::ReplaceInOperator,
+            plan.replace_in_operator_in_subtree(top_id)?
+        );
+        stage!(
+            plan,
+            Stage::PushDownNot,
+            plan.push_down_not_in_subtree(top_id)?
+        );
+        // In the case if the query was not fully parameterized
+        // and contains some constants, lets apply constant folding.
+        stage!(plan, Stage::CastConstants, plan.cast_constants()?);
+        stage!(plan, Stage::FoldBooleanTree, plan.fold_boolean_tree()?);
+        stage!(
+            plan,
+            Stage::SplitColumns,
+            plan.split_columns_in_subtree(top_id)?
+        );
+        // Build per-node restrictions over the raw boolean tree (before DNF blow-up).
+        stage!(
+            plan,
+            Stage::Restrictions,
+            plan.analyze_restrictions_in_subtree(top_id)?
+        );
+        stage!(plan, Stage::Dnf, plan.set_dnf_in_subtree(top_id)?);
+        stage!(
+            plan,
+            Stage::EqualityFacts,
+            plan.analyze_equality_facts_in_subtree(top_id)?
+        );
+        stage!(
+            plan,
+            Stage::MergeTuples,
+            plan.merge_tuples_in_subtree(top_id)?
+        );
+        stage!(
+            plan,
+            Stage::AddMotions,
+            plan.add_motions_to_subtree(top_id)?
+        );
+        stage!(plan, Stage::UpdateSubstring, plan.update_substring()?);
+        // After all transformations we can finally determine what parameters are unique.
+        stage!(
+            plan,
+            Stage::MarkUniqueParameters,
+            plan.mark_unique_parameters()?
+        );
+
+        Ok(plan)
+    }
+
     pub fn optimize_subtree(self, top_id: NodeId) -> Result<Self, SbroadError> {
-        let mut plan = self
-            .replace_in_operator_in_subtree(top_id)?
-            .push_down_not_in_subtree(top_id)?
-            // In the case if the query was not fully parameterized
-            // and contains some constants, lets apply constant folding.
-            .cast_constants()?
-            .fold_boolean_tree()?
-            .split_columns_in_subtree(top_id)?
-            // Build per-node restrictions over the raw boolean tree (before DNF
-            // blow-up).
-            .analyze_restrictions_in_subtree(top_id)?
-            .set_dnf_in_subtree(top_id)?
-            .analyze_equality_facts_in_subtree(top_id)?
-            .merge_tuples_in_subtree(top_id)?
-            .add_motions_to_subtree(top_id)?
-            .update_substring()?
-            // After all transformations we can finally determine what parameters are unique.
-            .mark_unique_parameters()?;
+        let mut plan = self.optimize_before(top_id, Stage::End)?;
 
         // Facts are only used during planning. Afterward they're dead state. Drop them
         // so they don't bloat the plan clones made on the execution/dispatch path.
