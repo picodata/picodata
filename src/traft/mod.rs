@@ -22,6 +22,7 @@ use std::fmt::Debug;
 use std::result::Result as StdResult;
 use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
+use tarantool::tuple::Tuple;
 
 pub type RaftId = u64;
 pub type RaftTerm = u64;
@@ -303,7 +304,7 @@ impl Entry {
         term: RaftTerm,
         data: &[u8],
         context: &[u8],
-    ) -> tarantool::Result<()> {
+    ) -> Result<(), usize> {
         // This capacity fits any msgpack value header and then some
         const CAPACITY: usize = 16;
         let mut dummy = [0_u8; CAPACITY];
@@ -339,7 +340,7 @@ impl Entry {
             + term_size
             + data_size
             + context_size;
-        tarantool::tuple::Tuple::check_size(space, total_size)
+        Tuple::check_size(space, total_size).map_err(|_| total_size)
     }
 }
 

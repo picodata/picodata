@@ -851,15 +851,20 @@ impl NodeImpl {
 
         // Check resulting raft log entry does not exceed the maximum tuple size limit.
         let entry = context.to_raft_entry();
-        if let Err(e) = traft::Entry::check_tuple_size(
+        if let Err(exceeded) = traft::Entry::check_tuple_size(
             RaftSpaceAccess::SPACE_ID_RAFT_LOG,
             index_before + 1,
             term,
             &[],
             &entry.context,
         ) {
-            tlog!(Warning, "tuple size exceeds the allowed limit: {e}");
-            return Err(BoxError::new(TarantoolErrorCode::MemtxMaxTupleSize, e.to_string()).into());
+            let error = format!(
+                "Too much data to replicate: the resulting tuple is too large and must fit \
+                 into a single Raft log entry no larger than the configured \
+                 `instance.memtx.max_tuple_size` (exceeded by {exceeded} bytes)"
+            );
+            tlog!(Warning, "{error}");
+            return Err(BoxError::new(TarantoolErrorCode::MemtxMaxTupleSize, error).into());
         }
 
         // Copy-pasted from `raft::raw_node::RawNode::propose`

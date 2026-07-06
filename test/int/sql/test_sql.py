@@ -7400,7 +7400,7 @@ def test_gl2825_oversized_tuple_in_raft_log(cluster: Cluster):
     data = "x" * size
     with pytest.raises(
         expected_exception=TarantoolError,
-        match="MemtxMaxTupleSize",
+        match="ER_SLAB_ALLOC_MAX",
     ):
         instance.sql(
             """

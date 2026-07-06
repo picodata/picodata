@@ -176,7 +176,9 @@ def test_cas_errors(instance: Instance):
     # name), but actual server-side code 110 is ER_MEMTX_MAX_TUPLE_SIZE.
     assert error.value.args[:2] == (
         "ER_SLAB_ALLOC_MAX",
-        "box error: MemtxMaxTupleSize: Failed to allocate 1048577 bytes for tuple: tuple is too large. Check 'memtx_max_tuple_size' configuration option.",  # noqa: E501
+        "Too much data to replicate: the resulting tuple is too large and "
+        "must fit into a single Raft log entry no larger than the configured "
+        "`instance.memtx.max_tuple_size` (exceeded by 1048563 bytes)",
     )
 
 
