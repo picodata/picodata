@@ -4,12 +4,23 @@ from conftest import log_crawler
 from conftest import ProcessDead
 from conftest import TarantoolError
 from conftest import Retriable
+from conftest import get_test_deadline
 from dataclasses import dataclass
 from dataclasses import field
 from framework.util import ExpectedError
 
 import json
 import requests
+import time
+
+
+# `WAIT APPLIED GLOBALLY` DDL round-trips through Raft on every instance.
+# Right after a fresh deploy the governor is still settling, so the default
+# RPC timeout is too tight and causes flaky client-side timeout errors.
+def _ddl_apply_timeout() -> float:
+    deadline = get_test_deadline()
+    current = time.monotonic()
+    return max(deadline - current, 1)
 
 
 @dataclass
@@ -134,56 +145,81 @@ class HealthCheck:
             # Create multiple sharded tables.
             ##########################################################
 
-            result = instance.sql(f"""
+            ddl_timeout = _ddl_apply_timeout()
+            result = instance.sql(
+                f"""
                 CREATE TABLE {products_table} (
                     id INTEGER PRIMARY KEY,
                     name STRING,
                     stock_level INTEGER
                 ) USING {engine}
                 DISTRIBUTED BY (id)
-                WAIT APPLIED GLOBALLY;
-            """)
+                WAIT APPLIED GLOBALLY
+                OPTION (TIMEOUT = {ddl_timeout});
+            """,
+                timeout=ddl_timeout,
+            )
             assert result["row_count"] == 1
 
-            result = instance.sql(f"""
+            ddl_timeout = _ddl_apply_timeout()
+            result = instance.sql(
+                f"""
                 CREATE TABLE {restock_table} (
                     product_id INTEGER PRIMARY KEY,
                     add_quantity INTEGER
                 ) USING {engine}
                 DISTRIBUTED BY (product_id)
-                WAIT APPLIED GLOBALLY;
-            """)
+                WAIT APPLIED GLOBALLY
+                OPTION (TIMEOUT = {ddl_timeout});
+            """,
+                timeout=ddl_timeout,
+            )
             assert result["row_count"] == 1
 
-            result = instance.sql(f"""
+            ddl_timeout = _ddl_apply_timeout()
+            result = instance.sql(
+                f"""
                 CREATE TABLE {archive_table} (
                     id INTEGER PRIMARY KEY,
                     name STRING
                 ) USING {engine}
                 DISTRIBUTED BY (id)
-                WAIT APPLIED GLOBALLY;
-            """)
+                WAIT APPLIED GLOBALLY
+                OPTION (TIMEOUT = {ddl_timeout});
+            """,
+                timeout=ddl_timeout,
+            )
             assert result["row_count"] == 1
 
-            result = instance.sql(f"""
+            ddl_timeout = _ddl_apply_timeout()
+            result = instance.sql(
+                f"""
                 CREATE TABLE {temporary_table} (
                     id INTEGER PRIMARY KEY,
                     data STRING
                 ) USING {engine}
                 DISTRIBUTED BY (id)
-                WAIT APPLIED GLOBALLY;
-            """)
+                WAIT APPLIED GLOBALLY
+                OPTION (TIMEOUT = {ddl_timeout});
+            """,
+                timeout=ddl_timeout,
+            )
             assert result["row_count"] == 1
 
             ##########################################################
             # Extend table with secondary index.
             ##########################################################
 
-            result = instance.sql(f"""
+            ddl_timeout = _ddl_apply_timeout()
+            result = instance.sql(
+                f"""
                 CREATE INDEX idx_products_name
                 ON {products_table} (name)
-                WAIT APPLIED GLOBALLY;
-            """)
+                WAIT APPLIED GLOBALLY
+                OPTION (TIMEOUT = {ddl_timeout});
+            """,
+                timeout=ddl_timeout,
+            )
             assert result["row_count"] == 1
 
             ##########################################################
@@ -280,10 +316,15 @@ class HealthCheck:
             """)
             assert result[0][0] == 2
 
-            result = instance.sql(f"""
+            ddl_timeout = _ddl_apply_timeout()
+            result = instance.sql(
+                f"""
                 TRUNCATE TABLE {temporary_table}
-                WAIT APPLIED GLOBALLY;
-            """)
+                WAIT APPLIED GLOBALLY
+                OPTION (TIMEOUT = {ddl_timeout});
+            """,
+                timeout=ddl_timeout,
+            )
             assert result["row_count"] == 1
 
             result = instance.sql(f"""
