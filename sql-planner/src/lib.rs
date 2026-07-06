@@ -19,7 +19,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub mod backend;
-pub mod cbo;
 pub mod errors;
 pub mod executor;
 pub mod frontend;
