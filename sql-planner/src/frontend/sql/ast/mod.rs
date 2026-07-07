@@ -434,7 +434,15 @@ impl<'q> AbstractSyntaxTree<'q> {
                     )?;
                 }
                 Rule::BlockLetStatement => {
-                    build_block_let_statement_ir(ast, id, node, &mut map, &mut worker, &mut plan)?;
+                    build_block_let_statement_ir(
+                        ast,
+                        id,
+                        node,
+                        &mut map,
+                        &type_analyzer,
+                        &mut worker,
+                        &mut plan,
+                    )?;
                 }
                 Rule::BlockIfCondition => build_block_if_condition_ir(
                     id,
@@ -1008,14 +1016,14 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_insert_ir<M>(
+fn build_insert_ir<'a, M>(
     ast: &AstCore,
     node_id: usize,
     node: &ParseNode,
     map: &mut Translation,
     type_analyzer: &mut type_system::TypeAnalyzer,
-    pairs_map: &mut ParsingPairsMap,
-    worker: &mut ExpressionWalker<M>,
+    pairs_map: &mut ParsingPairsMap<'a>,
+    worker: &mut ExpressionWalker<'a, M>,
     plan: &mut Plan,
 ) -> Result<(), SbroadError>
 where
@@ -1969,6 +1977,7 @@ fn build_block_let_statement_ir<M>(
     node_id: usize,
     node: &ParseNode,
     map: &mut Translation,
+    type_analyzer: &type_system::TypeAnalyzer,
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
 ) -> Result<(), SbroadError>
@@ -1987,8 +1996,11 @@ where
     let subquery_plan_id = map.get(*subquery_ast_id)?;
     let rhs = plan.get_rel_child(subquery_plan_id, 0)?;
 
+    let param_types = get_parameter_derived_types(type_analyzer);
+    plan.set_types_in_parameter_nodes(&param_types)?;
+
     // LET requires a single-column RHS; multi-row handling is a runtime concern.
-    let columns = dql_return_columns(plan, subquery_plan_id)?;
+    let columns = dql_return_columns(plan, rhs)?;
     if columns.len() != 1 {
         return Err(SbroadError::Other(format_smolstr!(
             "LET RHS must be a single-column query, got {} columns",

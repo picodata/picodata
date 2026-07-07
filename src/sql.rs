@@ -86,6 +86,7 @@ use sql::ir::Plan as IrPlan;
 use sql_protocol::decode::{
     execute_args_split, query_meta_args_split, ProtocolMessage, ProtocolMessageType, QueryMetaArgs,
 };
+use sql_protocol::dml::insert::ConflictPolicy;
 use sql_protocol::encode::write_metadata;
 use std::cmp::max;
 use std::collections::BTreeMap;
@@ -96,6 +97,7 @@ use std::str::from_utf8_unchecked;
 use std::time::Duration;
 
 pub mod concurrency;
+pub mod conflict;
 pub mod dispatch;
 pub mod execute;
 pub mod lock;
@@ -138,7 +140,7 @@ fn find_data_access_nodes(plan: &IrPlan) -> impl Iterator<Item = NodeId> + use<'
             _ => None,
         });
 
-    let scan_and_insert = plan
+    let scan = plan
         .get_nodes()
         .iter96()
         .enumerate()
@@ -157,7 +159,7 @@ fn find_data_access_nodes(plan: &IrPlan) -> impl Iterator<Item = NodeId> + use<'
             _ => None,
         });
 
-    delete.chain(scan_and_insert).chain(update)
+    delete.chain(scan).chain(update)
 }
 
 fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
@@ -176,7 +178,19 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
                 Relational::ScanRelation(ScanRelation { relation, .. }) => {
                     (relation, Privileges::Read)
                 }
-                Relational::Insert(Insert { relation, .. }) => (relation, Privileges::Write),
+                Relational::Insert(Insert {
+                    relation,
+                    conflict_strategy,
+                    ..
+                }) => {
+                    let privileges =
+                        if matches!(conflict_strategy, ConflictStrategy::DoUpdate { .. }) {
+                            Privileges::ReadWrite
+                        } else {
+                            Privileges::Write
+                        };
+                    (relation, privileges)
+                }
                 Relational::Delete(Delete { relation, .. })
                 | Relational::Update(Update { relation, .. }) => {
                     // We check write and read privileges for deletes and updates.
@@ -3065,7 +3079,8 @@ fn create_dml_ops(
             Relational::Insert(Insert {
                 conflict_strategy, ..
             }) => {
-                *on_conflict = *conflict_strategy;
+                let _: ConflictPolicy = conflict_strategy.try_into()?;
+                *on_conflict = conflict_strategy.clone();
                 DmlKind::Insert
             }
             Relational::Update { .. } => DmlKind::Update,
@@ -3106,7 +3121,7 @@ fn create_dml_ops(
             // many tuples for one table.
             DmlKind::Insert => {
                 let tuple = build_insert_args(tuple, &builder, None)?;
-                Dml::insert_with_on_conflict(table_id, &tuple, current_user, *on_conflict)?
+                Dml::insert_with_on_conflict(table_id, &tuple, current_user, on_conflict.clone())?
             }
             DmlKind::Delete => {
                 let tuple = build_delete_args(tuple, &builder)?;

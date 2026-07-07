@@ -186,6 +186,7 @@ article.md-typeset.md-typeset ul {
 * [UNSIGNED](reference/sql_types.md#unsigned)
 * [UPDATE](reference/sql/update.md)
 * [UPPER](reference/sql/lower.md)
+* [UPSERT](reference/sql/iocdu.md)
 * [user](admin/access_control.md#users)
 * [UUID](reference/sql_types.md#uuid)
 

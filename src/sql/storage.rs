@@ -35,8 +35,8 @@ use crate::metrics::{
     record_router_block_pattern_cache_statement_evicted, record_storage_cache_statement_added,
     record_storage_cache_statement_evicted, report_storage_cache_hit, report_storage_cache_miss,
 };
-use smol_str::{format_smolstr, SmolStr};
-use sql::executor::vdbe::SqlStmt;
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql::executor::vdbe::{SqlError, SqlStmt};
 use sql::executor::vtable::{VirtualTable, VirtualTableTupleEncoder};
 use sql::executor::MotionInfo;
 use sql::ir::node::NodeId;
@@ -48,7 +48,6 @@ use sql_protocol::error::ProtocolError;
 use sql_protocol::iterators::TupleIterator;
 use std::collections::{hash_map::Entry, HashMap};
 use std::rc::Rc;
-use tarantool::space::SpaceId;
 
 use crate::schema::{ADMIN_ID, SPACE_ID_TEMPORARY_MIN};
 use crate::sql::execute::{
@@ -60,11 +59,12 @@ use crate::sql::lock::{
 };
 use crate::tlog;
 use crate::vdbe::txn::compile_transactional_block;
-use sql::executor::engine::{block_vdbe_key, BlockExecData};
+use sql::executor::engine::{block_vdbe_key, BlockExecData, BlockQuery};
 use sql::executor::result::MetadataColumn;
 use tarantool::fiber::Mutex;
 use tarantool::msgpack;
 use tarantool::session::with_su;
+use tarantool::space::SpaceId;
 
 thread_local!(
     // OnceCell is used for interior mutability
@@ -931,8 +931,8 @@ impl StorageRuntime {
                 StaleStmt => report_storage_cache_miss("txn", "local", "stale"),
             }
         } else {
-            let stmt = compile_transactional_block(&block.statements)
-                .map_err(|e| SbroadError::FailedTo(Action::Build, Some(Entity::Query), e.into()))?;
+            let stmt = compile_transactional_block(&block.statements, &block.table_versions)
+                .map_err(block_compile_error)?;
             let schema_info =
                 SchemaInfo::new(block.table_versions.clone(), block.index_versions.clone());
             let cached = {
@@ -970,6 +970,13 @@ impl StorageRuntime {
     }
 }
 
+fn block_compile_error(error: SqlError) -> SbroadError {
+    match error {
+        SqlError::OutdatedStorageSchema => SbroadError::OutdatedStorageSchema,
+        error => SbroadError::FailedTo(Action::Build, Some(Entity::Query), error.to_smolstr()),
+    }
+}
+
 pub fn explain_execute_block<'p>(
     block: BlockExecData,
     buckets: &Buckets,
@@ -993,27 +1000,27 @@ pub fn explain_execute_block<'p>(
     for (idx, stmt) in block.statements.into_iter().enumerate() {
         match stmt {
             BlockStatement::ReturnQuery(p) => {
-                let explain_query = ExplainQuery::ReturnQuery(&p);
+                let explain_query = ExplainQuery::ReturnQuery(&p.pattern);
                 explain_one(explain_query, &next_params(params))?;
             }
             BlockStatement::Query(p) => {
-                let explain_query = ExplainQuery::Query(&p);
+                let explain_query = ExplainQuery::Query(&p.pattern);
                 explain_one(explain_query, &next_params(params))?;
             }
             BlockStatement::Let { ref query, var } => {
                 let is_used = block.unused_lets.contains(&idx);
                 let explain_query = ExplainQuery::Let {
-                    query,
+                    query: &query.pattern,
                     var,
                     is_used,
                 };
                 explain_one(explain_query, &next_params(params))?;
             }
             BlockStatement::If { cond, body } => {
-                let explain_query = ExplainQuery::IfCond(&cond);
+                let explain_query = ExplainQuery::IfCond(&cond.pattern);
                 explain_one(explain_query, &next_params(params))?;
                 for p in body {
-                    let explain_query = ExplainQuery::IfBody(&p);
+                    let explain_query = ExplainQuery::IfBody(&p.pattern);
                     explain_one(explain_query, &next_params(params))?;
                 }
             }

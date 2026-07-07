@@ -466,7 +466,10 @@ impl From<ProtocolError> for SbroadError {
 
 impl From<SqlError> for SbroadError {
     fn from(value: SqlError) -> Self {
-        Self::VdbeError(value.to_smolstr())
+        match value {
+            SqlError::OutdatedStorageSchema => Self::OutdatedStorageSchema,
+            value => Self::VdbeError(value.to_smolstr()),
+        }
     }
 }
 

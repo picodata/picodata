@@ -147,6 +147,8 @@ literal     ::= 'TRUE'
                 | unsigned
                 | ('$' unsigned)
                 | '?'
+boolean     ::= 'TRUE'
+                | 'FALSE'
 dml         ::= (call | delete | insert | update)
                 ('OPTION' '('
                     (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned)
@@ -156,6 +158,24 @@ call        ::= 'CALL' procedure '(' (literal (',' literal)*)? ')'
 delete      ::= 'DELETE' 'FROM' table ('INDEXED' 'BY' index)? ('WHERE' expression)?
 insert      ::= 'INSERT' 'INTO' table ('(' column (',' column)* ')')? dql
                 ('ON' 'CONFLICT' 'DO' ('NOTHING' | 'REPLACE' | 'FAIL'))?
+iocdu       ::= 'INSERT' 'INTO' table ('(' column (',' column)* ')')?
+                values 'ON' 'CONFLICT' '(' column (',' column)* ')' 'DO' 'UPDATE' 'SET'
+                column '='
+                (
+                    column (('+' | '-' ) (integer | unsigned | decimal | double)
+                            | ('AND' | 'OR') boolean)
+                    | (integer | unsigned | decimal | double) ('+' column)
+                    | boolean (('AND' | 'OR') column)
+                )
+                (','
+                    column '='
+                    (
+                        column (('+' | '-' ) (integer | unsigned | decimal | double)
+                                | ('AND' | 'OR') boolean)
+                        | (integer | unsigned | decimal | double) ('+' column)
+                        | boolean (('AND' | 'OR') column)
+                    )
+                )*
 update      ::= 'UPDATE' table ('INDEXED' 'BY' index)? 'SET'
                 column '=' expression (',' column '=' expression)*
                 ('FROM' scan)? ('WHERE' expression)?

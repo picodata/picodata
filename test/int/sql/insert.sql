@@ -249,6 +249,52 @@ SELECT * FROM "space_simple_shard_key";
 -- SQL:
 DELETE FROM "space_simple_shard_key";
 
+-- TEST: test_insert_on_conflict_do_update_unsupported-setup
+-- SQL:
+DROP TABLE IF EXISTS "standalone_iocdu";
+DROP TABLE IF EXISTS "standalone_iocdu_source";
+DROP TABLE IF EXISTS "global_iocdu";
+CREATE TABLE "standalone_iocdu" (
+    "a" INTEGER NOT NULL,
+    "b" INT NOT NULL,
+    "c" INT NOT NULL,
+    PRIMARY KEY ("a")
+) USING MEMTX DISTRIBUTED BY ("b");
+INSERT INTO "standalone_iocdu" VALUES (1, 1, 1);
+CREATE TABLE "standalone_iocdu_source" (
+    "a" INTEGER NOT NULL,
+    "b" INT NOT NULL,
+    "c" INT NOT NULL,
+    PRIMARY KEY ("a")
+) DISTRIBUTED GLOBALLY;
+CREATE TABLE "global_iocdu" (
+    "a" INTEGER NOT NULL,
+    "b" INT NOT NULL,
+    PRIMARY KEY ("a")
+) DISTRIBUTED GLOBALLY;
+INSERT INTO "global_iocdu" VALUES (1, 1);
+
+-- TEST: test_insert_on_conflict_do_update_unsupported-values
+-- SQL:
+INSERT INTO "standalone_iocdu" VALUES (1, 1, 1)
+ON CONFLICT ("a") DO UPDATE SET "c" = "c" + 1;
+-- ERROR:
+ON CONFLICT DO UPDATE is supported only in transactional blocks
+
+-- TEST: test_insert_on_conflict_do_update_unsupported-select
+-- SQL:
+INSERT INTO "standalone_iocdu" SELECT * FROM "standalone_iocdu_source"
+ON CONFLICT ("a") DO UPDATE SET "c" = "c" + 1;
+-- ERROR:
+ON CONFLICT DO UPDATE is supported only in transactional blocks
+
+-- TEST: test_insert_on_conflict_do_update_unsupported-global
+-- SQL:
+INSERT INTO "global_iocdu" VALUES (1, 1)
+ON CONFLICT ("a") DO UPDATE SET "b" = "b" + 1;
+-- ERROR:
+ON CONFLICT DO UPDATE is supported only in transactional blocks
+
 -- TEST: test_double_conversion-1
 -- SQL:
 INSERT INTO "double_t" values (1, 2.5, 2.5e-1), (1, 2.5e-1, 2.5)

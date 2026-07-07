@@ -24,6 +24,7 @@ use crate::executor::vtable::VirtualTable;
 use crate::executor::{ExplainQueryLocation, MotionInfo};
 use crate::ir::bucket::Buckets;
 use crate::ir::function::Function;
+use crate::ir::operator::BlockConflictDoUpdate;
 use crate::ir::options::Forward;
 use crate::ir::relation::Table;
 use crate::ir::types::UnrestrictedType;
@@ -469,9 +470,31 @@ pub trait Router: QueryCache {
     ) -> ExplainQueryLocation;
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, Hash)]
+pub struct BlockQuery {
+    pub pattern: String,
+    /// Opcode-level hooks that must be attached after this statement is
+    /// compiled to VDBE.
+    pub hooks: Vec<BlockRuntimeHook>,
+}
+
+/// Runtime hooks attached to block VDBE opcodes.
+#[derive(Debug, Clone, Deserialize, Serialize, Hash)]
+pub enum BlockRuntimeHook {
+    IdxInsert(BlockIdxInsertHook),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Hash)]
+pub enum BlockIdxInsertHook {
+    OnConflictDoUpdate {
+        table_id: u32,
+        update: BlockConflictDoUpdate,
+    },
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BlockExecData {
-    pub statements: Vec<BlockStatement<String>>,
+    pub statements: Vec<BlockStatement<BlockQuery>>,
     /// Per-query parameters in `BlockStatement::iter()` order.
     pub params: Vec<Vec<Value>>,
     pub unused_lets: HashSet<usize>,
@@ -484,7 +507,7 @@ pub struct BlockExecData {
 }
 
 /// Key for the storage-side cache of assembled block VDBEs.
-pub fn block_vdbe_key(stmts: &[BlockStatement<String>]) -> u64 {
+pub fn block_vdbe_key(stmts: &[BlockStatement<BlockQuery>]) -> u64 {
     let mut hasher = DefaultHasher::new();
     stmts.hash(&mut hasher);
     hasher.finish()

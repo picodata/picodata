@@ -41,8 +41,8 @@ use crate::traft::Result;
 use crate::util::Uppercase;
 use chrono::DateTime;
 use smol_str::SmolStr;
-use sql::ir::operator::ConflictStrategy;
 use sql::ir::options::{Forward, ReadPreference};
+use sql_protocol::dml::insert::ConflictPolicy;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -426,31 +426,28 @@ impl Catalog {
     #[inline]
     pub fn do_dml(&self, dml: &Dml) -> tarantool::Result<Option<Tuple>> {
         let space = space_by_id_unchecked(dml.table_id());
-        use ConflictStrategy::*;
         match dml {
             Dml::Insert {
                 tuple,
-                conflict_strategy: DoFail,
+                conflict_strategy,
                 ..
-            } => space.insert(tuple).map(Some),
-            Dml::Insert {
-                tuple,
-                conflict_strategy: DoReplace,
-                ..
-            } => space.replace(tuple).map(Some),
-            Dml::Insert {
-                tuple,
-                conflict_strategy: DoNothing,
-                ..
-            } => match space.insert(tuple) {
-                Ok(tuple) => Ok(Some(tuple)),
-                Err(TntError::Tarantool(e))
-                    if e.error_code() == TntErrorCode::TupleFound as u32 =>
-                {
-                    Ok(None)
+            } => {
+                let conflict_policy = ConflictPolicy::try_from(conflict_strategy)
+                    .map_err(|e| TntError::Other(e.to_string().into()))?;
+                match conflict_policy {
+                    ConflictPolicy::DoFail => space.insert(tuple).map(Some),
+                    ConflictPolicy::DoReplace => space.replace(tuple).map(Some),
+                    ConflictPolicy::DoNothing => match space.insert(tuple) {
+                        Ok(tuple) => Ok(Some(tuple)),
+                        Err(TntError::Tarantool(e))
+                            if e.error_code() == TntErrorCode::TupleFound as u32 =>
+                        {
+                            Ok(None)
+                        }
+                        Err(e) => Err(e),
+                    },
                 }
-                Err(e) => Err(e),
-            },
+            }
             Dml::Replace { tuple, .. } => space.replace(tuple).map(Some),
             Dml::Update { key, ops, .. } => space.update(key, ops),
             Dml::Delete {

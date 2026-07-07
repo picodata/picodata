@@ -32,7 +32,7 @@ use std::time::Duration;
 use crate::audit;
 use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::preemption::scheduler_options;
-use crate::schema::{Distribution, ShardingFn, ADMIN_ID};
+use crate::schema::{Distribution, ShardingFn, TableDef, ADMIN_ID};
 use crate::storage::{self, Catalog};
 
 use sql::executor::engine::helpers::normalize_name_from_sql;
@@ -895,7 +895,6 @@ impl RouterMetadata {
 
 impl Metadata for RouterMetadata {
     #[allow(dead_code)]
-    #[allow(clippy::too_many_lines)]
     fn table(&self, table_name: &str) -> Result<Table, SbroadError> {
         let name = table_name.to_smolstr();
         let storage = Catalog::try_get(false).expect("storage should be initialized");
@@ -906,78 +905,7 @@ impl Metadata for RouterMetadata {
             .by_name(&name)?
             .ok_or_else(|| SbroadError::NotFound(Entity::Space, name.to_smolstr()))?;
 
-        let engine = table.engine;
-        let is_sharded = matches!(table.distribution, Distribution::ShardedImplicitly { .. });
-        let mut columns: Vec<Column> = Vec::with_capacity(table.format.len());
-        for column_meta in &table.format {
-            let col_name = &column_meta.name;
-            let is_nullable = column_meta.is_nullable;
-            let col_type = UnrestrictedType::try_from(column_meta.field_type)?;
-            let role = if is_sharded && col_name == DEFAULT_BUCKET_ID_COLUMN_NAME {
-                ColumnRole::Sharding
-            } else {
-                ColumnRole::User
-            };
-            let column = Column {
-                name: col_name.to_smolstr(),
-                r#type: DerivedType::new(col_type),
-                role,
-                is_nullable,
-            };
-            columns.push(column);
-        }
-
-        let pk_cols = space_pk_columns(&name, &columns)?;
-        let pk_cols_str: &[&str] = &pk_cols.iter().map(SmolStr::as_str).collect::<Vec<_>>();
-
-        let is_system_table = storage::SYSTEM_TABLES_ID_RANGE.contains(&table.id);
-        if is_system_table {
-            return Table::new_system(table.id, &name, columns, pk_cols_str);
-        }
-
-        // Try to find the sharding columns of the space in "_pico_table".
-        // If nothing found then the space is local and we can't query it with
-        // distributed SQL.
-        match table.distribution {
-            Distribution::Global => Table::new_global(table.id, &name, columns, pk_cols_str),
-            Distribution::ShardedImplicitly {
-                sharding_key,
-                sharding_fn,
-                tier: tier_name,
-            } => {
-                if !matches!(sharding_fn, ShardingFn::Murmur3) {
-                    return Err(SbroadError::NotImplemented(
-                        Entity::Distribution,
-                        format_smolstr!("by hash function {sharding_fn}"),
-                    ));
-                }
-
-                let tier = Some(tier_name.to_smolstr());
-                let sharding_key_cols = sharding_key
-                    .iter()
-                    .map(|field| field.to_smolstr())
-                    .collect::<Vec<_>>();
-
-                let sharding_key_cols = sharding_key_cols
-                    .iter()
-                    .map(SmolStr::as_str)
-                    .collect::<Vec<_>>();
-
-                Table::new_sharded_in_tier(
-                    table.id,
-                    &name,
-                    columns,
-                    &sharding_key_cols,
-                    pk_cols_str,
-                    engine.into(),
-                    tier,
-                )
-            }
-            Distribution::ShardedByField { field, .. } => Err(SbroadError::NotImplemented(
-                Entity::Distribution,
-                format_smolstr!("explicitly by field '{field}'"),
-            )),
-        }
+        table_from_def(table)
     }
 
     fn get_index_id(&self, index_name: &str, table_name: &str) -> Result<u32, SbroadError> {
@@ -1010,6 +938,102 @@ impl Metadata for RouterMetadata {
     fn sharding_positions_by_space(&self, space: &str) -> Result<Vec<usize>, SbroadError> {
         let table = self.table(space)?;
         Ok(table.get_sk()?.to_vec())
+    }
+}
+
+pub(crate) fn table_by_id(table_id: SpaceId) -> Result<Table, SbroadError> {
+    with_su(ADMIN_ID, || -> Result<Table, SbroadError> {
+        let node = node::global().map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+        })?;
+        let table = node.storage.pico_table.by_id(table_id).map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
+        })?;
+        let table = table.ok_or_else(|| {
+            SbroadError::NotFound(
+                Entity::SpaceMetadata,
+                format_smolstr!("for table: {table_id}"),
+            )
+        })?;
+        table_from_def(table)
+    })
+    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))?
+}
+
+#[allow(clippy::too_many_lines)]
+fn table_from_def(table: TableDef) -> Result<Table, SbroadError> {
+    let name = table.name.clone();
+    let engine = table.engine;
+    let is_sharded = matches!(table.distribution, Distribution::ShardedImplicitly { .. });
+    let mut columns: Vec<Column> = Vec::with_capacity(table.format.len());
+    for column_meta in &table.format {
+        let col_name = &column_meta.name;
+        let is_nullable = column_meta.is_nullable;
+        let col_type = UnrestrictedType::try_from(column_meta.field_type)?;
+        let role = if is_sharded && col_name == DEFAULT_BUCKET_ID_COLUMN_NAME {
+            ColumnRole::Sharding
+        } else {
+            ColumnRole::User
+        };
+        let column = Column {
+            name: col_name.to_smolstr(),
+            r#type: DerivedType::new(col_type),
+            role,
+            is_nullable,
+        };
+        columns.push(column);
+    }
+
+    let pk_cols = space_pk_columns(&name, &columns)?;
+    let pk_cols_str: &[&str] = &pk_cols.iter().map(SmolStr::as_str).collect::<Vec<_>>();
+
+    let is_system_table = storage::SYSTEM_TABLES_ID_RANGE.contains(&table.id);
+    if is_system_table {
+        return Table::new_system(table.id, &name, columns, pk_cols_str);
+    }
+
+    // Try to find the sharding columns of the space in "_pico_table".
+    // If nothing found then the space is local and we can't query it with
+    // distributed SQL.
+    match table.distribution {
+        Distribution::Global => Table::new_global(table.id, &name, columns, pk_cols_str),
+        Distribution::ShardedImplicitly {
+            sharding_key,
+            sharding_fn,
+            tier: tier_name,
+        } => {
+            if !matches!(sharding_fn, ShardingFn::Murmur3) {
+                return Err(SbroadError::NotImplemented(
+                    Entity::Distribution,
+                    format_smolstr!("by hash function {sharding_fn}"),
+                ));
+            }
+
+            let tier = Some(tier_name.to_smolstr());
+            let sharding_key_cols = sharding_key
+                .iter()
+                .map(|field| field.to_smolstr())
+                .collect::<Vec<_>>();
+
+            let sharding_key_cols = sharding_key_cols
+                .iter()
+                .map(SmolStr::as_str)
+                .collect::<Vec<_>>();
+
+            Table::new_sharded_in_tier(
+                table.id,
+                &name,
+                columns,
+                &sharding_key_cols,
+                pk_cols_str,
+                engine.into(),
+                tier,
+            )
+        }
+        Distribution::ShardedByField { field, .. } => Err(SbroadError::NotImplemented(
+            Entity::Distribution,
+            format_smolstr!("explicitly by field '{field}'"),
+        )),
     }
 }
 

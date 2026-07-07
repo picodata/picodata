@@ -24,7 +24,7 @@
 //! 6. Executes the final IR top subtree and returns the final result to the user.
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::generate_pattern_with_params_for_block;
-use crate::executor::engine::{Router, Vshard};
+use crate::executor::engine::{BlockQuery, Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
 use crate::ir::bucket::{BucketSet, Buckets};
@@ -45,6 +45,7 @@ use crate::utils::{indent, indent_custom, indent_with_prefix};
 use crate::{write_explain_header1, write_explain_header2, BoundStatement};
 use bitflags::bitflags;
 use smol_str::{format_smolstr, SmolStr};
+use sql_protocol::dml::insert::ConflictPolicy;
 use std::collections::HashMap;
 use std::fmt::{self, Write as _};
 use std::io;
@@ -700,6 +701,13 @@ where
                 .dispatch(&mut self.exec_plan, top_id, &buckets, port);
         }
 
+        if let Relational::Insert(Insert {
+            conflict_strategy, ..
+        }) = self.exec_plan.get_ir_plan().get_relation_node(top_id)?
+        {
+            let _: ConflictPolicy = conflict_strategy.try_into()?;
+        }
+
         let slices = self.exec_plan.get_ir_plan().clone_slices();
         self.materialize_subtree(slices, Some(port))?;
         let ir_plan = self.exec_plan.get_ir_plan();
@@ -833,7 +841,7 @@ where
         &self,
         block: AnonymousBlock,
         buckets: &Buckets,
-    ) -> Result<Vec<BlockStatement<(String, Vec<Value>)>>, SbroadError> {
+    ) -> Result<Vec<BlockStatement<(BlockQuery, Vec<Value>)>>, SbroadError> {
         let block_bucket = match buckets {
             Buckets::Filtered(BucketSet::Exact(set)) => {
                 assert!(set.len() == 1);
@@ -845,12 +853,7 @@ where
         let mut statements = Vec::with_capacity(block.statements.len());
         for stmt in block.statements {
             statements.push(stmt.try_map(|id| {
-                generate_pattern_with_params_for_block(
-                    self.get_exec_plan(),
-                    id,
-                    block_bucket,
-                    false,
-                )
+                generate_pattern_with_params_for_block(&self.exec_plan, id, block_bucket, false)
             })?);
         }
 
@@ -935,15 +938,15 @@ where
             let mut statements = block_statements.iter().enumerate().peekable();
             while let Some((idx, stmt)) = statements.next() {
                 let mut explain_one = |buf: &mut String,
-                                       query: &(String, Vec<Value>),
+                                       query: &(BlockQuery, Vec<Value>),
                                        kind: &str| {
-                    let (sql, params) = query;
+                    let (query, params) = query;
                     let motion_info = MotionInfo::new_for_transaction();
                     let source = C::build_explain_query_location(&buckets, &motion_info);
                     write_explain_header2!(buf, "{}. {} ({source})", stmt_idx + 1, kind).unwrap();
                     writeln!(buf).unwrap();
 
-                    let sql = format_sql(sql, params, should_fmt);
+                    let sql = format_sql(&query.pattern, params, should_fmt);
                     writeln!(buf, "{sql}").unwrap();
                     writeln!(buf).unwrap();
 

@@ -91,7 +91,16 @@ pub(in crate::frontend::sql) fn parse_param<M: Metadata>(
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
-    let index = get_param_index(pair, &worker.tnt_parameters_positions)?;
+    parse_param_with_positions(pair, param_types, &worker.tnt_parameters_positions, plan)
+}
+
+pub(in crate::frontend::sql) fn parse_param_with_positions(
+    pair: Pair<'_, Rule>,
+    param_types: &[DerivedType],
+    tnt_parameters_positions: &[Pair<'_, Rule>],
+    plan: &mut Plan,
+) -> Result<NodeId, SbroadError> {
+    let index = get_param_index(pair, tnt_parameters_positions)?;
     if index > MAX_PARAMETER_INDEX {
         return Err(SbroadError::Other(format_smolstr!(
             "parameter index {} is too big (max: {})",

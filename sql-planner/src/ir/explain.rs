@@ -1381,11 +1381,76 @@ impl Display for Target {
     }
 }
 
+fn explain_conflict_update_rhs(plan: &Plan, rhs: NodeId) -> Result<SmolStr, SbroadError> {
+    match plan.get_expression_node(rhs)? {
+        Expression::Constant(Constant { value }) => Ok(value.to_smolstr()),
+        Expression::Parameter(param) => Ok(format_smolstr!("${}", param.index)),
+        Expression::LetVarRef(var) => Ok(var.name.clone()),
+        Expression::Cast(Cast { child, .. }) => explain_conflict_update_rhs(plan, *child),
+        other => Err(SbroadError::Invalid(
+            Entity::Plan,
+            Some(format_smolstr!(
+                "unsupported ON CONFLICT DO UPDATE explain expression: {other:?}"
+            )),
+        )),
+    }
+}
+
+fn explain_conflict_strategy(
+    plan: &Plan,
+    relation: &str,
+    strategy: &ConflictStrategy,
+) -> Result<SmolStr, SbroadError> {
+    match strategy {
+        ConflictStrategy::DoNothing | ConflictStrategy::DoReplace | ConflictStrategy::DoFail => {
+            Ok(strategy.to_smolstr())
+        }
+        ConflictStrategy::DoUpdate { payload } => {
+            let table = plan.relations.get(relation).ok_or_else(|| {
+                SbroadError::NotFound(
+                    Entity::Table,
+                    format_smolstr!("{relation} among plan relations"),
+                )
+            })?;
+            let column_name = |position: usize| -> Result<SmolStr, SbroadError> {
+                let column = table.columns.get(position).ok_or_else(|| {
+                    SbroadError::NotFound(
+                        Entity::Column,
+                        format_smolstr!("at position {position} in {}", table.name),
+                    )
+                })?;
+                Ok(properly_quoted_name(&column.name))
+            };
+            let target = payload
+                .target
+                .columns
+                .iter()
+                .map(|position| column_name(*position))
+                .collect::<Result<Vec<_>, _>>()?
+                .iter()
+                .join(", ");
+            let items = payload
+                .items
+                .iter()
+                .map(|item| {
+                    let column = column_name(item.column)?;
+                    let rhs = explain_conflict_update_rhs(plan, item.rhs.expr())?;
+                    Ok::<_, SbroadError>(format_smolstr!("{column} {} {rhs}", item.op))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(format_smolstr!(
+                "({target}) update set {}",
+                items.iter().join(", ")
+            ))
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 enum ExplainNode {
     // Short items.
     Delete(SmolStr),
-    Insert(SmolStr, ConflictStrategy),
+    Insert(SmolStr, SmolStr),
     Cte(SmolStr, Ref),
     Scan(Scan),
     SubQuery(SubQuery),
@@ -1907,7 +1972,8 @@ impl LogicalExplain {
                             "Insert node failed to pop a value row.".into(),
                         )
                     })?;
-                    let insert = ExplainNode::Insert(relation.clone(), *conflict_strategy);
+                    let conflict = explain_conflict_strategy(ir, relation, conflict_strategy)?;
+                    let insert = ExplainNode::Insert(relation.clone(), conflict);
 
                     (insert, vec![values])
                 }

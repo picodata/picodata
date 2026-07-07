@@ -429,6 +429,68 @@ def test_storage_block_vdbe_cache_metrics(instance: Instance):
     assert metric_total(evicted) > base_evicted
 
 
+@pytest.mark.webui
+def test_storage_block_vdbe_cache_insert_do_update_invalidated_by_index_ddl(instance: Instance):
+    instance.sql(
+        """
+        CREATE TABLE bc_iocdu_ddl (
+            sk INT,
+            id INT,
+            val INT,
+            note INT,
+            PRIMARY KEY (sk, id)
+        ) DISTRIBUTED BY (sk)
+        """
+    )
+    instance.sql("CREATE UNIQUE INDEX bc_iocdu_ddl_val ON bc_iocdu_ddl (sk, val)")
+    instance.sql("INSERT INTO bc_iocdu_ddl VALUES (1, 1, 10, 1), (1, 2, 20, 2)")
+
+    def metric_total(name: str, **labels) -> float:
+        family = instance.get_metrics().get(name)
+        if not family:
+            return 0
+        return sum(s.value for s in family.samples if all(s.labels.get(lbl) == val for lbl, val in labels.items()))
+
+    added = "pico_storage_cache_statements_added"
+    base_added = metric_total(added)
+
+    def hits():
+        return metric_total("pico_storage_cache_hits", query_type="txn")
+
+    def misses():
+        return metric_total("pico_storage_cache_misses", query_type="txn")
+
+    base_hits = hits()
+    base_misses = misses()
+    block = """
+        DO $$
+        BEGIN
+            INSERT INTO bc_iocdu_ddl VALUES (1, 3, 20, 99)
+            ON CONFLICT (sk, val) DO UPDATE SET note = note + 1;
+        END $$;
+    """
+
+    instance.sql(block)
+    assert metric_total(added) == base_added + 1
+    assert (hits(), misses()) == (base_hits, base_misses + 1)
+
+    instance.sql(block)
+    assert metric_total(added) == base_added + 1
+    assert (hits(), misses()) == (base_hits + 1, base_misses + 1)
+
+    instance.sql("DROP INDEX bc_iocdu_ddl_val")
+    instance.sql("CREATE UNIQUE INDEX bc_iocdu_ddl_val ON bc_iocdu_ddl (sk, val)")
+
+    instance.sql(block)
+    assert metric_total(added) == base_added + 2
+    assert (hits(), misses()) == (base_hits + 1, base_misses + 2)
+
+    instance.sql(block)
+    assert metric_total(added) == base_added + 2
+    assert (hits(), misses()) == (base_hits + 2, base_misses + 2)
+    assert instance.sql("SELECT note FROM bc_iocdu_ddl WHERE sk = 1 AND val = 20") == [[6]]
+
+
 def test_router_block_pattern_cache_metrics(instance: Instance):
     instance.sql("CREATE TABLE bc (pk INT PRIMARY KEY, a INT)")
     instance.sql("INSERT INTO bc VALUES (1, 10)")
@@ -474,6 +536,91 @@ def test_router_block_pattern_cache_metrics(instance: Instance):
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_block_pattern_cache_statements_added", 51)
     check_metric(metrics, "pico_router_block_pattern_cache_statements_evicted", 1)
+
+
+def test_router_block_pattern_cache_insert_do_update_metrics(instance: Instance):
+    instance.sql("CREATE TABLE bc_iocdu (pk INT PRIMARY KEY, a INT)")
+    instance.sql("INSERT INTO bc_iocdu VALUES (1, 10)")
+
+    def metric_total(name: str) -> float:
+        family = instance.get_metrics().get(name)
+        return sum(s.value for s in family.samples) if family else 0
+
+    hits = "pico_router_block_pattern_cache_hits"
+    misses = "pico_router_block_pattern_cache_misses"
+    added = "pico_router_block_pattern_cache_statements_added"
+    base_hits = metric_total(hits)
+    base_misses = metric_total(misses)
+    base_added = metric_total(added)
+
+    block_add_1 = """
+        DO $$
+        BEGIN
+            INSERT INTO bc_iocdu VALUES (1, 1)
+            ON CONFLICT (pk) DO UPDATE SET a = a + 1;
+        END $$;
+    """
+    instance.sql(block_add_1)
+    assert metric_total(misses) == base_misses + 1
+    assert metric_total(added) == base_added + 1
+    assert metric_total(hits) == base_hits
+
+    instance.sql(block_add_1)
+    assert metric_total(hits) == base_hits + 1
+    assert metric_total(misses) == base_misses + 1
+    assert metric_total(added) == base_added + 1
+
+    block_add_2 = block_add_1.replace("a + 1", "a + 2")
+    instance.sql(block_add_2)
+    assert metric_total(misses) == base_misses + 2
+    assert metric_total(added) == base_added + 2
+    assert instance.sql("SELECT a FROM bc_iocdu WHERE pk = 1") == [[14]]
+
+    instance.sql("CREATE UNIQUE INDEX bc_iocdu_a ON bc_iocdu (pk, a)")
+    instance.sql(block_add_1)
+    assert metric_total(hits) == base_hits + 1
+    assert metric_total(misses) == base_misses + 3
+    assert metric_total(added) == base_added + 3
+
+    instance.sql(block_add_1)
+    assert metric_total(hits) == base_hits + 2
+    assert metric_total(misses) == base_misses + 3
+    assert metric_total(added) == base_added + 3
+    assert instance.sql("SELECT a FROM bc_iocdu WHERE pk = 1") == [[16]]
+
+
+def test_router_block_pattern_cache_insert_do_update_params(instance: Instance):
+    instance.sql("CREATE TABLE bc_iocdu_params (pk INT PRIMARY KEY, a INT, b INT, c INT)")
+    instance.sql("INSERT INTO bc_iocdu_params VALUES (1, 10, 100, 1000)")
+
+    def metric_total(name: str) -> float:
+        family = instance.get_metrics().get(name)
+        return sum(s.value for s in family.samples) if family else 0
+
+    hits = "pico_router_block_pattern_cache_hits"
+    misses = "pico_router_block_pattern_cache_misses"
+    added = "pico_router_block_pattern_cache_statements_added"
+    base_hits = metric_total(hits)
+    base_misses = metric_total(misses)
+    base_added = metric_total(added)
+
+    block = """
+        DO $$
+        BEGIN
+            INSERT INTO bc_iocdu_params VALUES (1, 0, 0, 0)
+            ON CONFLICT (pk) DO UPDATE SET a = a + $1, b = b + 1, c = c + $2;
+        END $$;
+    """
+    instance.sql(block, 2, 3)
+    assert metric_total(hits) == base_hits
+    assert metric_total(misses) == base_misses + 1
+    assert metric_total(added) == base_added + 1
+
+    instance.sql(block, 5, 7)
+    assert metric_total(hits) == base_hits + 1
+    assert metric_total(misses) == base_misses + 1
+    assert metric_total(added) == base_added + 1
+    assert instance.sql("SELECT * FROM bc_iocdu_params WHERE pk = 1") == [[1, 17, 102, 1010]]
 
 
 @pytest.mark.webui

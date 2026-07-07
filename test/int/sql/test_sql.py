@@ -2694,6 +2694,56 @@ def test_insert_on_conflict(cluster: Cluster):
     assert data == [[1, 2]]
 
 
+def test_insert_on_conflict_do_update_params(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    ddl = i1.sql(
+        """
+        create table "iocdu_let_param" (
+            "pk" integer not null,
+            "b" int not null,
+            primary key ("pk")
+        )
+        using memtx
+        distributed by ("pk")
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql("""insert into "iocdu_let_param" values (1, 5)""")
+    assert dml["row_count"] == 1
+
+    i1.sql(
+        """
+        DO $$
+        BEGIN
+            INSERT INTO "iocdu_let_param" VALUES (1, 1)
+            ON CONFLICT ("pk") DO UPDATE SET "b" = "b" + $1;
+        END $$
+        """,
+        7,
+    )
+
+    data = i1.sql('select * from "iocdu_let_param"')
+    assert data == [[1, 12]]
+
+    i1.sql(
+        """
+        DO $$
+        BEGIN
+            LET m = (SELECT $1);
+            INSERT INTO "iocdu_let_param" VALUES (1, 1)
+            ON CONFLICT ("pk") DO UPDATE SET "b" = "b" + m;
+        END $$
+        """,
+        7,
+    )
+
+    data = i1.sql('select * from "iocdu_let_param"')
+    assert data == [[1, 19]]
+
+
 def test_truncate_simple_flow(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]

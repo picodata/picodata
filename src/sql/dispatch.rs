@@ -1535,7 +1535,7 @@ fn build_dml_request(ex_plan: Rc<ExecutionPlan>, top_id: NodeId) -> SqlResult<Dm
                 request_id: ex_plan.get_request_id().to_smolstr(),
                 space_id: table_id,
                 space_version: table_version,
-                conflict_policy: conflict_strategy.into(),
+                conflict_policy: conflict_strategy.try_into()?,
             };
 
             if !with_dql {

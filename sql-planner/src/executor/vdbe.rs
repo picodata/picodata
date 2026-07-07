@@ -1,11 +1,15 @@
 use crate::{
     backend::sql::ADMIN_ID,
+    executor::engine::{BlockQuery, VersionMap},
     ir::node::BlockStatement,
     ir::value::{EncodedValue, Value},
 };
 use std::{
+    any::Any,
     borrow::Cow,
     ffi::{c_char, c_int, c_void, CStr},
+    fmt,
+    mem::ManuallyDrop,
     ptr::{self, NonNull},
 };
 use tarantool::ffi::sql::PortC;
@@ -48,9 +52,23 @@ pub enum SqlError {
     FailedToEncodeStmtParams(rmp_serde::encode::Error),
     #[error("Failed to reassemble VDBE program: {0}")]
     FailedToReassembleProgram(String),
+    #[error("Outdated storage schema")]
+    OutdatedStorageSchema,
 }
 
 type SqlResult<T> = Result<T, SqlError>;
+
+impl From<String> for SqlError {
+    fn from(value: String) -> Self {
+        Self::FailedToReassembleProgram(value)
+    }
+}
+
+impl From<&str> for SqlError {
+    fn from(value: &str) -> Self {
+        Self::FailedToReassembleProgram(value.into())
+    }
+}
 
 /// Execution result gives some insights into execution process.
 /// The only purpose of it is performance troubleshooting and metrics collecting, if the user
@@ -69,13 +87,24 @@ pub enum ExecutionInsight {
 /// The recompilation strategy lives in [`SqlStmt`], which wraps this. Public
 /// only because it appears in the public [`SqlStmt`] enum; its fields are
 /// private, so it stays opaque.
-#[derive(Debug)]
 pub struct RawStmt {
     ptr: NonNull<c_void>,
     // Estimated statement size returned by `sql_stmt_est_size()` when it was created.
     // Storing this value in the statement itself ensures that we will get the same value when
     // inserting/removing it from the statement cache and avoid extra computation.
     size_estimate: usize,
+    // Opaque payloads that must live until the very end of statement drop.
+    owned_payloads: ManuallyDrop<Vec<Box<dyn Any>>>,
+}
+
+impl fmt::Debug for RawStmt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RawStmt")
+            .field("ptr", &self.ptr)
+            .field("size_estimate", &self.size_estimate)
+            .field("owned_payloads_len", &self.owned_payloads.len())
+            .finish()
+    }
 }
 
 impl RawStmt {
@@ -104,7 +133,17 @@ impl RawStmt {
         Self {
             ptr: NonNull::new(ptr).expect("non-null vdbe ptr"),
             size_estimate: size,
+            owned_payloads: ManuallyDrop::new(Vec::new()),
         }
+    }
+
+    /// Transfer ownership of an opaque payload to this statement.
+    ///
+    /// The payload is not used by `RawStmt` directly. It is stored so raw pointers
+    /// embedded into the underlying VDBE remain valid until statement finalization
+    /// completes. Payloads are dropped at the very end of `RawStmt::drop`.
+    fn add_owned_payload(&mut self, payload: Box<dyn Any>) {
+        self.owned_payloads.push(payload);
     }
 
     fn execute_raw(
@@ -169,20 +208,25 @@ impl Drop for RawStmt {
                 Err(err) => tarantool::say_warn!("sql_stmt_finalize failed: {}", err),
             }
         }
+
+        // Keep payloads alive through `sql_stmt_finalize`: finalization may
+        // call VDBE hooks whose state is owned by `owned_payloads`.
+        unsafe { ManuallyDrop::drop(&mut self.owned_payloads) };
     }
 }
 
 /// Re-assembles a block VDBE from its rendered per-statement patterns. Block
 /// assembly needs the VDBE FFI, which lives in the picodata crate, so a
 /// transactional statement carries a pointer to it set at construction.
-type RecompileBlockFn = fn(&[BlockStatement<String>]) -> Result<SqlStmt, String>;
+type RecompileBlockFn = fn(&[BlockStatement<BlockQuery>], &VersionMap) -> SqlResult<SqlStmt>;
 
 /// An assembled block VDBE plus what it needs to rebuild itself when its schema
 /// version goes stale: the rendered patterns and the assembly routine.
 #[derive(Debug)]
 pub struct TxnStmt {
     raw: RawStmt,
-    statements: Vec<BlockStatement<String>>,
+    statements: Vec<BlockStatement<BlockQuery>>,
+    table_versions: VersionMap,
     recompile: RecompileBlockFn,
 }
 
@@ -211,12 +255,14 @@ impl SqlStmt {
     /// via `sqlVdbeMakeReady`) and is not currently executing.
     pub unsafe fn new_transactional(
         ptr: *mut c_void,
-        statements: Vec<BlockStatement<String>>,
+        statements: Vec<BlockStatement<BlockQuery>>,
+        table_versions: VersionMap,
         recompile: RecompileBlockFn,
     ) -> Self {
         Self::Transactional(TxnStmt {
             raw: RawStmt::wrap_stmt_ptr(ptr),
             statements,
+            table_versions,
             recompile,
         })
     }
@@ -235,15 +281,20 @@ impl SqlStmt {
         }
     }
 
+    /// Transfer ownership of an opaque payload to the underlying VDBE statement.
+    ///
+    /// The payload is kept alive until statement finalization completes.
+    pub fn add_owned_payload(&mut self, payload: Box<dyn Any>) {
+        self.raw_mut().add_owned_payload(payload);
+    }
+
     /// Rebuild a fresh statement of the same kind against the current schema
     /// version. A regular statement recompiles from its SQL source; a block
     /// statement re-assembles from its rendered patterns.
     fn recompile(&self) -> SqlResult<Self> {
         match self {
             Self::Regular(raw) => Ok(Self::Regular(RawStmt::compile(raw.as_str())?)),
-            Self::Transactional(txn) => {
-                (txn.recompile)(&txn.statements).map_err(SqlError::FailedToReassembleProgram)
-            }
+            Self::Transactional(txn) => (txn.recompile)(&txn.statements, &txn.table_versions),
         }
     }
 

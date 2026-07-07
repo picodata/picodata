@@ -3,9 +3,9 @@ use crate::executor::protocol::VTablesMeta;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{RelOwned, Relational};
 use crate::ir::node::{
-    Alias, BlockEntries, BlockStatement, BoundType, Constant, Delete, FrameType, Join, Motion,
-    Node, NodeId, Parameter, Projection, Reference, ReferenceTarget, ScalarFunction, ScanRelation,
-    SubQueryReference, Update,
+    Alias, BlockEntries, BlockStatement, BoundType, Cast, Constant, Delete, FrameType, Insert,
+    Join, Motion, Node, NodeId, Parameter, Projection, Reference, ReferenceTarget, ScalarFunction,
+    ScanRelation, SubQueryReference, Update,
 };
 use crate::ir::relation::Column;
 use crate::ir::types::DerivedType;
@@ -15,7 +15,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::fmt::Write as _;
-use std::hash::Hasher as _;
+use std::hash::{Hash as _, Hasher as _};
 use std::io::{self, Write as IoWrite};
 use tarantool::msgpack;
 use tarantool::msgpack::{Context, DecodeError};
@@ -25,7 +25,7 @@ use twox_hash::XxHash3_64;
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::ir::{DqlSubtree, ExecutionPlan, SqlExecutionView, SubtreeViewBuilder};
-use crate::ir::operator::{OrderByEntity, OrderByType};
+use crate::ir::operator::{ConflictDoUpdate, ConflictStrategy, OrderByEntity, OrderByType};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 
@@ -551,6 +551,7 @@ enum HashHeaderSalt {
     Reference = 3,
     Vtable = 4,
     RawExplain = 5,
+    InsertDoUpdate = 6,
 }
 
 fn hash_plan_id_header(hasher: &mut XxHash3_64, value: HashHeaderSalt) {
@@ -570,6 +571,81 @@ fn hash_plan_id_part<T: Serialize + ?Sized>(
     })
 }
 
+#[repr(u8)]
+enum IocduRhsSalt {
+    Param,
+    Expr,
+    LetVarCast,
+}
+
+fn hash_iocdu_rhs_header(hasher: &mut XxHash3_64, value: IocduRhsSalt) {
+    hasher.write_u8(value as u8);
+}
+
+fn hash_iocdu(
+    hasher: &mut XxHash3_64,
+    ir_plan: &crate::ir::Plan,
+    relation_name: &SmolStr,
+    payload: &ConflictDoUpdate,
+) -> Result<(), SbroadError> {
+    let relation = ir_plan.relations.get(relation_name).ok_or_else(|| {
+        SbroadError::NotFound(
+            Entity::Table,
+            format_smolstr!("{relation_name} among plan relations"),
+        )
+    })?;
+    let schema_version = ir_plan.table_version_map.get(&relation.id).ok_or_else(|| {
+        SbroadError::NotFound(
+            Entity::Table,
+            format_smolstr!("in version map with name: {}", relation.name),
+        )
+    })?;
+
+    hash_plan_id_header(hasher, HashHeaderSalt::InsertDoUpdate);
+    hash_plan_id_part(hasher, &relation.id)?;
+    // Invalidate the router-side BLOCK_PATTERN_CACHE: cached BlockQuery
+    // values include runtime hooks, and the IOCDU hook stores schema-sensitive
+    // data such as table id, column positions and target types. Without the
+    // schema version in the key, the router could reuse a BlockQuery with an
+    // IOCDU hook built for an older table schema.
+    hash_plan_id_part(hasher, schema_version)?;
+    hash_plan_id_part(hasher, &payload.target.columns)?;
+    hash_plan_id_part(hasher, &payload.items.len())?;
+    for item in &payload.items {
+        hash_plan_id_part(hasher, &item.column)?;
+        hash_plan_id_part(hasher, &item.op)?;
+        if let Some((_, target_type)) = item.rhs.param() {
+            hash_iocdu_rhs_header(hasher, IocduRhsSalt::Param);
+            hash_plan_id_part(hasher, &target_type)?;
+        } else {
+            hash_iocdu_rhs(hasher, ir_plan, item.rhs.expr())?;
+        }
+    }
+    Ok(())
+}
+
+fn hash_iocdu_rhs(
+    hasher: &mut XxHash3_64,
+    ir_plan: &crate::ir::Plan,
+    rhs: NodeId,
+) -> Result<(), SbroadError> {
+    let expr = ir_plan.get_expression_node(rhs)?;
+    if let Expression::Cast(Cast { child, to }) = expr {
+        let Expression::LetVarRef(var) = ir_plan.get_expression_node(*child)? else {
+            return Err(SbroadError::Invalid(
+                Entity::Plan,
+                Some("unexpected IOCDU cast expression".into()),
+            ));
+        };
+        hash_iocdu_rhs_header(hasher, IocduRhsSalt::LetVarCast);
+        hash_plan_id_part(hasher, var)?;
+        return hash_plan_id_part(hasher, to);
+    }
+
+    hash_iocdu_rhs_header(hasher, IocduRhsSalt::Expr);
+    hash_plan_id_part(hasher, &expr)
+}
+
 /// Key for the router-side cache of rendered block SQL patterns.
 ///
 /// Each plan caches its block hash in a `OnceCell` so repeated calls within
@@ -585,8 +661,7 @@ pub fn block_pattern_key(
     let mut hasher = XxHash3_64::new();
     for entry in BlockEntries::new(statements) {
         entry.with_location(|id, loc| {
-            let loc = format_smolstr!("{}", &loc);
-            hasher.write(loc.as_bytes());
+            loc.hash(&mut hasher);
             let sub = SubtreeViewBuilder::new(exec_plan, *id)?.subtree_hash()?;
             hasher.write_u64(sub.hash);
             Ok(())
@@ -867,9 +942,32 @@ impl SubtreeViewBuilder<'_> {
                     hash_plan_id_part(&mut hasher, &expr)?;
                 }
                 Node::Relational(rel) => {
+                    let insert_do_update = match &rel {
+                        Relational::Insert(Insert {
+                            relation,
+                            conflict_strategy: ConflictStrategy::DoUpdate { payload },
+                            ..
+                        }) => Some((relation, payload.as_ref())),
+                        _ => None,
+                    };
+
                     let mut rel = rel.get_rel_owned();
+                    if let RelOwned::Insert(insert) = &mut rel {
+                        if matches!(insert.conflict_strategy, ConflictStrategy::DoUpdate { .. }) {
+                            // Local SQL for IOCDU is rendered as a regular INSERT
+                            // with DoFail; the DO UPDATE part is attached through
+                            // a runtime hook and hashed separately by hash_iocdu.
+                            // Keeping DoUpdate here would add raw NodeId/source_index
+                            // data to the key and reduce BLOCK_PATTERN_CACHE reuse
+                            // without changing the rendered SQL pattern.
+                            insert.conflict_strategy = ConflictStrategy::DoFail;
+                        }
+                    }
                     normalize_plan_id_relational(ir_plan, &mut rel, &node_positions)?;
                     hash_plan_id_part(&mut hasher, &rel)?;
+                    if let Some((relation, payload)) = insert_do_update {
+                        hash_iocdu(&mut hasher, ir_plan, relation, payload)?;
+                    }
                 }
                 _ => {
                     hash_plan_id_part(&mut hasher, &node.into_owned())?;

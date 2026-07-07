@@ -1,9 +1,14 @@
 use super::*;
+use crate::backend::sql::ir::block_pattern_key;
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
-use crate::executor::engine::helpers::table_name;
+use crate::executor::engine::helpers::{generate_pattern_with_params_for_block, table_name};
 use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
+use crate::executor::engine::BlockRuntimeHook;
+use crate::ir::node::block::BlockOwned;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{ArenaType, Motion, Node, Over, Projection, ReferenceTarget, Window};
+use crate::ir::node::{
+    ArenaType, BlockStatement, Motion, Node, Over, Projection, ReferenceTarget, Window,
+};
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::tests::{vcolumn_integer_user_non_null, vcolumn_user_non_null};
 use crate::ir::transformation::helpers::sql_to_optimized_ir;
@@ -1447,6 +1452,130 @@ fn check_subtree_plan_ids_not_equal(
     let plan_id1 = get_top_plan_id(sql1, values1);
     let plan_id2 = get_top_plan_id(sql2, values2);
     assert_ne!(plan_id1, plan_id2);
+}
+
+fn get_block_pattern_key(sql: &str, values: Vec<Value>) -> u64 {
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, values).unwrap();
+    get_block_pattern_key_from_query(&mut query)
+}
+
+fn get_block_pattern_key_from_query(query: &mut ExecutingQuery<RouterRuntimeMock>) -> u64 {
+    let exec_plan = query.get_mut_exec_plan();
+    let table_id = exec_plan.get_ir_plan().relations.get("t").unwrap().id;
+    exec_plan
+        .get_mut_ir_plan()
+        .table_version_map
+        .insert(table_id, 1);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let BlockOwned::Anonymous(block) = exec_plan
+        .get_ir_plan()
+        .get_owned_block_node(top_id)
+        .unwrap()
+    else {
+        panic!("expected anonymous block");
+    };
+    block_pattern_key(exec_plan, &block.statements).unwrap()
+}
+
+#[test]
+fn block_pattern_key_hashes_insert_do_update_literal_rhs_value() {
+    let key1 = get_block_pattern_key(
+        r#"do $$ begin
+           insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" + 1;
+           end $$"#,
+        vec![],
+    );
+    let key2 = get_block_pattern_key(
+        r#"do $$ begin
+           insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" + 2;
+           end $$"#,
+        vec![],
+    );
+    assert_ne!(key1, key2);
+}
+
+#[test]
+fn block_pattern_key_hashes_insert_do_update_param_rhs_by_type() {
+    let sql = r#"do $$ begin
+           insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" + $1;
+           end $$"#;
+    let coordinator = RouterRuntimeMock::new();
+    let prepared =
+        crate::PreparedStatement::parse(&coordinator, sql, &[Value::Integer(1).get_type()])
+            .unwrap();
+    let mut query1 = ExecutingQuery::from_bound_statement(
+        &coordinator,
+        prepared
+            .bind(
+                vec![Value::Integer(1)],
+                crate::ir::options::Options::default(),
+            )
+            .unwrap(),
+    );
+    let mut query2 = ExecutingQuery::from_bound_statement(
+        &coordinator,
+        prepared
+            .bind(
+                vec![Value::Integer(2)],
+                crate::ir::options::Options::default(),
+            )
+            .unwrap(),
+    );
+    let key1 = get_block_pattern_key_from_query(&mut query1);
+    let key2 = get_block_pattern_key_from_query(&mut query2);
+    assert_eq!(key1, key2);
+}
+
+#[test]
+fn raw_explain_block_does_not_bind_insert_do_update_param_rhs() {
+    let sql = r#"explain (raw) do $$ begin
+           insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" + $1;
+           end $$"#;
+    let iocdu_param = Value::Integer(777);
+    let coordinator = RouterRuntimeMock::new();
+    let prepared =
+        crate::PreparedStatement::parse(&coordinator, sql, &[iocdu_param.get_type()]).unwrap();
+    let mut query = ExecutingQuery::from_bound_statement(
+        &coordinator,
+        prepared
+            .bind(
+                vec![iocdu_param.clone()],
+                crate::ir::options::Options::default(),
+            )
+            .unwrap(),
+    );
+    let exec_plan = query.get_mut_exec_plan();
+    assert!(exec_plan.get_ir_plan().is_raw_explain());
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let BlockOwned::Anonymous(block) = exec_plan
+        .get_ir_plan()
+        .get_owned_block_node(top_id)
+        .unwrap()
+    else {
+        panic!("expected anonymous block");
+    };
+    let query_id = match block.statements.first() {
+        Some(BlockStatement::Query(query_id)) => *query_id,
+        other => panic!("expected block query, got {other:?}"),
+    };
+
+    let (query, params) =
+        generate_pattern_with_params_for_block(exec_plan, query_id, Some(1), false).unwrap();
+
+    assert_eq!(query.hooks.len(), 1);
+    let BlockRuntimeHook::IdxInsertOnConflictDoUpdate {
+        raw_explain_detail, ..
+    } = &query.hooks[0];
+    assert_eq!(
+        raw_explain_detail.as_deref(),
+        Some(r#"picodata: ON CONFLICT ("a") UPDATE "c" += $1"#)
+    );
+    assert!(!params.contains(&iocdu_param));
 }
 
 #[test]

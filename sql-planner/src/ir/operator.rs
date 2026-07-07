@@ -9,11 +9,12 @@ use crate::frontend::sql::ir::SubtreeCloner;
 use crate::ir::api::children::Children;
 use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
-    Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Motion, MutNode, NodeId,
-    OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery,
-    Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
+    Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, LetVarRef, Motion, MutNode,
+    NodeId, OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation,
+    ScanSubQuery, Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::value::Value;
 use crate::ir::Plan;
 use ahash::RandomState;
 
@@ -22,7 +23,7 @@ use super::node::expression::{Expression, MutExpression};
 use super::node::relational::{MutRelational, Relational};
 use super::node::{ArenaType, Limit, Node, NodeAligned, SelectWithoutScan};
 use super::transformation::redistribution::{MotionPolicy, Program};
-use super::types::DerivedType;
+use super::types::{DerivedType, UnrestrictedType};
 use crate::collection;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::distribution::{Distribution, Key, KeySet};
@@ -38,6 +39,7 @@ use std::borrow::BorrowMut;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use std::rc::Rc;
 
 /// Binary operator returning Bool expression.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone, Copy)]
@@ -220,7 +222,7 @@ impl Display for JoinKind {
 }
 
 /// Strategy applied on INSERT execution.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize, Default)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize, Default)]
 pub enum ConflictStrategy {
     /// Swallow the error, do not insert the conflicting tuple
     DoNothing,
@@ -230,6 +232,148 @@ pub enum ConflictStrategy {
     /// storage. But for other storages the insertion may be successful.
     #[default]
     DoFail,
+    /// Apply update opcodes to the conflicting tuple.
+    DoUpdate {
+        /// Payload used only by `ON CONFLICT DO UPDATE`.
+        payload: Box<ConflictDoUpdate>,
+    },
+}
+
+/// `ON CONFLICT DO UPDATE` payload.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct ConflictDoUpdate {
+    /// Explicit conflict target from the SQL statement.
+    pub target: ConflictTarget,
+    /// Assignments to apply when a conflicting tuple is found.
+    pub items: Vec<ConflictUpdateItem>,
+}
+
+/// Conflict target captured from an `ON CONFLICT (...)` clause.
+#[derive(Clone, Debug, Deserialize, Hash, PartialEq, Eq, Serialize)]
+pub struct ConflictTarget {
+    /// Zero-based positions of the target columns in the table schema.
+    pub columns: Vec<usize>,
+}
+
+impl ConflictTarget {
+    /// Returns target columns as zero-based positions in the table schema.
+    #[inline(always)]
+    pub fn columns(&self) -> &[usize] {
+        &self.columns
+    }
+}
+
+/// Block `ON CONFLICT DO UPDATE` data before storage index metadata is resolved.
+#[derive(Clone, Debug, Deserialize, Hash, PartialEq, Eq, Serialize)]
+pub struct BlockConflictDoUpdate {
+    /// Conflict target captured from SQL.
+    pub target: ConflictTarget,
+    /// Assignments to apply when a conflicting tuple is found.
+    pub items: Rc<[PreparedConflictUpdateItem]>,
+}
+
+/// `ON CONFLICT DO UPDATE SET` assignment captured from SQL.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct ConflictUpdateItem {
+    /// Zero-based position of the updated column in the table schema.
+    pub column: usize,
+    /// Update opcode to apply to the conflicting tuple.
+    pub op: ConflictUpdateOp,
+    /// Right-hand side value captured from SQL.
+    pub rhs: ConflictUpdateRhs,
+}
+
+/// `ON CONFLICT DO UPDATE SET` right-hand side captured from SQL.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub enum ConflictUpdateRhs {
+    /// Regular expression node.
+    Expr(NodeId),
+    /// SQL parameter with its coerced expression node.
+    Param {
+        expr: NodeId,
+        target_type: UnrestrictedType,
+        source_index: u16,
+    },
+}
+
+impl ConflictUpdateRhs {
+    #[inline(always)]
+    pub fn expr(&self) -> NodeId {
+        match self {
+            Self::Expr(expr) | Self::Param { expr, .. } => *expr,
+        }
+    }
+
+    #[inline(always)]
+    pub fn param(&self) -> Option<(NodeId, UnrestrictedType)> {
+        match self {
+            Self::Param {
+                expr, target_type, ..
+            } => Some((*expr, *target_type)),
+            Self::Expr(_) => None,
+        }
+    }
+}
+
+/// Prepared `ON CONFLICT DO UPDATE SET` assignment.
+#[derive(Clone, Debug, Deserialize, Hash, PartialEq, Eq, Serialize)]
+pub struct PreparedConflictUpdateItem {
+    /// Zero-based position of the updated column in the table schema.
+    pub column: usize,
+    /// Update opcode to apply to the conflicting tuple.
+    pub op: ConflictUpdateOp,
+    /// Prepared right-hand side value.
+    pub value: ConflictUpdateValue,
+}
+
+/// Runtime source for an `ON CONFLICT DO UPDATE SET` assignment value.
+#[derive(Clone, Debug, Deserialize, Hash, PartialEq, Eq, Serialize)]
+pub enum ConflictUpdateValue {
+    /// A literal constant prepared from SQL.
+    Const(Value),
+    /// A SQL parameter captured from an anonymous block.
+    Param {
+        index: u16,
+        cast_type: UnrestrictedType,
+    },
+    /// A LET variable captured from an anonymous block.
+    LetVar {
+        var: LetVarRef,
+        cast_type: UnrestrictedType,
+    },
+}
+
+/// Update opcode for `ON CONFLICT DO UPDATE`.
+#[derive(Clone, Copy, Debug, Deserialize, Hash, PartialEq, Eq, Serialize)]
+#[repr(u8)]
+pub enum ConflictUpdateOp {
+    AddAssign = 0,
+    SubAssign,
+    AndAssign,
+    OrAssign,
+}
+
+impl ConflictUpdateOp {
+    pub(crate) fn as_binary_operator(self) -> &'static str {
+        match self {
+            Self::AddAssign => "+",
+            Self::SubAssign => "-",
+            Self::AndAssign => "and",
+            Self::OrAssign => "or",
+        }
+    }
+}
+
+impl Display for ConflictUpdateOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::AddAssign => "+=",
+            Self::SubAssign => "-=",
+            Self::AndAssign => "&=",
+            Self::OrAssign => "|=",
+        };
+        f.write_str(s)
+    }
 }
 
 impl Display for ConflictStrategy {
@@ -238,17 +382,24 @@ impl Display for ConflictStrategy {
             ConflictStrategy::DoNothing => "nothing",
             ConflictStrategy::DoReplace => "replace",
             ConflictStrategy::DoFail => "fail",
+            ConflictStrategy::DoUpdate { .. } => "update",
         };
         write!(f, "{s}")
     }
 }
 
-impl From<&ConflictStrategy> for ConflictPolicy {
-    fn from(value: &ConflictStrategy) -> Self {
+impl TryFrom<&ConflictStrategy> for ConflictPolicy {
+    type Error = SbroadError;
+
+    fn try_from(value: &ConflictStrategy) -> Result<Self, Self::Error> {
         match value {
-            ConflictStrategy::DoNothing => ConflictPolicy::DoNothing,
-            ConflictStrategy::DoReplace => ConflictPolicy::DoReplace,
-            ConflictStrategy::DoFail => ConflictPolicy::DoFail,
+            ConflictStrategy::DoNothing => Ok(ConflictPolicy::DoNothing),
+            ConflictStrategy::DoReplace => Ok(ConflictPolicy::DoReplace),
+            ConflictStrategy::DoFail => Ok(ConflictPolicy::DoFail),
+            ConflictStrategy::DoUpdate { .. } => Err(SbroadError::Invalid(
+                Entity::Query,
+                Some("ON CONFLICT DO UPDATE is supported only in transactional blocks".into()),
+            )),
         }
     }
 }

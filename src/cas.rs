@@ -1291,7 +1291,7 @@ fn check_unique_key_dml_predicate(
             }
         }
         Dml::Insert {
-            conflict_strategy: ConflictStrategy::DoReplace,
+            conflict_strategy: ConflictStrategy::DoReplace | ConflictStrategy::DoUpdate { .. },
             ..
         }
         | Dml::Replace { .. }

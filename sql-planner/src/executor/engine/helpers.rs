@@ -9,29 +9,35 @@ use crate::{
     },
     ir::{
         api::children::Children,
-        node::{block::BlockOwned, expression::MutExpression, BlockEntries, BlockStatement},
+        node::{
+            block::BlockOwned,
+            expression::{Expression, MutExpression},
+            BlockEntries, BlockStatement, Cast,
+        },
         tree::Snapshot,
     },
 };
 use ahash::AHashMap;
 use std::cell::RefCell;
-use std::sync::Arc;
 
 use crate::{
     executor::vtable::vtable_indexed_column_name,
     ir::{
         node::{
-            expression::Expression, relational::Relational, Alias, Constant, Delete, Limit, Motion,
-            NodeId, Update, Values, ValuesRow,
+            relational::Relational, Alias, Constant, Delete, Insert, Limit, Motion, NodeId, Update,
+            Values, ValuesRow,
         },
-        operator::ConflictStrategy,
-        types::DerivedType,
+        operator::{
+            BlockConflictDoUpdate, ConflictDoUpdate, ConflictStrategy, ConflictUpdateItem,
+            ConflictUpdateRhs, ConflictUpdateValue, PreparedConflictUpdateItem,
+        },
+        types::{DerivedType, UnrestrictedType},
     },
 };
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::{cmp::Ordering, collections::HashMap, rc::Rc, sync::OnceLock};
 
-use super::{BlockExecData, Metadata, Router, Vshard};
+use super::{BlockExecData, BlockQuery, BlockRuntimeHook, Metadata, Router, Vshard};
 use crate::executor::Port;
 use crate::ir::node::Node;
 use crate::ir::value::{EncodedValue, MsgPackValue};
@@ -699,7 +705,7 @@ fn dml_get_motion_child(
     }
 }
 
-type BlockPatternCache = LRUCache<u64, Arc<Vec<BlockStatement<String>>>>;
+type BlockPatternCache = LRUCache<u64, Rc<Vec<BlockStatement<BlockQuery>>>>;
 
 #[derive(Clone, Copy)]
 pub struct BlockPatternCacheHooks {
@@ -722,7 +728,7 @@ fn fire_block_pattern_cache_hook(pick: fn(&BlockPatternCacheHooks) -> fn()) {
     }
 }
 
-fn block_pattern_evict_fn() -> EvictFn<u64, Arc<Vec<BlockStatement<String>>>> {
+fn block_pattern_evict_fn() -> EvictFn<u64, Rc<Vec<BlockStatement<BlockQuery>>>> {
     Box::new(|_key, _value| {
         fire_block_pattern_cache_hook(|h| h.on_evicted);
         Ok(())
@@ -738,19 +744,223 @@ thread_local! {
 
 /// Compute the params of a single block query without rendering its SQL.
 fn generate_params_for_block_query(
-    plan: &mut ExecutionPlan,
+    plan: &ExecutionPlan,
     query_id: NodeId,
     bucket_id: Option<u64>,
 ) -> Result<Vec<Value>, SbroadError> {
     let sql_params = plan.block_sql_params(query_id)?;
     let (_, mut params) = sql_params.into_parts();
-    if let Relational::Insert(_) = plan.get_ir_plan().get_relation_node(query_id)? {
+    if let Relational::Insert(insert) = plan.get_ir_plan().get_relation_node(query_id)? {
         let bucket_id = bucket_id.ok_or_else(|| {
             SbroadError::Other("INSERT in transaction requires a known target bucket".into())
         })?;
-        params.push(Value::Integer(bucket_id as i64));
+        push_block_param(&mut params, Value::Integer(bucket_id as i64))?;
+        append_iocdu_param_values(plan, insert, &mut params, true)?;
     }
     Ok(params)
+}
+
+fn next_block_param_index(params_len: usize) -> Result<u16, SbroadError> {
+    let index = params_len + 1;
+    let index = u16::try_from(index).map_err(|_| {
+        SbroadError::Other(format_smolstr!(
+            "too many parameters in block query: {index}"
+        ))
+    })?;
+    Ok(index)
+}
+
+fn push_block_param(params: &mut Vec<Value>, value: Value) -> Result<u16, SbroadError> {
+    let index = next_block_param_index(params.len())?;
+    params.push(value);
+    Ok(index)
+}
+
+pub fn iocdu_param_value_node(plan: &Plan, expr: NodeId) -> Result<NodeId, SbroadError> {
+    if matches!(plan.get_expression_node(expr)?, Expression::Constant(_)) {
+        Ok(expr)
+    } else {
+        Err(SbroadError::Invalid(
+            Entity::Plan,
+            Some("unbound IOCDU parameter".into()),
+        ))
+    }
+}
+
+fn append_iocdu_param_values(
+    plan: &ExecutionPlan,
+    insert: &Insert,
+    params: &mut Vec<Value>,
+    bind_values: bool,
+) -> Result<AHashMap<NodeId, u16>, SbroadError> {
+    let mut parameter_indexes = AHashMap::new();
+    let mut next_param_len = params.len();
+    let ConflictStrategy::DoUpdate { payload } = &insert.conflict_strategy else {
+        return Ok(parameter_indexes);
+    };
+
+    for item in &payload.items {
+        let Some((expr, _)) = item.rhs.param() else {
+            continue;
+        };
+        let param_node = iocdu_param_value_node(plan.get_ir_plan(), expr)?;
+        // Build indexes for the block-local parameter list, not for the original SQL
+        // placeholders. Key by the RHS node: each `$N` occurrence gets its own NodeId
+        // when parsed, and parameter binding rewrites that node in place.
+        let index = if bind_values {
+            let value = plan.get_ir_plan().as_const_value_ref(param_node)?.clone();
+            push_block_param(params, value)?
+        } else {
+            let index = next_block_param_index(next_param_len)?;
+            next_param_len += 1;
+            index
+        };
+        parameter_indexes.insert(param_node, index);
+    }
+
+    Ok(parameter_indexes)
+}
+
+fn prepare_iocdu_value(
+    plan: &Plan,
+    item: &ConflictUpdateItem,
+    parameter_indexes: &AHashMap<NodeId, u16>,
+) -> Result<ConflictUpdateValue, SbroadError> {
+    if let Some((expr, target_type)) = item.rhs.param() {
+        let param_node = iocdu_param_value_node(plan, expr)?;
+        let index = parameter_indexes.get(&param_node).ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Plan,
+                Some(format_smolstr!(
+                    "missing ON CONFLICT DO UPDATE parameter {:?}",
+                    param_node
+                )),
+            )
+        })?;
+        return Ok(ConflictUpdateValue::Param {
+            index: *index,
+            cast_type: target_type,
+        });
+    }
+
+    let rhs = item.rhs.expr();
+    // Cast(Constant) must have been folded by Plan::cast_constants().
+    // Cast(LetVarRef) stays dynamic and is applied after reading the LET value.
+    let (rhs, cast_type) = match plan.get_expression_node(rhs)? {
+        Expression::Constant(Constant { value }) => {
+            return Ok(ConflictUpdateValue::Const(value.clone()));
+        }
+        Expression::Cast(Cast { child, to }) => (*child, (*to).into()),
+        _ => (rhs, UnrestrictedType::Any),
+    };
+
+    match plan.get_expression_node(rhs)? {
+        Expression::LetVarRef(var) => Ok(ConflictUpdateValue::LetVar {
+            var: var.clone(),
+            cast_type,
+        }),
+        other => Err(SbroadError::Invalid(
+            Entity::Plan,
+            Some(format_smolstr!(
+                "unsupported ON CONFLICT DO UPDATE value expression: {other:?}"
+            )),
+        )),
+    }
+}
+
+fn prepare_iocdu_hook(
+    plan: &ExecutionPlan,
+    relation: &crate::ir::relation::Table,
+    payload: &ConflictDoUpdate,
+    parameter_indexes: &AHashMap<NodeId, u16>,
+) -> Result<BlockRuntimeHook, SbroadError> {
+    let items = payload
+        .items
+        .iter()
+        .map(|item| {
+            Ok(PreparedConflictUpdateItem {
+                column: item.column,
+                op: item.op,
+                value: prepare_iocdu_value(plan.get_ir_plan(), item, parameter_indexes)?,
+            })
+        })
+        .collect::<Result<Vec<_>, SbroadError>>()?;
+    let update = BlockConflictDoUpdate {
+        target: payload.target.clone(),
+        items: items.into(),
+    };
+    // Rendered only for RAW EXPLAIN — normal executions never read the detail,
+    // so don't pay for building, shipping and hashing it on the hot path.
+    let raw_explain_detail = if plan.get_ir_plan().is_raw_explain() {
+        Some(explain_iocdu_hook(relation, payload, &update)?)
+    } else {
+        None
+    };
+    Ok(BlockRuntimeHook::IdxInsertOnConflictDoUpdate {
+        table_id: relation.id,
+        update,
+        raw_explain_detail,
+    })
+}
+
+fn explain_iocdu_value(value: &ConflictUpdateValue, item: &ConflictUpdateItem) -> String {
+    match value {
+        ConflictUpdateValue::Const(value) => value.to_string(),
+        ConflictUpdateValue::Param { index, .. } => {
+            let source_index = match item.rhs {
+                ConflictUpdateRhs::Param { source_index, .. } => source_index,
+                ConflictUpdateRhs::Expr(_) => *index,
+            };
+            format!("${source_index}")
+        }
+        ConflictUpdateValue::LetVar { var, .. } => var.name.to_string(),
+    }
+}
+
+fn explain_column_name(
+    relation: &crate::ir::relation::Table,
+    position: usize,
+) -> Result<SmolStr, SbroadError> {
+    relation
+        .columns
+        .get(position)
+        .map(|column| to_user(&column.name))
+        .ok_or_else(|| {
+            SbroadError::NotFound(
+                Entity::Column,
+                format_smolstr!("at position {position} in {}", relation.name),
+            )
+        })
+}
+
+fn explain_iocdu_hook(
+    relation: &crate::ir::relation::Table,
+    payload: &ConflictDoUpdate,
+    update: &BlockConflictDoUpdate,
+) -> Result<SmolStr, SbroadError> {
+    let target = update
+        .target
+        .columns()
+        .iter()
+        .map(|pos| explain_column_name(relation, *pos))
+        .collect::<Result<Vec<_>, _>>()?
+        .join(", ");
+
+    let items = update
+        .items
+        .iter()
+        .zip(&payload.items)
+        .map(|(item, source_item)| {
+            let column = explain_column_name(relation, item.column)?;
+            let value = explain_iocdu_value(&item.value, source_item);
+            Ok::<_, SbroadError>(format!("{column} {} {value}", item.op))
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .join(", ");
+
+    Ok(format_smolstr!(
+        "picodata: ON CONFLICT ({target}) UPDATE {items}"
+    ))
 }
 
 /// Generate pattern with params for block query.
@@ -761,7 +971,7 @@ pub fn generate_pattern_with_params_for_block(
     query_id: NodeId,
     bucket_id: Option<u64>,
     use_colon_params: bool,
-) -> Result<(String, Vec<Value>), SbroadError> {
+) -> Result<(BlockQuery, Vec<Value>), SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
 
     struct Select {
@@ -953,7 +1163,13 @@ pub fn generate_pattern_with_params_for_block(
         _ => plan.generate_sql(&nodes, plan_id, table_name, Some(constant_ids.as_slice()))?,
     };
 
-    Ok((pattern, params))
+    Ok((
+        BlockQuery {
+            pattern,
+            hooks: Vec::new(),
+        },
+        params,
+    ))
 }
 
 /// Build the SQL pattern for a block-optimized INSERT.
@@ -961,6 +1177,7 @@ pub fn generate_pattern_with_params_for_block(
 /// The motion above Insert has already been eliminated by `optimize_block`, so the
 /// child is a Values node. We render the Values subtree via `SyntaxPlan` and prepend
 /// an `INSERT [OR REPLACE|IGNORE] INTO "t" ("c1", ...)` envelope inline.
+#[allow(clippy::too_many_arguments)]
 fn generate_insert_pattern_for_block(
     plan: &ExecutionPlan,
     insert_id: NodeId,
@@ -969,7 +1186,7 @@ fn generate_insert_pattern_for_block(
     mut params: Vec<Value>,
     bucket_id: u64,
     use_colon_params: bool,
-) -> Result<(String, Vec<Value>), SbroadError> {
+) -> Result<(BlockQuery, Vec<Value>), SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
 
     let Relational::Insert(insert) = plan.get_ir_plan().get_relation_node(insert_id)? else {
@@ -1008,10 +1225,12 @@ fn generate_insert_pattern_for_block(
         })?;
 
     let mut envelope = String::new();
-    envelope.push_str(match insert.conflict_strategy {
+    let mut hooks = Vec::new();
+    envelope.push_str(match &insert.conflict_strategy {
         ConflictStrategy::DoFail => "INSERT INTO ",
         ConflictStrategy::DoReplace => "INSERT OR REPLACE INTO ",
         ConflictStrategy::DoNothing => "INSERT OR IGNORE INTO ",
+        ConflictStrategy::DoUpdate { .. } => "INSERT INTO ",
     });
     envelope.push('"');
     envelope.push_str(&insert.relation);
@@ -1044,13 +1263,24 @@ fn generate_insert_pattern_for_block(
 
     // Append the bucket_id value to the params array once and reference it via
     // the same `$N` placeholder appended to every row's tuple.
-    let bucket_param_idx = params.len() + 1;
-    params.push(Value::Integer(bucket_id as i64));
+    let bucket_param_idx = push_block_param(&mut params, Value::Integer(bucket_id as i64))?;
     let bucket_placeholder = if use_colon_params {
         format_smolstr!(", :{bucket_param_idx}")
     } else {
         format_smolstr!(", ${bucket_param_idx}")
     };
+
+    let bind_iocdu_params = !plan.get_ir_plan().is_raw_explain();
+    let parameter_indexes =
+        append_iocdu_param_values(plan, insert, &mut params, bind_iocdu_params)?;
+    if let ConflictStrategy::DoUpdate { payload } = &insert.conflict_strategy {
+        hooks.push(prepare_iocdu_hook(
+            plan,
+            relation,
+            payload,
+            &parameter_indexes,
+        )?);
+    }
 
     // The Values syntax data renders as `VALUES (<row1>),(<row2>),...`. Track
     // parenthesis depth so we inject the bucket placeholder only at the row's
@@ -1076,7 +1306,7 @@ fn generate_insert_pattern_for_block(
     }
 
     let pattern = plan.generate_sql(&nodes, plan_id, table_name, Some(constant_ids.as_slice()))?;
-    Ok((pattern, params))
+    Ok((BlockQuery { pattern, hooks }, params))
 }
 
 /// A helper function to dispatch the execution plan from the router to the storages.
@@ -1134,7 +1364,7 @@ pub fn dispatch_impl<'p>(
         } else {
             None
         };
-        let cached_patterns: Option<(u64, Arc<Vec<BlockStatement<String>>>)> = match cache_key {
+        let cached_patterns: Option<(u64, Rc<Vec<BlockStatement<BlockQuery>>>)> = match cache_key {
             Some(key) => {
                 let cached = BLOCK_PATTERN_CACHE.with(|c| -> Result<_, SbroadError> {
                     Ok(c.borrow_mut().get(&key)?.cloned())
@@ -1150,7 +1380,9 @@ pub fn dispatch_impl<'p>(
         };
 
         let mut params: Vec<Vec<Value>> = Vec::new();
-        let statements: Vec<BlockStatement<String>> = if let Some((_, cached)) = &cached_patterns {
+        let statements: Vec<BlockStatement<BlockQuery>> = if let Some((_, cached)) =
+            &cached_patterns
+        {
             for entry in BlockEntries::new(&block.statements) {
                 entry.with(|id| {
                     let query_params = generate_params_for_block_query(plan, *id, block_bucket_id)?;
@@ -1164,20 +1396,20 @@ pub fn dispatch_impl<'p>(
             // FIXME: add error location tracing,
             // (e.g. Statement 1 (RETURN QUERY): some shit happened)
             for stmt in block.statements {
-                let mapped = stmt.try_map(|id| -> Result<String, SbroadError> {
-                    let (pattern, stmt_params) = generate_pattern_with_params_for_block(
+                let mapped = stmt.try_map(|id| -> Result<BlockQuery, SbroadError> {
+                    let (query, stmt_params) = generate_pattern_with_params_for_block(
                         plan,
                         id,
                         block_bucket_id,
                         use_colon_params,
                     )?;
                     params.push(stmt_params);
-                    Ok(pattern)
+                    Ok(query)
                 })?;
                 statements.push(mapped);
             }
             if let Some(key) = cache_key {
-                let cached = Arc::new(statements.clone());
+                let cached = Rc::new(statements.clone());
                 BLOCK_PATTERN_CACHE.with(|c| -> Result<(), SbroadError> {
                     c.borrow_mut().put(key, cached)?;
                     Ok(())

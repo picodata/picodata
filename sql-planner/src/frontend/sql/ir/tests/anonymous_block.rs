@@ -118,6 +118,11 @@ fn anonymous_blocks_parsing_errors() {
             "DO $$ BEGIN UPDATE t2 SET e = f;; END $$",
             "rule parsing error",
         ),
+        // IOCDU update target must not be table-qualified.
+        (
+            "DO $$ BEGIN INSERT INTO \"t\" VALUES (1, 1, 1, 1) ON CONFLICT (\"a\") DO UPDATE SET t.c = t.c + 1; END $$",
+            "ON CONFLICT DO UPDATE SET target column must not be table-qualified",
+        ),
         // Options must be specified only for a block.
         (
             "DO $$ BEGIN RETURN QUERY SELECT 1 OPTION (SQL_VDBE_OPCODE_MAX = 1); END $$",
@@ -148,6 +153,15 @@ fn parameterized_anonymous_blocks() {
         "DO $$ BEGIN RETURN QUERY SELECT $1::int; UPDATE t2 SET e = f WHERE f = $1; END $$",
         // Define parameter type in RETURN QUERY and use it in the following queries.
         "DO $$ BEGIN RETURN QUERY SELECT $1 + 1; UPDATE t2 SET e = $1 + $1 WHERE f = $1; END $$",
+        // Route a typed parameter through LET and use it in an IOCDU RHS.
+        r#"DO $$ BEGIN
+            LET m = (SELECT $1::int);
+            INSERT INTO "t" VALUES (1, 1, 1, 1) ON CONFLICT ("a") DO UPDATE SET "c" = "c" + m;
+        END $$"#,
+        // Use a parameter in an IOCDU RHS.
+        "DO $$ BEGIN INSERT INTO \"t\" VALUES (1, 1, 1, 1) ON CONFLICT (\"a\") DO UPDATE SET \"c\" = \"c\" + $1; END $$",
+        // Allow table-qualified self reference in IOCDU RHS.
+        "DO $$ BEGIN INSERT INTO \"t\" VALUES (1, 1, 1, 1) ON CONFLICT (\"a\") DO UPDATE SET \"c\" = t.c + 1; END $$",
     ];
 
     let error_cases = [
@@ -161,6 +175,14 @@ fn parameterized_anonymous_blocks() {
         (
             "DO $$ BEGIN UPDATE t2 SET e = 1 WHERE f = $1; UPDATE t2 SET e = 2 WHERE f::text = $1; END $$",
             "could not resolve operator overload for =(text, int)",
+        ),
+        // Unknown parameter type defaults to text, so the LET variable cannot be added to int.
+        (
+            r#"DO $$ BEGIN
+                LET m = (SELECT $1);
+                INSERT INTO "t" VALUES (1, 1, 1, 1) ON CONFLICT ("a") DO UPDATE SET "c" = "c" + m;
+            END $$"#,
+            "could not resolve operator overload for +(int, text)",
         ),
     ];
 

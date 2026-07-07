@@ -362,10 +362,19 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
         // VALUES under INSERT cannot be parsed in a regular post order manner, because we also need to consider the column types.
         InsertValues = { ^"values" ~ WO ~ ValuesRows }
         TargetColumns = !{ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")" }
-        OnConflict = _{ ^"on" ~ W ~ ^"conflict" ~ W ~ ^"do" ~ W ~ (DoNothing | DoReplace | DoFail) }
-        DoReplace = { ^"replace" }
-        DoNothing = { ^"nothing" }
-        DoFail = { ^"fail" }
+        OnConflict = { ^"on" ~ W ~ ^"conflict" ~ (WO ~ ConflictTarget)? ~ W ~ ^"do" ~ W ~ DoAction }
+            ConflictTarget = !{ "(" ~ WO ~ Identifier ~ (WO ~ "," ~ WO ~ Identifier)* ~ WO ~ ")" }
+            DoAction = _{ DoUpdate | DoNothing | DoReplace | DoFail }
+            DoReplace = { ^"replace" }
+            DoNothing = { ^"nothing" }
+            DoFail = { ^"fail" }
+            DoUpdate = ${ ^"update" ~ W ~ ^"set" ~ W ~ DoUpdateList }
+            DoUpdateList = { DoUpdateItem ~ (WO ~ "," ~ WO ~ DoUpdateItem)* }
+            DoUpdateItem = !{ (DoUpdateColumnRef | Identifier) ~ WO ~ "=" ~ WO ~ DoUpdateExpr }
+            // Accept a broad expression here so unsupported RHS forms can be rejected
+            // by ON CONFLICT DO UPDATE semantic validation with a user-facing error.
+            DoUpdateExpr = !{ Expr }
+            DoUpdateColumnRef = { Identifier ~ "." ~ Identifier }
     Update = ${ ^"update" ~ W ~ (PublicSchema)? ~ IndexedTableScan ~ W ~ ^"set" ~ W ~ UpdateList ~ (W ~ (UpdateFrom | WhereClause))? }
         UpdateList = { UpdateItem ~ (WO ~ "," ~ WO ~ UpdateItem)* }
         UpdateItem = !{ Identifier ~ "=" ~ Expr }

@@ -6,7 +6,7 @@ use crate::frontend::sql::transform_into_plan;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::NodeId;
 use crate::ir::options::Options;
-use crate::ir::transformation::helpers::sql_to_optimized_ir;
+use crate::ir::transformation::helpers::{expect_sql_to_ir_error, sql_to_optimized_ir};
 use crate::ir::tree::traversal::PostOrder;
 use crate::ir::types::{DerivedType, UnrestrictedType as Type};
 use crate::ir::value::Value;
@@ -2612,6 +2612,215 @@ fn front_sql_insert_on_conflict() {
         values
           value ROW(1::int, 1::int, 1::int, 1::int)
     "#);
+
+    input = r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+        on conflict ("a") do update set "c" = "c" + 1"#;
+    plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insert into t on conflict: (a) update set c += 1
+      motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
+        values
+          value ROW(1::int, 1::int, 1::int, 1::int)
+    "#);
+}
+
+#[test]
+fn insert_conflict_do_update_errors() {
+    let cases = [
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict do update set "c" = "c" + 1"#,
+            "ON CONFLICT DO UPDATE requires explicit conflict target",
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do nothing"#,
+            "ON CONFLICT target is only supported with DO UPDATE",
+        ),
+        (
+            r#"explain (logical) insert into "hash_testing"
+               values (1, 'p', true, 1)
+               on conflict ("identification_number", "product_code") do update set
+                   "product_units" = "product_units" + 1"#,
+            "could not resolve operator overload for +(bool, int)",
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" and true"#,
+            "could not resolve operator overload for and(int, bool)",
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" + false"#,
+            "could not resolve operator overload for +(int, bool)",
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" + 1.5"#,
+            r#"column "c" is of type int, but update value is of type numeric"#,
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" + 'kek'"#,
+            "failed to parse 'kek' as a value of type int",
+        ),
+        (
+            r#"do $$
+               begin
+                   let x = (select pico_instance_health_status('i1')['state']);
+                   insert into "t" values (1, 1, 1, 1)
+                       on conflict ("a") do update set "c" = "c" + x;
+               end
+               $$"#,
+            "could not resolve operator overload for +(int, any)",
+        ),
+        (
+            r#"do $$
+               begin
+                   let c = (select 1);
+                   insert into "t" values (1, 1, 1, 1)
+                       on conflict ("a") do update set "c" = "c" + 1;
+               end
+               $$"#,
+            r#"column reference "c" is ambiguous: it could refer to either a LET variable or a table column"#,
+        ),
+        (
+            r#"do $$
+               begin
+                   let c = (select 1);
+                   insert into "t" values (1, 1, 1, 1)
+                       on conflict ("a") do update set "c" = 1 + "c";
+               end
+               $$"#,
+            r#"column reference "c" is ambiguous: it could refer to either a LET variable or a table column"#,
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c""#,
+            r#"unsupported ON CONFLICT DO UPDATE expression for column "c""#,
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = null"#,
+            r#"unsupported ON CONFLICT DO UPDATE expression for column "c""#,
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" || 'kek'"#,
+            r#"unsupported ON CONFLICT DO UPDATE expression for column "c""#,
+        ),
+        (
+            r#"explain (logical) insert into "t2" values (1, 2, 3, 4)
+               on conflict ("e", "f") do update set "g" = "g" + 1"#,
+            r#"primary key column "g" cannot be updated in ON CONFLICT DO UPDATE"#,
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "a" = "a" + 1"#,
+            r#"distribution column "a" cannot be updated in ON CONFLICT DO UPDATE"#,
+        ),
+        (
+            r#"explain (logical) insert into "t3" values ('a', 1)
+               on conflict ("a") do update set "bucket_id" = "bucket_id" + 1"#,
+            r#"system column "bucket_id" cannot be updated in ON CONFLICT DO UPDATE"#,
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "c" + 1, "c" = "c" + 2"#,
+            r#"the same column is specified twice in update list: "c""#,
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a", "a") do update set "c" = "c" + 1"#,
+            r#"the same column is specified twice in conflict target: "a""#,
+        ),
+        (
+            r#"explain (logical) insert into "t" values (1, 1, 1, 1)
+               on conflict ("a") do update set "c" = "d" + 1"#,
+            r#"unsupported ON CONFLICT DO UPDATE expression for column "c""#,
+        ),
+    ];
+
+    for (query, error_pattern) in cases {
+        let error = expect_sql_to_ir_error(query, &[]);
+        assert!(
+            error.to_string().contains(error_pattern),
+            "expected {error_pattern:?} in error for query {query:?}, got {error}"
+        );
+    }
+}
+
+#[test]
+fn insert_conflict_do_update_accepts_null_rhs() {
+    let metadata = &RouterConfigurationMock::new();
+    let cases = [
+        r#"insert into "t" values (1, 1, 1, 1)
+           on conflict ("a") do update set "c" = "c" + null"#,
+        r#"insert into "t" values (1, 1, 1, 1)
+           on conflict ("a") do update set "c" = "c" - null"#,
+        r#"insert into "hash_testing" values (1, 'p', true, 1)
+           on conflict ("identification_number", "product_code") do update set
+               "product_units" = "product_units" and null"#,
+        r#"insert into "hash_testing" values (1, 'p', true, 1)
+           on conflict ("identification_number", "product_code") do update set
+               "product_units" = "product_units" or null"#,
+    ];
+
+    for query in cases {
+        transform_into_plan(query, &[], metadata).unwrap();
+    }
+}
+
+#[test]
+fn insert_conflict_do_update_accepts_parameter_rhs() {
+    let metadata = &RouterConfigurationMock::new();
+    transform_into_plan(
+        r#"do $$
+           begin
+               insert into "t" values (1, 1, 1, 1)
+                   on conflict ("a") do update set "c" = "c" + $1;
+           end
+           $$"#,
+        &[DerivedType::new(Type::Integer)],
+        metadata,
+    )
+    .unwrap();
+}
+
+#[test]
+fn insert_conflict_do_update_accepts_typed_let_rhs() {
+    let metadata = &RouterConfigurationMock::new();
+    transform_into_plan(
+        r#"do $$
+           begin
+               let x = (select cast(pico_instance_health_status('i1')['state'] as int));
+               insert into "t" values (1, 1, 1, 1)
+                   on conflict ("a") do update set "c" = "c" + x;
+           end
+           $$"#,
+        &[],
+        metadata,
+    )
+    .unwrap();
+}
+
+#[test]
+fn insert_conflict_do_update_accepts_qualified_self_reference_with_shadowing_let() {
+    let metadata = &RouterConfigurationMock::new();
+    transform_into_plan(
+        r#"do $$
+           begin
+               let c = (select 1);
+               if c > 0 then
+                   insert into "t" values (1, 1, 1, 1)
+                       on conflict ("a") do update set "c" = t.c + 1;
+               end if;
+           end
+           $$"#,
+        &[],
+        metadata,
+    )
+    .unwrap();
 }
 
 #[test]

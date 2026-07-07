@@ -5,13 +5,27 @@
 This benchmark suite contains a set of pgbench scripts designed to evaluate block query performance under different scenarios.
 
 Scripts that use block queries include the letter b in their filename.
-Each block script has a corresponding q script where the same queries are executed individually.
+Most block scripts have a corresponding q script where the same queries are executed individually.
 This allows comparison between block execution and standard query execution.
 
 ## Running the Benchmark
 
 1. **Initialize the database** 
    Run the initialization steps from the TPC-B benchmark (create the user, tables, and populate them with data).
+
+   To run the IOCDU block benchmark script (`b4.sql`), also create
+   and seed a single-row conflict counter table:
+
+```sql
+CREATE TABLE pgbench_block_conflict_counter (
+    id INT NOT NULL,
+    counter INT NOT NULL,
+    PRIMARY KEY (bucket_id, id)
+) USING MEMTX
+DISTRIBUTED BY (id);
+
+INSERT INTO pgbench_block_conflict_counter VALUES (1, 0);
+```
 
 2. **Run the benchmark**  
    Execute pgbench with the `--file` option pointing to the script you want to test.

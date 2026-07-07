@@ -18,6 +18,8 @@ use crate::ir::Plan;
 use crate::frontend::sql::planner::Planner;
 
 mod ast_new;
+mod error;
+mod insert_conflict;
 mod planner;
 
 pub mod ast;

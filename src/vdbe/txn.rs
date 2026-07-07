@@ -1,9 +1,13 @@
 use super::ffi::*;
+use super::insert;
 use super::{alloc_zeroed, reserve, reserve_one};
-use ::sql::executor::vdbe::SqlStmt;
+use ::sql::executor::engine::{BlockQuery, BlockRuntimeHook, VersionMap};
+use ::sql::executor::vdbe::{SqlError, SqlStmt};
 use ::sql::ir::node::BlockStatement;
+use ::sql::ir::operator::ConflictUpdateValue;
 use smol_str::SmolStr;
 use std::collections::HashMap;
+use std::pin::Pin;
 
 /// A parsed SQL parameter name from a compiled VDBE's OP_Variable opcode.
 ///
@@ -31,10 +35,25 @@ impl<'a> ParamName<'a> {
     }
 }
 
+fn hook_max_positional_parameter_index(hook: &BlockRuntimeHook) -> i32 {
+    match hook {
+        BlockRuntimeHook::IdxInsertOnConflictDoUpdate { update, .. } => update
+            .items
+            .iter()
+            .filter_map(|item| match item.value {
+                ConflictUpdateValue::Param { index, .. } => Some(i32::from(index)),
+                ConflictUpdateValue::Const(_) | ConflictUpdateValue::LetVar { .. } => None,
+            })
+            .max()
+            .unwrap_or(0),
+    }
+}
+
 /// A compiled subprogram ready for merging into a block VDBE program.
 struct CompiledSubprogram {
     subprogram: Box<SubProgram>,
     n_res_column: u16,
+    hooks: Vec<BlockRuntimeHook>,
     // OP_Variable ops in `subprogram.aOp` reference parameter name strings
     // stored in this VList via P4_STATIC p4.z pointers. We hold on to it
     // until those ops are patched (which nulls p4.z), then free it in Drop.
@@ -50,9 +69,9 @@ impl Drop for CompiledSubprogram {
 }
 
 impl CompiledSubprogram {
-    /// Compile a SQL query into a subprogram.
-    fn compile(query: &str) -> Result<Self, String> {
-        let stmt = SqlStmt::compile(query).map_err(|e| e.to_string())?;
+    /// Compile a block query into a subprogram.
+    fn compile(query: &BlockQuery) -> Result<Self, String> {
+        let stmt = SqlStmt::compile(&query.pattern).map_err(|e| e.to_string())?;
         let vdbe = unsafe { &mut *stmt.as_ptr().cast::<Vdbe>() };
 
         let mut subprogram = unsafe { alloc_zeroed::<SubProgram>() };
@@ -80,8 +99,62 @@ impl CompiledSubprogram {
         Ok(Self {
             subprogram,
             n_res_column,
+            hooks: query.hooks.clone(),
             p_v_list,
         })
+    }
+
+    fn ops(&self) -> &[VdbeOp] {
+        // SAFETY: `compile` moves the prepared VDBE opcode array into this
+        // subprogram, and `nOp` is the number of initialized entries in it.
+        unsafe { std::slice::from_raw_parts(self.subprogram.aOp, self.subprogram.nOp as usize) }
+    }
+
+    fn ops_mut(&mut self) -> &mut [VdbeOp] {
+        // SAFETY: same as `ops`; `&mut self` guarantees exclusive access to the
+        // opcode array while the mutable slice is alive.
+        unsafe { std::slice::from_raw_parts_mut(self.subprogram.aOp, self.subprogram.nOp as usize) }
+    }
+
+    fn attach_vdbe_hooks(
+        &mut self,
+        defined_let_vars: &HashMap<SmolStr, i32>,
+        query_param_offset: i32,
+        table_versions: &VersionMap,
+    ) -> Result<Vec<Pin<Box<insert::VdbeIdxInsertHookHandle>>>, SqlError> {
+        let mut hooks = Vec::new();
+        for hook in std::mem::take(&mut self.hooks) {
+            hooks.push(insert::attach_idx_insert_hook(
+                self.ops_mut(),
+                &hook,
+                defined_let_vars,
+                query_param_offset,
+                table_versions,
+            )?);
+        }
+        Ok(hooks)
+    }
+
+    /// Patch this subprogram's OP_Variable slots at `cumulative_offset`,
+    /// advance the offset by the max local `:N` index, and attach its runtime
+    /// hooks — the per-statement step of the block patch loop.
+    fn patch_and_attach(
+        &mut self,
+        cumulative_offset: &mut i32,
+        hooks: &mut Vec<Pin<Box<insert::VdbeIdxInsertHookHandle>>>,
+        all_let_vars: &HashMap<SmolStr, i32>,
+        defined_let_vars: &HashMap<SmolStr, i32>,
+        table_versions: &VersionMap,
+    ) -> Result<(), SqlError> {
+        let query_param_offset = *cumulative_offset;
+        *cumulative_offset +=
+            self.patch_variable_slots(query_param_offset, all_let_vars, defined_let_vars)?;
+        hooks.append(&mut self.attach_vdbe_hooks(
+            defined_let_vars,
+            query_param_offset,
+            table_versions,
+        )?);
+        Ok(())
     }
 
     /// Consume the struct and return the owned subprogram. `Drop` runs after
@@ -95,14 +168,20 @@ impl CompiledSubprogram {
         std::mem::replace(&mut self.subprogram, unsafe { alloc_zeroed() })
     }
 
+    /// Max positional (`:N`) parameter index referenced by attached hooks.
+    fn hooks_max_param_index(&self) -> i32 {
+        self.hooks
+            .iter()
+            .map(hook_max_positional_parameter_index)
+            .max()
+            .unwrap_or(0)
+    }
+
     /// Count the number of positional parameters in the subprogram.
     // FIXME: this looks more like max_positional_parameter_index
     fn count_positional_parameters(&self) -> i32 {
-        let ops = unsafe {
-            std::slice::from_raw_parts(self.subprogram.aOp, self.subprogram.nOp as usize)
-        };
         let mut count = 0;
-        for op in ops {
+        for op in self.ops() {
             if op.opcode as i32 == OP_Variable {
                 let name = unsafe { Self::op_var_name(op) }.expect("OP_Variable without p4.z name");
                 if let ParamName::Positional(idx) = ParamName::parse(name) {
@@ -110,8 +189,7 @@ impl CompiledSubprogram {
                 }
             }
         }
-
-        count
+        count.max(self.hooks_max_param_index())
     }
 
     /// Patch all OP_Variable opcodes, resolving each to its global aVar slot.
@@ -127,12 +205,9 @@ impl CompiledSubprogram {
         all_let_vars: &HashMap<SmolStr, i32>,
         defined_let_vars: &HashMap<SmolStr, i32>,
     ) -> Result<i32, String> {
-        let ops = unsafe {
-            std::slice::from_raw_parts_mut(self.subprogram.aOp, self.subprogram.nOp as usize)
-        };
         let mut max_local_n = 0i32;
 
-        for op in ops.iter_mut() {
+        for op in self.ops_mut() {
             if op.opcode as i32 == OP_Variable {
                 let name = unsafe { Self::op_var_name(op) }.expect("OP_Variable without p4.z name");
                 op.p1 = match ParamName::parse(name) {
@@ -156,8 +231,7 @@ impl CompiledSubprogram {
                 op.p4.z = std::ptr::null_mut();
             }
         }
-
-        Ok(max_local_n)
+        Ok(max_local_n.max(self.hooks_max_param_index()))
     }
 
     /// Patch OP_ResultRow to write the scalar result to `aVar[var_slot - 1]`
@@ -165,10 +239,7 @@ impl CompiledSubprogram {
     ///
     /// TODO: enforce that LET/IF-cond statements produce at most 1 row.
     fn patch_let_result_row(&mut self, var_slot: i32) {
-        let ops = unsafe {
-            std::slice::from_raw_parts_mut(self.subprogram.aOp, self.subprogram.nOp as usize)
-        };
-        for op in ops.iter_mut() {
+        for op in self.ops_mut() {
             if op.opcode as i32 == OP_ResultRow {
                 op.p3 = var_slot;
             }
@@ -308,7 +379,7 @@ unsafe fn assemble_block_vdbe(
         sqlVdbeAddOp!(vdbe, OP_Halt);
         // `sql_stmt_est_size` and `sql_stmt_query_str` both read `zSql`, so it
         // must be non-null. The contents are only used for diagnostics in our
-        // case — assembled blocks don't go through stale-schema recompile.
+        // case — assembled blocks recompile from stored block statements.
         let placeholder = c"<assembled block>";
         sqlVdbeSetSql(vdbe, placeholder.as_ptr(), placeholder.count_bytes() as i32);
         sqlVdbeMakeReady(vdbe, parser);
@@ -316,39 +387,44 @@ unsafe fn assemble_block_vdbe(
     })
 }
 
-///Compile, patch, and assemble a block of statements into a VDBE program.
+/// Compile, patch, and assemble a block of statements into a VDBE program.
 ///
 /// TODO: enforce that each statement (LET, RETURN, IF cond) produces at most 1 row.
 pub(crate) fn compile_transactional_block(
-    stmts: &[BlockStatement<String>],
-) -> Result<SqlStmt, String> {
-    // Compile all subprograms.
-    let mut compiled: Vec<BlockStatement<CompiledSubprogram>> = stmts
+    stmts: &[BlockStatement<BlockQuery>],
+    table_versions: &VersionMap,
+) -> Result<SqlStmt, SqlError> {
+    let mut hooks = Vec::new();
+    let mut compiled = stmts
         .iter()
-        .map(
-            |stmt| -> Result<BlockStatement<CompiledSubprogram>, String> {
-                match stmt {
-                    BlockStatement::Let { var, query } => Ok(BlockStatement::Let {
+        .map(|stmt| {
+            Ok(match stmt {
+                BlockStatement::Let { var, query } => {
+                    let query = CompiledSubprogram::compile(query)?;
+                    BlockStatement::Let {
                         var: var.clone(),
-                        query: CompiledSubprogram::compile(query)?,
-                    }),
-                    BlockStatement::ReturnQuery(query) => Ok(BlockStatement::ReturnQuery(
-                        CompiledSubprogram::compile(query)?,
-                    )),
-                    BlockStatement::Query(query) => {
-                        Ok(BlockStatement::Query(CompiledSubprogram::compile(query)?))
+                        query,
                     }
-                    BlockStatement::If { cond, body } => Ok(BlockStatement::If {
-                        cond: CompiledSubprogram::compile(cond)?,
-                        body: body
-                            .iter()
-                            .map(|bq| CompiledSubprogram::compile(bq))
-                            .collect::<Result<_, _>>()?,
-                    }),
                 }
-            },
-        )
-        .collect::<Result<Vec<_>, _>>()?;
+                BlockStatement::ReturnQuery(query) => {
+                    let query = CompiledSubprogram::compile(query)?;
+                    BlockStatement::ReturnQuery(query)
+                }
+                BlockStatement::Query(query) => {
+                    let query = CompiledSubprogram::compile(query)?;
+                    BlockStatement::Query(query)
+                }
+                BlockStatement::If { cond, body } => {
+                    let cond = CompiledSubprogram::compile(cond)?;
+                    let body = body
+                        .iter()
+                        .map(CompiledSubprogram::compile)
+                        .collect::<Result<Vec<_>, _>>()?;
+                    BlockStatement::If { cond, body }
+                }
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
 
     let total_number_of_positional_params: i32 = compiled
         .iter()
@@ -370,7 +446,7 @@ pub(crate) fn compile_transactional_block(
     let (all_let_vars, if_cond_slots, total_var_slots) =
         build_var_slots(&compiled, total_number_of_positional_params);
 
-    // Patch OP_ResultRow: LET → named slot, IF cond → anonymous slot.
+    // Patch OP_ResultRow: LET -> named slot, IF cond -> anonymous slot.
     let mut if_idx = 0usize;
     for cs in &mut compiled {
         match cs {
@@ -392,29 +468,42 @@ pub(crate) fn compile_transactional_block(
     for cs in &mut compiled {
         match cs {
             BlockStatement::Let { var, query: sp } => {
-                let n =
-                    sp.patch_variable_slots(cumulative_offset, &all_let_vars, &defined_let_vars)?;
-                cumulative_offset += n;
+                sp.patch_and_attach(
+                    &mut cumulative_offset,
+                    &mut hooks,
+                    &all_let_vars,
+                    &defined_let_vars,
+                    table_versions,
+                )?;
                 defined_let_vars.insert(var.clone(), all_let_vars[var.as_str()]);
             }
             BlockStatement::ReturnQuery(sp) | BlockStatement::Query(sp) => {
-                let n =
-                    sp.patch_variable_slots(cumulative_offset, &all_let_vars, &defined_let_vars)?;
-                cumulative_offset += n;
+                sp.patch_and_attach(
+                    &mut cumulative_offset,
+                    &mut hooks,
+                    &all_let_vars,
+                    &defined_let_vars,
+                    table_versions,
+                )?;
             }
             BlockStatement::If { cond, body } => {
-                // Condition can see LET vars defined before this IF.
-                let n =
-                    cond.patch_variable_slots(cumulative_offset, &all_let_vars, &defined_let_vars)?;
-                cumulative_offset += n;
-                // Body queries can also see LET vars defined before this IF.
+                // Condition and body queries can see LET vars defined before
+                // this IF.
+                cond.patch_and_attach(
+                    &mut cumulative_offset,
+                    &mut hooks,
+                    &all_let_vars,
+                    &defined_let_vars,
+                    table_versions,
+                )?;
                 for body_sp in body.iter_mut() {
-                    let n = body_sp.patch_variable_slots(
-                        cumulative_offset,
+                    body_sp.patch_and_attach(
+                        &mut cumulative_offset,
+                        &mut hooks,
                         &all_let_vars,
                         &defined_let_vars,
+                        table_versions,
                     )?;
-                    cumulative_offset += n;
                 }
             }
         }
@@ -478,7 +567,16 @@ pub(crate) fn compile_transactional_block(
     // SAFETY: `assemble_block_vdbe` produces a freshly-prepared VDBE owned by us.
     // The statements and this routine let the VDBE re-assemble itself when its
     // schema version goes stale (any DDL bumps the global SQL schema version).
-    Ok(unsafe {
-        SqlStmt::new_transactional(vdbe.cast(), stmts.to_vec(), compile_transactional_block)
-    })
+    let mut stmt = unsafe {
+        SqlStmt::new_transactional(
+            vdbe.cast(),
+            stmts.to_vec(),
+            table_versions.clone(),
+            compile_transactional_block,
+        )
+    };
+    if !hooks.is_empty() {
+        stmt.add_owned_payload(Box::new(hooks));
+    }
+    Ok(stmt)
 }

@@ -4,7 +4,6 @@ use crate::sql::lua::{
 };
 use rmp::decode::{read_array_len, read_int};
 use rmp::encode::write_bool;
-use smol_str::ToSmolStr;
 use sql::executor::{Port as SqlPort, PortType as SqlPortType};
 use sql_protocol::encode::{
     dispatch_write_dml_response, dispatch_write_dql_response, dispatch_write_explain_response,
@@ -225,7 +224,7 @@ fn execute_block_in_txn(
 ) -> Result<ExecutionInsight, SbroadError> {
     let insight = tarantool::transaction::transaction(|| {
         stmt.execute(params, vdbe_max_steps, port)
-            .map_err(|e| SbroadError::Other(e.to_smolstr()))
+            .map_err(SbroadError::from)
     })?;
     Ok(insight)
 }

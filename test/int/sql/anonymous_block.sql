@@ -7,6 +7,40 @@ INSERT INTO t VALUES (1,1,1), (2,2,2), (3,3,3), (4,4,4);
 DROP TABLE IF EXISTS g;
 CREATE TABLE g (pk INT PRIMARY KEY, a INT, b INT) DISTRIBUTED GLOBALLY;
 INSERT INTO g VALUES (1,1,1);
+DROP TABLE IF EXISTS iocdu;
+CREATE TABLE iocdu (pk INT PRIMARY KEY, a INT, b INT);
+INSERT INTO iocdu VALUES (1,10,100), (433,1,1), (1618,2,2);
+DROP TABLE IF EXISTS iocdu_u;
+CREATE TABLE iocdu_u (sk INT, id INT, val INT, note INT, PRIMARY KEY (sk, id)) DISTRIBUTED BY (sk);
+CREATE UNIQUE INDEX iocdu_u_value ON iocdu_u USING TREE (sk, val);
+CREATE UNIQUE INDEX iocdu_u_note ON iocdu_u USING TREE (sk, note);
+INSERT INTO iocdu_u VALUES (1,1,10,7), (1,2,20,8);
+DROP TABLE IF EXISTS iocdu_masked_unique;
+CREATE TABLE iocdu_masked_unique (sk INT, id INT, u INT, c INT, PRIMARY KEY (sk, id)) DISTRIBUTED BY (sk);
+CREATE UNIQUE INDEX iocdu_masked_unique_u ON iocdu_masked_unique USING TREE (sk, u);
+INSERT INTO iocdu_masked_unique VALUES (1,1,10,0), (1,2,20,0);
+DROP TABLE IF EXISTS iocdu_let;
+CREATE TABLE iocdu_let (pk INT PRIMARY KEY, b INT);
+INSERT INTO iocdu_let VALUES (1,5);
+DROP TABLE IF EXISTS iocdu_let_u;
+CREATE TABLE iocdu_let_u (sk INT, id INT, val INT, note INT, PRIMARY KEY (sk, id)) DISTRIBUTED BY (sk);
+CREATE UNIQUE INDEX iocdu_let_u_value ON iocdu_let_u USING TREE (sk, val);
+INSERT INTO iocdu_let_u VALUES (1,1,10,5), (1,2,20,7);
+DROP TABLE IF EXISTS iocdu_let_null;
+CREATE TABLE iocdu_let_null (pk INT PRIMARY KEY, b INT);
+DROP TABLE IF EXISTS iocdu_decimal_let;
+CREATE TABLE iocdu_decimal_let (pk INT PRIMARY KEY, amount DECIMAL);
+INSERT INTO iocdu_decimal_let VALUES (1, 1.50::decimal);
+DROP TABLE IF EXISTS iocdu_double_let;
+CREATE TABLE iocdu_double_let (pk INT PRIMARY KEY, amount DOUBLE);
+INSERT INTO iocdu_double_let VALUES (1, 1.5);
+DROP TABLE IF EXISTS iocdu_nullable_target;
+CREATE TABLE iocdu_nullable_target (a INT PRIMARY KEY, b INT);
+CREATE UNIQUE INDEX b_field ON iocdu_nullable_target (a, b);
+INSERT INTO iocdu_nullable_target (a) VALUES (1);
+DROP TABLE IF EXISTS iocdu_integer_overflow;
+CREATE TABLE iocdu_integer_overflow (pk INT PRIMARY KEY, b INT);
+INSERT INTO iocdu_integer_overflow VALUES (1, 9223372036854775807), (3, 9223372036854775807);
 
 -- TEST: return query-1
 -- SQL:
@@ -399,6 +433,251 @@ SELECT * FROM t WHERE pk = 16;
 -- EXPECTED:
 16, 1, 1
 
+-- TEST: insert-on-conflict-do-update-no-conflict
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu VALUES (17, 170, 170) ON CONFLICT (pk) DO UPDATE SET a = a + 1;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-no-conflict-check
+-- SQL:
+SELECT * FROM iocdu WHERE pk = 17;
+-- EXPECTED:
+17, 170, 170
+
+-- TEST: insert-on-conflict-do-update-primary-key
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu VALUES (1, 0, 0) ON CONFLICT (pk) DO UPDATE SET a = a + 1, b = b + 10;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-primary-key-check
+-- SQL:
+SELECT * FROM iocdu WHERE pk = 1;
+-- EXPECTED:
+1, 11, 110
+
+-- TEST: insert-on-conflict-do-update-secondary-index
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_u VALUES (1, 3, 20, 0) ON CONFLICT (sk, val) DO UPDATE SET note = note + 1;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-secondary-index-check
+-- SQL:
+SELECT * FROM iocdu_u WHERE sk = 1 AND id = 2;
+-- EXPECTED:
+1, 2, 20, 9
+
+-- TEST: insert-on-conflict-do-update-target-conflict-masks-secondary-unique
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_masked_unique VALUES (1, 1, 20, 0)
+  ON CONFLICT (sk, id) DO UPDATE SET c = c + 1;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-target-conflict-masks-secondary-unique-check
+-- SQL:
+SELECT * FROM iocdu_masked_unique WHERE sk = 1 ORDER BY id;
+-- EXPECTED:
+1, 1, 10, 1,
+1, 2, 20, 0
+
+-- TEST: insert-on-conflict-do-update-multi-row-same-bucket
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu VALUES (433, 0, 0), (1618, 0, 0) ON CONFLICT (pk) DO UPDATE SET a = a + 10;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-multi-row-same-bucket-check
+-- SQL:
+SELECT * FROM iocdu WHERE pk = 433 OR pk = 1618;
+-- UNORDERED:
+433, 11, 1,
+1618, 12, 2
+
+-- TEST: insert-on-conflict-do-update-if-body
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    INSERT INTO iocdu VALUES (1, 0, 0) ON CONFLICT (pk) DO UPDATE SET b = b + 1;
+  END IF;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-if-body-check
+-- SQL:
+SELECT * FROM iocdu WHERE pk = 1;
+-- EXPECTED:
+1, 11, 111
+
+-- TEST: insert-on-conflict-do-update-let-primary-key
+-- SQL:
+DO $$
+BEGIN
+  LET m = (SELECT b FROM iocdu_let WHERE pk = 1);
+  IF m > 0 THEN
+    INSERT INTO iocdu_let VALUES (1, 1) ON CONFLICT (pk) DO UPDATE SET b = b + m;
+  END IF;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-let-primary-key-check
+-- SQL:
+SELECT * FROM iocdu_let WHERE pk = 1;
+-- EXPECTED:
+1, 10
+
+-- TEST: insert-on-conflict-do-update-let-secondary-index
+-- SQL:
+DO $$
+BEGIN
+  LET m = (SELECT note FROM iocdu_let_u WHERE sk = 1 AND id = 1);
+  IF m > 0 THEN
+    INSERT INTO iocdu_let_u VALUES (1, 3, 20, 0) ON CONFLICT (sk, val) DO UPDATE SET note = note + m;
+  END IF;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-let-secondary-index-check
+-- SQL:
+SELECT * FROM iocdu_let_u WHERE sk = 1 AND id = 2;
+-- EXPECTED:
+1, 2, 20, 12
+
+-- TEST: insert-on-conflict-do-update-let-null-no-conflict
+-- SQL:
+DO $$
+BEGIN
+  LET m = (SELECT NULL);
+  INSERT INTO iocdu_let_null VALUES (1, 5) ON CONFLICT (pk) DO UPDATE SET b = b + m;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-let-null-no-conflict-check
+-- SQL:
+SELECT * FROM iocdu_let_null;
+-- EXPECTED:
+1, 5
+
+-- TEST: insert-on-conflict-do-update-let-null-conflict
+-- SQL:
+DO $$
+BEGIN
+  LET m = (SELECT NULL);
+  INSERT INTO iocdu_let_null VALUES (1, 99) ON CONFLICT (pk) DO UPDATE SET b = b + m;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-let-null-conflict-check
+-- SQL:
+SELECT * FROM iocdu_let_null;
+-- EXPECTED:
+1, null
+
+-- TEST: insert-on-conflict-do-update-decimal-let
+-- SQL:
+DO $$
+BEGIN
+  LET d = (SELECT 1.25::decimal);
+  INSERT INTO iocdu_decimal_let VALUES (1, 0::decimal)
+  ON CONFLICT (pk) DO UPDATE SET amount = amount + d;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-decimal-let-check
+-- SQL:
+SELECT amount FROM iocdu_decimal_let;
+-- EXPECTED:
+Decimal('2.75')
+
+-- TEST: insert-on-conflict-do-update-double-let-cast
+-- SQL:
+DO $$
+BEGIN
+  LET d = (SELECT 1);
+  INSERT INTO iocdu_double_let VALUES (1, 0)
+  ON CONFLICT (pk) DO UPDATE SET amount = amount + d;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-double-let-cast-check
+-- SQL:
+SELECT amount FROM iocdu_double_let;
+-- EXPECTED:
+2.5
+
+-- TEST: insert-on-conflict-do-update-nullable-target-miss
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_nullable_target (a) VALUES (1)
+  ON CONFLICT (b, a) DO UPDATE SET b = b + 1;
+END $$;
+-- ERROR:
+duplicate key exists in table "iocdu_nullable_target"
+
+-- TEST: insert-on-conflict-do-update-qualified-target-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_nullable_target (a) VALUES (1)
+  ON CONFLICT (b, a) DO UPDATE SET iocdu_nullable_target.b = iocdu_nullable_target.b + 1;
+END $$;
+-- ERROR:
+ON CONFLICT DO UPDATE SET target column must not be table-qualified
+
+-- TEST: insert-on-conflict-do-update-rollback-on-unique-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_u VALUES (1, 4, 10, 0) ON CONFLICT (sk, val) DO UPDATE SET note = note + 2;
+END $$;
+-- ERROR:
+duplicate key exists in table "iocdu_u"
+
+-- TEST: insert-on-conflict-do-update-rollback-on-unique-error-check
+-- SQL:
+SELECT * FROM iocdu_u WHERE sk = 1 AND id = 1;
+-- EXPECTED:
+1, 1, 10, 7
+
+-- TEST: insert-on-conflict-do-update-integer-overflow-1
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_integer_overflow VALUES (1, 2)
+  ON CONFLICT (pk) DO UPDATE SET b = b + 1;
+END $$;
+-- ERROR:
+Integer overflow
+
+-- TEST: insert-on-conflict-do-update-integer-overflow-2
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_integer_overflow VALUES (3, 2)
+  ON CONFLICT (pk) DO UPDATE SET b = b + 9223372036854775807;
+END $$;
+-- ERROR:
+Integer overflow
+
+-- TEST: insert-on-conflict-do-update-integer-overflow-3
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_integer_overflow VALUES (3, 2)
+  ON CONFLICT (pk) DO UPDATE SET b = b + 9223372036854775807;
+END $$;
+-- ERROR:
+Integer overflow
+
+-- TEST: insert-on-conflict-do-update-integer-overflow-check
+-- SQL:
+SELECT * FROM iocdu_integer_overflow ORDER BY pk;
+-- EXPECTED:
+1, 9223372036854775807,
+3, 9223372036854775807
+
 -- TEST: insert-different-buckets-error
 -- SQL:
 DO $$
@@ -432,6 +711,15 @@ INSERT in transaction requires constant or parameter values for sharding-key col
 DO $$
 BEGIN
   INSERT INTO g VALUES (5, 5, 5);
+END $$;
+-- ERROR:
+cannot modify global table g within transaction
+
+-- TEST: insert-on-conflict-do-update-global-table-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO g VALUES (1, 0, 0) ON CONFLICT (pk) DO UPDATE SET a = a + 1;
 END $$;
 -- ERROR:
 cannot modify global table g within transaction

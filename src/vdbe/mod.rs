@@ -1,4 +1,5 @@
 mod ffi;
+pub(crate) mod insert;
 pub mod txn;
 
 use std::mem::MaybeUninit;

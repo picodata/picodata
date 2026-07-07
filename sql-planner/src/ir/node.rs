@@ -527,7 +527,7 @@ impl From<Parameter> for NodeAligned {
 ///
 /// Example: in `LET v = (SELECT 1); RETURN QUERY SELECT v + 1;`, the second
 /// statement contains a `LetVarRef { name: "v", ... }` for the `v` operand.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct LetVarRef {
     /// LET variable name (already passed through `normalize_name_from_sql`).
     pub name: SmolStr,

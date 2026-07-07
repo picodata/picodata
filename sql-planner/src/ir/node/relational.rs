@@ -88,7 +88,7 @@ impl RelOwned {
             | RelOwned::Delete(_)
             | RelOwned::ScanSubQuery(_)
             | RelOwned::GroupBy(_) => ArenaType::Arena64,
-            RelOwned::Insert(_) | RelOwned::Projection(_) | RelOwned::ScanRelation(_) => {
+            RelOwned::Projection(_) | RelOwned::ScanRelation(_) | RelOwned::Insert(_) => {
                 ArenaType::Arena96
             }
             RelOwned::Update(_) | RelOwned::Motion(_) => ArenaType::Arena136,
