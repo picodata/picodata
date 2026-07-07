@@ -419,17 +419,37 @@ pub fn build_instance(
             }
         }
     } else {
-        let res = choose_replicaset(failure_domain, storage, &tier)?;
-        match res {
-            Ok(replicaset) => {
-                // Join instance to existing replicaset
-                replicaset_name = replicaset.name;
-                replicaset_uuid = replicaset.uuid;
-            }
-            Err(new_replicaset_name) => {
-                // Create a new replicaset
-                replicaset_name = new_replicaset_name;
-                replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_smolstr();
+        // If the instance name follows the standard naming scheme
+        // "<replicaset_name>_<n>", prefer joining that replicaset.
+        //
+        // See <https://git.picodata.io/core/picodata/issues/2320>.
+        let preferred_replicaset = requested_instance_name
+            .and_then(|name| name.rsplit_once('_'))
+            .and_then(|(replicaset_part, _)| storage.replicasets.get(replicaset_part).transpose())
+            .transpose()?
+            .filter(|r| {
+                r.tier == tier.name
+                    && r.state != ReplicasetState::Expelled
+                    && r.state != ReplicasetState::ToBeExpelled
+            });
+
+        if let Some(replicaset) = preferred_replicaset {
+            // Join instance to its preferred existing replicaset
+            replicaset_name = replicaset.name;
+            replicaset_uuid = replicaset.uuid;
+        } else {
+            let res = choose_replicaset(failure_domain, storage, &tier)?;
+            match res {
+                Ok(replicaset) => {
+                    // Join instance to existing replicaset
+                    replicaset_name = replicaset.name;
+                    replicaset_uuid = replicaset.uuid;
+                }
+                Err(new_replicaset_name) => {
+                    // Create a new replicaset
+                    replicaset_name = new_replicaset_name;
+                    replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_smolstr();
+                }
             }
         }
     }

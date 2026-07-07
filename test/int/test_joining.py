@@ -3,6 +3,7 @@ import uuid
 
 from conftest import (
     Cluster,
+    CommandFailed,
     Instance,
     Retriable,
     TarantoolError,
@@ -918,6 +919,99 @@ def test_concurrent_join_does_not_fail_with_bootstrap_connection_error(cluster: 
 
     # cannot reach this if we get error ER_BOOTSTRAP_CONNECTION_NOT_TO_ALL
     lagger.wait_online()
+
+
+# Instance with name that follows the standard naming scheme:
+#     <replicaset_name>_<n>
+# ...should prefer joining that replicaset over any other.
+#
+# See <https://git.picodata.io/core/picodata/issues/2320>.
+def test_join_prefers_replicaset_matching_instance_name(cluster: Cluster):
+    # XXX: Both replicasets should have a room for exactly one replica.
+    cluster.add_instance(replicaset_name="default_1", init_replication_factor=2)
+    cluster.add_instance(replicaset_name="default_2", init_replication_factor=2)
+
+    # Instance name matches replicaset "default_2" and replicaset has
+    # enough room for a new instance -> should join it respectively.
+    r2_i2 = cluster.add_instance(name="default_2_2")
+    assert r2_i2.replicaset_name == "default_2"
+
+    # Instance name matches replicaset "default_2" and replicaset has NOT
+    # enough room for a new instance -> instance is always allowed to join
+    # the replicaset it explicitly asked for, and according to naming scheme
+    # it should join it nevertheless.
+    r2_i3 = cluster.add_instance(name="default_2_3")
+    assert r2_i3.replicaset_name == "default_2"
+
+    # Instance name does not match any existing replicaset -> fallback
+    # to the default selection (which picks "default_1" since it's the
+    # only one with room left on initial replication factor option).
+    r1_i2 = cluster.add_instance(name="unrelated_name")
+    assert r1_i2.replicaset_name == "default_1"
+
+    # Verify all of the steps above related to the "default_1" replicaset.
+    r1_all = cluster.leader().sql(
+        """
+        SELECT name
+        FROM _pico_instance
+        WHERE replicaset_name = 'default_1';
+        """,
+    )
+    assert sorted(r1_all) == [["default_1_1"], ["unrelated_name"]]
+
+    # Verify all of the steps above related to the "default_2" replicaset.
+    r2_all = cluster.leader().sql(
+        """
+        SELECT name
+        FROM _pico_instance
+        WHERE replicaset_name = 'default_2';
+        """,
+    )
+    assert sorted(r2_all) == [["default_2_1"], ["default_2_2"], ["default_2_3"]]
+
+    # Set up a replicaset which is in the process of being expelled.
+    r3_i1 = cluster.add_instance(name="default_3_1")
+    assert r3_i1.replicaset_name == "default_3"
+
+    # Terminate the sole (hence master) instance of "default_3" so that
+    # expelling it gets stuck in the "to-be-expelled" state instead of
+    # immediately finalizing (it cannot confirm while "Offline").
+    r3_i1.terminate()
+    with pytest.raises(expected_exception=CommandFailed):
+        cluster.expel(r3_i1, force=True, timeout=1)
+    cluster.leader().wait_governor_status("transfer buckets from replicaset")
+    [[r3_state]] = cluster.leader().sql(
+        """
+        SELECT state
+        FROM _pico_replicaset
+        WHERE name = 'default_3'
+        """,
+    )
+    assert r3_state == "to-be-expelled"
+
+    # Instance name matches replicaset "default_3" naming scheme, but the
+    # replicaset is being expelled -> must not join it, even though the name
+    # matches, and instead fall back to the default selection, which creates
+    # a brand new replicaset since none of the existing ones have room.
+    #
+    # XXX: We do not use `wait_online=True` here, because that would also
+    # call `Instance.wait_online` method, which blocks until the instance's
+    # grade becomes "Online" - and that never happens in this scenario. The
+    # governor is currently busy transferring buckets away from "default_3" (see
+    # `Instance.wait_governor_status` call above), and that step has a higher
+    # priority than activating newly joined instances, so the governor won't
+    # get around to onlining "default_3_2" until "default_3" is fully expelled,
+    # which we don't wait for in this test. What we actually care about here -
+    # which replicaset the instance got assigned to - is decided synchronously
+    # during the join request, before the instance ever reaches "Online". So
+    # we start the instance ourselves and poll instance info procedure (which
+    # only requires the instance to be reachable via IPROTO) instead of waiting
+    # for a grade that will never arrive. The same workaround is used in
+    # `test_join_replicaset_after_expel` for exactly the same reason.
+    r4_i1 = cluster.add_instance(name="default_3_2", wait_online=False)
+    r4_i1.start()
+    Retriable().call(r4_i1.instance_info)
+    assert r4_i1.replicaset_name == "default_4"
 
 
 def test_non_voter_peer(cluster: Cluster):
