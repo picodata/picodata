@@ -1,3 +1,4 @@
+pub(crate) mod explain;
 mod ffi;
 pub(crate) mod insert;
 pub mod txn;

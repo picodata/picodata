@@ -15,6 +15,7 @@ use crate::sql::storage::{
 use crate::sql::{proc_query_metadata, PicoPortC};
 use crate::tlog;
 use crate::traft::node;
+use crate::vdbe::explain::RawExplainProvider;
 use ahash::HashMapExt;
 use rmp::encode::{write_array_len, write_uint};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -794,6 +795,7 @@ impl<'p> ExplainQuery<'_> {
         params: &[Value],
         bucket_info: &BoundedBuckets,
         motion_info: MotionInfo,
+        raw_plan_hook_details: impl IntoIterator<Item: AsRef<str>>,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
         let kind = self.kind();
@@ -815,7 +817,31 @@ impl<'p> ExplainQuery<'_> {
         let mp_params = encode(&params.to_vec());
         port.add_mp(&mp_params);
 
-        match SqlStmt::compile(&sql_query) {
+        let raw_explain_hook_err = |e: String| {
+            SbroadError::FailedTo(
+                Action::Create,
+                Some(Entity::Explain),
+                format_smolstr!("raw explain hook: {e}"),
+            )
+        };
+        let raw_explain_provider =
+            RawExplainProvider::new(raw_plan_hook_details).map_err(raw_explain_hook_err)?;
+        let compile_result = match raw_explain_provider {
+            Some(mut provider) => {
+                let result = provider.compile(&sql_query);
+                match result {
+                    Ok(mut stmt) => {
+                        provider.finish().map_err(raw_explain_hook_err)?;
+                        stmt.add_owned_payload(provider);
+                        Ok(stmt)
+                    }
+                    Err(err) => Err(err),
+                }
+            }
+            None => SqlStmt::compile(&sql_query),
+        };
+
+        match compile_result {
             Ok(mut stmt) => {
                 let mut tmp_port = PicoPortOwned::new();
                 // `0` is passed since it should always be possible to execute
@@ -919,7 +945,13 @@ pub fn explain_execute<'p>(
     };
 
     let explain_query = ExplainQuery::Query(miss_info.sql());
-    explain_query.execute_guarded(params, &buckets_info, motion_info, port)
+    explain_query.execute_guarded(
+        params,
+        &buckets_info,
+        motion_info,
+        std::iter::empty::<&str>(),
+        port,
+    )
 }
 
 fn table_create_impl(name: &str, pk_name: &str, fields: Vec<Field>) -> Result<(), SbroadError> {

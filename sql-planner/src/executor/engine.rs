@@ -479,16 +479,20 @@ pub struct BlockQuery {
 }
 
 /// Runtime hooks attached to block VDBE opcodes.
+///
+/// These hooks affect statement execution. RAW EXPLAIN uses their metadata to
+/// show the same behavior in the plan, but installs its own provider while the
+/// explain statement is being compiled.
 #[derive(Debug, Clone, Deserialize, Serialize, Hash)]
 pub enum BlockRuntimeHook {
-    IdxInsert(BlockIdxInsertHook),
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Hash)]
-pub enum BlockIdxInsertHook {
-    OnConflictDoUpdate {
+    /// `ON CONFLICT DO UPDATE` hook attached to the statement's final
+    /// `OP_IdxInsert` opcode.
+    IdxInsertOnConflictDoUpdate {
         table_id: u32,
         update: BlockConflictDoUpdate,
+        /// Rendered `picodata: ON CONFLICT ...` row for RAW EXPLAIN output.
+        /// `None` unless the plan is a raw explain — execution never reads it.
+        raw_explain_detail: Option<SmolStr>,
     },
 }
 

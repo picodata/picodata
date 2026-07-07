@@ -59,7 +59,7 @@ use crate::sql::lock::{
 };
 use crate::tlog;
 use crate::vdbe::txn::compile_transactional_block;
-use sql::executor::engine::{block_vdbe_key, BlockExecData, BlockQuery};
+use sql::executor::engine::{block_vdbe_key, BlockExecData, BlockQuery, BlockRuntimeHook};
 use sql::executor::result::MetadataColumn;
 use tarantool::fiber::Mutex;
 use tarantool::msgpack;
@@ -977,6 +977,14 @@ fn block_compile_error(error: SqlError) -> SbroadError {
     }
 }
 
+fn explain_block_hook_rows(query: &BlockQuery) -> impl Iterator<Item = &str> {
+    query.hooks.iter().filter_map(|hook| match hook {
+        BlockRuntimeHook::IdxInsertOnConflictDoUpdate {
+            raw_explain_detail, ..
+        } => raw_explain_detail.as_deref(),
+    })
+}
+
 pub fn explain_execute_block<'p>(
     block: BlockExecData,
     buckets: &Buckets,
@@ -991,21 +999,30 @@ pub fn explain_execute_block<'p>(
     };
     let motion_info = MotionInfo::new_for_transaction();
 
-    let mut explain_one =
-        |explain_query: ExplainQuery, params: &[Value]| -> Result<(), SbroadError> {
-            explain_query.execute_guarded(params, &bucket_info, motion_info, port)
-        };
+    let mut explain_one = |explain_query: ExplainQuery,
+                           query: &BlockQuery,
+                           params: &[Value]|
+     -> Result<(), SbroadError> {
+        let raw_plan_hook_details = explain_block_hook_rows(query);
+        explain_query.execute_guarded(
+            params,
+            &bucket_info,
+            motion_info,
+            raw_plan_hook_details,
+            port,
+        )
+    };
 
     let next_params = |params: &mut IntoIter<_>| params.next().expect("not enough params");
     for (idx, stmt) in block.statements.into_iter().enumerate() {
         match stmt {
             BlockStatement::ReturnQuery(p) => {
                 let explain_query = ExplainQuery::ReturnQuery(&p.pattern);
-                explain_one(explain_query, &next_params(params))?;
+                explain_one(explain_query, &p, &next_params(params))?;
             }
             BlockStatement::Query(p) => {
                 let explain_query = ExplainQuery::Query(&p.pattern);
-                explain_one(explain_query, &next_params(params))?;
+                explain_one(explain_query, &p, &next_params(params))?;
             }
             BlockStatement::Let { ref query, var } => {
                 let is_used = block.unused_lets.contains(&idx);
@@ -1014,14 +1031,14 @@ pub fn explain_execute_block<'p>(
                     var,
                     is_used,
                 };
-                explain_one(explain_query, &next_params(params))?;
+                explain_one(explain_query, query, &next_params(params))?;
             }
             BlockStatement::If { cond, body } => {
                 let explain_query = ExplainQuery::IfCond(&cond.pattern);
-                explain_one(explain_query, &next_params(params))?;
+                explain_one(explain_query, &cond, &next_params(params))?;
                 for p in body {
                     let explain_query = ExplainQuery::IfBody(&p.pattern);
-                    explain_one(explain_query, &next_params(params))?;
+                    explain_one(explain_query, &p, &next_params(params))?;
                 }
             }
         }

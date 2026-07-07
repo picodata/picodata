@@ -446,6 +446,23 @@ SELECT * FROM iocdu WHERE pk = 17;
 -- EXPECTED:
 17, 170, 170
 
+-- TEST: explain-insert-on-conflict-do-update
+-- SQL:
+EXPLAIN (raw)
+DO $$
+BEGIN
+  INSERT INTO iocdu VALUES (1, 0, 0) ON CONFLICT (pk) DO UPDATE SET a = a + 1;
+END $$;
+-- EXPECTED:
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES ( CAST(1 AS int), CAST(0 AS int), CAST(0 AS int), 1934 )
+''
+plan:
+    [0] picodata: ON CONFLICT ("pk") UPDATE "a" += 1
+
 -- TEST: insert-on-conflict-do-update-primary-key
 -- SQL:
 DO $$

@@ -623,6 +623,36 @@ def test_router_block_pattern_cache_insert_do_update_params(instance: Instance):
     assert instance.sql("SELECT * FROM bc_iocdu_params WHERE pk = 1") == [[1, 17, 102, 1010]]
 
 
+def test_router_block_pattern_cache_insert_do_update_params_raw_explain(instance: Instance):
+    instance.sql("CREATE TABLE bc_iocdu_raw_params (pk INT PRIMARY KEY, a INT, b INT, c INT)")
+
+    def metric_total(name: str) -> float:
+        family = instance.get_metrics().get(name)
+        return sum(s.value for s in family.samples) if family else 0
+
+    hits = "pico_router_block_pattern_cache_hits"
+    misses = "pico_router_block_pattern_cache_misses"
+    added = "pico_router_block_pattern_cache_statements_added"
+    base_hits = metric_total(hits)
+    base_misses = metric_total(misses)
+    base_added = metric_total(added)
+
+    block = """
+        DO $$
+        BEGIN
+            INSERT INTO bc_iocdu_raw_params VALUES (1, 0, 0, 0)
+            ON CONFLICT (pk) DO UPDATE SET a = a + $1, b = b + 1, c = c + $2;
+        END $$;
+    """
+    raw_rows = instance.sql("EXPLAIN (raw) " + block, 11, 13)
+    raw_explain = "\n".join(raw_rows)
+
+    assert 'picodata: ON CONFLICT ("pk") UPDATE "a" += $1, "b" += 1, "c" += $2' in raw_explain
+    assert metric_total(hits) == base_hits
+    assert metric_total(misses) == base_misses
+    assert metric_total(added) == base_added
+
+
 @pytest.mark.webui
 def test_temp_table_lock_metrics(instance: Instance) -> None:
     instance.sql("CREATE TABLE temp_metrics (id INTEGER PRIMARY KEY, name TEXT)")

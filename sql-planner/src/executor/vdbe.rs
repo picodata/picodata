@@ -245,6 +245,17 @@ impl SqlStmt {
         Ok(Self::Regular(RawStmt::compile(sql)?))
     }
 
+    /// Wrap an externally-compiled regular VDBE pointer.
+    ///
+    /// Takes ownership: the statement will be finalized on drop.
+    ///
+    /// # Safety
+    /// `ptr` must be a non-null, owned VDBE that has been made ready (e.g.
+    /// via `sqlVdbeMakeReady`) and is not currently executing.
+    pub unsafe fn from_raw(ptr: *mut c_void) -> Self {
+        Self::Regular(RawStmt::wrap_stmt_ptr(ptr))
+    }
+
     /// Wrap an externally-assembled block VDBE pointer together with the
     /// patterns and assembly routine needed to recompile it.
     ///
