@@ -1036,8 +1036,11 @@ deploy-coverage:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   variables:
     GIT_STRATEGY: none
+    TARGET: debug
   cache:
     - <<: *cache_git
+      policy: pull
+    - <<: *base_cache
       policy: pull
   dependencies: []
   script:
