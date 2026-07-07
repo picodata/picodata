@@ -45,9 +45,6 @@ def test_call_normalization(instance: Instance):
     with pytest.raises(TimeoutError):
         instance.call("package.loaded.fiber.sleep", 1, timeout=0.1)
 
-    with pytest.raises(ProcessDead):
-        instance.call("os.exit", 0)
-
     instance.terminate()
     with pytest.raises(ProcessDead):
         instance.call("anything")

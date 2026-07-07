@@ -1710,7 +1710,7 @@ class Instance:
             # the process. So we introduce a tiny timeout here (which may still not
             # be enough in every case).
             # Using 0.05s instead of 1s to avoid slowing down startup polling.
-            exit_code = self.process.wait(timeout=0.05)  # type: ignore
+            exit_code = self.process.wait(timeout=0.08)  # type: ignore
         except subprocess.TimeoutExpired:
             # it's fine, the process is still running
             pass
