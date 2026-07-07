@@ -76,10 +76,15 @@ cluster:
     master.sql("INSERT INTO sync_test VALUES (1, 'hello')")
     master.sql("INSERT INTO sync_test VALUES (2, 'world')")
 
-    # Verify data on all replicas
-    for instance in [i1, i2, i3]:
+    # Verify data on all replicas. The synchro quorum is 2 out of 3, so the
+    # write is confirmed as soon as one replica besides the master persists
+    # it — the remaining replica may still be catching up, hence the retries.
+    def check_data_on_instance(instance):
         result = instance.eval("return box.space.sync_test:select()")
         assert result == [[1, 14, "hello"], [2, 30, "world"]]
+
+    for instance in [i1, i2, i3]:
+        Retriable().call(check_data_on_instance, instance)
 
     # Create a global table - it should get is_sync=false automatically
     master.sql("CREATE TABLE global_test (id INT NOT NULL, PRIMARY KEY (id)) DISTRIBUTED GLOBALLY")
@@ -565,9 +570,6 @@ cluster:
 
     cluster.deploy(instance_count=3, tier="arbiter")
     leader = cluster.leader()
-    # The replica dies ungracefully, so it never reports going Offline
-    # itself. Speed up the automatic failure detection.
-    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
 
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier")
@@ -581,6 +583,13 @@ cluster:
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql(f"INSERT INTO t VALUES {','.join([str((i, 'initial')) for i in range(1, 17)])}")
     leader.wait_governor_status("idle")
+
+    # The replica dies ungracefully, so it never reports going Offline
+    # itself. Speed up the automatic failure detection. Arm the aggressive
+    # timeout as late as possible: while in effect it also auto-offlines
+    # instances whose applied index transiently lags (routine on slow ASan
+    # builds under load), causing spurious offlining and master switchover.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
 
     # The replica "segfaults" and cannot be restarted.
     replica.kill()
@@ -701,8 +710,6 @@ cluster:
 
     cluster.deploy(instance_count=3, tier="arbiter")
     leader = cluster.leader()
-    # Speed up the failure detection of the killed master
-    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
 
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier", replicaset_name="r1")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier", replicaset_name="r1")
@@ -734,6 +741,13 @@ cluster:
 
     Retriable().call(in_flight_txn_reached_replica)
     assert replica.eval("return box.info.synchro.queue.owner") == master_id
+
+    # Speed up the failure detection of the killed master. Arm the aggressive
+    # timeout only now: while in effect it also auto-offlines instances whose
+    # applied index transiently lags (routine on slow ASan builds under load),
+    # and a spurious master switchover would reset the manually raised synchro
+    # quorum, confirming the deliberately stuck transaction above.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
 
     # The master "segfaults"
     master.kill()
@@ -944,7 +958,6 @@ cluster:
 
     cluster.deploy(instance_count=3, tier="arbiter")
     leader = cluster.leader()
-    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
 
     r1 = [cluster.add_instance(wait_online=False, tier="sync_tier") for _ in range(3)]
     cluster.wait_online(timeout=60)
@@ -957,6 +970,12 @@ cluster:
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql(f"INSERT INTO t VALUES {','.join([str((i, 'initial')) for i in range(1, 17)])}")
     leader.wait_governor_status("idle")
+
+    # Speed up the failure detection of the expelled replicas. Arm the
+    # aggressive timeout as late as possible: while in effect it also
+    # auto-offlines instances whose applied index transiently lags (routine
+    # on slow ASan builds under load), causing spurious state flapping.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
 
     # Expel both replicas of r1. The master is now below the synchro quorum, so
     # the replicaset is fenced read-only.
@@ -1001,7 +1020,6 @@ cluster:
 
     cluster.deploy(instance_count=3, tier="arbiter")
     leader = cluster.leader()
-    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
 
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier", replicaset_name="r1")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier", replicaset_name="r1")
@@ -1015,6 +1033,12 @@ cluster:
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql(f"INSERT INTO t VALUES {','.join([str((i, 'initial')) for i in range(1, 17)])}")
     leader.wait_governor_status("idle")
+
+    # Speed up the failure detection of the expelled master. Arm the
+    # aggressive timeout as late as possible: while in effect it also
+    # auto-offlines instances whose applied index transiently lags (routine
+    # on slow ASan builds under load), causing spurious state flapping.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
 
     # Expel the master of r1. The replica is now below the synchro quorum, so
     # the replicaset is fenced read-only.
@@ -1447,9 +1471,6 @@ cluster:
 
     arbiters = cluster.deploy(instance_count=3, tier="arbiter")
     leader = cluster.leader()
-    # The replica dies ungracefully, so it never reports going Offline
-    # itself. Speed up the automatic failure detection.
-    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
 
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier", replicaset_name="r1")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier", replicaset_name="r1")
@@ -1476,6 +1497,13 @@ cluster:
 
     assert i1.eval("return box.space.t:count()") == 9
     assert i3.eval("return box.space.t:count()") == 7
+
+    # The replica dies ungracefully, so it never reports going Offline
+    # itself. Speed up the automatic failure detection. Arm the aggressive
+    # timeout as late as possible: while in effect it also auto-offlines
+    # instances whose applied index transiently lags (routine on slow ASan
+    # builds under load), causing spurious offlining and master switchover.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
 
     # The replica "segfaults" and cannot be restarted.
     replica.kill()

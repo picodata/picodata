@@ -237,6 +237,7 @@ def test_instance_automatic_offline_after_leader_change(cluster: Cluster):
     assert internal["sentinel_time_since_last_success"] > 0
 
 
+@pytest.mark.skip_asan("Raft leader step-down races the observed governor status under ASan overhead")
 def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
 

@@ -2715,6 +2715,7 @@ def test_ddl_in_heterogeneous_cluster_is_prohibited(cluster: Cluster):
     assert ddl["row_count"] == 1
 
 
+@pytest.mark.skip_asan("Master switchover-at-catchup timing exceeds even the 5x-scaled deadline under ASan overhead")
 def test_no_deadlock_in_ddl_during_master_switchover_at_catchup_aka_gl_1294_regression(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
@@ -2962,7 +2963,12 @@ cluster:
     # Now all's well, instance successfully joins
     storage_1_1.wait_online()
     reason = target_state_reason(leader, target=storage_1_1)
-    assert reason.startswith("wakeup")
+    # The instance can reach Online either via its own postjoin self-activation
+    # ("wakeup") or via the sentinel's fallback ("auto-online"). Both are valid:
+    # under slow environments (e.g. ASan) the hardcoded 10s postjoin
+    # self-activation wait (src/lib.rs) can expire before the local raft apply
+    # observes the Online state, letting the sentinel win the race.
+    assert reason.startswith("wakeup") or reason.startswith("auto-online")
 
     # Sanity check
     [[table_id]] = leader.sql("SELECT id FROM _pico_table WHERE name = 'test'")

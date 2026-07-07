@@ -68,7 +68,7 @@ pytest_plugins = "framework.sqltester"
 # Timeout scaling for slow environments (e.g. ASan-instrumented builds)
 # ---------------------------------------------------------------------------
 # Set TIMEOUT_SCALE_FACTOR > 1 to proportionally increase all timeouts.
-# sanitizer.py sets this to 3 by default for ASan runs.
+# sanitizer.py sets this to 5 by default for ASan runs.
 
 TIMEOUT_SCALE = float(os.getenv("TIMEOUT_SCALE_FACTOR", "1"))
 
@@ -122,8 +122,8 @@ METRICS_PORT = 7500
 MAX_LOGIN_ATTEMPTS = 4
 PICO_SERVICE_ID = 32
 
-CLI_TIMEOUT = 10  # seconds
-DEFAULT_RPC_TIMEOUT = 10  # seconds — default for call/eval/sql
+CLI_TIMEOUT = int(10 * TIMEOUT_SCALE)  # seconds
+DEFAULT_RPC_TIMEOUT = 10  # seconds — default for call/eval/sql, scaled in Instance.connect
 
 TOO_LONG_FOR_LOGS = 512
 
@@ -1024,6 +1024,10 @@ class Instance:
 
     @contextmanager
     def connect(self, *, timeout: int | float, user: str | None = None, password: str | None = None):
+        # Scale every iproto RPC timeout (both the DEFAULT_RPC_TIMEOUT and the
+        # ones passed explicitly by tests) for slow environments, e.g. ASan
+        # builds. In a normal run TIMEOUT_SCALE == 1 and this is a no-op.
+        timeout *= TIMEOUT_SCALE
         if user is None:
             user = "pico_service"
             if password is None:
@@ -3108,6 +3112,8 @@ def picodata_expel(
 
     In general using `Cluster.expel` is nicer.
     """
+    # Scale for slow environments (e.g. ASan builds), no-op in a normal run.
+    timeout = int(timeout * TIMEOUT_SCALE)
     target_info = peer.instance_info(target)
     target_uuid = target_info["uuid"]
 

@@ -631,25 +631,38 @@ pub(crate) fn bucket_into_rs(
     let mut percent = [0.001, 0.01, 0.03, 0.06, 0.1, 0.2, 0.3].into_iter();
     loop {
         match bucket_into_rs_impl(lua, bucket_id, tier) {
-            Err(err) if is_bucket_route_retriable(&err) => {
-                // Storage may be restarting now.
+            Ok(rs) => return Ok(rs),
+            Err(err) => {
+                let box_err = err.into_box_error();
+                if !is_bucket_route_retriable(&box_err) {
+                    return Err(box_err.into());
+                }
+                // Storage may be restarting, or a newly-promoted master's
+                // connection may not be established yet during a handover.
                 let Some(percent) = percent.next() else {
-                    return Err(err);
+                    return Err(box_err.into());
                 };
                 if fiber::clock() > deadline {
-                    return Err(err);
+                    return Err(box_err.into());
                 }
                 ::tarantool::fiber::sleep(Duration::from_secs_f64(timeout * percent));
             }
-            other => return other,
         }
     }
 }
 
-fn is_bucket_route_retriable(error: &impl IntoBoxError) -> bool {
+fn is_bucket_route_retriable(error: &BoxError) -> bool {
     let code = error.error_code();
     code == VshardErrorCode::UnreachableReplicaset as u32
         || code == VshardErrorCode::NoRouteToBucket as u32
+        // Mirror vshard's `error_is_timeout`: a route/discovery `callrw` can time
+        // out (fixed 0.5s `CALL_TIMEOUT_MIN`) while the master connection is being
+        // (re)established during a handover. This is as transient as the vshard
+        // codes above and must self-heal within the query deadline, not fail.
+        || code == TarantoolErrorCode::Timeout as u32
+        || error.error_type() == "TimedOut"
+        || error.message() == "timed out"
+        || (code == TarantoolErrorCode::ProcLua as u32 && error.message() == "Timeout exceeded")
 }
 
 fn bucket_into_rs_impl(lua: &LuaThread, bucket_id: u64, tier: Option<&str>) -> Result<String> {
