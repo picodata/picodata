@@ -66,6 +66,37 @@ instance:
     assert not any(f.endswith(".xlog") for f in os.listdir(instance_dir))
 
 
+def test_memtx_and_vinyl_dir_differ_from_instance_dir(cluster: Cluster):
+    memtx_dir = f"{cluster.data_dir}/my-memtx"
+    vinyl_dir = f"{cluster.data_dir}/my-vinyl"
+
+    cluster.set_config_file(
+        yaml=f"""
+cluster:
+    tier:
+        default:
+instance:
+    cluster_name: test
+    name: from-config
+    memtx:
+        dir: {memtx_dir}
+    vinyl:
+        dir: {vinyl_dir}
+"""
+    )
+    [instance] = cluster.deploy(instance_count=1)
+    instance_dir = str(instance.instance_dir)
+
+    # By default, `memtx.dir`/`vinyl.dir` are equal to `instance_dir`, but
+    # we've just changed this, so let's be sure that it also changed.
+    assert memtx_dir != instance_dir
+    assert vinyl_dir != instance_dir
+
+    assert instance.eval("return box.cfg.memtx_dir") == memtx_dir
+    assert instance.eval("return box.cfg.vinyl_dir") == vinyl_dir
+    assert instance.eval("return box.cfg.wal_dir") == instance_dir
+
+
 def test_pico_config(cluster: Cluster, port_distributor: PortDistributor):
     host = cluster.base_host
     port = port_distributor.get()
@@ -142,6 +173,7 @@ instance:
                 memory=dict(value="64M", source="default"),
                 system_memory=dict(value="256M", source="default"),
                 max_tuple_size=dict(value="1M", source="default"),
+                dir=dict(value=instance_dir, source="default"),
             ),
             vinyl=dict(
                 memory=dict(value="128M", source="default"),
@@ -155,6 +187,7 @@ instance:
                 read_threads=dict(value=1, source="default"),
                 write_threads=dict(value=4, source="default"),
                 timeout=dict(value=60.0, source="default"),
+                dir=dict(value=instance_dir, source="default"),
             ),
             iproto=dict(
                 enabled=dict(source="default", value=True),

@@ -642,8 +642,8 @@ impl Cfg {
             // other instance.log.* parameters are set explicitly above
             ("log_format",                  config_parameter_path!(instance.log.format)),
             ("wal_dir",                     config_parameter_path!(instance.wal_dir)),
-            ("memtx_dir",                   config_parameter_path!(instance.instance_dir)),
-            ("vinyl_dir",                   config_parameter_path!(instance.instance_dir)),
+            ("memtx_dir",                   config_parameter_path!(instance.memtx.dir)),
+            ("vinyl_dir",                   config_parameter_path!(instance.vinyl.dir)),
             ("vinyl_bloom_fpr",             config_parameter_path!(instance.vinyl.bloom_fpr)),
             ("vinyl_run_count_per_level",   config_parameter_path!(instance.vinyl.run_count_per_level)),
             ("vinyl_run_size_ratio",        config_parameter_path!(instance.vinyl.run_size_ratio)),

@@ -627,6 +627,18 @@ Using configuration file '{args_path}'.");
             // Could do this, but if parameter source is not set, it's implied to be ParameterSource::Default, so...
             // mark_non_none_field_sources(&mut parameter_sources, &config, ParameterSource::Default);
         }
+
+        // `memtx.dir` and `vinyl.dir` default to `instance_dir`, but the
+        // `Introspection` derive can't express that: `config_default`
+        // expressions are evaluated with `self` scoped to the struct that
+        // owns the field (`MemtxSection`/`VinylSection`), which don't have
+        // access to `instance_dir`. So the fallback is applied here instead.
+        if self.instance.memtx.dir.is_none() {
+            self.instance.memtx.dir = Some(self.instance.instance_dir().clone());
+        }
+        if self.instance.vinyl.dir.is_none() {
+            self.instance.vinyl.dir = Some(self.instance.instance_dir().clone());
+        }
     }
 
     /// Does checks which are applicable to configuration loaded from a file.
@@ -2103,6 +2115,22 @@ impl InstanceConfig {
     }
 
     #[inline]
+    pub fn memtx_dir(&self) -> &PathBuf {
+        self.memtx
+            .dir
+            .as_ref()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
+
+    #[inline]
+    pub fn vinyl_dir(&self) -> &PathBuf {
+        self.vinyl
+            .dir
+            .as_ref()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+    }
+
+    #[inline]
     pub fn name(&self) -> Option<InstanceName> {
         self.name.as_deref().map(InstanceName::from)
     }
@@ -2346,6 +2374,12 @@ pub struct MemtxSection {
     /// Corresponds to `box.cfg.memtx_max_tuple_size`.
     #[introspection(config_default = "1M")]
     pub max_tuple_size: Option<ByteSize>,
+
+    /// A directory where memtx snapshot files are stored. Defaults to
+    /// `instance.instance_dir`.
+    ///
+    /// Corresponds to `box.cfg.memtx_dir`.
+    pub dir: Option<PathBuf>,
 }
 
 impl MemtxSection {
@@ -2450,6 +2484,12 @@ pub struct VinylSection {
     /// Corresponds to `box.cfg.vinyl_timeout`
     #[introspection(config_default = 60.)]
     pub timeout: Option<f32>,
+
+    /// A directory where vinyl files are stored. Defaults to
+    /// `instance.instance_dir`.
+    ///
+    /// Corresponds to `box.cfg.vinyl_dir`.
+    pub dir: Option<PathBuf>,
 }
 
 impl VinylSection {

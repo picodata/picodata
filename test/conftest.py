@@ -2296,11 +2296,9 @@ class Cluster:
             config_yaml_obj_i["instance"]["replicaset_name"] = i.replicaset_name
             config_yaml_obj_i["instance"]["tier"] = i.tier
             config_yaml_obj_i["instance"]["instance_dir"] = str(i.instance_dir)
-            # `config default` emits a concrete `wal_dir: .` (derived from the
-            # default `instance_dir: .`). Since we override `instance_dir` per
-            # instance, keep `wal_dir` in sync, otherwise every instance would
-            # lock WAL in the shared cwd and collide with ER_ALREADY_RUNNING.
             config_yaml_obj_i["instance"]["wal_dir"] = str(i.instance_dir)
+            config_yaml_obj_i["instance"]["memtx"]["dir"] = str(i.instance_dir)
+            config_yaml_obj_i["instance"]["vinyl"]["dir"] = str(i.instance_dir)
             config_yaml_obj_i["instance"]["backup_dir"] = str(i.backup_dir)
             config_yaml_obj_i["instance"]["iproto"]["listen"] = i.iproto_listen
             config_yaml_obj_i["instance"]["iproto"]["advertise"] = i.iproto_listen

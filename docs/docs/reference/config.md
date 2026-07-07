@@ -107,6 +107,7 @@ instance:
     memory: 64M # (26)!
     system_memory: 256M # (27)!
     max_tuple_size: 1M # (25)!
+    dir: . # (58)!
   vinyl:
     memory: 128M # (38)!
     cache: 128M # (37)!
@@ -119,6 +120,7 @@ instance:
     read_threads: 1 # (45)!
     write_threads: 4 # (46)!
     timeout: 60.0 # (47)!
+    dir: . # (59)!
   boot_timeout: 7200 # (10)!
   http:
     enabled: true # (13)!
@@ -222,6 +224,8 @@ instance:
 55. [instance.ldap.tls.method](#instance_ldap_tls_method)
 56. [instance.ldap.tls.ca_file](#instance_ldap_tls_ca_file)
 57. [cluster.tier.wal_mode](#cluster_tier_tier_wal_mode)
+58. [instance.memtx.dir](#instance_memtx_dir)
+59. [instance.vinyl.dir](#instance_vinyl_dir)
 
 См. также:
 
@@ -641,6 +645,12 @@ picodata run -c instance.http.tls.enabled=true -c instance.http.tls.cert_file=ht
 
 Рабочая директория инстанса. Здесь Picodata хранит все данные.
 
+Picodata позволяет настроить хранение разных системных файлов в разных
+местах. По умолчанию все файлы хранятся в `instance_dir`, но более
+специфичные пути можно указать через [instance.wal_dir](#instance_wal_dir),
+[instance.memtx.dir](#instance_memtx_dir) и
+[instance.vinyl.dir](#instance_vinyl_dir).
+
 Данные:
 
 * Тип: *str*
@@ -1043,6 +1053,26 @@ picodata run -c instance.log.format=json
 
 [`picodata run --log-level`]: cli.md#run_log_level
 
+### instance.memtx.dir {: #instance_memtx_dir }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-memtx_dir -->
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Директория для хранения файлов снапшотов движка `memtx`. Позволяет хранить
+их на отдельном диске от [WAL](#instance_wal_dir) и данных движка `vinyl`.
+Если директория не существует, она будет создана при запуске инстанса.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `<instance-dir>` (см. [instance.instance_dir](#instance_instance_dir))
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.memtx.dir=/mnt/fast-disk/memtx
+```
+
 ### instance.memtx.max_tuple_size {: #instance_memtx_max_tuple_size }
 
 <span class="supported">поддерживается с версии 25.1.1</span>
@@ -1413,6 +1443,26 @@ picodata run -c instance.vinyl.bloom_fpr=0.10
 
 ```bash
 picodata run -c instance.vinyl.cache=256M
+```
+
+### instance.vinyl.dir {: #instance_vinyl_dir }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#confval-vinyl_dir -->
+
+<span class="supported">поддерживается с версии 26.2.1</span>
+
+Директория для хранения файлов движка `vinyl`. Позволяет хранить их на
+отдельном диске от [WAL](#instance_wal_dir) и снапшотов движка `memtx`.
+Если директория не существует, она будет создана при запуске инстанса.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `<instance-dir>` (см. [instance.instance_dir](#instance_instance_dir))
+
+Аналогичная команда — [`picodata run --config-parameter`]. Пример:
+
+```bash
+picodata run -c instance.vinyl.dir=/mnt/fast-disk/vinyl
 ```
 
 ### instance.vinyl.max_tuple_size {: #instance_vinyl_max_tuple_size }

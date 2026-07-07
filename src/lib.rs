@@ -1079,7 +1079,7 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
         }
         StartBoot => {
             // Cleanup the instance directory with WALs from the previous StartDiscover run
-            tarantool::rm_tarantool_files(config.instance.instance_dir())?;
+            cleanup_stale_tarantool_files(config)?;
             start_boot(config)?;
         }
         StartPreJoin {
@@ -1087,20 +1087,37 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
             instance_uuid,
         } => {
             // Cleanup the instance directory with WALs from the previous StartDiscover run
-            tarantool::rm_tarantool_files(config.instance.instance_dir())?;
+            cleanup_stale_tarantool_files(config)?;
             next_entrypoint = start_pre_join(config, leader_address, instance_uuid)?;
         }
         StartJoin {
             join_response: compressed,
         } => {
             // Cleanup the instance directory with WALs from the previous StartJoin run
-            tarantool::rm_tarantool_files(config.instance.instance_dir())?;
+            cleanup_stale_tarantool_files(config)?;
             let join_response = decompress_join_response(&compressed)?;
             start_join(config, &join_response)?;
         }
     }
 
     Ok(next_entrypoint)
+}
+
+/// Removes stale WAL/snapshot files left behind by a previous dropped `box.cfg`
+/// invocation. `instance_dir`, `wal_dir`, `memtx_dir` and `vinyl_dir` can each
+/// be configured to point to a different directory, so all of them must be
+/// cleaned up individually, unlike before when they were all guaranteed to be
+/// the same directory.
+fn cleanup_stale_tarantool_files(config: &PicodataConfig) -> Result<()> {
+    for dir in [
+        config.instance.instance_dir(),
+        config.instance.wal_dir(),
+        config.instance.memtx_dir(),
+        config.instance.vinyl_dir(),
+    ] {
+        tarantool::rm_tarantool_files(dir)?;
+    }
+    Ok(())
 }
 
 fn ensure_marker_file_exists_durable(path: &Path, contents: &[u8]) -> std::io::Result<()> {
@@ -1149,21 +1166,20 @@ fn init_common(
     cfg: &tarantool::Cfg,
     shredding: bool,
 ) -> Result<(), Error> {
-    std::fs::create_dir_all(config.instance.instance_dir()).map_err(|err| {
-        Error::other(format!(
-            "failed creating instance directory {}: {}",
-            config.instance.instance_dir().display(),
-            err
-        ))
-    })?;
-
-    std::fs::create_dir_all(config.instance.wal_dir()).map_err(|err| {
-        Error::other(format!(
-            "failed creating WAL directory {}: {}",
-            config.instance.wal_dir().display(),
-            err
-        ))
-    })?;
+    for (name, dir) in [
+        ("instance", config.instance.instance_dir()),
+        ("WAL", config.instance.wal_dir()),
+        ("memtx", config.instance.memtx_dir()),
+        ("vinyl", config.instance.vinyl_dir()),
+    ] {
+        std::fs::create_dir_all(dir).map_err(|err| {
+            Error::other(format!(
+                "failed creating {name} directory {}: {}",
+                dir.display(),
+                err
+            ))
+        })?;
+    }
 
     if let Some(log_config) = &cfg.log {
         tlog!(Info, "switching to log configuration: {}", log_config);
