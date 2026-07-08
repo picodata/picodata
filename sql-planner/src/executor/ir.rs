@@ -1034,6 +1034,55 @@ impl ExecutionPlan {
                 .to_vec(),
             Snapshot::Latest => self.get_ir_plan().get_const_list(top_id, snapshot),
         };
+        self.local_sql_params_for_constants(constant_ids)
+    }
+
+    /// Collects constant node ids and SQL parameter values for one block
+    /// statement (`Snapshot::Oldest`).
+    ///
+    /// Constant ids are memoized in the shared block cache (next to the block
+    /// pattern hash), so repeated executions of a cached block plan skip the
+    /// subtree traversal entirely and only read the parameter values.
+    ///
+    /// # Errors
+    /// - Same as `local_sql_params`.
+    pub fn block_sql_params(&self, top_id: NodeId) -> Result<LocalSqlParams, SbroadError> {
+        let cache = &self.get_ir_plan().block_cache;
+        let constant_ids = if let Some(cached) = cache.constant_ids(top_id) {
+            #[cfg(debug_assertions)]
+            {
+                let fresh = SubtreeViewBuilder::new(self, top_id)?
+                    .constant_ids()
+                    .to_vec();
+                debug_assert_eq!(
+                    cached.as_ref(),
+                    &fresh,
+                    "constant ids of a block statement changed between executions"
+                );
+            }
+            cached
+        } else {
+            let constant_ids = Rc::new(
+                SubtreeViewBuilder::new(self, top_id)?
+                    .constant_ids()
+                    .to_vec(),
+            );
+            cache.insert_constant_ids(top_id, Rc::clone(&constant_ids));
+            constant_ids
+        };
+        self.local_sql_params_for_constants(constant_ids.as_ref().clone())
+    }
+
+    /// Builds `LocalSqlParams` for already-collected constant node ids,
+    /// appending active bucket-filter values after the IR constants.
+    ///
+    /// # Errors
+    /// - If a collected constant cannot be converted to a parameter value.
+    /// - If the parameter count exceeds the local SQL placeholder limit.
+    fn local_sql_params_for_constants(
+        &self,
+        constant_ids: Vec<NodeId>,
+    ) -> Result<LocalSqlParams, SbroadError> {
         let mut params = Vec::with_capacity(constant_ids.len());
         for (num, const_id) in constant_ids.iter().enumerate() {
             let _: u16 = (num + 1).try_into().map_err(|_| {

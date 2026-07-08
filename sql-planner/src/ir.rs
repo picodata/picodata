@@ -722,9 +722,10 @@ pub struct Plan {
     pub tier: Option<SmolStr>,
     /// Derived cache for reusable structural subtree hashes.
     pub(crate) subtree_hash_cache: SubtreeHashCache,
-    /// Memoized hash identifying the SQL pattern of a transactional block.
-    /// Populated lazily on first call to `block_pattern_key`.
-    pub(crate) block_pattern_hash: BlockPatternHashCache,
+    /// Memoized artifacts of a transactional block: its SQL pattern hash and
+    /// the constant node ids of each statement. Both survive across executions
+    /// of a cached block plan.
+    pub(crate) block_cache: BlockCache,
     /// Equality facts
     pub facts: Option<EqualityFacts>,
     /// Per-relational-node value restrictions (PG `RestrictInfo` analog).
@@ -761,18 +762,46 @@ impl SubtreeHashCache {
     }
 }
 
+/// Memoized artifacts of a transactional block plan that survive across
+/// executions of a cached block: the SQL pattern hash and the constant node
+/// ids of each statement.
+///
+/// Block statement subtrees carry no motions or vtables and parameter binding
+/// preserves constant node ids, so both artifacts stay valid across executions
+/// of a cached block plan. Shared across plan clones through the same `Rc`, so
+/// plan clones and `Rc::make_mut` copies keep a warm cache.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct BlockPatternHashCache {
-    inner: Rc<OnceCell<u64>>,
+pub(crate) struct BlockCache {
+    inner: Rc<BlockCacheInner>,
 }
 
-impl BlockPatternHashCache {
-    pub(crate) fn get(&self) -> Option<u64> {
-        self.inner.get().copied()
+#[derive(Debug, Default)]
+struct BlockCacheInner {
+    /// Hash identifying the SQL pattern of the block. Populated lazily on the
+    /// first call to `block_pattern_key`.
+    pattern_hash: OnceCell<u64>,
+    /// Constant node ids per block statement top, in SQL parameter order.
+    constant_ids: RefCell<AHashMap<NodeId, Rc<Vec<NodeId>>>>,
+}
+
+impl BlockCache {
+    pub(crate) fn pattern_hash(&self) -> Option<u64> {
+        self.inner.pattern_hash.get().copied()
     }
 
-    pub(crate) fn set(&self, hash: u64) {
-        let _ = self.inner.set(hash);
+    pub(crate) fn set_pattern_hash(&self, hash: u64) {
+        let _ = self.inner.pattern_hash.set(hash);
+    }
+
+    pub(crate) fn constant_ids(&self, top_id: NodeId) -> Option<Rc<Vec<NodeId>>> {
+        self.inner.constant_ids.borrow().get(&top_id).cloned()
+    }
+
+    pub(crate) fn insert_constant_ids(&self, top_id: NodeId, constant_ids: Rc<Vec<NodeId>>) {
+        self.inner
+            .constant_ids
+            .borrow_mut()
+            .insert(top_id, constant_ids);
     }
 }
 
@@ -951,7 +980,7 @@ impl Plan {
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
             subtree_hash_cache: SubtreeHashCache::default(),
-            block_pattern_hash: BlockPatternHashCache::default(),
+            block_cache: BlockCache::default(),
             facts: None,
             restrictions: None,
         }

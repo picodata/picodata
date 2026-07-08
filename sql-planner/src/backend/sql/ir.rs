@@ -578,8 +578,8 @@ pub fn block_pattern_key(
     exec_plan: &ExecutionPlan,
     statements: &[BlockStatement<NodeId>],
 ) -> Result<u64, SbroadError> {
-    let cache = &exec_plan.get_ir_plan().block_pattern_hash;
-    if let Some(hash) = cache.get() {
+    let cache = &exec_plan.get_ir_plan().block_cache;
+    if let Some(hash) = cache.pattern_hash() {
         return Ok(hash);
     }
     let mut hasher = XxHash3_64::new();
@@ -593,7 +593,7 @@ pub fn block_pattern_key(
         })?;
     }
     let hash = hasher.finish();
-    cache.set(hash);
+    cache.set_pattern_hash(hash);
     Ok(hash)
 }
 
