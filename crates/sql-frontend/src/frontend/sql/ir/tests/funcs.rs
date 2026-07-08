@@ -1,4 +1,5 @@
 use sql_executor::test_helpers::sql_to_optimized_ir;
+use sql_explain::explain::explain_logical;
 
 #[test]
 fn lower_upper() {
@@ -6,7 +7,7 @@ fn lower_upper() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (upper(lower(('a'::string || 'B'::string)::string)::string::string)::string -> col_1, upper(t1.a::string::string)::string -> col_2)
       scan t1
     ");

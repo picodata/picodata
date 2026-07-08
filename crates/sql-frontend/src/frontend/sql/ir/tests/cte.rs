@@ -7,6 +7,7 @@ use crate::ir::Plan;
 use pretty_assertions::assert_eq;
 use sql_executor::executor::engine::mock::RouterConfigurationMock;
 use sql_executor::test_helpers::sql_to_optimized_ir;
+use sql_explain::explain::explain_logical;
 
 fn full_motion_count(plan: &Plan) -> usize {
     plan.slices()
@@ -30,7 +31,7 @@ fn cte() {
     let sql = r#"explain (logical) WITH cte (a) AS (SELECT "FIRST_NAME" FROM "test_space") SELECT * FROM cte"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (cte.a::string -> a)
       scan cte cte($0)
     subquery $0:
@@ -45,7 +46,7 @@ fn global_cte() {
     let sql = r#"explain (logical) WITH cte (a) AS (SELECT "a" FROM "global_t") SELECT * FROM cte"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (cte.a::int -> a)
       scan cte cte($0)
     subquery $0:
@@ -63,7 +64,7 @@ fn nested_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (cte2.a::string -> a)
       scan cte cte2($1)
     subquery $0:
@@ -86,7 +87,7 @@ fn reuse_cte_union_all() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     union all
       projection (cte.a::string -> a)
         scan cte cte($0)
@@ -112,7 +113,7 @@ fn reuse_func_in_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     motion [policy: full, program: RemoveDuplicates]
       union
         projection (cte.col_1::string -> col_1)
@@ -139,7 +140,7 @@ fn reuse_union_in_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     motion [policy: full, program: RemoveDuplicates]
       union
         projection (cte.a::string -> a)
@@ -172,7 +173,7 @@ fn reuse_union_in_cte_without_rename() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     motion [policy: full, program: RemoveDuplicates]
       union
         projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
@@ -206,7 +207,7 @@ fn reuse_union_in_cte_with_projection() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     motion [policy: full, program: RemoveDuplicates]
       union
         projection (cte.another::string -> another)
@@ -234,7 +235,7 @@ fn reuse_cte_values() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (t.c::int -> c)
       join on (true::bool)
         scan t
@@ -261,7 +262,7 @@ fn reuse_cte_values_without_rename() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.c::int -> c)
       join on (true::bool)
         scan t
@@ -298,7 +299,7 @@ fn reuse_cte_values_with_projection_and_function() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     union all
       projection (cte.col_1::string -> col_1)
         scan cte cte($0)
@@ -325,7 +326,7 @@ fn reuse_single_node_cte_does_not_materialize() {
         SELECT * FROM cte c1 JOIN cte c2 ON true
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    let explain = plan.explain_logical().unwrap();
+    let explain = explain_logical(&plan).unwrap();
 
     assert!(
         explain.contains(r#"scan cte c1($0)"#),
@@ -350,7 +351,7 @@ fn join_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (t."FIRST_NAME"::string -> "FIRST_NAME")
       join on (t."FIRST_NAME"::string = cte.a::string)
         scan test_space -> t
@@ -370,7 +371,7 @@ fn agg_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (count(cte.a::string::string)::int -> col_1)
       scan cte cte($0)
     subquery $0:
@@ -388,7 +389,7 @@ fn limit_pushdown_does_not_mutate_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (ROW($2) -> col_1, ROW($1) -> col_2)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -418,7 +419,7 @@ fn limit_pushdown_does_not_mutate_used_once_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (a::int)
         order by (a::int)
@@ -440,7 +441,7 @@ fn limit_pushdown_does_not_mutate_used_once_cte_with_aggr_over_it() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (count(*)::int -> col_1)
         scan cte cte($0)
@@ -463,7 +464,7 @@ fn used_once_single_node_cte_does_not_materialize() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (cte.a::int -> a)
       scan cte cte($0)
     subquery $0:
@@ -484,7 +485,7 @@ fn sq_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
       selection (test_space."FIRST_NAME"::string in ROW($1))
         scan test_space
@@ -508,7 +509,7 @@ fn values_in_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (cte.a::string -> a)
       scan cte cte($0)
     subquery $0:
@@ -529,7 +530,7 @@ fn union_all_in_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (cte2.a::string -> a)
       scan cte cte2($1)
     subquery $0:
@@ -559,7 +560,7 @@ fn join_in_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
       scan cte cte($0)
     subquery $0:
@@ -584,7 +585,7 @@ fn order_by_in_cte() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
       scan cte cte($0)
     subquery $0:
@@ -604,7 +605,7 @@ fn table_name_conflict() {
         SELECT * FROM "test_space"
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
       scan cte test_space($0)
     subquery $0:
@@ -656,7 +657,7 @@ fn cte_with_left_join() {
 
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_join."E"::int -> "E")
       motion [policy: full, program: AddMissingRowsForLeftJoin]
         projection (cte."E"::int -> "E", t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)

@@ -19,6 +19,7 @@ use crate::test_helpers::{vcolumn_integer_user_non_null, vcolumn_user_non_null};
 use insta::{assert_snapshot, assert_yaml_snapshot};
 use pretty_assertions::assert_eq;
 use smol_str::SmolStr;
+use sql_explain::explain::explain_logical;
 use std::rc::Rc;
 
 fn reshard_vtable(
@@ -166,14 +167,14 @@ fn update_delete_tuple_len_overlay_keeps_ir_intact() {
     let plan = sql_to_optimized_ir(r#"explain (logical) update "t" set "a" = 1"#, vec![]);
     let mut exec_plan = ExecutionPlan::new(plan);
     let update_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let explain_before = exec_plan.get_ir_plan().explain_logical().unwrap();
+    let explain_before = explain_logical(exec_plan.get_ir_plan()).unwrap();
 
     exec_plan.set_update_delete_tuple_len(update_id, 2).unwrap();
 
     assert_eq!(2, exec_plan.get_update_delete_tuple_len(update_id).unwrap());
     assert_eq!(
         explain_before,
-        exec_plan.get_ir_plan().explain_logical().unwrap()
+        explain_logical(exec_plan.get_ir_plan()).unwrap()
     );
 
     let view = exec_plan.freeze().execution_view();

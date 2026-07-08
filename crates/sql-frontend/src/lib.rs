@@ -6,8 +6,5 @@ extern crate pest_derive;
 
 pub mod frontend;
 
-pub use sql_ir::{
-    collection, crit, debug, error, fatal, info, system, verbose, warn, write_explain_header1,
-    write_explain_header2,
-};
+pub use sql_ir::{collection, crit, debug, error, fatal, info, system, verbose, warn};
 pub use sql_ir::{errors, ir, log, utils};

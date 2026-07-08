@@ -1,10 +1,11 @@
+use crate::explain::buckets::buckets_repr;
+use crate::explain::ir::LogicalExplain;
 use pretty_assertions::assert_eq;
-use sql::ir::bucket::BucketSet;
-use sql::ir::bucket::Buckets;
-use sql::ir::explain::buckets_repr;
-use sql::ir::explain::LogicalExplain;
+use sql_ir::ir::bucket::BucketSet;
+use sql_ir::ir::bucket::Buckets;
 
-use sql::{collection, helpers::sql_to_optimized_ir};
+use sql_executor::test_helpers::sql_to_optimized_ir;
+use sql_ir::collection;
 
 #[test]
 fn simple_query_without_cond_plan() {
@@ -465,8 +466,3 @@ fn check_buckets_repr() {
         buckets_repr(&Buckets::Filtered(BucketSet::Exact(collection!())), bc)
     );
 }
-
-mod cast_constants;
-mod concat;
-mod delete;
-mod query_explain;

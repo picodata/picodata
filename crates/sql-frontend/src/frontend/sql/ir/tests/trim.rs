@@ -1,11 +1,12 @@
 use sql_executor::test_helpers::sql_to_optimized_ir;
+use sql_explain::explain::explain_logical;
 
 #[test]
 fn trim() {
     let sql = r#"explain (logical) SELECT TRIM("FIRST_NAME") FROM "test_space""#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (TRIM(test_space."FIRST_NAME"::string::string) -> col_1)
       scan test_space
     "#);
@@ -16,7 +17,7 @@ fn trim_leading_from() {
     let sql = r#"explain (logical) SELECT TRIM(LEADING FROM "FIRST_NAME") FROM "test_space""#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (TRIM(leading from test_space."FIRST_NAME"::string::string) -> col_1)
       scan test_space
     "#);
@@ -27,7 +28,7 @@ fn trim_both_space_from() {
     let sql = r#"explain (logical) SELECT TRIM(BOTH ' ' FROM "FIRST_NAME") FROM "test_space""#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (TRIM(both ' '::string from test_space."FIRST_NAME"::string::string) -> col_1)
       scan test_space
     "#);

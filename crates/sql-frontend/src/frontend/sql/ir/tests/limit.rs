@@ -1,13 +1,14 @@
 use crate::frontend::sql::transform_into_plan;
 use sql_executor::executor::engine::mock::RouterConfigurationMock;
 use sql_executor::test_helpers::sql_to_optimized_ir;
+use sql_explain::explain::explain_logical;
 
 #[test]
 fn select() {
     let sql = r#"explain (logical) SELECT "id" FROM "test_space" LIMIT 100"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 100
       motion [policy: full, program: ReshardIfNeeded]
         limit 100
@@ -26,7 +27,7 @@ fn union_all() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 100
       motion [policy: full, program: ReshardIfNeeded]
         limit 100
@@ -44,7 +45,7 @@ fn aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (min(min_1::int)::int -> col_1, min(distinct gr_expr_1::int)::int -> col_2)
         motion [policy: full, program: ReshardIfNeeded]
@@ -60,7 +61,7 @@ fn group_by() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 555
       projection (sum(count_1::int)::int -> col_1, gr_expr_1::int -> b)
         group by (gr_expr_1::int)
@@ -76,7 +77,7 @@ fn single_limit() {
     let sql = r#"explain (logical) SELECT * FROM (SELECT "id" FROM "test_space" LIMIT 1) LIMIT 1"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (unnamed_subquery.id::int -> id)
         scan unnamed_subquery
@@ -96,7 +97,7 @@ fn join() {
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 128
       motion [policy: full, program: ReshardIfNeeded]
         limit 128
@@ -122,7 +123,7 @@ fn limit_all() {
     let sql = r#"explain (logical) SELECT "id" FROM "test_space" LIMIT ALL"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (test_space.id::int -> id)
       scan test_space
     ");
@@ -133,7 +134,7 @@ fn limit_null() {
     let sql = r#"explain (logical) SELECT "id" FROM "test_space" LIMIT NULL"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (test_space.id::int -> id)
       scan test_space
     ");
@@ -149,7 +150,7 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
@@ -171,7 +172,7 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (x.bucket_id::int -> bucket_id, x.id::int -> id)
         scan cte x($0)
@@ -196,7 +197,7 @@ fn limit_pushdown_having() {
     let input = r#"explain (logical) SELECT count(*), "b" FROM "t" GROUP BY "b" HAVING count(*) > 0 LIMIT 3"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    let explain = plan.explain_logical().unwrap();
+    let explain = explain_logical(&plan).unwrap();
 
     assert!(
         !has_direct_child_limit_under_motion(&explain, 3),
@@ -210,7 +211,7 @@ fn limit_pushdown_window() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (count(*) over () -> c)
         motion [policy: full, program: ReshardIfNeeded]
@@ -225,7 +226,7 @@ fn limit_pushdown_with_aggregate_in_order_by_alias() {
         explain (logical) select sum(b) as s, b from t group by b order by s limit 5;
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    let explain = plan.explain_logical().unwrap();
+    let explain = explain_logical(&plan).unwrap();
 
     assert!(
         !has_direct_child_limit_under_motion(&explain, 5),
@@ -239,7 +240,7 @@ fn limit_pushdown_with_aggregate_in_order_by_position() {
         explain (logical) select sum(b) as s, b from t group by b order by 1 limit 5;
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    let explain = plan.explain_logical().unwrap();
+    let explain = explain_logical(&plan).unwrap();
 
     assert!(
         !has_direct_child_limit_under_motion(&explain, 5),
@@ -251,7 +252,7 @@ fn limit_pushdown_with_aggregate_in_order_by_position() {
 fn limit_pushdown_order_by_position() {
     let sql = r#"explain (logical) SELECT "a", "b" FROM "t" ORDER BY 2 LIMIT 5"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    let explain = plan.explain_logical().unwrap();
+    let explain = explain_logical(&plan).unwrap();
 
     assert!(
         has_direct_child_limit_under_motion(&explain, 5),
@@ -263,7 +264,7 @@ fn limit_pushdown_order_by_position() {
 fn limit_pushdown_order_by_alias() {
     let sql = r#"explain (logical) SELECT "b" AS "x" FROM "t" ORDER BY "x" LIMIT 5"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    let explain = plan.explain_logical().unwrap();
+    let explain = explain_logical(&plan).unwrap();
 
     assert!(
         has_direct_child_limit_under_motion(&explain, 5),
@@ -278,7 +279,7 @@ fn limit_pushdown_distinct_order_by_alias() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 5
       projection (x::int)
         order by (x::int)
@@ -305,7 +306,7 @@ fn limit_pushdown_distinct_order_by_expr_over_duplicated_aliases() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 5
       projection (c0::int, c1::int, c2::int)
         order by (c0::int + c2::int)
@@ -332,7 +333,7 @@ fn limit_pushdown_distinct_order_by_ordinal_position() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 5
       projection (c0::int, c1::int, c2::int)
         order by (3 desc)
@@ -357,7 +358,7 @@ fn limit_pushdown_order_by_subquery_no_pushdown() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 5
       projection (a::int)
         order by (ROW($0), a::int)
@@ -378,7 +379,7 @@ fn limit_pushdown_except() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (a::int)
         order by (a::int)
@@ -404,7 +405,7 @@ fn limit_pushdown_aggregate_in_order_by() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 5
       projection (b::int)
         order by (sum(b::int::int)::decimal)
@@ -425,7 +426,7 @@ fn limit_pushdown_distinct() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 5
       projection (gr_expr_1::int -> a, gr_expr_2::int -> b)
         group by (gr_expr_1::int, gr_expr_2::int)
@@ -444,7 +445,7 @@ fn limit_pushdown_having_filter_aggregate() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 5
       projection (gr_expr_1::int -> b)
         having (sum(count_1::int)::int > 1::int)
@@ -463,7 +464,7 @@ fn limit_pushdown_orderby_and_having() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 5
       projection (b::int)
         order by (b::int)
@@ -489,6 +490,4 @@ fn no_limit_pushdown_with_volatile_funcs() {
     let plan = transform_into_plan(sql, &vec![], metadata);
 
     assert!(matches!(plan, Err(_)));
-
-    // insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"..."#);
 }

@@ -81,6 +81,7 @@ test-rust *ARGS:
 		--exclude sql-ir \
 		--exclude sql-executor \
 		--exclude sql-frontend \
+		--exclude sql-explain \
 		--exclude sql-ast-new-nodes \
 		--exclude sql-ast-new-parser \
 		--exclude sql-ast-new-analyzer \
@@ -96,6 +97,7 @@ test-rust *ARGS:
 		--exclude sql-ir \
 		--exclude sql-executor \
 		--exclude sql-frontend \
+		--exclude sql-explain \
 		--exclude sql-ast-new-nodes \
 		--exclude sql-ast-new-parser \
 		--exclude sql-ast-new-analyzer \
@@ -136,6 +138,7 @@ lint-rust *ARGS:
 		--exclude sql-ir \
 		--exclude sql-executor \
 		--exclude sql-frontend \
+		--exclude sql-explain \
 		--exclude sql-ast-new-nodes \
 		--exclude sql-ast-new-parser \
 		--exclude sql-ast-new-analyzer \

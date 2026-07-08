@@ -1,16 +1,16 @@
-use sql::ExecutingQueryExt;
-use sql::{
-    executor::{engine::mock::RouterRuntimeMock, ExecutingQuery},
-    ir::value::Value,
-};
+use crate::explain::ExplainExecutingQuery;
+use sql_executor::executor::engine::mock::RouterRuntimeMock;
+use sql_executor::executor::ExecutingQuery;
+use sql_executor::test_helpers::ExecutingQueryExt;
+use sql_ir::ir::value::Value;
 
 #[test]
 fn test_query_explain_1() {
     let sql = r#"explain (logical, buckets) select 1"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -30,8 +30,8 @@ fn test_query_explain_2() {
     let sql = r#"explain (logical, buckets) select e from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -52,8 +52,8 @@ fn test_query_explain_3() {
     let sql = r#"explain (logical, buckets) select e from t2 where e = 1 and f = 13"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -75,8 +75,8 @@ fn test_query_explain_4() {
     let sql = r#"explain (logical, buckets) select count(*) from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -101,9 +101,9 @@ fn test_query_explain_prepared_single_key_aggregate_stays_single_node() {
         where a = $1"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query =
+    let query =
         ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -127,9 +127,9 @@ fn test_query_explain_prepared_single_key_with_constant_drops_reduce_stage() {
         where a = $1 and a = 1"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query =
+    let query =
         ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -153,13 +153,13 @@ fn test_query_explain_prepared_reused_parameters_drops_reduce_stage() {
         where a = $1 and a = $1 and a = $2"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(
+    let query = ExecutingQuery::from_text_and_params(
         metadata,
         sql,
         vec![Value::Integer(1), Value::Integer(1)],
     )
     .unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -183,9 +183,9 @@ fn test_query_explain_prepared_partial_composite_key_keeps_reduce_stage() {
         where ("identification_number", "product_code") = ($1, trim("product_code"))"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query =
+    let query =
         ExecutingQuery::from_text_and_params(metadata, sql, vec![Value::Integer(1)]).unwrap();
-    let explain = query.explain().unwrap();
+    let explain = ExplainExecutingQuery::from(query).explain().unwrap();
 
     assert!(
         explain.contains(r#"projection (sum(count_1::int)::int -> col_1)"#),
@@ -206,8 +206,8 @@ fn test_query_explain_5() {
     let sql = r#"explain (logical, buckets) select a from global_t"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -228,8 +228,8 @@ fn test_query_explain_6() {
     let sql = r#"explain (logical, buckets) insert into t1 values ('1', 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r#"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r#"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -252,8 +252,8 @@ fn test_query_explain_7() {
     let sql = r#"explain (logical, buckets) insert into t1 select a, b from t1"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -276,8 +276,8 @@ fn test_query_explain_8() {
     let sql = r#"explain (logical, buckets) insert into global_t values (1, 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -300,8 +300,8 @@ fn test_query_explain_9() {
     let sql = r#"explain (logical, buckets) delete from t2"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -321,8 +321,8 @@ fn test_query_explain_10() {
     let sql = r#"explain (logical, buckets) update t2 set e = 20 where (e, f) = (10, 10)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -362,8 +362,8 @@ fn test_query_explain_11() {
 "#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -412,8 +412,8 @@ fn test_query_explain_12() {
 "#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -443,8 +443,8 @@ fn test_query_explain_13() {
     let sql = r#"explain (logical, buckets) insert into global_t select a, b from t1 where (a, b) = ('1', 1)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -468,8 +468,8 @@ fn test_query_explain_14() {
     let sql = r#"explain (logical, buckets) select a, b from t1 where (a, b) = ('1', 1) and (a, b) = ('2', 2)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -491,8 +491,8 @@ fn test_query_explain_15() {
     let sql = "explain (logical, buckets) select 1 option (sql_vdbe_opcode_max = 1, sql_motion_row_max = 2)";
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -512,13 +512,13 @@ fn test_query_explain_16() {
     let sql = "explain (logical, buckets) select 1 option (sql_vdbe_opcode_max = $1, sql_motion_row_max = $2)";
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(
+    let query = ExecutingQuery::from_text_and_params(
         metadata,
         sql,
         vec![Value::Integer(14), Value::Integer(88)],
     )
     .unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -538,8 +538,8 @@ fn test_query_explain_17() {
     let sql = "explain (logical, buckets) update t set c = 1 option (sql_vdbe_opcode_max = 1, sql_motion_row_max = 2)";
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -562,8 +562,8 @@ fn test_query_explain_18() {
     let sql = "explain (logical, buckets) select * from (values (1, 2), (3, 4)) join (values (5, 6), (7, 8)) on true";
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r#"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r#"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -594,8 +594,8 @@ fn test_query_explain_19() {
     let sql = r#"explain (logical, buckets) select sum(1.0)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -615,8 +615,8 @@ fn test_query_explain_20() {
     let sql = r#"explain (logical, buckets) select sum(1)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -636,8 +636,8 @@ fn test_query_explain_21() {
     let sql = r#"explain (logical, buckets) select sum(1::double)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -657,8 +657,8 @@ fn test_query_explain_22() {
     let sql = r#"explain (logical, buckets) select avg(1.0)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -678,8 +678,8 @@ fn test_query_explain_23() {
     let sql = r#"explain (logical, buckets) select avg(1)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -699,8 +699,8 @@ fn test_query_explain_24() {
     let sql = r#"explain (logical, buckets) select avg(1::double)"#;
 
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -712,5 +712,115 @@ fn test_query_explain_24() {
     ──────────────────────────────────────────────────────────────────────
 
     buckets = any
+    ");
+}
+#[test]
+fn front_explain_select_sql1() {
+    let sql = r#"EXPLAIN (LOGICAL, BUCKETS) SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t""#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+
+    let actual_explain = ExplainExecutingQuery::from(query).explain().unwrap();
+    insta::assert_snapshot!(*actual_explain, @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
+      scan hash_testing -> t
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets <= [1-10000]
+    ");
+}
+
+#[test]
+fn front_explain_select_sql2() {
+    let sql = r#"EXPLAIN (LOGICAL, BUCKETS) SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t"
+        UNION ALL
+        SELECT "t2"."identification_number", "product_code" FROM "hash_testing_hist" as "t2""#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+
+    let actual_explain = ExplainExecutingQuery::from(query).explain().unwrap();
+    insta::assert_snapshot!(*actual_explain, @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    union all
+      projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
+        scan hash_testing -> t
+      projection (t2.identification_number::int -> identification_number, t2.product_code::string -> product_code)
+        scan hash_testing_hist -> t2
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets <= [1-10000]
+    ");
+}
+
+#[test]
+fn front_explain_select_sql3() {
+    let sql = r#"explain (logical, buckets) select "a" from "t3" as "q1"
+        inner join (select "t3"."a" as "a2", "t3"."b" as "b2" from "t3") as "q2"
+        on "q1"."a" = "q2"."a2""#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+
+    let actual_explain = ExplainExecutingQuery::from(query).explain().unwrap();
+    insta::assert_snapshot!(*actual_explain, @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    projection (q1.a::string -> a)
+      join on (q1.a::string = q2.a2::string)
+        scan t3 -> q1
+        scan q2
+          projection (t3.a::string -> a2, t3.b::int -> b2)
+            scan t3
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets <= [1-10000]
+    ");
+}
+
+#[test]
+fn front_explain_select_sql4() {
+    let sql = r#"explain (logical, buckets) select "q2"."a" from "t3" as "q1"
+        inner join "t3" as "q2"
+        on "q1"."a" = "q2"."a""#;
+
+    let metadata = &RouterRuntimeMock::new();
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+
+    let actual_explain = ExplainExecutingQuery::from(query).explain().unwrap();
+    insta::assert_snapshot!(actual_explain, @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    projection (q2.a::string -> a)
+      join on (q1.a::string = q2.a::string)
+        scan t3 -> q1
+        scan t3 -> q2
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets <= [1-10000]
     ");
 }

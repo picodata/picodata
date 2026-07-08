@@ -120,7 +120,7 @@ DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 # memory usage caused by doc tests compilation model. Doc tests are compiled as part of actual test run.
 # So, each parallel thread lanuched by cargo test spawns full blown compiler for each doctest
 # which at the end leads to OOM.
-CARGO_TEST_FLAGS ?= --workspace --exclude sql-planner --exclude sql-ir --exclude sql-executor --exclude sql-frontend --exclude sql-ast-new-nodes --exclude sql-ast-new-parser --exclude sql-ast-new-analyzer --exclude sql-ast-new-corpus --exclude tarantool --exclude tlua
+CARGO_TEST_FLAGS ?= --workspace --exclude sql-planner --exclude sql-ir --exclude sql-executor --exclude sql-explain --exclude sql-frontend --exclude sql-ast-new-nodes --exclude sql-ast-new-parser --exclude sql-ast-new-analyzer --exclude sql-ast-new-corpus --exclude tarantool --exclude tlua
 
 .PHONY: test-rs
 test-rs: test-rs-picodata test-rs-sql
@@ -141,8 +141,9 @@ test-rs-picodata:
 	  $(CARGO_TEST_FLAGS) \
 	  --doc -- --test-threads 2
 
-SQL_CRATES = -p sql-ir -p sql-executor -p sql-frontend -p sql-planner \
-            -p sql-ast-new-nodes -p sql-ast-new-parser -p sql-ast-new-analyzer -p sql-ast-new-corpus
+SQL_CRATES = -p sql-ir -p sql-executor -p sql-frontend -p sql-explain \
+            -p sql-planner -p sql-ast-new-nodes -p sql-ast-new-parser \
+            -p sql-ast-new-analyzer -p sql-ast-new-corpus
 
 NEXTEST_VERSION := 0.9.140
 

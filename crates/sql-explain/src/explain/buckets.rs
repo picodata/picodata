@@ -1,16 +1,46 @@
-//! Bucket estimation for EXPLAIN of executing queries.
-
 use ahash::AHashSet;
-use sql_ir::ir::explain::execution_info::BoundedBuckets;
+use sql_ir::ir::bucket::BucketSet;
+use std::fmt::Display;
 
-use crate::errors::SbroadError;
-use crate::executor::engine::{Router, Vshard};
-use crate::executor::ExecutingQuery;
-use crate::ir::bucket::Buckets;
-use crate::ir::node::{block::BlockOwned, relational::Relational, Motion, Node, NodeId};
-use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
-use crate::ir::Plan;
+use sql_executor::executor::{
+    engine::{Router, Vshard},
+    ExecutingQuery,
+};
+use sql_ir::errors::SbroadError;
+use sql_ir::ir::{
+    bucket::Buckets,
+    node::{block::BlockOwned, relational::Relational, Motion, Node, NodeId},
+    transformation::redistribution::MotionPolicy,
+    tree::traversal::{PostOrder, REL_CAPACITY},
+    Plan,
+};
+
+#[derive(Debug)]
+pub struct BoundedBuckets {
+    /// Estimated buckets on which whole plan will be executed.
+    pub buckets: Buckets,
+    /// Total number of buckets in cluster
+    pub bucket_count: u64,
+}
+
+impl Display for BoundedBuckets {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let repr = buckets_repr(&self.buckets, self.bucket_count);
+        match self.buckets {
+            Buckets::All => write!(f, "buckets <= {repr}"),
+            Buckets::Any | Buckets::Filtered(_) => write!(f, "buckets = {repr}"),
+        }
+    }
+}
+
+impl BoundedBuckets {
+    pub fn new(buckets: Buckets, bucket_count: u64) -> Self {
+        BoundedBuckets {
+            buckets,
+            bucket_count,
+        }
+    }
+}
 
 /// Estimate on which buckets query will be executed.
 /// If query consists only of single subtree we
@@ -179,4 +209,49 @@ fn can_estimate_buckets(plan: &Plan) -> Result<bool, SbroadError> {
     let can_estimate = !child_node.is_motion() || child_node.is_local_motion();
 
     Ok(can_estimate)
+}
+
+pub fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
+    match buckets {
+        Buckets::All => format!("[1-{bucket_count}]"),
+        Buckets::Filtered(BucketSet::Exact(buckets_set)) => 'f: {
+            if buckets_set.is_empty() {
+                break 'f "[]".into();
+            }
+
+            let mut nums: Vec<u64> = buckets_set.iter().copied().collect();
+            nums.sort_unstable();
+
+            let mut ranges = Vec::new();
+            let mut l = 0;
+            for r in 1..nums.len() {
+                if nums[r - 1] + 1 == nums[r] {
+                    continue;
+                }
+                if r - l == 1 {
+                    ranges.push(format!("{}", nums[l]));
+                } else {
+                    ranges.push(format!("{}-{}", nums[l], nums[r - 1]))
+                }
+                l = r;
+            }
+
+            let r = nums.len();
+            if r - l == 1 {
+                ranges.push(format!("{}", nums[r - 1]));
+            } else {
+                ranges.push(format!("{}-{}", nums[l], nums[r - 1]))
+            }
+
+            format!("[{}]", ranges.join(","))
+        }
+        Buckets::Filtered(BucketSet::EstimatedCount { lower, upper }) => {
+            if lower != upper {
+                format!("estimated count ({lower}..={upper})")
+            } else {
+                format!("estimated count ({lower})")
+            }
+        }
+        Buckets::Any => "any".into(),
+    }
 }

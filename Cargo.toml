@@ -19,8 +19,8 @@ repository = "https://git.picodata.io/core/picodata"
 [dependencies]
 abi_stable = "0.11"
 ahash = { workspace = true }
-bitflags = "2.9.1"
 base64 = "0.22"
+bitflags = { workspace = true }
 bytes = "1.8"
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
@@ -140,6 +140,7 @@ file_shred = { git = "https://git.picodata.io/core/file_shred", branch = "rand-0
 
 [workspace.dependencies]
 ahash = "0.8"
+bitflags = "2.9.1"
 build-rs-helpers = { path = "crates/build-rs-helpers" }
 chrono = "0.4"
 clap = "4.5"
@@ -207,6 +208,7 @@ members = [
     "crates/sql-ast-new-nodes",
     "crates/sql-ast-new-parser",
     "crates/sql-executor",
+    "crates/sql-explain",
     "crates/sql-frontend",
     "crates/sql-ir",
     "crates/sql-planner",

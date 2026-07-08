@@ -5,6 +5,7 @@ use crate::test_helpers::sql_to_optimized_ir;
 use crate::test_helpers::ExecutingQueryExt;
 use insta::{assert_snapshot, assert_yaml_snapshot};
 use pretty_assertions::assert_eq;
+use sql_explain::explain::explain_logical;
 
 #[test]
 fn bucket1_test() {
@@ -76,7 +77,7 @@ fn bucket_id_from_join() {
     let input = r#"explain (logical) select t1.bucket_id from t t1 join t on true"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.bucket_id::int -> bucket_id)
       join on (true::bool)
         scan t -> t1
@@ -106,7 +107,7 @@ fn explicit_select_bucket_id_from_subquery_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       motion [policy: full, program: ReshardIfNeeded]
         limit 1
@@ -128,7 +129,7 @@ fn explicit_select_bucket_id_from_cte_under_limit() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (x.bucket_id::int -> bucket_id, x.id::int -> id)
         scan cte x($0)
@@ -144,7 +145,7 @@ fn groupby_bucket_id() {
     let input = r#"explain (logical) SELECT * FROM t GROUP BY a, b, c, d, bucket_id"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       group by (t.a::int, t.b::int, t.c::int, t.d::int, t.bucket_id::int)
         scan t

@@ -10,7 +10,7 @@ edition.workspace = true
 ahash = { workspace = true }
 base64ct = { version = "1.5", features = ["alloc"] }
 bincode = "1.3"
-bitflags = "2.9.1"
+bitflags = { workspace = true }
 blake3 = "1.3"
 comfy-table = { workspace = true }
 hash32 = "0.2"
@@ -41,6 +41,8 @@ tarantool = { workspace = true, features = ["standalone_decimal", "extra_impls"]
 # Self-referential dev-dependency: forces the `mock` feature on for this
 # crate's own tests and benches without affecting downstream builds.
 sql-executor = { path = ".", features = ["mock"] }
+# The dev edge to sql-explain lets the tests render explain output.
+sql-explain = { path = "../sql-explain", features = ["mock"] }
 
 [features]
 # The `mock` feature additionally pulls in the SQL frontend so that the

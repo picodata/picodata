@@ -38,7 +38,7 @@ use crate::storage::{self, Catalog};
 
 use sql::executor::engine::helpers::normalize_name_from_sql;
 use sql::executor::engine::Metadata;
-use sql::executor::{ExplainQueryLocation, Port};
+use sql::executor::Port;
 use sql::ir::function::Function;
 use sql::ir::relation::{space_pk_columns, Column, ColumnRole, Table};
 use sql::ir::types::{DerivedType, UnrestrictedType};
@@ -59,7 +59,6 @@ use super::dispatch::{custom_plan_dispatch, single_plan_dispatch};
 use super::port::PicoPortOwned;
 use crate::sql::dispatch::block_dispatch;
 use sql::executor::result::MetadataColumn;
-use sql::executor::MotionInfo;
 
 pub type VersionMap = HashMap<u32, u64, RepeatableState>;
 
@@ -574,18 +573,10 @@ impl Router for RouterRuntime {
             }
         }
     }
-
-    /// Create an instance of `ExplainQueryLocation` from `Buckets` and `MotionInfo`.
-    fn build_explain_query_location(
-        buckets: &Buckets,
-        motion_info: &MotionInfo,
-    ) -> ExplainQueryLocation {
-        build_explain_query_location(buckets, motion_info)
-    }
 }
 
 /// Get the number of replicasets in current tier.
-fn get_current_tier_replicasets_num() -> usize {
+pub(crate) fn get_current_tier_replicasets_num() -> usize {
     let node = node::global().expect("raft node must be initialized");
     let tier = node.topology_cache.my_tier_name();
     let topology_ref = node.topology_cache.get();
@@ -593,72 +584,6 @@ fn get_current_tier_replicasets_num() -> usize {
     replicasets_iter
         .filter(|replicaset| replicaset.tier == tier)
         .count()
-}
-
-/// Create an instance of `ExplainQueryLocation` from `Buckets` and `MotionInfo`.
-pub fn build_explain_query_location(
-    buckets: &Buckets,
-    motion_info: &MotionInfo,
-) -> ExplainQueryLocation {
-    let is_dyn_filtered = motion_info.has_segment_motion;
-
-    if let Some(as_empty) = motion_info.has_serialize_as_empty_opcode {
-        return match buckets {
-            Buckets::Any => ExplainQueryLocation::Router,
-            Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() => {
-                ExplainQueryLocation::Router
-            }
-            Buckets::Filtered(_) | Buckets::All => {
-                let replicasets_num = get_current_tier_replicasets_num();
-                if !as_empty {
-                    if is_dyn_filtered {
-                        ExplainQueryLocation::DynFiltered {
-                            fraction: Some((1, replicasets_num)),
-                        }
-                    } else {
-                        ExplainQueryLocation::ConstFiltered {
-                            fraction: (1, replicasets_num),
-                        }
-                    }
-                } else {
-                    ExplainQueryLocation::ConstFiltered {
-                        fraction: (replicasets_num - 1, replicasets_num),
-                    }
-                }
-            }
-        };
-    }
-
-    match buckets {
-        Buckets::Any => ExplainQueryLocation::Router,
-        Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() && is_dyn_filtered => {
-            ExplainQueryLocation::DynFiltered { fraction: None }
-        }
-        Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() => ExplainQueryLocation::Router,
-        Buckets::Filtered(_) => {
-            let (replicaset_count, all_replicasets) = match replicasets_by_buckets(buckets) {
-                Ok(replicasets) => {
-                    let all_replicasets = get_current_tier_replicasets_num();
-                    (replicasets.len(), all_replicasets)
-                }
-                Err(_) => {
-                    // Defaults to (0, 0) when buckets routing is unavailable in vshard.
-                    (0, 0)
-                }
-            };
-            if is_dyn_filtered {
-                ExplainQueryLocation::DynFiltered {
-                    fraction: Some((replicaset_count, all_replicasets)),
-                }
-            } else {
-                ExplainQueryLocation::ConstFiltered {
-                    fraction: (replicaset_count, all_replicasets),
-                }
-            }
-        }
-        Buckets::All if is_dyn_filtered => ExplainQueryLocation::DynFiltered { fraction: None },
-        Buckets::All => ExplainQueryLocation::Whole,
-    }
 }
 
 pub fn replicasets_by_buckets(buckets: &Buckets) -> Result<Vec<String>, SbroadError> {

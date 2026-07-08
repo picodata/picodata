@@ -21,13 +21,10 @@ use sql::executor::lru::{Cache, EvictFn, LRUCache};
 use sql::executor::protocol::SchemaInfo;
 use sql::executor::{Port, PortType};
 use sql::ir::bucket::Buckets;
-use sql::ir::explain::execution_info::BoundedBuckets;
 use sql::ir::helpers::RepeatableState;
-use sql::ir::node::BlockEntries;
 use sql::ir::options::Options;
 use std::cell::{OnceCell, RefCell};
 use std::time::Duration;
-use std::vec::IntoIter;
 
 use crate::metrics::{
     record_router_block_pattern_cache_hit, record_router_block_pattern_cache_miss,
@@ -35,10 +32,10 @@ use crate::metrics::{
     record_router_block_pattern_cache_statement_evicted, record_storage_cache_statement_added,
     record_storage_cache_statement_evicted, report_storage_cache_hit, report_storage_cache_miss,
 };
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use sql::executor::vdbe::{SqlError, SqlStmt};
+use smol_str::{format_smolstr, SmolStr};
+use sql::executor::vdbe::SqlStmt;
 use sql::executor::vtable::{VirtualTable, VirtualTableTupleEncoder};
-use sql::executor::MotionInfo;
+use sql::explain::executor::MotionInfo;
 use sql::ir::node::NodeId;
 use sql::ir::tree::Snapshot;
 use sql::ir::value::Value;
@@ -52,14 +49,15 @@ use std::rc::Rc;
 use crate::schema::{ADMIN_ID, SPACE_ID_TEMPORARY_MIN};
 use crate::sql::execute::{
     acquire_cached_stmt_or_retry, dml_execute, dql_execute, drop_temp_tables, explain_execute,
-    sql_execute, stmt_execute, ExplainQuery, LazyVirtualTableEncoder, LendingTupleIterator,
+    sql_execute, stmt_execute, LazyVirtualTableEncoder, LendingTupleIterator,
 };
+use crate::sql::explain::block_compile_error;
 use crate::sql::lock::{
     new_temp_table_lock, try_lock_temp_table, TempTableLockRef, TempTableLockWeak,
 };
 use crate::tlog;
 use crate::vdbe::txn::compile_transactional_block;
-use sql::executor::engine::{block_vdbe_key, BlockExecData, BlockQuery, BlockRuntimeHook};
+use sql::executor::engine::{block_vdbe_key, BlockExecData};
 use sql::executor::result::MetadataColumn;
 use tarantool::fiber::Mutex;
 use tarantool::msgpack;
@@ -966,64 +964,4 @@ impl StorageRuntime {
 
         Ok(())
     }
-}
-
-fn block_compile_error(error: SqlError) -> SbroadError {
-    match error {
-        SqlError::OutdatedStorageSchema => SbroadError::OutdatedStorageSchema,
-        error => SbroadError::FailedTo(Action::Build, Some(Entity::Query), error.to_smolstr()),
-    }
-}
-
-fn explain_block_hook_rows(query: &BlockQuery) -> impl Iterator<Item = &str> {
-    query.hooks.iter().filter_map(|hook| match hook {
-        BlockRuntimeHook::IdxInsertOnConflictDoUpdate {
-            raw_explain_detail, ..
-        } => raw_explain_detail.as_deref(),
-    })
-}
-
-pub fn explain_execute_block<'p>(
-    block: BlockExecData,
-    buckets: &Buckets,
-    port: &mut impl Port<'p>,
-) -> Result<(), SbroadError> {
-    let BlockExecData {
-        statements,
-        params,
-        bucket_count,
-        ..
-    } = block;
-    let params = &mut params.into_iter();
-
-    let bucket_info = BoundedBuckets {
-        buckets: buckets.clone(),
-        bucket_count,
-    };
-    let motion_info = MotionInfo::new_for_transaction();
-
-    let mut explain_one = |explain_query: ExplainQuery,
-                           query: &BlockQuery,
-                           params: &[Value]|
-     -> Result<(), SbroadError> {
-        let raw_plan_hook_details = explain_block_hook_rows(query);
-        explain_query.execute_guarded(
-            params,
-            &bucket_info,
-            motion_info,
-            raw_plan_hook_details,
-            port,
-        )
-    };
-
-    let next_params = |params: &mut IntoIter<_>| params.next().expect("not enough params");
-    // One entry per query, in execution order -- the same order `params` is
-    // indexed by, and the order the router expects when it names the stages.
-    for entry in BlockEntries::new(&statements) {
-        let query = entry.query;
-        let explain_query = ExplainQuery::new(&query.pattern);
-        explain_one(explain_query, query, &next_params(params))?;
-    }
-
-    Ok(())
 }

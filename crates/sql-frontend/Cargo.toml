@@ -31,7 +31,9 @@ tarantool = { workspace = true, features = ["standalone_decimal", "extra_impls"]
 
 # Self-referential dev-dependency. Forces the `mock` feature on.
 sql-frontend = { path = ".", features = ["mock"] }
+
 sql-executor = { path = "../sql-executor", features = ["mock"] }
+sql-explain = { path = "../sql-explain" }
 
 [features]
 mock = ["sql-ir/mock"]

@@ -18,11 +18,9 @@ use std::rc::Rc;
 pub mod helpers;
 
 pub use sql_executor::{backend, executor};
+pub use sql_explain::explain;
 pub use sql_frontend::frontend;
-pub use sql_ir::{
-    collection, crit, debug, error, fatal, info, system, verbose, warn, write_explain_header1,
-    write_explain_header2,
-};
+pub use sql_ir::{collection, crit, debug, error, fatal, info, system, verbose, warn};
 pub use sql_ir::{errors, ir, log, utils};
 
 /// A parsed parameterized query. It still has parameter placeholders instead of actual parameter values.

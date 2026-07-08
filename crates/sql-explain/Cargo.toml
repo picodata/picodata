@@ -1,0 +1,39 @@
+[package]
+name = "sql-explain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+
+[dependencies]
+ahash = { workspace = true }
+bitflags = { workspace = true }
+comfy-table = { workspace = true }
+indenter = { workspace = true }
+itertools = "0.15.0"
+rmp = { workspace = true }
+smallvec = { workspace = true }
+smol_str = { workspace = true }
+sqlformat = { workspace = true }
+sql-executor = { path = "../sql-executor" }
+sql-ir = { path = "../sql-ir" }
+tarantool = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tarantool = { workspace = true, features = ["standalone_decimal", "extra_impls"] }
+sql-executor = { path = "../sql-executor", features = ["mock"] }
+# Self-referential dev-dependency: forces the `mock` feature on for this
+# crate's own tests (see `explain/mock.rs`) without affecting downstream
+# builds.
+sql-explain = { path = ".", features = ["mock"] }
+
+[features]
+# Mock-only helpers (see `explain/mock.rs`): never compiled into
+# production builds.
+mock = []
+
+[lints]
+workspace = true

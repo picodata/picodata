@@ -9,12 +9,12 @@ use crate::catalog::pico_table::PicoTable;
 use crate::config::{DEFAULT_SQL_PREEMPTION, DYNAMIC_CONFIG};
 use crate::metrics::{observe_sql_local_query_duration, record_sql_local_query_total};
 use crate::schema::ADMIN_ID;
+use crate::sql::explain::explain_execute_block;
 use crate::sql::lua::{
     bucket_into_rs, dispatch_session_id, escape_bytes, lua_custom_plan_dispatch,
     lua_decode_rs_ibufs, lua_single_plan_dispatch, reference_add, reference_del, reference_use,
     IbufTable,
 };
-use crate::sql::storage::explain_execute_block;
 use crate::topology_cache::TopologyCacheRef;
 use crate::traft::node;
 use ahash::{AHashMap, AHashSet};

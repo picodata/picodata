@@ -17,6 +17,7 @@ use crate::schema::{
     ShardingFn, TableOption, UserDef, ADMIN_ID,
 };
 use crate::sql::concurrency::{runtime_owner_key, with_sql_runtime_limit};
+use crate::sql::explain::explain_query;
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::{FullDeleteInfo, StorageRuntime};
 use crate::storage::Catalog;
@@ -103,6 +104,7 @@ pub mod concurrency;
 pub mod conflict;
 pub mod dispatch;
 pub mod execute;
+pub mod explain;
 pub mod lock;
 pub mod lua;
 pub mod port;
@@ -559,60 +561,9 @@ fn dispatch_bound_statement_impl<'p>(
         let plan = query.get_exec_plan().get_ir_plan();
         check_table_privileges(plan)?;
 
-        let mut explain = Vec::new();
-
-        if query.is_logical_explain() {
-            let logical = query.explain_logical()?;
-            explain.push(logical);
-        }
-
-        let buckets_explain = if query.is_buckets_explain() {
-            Some(query.explain_buckets()?)
-        } else {
-            None
-        };
-
-        let forward_explain = if query.is_explain_forward() {
-            Some(query.explain_forward()?)
-        } else {
-            None
-        };
-
-        if query.is_raw_explain() {
-            let mut tmp_port = runtime.new_port();
-            let request_id =
-                runtime_owner_key(query.get_exec_plan().get_request_id()).map_err(Error::Sbroad)?;
-            with_sql_runtime_limit(request_id, || -> traft::Result<()> {
-                query.dispatch(&mut tmp_port).map_err(Error::Sbroad)?;
-                Ok(())
-            })??;
-            let raw_explain = query.explain_raw(&mut tmp_port)?;
-            if !raw_explain.is_empty() {
-                explain.push(raw_explain);
-            }
-        }
-
-        if let Some(forward) = forward_explain {
-            explain.push(forward);
-        }
-
-        if let Some(buckets) = buckets_explain {
-            explain.push(buckets);
-        }
-
-        if query.is_explain_context() {
-            let context = query.explain_context()?;
-            explain.push(context);
-        }
-
-        // Each entry in `explain` is a plain line without a trailing '\n'.
-        // This is intentional: a trailing newline would produce extra blank lines
-        // at the end of psql output. Since the entries themselves have no newline,
-        // we join them with "\n\n" to separate each entry with a blank line.
-        let final_explain = explain.join("\n\n");
-
+        let explain = explain_query(query)?;
         if !explain.is_empty() {
-            let explain_serialized = rmp_serde::to_vec(&[final_explain]).map_err(Error::other)?;
+            let explain_serialized = rmp_serde::to_vec(&[explain]).map_err(Error::other)?;
             port.add_mp(&explain_serialized);
         }
         Ok(())

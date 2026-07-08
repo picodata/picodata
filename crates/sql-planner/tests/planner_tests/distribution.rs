@@ -2,6 +2,7 @@ use pretty_assertions::assert_eq;
 use rand::random;
 use smol_str::SmolStr;
 use sql::collection;
+use sql::explain::explain_logical;
 use sql::helpers::column_user_non_null;
 use sql::helpers::sql_to_optimized_ir;
 use sql::ir::distribution::*;
@@ -64,7 +65,7 @@ fn projection_any_dist_for_expr() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     // check explain first
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(count_1::int)::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(test_space.id::int::int)::int -> count_1)

@@ -1482,24 +1482,8 @@ impl Plan {
         !self.explain_options.is_empty()
     }
 
-    pub fn is_logical_explain(&self) -> bool {
-        self.explain_options.contains(ExplainOptions::Logical)
-    }
-
     pub fn is_raw_explain(&self) -> bool {
         self.explain_options.contains(ExplainOptions::Raw)
-    }
-
-    pub fn is_buckets_explain(&self) -> bool {
-        self.explain_options.contains(ExplainOptions::Buckets)
-    }
-
-    pub fn is_explain_forward(&self) -> bool {
-        self.explain_options.contains(ExplainOptions::Forward)
-    }
-
-    pub fn is_explain_context(&self) -> bool {
-        self.explain_options.contains(ExplainOptions::Context)
     }
 
     /// Checks that plan is a block of queries.
@@ -3438,6 +3422,5 @@ impl ShardColumnsMap {
 }
 
 pub mod api;
-pub mod explain;
 #[cfg(test)]
 pub mod tests;

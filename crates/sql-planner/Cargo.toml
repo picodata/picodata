@@ -15,6 +15,7 @@ autoexamples = false
 sql-executor = { path = "../sql-executor" }
 sql-frontend = { path = "../sql-frontend" }
 sql-ir = { path = "../sql-ir" }
+sql-explain = { path = "../sql-explain" }
 smol_str = { workspace = true }
 tarantool = { workspace = true, features = ["extra_impls"] }
 

@@ -4,6 +4,7 @@ use crate::ir::types::{CastType, NestedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use sql_executor::test_helpers::{expect_sql_to_ir_error, sql_to_ir, sql_to_optimized_ir};
+use sql_explain::explain::explain_logical;
 
 /// Whether the plan still contains an explicit array cast.
 fn has_array_cast_node(plan: &Plan) -> bool {
@@ -225,7 +226,7 @@ fn array_literal_insert_unparseable_text_rejected() {
 fn array_literal_explain_preserves_order() {
     let sql = r#"explain (logical) SELECT ARRAY[1, 2, 3] FROM "test_space""#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (ARRAY[1::int, 2::int, 3::int] -> col_1)
       scan test_space
     "#);
@@ -365,7 +366,7 @@ fn chained_index_folds_into_single_node() {
 fn chained_index_explain_renders_whole_chain() {
     let sql = r#"explain (logical) SELECT "b"::int[][1][2] FROM "arr_t""#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    let explain = plan.explain_logical().unwrap();
+    let explain = explain_logical(&plan).unwrap();
     assert!(
         explain.contains("]["),
         "chained index should render as one chain, got:\n{explain}"

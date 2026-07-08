@@ -9,7 +9,6 @@
 
 mod block_pattern;
 mod distribution;
-mod explain;
 mod ir_helpers;
 mod plugin;
 mod redistribution;

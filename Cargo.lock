@@ -1948,6 +1948,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3893,6 +3902,7 @@ dependencies = [
  "smallvec",
  "smol_str",
  "sql-executor",
+ "sql-explain",
  "sql-frontend",
  "sql-ir",
  "sql-protocol",
@@ -3902,6 +3912,27 @@ dependencies = [
  "time",
  "twox-hash",
  "uuid 1.23.1",
+]
+
+[[package]]
+name = "sql-explain"
+version = "26.3.0"
+dependencies = [
+ "ahash 0.8.12",
+ "bitflags 2.11.1",
+ "comfy-table",
+ "indenter",
+ "insta",
+ "itertools 0.15.0",
+ "pretty_assertions",
+ "rmp",
+ "smallvec",
+ "smol_str",
+ "sql-executor",
+ "sql-explain",
+ "sql-ir",
+ "sqlformat",
+ "tarantool",
 ]
 
 [[package]]
@@ -3921,6 +3952,7 @@ dependencies = [
  "sql-ast-new-nodes",
  "sql-ast-new-parser",
  "sql-executor",
+ "sql-explain",
  "sql-frontend",
  "sql-ir",
  "sql-type-system",
@@ -3937,8 +3969,6 @@ dependencies = [
  "ahash 0.8.12",
  "bitflags 2.11.1",
  "chrono",
- "comfy-table",
- "indenter",
  "insta",
  "itertools 0.10.5",
  "pretty_assertions",
@@ -3971,6 +4001,7 @@ dependencies = [
  "smol_str",
  "sql-ast-new-corpus",
  "sql-executor",
+ "sql-explain",
  "sql-frontend",
  "sql-ir",
  "sql-planner",

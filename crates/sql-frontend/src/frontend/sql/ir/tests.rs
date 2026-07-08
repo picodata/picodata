@@ -14,6 +14,7 @@ use pest::Parser;
 use pretty_assertions::assert_eq;
 use sql_executor::executor::engine::mock::RouterConfigurationMock;
 use sql_executor::test_helpers::{expect_sql_to_ir_error, sql_to_optimized_ir};
+use sql_explain::explain::explain_logical;
 use std::collections::HashMap;
 
 fn sql_to_optimized_ir_add_motions_err(query: &str) -> SbroadError {
@@ -35,7 +36,7 @@ fn front_sql1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
       selection (hash_testing.identification_number::int = 1::int)
         scan hash_testing
@@ -50,7 +51,7 @@ fn front_sql2() {
         OR "identification_number" = 2 AND "product_code" = '2'"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
       selection ((hash_testing.identification_number::int = 1::int and hash_testing.product_code::string = '1'::string) or (hash_testing.identification_number::int = 2::int and hash_testing.product_code::string = '2'::string))
         scan hash_testing
@@ -71,7 +72,7 @@ fn front_sql3() {
         WHERE "identification_number" = 1"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t3.identification_number::int -> identification_number, t3.product_code::string -> product_code)
       selection (t3.identification_number::int = 1::int)
         scan t3
@@ -103,7 +104,7 @@ fn front_sql4() {
             OR "product_code" = '2')"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t3.identification_number::int -> identification_number, t3.product_code::string -> product_code)
       selection (((t3.identification_number::int = 1::int or t3.identification_number::int = 2::int or t3.identification_number::int = 3::int) and (t3.product_code::string = '1'::string or t3.product_code::string = '2'::string)))
         scan t3
@@ -125,7 +126,7 @@ fn front_sql5() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
       selection (hash_testing.identification_number::int in ROW($0))
         scan hash_testing
@@ -147,7 +148,7 @@ fn front_sql6() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.id::int -> id, hash_testing.product_units::bool -> product_units)
       selection ((hash_testing.identification_number::int = 5::int and hash_testing.product_code::string = '123'::string))
         join on (hash_testing.identification_number::int = t.id::int)
@@ -166,7 +167,7 @@ fn front_sql8() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.identification_number::int -> identification_number, t.product_code::string -> product_code)
       selection (t.identification_number::int = 1::int)
         scan hash_testing -> t
@@ -198,7 +199,7 @@ fn front_sql9() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (t3.id::int -> id, t3."FIRST_NAME"::string -> "FIRST_NAME", t8.identification_number::int -> identification_number, t8.product_code::string -> product_code)
       selection ((t3.id::int = 1::int and t8.identification_number::int = 1::int and t8.product_code::string = '123'::string))
         join on (t3.id::int = t8.identification_number::int)
@@ -228,7 +229,7 @@ fn front_sql10() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     insert into t on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
@@ -242,7 +243,7 @@ fn front_sql11() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
@@ -256,7 +257,7 @@ fn front_sql14() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref(b)]), program: ReshardIfNeeded]
         projection (t.b::int -> b, t.d::int -> d)
@@ -272,7 +273,7 @@ fn front_sql16() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
       selection (hash_testing.product_code::string = 'кириллица'::string)
         scan hash_testing
@@ -286,7 +287,7 @@ fn front_sql17() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number)
       selection (hash_testing.product_code::string is null)
         scan hash_testing
@@ -300,7 +301,7 @@ fn front_sql18() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.product_code::string -> product_code)
       selection ((hash_testing.product_code::string >= '1'::string and hash_testing.product_code::string <= '2'::string))
         scan hash_testing
@@ -314,7 +315,7 @@ fn front_sql19() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number)
       selection (not hash_testing.product_code::string is null)
         scan hash_testing
@@ -325,41 +326,41 @@ fn front_sql19() {
 fn front_sql_is_true() {
     let input = r#"explain (logical) select true is true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (true::bool = true::bool -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (true::bool = true::bool -> col_1)");
 
     let input = r#"explain (logical) select true is not true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (not true::bool = true::bool -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (not true::bool = true::bool -> col_1)");
 }
 
 #[test]
 fn front_sql_is_false() {
     let input = r#"explain (logical) select true is false"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (true::bool = false::bool -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (true::bool = false::bool -> col_1)");
 
     let input = r#"explain (logical) select true is not false"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (not true::bool = false::bool -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (not true::bool = false::bool -> col_1)");
 }
 
 #[test]
 fn front_sql_is_null_unknown() {
     let input = r#"explain (logical) select true is null"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (true::bool is null -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (true::bool is null -> col_1)");
 
     let input = r#"explain (logical) select true is unknown"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (true::bool is null -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (true::bool is null -> col_1)");
 
     let input = r#"explain (logical) select true is not null"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (not true::bool is null -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (not true::bool is null -> col_1)");
 
     let input = r#"explain (logical) select true is not unknown"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (not true::bool is null -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (not true::bool is null -> col_1)");
 }
 
 #[test]
@@ -370,7 +371,7 @@ fn front_sql_between_with_additional_and_from_left() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.id::int -> id)
       selection ((t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int))
         scan test_space -> t
@@ -385,7 +386,7 @@ fn front_sql_between_with_additional_not_from_left() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.id::int -> id)
       selection (t.id::int < t.id::int or t.id::int > t.id::int + 10::int)
         scan test_space -> t
@@ -400,7 +401,7 @@ fn front_sql_between_with_additional_and_from_left_and_right() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.id::int -> id)
       selection ((t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int))
         scan test_space -> t
@@ -415,7 +416,7 @@ fn front_sql_between_with_nested_not_from_the_left() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.id::int -> id)
       selection (true::bool)
         scan test_space -> t
@@ -430,7 +431,7 @@ fn front_sql_between_with_nested_and_from_the_left() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.id::int -> id)
       selection (false::bool)
         scan test_space -> t
@@ -475,7 +476,7 @@ fn front_sql_check_arbitrary_utf_in_single_quote_strings() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number)
       selection (hash_testing.product_code::string = '«123»§#*&%@/// / // \\ ƵǖḘỺʥ ͑ ͑  ͕ΆΨѮښ ۞ܤ'::string)
         scan hash_testing
@@ -487,7 +488,7 @@ fn front_sql_check_single_quotes_are_escaped() {
     let input = "explain (logical) select '', '''', 'left''right', '''center'''";
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (''::string -> col_1, '''::string -> col_2, 'left'right'::string -> col_3, ''center''::string -> col_4)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (''::string -> col_1, '''::string -> col_2, 'left'right'::string -> col_3, ''center''::string -> col_4)");
 }
 
 #[test]
@@ -498,7 +499,7 @@ fn front_sql_check_arbitraty_utf_in_identifiers() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection ("&ښ۞@ƶǖ".id::int -> from, "&ښ۞@ƶǖ".id::int -> select, "&ښ۞@ƶǖ".id::int -> "123»&%ښ۞@Ƶǖselect.""''\\", "&ښ۞@ƶǖ".id::int -> "aц1&@$ƶǖ^&«»§&ښ۞@ƶǖ")
       scan test_space -> "&ښ۞@ƶǖ"
     "#);
@@ -513,7 +514,7 @@ fn front_sql_check_inapplicatable_symbols() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection ("TBL"."A"::int * "TBL"."A"::int -> col_1, "TBL"."B"::int + "TBL"."B"::int -> col_2, "TBL"."A"::int - "TBL"."A"::int -> col_3)
       scan "TBL"
     "#);
@@ -525,7 +526,7 @@ fn front_projection_with_scan_specification_under_scan() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
       scan hash_testing
     ");
@@ -537,7 +538,7 @@ fn front_projection_with_scan_specification_under_join() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
       join on (true::bool)
         scan hash_testing
@@ -554,7 +555,7 @@ fn front_projection_with_scan_specification_under_join_of_subqueries() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (ts_sq.id::int -> id, ts_sq."sysFrom"::int -> "sysFrom", ts_sq."FIRST_NAME"::string -> "FIRST_NAME", ts_sq.sys_op::int -> sys_op, hs.identification_number::int -> identification_number, hs.product_code::string -> product_code, hs.product_units::bool -> product_units, hs.sys_op::int -> sys_op)
       join on (true::bool)
         scan hash_testing -> hs
@@ -571,7 +572,7 @@ fn front_order_by_with_simple_select() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (id::int, "sysFrom"::int, "FIRST_NAME"::string, sys_op::int)
       order by (id::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -619,7 +620,7 @@ fn front_order_by_with_order_type_specification() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (id::int, "sysFrom"::int, "FIRST_NAME"::string, sys_op::int)
       order by (id::int desc, "sysFrom"::int asc)
         motion [policy: full, program: ReshardIfNeeded]
@@ -635,7 +636,7 @@ fn front_order_by_with_indices() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (id::int, "sysFrom"::int, "FIRST_NAME"::string, sys_op::int)
       order by (2, 1 desc)
         motion [policy: full, program: ReshardIfNeeded]
@@ -651,7 +652,7 @@ fn front_order_by_ordering_by_expressions_from_projection() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (my_col::int, id::int)
       order by (my_col::int, id::int, 1 desc, 2 asc)
         motion [policy: full, program: ReshardIfNeeded]
@@ -684,7 +685,7 @@ fn front_order_by_over_single_distribution_must_not_add_motion() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (id_count::int)
       order by (id_count::int)
         scan
@@ -703,7 +704,7 @@ fn front_join_with_identical_columns() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."sysFrom"::int -> "sysFrom", unnamed_subquery_1."sysFrom"::int -> "sysFrom")
       join on (true::bool)
         scan unnamed_subquery
@@ -728,7 +729,7 @@ fn front_join_with_vtable_ambiguous_column_name() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, unnamed_subquery.id::int -> id, unnamed_subquery.id::int -> id)
       join on (true::bool)
         scan test_space
@@ -755,7 +756,7 @@ fn front_case_search() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (case test_space.id::int when 1::int then true::bool end -> col_1)
       scan test_space
     ");
@@ -774,7 +775,7 @@ fn front_case_simple() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (case when true::bool = true::bool then 'Moscow'::string when (1::int <> 2::int and 4::int < 5::int) then '42'::string else 'false'::string end -> case_result)
       scan test_space
     ");
@@ -797,7 +798,7 @@ fn front_case_nested() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (case test_space.id::int when 1::int then case test_space."sysFrom"::int when 69::int then true::bool when 42::int then false::bool end when 2::int then 42::int = 42::int else false::bool end -> case_result)
       scan test_space
     "#);
@@ -810,7 +811,7 @@ fn front_sql_subquery_column_duplicates() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (test_space.id::int -> id)
       selection (ROW(test_space.id::int, test_space.id::int) in ROW($0, $0))
         scan test_space
@@ -989,7 +990,7 @@ fn front_sql_join_on_bucket_id1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t_mv.bucket_id::int -> bucket_id)
       join on (t_mv.bucket_id::int = t2.bucket_id::int)
         scan t2
@@ -1010,7 +1011,7 @@ fn front_sql_join_on_bucket_id2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t_mv.bucket_id::int -> bucket_id)
       join on (t_mv.bucket_id::int = t2.bucket_id::int or t2.e::int = t2.f::int)
         scan t2
@@ -1031,7 +1032,7 @@ fn front_sql_groupby_on_bucket_id() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.b::int -> b, count(*)::int -> col_1)
       group by (t.b::int)
         scan t
@@ -1049,7 +1050,7 @@ fn front_sql_sq_on_bucket_id() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.b::int -> b, t.e::int -> e)
       selection (ROW(t.b::int, t.e::int) in ROW($0, $0))
         scan t
@@ -1072,7 +1073,7 @@ fn front_sql_except_on_bucket_id() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (t2.e::int -> e, t2.bucket_id::int -> bucket_id)
         scan t2
@@ -1087,7 +1088,7 @@ fn front_sql_exists_subquery_select_from_table() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (test_space.id::int -> id)
       selection (exists ROW($0))
         scan test_space
@@ -1105,7 +1106,7 @@ fn front_sql_not_exists_subquery_select_from_table() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (test_space.id::int -> id)
       selection (not exists ROW($0))
         scan test_space
@@ -1123,7 +1124,7 @@ fn front_sql_exists_subquery_select_from_table_with_condition() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (test_space.id::int -> id)
       selection (exists ROW($0))
         scan test_space
@@ -1141,7 +1142,7 @@ fn front_sql_groupby() {
     let input = r#"explain (logical) SELECT "identification_number", "product_code" FROM "hash_testing" group by "identification_number", "product_code""#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> identification_number, gr_expr_2::string -> product_code)
       group by (gr_expr_1::int, gr_expr_2::string)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1160,7 +1161,7 @@ fn front_sql_groupby_less_cols_in_proj() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> identification_number)
       group by (gr_expr_1::int, gr_expr_2::bool)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1179,7 +1180,7 @@ fn front_sql_groupby_union_1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
         projection (gr_expr_1::int -> identification_number)
@@ -1203,7 +1204,7 @@ fn front_sql_groupby_union_2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       projection (hash_testing.identification_number::int -> identification_number)
         scan hash_testing
@@ -1232,7 +1233,7 @@ fn front_sql_groupby_join_1() {
         "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::string -> product_code, gr_expr_2::bool -> product_units)
       group by (gr_expr_1::string, gr_expr_2::bool)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1254,7 +1255,7 @@ fn front_sql_groupby_bucket_id() {
     let input = r#"explain (logical) SELECT * FROM t GROUP BY a, b, c, d, bucket_id"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       group by (t.a::int, t.b::int, t.c::int, t.d::int, t.bucket_id::int)
         scan t
@@ -1271,7 +1272,7 @@ fn front_sql_join() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t2.product_code::string -> product_code, t2.product_units::bool -> product_units)
       join on ((t2.identification_number::int = t.id::int and not t.id::int is null))
         scan t2
@@ -1292,7 +1293,7 @@ fn front_sql_join() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.product_code::string -> product_code, t1.product_units::bool -> product_units)
       join on ((t1.identification_number::int = t2.id::int and not t2.id::int is null))
         scan t1
@@ -1312,7 +1313,7 @@ fn front_sql_join() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.product_code::string -> product_code, t1.product_units::bool -> product_units)
       join on ((t1.identification_number::int = t2.id::decimal and not t2.id::decimal is null))
         scan t1
@@ -1333,7 +1334,7 @@ fn front_sql_groupby_insert() {
     SELECT "b", "d" FROM "t" group by "b", "d" ON CONFLICT DO FAIL"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref(d)]), program: ReshardIfNeeded]
         projection (gr_expr_1::int -> b, gr_expr_2::int -> d)
@@ -1378,7 +1379,7 @@ fn front_sql_aggregates() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> b, sum(count_1::int)::int + sum(count_2::int)::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1393,7 +1394,7 @@ fn front_sql_distinct_asterisk() {
     let input = r#"explain (logical) select distinct * from (select "id" from "test_space_hist")
         join (select "id" from "test_space") on true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> id, gr_expr_2::int -> id)
       group by (gr_expr_1::int, gr_expr_2::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1417,7 +1418,7 @@ fn front_sql_avg_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(avg_1::decimal::double)::double / sum(avg_2::decimal::double)::double -> col_1, avg(distinct gr_expr_1::decimal::double)::double -> col_2, sum(avg_1::decimal::double)::double / sum(avg_2::decimal::double)::double * sum(avg_1::decimal::double)::double / sum(avg_2::decimal::double)::double -> col_3)
       motion [policy: full, program: ReshardIfNeeded]
         projection (t.b::int::int -> gr_expr_1, sum(t.b::int::int)::decimal -> avg_1, count(t.b::int::int)::int -> avg_2)
@@ -1432,7 +1433,7 @@ fn front_sql_total_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (total(total_1::double)::double -> col_1, total(distinct gr_expr_1::double)::double -> col_2)
       motion [policy: full, program: ReshardIfNeeded]
         projection (t.b::int::int -> gr_expr_1, total(t.b::int::int)::double -> total_1)
@@ -1447,7 +1448,7 @@ fn front_sql_min_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (min(min_1::int)::int -> col_1, min(distinct gr_expr_1::int)::int -> col_2)
       motion [policy: full, program: ReshardIfNeeded]
         projection (t.b::int::int -> gr_expr_1, min(t.b::int::int)::int -> min_1)
@@ -1462,7 +1463,7 @@ fn front_sql_max_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (max(max_1::int)::int -> col_1, max(distinct gr_expr_1::int)::int -> col_2)
       motion [policy: full, program: ReshardIfNeeded]
         projection (t.b::int::int -> gr_expr_1, max(t.b::int::int)::int -> max_1)
@@ -1477,7 +1478,7 @@ fn front_sql_group_concat_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (group_concat(group_concat_1::string)::string -> col_1, group_concat(distinct gr_expr_1::string)::string -> col_2)
       motion [policy: full, program: ReshardIfNeeded]
         projection (test_space."FIRST_NAME"::string::string -> gr_expr_1, group_concat(test_space."FIRST_NAME"::string::string)::string -> group_concat_1)
@@ -1492,7 +1493,7 @@ fn front_sql_group_concat_aggregate2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (group_concat(group_concat_1::string, ' '::string)::string -> col_1, group_concat(distinct gr_expr_1::string)::string -> col_2)
       motion [policy: full, program: ReshardIfNeeded]
         projection (test_space."FIRST_NAME"::string::string -> gr_expr_1, group_concat(test_space."FIRST_NAME"::string::string, ' '::string)::string -> group_concat_1)
@@ -1506,7 +1507,7 @@ fn front_sql_string_agg_alias_to_group_concat() {
     // Test 1
     let input = r#"explain (logical) SELECT string_agg("FIRST_NAME", ',') FROM "test_space""#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (group_concat(group_concat_1::string, ','::string)::string -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (group_concat(test_space."FIRST_NAME"::string::string, ','::string)::string -> group_concat_1)
@@ -1516,7 +1517,7 @@ fn front_sql_string_agg_alias_to_group_concat() {
     // Test 2
     let input = r#"explain (logical) SELECT "id", string_agg("FIRST_NAME", ',') FROM "test_space" GROUP BY "id""#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (gr_expr_1::int -> id, group_concat(group_concat_1::string, ','::string)::string -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1532,7 +1533,7 @@ fn front_sql_count_asterisk1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(count_1::int)::int -> col_1, sum(count_1::int)::int -> col_2)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
@@ -1546,7 +1547,7 @@ fn front_sql_count_asterisk2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(count_1::int)::int -> col_1, gr_expr_1::int -> b)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1578,7 +1579,7 @@ fn front_sql_aggregates_with_subexpressions() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> b, sum(count_1::int)::int -> col_1, sum(count_2::int)::int -> col_2)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1595,7 +1596,7 @@ fn front_sql_aggregates_with_distinct1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> b, count(distinct gr_expr_2::int)::int -> col_1, count(distinct gr_expr_3::int)::int -> col_2)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1612,7 +1613,7 @@ fn front_sql_aggregates_with_distinct2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> b, sum(distinct gr_expr_2::decimal)::decimal -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1628,7 +1629,7 @@ fn front_sql_aggregates_with_distinct3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(distinct gr_expr_1::decimal)::decimal -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection ((t.a::int + t.b::int + 3::int)::int -> gr_expr_1)
@@ -1674,7 +1675,7 @@ fn front_sql_option_basic() {
     let input = r#"explain (logical) select * from "t" option(sql_vdbe_opcode_max = 1000, sql_motion_row_max = 10)"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       scan t
     ");
@@ -1685,7 +1686,7 @@ fn front_sql_option_with_param() {
     let input = r#"explain (logical) select * from "t" option(sql_vdbe_opcode_max = ?, sql_motion_row_max = ?)"#;
 
     let plan = sql_to_optimized_ir(input, vec![Value::Integer(1000), Value::Integer(10)]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       scan t
     ");
@@ -1699,7 +1700,7 @@ fn front_sql_pg_style_params1() {
         input,
         vec![Value::Integer(1000), Value::String("hi".into())],
     );
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (1000::int -> col_1, 'hi'::string -> col_2, 1000::int -> col_3)
       scan t
     ");
@@ -1713,7 +1714,7 @@ fn front_sql_pg_style_params2() {
         input,
         vec![Value::Integer(1000), Value::String("hi".into())],
     );
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (1000::int -> col_1, 'hi'::string -> col_2, 1000::int -> col_3)
       scan t
     ");
@@ -1729,7 +1730,7 @@ fn front_sql_pg_style_params3() {
 
     let plan = sql_to_optimized_ir(input, vec![Value::Integer(42)]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       having (sum(count_1::int)::int > 42::int)
         group by (gr_expr_1::int)
@@ -1818,7 +1819,7 @@ fn front_sql_pg_style_params9() {
     let params = (1..=7).into_iter().map(|x| Value::Integer(x)).collect();
     let plan = sql_to_optimized_ir(input, params);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (1::int -> col_1, 2::int -> col_2, 3::int -> col_3)
       selection (5::int = ROW($1) or exists ROW($0))
         scan unnamed_subquery
@@ -1840,7 +1841,7 @@ fn front_sql_tnt_style_params1() {
     let params = (1..=7).into_iter().map(|x| Value::Integer(x)).collect();
     let plan = sql_to_optimized_ir(input, params);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (1::int -> col_1, 2::int -> col_2, 3::int -> col_3)
       selection (5::int = ROW($1) or exists ROW($0))
         scan unnamed_subquery
@@ -1861,7 +1862,7 @@ fn front_sql_tnt_style_params2() {
 
     let plan = sql_to_optimized_ir(input, vec![Value::Integer(1)]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection ((1::int >= 1::int and 1::int <= 2::int) -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection ((1::int >= 1::int and 1::int <= 2::int) -> col_1)");
 }
 
 #[test]
@@ -1869,7 +1870,7 @@ fn front_sql_option_defaults() {
     let input = r#"explain (logical) select * from "t" where "a" = ? and "b" = ?"#;
 
     let plan = sql_to_optimized_ir(input, vec![Value::Integer(1000), Value::Integer(10)]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       selection ((t.a::int = 1000::int and t.b::int = 10::int))
         scan t
@@ -1898,7 +1899,7 @@ fn front_sql_aggregate_without_groupby() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(sum_1::decimal)::decimal -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (sum((t.a::int * t.b::int + 1::int)::int)::decimal -> sum_1)
@@ -1912,7 +1913,7 @@ fn front_sql_aggregate_without_groupby2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.col_1::int -> col_1)
       scan t1
         projection (sum(count_1::int)::int -> col_1)
@@ -1928,7 +1929,7 @@ fn front_sql_aggregate_on_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (max(t1.c::int::int)::int -> col_1)
       scan t1
         projection (sum(count_1::int)::int -> c)
@@ -1948,7 +1949,7 @@ fn front_sql_union_single_left() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       projection (t.a::int -> a)
         scan t
@@ -1970,7 +1971,7 @@ fn front_sql_union_single_right() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       motion [policy: segment([ref(col_1)]), program: ReshardIfNeeded]
         projection (sum(sum_1::decimal)::decimal -> col_1)
@@ -1992,7 +1993,7 @@ fn front_sql_union_single_both() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       projection (sum(sum_1::decimal)::decimal -> col_1)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2012,7 +2013,7 @@ fn front_sql_insert_single() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref(col_2)]), program: ReshardIfNeeded]
         projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::int -> col_2)
@@ -2030,7 +2031,7 @@ fn front_sql_except_single_right() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (t.a::int -> a, t.b::int -> b)
         scan t
@@ -2048,7 +2049,7 @@ fn front_sql_except_single_right() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (t.b::int -> b, t.a::int -> a)
         scan t
@@ -2068,7 +2069,7 @@ fn front_sql_except_single_left() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       motion [policy: segment([ref(col_1), ref(col_2)]), program: ReshardIfNeeded]
         projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::int -> col_2)
@@ -2088,7 +2089,7 @@ fn front_sql_except_single_both() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       motion [policy: segment([ref(col_1)]), program: ReshardIfNeeded]
         projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::int -> col_2)
@@ -2110,7 +2111,7 @@ fn front_sql_groupby_expression() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2127,7 +2128,7 @@ fn front_sql_groupby_expression2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int + sum(count_1::int)::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2144,7 +2145,7 @@ fn front_sql_groupby_expression3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1, (gr_expr_2::int * sum(sum_1::decimal)::decimal) / sum(count_2::int)::int -> col_2)
       group by (gr_expr_1::int, gr_expr_2::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2161,7 +2162,7 @@ fn front_sql_groupby_expression4() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1, gr_expr_2::int -> a)
       group by (gr_expr_1::int, gr_expr_2::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2178,7 +2179,7 @@ fn front_sql_groupby_expression_with_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2214,7 +2215,7 @@ fn front_sql_groupby_expression_with_sq_as_subexpression() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int + ROW($1) -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2269,7 +2270,7 @@ fn front_sql_groupby_expression_with_table_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2308,7 +2309,7 @@ fn front_sql_groupby_expression_with_nested_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2330,7 +2331,7 @@ fn front_sql_groupby_sq_only() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2350,7 +2351,7 @@ fn front_sql_groupby_expression_with_duplicate_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2370,7 +2371,7 @@ fn front_sql_groupby_expression_with_sq_and_column() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int, gr_expr_2::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2390,7 +2391,7 @@ fn front_sql_groupby_expression_with_sq_and_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1, sum(count_1::int)::int -> col_2)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2410,7 +2411,7 @@ fn front_sql_groupby_expression_with_sq_in_having() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       having (gr_expr_1::int > 0::int)
         group by (gr_expr_1::int)
@@ -2430,7 +2431,7 @@ fn front_sql_select_distinct_expression_with_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2449,7 +2450,7 @@ fn front_sql_select_distinct_duplicated_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1, gr_expr_1::int -> col_2)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2469,7 +2470,7 @@ fn front_sql_distinct_aggregate_sq_next_to_grouping_expr_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (count(distinct gr_expr_2::int)::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2502,7 +2503,7 @@ fn front_sql_groupby_sq_with_join() {
         GROUP BY "a" + (SELECT sum("x"."c") FROM "t" AS "x" JOIN "t" AS "y" ON "x"."a" = "y"."b")"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::decimal -> col_1)
       group by (gr_expr_1::decimal)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2529,7 +2530,7 @@ fn front_sql_groupby_expression_with_sq_over_unnamed_derived_table() {
         GROUP BY "a" + (SELECT "b" FROM (SELECT "b" FROM "t" LIMIT 1))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2555,7 +2556,7 @@ fn front_sql_groupby_expression_with_sq_over_differently_aliased_derived_table()
         GROUP BY "a" + (SELECT "b" FROM (SELECT "b" FROM "t" LIMIT 1) AS "q2")"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2581,7 +2582,7 @@ fn front_sql_groupby_expression_with_sq_over_differently_aliased_scan() {
         GROUP BY "a" + (SELECT sum("y"."b") FROM "t" AS "y")"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::decimal -> col_1)
       group by (gr_expr_1::decimal)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2605,7 +2606,7 @@ fn front_sql_groupby_sq_with_join_over_unnamed_derived_table() {
         GROUP BY "a" + (SELECT sum("e") FROM "t2" JOIN (SELECT "a" FROM "t") ON "e" = "a")"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::decimal -> col_1)
       group by (gr_expr_1::decimal)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2635,7 +2636,7 @@ fn front_sql_groupby_sq_with_left_join_over_global_table() {
         GROUP BY "a" + (SELECT sum("e") FROM "global_t" LEFT JOIN "t2" ON true)"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::decimal -> col_1)
       group by (gr_expr_1::decimal)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2687,7 +2688,7 @@ fn front_sql_groupby_expression_with_deeply_nested_sq() {
 
     let plan = sql_to_optimized_ir(&input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2740,7 +2741,7 @@ fn front_sql_groupby_expression_with_window_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2806,7 +2807,7 @@ fn front_sql_groupby_column_with_unrelated_sq_in_projection() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (ROW($0) -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2826,7 +2827,7 @@ fn front_sql_groupby_having_exists_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> a)
       having (exists ROW($0))
         group by (gr_expr_1::int)
@@ -2849,7 +2850,7 @@ fn front_sql_groupby_having_in_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> a)
       having (gr_expr_1::int in ROW($0))
         group by (gr_expr_1::int)
@@ -2873,7 +2874,7 @@ fn front_sql_groupby_with_aggregates() {
         on (t1."a", t2."g") = (t2."e", t1."b")"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.a::int -> a, t1.b::int -> b, t1.c::decimal -> c, t2.g::int -> g, t2.e::int -> e, t2.f::decimal -> f)
       join on (ROW(t1.a::int, t1.b::int) = ROW(t2.e::int, t2.g::int))
         scan t1
@@ -2902,7 +2903,7 @@ fn front_sql_left_join() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (o.a::int -> a, i.c::int -> c, i.d::int -> d)
       left join on (o.a::int = i.c::int)
         scan o
@@ -2925,7 +2926,7 @@ fn front_sql_left_join_single_left() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.a::decimal -> a, t2.b::int -> b)
       left join on (t1.a::decimal = t2.b::int)
         motion [policy: segment([ref(a)]), program: ReshardIfNeeded]
@@ -2952,7 +2953,7 @@ fn front_sql_left_join_single_left2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     // full motion should be under outer child
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.a::decimal -> a, t2.b::int -> b)
       left join on (t1.a::decimal + 3::int <> t2.b::int)
         motion [policy: segment([ref(a)]), program: ReshardIfNeeded]
@@ -2979,7 +2980,7 @@ fn front_sql_left_join_single_both() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     // full motion should be under outer child
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.a::decimal -> a, t2.b::int -> b)
       left join on (t1.a::decimal <> t2.b::int)
         scan t1
@@ -3002,7 +3003,7 @@ fn front_sql_nested_subqueries() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a)
       selection (t.a::int in ROW($1))
         scan t
@@ -3031,7 +3032,7 @@ fn front_sql_having1() {
 
     println!("Formatted arena: {}", plan.formatted_arena().unwrap());
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> a, sum(sum_1::decimal)::decimal -> col_1)
       having ((gr_expr_1::int > 1::int and sum(distinct gr_expr_2::decimal)::decimal > 1::int))
         group by (gr_expr_1::int)
@@ -3050,7 +3051,7 @@ fn front_sql_having2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(sum_1::decimal)::decimal * count(distinct gr_expr_1::int)::int -> col_1, sum(sum_1::decimal)::decimal -> col_2)
       having ((sum(distinct gr_expr_1::decimal)::decimal > 1::int and sum(sum_1::decimal)::decimal > 1::int))
         motion [policy: full, program: ReshardIfNeeded]
@@ -3068,7 +3069,7 @@ fn front_sql_having3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(sum_1::decimal)::decimal -> col_1)
       having (sum(sum_1::decimal)::decimal > 1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -3102,7 +3103,7 @@ fn front_sql_having_with_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (gr_expr_1::int -> "sysFrom", sum(distinct gr_expr_2::decimal)::decimal -> sum, count(distinct gr_expr_2::int)::int -> count)
       having (ROW($0) > count(distinct gr_expr_2::int)::int)
         group by (gr_expr_1::int)
@@ -3146,7 +3147,7 @@ fn front_sql_having_with_sq_segment_motion() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (gr_expr_1::int -> "sysFrom", gr_expr_2::int -> sys_op, sum(distinct gr_expr_3::decimal)::decimal -> sum, count(distinct gr_expr_3::int)::int -> count)
       having (ROW(gr_expr_1::int, gr_expr_2::int) in ROW($0, $0))
         group by (gr_expr_1::int, gr_expr_2::int)
@@ -3173,7 +3174,7 @@ fn front_sql_having_with_sq_segment_local_motion() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (gr_expr_1::int -> "sysFrom", gr_expr_2::int -> sys_op, sum(distinct gr_expr_3::decimal)::decimal -> sum, count(distinct gr_expr_3::int)::int -> count)
       having (ROW(gr_expr_1::int, gr_expr_2::int) in ROW($0, $0))
         group by (gr_expr_1::int, gr_expr_2::int)
@@ -3197,7 +3198,7 @@ fn front_sql_unique_local_aggregates() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     // here we must compute only two aggregates at local stage: sum(a), count(a)
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::int -> col_2, sum(sum_1::decimal)::decimal + sum(count_2::int)::int -> col_3)
       motion [policy: full, program: ReshardIfNeeded]
         projection (sum(t.a::int::int)::decimal -> sum_1, count(t.a::int::int)::int -> count_2)
@@ -3215,7 +3216,7 @@ fn front_sql_unique_local_groupings() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     // here we must compute only two groupby columns at local stage: a, b
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(distinct gr_expr_2::decimal)::decimal -> col_1, count(distinct gr_expr_2::int)::int -> col_2, count(distinct gr_expr_3::int)::int -> col_3)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -3241,7 +3242,7 @@ ON "t3"."a" = "ij"."id"
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t3.a::int -> a, t3.b::int -> b, ij.identification_number::int -> identification_number, ij.product_code::string -> product_code, ij.product_units::bool -> product_units, ij.sys_op::int -> sys_op, ij.id::int -> id)
       join on (t3.a::int = ij.id::int)
         scan t5 -> t3
@@ -3263,7 +3264,7 @@ fn front_sql_select_distinct() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     // here we must compute only two groupby columns at local stage: a, b
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> a, gr_expr_2::int -> col_1)
       group by (gr_expr_1::int, gr_expr_2::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -3279,7 +3280,7 @@ fn front_sql_select_distinct_asterisk() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::int -> a, gr_expr_2::int -> b, gr_expr_3::int -> c, gr_expr_4::int -> d)
       group by (gr_expr_1::int, gr_expr_2::int, gr_expr_3::int, gr_expr_4::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -3312,7 +3313,7 @@ fn front_sql_select_distinct_with_aggr() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(sum_1::decimal)::decimal -> col_1, gr_expr_1::int -> b)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -3328,7 +3329,7 @@ fn front_sql_select_distinct_with_aggr2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(sum_1::decimal)::decimal -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (sum(t.a::int::int)::decimal -> sum_1)
@@ -3342,7 +3343,7 @@ fn front_sql_insert_on_conflict() {
         r#"explain (logical) insert into "t" values (1, 1, 1, 1) on conflict do nothing"#;
 
     let mut plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     insert into t on conflict: nothing
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
@@ -3351,7 +3352,7 @@ fn front_sql_insert_on_conflict() {
 
     input = r#"explain (logical) insert into "t" values (1, 1, 1, 1) on conflict do replace"#;
     plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     insert into t on conflict: replace
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
@@ -3361,7 +3362,7 @@ fn front_sql_insert_on_conflict() {
     input = r#"explain (logical) insert into "t" values (1, 1, 1, 1)
         on conflict ("a") do update set "c" = "c" + 1"#;
     plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     insert into t on conflict: (a) update set c += 1
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
@@ -3574,7 +3575,7 @@ fn front_sql_insert_1() {
         where "a" = 1 and "b" = 2 or "a" = 2 and "b" = 3"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref(a)]), program: ReshardIfNeeded]
         projection (t.a::int -> a)
@@ -3589,7 +3590,7 @@ fn front_sql_insert_2() {
         where "a" = 1 and "b" = 2"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into t on conflict: fail
       motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
         projection (t.a::int -> a, t.b::int -> b)
@@ -3605,7 +3606,7 @@ fn front_sql_insert_3() {
         where "a" = 1 and "b" = 2 or "a" = 3 and "b" = 4"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into t on conflict: fail
       motion [policy: segment([ref(b), ref(a)]), program: ReshardIfNeeded]
         projection (t.a::int -> a, t.b::int -> b)
@@ -3620,7 +3621,7 @@ fn front_sql_insert_4() {
         where "a" = 1 and "b" = 2"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into t on conflict: fail
       motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
         projection (t.b::int -> b, t.a::int -> a)
@@ -3635,7 +3636,7 @@ fn front_sql_insert_5() {
         where "a" = 1 and "b" = 2"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into t on conflict: fail
       motion [policy: segment([ref(col_2), ref(col_1)]), program: ReshardIfNeeded]
         projection (5::int -> col_1, 6::int -> col_2)
@@ -3651,7 +3652,7 @@ fn front_sql_insert_6() {
     let input = r#"explain (logical) insert into "t" ("a", "b") values (1, 2), (1, 2), (3, 4)"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     insert into t on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
@@ -3683,7 +3684,7 @@ fn front_sql_insert_8() {
         r#"explain (logical) insert into "hash_testing" select * from "hash_single_testing""#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into hash_testing on conflict: fail
       motion [policy: segment([ref(identification_number), ref(product_code)]), program: ReshardIfNeeded]
         projection (hash_single_testing.identification_number::int -> identification_number, hash_single_testing.product_code::string -> product_code, hash_single_testing.product_units::bool -> product_units, hash_single_testing.sys_op::int -> sys_op)
@@ -3696,7 +3697,7 @@ fn front_sql_insert_9() {
     let input = r#"explain (logical) insert into "t" ("a", "b") values (?, ?)"#;
 
     let plan = sql_to_optimized_ir(input, vec![Value::from(1), Value::from(2)]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     insert into t on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
@@ -3723,7 +3724,7 @@ fn front_sql_update1() {
     let input = r#"explain (logical) update "t" set "a" = 1"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     update t (b = col_1, d = col_3, bucket_id = col_4, a = col_0, c = col_2)
       motion [policy: segment([]), program: [PrimaryKey(1), RearrangeForShardedUpdate(0, 1)]]
         projection (1::int -> col_0, t.b::int -> col_1, t.c::int -> col_2, t.d::int -> col_3, t.bucket_id::int -> col_4, t.a::int -> col_5, t.b::int -> col_6)
@@ -3736,7 +3737,7 @@ fn front_sql_update2() {
     let input = r#"explain (logical) update "t" set "c" = "a" + "b""#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     update t (c = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (t.a::int + t.b::int -> col_0, t.b::int -> col_1)
@@ -3749,7 +3750,7 @@ fn front_sql_update3() {
     let input = r#"explain (logical) update "t" set "c" = "a" + "b" where "c" = 1"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     update t (c = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (t.a::int + t.b::int -> col_0, t.b::int -> col_1)
@@ -3767,7 +3768,7 @@ fn front_sql_update4() {
     where "c" = "b1""#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     update t (d = col_0, c = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (unnamed_subquery.b1::int * 2::int -> col_0, t.b::int -> col_1)
@@ -3788,7 +3789,7 @@ fn front_sql_update5() {
     where "a" = "id""#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     update t3_2 (b = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (test_space.id::int -> col_0, t3_2.a::int -> col_1)
@@ -3806,7 +3807,7 @@ fn front_sql_update6() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     update t3 (b = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (2::int -> col_0, t3.a::string -> col_1)
@@ -3827,7 +3828,7 @@ fn front_sql_update7() {
     let input = r#"explain (logical) update t3 set b = $1"#;
 
     let plan = sql_to_optimized_ir(input, vec![Value::from(1)]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     update t3 (b = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (1::int -> col_0, t3.a::string -> col_1)
@@ -3840,7 +3841,7 @@ fn front_sql_update8() {
     let input = r#"explain (logical) update t3 set b = $1 + $2"#;
 
     let plan = sql_to_optimized_ir(input, vec![Value::from(1), Value::from(1)]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     update t3 (b = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (1::int + 1::int -> col_0, t3.a::string -> col_1)
@@ -3862,7 +3863,7 @@ fn front_sql_update9() {
 fn front_sql_not_true() {
     let input = r#"explain (logical) SELECT "a" FROM "t" WHERE not true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a)
       selection (not true::bool)
         scan t
@@ -3873,7 +3874,7 @@ fn front_sql_not_true() {
 fn front_sql_not_equal() {
     let input = r#"explain (logical) SELECT * FROM (VALUES (1)) where not true = true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
       selection (false::bool)
         scan unnamed_subquery
@@ -3887,7 +3888,7 @@ fn front_sql_not_equal() {
 fn front_sql_not_cast() {
     let input = r#"explain (logical) SELECT * FROM (values (1)) where not cast('true' as bool)"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
       selection (false::bool)
         scan unnamed_subquery
@@ -3901,7 +3902,7 @@ fn front_sql_not_cast() {
 fn from_sql_not_column() {
     let input = r#"explain (logical) SELECT * FROM (values (true)) where not "COLUMN_1""#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::bool -> "COLUMN_1")
       selection (not unnamed_subquery."COLUMN_1"::bool)
         scan unnamed_subquery
@@ -3915,7 +3916,7 @@ fn from_sql_not_column() {
 fn front_sql_not_or() {
     let input = r#"explain (logical) SELECT * FROM (values (1)) where not true or true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
       selection (true::bool)
         scan unnamed_subquery
@@ -3929,7 +3930,7 @@ fn front_sql_not_or() {
 fn front_sql_not_and_with_parentheses() {
     let input = r#"explain (logical) SELECT not (true and false) FROM (values (1))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (not (true::bool and false::bool) -> col_1)
       scan unnamed_subquery
         motion [policy: full, program: ReshardIfNeeded]
@@ -3942,7 +3943,7 @@ fn front_sql_not_and_with_parentheses() {
 fn front_sql_not_or_with_parentheses() {
     let input = r#"explain (logical) SELECT * FROM (values (1)) where not (true or true)"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
       selection (false::bool)
         scan unnamed_subquery
@@ -3956,7 +3957,7 @@ fn front_sql_not_or_with_parentheses() {
 fn front_sql_not_exists() {
     let input = r#"explain (logical) select * from (values (1)) where not exists (select * from (values (1)))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
       selection (not exists ROW($0))
         scan unnamed_subquery
@@ -3977,7 +3978,7 @@ fn front_sql_not_exists() {
 fn front_sql_not_in() {
     let input = r#"explain (logical) select * from (values (1)) where 1 not in (select * from (values (1)))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
       selection (not 1::int in ROW($0))
         scan unnamed_subquery
@@ -4006,7 +4007,7 @@ fn front_sql_not_complex_query() {
             where not exists (select * from (values (1)) where not true = (?))
         "#;
     let plan = sql_to_optimized_ir(input, vec![Value::from(1), Value::from(true)]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (not (not true::bool and 1::int + 1::int <> 1::int) -> col_1)
       selection (not exists ROW($0))
         join on (true::bool)
@@ -4032,7 +4033,7 @@ fn front_sql_not_complex_query() {
 fn front_sql_arithmetic_with_parentheses() {
     let input = r#"explain (logical) SELECT (1 + 2) * 3 FROM (values (1))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection ((1::int + 2::int) * 3::int -> col_1)
       scan unnamed_subquery
         motion [policy: full, program: ReshardIfNeeded]
@@ -4046,7 +4047,7 @@ fn front_sql_to_date() {
     let input =
         r#"explain (logical) SELECT to_date("COLUMN_1", '%Y/%d/%m') FROM (values ('2010/10/10'))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (to_date(unnamed_subquery."COLUMN_1"::string::string, '%Y/%d/%m'::string)::datetime -> col_1)
       scan unnamed_subquery
         motion [policy: full, program: ReshardIfNeeded]
@@ -4075,7 +4076,7 @@ fn front_sql_current_date() {
           value ROW('2010/10/10'::string)"#
     );
 
-    assert_eq!(expected_explain, plan.explain_logical().unwrap());
+    assert_eq!(expected_explain, explain_logical(&plan).unwrap());
 }
 
 #[test]
@@ -4261,7 +4262,7 @@ fn front_subqueries_interpreted_as_expression() {
     let input = r#"explain (logical) select (values (2)) from "test_space""#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (ROW($0) -> col_1)
       scan test_space
     subquery $0:
@@ -4277,7 +4278,7 @@ fn front_subqueries_interpreted_as_expression_as_required_child() {
     let input = r#"explain (logical) select * from (select (values (1)) from "test_space")"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (unnamed_subquery.col_1::int -> col_1)
       scan unnamed_subquery
         projection (ROW($0) -> col_1)
@@ -4295,7 +4296,7 @@ fn front_subqueries_interpreted_as_expression_nested() {
     let input = r#"explain (logical) select (values ((values (2)))) from "test_space""#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (ROW($1) -> col_1)
       scan test_space
     subquery $0:
@@ -4316,7 +4317,7 @@ fn front_subqueries_interpreted_as_expression_in_every_values_row() {
     let input = r#"explain (logical) values ((values (1))), ((values (2)))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     values
       value ROW(ROW($1))
       value ROW(ROW($0))
@@ -4339,7 +4340,7 @@ fn front_subqueries_interpreted_as_expression_under_group_by() {
         r#"explain (logical) SELECT COUNT(*) FROM "test_space" GROUP BY "id" + (VALUES (1))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (sum(count_1::int)::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -4359,7 +4360,7 @@ fn front_select_without_scan() {
     let input = r#"explain (logical) select 1"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"projection (1::int -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (1::int -> col_1)");
 }
 
 #[test]
@@ -4367,7 +4368,7 @@ fn front_select_without_scan_2() {
     let input = r#"explain (logical) select (values (1)), (select count(*) from t2)"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (ROW($1) -> col_1, ROW($0) -> col_2)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -4415,7 +4416,7 @@ fn front_select_without_scan_5() {
     let input = r#"explain (logical) select (?, ?) in (select e, f from t2) as foo"#;
     let plan = sql_to_optimized_ir(input, vec![Value::Integer(1), Value::Integer(1)]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (ROW(1::int, 1::int) in ROW($0, $0) -> foo)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
@@ -4430,7 +4431,7 @@ fn front_select_without_scan_6() {
     let input = r#"explain (logical) select (select 1) from t2 where f in (select 3 as foo)"#;
     let plan = sql_to_optimized_ir(input, vec![Value::Integer(1), Value::Integer(1)]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (ROW($1) -> col_1)
       selection (t2.f::int in ROW($0))
         scan t2
@@ -4449,7 +4450,7 @@ fn front_sql_check_concat_with_parameters() {
 
     let plan = sql_to_optimized_ir(input, vec![Value::from("a"), Value::from("b")]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     values
       value ROW('a'::string || 'b'::string)
     ");

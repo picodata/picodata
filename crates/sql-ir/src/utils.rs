@@ -3,14 +3,11 @@ use rmp::Marker;
 use smol_str::{format_smolstr, SmolStr};
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
-use std::fmt;
 use std::hash::{BuildHasher, Hash, RandomState};
 use std::io::{Result, Write};
 use std::ops::DerefMut;
 use tarantool::fiber::mutex::MutexGuard as TMutexGuard;
 use tarantool::fiber::Mutex as TMutex;
-
-pub const INDENT: &str = "  ";
 
 /// Transform:
 ///
@@ -44,90 +41,6 @@ pub fn to_user<T: std::fmt::Display>(from: T) -> SmolStr {
 #[must_use]
 pub fn get_unnamed_column_alias(pos: usize) -> SmolStr {
     format_smolstr!("col_{pos}")
-}
-
-pub fn make_explain_header1(s: impl ToString) -> comfy_table::Table {
-    let mut header = ::comfy_table::Table::new();
-    header
-        .load_preset(::comfy_table::presets::UTF8_HORIZONTAL_ONLY)
-        .set_content_arrangement(::comfy_table::ContentArrangement::DynamicFullWidth)
-        .add_row([s.to_string()])
-        .set_width(70);
-
-    header
-}
-
-pub fn make_explain_header2(s: impl ToString) -> comfy_table::Table {
-    let mut header = ::comfy_table::Table::new();
-    header
-        .load_preset(::comfy_table::presets::UTF8_BORDERS_ONLY)
-        .apply_modifier(::comfy_table::modifiers::UTF8_ROUND_CORNERS)
-        .set_content_arrangement(::comfy_table::ContentArrangement::Disabled)
-        .add_row([s.to_string()]);
-
-    header
-}
-
-/// Example:
-/// ```markdown
-/// ────────────────
-///  # Logical plan
-/// ────────────────
-/// ```
-#[macro_export]
-macro_rules! write_explain_header1 {
-    ($f:expr, $($args:tt)+) => {{
-        let header = $crate::utils::make_explain_header1(format!($($args)+));
-        writeln!($f, "{header}")
-    }};
-}
-
-/// Example:
-/// ```markdown
-/// ╭────────────────────╮
-/// │ 1. Query (STORAGE) │
-/// ╰────────────────────╯
-/// ```
-#[macro_export]
-macro_rules! write_explain_header2 {
-    ($f:expr, $($args:tt)+) => {{
-        let header = $crate::utils::make_explain_header2(format!($($args)+));
-        writeln!($f, "{header}")
-    }};
-}
-
-/// Transform a writer into an indented writer. This effect is additive.
-pub fn indent<'a, D>(f: &'a mut D) -> indenter::Indented<'a, D> {
-    indenter::indented(f).with_str(INDENT)
-}
-
-pub fn indent_custom<'a, D>(
-    f: &'a mut D,
-    inserter: &'a mut indenter::Inserter,
-) -> indenter::Indented<'a, D> {
-    indenter::indented(f).with_format(indenter::Format::Custom { inserter })
-}
-
-pub fn indent_with_prefix(
-    level: usize,
-    prefix: impl Into<SmolStr>,
-) -> impl FnMut(usize, &mut dyn fmt::Write) -> fmt::Result {
-    let prefix = prefix.into();
-    move |line, f| {
-        for _ in 0..level {
-            write!(f, "{}", INDENT)?;
-        }
-        match line {
-            0 => write!(f, "{}", prefix)?,
-            _ => {
-                for _ in 0..prefix.len() {
-                    write!(f, " ")?;
-                }
-            }
-        }
-
-        Ok(())
-    }
 }
 
 /// [`MutexLike`] is a mutex abstraction to work with different mutexes in general manner.

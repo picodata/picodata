@@ -6,6 +6,7 @@ use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
 use sql_executor::test_helpers::sql_to_optimized_ir;
+use sql_explain::explain::explain_logical;
 
 #[derive(PartialEq, Eq, Debug)]
 enum DistMock {
@@ -68,7 +69,7 @@ fn front_sql_global_tbl_sq1() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (global_t.a::int -> a, global_t.b::int -> b)
       selection (global_t.a::int in ROW($1) or global_t.a::int in ROW($0))
         scan global_t
@@ -100,7 +101,7 @@ fn front_sql_global_tbl_multiple_sqs1() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (global_t.a::int -> a, global_t.b::int -> b)
       selection ((ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) and global_t.a::int in ROW($0)))
         scan global_t
@@ -134,7 +135,7 @@ fn front_sql_global_tbl_multiple_sqs2() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (global_t.a::int -> a, global_t.b::int -> b)
       selection (ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) or global_t.a::int in ROW($0))
         scan global_t
@@ -162,7 +163,7 @@ fn front_sql_global_tbl_sq2() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (global_t.a::int -> a, global_t.b::int -> b)
       selection (ROW(global_t.a::int, global_t.b::int) in ROW($0, $0))
         scan global_t
@@ -185,7 +186,7 @@ fn front_sql_global_tbl_sq3() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (global_t.a::int -> a, global_t.b::int -> b)
       selection (not ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) or ROW(global_t.a::int, global_t.b::int) < ROW($0, $0))
         scan global_t
@@ -213,7 +214,7 @@ fn front_sql_global_tbl_sq4() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.product_code::string -> product_code)
       join on ((t.a::int = hash_testing.identification_number::int and hash_testing.product_code::string in ROW($0)))
         scan t
@@ -237,7 +238,7 @@ fn front_sql_global_tbl_sq5() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t2.f::int -> f)
       join on ((ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) and t.c::int in ROW($0)))
         scan t
@@ -263,7 +264,7 @@ fn front_sql_global_tbl_sq6() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t2.f::int -> f)
       selection (t2.e::int in ROW($3))
         join on (ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) or t.c::int in ROW($2) or (exists ROW($0) and not t.d::int in ROW($1)))
@@ -302,7 +303,7 @@ fn front_sql_global_tbl_sq7() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t2.f::int -> f)
       join on (ROW(t.a::int, t.b::int) = ROW(t2.e::int, t2.f::int) or t.c::int in ROW($1) or not t.d::int in ROW($0))
         scan t
@@ -338,7 +339,7 @@ fn front_sql_global_join1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t2.e::int -> e, global_t.a::int -> a)
       join on (true::bool)
         scan global_t
@@ -358,7 +359,7 @@ fn front_sql_global_join2() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Segment]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t2.e::int -> e, global_t.a::int -> a)
       join on (t2.e::int = global_t.a::int or global_t.b::int = t2.f::int)
         scan t2
@@ -377,7 +378,7 @@ fn front_sql_global_join3() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Segment]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t2.e::int -> e, global_t.a::int -> a)
       left join on (t2.e::int = global_t.a::int or global_t.b::int = t2.f::int)
         scan t2
@@ -396,7 +397,7 @@ fn front_sql_global_join4() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Single]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (s.e::decimal -> e)
       left join on (true::bool)
         scan s
@@ -419,7 +420,7 @@ fn front_sql_global_join5() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Single]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (s.e::decimal -> e)
       left join on (true::bool)
         scan global_t
@@ -442,7 +443,7 @@ fn front_sql_global_join6() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Any]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (s.e::int -> e)
       join on (true::bool)
         scan global_t
@@ -463,7 +464,7 @@ fn front_sql_global_join7() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Any]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (s.e::int -> e)
       join on (true::bool)
         scan s
@@ -484,7 +485,7 @@ fn front_sql_global_join8() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Global]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (unnamed_subquery.e::int -> e)
       join on (true::bool)
         scan unnamed_subquery
@@ -505,7 +506,7 @@ fn front_sql_global_join9() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Any]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (unnamed_subquery.e::int -> e)
       left join on (true::bool)
         scan unnamed_subquery
@@ -526,7 +527,7 @@ fn front_sql_global_join10() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Global]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (unnamed_subquery.e::int -> e)
       join on (unnamed_subquery.e::int in ROW($0))
         scan unnamed_subquery
@@ -552,7 +553,7 @@ fn front_sql_global_join11() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Global]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (unnamed_subquery.e::int -> e)
       join on (ROW(unnamed_subquery.e::int, unnamed_subquery.e::int) in ROW($0, $0))
         scan unnamed_subquery
@@ -575,7 +576,7 @@ fn front_sql_global_aggregate1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(global_t.a::int::int)::decimal + avg((global_t.b::int + global_t.b::int)::int)::decimal -> col_1)
       scan global_t
     ");
@@ -589,7 +590,7 @@ fn front_sql_global_aggregate2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (sum(global_t.a::int::int)::decimal + avg((global_t.b::int + global_t.b::int)::int)::decimal -> col_1)
       scan global_t
     ");
@@ -604,7 +605,7 @@ fn front_sql_global_aggregate3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (global_t.b::int + global_t.a::int -> col_1, sum(global_t.a::int::int)::decimal -> col_2)
       group by (global_t.b::int + global_t.a::int)
         scan global_t
@@ -621,7 +622,7 @@ fn front_sql_global_aggregate4() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (global_t.b::int + global_t.a::int -> col_1, sum(global_t.a::int::int)::decimal -> col_2)
       having (avg(global_t.b::int::int)::decimal > 3::int)
         group by (global_t.b::int + global_t.a::int)
@@ -640,7 +641,7 @@ fn front_sql_global_aggregate5() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (global_t.b::int + global_t.a::int -> col_1, sum(global_t.a::int::int)::decimal -> col_2)
       having (avg(global_t.b::int::int)::decimal > 3::int)
         group by (global_t.b::int + global_t.a::int)
@@ -663,7 +664,7 @@ fn front_sql_global_left_join1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (unnamed_join.e::int -> e, unnamed_join.b::int -> b)
       motion [policy: full, program: AddMissingRowsForLeftJoin]
         projection (global_t.a::int -> a, global_t.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -685,7 +686,7 @@ fn front_sql_global_left_join2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (unnamed_join.e::int -> e, sum(unnamed_join.b::int::int)::decimal -> col_1)
       group by (unnamed_join.e::int)
         motion [policy: full, program: AddMissingRowsForLeftJoin]
@@ -708,7 +709,7 @@ fn front_sql_global_left_join3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (unnamed_join.e::int -> e, unnamed_join.b::int -> b)
       motion [policy: full, program: AddMissingRowsForLeftJoin]
         projection (unnamed_subquery.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -733,7 +734,7 @@ fn front_sql_global_left_join4() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (unnamed_join.e::int -> e, unnamed_join.b::int -> b)
       motion [policy: full, program: AddMissingRowsForLeftJoin]
         projection (unnamed_subquery.b::int -> b, unnamed_subquery_1.e::int -> e)
@@ -755,7 +756,7 @@ fn front_order_by_from_global_node_must_not_add_motion() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (b::int, my_col::int)
       order by (my_col::int)
         scan
@@ -785,7 +786,7 @@ fn front_sql_global_union_all1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       motion [policy: local, program: SerializeAsEmptyTable(true)]
         projection (global_t.a::int -> a, global_t.b::int -> b)
@@ -807,7 +808,7 @@ fn front_sql_global_union_all2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       motion [policy: local, program: SerializeAsEmptyTable(true)]
         projection (global_t.a::int -> a)
@@ -831,7 +832,7 @@ fn front_sql_global_union_all3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       projection (unnamed_subquery.a::decimal -> a)
         scan unnamed_subquery
@@ -859,7 +860,7 @@ fn front_sql_global_union_all5() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       projection (global_t.a::int -> a)
         scan global_t
@@ -880,7 +881,7 @@ fn front_sql_global_union() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     motion [policy: full, program: RemoveDuplicates]
       union
         projection (global_t.a::int -> a)
@@ -900,7 +901,7 @@ fn front_sql_global_union1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     motion [policy: full, program: RemoveDuplicates]
       union
         motion [policy: local, program: SerializeAsEmptyTable(true)]
@@ -920,7 +921,7 @@ fn front_sql_global_union2() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     motion [policy: full, program: RemoveDuplicates]
       union
         projection (global_t.a::int -> a)
@@ -945,7 +946,7 @@ fn front_sql_union() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     motion [policy: full, program: RemoveDuplicates]
       union
         motion [policy: local, program: SerializeAsEmptyTable(true)]
@@ -976,7 +977,7 @@ fn check_plan_except_global_vs_segment() {
 
     // TODO: the subtree for left except child is reused
     // from another motion, show this in explain
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (global_t.a::int -> a, global_t.b::int -> b)
         selection (global_t.a::int = 1::int)
@@ -1003,7 +1004,7 @@ fn check_plan_except_global_vs_any() {
 
     // TODO: the subtree for left except child is reused
     // from another motion, show this in explain
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (global_t.a::int -> a)
         scan global_t
@@ -1026,7 +1027,7 @@ fn check_plan_except_global_vs_global() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (global_t.a::int -> a)
         scan global_t
@@ -1045,7 +1046,7 @@ fn check_plan_except_global_vs_single() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (global_t.a::int -> a)
         scan global_t
@@ -1066,7 +1067,7 @@ fn check_plan_except_single_vs_global() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (sum(sum_1::decimal)::decimal -> col_1)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1087,7 +1088,7 @@ fn check_plan_except_segment_vs_global() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (t2.e::int -> e, t2.f::int -> f)
         scan t2
@@ -1106,7 +1107,7 @@ fn check_plan_except_any_vs_global() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (t2.e::int -> e)
         scan t2
@@ -1131,7 +1132,7 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     except
       projection (global_t.b::int -> b)
         selection (global_t.a::int = 1::int)

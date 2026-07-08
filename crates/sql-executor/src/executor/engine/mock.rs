@@ -18,7 +18,6 @@ use crate::executor::ir::ExecutionPlan;
 use crate::executor::lru::{Cache as _, LRUCache, DEFAULT_CAPACITY};
 use crate::executor::preemption::{SchedulerMetrics, SchedulerOptions};
 use crate::executor::vtable::VirtualTable;
-use crate::executor::{ExecutingQuery, ExplainQueryLocation, MotionInfo};
 use crate::executor::{Port, PortType};
 use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::function::Function;
@@ -1609,45 +1608,5 @@ impl Router for RouterRuntimeMock {
         _target_replicaset: &mut Option<String>,
     ) -> Result<Forward, SbroadError> {
         Ok(Forward::On)
-    }
-
-    fn build_explain_query_location(
-        _buckets: &Buckets,
-        _motion_info: &MotionInfo,
-    ) -> ExplainQueryLocation {
-        ExplainQueryLocation::Whole
-    }
-}
-
-impl<C: Router> ExecutingQuery<'_, C> {
-    pub fn explain(&mut self) -> Result<String, SbroadError> {
-        let mut explain = Vec::new();
-        if self.is_logical_explain() {
-            let logical_explain = self.explain_logical()?;
-            explain.push(logical_explain);
-        }
-
-        if self.is_raw_explain() {
-            return Err(SbroadError::Other(
-                "RAW mode of EXPLAIN is not supported for mocks".to_smolstr(),
-            ));
-        }
-
-        if self.is_explain_forward() {
-            return Err(SbroadError::Other(
-                "FORWARD mode of EXPLAIN is not supported for mocks".to_smolstr(),
-            ));
-        }
-
-        if self.is_buckets_explain() {
-            let buckets_explain = self.explain_buckets()?;
-            explain.push(buckets_explain);
-        }
-
-        // Each entry in `explain` is a plain line without a trailing '\n',
-        // so we join them with "\n\n" to separate each entry with a blank line.
-        let explain = explain.join("\n\n");
-
-        Ok(explain)
     }
 }

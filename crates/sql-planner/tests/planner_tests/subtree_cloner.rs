@@ -1,3 +1,4 @@
+use sql::explain::explain_logical;
 use sql::helpers::sql_to_optimized_ir;
 
 #[test]
@@ -9,7 +10,7 @@ fn except_transform_with_dag_plan() {
         r#"explain (logical) select 1 from (values (1)) except select e from t2 where e = 1"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       projection (1::int -> col_1)
         scan unnamed_subquery

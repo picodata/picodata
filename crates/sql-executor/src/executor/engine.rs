@@ -19,7 +19,6 @@ use crate::errors::SbroadError;
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::protocol::SchemaInfo;
 use crate::executor::vtable::VirtualTable;
-use crate::executor::{ExplainQueryLocation, MotionInfo};
 use crate::ir::bucket::Buckets;
 use crate::ir::function::Function;
 use crate::ir::operator::BlockConflictDoUpdate;
@@ -406,12 +405,6 @@ pub trait Router: QueryCache {
         buckets: &Buckets,
         target_replicaset: &mut Option<String>,
     ) -> Result<Forward, SbroadError>;
-
-    /// Create an instance of `ExplainQueryLocation` from `Buckets` and `MotionInfo`.
-    fn build_explain_query_location(
-        buckets: &Buckets,
-        motion_info: &MotionInfo,
-    ) -> ExplainQueryLocation;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Hash)]

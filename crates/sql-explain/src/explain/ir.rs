@@ -1,34 +1,32 @@
-use super::expression::FunctionFeature;
-use super::helpers::RepeatableState;
-use super::node::expression::Expression;
-use super::node::relational::Relational;
-use super::node::{Bound, BoundType, Frame, FrameType, Limit, Over, Window};
-use super::operator::Unary;
-use super::tree::traversal::{PostOrder, EXPR_CAPACITY, REL_CAPACITY};
-use super::types::{CastType, DerivedType};
-use super::value::Value;
-use crate::errors::{Entity, SbroadError};
-use crate::ir::bucket::{BucketSet, Buckets};
-use crate::ir::columns::RelColumn;
-use crate::ir::expression::TrimKind;
-use crate::ir::node::{
+use crate::explain::utils::indent;
+use itertools::Itertools;
+use smallvec::SmallVec;
+use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
+use sql_ir::errors::{Entity, SbroadError};
+use sql_ir::ir::columns::RelColumn;
+use sql_ir::ir::expression::FunctionFeature;
+use sql_ir::ir::expression::TrimKind;
+use sql_ir::ir::helpers::RepeatableState;
+use sql_ir::ir::node::expression::Expression;
+use sql_ir::ir::node::relational::Relational;
+use sql_ir::ir::node::{
     Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Constant, Delete, Having, IndexExpr,
     Insert, Join, Motion as MotionRel, NodeId, Reference, Row as RowExpr, ScalarFunction, ScanCte,
     ScanRelation, ScanSubQuery, Selection, SubQueryReference, Timestamp, Trim, UnaryExpr,
     Update as UpdateRel, Values,
 };
-use crate::ir::operator::{
-    Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType,
+use sql_ir::ir::node::{Bound, BoundType, Frame, FrameType, Limit, Over, Window};
+use sql_ir::ir::operator::{
+    Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType, Unary,
 };
-use crate::ir::transformation::redistribution::{
+use sql_ir::ir::transformation::redistribution::{
     MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Program, Target as IrTarget,
 };
-use crate::ir::{node, ExplainOptions, Plan};
-use crate::utils::indent;
-use crate::utils::OrderedMap;
-use itertools::Itertools;
-use smallvec::SmallVec;
-use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
+use sql_ir::ir::tree::traversal::{PostOrder, EXPR_CAPACITY, REL_CAPACITY};
+use sql_ir::ir::types::{CastType, DerivedType};
+use sql_ir::ir::value::Value;
+use sql_ir::ir::{node, ExplainOptions, Plan};
+use sql_ir::utils::OrderedMap;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Display, Write};
 
@@ -1547,51 +1545,6 @@ impl Display for ExplainTreePart {
     }
 }
 
-pub fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
-    match buckets {
-        Buckets::All => format!("[1-{bucket_count}]"),
-        Buckets::Filtered(BucketSet::Exact(buckets_set)) => 'f: {
-            if buckets_set.is_empty() {
-                break 'f "[]".into();
-            }
-
-            let mut nums: Vec<u64> = buckets_set.iter().copied().collect();
-            nums.sort_unstable();
-
-            let mut ranges = Vec::new();
-            let mut l = 0;
-            for r in 1..nums.len() {
-                if nums[r - 1] + 1 == nums[r] {
-                    continue;
-                }
-                if r - l == 1 {
-                    ranges.push(format!("{}", nums[l]));
-                } else {
-                    ranges.push(format!("{}-{}", nums[l], nums[r - 1]))
-                }
-                l = r;
-            }
-
-            let r = nums.len();
-            if r - l == 1 {
-                ranges.push(format!("{}", nums[r - 1]));
-            } else {
-                ranges.push(format!("{}-{}", nums[l], nums[r - 1]))
-            }
-
-            format!("[{}]", ranges.join(","))
-        }
-        Buckets::Filtered(BucketSet::EstimatedCount { lower, upper }) => {
-            if lower != upper {
-                format!("estimated count ({lower}..={upper})")
-            } else {
-                format!("estimated count ({lower})")
-            }
-        }
-        Buckets::Any => "any".into(),
-    }
-}
-
 pub struct LogicalExplain {
     main_query: ExplainTreePart,
     subqueries: OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
@@ -1792,7 +1745,7 @@ impl LogicalExplain {
                             "Selection or Having must have exactly one child".into(),
                         )
                     })?;
-                    let filter_id = *ir.undo.get_oldest(filter);
+                    let filter_id = *ir.undo().get_oldest(filter);
                     let selection = ColExpr::new(ir, filter_id, &sq_ref_map, should_fmt)?;
                     let explain_node = match &node {
                         Relational::Selection { .. } => {
@@ -2008,28 +1961,5 @@ impl LogicalExplain {
         };
 
         Ok(result)
-    }
-}
-
-pub mod execution_info;
-
-impl Plan {
-    /// Display logical explain
-    ///
-    /// # Errors
-    /// - Failed to get top node
-    /// - Failed to build explain
-    /// - `explain` is not specified in query
-    pub fn explain_logical(&self) -> Result<String, SbroadError> {
-        if self.explain_options != ExplainOptions::Logical {
-            return Err(SbroadError::Other(
-                "LOGICAL mode for EXPLAIN is not specified in query".to_smolstr(),
-            ));
-        }
-
-        let top_id = self.get_top()?;
-        let explain = LogicalExplain::new(self, top_id)?;
-
-        Ok(explain.to_string())
     }
 }

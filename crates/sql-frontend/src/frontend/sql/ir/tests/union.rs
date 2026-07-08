@@ -1,4 +1,5 @@
 use sql_executor::test_helpers::sql_to_optimized_ir;
+use sql_explain::explain::explain_logical;
 
 #[test]
 fn front_select_chaning_1() {
@@ -12,7 +13,7 @@ fn front_select_chaning_1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       union all
         projection (hash_testing.product_code::string -> product_code)
@@ -38,7 +39,7 @@ fn front_select_chaining_2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     except
       motion [policy: full, program: RemoveDuplicates]
         union
@@ -76,7 +77,7 @@ fn front_select_chaining_3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (product_code::string)
       order by (1)
         motion [policy: full, program: ReshardIfNeeded]
@@ -100,7 +101,7 @@ fn union_under_insert() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into t2 on conflict: fail
       motion [policy: segment([ref(e), ref(f)]), program: [RemoveDuplicates, ReshardIfNeeded]]
         union
@@ -122,7 +123,7 @@ fn union_under_insert1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     insert into "TBL" on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: [RemoveDuplicates, ReshardIfNeeded]]
         union
@@ -146,7 +147,7 @@ fn limit_pushdown_with_union() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (a::int, b::int, c::int, d::int)
         order by (a::int)
@@ -168,7 +169,7 @@ fn limit_pushdown_with_union() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (a::int, b::int, c::int, d::int)
         order by (a::int)
@@ -192,7 +193,7 @@ fn limit_pushdown_with_union_and_group_by() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     limit 1
       projection (a1::int, a2::int)
         order by (a1::int)

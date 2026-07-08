@@ -1,12 +1,14 @@
-use sql::executor::{engine::mock::RouterRuntimeMock, ExecutingQuery};
-use sql::ExecutingQueryExt;
+use crate::explain::ExplainExecutingQuery;
+use sql_executor::executor::engine::mock::RouterRuntimeMock;
+use sql_executor::executor::ExecutingQuery;
+use sql_executor::test_helpers::ExecutingQueryExt;
 
 #[test]
 fn select_values_rows() {
     let sql = r#"explain (logical, buckets) SELECT * FROM (VALUES (1::int, 2::decimal::integer, 'txt'::text::text::text))"#;
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r#"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r#"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -29,8 +31,8 @@ fn select_values_rows() {
 fn insert_values_rows() {
     let sql = r#"explain (logical, buckets) INSERT INTO t1 VALUES ('txt'::text::text::text, 2::decimal::integer::double::integer)"#;
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r#"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r#"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -52,8 +54,8 @@ fn insert_values_rows() {
 fn select_selection() {
     let sql = r#"explain (logical, buckets) SELECT * FROM t3 WHERE a = 'kek'::text::text::text"#;
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -74,8 +76,8 @@ fn select_selection() {
 fn update_selection() {
     let sql = r#"explain (logical, buckets) UPDATE t SET c = 2 WHERE a = 1::int::int and b = 2::integer::decimal"#;
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -98,8 +100,8 @@ fn update_selection() {
 fn delete_selection() {
     let sql = r#"explain (logical, buckets) DELETE FROM "t2" where "e" = 3::integer and "f" = 2::decimal"#;
     let metadata = &RouterRuntimeMock::new();
-    let mut query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
-    insta::assert_snapshot!(query.explain().unwrap(), @r"
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, vec![]).unwrap();
+    insta::assert_snapshot!(ExplainExecutingQuery::from(query).explain().unwrap(), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────

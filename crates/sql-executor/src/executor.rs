@@ -23,38 +23,28 @@
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
 use crate::errors::{Entity, SbroadError};
-use crate::executor::buckets_info::bounded_buckets_from_query;
-use crate::executor::engine::helpers::generate_pattern_with_params_for_block;
-use crate::executor::engine::{BlockQuery, Router, Vshard};
+use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
-use crate::ir::bucket::{BucketSet, Buckets};
-use crate::ir::explain::LogicalExplain;
-use crate::ir::node::block::{Block, BlockOwned};
+use crate::ir::bucket::Buckets;
+use crate::ir::node::block::BlockOwned;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{
-    AnonymousBlock, BlockEntries, BlockEntryKind, BlockStatement, IfBranch, Insert, Motion, NodeId,
-    StatementLocation,
-};
-use crate::ir::options::{Forward, OptionKind};
+use crate::ir::node::{AnonymousBlock, BlockEntries, StatementLocation};
+use crate::ir::node::{Insert, Motion, NodeId};
+use crate::ir::options::Forward;
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::value::Value;
-use crate::ir::{ExplainOptions, Plan, Slices};
-use crate::utils::{indent, indent_custom, indent_with_prefix};
-use crate::{write_explain_header1, write_explain_header2};
-use bitflags::bitflags;
+use crate::ir::{Plan, Slices};
 use smol_str::format_smolstr;
+use sql_ir::ir::bucket::BucketSet;
 use sql_protocol::dml::insert::ConflictPolicy;
 use std::collections::HashMap;
-use std::fmt::{self, Write as _};
 use std::io;
-use std::iter::Peekable;
 use std::rc::Rc;
 use tarantool::msgpack;
 use vdbe::{SqlError, SqlStmt};
 
 pub mod bucket_discovery;
-pub mod buckets_info;
 pub mod engine;
 pub mod hash;
 pub mod ir;
@@ -130,125 +120,13 @@ struct ExecutionContext {
 #[derive(Debug)]
 pub struct ExecutingQuery<'a, C> {
     /// Execution plan
-    exec_plan: ExecutionPlan,
+    pub(crate) exec_plan: ExecutionPlan,
     /// Coordinator runtime
     coordinator: &'a C,
     /// Bucket map of view { relational node id -> `Buckets` }.
     /// It denotes the buckets where the output of the relational node is located.
     bucket_map: HashMap<NodeId, Buckets>,
     exec_ctx: ExecutionContext,
-}
-
-/// Helper struct which holds the query execution location.
-#[derive(Debug)]
-pub enum ExplainQueryLocation {
-    /// Query is executed exactly on N replicasets.
-    ConstFiltered { fraction: (usize, usize) },
-    /// Query execution replicasets are computed in runtime. In case when it
-    /// is possible to calculate an upper bound, estimation "<= N/M" is added.
-    DynFiltered { fraction: Option<(usize, usize)> },
-    /// Query is executed locally.
-    Router,
-    /// Query is executed on every replicaset.
-    Whole,
-}
-
-impl std::fmt::Display for ExplainQueryLocation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ExplainQueryLocation::ConstFiltered { fraction } => {
-                write!(f, "CONST-FILTERED STORAGE, {}/{}", fraction.0, fraction.1)
-            }
-            ExplainQueryLocation::DynFiltered { fraction } if fraction.is_some() => {
-                let fraction = fraction.unwrap();
-                write!(f, "DYN-FILTERED STORAGE, <= {}/{}", fraction.0, fraction.1)
-            }
-            ExplainQueryLocation::DynFiltered { .. } => write!(f, "DYN-FILTERED STORAGE"),
-            ExplainQueryLocation::Router => write!(f, "ROUTER"),
-            ExplainQueryLocation::Whole => write!(f, "WHOLE STORAGE"),
-        }
-    }
-}
-
-/// Helper struct which is used for EXPLAIN (RAW) output generation.
-#[derive(Clone, Copy)]
-pub struct MotionInfo {
-    ///  If subtree has segment motion, its buckets are calculated from the
-    ///  contents of that motion virtual table. Save that to further reflect in
-    ///  EXPLAIN (RAW).
-    pub has_segment_motion: bool,
-    ///  `SerializeAsEmpty` is a motion opcode. If it is present in subtree,
-    ///  there could possibly be generated two different local SQLs. The meaning
-    ///  of possible values:
-    ///  * `None` - motion subtree does not contain `SerializeAsEmpty` opcode.
-    ///  * `Some(true)` - the generated SQL from such subtree is going to be simple scan
-    ///    of sharded table:
-    ///    `SELECT "t"."a" FROM "t" UNION ALL select cast(null as int) as "b" where false`.
-    ///  * `Some(false)` - the generated SQL performs UNION(UNION ALL) of global and
-    ///    sharded tables:
-    ///    `SELECT * FROM t UNION ALL SELECT * FROM g`
-    pub has_serialize_as_empty_opcode: Option<bool>,
-}
-
-impl MotionInfo {
-    // Queries in transactional blocks can not
-    // have motions.
-    pub fn new_for_transaction() -> Self {
-        Self {
-            has_segment_motion: false,
-            has_serialize_as_empty_opcode: None,
-        }
-    }
-
-    pub fn new_for_query(
-        has_segment_motion: bool,
-        has_serialize_as_empty_opcode: Option<bool>,
-    ) -> Self {
-        Self {
-            has_segment_motion,
-            has_serialize_as_empty_opcode,
-        }
-    }
-}
-
-/// Dotted position of a block stage, trailing dot included: `2.`, `2.3.1.`.
-/// See [`StatementLocation::explain_path`] for the numbering itself, which
-/// error messages share so that the two always name a statement alike.
-pub fn format_block_stage_number(location: &StatementLocation) -> String {
-    let mut number = String::new();
-    for idx in location.explain_path() {
-        write!(&mut number, "{idx}.").unwrap();
-    }
-    number
-}
-
-/// Label of a block stage: what the statement is, behind one `If body: ` (or
-/// `Else body: `) for every IF body it sits in. So `Let "x"` at the top level,
-/// `If body: Let "x"` one level in, `If body: Else body: Let "x"` for one in
-/// the ELSE branch of an IF nested in another IF's body.
-pub fn format_block_stage_label(location: &StatementLocation) -> String {
-    let mut label = String::new();
-    for step in &location.body_path {
-        label.push_str(match step.branch {
-            IfBranch::Then => "If body: ",
-            IfBranch::Else => "Else body: ",
-        });
-    }
-    match &location.kind {
-        BlockEntryKind::IfCondition => label.push_str("If cond"),
-        BlockEntryKind::Query => label.push_str("Query"),
-        BlockEntryKind::ReturnQuery => label.push_str("Return query"),
-        BlockEntryKind::Let { var, is_used } => {
-            let var = var.strip_prefix(':').unwrap_or(var.as_str());
-            let s = if *is_used {
-                format!("Let \"{var}\"")
-            } else {
-                format!("**Unused** let \"{var}\"")
-            };
-            label.push_str(&s);
-        }
-    }
-    label
 }
 
 impl<'a, C> ExecutingQuery<'a, C>
@@ -391,6 +269,56 @@ where
             })
     }
 
+    pub fn calculate_block_buckets(
+        &mut self,
+        block: &AnonymousBlock,
+    ) -> Result<Buckets, SbroadError> {
+        let mut block_buckets: Option<(StatementLocation, Buckets)> = None;
+        for entry in BlockEntries::new(&block.statements) {
+            let buckets = entry.with(|query_id| {
+                let buckets = self.bucket_discovery(*query_id)?;
+                match &buckets {
+                    Buckets::All => {
+                        return Err(SbroadError::Other(
+                            "transaction cannot be executed on all buckets".into(),
+                        ))
+                    }
+                    Buckets::Filtered(BucketSet::Exact(filtered)) if filtered.len() != 1 => {
+                        return Err(SbroadError::Other(format_smolstr!(
+                            "transaction can only be executed on a single bucket, got {buckets}"
+                        )));
+                    }
+                    Buckets::Filtered(BucketSet::Exact(_)) | Buckets::Any => {}
+                    Buckets::Filtered(_) => {
+                        return Err(SbroadError::Other(
+                            "buckets cannot be filtered for this statement".into(),
+                        ))
+                    }
+                }
+                Ok(buckets)
+            })?;
+
+            // Cross-statement check carries two locations, so it lives outside the closure.
+            if matches!(buckets, Buckets::Filtered(_)) {
+                if let Some((prev_location, prev_buckets)) = &block_buckets {
+                    if prev_buckets != &buckets {
+                        return Err(prev_location.wrap_error_with(
+                            &entry.location,
+                            SbroadError::Other(format_smolstr!(
+                                "different buckets: {prev_buckets} and {buckets}"
+                            )),
+                        ));
+                    }
+                } else {
+                    block_buckets = Some((entry.location, buckets));
+                }
+            }
+        }
+
+        let buckets = block_buckets.map(|(_, b)| b).unwrap_or(Buckets::Any);
+        Ok(buckets)
+    }
+
     /// Dispatch a distributed query from coordinator to the segments.
     ///
     /// # Errors
@@ -472,26 +400,6 @@ where
         self.exec_plan.get_ir_plan().is_explain()
     }
 
-    pub fn is_logical_explain(&self) -> bool {
-        self.exec_plan.get_ir_plan().is_logical_explain()
-    }
-
-    pub fn is_raw_explain(&self) -> bool {
-        self.exec_plan.get_ir_plan().is_raw_explain()
-    }
-
-    pub fn is_buckets_explain(&self) -> bool {
-        self.exec_plan.get_ir_plan().is_buckets_explain()
-    }
-
-    pub fn is_explain_forward(&self) -> bool {
-        self.exec_plan.get_ir_plan().is_explain_forward()
-    }
-
-    pub fn is_explain_context(&self) -> bool {
-        self.exec_plan.get_ir_plan().is_explain_context()
-    }
-
     pub fn is_block(&self) -> Result<bool, SbroadError> {
         self.exec_plan.get_ir_plan().is_block()
     }
@@ -536,237 +444,6 @@ where
         self.exec_plan.get_ir_plan().is_empty()
     }
 
-    fn get_block_logical(
-        &self,
-        block: &AnonymousBlock,
-    ) -> Result<Vec<LogicalExplain>, SbroadError> {
-        let mut explain = Vec::with_capacity(block.statements.len());
-        let plan = self.get_exec_plan().get_ir_plan();
-        for entry in BlockEntries::new(&block.statements) {
-            let explain_entry = entry.with(|query_id| LogicalExplain::new(plan, *query_id))?;
-            explain.push(explain_entry);
-        }
-
-        Ok(explain)
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn generate_block_patterns(
-        &self,
-        block: AnonymousBlock,
-        buckets: &Buckets,
-    ) -> Result<Vec<BlockStatement<(BlockQuery, Vec<Value>)>>, SbroadError> {
-        let block_bucket = match buckets {
-            Buckets::Filtered(BucketSet::Exact(set)) => {
-                assert!(set.len() == 1);
-                set.iter().copied().next()
-            }
-            _ => None,
-        };
-
-        let mut statements = Vec::with_capacity(block.statements.len());
-        for stmt in block.statements {
-            statements.push(stmt.try_map(|id| {
-                generate_pattern_with_params_for_block(&self.exec_plan, id, block_bucket, false)
-            })?);
-        }
-
-        Ok(statements)
-    }
-
-    pub fn calculate_block_buckets(
-        &mut self,
-        block: &AnonymousBlock,
-    ) -> Result<Buckets, SbroadError> {
-        let mut block_buckets: Option<(StatementLocation, Buckets)> = None;
-        for entry in BlockEntries::new(&block.statements) {
-            let buckets = entry.with(|query_id| {
-                let buckets = self.bucket_discovery(*query_id)?;
-                match &buckets {
-                    Buckets::All => {
-                        return Err(SbroadError::Other(
-                            "transaction cannot be executed on all buckets".into(),
-                        ))
-                    }
-                    Buckets::Filtered(BucketSet::Exact(filtered)) if filtered.len() != 1 => {
-                        return Err(SbroadError::Other(format_smolstr!(
-                            "transaction can only be executed on a single bucket, got {buckets}"
-                        )));
-                    }
-                    Buckets::Filtered(BucketSet::Exact(_)) | Buckets::Any => {}
-                    Buckets::Filtered(_) => {
-                        return Err(SbroadError::Other(
-                            "buckets cannot be filtered for this statement".into(),
-                        ))
-                    }
-                }
-                Ok(buckets)
-            })?;
-
-            // Cross-statement check carries two locations, so it lives outside the closure.
-            if matches!(buckets, Buckets::Filtered(_)) {
-                if let Some((prev_location, prev_buckets)) = &block_buckets {
-                    if prev_buckets != &buckets {
-                        return Err(prev_location.wrap_error_with(
-                            &entry.location,
-                            SbroadError::Other(format_smolstr!(
-                                "different buckets: {prev_buckets} and {buckets}"
-                            )),
-                        ));
-                    }
-                } else {
-                    block_buckets = Some((entry.location, buckets));
-                }
-            }
-        }
-
-        let buckets = block_buckets.map(|(_, b)| b).unwrap_or(Buckets::Any);
-        Ok(buckets)
-    }
-
-    pub fn explain_logical(&mut self) -> Result<String, SbroadError> {
-        let mut buf = String::new();
-        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
-        if !explain_options.has_single_facet() {
-            write_explain_header1!(&mut buf, "# Logical plan").unwrap();
-            writeln!(&mut buf).unwrap();
-        }
-
-        if self.is_block()? {
-            let top_id = self.exec_plan.get_ir_plan().get_top()?;
-            let block = self.exec_plan.get_ir_plan().get_owned_block_node(top_id)?;
-            let BlockOwned::Anonymous(block) = block else {
-                unreachable!("plan.is_block() returned true, but top is {block:?}")
-            };
-
-            let logical_explains = self.get_block_logical(&block)?;
-
-            let buckets = self.calculate_block_buckets(&block)?;
-            let block_statements = self.generate_block_patterns(block, &buckets)?;
-
-            let explain_options = self.exec_plan.get_ir_plan().explain_options;
-            let should_fmt = explain_options.contains(ExplainOptions::Fmt);
-
-            // One stage per query, in execution order -- the same order
-            // `logical_explains` is indexed by.
-            let mut entries = BlockEntries::new(&block_statements).enumerate().peekable();
-            while let Some((idx, entry)) = entries.next() {
-                let number = format_block_stage_number(&entry.location);
-                let stage = format_block_stage_label(&entry.location);
-
-                let (query, params) = entry.query;
-                let motion_info = MotionInfo::new_for_transaction();
-                let source = C::build_explain_query_location(&buckets, &motion_info);
-                write_explain_header2!(&mut buf, "{number} {stage} ({source})").unwrap();
-                writeln!(&mut buf).unwrap();
-
-                let sql = format_sql(&query.pattern, params, should_fmt);
-                write!(&mut buf, "{sql}\n\n").unwrap();
-
-                write!(&mut buf, "{}", logical_explains[idx]).unwrap();
-
-                if entries.peek().is_some() {
-                    write!(&mut buf, "\n\n").unwrap();
-                }
-            }
-        } else {
-            let plan = self.get_exec_plan().get_ir_plan();
-            let top_id = plan.get_top()?;
-            let explain = LogicalExplain::new(plan, top_id)?;
-            write!(&mut buf, "{explain}").unwrap();
-        }
-
-        Ok(buf)
-    }
-
-    pub fn explain_forward(&mut self) -> Result<String, SbroadError> {
-        let bounded_buckets = bounded_buckets_from_query(self)?;
-        let coord = self.get_coordinator();
-        let forward = coord.get_possible_forward_option(&bounded_buckets.buckets, &mut None)?;
-
-        let mut buf = String::new();
-        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
-        if !explain_options.has_single_facet() {
-            write_explain_header1!(&mut buf, "# Forward").unwrap();
-            writeln!(&mut buf).unwrap();
-        }
-        writeln!(&mut buf, "forward analysis (on > ro_to_rw > off):").unwrap();
-        write!(indent(&mut buf), "forward = {forward}").unwrap();
-
-        Ok(buf)
-    }
-
-    pub fn explain_raw<'p>(&mut self, port: &mut impl Port<'p>) -> Result<String, SbroadError> {
-        let ir_plan = self.get_exec_plan().get_ir_plan();
-
-        let explain_options = ir_plan.explain_options;
-        let mut format_options = RawExplainOptions::empty();
-        if explain_options.contains(ExplainOptions::Fmt) {
-            format_options.insert(RawExplainOptions::Fmt);
-        }
-
-        let top_id = ir_plan.get_top()?;
-        let maybe_block_stages = ir_plan
-            .get_block_node(top_id)
-            .and_then(|block| match block {
-                Block::CallProcedure(_) => Ok(vec![]),
-                Block::Anonymous(block) => BlockStageHeader::from_anon_block(block),
-            })
-            .ok();
-
-        let is_block = maybe_block_stages.is_some();
-        if explain_options.contains(ExplainOptions::Buckets) && !is_block {
-            format_options.insert(RawExplainOptions::ShowBuckets);
-        }
-
-        // The storage emits one port entry per block statement but knows
-        // nothing of the block's shape, so the headers are named here, where
-        // the plan still is.
-        let stages = maybe_block_stages.unwrap_or_default();
-        let raw_explain = RawExplain::from_port(port, format_options, stages)?;
-        let mut buf = String::new();
-        if !explain_options.has_single_facet() {
-            write_explain_header1!(&mut buf, "# Raw plan").unwrap();
-            writeln!(&mut buf).unwrap();
-        }
-        write!(&mut buf, "{raw_explain}").unwrap();
-
-        Ok(buf)
-    }
-
-    pub fn explain_buckets(&mut self) -> Result<String, SbroadError> {
-        let bounded_buckets = bounded_buckets_from_query(self)?;
-        let mut buf = String::new();
-        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
-        if !explain_options.has_single_facet() {
-            write_explain_header1!(&mut buf, "# Buckets").unwrap();
-            writeln!(&mut buf).unwrap();
-        }
-
-        write!(&mut buf, "{bounded_buckets}").unwrap();
-
-        Ok(buf)
-    }
-
-    pub fn explain_context(&mut self) -> Result<String, SbroadError> {
-        let mut buf = String::new();
-
-        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
-        if !explain_options.has_single_facet() {
-            write_explain_header1!(&mut buf, "# Context").unwrap();
-            writeln!(&mut buf).unwrap();
-        }
-
-        let plan = self.get_exec_plan().get_ir_plan();
-        let opcode_max = plan.effective_options.sql_vdbe_opcode_max;
-        let row_max = plan.effective_options.sql_motion_row_max;
-
-        writeln!(&mut buf, "{} = {opcode_max}", OptionKind::VdbeOpcodeMax).unwrap();
-        write!(&mut buf, "{} = {row_max}", OptionKind::MotionRowMax).unwrap();
-
-        Ok(buf)
-    }
-
     /// Enforces the requested `FORWARD` option against the actual
     /// buckets for an execution step.
     ///
@@ -785,7 +462,7 @@ where
             return Ok(());
         }
 
-        if self.is_raw_explain() {
+        if self.get_exec_plan().get_ir_plan().is_raw_explain() {
             return Ok(());
         }
 
@@ -794,339 +471,6 @@ where
             buckets,
             &mut self.exec_ctx.target_replicaset,
         )
-    }
-}
-
-#[derive(Debug, Clone, msgpack::Encode, msgpack::Decode)]
-struct RawExplainTuple {
-    selectid: i64,
-    order: i64,
-    from: i64,
-    detail: String,
-}
-
-impl RawExplainTuple {
-    fn try_decode_from_mp(mp: &[u8]) -> Result<Self, String> {
-        if let Ok(tuple) = msgpack::decode::<RawExplainTuple>(mp) {
-            return Ok(tuple);
-        }
-
-        match msgpack::decode::<Vec<String>>(mp) {
-            Ok(mut err) => Err(err.pop().unwrap()),
-            Err(err) => Err(format!("BUG: failed to decode error: {err}")),
-        }
-    }
-}
-
-#[derive(Debug)]
-enum RawExplainEntry {
-    Multiple(Vec<QueryEntry>),
-    Single(QueryEntry),
-}
-
-#[derive(Debug)]
-struct QueryEntry {
-    query: String,
-    location: String,
-    buckets: String,
-    sql: String,
-    params: Vec<Value>,
-    tuples: Result<Vec<RawExplainTuple>, String>,
-}
-
-impl QueryEntry {
-    fn decode_entry<'p>(
-        port_iter: &mut Peekable<impl Iterator<Item = &'p [u8]>>,
-    ) -> Result<QueryEntry, SbroadError> {
-        let query_mp = port_iter.next().expect("query must be in port");
-        let query_wrapped: Vec<String> = msgpack::decode(query_mp)
-            .map_err(|err| SbroadError::Other(format_smolstr!("unable to decode query: {err}")))?;
-        let query = query_wrapped[0].clone();
-
-        let location_mp = port_iter.next().expect("location must be in port");
-        let location_wrapped: Vec<String> = msgpack::decode(location_mp).map_err(|err| {
-            SbroadError::Other(format_smolstr!("unable to decode location: {err}"))
-        })?;
-        let location = location_wrapped[0].clone();
-
-        let buckets_mp = port_iter.next().expect("buckets must be in port");
-        let buckets_wrapped: Vec<String> = msgpack::decode(buckets_mp).map_err(|err| {
-            SbroadError::Other(format_smolstr!("unable to decode buckets: {err}"))
-        })?;
-        let buckets = buckets_wrapped[0].clone();
-
-        let sql_mp = port_iter.next().expect("sql query must be in port");
-        let sql_wrapped: Vec<String> = msgpack::decode(sql_mp).map_err(|err| {
-            SbroadError::Other(format_smolstr!("unable to decode sql query: {err}"))
-        })?;
-        let sql = sql_wrapped[0].clone();
-
-        let params_mp = port_iter.next().expect("params must be in port");
-        let params: Vec<Value> = msgpack::decode(params_mp)
-            .map_err(|err| SbroadError::Other(format_smolstr!("unable to decode params: {err}")))?;
-
-        let num_mp = port_iter.next().expect("num must be in port");
-        let num_wrapped: Vec<usize> = msgpack::decode(num_mp).map_err(|err| {
-            SbroadError::Other(format_smolstr!(
-                "unable to decode the number of rows: {err}"
-            ))
-        })?;
-        let num = num_wrapped[0];
-
-        let mut tuples: Result<Vec<RawExplainTuple>, String> = port_iter
-            .take(num)
-            .map(RawExplainTuple::try_decode_from_mp)
-            .collect();
-
-        // Provide a fallback for empty raw plans.
-        if let Ok(items) = &mut tuples {
-            if items.is_empty() {
-                items.push(RawExplainTuple {
-                    selectid: 0,
-                    order: 0,
-                    from: 0,
-                    detail: "TRIVIAL".into(),
-                });
-            }
-        }
-
-        Ok(QueryEntry {
-            query,
-            location,
-            buckets,
-            sql,
-            params,
-            tuples,
-        })
-    }
-}
-
-const LINE_WIDTH: usize = 80;
-
-fn format_raw_plan_node(node: &str, should_fmt: bool) -> String {
-    let mut node = node.to_owned();
-    if should_fmt && node.len() > LINE_WIDTH {
-        node = node.replace("USING", "\n USING");
-        node = node.replace("(", "\n (");
-    }
-
-    node
-}
-
-fn format_raw_plan(tuples: &[RawExplainTuple], should_fmt: bool) -> String {
-    let mut plan = String::new();
-
-    let mut tuples = tuples.iter().peekable();
-    while let Some(tuple) = tuples.next() {
-        let has_next = tuples.peek().is_some();
-        let sep = if has_next { "\n" } else { "" };
-
-        let idx = tuple.selectid;
-        let level = tuple.order.max(0) as usize + 1;
-        let node = format_raw_plan_node(&tuple.detail, should_fmt);
-        let prefix = format_smolstr!("[{idx}] ");
-
-        write!(
-            indent_custom(&mut plan, &mut indent_with_prefix(level * 2, prefix)),
-            "{node}{sep}"
-        )
-        .unwrap();
-    }
-
-    plan
-}
-
-fn format_sql(explain: &str, params: &[Value], should_fmt: bool) -> String {
-    let sql = explain
-        .strip_prefix("EXPLAIN QUERY PLAN ")
-        .unwrap_or(explain);
-
-    let mut fmt_options = sqlformat::FormatOptions::<'_> {
-        joins_as_top_level: true,
-        inline: true,
-        ..Default::default()
-    };
-
-    if should_fmt && sql.len() >= LINE_WIDTH {
-        fmt_options.joins_as_top_level = false;
-        fmt_options.inline = false;
-    }
-
-    let params = params.iter().map(|p| p.to_string()).collect();
-    let indexed_params = sqlformat::QueryParams::Indexed(params);
-
-    sqlformat::format(sql, &indexed_params, &fmt_options)
-}
-
-struct ExplainIndex(usize, Option<usize>);
-
-impl std::fmt::Display for ExplainIndex {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(idx) = self.1 {
-            write!(f, "{}.{idx}.", self.0)
-        } else {
-            write!(f, "{}.", self.0)
-        }
-    }
-}
-
-/// Number and label of one transactional-block stage, worked out on the router
-/// from the block's shape. See [`format_block_stage_number`] and
-/// [`format_block_stage_label`].
-#[derive(Debug)]
-pub struct BlockStageHeader {
-    number: String,
-    label: String,
-}
-
-impl BlockStageHeader {
-    fn from_anon_block(block: &AnonymousBlock) -> Result<Vec<Self>, SbroadError> {
-        let stages = BlockEntries::new(&block.statements)
-            .map(|entry| BlockStageHeader {
-                number: format_block_stage_number(&entry.location),
-                label: format_block_stage_label(&entry.location),
-            })
-            .collect();
-
-        Ok(stages)
-    }
-}
-
-fn write_raw_explain_entry(
-    f: &mut fmt::Formatter<'_>,
-    entry: &QueryEntry,
-    idx: ExplainIndex,
-    stage: Option<&BlockStageHeader>,
-    format_options: RawExplainOptions,
-) -> fmt::Result {
-    let should_fmt = format_options.contains(RawExplainOptions::Fmt);
-    let sql = format_sql(&entry.sql, &entry.params, should_fmt);
-    let plan = match &entry.tuples {
-        Ok(tuples) => format_raw_plan(tuples, should_fmt),
-        Err(err) => err.clone(),
-    };
-
-    let source = &entry.location;
-    match stage {
-        Some(stage) => {
-            let (number, label) = (&stage.number, &stage.label);
-            write_explain_header2!(f, "{number} {label} ({source})")?;
-        }
-        None => {
-            let kind = &entry.query;
-            write_explain_header2!(f, "{idx} {kind} ({source})")?;
-        }
-    }
-    write!(f, "\n{sql}\n\n")?;
-    write!(f, "plan:\n{plan}")?;
-
-    let show_buckets = format_options.contains(RawExplainOptions::ShowBuckets);
-    if show_buckets {
-        write!(f, "\n\n{}", entry.buckets)?;
-    }
-
-    Ok(())
-}
-
-bitflags! {
-    /// Helper struct which specifies the options of `RawExplain` formatting.
-    #[derive(Clone, Copy, Debug)]
-    struct RawExplainOptions: u8 {
-        const ShowBuckets = 1;
-        const Fmt = 1 << 1;
-    }
-}
-
-#[derive(Debug)]
-struct RawExplain {
-    entries: Vec<RawExplainEntry>,
-    format_options: RawExplainOptions,
-    /// Headers for a transactional block, one per entry in the same order.
-    /// Empty for anything else, and deliberately also when the count does not
-    /// match the entries -- better plain numbering than wrong labels.
-    stages: Vec<BlockStageHeader>,
-}
-
-impl fmt::Display for RawExplain {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut entries = self.entries.iter().enumerate().peekable();
-        while let Some((idx, entry)) = entries.next() {
-            match entry {
-                RawExplainEntry::Single(entry) => {
-                    write_raw_explain_entry(
-                        f,
-                        entry,
-                        ExplainIndex(idx + 1, None),
-                        self.stages.get(idx),
-                        self.format_options,
-                    )?;
-                }
-                RawExplainEntry::Multiple(entries) => {
-                    let mut entry_iter = entries.iter().enumerate().peekable();
-                    while let Some((i, entry)) = entry_iter.next() {
-                        write_raw_explain_entry(
-                            f,
-                            entry,
-                            ExplainIndex(idx + 1, Some(i + 1)),
-                            None,
-                            self.format_options,
-                        )?;
-
-                        let has_next = entry_iter.peek().is_some();
-                        if has_next {
-                            write!(f, "\n\n")?;
-                        }
-                    }
-                }
-            };
-
-            // Since raw explain entries don't include a trailing newline,
-            // the first writeln! terminates the previous entry's last line,
-            // and the second writeln! adds a blank separator line between entries.
-            let has_next = entries.peek().is_some();
-            if has_next {
-                write!(f, "\n\n")?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl RawExplain {
-    pub fn from_port<'p>(
-        port: &mut impl Port<'p>,
-        format_options: RawExplainOptions,
-        stages: Vec<BlockStageHeader>,
-    ) -> Result<RawExplain, SbroadError> {
-        let mut port_iter = port.iter().peekable();
-        let mut explain_entries = Vec::new();
-        while let Some(mp) = port_iter.peek() {
-            if let Ok(num_of_entries_wrapped) = msgpack::decode::<Vec<usize>>(mp)
-                .map_err(|err| SbroadError::Other(format_smolstr!("unable to decode query: {err}")))
-            {
-                // Skip the value since it's been already handled.
-                let _ = port_iter.next().expect("peek() returned true");
-
-                let num_of_entries = num_of_entries_wrapped[0];
-                let mut entries = Vec::new();
-                for _ in 0..num_of_entries {
-                    let entry = QueryEntry::decode_entry(&mut port_iter)?;
-                    entries.push(entry);
-                }
-
-                explain_entries.push(RawExplainEntry::Multiple(entries));
-            } else {
-                let entry = QueryEntry::decode_entry(&mut port_iter)?;
-                explain_entries.push(RawExplainEntry::Single(entry));
-            }
-        }
-
-        Ok(Self {
-            entries: explain_entries,
-            format_options,
-            stages,
-        })
     }
 }
 

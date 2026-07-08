@@ -2,6 +2,7 @@ use crate::frontend::sql::transform_into_plan;
 use pretty_assertions::assert_eq;
 use sql_executor::executor::engine::mock::RouterConfigurationMock;
 use sql_executor::test_helpers::sql_to_optimized_ir;
+use sql_explain::explain::explain_logical;
 
 #[test]
 fn like_valid() {
@@ -57,7 +58,7 @@ fn like_explain1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.a::string::string LIKE t1.a::string::string ESCAPE '\'::string -> col_1)
       selection ((t1.a::string::string || 'a'::string)::string LIKE ('a'::string || 'a'::string)::string ESCAPE '\'::string)
         scan t1
@@ -70,7 +71,7 @@ fn like_explain2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.a::string::string LIKE t1.a::string::string ESCAPE '\'::string -> col_1)
       selection ((t1.a::string::string || 'a'::string)::string LIKE ('a'::string || 'a'::string)::string ESCAPE 'x'::string)
         scan t1
@@ -83,7 +84,7 @@ fn like_explain3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::bool -> col_1)
       group by (gr_expr_1::bool)
         motion [policy: full, program: ReshardIfNeeded]
@@ -99,7 +100,7 @@ fn like_explain4() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t1.a::string -> a, t1.b::int -> b)
       selection (ROW($2)::string LIKE ROW($1)::string ESCAPE ROW($0)::string)
         scan t1
@@ -128,7 +129,7 @@ fn ilike_explain() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (gr_expr_1::bool -> col_1)
       group by (gr_expr_1::bool)
         motion [policy: full, program: ReshardIfNeeded]

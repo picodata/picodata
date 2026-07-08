@@ -1,5 +1,6 @@
 use sql::executor::engine::mock::RouterRuntimeMock;
 use sql::executor::ExecutingQuery;
+use sql::explain::explain_logical;
 use sql::ir::bucket::Buckets;
 use sql::ExecutingQueryExt;
 
@@ -11,7 +12,7 @@ fn test_bool_folding1() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -31,7 +32,7 @@ fn test_bool_folding2() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -51,7 +52,7 @@ fn test_bool_folding3() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -71,7 +72,7 @@ fn test_bool_folding4() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -91,7 +92,7 @@ fn test_bool_folding5() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -115,7 +116,7 @@ fn test_bool_folding6() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -139,7 +140,7 @@ fn test_bool_folding7() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -159,7 +160,7 @@ fn test_bool_folding8() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -179,7 +180,7 @@ fn test_bool_folding9() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -199,7 +200,7 @@ fn test_bool_folding10() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -219,7 +220,7 @@ fn test_bool_folding11() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -239,7 +240,7 @@ fn test_bool_folding12() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -259,7 +260,7 @@ fn test_bool_folding13() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -279,7 +280,7 @@ fn test_bool_folding14() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -299,7 +300,7 @@ fn test_bool_folding15() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -319,7 +320,7 @@ fn test_bool_folding16() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -339,7 +340,7 @@ fn test_bool_folding17() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -362,7 +363,7 @@ fn test_bool_folding18() {
     let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let _top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
     projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
@@ -379,7 +380,7 @@ fn test_bool_folding19() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -399,7 +400,7 @@ fn test_bool_folding20() {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let query_explain = plan.explain_logical().unwrap();
+    let query_explain = explain_logical(&plan).unwrap();
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
@@ -426,7 +427,7 @@ fn test_bool_folding21() {
     assert_eq!(Buckets::All, buckets);
 
     let plan = query.get_exec_plan().get_ir_plan();
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       selection (true::bool)
         scan t
@@ -469,7 +470,7 @@ fn test_bool_folding22() {
     let coordinator = RouterRuntimeMock::new();
     let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       selection ((t.a::int in ROW($0) and t.c::int = t.d::int))
         scan t
@@ -518,7 +519,7 @@ fn test_bool_folding23() {
     let coordinator = RouterRuntimeMock::new();
     let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.a::int -> a, t2.b::int -> b, t2.c::int -> c, t2.d::int -> d)
       join on (true::bool)
         scan t
@@ -566,7 +567,7 @@ fn test_bool_folding24() {
     let coordinator = RouterRuntimeMock::new();
     let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.a::int -> a, t2.b::int -> b, t2.c::int -> c, t2.d::int -> d)
       join on ((t.c::int = t.d::int and t.a::int in ROW($0)))
         scan t
@@ -613,7 +614,7 @@ fn test_bool_folding25() {
     let coordinator = RouterRuntimeMock::new();
     let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
       selection (false::bool)
         scan unnamed_subquery
@@ -634,7 +635,7 @@ fn test_bool_folding26() {
     let coordinator = RouterRuntimeMock::new();
     let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
       selection (false::bool)
         scan unnamed_subquery
@@ -655,7 +656,7 @@ fn test_bool_folding27() {
     let coordinator = RouterRuntimeMock::new();
     let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
       selection (false::bool)
         scan unnamed_subquery
@@ -675,7 +676,7 @@ fn test_bool_folding28() {
     let coordinator = RouterRuntimeMock::new();
     let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
       selection (false::bool)
         scan unnamed_subquery
@@ -703,7 +704,7 @@ fn test_bool_folding29() {
     let coordinator = RouterRuntimeMock::new();
     let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       selection ((t.a::int > 0::int) > true::bool)
         scan t
@@ -747,7 +748,7 @@ fn test_bool_folding30() {
     let coordinator = RouterRuntimeMock::new();
     let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
     let plan = query.get_exec_plan().get_ir_plan();
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
       selection ((t.a::int = 1::int or t.a::int = 2::int) <> true::bool)
         scan t

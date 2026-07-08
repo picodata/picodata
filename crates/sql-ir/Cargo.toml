@@ -10,8 +10,6 @@ edition.workspace = true
 ahash = { workspace = true }
 bitflags = { version = "2.9.1", features = ["serde"] }
 chrono = { workspace = true }
-comfy-table = { workspace = true }
-indenter = { workspace = true }
 itertools = "0.10"
 rand = { workspace = true }
 rmp = { workspace = true }
