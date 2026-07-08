@@ -261,8 +261,13 @@ def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
     i2.call("pico._inject_error", "BLOCK_WHEN_PERSISTING_DDL_COMMIT", False)
     i3.call("pico._inject_error", "BLOCK_WHEN_PERSISTING_DDL_COMMIT", False)
 
+    # Due to high CI load, the test could take longer, which may result in exceeding the
+    # election timeout - because of the enabled check_quorum setting, i1 then steps down
+    # as leader. So at this point, once injections are disabled, we might have a different
+    # leader. To avoid failure, fetch the leader again, possibly waiting until we have one.
+    leader = cluster.wait_leader_elected()
     # Wait until governor finishes with all the needed changes.
-    i1.wait_governor_status("idle")
+    leader.wait_governor_status("idle")
 
 
 def test_sentinel_backoff(cluster: Cluster):
