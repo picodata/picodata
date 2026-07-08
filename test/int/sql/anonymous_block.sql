@@ -22,6 +22,9 @@ INSERT INTO iocdu_masked_unique VALUES (1,1,10,0), (1,2,20,0);
 DROP TABLE IF EXISTS iocdu_let;
 CREATE TABLE iocdu_let (pk INT PRIMARY KEY, b INT);
 INSERT INTO iocdu_let VALUES (1,5);
+DROP TABLE IF EXISTS iocdu_param;
+CREATE TABLE iocdu_param (pk INT PRIMARY KEY, b INT);
+INSERT INTO iocdu_param VALUES (1,5);
 DROP TABLE IF EXISTS iocdu_let_u;
 CREATE TABLE iocdu_let_u (sk INT, id INT, val INT, note INT, PRIMARY KEY (sk, id)) DISTRIBUTED BY (sk);
 CREATE UNIQUE INDEX iocdu_let_u_value ON iocdu_let_u USING TREE (sk, val);
@@ -548,6 +551,42 @@ END $$;
 SELECT * FROM iocdu_let WHERE pk = 1;
 -- EXPECTED:
 1, 10
+
+-- TEST: insert-on-conflict-do-update-param-rhs
+-- SQL:
+DO $$
+BEGIN
+  LET extra = (SELECT $2);
+  INSERT INTO iocdu_param VALUES (1, 1)
+  ON CONFLICT (pk) DO UPDATE SET b = b + $1;
+END $$;
+-- PARAMS:
+7,
+0
+
+-- TEST: insert-on-conflict-do-update-param-rhs-check
+-- SQL:
+SELECT * FROM iocdu_param WHERE pk = 1;
+-- EXPECTED:
+1, 12
+
+-- TEST: insert-on-conflict-do-update-param-let
+-- SQL:
+DO $$
+BEGIN
+  LET m = (SELECT $1 + $2);
+  INSERT INTO iocdu_param VALUES (1, 1)
+  ON CONFLICT (pk) DO UPDATE SET b = b + m;
+END $$;
+-- PARAMS:
+7,
+0
+
+-- TEST: insert-on-conflict-do-update-param-let-check
+-- SQL:
+SELECT * FROM iocdu_param WHERE pk = 1;
+-- EXPECTED:
+1, 19
 
 -- TEST: insert-on-conflict-do-update-let-secondary-index
 -- SQL:

@@ -120,11 +120,13 @@ class AbstractRunner(ABC):
     run_query_error: type
 
     @abstractmethod
-    def run_query(self, query: str) -> list:
+    def run_query(self, query: str, params: list[Any] | None = None) -> list:
         pass
 
-    def do_catchsql(self, sql: str, expected: str | list):
+    def do_catchsql(self, sql: str, expected: str | list, params: list[Any] | None = None):
         queries = parse_queries(sql)
+        if params is not None:
+            assert len(queries) == 1, "SQL tests with PARAMS must contain a single query"
 
         if isinstance(expected, str):
             expected = [expected]
@@ -139,15 +141,15 @@ class AbstractRunner(ABC):
             for query, exp_err in zip(queries, expected):
                 if exp_err and exp_err != NOT_AN_ERROR:
                     with pytest.raises(self.run_query_error, match=exp_err):
-                        self.run_query(query)
+                        self.run_query(query, params)
                 else:
-                    self.run_query(query)
+                    self.run_query(query, params)
 
         # TODO: replace None with smth to support `--update-sql-snapshots`
         return None, do_check
 
-    def do_execsql(self, query: str, expected: list):
-        result = self.run_query(query)
+    def do_execsql(self, query: str, expected: list, params: list[Any] | None = None):
+        result = self.run_query(query, params)
         result_len = len(result[0]) if len(result) > 0 else 0
         new_expected = list(map(list, zip(*(iter(expected),) * result_len)))
 
@@ -157,8 +159,8 @@ class AbstractRunner(ABC):
         # TODO: replace None with smth to support `--update-sql-snapshots`
         return None, do_check
 
-    def do_execsql_exact(self, query: str, expected: list):
-        result = self.run_query(query)
+    def do_execsql_exact(self, query: str, expected: list, params: list[Any] | None = None):
+        result = self.run_query(query, params)
         output = [col for row in result for col in row]
 
         def do_check():
@@ -167,8 +169,8 @@ class AbstractRunner(ABC):
         # TODO: replace None with smth to support `--update-sql-snapshots`
         return None, do_check
 
-    def do_explain_sql(self, query: str, expected: list):
-        result = self.run_query(query)
+    def do_explain_sql(self, query: str, expected: list, params: list[Any] | None = None):
+        result = self.run_query(query, params)
         output = [row[0] for row in result]
 
         def do_check():
@@ -184,8 +186,9 @@ class IprotoRunner(AbstractRunner):
         super().__init__()
         self.cluster = cluster
 
-    def run_query(self, query: str) -> list:
-        result = self.cluster.leader().sql(query)
+    def run_query(self, query: str, params: list[Any] | None = None) -> list:
+        params = [] if params is None else params
+        result = self.cluster.leader().sql(query, *params)
         rows: list[Any] = []
         for row in result:
             match row:
@@ -222,9 +225,12 @@ class PgprotoRunner(AbstractRunner):
         self.cluster = cluster
         self.conn = conn
 
-    def run_query(self, query: str) -> list:
-        with self.conn.cursor() as cur:
-            cur.execute(query)
+    def run_query(self, query: str, params: list[Any] | None = None) -> list:
+        with psycopg.RawCursor(self.conn) as cur:
+            if params is not None:
+                cur.execute(query, params, prepare=True)
+            else:
+                cur.execute(query)
             # https://www.psycopg.org/psycopg3/docs/api/cursors.html#psycopg.Cursor.rownumber
             if cur.rownumber is None:
                 return []
@@ -281,6 +287,8 @@ def parse_file(cls: Type, file_name: str) -> list:
         r"-- TEST: (?P<name>[^\n]*)\n"
         # SQL query
         r"-- SQL:\n(?P<query>.*?)\n"
+        # PARAMS (optional): bind parameters for a single SQL query.
+        r"(?:-- PARAMS:\n(?P<params>.*?)(?=-- (?:EXPECTED|UNORDERED|ERROR):|-- TEST:|\Z))?"
         # EXPECTED (optional): tuples returned by the picodata must
         # appear in exactly the same order as specified in the test
         # result.
@@ -293,7 +301,7 @@ def parse_file(cls: Type, file_name: str) -> list:
         # Next test or end of file
         r"(?=-- TEST:|\Z)"
     )
-    params = []
+    pytest_params = []
     matches = re.finditer(test_pattern, content, re.DOTALL)
     for match in matches:
         name = match.group("name").strip()
@@ -304,6 +312,13 @@ def parse_file(cls: Type, file_name: str) -> list:
             continue
         query = query.strip()
         assert query, "SQL query must be provided"
+
+        bind_params = None
+        params_body = match.group("params")
+        if params_body is not None:
+            queries = parse_queries(query)
+            assert len(queries) == 1, f"Test {name}: PARAMS are supported only for a single query"
+            bind_params = _parse_line(params_body, None, ",")
 
         kind = match.group("kind")
 
@@ -322,9 +337,9 @@ def parse_file(cls: Type, file_name: str) -> list:
             else:
                 expected = _parse_line(match.group("body"), None, ",")
 
-        params.append(pytest.param(query, expected, is_exact, error, test_file, span, id=name))
+        pytest_params.append(pytest.param(query, bind_params, expected, is_exact, error, test_file, span, id=name))
 
-    return params
+    return pytest_params
 
 
 def sql_test_file(file_name: str):
@@ -336,13 +351,14 @@ def sql_test_file(file_name: str):
     return inner
 
 
-TEST_SQL_ARGS = ["query", "expected", "is_exact", "error", "file_name", "span"]
+TEST_SQL_ARGS = ["query", "params", "expected", "is_exact", "error", "file_name", "span"]
 
 
 # Pytest hook to generate tests from parameters. For details see test/framework/sqltester.py
 def pytest_generate_tests(metafunc):
     if metafunc.function.__name__ == "test_sql":
         assert "query" in metafunc.fixturenames
+        assert "params" in metafunc.fixturenames
         assert "expected" in metafunc.fixturenames
         assert "error" in metafunc.fixturenames
         metafunc.parametrize(TEST_SQL_ARGS, metafunc.cls.params)
@@ -402,6 +418,7 @@ class AbstractCluster(ABC):
         self,
         runner,
         query: str,
+        params: list,
         is_exact: bool,
         expected: list,
         error: str,
@@ -415,13 +432,13 @@ class AbstractCluster(ABC):
         output = None
         try:
             if query.lower().startswith("explain") and not error:
-                output, do_check = runner.do_explain_sql(query, expected)
+                output, do_check = runner.do_explain_sql(query, expected, params)
             elif expected and not is_exact:
-                output, do_check = runner.do_execsql(query, expected)
+                output, do_check = runner.do_execsql(query, expected, params)
             elif expected and is_exact:
-                output, do_check = runner.do_execsql_exact(query, expected)
+                output, do_check = runner.do_execsql_exact(query, expected, params)
             else:
-                output, do_check = runner.do_catchsql(query, error)
+                output, do_check = runner.do_catchsql(query, error, params)
 
             do_check()
 
