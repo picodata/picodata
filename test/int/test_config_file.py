@@ -73,10 +73,10 @@ def test_memtx_and_vinyl_dir_differ_from_instance_dir(cluster: Cluster):
     cluster.set_config_file(
         yaml=f"""
 cluster:
+    name: my-cluster
     tier:
         default:
 instance:
-    cluster_name: test
     name: from-config
     memtx:
         dir: {memtx_dir}

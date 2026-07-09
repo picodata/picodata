@@ -5586,7 +5586,6 @@ instance:
     fn config_parameter_without_plugin_section() {
         let yaml = r###"
 instance:
-    cluster_name: test
 "###;
         let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
         let addresses = config
