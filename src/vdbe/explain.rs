@@ -10,7 +10,7 @@ use super::ffi::{
     sql_explain_hook, sql_explain_hook_args, sql_raw_explain_event, sql_raw_explain_provider,
     sql_stmt, sql_stmt_compile_raw_explain, SQL_RAW_EXPLAIN_IDX_INSERT,
 };
-use sql::executor::vdbe::{SqlError, SqlStmt};
+use sql::executor::vdbe::{SqlError, SqlStmt, VdbeOwnedPayload};
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
@@ -38,6 +38,8 @@ pub(crate) struct RawExplainProvider {
     next: usize,
     unexpected_events: usize,
 }
+
+impl VdbeOwnedPayload for RawExplainProvider {}
 
 unsafe extern "C" fn run_sql_explain_hook(args: *mut sql_explain_hook_args) -> *const c_char {
     if args.is_null() {

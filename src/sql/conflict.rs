@@ -79,7 +79,22 @@ pub(crate) fn run_do_update_with_ops(
     insert_tuple: &RawBytes,
     route: &DoUpdateRouteTemplate,
     update_ops: &UpdateOps,
+    seen_keys: &mut AHashSet<Vec<u8>>,
 ) -> Result<()> {
+    let tuple = insert_tuple_from_raw(insert_tuple)?;
+    for context in &route.index_contexts {
+        if target_key_has_null(context, &tuple)? {
+            continue;
+        }
+        let key = extract_update_key(&context.key_def, &tuple)?;
+        if !seen_keys.insert(key.into()) {
+            return Err(SbroadError::other(
+                "ON CONFLICT DO UPDATE command cannot affect row a second time",
+            ));
+        }
+        break;
+    }
+
     match route.method {
         DoUpdateMethod::Upsert => space
             .upsert(insert_tuple, update_ops.as_slice())
@@ -324,6 +339,16 @@ fn extract_update_key(key_def: &KeyDef, insert_tuple: &Tuple) -> Result<TupleBuf
     })
 }
 
+fn insert_tuple_from_raw(insert_tuple: &RawBytes) -> Result<Tuple> {
+    Tuple::try_from_slice(insert_tuple).map_err(|e| {
+        SbroadError::FailedTo(
+            Action::Encode,
+            Some(Entity::Tuple),
+            format_smolstr!("failed to encode inserted tuple for conflict update: {e}"),
+        )
+    })
+}
+
 fn target_key_has_null(context: &ConflictIndexContext, tuple: &Tuple) -> Result<bool> {
     for field_no in &context.nullable_key_fields {
         let field = tuple.field::<&RawBytes>(*field_no).map_err(|e| {
@@ -347,13 +372,7 @@ fn find_target_context<'a>(
     insert_tuple: &RawBytes,
     index_contexts: &'a [ConflictIndexContext],
 ) -> Result<Option<(&'a ConflictIndexContext, TupleBuffer)>> {
-    let tuple = Tuple::try_from_slice(insert_tuple).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Encode,
-            Some(Entity::Tuple),
-            format_smolstr!("failed to encode inserted tuple for conflict update: {e}"),
-        )
-    })?;
+    let tuple = insert_tuple_from_raw(insert_tuple)?;
     for context in index_contexts {
         if target_key_has_null(context, &tuple)? {
             continue;

@@ -5,7 +5,6 @@ use crate::{
     ir::value::{EncodedValue, Value},
 };
 use std::{
-    any::Any,
     borrow::Cow,
     ffi::{c_char, c_int, c_void, CStr},
     fmt,
@@ -58,6 +57,19 @@ pub enum SqlError {
 
 type SqlResult<T> = Result<T, SqlError>;
 
+/// Opaque payload owned by a prepared VDBE statement.
+///
+/// Payloads are kept alive until statement finalization because VDBE opcodes
+/// can store raw pointers into them. `before_execute` lets a payload reset
+/// per-run state while the caller holds exclusive access to the statement.
+pub trait VdbeOwnedPayload {
+    fn before_execute(&mut self) {}
+
+    /// Release per-run memory right after execution instead of waiting for the
+    /// next cached statement call; IOC DU uses this to drop `seen_keys`.
+    fn after_execute(&mut self) {}
+}
+
 impl From<String> for SqlError {
     fn from(value: String) -> Self {
         Self::FailedToReassembleProgram(value)
@@ -94,7 +106,7 @@ pub struct RawStmt {
     // inserting/removing it from the statement cache and avoid extra computation.
     size_estimate: usize,
     // Opaque payloads that must live until the very end of statement drop.
-    owned_payloads: ManuallyDrop<Vec<Box<dyn Any>>>,
+    owned_payloads: ManuallyDrop<Vec<Box<dyn VdbeOwnedPayload>>>,
 }
 
 impl fmt::Debug for RawStmt {
@@ -142,7 +154,7 @@ impl RawStmt {
     /// The payload is not used by `RawStmt` directly. It is stored so raw pointers
     /// embedded into the underlying VDBE remain valid until statement finalization
     /// completes. Payloads are dropped at the very end of `RawStmt::drop`.
-    fn add_owned_payload(&mut self, payload: Box<dyn Any>) {
+    fn add_owned_payload(&mut self, payload: Box<dyn VdbeOwnedPayload>) {
         self.owned_payloads.push(payload);
     }
 
@@ -155,6 +167,9 @@ impl RawStmt {
         debug_assert!(
             tarantool::msgpack::skip_value(&mut std::io::Cursor::new(&param_data)).is_ok()
         );
+        for payload in self.owned_payloads.iter_mut() {
+            payload.before_execute();
+        }
         // SAFETY: Safe as all arguments are valid.
         let execute_result = unsafe {
             sql_stmt_execute_into_port_ext(
@@ -165,8 +180,16 @@ impl RawStmt {
             )
         };
 
-        if execute_result < 0 {
-            return Err(SqlError::FailedToExecuteStmt(TarantoolError::last()));
+        let execute_error = if execute_result < 0 {
+            Some(TarantoolError::last())
+        } else {
+            None
+        };
+        for payload in self.owned_payloads.iter_mut() {
+            payload.after_execute();
+        }
+        if let Some(error) = execute_error {
+            return Err(SqlError::FailedToExecuteStmt(error));
         }
         Ok(())
     }
@@ -295,7 +318,7 @@ impl SqlStmt {
     /// Transfer ownership of an opaque payload to the underlying VDBE statement.
     ///
     /// The payload is kept alive until statement finalization completes.
-    pub fn add_owned_payload(&mut self, payload: Box<dyn Any>) {
+    pub fn add_owned_payload(&mut self, payload: Box<dyn VdbeOwnedPayload>) {
         self.raw_mut().add_owned_payload(payload);
     }
 

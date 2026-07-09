@@ -576,7 +576,7 @@ pub(crate) fn compile_transactional_block(
         )
     };
     if !hooks.is_empty() {
-        stmt.add_owned_payload(Box::new(hooks));
+        stmt.add_owned_payload(Box::new(insert::VdbeIdxInsertHookHandles::new(hooks)));
     }
     Ok(stmt)
 }

@@ -44,6 +44,22 @@ INSERT INTO iocdu_nullable_target (a) VALUES (1);
 DROP TABLE IF EXISTS iocdu_integer_overflow;
 CREATE TABLE iocdu_integer_overflow (pk INT PRIMARY KEY, b INT);
 INSERT INTO iocdu_integer_overflow VALUES (1, 9223372036854775807), (3, 9223372036854775807);
+DROP TABLE IF EXISTS iocdu_dup_empty;
+CREATE TABLE iocdu_dup_empty (pk INT PRIMARY KEY, amount INT);
+DROP TABLE IF EXISTS iocdu_dup_existing;
+CREATE TABLE iocdu_dup_existing (pk INT PRIMARY KEY, amount INT);
+INSERT INTO iocdu_dup_existing VALUES (1, 10);
+DROP TABLE IF EXISTS iocdu_dup_separate;
+CREATE TABLE iocdu_dup_separate (pk INT PRIMARY KEY, amount INT);
+INSERT INTO iocdu_dup_separate VALUES (1, 10);
+DROP TABLE IF EXISTS iocdu_dup_cached;
+CREATE TABLE iocdu_dup_cached (pk INT PRIMARY KEY, amount INT);
+INSERT INTO iocdu_dup_cached VALUES (1, 0);
+DROP TABLE IF EXISTS iocdu_dup_nullable;
+CREATE TABLE iocdu_dup_nullable (sk INT, id INT, u INT, note INT, PRIMARY KEY (sk, id)) DISTRIBUTED BY (sk);
+CREATE UNIQUE INDEX iocdu_dup_nullable_u ON iocdu_dup_nullable USING TREE (sk, u);
+DROP TABLE IF EXISTS iocdu_dup_vinyl;
+CREATE TABLE iocdu_dup_vinyl (sk INT, id INT, amount INT, PRIMARY KEY (sk, id)) USING vinyl DISTRIBUTED BY (sk);
 
 -- TEST: return query-1
 -- SQL:
@@ -520,6 +536,107 @@ SELECT * FROM iocdu WHERE pk = 433 OR pk = 1618;
 -- UNORDERED:
 433, 11, 1,
 1618, 12, 2
+
+-- TEST: insert-on-conflict-do-update-duplicate-empty-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_dup_empty VALUES (1, 10), (1, 20)
+  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+END $$;
+-- ERROR:
+ON CONFLICT DO UPDATE command cannot affect row a second time
+
+-- TEST: insert-on-conflict-do-update-duplicate-empty-check
+-- SQL:
+SELECT COUNT(*) FROM iocdu_dup_empty;
+-- EXPECTED:
+0,
+
+-- TEST: insert-on-conflict-do-update-duplicate-existing-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_dup_existing VALUES (1, 1), (1, 2)
+  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+END $$;
+-- ERROR:
+ON CONFLICT DO UPDATE command cannot affect row a second time
+
+-- TEST: insert-on-conflict-do-update-duplicate-existing-check
+-- SQL:
+SELECT * FROM iocdu_dup_existing;
+-- EXPECTED:
+1, 10
+
+-- TEST: insert-on-conflict-do-update-separate-statements
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_dup_separate VALUES (1, 1)
+  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+  INSERT INTO iocdu_dup_separate VALUES (1, 2)
+  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-separate-statements-check
+-- SQL:
+SELECT * FROM iocdu_dup_separate;
+-- EXPECTED:
+1, 12
+
+-- TEST: insert-on-conflict-do-update-seen-keys-reset-1
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_dup_cached VALUES (1, 1)
+  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-seen-keys-reset-2
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_dup_cached VALUES (1, 1)
+  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-seen-keys-reset-check
+-- SQL:
+SELECT * FROM iocdu_dup_cached;
+-- EXPECTED:
+1, 2
+
+-- TEST: insert-on-conflict-do-update-duplicate-null-target
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_dup_nullable VALUES (1, 1, NULL, 0), (1, 2, NULL, 0)
+  ON CONFLICT (sk, u) DO UPDATE SET note = note + 1;
+END $$;
+
+-- TEST: insert-on-conflict-do-update-duplicate-null-target-check
+-- SQL:
+SELECT * FROM iocdu_dup_nullable ORDER BY id;
+-- EXPECTED:
+1, 1, null, 0,
+1, 2, null, 0
+
+-- TEST: insert-on-conflict-do-update-duplicate-vinyl-error
+-- SQL:
+DO $$
+BEGIN
+  INSERT INTO iocdu_dup_vinyl VALUES (1, 1, 10), (1, 1, 20)
+  ON CONFLICT (sk, id) DO UPDATE SET amount = amount + 1;
+END $$;
+-- ERROR:
+ON CONFLICT DO UPDATE command cannot affect row a second time
+
+-- TEST: insert-on-conflict-do-update-duplicate-vinyl-check
+-- SQL:
+SELECT COUNT(*) FROM iocdu_dup_vinyl;
+-- EXPECTED:
+0,
 
 -- TEST: insert-on-conflict-do-update-if-body
 -- SQL:

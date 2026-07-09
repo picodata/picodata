@@ -9,10 +9,11 @@ use crate::sql::conflict::{
     build_update_ops_from_values, prepare_do_update_from_catalog, run_do_update_with_ops,
     DoUpdateRouteTemplate,
 };
+use ahash::AHashSet;
 use smol_str::{format_smolstr, SmolStr};
 use sql::errors::SbroadError;
 use sql::executor::engine::{BlockRuntimeHook, VersionMap};
-use sql::executor::vdbe::SqlError;
+use sql::executor::vdbe::{SqlError, VdbeOwnedPayload};
 use sql::ir::operator::{ConflictUpdateOp, ConflictUpdateValue};
 use sql::ir::types::UnrestrictedType;
 use sql::ir::value::double::Double;
@@ -34,6 +35,10 @@ use tarantool::tuple::RawBytes;
 pub(super) struct VdbeIdxInsertHookCtx {
     route: DoUpdateRouteTemplate,
     updates: VdbeConflictUpdates,
+    // Per-execution state. `SqlStmt` calls `before_execute` while holding
+    // exclusive access to the cached statement, so this set starts empty for
+    // every VDBE run and is not shared between concurrent executions.
+    seen_keys: AHashSet<Vec<u8>>,
 }
 
 /// `ON CONFLICT DO UPDATE SET` assignments prepared for VDBE execution.
@@ -81,6 +86,37 @@ pub(super) struct VdbeIdxInsertHookHandle {
     _context: Box<VdbeIdxInsertHookCtx>,
     // OP_IdxInsert.p4.p stores a pointer to `hook`, so this handle must not move.
     _pin: PhantomPinned,
+}
+
+pub(super) struct VdbeIdxInsertHookHandles(Vec<Pin<Box<VdbeIdxInsertHookHandle>>>);
+
+impl VdbeIdxInsertHookHandles {
+    pub(super) fn new(handles: Vec<Pin<Box<VdbeIdxInsertHookHandle>>>) -> Self {
+        Self(handles)
+    }
+}
+
+impl VdbeOwnedPayload for VdbeIdxInsertHookHandles {
+    fn before_execute(&mut self) {
+        for handle in &mut self.0 {
+            handle.as_mut().reset_seen_keys();
+        }
+    }
+
+    fn after_execute(&mut self) {
+        for handle in &mut self.0 {
+            handle.as_mut().reset_seen_keys();
+        }
+    }
+}
+
+impl VdbeIdxInsertHookHandle {
+    fn reset_seen_keys(self: Pin<&mut Self>) {
+        // SAFETY: only the heap-allocated context is mutated. We do not move
+        // the pinned handle or the hook field referenced by `OP_IdxInsert.p4.p`.
+        let this = unsafe { self.get_unchecked_mut() };
+        this._context.seen_keys = AHashSet::new();
+    }
 }
 
 fn lookup_let_slot(
@@ -205,7 +241,7 @@ unsafe extern "C" fn run_sql_insert_hook(args: *mut SqlInsertHookArgs) -> libc::
         return -1;
     }
 
-    let ctx = unsafe { &*(args.ctx as *const VdbeIdxInsertHookCtx) };
+    let ctx = unsafe { &mut *(args.ctx as *mut VdbeIdxInsertHookCtx) };
     let tuple = unsafe { std::slice::from_raw_parts(args.tuple.cast::<u8>(), len as usize) };
     let space = unsafe { Space::from_id_unchecked(args.space_id) };
     let insert_tuple = RawBytes::new(tuple);
@@ -239,7 +275,13 @@ unsafe extern "C" fn run_sql_insert_hook(args: *mut SqlInsertHookArgs) -> libc::
         }
     };
 
-    match run_do_update_with_ops(&space, insert_tuple, &ctx.route, update_ops) {
+    match run_do_update_with_ops(
+        &space,
+        insert_tuple,
+        &ctx.route,
+        update_ops,
+        &mut ctx.seen_keys,
+    ) {
         Ok(()) => 0,
         Err(e) => {
             tarantool::set_error!(TarantoolErrorCode::ProcC, "{e}");
@@ -304,7 +346,11 @@ pub(super) fn attach_idx_insert_hook(
     } else {
         VdbeConflictUpdates::PerRow(updates)
     };
-    let mut context = Box::new(VdbeIdxInsertHookCtx { route, updates });
+    let mut context = Box::new(VdbeIdxInsertHookCtx {
+        route,
+        updates,
+        seen_keys: AHashSet::new(),
+    });
     let context_ptr = (&mut *context as *mut VdbeIdxInsertHookCtx).cast();
     let handle = Box::pin(VdbeIdxInsertHookHandle {
         hook: SqlInsertHookPayload {
