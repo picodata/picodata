@@ -776,6 +776,7 @@ pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &
             }
             FieldType::Array(_) => field.is_array(),
             FieldType::Map => field.is_map(),
+            FieldType::Json => field.is_ext(),
             FieldType::Number | FieldType::Scalar => unreachable!(),
         };
         if !ok {

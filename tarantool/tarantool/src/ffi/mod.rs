@@ -6,6 +6,9 @@ pub use ::tlua::ffi as lua;
 pub mod datetime;
 #[doc(hidden)]
 pub mod decimal;
+#[cfg(feature = "picodata")]
+#[doc(hidden)]
+pub mod json;
 #[doc(hidden)]
 pub mod sql;
 #[doc(hidden)]
@@ -68,6 +71,19 @@ pub fn has_datetime() -> bool {
     }
 
     unsafe { helper::has_dyn_symbol(crate::c_str!("tnt_mp_encode_datetime")) }
+}
+
+/// Check whether the current tarantool executable supports the native SQL JSON
+/// type. If this function returns `false`, using functions in
+/// [`tarantool::json`] may result in a **panic**.
+///
+/// The lookup is done once and cached, as this is checked for every JSON value
+/// that is parsed, rendered or compared.
+///
+/// [`tarantool::json`]: mod@crate::json
+pub fn has_json() -> bool {
+    static RESULT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *RESULT.get_or_init(|| unsafe { helper::has_dyn_symbol(crate::c_str!("tnt_json_parse")) })
 }
 
 /// Check whether the current tarantool executable supports fiber_set_ctx api.

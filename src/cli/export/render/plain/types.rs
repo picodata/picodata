@@ -46,6 +46,7 @@ fn get_element_type(element: TypedArray) -> Option<FieldType> {
         TypedArray::String => Some(FieldType::String),
         TypedArray::Uuid => Some(FieldType::Uuid),
         TypedArray::Map => Some(FieldType::Map),
+        TypedArray::Json => Some(FieldType::Json),
         // The grammar always requires an element type.
         TypedArray::Any => None,
     }

@@ -1,3 +1,9 @@
+//! SQL query execution.
+//!
+//! # JSON parameters
+//! Every JSON value in `bind_params` must be in normal form, as described in
+//! [`Tuple`](crate::tuple::Tuple).
+
 #![cfg(any(feature = "picodata", doc))]
 
 use crate::error::TarantoolError;
@@ -18,6 +24,8 @@ pub fn calculate_hash(sql: &str) -> u32 {
 
 /// Executes an SQL query without storing the prepared statement in the instance
 /// cache and returns a wrapper around the raw msgpack bytes.
+///
+/// See [JSON parameter requirements](crate::sql#json-parameters).
 pub fn prepare_and_execute_raw<IN>(
     query: &str,
     bind_params: &IN,
@@ -48,6 +56,10 @@ where
     Ok(buf)
 }
 
+/// Executes an SQL query without storing the prepared statement in the instance
+/// cache and puts the result into `port`.
+///
+/// See [JSON parameter requirements](crate::sql#json-parameters).
 pub fn sql_execute_into_port<IN>(
     query: &str,
     bind_params: &IN,
@@ -147,6 +159,8 @@ impl Statement {
     }
 
     /// Executes prepared statement and returns a wrapper over the raw msgpack bytes.
+    ///
+    /// See [JSON parameter requirements](crate::sql#json-parameters).
     pub fn execute_raw<IN>(&self, bind_params: &IN, vdbe_max_steps: u64) -> crate::Result<impl Read>
     where
         IN: Serialize,
@@ -170,6 +184,9 @@ impl Statement {
         Ok(buf)
     }
 
+    /// Executes prepared statement and puts the result into `port`.
+    ///
+    /// See [JSON parameter requirements](crate::sql#json-parameters).
     pub fn execute_into_port<IN>(
         &self,
         bind_params: &IN,

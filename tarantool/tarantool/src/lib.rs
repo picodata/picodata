@@ -69,6 +69,8 @@ pub mod error;
 pub mod ffi;
 pub mod fiber;
 pub mod index;
+#[cfg(feature = "picodata")]
+pub mod json;
 pub mod log;
 pub mod msgpack;
 pub mod net_box;

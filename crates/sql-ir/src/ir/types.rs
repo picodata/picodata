@@ -379,6 +379,8 @@ impl From<TypedArray> for NestedType {
             TypedArray::String => Self::Text,
             TypedArray::Uuid => Self::Uuid,
             TypedArray::Map => Self::Map,
+            // SQL has no json type yet: JSON is stored as `map`.
+            TypedArray::Json => Self::Map,
             TypedArray::Any => Self::Any,
         }
     }
@@ -520,7 +522,7 @@ impl TryFrom<SpaceFieldType> for UnrestrictedType {
             SpaceFieldType::Uuid => Ok(UnrestrictedType::Uuid),
             SpaceFieldType::Any => Ok(UnrestrictedType::Any),
             SpaceFieldType::Map => Ok(UnrestrictedType::Map),
-            SpaceFieldType::Varbinary | SpaceFieldType::Interval => Err(
+            SpaceFieldType::Varbinary | SpaceFieldType::Interval | SpaceFieldType::Json => Err(
                 SbroadError::NotImplemented(Entity::Type, field_type.to_smolstr()),
             ),
             SpaceFieldType::Number | SpaceFieldType::Scalar => Err(SbroadError::Unsupported(

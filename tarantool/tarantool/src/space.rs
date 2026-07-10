@@ -335,6 +335,7 @@ impl Field {
         interval(FieldType::Interval)
         array(FieldType::Array(TypedArray::Any))
         map(FieldType::Map)
+        json(FieldType::Json)
     }
 }
 
@@ -355,6 +356,7 @@ define_str_enum! {
         String = "text[]",
         Uuid = "uuid[]",
         Map = "map[]",
+        Json = "json[]",
         /// Element type of an untyped array (the bare `array`).
         Any = "array",
     }
@@ -382,6 +384,7 @@ pub enum FieldType {
     /// `Array(TypedArray::Any)` is encoded as `"array"`.
     Array(TypedArray),
     Map,
+    Json,
 }
 
 crate::define_str_enum_traits! {FieldType}
@@ -406,6 +409,7 @@ impl FieldType {
             FieldType::Interval => "interval",
             FieldType::Array(elem) => elem.as_str(),
             FieldType::Map => "map",
+            FieldType::Json => "json",
         }
     }
 
@@ -435,6 +439,7 @@ impl FieldType {
             "interval",
             "array",
             "map",
+            "json",
         ]
     }
 
@@ -456,6 +461,7 @@ impl FieldType {
             "interval" => FieldType::Interval,
             "array" => FieldType::Array(TypedArray::Any),
             "map" => FieldType::Map,
+            "json" => FieldType::Json,
             other => return TypedArray::from_str(other).ok().map(FieldType::Array),
         })
     }
@@ -508,6 +514,7 @@ mod field_type_tests {
             TypedArray::String,
             TypedArray::Uuid,
             TypedArray::Map,
+            TypedArray::Json,
         ] {
             let label = elem.as_str();
             assert!(label.ends_with("[]"), "{label} should end with []");

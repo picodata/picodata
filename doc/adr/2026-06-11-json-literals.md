@@ -69,7 +69,7 @@ provides:
 | Capability | Behavior |
 |------------|----------|
 | Field type | A first-class `json` field type (`FIELD_TYPE_JSON`) |
-| Wire and storage format | A MessagePack extension, subtype `MP_JSON = 7`; the type tag travels with the bytes through tuples, indexes, replication, and Lua, the same way `DECIMAL`, `UUID`, `DATETIME`, and `INTERVAL` do |
+| Wire and storage format | A MessagePack extension, subtype `MP_JSON = 20`; the type tag travels with the bytes through tuples, indexes, replication, and Lua, the same way `DECIMAL`, `UUID`, `DATETIME`, and `INTERVAL` do |
 | Null distinction | SQL `NULL` and JSON `null` are kept distinct |
 | Normalization | On insert through Tarantool SQL: keys sorted, duplicate keys resolved last-wins |
 | Ordering | JSONB-compatible: `null < string < number < bool < array < object` |
@@ -159,7 +159,7 @@ the storage SQL is correct.
 ## Value Representation and JSON null
 
 Add a `Value::Json` variant holding the decoded JSON content. The `MP_JSON`
-framing (extension subtype 7) is applied only at the storage-encode boundary
+framing (extension subtype 20) is applied only at the storage-encode boundary
 and stripped on decode, which keeps the runtime value usable for output and any
 future comparison.
 
@@ -206,7 +206,7 @@ Lua push). For Phase 1, where JSON is an opaque payload:
 
 ```rust
 // Encoding: Value::Json content -> MP_JSON ext bytes.
-const MP_JSON: i8 = 7;
+const MP_JSON: i8 = 20;
 
 Value::Json(content) => {
     // Encode the content, then frame it as the JSON extension.
@@ -245,10 +245,10 @@ path as an opaque payload:
   Because `rmpv::Value::Map` preserves order, the text output reflects the
   stored (Tarantool-sorted) key order, so normalization is observable here.
 - **iproto.** Results are streamed as raw storage MessagePack, so an `MP_JSON`
-  value reaches the client as extension subtype 7, the same way `decimal`,
+  value reaches the client as extension subtype 20, the same way `decimal`,
   `uuid`, and `datetime` are returned. The value is passed through, not
   unwrapped, which preserves the null distinction on the wire and matches
-  existing extension handling. The client connector decodes subtype 7.
+  existing extension handling. The client connector decodes subtype 20.
 - **`CAST(json AS text)`.** Tarantool's container-to-text rendering is
   deliberately limited, so this SQL-level cast is not cleanly pushable to
   storage. It is deferred (see Future Work). Normalization is verified through

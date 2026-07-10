@@ -31,6 +31,22 @@ use crate::space::SpaceId;
 use crate::tlua;
 
 /// Tuple
+///
+/// # JSON values
+/// Every JSON value (MP_EXT with the MP_JSON subtype) in the data a tuple is
+/// built from must be in normal form, as for `box_insert()`. You cannot rely
+/// on tarantool checking this when building a tuple. While debug tarantool
+/// will check this precondition and abort on non-normal JSON, release build
+/// will accept it as-is. This applies to every
+/// constructor that takes raw data, including [`Tuple::new`],
+/// [`Tuple::try_from_slice`], `TupleBuilder` and the `From` and [`Decode`]
+/// impls built on them. A tuple from `TupleBuilder::rust_allocated()`
+/// is not checked even in a debug tarantool build. The same rule applies to
+/// [`FunctionCtx::return_mp`] and [`FunctionCtx::return_bytes`]. Tarantool
+/// does not check their data when they return it, and a debug build aborts
+/// only if the result goes into SQL. A stored value that is not in normal form
+/// gives incorrect results when it is compared, for example in SQL `ORDER BY`
+/// or `DISTINCT`.
 pub struct Tuple {
     ptr: NonNull<ffi::BoxTuple>,
 }
@@ -888,6 +904,7 @@ crate::define_str_enum! {
         Datetime  = "datetime",
         Array     = "array",
         Map       = "map",
+        Json      = "json",
     }
 }
 
