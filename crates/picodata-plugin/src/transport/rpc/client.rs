@@ -180,11 +180,11 @@ impl<'a> RequestBuilder<'a> {
     /// matches the current instance then the request will be performed fully
     /// locally, i.e. the request handler will be executed in the current
     /// process without switching the fiber (although the fiber's name may
-    /// change).
+    /// change) and will not yield.
     ///
     /// If the request target doesn't match the current instance, an iproto
     /// request will be sent out and the current fiber will be blocked
-    /// until the response is received or the timeout is reached.
+    /// until the response is received or the timeout is reached, and will yield.
     ///
     /// Returns an error if some of the parameters are invalid.
     #[inline]
