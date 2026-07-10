@@ -304,9 +304,12 @@ impl TryFrom<Literal<'_>> for Value {
             }
             _ => Cow::Borrowed(literal.value),
         };
-        parse_str_as(&text, ty).ok_or_else(|| {
+        parse_str_as(&text, ty).map_err(|reason| {
+            let reason = reason
+                .map(|reason| format!(": {reason}"))
+                .unwrap_or_default();
             ast_invariant_err(format_smolstr!(
-                "literal {} does not parse as {ty}",
+                "literal {} does not parse as {ty}{reason}",
                 literal.value
             ))
         })

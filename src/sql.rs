@@ -3418,6 +3418,7 @@ pub(crate) fn value_type_str(value: &Value) -> &'static str {
         Value::Double { .. } => "double",
         Value::Datetime { .. } => "datetime",
         Value::Integer { .. } => "integer",
+        Value::Json { .. } => "json",
         Value::Null => "null",
         Value::String { .. } => "string",
         Value::Tuple { .. } => "tuple",

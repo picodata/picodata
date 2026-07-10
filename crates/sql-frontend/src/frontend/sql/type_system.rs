@@ -9,7 +9,7 @@ use crate::ir::node::{
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::types::{CastType, DerivedType, UnrestrictedType as SbroadType};
-use crate::ir::value::Value;
+use crate::ir::value::{parse_str_as, Value};
 use crate::ir::Plan;
 use ahash::AHashMap;
 use smol_str::format_smolstr;
@@ -826,17 +826,6 @@ fn coerce_scalar_expr(
             .collect()
     }
 
-    let cannot_parse_error = |str_value: &Value, ty| {
-        SbroadError::Other(format_smolstr!(
-            "failed to parse \'{}\' as a value of type {}, consider using explicit type casts",
-            match str_value {
-                Value::String(ref s) => s,
-                _ => unreachable!(),
-            },
-            ty
-        ))
-    };
-
     let strings = collect_strings_to_be_coerced(expr_id, plan, report);
     for id in strings {
         if let MutExpression::Constant(Constant { value }) = plan.get_mut_expression_node(id)? {
@@ -844,10 +833,19 @@ fn coerce_scalar_expr(
             let new_type = DerivedType::from(report_type)
                 .get()
                 .expect("type must be known");
-            *value = value
-                .clone()
-                .cast(new_type)
-                .map_err(|_| cannot_parse_error(value, report_type))?;
+            // A literal shared by two comparisons (e.g. in BETWEEN) is
+            // already coerced on the second visit.
+            let Value::String(s) = value else {
+                continue;
+            };
+            let parsed = parse_str_as(s, new_type).map_err(|reason| {
+                let reason = reason.map(|r| format!(": {r}")).unwrap_or_default();
+                SbroadError::Other(format_smolstr!(
+                    "failed to parse '{s}' as a value of type {report_type}{reason}, \
+                     consider using explicit type casts"
+                ))
+            })?;
+            *value = parsed;
         }
     }
 

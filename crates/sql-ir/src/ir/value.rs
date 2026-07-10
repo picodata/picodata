@@ -13,6 +13,7 @@ use tarantool::datetime::Datetime;
 use tarantool::decimal::Decimal;
 use tarantool::ffi::datetime::MP_DATETIME;
 use tarantool::ffi::decimal::MP_DECIMAL;
+use tarantool::ffi::json::MP_JSON;
 use tarantool::ffi::uuid::MP_UUID;
 use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError, ExtStruct};
 use tarantool::uuid::Uuid;
@@ -20,6 +21,7 @@ use tarantool::uuid::Uuid;
 use crate::errors::{Entity, SbroadError};
 use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use crate::ir::value::double::Double;
+use crate::ir::value::json::Json;
 
 /// SQL uses three-valued logic. We need to implement
 /// it to compare values with each other.
@@ -64,6 +66,8 @@ pub enum Value {
     Tuple(Vec<Value>),
     /// Uuid type
     Uuid(Uuid),
+    /// JSON type.
+    Json(Json),
 }
 
 impl<'de> Decode<'de> for Value {
@@ -159,6 +163,10 @@ fn decode_ext(r: &mut &[u8], context: &Context) -> Result<Value, DecodeError> {
         MP_DATETIME => Ok(Value::Datetime(
             ext.try_into().map_err(DecodeError::new::<Value>)?,
         )),
+        MP_JSON => {
+            let json = Json::from_inner(ext.data).map_err(DecodeError::new::<Value>)?;
+            Ok(Value::Json(json))
+        }
         tag => Err(DecodeError::new::<Value>(format_smolstr!(
             "value with an unknown tag {tag}"
         ))),
@@ -191,6 +199,7 @@ impl Encode for Value {
             Value::String(v) => v.encode(w, context),
             Value::Tuple(v) => v.encode(w, context),
             Value::Uuid(v) => v.encode(w, context),
+            Value::Json(v) => v.encode(w, context),
         }
     }
 }
@@ -266,6 +275,7 @@ impl fmt::Display for Value {
                 write!(f, "[{}]", v.iter().join(","))
             }
             Value::Uuid(v) => fmt::Display::fmt(v, f),
+            Value::Json(v) => fmt::Display::fmt(v, f),
         }
     }
 }
@@ -527,7 +537,8 @@ impl Value {
                 | Value::Double(_)
                 | Value::String(_)
                 | Value::Uuid(_)
-                | Value::Tuple(_) => Trivalent::False,
+                | Value::Tuple(_)
+                | Value::Json(_) => Trivalent::False,
             },
             Value::Null => Trivalent::Unknown,
             Value::Integer(s) => match other {
@@ -535,6 +546,7 @@ impl Value {
                 | Value::String(_)
                 | Value::Uuid(_)
                 | Value::Tuple(_)
+                | Value::Json(_)
                 | Value::Datetime(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
                 Value::Integer(o) => (s == o).into(),
@@ -549,6 +561,7 @@ impl Value {
                 | Value::String(_)
                 | Value::Tuple(_)
                 | Value::Uuid(_)
+                | Value::Json(_)
                 | Value::Datetime(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
                 Value::Integer(o) => (*s == Double::from(*o)).into(),
@@ -562,6 +575,7 @@ impl Value {
                 | Value::String(_)
                 | Value::Tuple(_)
                 | Value::Uuid(_)
+                | Value::Json(_)
                 | Value::Datetime(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
                 Value::Integer(o) => (**s == Decimal::from(*o)).into(),
@@ -576,7 +590,8 @@ impl Value {
                 | Value::Decimal(_)
                 | Value::Double(_)
                 | Value::Uuid(_)
-                | Value::Tuple(_) => Trivalent::False,
+                | Value::Tuple(_)
+                | Value::Json(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
                 Value::String(o) => s.eq(o).into(),
             },
@@ -588,6 +603,7 @@ impl Value {
                 | Value::Double(_)
                 | Value::String(_)
                 | Value::Uuid(_)
+                | Value::Json(_)
                 | Value::Tuple(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
             },
@@ -598,6 +614,7 @@ impl Value {
                 | Value::Decimal(_)
                 | Value::Double(_)
                 | Value::String(_)
+                | Value::Json(_)
                 | Value::Tuple(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
                 Value::Uuid(o) => s.eq(o).into(),
@@ -609,9 +626,22 @@ impl Value {
                 | Value::Decimal(_)
                 | Value::Double(_)
                 | Value::Uuid(_)
+                | Value::Json(_)
                 | Value::Tuple(_) => Trivalent::False,
                 Value::Null => Trivalent::Unknown,
                 Value::Datetime(o) => s.eq(o).into(),
+            },
+            Value::Json(s) => match other {
+                Value::Json(o) => s.value_cmp(o).is_eq().into(),
+                Value::Null => Trivalent::Unknown,
+                Value::Boolean(_)
+                | Value::Integer(_)
+                | Value::Datetime(_)
+                | Value::Decimal(_)
+                | Value::Double(_)
+                | Value::String(_)
+                | Value::Uuid(_)
+                | Value::Tuple(_) => Trivalent::False,
             },
         }
     }
@@ -636,7 +666,8 @@ impl Value {
                 | Value::Double(_)
                 | Value::String(_)
                 | Value::Uuid(_)
-                | Value::Tuple(_) => None,
+                | Value::Tuple(_)
+                | Value::Json(_) => None,
             },
             Value::Null => TrivalentOrdering::Unknown.into(),
             Value::Integer(s) => match other {
@@ -644,7 +675,8 @@ impl Value {
                 | Value::Datetime(_)
                 | Value::String(_)
                 | Value::Uuid(_)
-                | Value::Tuple(_) => None,
+                | Value::Tuple(_)
+                | Value::Json(_) => None,
                 Value::Null => TrivalentOrdering::Unknown.into(),
                 Value::Integer(o) => TrivalentOrdering::from(s.cmp(o)).into(),
                 Value::Decimal(o) => TrivalentOrdering::from(Decimal::from(*s).cmp(o)).into(),
@@ -665,7 +697,8 @@ impl Value {
                 | Value::Double(_)
                 | Value::Uuid(_)
                 | Value::String(_)
-                | Value::Tuple(_) => None,
+                | Value::Tuple(_)
+                | Value::Json(_) => None,
                 Value::Null => TrivalentOrdering::Unknown.into(),
                 Value::Datetime(o) => TrivalentOrdering::from(s.cmp(o)).into(),
             },
@@ -674,7 +707,8 @@ impl Value {
                 | Value::Datetime(_)
                 | Value::String(_)
                 | Value::Tuple(_)
-                | Value::Uuid(_) => None,
+                | Value::Uuid(_)
+                | Value::Json(_) => None,
                 Value::Null => TrivalentOrdering::Unknown.into(),
                 Value::Integer(o) => {
                     if let Some(ord) = s.partial_cmp(&Double::from(*o)) {
@@ -704,7 +738,8 @@ impl Value {
                 | Value::Datetime(_)
                 | Value::String(_)
                 | Value::Uuid(_)
-                | Value::Tuple(_) => None,
+                | Value::Tuple(_)
+                | Value::Json(_) => None,
                 Value::Null => TrivalentOrdering::Unknown.into(),
                 Value::Integer(o) => TrivalentOrdering::from((**s).cmp(&Decimal::from(*o))).into(),
                 Value::Decimal(o) => TrivalentOrdering::from(s.cmp(o)).into(),
@@ -724,7 +759,8 @@ impl Value {
                 | Value::Decimal(_)
                 | Value::Double(_)
                 | Value::Uuid(_)
-                | Value::Tuple(_) => None,
+                | Value::Tuple(_)
+                | Value::Json(_) => None,
                 Value::Null => TrivalentOrdering::Unknown.into(),
                 Value::String(o) => TrivalentOrdering::from(s.cmp(o)).into(),
             },
@@ -735,7 +771,8 @@ impl Value {
                 | Value::Decimal(_)
                 | Value::Double(_)
                 | Value::String(_)
-                | Value::Tuple(_) => None,
+                | Value::Tuple(_)
+                | Value::Json(_) => None,
                 Value::Null => TrivalentOrdering::Unknown.into(),
                 Value::Uuid(o) => TrivalentOrdering::from(u.cmp(o)).into(),
             },
@@ -747,8 +784,21 @@ impl Value {
                 | Value::Double(_)
                 | Value::String(_)
                 | Value::Uuid(_)
-                | Value::Tuple(_) => None,
+                | Value::Tuple(_)
+                | Value::Json(_) => None,
                 Value::Null => TrivalentOrdering::Unknown.into(),
+            },
+            Value::Json(s) => match other {
+                Value::Null => TrivalentOrdering::Unknown.into(),
+                Value::Json(o) => TrivalentOrdering::from(s.value_cmp(o)).into(),
+                Value::Boolean(_)
+                | Value::Integer(_)
+                | Value::Datetime(_)
+                | Value::Decimal(_)
+                | Value::Double(_)
+                | Value::String(_)
+                | Value::Uuid(_)
+                | Value::Tuple(_) => None,
             },
         }
     }
@@ -785,14 +835,18 @@ impl Value {
                 _ => Err(cast_error(&self, column_type)),
             },
             UnrestrictedType::Json => match self {
+                Value::Json(_) => Ok(self),
                 Value::Null => Ok(Value::Null),
+                Value::String(ref s) => {
+                    parse_str_as(s, column_type).map_err(|_| cast_error(&self, column_type))
+                }
                 _ => Err(cast_error(&self, column_type)),
             },
             UnrestrictedType::Boolean => match self {
                 Value::Boolean(_) => Ok(self),
                 Value::Null => Ok(Value::Null),
                 Value::String(ref s) => {
-                    parse_str_as(s, column_type).ok_or_else(|| cast_error(&self, column_type))
+                    parse_str_as(s, column_type).map_err(|_| cast_error(&self, column_type))
                 }
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -800,7 +854,7 @@ impl Value {
                 Value::Null => Ok(Value::Null),
                 Value::Datetime(_) => Ok(self),
                 Value::String(ref s) => {
-                    parse_str_as(s, column_type).ok_or_else(|| cast_error(&self, column_type))
+                    parse_str_as(s, column_type).map_err(|_| cast_error(&self, column_type))
                 }
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -813,7 +867,7 @@ impl Value {
                 )),
                 Value::Integer(v) => Ok(Value::Decimal(Decimal::from(v).into())),
                 Value::String(ref v) => {
-                    parse_str_as(v, column_type).ok_or_else(|| cast_error(&self, column_type))
+                    parse_str_as(v, column_type).map_err(|_| cast_error(&self, column_type))
                 }
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
@@ -823,7 +877,7 @@ impl Value {
                 Value::Decimal(v) => Ok(Value::Double(Double::from_str(&format!("{v}"))?)),
                 Value::Integer(v) => Ok(Value::Double(Double::from(v))),
                 Value::String(ref v) => {
-                    parse_str_as(v, column_type).ok_or_else(|| cast_error(&self, column_type))
+                    parse_str_as(v, column_type).map_err(|_| cast_error(&self, column_type))
                 }
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
@@ -845,20 +899,23 @@ impl Value {
                     .map(Value::Integer)
                     .map_err(|_| cast_error(&self, column_type)),
                 Value::String(ref v) => {
-                    parse_str_as(v, column_type).ok_or_else(|| cast_error(&self, column_type))
+                    parse_str_as(v, column_type).map_err(|_| cast_error(&self, column_type))
                 }
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
             UnrestrictedType::String => match self {
                 Value::String(_) => Ok(self),
+                // Serialize the document, matching both `CAST(json AS TEXT)` on
+                // storage and PostgreSQL's jsonb-to-text assignment cast.
+                Value::Json(ref j) => Ok(Value::String(j.to_string())),
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
             UnrestrictedType::Uuid => match self {
                 Value::Uuid(_) => Ok(self),
                 Value::String(ref v) => {
-                    parse_str_as(v, column_type).ok_or_else(|| cast_error(&self, column_type))
+                    parse_str_as(v, column_type).map_err(|_| cast_error(&self, column_type))
                 }
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
@@ -914,6 +971,7 @@ impl Value {
                 Value::Integer(_) => nested == NestedType::Integer,
                 Value::String(_) => nested == NestedType::Text,
                 Value::Uuid(_) => nested == NestedType::Uuid,
+                Value::Json(_) => nested == NestedType::Json,
                 // Nested arrays are not supported.
                 Value::Tuple(_) => false,
             })
@@ -934,6 +992,7 @@ impl Value {
             {
                 return Ok(self.into())
             }
+            (UnrestrictedType::Json, Value::Json(_)) => return Ok(self.into()),
             _ => (),
         }
 
@@ -952,6 +1011,7 @@ impl Value {
             Value::String(_) => UnrestrictedType::String,
             Value::Tuple(_) => UnrestrictedType::Array(NestedType::Any),
             Value::Uuid(_) => UnrestrictedType::Uuid,
+            Value::Json(_) => UnrestrictedType::Json,
             Value::Null => return DerivedType::unknown(),
         };
         DerivedType::new(ty)
@@ -984,6 +1044,7 @@ impl ToHashString for Value {
             Value::String(v) => v.to_string(),
             Value::Tuple(_) => self.to_string(),
             Value::Uuid(v) => v.to_string(),
+            Value::Json(v) => v.to_string(),
             Value::Null => "NULL".to_string(),
         }
     }
@@ -1073,6 +1134,7 @@ pub enum MsgPackValue<'v> {
     #[serde(serialize_with = "serialize_tuple_as_msgpack")]
     Tuple(&'v Vec<Value>),
     Uuid(&'v Uuid),
+    Json(&'v Json),
     Null(()),
 }
 
@@ -1100,6 +1162,7 @@ impl<'v> From<&'v Value> for MsgPackValue<'v> {
             Value::String(v) => MsgPackValue::String(v),
             Value::Tuple(v) => MsgPackValue::Tuple(v),
             Value::Uuid(v) => MsgPackValue::Uuid(v),
+            Value::Json(v) => MsgPackValue::Json(v),
         }
     }
 }
@@ -1115,26 +1178,29 @@ impl Encode for MsgPackValue<'_> {
             MsgPackValue::String(v) => v.encode(w, context),
             MsgPackValue::Tuple(v) => v.encode(w, context),
             MsgPackValue::Uuid(v) => v.encode(w, context),
+            MsgPackValue::Json(v) => v.encode(w, context),
             MsgPackValue::Null(v) => v.encode(w, context),
         }
     }
 }
 
 pub mod double;
+pub mod json;
 #[cfg(test)]
 mod tests;
 
 /// Parse `s` as a value of type `ty`, the way `CAST(<text> AS ty)` does.
 ///
-/// Returns `None` when the text is not a valid input for `ty`.
+/// # Errors
+/// The text is not a valid input for `ty`. The error holds the reason when
+/// the parser gives one: only the json parser does.
 ///
 /// This is the single place that knows how a string becomes a typed value:
 /// [`Value::cast`] routes all of its `Value::String` arms here, and the new AST
 /// analyzer calls it directly to fold a text literal during type derivation
 /// without having to build a `Value::String` first.
-#[must_use]
-pub fn parse_str_as(s: &str, ty: UnrestrictedType) -> Option<Value> {
-    match ty {
+pub fn parse_str_as(s: &str, ty: UnrestrictedType) -> Result<Value, Option<String>> {
+    let value = match ty {
         UnrestrictedType::Boolean => try_parse_bool(s).map(Value::Boolean),
         UnrestrictedType::Datetime => try_parse_datetime(s).map(Value::Datetime),
         UnrestrictedType::Decimal => Decimal::from_str(s).ok().map(Value::from),
@@ -1143,9 +1209,11 @@ pub fn parse_str_as(s: &str, ty: UnrestrictedType) -> Option<Value> {
         // A string is already a string, and `any` imposes no restriction.
         UnrestrictedType::String | UnrestrictedType::Any => Some(Value::String(s.to_string())),
         UnrestrictedType::Uuid => Uuid::parse_str(s).ok().map(Value::Uuid),
+        UnrestrictedType::Json => return Json::parse_text(s).map(Value::Json).map_err(Some),
         // There is no text input syntax for these in this dialect.
-        UnrestrictedType::Array(_) | UnrestrictedType::Map | UnrestrictedType::Json => None,
-    }
+        UnrestrictedType::Array(_) | UnrestrictedType::Map => None,
+    };
+    value.ok_or(None)
 }
 
 /// Parse boolean values in text format.

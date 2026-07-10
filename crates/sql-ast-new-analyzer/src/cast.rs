@@ -91,11 +91,12 @@ pub(crate) fn coerce_text_literal(expr: &mut Expr<'_, Analyzed>, to: Type) -> As
 
     // The parser strips only the outer quotes, so an embedded quote is still doubled in the slice.
     let unescaped = unescape(literal.value);
-    let Some(value) = parse_str_as(&unescaped, target) else {
-        return Err(semantic_err(format_smolstr!(
-            "invalid input syntax for type {target}: \"{unescaped}\""
-        )));
-    };
+    let value = parse_str_as(&unescaped, target).map_err(|reason| {
+        let reason = reason.map(|r| format!(": {r}")).unwrap_or_default();
+        semantic_err(format_smolstr!(
+            "invalid input syntax for type {target}: \"{unescaped}\"{reason}"
+        ))
+    })?;
 
     // Coerce to `Integer`/`Decimal`/`Double`/`Boolean`.
     // String is unreachable there (it means coerce string to string).

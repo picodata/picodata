@@ -4047,6 +4047,7 @@ dependencies = [
  "rmpv",
  "rustc-hash 2.1.2",
  "serde",
+ "serde_bytes",
  "serde_yaml",
  "smallvec",
  "smol_str",

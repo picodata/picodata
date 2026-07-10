@@ -14,6 +14,7 @@ use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
 use rustc_hash::FxHashMap;
 use smol_str::{format_smolstr, SmolStr};
 use sql_protocol::dql_encoder::MsgpackEncode;
+use std::cmp::Ordering;
 use std::collections::{hash_map::Entry, HashMap};
 use std::fmt::{Display, Formatter};
 use std::io::{Error as IoError, Result as IoResult, Write};
@@ -26,6 +27,23 @@ use tarantool::msgpack;
 use tarantool::msgpack::Encode;
 
 pub type VTableTuple = Vec<Value>;
+
+/// Row order for [`VirtualTable::remove_duplicates`]: `Value`'s own order,
+/// except that two json values compare the way SQL compares them on storage.
+/// Where storage's comparator is not linked (unit tests) json falls back to
+/// its byte order, which only tells identical documents to be equal.
+fn dedup_cmp(a: &VTableTuple, b: &VTableTuple) -> Ordering {
+    for (left, right) in a.iter().zip(b) {
+        let ordering = match (left, right) {
+            (Value::Json(l), Value::Json(r)) => l.value_cmp(r),
+            _ => left.cmp(right),
+        };
+        if ordering.is_ne() {
+            return ordering;
+        }
+    }
+    a.len().cmp(&b.len())
+}
 
 /// Helper struct to group tuples by buckets.
 /// key:   bucket id.
@@ -602,8 +620,8 @@ impl VirtualTable {
     ///
     /// WARNING: does not update the bucket index. Call it only before the index is built.
     pub fn remove_duplicates(&mut self) {
-        self.tuples.sort_unstable();
-        self.tuples.dedup();
+        self.tuples.sort_unstable_by(dedup_cmp);
+        self.tuples.dedup_by(|a, b| dedup_cmp(a, b).is_eq());
     }
 
     pub fn dump_mp<'alias, 'port>(

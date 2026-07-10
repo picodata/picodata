@@ -1123,6 +1123,7 @@ mod tests {
                     Value::String(_) => FieldType::String,
                     Value::Tuple(_) => FieldType::Array,
                     Value::Uuid(_) => FieldType::Uuid,
+                    Value::Json(_) => FieldType::Json,
                     Value::Null => FieldType::Any,
                 },
                 is_nullable: true,
