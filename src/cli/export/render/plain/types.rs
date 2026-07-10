@@ -29,8 +29,7 @@ fn render_scalar_type(field_type: FieldType) -> Option<&'static str> {
         FieldType::String => Some("TEXT"),
         FieldType::Datetime => Some("DATETIME"),
         FieldType::Uuid => Some("UUID"),
-        // `JSON` is stored as `map`.
-        FieldType::Map => Some("JSON"),
+        FieldType::Json => Some("JSON"),
         // Not expressible in `ColumnDefType` of the grammar.
         _ => None,
     }
@@ -45,10 +44,10 @@ fn get_element_type(element: TypedArray) -> Option<FieldType> {
         TypedArray::Integer => Some(FieldType::Integer),
         TypedArray::String => Some(FieldType::String),
         TypedArray::Uuid => Some(FieldType::Uuid),
-        TypedArray::Map => Some(FieldType::Map),
         TypedArray::Json => Some(FieldType::Json),
-        // The grammar always requires an element type.
-        TypedArray::Any => None,
+        // The grammar always requires an element type, and `map` has no
+        // spelling in it.
+        TypedArray::Map | TypedArray::Any => None,
     }
 }
 
@@ -68,7 +67,7 @@ mod tests {
             (FieldType::String, "TEXT"),
             (FieldType::Datetime, "DATETIME"),
             (FieldType::Uuid, "UUID"),
-            (FieldType::Map, "JSON"),
+            (FieldType::Json, "JSON"),
         ];
 
         for (field_type, expected) in cases {
@@ -86,7 +85,6 @@ mod tests {
             (TypedArray::Boolean, "BOOL[]"),
             (TypedArray::Datetime, "DATETIME[]"),
             (TypedArray::Decimal, "DECIMAL[]"),
-            (TypedArray::Map, "JSON[]"),
         ];
 
         for (element, expected) in cases {
@@ -105,6 +103,10 @@ mod tests {
             FieldType::Scalar,
             FieldType::Varbinary,
             FieldType::Interval,
+            // A `json` column created before the native type is stored as
+            // `map`. Exporting it as `JSON` would change its type on import.
+            FieldType::Map,
+            FieldType::Array(TypedArray::Map),
             FieldType::Array(TypedArray::Any),
         ] {
             let error = render_sql_type(field_type).expect_err("there is no DDL spelling");

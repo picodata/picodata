@@ -870,7 +870,7 @@ pub fn check_msgpack_matches_type(
         SbroadType::String => is_str(marker) || is_bin(marker),
         SbroadType::Uuid => is_ext(msgpack, tarantool::ffi::uuid::MP_UUID),
         SbroadType::Datetime => is_ext(msgpack, tarantool::ffi::datetime::MP_DATETIME),
-        SbroadType::Json => is_map(marker),
+        SbroadType::Json => is_ext(msgpack, tarantool::ffi::json::MP_JSON),
     };
 
     if !ok {
@@ -887,14 +887,6 @@ pub fn check_msgpack_matches_type(
         matches!(
             marker,
             Marker::FixArray { .. } | Marker::Array16 | Marker::Array32
-        )
-    }
-
-    #[inline(always)]
-    fn is_map(marker: Marker) -> bool {
-        matches!(
-            marker,
-            Marker::FixMap { .. } | Marker::Map16 | Marker::Map32
         )
     }
 

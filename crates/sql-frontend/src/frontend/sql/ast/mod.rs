@@ -2720,6 +2720,7 @@ impl TryFrom<&Rule> for CastType {
             Rule::TypeDatetime => Ok(Self::Datetime),
             Rule::TypeDecimal => Ok(Self::Decimal),
             Rule::TypeDouble => Ok(Self::Double),
+            Rule::TypeJSON => Ok(Self::Json),
             Rule::TypeInt => Ok(Self::Integer),
             Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => Ok(Self::String),
             Rule::TypeUuid => Ok(Self::Uuid),
@@ -2744,7 +2745,7 @@ impl TryFrom<Rule> for NestedType {
             Rule::TypeInt => Ok(NestedType::Integer),
             Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => Ok(NestedType::Text),
             Rule::TypeUuid => Ok(NestedType::Uuid),
-            Rule::TypeJSON => Ok(NestedType::Map),
+            Rule::TypeJSON => Ok(NestedType::Json),
             _ => Err(SbroadError::Unsupported(
                 Entity::Type,
                 Some(format_smolstr!(
@@ -2764,7 +2765,7 @@ impl TryFrom<Rule> for UnrestrictedType {
             Rule::TypeDatetime => Ok(Self::Datetime),
             Rule::TypeDecimal => Ok(Self::Decimal),
             Rule::TypeDouble => Ok(Self::Double),
-            Rule::TypeJSON => Ok(Self::Map),
+            Rule::TypeJSON => Ok(Self::Json),
             Rule::TypeInt => Ok(Self::Integer),
             Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => Ok(Self::String),
             Rule::TypeUuid => Ok(Self::Uuid),

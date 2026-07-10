@@ -85,8 +85,23 @@ def test_msgpack_extensions_over_iproto(cluster: Cluster):
     assert bloom_fpr == Decimal("0.023")
 
     # Uuids & datetimes never land in an `any` column on their own, so put them
-    # into a json column via lua.
-    i1.sql("CREATE TABLE t_json (id INT PRIMARY KEY, j JSON) DISTRIBUTED GLOBALLY")
+    # into a map column via lua. The SQL `JSON` type is native json now, which
+    # cannot hold them, and SQL has no `map` type, so the table is created
+    # through the internal DDL path.
+    i1.propose_create_space(
+        dict(
+            id=902,
+            name="t_json",
+            format=[
+                dict(name="id", type="integer", is_nullable=False),
+                dict(name="j", type="map", is_nullable=True),
+            ],
+            primary_key=[dict(field="id")],
+            distribution=dict(kind="global"),
+            engine="memtx",
+            owner=0,
+        ),
+    )
     i1.eval(
         """
         box.space.t_json:replace{1, {

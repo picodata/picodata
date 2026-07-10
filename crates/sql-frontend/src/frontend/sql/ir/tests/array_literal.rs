@@ -239,7 +239,7 @@ fn array_cast_empty_typed_by_cast() {
         ("double", NestedType::Double),
         ("text", NestedType::Text),
         ("bool", NestedType::Boolean),
-        ("json", NestedType::Map),
+        ("json", NestedType::Json),
     ] {
         let sql = format!(r#"SELECT ARRAY[]::{ty}[] FROM "test_space""#);
         let plan = sql_to_ir(&sql, vec![]);

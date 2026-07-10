@@ -784,6 +784,10 @@ impl Value {
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
+            UnrestrictedType::Json => match self {
+                Value::Null => Ok(Value::Null),
+                _ => Err(cast_error(&self, column_type)),
+            },
             UnrestrictedType::Boolean => match self {
                 Value::Boolean(_) => Ok(self),
                 Value::Null => Ok(Value::Null),
@@ -1140,7 +1144,7 @@ pub fn parse_str_as(s: &str, ty: UnrestrictedType) -> Option<Value> {
         UnrestrictedType::String | UnrestrictedType::Any => Some(Value::String(s.to_string())),
         UnrestrictedType::Uuid => Uuid::parse_str(s).ok().map(Value::Uuid),
         // There is no text input syntax for these in this dialect.
-        UnrestrictedType::Array(_) | UnrestrictedType::Map => None,
+        UnrestrictedType::Array(_) | UnrestrictedType::Map | UnrestrictedType::Json => None,
     }
 }
 

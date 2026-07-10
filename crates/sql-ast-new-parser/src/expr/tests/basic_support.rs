@@ -457,11 +457,11 @@ fn cast_postfix_array() {
 }
 
 #[test]
-fn cast_postfix_json_array() {
-    // `json[]` is a legal cast target even though bare `::json` is not;
-    // rendering must not emit `map[]` (see `CastTypeSql`).
+fn cast_postfix_json() {
+    // `json` is the native JSON type, alone and as an array element.
+    insta::assert_snapshot!(render_expr("a::json"), @"a::json");
+    insta::assert_snapshot!(render_expr("CAST(a AS json)"), @"CAST(a AS json)");
     insta::assert_snapshot!(render_expr("a::json[]"), @"a::json[]");
-    insta::assert_snapshot!(expr_err("a::json"), @"syntax error: cannot cast to json");
 }
 
 #[test]

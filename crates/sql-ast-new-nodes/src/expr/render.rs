@@ -363,17 +363,14 @@ impl Display for Parameter {
 }
 
 /// SQL spelling of a cast target as accepted by the grammar's
-/// [`CastTarget`](sql_ast_new_grammar::Rule::CastTarget) rule:
-/// [`CastType`]'s own [`Display`] prints `map[]` for JSON arrays, which does not
-/// re-parse (`map` is not [`Type`](sql_ast_new_grammar::Rule::Type)).
+/// [`CastTarget`](sql_ast_new_grammar::Rule::CastTarget) rule, where it differs
+/// from [`CastType`]'s own [`Display`].
 struct CastTypeSql(CastType);
 
 impl Display for CastTypeSql {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self.0 {
-            CastType::Array(NestedType::Map) => write!(f, "json[]"),
             CastType::Array(NestedType::Any) => write!(f, "text[]"),
-            CastType::Json => write!(f, "json"),
             ty => write!(f, "{ty}"),
         }
     }

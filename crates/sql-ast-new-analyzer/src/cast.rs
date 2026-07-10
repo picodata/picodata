@@ -82,7 +82,10 @@ pub(crate) fn coerce_text_literal(expr: &mut Expr<'_, Analyzed>, to: Type) -> As
     if literal.kind != LiteralKind::Text {
         return Ok(false);
     }
-    let Some(target) = DerivedType::from(to).get().filter(|ty| ty.is_scalar()) else {
+    let Some(target) = DerivedType::from(to)
+        .get()
+        .filter(|ty| ty.is_scalar() || *ty == UnrestrictedType::Json)
+    else {
         return Ok(false);
     };
 
@@ -137,6 +140,7 @@ fn literal_kind_of(ty: UnrestrictedType) -> Option<LiteralKind> {
         | UnrestrictedType::Datetime
         | UnrestrictedType::Map
         | UnrestrictedType::Array(_)
+        | UnrestrictedType::Json
         | UnrestrictedType::Any => None,
     }
 }

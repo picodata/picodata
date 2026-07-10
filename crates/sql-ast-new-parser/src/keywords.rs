@@ -917,8 +917,6 @@ const SYNTAX_KEYWORDS: &[SyntaxKeyword] = &[
         glued_reads_as: Parses::Not,
     },
     SyntaxKeyword {
-        // `CastType` has no scalar JSON variant, so the keyword only reaches a
-        // supported cast as an array element type.
         covers: &["json"],
         used: "SELECT a::json[] FROM t",
         renders: Parses::As("SELECT a::json[] FROM t"),
@@ -928,7 +926,7 @@ const SYNTAX_KEYWORDS: &[SyntaxKeyword] = &[
     SyntaxKeyword {
         covers: &["json"],
         used: "SELECT a::json FROM t",
-        renders: Parses::Not,
+        renders: Parses::As("SELECT a::json FROM t"),
         glued: "SELECT a::jsonx FROM t",
         glued_reads_as: Parses::Not,
     },

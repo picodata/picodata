@@ -514,8 +514,6 @@ impl<'q> AstState<'q> for Analyzed {
 
         match d_type.get() {
             None | Some(UnrestrictedType::Any) => Ok(()),
-            Some(UnrestrictedType::Map) => write!(f, "::json"),
-            Some(UnrestrictedType::Array(NestedType::Map)) => write!(f, "::json[]"),
             Some(UnrestrictedType::Array(NestedType::Any)) => write!(f, "::text[]"),
             Some(ty) => write!(f, "::{ty}"),
         }

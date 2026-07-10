@@ -470,3 +470,31 @@ fn any_primary_key_is_rejected() {
         );
     }
 }
+
+#[test]
+fn create_table_json_column() {
+    let input = r#"create table t (id int primary key, data json) distributed globally"#;
+
+    let metadata = &RouterConfigurationMock::new();
+    let plan = transform_into_plan(input, &[], metadata).unwrap();
+    let top_id = plan.get_top().unwrap();
+    let top_node = plan.get_ddl_node(top_id).unwrap();
+
+    let Ddl::CreateTable(CreateTable { format, .. }) = top_node else {
+        panic!("expected create table")
+    };
+
+    let def_id = ColumnDef {
+        name: "id".into(),
+        data_type: column_def_type(DataType::Integer),
+        is_nullable: false,
+    };
+
+    let def_data = ColumnDef {
+        name: "data".into(),
+        data_type: column_def_type(DataType::Json),
+        is_nullable: true,
+    };
+
+    assert_eq!(format, &vec![def_id, def_data]);
+}

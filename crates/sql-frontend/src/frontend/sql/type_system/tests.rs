@@ -528,6 +528,29 @@ fn cast() {
 }
 
 #[test]
+fn json() {
+    assert_ok("SELECT '{}'::json");
+    assert_ok("SELECT $1::json");
+    assert_ok("SELECT CAST('[1, 2, 3]' AS JSON)");
+    assert_ok("SELECT '{}'::json = $1");
+}
+
+#[test]
+fn count_accepts_json() {
+    assert_ok("SELECT count(x) FROM (SELECT '{}'::json AS x)");
+}
+
+#[test]
+fn count_distinct_accepts_json() {
+    assert_ok("SELECT count(DISTINCT x) FROM (SELECT '{}'::json AS x)");
+}
+
+#[test]
+fn count_over_window_accepts_json() {
+    assert_ok("SELECT count(x) OVER () FROM (SELECT '{}'::json AS x)");
+}
+
+#[test]
 fn clause_based_parameter_type_inference() {
     // WHERE
     assert_ok("SELECT * FROM (SELECT 1) WHERE $1");

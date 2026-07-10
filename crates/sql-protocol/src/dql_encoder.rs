@@ -17,6 +17,7 @@ pub enum ColumnType {
     Any,
     Array,
     Scalar,
+    Json,
 }
 
 impl TryFrom<u8> for ColumnType {
@@ -35,6 +36,7 @@ impl TryFrom<u8> for ColumnType {
             8 => ColumnType::Any,
             9 => ColumnType::Array,
             10 => ColumnType::Scalar,
+            11 => ColumnType::Json,
             _ => return Err(format!("Unknown column type: {value}")),
         };
 

@@ -635,7 +635,7 @@ fn parse_cast_target(pair: Pair<'_, Rule>) -> AstResult<CastType> {
         Rule::TypeDecimal => NestedType::Numeric,
         Rule::TypeDouble => NestedType::Double,
         Rule::TypeInt => NestedType::Integer,
-        Rule::TypeJSON => NestedType::Map,
+        Rule::TypeJSON => NestedType::Json,
         Rule::TypeString | Rule::TypeText => NestedType::Text,
         Rule::TypeVarchar => {
             if let Some(length_pair) = concrete_type_pair.into_inner().next() {
@@ -673,6 +673,7 @@ fn parse_cast_type(pair: Pair<'_, Rule>) -> AstResult<CastType> {
         Rule::TypeDecimal => CastType::Decimal,
         Rule::TypeDouble => CastType::Double,
         Rule::TypeInt => CastType::Integer,
+        Rule::TypeJSON => CastType::Json,
         Rule::TypeString | Rule::TypeText => CastType::String,
         Rule::TypeUuid => CastType::Uuid,
         Rule::TypeVarchar => {
@@ -689,9 +690,6 @@ fn parse_cast_type(pair: Pair<'_, Rule>) -> AstResult<CastType> {
             }
             CastType::String
         }
-        // `json[]` is a target (see `parse_cast_target`), a bare `json` is not,
-        // as in the old pipeline.
-        Rule::TypeJSON => return Err(syntax_err(format_smolstr!("cannot cast to json"))),
         rule => {
             return Err(parser_err(format_smolstr!(
                 "expected a concrete type under `Type`, got {rule:?}"

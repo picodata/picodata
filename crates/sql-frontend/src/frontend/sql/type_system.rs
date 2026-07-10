@@ -651,6 +651,7 @@ fn aggregate_functions() -> Vec<Function> {
         Function::new_aggregate("count", [Text], Integer),
         Function::new_aggregate("count", [Boolean], Integer),
         Function::new_aggregate("count", [Datetime], Integer),
+        Function::new_aggregate("count", [Json], Integer),
         // - max
         Function::new_aggregate("max", [Integer], Integer),
         Function::new_aggregate("max", [Double], Double),
@@ -699,6 +700,7 @@ fn window_functions() -> Vec<Function> {
         Function::new_window("count", [Text], Integer),
         Function::new_window("count", [Boolean], Integer),
         Function::new_window("count", [Datetime], Integer),
+        Function::new_window("count", [Json], Integer),
         // - max
         Function::new_window("max", [Integer], Integer),
         Function::new_window("max", [Double], Double),

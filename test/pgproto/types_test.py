@@ -719,7 +719,23 @@ def test_map_with_msgpack_extensions(postgres: Postgres):
     i1 = postgres.instance
 
     i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
-    i1.sql("CREATE TABLE t (id INT PRIMARY KEY, j JSON) DISTRIBUTED GLOBALLY")
+    # A map column: the SQL `JSON` type is native json now, which cannot hold
+    # uuids or datetimes, and SQL has no `map` type, so the table is created
+    # through the internal DDL path.
+    i1.propose_create_space(
+        dict(
+            id=902,
+            name="t",
+            format=[
+                dict(name="id", type="integer", is_nullable=False),
+                dict(name="j", type="map", is_nullable=True),
+            ],
+            primary_key=[dict(field="id")],
+            distribution=dict(kind="global"),
+            engine="memtx",
+            owner=0,
+        ),
+    )
     i1.sql(f'GRANT READ ON TABLE "t" TO "{user}"', sudo=True)
 
     # Decimals, uuids & datetimes can't be written in a json literal, so put

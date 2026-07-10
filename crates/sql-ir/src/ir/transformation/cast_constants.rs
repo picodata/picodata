@@ -66,7 +66,14 @@ impl Plan {
             }) = self.get_expression_node(cast_id)?
             {
                 (
+                    // Casting SQL NULL to JSON produces `Value::Null`, whose
+                    // derived type is unknown. Preserve the cast so a compound
+                    // SELECT sees JSON when unifying its branch column types.
+                    // In `SELECT NULL::json UNION SELECT 1`, JSON and integer
+                    // cannot be unified. Folding the cast would let the integer
+                    // branch determine the type and allow the query to succeed.
                     apply_cast(self, *cast_child, *to)
+                        .filter(|value| !(*to == CastType::Json && *value == Value::Null))
                         .map(|value| Node32::Constant(Constant { value })),
                     self.get_child_under_cast(*cast_child)
                         .and_then(|id| self.get_expression_node(id))

@@ -854,6 +854,7 @@ fn table_create(
         .map(|(name, column_type)| {
             match column_type {
                 ColumnType::Map => Field::map(*name),
+                ColumnType::Json => Field::json(*name),
                 ColumnType::Boolean => Field::boolean(*name),
                 ColumnType::Datetime => Field::datetime(*name),
                 ColumnType::Decimal => Field::decimal(*name),

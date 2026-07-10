@@ -76,6 +76,7 @@ impl From<Column> for Field {
                 UnrestrictedType::Array(_) => Field::array(column.name),
                 UnrestrictedType::Any => Field::any(column.name),
                 UnrestrictedType::Map => Field::map(column.name),
+                UnrestrictedType::Json => Field::json(column.name),
             }
         } else {
             Field::scalar(column.name)
@@ -125,6 +126,7 @@ impl SerSerialize for Column {
                 }
                 UnrestrictedType::Any => "any",
                 UnrestrictedType::Map => "map",
+                UnrestrictedType::Json => "json",
             },
             None => "unknown",
         };

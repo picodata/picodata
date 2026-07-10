@@ -12,6 +12,7 @@ pub enum NestedType {
 
     /// Element type for `json[]`.
     Map,
+    Json,
 
     /// Forbidden for user tables.
     Any,
@@ -28,6 +29,7 @@ impl From<NestedType> for Type {
             NestedType::Datetime => Type::Datetime,
             NestedType::Uuid => Type::Uuid,
             NestedType::Map => Type::Map,
+            NestedType::Json => Type::Json,
             NestedType::Any => Type::Any,
         }
     }
@@ -46,6 +48,7 @@ impl TryFrom<Type> for NestedType {
             Type::Datetime => NestedType::Datetime,
             Type::Uuid => NestedType::Uuid,
             Type::Map => NestedType::Map,
+            Type::Json => NestedType::Json,
             Type::Any => NestedType::Any,
             Type::Array(_) => return Err(value),
         })
@@ -63,6 +66,7 @@ impl NestedType {
             NestedType::Datetime => "datetime[]",
             NestedType::Uuid => "uuid[]",
             NestedType::Map => "map[]",
+            NestedType::Json => "json[]",
             NestedType::Any => "array",
         }
     }
@@ -85,6 +89,7 @@ pub enum Type {
     Uuid,
     Array(NestedType),
     Map,
+    Json,
     // Any is a compound type that can be basically any other type.
     // Because the actual type is unknown, overload resolution is likely to fail. Only the user may
     // know the actual type, so the user is required to provide it via explicit cast to resolve
@@ -130,6 +135,7 @@ impl Type {
             Type::Uuid => "uuid",
             Type::Array(elem) => elem.as_array_str(),
             Type::Map => "map",
+            Type::Json => "json",
             Type::Any => "any",
         }
     }

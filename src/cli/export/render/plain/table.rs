@@ -418,10 +418,9 @@ mod tests {
             make_field("c_text", FieldType::String, true),
             make_field("c_uuid", FieldType::Uuid, true),
             make_field("c_datetime", FieldType::Datetime, true),
-            make_field("c_json", FieldType::Map, true),
+            make_field("c_json", FieldType::Json, true),
             make_field("c_text_arr", FieldType::Array(TypedArray::String), true),
             make_field("c_int_arr", FieldType::Array(TypedArray::Integer), true),
-            make_field("c_json_arr", FieldType::Array(TypedArray::Map), true),
         ];
         let primary_key = make_primary_key(&["c_int"]);
 
@@ -438,7 +437,6 @@ mod tests {
             c_json JSON,
             c_text_arr TEXT[],
             c_int_arr INT[],
-            c_json_arr JSON[],
             PRIMARY KEY (c_int)
         )
         USING memtx

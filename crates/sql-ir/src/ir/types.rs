@@ -23,8 +23,8 @@ pub enum NestedType {
     Boolean,
     Datetime,
     Uuid,
-    /// Element type for `json[]`.
     Map,
+    Json,
     /// The element type of `ANY[]`, allowed in migration DDL only.
     Any,
 }
@@ -40,6 +40,7 @@ impl From<NestedType> for TypeSystemNestedType {
             NestedType::Datetime => Self::Datetime,
             NestedType::Uuid => Self::Uuid,
             NestedType::Map => Self::Map,
+            NestedType::Json => Self::Json,
             NestedType::Any => Self::Any,
         }
     }
@@ -58,6 +59,7 @@ impl NestedType {
             NestedType::Datetime => "datetime",
             NestedType::Uuid => "uuid",
             NestedType::Map => "map",
+            NestedType::Json => "json",
             NestedType::Any => "any",
         }
     }
@@ -79,6 +81,7 @@ impl NestedType {
             "datetime" => NestedType::Datetime,
             "uuid" => NestedType::Uuid,
             "map" => NestedType::Map,
+            "json" => NestedType::Json,
             "any" => NestedType::Any,
             other => {
                 return Err(SbroadError::Invalid(
@@ -104,6 +107,7 @@ impl From<TypeSystemNestedType> for NestedType {
             TypeSystemNestedType::Datetime => Self::Datetime,
             TypeSystemNestedType::Uuid => Self::Uuid,
             TypeSystemNestedType::Map => Self::Map,
+            TypeSystemNestedType::Json => Self::Json,
             TypeSystemNestedType::Any => Self::Any,
         }
     }
@@ -211,7 +215,7 @@ impl From<&DomainType> for FieldType {
             DomainType::Unsigned => FieldType::Unsigned,
             DomainType::Uuid => FieldType::Uuid,
             DomainType::String => FieldType::String,
-            DomainType::Json => FieldType::Map,
+            DomainType::Json => FieldType::Json,
             DomainType::Any => FieldType::Any,
         }
     }
@@ -229,7 +233,7 @@ impl From<&DomainType> for SpaceFieldType {
             DomainType::Unsigned => SpaceFieldType::Unsigned,
             DomainType::String => SpaceFieldType::String,
             DomainType::Uuid => SpaceFieldType::Uuid,
-            DomainType::Json => SpaceFieldType::Map,
+            DomainType::Json => SpaceFieldType::Json,
             DomainType::Any => SpaceFieldType::Any,
         }
     }
@@ -252,7 +256,7 @@ impl From<&DomainType> for UnrestrictedType {
             DomainType::Integer | DomainType::Unsigned => UnrestrictedType::Integer,
             DomainType::String => UnrestrictedType::String,
             DomainType::Uuid => UnrestrictedType::Uuid,
-            DomainType::Json => UnrestrictedType::Map,
+            DomainType::Json => UnrestrictedType::Json,
             DomainType::Any => UnrestrictedType::Any,
         }
     }
@@ -282,7 +286,7 @@ impl fmt::Display for CastType {
             CastType::Integer => write!(f, "int"),
             CastType::String => write!(f, "text"),
             CastType::Uuid => write!(f, "uuid"),
-            CastType::Json => write!(f, "map"),
+            CastType::Json => write!(f, "json"),
             CastType::Array(elem) => write!(f, "{}[]", UnrestrictedType::from(*elem)),
         }
     }
@@ -296,7 +300,7 @@ impl From<&CastType> for TypeSystemType {
             CastType::Double => TypeSystemType::Double,
             CastType::Decimal => TypeSystemType::Numeric,
             CastType::Integer => TypeSystemType::Integer,
-            CastType::Json => TypeSystemType::Map,
+            CastType::Json => TypeSystemType::Json,
             CastType::String => TypeSystemType::Text,
             CastType::Uuid => TypeSystemType::Uuid,
             CastType::Array(n) => TypeSystemType::Array((*n).into()),
@@ -317,10 +321,12 @@ impl TryFrom<&UnrestrictedType> for CastType {
             UnrestrictedType::Uuid => Ok(CastType::Uuid),
             UnrestrictedType::String => Ok(CastType::String),
             UnrestrictedType::Array(n) => Ok(CastType::Array(*n)),
-            UnrestrictedType::Map | UnrestrictedType::Any => Err(Self::Error::Invalid(
-                Entity::Type,
-                Some(format_smolstr!("cannot cast to Map/Any")),
-            )),
+            UnrestrictedType::Map | UnrestrictedType::Any | UnrestrictedType::Json => {
+                Err(Self::Error::Invalid(
+                    Entity::Type,
+                    Some(format_smolstr!("cannot cast to Map/Any/Json")),
+                ))
+            }
         }
     }
 }
@@ -338,7 +344,7 @@ impl TryFrom<&UnrestrictedType> for CastType {
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum UnrestrictedType {
     // User-facing types
-    Map, // aka JSON
+    Map,
     Boolean,
     Datetime,
     Decimal,
@@ -347,6 +353,7 @@ pub enum UnrestrictedType {
     String,
     Uuid,
     Array(NestedType),
+    Json,
 
     // Internal service types
     Any,
@@ -363,6 +370,7 @@ impl From<NestedType> for TypedArray {
             NestedType::Text => Self::String,
             NestedType::Uuid => Self::Uuid,
             NestedType::Map => Self::Map,
+            NestedType::Json => Self::Json,
             NestedType::Any => Self::Any,
         }
     }
@@ -379,8 +387,7 @@ impl From<TypedArray> for NestedType {
             TypedArray::String => Self::Text,
             TypedArray::Uuid => Self::Uuid,
             TypedArray::Map => Self::Map,
-            // SQL has no json type yet: JSON is stored as `map`.
-            TypedArray::Json => Self::Map,
+            TypedArray::Json => Self::Json,
             TypedArray::Any => Self::Any,
         }
     }
@@ -397,6 +404,7 @@ impl From<NestedType> for UnrestrictedType {
             NestedType::Text => UnrestrictedType::String,
             NestedType::Uuid => UnrestrictedType::Uuid,
             NestedType::Map => UnrestrictedType::Map,
+            NestedType::Json => UnrestrictedType::Json,
             NestedType::Any => UnrestrictedType::Any,
         }
     }
@@ -415,6 +423,7 @@ impl TryFrom<UnrestrictedType> for NestedType {
             UnrestrictedType::String => Ok(NestedType::Text),
             UnrestrictedType::Uuid => Ok(NestedType::Uuid),
             UnrestrictedType::Map => Ok(NestedType::Map),
+            UnrestrictedType::Json => Ok(NestedType::Json),
             UnrestrictedType::Any => Ok(NestedType::Any),
             UnrestrictedType::Array(_) => Err(SbroadError::Invalid(
                 Entity::Type,
@@ -445,6 +454,7 @@ impl UnrestrictedType {
             "uuid" => Ok(UnrestrictedType::Uuid),
             "array" => Ok(UnrestrictedType::Array(NestedType::Any)),
             "map" => Ok(UnrestrictedType::Map),
+            "json" => Ok(UnrestrictedType::Json),
             v => Err(SbroadError::Invalid(
                 Entity::Type,
                 Some(format_smolstr!("Unable to transform {v} to Type.")),
@@ -499,7 +509,7 @@ impl From<CastType> for UnrestrictedType {
             CastType::Decimal => UnrestrictedType::Decimal,
             CastType::Double => UnrestrictedType::Double,
             CastType::Integer => UnrestrictedType::Integer,
-            CastType::Json => UnrestrictedType::Map,
+            CastType::Json => UnrestrictedType::Json,
             CastType::String => UnrestrictedType::String,
             CastType::Uuid => UnrestrictedType::Uuid,
             CastType::Array(n) => UnrestrictedType::Array(n),
@@ -522,7 +532,8 @@ impl TryFrom<SpaceFieldType> for UnrestrictedType {
             SpaceFieldType::Uuid => Ok(UnrestrictedType::Uuid),
             SpaceFieldType::Any => Ok(UnrestrictedType::Any),
             SpaceFieldType::Map => Ok(UnrestrictedType::Map),
-            SpaceFieldType::Varbinary | SpaceFieldType::Interval | SpaceFieldType::Json => Err(
+            SpaceFieldType::Json => Ok(UnrestrictedType::Json),
+            SpaceFieldType::Varbinary | SpaceFieldType::Interval => Err(
                 SbroadError::NotImplemented(Entity::Type, field_type.to_smolstr()),
             ),
             SpaceFieldType::Number | SpaceFieldType::Scalar => Err(SbroadError::Unsupported(
@@ -545,6 +556,7 @@ impl From<&UnrestrictedType> for FieldType {
             UnrestrictedType::String => FieldType::String,
             UnrestrictedType::Array(_) => FieldType::Array,
             UnrestrictedType::Map => FieldType::Map,
+            UnrestrictedType::Json => FieldType::Json,
             UnrestrictedType::Any => FieldType::Any,
         }
     }
@@ -562,6 +574,7 @@ impl From<&UnrestrictedType> for SpaceFieldType {
             UnrestrictedType::Uuid => SpaceFieldType::Uuid,
             UnrestrictedType::Array(elem) => SpaceFieldType::Array((*elem).into()),
             UnrestrictedType::Map => SpaceFieldType::Map,
+            UnrestrictedType::Json => SpaceFieldType::Json,
             UnrestrictedType::Any => SpaceFieldType::Any,
         }
     }
@@ -592,6 +605,7 @@ impl UnrestrictedType {
             UnrestrictedType::String => "text",
             UnrestrictedType::Uuid => "uuid",
             UnrestrictedType::Map => "map",
+            UnrestrictedType::Json => "json",
             UnrestrictedType::Array(NestedType::Any) => "array",
             UnrestrictedType::Array(_) => return None,
             UnrestrictedType::Any => "any",
@@ -636,8 +650,8 @@ impl DerivedType {
     }
 
     /// Whether equal values of this type always have one stored form, and
-    /// so hash to one bucket. DECIMAL (`1.0` and `1.00`), DOUBLE and DATETIME
-    /// (one moment in two time zones) do not, nor types that may hold them:
+    /// so hash to one bucket. JSON (`42` and `42.0`), DECIMAL (`1.0` and `1.00`),
+    /// DOUBLE and DATETIME (one moment in two time zones) do not, nor types that may hold them:
     /// their equality classes co-locate join sides as on master, but pin no
     /// key, see `EqualityFacts::routing_pin`.
     #[must_use]
@@ -646,7 +660,7 @@ impl DerivedType {
         // No wildcard: a new type must be sorted here.
         match self.0 {
             Some(Integer | String | Uuid | Boolean) => true,
-            Some(Decimal | Double | Datetime | Map | Array(_) | Any) | None => false,
+            Some(Decimal | Double | Datetime | Json | Map | Array(_) | Any) | None => false,
         }
     }
 }
@@ -679,6 +693,7 @@ impl From<&ColumnType> for DerivedType {
             ColumnType::Uuid => Self::new(UnrestrictedType::Uuid),
             ColumnType::Any => Self::new(UnrestrictedType::Any),
             ColumnType::Array => Self::new(UnrestrictedType::Array(NestedType::Any)),
+            ColumnType::Json => Self::new(UnrestrictedType::Json),
             ColumnType::Scalar => Self::unknown(),
         }
     }
@@ -707,6 +722,7 @@ impl From<&DerivedType> for ColumnType {
             UnrestrictedType::Uuid => ColumnType::Uuid,
             UnrestrictedType::Any => ColumnType::Any,
             UnrestrictedType::Array(_) => ColumnType::Array,
+            UnrestrictedType::Json => ColumnType::Json,
         }
     }
 }
@@ -745,6 +761,7 @@ pub fn calculate_unified_types(
         match ty {
             UnrestrictedType::Any
             | UnrestrictedType::Map
+            | UnrestrictedType::Json
             | UnrestrictedType::Array(_)
             | UnrestrictedType::Boolean
             | UnrestrictedType::String
@@ -813,6 +830,7 @@ impl From<UnrestrictedType> for TypeSystemType {
             UnrestrictedType::Uuid => TypeSystemType::Uuid,
             UnrestrictedType::Array(n) => TypeSystemType::Array(n.into()),
             UnrestrictedType::Map => TypeSystemType::Map,
+            UnrestrictedType::Json => TypeSystemType::Json,
         }
     }
 }
@@ -829,6 +847,7 @@ impl From<TypeSystemType> for DerivedType {
             TypeSystemType::Uuid => DerivedType::new(UnrestrictedType::Uuid),
             TypeSystemType::Array(n) => DerivedType::new(UnrestrictedType::Array(n.into())),
             TypeSystemType::Map => DerivedType::new(UnrestrictedType::Map),
+            TypeSystemType::Json => DerivedType::new(UnrestrictedType::Json),
             TypeSystemType::Any => DerivedType::new(UnrestrictedType::Any),
         }
     }
@@ -844,7 +863,7 @@ impl From<CastType> for TypeSystemType {
             CastType::Boolean => TypeSystemType::Boolean,
             CastType::Datetime => TypeSystemType::Datetime,
             CastType::Uuid => TypeSystemType::Uuid,
-            CastType::Json => TypeSystemType::Map,
+            CastType::Json => TypeSystemType::Json,
             CastType::Array(n) => TypeSystemType::Array(n.into()),
         }
     }

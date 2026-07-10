@@ -1328,11 +1328,16 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
 /// Wrap this node in `CAST(<node> AS d_type)` in place.
 fn add_cast(expr: &mut Expr<'_, Analyzed>, d_type: Type) -> AstResult<()> {
     let (inner, meta) = expr.parts_mut();
-    let cast_type = DerivedType::from(d_type)
-        .get()
-        .as_ref()
-        .ok_or_else(|| analyze_err(format_smolstr!("implicit cast target type is unknown")))?
-        .try_into()?;
+    let cast_type = match *DerivedType::from(d_type).get() {
+        // Text coerced to json; `TryFrom` refuses json for the old pipeline.
+        Some(UnrestrictedType::Json) => CastType::Json,
+        Some(ty) => (&ty).try_into()?,
+        None => {
+            return Err(analyze_err(format_smolstr!(
+                "implicit cast target type is unknown"
+            )))
+        }
+    };
 
     let original_inner = std::mem::replace(
         inner,
