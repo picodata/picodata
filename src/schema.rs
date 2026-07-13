@@ -1957,6 +1957,8 @@ pub enum CreateTableError {
     ConflictingPrimaryKey(String),
     #[error("attempt to create a table in default tier, but default tier is unknown")]
     UnknownDefaultTier,
+    #[error("JSON columns are not indexable: column `{0}` cannot be part of a primary key")]
+    JsonPrimaryKey(SmolStr),
 }
 
 impl From<CreateTableError> for Error {
@@ -2413,8 +2415,13 @@ impl CreateTableParams {
                 continue;
             }
             has_non_bucket_id_part = true;
-            if !field_names.contains(part.as_str()) {
+            let Some(field) = self.format.iter().find(|f| f.name == *part) else {
                 return Err(CreateTableError::FieldUndefined(part.clone()).into());
+            };
+            // A JSON value has no index order. CREATE INDEX refuses it too,
+            // through the index field type mapping in `CreateIndexParams::parts`.
+            if field.r#type == FieldType::Json {
+                return Err(CreateTableError::JsonPrimaryKey(part.clone()).into());
             }
         }
         if !self.primary_key.is_empty() && !has_non_bucket_id_part {
