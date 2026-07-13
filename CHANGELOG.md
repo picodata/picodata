@@ -100,6 +100,8 @@ with the `YY.MINOR.MICRO` scheme.
   display the instance's general information, Vinyl and Memtx storage configuration, 
   and replication details, including upstream and downstream information for remote 
   nodes.
+- Updated the Russian localization for the "Leader State" and "State" fields in the 
+  instance list
 
 ### Fixes
 

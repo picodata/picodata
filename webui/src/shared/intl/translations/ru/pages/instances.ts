@@ -103,7 +103,7 @@ export const instances: TPages["instances"] = {
         outOf: "из",
       },
       state: {
-        label: "Состояние лидера",
+        label: "Стейт лидера",
       },
       replicasetStateNotReady: {
         label: "Не готов",
@@ -123,7 +123,7 @@ export const instances: TPages["instances"] = {
         label: "Целевое состояние",
       },
       currentState: {
-        label: "Состояние",
+        label: "Стейт",
       },
       binaryAddress: {
         label: "IPROTO",
