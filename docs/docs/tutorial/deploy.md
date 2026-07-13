@@ -16,7 +16,7 @@ bootstrap. В дальнейшем идентификация инстансов
 и имя кластера не используется.
 
 [Имя кластера]: ../reference/cli.md#run_cluster_name
-[UUID]: ../reference/sql/system_functions.md#instance_uuid
+[UUID]: ../reference/sql/system_functions.md#pico_instance_uuid
 
 ### Постоянные и динамические параметры {: #parameters_persistence }
 

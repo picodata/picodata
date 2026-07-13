@@ -249,7 +249,7 @@ def assert_common_volatile_function_behavior(
         assert not_equal or both_none or both_default
 
     if requires_volatility_modifier:
-        existing_instance_uuid = i1.sql("SELECT instance_uuid()")[0][0]
+        existing_instance_uuid = i1.sql("SELECT pico_instance_uuid()")[0][0]
         random_instance_uuid = uuid4()
         assert existing_instance_uuid != random_instance_uuid, (
             "exceptional chance occurred: a UUID identical to an existing one was generated"
@@ -378,3 +378,10 @@ def test_scalar_function_version(cluster: Cluster):
 
     assert i1.sql("SELECT version()") == [["picodata " + git_version]]
     assert i2.sql("SELECT VERSION()") == [["picodata " + git_version]]
+
+
+def test_instance_uuid_alias_is_removed(instance: Instance):
+    with pytest.raises(TarantoolError, match="SQL function instance_uuid not found"):
+        instance.sql("SELECT instance_uuid()")
+
+    assert instance.sql("SELECT pico_instance_uuid()") == [[instance.uuid()]]

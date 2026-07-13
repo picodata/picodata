@@ -115,7 +115,6 @@ article.md-typeset.md-typeset ul {
 * [IF](reference/sql/if.md)
 * [ILIKE](reference/sql/ilike.md)
 * [INDEXED BY](reference/sql/indexed_by.md)
-* [INSTANCE_UUID](reference/sql/system_functions.md#instance_uuid)
 * [INNER JOIN](reference/sql/join.md#inner_join)
 * [INSERT](reference/sql/insert.md)
 * [INTEGER](reference/sql_types.md#integer)

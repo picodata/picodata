@@ -2162,7 +2162,7 @@ fn postjoin(
         Instant::now_fiber().saturating_add(Duration::from_secs(config.instance.boot_timeout()));
 
     crate::error_injection!("STALL_BEFORE_UPDATE_OUR_STATE_TO_ONLINE" => { fiber::sleep(Duration::from_secs(5)); });
-    // Send proc_update_instance RPC to raft leader
+    // Send proc_update_instance_v2 RPC to raft leader
     crate::rpc::update_instance::update_our_target_state_to_online(
         node,
         reason,

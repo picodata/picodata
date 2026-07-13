@@ -1663,7 +1663,7 @@ plan:
 
 -- TEST: if-cond-rejects-volatile-functions
 -- SQL:
-DO $$ BEGIN IF instance_uuid() <> '' THEN UPDATE t SET b = a WHERE a = 1; END IF ; END $$;
+DO $$ BEGIN IF pico_instance_uuid() <> '' THEN UPDATE t SET b = a WHERE a = 1; END IF ; END $$;
 -- ERROR:
 volatile function is not allowed in filter clause not implemented
 

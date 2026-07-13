@@ -313,7 +313,7 @@ instance:
 
     instance = cluster.add_instance(wait_online=True)
 
-    info = instance.call(".proc_runtime_info")
+    info = instance.call(".proc_runtime_info_v2")
     assert "http" in info, "HTTP should be enabled by default when section is present"
 
 

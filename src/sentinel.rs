@@ -1,11 +1,8 @@
 use crate::has_states;
-use crate::instance::Instance;
 use crate::instance::StateVariant::*;
 use crate::proc_name;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
-#[allow(deprecated)]
-use crate::rpc::update_instance::proc_update_instance;
 use crate::rpc::update_instance::proc_update_instance_v2;
 use crate::tlog;
 use crate::traft::error::Error;
@@ -15,7 +12,6 @@ use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::Result;
 use crate::util::NoYieldsRefCell;
-use crate::version::version_is_new_enough;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
@@ -70,12 +66,6 @@ impl Loop {
         let cluster_name = node.topology_cache.cluster_name;
         let cluster_uuid = node.topology_cache.cluster_uuid;
         let my_raft_id = node.raft_id;
-        let system_catalog_version = node
-            .storage
-            .properties
-            .system_catalog_version()
-            .expect("reading from _pico_property should always work");
-
         ////////////////////////////////////////////////////////////////////////
         // Awoken during graceful shutdown.
         // Should change own target state to Offline and finish.
@@ -111,14 +101,7 @@ impl Loop {
                     let Some(leader_id) = raft_status.get().leader_id else {
                         return Err(Error::LeaderUnknown);
                     };
-                    call_proc_update_instance(
-                        pool,
-                        leader_id,
-                        &req,
-                        timeout,
-                        system_catalog_version.as_deref(),
-                    )
-                    .await?;
+                    call_proc_update_instance(pool, leader_id, &req, timeout).await?;
                     Ok(())
                 }
                 .await;
@@ -279,7 +262,6 @@ impl Loop {
                         leader_id,
                         &req,
                         Self::UPDATE_INSTANCE_TIMEOUT,
-                        system_catalog_version.as_deref(),
                     )
                     .await?;
                     Ok(())
@@ -388,34 +370,14 @@ pub async fn call_proc_update_instance(
     leader_id: RaftId,
     request: &rpc::update_instance::Request,
     timeout: Duration,
-    system_catalog_version: Option<&str>,
 ) -> Result<()> {
-    let need_call_new_proc = if let Some(system_catalog_version) = system_catalog_version {
-        version_is_new_enough(
-            system_catalog_version,
-            &Instance::TARGET_STATE_CHANGE_TIME_AVAILABLE_SINCE,
-        )?
-    } else {
-        true
-    };
-    if need_call_new_proc {
-        pool.call(
-            &leader_id,
-            proc_name!(proc_update_instance_v2),
-            request,
-            timeout,
-        )?
-        .await?;
-    } else {
-        #[allow(deprecated)]
-        pool.call(
-            &leader_id,
-            proc_name!(proc_update_instance),
-            &request.base,
-            timeout,
-        )?
-        .await?;
-    }
+    pool.call(
+        &leader_id,
+        proc_name!(proc_update_instance_v2),
+        request,
+        timeout,
+    )?
+    .await?;
 
     Ok(())
 }

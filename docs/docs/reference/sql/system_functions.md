@@ -2,26 +2,6 @@
 
 Picodata поддерживает следующий набор системных SQL-функций.
 
-## INSTANCE_UUID {: #instance_uuid }
-
-Скалярная функция `instance_uuid` позволяет узнать `uuid` инстанса, на котором
-выполняется запрос. Разрешено использовать только в проекциях.
-
-!!! warning title "Внимание!"
-    Функция `instance_uuid` объявлена
-    устаревшей и будет удалена в следующих релизах Picodata. Используйте
-    вместо нее [`pico_instance_uuid`](#pico_instance_uuid)
-
-**Синтаксис**
-
-![INSTANCE UUID](../../images/ebnf/instance_uuid.svg)
-
-**Примеры использования**
-
-```sql
-SELECT instance_uuid();
-```
-
 ## PICO_INSTANCE_UUID {: #pico_instance_uuid }
 
 Скалярная функция `pico_instance_uuid` позволяет узнать текстовое

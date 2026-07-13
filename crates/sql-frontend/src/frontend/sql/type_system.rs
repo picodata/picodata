@@ -423,14 +423,6 @@ fn default_type_system() -> TypeSystem {
         Function::new_operator("||", [Text, Map], Text),
         // Functions.
         Function::new_scalar(
-            // TODO:
-            // Deprecated, remove in the future version.
-            // Consider using `pico_instance_uuid` instead.
-            get_real_function_name("instance_uuid").expect("shouldn't fail"),
-            [],
-            Text,
-        ),
-        Function::new_scalar(
             get_real_function_name("pico_config_file_path").expect("shouldn't fail"),
             [Text],
             Text,

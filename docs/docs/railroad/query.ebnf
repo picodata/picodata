@@ -40,7 +40,6 @@ expression  ::= (('NOT'* (
                     | current_date
                     | ilike
                     | json_extract_path
-                    | instance_uuid
                     | literal
                     | localtimestamp
                     | lower
@@ -109,7 +108,6 @@ like        ::= expression 'LIKE' expression ('ESCAPE' expression)?
 localtimestamp ::= 'LOCALTIMESTAMP' ('(' unsigned ')')?
 ilike       ::= expression 'ILIKE' expression ('ESCAPE' expression)?
 json_extract_path ::= 'JSON_EXTRACT_PATH' '(' expression ',' expression (',' expression)* ')'
-instance_uuid    ::= 'INSTANCE_UUID' '(' ')'
 pico_config_file_path      ::= 'PICO_CONFIG_FILE_PATH' '(' text ')'
 pico_instance_dir     ::= 'PICO_INSTANCE_DIR' '(' text ')'
 pico_instance_health_status ::= 'PICO_INSTANCE_HEALTH_STATUS' '(' text ')'

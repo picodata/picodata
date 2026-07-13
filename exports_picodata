@@ -20,12 +20,10 @@ proc_apply_schema_change
 proc_array_cast
 proc_backup_abort_clear
 proc_before_online
-proc_cas
 proc_cas_v2
 proc_config_file
 proc_disable_service
 proc_discover
-proc_enable_all_plugins
 proc_enable_plugin
 proc_enable_service
 proc_expel
@@ -70,14 +68,12 @@ proc_replication_demote
 proc_replication_sync
 proc_resharding
 proc_rpc_dispatch
-proc_runtime_info
 proc_runtime_info_v2
 proc_sharding
 proc_sharding_bootstrap
 proc_sql_dispatch
 proc_sql_execute
 proc_tier_name
-proc_update_instance
 proc_update_instance_v2
 proc_version_info
 proc_wait_bucket_count

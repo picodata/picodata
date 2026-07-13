@@ -350,7 +350,7 @@ impl TryFrom<&args::Expel> for Credentials {
             _ => String::new(),
         };
 
-        Ok(Credentials::new(username, password, value.auth_method))
+        Ok(Credentials::new(username, password, None))
     }
 }
 

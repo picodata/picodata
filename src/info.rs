@@ -653,10 +653,6 @@ impl RaftEntryInfo {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// RuntimeInfoDeprecated
-////////////////////////////////////////////////////////////////////////////////
-
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct HttpServerInfo {
     pub host: SmolStr,
@@ -686,47 +682,6 @@ pub struct SlabInfo {
 }
 
 impl tarantool::tuple::Encode for SlabInfo {}
-
-/// Info returned from [`.proc_runtime_info`].
-///
-/// [`.proc_runtime_info`]: proc_runtime_info
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
-pub struct RuntimeInfoDeprecated<'a> {
-    pub raft: RaftInfo,
-    pub internal: InternalInfo<'a>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub http: Option<HttpServerInfo>,
-    pub version_info: VersionInfo,
-    pub slab_info: SlabInfo,
-}
-
-impl tarantool::tuple::Encode for RuntimeInfoDeprecated<'_> {}
-
-impl RuntimeInfoDeprecated<'static> {
-    pub fn try_get(node: &node::Node) -> Result<Self, Error> {
-        let info = RuntimeInfo::try_get(node)?;
-
-        Ok(RuntimeInfoDeprecated {
-            raft: info.raft,
-            internal: info.internal,
-            http: info.http,
-            version_info: info.version_info,
-            slab_info: info.slab_info,
-        })
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// .proc_runtime_info
-////////////////////////////////////////////////////////////////////////////////
-
-#[deprecated(note = "Use `proc_runtime_info_v2` instead")]
-#[proc]
-pub fn proc_runtime_info() -> Result<RuntimeInfoDeprecated<'static>, Error> {
-    let node = node::global()?;
-
-    RuntimeInfoDeprecated::try_get(node)
-}
 
 /// Info returned from [`.proc_runtime_info_v2`].
 ///

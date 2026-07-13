@@ -1670,8 +1670,7 @@ pub fn handle_instances_becoming_online<'i>(
     let new_current_state = new_current_state.as_str();
     let common_ranges = common_ranges.expect("is set if targets not empty");
 
-    // rpc params are wrapped into another rpc params because
-    // `proc_before_online` is considered softly deprecated
+    // Prepare the request for `proc_before_online`.
     let rpc = rpc::before_online::Request {
         term,
         applied,

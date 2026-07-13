@@ -32,7 +32,6 @@ use tarantool::datetime::Datetime;
 use tarantool::error::BoxError;
 use tarantool::error::Error as TntError;
 use tarantool::error::IntoBoxError;
-use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
 use tarantool::fiber::r#async::timeout;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
@@ -42,7 +41,7 @@ use tarantool::time::Instant;
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 ////////////////////////////////////////////////////////////////////////////////
-// .proc_update_instance
+// .proc_update_instance_v2
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn proc_update_instance_impl(req: Request) -> Result<Response> {
@@ -100,33 +99,24 @@ impl std::ops::DerefMut for Request {
     }
 }
 
-crate::define_rpc_request! {
-    #[deprecated(since="25.6.1", note="use `proc_update_instance_v2` instead")]
-    fn proc_update_instance(base: RequestV1) -> Result<ResponseV1> {
-        let req = Request::from_v1(base);
-        proc_update_instance_impl(req)?;
-        Ok(ResponseV1 {})
-    }
-
-    /// Request to update the instance in the storage.
-    #[derive(Default)]
-    pub struct RequestV1 {
-        pub instance_name: InstanceName,
-        pub cluster_name: SmolStr,
-        pub cluster_uuid: SmolStr,
-        /// Only allowed to be set by leader
-        pub current_state: Option<State>,
-        /// Can be set by instance
-        pub target_state: Option<StateVariant>,
-        pub failure_domain: Option<FailureDomain>,
-        /// If `true` then the resulting CaS request is not retried upon failure.
-        pub dont_retry: bool,
-        /// Only set by instance when it is waking up.
-        pub picodata_version: Option<SmolStr>,
-    }
-
-    pub struct ResponseV1 {}
+/// Base request payload retained as the embedded payload of [`Request`].
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct RequestV1 {
+    pub instance_name: InstanceName,
+    pub cluster_name: SmolStr,
+    pub cluster_uuid: SmolStr,
+    /// Only allowed to be set by leader
+    pub current_state: Option<State>,
+    /// Can be set by instance
+    pub target_state: Option<StateVariant>,
+    pub failure_domain: Option<FailureDomain>,
+    /// If `true` then the resulting CaS request is not retried upon failure.
+    pub dont_retry: bool,
+    /// Only set by instance when it is waking up.
+    pub picodata_version: Option<SmolStr>,
 }
+
+impl tarantool::tuple::Encode for RequestV1 {}
 
 impl Request {
     #[inline]
@@ -151,11 +141,6 @@ impl Request {
             base,
             ..Default::default()
         }
-    }
-
-    #[inline]
-    pub fn into_v1(self) -> RequestV1 {
-        self.base
     }
 
     #[inline]
@@ -526,7 +511,7 @@ pub fn update_our_target_state_to_online(
     let base_timeout = Duration::from_millis(250);
     let max_timeout = Duration::from_secs(5);
     let mut backoff =
-        SimpleBackoffManager::new("proc_update_instance RPC", base_timeout, max_timeout);
+        SimpleBackoffManager::new("proc_update_instance_v2 RPC", base_timeout, max_timeout);
 
     // When the whole cluster is restarting we use a smaller election timeout so
     // that we don't wait too long.
@@ -548,9 +533,6 @@ pub fn update_our_target_state_to_online(
 
     // leader id we have learned from the `NotALeader` error response
     let mut redirected_leader_id = None;
-
-    // See comments bellow
-    let mut use_old_proc_update_instance = false;
 
     // Activates instance
     loop {
@@ -590,7 +572,7 @@ pub fn update_our_target_state_to_online(
             if let Some(candidate_id) = redirected_leader_id {
                 tlog!(
                     Info,
-                    "leader address is unknown, trying to send proc_update_instance to a peer described in the NotALeader error: {}",
+                    "leader address is unknown, trying to send proc_update_instance_v2 to a peer described in the NotALeader error: {}",
                     candidate_id
                 );
 
@@ -607,7 +589,7 @@ pub fn update_our_target_state_to_online(
             {
                 tlog!(
                     Info,
-                    "leader address is unknown, trying to send proc_update_instance to a random peer id {}",
+                    "leader address is unknown, trying to send proc_update_instance_v2 to a random peer id {}",
                     candidate_id
                 );
 
@@ -691,12 +673,7 @@ pub fn update_our_target_state_to_online(
             }
         });
 
-        #[allow(deprecated)]
-        let proc_name = if use_old_proc_update_instance {
-            proc_name!(proc_update_instance)
-        } else {
-            proc_name!(proc_update_instance_v2)
-        };
+        let proc_name = proc_name!(proc_update_instance_v2);
 
         tlog!(
             Info,
@@ -711,21 +688,9 @@ pub fn update_our_target_state_to_online(
             .with_failure_domain(failure_domain.clone())
             .with_picodata_version(version);
 
-        // During rolling upgrade instances on the latest picodata version will
-        // still not have the latest `proc_update_instance_v2` defined, because
-        // it will only be defined after every instance in cluster is updated.
-        // So we need to optionally fallback to the older RPC version.
-        let res;
-        if use_old_proc_update_instance {
-            let req = req.into_v1();
-            let fut =
-                crate::rpc::network_call(&leader_address, proc_name, &req).timeout(deadline - now);
-            res = fiber::block_on(fut).map(|_| Response {});
-        } else {
-            let fut =
-                crate::rpc::network_call(&leader_address, proc_name, &req).timeout(deadline - now);
-            res = fiber::block_on(fut);
-        }
+        let fut =
+            crate::rpc::network_call(&leader_address, proc_name, &req).timeout(deadline - now);
+        let res = fiber::block_on(fut);
 
         let error_message;
         match res {
@@ -758,14 +723,6 @@ pub fn update_our_target_state_to_online(
                 // The peer no longer knows who the raft leader is. This is
                 // possible for example if a leader election is in progress. We
                 // should just wait some more and try again later.
-                error_message = e.to_string();
-            }
-            Err(timeout::Error::Failed(e))
-                if e.error_code() == TarantoolErrorCode::NoSuchProc as u32
-                    && !use_old_proc_update_instance =>
-            {
-                // Newer stored procedure is not defined yet, fallback to the old version
-                use_old_proc_update_instance = true;
                 error_message = e.to_string();
             }
             Err(e) => {

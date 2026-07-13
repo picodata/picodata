@@ -296,7 +296,7 @@ Insert(_pico_replicaset, ["default_1","{r1_uuid}","default_1_1","default_1_1","d
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
 Insert(_pico_property, ["next_schema_version",1]),
-Insert(_pico_property, ["system_catalog_version","26.2.1"]),
+Insert(_pico_property, ["system_catalog_version","26.2.2"]),
 Insert(_pico_property, ["cluster_version","{picodata_version}"]),
 Replace(_pico_db_config, ["auth_password_length_min","",8]),
 Replace(_pico_db_config, ["auth_password_enforce_uppercase","",true]),
@@ -761,8 +761,8 @@ def test_proc_raft_info(instance: Instance):
 
 
 @pytest.mark.webui
-def test_proc_runtime_info(instance: Instance):
-    info = instance.call(".proc_runtime_info")
+def test_proc_runtime_info_v2(instance: Instance):
+    info = instance.call(".proc_runtime_info_v2")
 
     assert isinstance(info["raft"]["applied"], int)
     # This field is super volatile, don't want to be updating it every time we
@@ -773,6 +773,7 @@ def test_proc_runtime_info(instance: Instance):
 
     version_info = instance.call(".proc_version_info")
     slab_info = instance.call("box.slab.info")
+    slab_system_info = instance.call("box.slab.system_info")
 
     host_port = instance.http_listen
     host, port = host_port.split(":")
@@ -803,11 +804,12 @@ def test_proc_runtime_info(instance: Instance):
             port=port,
         ),
         slab_info=slab_info,
+        slab_system_info=slab_system_info,
         version_info=version_info,
     )
 
 
-def test_panic_in_proc_runtime_info_regression(instance: Instance):
+def test_panic_in_proc_runtime_info_v2_regression(instance: Instance):
     instance.sql("CREATE TABLE test_global (id INT PRIMARY KEY, value TEXT) DISTRIBUTED GLOBALLY")
     instance.sql(
         """INSERT INTO test_global
@@ -816,7 +818,7 @@ def test_panic_in_proc_runtime_info_regression(instance: Instance):
         """
     )
 
-    info = instance.call(".proc_runtime_info")
+    info = instance.call(".proc_runtime_info_v2")
     assert "<TRUNCATED>..." in info["internal"]["main_loop_last_entry"]["payload"]
 
 
@@ -977,14 +979,17 @@ def test_update_instance_cluster_uuid_protection(cluster: Cluster):
 
     with pytest.raises(TarantoolError) as e:
         i1.call(
-            ".proc_update_instance",
-            i1.name,
-            i1.cluster_name,
-            invalid_cluster_uuid,
-            None,
-            None,
-            None,
-            False,
+            ".proc_update_instance_v2",
+            [
+                i1.name,
+                i1.cluster_name,
+                invalid_cluster_uuid,
+                None,
+                None,
+                None,
+                False,
+                None,
+            ],
             None,
         )
 

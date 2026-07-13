@@ -1945,7 +1945,7 @@ class Instance:
         try:
             if self.cluster:
                 leader = self.cluster.leader()
-                leader_runtime_info = leader.call(".proc_runtime_info")
+                leader_runtime_info = leader.call(".proc_runtime_info_v2")
                 last_error = leader_runtime_info["internal"].get("governor_loop_last_error")
                 governor_status = leader_runtime_info["internal"].get("governor_loop_status")
                 del leader_runtime_info
@@ -2106,11 +2106,11 @@ Last governor error is:
         )
 
     def governor_progress(self) -> GovernorProgress:
-        info = self.call(".proc_runtime_info")["internal"]
+        info = self.call(".proc_runtime_info_v2")["internal"]
         return GovernorProgress(self, info["governor_step_counter"])
 
     def get_governor_status(self) -> Tuple[str, int]:
-        info = self.call(".proc_runtime_info")["internal"]
+        info = self.call(".proc_runtime_info_v2")["internal"]
         actual_status = info["governor_loop_status"]
         if actual_status == "not a leader":
             raise NotALeader("not a leader")
@@ -3196,7 +3196,6 @@ def picodata_expel(
         peer.executable.command, "expel",
         "--peer", f"pico_service@{peer.iproto_listen}",
         "--password-file", password_file,
-        "--auth-type", "chap-sha1",
         *(["--force"] if force else []),
         "--timeout", str(timeout),
         target_uuid,

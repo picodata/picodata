@@ -234,14 +234,6 @@ table.legend {
             <td>PICODATA_AUDIT_LOG</td>
         </tr>
         <tr>
-            <td><span class="instance">auth-type</span></td>
-            <td>Метод аутентификации</td>
-            <td>md5</td>
-            <td>[picodata expel --auth-type](cli.md#expel_auth_type)</td>
-            <td></td>
-            <td></td>
-        </tr>
-        <tr>
             <td><span class="instance">boot_timeout</span></td>
             <td>Время, в течение которого инстанс ожидает загрузки перед присоединением к кластеру (с)</td>
             <td>7200</td>

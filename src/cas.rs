@@ -288,43 +288,6 @@ impl CasResult {
     }
 }
 
-crate::define_rpc_request! {
-    /// Performs a clusterwide compare and swap operation.
-    /// Should be called only on the raft leader.
-    ///
-    /// The leader checks the predicate and if no conflicting
-    /// entries were found appends the `op` to the raft log and returns its
-    /// index and term.
-    ///
-    /// Returns errors in the following cases:
-    /// 1. Raft node on a receiving instance is not yet initialized
-    /// 2. Storage failure
-    /// 3. Cluster name mismatch
-    /// 4. Request has an incorrect term - leader changed
-    /// 5. Receiving instance is not a raft-leader
-    /// 6. [Compare and swap error](Error)
-    #[deprecated(note = "Use `proc_cas_v2` instead")]
-    fn proc_cas(req: RequestDeprecated) -> Result<ResponseDeprecated> {
-        let res = proc_cas_v2_local(&Request{
-            cluster_name: req.0.cluster_name,
-            predicate: req.0.predicate,
-            op: req.0.op,
-            as_user: req.0.as_user,
-        })?;
-        Ok(ResponseDeprecated{
-            index: res.index,
-            term: res.term,
-        })
-    }
-
-    pub struct RequestDeprecated(pub Request);
-
-    pub struct ResponseDeprecated {
-        pub index: RaftIndex,
-        pub term: RaftTerm,
-    }
-}
-
 fn proc_cas_v2_local(req: &Request) -> Result<Response> {
     let node = node::global()?;
     let raft_storage = &node.raft_storage;

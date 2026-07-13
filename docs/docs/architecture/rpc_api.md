@@ -178,10 +178,6 @@ fn proc_before_online(term, applied, timeout)
 - `applied`: (MP_INT `RaftIndex`)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
-### .proc_cas {: #proc_cas }
-
-Процедура устарела, и будет удалена в следующем мажорном обновлении. Вместо нее следует использовать [`proc_cas_v2`](#proc_cas_v2).
-
 ### .proc_cas_v2 {: #proc_cas_v2 }
 
 ```rust
@@ -800,11 +796,6 @@ fn proc_rpc_dispatch(..) -> Result
 [`Context`]: https://docs.rs/picodata-plugin/latest/picodata_plugin/transport/context/struct.Context.html
 [RPC-системы]: https://docs.rs/picodata-plugin/latest/picodata_plugin/transport/rpc/index.html
 
-### .proc_runtime_info {: #proc_runtime_info }
-
-Процедура устарела, и будет удалена в следующем мажорном обновлении.
-Вместо нее следует использовать [`proc_runtime_info_v2`](#proc_runtime_info_v2).
-
 ### .proc_runtime_info_v2 {: #proc_runtime_info_v2 }
 
 ```rust
@@ -919,10 +910,10 @@ fn proc_sql_execute(..) -> Result
 
 Для более высокоуровневого RPC смотрите [`.proc_sql_dispatch`](#proc_sql_dispatch)
 
-### .proc_update_instance {: #proc_update_instance }
+### .proc_update_instance_v2 {: #proc_update_instance_v2 }
 
 ```rust
-fn proc_update_instance(instance_name, cluster_name, current_state, target_state, failure_domain, dont_retry, picodata_version)
+fn proc_update_instance_v2(base, target_state_reason)
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в
@@ -944,13 +935,16 @@ fn proc_update_instance(instance_name, cluster_name, current_state, target_state
 
 Параметры:
 
-- `instance_name`: (MP_STR)
-- `cluster_name`: (MP_STR)
-- `current_state`: (MP_MAP `State` | MP_NIL), текущее состояние инстанса
-- `target_state`: (MP_STR `StateVariant` | MP_NIL), целевое состояние инстанса
-- `failure_domain`: (MP_MAP | MP_NIL) [домен отказа](../overview/glossary.md#failure_domain)
-- `dont_retry`: (MP_BOOL), не повторять CaS запрос в случае конфликта
-- `picodata_version`: (MP_STR), версия инстанса
+- `base`: (MP_ARRAY), базовые параметры запроса:
+    - `instance_name`: (MP_STR)
+    - `cluster_name`: (MP_STR)
+    - `cluster_uuid`: (MP_STR)
+    - `current_state`: (MP_MAP `State` | MP_NIL), текущее состояние инстанса
+    - `target_state`: (MP_STR `StateVariant` | MP_NIL), целевое состояние инстанса
+    - `failure_domain`: (MP_MAP | MP_NIL) [домен отказа](../overview/glossary.md#failure_domain)
+    - `dont_retry`: (MP_BOOL), не повторять CaS запрос в случае конфликта
+    - `picodata_version`: (MP_STR | MP_NIL), версия инстанса
+- `target_state_reason`: (MP_STR | MP_NIL), причина изменения целевого состояния
 
 ### .proc_wait_bucket_count {: #proc_wait_bucket_count }
 

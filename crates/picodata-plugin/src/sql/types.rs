@@ -89,6 +89,10 @@ pub enum SqlValueInner {
     /// String type.
     String(RString),
     /// Unsigned integer type.
+    ///
+    /// This deprecated variant cannot be removed while plugins from the previous
+    /// minor release remain compatible: deleting it renumbers the following
+    /// variants in this `repr(C)` FFI enum.
     #[deprecated]
     Unsigned(u64),
     /// Tuple type

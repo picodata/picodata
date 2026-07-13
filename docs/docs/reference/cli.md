@@ -787,15 +787,6 @@ picodata expel [OPTIONS] <INSTANCE_UUID>
 
 - `INSTANCE_UUID`: Универсальный уникальный идентификатор инстанса
 
-### -a, --auth-type {: #expel_auth_type }
-
-`-a, --auth-type <METHOD>`
-
-Метод аутентификации, см. [Аутентификация с помощью LDAP](../admin/ldap.md).
-
-Возможные значения: `md5`, `ldap`, `chap-sha1`, `scram-sha256`<br>
-Значение по умолчанию: `md5`<br>
-
 ### --force {: #expel_force }
 
 `--force`

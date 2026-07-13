@@ -7,7 +7,6 @@ use std::ffi::{CStr, CString};
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use tarantool::auth::AuthMethod;
 use tarantool::log::SayLevel;
 use tarantool::network::client::tls;
 use tarantool::tlua;
@@ -451,10 +450,6 @@ pub struct Expel {
     /// message is printed to a user. If the password isn't
     /// provided, it will be prompted from the terminal.
     pub password_file: Option<PathBuf>,
-
-    #[clap(short = 'a', long = "auth-type", value_name = "METHOD")]
-    /// The preferred authentication method.
-    pub auth_method: Option<AuthMethod>,
 
     #[clap(short = 'f', long = "force")]
     /// Expel instance even if it is currently online.

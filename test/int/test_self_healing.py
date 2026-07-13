@@ -230,7 +230,7 @@ def test_instance_automatic_offline_after_leader_change(cluster: Cluster):
     leader = cluster.leader()
     assert leader != i1
 
-    runtime_info = leader.call(".proc_runtime_info")
+    runtime_info = leader.call(".proc_runtime_info_v2")
     internal = runtime_info["internal"]
     assert internal["sentinel_last_action"] == "auto offline by leader"
     assert internal["sentinel_index_of_last_success"] < leader.raft_get_index()
@@ -294,7 +294,7 @@ def test_sentinel_backoff(cluster: Cluster):
     )
 
     def check_sentinel_failed_with_injection():
-        info = i3.call(".proc_runtime_info")
+        info = i3.call(".proc_runtime_info_v2")
         internal = info["internal"]
         # Sentinel is trying to change the instance's state to Online
         assert internal["sentinel_last_action"] == "auto online by self"
@@ -315,7 +315,7 @@ def test_sentinel_backoff(cluster: Cluster):
     i3.call("pico._inject_error", connection_failure, False)
 
     def check_sentinel_succeeded_and_is_waiting():
-        info = i3.call(".proc_runtime_info")
+        info = i3.call(".proc_runtime_info_v2")
         internal = info["internal"]
         # Sentinel is trying to change the instance's state to Online
         assert internal["sentinel_last_action"] == "auto online by self"
@@ -358,7 +358,7 @@ def test_sentinel_backoff(cluster: Cluster):
     assert progress.step_counter - old_progress.step_counter == 2
     old_progress = progress
 
-    info = i3.call(".proc_runtime_info")
+    info = i3.call(".proc_runtime_info_v2")
     internal = info["internal"]
     # Last action by sentinel is recorded for debugging purposes
     assert internal["sentinel_last_action"] == "auto online by self"
@@ -451,7 +451,7 @@ def test_automatic_offline_by_applied_index_is_not_too_eager(cluster: Cluster):
     follower.raft_wait_index(leader.raft_get_index())
 
     # Make sure auto offline wasn't triggered
-    runtime_info = leader.call(".proc_runtime_info")
+    runtime_info = leader.call(".proc_runtime_info_v2")
     internal = runtime_info["internal"]
     assert "sentinel_last_action" not in internal
 

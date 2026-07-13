@@ -111,16 +111,6 @@ pub fn get_builtin_functions() -> &'static [Function] {
                 false,
             ),
             Function::new_volatile(
-                // TODO: deprecated, remove in future version
-                get_real_function_name("instance_uuid")
-                    .expect("shouldn't fail")
-                    .into(),
-                // TODO: use `Type::UUID`, to learn more see
-                // <https://git.picodata.io/core/picodata/-/issues/2027>
-                DerivedType::new(UnrestrictedType::String), // TODO: use `Type::UUID`
-                false,
-            ),
-            Function::new_volatile(
                 get_real_function_name("pico_config_file_path")
                     .expect("shouldn't fail")
                     .into(),

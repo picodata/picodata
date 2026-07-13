@@ -126,6 +126,10 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("exec_script", InternalScript::InsertWalModeIntoPicoDbConfig.as_str()),
         ]
     ),
+    (
+        "26.2.2",
+        &[("exec_script", InternalScript::DropObsoleteProcedures.as_str())],
+    ),
 ];
 
 tarantool::define_str_enum! {
@@ -209,6 +213,9 @@ tarantool::define_str_enum! {
         /// INSERT INTO _pico_db_config VALUES ('wal_mode', ?);
         /// ```
         InsertWalModeIntoPicoDbConfig = "insert_wal_mode_into_pico_db_config",
+
+        /// Drop obsolete versions of internal procedures from `_func`.
+        DropObsoleteProcedures = "drop_obsolete_procedures",
     }
 }
 
@@ -257,6 +264,9 @@ crate::define_rpc_request! {
 
             InternalScript::InsertWalModeIntoPicoDbConfig =>
                 insert_wal_mode_into_pico_db_config(),
+
+            InternalScript::DropObsoleteProcedures =>
+                execute_drop_obsolete_procedures(),
         }
     }
 
@@ -384,6 +394,31 @@ fn insert_wal_mode_into_pico_db_config() -> traft::Result<Response> {
         Ok(())
     })?;
 
+    Ok(Response {})
+}
+
+fn execute_drop_obsolete_procedures() -> traft::Result<Response> {
+    let node = traft::node::global()?;
+    // The governor invokes this script on every instance. Replicas receive the
+    // schema changes from their writable replicaset master.
+    if node.is_readonly() {
+        return Ok(Response {});
+    }
+
+    let lua = tarantool::lua_state();
+    lua.exec(
+        r#"
+        local obsolete = {
+            '.proc_cas',
+            '.proc_runtime_info',
+            '.proc_enable_all_plugins',
+            '.proc_update_instance',
+        }
+        for _, name in ipairs(obsolete) do
+            box.schema.func.drop(name, {if_exists = true})
+        end
+        "#,
+    )?;
     Ok(Response {})
 }
 

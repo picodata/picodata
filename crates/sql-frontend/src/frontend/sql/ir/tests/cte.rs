@@ -291,7 +291,7 @@ fn reuse_cte_bare_values_self_join_materializes_once() {
 #[test]
 fn reuse_cte_values_with_projection_and_function() {
     let sql = r#"
-        explain (logical) WITH cte AS (SELECT instance_uuid() FROM (VALUES(1)) s)
+        explain (logical) WITH cte AS (SELECT pico_instance_uuid() FROM (VALUES(1)) s)
         SELECT * FROM cte
         UNION  ALL
         SELECT * FROM cte

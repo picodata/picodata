@@ -27,7 +27,7 @@ pub mod types;
 ///  query_raw(
 ///     "INSERT INTO book (id, name) VALUES (?, ?)",
 ///     vec![
-///         SqlValue::unsigned(1),
+///         SqlValue::integer(1),
 ///         SqlValue::string("Ruslan and Ludmila"),
 ///     ],
 ///  )

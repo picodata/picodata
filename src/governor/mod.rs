@@ -252,7 +252,7 @@ impl Loop {
         // value.
         //
         // Governor uses the RPC error messages to log them and to save
-        // them in the `governor_loop_last_error` field of `proc_runtime_info`.
+        // them in the `governor_loop_last_error` field of `proc_runtime_info_v2`.
         let rpc_timeout = rpc_timeout.saturating_add(Duration::from_secs(1));
 
         // Must be dropped before yielding
