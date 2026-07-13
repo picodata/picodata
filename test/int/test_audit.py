@@ -1,18 +1,17 @@
-import signal
-import pytest
 import json
 import os
+import signal
+from typing import Generator
+
 import pg8000.dbapi as pg  # type: ignore
 import psycopg
-
-from typing import Generator
+import pytest
 from conftest import (
     MAX_LOGIN_ATTEMPTS,
-    Instance,
     Cluster,
+    Instance,
     Retriable,
 )
-
 
 # Auth methods that don't require requests to remote servers (e.g. LDAP).
 # TODO: maybe we should add chap-sha1 to pgproto via plain text auth.
@@ -476,10 +475,11 @@ def test_join_connect_instance(cluster: Cluster):
 
     audit = os.path.join(cluster.data_dir, "audit.log")
     i2 = cluster.add_instance(name="i2", audit=audit)
-    i2.terminate()
 
-    events = AuditFile(i2.audit_flag_value).events()
+    audit_file = AuditFile(i2.audit_flag_value)
+    events = audit_file.events()
 
+    # Both create_local_db events are already in the log.
     create_db = take_until_title(events, "create_local_db")
     assert create_db is not None
     assert create_db["instance_name"] == "default_1_1"
@@ -497,12 +497,20 @@ def test_join_connect_instance(cluster: Cluster):
     # Joining instance should emit 'connect_local_db' audit event.
     # connect_local_db is a local event as only joining instance emits it
     # in contrast to create_local_db
-    connect_db = take_until_title(events, "connect_local_db")
-    assert connect_db is not None
+    def wait_connect_local_db():
+        connect_db = take_until_title(audit_file.events(), "connect_local_db")
+        assert connect_db is not None
+        return connect_db
+
+    # Event `connect_local_db` can emit after the governor marks i2 `Online`.
+    # We need to retry to avoid race.
+    connect_db = Retriable().call(wait_connect_local_db)
     assert connect_db["instance_name"] == "i2"
     assert connect_db["raft_id"] == str(i2.raft_id)
     assert connect_db["severity"] == "low"
     assert connect_db["initiator"] == "admin"
+
+    i2.terminate()
 
 
 @pytest.mark.parametrize("auth_method", LOCAL_AUTH_METHODS_PGPROTO)
