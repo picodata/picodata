@@ -16,10 +16,10 @@ use smallvec::SmallVec;
 use crate::errors::SbroadError;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{BoolExpr, Join, Node, NodeId, Reference, Selection, SubQueryReference};
-use crate::ir::operator::{Bool, JoinKind};
+use crate::ir::node::{Join, Node, NodeId, Reference, Selection, SubQueryReference};
+use crate::ir::operator::JoinKind;
 use crate::ir::transformation::equality_facts::Slot;
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::Plan;
 
 /// One restriction clause: the source conjunct node, the column sources
@@ -123,7 +123,9 @@ impl<'p> RestrictionBuilder<'p> {
 
     fn build_for_filter(&self, expr_id: NodeId) -> Result<Restriction, SbroadError> {
         let clauses = self
-            .collect_clauses(expr_id)
+            .plan
+            .nodes
+            .and_conjuncts(expr_id)
             .into_iter()
             .map(|clause| {
                 let (slots, subqueries) = self.clause_sources(clause)?;
@@ -135,31 +137,6 @@ impl<'p> RestrictionBuilder<'p> {
             })
             .collect::<Result<Vec<_>, SbroadError>>()?;
         Ok(Restriction { clauses })
-    }
-
-    /// Flatten the top-level `AND` spine into one node id per conjunct (the
-    /// leaves of the chain). Uses the shared `and_iter`, which descends only
-    /// through `Bool::And` nodes, so the filter keeps everything that is not an
-    /// `And` -- i.e. the conjuncts themselves.
-    fn collect_clauses(&self, expr_id: NodeId) -> Vec<NodeId> {
-        let and_tree = PostOrderWithFilter::new(
-            |node| self.plan.nodes.and_iter(node),
-            |node| {
-                !matches!(
-                    self.plan.get_node(node),
-                    Ok(Node::Expression(Expression::Bool(BoolExpr {
-                        op: Bool::And,
-                        ..
-                    })))
-                )
-            },
-            EXPR_CAPACITY,
-        );
-        and_tree
-            .traverse_into_vec(expr_id)
-            .into_iter()
-            .map(|LevelNode(_, id)| id)
-            .collect()
     }
 
     /// Collect what a clause references: the `(rel_id, position)` column sources

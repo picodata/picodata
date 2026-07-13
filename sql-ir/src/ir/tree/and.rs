@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 
+use super::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
 use super::TreeIterator;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{BoolExpr, NodeId};
@@ -43,6 +44,39 @@ impl<'n> Nodes {
             child: RefCell::new(0),
             nodes: self,
         }
+    }
+
+    /// Flatten the top-level `AND` spine rooted at `top` into one node id per
+    /// conjunct (the leaves of the chain). `and_iter` descends only through
+    /// `Bool::And` nodes, so the filter keeps everything that is not an `And` --
+    /// i.e. the conjuncts themselves. A non-`And` `top` yields just `[top]`.
+    #[must_use]
+    pub fn and_conjuncts(&'n self, top: NodeId) -> Vec<NodeId> {
+        match self.get(top) {
+            None => return vec![],
+            Some(Node::Expression(Expression::Bool(BoolExpr { op: Bool::And, .. }))) => {
+                // just continue
+            }
+            Some(_) => return vec![top],
+        }
+        let and_tree = PostOrderWithFilter::new(
+            |node| self.and_iter(node),
+            |node| {
+                !matches!(
+                    self.get(node),
+                    Some(Node::Expression(Expression::Bool(BoolExpr {
+                        op: Bool::And,
+                        ..
+                    })))
+                )
+            },
+            EXPR_CAPACITY,
+        );
+        and_tree
+            .traverse_into_vec(top)
+            .into_iter()
+            .map(|LevelNode(_, id)| id)
+            .collect()
     }
 }
 

@@ -455,12 +455,12 @@ impl Plan {
             Stage::Restrictions,
             plan.analyze_restrictions_in_subtree(top_id)?
         );
-        stage!(plan, Stage::Dnf, plan.set_dnf_in_subtree(top_id)?);
         stage!(
             plan,
             Stage::EqualityFacts,
             plan.analyze_equality_facts_in_subtree(top_id)?
         );
+        stage!(plan, Stage::Dnf, plan.set_dnf_in_subtree(top_id)?);
         stage!(
             plan,
             Stage::MergeTuples,

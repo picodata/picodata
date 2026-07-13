@@ -72,17 +72,17 @@
 //!
 //! The implementation has two union-find layers with different roles:
 //!
-//! - `LocalFacts` is a temporary per-DNF-chain union-find. It derives facts
+//! - `LocalFacts` is a temporary per-`AND`-region union-find. It derives facts
 //!   from one conjunction of `=` predicates and emits only the slot-to-slot and
-//!   slot-to-constant facts that are safe to keep from that chain.
+//!   slot-to-constant facts that are safe to keep from that region.
 //! - `EqualityFactsBuilder` is the global union-find that interns slots and
-//!   constants for the whole subtree, merges facts that survive DNF
-//!   intersection, and finally freezes them into [`EqualityFacts`].
+//!   constants for the whole subtree, merges the derived facts, and finally
+//!   freezes them into [`EqualityFacts`].
 //!
-//! `OR` predicates are handled conservatively: each DNF chain is analyzed
-//! independently, then only the intersection of facts that hold in every
-//! satisfiable branch is added to the global builder. This keeps the final
-//! classes small and prevents execution SQL from inheriting a blown-up DNF
+//! `OR` predicates are handled conservatively and polynomially — no DNF: the
+//! boolean tree is walked directly with `AND` = merge / `OR` = intersect, so
+//! only facts that hold in every satisfiable arm reach the global builder. This
+//! keeps the final classes small without ever materializing a blown-up DNF
 //! representation.
 //!
 //! # Conservative term extraction
@@ -121,7 +121,7 @@
 //! `optimize_subtree`, and the resulting facts are then consumed by
 //! redistribution and by execution-time key-filter materialization.
 
-use crate::errors::SbroadError;
+use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
@@ -130,11 +130,13 @@ use crate::ir::node::{
     UnaryExpr, Union, UnionAll, Update,
 };
 use crate::ir::operator::{Bool, JoinKind, Unary};
-use crate::ir::transformation::dnf::Chain;
+use crate::ir::transformation::equality_facts::DeriveOutcome::Facts;
 use crate::ir::types::DerivedType;
 use crate::ir::value::{Trivalent, Value};
 use crate::ir::Plan;
 use itertools::Itertools;
+use smol_str::ToSmolStr;
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -227,6 +229,20 @@ where
         self.inner_union(l, r);
     }
 
+    /// Star-union a whole group: intern each element with `add` and union it
+    /// into the first. Groups of 0 or 1 elements are no-ops.
+    pub fn union_atoms(&mut self, elems: impl IntoIterator<Item = T>) {
+        let mut iter = elems.into_iter();
+        let Some(rep) = iter.next() else {
+            return;
+        };
+        let rep = self.add(rep);
+        for elem in iter {
+            let g = self.add(elem);
+            self.union_groups(rep, g);
+        }
+    }
+
     fn inner_union(&mut self, l: usize, r: usize) {
         if l == r {
             return;
@@ -245,10 +261,6 @@ where
         for i in 0..self.parents.len() {
             self.inner_find(i);
         }
-    }
-
-    pub fn len(&self) -> usize {
-        self.parents.len()
     }
 
     pub fn groups_number(&mut self) -> usize {
@@ -277,14 +289,6 @@ impl DomainId {
 
 #[derive(Eq, PartialEq, Hash, Clone)]
 struct SlotKey {
-    // domain_id is required here even though (rel_id, output_idx) looks
-    // sufficient at first glance.  CTEs and subqueries can reuse the same
-    // physical node (same rel_id) in multiple semantic scopes: e.g. a CTE
-    // referenced twice shares one body NodeId, but analyze() visits it twice
-    // under two different fresh domains.  Without domain_id those two
-    // instantiations would collapse into one UnionFind group and share facts
-    // that should be independent.
-    domain_id: DomainId,
     rel_id: NodeId,
     output_idx: usize,
 }
@@ -297,10 +301,9 @@ impl PartialOrd<Self> for SlotKey {
 
 impl Ord for SlotKey {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.domain_id
-            .0
-            .cmp(&other.domain_id.0)
-            .then_with(|| self.rel_id.arena_type.cmp(&other.rel_id.arena_type))
+        self.rel_id
+            .arena_type
+            .cmp(&other.rel_id.arena_type)
             .then_with(|| self.rel_id.offset.cmp(&other.rel_id.offset))
             .then_with(|| self.output_idx.cmp(&other.output_idx))
     }
@@ -316,6 +319,9 @@ enum EqualityFactAtom {
     // that happen to equal the same literal would end up in one equivalence
     // class regardless of their semantic scope.  domain_id prevents that.
     Constant(DomainId, Value),
+    // Same domain-tagging rationale as `Constant`: a parameter `$1` in an
+    // isolated subquery must not bridge slots with `$1` in the outer query.
+    Param(DomainId, u16),
 }
 
 /// Public (with its fields below) for the whitebox tests in
@@ -345,6 +351,11 @@ pub struct ClassId(u32);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EquivalenceClass {
     pub members: Box<[Slot]>,
+    // The params that are members of the class: sorted, deduped 1-based indices
+    // (`a = $1 AND a = $2` keeps both). They are ordinary members, equal to the
+    // pin like any slot; the pin is the `constant` if the class has one, else the
+    // first (lowest) param.
+    pub params: Box<[u16]>,
     pub constant: Option<Value>,
     contradictory: bool,
 }
@@ -760,16 +771,22 @@ impl EqualityFactsBuilder {
         self.scoped.entry(join_id).or_default()
     }
 
+    /// Pin `rel_id` to `domain`, once per node in `analyze` before its slots.
+    /// The assert catches ANY re-entry (not just a different domain): with
+    /// `SlotKey` untagged, a node analyzed twice would silently merge its slots.
+    /// A trip means a shared subtree slipped past `visited_shared_bodies`.
+    fn record_domain(&mut self, rel_id: NodeId, domain: DomainId) {
+        let prev = self.domains.insert(rel_id, domain);
+        debug_assert!(prev.is_none(), "rel_id analyzed twice (shared subtree?)");
+    }
+
     fn add_slot(&mut self, key: SlotKey) -> UnionFindGroup {
-        // Contract: one NodeId -> one domain. Re-analyzing under another
-        // domain means a shared subtree was not cloned first.
+        // The rel's domain is recorded by `record_domain` in `analyze` before
+        // any of its slots are added, so the pin already exists here.
         debug_assert!(
-            self.domains
-                .get(&key.rel_id)
-                .is_none_or(|d| *d == key.domain_id),
-            "rel_id visited under two different domains"
+            self.domains.contains_key(&key.rel_id),
+            "slot added before its rel's domain was recorded"
         );
-        self.domains.insert(key.rel_id, key.domain_id);
         self.members.add(EqualityFactAtom::Slot(key))
     }
 
@@ -780,13 +797,29 @@ impl EqualityFactsBuilder {
         self.members.union_groups(left, right);
     }
 
-    fn union_slot_and_const(&mut self, slot: SlotKey, value: Value) {
-        let constant = self
-            .members
-            .add(EqualityFactAtom::Constant(slot.domain_id, value));
-        let slot = self.add_slot(slot);
+    /// Convert a partition atom to its interned form. Pure: slots keep their
+    /// `(rel_id, output_idx)` key — the rel's domain is pinned by `record_domain`
+    /// in `analyze` — while constants and params carry their domain tag.
+    fn intern_atom(atom: FactAtom) -> EqualityFactAtom {
+        match atom {
+            FactAtom::Slot(key) => EqualityFactAtom::Slot(key),
+            FactAtom::Const { domain_id, value } => EqualityFactAtom::Constant(domain_id, value),
+            FactAtom::Param {
+                domain_id,
+                param_index,
+            } => EqualityFactAtom::Param(domain_id, param_index),
+            FactAtom::Other => unreachable!("FactAtom::Other should not reach the global builder"),
+        }
+    }
 
-        self.members.union_groups(slot, constant);
+    /// Union every atom of one equivalence class into the global union-find as
+    /// a star around the first atom. Handles `slot = slot`, `slot = const`,
+    /// `slot = param` and the slotless `const = param` gate (`x = 1 AND x = $1`
+    /// surviving an `OR`) uniformly — the class emerges from the union-find, no
+    /// pairwise facts are materialized.
+    fn union_atoms(&mut self, group: FactGroup) {
+        self.members
+            .union_atoms(group.into_iter().map(Self::intern_atom));
     }
 
     fn freeze(mut self) -> EqualityFacts {
@@ -798,6 +831,7 @@ impl EqualityFactsBuilder {
         // the walk is complete.
         let mut class_const: Vec<Option<Value>> = Vec::with_capacity(groups);
         let mut const_conflict: Vec<bool> = Vec::with_capacity(groups);
+        let mut class_params: Vec<Vec<u16>> = Vec::with_capacity(groups);
         let mut class_members: Vec<Vec<Slot>> = Vec::with_capacity(groups);
         let mut slot_classes: HashMap<NodeId, Vec<Option<ClassId>>> =
             HashMap::with_capacity(self.domains.len());
@@ -807,6 +841,7 @@ impl EqualityFactsBuilder {
                 let id = ClassId(class_const.len() as u32);
                 class_const.push(None);
                 const_conflict.push(false);
+                class_params.push(Vec::new());
                 class_members.push(Vec::new());
                 id
             });
@@ -814,8 +849,8 @@ impl EqualityFactsBuilder {
             match atom {
                 EqualityFactAtom::Constant(_, value) => {
                     // Multiple constants in the same UF group can happen
-                    // either inside one DNF chain (already killed by
-                    // `LocalFacts::into_facts` as `ChainOutcome::Dead`) or
+                    // either inside one AND-region (already killed by
+                    // `LocalFacts::into_facts` as `DeriveOutcome::Dead`) or
                     // across different expressions: e.g. `WHERE a = 1`
                     // upstream and `WHERE a = 2` downstream both emit
                     // `SlotConst(a, …)`, both get globally unioned, and
@@ -842,9 +877,14 @@ impl EqualityFactsBuilder {
 
                     class_const[i] = Some(value);
                 }
-                EqualityFactAtom::Slot(SlotKey {
-                    rel_id, output_idx, ..
-                }) => {
+                EqualityFactAtom::Param(_, param_index) => {
+                    // Keep every distinct param as a class member.
+                    let params = &mut class_params[class_id.0 as usize];
+                    if !params.contains(&param_index) {
+                        params.push(param_index);
+                    }
+                }
+                EqualityFactAtom::Slot(SlotKey { rel_id, output_idx }) => {
                     let classes = slot_classes.entry(rel_id).or_default();
                     if classes.len() <= output_idx {
                         classes.resize(output_idx + 1, None);
@@ -860,11 +900,14 @@ impl EqualityFactsBuilder {
         let classes: Box<[EquivalenceClass]> = class_const
             .into_iter()
             .zip(const_conflict)
+            .zip(class_params)
             .zip(class_members)
-            .map(|((constant, contradictory), mut members)| {
+            .map(|(((constant, contradictory), mut params), mut members)| {
                 members.sort();
+                params.sort_unstable();
                 EquivalenceClass {
                     members: members.into_boxed_slice(),
+                    params: params.into_boxed_slice(),
                     constant,
                     contradictory,
                 }
@@ -932,7 +975,6 @@ impl<'p> EqualityAnalysis<'p> {
         &mut self,
         rel_id: NodeId,
         child_id: NodeId,
-        domain_id: DomainId,
     ) -> Result<(), SbroadError> {
         let output_len = self
             .plan
@@ -940,13 +982,8 @@ impl<'p> EqualityAnalysis<'p> {
             .len();
         for output_idx in 0..output_len {
             self.builder.union_slot_and_slot(
+                SlotKey { rel_id, output_idx },
                 SlotKey {
-                    domain_id,
-                    rel_id,
-                    output_idx,
-                },
-                SlotKey {
-                    domain_id,
                     rel_id: child_id,
                     output_idx,
                 },
@@ -959,7 +996,6 @@ impl<'p> EqualityAnalysis<'p> {
         &mut self,
         rel_id: NodeId,
         child_id: NodeId,
-        domain_id: DomainId,
     ) -> Result<(), SbroadError> {
         let output_id = self.plan.get_relational_output(rel_id)?;
         for (pos, alias_id) in self
@@ -987,12 +1023,10 @@ impl<'p> EqualityAnalysis<'p> {
             }
             self.builder.union_slot_and_slot(
                 SlotKey {
-                    domain_id,
                     rel_id,
                     output_idx: pos,
                 },
                 SlotKey {
-                    domain_id,
                     rel_id: child_id,
                     output_idx: *position,
                 },
@@ -1006,7 +1040,6 @@ impl<'p> EqualityAnalysis<'p> {
         rel_id: NodeId,
         left_id: NodeId,
         right_id: NodeId,
-        domain_id: DomainId,
         include_right: bool,
     ) -> Result<(), SbroadError> {
         let left_len = self
@@ -1020,12 +1053,10 @@ impl<'p> EqualityAnalysis<'p> {
         for pos in 0..left_len {
             self.builder.union_slot_and_slot(
                 SlotKey {
-                    domain_id,
                     rel_id,
                     output_idx: pos,
                 },
                 SlotKey {
-                    domain_id,
                     rel_id: left_id,
                     output_idx: pos,
                 },
@@ -1035,12 +1066,10 @@ impl<'p> EqualityAnalysis<'p> {
             for pos in 0..right_len {
                 self.builder.union_slot_and_slot(
                     SlotKey {
-                        domain_id,
                         rel_id,
                         output_idx: left_len + pos,
                     },
                     SlotKey {
-                        domain_id,
                         rel_id: right_id,
                         output_idx: pos,
                     },
@@ -1062,13 +1091,10 @@ impl<'p> EqualityAnalysis<'p> {
         }
 
         if rel.has_output() {
+            self.builder.record_domain(rel_id, domain_id);
             let output = self.plan.get_row_list(rel.output())?;
             for (output_idx, _) in output.iter().enumerate() {
-                self.builder.add_slot(SlotKey {
-                    domain_id,
-                    rel_id,
-                    output_idx,
-                });
+                self.builder.add_slot(SlotKey { rel_id, output_idx });
             }
         }
 
@@ -1086,7 +1112,7 @@ impl<'p> EqualityAnalysis<'p> {
                         unreachable!("Projection must have a child");
                     };
                     self.analyze(*child_id, domain_id)?;
-                    self.union_projection_output(rel_id, *child_id, domain_id)?;
+                    self.union_projection_output(rel_id, *child_id)?;
                 } else {
                     let inner_domain = self.fresh_domain();
                     if let Some(having_id) = having {
@@ -1098,10 +1124,10 @@ impl<'p> EqualityAnalysis<'p> {
                     }
                 }
             }
-            Relational::Selection(Selection { child, filter, .. }) => {
+            Relational::Selection(Selection { child, .. }) => {
                 self.analyze(*child, domain_id)?;
-                self.union_passthrough_output(rel_id, *child, domain_id)?;
-                self.apply_expr_facts(*filter, domain_id)?;
+                self.union_passthrough_output(rel_id, *child)?;
+                self.apply_expr_facts(rel_id, domain_id)?;
             }
 
             Relational::Limit(Limit { child, .. })
@@ -1133,14 +1159,14 @@ impl<'p> EqualityAnalysis<'p> {
                 JoinKind::Inner => {
                     self.analyze(*left, domain_id)?;
                     self.analyze(*right, domain_id)?;
-                    self.union_join_output(rel_id, *left, *right, domain_id, true)?;
-                    self.apply_expr_facts(*condition, domain_id)?;
+                    self.union_join_output(rel_id, *left, *right, true)?;
+                    self.apply_expr_facts(rel_id, domain_id)?;
                 }
                 JoinKind::LeftOuter => {
                     self.analyze(*left, domain_id)?;
                     let right_domain = self.fresh_domain();
                     self.analyze(*right, right_domain)?;
-                    self.union_join_output(rel_id, *left, *right, domain_id, false)?;
+                    self.union_join_output(rel_id, *left, *right, false)?;
                     // The ON condition is unsafe to apply globally because
                     // unmatched rows null-extend the right side.  Inside the
                     // join's local scope it is safe, however, and motion
@@ -1148,11 +1174,11 @@ impl<'p> EqualityAnalysis<'p> {
                     // inner.dk`) to detect co-located outer joins.  Stash the
                     // derived facts in a per-join scope.
                     //
-                    // A fresh domain is used for the chain analysis so that
+                    // A fresh domain is used for the derivation so that
                     // any future change to `LocalFacts` (e.g. seeding it from
                     // the global UF) cannot accidentally bridge scoped
                     // collection back into global state — the domain choice
-                    // is internal to one chain pass and stripped before
+                    // is internal to one derivation pass and stripped before
                     // storage.
                     //
                     // TODO: as an IR-level optimization (not part of the
@@ -1184,7 +1210,7 @@ impl<'p> EqualityAnalysis<'p> {
             Relational::ScanSubQuery(ScanSubQuery { child, .. }) => {
                 if self.is_safe_subtree(*child)? {
                     self.analyze(*child, domain_id)?;
-                    self.union_passthrough_output(rel_id, *child, domain_id)?;
+                    self.union_passthrough_output(rel_id, *child)?;
                 } else {
                     let child_domain = self.fresh_domain();
                     self.analyze(*child, child_domain)?;
@@ -1336,56 +1362,31 @@ impl<'p> EqualityAnalysis<'p> {
         Ok(true)
     }
 
-    /// Applies the always-true equality facts derived from a boolean
-    /// expression.
-    ///
-    /// The expression is first analyzed per DNF chain; then only the
-    /// intersection of facts that hold in every satisfiable chain is merged into
-    /// the global builder.
-    // DNF can blow up exponentially on deeply nested OR expressions, so
-    // `get_dnf_chains` is bounded by `MAX_DNF_CHAINS`. When that bound is hit we
-    // derive no equality facts for the expression.
-    fn apply_expr_facts(&mut self, expr_id: NodeId, domain: DomainId) -> Result<(), SbroadError> {
-        let Some(facts) = self.derive_expr_facts(expr_id, domain)? else {
+    /// Derives the global equality facts for one relational node's filter or INNER
+    /// join condition and merges them into the global builder.
+    fn apply_expr_facts(&mut self, rel_id: NodeId, domain: DomainId) -> Result<(), SbroadError> {
+        let Some(restr) = self
+            .plan
+            .restrictions
+            .as_ref()
+            .and_then(|r| r.for_rel(rel_id))
+        else {
+            return Err(SbroadError::Invalid(
+                Entity::Plan,
+                Some("Restrictions should be set".to_smolstr()),
+            ));
+        };
+
+        // The whole per-node filter is one AND-region: every clause is a
+        // conjunct.
+        let clauses: Vec<NodeId> = restr.clauses().iter().map(|c| c.clause()).collect();
+        let Facts(partition) = self.derive_conjuncts(&clauses, &HashSet::new(), domain)? else {
             return Ok(());
         };
-        for fact in facts {
-            match fact {
-                DerivedFact::SlotEq(left, right) => self.builder.union_slot_and_slot(left, right),
-                DerivedFact::SlotConst(slot, value) => {
-                    self.builder.union_slot_and_const(slot, value)
-                }
-            }
+        for group in partition {
+            self.builder.union_atoms(group);
         }
         Ok(())
-    }
-
-    /// Derives the always-true equality facts from a boolean expression without
-    /// merging them into the global builder.  Same DNF-chain intersection logic
-    /// as [`Self::apply_expr_facts`], factored out for reuse by scoped-facts
-    /// collection on `LEFT JOIN` ON conditions.
-    fn derive_expr_facts(
-        &self,
-        expr_id: NodeId,
-        domain: DomainId,
-    ) -> Result<Option<HashSet<DerivedFact>>, SbroadError> {
-        let Some(chains) = self.plan.get_dnf_chains(expr_id)? else {
-            return Ok(None);
-        };
-        let mut intersection: Option<HashSet<DerivedFact>> = None;
-        for chain in chains {
-            let ChainOutcome::Facts(facts) = self.collect_chain_facts(chain, domain)? else {
-                continue;
-            };
-            intersection = Some(match intersection.take() {
-                Some(existing) => existing
-                    .intersection(&facts)
-                    .cloned()
-                    .collect::<HashSet<DerivedFact>>(),
-                None => facts,
-            });
-        }
-        Ok(intersection)
     }
 
     /// Collects facts derived from a `LEFT JOIN` ON condition into a scope
@@ -1400,118 +1401,169 @@ impl<'p> EqualityAnalysis<'p> {
         domain: DomainId,
         join_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let Some(facts) = self.derive_expr_facts(expr_id, domain)? else {
+        let Facts(partition) = self.derive(expr_id, &HashSet::new(), domain)? else {
             return Ok(());
         };
         let scoped = self.builder.scoped_entry(join_id);
-        for fact in facts {
-            match fact {
-                DerivedFact::SlotEq(l, r) => {
-                    scoped
-                        .extra_slot_eq
-                        .push(((l.rel_id, l.output_idx), (r.rel_id, r.output_idx)));
-                }
-                DerivedFact::SlotConst(s, v) => {
-                    scoped.extra_slot_const.push(((s.rel_id, s.output_idx), v));
-                }
+        for mut group in partition {
+            // Star over the class's slots plus its pinned constant. Params (and
+            // the slotless const=param gate) are not surfaced in `LEFT JOIN`
+            // scoped facts yet; they only feed the global pins for enrichment.
+            let mut slots = group.iter().filter_map(|atom| match atom {
+                FactAtom::Slot(slot) => Some(slot),
+                _ => None,
+            });
+            let Some(rep) = slots.next() else {
+                continue;
+            };
+            let rep = rep.clone();
+            for slot in slots {
+                scoped
+                    .extra_slot_eq
+                    .push(((rep.rel_id, rep.output_idx), (slot.rel_id, slot.output_idx)));
+            }
+            if let Some(value) = group.drain(..).find_map(|atom| match atom {
+                FactAtom::Const { value, .. } => Some(value),
+                _ => None,
+            }) {
+                scoped
+                    .extra_slot_const
+                    .push(((rep.rel_id, rep.output_idx), value));
             }
         }
         Ok(())
     }
 
-    fn collect_chain_facts(
+    /// Recursively derives the equality facts that hold for `node`, given the
+    /// slots already known NULL in the enclosing conjunction (`nulls_in`).
+    ///
+    /// `AND` = merge (union-find over all conjuncts); `OR` = intersect the facts
+    /// of the satisfiable arms. No DNF expansion — polynomial in the tree size.
+    /// Replaces the old per-DNF-chain analysis: an OR arm here plays the role a
+    /// DNF chain used to, and the intersection is computed directly on the tree.
+    fn derive(
         &self,
-        mut chain: Chain,
+        node: NodeId,
+        nulls_in: &HashSet<SlotKey>,
         domain: DomainId,
-    ) -> Result<ChainOutcome, SbroadError> {
-        let mut local = LocalFacts::default();
-        // Two passes over the chain. Pass 1 collects slots that are known NULL
-        // via `IS NULL`; pass 2 then kills the whole chain if any `=` predicate
-        // touches such a slot, because `NULL = <anything>` is UNKNOWN — never
-        // TRUE — so the conjunction can never be satisfied. Splitting the scans
-        // lets `IS NULL` and `=` appear in any order without a post-factum
-        // reconciliation step.
-        let mut null_slots: HashSet<SlotKey> = HashSet::new();
-        for node_id in chain.get_mut_nodes().iter() {
-            let expr = self.plan.get_expression_node(*node_id)?;
-            let child = match expr {
+    ) -> Result<DeriveOutcome, SbroadError> {
+        if let Expression::Bool(BoolExpr {
+            op: Bool::Or,
+            left,
+            right,
+            ..
+        }) = self.plan.get_expression_node(node)?
+        {
+            // Enclosing NULLs apply to both arms; dead arms are skipped, the
+            // live arms' facts are intersected.
+            let left = self.derive(*left, nulls_in, domain)?;
+            let right = self.derive(*right, nulls_in, domain)?;
+            return Ok(DeriveOutcome::or(left, right));
+        }
+        let conjuncts = self.plan.nodes.and_conjuncts(node);
+        self.derive_conjuncts(&conjuncts, nulls_in, domain)
+    }
+
+    /// Processes one maximal `AND`-region: a flat list of conjuncts, each of which
+    /// may itself be an `OR`. This is the old `collect_chain_facts`, generalized
+    /// so an `OR` conjunct contributes the intersection of its arms' facts.
+    fn derive_conjuncts(
+        &self,
+        conjuncts: &[NodeId],
+        nulls_in: &HashSet<SlotKey>,
+        domain: DomainId,
+    ) -> Result<DeriveOutcome, SbroadError> {
+        // Pass 1 collects slots that are known NULL via `IS NULL` (plus any
+        // inherited from the enclosing conjunction); pass 2 then kills the whole
+        // region if any `=` predicate touches such a slot, because
+        // `NULL = <anything>` is UNKNOWN — never TRUE. Splitting the scans lets
+        // `IS NULL` and `=` appear in any order.
+        let mut null_slots: Cow<HashSet<SlotKey>> = Cow::Borrowed(nulls_in);
+        for node_id in conjuncts {
+            let child = match self.plan.get_expression_node(*node_id)? {
                 Expression::Unary(UnaryExpr {
                     op: Unary::IsNull,
                     child,
                 }) => child,
-                // The chain is already dead if one of conditions is false or null
+                // The region is already dead if one conjunct is false or null.
                 Expression::Constant(Constant {
                     value: Value::Boolean(false),
                 })
                 | Expression::Constant(Constant { value: Value::Null }) => {
-                    return Ok(ChainOutcome::Dead)
+                    return Ok(DeriveOutcome::Dead)
                 }
                 _ => continue,
             };
-            let child_expr = self.plan.get_expression_node(*child)?;
             if let Expression::Reference(Reference {
                 target: ReferenceTarget::Single(rel_id),
                 position,
                 ..
-            }) = child_expr
+            }) = self.plan.get_expression_node(*child)?
             {
-                null_slots.insert(SlotKey {
-                    domain_id: domain,
+                null_slots.to_mut().insert(SlotKey {
                     rel_id: *rel_id,
                     output_idx: *position,
                 });
             }
         }
 
-        while let Some(node_id) = chain.get_mut_nodes().pop_back() {
-            let expr = self.plan.get_expression_node(node_id)?;
-            let Expression::Bool(BoolExpr {
-                op: Bool::Eq,
-                left,
-                right,
-                ..
-            }) = expr
-            else {
-                continue;
-            };
-            let left_terms = self.extract_equality_terms(*left, domain)?;
-            if left_terms.is_none() {
-                return Ok(ChainOutcome::Dead);
-            }
-            let right_terms = self.extract_equality_terms(*right, domain)?;
-            if right_terms.is_none() {
-                return Ok(ChainOutcome::Dead);
-            }
-
-            let left_terms = left_terms.expect("checked above");
-            let right_terms = right_terms.expect("checked above");
-
-            if left_terms.len() != right_terms.len() {
-                continue;
-            }
-            for (left_term, right_term) in left_terms.into_iter().zip(right_terms) {
-                if let FactAtom::Slot(ref slot) = left_term.atom {
-                    if null_slots.contains(slot) {
-                        return Ok(ChainOutcome::Dead);
+        let mut local = LocalFacts::default();
+        for node_id in conjuncts {
+            match self.plan.get_expression_node(*node_id)? {
+                Expression::Bool(BoolExpr {
+                    op: Bool::Eq,
+                    left,
+                    right,
+                    ..
+                }) => {
+                    let Some(left_terms) = self.extract_equality_terms(*left, domain)? else {
+                        return Ok(DeriveOutcome::Dead);
+                    };
+                    let Some(right_terms) = self.extract_equality_terms(*right, domain)? else {
+                        return Ok(DeriveOutcome::Dead);
+                    };
+                    if left_terms.len() != right_terms.len() {
+                        continue;
+                    }
+                    for (left_term, right_term) in left_terms.into_iter().zip(right_terms) {
+                        if let FactAtom::Slot(ref slot) = left_term.atom {
+                            if null_slots.contains(slot) {
+                                return Ok(DeriveOutcome::Dead);
+                            }
+                        }
+                        if let FactAtom::Slot(ref slot) = right_term.atom {
+                            if null_slots.contains(slot) {
+                                return Ok(DeriveOutcome::Dead);
+                            }
+                        }
+                        if left_term.atom == FactAtom::Other || right_term.atom == FactAtom::Other {
+                            continue;
+                        }
+                        if left_term.ty != right_term.ty {
+                            continue;
+                        }
+                        local.union(left_term.atom, right_term.atom);
                     }
                 }
-                if let FactAtom::Slot(ref slot) = right_term.atom {
-                    if null_slots.contains(slot) {
-                        return Ok(ChainOutcome::Dead);
+                // A nested OR conjunct: derive its facts (with the region's NULLs
+                // in scope) and fold them back into the region's union-find. A
+                // dead OR makes the whole region unsatisfiable.
+                Expression::Bool(BoolExpr { op: Bool::Or, .. }) => {
+                    let Facts(partition) = self.derive(*node_id, null_slots.as_ref(), domain)?
+                    else {
+                        return Ok(DeriveOutcome::Dead);
+                    };
+                    // Fold each class the OR implies into the region's union-find
+                    // as a star around its first atom.
+                    for group in partition {
+                        local.union_atoms(group);
                     }
                 }
-                if left_term.atom == FactAtom::Other || right_term.atom == FactAtom::Other {
-                    continue;
-                }
-                if left_term.ty != right_term.ty {
-                    continue;
-                }
-
-                local.union(left_term.atom, right_term.atom);
+                _ => {}
             }
         }
 
-        Ok(local.into_facts())
+        Ok(local.into_partition())
     }
 
     fn extract_equality_terms(
@@ -1562,7 +1614,6 @@ impl<'p> EqualityAnalysis<'p> {
                 ..
             }) => FactTerm {
                 atom: FactAtom::Slot(SlotKey {
-                    domain_id,
                     rel_id: *rel_id,
                     output_idx: *position,
                 }),
@@ -1572,7 +1623,7 @@ impl<'p> EqualityAnalysis<'p> {
                 // `value.eq(value) != True` catches both NaN (floats where
                 // NaN != NaN) and NULL (Null.eq(Null) = Unknown).  In both
                 // cases the equality predicate can never evaluate to TRUE,
-                // so the whole chain is unsatisfiable.
+                // so the whole AND-region is unsatisfiable.
                 if value.eq(value) != Trivalent::True {
                     return Ok(None);
                 }
@@ -1614,7 +1665,7 @@ impl<'p> EqualityAnalysis<'p> {
 /// different semantic scopes do not get unified accidentally. Parameters are
 /// also kept as separate atoms so the analyzer can reason about transitivity
 /// without materializing unsafe constant predicates from prepared statements.
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 enum FactAtom {
     Slot(SlotKey),
     // domain_id keeps Const and Param atoms domain-scoped for the same reason
@@ -1641,46 +1692,80 @@ struct FactTerm {
     ty: DerivedType,
 }
 
-/// Normalized fact emitted from one satisfiable DNF chain.
-///
-/// `LocalFacts` reduces a conjunction of `=` predicates to these canonical
-/// statements before the global builder merges them into final classes.
-///
-/// TODO: add a third variant `SlotParam(SlotKey, u16)` so parameters can
-/// bridge slots **across** expressions / DNF chains.  Today parameters
-/// are local to one `LocalFacts` (one chain), which means:
-///   - `WHERE a = $1` upstream + `WHERE b = $1` downstream don't merge a/b;
-///   - `LEFT JOIN ... ON a.x = $1` + `WHERE a.y = $1` don't bridge a.x/a.y;
-///   - within one chain, `a = $1 AND b = $1` still works fine.
-///
-/// PG handles this through a single eclass per query; we'd need to make
-/// `Param` a first-class atom in `EqualityFactsBuilder` (union via
-/// `union_slot_and_param`).  `DomainId` already isolates params between
-/// scopes, so the atom-level extension is mechanical.
-#[derive(PartialEq, Eq, Hash, Clone)]
-enum DerivedFact {
-    SlotEq(SlotKey, SlotKey),
-    SlotConst(SlotKey, Value),
-}
+/// One equivalence class derived from a satisfiable region: the group of
+/// [`FactAtom`]s (slots, the pinned constant, params) that must all be equal.
+/// A [`Partition`] is a set of these; each carries at least two atoms (alone
+/// atom implies nothing).
+type FactGroup = Vec<FactAtom>;
 
-/// Result of analyzing one DNF chain.
+/// The equivalence relation a region implies, as a list of its non-trivial
+/// classes. Carried through [`DeriveOutcome`] so an `OR` intersects the arms'
+/// *partitions* directly and consumers fold each class into a union-find as a
+/// star (no pairwise `SlotEq` product is ever materialized).
+type Partition = Vec<FactGroup>;
+
+/// Result of deriving facts from one `AND`-region (conjunction).
 ///
-/// The two variants carry different meaning for `apply_expr_facts`, which
-/// intersects the live chains' facts and skips dead ones:
+/// The two variants carry different meaning for [`DeriveOutcome::or`], which
+/// intersects the live arms' partitions and skips dead ones:
 ///
-/// - [`ChainOutcome::Dead`] — the chain is unsatisfiable (e.g. `a = 1 AND
-///   a = 2`, `a = NULL`, `a IS NULL AND a = b`).  Callers MUST skip it
-///   entirely and treat it as if the branch did not exist, otherwise an
-///   intersection with the live chains would wrongly wipe out real facts.
-/// - [`ChainOutcome::Facts`] — the chain is live.  The carried `HashSet`
-///   may be empty, which is distinct from `Dead`: an empty fact set means
-///   "satisfiable but no equality facts can be derived", and intersecting
-///   it with other chains' facts correctly collapses the result to empty.
-enum ChainOutcome {
+/// - [`DeriveOutcome::Dead`] — the region is unsatisfiable (e.g. `a = 1 AND
+///   a = 2`, `a = NULL`, `a IS NULL AND a = b`).  An `OR` MUST skip it
+///   entirely and treat it as if the arm did not exist, otherwise an
+///   intersection with the live arms would wrongly wipe out real facts.
+/// - [`DeriveOutcome::Facts`] — the region is live.  The carried [`Partition`]
+///   may be empty, which is distinct from `Dead`: an empty partition means
+///   "satisfiable but no equality facts can be derived", and intersecting it
+///   with other arms correctly collapses the result to empty.
+enum DeriveOutcome {
     Dead,
-    Facts(HashSet<DerivedFact>),
+    Facts(Partition),
 }
 
+impl DeriveOutcome {
+    /// Combines two `OR` arms: a dead (unsatisfiable) arm contributes no
+    /// constraint and is skipped; the live arms' partitions are intersected so
+    /// only equalities holding in *every* arm survive.
+    fn or(left: DeriveOutcome, right: DeriveOutcome) -> DeriveOutcome {
+        match (left, right) {
+            (DeriveOutcome::Dead, live) | (live, DeriveOutcome::Dead) => live,
+            (DeriveOutcome::Facts(a), DeriveOutcome::Facts(b)) => {
+                DeriveOutcome::Facts(intersect_partitions(a, b))
+            }
+        }
+    }
+}
+
+/// Map every atom of a partition to the index of the class it belongs to.
+fn atom_to_class(mut partition: Partition) -> HashMap<FactAtom, usize> {
+    let mut map = HashMap::new();
+    for (class, group) in partition.drain(..).enumerate() {
+        for atom in group {
+            map.insert(atom, class);
+        }
+    }
+    map
+}
+
+/// Intersect two arms' partitions: two atoms end up in one class iff they are
+/// grouped in *both* arms. Computed by labelling each atom with its `(class in
+/// a, class in b)` pair and grouping by label (no pairwise product). An atom
+/// absent from either arm can only be a singleton here, so only atoms present
+/// in both partitions are considered.
+fn intersect_partitions(a: Partition, b: Partition) -> Partition {
+    let a_class = atom_to_class(a);
+    let mut b_class = atom_to_class(b);
+    let mut by_label: HashMap<(usize, usize), FactGroup> = HashMap::new();
+    for (atom, a_id) in a_class {
+        if let Some(b_id) = b_class.remove(&atom) {
+            by_label.entry((a_id, b_id)).or_default().push(atom);
+        }
+    }
+    by_label
+        .into_values()
+        .filter(|group| group.len() >= 2)
+        .collect()
+}
 struct LocalFacts {
     members: UnionFind<FactAtom>,
 }
@@ -1700,61 +1785,43 @@ impl LocalFacts {
         self.members.union_groups(left, right);
     }
 
-    fn into_facts(self) -> ChainOutcome {
-        // TODO: into_groups() returns raw root indices (not dense 0..n), so we
-        // must size vecs by members.len(), not groups_number(). Consider making
-        // into_groups() renumber groups densely to save memory.
-        let n = self.members.len();
-        let mut slots_by_root: Vec<Vec<SlotKey>> = (0..n).map(|_| Vec::new()).collect();
-        let mut const_by_root: Vec<Option<Value>> = vec![None; n];
+    fn union_atoms(&mut self, group: FactGroup) {
+        self.members.union_atoms(group);
+    }
+
+    /// Freeze the region's union-find into its [`Partition`]: one group of
+    /// atoms per equivalence class, keeping only non-trivial classes (>= 2
+    /// atoms). A class holding two distinct constants (`a = 1 AND a = 2`) makes
+    /// the whole `AND`-region unsatisfiable, so we return [`DeriveOutcome::Dead`].
+    fn into_partition(mut self) -> DeriveOutcome {
+        let n = self.members.groups_number();
+        let mut root_to_group: HashMap<UnionFindGroup, usize> = HashMap::with_capacity(n);
+        let mut groups: Vec<FactGroup> = Vec::with_capacity(n);
+        let mut const_by_root: Vec<Option<Value>> = Vec::with_capacity(n);
 
         for (atom, root) in self.members.into_groups() {
-            let i = root.index();
-            match atom {
-                FactAtom::Slot(slot) => slots_by_root[i].push(slot),
-                FactAtom::Const { value, .. } => match &const_by_root[i] {
-                    None => const_by_root[i] = Some(value),
-                    Some(v) => {
-                        if v.eq(&value) != Trivalent::True {
-                            // it means we have a conflict like (a = 1 AND a = 2). It is inside one
-                            // DNF chain, so a whole chain is false. We can break the loop here.
-                            return ChainOutcome::Dead;
+            let i = *root_to_group.entry(root).or_insert_with(|| {
+                let id = groups.len();
+                groups.push(Vec::new());
+                const_by_root.push(None);
+                id
+            });
+            if let FactAtom::Const { value, .. } = &atom {
+                match &const_by_root[i] {
+                    None => const_by_root[i] = Some(value.clone()),
+                    // Two distinct constants (`a = 1 AND a = 2`) make the class
+                    // unsatisfiable, so the whole AND-region is false.
+                    Some(seen) => {
+                        if seen.eq(value) != Trivalent::True {
+                            return DeriveOutcome::Dead;
                         }
                     }
-                },
-                FactAtom::Param { .. } => {
-                    // TODO: parameters die here — we maybe should exposed
-                    // them later. We need to be careful with domains.
-                    // Param shouldn't connect classes out of the scope of
-                    // the current expression.
-                }
-                FactAtom::Other => {
-                    unreachable!("FactAtom::Other should not be in LocalFacts");
                 }
             }
+            groups[i].push(atom);
         }
 
-        let mut facts = HashSet::new();
-        for i in 0..n {
-            let slots = &mut slots_by_root[i];
-            if slots.is_empty() {
-                continue;
-            }
-            slots.sort();
-
-            if let Some(value) = &const_by_root[i] {
-                for slot in slots.iter() {
-                    facts.insert(DerivedFact::SlotConst(slot.clone(), value.clone()));
-                }
-            }
-
-            for l in 0..slots.len() {
-                for r in (l + 1)..slots.len() {
-                    facts.insert(DerivedFact::SlotEq(slots[l].clone(), slots[r].clone()));
-                }
-            }
-        }
-        ChainOutcome::Facts(facts)
+        DeriveOutcome::Facts(groups.into_iter().filter(|g| g.len() >= 2).collect())
     }
 }
 

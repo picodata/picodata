@@ -367,6 +367,29 @@ fn equality_facts_dead_branch_with_false() {
     assert_eq!(b, Some(&Value::from(5)));
 }
 
+#[test]
+fn equality_facts_cross_or_fact_is_not_derived() {
+    // A fact shared only across arms of *different* ORs is NOT derived.
+    // `(a=b OR c=1) AND (a=b OR c=2)`: each OR is intersected on its own
+    // (`{a≡b} ∩ {c=k} = ∅`), and the polynomial `AND`-merge / `OR`-intersect walk
+    // never combines arms across the two ORs, so a=b is not recovered. Deriving
+    // it would need DNF-style case-splitting (exponential); we skip it, matching
+    // PostgreSQL. Safe: fewer facts, at worst an extra motion, never a wrong one.
+    let input = r#"SELECT "a", "b", "c" FROM "t"
+    WHERE ("a" = "b" OR "c" = 1) AND ("a" = "b" OR "c" = 2)"#;
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let top_id = plan.get_top().unwrap();
+    let equalities_facts = plan.facts.unwrap();
+
+    let a = equalities_facts.class_of_slot(top_id, 0).unwrap();
+    let b = equalities_facts.class_of_slot(top_id, 1).unwrap();
+    assert_ne!(a, b);
+    assert!(equalities_facts
+        .classes
+        .iter()
+        .all(|c| c.constant.is_none()));
+}
+
 // --- Row equality ---
 
 #[test]
@@ -1446,5 +1469,63 @@ fn equality_facts_lj_scope_absent_when_on_has_no_eq() {
     assert!(
         equalities_facts.scopes.is_empty(),
         "no eq facts in ON => no scope entry"
+    );
+}
+
+#[test]
+fn or_partition_intersection_derives_var_eq() {
+    // (a=1 AND b=1 AND c=1) OR (b=c):
+    //   arm1 makes a, b, c all equal through the shared constant 1, so `b = c`
+    //   holds there; arm2 states `b = c` directly. The OR therefore implies
+    //   `b = c` unconditionally -- even though the two arms share no constant.
+    //   Intersecting the arms' *partitions* catches this; intersecting flat
+    //   const-only facts would not (the constant 1 is not common).
+    let input = r#"SELECT "a", "b", "c" FROM "t"
+        WHERE ("a" = 1 AND "b" = 1 AND "c" = 1) OR "b" = "c""#;
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let top = plan.get_top().unwrap();
+    let facts = plan.facts.unwrap();
+
+    let a = facts.class_of_slot(top, 0).unwrap();
+    let b = facts.class_of_slot(top, 1).unwrap();
+    let c = facts.class_of_slot(top, 2).unwrap();
+    assert_eq!(b, c, "the OR implies b = c");
+    assert_ne!(a, b, "a is not forced equal to b/c across the OR");
+    // `a=1`/`b=1`/`c=1` hold in only one arm, so no class is pinned to a value.
+    assert!(
+        facts.classes.iter().all(|cl| cl.constant.is_none()),
+        "no constant is unconditional across the OR"
+    );
+}
+
+#[test]
+fn or_slotless_const_param_gate_via_uf() {
+    // (a=1 AND a=$1) OR (b=1 AND b=$1): each arm ties $1 to 1, so the OR
+    // implies `$1 = 1` unconditionally. No *slot* is common to both arms -- the
+    // gate survives as a slotless {const, param} class, caught in the
+    // union-find (there is no `SlotConst`/`SlotParam` pair to intersect).
+    let input = r#"SELECT "a" FROM "t"
+        WHERE ("a" = 1 AND "a" = $1) OR ("b" = 1 AND "b" = $1)"#;
+    let plan = optimized_to_equality_facts(input, vec![Value::Integer(1)]);
+    let facts = plan.facts.unwrap();
+
+    let gates: Vec<(Vec<Slot>, Vec<u16>, &Option<Value>)> = facts
+        .classes
+        .iter()
+        .map(|class| {
+            (
+                class.members.to_vec(),
+                class.params.to_vec(),
+                &class.constant,
+            )
+        })
+        .collect();
+    assert!(
+        gates
+            .iter()
+            .any(|(members, params, value)| members.is_empty()
+                && !params.is_empty()
+                && **value == Some(Value::Integer(1))),
+        "OR of two arms each pinning $1 = 1 must yield the gate $1 = 1, got {gates:?}"
     );
 }
