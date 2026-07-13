@@ -668,44 +668,14 @@ def test_map(postgres: Postgres):
     cur = conn.execute(""" SELECT "distribution" FROM "_pico_table" """, binary=True)
     assert cur.fetchall() == distribution
 
-    # text json parameters should throw an error
+    # a json parameter is accepted, but there is no `=` operator for map and json
     with pytest.raises(
-        psycopg.errors.FeatureNotSupported,
-        match="feature is not supported: json parameters",
+        psycopg.errors.InternalError,
+        match=r"could not resolve operator overload for =\(map, json\)",
     ):
         cur = conn.execute(
             """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %t; """,
             (Json(distribution[0]),),
-        )
-
-    # text jsonb parameters should throw an error
-    with pytest.raises(
-        psycopg.errors.FeatureNotSupported,
-        match="feature is not supported: jsonb parameters",
-    ):
-        cur = conn.execute(
-            """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %t; """,
-            (Jsonb(distribution[0]),),
-        )
-
-    # binary json parameters should throw an error
-    with pytest.raises(
-        psycopg.errors.FeatureNotSupported,
-        match="feature is not supported: json parameters",
-    ):
-        cur = conn.execute(
-            """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %b; """,
-            (Json(distribution[0]),),
-        )
-
-    # binary jsonb parameters should throw an error
-    with pytest.raises(
-        psycopg.errors.FeatureNotSupported,
-        match="feature is not supported: jsonb parameters",
-    ):
-        cur = conn.execute(
-            """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %b; """,
-            (Jsonb(distribution[0]),),
         )
 
 

@@ -10,7 +10,7 @@ use serde::Deserialize;
 use smol_str::{format_smolstr, ToSmolStr};
 use sql::{
     frontend::sql::{try_parse_bool, try_parse_datetime},
-    ir::value::Value as SbroadValue,
+    ir::value::{json::Json as SbroadJson, Value as SbroadValue},
 };
 use std::{
     borrow::Cow,
@@ -18,6 +18,7 @@ use std::{
     io::Cursor,
     str::{self, FromStr},
 };
+use tarantool::ffi::json::MP_JSON;
 use time::macros::format_description;
 
 /// This type is used to send Format over the wire.
@@ -170,34 +171,40 @@ impl ToSql for Decimal {
     postgres_types::to_sql_checked!();
 }
 
-/// JSON wrapper for smooth encoding & decoding.
+/// A native `json` document, sent with the JSONB oid.
+///
+/// Values of `any`, `map` and untyped `array` columns are sent with the JSON
+/// oid instead, see [`MsgpackAsJson`].
 #[derive(Debug, Clone)]
-pub struct Json(rmpv::Value);
-
-impl std::fmt::Display for Json {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let string = serde_json::to_string(&MpValueAsJson(&self.0)).map_err(|_| {
-            crate::tlog!(Warning, "failed to print `{self:?}` as json");
-            std::fmt::Error
-        })?;
-        f.write_str(&string)
-    }
-}
+#[repr(transparent)]
+pub struct Json(SbroadJson);
 
 impl FromStr for Json {
-    type Err = serde_json::Error;
+    type Err = Box<DynError>;
 
     #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_json::from_str(s).map(Self)
+        let inner = tarantool::json::parse(s.as_bytes())
+            .map_err(|e| -> Box<DynError> { e.to_string().into() })?;
+        Ok(Self(SbroadJson::from_inner(inner)?))
     }
 }
 
 impl<'a> FromSql<'a> for Json {
     #[inline(always)]
     fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<DynError>> {
-        let json = postgres_types::Json::<rmpv::Value>::from_sql(ty, raw)?;
-        Ok(Self(json.0))
+        // Binary json is the text itself, and binary jsonb is a version byte
+        // followed by the text. Parse that text as in the text format, so a
+        // value does not depend on the format the client picked.
+        let text = if *ty == Type::JSONB {
+            match raw.split_first() {
+                Some((1, text)) => text,
+                _ => return Err("unsupported JSONB encoding version".into()),
+            }
+        } else {
+            raw
+        };
+        std::str::from_utf8(text)?.parse()
     }
 
     postgres_types::accepts!(JSON, JSONB);
@@ -211,7 +218,8 @@ impl ToSqlText for Json {
         out: &mut BytesMut,
         _options: &FormatOptions,
     ) -> Result<IsNull, Box<DynError>> {
-        // Note: json text representation is the same as binary
+        // The text form of both json and jsonb is the plain document; the
+        // jsonb version byte lives only in the binary format.
         self.to_sql(&Type::JSON, out)
     }
 }
@@ -219,10 +227,59 @@ impl ToSqlText for Json {
 impl ToSql for Json {
     #[inline(always)]
     fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
-        postgres_types::Json(MpValueAsJson(&self.0)).to_sql(ty, out)
+        // In the binary format a jsonb value is prefixed with a one-byte
+        // version header, and only version 1 is defined. Plain json (oid 114)
+        // carries no such header: its binary form is the document text
+        // verbatim.
+        if *ty == Type::JSONB {
+            out.put_u8(1);
+        }
+        write!(out, "{}", self.0)?;
+        Ok(IsNull::No)
     }
 
     postgres_types::accepts!(JSON, JSONB);
+    postgres_types::to_sql_checked!();
+}
+
+/// A value of an `any`, `map` or untyped `array` column, e.g.
+/// `_pico_index.opts`, sent with the JSON oid. Msgpack extensions (decimal,
+/// uuid, datetime) are rendered as strings by [`MpValueAsJson`].
+///
+/// Output only: a json parameter is always a native [`Json`].
+#[derive(Debug, Clone)]
+pub struct MsgpackAsJson(rmpv::Value);
+
+impl std::fmt::Display for MsgpackAsJson {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = serde_json::to_string(&MpValueAsJson(&self.0)).map_err(|_| {
+            crate::tlog!(Warning, "failed to print `{self:?}` as json");
+            std::fmt::Error
+        })?;
+        f.write_str(&string)
+    }
+}
+
+impl ToSqlText for MsgpackAsJson {
+    #[inline(always)]
+    fn to_sql_text(
+        &self,
+        _ty: &Type,
+        out: &mut BytesMut,
+        _options: &FormatOptions,
+    ) -> Result<IsNull, Box<DynError>> {
+        // Note: json text representation is the same as binary
+        self.to_sql(&Type::JSON, out)
+    }
+}
+
+impl ToSql for MsgpackAsJson {
+    #[inline(always)]
+    fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
+        postgres_types::Json(MpValueAsJson(&self.0)).to_sql(ty, out)
+    }
+
+    postgres_types::accepts!(JSON);
     postgres_types::to_sql_checked!();
 }
 
@@ -301,6 +358,7 @@ pub enum PgValue<'mp> {
     Text(Cow<'mp, str>),
     Timestamptz(Timestamptz),
     Json(Json),
+    MsgpackAsJson(MsgpackAsJson),
     Uuid(Uuid),
     Numeric(Decimal),
     /// Homogeneous list of typed values.
@@ -326,12 +384,10 @@ impl TryFrom<PgValue<'_>> for SbroadValue {
                 .map(SbroadValue::try_from)
                 .collect::<Result<Vec<_>, _>>()
                 .map(SbroadValue::from),
-            PgValue::Json(_) => {
-                // Currently sbroad cannot represent json.
-                Err(PgError::FeatureNotSupported(format_smolstr!(
-                    "cannot represent json in sbroad",
-                )))
-            }
+            PgValue::Json(j) => Ok(SbroadValue::Json(j.0)),
+            PgValue::MsgpackAsJson(_) => Err(PgError::FeatureNotSupported(
+                "msgpack values cannot be used as parameters".into(),
+            )),
         }
     }
 }
@@ -381,6 +437,7 @@ impl ToSql for PgValue<'_> {
             PgValue::Uuid(v) => v.to_sql(ty, out),
             PgValue::Timestamptz(v) => v.to_sql(ty, out),
             PgValue::Json(v) => v.to_sql(ty, out),
+            PgValue::MsgpackAsJson(v) => v.to_sql(ty, out),
             PgValue::Text(v) => v.as_ref().to_sql(ty, out),
             PgValue::Array(v) => v.as_slice().to_sql(ty, out),
         }
@@ -414,6 +471,7 @@ impl ToSqlText for PgValue<'_> {
             PgValue::Uuid(v) => v.to_sql_text(ty, out, opts),
             PgValue::Timestamptz(v) => v.to_sql_text(ty, out, opts),
             PgValue::Json(v) => v.to_sql_text(ty, out, opts),
+            PgValue::MsgpackAsJson(v) => v.to_sql_text(ty, out, opts),
             PgValue::Text(v) => v.as_ref().to_sql_text(ty, out, opts),
             PgValue::Array(v) => v.as_slice().to_sql_text(ty, out, opts),
         }
@@ -435,7 +493,7 @@ impl<'a> FromSqlText<'a> for PgValue<'static> {
 /// [`crate::pgproto::backend::describe::Describe`].
 /// Further reading: function pg_type_from_sbroad.
 impl PgValue<'static> {
-    /// Note: this always produces an owning value, which is what a json needs,
+    /// Note: this always produces an owning value, which is what a [`MsgpackAsJson`] needs,
     /// as it holds on to the [`rmpv::Value`] it's given - and rmpv can only
     /// serialize that one, there is no `Serialize` for a borrowing `ValueRef`.
     /// The other types that carry a payload borrow it, see [`try_from_rmpv_ref`].
@@ -480,14 +538,6 @@ impl PgValue<'static> {
                 })?;
                 Ok(PgValue::Float(v))
             }
-            (Value::Array(v), &Type::JSON | &Type::JSONB) => {
-                // Any array-like structure will be encoded as json.
-                Ok(PgValue::Json(Json(Value::Array(v))))
-            }
-            (Value::Map(v), &Type::JSON | &Type::JSONB) => {
-                // Any map-like structure will be encoded as json.
-                Ok(PgValue::Json(Json(Value::Map(v))))
-            }
             (Value::String(v), &Type::TEXT | &Type::VARCHAR) => {
                 if !v.is_str() {
                     return Err(EncodingError::new(format!("couldn't encode string: {v:?}")).into());
@@ -526,7 +576,11 @@ impl PgValue<'static> {
                     rmpv::ext::from_value(Value::Ext(4, v)).map_err(EncodingError::new)?;
                 Ok(PgValue::Timestamptz(datetime))
             }
-            (any, &Type::JSON | &Type::JSONB) => Ok(PgValue::Json(Json(any))),
+            (Value::Ext(MP_JSON, payload), &Type::JSONB) => Ok(PgValue::Json(Json(
+                SbroadJson::from_inner(payload).map_err(EncodingError::new)?,
+            ))),
+            // Whatever an `any`, `map` or untyped `array` column holds.
+            (any, &Type::JSON) => Ok(PgValue::MsgpackAsJson(MsgpackAsJson(any))),
 
             (value, ty) => Err(PgError::FeatureNotSupported(format_smolstr!(
                 "{value:?} cannot be represented as a value of type {ty:?}"
@@ -629,8 +683,9 @@ impl<'mp> PgValue<'mp> {
             )),
             Type::FLOAT8 => Self::Float(read_double(cursor, marker)?),
             Type::TEXT | Type::VARCHAR => Self::Text(read_str(cursor)?.into()),
-            // A json holds the value it's given, so read an owning one at once.
-            Type::JSON | Type::JSONB => {
+            // A `MsgpackAsJson` holds the value it's given, so read an owning
+            // one at once.
+            Type::JSON => {
                 let value = rmpv::decode::read_value(cursor).map_err(EncodingError::new)?;
                 PgValue::try_from_rmpv(value, ty)?
             }
@@ -656,6 +711,9 @@ fn try_from_rmpv_ref(value: ValueRef<'_>, ty: &Type) -> PgResult<PgValue<'static
         (value @ ValueRef::Ext(4, _), &Type::TIMESTAMPTZ) => {
             Ok(PgValue::Timestamptz(deserialize_ext(value)?))
         }
+        (ValueRef::Ext(MP_JSON, payload), &Type::JSONB) => Ok(PgValue::Json(Json(
+            SbroadJson::from_inner(payload).map_err(EncodingError::new)?,
+        ))),
         // Note: a decimal with no fractional part arrives as a plain number,
         // which is what aggregates and window functions tend to produce.
         (value, ty) => PgValue::try_from_rmpv(value.to_owned(), ty),
@@ -704,6 +762,7 @@ fn read_double(cursor: &mut Cursor<&[u8]>, marker: rmp::Marker) -> PgResult<f64>
 
 #[cfg(test)]
 mod tests {
+    use super::json_ext_tests::encoded_text;
     use super::*;
     use rmpv::Value as MpValue;
 
@@ -1031,16 +1090,104 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn plain_map_under_json_oid_is_unchanged() {
+        let content = MpValue::Map(vec![(
+            MpValue::String("a".into()),
+            MpValue::Integer(1.into()),
+        )]);
+        let pg = PgValue::try_from_rmpv(content, &Type::JSON).unwrap();
+        assert_eq!(encoded_text(&pg, &Type::JSON), r#"{"a":1}"#);
+    }
+
+    #[test]
+    fn plain_map_under_jsonb_oid_is_rejected() {
+        // A JSONB column is a native json one, which only holds MP_JSON.
+        let content = MpValue::Map(vec![]);
+        assert!(PgValue::try_from_rmpv(content, &Type::JSONB).is_err());
+    }
+}
+
+/// Rendering of native json documents.
+///
+/// Note: unlike `tests` above these run under `picodata test` (see
+/// `test/inner.rs`), because rendering a document needs tarantool's own
+/// symbols.
+mod native_json_tests {
+    use super::json_ext_tests::encoded_text;
+    use super::*;
+    use rmpv::Value as MpValue;
+
+    /// Wrap plain MessagePack content into an `MP_JSON` ext, the way a json
+    /// value comes back from storage.
+    fn json_ext(content: &MpValue) -> MpValue {
+        let mut payload = Vec::new();
+        rmpv::encode::write_value(&mut payload, content).unwrap();
+        MpValue::Ext(MP_JSON, payload)
+    }
+
+    #[::tarantool::test]
+    fn json_ext_is_unwrapped_to_document() {
+        let content = MpValue::Map(vec![(
+            MpValue::String("a".into()),
+            MpValue::Integer(1.into()),
+        )]);
+        let pg = PgValue::try_from_rmpv(json_ext(&content), &Type::JSONB).unwrap();
+        assert_eq!(encoded_text(&pg, &Type::JSONB), r#"{"a": 1}"#);
+    }
+
+    #[::tarantool::test]
+    fn json_ext_null_is_unwrapped_to_json_null() {
+        let pg = PgValue::try_from_rmpv(json_ext(&MpValue::Nil), &Type::JSONB).unwrap();
+        assert_eq!(encoded_text(&pg, &Type::JSONB), "null");
+    }
+
+    #[::tarantool::test]
+    fn json_ext_scalar_is_unwrapped() {
+        let pg = PgValue::try_from_rmpv(json_ext(&MpValue::Integer(42.into())), &Type::JSONB);
+        assert_eq!(encoded_text(&pg.unwrap(), &Type::JSONB), "42");
+    }
+
+    #[::tarantool::test]
+    fn json_ext_preserves_normalized_key_order() {
+        // Storage hands back canonical content; unwrapping must not reorder it.
+        // Canonical order puts the shorter key first, so it is not the
+        // alphabetical order here.
+        let content = MpValue::Map(vec![
+            (MpValue::String("b".into()), MpValue::Integer(2.into())),
+            (MpValue::String("aa".into()), MpValue::Integer(1.into())),
+        ]);
+        let pg = PgValue::try_from_rmpv(json_ext(&content), &Type::JSONB).unwrap();
+        assert_eq!(encoded_text(&pg, &Type::JSONB), r#"{"b": 2, "aa": 1}"#);
+    }
+
+    #[::tarantool::test]
+    fn json_ext_is_decoded_in_place() {
+        let mut mp = Vec::new();
+        rmpv::encode::write_value(&mut mp, &json_ext(&MpValue::Integer(7.into()))).unwrap();
+        let mut cursor = Cursor::new(mp.as_slice());
+        let pg = PgValue::decode_mp(&mut cursor, &Type::JSONB).unwrap();
+        assert_eq!(cursor.position() as usize, mp.len());
+        assert_eq!(encoded_text(&pg, &Type::JSONB), "7");
+    }
 }
 
 /// Rendering of msgpack extension values (decimal, uuid, datetime) inside a
 /// json column, i.e. a column whose sbroad type is `any`, `map` or `array(any)`
 /// - `_pico_index.opts` of a vinyl index, for example.
 ///
-/// Note: unlike the module above these run under `picodata test` (see
+/// Note: unlike `tests` above these run under `picodata test` (see
 /// `test/inner.rs`), because decoding a decimal needs tarantool's own symbols.
 mod json_ext_tests {
     use super::*;
+
+    pub(super) fn encoded_text(pg: &PgValue, ty: &Type) -> String {
+        let mut out = BytesMut::new();
+        pg.to_sql_text(ty, &mut out, &FormatOptions::default())
+            .unwrap();
+        String::from_utf8(out.to_vec()).unwrap()
+    }
 
     /// Decode `msgpack` as a json column and return the bytes we'd put on the wire.
     fn json_wire_text(msgpack: &[u8]) -> String {
@@ -1049,8 +1196,8 @@ mod json_ext_tests {
         // The whole value must have been consumed.
         assert_eq!(cursor.position() as usize, msgpack.len());
 
-        let PgValue::Json(json) = value else {
-            panic!("expected PgValue::Json, got {value:?}");
+        let PgValue::MsgpackAsJson(json) = value else {
+            panic!("expected PgValue::MsgpackAsJson, got {value:?}");
         };
 
         let mut out = BytesMut::new();

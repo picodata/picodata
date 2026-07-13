@@ -373,7 +373,8 @@ pub(super) fn sbroad_type_to_pg(ty: &SbroadType) -> postgres_types::Type {
         SbroadType::Integer => PgType::INT8,
         SbroadType::String => PgType::TEXT,
         SbroadType::Uuid => PgType::UUID,
-        SbroadType::Map | SbroadType::Json | SbroadType::Any => PgType::JSON,
+        SbroadType::Map | SbroadType::Any => PgType::JSON,
+        SbroadType::Json => PgType::JSONB,
         SbroadType::Array(elem) => nested_type_to_pg_array(*elem),
         SbroadType::Datetime => PgType::TIMESTAMPTZ,
     }
@@ -403,6 +404,7 @@ pub(super) fn pg_type_to_sbroad(ty: &PgType) -> Option<SbroadType> {
         &PgType::TEXT | &PgType::VARCHAR => Some(SbroadType::String),
         &PgType::UUID => Some(SbroadType::Uuid),
         &PgType::TIMESTAMPTZ => Some(SbroadType::Datetime),
+        &PgType::JSON | &PgType::JSONB => Some(SbroadType::Json),
         &PgType::BOOL_ARRAY => Some(SbroadType::Array(NestedType::Boolean)),
         &PgType::INT8_ARRAY | &PgType::INT4_ARRAY | &PgType::INT2_ARRAY => {
             Some(SbroadType::Array(NestedType::Integer))
@@ -414,7 +416,7 @@ pub(super) fn pg_type_to_sbroad(ty: &PgType) -> Option<SbroadType> {
         &PgType::TEXT_ARRAY | &PgType::VARCHAR_ARRAY => Some(SbroadType::Array(NestedType::Text)),
         &PgType::UUID_ARRAY => Some(SbroadType::Array(NestedType::Uuid)),
         &PgType::TIMESTAMPTZ_ARRAY => Some(SbroadType::Array(NestedType::Datetime)),
-        &PgType::JSON_ARRAY | &PgType::JSONB_ARRAY => Some(SbroadType::Array(NestedType::Map)),
+        &PgType::JSON_ARRAY | &PgType::JSONB_ARRAY => Some(SbroadType::Array(NestedType::Json)),
         _unsupported_type => None,
     }
 }
@@ -755,7 +757,7 @@ mod test {
             (SbroadType::Any, PgType::JSON),
             (SbroadType::Map, PgType::JSON),
             (SbroadType::Array(NestedType::Any), PgType::JSON),
-            (SbroadType::Json, PgType::JSON),
+            (SbroadType::Json, PgType::JSONB),
         ] {
             assert_eq!(sbroad_type_to_pg(&sbroad), expected_pg)
         }
@@ -799,7 +801,8 @@ mod test {
                 PgType::TIMESTAMPTZ_ARRAY,
                 SbroadType::Array(NestedType::Datetime),
             ),
-            (PgType::JSON_ARRAY, SbroadType::Array(NestedType::Map)),
+            (PgType::JSON_ARRAY, SbroadType::Array(NestedType::Json)),
+            (PgType::JSONB_ARRAY, SbroadType::Array(NestedType::Json)),
         ] {
             assert!(pg_type_to_sbroad(&pg).unwrap() == expected_sbroad)
         }

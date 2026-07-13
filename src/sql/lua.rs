@@ -1,6 +1,7 @@
 use crate::vshard::VshardErrorCode;
 use ::tarantool::datetime::Datetime;
 use ::tarantool::error::{BoxError, Error as TntError, TarantoolError, TarantoolErrorCode};
+use ::tarantool::ffi::json::{luaT_pushjson, MP_JSON};
 use ::tarantool::ffi::sql::{ibuf_reinit, Ibuf, Port, PortC};
 use ::tarantool::msgpack::ExtStruct;
 use ::tarantool::tlua;
@@ -436,6 +437,12 @@ unsafe fn push_mp_value_to_lua(l: *mut lua_State, cur: &mut Cursor<&[u8]>) -> Re
                         )
                         .into());
                     }
+                }
+                MP_JSON => {
+                    // `bytes` holds the inner value (plain MessagePack, without
+                    // the MP_EXT/MP_JSON header), which is what luaT_pushjson
+                    // expects.
+                    luaT_pushjson(l, bytes.as_ptr() as *const c_char, bytes.len() as u32);
                 }
                 _ => {
                     return Err(TarantoolError::new(
