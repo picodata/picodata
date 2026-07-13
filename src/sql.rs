@@ -1,6 +1,6 @@
 //! Clusterwide SQL query execution.
 
-use crate::access_control::access_check_plugin_system;
+use crate::access_control::{access_check_alter_system_local, access_check_plugin_system};
 use crate::access_control::{validate_password, UserMetadataKind};
 use crate::backoff::SimpleBackoffManager;
 use crate::cas::Predicate;
@@ -73,14 +73,14 @@ use sql::ir::node::plugin::{
     MigrateTo, Plugin, RemoveServiceFromTier, SettingsPair,
 };
 use sql::ir::node::relational::Relational;
-use sql::ir::node::VinylOptions;
 use sql::ir::node::{
-    AlterColumn, AlterSystem, AlterTableOp, AlterUser, AnonymousBlock, ArenaType, AuditPolicy,
-    CallProcedure, Constant, CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser, Delete,
-    DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert, Node as IrNode,
-    Node136, Node64, Node96, NodeOwned, RenameIndex, RenameRoutine, RevokePrivilege, ScanRelation,
-    SetParam, Update,
+    AlterColumn, AlterSystemCluster, AlterTableOp, AlterUser, AnonymousBlock, ArenaType,
+    AuditPolicy, CallProcedure, Constant, CreateIndex, CreateProc, CreateRole, CreateTable,
+    CreateUser, Delete, DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert,
+    Node as IrNode, Node136, Node64, Node96, NodeOwned, RenameIndex, RenameRoutine,
+    RevokePrivilege, ScanRelation, SetParam, Update,
 };
+use sql::ir::node::{AlterSystemLocal, VinylOptions};
 use sql::ir::node::{NodeId, TruncateTable};
 use sql::ir::operator::ConflictStrategy;
 use sql::ir::types::{NestedType, UnrestrictedType};
@@ -379,6 +379,15 @@ fn dispatch_bound_statement_impl<'p>(
                     Warning,
                     "DDL for schemas is currently unsupported. Empty query response provided for DROP SCHEMA."
                 );
+                port_write_dml_response(port, 0);
+                return Ok(());
+            }
+
+            // This operation is not a real DDL, it only affects the instance its executed at.
+            // So there's no need to go through `reenterable_schema_change_request`.
+            if let Ddl::AlterSystemLocal(AlterSystemLocal { ty }) = ddl_node {
+                let current_user = effective_user_id();
+                execute_alter_system_local(ty, current_user)?;
                 port_write_dml_response(port, 0);
                 return Ok(());
             }
@@ -1432,7 +1441,7 @@ fn acl_ir_node_to_op_or_result(
 }
 
 #[rustfmt::skip]
-fn alter_system_ir_node_to_op_or_result(
+fn alter_system_cluster_ir_node_to_op_or_result(
     storage: &Catalog,
     ty: &AlterSystemType,
     tier_name: Option<&str>,
@@ -1526,6 +1535,44 @@ fn alter_system_ir_node_to_op_or_result(
             }
         }
     }
+}
+
+fn execute_alter_system_local(ty: &AlterSystemType, current_user: UserId) -> traft::Result<()> {
+    // Only superusers can access ALTER SYSTEM LOCAL
+    access_check_alter_system_local(current_user)?;
+
+    match &ty {
+        AlterSystemType::AlterSystemSet {
+            param_name,
+            param_value,
+        } => {
+            use std::str::FromStr;
+            let param = crate::config::local_dynamic::LocalDynamicParameter::from_str(param_name)
+                .map_err(|_| Error::other(format!("unknown parameter: '{param_name}'")))?;
+
+            crate::config::local_dynamic::validate_and_set_dynamic_local_parameter(
+                param,
+                param_value,
+            )?;
+        }
+        AlterSystemType::AlterSystemReset {
+            param_name: Some(param_name),
+        } => {
+            use std::str::FromStr;
+            let param = crate::config::local_dynamic::LocalDynamicParameter::from_str(param_name)
+                .map_err(|_| Error::other(format!("unknown parameter: '{param_name}'")))?;
+
+            crate::config::local_dynamic::reset_dynamic_local_parameter(param)?;
+        }
+        AlterSystemType::AlterSystemReset { param_name: None } => {
+            return Err(Error::Unsupported(error::Unsupported::new(
+                "ALTER SYSTEM RESET LOCAL ALL".to_string(),
+                None,
+            )))
+        }
+    }
+
+    Ok(())
 }
 
 fn get_new_backup_timestamp(storage: &Catalog) -> i64 {
@@ -1647,8 +1694,13 @@ fn ddl_ir_node_to_op_or_result(
     governor_op_id: Option<u64>,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     match ddl {
-        DdlOwned::AlterSystem(AlterSystem { ty, tier_name, .. }) => {
-            alter_system_ir_node_to_op_or_result(storage, ty, tier_name.as_deref(), current_user)
+        DdlOwned::AlterSystemCluster(AlterSystemCluster { ty, tier_name, .. }) => {
+            alter_system_cluster_ir_node_to_op_or_result(
+                storage,
+                ty,
+                tier_name.as_deref(),
+                current_user,
+            )
         }
         DdlOwned::CreateTable(CreateTable {
             name,
@@ -2127,9 +2179,9 @@ fn ddl_ir_node_to_op_or_result(
             );
             Ok(Break(ConsumerResult { row_count: 0 }))
         }
-        DdlOwned::CreateSchema | DdlOwned::DropSchema => {
+        DdlOwned::CreateSchema | DdlOwned::DropSchema | DdlOwned::AlterSystemLocal(_) => {
             return Err(Error::Other(
-                "unreachable CreateSchema/DropSchema".to_string().into(),
+                format!("unreachable DDL reached: {ddl:?}").into(),
             ));
         }
     }
@@ -2649,7 +2701,8 @@ pub(crate) fn reenterable_schema_change_request(
         let schema_version = storage.properties.next_schema_version()?;
 
         let wait_applied_globally;
-        let is_alter_system = matches!(&ir_node, NodeOwned::Ddl(DdlOwned::AlterSystem(_)));
+        let is_alter_system_cluster =
+            matches!(&ir_node, NodeOwned::Ddl(DdlOwned::AlterSystemCluster(_)));
         let op_or_result = match &ir_node {
             NodeOwned::Acl(acl) => {
                 wait_applied_globally = acl.wait_applied_globally();
@@ -2686,7 +2739,7 @@ pub(crate) fn reenterable_schema_change_request(
             cas::CasResult::RetriableError(_) => continue,
         };
 
-        if is_alter_system {
+        if is_alter_system_cluster {
             // Applying an ALTER SYSTEM raft entry first persists the new value
             // and publishes its applied index in transaction, and only then
             // updates the non-persistent runtime configuration. This

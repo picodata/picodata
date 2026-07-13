@@ -381,6 +381,21 @@ impl From<LogLevel> for SayLevel {
     }
 }
 
+impl From<SayLevel> for LogLevel {
+    fn from(l: SayLevel) -> Self {
+        match l {
+            SayLevel::Fatal => LogLevel::Fatal,
+            SayLevel::System => LogLevel::System,
+            SayLevel::Error => LogLevel::Error,
+            SayLevel::Crit => LogLevel::Crit,
+            SayLevel::Warn => LogLevel::Warn,
+            SayLevel::Info => LogLevel::Info,
+            SayLevel::Verbose => LogLevel::Verbose,
+            SayLevel::Debug => LogLevel::Debug,
+        }
+    }
+}
+
 impl Run {
     /// Get the arguments that will be passed to `tarantool_main`
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {

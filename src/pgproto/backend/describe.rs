@@ -88,6 +88,7 @@ pub enum CommandTag {
     TruncateTable = 40,
     Update = 13,
     Do = 58,
+    AlterSystemLocal = 59,
 }
 
 impl CommandTag {
@@ -147,6 +148,7 @@ impl CommandTag {
             Self::EmptyQuery => "",
             // TODO: See https://git.picodata.io/core/picodata/-/issues/2181.
             Self::Backup => "",
+            Self::AlterSystemLocal => "ALTER SYSTEM LOCAL",
         }
     }
 }
@@ -184,7 +186,8 @@ impl From<CommandTag> for QueryType {
             | CommandTag::AddTrier
             | CommandTag::RemoveTier
             | CommandTag::ChangeConfig
-            | CommandTag::DropProcedure => QueryType::Ddl,
+            | CommandTag::DropProcedure
+            | CommandTag::AlterSystemLocal => QueryType::Ddl,
             CommandTag::Delete
             | CommandTag::Insert
             | CommandTag::Update
@@ -222,7 +225,8 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 Block::Anonymous { .. } => Ok(CommandTag::Do),
             },
             Node::Ddl(ddl) => match ddl {
-                Ddl::AlterSystem { .. } => Ok(CommandTag::AlterSystem),
+                Ddl::AlterSystemCluster { .. } => Ok(CommandTag::AlterSystem),
+                Ddl::AlterSystemLocal { .. } => Ok(CommandTag::AlterSystemLocal),
                 Ddl::DropTable { .. } => Ok(CommandTag::DropTable),
                 Ddl::Backup { .. } => Ok(CommandTag::Backup),
                 Ddl::TruncateTable { .. } => Ok(CommandTag::TruncateTable),

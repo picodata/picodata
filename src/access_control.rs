@@ -46,6 +46,7 @@ use crate::{
 use smol_str::format_smolstr;
 use tarantool::auth::AuthMethod;
 use tarantool::error::TarantoolErrorCode::{self, AccessDenied};
+use tarantool::session::with_su;
 use tarantool::{
     access_control::{
         box_access_check_ddl, box_access_check_space, PrivType,
@@ -832,6 +833,18 @@ pub(crate) fn access_check_plugin_system(as_user: UserId) -> tarantool::Result<(
         let sys_user = user_by_id(as_user)?;
         #[rustfmt::skip]
         return Err(BoxError::new(AccessDenied, format!("Plugin system access is denied for user '{}'", sys_user.name)).into());
+    }
+    Ok(())
+}
+
+pub(crate) fn access_check_alter_system_local(as_user: UserId) -> tarantool::Result<()> {
+    if !is_superuser(as_user) {
+        // with_su is required to retrieve the name of the user
+        return with_su(ADMIN_ID, || -> tarantool::Result<()> {
+            let sys_user = user_by_id(as_user)?;
+            #[rustfmt::skip]
+            return Err(BoxError::new(AccessDenied, format!("ALTER SYSTEM LOCAL access is denied for user '{}'", sys_user.name)).into());
+        })?;
     }
     Ok(())
 }

@@ -1324,7 +1324,12 @@ pub struct SetParam {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct AlterSystem {
+pub enum AlterSystem {
+    Cluster(AlterSystemCluster),
+    Local(AlterSystemLocal),
+}
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct AlterSystemCluster {
     pub ty: AlterSystemType,
     /// In case of None, ALTER is supposed
     /// to be executed on all tiers.
@@ -1333,15 +1338,26 @@ pub struct AlterSystem {
     pub timeout: Timeout,
 }
 
-impl From<AlterSystem> for NodeAligned {
-    fn from(value: AlterSystem) -> Self {
-        Self::Node136(Node136::AlterSystem(value))
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct AlterSystemLocal {
+    pub ty: AlterSystemType,
+}
+
+impl From<AlterSystemCluster> for NodeAligned {
+    fn from(value: AlterSystemCluster) -> Self {
+        Self::Node136(Node136::AlterSystemCluster(value))
     }
 }
 
 impl From<SetParam> for NodeAligned {
     fn from(value: SetParam) -> Self {
         Self::Node64(Node64::SetParam(value))
+    }
+}
+
+impl From<AlterSystemLocal> for NodeAligned {
+    fn from(value: AlterSystemLocal) -> Self {
+        Self::Node64(Node64::AlterSystemLocal(value))
     }
 }
 
@@ -1933,6 +1949,7 @@ pub enum Node64 {
     Over(Over),
     TruncateTable(TruncateTable),
     Index(IndexExpr),
+    AlterSystemLocal(AlterSystemLocal),
 }
 
 impl Node64 {
@@ -1965,6 +1982,9 @@ impl Node64 {
                 NodeOwned::Ddl(DdlOwned::SetTransaction(set_trans))
             }
             Node64::Values(values) => NodeOwned::Relational(RelOwned::Values(values)),
+            Node64::AlterSystemLocal(alter_system) => {
+                NodeOwned::Ddl(DdlOwned::AlterSystemLocal(alter_system))
+            }
         }
     }
 }
@@ -2039,7 +2059,7 @@ pub enum Node136 {
     Invalid(Invalid),
     CreateUser(CreateUser),
     AlterUser(AlterUser),
-    AlterSystem(AlterSystem),
+    AlterSystemCluster(AlterSystemCluster),
     AlterTable(AlterTable),
     CreateProc(CreateProc),
     RenameRoutine(RenameRoutine),
@@ -2057,8 +2077,8 @@ impl Node136 {
     pub fn into_owned(self) -> NodeOwned {
         match self {
             Node136::AlterUser(alter_user) => NodeOwned::Acl(AclOwned::AlterUser(alter_user)),
-            Node136::AlterSystem(alter_system) => {
-                NodeOwned::Ddl(DdlOwned::AlterSystem(alter_system))
+            Node136::AlterSystemCluster(alter_system) => {
+                NodeOwned::Ddl(DdlOwned::AlterSystemCluster(alter_system))
             }
             Node136::AlterTable(alter_table) => NodeOwned::Ddl(DdlOwned::AlterTable(alter_table)),
             Node136::CreateProc(create_proc) => NodeOwned::Ddl(DdlOwned::CreateProc(create_proc)),

@@ -13,7 +13,7 @@ use crate::catalog::pico_bucket::index_of_bucket_id_column;
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
-use crate::config::apply_parameter;
+use crate::config::apply_alter_system_parameter;
 use crate::config::AlterSystemParametersRef;
 use crate::error_code::ErrorCode;
 use crate::governor;
@@ -1125,7 +1125,11 @@ impl NodeImpl {
             // currently only parameters from _pico_db_config processed outside of transaction (here)
             for AppliedDml { table, new_tuple } in dmls {
                 debug_assert!(table == DbConfig::TABLE_ID);
-                apply_parameter(&self.alter_system_parameters, new_tuple, current_tier)?;
+                apply_alter_system_parameter(
+                    &self.alter_system_parameters,
+                    new_tuple,
+                    current_tier,
+                )?;
             }
 
             crate::error_injection!("BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE" => {
@@ -3192,7 +3196,7 @@ impl NodeImpl {
 
                 // apply changed dynamic parameters
                 for changed_parameter in changed_parameters {
-                    apply_parameter(
+                    apply_alter_system_parameter(
                         &self.alter_system_parameters,
                         Tuple::try_from_slice(&changed_parameter)?,
                         current_tier,

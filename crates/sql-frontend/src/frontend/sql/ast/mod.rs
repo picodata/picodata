@@ -36,8 +36,8 @@ use crate::ir::expression::{ColumnWithScan, ColumnsRetrievalSpec, ExpressionId};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    AlterUser, CreateRole, CreateUser, DropRole, DropUser, GrantPrivilege, NodeAligned, NodeId,
-    RevokePrivilege, ScanRelation, SetTransaction,
+    AlterSystem, AlterUser, CreateRole, CreateUser, DropRole, DropUser, GrantPrivilege,
+    NodeAligned, NodeId, RevokePrivilege, ScanRelation, SetTransaction,
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::options::{OptionKind, OptionSpec};
@@ -1523,8 +1523,15 @@ fn build_alter_system_ir<M>(
 where
     M: Metadata,
 {
-    let alter_system = parse_alter_system(ast, node, type_analyzer, pairs_map, worker, plan)?;
-    push_mapped_plan_node(plan, map, node_id, alter_system);
+    match parse_alter_system(ast, node, type_analyzer, pairs_map, worker, plan)? {
+        AlterSystem::Cluster(cluster) => {
+            push_mapped_plan_node(plan, map, node_id, cluster);
+        }
+        AlterSystem::Local(local) => {
+            push_mapped_plan_node(plan, map, node_id, local);
+        }
+    }
+
     Ok(())
 }
 

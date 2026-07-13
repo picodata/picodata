@@ -1,6 +1,7 @@
 pub mod ldap;
 mod legacy;
 pub mod listener;
+pub mod local_dynamic;
 pub mod observer;
 pub mod tls;
 
@@ -9,7 +10,7 @@ use crate::address::{
     AddressConflict, AddressConflictChecker, HttpAddress, IprotoAddress, PluginAddress,
 };
 use crate::cli::args;
-use crate::cli::args::CONFIG_PARAMETERS_ENV;
+use crate::cli::args::{LogLevel, CONFIG_PARAMETERS_ENV};
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceName;
 use crate::introspection::leaf_field_paths;
@@ -55,7 +56,6 @@ use std::rc::Rc;
 use std::str::FromStr;
 use std::{env, fs};
 use tarantool::auth::{AuthData, AuthDef, AuthMethod};
-use tarantool::log::SayLevel;
 use tarantool::tuple::Tuple;
 
 pub use crate::address::{
@@ -2132,11 +2132,10 @@ impl InstanceConfig {
     }
 
     #[inline]
-    pub fn log_level(&self) -> SayLevel {
+    pub fn log_level(&self) -> LogLevel {
         self.log
             .level
             .expect("is set in PicodataConfig::set_defaults_explicitly")
-            .into()
     }
 
     #[inline]
@@ -3375,7 +3374,7 @@ pub fn get_defaults_for_all_system_parameters(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// apply_parameter
+// apply_alter_system_parameter
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Non-persistent apply of parameter from _pico_db_config
@@ -3391,7 +3390,7 @@ pub fn get_defaults_for_all_system_parameters(
 /// Panic in following cases:
 /// - invalid format tuple, format suppossed to be equal to _pico_db_config schema
 /// - unknown parameter name
-pub fn apply_parameter(
+pub fn apply_alter_system_parameter(
     parameters: &AlterSystemParametersRef,
     pico_db_config_tuple: Tuple,
     current_tier: &str,
@@ -4138,7 +4137,7 @@ cluster:
             assert_eq!(config.instance.iproto.advertise(), IprotoAddress::default());
             assert_eq!(config.instance.pgproto.listen(), PgprotoAddress::default());
             assert_eq!(config.instance.pgproto.advertise(), PgprotoAddress::default());
-            assert_eq!(config.instance.log_level(), SayLevel::Info);
+            assert_eq!(config.instance.log_level(), LogLevel::Info);
             assert!(config.instance.failure_domain().data.is_empty());
         }
 

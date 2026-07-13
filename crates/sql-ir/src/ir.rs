@@ -209,6 +209,9 @@ impl Nodes {
                 Node64::SetParam(set_param) => Node::Ddl(Ddl::SetParam(set_param)),
                 Node64::SetTransaction(set_trans) => Node::Ddl(Ddl::SetTransaction(set_trans)),
                 Node64::Values(values) => Node::Relational(Relational::Values(values)),
+                Node64::AlterSystemLocal(alter_system) => {
+                    Node::Ddl(Ddl::AlterSystemLocal(alter_system))
+                }
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
                 Node96::AnonymousBlock(block) => Node::Block(Block::Anonymous(block)),
@@ -247,7 +250,9 @@ impl Nodes {
                         Node::Acl(Acl::GrantPrivilege(grant_priv))
                     }
                     Node136::Update(update) => Node::Relational(Relational::Update(update)),
-                    Node136::AlterSystem(alter_system) => Node::Ddl(Ddl::AlterSystem(alter_system)),
+                    Node136::AlterSystemCluster(alter_system) => {
+                        Node::Ddl(Ddl::AlterSystemCluster(alter_system))
+                    }
                     Node136::CreateUser(create_user) => Node::Acl(Acl::CreateUser(create_user)),
                     Node136::Invalid(inv) => Node::Invalid(inv),
                     Node136::Motion(motion) => Node::Relational(Relational::Motion(motion)),
@@ -371,6 +376,9 @@ impl Nodes {
                         MutNode::Ddl(MutDdl::SetTransaction(set_trans))
                     }
                     Node64::Values(values) => MutNode::Relational(MutRelational::Values(values)),
+                    Node64::AlterSystemLocal(alter_system) => {
+                        MutNode::Ddl(MutDdl::AlterSystemLocal(alter_system))
+                    }
                 }),
             ArenaType::Arena96 => self
                 .arena96
@@ -431,8 +439,8 @@ impl Nodes {
                             MutNode::Acl(MutAcl::RevokePrivilege(revoke_priv))
                         }
                         Node136::Invalid(inv) => MutNode::Invalid(inv),
-                        Node136::AlterSystem(alter_system) => {
-                            MutNode::Ddl(MutDdl::AlterSystem(alter_system))
+                        Node136::AlterSystemCluster(alter_system) => {
+                            MutNode::Ddl(MutDdl::AlterSystemCluster(alter_system))
                         }
                         Node136::Update(update) => {
                             MutNode::Relational(MutRelational::Update(update))

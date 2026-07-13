@@ -1,7 +1,7 @@
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::pico_table::PicoTable;
-use crate::config::apply_parameter;
+use crate::config::apply_alter_system_parameter;
 use crate::config::DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION;
 use crate::config::DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT;
 use crate::config::DEFAULT_GOVERNOR_DDL_RPC_TIMEOUT;
@@ -462,8 +462,8 @@ fn insert_wal_mode_into_pico_db_config() -> traft::Result<Response> {
 ///
 /// [`DbConfig::replace`] writes the local space directly instead of going
 /// through raft, so the applied-DML path in `NodeImpl::handle_committed_entries`,
-/// which is what normally calls [`apply_parameter`], never runs for it. Without
-/// the explicit call the table reports the new value while the instance keeps
+/// which is what normally calls [`apply_alter_system_parameter`], never runs for it.
+/// Without the explicit call the table reports the new value while the instance keeps
 /// using the old one until its next restart.
 fn replace_global_parameter(name: &str, value: &impl serde::Serialize) -> traft::Result<()> {
     let node = traft::node::global()?;
@@ -483,7 +483,7 @@ fn replace_global_parameter(name: &str, value: &impl serde::Serialize) -> traft:
         .expect("was just written by the transaction above");
 
     // Yields, hence it is done after the transaction commits.
-    apply_parameter(
+    apply_alter_system_parameter(
         &node.alter_system_parameters,
         tuple,
         node.topology_cache.my_tier_name(),

@@ -4219,7 +4219,7 @@ fn front_create_table_with_tier_syntax() {
 }
 
 #[test]
-fn front_alter_system_check_parses_ok() {
+fn front_alter_system_cluster_check_parses_ok() {
     let queries_to_check_ok = vec![
         r#"alter system set param_name = 1"#,
         r#"alter system set "param_name" = 1"#,
@@ -4230,6 +4230,9 @@ fn front_alter_system_check_parses_ok() {
         r#"alter system set param_name to default"#,
         r#"alter system set param_name to 'value'"#,
         r#"alter system set param_name to null"#,
+        r#"alter system set param_name = 1 for all tiers"#,
+        r#"alter system set param_name = 1 for tier tier_name"#,
+        r#"alter system set param_name = 1 for tier "tier_name""#,
         r#"alter system reset all"#,
         r#"alter system reset param_name"#,
         r#"alter system reset "param_name""#,
@@ -4240,12 +4243,51 @@ fn front_alter_system_check_parses_ok() {
     let metadata = &RouterConfigurationMock::new();
     for query in queries_to_check_ok {
         let plan = transform_into_plan(query, &[], metadata);
-        assert!(plan.is_ok())
+        plan.unwrap();
     }
 
     let queries_to_check_all_expressions_not_supported = vec![
         r#"alter system set param_name = ?"#,
         r#"alter system set param_name = 1 + 1"#,
+    ];
+    let metadata = &RouterConfigurationMock::new();
+    for query in queries_to_check_all_expressions_not_supported {
+        let params_types = [DerivedType::new(Type::Integer)];
+        let err = transform_into_plan(query, &params_types, metadata).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("ALTER SYSTEM currently supports only literals as values."))
+    }
+}
+
+#[test]
+fn front_alter_system_local_check_parses_ok() {
+    let queries_to_check_ok = vec![
+        r#"alter system set local param_name = 1"#,
+        r#"alter system set local "param_name" = 1"#,
+        r#"alter system set local param_name = 'value'"#,
+        r#"alter system set local param_name = true"#,
+        r#"alter system set local param_name to 1"#,
+        r#"alter system set local param_name to 2.3"#,
+        r#"alter system set local param_name to default"#,
+        r#"alter system set local param_name to 'value'"#,
+        r#"alter system set local param_name to null"#,
+        r#"alter system reset local all"#,
+        r#"alter system reset local param_name"#,
+        r#"alter system reset local "param_name""#,
+        r#"alter system reset local "param_name""#,
+        r#"alter system reset local "param_name""#,
+        r#"alter system reset local "param_name""#,
+    ];
+    let metadata = &RouterConfigurationMock::new();
+    for query in queries_to_check_ok {
+        let plan = transform_into_plan(query, &[], metadata);
+        plan.unwrap();
+    }
+
+    let queries_to_check_all_expressions_not_supported = vec![
+        r#"alter system set local param_name = ?"#,
+        r#"alter system set local param_name = 1 + 1"#,
     ];
     let metadata = &RouterConfigurationMock::new();
     for query in queries_to_check_all_expressions_not_supported {

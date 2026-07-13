@@ -1,6 +1,7 @@
 use super::{
-    AlterSystem, AlterTable, Backup, CreateIndex, CreateProc, CreateTable, DropIndex, DropProc,
-    DropTable, NodeAligned, RenameIndex, RenameRoutine, SetParam, SetTransaction, TruncateTable,
+    AlterSystemCluster, AlterSystemLocal, AlterTable, Backup, CreateIndex, CreateProc, CreateTable,
+    DropIndex, DropProc, DropTable, NodeAligned, RenameIndex, RenameRoutine, SetParam,
+    SetTransaction, TruncateTable,
 };
 use crate::ir::Node32;
 use serde::Serialize;
@@ -15,7 +16,8 @@ pub enum DdlOwned {
     CreateProc(CreateProc),
     DropProc(DropProc),
     RenameRoutine(RenameRoutine),
-    AlterSystem(AlterSystem),
+    AlterSystemCluster(AlterSystemCluster),
+    AlterSystemLocal(AlterSystemLocal),
     CreateIndex(CreateIndex),
     DropIndex(DropIndex),
     CreateSchema,
@@ -39,12 +41,17 @@ impl DdlOwned {
             | DdlOwned::DropIndex(DropIndex { ref timeout, .. })
             | DdlOwned::SetParam(SetParam { ref timeout, .. })
             | DdlOwned::SetTransaction(SetTransaction { ref timeout, .. })
-            | DdlOwned::AlterSystem(AlterSystem { ref timeout, .. })
+            | DdlOwned::AlterSystemCluster(AlterSystemCluster { ref timeout, .. })
             | DdlOwned::CreateProc(CreateProc { ref timeout, .. })
             | DdlOwned::DropProc(DropProc { ref timeout, .. })
             | DdlOwned::RenameIndex(RenameIndex { ref timeout, .. })
             | DdlOwned::RenameRoutine(RenameRoutine { ref timeout, .. }) => timeout,
-            DdlOwned::CreateSchema | DdlOwned::DropSchema => &crate::ir::options::Timeout::ZERO,
+
+            // CREATE SCHEMA and DROP SCHEMA are stubs; they won't ever execute, so they don't need a timeout.
+            // ALTER SYSTEM LOCAL is a fully local operation, so it won't have a timeout applied either.
+            DdlOwned::CreateSchema | DdlOwned::DropSchema | DdlOwned::AlterSystemLocal(_) => {
+                &crate::ir::options::Timeout::ZERO
+            }
         }
     }
 
@@ -59,7 +66,8 @@ impl DdlOwned {
             | DdlOwned::CreateProc(_)
             | DdlOwned::RenameIndex(_)
             | DdlOwned::RenameRoutine(_)
-            | DdlOwned::AlterSystem(_)
+            | DdlOwned::AlterSystemCluster(_)
+            | DdlOwned::AlterSystemLocal(_)
             | DdlOwned::CreateIndex(_)
             | DdlOwned::CreateSchema
             | DdlOwned::SetParam(_)
@@ -115,7 +123,7 @@ impl DdlOwned {
                 wait_applied_globally,
                 ..
             })
-            | DdlOwned::AlterSystem(AlterSystem {
+            | DdlOwned::AlterSystemCluster(AlterSystemCluster {
                 wait_applied_globally,
                 ..
             })
@@ -126,7 +134,8 @@ impl DdlOwned {
             DdlOwned::SetParam(_)
             | DdlOwned::SetTransaction(_)
             | DdlOwned::CreateSchema
-            | DdlOwned::DropSchema => false,
+            | DdlOwned::DropSchema
+            | DdlOwned::AlterSystemLocal(_) => false,
         }
     }
 }
@@ -144,7 +153,8 @@ impl From<DdlOwned> for NodeAligned {
             DdlOwned::AlterTable(alter_table) => alter_table.into(),
             DdlOwned::TruncateTable(truncate_table) => truncate_table.into(),
             DdlOwned::DropSchema => Self::Node32(Node32::DropSchema),
-            DdlOwned::AlterSystem(alter_system) => alter_system.into(),
+            DdlOwned::AlterSystemCluster(alter_system) => alter_system.into(),
+            DdlOwned::AlterSystemLocal(alter_system) => alter_system.into(),
             DdlOwned::RenameRoutine(rename) => rename.into(),
             DdlOwned::SetParam(set_param) => set_param.into(),
             DdlOwned::SetTransaction(set_trans) => set_trans.into(),
@@ -164,7 +174,8 @@ pub enum MutDdl<'a> {
     CreateProc(&'a mut CreateProc),
     DropProc(&'a mut DropProc),
     RenameRoutine(&'a mut RenameRoutine),
-    AlterSystem(&'a mut AlterSystem),
+    AlterSystemCluster(&'a mut AlterSystemCluster),
+    AlterSystemLocal(&'a mut AlterSystemLocal),
     CreateIndex(&'a mut CreateIndex),
     DropIndex(&'a mut DropIndex),
     CreateSchema,
@@ -186,14 +197,14 @@ impl MutDdl<'_> {
             MutDdl::CreateProc(n) => Some(&mut n.timeout),
             MutDdl::DropProc(n) => Some(&mut n.timeout),
             MutDdl::RenameRoutine(n) => Some(&mut n.timeout),
-            MutDdl::AlterSystem(n) => Some(&mut n.timeout),
+            MutDdl::AlterSystemCluster(n) => Some(&mut n.timeout),
             MutDdl::CreateIndex(n) => Some(&mut n.timeout),
             MutDdl::DropIndex(n) => Some(&mut n.timeout),
             MutDdl::SetParam(n) => Some(&mut n.timeout),
             MutDdl::SetTransaction(n) => Some(&mut n.timeout),
             MutDdl::Backup(n) => Some(&mut n.timeout),
             MutDdl::RenameIndex(n) => Some(&mut n.timeout),
-            MutDdl::CreateSchema | MutDdl::DropSchema => None,
+            MutDdl::CreateSchema | MutDdl::DropSchema | MutDdl::AlterSystemLocal(_) => None,
         }
     }
 }
@@ -208,7 +219,8 @@ pub enum Ddl<'a> {
     CreateProc(&'a CreateProc),
     DropProc(&'a DropProc),
     RenameRoutine(&'a RenameRoutine),
-    AlterSystem(&'a AlterSystem),
+    AlterSystemCluster(&'a AlterSystemCluster),
+    AlterSystemLocal(&'a AlterSystemLocal),
     CreateIndex(&'a CreateIndex),
     DropIndex(&'a DropIndex),
     CreateSchema,
@@ -220,89 +232,6 @@ pub enum Ddl<'a> {
 }
 
 impl Ddl<'_> {
-    /// Return DDL node timeout.
-    pub fn timeout(&self) -> &crate::ir::options::Timeout {
-        match self {
-            Ddl::CreateTable(CreateTable { ref timeout, .. })
-            | Ddl::DropTable(DropTable { ref timeout, .. })
-            | Ddl::TruncateTable(TruncateTable { ref timeout, .. })
-            | Ddl::Backup(Backup { ref timeout, .. })
-            | Ddl::AlterTable(AlterTable { ref timeout, .. })
-            | Ddl::CreateIndex(CreateIndex { ref timeout, .. })
-            | Ddl::DropIndex(DropIndex { ref timeout, .. })
-            | Ddl::SetParam(SetParam { ref timeout, .. })
-            | Ddl::SetTransaction(SetTransaction { ref timeout, .. })
-            | Ddl::AlterSystem(AlterSystem { ref timeout, .. })
-            | Ddl::CreateProc(CreateProc { ref timeout, .. })
-            | Ddl::DropProc(DropProc { ref timeout, .. })
-            | Ddl::RenameIndex(RenameIndex { ref timeout, .. })
-            | Ddl::RenameRoutine(RenameRoutine { ref timeout, .. }) => timeout,
-            Ddl::CreateSchema | Ddl::DropSchema => {
-                static ZERO: crate::ir::options::Timeout = crate::ir::options::Timeout {
-                    us: 0,
-                    source: crate::ir::options::TimeoutSource::Explicit,
-                };
-                &ZERO
-            }
-        }
-    }
-
-    pub fn wait_applied_globally(&self) -> bool {
-        match self {
-            Ddl::CreateTable(CreateTable {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::DropTable(DropTable {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::TruncateTable(TruncateTable {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::Backup(Backup {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::AlterTable(AlterTable {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::CreateIndex(CreateIndex {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::DropIndex(DropIndex {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::CreateProc(CreateProc {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::DropProc(DropProc {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::RenameRoutine(RenameRoutine {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::AlterSystem(AlterSystem {
-                wait_applied_globally,
-                ..
-            })
-            | Ddl::RenameIndex(RenameIndex {
-                wait_applied_globally,
-                ..
-            }) => *wait_applied_globally,
-            Ddl::SetParam(_) | Ddl::SetTransaction(_) | Ddl::CreateSchema | Ddl::DropSchema => {
-                false
-            }
-        }
-    }
-
     #[must_use]
     pub fn get_ddl_owned(&self) -> DdlOwned {
         match self {
@@ -318,7 +247,12 @@ impl Ddl<'_> {
                 DdlOwned::TruncateTable((*truncate_table).clone())
             }
             Ddl::Backup(backup) => DdlOwned::Backup((*backup).clone()),
-            Ddl::AlterSystem(alter_system) => DdlOwned::AlterSystem((*alter_system).clone()),
+            Ddl::AlterSystemCluster(alter_system) => {
+                DdlOwned::AlterSystemCluster((*alter_system).clone())
+            }
+            Ddl::AlterSystemLocal(alter_system) => {
+                DdlOwned::AlterSystemLocal((*alter_system).clone())
+            }
             Ddl::RenameRoutine(rename) => DdlOwned::RenameRoutine((*rename).clone()),
             Ddl::SetParam(set_param) => DdlOwned::SetParam((*set_param).clone()),
             Ddl::SetTransaction(set_trans) => DdlOwned::SetTransaction((*set_trans).clone()),

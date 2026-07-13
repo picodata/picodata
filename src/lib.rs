@@ -43,7 +43,7 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::transaction_force_async;
 use ::tarantool::{fiber, session};
 use backoff::SimpleBackoffManager;
-use config::apply_parameter;
+use config::apply_alter_system_parameter;
 use config::AlterSystemParametersRef;
 use config::PicodataConfig;
 use info::PICODATA_VERSION;
@@ -1035,7 +1035,7 @@ fn reapply_dynamic_parameters(
     current_tier: &str,
 ) -> Result<()> {
     for parameter in storage.db_config.iter()? {
-        apply_parameter(parameters, parameter, current_tier)?;
+        apply_alter_system_parameter(parameters, parameter, current_tier)?;
     }
 
     Ok(())

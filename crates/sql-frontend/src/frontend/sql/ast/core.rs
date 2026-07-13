@@ -58,7 +58,7 @@ use type_system::TypeAnalyzer;
 
 use crate::ir::expression::ColumnPositionMap;
 
-use crate::ir::node::AlterSystem;
+use crate::ir::node::{AlterSystem, AlterSystemCluster, AlterSystemLocal};
 
 use crate::ir::node::expression::Expression;
 
@@ -2677,60 +2677,51 @@ pub(in crate::frontend::sql) fn parse_alter_system<M: Metadata>(
         .expect("Alter system type node expected.");
     let alter_system_type_node = ast.nodes.get_node(*alter_system_type_node_id)?;
 
-    let ty = match alter_system_type_node.rule {
-        Rule::AlterSystemReset => {
-            let param_name =
-                if let Some(identifier_node_id) = alter_system_type_node.children.first() {
-                    Some(parse_identifier(ast, *identifier_node_id)?)
-                } else {
-                    None
-                };
-            AlterSystemType::AlterSystemReset { param_name }
-        }
-        Rule::AlterSystemSet => {
-            let param_name_node_id = alter_system_type_node
-                .children
-                .first()
-                .expect("Param name node expected under Alter system.");
-            let param_name = parse_identifier(ast, *param_name_node_id)?;
-
-            if let Some(param_value_node_id) = alter_system_type_node.children.get(1) {
-                let expr_pair = pairs_map.remove_pair(*param_value_node_id);
-                let expr_plan_node_id = parse_scalar_expr(
-                    Pairs::single(expr_pair),
-                    type_analyzer,
-                    DerivedType::unknown(),
-                    &[],
-                    worker,
-                    plan,
-                    true,
-                )?;
-                let value_node = plan.get_node(expr_plan_node_id)?;
-                if let Node::Expression(Expression::Constant(Constant { value })) = value_node {
-                    AlterSystemType::AlterSystemSet {
-                        param_name,
-                        param_value: value.clone(),
-                    }
-                } else {
-                    // TODO: Should be fixed as
-                    //       https://git.picodata.io/picodata/picodata/sbroad/-/issues/763
-                    return Err(SbroadError::Invalid(
-                        Entity::Expression,
-                        Some(SmolStr::from(
-                            "ALTER SYSTEM currently supports only literals as values.",
-                        )),
-                    ));
-                }
-            } else {
-                // In case of `set <PARAM_NAME> to default` we send `Reset` opcode
-                // instead of `Set`.
-                AlterSystemType::AlterSystemReset {
-                    param_name: Some(param_name),
-                }
-            }
-        }
+    match alter_system_type_node.rule {
+        Rule::AlterSystemCluster => parse_alter_system_cluster(
+            ast,
+            alter_system_type_node,
+            type_analyzer,
+            pairs_map,
+            worker,
+            plan,
+        )
+        .map(AlterSystem::Cluster),
+        Rule::AlterSystemLocal => parse_alter_system_local(
+            ast,
+            alter_system_type_node,
+            type_analyzer,
+            pairs_map,
+            worker,
+            plan,
+        )
+        .map(AlterSystem::Local),
         _ => unreachable!("Unexpected rule: {:?}", alter_system_type_node.rule),
-    };
+    }
+}
+
+pub(in crate::frontend::sql) fn parse_alter_system_cluster<M: Metadata>(
+    ast: &AstCore,
+    node: &ParseNode,
+    type_analyzer: &mut TypeAnalyzer,
+    pairs_map: &mut ParsingPairsMap,
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+) -> Result<AlterSystemCluster, SbroadError> {
+    let alter_system_type_node_id = node
+        .children
+        .first()
+        .expect("Alter system type node expected.");
+    let alter_system_type_node = ast.nodes.get_node(*alter_system_type_node_id)?;
+
+    let ty = parse_alter_system_type(
+        ast,
+        alter_system_type_node,
+        type_analyzer,
+        pairs_map,
+        worker,
+        plan,
+    )?;
 
     let mut tier_name = None;
     let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
@@ -2757,12 +2748,105 @@ pub(in crate::frontend::sql) fn parse_alter_system<M: Metadata>(
         }
     }
 
-    Ok(AlterSystem {
+    Ok(AlterSystemCluster {
         ty,
         tier_name,
         wait_applied_globally,
         timeout,
     })
+}
+
+pub(in crate::frontend::sql) fn parse_alter_system_local<M: Metadata>(
+    ast: &AstCore,
+    node: &ParseNode,
+    type_analyzer: &mut TypeAnalyzer,
+    pairs_map: &mut ParsingPairsMap,
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+) -> Result<AlterSystemLocal, SbroadError> {
+    let alter_system_type_node_id = node
+        .children
+        .first()
+        .expect("Alter system type node expected.");
+    let alter_system_type_node = ast.nodes.get_node(*alter_system_type_node_id)?;
+
+    let ty = parse_alter_system_type(
+        ast,
+        alter_system_type_node,
+        type_analyzer,
+        pairs_map,
+        worker,
+        plan,
+    )?;
+
+    Ok(AlterSystemLocal { ty })
+}
+
+/// Parses the inner portion of ALTER SYSTEM and ALTER SYSTEM LOCAL
+///
+/// For ALTER SYSTEM it's the part without the FOR TIER and WAIT APPLIED parts.
+/// For ALTER SYSTEM LOCAL it's the full syntax.
+pub(in crate::frontend::sql) fn parse_alter_system_type<M: Metadata>(
+    ast: &AstCore,
+    node: &ParseNode,
+    type_analyzer: &mut TypeAnalyzer,
+    pairs_map: &mut ParsingPairsMap,
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+) -> Result<AlterSystemType, SbroadError> {
+    match node.rule {
+        Rule::AlterSystemReset | Rule::AlterSystemResetLocal => {
+            let param_name = if let Some(identifier_node_id) = node.children.first() {
+                Some(parse_identifier(ast, *identifier_node_id)?)
+            } else {
+                None
+            };
+            Ok(AlterSystemType::AlterSystemReset { param_name })
+        }
+        Rule::AlterSystemSet | Rule::AlterSystemSetLocal => {
+            let param_name_node_id = node
+                .children
+                .first()
+                .expect("Param name node expected under Alter system.");
+            let param_name = parse_identifier(ast, *param_name_node_id)?;
+
+            if let Some(param_value_node_id) = node.children.get(1) {
+                let expr_pair = pairs_map.remove_pair(*param_value_node_id);
+                let expr_plan_node_id = parse_scalar_expr(
+                    Pairs::single(expr_pair),
+                    type_analyzer,
+                    DerivedType::unknown(),
+                    &[],
+                    worker,
+                    plan,
+                    true,
+                )?;
+                let value_node = plan.get_node(expr_plan_node_id)?;
+                if let Node::Expression(Expression::Constant(Constant { value })) = value_node {
+                    Ok(AlterSystemType::AlterSystemSet {
+                        param_name,
+                        param_value: value.clone(),
+                    })
+                } else {
+                    // TODO: Should be fixed as
+                    //       https://git.picodata.io/picodata/picodata/sbroad/-/issues/763
+                    Err(SbroadError::Invalid(
+                        Entity::Expression,
+                        Some(SmolStr::from(
+                            "ALTER SYSTEM currently supports only literals as values.",
+                        )),
+                    ))
+                }
+            } else {
+                // In case of `set <PARAM_NAME> to default` we send `Reset` opcode
+                // instead of `Set`.
+                Ok(AlterSystemType::AlterSystemReset {
+                    param_name: Some(param_name),
+                })
+            }
+        }
+        _ => unreachable!("Unexpected rule: {:?}", node.rule),
+    }
 }
 
 pub(in crate::frontend::sql) fn parse_proc_with_optional_params(
