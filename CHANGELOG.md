@@ -8,11 +8,16 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [25.1.6] - Unreleased
+## [25.1.6] - 2026-07-13
 
 ### Fixes
 
 - Fixed excessive logging when DdlCommit could not be applied on a replica.
+- Queries of the form `(a OR b) AND (c OR d) AND (e OR f)...` could grow 
+  exponentially after DNF conversion. This led to a stack overflow. A limit of 
+  512 disjunctions has been added; if this limit is exceeded, the DNF is not 
+  constructed. You may notice this in the `EXPLAIN` output:
+  `Query (STORAGE)`. It is recommended to rewrite such queries [picodata!3353].
 
 ## [26.1.5] - 2026-07-01
 
