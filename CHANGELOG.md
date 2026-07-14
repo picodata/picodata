@@ -30,9 +30,9 @@ with the `YY.MINOR.MICRO` scheme.
 - `EXPLAIN (FMT)` option is now properly supported for all modes (facets).
   It is now possible to write `explain (fmt)` to get a formatted logical plan
   or `explain (fmt, raw)` to get a formatted raw query plan.
-- [picodata#2728] Now includes the target table name when reporting a missing
-  index, making it explicit that the index-table relationship lookup failed
-  rather than a general index lookup.
+- [picodata#2728] Error generated when `INDEXED BY` is used with non existing index
+  now includes the target table name, making it explicit that the index-table
+  relationship lookup failed rather than a general index lookup.
 - Avoid an extra subplan clone in SQL planner single-replicaset dispatch,
   reducing unnecessary work when preparing vshard routing.
 - Add new `BUCKETS` facet to `EXPLAIN` statement. Users can now inspect query
@@ -82,6 +82,7 @@ with the `YY.MINOR.MICRO` scheme.
   sets the directory where WAL files are stored.
 
 ### WebUI
+
 - Added new instance filters: `isVoter` and `isRaftLeader`. Both support
   the standard `Is` / `IsOneOf` / `IsNotOneOf` expressions with a Yes/No
   value set.
