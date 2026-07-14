@@ -723,7 +723,7 @@ cargo pike plugin new name_of_the_new_plugin
 ### Сборка и упаковка плагина {: #build_plugin_with_pike}
 
 Для сборки плагина в архив `.tar.gz` для доставки на сервера посредством
-роли Ansible <!--или Helm-чарта--> используйте следующую команду:
+роли Ansible или Helm-чарта используйте следующую команду:
 
 ```shell
 cargo pike plugin pack

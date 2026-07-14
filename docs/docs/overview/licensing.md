@@ -23,8 +23,7 @@ Picodata — российское программное обеспечение 
 - [Tarantool Rust SDK] — библиотека для работы с Tarantool из Rust-приложений
 - [драйверы/коннекторы] для работы с Picodata (Go, Rust, JDBC)
 - [роль Picodata для Ansible], системы автоматического развёртывания
-<!-- - [Picodata-chart] — Helm-чарт для установки Picodata в Kubernetes или
-  Minikube с помощью пакетного менеджера Helm -->
+- [Picodata-operator] — Kubernetes-оператор для управления кластером Picodata
 
 Полный список открытых проектов доступен по адресу
 [https://git.picodata.io/core](https://git.picodata.io/core).
@@ -33,7 +32,7 @@ Picodata — российское программное обеспечение 
 [Tarantool Rust SDK]: https://git.picodata.io/core/tarantool-module
 [драйверы/коннекторы]: https://git.picodata.io/core/drivers
 [роль Picodata для Ansible]: https://git.picodata.io/core/picodata-ansible
-<!-- [Picodata-chart]: https://git.picodata.io/core/picodata-chart -->
+[Picodata-operator]: https://git.picodata.io/core/picodata-operator
 [распределенной СУБД Picodata]: https://git.picodata.io/core/picodata
 
 ### Условия предоставления кода {: #code_licensing }
