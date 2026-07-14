@@ -57,7 +57,7 @@ fn block_pattern_key_hashes_insert_do_update_param_rhs_by_type() {
 }
 
 #[test]
-fn raw_explain_block_does_not_bind_insert_do_update_param_rhs() {
+fn raw_explain_block_bind_insert_do_update_param_rhs() {
     let sql = r#"explain (raw) do $$ begin
            insert into "t" values (1, 1, 1, 1)
                on conflict ("a") do update set "c" = "c" + $1;
@@ -95,7 +95,7 @@ fn raw_explain_block_does_not_bind_insert_do_update_param_rhs() {
     } = &query.hooks[0];
     assert_eq!(
         raw_explain_detail.as_deref(),
-        Some(r#"picodata: ON CONFLICT ("a") UPDATE "c" += $1"#)
+        Some(r#"picodata: ON CONFLICT ("a") UPDATE "c" += 777"#)
     );
     assert!(!params.contains(&iocdu_param));
 }

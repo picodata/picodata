@@ -848,6 +848,7 @@ fn prepare_iocdu_hook(
     payload: &ConflictDoUpdate,
     parameter_indexes: &AHashMap<NodeId, u16>,
 ) -> Result<BlockRuntimeHook, SbroadError> {
+    let ir_plan = plan.get_ir_plan();
     let items = payload
         .items
         .iter()
@@ -855,7 +856,7 @@ fn prepare_iocdu_hook(
             Ok(PreparedConflictUpdateItem {
                 column: item.column,
                 op: item.op,
-                value: prepare_iocdu_value(plan.get_ir_plan(), item, parameter_indexes)?,
+                value: prepare_iocdu_value(ir_plan, item, parameter_indexes)?,
             })
         })
         .collect::<Result<Vec<_>, SbroadError>>()?;
@@ -865,8 +866,8 @@ fn prepare_iocdu_hook(
     };
     // Rendered only for RAW EXPLAIN — normal executions never read the detail,
     // so don't pay for building, shipping and hashing it on the hot path.
-    let raw_explain_detail = if plan.get_ir_plan().is_raw_explain() {
-        Some(explain_iocdu_hook(relation, payload, &update)?)
+    let raw_explain_detail = if ir_plan.is_raw_explain() {
+        Some(explain_iocdu_hook(ir_plan, relation, payload, &update)?)
     } else {
         None
     };
@@ -877,18 +878,28 @@ fn prepare_iocdu_hook(
     })
 }
 
-fn explain_iocdu_value(value: &ConflictUpdateValue, item: &ConflictUpdateItem) -> String {
-    match value {
+fn explain_iocdu_value(
+    plan: &Plan,
+    value: &ConflictUpdateValue,
+    item: &ConflictUpdateItem,
+) -> Result<String, SbroadError> {
+    let res = match value {
         ConflictUpdateValue::Const(value) => value.to_string(),
-        ConflictUpdateValue::Param { index, .. } => {
-            let source_index = match item.rhs {
-                ConflictUpdateRhs::Param { source_index, .. } => source_index,
-                ConflictUpdateRhs::Expr(_) => *index,
-            };
-            format!("${source_index}")
-        }
+        ConflictUpdateValue::Param { .. } => match item.rhs {
+            ConflictUpdateRhs::Param { expr, .. } => {
+                let val = plan.as_const_value_ref(expr)?;
+                val.to_string()
+            }
+            ConflictUpdateRhs::Expr(_) => {
+                return Err(SbroadError::Other(
+                    "ConflictUpdateItem cannot be Expr when parameter is specified".into(),
+                ));
+            }
+        },
         ConflictUpdateValue::LetVar { var, .. } => var.name.to_string(),
-    }
+    };
+
+    Ok(res)
 }
 
 fn explain_column_name(
@@ -908,6 +919,7 @@ fn explain_column_name(
 }
 
 fn explain_iocdu_hook(
+    plan: &Plan,
     relation: &crate::ir::relation::Table,
     payload: &ConflictDoUpdate,
     update: &BlockConflictDoUpdate,
@@ -926,7 +938,7 @@ fn explain_iocdu_hook(
         .zip(&payload.items)
         .map(|(item, source_item)| {
             let column = explain_column_name(relation, item.column)?;
-            let value = explain_iocdu_value(&item.value, source_item);
+            let value = explain_iocdu_value(plan, &item.value, source_item)?;
             Ok::<_, SbroadError>(format!("{column} {} {value}", item.op))
         })
         .collect::<Result<Vec<_>, _>>()?

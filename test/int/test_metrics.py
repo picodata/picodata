@@ -647,7 +647,7 @@ def test_router_block_pattern_cache_insert_do_update_params_raw_explain(instance
     raw_rows = instance.sql("EXPLAIN (raw) " + block, 11, 13)
     raw_explain = "\n".join(raw_rows)
 
-    assert 'picodata: ON CONFLICT ("pk") UPDATE "a" += $1, "b" += 1, "c" += $2' in raw_explain
+    assert 'picodata: ON CONFLICT ("pk") UPDATE "a" += 11, "b" += 1, "c" += 13' in raw_explain
     assert metric_total(hits) == base_hits
     assert metric_total(misses) == base_misses
     assert metric_total(added) == base_added

@@ -482,6 +482,37 @@ INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES ( CAST(1 AS int), CAST(
 plan:
     [0] picodata: ON CONFLICT ("pk") UPDATE "a" += 1
 
+
+-- TEST: explain-insert-on-conflict-do-update-with-param
+-- SQL:
+EXPLAIN (raw)
+DO $$
+BEGIN
+  INSERT INTO iocdu VALUES (1, 0, 0) ON CONFLICT (pk) DO UPDATE SET a = a + $1;
+  INSERT INTO iocdu VALUES (1, 0, 0) ON CONFLICT (pk) DO UPDATE SET a = $1 + a;
+END $$;
+-- PARAMS:
+1
+-- EXPECTED:
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES ( CAST(1 AS int), CAST(0 AS int), CAST(0 AS int), 1934 )
+''
+plan:
+    [0] picodata: ON CONFLICT ("pk") UPDATE "a" += 1
+''
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES ( CAST(1 AS int), CAST(0 AS int), CAST(0 AS int), 1934 )
+''
+plan:
+    [0] picodata: ON CONFLICT ("pk") UPDATE "a" += 1
+
+
 -- TEST: insert-on-conflict-do-update-primary-key
 -- SQL:
 DO $$
