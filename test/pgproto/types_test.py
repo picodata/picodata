@@ -2,6 +2,7 @@ import datetime
 from decimal import Decimal
 from uuid import UUID
 
+import msgpack  # type: ignore
 import pg8000.native as pg8000  # type: ignore
 import psycopg
 import pytest
@@ -751,6 +752,51 @@ def test_map_with_msgpack_extensions(postgres: Postgres):
     # ..while an explicit cast still yields the value's own type.
     casts = """ SELECT CAST("j"['dec'] AS DECIMAL), CAST("j"['uid'] AS UUID) FROM "t" """
     assert conn.execute(casts).fetchall() == [(Decimal("0.001"), UUID("00112233-4455-6677-8899-aabbccddeeff"))]
+
+
+def test_json(postgres: Postgres):
+    user = "postgres"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
+
+    conn = psycopg.connect(f"user = {user} password={password} host={host} port={port} sslmode=disable")
+    conn.autocommit = True
+
+    conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, data JSON)")
+
+    # bind json and jsonb parameters, each in text (%t) and binary (%b) format
+    conn.execute(""" INSERT INTO t VALUES (1, %t) """, (Json({"a": 1}),))
+    conn.execute(""" INSERT INTO t VALUES (2, %b) """, (Json({"a": 1}),))
+    conn.execute(""" INSERT INTO t VALUES (3, %t) """, (Jsonb({"bb": 1, "a": 2}),))
+    conn.execute(""" INSERT INTO t VALUES (4, %b) """, (Jsonb({"bb": 1, "a": 2}),))
+    # a fraction parses to a decimal whichever format carries it
+    conn.execute(""" INSERT INTO t VALUES (5, %t) """, (Jsonb({"x": 1.5}),))
+    conn.execute(""" INSERT INTO t VALUES (6, %b) """, (Jsonb({"x": 1.5}),))
+    conn.execute(""" INSERT INTO t VALUES (7, %b) """, (Json({"x": 1.5}),))
+
+    # encode results, once in text format and once in binary format
+    text_rows = conn.execute(""" SELECT id, data FROM t ORDER BY id """, binary=False).fetchall()
+    binary_rows = conn.execute(""" SELECT id, data FROM t ORDER BY id """, binary=True).fetchall()
+
+    # the wire format axis must not change the surfaced value
+    assert text_rows == binary_rows
+
+    values = {row[0]: row[1] for row in text_rows}
+    # a parameter bound in text and in binary stores identically
+    assert values[1] == values[2] == {"a": 1}
+    # json and jsonb parameters decode to the expected logical value
+    assert values[3] == values[4] == {"a": 2, "bb": 1}
+    assert values[5] == values[6] == values[7] == {"x": 1.5}
+    # the stored bytes agree too, not only the decoded values: over iproto the
+    # nested number comes back undecoded, as an MP_DECIMAL ext
+    rows = postgres.instance.sql("SELECT id, data FROM t WHERE id >= 5 ORDER BY id")
+    stored = [data for _, data in rows]
+    assert stored[0] == stored[1] == stored[2]
+    assert isinstance(stored[0]["x"], msgpack.ExtType)
 
 
 def test_datetime(postgres: Postgres):
