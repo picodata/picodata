@@ -21,7 +21,7 @@ types-beautifulsoup4 = "*"
 python_version = "3"
 
 [scripts]
-serve = "mkdocs serve"
+serve = "mkdocs serve -a localhost:8800"
 build = "mkdocs build -s"
 lint = """
   bash -c "

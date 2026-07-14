@@ -43,7 +43,6 @@ nav:
       - tutorial/install.md
       - tutorial/run.md
       - tutorial/deploy.md
-      - tutorial/deploy-k8s.md
       - tutorial/node_add.md
       - tutorial/node_expel.md
       - tutorial/connecting.md
@@ -60,7 +59,7 @@ nav:
           - admin/local_monitoring.md
           - admin/grafana_monitoring.md
       - admin/deploy_ansible.md
-    #   - admin/deploy_kubernetes.md
+      - admin/deploy_kubernetes.md
       - admin/server_setup.md
       - admin/cluster_mgmt.md
       - admin/cluster_update.md
