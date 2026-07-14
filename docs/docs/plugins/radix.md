@@ -23,11 +23,11 @@ Redis на базе СУБД Picodata. Каждый экземпляр Radix о�
 Версии плагина Radix требуют определённых версий СУБД Picodata. Ниже
 показана таблица совместимости версий:
 
-| Radix | Picodata | ФСТЭК-сертификат |
-| ------ | ------ | :-----: |
-| 0.9.0 | 25.2.2 | :white_check_mark: |
-| 0.14.1 | 25.5.7 (25.5.*) | |
-| 1.0.4 | 26.1.2 (26.1.*) | |
+| Radix  | Picodata        |  ФСТЭК-сертификат  |
+|--------|-----------------|:------------------:|
+| 0.9.0  | 25.2.2          | :white_check_mark: |
+| 0.14.1 | 25.5.7 (25.5.*) |                    |
+| 1.0.6  | 26.1.5 (26.1.*) |                    |
 
 См. также:
 
@@ -61,7 +61,7 @@ Picodata на нескольких узлах, в том числе, с подд
 
 plugins:
   radix:                                                          # плагин
-    path: '../files/radix_1.0.4-centos_el8.tar.gz'                # путь до пакета с Radix
+    path: '../files/radix_1.0.6-centos_el8.tar.gz'                # путь до пакета с Radix
     config: '../files/radix-config.yml'                           # путь до файла с настройками Radix
     services:
       radix:
@@ -160,7 +160,7 @@ plugins:
 
         plugins:
           radix:                                                        # плагин
-            path: '../plugins/radix_1.0.4-1-ubuntu_noble.tar.gz'        # путь до пакета с Radix
+            path: '../plugins/radix_1.0.6-1-ubuntu_noble.tar.gz'        # путь до пакета с Radix
             config: '../plugins/radix-config.yml'                       # путь до файла с настройками Radix
             services:
               radix:
@@ -227,6 +227,40 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 
 - [Развёртывание кластера через Ansible](../admin/deploy_ansible.md)
 
+### Развёртывание с помощью Docker {: #radix_deploy_docker }
+
+Доступны два образа:
+
+- `<registry>/radix:1.0.6` — полноценный образ, готовый для
+  использования в Kubernetes. Не имеет преднастроек.
+- `<registry>/radix:1.0.6-standalone` — образ с одиночным инстансом
+  Picodata и предустановленным плагином Radix для быстрого ознакомления.
+  Не предназначен для использования производственной среде.
+
+!!! note "Примечание"
+    Доступ к репозиторию с образами Picodata и Radix предоставляется по запросу для клиентов Picodata.
+
+Запуск одиночного образа:
+
+```shell
+docker pull <registry>/radix:1.0.6-standalone
+docker run --rm -p 7379:7379 -p 4327:4327 -p 5327:5327 <registry>/radix:1.0.6-standalone
+```
+
+После старта плагин готов к работе:
+
+```shell
+redis-cli -p 7379 ping
+```
+
+Открытые порты:
+
+| Порт | Протокол      |
+| ---- | ------------- |
+| 7379 | Redis (RESP2) |
+| 4327 | PostgreSQL    |
+| 5327 | HTTP          |
+
 ### Развёртывание вручную {: #radix_deploy_manual }
 
 #### Порядок действий {: #deploy_manual_steps }
@@ -241,9 +275,13 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 - запуск инстанса Picodata с поддержкой плагинов (параметр [`--share-dir`])
 - распаковку архива Radix в директорию, указанную на предыдущем шаге
 - подключение к [административной консоли][admin_console] инстанса
-- выполнение SQL-команд для регистрации плагина, привязки его сервиса к
-  [тиру][tier], выполнения миграции, включения плагина в кластере.
-  Данные шаги более подробно описаны ниже.
+- выполнение SQL-команд для:
+    - регистрации плагина
+    - привязки его сервиса к [тиру][tier]
+    - миграции
+    - включения плагина в кластере
+
+Данные шаги более подробно описаны ниже.
 
 [`--share-dir`]: ../reference/cli.md#run_share_dir
 [admin_console]: ../tutorial/connecting.md#admin_console
@@ -318,7 +356,7 @@ Radix поддерживает 16 баз данных, каждую из кот�
 в административной консоли Picodata:
 
 ```sql
-CREATE PLUGIN radix 1.0.4;
+CREATE PLUGIN radix 1.0.6;
 ```
 
 Выполните указанные ниже шаги для того, чтобы включить плагин.
@@ -334,59 +372,59 @@ CREATE PLUGIN radix 1.0.4;
 **Пример для одного тира (default)**
 
 ```sql
-ALTER PLUGIN radix 1.0.4 ADD SERVICE radix TO TIER default;
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_0='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_1='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_2='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_3='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_4='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_5='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_6='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_7='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_8='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_9='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_10='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_11='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_12='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_13='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_14='default';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_15='default';
+ALTER PLUGIN radix 1.0.6 ADD SERVICE radix TO TIER default;
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_0='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_1='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_2='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_3='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_4='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_5='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_6='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_7='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_8='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_9='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_10='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_11='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_12='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_13='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_14='default';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_15='default';
 ```
 
 **Пример для двух тиров (hot/cold)**
 
 
 ```sql
-ALTER PLUGIN radix 1.0.4 ADD SERVICE radix TO TIER hot;
-ALTER PLUGIN radix 1.0.4 ADD SERVICE radix TO TIER cold;
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_0='hot';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_1='hot';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_2='hot';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_3='hot';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_4='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_5='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_6='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_7='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_8='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_9='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_10='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_11='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_12='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_13='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_14='cold';
-ALTER PLUGIN radix 1.0.4 SET migration_context.tier_for_db_15='cold';
+ALTER PLUGIN radix 1.0.6 ADD SERVICE radix TO TIER hot;
+ALTER PLUGIN radix 1.0.6 ADD SERVICE radix TO TIER cold;
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_0='hot';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_1='hot';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_2='hot';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_3='hot';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_4='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_5='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_6='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_7='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_8='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_9='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_10='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_11='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_12='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_13='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_14='cold';
+ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_15='cold';
 ```
 
 Параметр `unlogged` может принимать только два значения: `''` (пустая строка) для включенного WAL (режим Radix до версии 1.0.0):
 
 ```sql
-ALTER PLUGIN radix 1.0.4 SET migration_context.unlogged='' OPTION(TIMEOUT=1200);
+ALTER PLUGIN radix 1.0.6 SET migration_context.unlogged='' OPTION(TIMEOUT=1200);
 ```
 
 или `UNLOGGED` для отключённого:
 
 ```sql
-ALTER PLUGIN radix 1.0.4 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOUT=1200);
+ALTER PLUGIN radix 1.0.6 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOUT=1200);
 ```
 
 #### Запуск миграции {: #plugin_migrate }
@@ -394,7 +432,7 @@ ALTER PLUGIN radix 1.0.4 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOU
 Для выполнения миграции выполните команду:
 
 ```sql
-ALTER PLUGIN radix MIGRATE TO 1.0.4 OPTION(TIMEOUT=300);
+ALTER PLUGIN radix MIGRATE TO 1.0.6 OPTION(TIMEOUT=300);
 ```
 
 <!--
@@ -415,10 +453,21 @@ ALTER PLUGIN radix MIGRATE TO 1.0.4 OPTION(TIMEOUT=300);
 
 #### Включение плагина {: #plugin_enable }
 
-Для включения плагина в кластере:
+Перед включением плагина убедитесь, что в кластере создан пользователь,
+указанный в параметре `default_user_name` секции
+[authorization_mode](#auth_mode) файла конфигурации плагина (по умолчанию это
+`default`). Данному пользователю также следует выдать права для
+работы с объектами БД:
 
 ```sql
-ALTER PLUGIN radix 1.0.4 ENABLE OPTION(TIMEOUT=30);
+GRANT radix_reader TO default;
+GRANT radix_writer TO default;
+```
+
+После этого включите плагин:
+
+```sql
+ALTER PLUGIN radix 1.0.6 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:
@@ -429,6 +478,20 @@ SELECT * FROM _pico_plugin;
 
 В строке, соответствующей плагину Radix, в колонке `enabled` должно быть
 значение `true`.
+
+## Подключение и работа с Radix {: #usage }
+
+Для работы с Radix используйте клиентскую программу `redis-cli`.
+Подключение осуществляется по адресу, заданному параметром `advertise`
+(или `listen` если публичный адрес не указан) для секции `radix` в
+[файле конфигурации](#picodata_config) Picodata.
+
+```shell
+redis-cli -p 7301
+```
+
+Для корректной работы `redis-cli` и других клиентских приложений
+[настройте авторизацию](#default_user_name) в Radix.
 
 ### Перенос данных между кластерами {: #data_transfer }
 
@@ -441,8 +504,8 @@ SELECT * FROM _pico_plugin;
 и лишь затем включить новую версию. Пример:
 
 ```sql
-ALTER PLUGIN radix 1.0.0 DISABLE OPTION(TIMEOUT=30);
-ALTER PLUGIN radix 1.0.4 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 1.0.5 DISABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 1.0.6 ENABLE OPTION(TIMEOUT=30);
 ```
 
 #### Миграция с помощью radix-cli {: #migrate_with_radix-cli }
@@ -456,9 +519,9 @@ Radix.
 Минимальный пример использования утилиты:
 
 ```shell
-$ <picodata_share_dir>/radix/1.0.4/radix-cli migrate redis://localhost:7379/1 redis://localhost:7301/15
+$ <picodata_share_dir>/radix/1.0.6/radix-cli migrate redis://localhost:7379/1 redis://localhost:7301/15
 ⠏ Подключено к источнику Radix 0.11.8 cluster (Picodata 25.3.8)
-⠏ Подключено к приёмнику Radix 1.0.4 cluster (Picodata 26.1.3-0-gc21b37df2)
+⠏ Подключено к приёмнику Radix 1.0.6 cluster (Picodata 26.1.3-0-gc21b37df2)
 [00:00:00] [========================================] 800/800 ключей
 Перенесено 800 ключей за 329мс
 Пропущено (существующих): 0
@@ -466,11 +529,67 @@ $ <picodata_share_dir>/radix/1.0.4/radix-cli migrate redis://localhost:7379/1 re
 Не удалось: 0
 ```
 
+### Понижение версии плагина {: #radix_downgrade }
+
+При попытке откатиться на более старую версию плагина командой
+`ALTER PLUGIN radix MIGRATE TO <старая_версия>` Picodata может вернуть ошибку
+вида:
+
+```
+more migrations have already been applied (18) than are in the manifest (17)
+```
+
+Это происходит, когда текущая (новая) версия плагина содержит больше миграций,
+чем версия, на которую вы откатываетесь: список применённых миграций в Picodata
+общий для всех версий плагина, и проверка «применено больше, чем в манифесте
+целевой версии» срабатывает ещё до выполнения отката.
+
+Утилита `radix-cli migrate-down` снимает это ограничение: она откатывает
+DOWN-секции «лишних» миграций (дельты между текущим набором и набором целевой
+версии) и удаляет их записи из служебной таблицы `_pico_plugin_migration`. После
+этого `MIGRATE TO` и последующий `ENABLE` проходят корректно.
+
+!!! note "Примечание"
+    Целевая (старая) версия плагина должна быть уже установлена в
+    кластере (`ALTER PLUGIN radix ADD <старая_версия> ...`) — из неё берётся
+    авторитетный список миграций.
+
+**Порядок действий.**
+
+1. Предпросмотр (по умолчанию — ничего не выполняется, только печатается план):
+   ```shell
+   radix-cli migrate-down \
+     "postgres://admin:<пароль>@<хост>:<pg-порт>/picodata?sslmode=disable" \
+     --to <старая_версия> \
+     --plugin-dir <каталог share picodata, содержащий radix/<версия>/...>
+   ```
+
+2. **Внимательно проверьте план.** DOWN-секция может содержать деструктивные
+   операции (`DROP TABLE`), уничтожающие данные, добавленные новой версией.
+   Откатываются только миграции дельты; общий префикс миграций не трогается,
+   поэтому данные из него сохраняются.
+
+3. Выполните откат, добавив флаг `--apply`:
+   ```shell
+   radix-cli migrate-down \
+     "postgres://admin:<пароль>@<хост>:<pg-порт>/picodata?sslmode=disable" \
+     --to <старая_версия> --plugin-dir <...> --apply
+   ```
+
+4. Завершите понижение версии с помощью следующих SQL-запросов:
+   ```sql
+   ALTER PLUGIN radix MIGRATE TO <старая_версия>;
+   ALTER PLUGIN radix <старая_версия> ENABLE;
+   ```
+
+Если дельта пуста (целевая версия имеет тот же набор миграций), команда ничего
+не делает и сообщает об этом — понижение версии можно выполнять обычным способом.
+
 ## Настройка плагина {: #configuration }
 
 Для настройки плагина используйте файл конфигурации, который можно
 применить к плагину с помощью команды [`picodata plugin
-configure`], [инвентарного файла Ansible] или [Picodata Pike].
+configure`] или [инвентарного файла Ansible].
 
 Пример файла конфигурации:
 
@@ -480,16 +599,18 @@ radix:
     max_clients: 10000
     max_input_buffer_size: 1073741824
     max_output_buffer_size: 1073741824
-  redis_compatibility: # совместимость с разными версиями Редиса
+  redis_compatibility: # совместимость с разными версиями Redis
     enabled_deprecated_commands: []
     enforce_one_slot_transactions: false
     push_result_includes_popped_items: true
     disable_scatter_gather: true
+    include_radix_section_in_info_by_default: true
   cluster_mode: true
   sentinel_enabled: false
   max_defer_actions_per_iteration: 100
   authorization_mode: # авторизация
-    state: disabled
+    state: enabled
+    default_user_name: default
   eviction: # вытеснение ключей
     policy: volatile-ttl
     max_samples: 5
@@ -497,16 +618,215 @@ radix:
     lfu_log_factor: 10
     watermark: 0.81
     tenacity: 10
+  latency_monitor_threshold_ms: 0 # порог мониторинга задержек (мс), 0 = выключено
+  slowlog_log_slower_than_us: 10000 # порог slowlog (мкс), -1 = выключено
+  slowlog_max_len: 128 # макс. записей в slowlog
+  debug: # отладка
+    pico_commands_enabled: true
 ```
 
-[Picodata Pike]: ../dev/plugin_create.md#pike_plugin_config_apply
 [`picodata plugin configure`]: ../reference/cli.md#plugin_configure
 [инвентарного файла Ansible]: ../admin/deploy_ansible.md#plugin_management
 
 Пример команды, применяющей файл конфигурации:
 
 ```shell
-picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file radix/secret.txt radix 1.0.4 radix/plugin_config.yaml
+picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file radix/secret.txt radix 1.0.6 radix/plugin_config.yaml
+```
+
+### Авторизация и управление доступом {: #auth_and_access_control}
+
+Radix поддерживает два механизма авторизации:
+
+1. Директива `requirepass` в конфигурации Redis  —
+  единый для всех пароль на узел без управления доступом
+2. ACL (Access Control List) — система прав пользователей, в которой можно
+  задать, к каким командам или категориям команд, ключам и каналам имеет доступ
+  каждый пользователь.
+
+!!! warning "Внимание!"
+    В версии Radix 1.0.5 поддерживается только ACL.
+
+Настройка пользователя происходит в два этапа:
+
+- создание пользователя на стороне Picodata и выдача необходимых прав на доступ к данным Radix
+- задание прав на стороне Radix с помощью системы ACL в Redis.
+
+#### Предустановленные роли {: #auth_roles }
+
+В Picodata доступны следующие роли:
+
+- Глобальные:
+    - `radix_reader` — доступ на чтение ко всем данным,
+    - `radix_writer` — доступ на запись ко всем данным.
+- Локальные для каждой БД:
+    - `radix_reader_0` … `radix_reader_15`
+    - `radix_writer_0` … `radix_writer_15`
+
+#### Настройка пользователя для авторизации {: #default_user_name }
+
+В Radix 1.0.6 и новее необходимо указать пользователя и задать ему пароль,
+удовлетворяющий определённым [требованиям]. Укажите пользователя по умолчанию в
+секции `authorization_mode` в файле конфигурации плагина.
+
+!!! caution "Внимание!"
+    В версии Radix 1.0.5 пользователь по умолчанию без пароля
+    обязан существовать, однако он может не иметь прав на доступ к каким-либо
+    данным. См. раздел [Пользователи с пустыми паролями](#empty_password).
+
+[требованиям]: ../admin/access_control.md#allowed_passwords
+
+Для указания пользователя по умолчанию используйте параметр
+`default_user_name` в конфигурации плагина. От
+имени этого пользователя будут выполняться команды без введенной команды
+авторизации (аналог пользователя `default` в Redis). Кроме того, если
+команда авторизации вызвана в формате формате `AUTH <password>`
+(например, при работе старых клиентов) будет выполнена попытка
+авторизации этого пользователя с паролем из команды.
+
+По умолчанию значение `default_user_name` задано в файле `manifest.yaml`
+плагина как `default` и может быть переопределено в файле
+конфигурации плагина:
+
+```yaml title="Фрагмент файла конфигурации Radix"
+services:
+  - name: radix
+    description: Redis protocol implementation
+    default_configuration:
+      ...
+      authorization_mode:
+        state: enabled
+        default_user_name: default
+```
+
+Пользователь должен существовать в Picodata и иметь возможность
+использовать [нужные роли](#auth_roles):
+
+```sql
+CREATE USER IF NOT EXISTS default WITH PASSWORD 'S0mePass' OPTION(TIMEOUT=1200);
+GRANT radix_reader TO default;
+GRANT radix_writer TO default;
+```
+
+Теперь авторизация включена. Можно войти с помощью `AUTH <password>`:
+
+```shell
+$ redis-cli -p 7301
+127.0.0.1:7301> set other-key 123
+(error) NOAUTH Authentication required
+127.0.0.1:7301> auth S0mePass
+OK
+127.0.0.1:7301> get other-key
+(nil)
+127.0.0.1:7301> set other-key 321
+OK
+127.0.0.1:7301> get other-key
+"321"
+```
+
+И с помощью `AUTH <user_name> <password>`:
+
+```shell
+$ redis-cli -p 7301
+127.0.0.1:7301> get some-key
+(error) NOAUTH Authentication required
+127.0.0.1:7301> auth default S0mePass
+OK
+127.0.0.1:7301> get some-key
+(nil)
+```
+
+##### Пользователи с пустыми паролями {: #empty_password }
+
+Для того, чтобы выполнять команды без предварительного вызова команды
+`AUTH` (аналог пользователя `default` в Redis без задания пароля в
+параметре `requirepass` его конфигурации), можно создать необходимого
+пользователя с пустым паролем с помощью следующей последовательности
+действий:
+
+1. Временно отключите политики безопасности пароля Picodata:
+  ```sql
+  ALTER SYSTEM SET auth_password_length_min TO 0;
+  ALTER SYSTEM SET auth_password_enforce_uppercase TO FALSE;
+  ALTER SYSTEM SET auth_password_enforce_lowercase TO FALSE;
+  ALTER SYSTEM SET auth_password_enforce_digits TO FALSE;
+  ```
+
+2. Создайте необходимого пользователя и задайте ему права использования
+   нужных ролей (Radix должен быть установлен, но необязательно
+   запущен):
+  ```sql
+  CREATE USER IF NOT EXISTS default WITH PASSWORD '';
+  GRANT radix_reader TO default;
+  GRANT radix_writer TO default;
+  ```
+
+3. Верните политики безопасности пароля Picodata:
+  ```sql
+  ALTER SYSTEM SET auth_password_enforce_digits TO TRUE;
+  ALTER SYSTEM SET auth_password_enforce_lowercase TO TRUE;
+  ALTER SYSTEM SET auth_password_enforce_uppercase TO TRUE;
+  ALTER SYSTEM SET auth_password_length_min TO 8;
+  ```
+
+!!! warning "Внимание!"
+    В версии Radix 1.0.5 пользователю по умолчанию можно задать
+    Fтолько пустой пароль. Для других пользователей такого ограничения нет.
+
+#### Разделение доступов по БД {: #access_separation }
+
+```sql
+CREATE USER app_1_user WITH PASSWORD 'pwd1';
+GRANT radix_reader_0 TO app_1_user;
+GRANT radix_writer_0 TO app_1_user;
+
+CREATE USER app_2_user WITH PASSWORD 'pwd2';
+GRANT radix_reader_0 TO app_2_user;
+GRANT radix_writer_2 TO app_2_user;
+
+CREATE USER app_3_user WITH PASSWORD 'pwd3';
+GRANT radix_reader_0 TO app_3_user;
+GRANT radix_writer_5 TO app_3_user;
+```
+
+#### Примеры управления доступом {: #auth_examples }
+
+##### Выдача прав пользователю в Radix {: #grant_rights }
+
+```shell
+$ redis-cli -p 7301
+127.0.0.1:7301> acl setuser custom_user ~* &* +@all
+OK
+```
+
+##### Изменение конфигурации Radix через SQL-запросы в Picodata {: #setup_radix_with_sql }
+
+```sql
+ALTER PLUGIN radix 1.0.6 SET radix.authorization_mode='{"state": "enabled", "default_user_name": "custom_user"}';
+```
+
+##### Использование LDAP {: #ldapuser }
+
+```sql
+CREATE USER custom_user USING ldap;
+GRANT radix_reader TO custom_user;
+GRANT radix_writer TO custom_user;
+ALTER PLUGIN radix 1.0.6 SET radix.authorization_mode = '{ "state": "enabled", "default_user_name": "custom_user" }';
+```
+
+##### Использование Argus для синхронизации пользователей {: #argus }
+
+```yaml
+argus:
+  searches:
+    - role: "radix_reader"
+      base: "dc=example,dc=org"
+      filter: "<filter>"
+      attr: "cn"
+    - role: "radix_writer"
+      base: "dc=example,dc=org"
+      filter: "<filter>"
+      attr: "cn"
 ```
 
 ### Настройка адресов и TLS {: #tls_settings }
@@ -522,7 +842,7 @@ instance:
           listener:
             enabled: true
             listen: "0.0.0.0:7379"                 # Radix откроет сокет по указанному адресу и будет его слушать
-            advertise: "localhost:7379"            #  Radix будет использовать этот адрес в кластерных и sentinel-командах
+            advertise: "localhost:7379"            # Radix будет использовать этот адрес в кластерных и sentinel-командах
             tls:
               enabled: false
 ```
@@ -560,7 +880,9 @@ redis-cli --tls --cert tls/client.crt --key tls/client.key --cacert tls/ca.crt -
 
 [инструкцией]: ../admin/ssl.md/#create_certs_and_keys
 
-Если вы хотите просто использовать TLS без клиентских сертификатов, то следует _НЕ указывать_ `ca_file` в файле конфигурации Picodata и _УКАЗЫВАТЬ_ его в конфигурации клиента.
+Если вы хотите просто использовать TLS без клиентских сертификатов, то
+следует **не указывать** `ca_file` в файле конфигурации Picodata и
+**указывать** его в конфигурации клиента.
 
 ```yaml
 instance:
@@ -582,6 +904,8 @@ instance:
 ```shell
 redis-cli --tls --cacert tls/ca.crt -p 7379 incr asdf2
 ```
+
+## Описание конфигурации Radix {: #radix_settings }
 
 ### clients
 
@@ -647,13 +971,58 @@ Redis Standalone, развернув Radix в составе одного реп
 (то есть, необходимо вернуть и количество элементов, улетевших в `BLPOP`
 и аналогичные команды), выставите эту настройку в `true`.
 
+#### disable_scatter_gather
+
+Отключает режим опроса кластера для следующих команд:
+
+- Очищение базы данных: `FLUSH`, `FLUSHALL`, `FLUSHDB` `SCRIPT FLUSH`.
+- Информация о ключах: `DBSIZE`, `KEYS`, `SCAN`.
+- PUBSUB: `PUBSUB CHANNELS`, `PUBSUB NUMSUB`.
+
+То есть при выставлении `disable_scatter_gather = true`, команда исполняется только на одном узле как в Redis Cluster, а при `disable_scatter_gather = false` по всем данным как в Redis Standalone, даже если Radix запущен на нескольких репликасетах.
+
+По умолчанию - `true`.
+
+#### include_radix_section_in_info_by_default
+
+Добавляет секцию "Radix" в команду [`INFO`](#info) с информацией о плагине и
+Picodata. Пример:
+
+```
+127.0.0.1:7298> info
+# Server
+redis_version:8.0.0
+redis_git_sha1:715333fcf2a9f469566c029c1751699959e8706c
+... # остальные поля и секции
+
+# Radix
+radix_version:1.0.5
+picodata_version:26.1.2
+picodata_cluster_name:radix
+picodata_cluster_uuid:e0d4ede1-422a-4e5e-a0e5-e4d53ef5e37e
+picodata_instance_name:default_1_1
+picodata_instance_uuid:98f35dae-1cb5-4ba8-a5c3-fbb369b4fdc2
+slab_info_items_size:16272
+slab_info_items_used:160
+slab_info_items_used_ratio:0.98
+slab_info_quota_size:2000000000
+slab_info_quota_used:33554432
+slab_info_quota_used_ratio:1.68
+slab_info_arena_size:33554432
+slab_info_arena_used:311456
+slab_info_arena_used_ratio:0.9
+```
+
+Значение по умолчанию - `true`.
+
 ### cluster_mode
 
 Данная настройка влияет только на вывод команды `info cluster`.
 
 ### sentinel_enabled
 
-Включает режим совместимости с [Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/).
+Включает режим совместимости с [Redis
+Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/).
 
 В приложении требуется прописать адреса Radix в качестве адресов
 Sentinel. В качестве `service_name` укажите имена репликасетов, на
@@ -703,15 +1072,12 @@ cold:
 
 - **state** — параметр, отвечающий за режим авторизации. Возможные
   значения:
-    - `disabled` — авторизация выключена (значение по умолчанию). Любой
-      подключившийся имеет доступ ко всем командам, ключам и
-      PUBSUB-каналам. Команда `AUTH` всегда возвращает `OK`
-    - `enabled` — авторизация включена. Для доступа нужно авторизоваться
-      с помощью команды `AUTH`
-- **default_user_name** — имя пользователя по умолчанию. Вариант `{
-  "state": "enabled", "default_user_name": "<str>" }` используется для
-  клиентов, которые подключаются с помощью `AUTH password` без имени
-  пользователя. По умолчанию значение не задано
+    - `disabled` — авторизация выключена. Начиная с версии 1.0.5 это
+      значение является устаревшим и не позволяет запустить Radix.
+    - `enabled` — авторизация включена (значение по умолчанию). Для
+      доступа нужно авторизоваться с помощью команды `AUTH`
+- **default_user_name** — имя пользователя по умолчанию. Значение по
+  умолчанию — `default`. См. [подробнее](#default_user_name).
 - **aclfile** — Опциональное поле, указывающее расположение файла для команд
   `ACL SAVE` и `ACL LOAD`. Если поле не указано, то вызов этих команд
   завершится с ошибкой. Путь до файла считается относительно директории, в
@@ -810,105 +1176,67 @@ f(t) =
 \end{cases}
 $$
 
-#### Предустановленные роли {: #auth_roles }
+### latency_monitor_threshold_ms
 
-- Глобальные:
-    - `radix_reader` — доступ на чтение ко всем данным,
-    - `radix_writer` — доступ на запись ко всем данным.
-- Локальные для каждой БД:
-    - `radix_reader_0` … `radix_reader_15`
-    - `radix_writer_0` … `radix_writer_15`
+Порог мониторинга задержек в миллисекундах. События, длительность которых
+превышает данный порог, записываются в историю задержек и доступны через команды
+[`LATENCY LATEST`](#latency_latest), [`LATENCY HISTORY`](#latency_history),
+[`LATENCY GRAPH`](#latency_graph) и сбрасываются командой [`LATENCY
+RESET`](#latency_reset).
 
-#### Примеры использования {: #auth_examples }
+Установите `0` для отключения мониторинга задержек.
 
-##### Миграция с кластера с директивой `requirepass` {: #requirepass }
+По умолчанию — `0` (отключено).
 
-Для миграции на Radix необходимо:
-
-1. В Picodata создать пользователя по умолчанию, с правами `radix_reader` и `radix_writer`
-2. Через клиент Redis настроить ACL на доступ ко всему
-3. Включить авторизацию через смену конфигурации Radix
-
-```sql title="Создание пользователя в Picodata и наделение его правами"
-ALTER PLUGIN radix 1.0.4 SET radix.authorization_mode = '{ "state": "enabled", "default_user_name": "default_radix_user" }';
-CREATE USER default_radix_user WITH PASSWORD 'S0m1Str2ngP3ssword';
-GRANT radix_reader TO default_radix_user;
-GRANT radix_writer TO default_radix_user;
-```
-
-```shell title="Выдача прав пользователю в Radix"
-$ redis-cli -p 7301
-127.0.0.1:7301> acl setuser default_radix_user ~* &* +@all
-OK
-```
-
-```sql title="Изменение конфигурации Radix через SQL-запросы в Picodata"
-ALTER PLUGIN radix 1.0.4 SET radix.authorization_mode='{"state": "enabled", "default_user_name": "default_radix_user"}';
-ALTER PLUGIN SET
-```
-
-```shell title="Проверка аутентификации в Radix"
-$ redis-cli -p 7301
-127.0.0.1:7301> GET abc
-(error) NOAUTH Authentication required
-127.0.0.1:7301> AUTH S0m1Str2ngP3ssword
-OK
-127.0.0.1:7301> SET abc 123
-OK
-```
-
-##### Использование LDAP {: #ldapuser }
+Команда `LATENCY HISTOGRAM` строит гистограмму задержек по статистике каждой команды и работает независимо от этого порога.
 
 ```sql
-ALTER PLUGIN radix 1.0.4 SET radix.authorization_mode = '{ "state": "enabled", "default_user_name": "default_radix_user" }';
-CREATE USER default_radix_user USING ldap;
-GRANT radix_reader TO default_radix_user;
-GRANT radix_writer TO default_radix_user;
+ALTER PLUGIN radix 1.0.6 SET radix.latency_monitor_threshold_ms = '1';
 ```
 
-##### Использование Argus для синхронизации пользователей {: #argus }
+### slowlog_log_slower_than_us
 
-```yaml
-argus:
-  searches:
-    - role: "radix_reader"
-      base: "dc=example,dc=org"
-      filter: "<filter>"
-      attr: "cn"
-    - role: "radix_writer"
-      base: "dc=example,dc=org"
-      filter: "<filter>"
-      attr: "cn"
-```
+Порог записи в `slowlog` в микросекундах. Команды, выполняющиеся дольше
+указанного времени, записываются в slowlog и доступны через семейство команд
+`SLOWLOG` ([`SLOWLOG GET`](#slowlog_get), [`SLOWLOG LEN`](#slowlog_len),
+[`SLOWLOG RESET`](#slowlog_reset)).
 
-##### Разделение доступов по БД {: #access_separation }
+- Установите `0` для записи каждой команды.
+- Установите `-1` для полного отключения slowlog.
+
+По умолчанию — `10000` (10 миллисекунд).
 
 ```sql
-ALTER PLUGIN radix 1.0.4 SET radix.authorization_mode = '{ "state": "enabled" }';
-
-CREATE USER app_1_user WITH PASSWORD 'pwd1';
-GRANT radix_reader_0 TO app_1_user;
-GRANT radix_writer_0 TO app_1_user;
-
-CREATE USER app_2_user WITH PASSWORD 'pwd2';
-GRANT radix_reader_0 TO app_2_user;
-GRANT radix_writer_2 TO app_2_user;
-
-CREATE USER app_3_user WITH PASSWORD 'pwd3';
-GRANT radix_reader_0 TO app_3_user;
-GRANT radix_writer_5 TO app_3_user;
+ALTER PLUGIN radix 1.0.6 SET radix.slowlog_log_slower_than_us = '0';
 ```
 
-## Использование {: #usage }
+### slowlog_max_len
 
-Для работы с Radix используйте клиентскую программу `redis-cli`.
-Подключение осуществляется по адресу, заданному параметром `advertise`
-(или `listen` если публичный адрес не указан) для секции `radix` в
-[файле конфигурации](#picodata_config).
+Максимальное количество записей в `slowlog`. При превышении лимита самые старые записи удаляются.
 
-```shell
-redis-cli -p 7301
+По умолчанию — `128`.
+
+```sql
+ALTER PLUGIN radix 1.0.6 SET radix.slowlog_max_len = '256';
 ```
+
+### debug
+
+Настройки для отладки работы Radix и Picodata.
+
+#### pico_commands_enabled
+
+Включает семейство команд `PICO`:
+
+- `PICO ENABLE` — включить команды `PICO LUA` и `PICO SQL` для текущего соединения (выключены по умолчанию)
+- `PICO STATUS` — получить статус доступности команд `PICO LUA` и `PICO SQL` для текущего соединения
+- `PICO DISABLE` — выключить команды `PICO LUA` и `PICO SQL` для текущего соединения
+- `PICO LUA <script>` — исполнить Lua-скрипт в Picodata.
+- `PICO SQL <script>` — исполнить SQL-скрипт в Picodata.
+
+Все команды семейства входят в категории `debug`, `slow` и `dangerous`,
+причём доступ соответствует выданным правам авторизованного
+пользователя.
 
 ## Поддерживаемые команды {: #supported_commands }
 
@@ -1075,7 +1403,7 @@ ACL DRYRUN username command [arg [arg ...]]
 > ACL DRYRUN VIRGINIA SET foo bar
 "OK"
 > ACL DRYRUN VIRGINIA GET foo
-"User VIRGINIA has no permissions to run the 'get' comman
+"User VIRGINIA has no permissions to run the 'get' command
 ```
 
 #### acl getuser {: #acl_getuser }
@@ -1365,7 +1693,7 @@ CLUSTER SLOTS
 
 Возвращает информацию о соответствии слотов инстансам кластера.
 
-#### echo {: #cluster_echo }
+#### echo
 
 ```sql
 ECHO message
@@ -1414,7 +1742,7 @@ QUIT
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["quit" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["quit" ] }';
     ```
 
 #### readonly {: #cluster_readonly }
@@ -1434,14 +1762,15 @@ READONLY
 #### auth  {: #auth }
 
 ```sql
-auth password
+AUTH password
 ```
 <span class="tag">поддерживается с версии 0.10.0</span>
 <span class="tag connection">connection</span>
 <span class="tag fast">fast</span>
 
-Выполняет аутентификацию пользователя по умолчанию. Имя пользователя должно быть задано
-в конфигурации плагина в параметре `default_user_name`.
+Выполняет аутентификацию пользователя по умолчанию. Имя пользователя по
+умолчанию должно быть задано в конфигурации плагина в параметре
+`default_user_name`.
 
 ```sql
 auth username password
@@ -1449,10 +1778,417 @@ auth username password
 
 Выполняет аутентификацию выбранного пользователя.
 
+#### client getname  {: #client_getname }
+
+```sql
+CLIENT GETNAME
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag connection">connection</span>
+<span class="tag slow">slow</span>
+
+Возвращает имя соединения, заданное командой [CLIENT
+SETNAME](#client_setname). Если имя не было задано, будет возвращено
+значение `nil`.
+
+#### client help  {: #client_help }
+
+```sql
+CLIENT HELP
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag connection">connection</span>
+<span class="tag slow">slow</span>
+
+Возвращает список поддерживаемых команд группы `CLIENT ...` и их краткое
+описание.
+
+#### client id  {: #client_id }
+
+```sql
+CLIENT ID
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag connection">connection</span>
+<span class="tag slow">slow</span>
+
+Возвращает идентификатор текущего соединения. Это полезно в следующих случаях:
+
+- получение одного и того же идентификатора в разных запросах
+  гарантирует, что соединение не обрывалось между ними
+- большее значение идентификатора гарантирует более позднее время
+  создания соединения
+
+#### client info  {: #client_info }
+
+```sql
+CLIENT INFO
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag connection">connection</span>
+<span class="tag slow">slow</span>
+
+Возвращает подробное описание текущего соединения.
+
+#### client kill  {: #client_kill }
+
+```sql
+CLIENT KILL <ip:port | <[ID client-id] | [TYPE <NORMAL | MASTER |
+  SLAVE | REPLICA | PUBSUB>] | [USER username] | [ADDR ip:port] |
+  [LADDR ip:port] | [SKIPME <YES | NO>] | [MAXAGE maxage]
+  [[ID client-id] | [TYPE <NORMAL | MASTER | SLAVE | REPLICA |
+  PUBSUB>] | [USER username] | [ADDR ip:port] | [LADDR ip:port] |
+  [SKIPME <YES | NO>] | [MAXAGE maxage] ...]>>
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag connection">connection</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Закрывает указанное клиентское соединение. Команда поддерживает два
+формата. Старый формат:
+
+```sql
+CLIENT KILL ip:port
+```
+
+Значение `ip:port` должно совпадать с одной из строк, которые возвращает
+команда [CLIENT LIST](#client_list) в поле `addr`.
+
+Новый формат:
+
+```sql
+CLIENT KILL <filter> <value> ... ... <filter> <value>
+```
+
+В новом формате можно закрывать клиентские соединения по разным атрибутам, а
+не только по адресу. Можно указать несколько фильтров одновременно. В этом
+случае они объединяются логическим `AND`.
+
+```sql
+CLIENT KILL ADDR 127.0.0.1:12345 TYPE PUBSUB
+```
+
+Этот запрос закроет только клиентское соединение типа `pubsub` с указанным
+адресом. При использовании нового формата команда возвращает не `OK` или
+ошибку, а количество закрытых клиентских соединений. Это число может быть
+равно нулю.
+
+Параметры и варианты использования:
+
+- `ip:port` — закрывает клиентское соединение по указанному адресу. Это устаревший формат с одним аргументом.
+- `ID client-id` — закрывает только клиентское соединение с указанным уникальным идентификатором.
+- `TYPE NORMAL | MASTER | SLAVE | REPLICA | PUBSUB` — закрывает только клиентские соединения указанного типа.
+- `USER username` — закрывает только клиентские соединения, аутентифицированные как указанный пользователь ACL.
+- `ADDR ip:port` — закрывает только клиентские соединения с указанного адреса.
+- `LADDR ip:port` — закрывает только клиентские соединения, подключенные к указанному локальному адресу сервера.
+- `SKIPME YES | NO` — определяет, нужно ли пропускать клиента, который вызвал команду. Значение `YES` используется по умолчанию и пропускает вызывающего клиента. Значение `NO` разрешает закрыть и его соединение.
+- `MAXAGE maxage` — закрывает только клиентские соединения, возраст которых превышает указанное значение в секундах.
+
+#### client list  {: #client_list }
+
+```sql
+CLIENT LIST [TYPE <NORMAL | MASTER | REPLICA | PUBSUB>]
+  [ID client-id [client-id ...]]
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag connection">connection</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Выводит список клиентских соединений.
+
+Параметры и варианты использования:
+
+- `TYPE NORMAL | MASTER | REPLICA | PUBSUB` — выводит только клиентские соединения указанного типа.
+- `ID client-id [client-id ...]` — выводит только клиентские соединения с указанными идентификаторами.
+
+Подробности:
+
+Результат содержит сведения и статистику по клиентским соединениям. В выводе
+могут быть следующие поля:
+
+- `id` — уникальный 64-битный идентификатор клиента
+- `addr` — адрес и порт клиента
+- `name` — имя, заданное клиентом командой [CLIENT SETNAME](#client_setname)
+- `age` — общее время существования соединения в секундах
+- `idle` — время простоя соединения в секундах
+- `flags` — флаги клиента (см. ниже)
+- `db` — идентификатор текущей базы данных
+- `sub` — количество подписок на каналы
+- `psub` — количество подписок по шаблону
+- `ssub` — количество подписок на шардированные каналы
+- `multi` — количество команд в контексте `MULTI`/`EXEC`
+- `user` — имя пользователя, под которым клиент аутентифицирован
+- `lib-name` — имя используемой клиентской библиотеки
+- `lib-ver` — версия клиентской библиотеки
+
+Флаги клиента могут быть скомбинированы из следующих значений:
+
+- `b` — клиент ожидает в блокирующей операции
+- `N` — специальные флаги не установлены
+- `P` — клиент является подписчиком Pub/Sub
+- `r` — клиент работает в режиме `readonly` при обращении к узлу кластера
+- `S` — клиент является соединением реплики с этим экземпляром
+- `t` — у клиента включено отслеживание ключей для клиентского кэширования
+
+#### client no-evict  {: #client_noevict }
+
+```sql
+CLIENT NO-EVICT <ON | OFF>
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag connection">connection</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Управляет режимом вытеснения для текущего соединения. Если режим включён и
+вытеснение клиентов настроено, текущее соединение исключается из процесса
+вытеснения, даже когда превышен заданный порог. Если режим выключен, клиент
+снова попадает в набор соединений, которые могут быть вытеснены.
+
+Параметры и варианты использования:
+
+- `ON` — включает защиту текущего соединения от вытеснения.
+- `OFF` — выключает защиту текущего соединения от вытеснения.
+
+#### client no-touch  {: #client_notouch }
+
+```sql
+CLIENT NO-TOUCH <ON | OFF>
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag connection">connection</span>
+<span class="tag slow">slow</span>
+
+Управляет тем, будут ли команды текущего клиента изменять статистику LRU/LFU
+для ключей, к которым обращаются.
+
+Параметры и варианты использования:
+
+- `ON` — отключает обновление времени последнего обращения к ключам и счетчика LFU для команд этого соединения. Исключение составляет команда `TOUCH`.
+- `OFF` — включает обычное обновление статистики LRU/LFU для команд этого соединения.
+
+#### client pause  {: #client_pause }
+
+```sql
+CLIENT PAUSE timeout [WRITE | ALL]
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag connection">connection</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Приостанавливает обработку команд клиентов на указанное время в миллисекундах.
+
+Параметры и варианты использования:
+
+- `timeout` — время приостановки клиентов в миллисекундах.
+- `ALL` — режим по умолчанию, при котором блокируются все команды клиентов.
+- `WRITE` — режим, при котором клиенты блокируются только при попытке выполнить команду записи.
+
+Подробности:
+
+- Команда останавливает обработку ожидающих команд обычных клиентов и
+  клиентов Pub/Sub для указанного режима. Взаимодействие с репликами
+  продолжается в обычном режиме. Клиент формально считается
+  приостановленным, когда пытается выполнить команду, поэтому для
+  неактивных клиентов сервер не выполняет дополнительную работу.
+- Команда как можно быстрее возвращает `OK` вызывающему клиенту, поэтому
+  само выполнение `CLIENT PAUSE` не приостанавливается.
+- Когда указанное время истекает, все клиенты разблокируются, и сервер
+  начинает обрабатывать команды, накопленные в буферах запросов во время
+  паузы.
+- В режиме `WRITE` команды `EVAL` и `EVALSHA` блокируют клиента для всех
+  скриптов. Команды `PUBLISH` и `PFCOUNT` также блокируют клиента. Для
+  команды `WAIT` подтверждения задерживаются, поэтому она выглядит
+  заблокированной.
+- Команда полезна для управляемого переключения клиентов с одного
+  экземпляра Redis на другой. Например, при обновлении экземпляра
+  администратор может приостановить клиентов с помощью `CLIENT PAUSE`,
+  подождать, пока реплики обработают последний поток репликации от
+  мастера, повысить одну из реплик до мастера и перенастроить клиентов
+  на новый мастер.
+- Режим `WRITE` останавливает трафик репликации, может быть отменен
+  командой [CLIENT UNPAUSE](#client_unpause) и позволяет перенастроить
+  старый мастер без риска принять записи после failover.
+
+#### client reply  {: #client_reply }
+
+```sql
+CLIENT REPLY <ON | OFF | SKIP>
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag connection">connection</span>
+<span class="tag slow">slow</span>
+
+Управляет тем, будет ли сервер отправлять ответы на команды клиента. Это
+полезно, когда клиент отправляет команды в режиме fire-and-forget, выполняет
+массовую загрузку данных или получает постоянный поток новых данных в сценариях
+кэширования.
+
+Параметры и варианты использования:
+
+- `ON` — режим по умолчанию: сервер возвращает ответ на каждую команду.
+- `OFF` — сервер не отправляет ответы на команды клиента.
+- `SKIP` — сервер пропускает ответ только для команды, которая идет сразу после `CLIENT REPLY SKIP`.
+
+#### client setinfo  {: #client_setinfo }
+
+```sql
+CLIENT SETINFO <LIB-NAME libname | LIB-VER libver>
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag connection">connection</span>
+<span class="tag slow">slow</span>
+
+Задает информационные атрибуты текущего соединения. Эти атрибуты отображаются
+в выводе команд [CLIENT LIST](#client_list) и [CLIENT INFO](#client_info).
+Клиентские библиотеки обычно отправляют эту команду в pipeline после
+аутентификации на каждом соединении и игнорируют ошибки, потому что могут быть
+подключены к серверу, который не поддерживает такие атрибуты.
+
+Параметры и варианты использования:
+
+- `LIB-NAME libname` — задает имя клиентской библиотеки для текущего соединения.
+- `LIB-VER libver` — задает версию клиентской библиотеки для текущего соединения.
+
+Подробности:
+
+- Длина этих атрибутов не ограничена, но в них нельзя использовать
+  пробелы, переводы строк и другие непечатаемые символы, которые
+  нарушили бы формат ответа [CLIENT LIST](#client_list).
+- Официальные клиентские библиотеки могут расширять `lib-name`
+  пользовательским суффиксом, чтобы передавать дополнительную информацию
+  о клиенте. Например, высокоуровневые библиотеки могут сообщать свою
+  версию, а итоговое значение `lib-name` может выглядеть как
+  `jedis(redis-om-spring_v1.0.0)`. Фигурные скобки используются как
+  разделители пользовательского суффикса, поэтому их не стоит
+  использовать внутри самого суффикса.
+- Для пользовательских суффиксов сторонних библиотек рекомендуется
+  формат `(?<custom-name>[ -~]+)[ -~]v(?<custom-version>[\d\.]+)`.
+  Несколько суффиксов можно разделять символом `;`.
+- Команда `RESET` не очищает эти атрибуты.
+
+#### client setname  {: #client_setname }
+
+```sql
+CLIENT SETNAME connection-name
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag connection">connection</span>
+<span class="tag slow">slow</span>
+
+Задает имя для текущего соединения.
+
+Параметры и варианты использования:
+
+- `connection-name` — имя, которое нужно назначить текущему соединению.
+
+Подробности:
+
+- Назначенное имя отображается в выводе [CLIENT LIST](#client_list), чтобы можно было определить клиента, открывшего конкретное соединение.
+- Например, если Redis используется для реализации очереди, производители и потребители сообщений могут задавать имя соединения в соответствии со своей ролью.
+- Длина имени ограничена только обычным пределом строк Redis, но в имени соединения нельзя использовать пробелы, потому что это нарушит формат ответа [CLIENT LIST](#client_list).
+- Чтобы полностью удалить имя соединения, задайте пустую строку. Пустая строка не является допустимым именем соединения и используется специально для удаления имени.
+- Имя соединения можно проверить командой [CLIENT GETNAME](#client_getname). Новые соединения создаются без имени.
+- Имена соединений помогают отлаживать утечки соединений, вызванные ошибками в приложении.
+
+#### client unblock  {: #client_unblock }
+
+```sql
+CLIENT UNBLOCK client-id [TIMEOUT | ERROR]
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag connection">connection</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Разблокирует клиент, который заблокирован блокирующей операцией, например
+`BRPOP` или `WAIT`.
+
+Параметры и варианты использования:
+
+- `client-id` — идентификатор клиента, которого нужно разблокировать.
+- `TIMEOUT` — поведение по умолчанию: разблокировать клиента так, как если бы
+  истек таймаут заблокированной команды.
+- `ERROR` — разблокировать клиента с ошибкой `-UNBLOCKED`.
+
+Подробности:
+
+- Используйте эту команду, когда нужно отслеживать много ключей ограниченным
+  числом соединений. Если процессу-потребителю нужно начать отслеживать еще один
+  поток (stream), можно не открывать новое соединение: разблокируйте одно из
+  соединений в пуле, добавьте новый ключ и снова выполните блокирующую команду.
+- Для такого сценария создайте дополнительное управляющее соединение, которое
+  будет отправлять `CLIENT UNBLOCK` при необходимости. Перед запуском
+  блокирующей операции на каждом отслеживаемом соединении выполните `CLIENT ID`,
+  чтобы получить идентификатор этого соединения. Когда нужно добавить или
+  удалить ключ, используйте управляющее соединение, чтобы отправить `CLIENT
+  UNBLOCK` для соединения с блокирующей командой. Блокирующая команда вернется,
+  после чего ее можно выполнить снова с обновленным набором ключей.
+
+Пример:
+
+```text
+-- Соединение A (блокирующее соединение):
+CLIENT ID
+2934
+BRPOP key1 key2 key3 0
+-- клиент заблокирован
+
+-- Нужно добавить новый ключ.
+
+-- Соединение B (управляющее соединение):
+CLIENT UNBLOCK 2934
+1
+
+-- Соединение A (блокирующее соединение):
+-- BRPOP возвращает таймаут.
+NULL
+BRPOP key1 key2 key3 key4 0
+-- клиент снова заблокирован
+```
+
+#### client unpause  {: #client_unpause }
+
+```sql
+CLIENT UNPAUSE
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag connection">connection</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Возобновляет обработку команд для всех клиентов, которые были приостановлены
+командой [CLIENT PAUSE](#client_pause).
+
+#### hello
+
+```sql
+HELLO [protover [AUTH username password] [SETNAME clientname]]
+```
+<span class="tag">поддерживается с версии 1.0.6</span>
+<span class="tag connection">connection</span>
+<span class="tag fast">fast</span>
+
+Возвращает подробности о сервере и подключении. Параметр `protover`
+позволяет задать версию протокола RESP (2 или 3). На данный момент Radix
+поддерживает только версию 2. Параметр `AUTH` позволяет явно указать имя
+и пароль пользователя, под которым производится подключение. Параметр
+SETNAME позволяет задать имя клиента (аналогично команде [CLIENT
+SETNAME](#client_setname)).
+
 #### reset
 
 ```sql
-reset
+RESET
 ```
 <span class="tag">поддерживается с версии 0.10.0</span>
 <span class="tag connection">connection</span>
@@ -1857,7 +2593,7 @@ HMSET key field value [field value ...]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["hmset" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["hmset" ] }';
     ```
 
 #### hscan
@@ -2774,7 +3510,7 @@ ZRANGEBYLEX key min max [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
     ```
 
 #### zrangebyscore
@@ -2794,7 +3530,7 @@ ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
     ```
 
 #### zrangestore
@@ -2903,7 +3639,7 @@ ZREVRANGE key start stop [WITHSCORES]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrange" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrange" ] }';
     ```
 
 #### zrevrangebylex
@@ -2923,7 +3659,7 @@ ZREVRANGEBYLEX key max min [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
     ```
 
 #### zrevrangebyscore
@@ -2943,7 +3679,7 @@ ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
     ```
 
 #### zrevrank
@@ -3145,7 +3881,7 @@ BRPOPLPUSH source destination timeout
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["brpoplpush" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["brpoplpush" ] }';
     ```
 
 #### brpop
@@ -3676,7 +4412,7 @@ RPOPLPUSH source destination
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["rpoplpush" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["rpoplpush" ] }';
     ```
 
 #### rpush
@@ -4038,7 +4774,7 @@ PSETEX key milliseconds value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 #### set
@@ -4099,7 +4835,7 @@ SET key value EX seconds
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setex" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setex" ] }';
     ```
 
 Установка некорректного значения вернёт ошибку.
@@ -4122,7 +4858,7 @@ SETNX key value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.4 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setnx" ] }';
+    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setnx" ] }';
     ```
 
 #### strlen
@@ -4148,7 +4884,7 @@ Radix поддерживает необходимый минимум коман�
 включить, используйте запрос:
 
 ```sql
-ALTER PLUGIN radix 1.0.4 SET radix.sentinel_enabled = 'true';
+ALTER PLUGIN radix 1.0.6 SET radix.sentinel_enabled = 'true';
 ```
 <span class="tag">поддерживается с версии 0.10.0</span>
 
@@ -4439,36 +5175,36 @@ INFO [section [section ...]]
 - `commandstats`
 - `latencystats`
 - `sentinel`
+- `radix`
+
+!!! note "Примечание"
+    Секция `radix` отображается в выводе команды `info` только
+    при включённом параметре `include_radix_section_in_info_by_default = true`, либо
+    при явном вызове типа `INFO radix clients`.
 
 ??? example "Образец вывода полного набора сведений"
     ```
     127.0.0.1:7379> info
     # Server
-    radix_version:1.0.4
-    picodata_version:26.1.2-0-g6db4aba0a
-    picodata_cluster_name:demo_radix
-    picodata_cluster_uuid:f5cec208-cbc2-4e8f-86f2-5b57d5ed8ef6
-    picodata_instance_name:default_1_1
-    picodata_instance_uuid:0af5bbe6-d1bd-42c4-8ea5-cdfd6ef3a93f
     redis_version:8.0.0
-    redis_git_sha1:7fcd79c0f16eb27b302f962e027d0e8916f7ea90
+    redis_git_sha1:4d88b87df206042060f675dcf280380b8f653850
     redis_git_dirty:1
     redis_build_id:
     redis_mode:standalone
-    os:Fedora Linux 6.12.0-160000.29-default x86_64
+    os:Fedora Linux 7.1.3-200.fc44.x86_64 x86_64
     arch_bits:64
     monotonic_clock:POSIX clock_gettime with CLOCK_MONOTONIC
     multiplexing_api:epoll
     atomicvar_api:c11-builtin
-    gcc_version:rustc 1.95.0 (59807616e 2026-04-14)
-    process_id:175
+    gcc_version:rustc 1.96.0 (ac68faa20 2026-05-25)
+    process_id:413282
     process_supervised:no
-    run_id:39d461f545b54c2d852cbc37d7fc9b63
-    tcp_port:7379
-    server_time_usec:1778589327392186000
-    uptime_in_seconds:111
+    run_id:bc7e5829e9a642ffb975fca1e4b1d13e
+    tcp_port:6000
+    server_time_usec:1784042476298261000
+    uptime_in_seconds:5657
     uptime_in_days:0
-    hz:800
+    hz:3500
     configured_hz:0
     lru_clock:0
     executable:/usr/bin/picodata
@@ -4491,40 +5227,40 @@ INFO [section [section ...]]
     total_blocking_keys_on_nokey:0
 
     # Memory
-    used_memory:92274688
-    used_memory_human:88.00M
-    used_memory_rss:151195648
-    used_memory_rss_human:144.19M
-    used_memory_peak:92274688
-    used_memory_peak_human:88.00M
+    used_memory:142606336
+    used_memory_human:136.00M
+    used_memory_rss:101560320
+    used_memory_rss_human:96.86M
+    used_memory_peak:142606336
+    used_memory_peak_human:136.00M
     used_memory_peak_perc:100.00
-    used_memory_overhead:92274688
-    used_memory_startup:92274688
-    used_memory_dataset:0
-    used_memory_dataset_perc:0.00
-    allocator_allocated:92274688
-    allocator_active:92274688
-    allocator_resident:151195648
-    total_system_memory:16618340352
-    total_system_memory_human:15.48G
-    used_memory_lua:14041813
-    used_memory_vm_eval:14041813
-    used_memory_lua_human:13.39M
+    used_memory_overhead:109051904
+    used_memory_startup:142606336
+    used_memory_dataset:33554432
+    used_memory_dataset_perc:23.53
+    allocator_allocated:142606336
+    allocator_active:142606336
+    allocator_resident:101560320
+    total_system_memory:33281937408
+    total_system_memory_human:31.00G
+    used_memory_lua:20492553
+    used_memory_vm_eval:20492553
+    used_memory_lua_human:19.54M
     used_memory_scripts_eval:0
     number_of_cached_scripts:0
     number_of_functions:0
     number_of_libraries:0
     used_memory_vm_functions:0
-    used_memory_vm_total:14041813
-    used_memory_vm_total_human:13.39M
+    used_memory_vm_total:20492553
+    used_memory_vm_total_human:19.54M
     used_memory_functions:0
     used_memory_scripts:0
     used_memory_scripts_human:0B
     maxmemory:2000000000
     maxmemory_human:1.86G
     maxmemory_policy:noeviction
-    allocator_frag_ratio:0.00
-    allocator_frag_bytes:0
+    allocator_frag_ratio:1.68
+    allocator_frag_bytes:33554432
     allocator_muzzy:0
     allocator_rss_ratio:NaN
     allocator_rss_bytes:0
@@ -4533,31 +5269,22 @@ INFO [section [section ...]]
     mem_total_replication_buffers:0
     mem_fragmentation_ratio:NaN
     mem_fragmentation_bytes:0
-    mem_clients_normal:24576
+    mem_clients_normal:57344
     mem_allocator:slab
     active_defrag_running:0
     lazyfree_pending_objects:0
     lazyfreed_objects:0
-    slab_info_items_size:0
-    slab_info_items_used:0
-    slab_info_items_used_ratio:0
-    slab_info_quota_size:2000000000
-    slab_info_quota_used:0
-    slab_info_quota_used_ratio:0
-    slab_info_arena_size:0
-    slab_info_arena_used:0
-    slab_info_arena_used_ratio:0
 
     # Persistence
     loading:0
     async_loading:0
 
     # Stats
-    total_connections_received:2
-    total_commands_processed:6
+    total_connections_received:6
+    total_commands_processed:46
     instantaneous_ops_per_sec:0
-    total_net_input_bytes:154
-    total_net_output_bytes:1939
+    total_net_input_bytes:1714
+    total_net_output_bytes:6449
     total_net_repl_input_bytes:0
     total_net_repl_output_bytes:0
     instantaneous_input_kbps:0.00
@@ -4579,17 +5306,17 @@ INFO [section [section ...]]
     latest_fork_usec:0
     migrate_cached_sockets:0
     unexpected_error_replies:0
-    total_error_replies:4
-    total_reads_processed:7
-    total_writes_processed:6
+    total_error_replies:11
+    total_reads_processed:50
+    total_writes_processed:46
     client_query_buffer_limit_disconnections:0
     client_output_buffer_limit_disconnections:0
     reply_buffer_expands:0
     reply_buffer_shrinks:0
     request_buffer_expands:0
     request_buffer_shrinks:0
-    acl_access_denied_auth:0
-    acl_access_denied_cmd:0
+    acl_access_denied_auth:9
+    acl_access_denied_cmd:5
     acl_access_denied_key:0
     acl_access_denied_channel:0
     watching_clients:0
@@ -4600,36 +5327,50 @@ INFO [section [section ...]]
     role:master
     connected_slaves:0
     master_failover_state:no-failover
-    master_replid:0af5bbe6-d1bd-42c4-8ea5-cdfd6ef3a93f
-    master_replid2:0af5bbe6-d1bd-42c4-8ea5-cdfd6ef3a93f
-    master_repl_offset:34836
-    second_repl_offset:34836
+    master_replid:3c509e53-9bf0-4b3a-87a7-d0447878329a
+    master_replid2:3c509e53-9bf0-4b3a-87a7-d0447878329a
+    master_repl_offset:34958
+    second_repl_offset:34958
     repl_backlog_active:0
     repl_backlog_size:0
     repl_backlog_first_byte_offset: 0
     repl_backlog_histlen:0
 
     # CPU
-    used_cpu_sys:1.062690
-    used_cpu_user:7.042313
+    used_cpu_sys:6.089428
+    used_cpu_user:19.063304
     used_cpu_sys_children:0.000000
     used_cpu_user_children:0.000000
-    used_cpu_sys_main_thread:1.057354
-    used_cpu_user_main_thread:7.038022
+    used_cpu_sys_main_thread:5.061797
+    used_cpu_user_main_thread:20.074558
 
     # Modules
 
     # Errorstats
-    errorstat_UNKNOWN_COMMAND:count=4
+    errorstat_MALFORMED_ARGS:count=1
+    errorstat_SYNTAX_ERROR:count=4
+    errorstat_UNKNOWN_COMMAND:count=6
     # Cluster
     cluster_enabled:1
 
     # Keyspace
-    db0:keys=0,expires=0,avg_ttl=0,subexpiry=0
+
     # Commandstats
-    cmdstat_info:calls=2,usec=106,usec_per_call=53,rejected_calls=0,failed_calls=0
+    cmdstat_client|id:calls=1,usec=37,usec_per_call=37,rejected_calls=0,failed_calls=0
+    cmdstat_info:calls=3,usec=123,usec_per_call=41,rejected_calls=0,failed_calls=0
+    cmdstat_client|info:calls=5,usec=139,usec_per_call=27.8,rejected_calls=0,failed_calls=0
+    cmdstat_client|getname:calls=1,usec=46,usec_per_call=46,rejected_calls=0,failed_calls=0
+    cmdstat_client|list:calls=3,usec=83,usec_per_call=27.666666666666668,rejected_calls=0,failed_calls=0
+    cmdstat_client|kill:calls=11,usec=227,usec_per_call=20.636363636363637,rejected_calls=1,failed_calls=4
+    cmdstat_client|help:calls=1,usec=68,usec_per_call=68,rejected_calls=0,failed_calls=0
     # Latencystats
-    latency_percentiles_usec_info:p50.0=85,p99.0=85,p99.9=85
+    latency_percentiles_usec_client info:p50.0=27,p99.0=30,p99.9=30
+    latency_percentiles_usec_client getname:p50.0=46,p99.0=46,p99.9=46
+    latency_percentiles_usec_info:p50.0=25,p99.0=79,p99.9=79
+    latency_percentiles_usec_client id:p50.0=37,p99.0=37,p99.9=37
+    latency_percentiles_usec_client help:p50.0=68,p99.0=68,p99.9=68
+    latency_percentiles_usec_client list:p50.0=30,p99.0=34,p99.9=34
+    latency_percentiles_usec_client kill:p50.0=21,p99.0=42,p99.9=42
     # Sentinel
     sentinel_masters:1
     sentinel_tilt:0
@@ -4637,7 +5378,187 @@ INFO [section [section ...]]
     sentinel_running_scripts:0
     sentinel_scripts_queue_length:0
     sentinel_simulate_failure_flags:0
+
+    # Radix
+    radix_version:1.0.6
+    picodata_version:26.1.5-0-gf8070ddd5
+    picodata_cluster_name:demo_radix
+    picodata_cluster_uuid:9d2e51fa-6fb8-47b7-8808-f693c6663948
+    picodata_instance_name:i1
+    picodata_instance_uuid:3c509e53-9bf0-4b3a-87a7-d0447878329a
+    slab_info_items_size:48928
+    slab_info_items_used:3656
+    slab_info_items_used_ratio:7.47
+    slab_info_quota_size:2000000000
+    slab_info_quota_used:33554432
+    slab_info_quota_used_ratio:1.68
+    slab_info_arena_size:33554432
+    slab_info_arena_used:708168
+    slab_info_arena_used_ratio:2.1
     ```
+
+#### latency graph {: #latency_graph }
+
+```sql
+LATENCY GRAPH event
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Строит ASCII-график для указанного события задержки. График помогает быстро
+оценить тренд задержек без разбора сырых данных из [LATENCY
+HISTORY](#latency_history) или внешних инструментов.
+
+Пример:
+
+```text
+127.0.0.1:6379> latency reset command
+(integer) 0
+127.0.0.1:6379> latency graph command
+command - high 500 ms, low 101 ms (all time high 500 ms)
+--------------------------------------------------------------------------------
+   #_
+  _||
+ _|||
+_||||
+11186
+542ss
+sss
+```
+
+Подробности:
+
+- Вертикальные подписи под столбцами графика показывают, сколько секунд, минут, часов или дней назад произошло событие. Например, `15s` означает, что первое показанное событие произошло 15 секунд назад.
+- График нормализуется по шкале min-max: символ `_` в нижней строке соответствует минимальному значению, а символ `#` в верхней строке — максимальному.
+
+#### latency help {: #latency_help }
+
+```sql
+LATENCY HELP
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag slow">slow</span>
+
+Возвращает справку с описанием подкоманд `LATENCY`.
+
+#### latency histogram {: #latency_histogram }
+
+```sql
+LATENCY HISTOGRAM [command [command ...]]
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Возвращает кумулятивное распределение задержек команд в формате гистограммы.
+
+Параметры и варианты использования:
+
+- `command [command ...]` — одна или несколько команд, для которых нужно вернуть гистограммы задержек. Если аргумент не указан, возвращаются гистограммы для всех доступных команд.
+
+Подробности:
+
+- Каждая гистограмма содержит имя команды, общее количество вызовов этой команды и карту временных корзин.
+- Каждая корзина представляет диапазон задержек и покрывает в два раза больший диапазон, чем предыдущая.
+- Пустые корзины не включаются в ответ.
+- Отслеживаются задержки от 1 наносекунды примерно до 1 секунды. Все, что выше 1 секунды, считается `+Inf`.
+- Максимальное количество корзин — `log2(1,000,000,000) = 30`.
+- Для работы команды должна быть включена расширенная статистика задержек. По умолчанию она включена. Чтобы включить ее явно, используйте `CONFIG SET latency-tracking yes`.
+- Чтобы удалить данные гистограмм задержек, используйте команду `CONFIG RESETSTAT`.
+
+Пример:
+
+```text
+127.0.0.1:6379> LATENCY HISTOGRAM set
+1# "set" =>
+   1# "calls" => (integer) 100000
+   2# "histogram_usec" =>
+      1# (integer) 1 => (integer) 99583
+      2# (integer) 2 => (integer) 99852
+      3# (integer) 4 => (integer) 99914
+      4# (integer) 8 => (integer) 99940
+      5# (integer) 16 => (integer) 99968
+      6# (integer) 33 => (integer) 100000
+```
+
+#### latency history {: #latency_history }
+
+```sql
+LATENCY HISTORY event
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Возвращает сырые данные временного ряда всплесков задержки для события
+`event`. Команда возвращает до 160 пар «метка времени — задержка» для
+указанного события.
+
+Пример:
+
+```text
+127.0.0.1:6379> latency history command
+1) 1) (integer) 1405067822
+   2) (integer) 251
+2) 1) (integer) 1405067941
+   2) (integer) 1001
+```
+
+#### latency latest {: #latency_latest }
+
+```sql
+LATENCY LATEST
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Возвращает последние зарегистрированные события задержки.
+
+Подробности:
+
+Каждое событие в ответе содержит следующие поля:
+
+- имя события;
+- Unix-метка времени последнего всплеска задержки для события;
+- задержка последнего события в миллисекундах;
+- максимальная задержка этого события за все время.
+
+Значение «за все время» означает максимальную задержку с момента запуска
+экземпляра или с момента сброса событий командой [LATENCY
+RESET](#latency_reset).
+
+Пример:
+
+```text
+127.0.0.1:6379> latency latest
+1) 1) "command"
+   2) (integer) 1405067976
+   3) (integer) 251
+   4) (integer) 1001
+```
+
+#### latency reset {: #latency_reset }
+
+```sql
+LATENCY RESET [event [event ...]]
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Сбрасывает временные ряды всплесков задержки для всех событий или только для
+указанных событий.
+
+Параметры и варианты использования:
+
+- `event [event ...]` — одно или несколько событий задержки, которые нужно сбросить. Если аргумент не указан, сбрасываются все события.
 
 #### memory usage {: #memory_usage }
 
@@ -4653,6 +5574,73 @@ MEMORY USAGE key [SAMPLES count]
 имеются), объём которых также будет учтён. По умолчанию, значение
 `SAMPLES` равно 5. Для учёта всех дочерних элементов следует указать
 `SAMPLES 0`.
+
+#### slowlog get {: #slowlog_get }
+
+```sql
+SLOWLOG GET [count]
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Возвращает записи из медленного журнала в хронологическом порядке.
+
+Параметры и варианты использования:
+
+- `count` — количество последних записей медленного журнала, которые нужно вернуть. Значение `-1` возвращает все записи. По умолчанию возвращается 10 записей.
+
+Подробности:
+
+- Медленный журнал фиксирует запросы, время выполнения которых превысило заданный порог.
+- Время выполнения не включает операции ввода-вывода: взаимодействие с клиентом, отправку ответа и подобные действия. Учитывается только время фактического выполнения команды, то есть участок, на котором поток заблокирован и не может обслуживать другие запросы.
+- Новая запись добавляется, когда команда превышает порог, заданный параметром конфигурации `slowlog-log-slower-than`.
+- Максимальное количество записей в журнале задается параметром `slowlog-max-len`.
+- Каждая запись содержит уникальный последовательный идентификатор, Unix-метку времени выполнения команды, длительность выполнения в микросекундах, массив аргументов команды, IP-адрес и порт клиента, а также имя клиента, если оно задано командой [CLIENT SETNAME](#client_setname).
+- Уникальный идентификатор записи можно использовать, чтобы не обрабатывать одну и ту же запись несколько раз. Идентификатор не сбрасывается во время работы сервера и сбрасывается только при его перезапуске.
+
+#### slowlog help {: #slowlog_help }
+
+```sql
+SLOWLOG HELP
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag slow">slow</span>
+
+Возвращает справку с описанием подкоманд `SLOWLOG`.
+
+#### slowlog len {: #slowlog_len }
+
+```sql
+SLOWLOG LEN
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Возвращает текущее количество записей в медленном журнале.
+
+Подробности:
+
+- Новая запись добавляется в медленный журнал, когда команда превышает порог времени выполнения, заданный параметром `slowlog-log-slower-than`.
+- Максимальное количество записей в журнале задается параметром `slowlog-max-len`.
+- Когда журнал достигает максимального размера, самая старая запись удаляется при добавлении новой.
+- Очистить медленный журнал можно командой [SLOWLOG RESET](#slowlog_reset).
+
+#### slowlog reset {: #slowlog_reset }
+
+```sql
+SLOWLOG RESET
+```
+<span class="tag">поддерживается с версии 1.0.5</span>
+<span class="tag admin">admin</span>
+<span class="tag dangerous">dangerous</span>
+<span class="tag slow">slow</span>
+
+Очищает медленный журнал, удаляя из него все записи. После удаления эти
+сведения восстановить нельзя.
 
 #### object encoding {: #object_encoding }
 
@@ -4743,6 +5731,121 @@ Picodata другим способом.
 ```
 
 ## Журнал изменений {: #changelog }
+
+### 1.0.6 — 2026-07-21 {: #01.0.6 }
+
+**Новая функциональность**
+
+- Добавлена команда hello
+
+**Исправления**
+
+- Добавлена явная проверка на дефолтный пароль для md5 и chap-sha1
+- Различные исправления и улучшения аутентификации и авторизации
+
+**Внутренние улучшения**
+
+- Set_connection_user_name теперь принимает String
+- Битовая маска доступа к БД вынесена в отдельное поле контекста подключения
+
+**Тестирование**
+
+- TestRedisMultiDiffBucket тест переведён на ту же модель, что и остальные multi-тесты
+
+**Прочее**
+
+- Улучшены сообщения об ошибках в auth тестах
+- Удалено скачивание riot из нашего докер-образа redis
+- Удалена job'а, тестирующая миграцию с помощью RIOT
+- Rust обновлён до 1.97
+- 👷 ветка release/1.0 добавлена в  cargo-deny-scheduled
+
+### 1.0.5 — 2026-06-29 {: #01.0.5 }
+
+**Новая функциональность**
+
+- Реализованы команды LATENCY, SLOWLOG, CLIENT
+- Изменено поведение AUTH и ACL для большего соответствия Редису
+- Добавлен abi модулей
+
+**Новая функциональность (CLI)**
+
+- Реализована команда migrate-down
+
+**Исправления**
+
+
+- Информация о Radix и Picodata вынесена в отдельную секцию INFO
+- Исправлены индексы на _radix_ssubscriber в БД 8 и 9
+- Auth_password_enforce_lowercase выставляется в TRUE после создания пользователя
+- Исправлено поведение SET с флагами NX и GET
+- Блокирующие команды больше не создают локи в транзакциях
+- Поведение LRANGE приведено в соответствии с Redis
+- Поведение GETRANGE унифицированно с Redis
+- Добавлена проверка на переполнение в INCR-командах
+- Исправлено превращение nil в false в Lua-скриптах
+- Исправлен тип, возвращаемый redis.pcall
+- Исправлено сообщение об ошибке NotInteger
+- В Lua вынесена функция setmetatable
+- Добавлено превращение хеша в нижний регистр перед поиском в EVALSHA
+- Изменены RESP-типы в командах LPOP, RPOP
+- Команды LPOP/RPOP теперь выставляют мета-поле count в типе
+- Исправлено поведение hmget — теперь команда всегда возвращает список
+- Исправлена команда CLUSTER SHARDS
+- Увеличен response_timeout до 5с в CI-окружении
+- Исправлено получение cluster bus port
+- Исправлена работа с glab и jq
+
+**Производительность**
+
+- ⚡ применён locally/globally-приём на flush и flushall
+
+**Документация**
+
+- Добавлен ADR на команды категории geo
+
+**Внутренние улучшения**
+
+- Clippy-правки в radix-acl и radix-cli
+- Рефакторинг слоя репозиториев
+
+**Тестирование**
+
+- Типизированные хелперы изменения конфигурации
+- Заменён pgx на драйвер picodata-go
+- Добавлен тест на идентичность схем всех баз данных
+- Переписан тест на downgrade/upgrade
+- Helper.go выделен в отдельный модуль
+- Добавлена заглушка для команд config
+- Добавлена заглушка команды function flush для запуска редис-тестов
+- Добавлен рецепт запуска редис-тестов
+- Добавлен рецепт generate::redis-tests-update для вендоринга тестов Redis
+- Переработаны тесты на pubsub
+- Удалён дублирующий тест module_dict_api_selftest_passes
+- ✅ добавлена отладочная информация в тестирование миграций
+
+**Прочее**
+
+- ✅ добавлен линтер на синхронность блоков install_sql в топологиях
+- Обновлены сборочные образа до 26.1.4
+- Добавлен таргет standalone_compatible
+- Обновлены хедеры лицензий
+- Временно убраны бенчмарки из CI
+- Исправлена ошибка из-за выбора RESP3 по умолчанию в тестах миграции
+- Выделили отдельные правила запуска проверок по расписанию
+- Исправлена джоба test-migration
+- Исправили авторизацию для glab
+
+**Build**
+
+- 👷 добавлены проверки компилируемости тестов в ранние стадии CI
+- Добавлен отдельный integration рецепт в justfile
+- ⬆️ обновлены зависимости
+- Исправлено определение версий для тестов на даунгрейд
+
+**Vendor**
+
+- 🤖 обновлены тесты Redis до 8.8.0
 
 ### 1.0.4 — 2026-05-27 {: #01.0.4 }
 
@@ -4863,37 +5966,37 @@ Picodata другим способом.
 
 **Исправления**
 
-⚡ команда INFO ускорена
-Не выходить из listener без отмены файбера
-Исправлены тесты после включения флага push_result_includes_popped_items
-Исправлен запуск теста с tls downgrade
-Реализован правильный учет активных подписок
-Unsubscribe без аргументов отписывает от всех существующих подписок
-Исправили баг в декременте счётчика ключа при вытеснения
-Исправили возвращаемое значение hmset
-Исправлено сохранение правил ACL
-Исправлена паника при использовании ref cell в транзакциях
-Идентификаторы соединений теперь являются целочисленными и соответствуют Redis
-Исправлено удаление нескольких ключей через unlink
-Незнакомые команды теперь не отображаются в статистике
-Подкоманды в статистике форматируются через символ |
-Исправлена некорректная работа счетчиков в статистике
-Usec и usec_per_call теперь считаются корректно
-Исправлен пустой вывод в INFO commandstats
-Исправлена неверная конвертация в секунды в INFO
-Улучшена совместимость с будущими версиями Picodata
-Исправлена конфигурация кластеров разработчиков
-Исправил некорректный вывод TYPE для zset
-🔒 обновлена библиотека bytes
-Исправлена запись нулевых данных cluster info
-Изменена сериализация ответов GET/SET/TYPE в lua
-Исправлено хранение строк
-Исправлена некорректная десериализация из lua-скрипта
-Убрано состояние Reader из публичного контракта
-🧵 добавлен RefCell к Crc16Hasher
-🩹 изменён алгоритм расширения входящего буфера
-🩹 изменён алгоритм определения активности бакета
-Исправлен алгоритм уменьшения входящего буфера
+- ⚡ команда INFO ускорена
+- Не выходить из listener без отмены файбера
+- Исправлены тесты после включения флага push_result_includes_popped_items
+- Исправлен запуск теста с tls downgrade
+- Реализован правильный учет активных подписок
+- Unsubscribe без аргументов отписывает от всех существующих подписок
+- Исправили баг в декременте счётчика ключа при вытеснения
+- Исправили возвращаемое значение hmset
+- Исправлено сохранение правил ACL
+- Исправлена паника при использовании ref cell в транзакциях
+- Идентификаторы соединений теперь являются целочисленными и соответствуют Redis
+- Исправлено удаление нескольких ключей через unlink
+- Незнакомые команды теперь не отображаются в статистике
+- Подкоманды в статистике форматируются через символ |
+- Исправлена некорректная работа счетчиков в статистике
+- Usec и usec_per_call теперь считаются корректно
+- Исправлен пустой вывод в INFO commandstats
+- Исправлена неверная конвертация в секунды в INFO
+- Улучшена совместимость с будущими версиями Picodata
+- Исправлена конфигурация кластеров разработчиков
+- Исправил некорректный вывод TYPE для zset
+- 🔒 обновлена библиотека bytes
+- Исправлена запись нулевых данных cluster info
+- Изменена сериализация ответов GET/SET/TYPE в lua
+- Исправлено хранение строк
+- Исправлена некорректная десериализация из lua-скрипта
+- Убрано состояние Reader из публичного контракта
+- 🧵 добавлен RefCell к Crc16Hasher
+- 🩹 изменён алгоритм расширения входящего буфера
+- 🩹 изменён алгоритм определения активности бакета
+- Исправлен алгоритм уменьшения входящего буфера
 
 **Ломающие изменения**
 
