@@ -1,4 +1,4 @@
-## feat!
+## breaking/metrics
 
 - Cache metrics
   `pico_router_cache_{hits,misses,statements_added,statements_evicted}_total`
