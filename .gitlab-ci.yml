@@ -35,10 +35,10 @@ workflow:
 variables:
   REGISTRY: docker-public.binary.picodata.io
   BASE_IMAGE: ${CI_REGISTRY_IMAGE}/picodata-build-base
-  BASE_IMAGE_LATEST: latest
+  BASE_IMAGE_LATEST: "26.2"
   BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
 
-  MAIN_BRANCH: &main-branch master
+  MAIN_BRANCH: &main-branch "26.2"
   # to use in cache:key, do not forget to update it with MAIN_BRANCH
   # MAIN_BRANCH in lowercase, shortened to 63 bytes, and
   # with everything except 0-9 and a-z replaced with -.
