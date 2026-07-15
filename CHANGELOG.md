@@ -8,211 +8,535 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## [26.2.1] - Unreleased
-
-### Features
-
-- Added an equality-facts analysis pass over the relational plan that derives
-  always-true equalities from `WHERE` / `ON` predicates and stores them per
-  output slot. Downstream stages (motion planning, bucket determination, JPPD
-  transformation) can now answer "is this slot fixed to a constant?" and "do
-  these two slots belong to the same equality class?" in O(1) without
-  re-parsing predicates. Semantic boundaries (LEFT JOIN nullable side, CTE,
-  Motion, set-ops, `LIMIT` / `ORDER BY` / `GROUP BY` / `HAVING`) are respected
-  so unrelated scopes never merge, and parameter placeholders are kept
-  separate from constants to avoid leaking unsafe bindings into execution-time
-  filters.
-- Optimize `/api/v1/tiers` and `/api/v1/cluster` endpoints to reduce RPC calls.
-  HTTP addresses are now read from `_pico_peer_address` storage instead of RPC,
-  and memory info is only fetched from replicaset leaders. This reduces the
-  number of RPC calls from O(N×RF) to O(N) where N is the number of replicasets.
-  Offline instances now show their HTTP address (from storage) instead of empty string.
-- `EXPLAIN (FMT)` option is now properly supported for all modes (facets).
-  It is now possible to write `explain (fmt)` to get a formatted logical plan
-  or `explain (fmt, raw)` to get a formatted raw query plan.
-- [picodata#2728] Error generated when `INDEXED BY` is used with non existing index
-  now includes the target table name, making it explicit that the index-table
-  relationship lookup failed rather than a general index lookup.
-- Avoid an extra subplan clone in SQL planner single-replicaset dispatch,
-  reducing unnecessary work when preparing vshard routing.
-- Add new `BUCKETS` facet to `EXPLAIN` statement. Users can now inspect query
-  buckets without producing a full execution plan. This facet can be combined
-  with `RAW` and `FMT` options. When multiple facets are specified, output
-  sections are separated by headers.
-- Introduce `LOGICAL` facet in `EXPLAIN` statement. Users can now explicitly
-  request the logical query plan. This facet can be combined with `RAW`,
-  `BUCKETS`, and `FMT` options. The default `EXPLAIN` with no facets specified
-  now emits both `LOGICAL` and `BUCKETS`.
-- Support `DELETE` statementes inside transactional `DO` blocks.
-- Support `INSERT` statements inside transactional `DO` blocks.
-- `EXPLAIN (RAW)` is now more informative and concise due to the new tree-like
-  plan representation. The numbers in square brackets can indicate that a group
-  of operations is performed on the same relation; in addition, they can be
-  used as references to other operations.
-- Implement the `forward` option for DQL/DML queries that controls how queries
-  are routed with respect to bucket ownership:
-  - `on`: scatter-gather across replica set leaders;
-  - `ro_to_rw`: all buckets on one node, forwarding allowed;
-  - `off`: true locality, error if client is not on the correct node.
-- [picodata#1596] Added support for `ARRAY` columns in `CREATE TABLE` and
-  `ALTER TABLE ADD COLUMN`. Supported syntax: `T[]`, `T[N]`, `T[N][M]`,
-  `T[][]`, `T ARRAY`, `T ARRAY[N]`. Declared type and sizes are documentation
-  only and do not affect the internal implementation for now.
-- Introduce `CONTEXT` facet in `EXPLAIN` statement that shows query execution
-  options and remove them from `LOGICAL` facet output.
-- Added new `pico_instance_health_status` SQL scalar function to get current
-  instance's health status, - SQL wrapper over `/api/v1/health/status`.
-- Improved accuracy of `space:len()` for Vinyl tables.
-- [picodata#760] New configuration parameter `experimental_sharding_implementation` which
-  enables the new behavior on the given tier. The parameter must be specified at
-  cluster bootstrap via the configuration file and cannot be changed after that
-  (in the future this restriction may be lifted).
-- [picodata#760] Added validation of cluster.tier config file section against
-  the persisted system table state upon instance restart.
-- SQL dispatch now uses an explicitly frozen immutable execution plan passed
-  through read-only views, allowing `take_subtree` and its subtree copies to be
-  removed.
-- Extended constant folding: AND/OR identities, identity rules for equality with
-  true and inequality with false.
-- Provide a way to match vdbe opcode or motion row limit error to specific
-  storage query in EXPLAIN (RAW).
-- [picodata#2764] Transactional blocks now support LET statements.
-- [picodata#2765] Transactional blocks now support IF statements.
-- [picodata#2952] Added the `instance.wal_dir` configuration parameter, which
-  sets the directory where WAL files are stored.
-
-### WebUI
-
-- Added new instance filters: `isVoter` and `isRaftLeader`. Both support
-  the standard `Is` / `IsOneOf` / `IsNotOneOf` expressions with a Yes/No
-  value set.
-- Extended the generic `Filter` component to accept boolean-valued tag
-  options in addition to strings. The filter visual style is unchanged.
-- The replicaset card now renders placeholders for missing instances
-  (instances expected by the replicaset configuration but not currently
-  reported by the cluster).
-- Added `isRaftLeader` and `isVoter` flags to the instance model. Tier
-  and replicaset cards now show indicators when they contain the raft
-  leader or a voter instance.
-- The replicaset cards now display indicators if they have the not ready status.
-- The filter now has the option to select a text search tag without first entering text.
-- Added an instance details modal, opened by clicking an instance in the list. 
-  The modal includes the Overview, Storage, and Replication tabs. These tabs 
-  display the instance's general information, Vinyl and Memtx storage configuration, 
-  and replication details, including upstream and downstream information for remote 
-  nodes.
-- Updated the Russian localization for the "Leader State" and "State" fields in the 
-  instance list
-
-### Fixes
-
-- Fixed crash when disabling a plugin with slow background jobs. Previously,
-  if a job didn't finish within the shutdown timeout, the plugin library could
-  be unloaded while the job fiber was still running.
-- Fix cold restart deadlock where all instances in a replicaset would get empty
-  replication configs, preventing synchronization. The governor now includes
-  only the master in the fallback replication config, preserving conflict
-  isolation while allowing the cluster to recover.
-- Fixed a SQL planner panic caused by stale type metadata after clone-based
-  rewrites such as `BETWEEN` normalization and `GROUP BY` alias expansion.
-- Fixed plugin unnamed background jobs being marked with wrong source location
-  (missing `#[track_caller]` attribute).
-- Revoking privileges from `admin` user caused a panic. Now, revoking priviliges
-  from `admin` user is forbidden, for same reasons as for the `pico_service` user.
-- Fixed a bug preventing scalar functions from being used in GROUP BY.
-- Fixed a bug with the storage cache that caused an error "Temporary table TMP_ not found".
-- Fixed a permission error occured during query planning for non-admin users.
-- Fixed a regression in config parsing. `--iproto-listen`, `--iproto-advertise` and
-  `--http-listen` were triggering an error instead of overriding corresponding value
-  in yaml config when deprecated listen options were used in the config.
-- Fixed the errors `box.cfg.read_only is true` and `Failed to add a storage reference`,
-  which occurred when restarting a storage instance and previously required a retry.
-- Fixed `ALTER PLUGIN ADD SERVICE TO TIER` accepting nonexistent tier names.
-  Now validates that the specified tier exists and returns an error otherwise.
-- Fixed sentinel panic on long activation wait.
-- Fixed the `query for request_id with plan_id not found` error that occurred
-  on queries with `UNION` of `CTE` on a cluster consisting of multiple instances.
-- Logical `EXPLAIN` (the default mode) now preserves subquery indentation.
-- Backup operation will now be automatically aborted if there are offline instances.
-  This prevents cluster being locked in a readonly state.
-- Fixed the `NO_ROUTE_TO_BUCKET` error that occurred when sending a request to
-  the single node of a replicaset during its restart. This error is now retried
-  by the router.
-- Fixed an out-of-bounds panic in plugin RPC client when selecting a random
-  candidate instance for `RequestTarget::Any`.
-- [picodata#2812] Use direct RPC for query metadata on DQL cache miss
-  - Replace vshard-based Lua dispatch with ConnectionPool::call_raw for
-    the proc_query_metadata callback. This fixes SQL query execution from
-    arbiter tier instances (bucket_count=0) where no vshard router exists.
-- [picodata#2838] Fixed panic on single-node cluster forced expel
-  ("removed all voters"), which now returns an explicit error.
-- [picodata#2842] Fixed the `schema version has changed: need to re-compile SQL statement`
-  error, which could occur when you execute multiple DQL queries due to
-  yield during cache eviction.
-- [picodata#2888] Fixed a bug where cluster would fail to bootstrap if there were no voter
-  instances in the initial `--peer` set.
-- [picodata#2732] Fixed a panic when attempting to inherit privileges via SQL
-  (e.g., `GRANT admin TO somebody`). We do not support privilege inheritance
-  via `GRANT user1 TO user2`. The system now validates the grantee type and
-  returns a proper `NoSuchRole` error instead of panicking.
-- Reused CTE bodies are now materialized once per query instead of being
-  silently inlined per reference, fixing wrong results for non-deterministic
-  CTE bodies and avoiding redundant recomputation.
-- Fixed the `Storage cache hitrate` panels in the bundled Grafana dashboard.
-  They previously referenced non-existent metric names
-  (`pico_storage_cache_1st_requests_total` / `…_2nd_requests_total`) and the
-  formula folded DML traffic into the storage hitrate, silently inflating it.
-  The panels now compute `hits / (hits + misses)` from
-  `pico_storage_cache_hits_total` / `pico_storage_cache_misses_total` (DQL-only
-  by construction), aggregated across `rpc_type` so the iproto path
-  (`1st`, `2nd`) and the local fast-path (`local`) are reflected together.
-- All cache panels in `monitoring/dashboard/Picodata.json` now respect the
-  dashboard's `$tier` and `$replicaset` template variables.
-- Fixed CAS conflict detection for globally distributed tables with secondary
-  unique indexes. Previously, stale CAS requests could be appended to the raft
-  log with different primary keys but the same secondary unique key, causing
-  replicas to fail applying the later entry and preventing raft from advancing.
-  Such requests are now rejected with a retriable `CasConflictFound` error.
-- [picodata#2926] Reduced log verbosity in vshard for routine replicaset events.
-- Fixed NOT push-down: no longer short-circuits before recursing into operand
-  subtrees. The pass now also descends into Cast children to simplify NOTs nested inside.
-- [picodata#2775] Dropping the primary index is now rejected with a clear error.
-- `_pico_db_config` can no longer be truncated or deleted, as such operations
-  may break instances or clusters.
+## [26.2.1-rc1] - 2026-07-15
 
 ### Breaking changes
 
-- `CancellationTokenHandle::cancel()` now returns `Rc<OnceEvent>` instead of
-  `Channel<()>`. Use `finish_event.is_finished()` to check completion or
-  `finish_event.wait_timeout(duration)` to wait with a timeout.
-- Rename fields in `/api/v1/health/status` response: `reasons` to `issues`,
-  status level `unhealthy` to `broken`.
-- `picodata demo` subcommand is now gated behind the `demo` Cargo feature,
-  disabled by default. To build with demo, use `CARGO_FLAGS_EXTRA="--features demo"`.
-- Cache metrics
-  `pico_router_cache_{hits,misses,statements_added,statements_evicted}_total`
-  and `pico_storage_cache_{statements_added,statements_evicted}_total`
-  now carry `tier` and `replicaset` labels (previously unlabelled).
-  `pico_storage_cache_{hits,misses}_total`,
-  `pico_storage_1st_requests_total`, and `pico_storage_2nd_requests_total`
-  gain `tier` and `replicaset` in addition to their existing labels.
-  Aggregations across replicasets may need an explicit
-  `sum without (tier, replicaset)`.
-- Deprecated `plugin_dir` setting is removed following a major release. Use `share_dir` instead.
-- Deprecated `advertise_address` setting is removed following a major release. Use `iproto` section instead.
-- `--cluster-name` argument for `picodata expel` is removed following a major release as it is no longer needed.
-- Deprecated `ServiceWorkerManager` is removed from `picodata_plugin` following a major release.
-- `authenticate` function from `picodata_plugin` is now accessible only through `authentication` module.
-  Reexport in `internal` module is removed following a major release.
-- Deprecated `RegionBuffer::get` is removed following a major release.
+* remove deprecated plugin_dir following a major release in [!3018](https://git.picodata.io/core/picodata/-/merge_requests/3018)
+* remove deprecated advertise_address following a major release in [!3018](https://git.picodata.io/core/picodata/-/merge_requests/3018)
+* remove deprecated --cluster-name argument for expel in [!3018](https://git.picodata.io/core/picodata/-/merge_requests/3018)
+* undeprecate CancellationTokenHandle in [!3018](https://git.picodata.io/core/picodata/-/merge_requests/3018)
+* remove deprecated ServiceWorkerManager in [!3018](https://git.picodata.io/core/picodata/-/merge_requests/3018)
+* drop deprecated path for picodata_plugin::internal::authenticate in [!3018](https://git.picodata.io/core/picodata/-/merge_requests/3018)
+* remove deprecated RegionBuffer::get in [!3018](https://git.picodata.io/core/picodata/-/merge_requests/3018)
+* **(cli)** drop deprecated `--init-cfg` and `PICODATA_INIT_CFG` in [!3375](https://git.picodata.io/core/picodata/-/merge_requests/3375)
+* **(cfg)** drop deprecated `instance.cluster_name` in favor of `cluster.name` in [!3375](https://git.picodata.io/core/picodata/-/merge_requests/3375)
 
-### RPC API
+### Features
+* **(/api/v1/instance)** add memtx configuration details in [!3369](https://git.picodata.io/core/picodata/-/merge_requests/3369)
+* **(/api/v1/tiers)** add instance uuid in [!3317](https://git.picodata.io/core/picodata/-/merge_requests/3317)
+* **(/tiers)** add replicaset.state to /tiers in [!3049](https://git.picodata.io/core/picodata/-/merge_requests/3049)
+* **(auth/ldap)** implement `ldap` auth method in rust in [!3252](https://git.picodata.io/core/picodata/-/merge_requests/3252)
+* **(ci)** make audit job available in MR pipeline in [!3345](https://git.picodata.io/core/picodata/-/merge_requests/3345)
+* **(config)** add wal_dir tier configuration parameter in [!3294](https://git.picodata.io/core/picodata/-/merge_requests/3294)
+* **(config)** allow user to set WAL mode at the tier level in [!3260](https://git.picodata.io/core/picodata/-/merge_requests/3260)
+* **(config)** add memtx.dir and vinyl.dir instance configuration parameters in [!3385](https://git.picodata.io/core/picodata/-/merge_requests/3385)
+* **(domain/webui)** modal instance card in [!3392](https://git.picodata.io/core/picodata/-/merge_requests/3392)
+* **(http)** add /memory endpoint that provides memory usage separately in [!3060](https://git.picodata.io/core/picodata/-/merge_requests/3060)
+* **(http /cluster)** add info on voters and raft leader to instances in [!3041](https://git.picodata.io/core/picodata/-/merge_requests/3041)
+* **(join)** prefer replicaset matching instance's naming scheme on join in [!3387](https://git.picodata.io/core/picodata/-/merge_requests/3387)
+* **(metrics)** label local SQL metrics with tier/replicaset in [!3157](https://git.picodata.io/core/picodata/-/merge_requests/3157)
+* **(metrics)** add sql storage query duration metric and grafana panels in [!3175](https://git.picodata.io/core/picodata/-/merge_requests/3175)
+* **(monitoring)** rework duration histogram panels in [!3163](https://git.picodata.io/core/picodata/-/merge_requests/3163)
+* **(monitoring)** add Local SQL query panels in [!3157](https://git.picodata.io/core/picodata/-/merge_requests/3157)
+* **(monitoring)** tier/replicaset-filterable cache panels and per-instance breakdowns in [!3175](https://git.picodata.io/core/picodata/-/merge_requests/3175)
+* **(monitoring)** scale statement-counter panels for large clusters in [!3175](https://git.picodata.io/core/picodata/-/merge_requests/3175)
+* **(plugin)** allow access to plugin listener configuration without binding a socket in [!3174](https://git.picodata.io/core/picodata/-/merge_requests/3174)
+* **(plugin)** add on_raft_leader_change callback to plugin API in [!3224](https://git.picodata.io/core/picodata/-/merge_requests/3224)
+* **(plugin)** deprecate on_leader_change and rename on_raft_leader_change in [!3224](https://git.picodata.io/core/picodata/-/merge_requests/3224)
+* **(replication)** add synchronous replication support for tiers in [!2962](https://git.picodata.io/core/picodata/-/merge_requests/2962)
+* **(rpc)** add .proc_instance_details in [!3195](https://git.picodata.io/core/picodata/-/merge_requests/3195)
+* **(sql)** EXPLAIN now only quotes names when necessary in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** EXPLAIN no longer prints unnecessary aliases in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** EXPLAIN (FMT) is now supported for all facettes in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** drop obscure text pieces from EXPLAIN in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** introduce proper operator precedence to IR in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** improve formatting of EXPLAIN {INSERT,DELETE} in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** EXPLAIN (FMT) now splits long AND chains in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** EXPLAIN (FMT) now properly formats CASE operator in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** add BUCKETS mode (facet) to EXPLAIN in [!3113](https://git.picodata.io/core/picodata/-/merge_requests/3113)
+* **(sql)** add LOGICAL mode (facet) to EXPLAIN in [!3113](https://git.picodata.io/core/picodata/-/merge_requests/3113)
+* **(sql)** add equality-facts analysis over the relational plan in [!3089](https://git.picodata.io/core/picodata/-/merge_requests/3089)
+* **(sql)** support DELETE inside transactional DO blocks in [!3149](https://git.picodata.io/core/picodata/-/merge_requests/3149)
+* **(sql)** make EXPLAIN (RAW) representation more informative in [!3147](https://git.picodata.io/core/picodata/-/merge_requests/3147)
+* **(sql)** support INSERT ... VALUES inside transactional DO blocks in [!3146](https://git.picodata.io/core/picodata/-/merge_requests/3146)
+* **(sql)** use fancy decorations in EXPLAIN for better readability in [!3171](https://git.picodata.io/core/picodata/-/merge_requests/3171)
+* **(sql)** support array columns in create table in [!3148](https://git.picodata.io/core/picodata/-/merge_requests/3148)
+* **(sql)** introduce pico_instance_health_status() function in [!3162](https://git.picodata.io/core/picodata/-/merge_requests/3162)
+* **(sql)** extend boolean constant folding with AND/OR and equality identities in [!3193](https://git.picodata.io/core/picodata/-/merge_requests/3193)
+* **(sql)** compile transactional blocks into a single VDBE program in [!3170](https://git.picodata.io/core/picodata/-/merge_requests/3170)
+* **(sql)** support LET variables in transactional blocks in [!3170](https://git.picodata.io/core/picodata/-/merge_requests/3170)
+* **(sql)** support IF statements in transactional blocks in [!3170](https://git.picodata.io/core/picodata/-/merge_requests/3170)
+* **(sql)** forbid deleting/truncating from _pico_db_config in [!3169](https://git.picodata.io/core/picodata/-/merge_requests/3169)
+* **(sql)** allow unused LET statements inside transactional blocks in [!3184](https://git.picodata.io/core/picodata/-/merge_requests/3184)
+* **(sql)** cache assembled VDBE for transactional blocks in [!3310](https://git.picodata.io/core/picodata/-/merge_requests/3310)
+* **(sql)** cache rendered block patterns on the router in [!3310](https://git.picodata.io/core/picodata/-/merge_requests/3310)
+* **(sql)** place JOIN motions using equality facts in [!3261](https://git.picodata.io/core/picodata/-/merge_requests/3261)
+* **(sql)** provide more accurate execution location in EXPLAIN (RAW) in [!3330](https://git.picodata.io/core/picodata/-/merge_requests/3330)
+* **(sql)** rename temporary table prefix from TMP_ to _tmp_ in [!3371](https://git.picodata.io/core/picodata/-/merge_requests/3371)
+* **(sql)** provide more detailed EXPLAIN output for queries with UNION in [!3357](https://git.picodata.io/core/picodata/-/merge_requests/3357)
+* **(sql)** add per-relation restriction clause list in [!3356](https://git.picodata.io/core/picodata/-/merge_requests/3356)
+* **(sql)** support array literal in [!3180](https://git.picodata.io/core/picodata/-/merge_requests/3180)
+* **(sql)** INSERT ON CONFLICT DO UPDATE in transactional blocks in [!3202](https://git.picodata.io/core/picodata/-/merge_requests/3202)
+* **(sql)** show insert conflict hooks in raw explain in [!3202](https://git.picodata.io/core/picodata/-/merge_requests/3202)
+* **(sql)** reject repeated IOCDU hits for the same conflict key. in [!3202](https://git.picodata.io/core/picodata/-/merge_requests/3202)
+* **(tarantool)** expose `box_txn_set_flags`, add `set_force_async` and `transaction_force_async` helpers in [!2962](https://git.picodata.io/core/picodata/-/merge_requests/2962)
+* **(tarantool)** expose `box_promote` call in [!2962](https://git.picodata.io/core/picodata/-/merge_requests/2962)
+* **(webui)** add /api/v1/instance/<uuid> in [!3195](https://git.picodata.io/core/picodata/-/merge_requests/3195)
+* tarantool::space::UpdateOps new method implementations in [!2994](https://git.picodata.io/core/picodata/-/merge_requests/2994)
+* minor improvements to the "ready banner" in [!3084](https://git.picodata.io/core/picodata/-/merge_requests/3084)
+* use bindgen to generate bindings to VDBE at compile time in [!3087](https://git.picodata.io/core/picodata/-/merge_requests/3087)
+* introduce `forward` option in [!2844](https://git.picodata.io/core/picodata/-/merge_requests/2844)
+* introduce CONTEXT mode of EXPLAIN in [!3182](https://git.picodata.io/core/picodata/-/merge_requests/3182)
+* experimental_sharding_implementation parameter turns on the new sharding implementation in [!3002](https://git.picodata.io/core/picodata/-/merge_requests/3002)
+* validate cluster.tier config section against system tables in [!3002](https://git.picodata.io/core/picodata/-/merge_requests/3002)
+* add AddressSanitizer instrumentation script in [!3123](https://git.picodata.io/core/picodata/-/merge_requests/3123)
+* add Picodata SQL-aware update ops in [!3192](https://git.picodata.io/core/picodata/-/merge_requests/3192)
+* document system allocator and expose its metrics in [!3178](https://git.picodata.io/core/picodata/-/merge_requests/3178)
+* automate CHANGELOG and RELEASE_NOTES generation in [!3205](https://git.picodata.io/core/picodata/-/merge_requests/3205)
+* specify query number from EXPLAIN (RAW) in sql execution error in [!3262](https://git.picodata.io/core/picodata/-/merge_requests/3262)
+* support LOGICAL, BUCKETS, and FORWARD modes of EXPLAIN for transactions in [!3184](https://git.picodata.io/core/picodata/-/merge_requests/3184)
+* introduce per query bucket estimation in EXPLAIN (RAW) output in [!3280](https://git.picodata.io/core/picodata/-/merge_requests/3280)
+* implement initial bucket distribution in _pico_bucket in [!3019](https://git.picodata.io/core/picodata/-/merge_requests/3019)
+* bump tarantool-sys in [!3180](https://git.picodata.io/core/picodata/-/merge_requests/3180)
 
-- Added `.proc_instance_details` RPC call that returns instance-local information:
-  configuration fields (`instance_dir`, `backup_dir`, `admin_socket`, `share_dir`,
-  `audit`, `log`, `vinyl`) and per-replica replication state from `box.info.replication`.
-  Used by the new `GET /api/v1/instance/:uuid` HTTP endpoint.
+### Bug fixes
+* **(sql)** invalid local SQL in empty_motion1_test and exec_plan_order_by in [!2940](https://git.picodata.io/core/picodata/-/merge_requests/2940)
+* **(sql)** harden function argument cast rewrite for cloned and aliased nodes in [!2981](https://git.picodata.io/core/picodata/-/merge_requests/2981)
+* **(sql)** forbid revoking privileges from admin in [!2986](https://git.picodata.io/core/picodata/-/merge_requests/2986)
+* **(sql)** cache storage issue with temporary table TMP_ not found in [!3023](https://git.picodata.io/core/picodata/-/merge_requests/3023)
+* **(sql)** look up unlogged tables with admin privileges in [!3029](https://git.picodata.io/core/picodata/-/merge_requests/3029)
+* **(sql)** wait for box_is_ro and vshard readiness when restarting the nodes in [!2988](https://git.picodata.io/core/picodata/-/merge_requests/2988)
+* **(sql)** validate tier existence in ALTER PLUGIN ADD SERVICE TO TIER in [!3035](https://git.picodata.io/core/picodata/-/merge_requests/3035)
+* **(sql)** broken custom plans with cte unions in [!3039](https://git.picodata.io/core/picodata/-/merge_requests/3039)
+* **(sql)** EXPLAIN prints subqueries properly and allocates less memory in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** clarify index exists when queried for wrong table in [!3093](https://git.picodata.io/core/picodata/-/merge_requests/3093)
+* **(sql)** retry vshard NO_ROUTE_TO_BUCKET error when restarting single replicaset node in [!3032](https://git.picodata.io/core/picodata/-/merge_requests/3032)
+* **(sql)** schema version has changed during yield due to cache eviction in [!3099](https://git.picodata.io/core/picodata/-/merge_requests/3099)
+* **(sql)** correct spelling of "facette" to "facet" in [!3113](https://git.picodata.io/core/picodata/-/merge_requests/3113)
+* **(sql)** prevent as_explain() call on Plan without explain facet set in [!3113](https://git.picodata.io/core/picodata/-/merge_requests/3113)
+* **(sql)** do not panic on attempt to inherit privileges from another user in [!3110](https://git.picodata.io/core/picodata/-/merge_requests/3110)
+* **(sql)** use direct RPC for query metadata on DQL cache miss in [!3038](https://git.picodata.io/core/picodata/-/merge_requests/3038)
+* **(sql)** create a fresh ScanCte per CTE reference in [!3156](https://git.picodata.io/core/picodata/-/merge_requests/3156)
+* **(sql)** NOT push-down no longer skips operand subtrees and Cast in [!3193](https://git.picodata.io/core/picodata/-/merge_requests/3193)
+* **(sql)** asterisk alias resolution in CTE in [!3254](https://git.picodata.io/core/picodata/-/merge_requests/3254)
+* **(sql)** forbid dropping primary index in [!3222](https://git.picodata.io/core/picodata/-/merge_requests/3222)
+* **(sql)** point block errors at the offending statement in [!3290](https://git.picodata.io/core/picodata/-/merge_requests/3290)
+* **(sql)** stop discarding constants in mixed param/const equality classes in [!3261](https://git.picodata.io/core/picodata/-/merge_requests/3261)
+* **(sql)** check that scalar subqueries return 1 row in transactions in [!3339](https://git.picodata.io/core/picodata/-/merge_requests/3339)
+* **(sql)** frozen execution plan is still referenced in [!3347](https://git.picodata.io/core/picodata/-/merge_requests/3347)
+* **(sql)** correct query enumeration in vdbe errors in [!3354](https://git.picodata.io/core/picodata/-/merge_requests/3354)
+* **(sql)** recompile cached block VDBE on stale schema version in [!3358](https://git.picodata.io/core/picodata/-/merge_requests/3358)
+* **(sql)** stack overflow due to very long DNF chains in [!3353](https://git.picodata.io/core/picodata/-/merge_requests/3353)
+* **(sql)** distinct cache keys for LET vars with different names in [!3373](https://git.picodata.io/core/picodata/-/merge_requests/3373)
+* **(sql)** max tuple size mismatch in raft log in [!3142](https://git.picodata.io/core/picodata/-/merge_requests/3142)
+* **(sql)** substitute params with actual values in EXPLAIN (RAW) in [!3407](https://git.picodata.io/core/picodata/-/merge_requests/3407)
+* **(.proc_instance_details)** fix upgrade in [!3214](https://git.picodata.io/core/picodata/-/merge_requests/3214)
+* **(build)** add a missing backslash to Makefile in [!2998](https://git.picodata.io/core/picodata/-/merge_requests/2998)
+* **(cas)** detect secondary unique conflicts in [!3201](https://git.picodata.io/core/picodata/-/merge_requests/3201)
+* **(ci)** fix docker-compose job in [!3301](https://git.picodata.io/core/picodata/-/merge_requests/3301)
+* **(ci)** set up proper volume mappings in docker-compose.yml in [!3342](https://git.picodata.io/core/picodata/-/merge_requests/3342)
+* **(ci)** only upload flake-tracker reports on the master branch in [!3370](https://git.picodata.io/core/picodata/-/merge_requests/3370)
+* **(cli)** do not panic on forced expel if cluster has only one node in [!3106](https://git.picodata.io/core/picodata/-/merge_requests/3106)
+* **(config)** use configured max_tuple_size instead of hardcoded value in [!3221](https://git.picodata.io/core/picodata/-/merge_requests/3221)
+* **(debian)** support arm64 architecture in debian/control in [!3282](https://git.picodata.io/core/picodata/-/merge_requests/3282)
+* **(discovery)** support multi-address nodes in [!3312](https://git.picodata.io/core/picodata/-/merge_requests/3312)
+* **(docker)** remove PICODATA_PG_LISTEN env variable in [!3311](https://git.picodata.io/core/picodata/-/merge_requests/3311)
+* **(domain/webui)** filter text tag in [!3286](https://git.picodata.io/core/picodata/-/merge_requests/3286)
+* **(domain/webui)** state translation in [!3403](https://git.picodata.io/core/picodata/-/merge_requests/3403)
+* **(governor)** use master-only replication config in cold restart in [!2971](https://git.picodata.io/core/picodata/-/merge_requests/2971)
+* **(justfile)** align test-rust and lint-rust recipes with Makefile in [!3065](https://git.picodata.io/core/picodata/-/merge_requests/3065)
+* **(monitoring)** wire tier/replicaset variables into SQL panels in [!3163](https://git.picodata.io/core/picodata/-/merge_requests/3163)
+* **(pgproto)** upgrade pgwire to 0.40 to lift ParameterDescription size limit in [!3287](https://git.picodata.io/core/picodata/-/merge_requests/3287)
+* **(raft)** bump table schema version on index ddl in [!3201](https://git.picodata.io/core/picodata/-/merge_requests/3201)
+* **(raft)** do not spam the logs when a DdlCommit cannot be applied on a replica in [!3362](https://git.picodata.io/core/picodata/-/merge_requests/3362)
+* **(raft)** improve max tuple size error message in [!3384](https://git.picodata.io/core/picodata/-/merge_requests/3384)
+* **(rpc)** fix random candidate selection for Any target in [!3114](https://git.picodata.io/core/picodata/-/merge_requests/3114)
+* **(sentinel)** fix sentinel panic on long activation wait in [!3037](https://git.picodata.io/core/picodata/-/merge_requests/3037)
+* **(test)** bucket balance check divided by instances instead of replicasets in [!3065](https://git.picodata.io/core/picodata/-/merge_requests/3065)
+* **(test)** remove wait_balanced, migrate callers to wait_until_buckets_balanced in [!3065](https://git.picodata.io/core/picodata/-/merge_requests/3065)
+* **(test)** add missing dots in rolling upgrade binary name in [!3065](https://git.picodata.io/core/picodata/-/merge_requests/3065)
+* **(test)** correct bool-to-Lua formatting in KeyPart.__str__ in [!3080](https://git.picodata.io/core/picodata/-/merge_requests/3080)
+* **(test)** fix flaky test_pico_service_invalid_requirements_password in [!3103](https://git.picodata.io/core/picodata/-/merge_requests/3103)
+* **(test)** wait instance expelled before checking its process dead in [!3241](https://git.picodata.io/core/picodata/-/merge_requests/3241)
+* **(test)** reduce `test_bucket_count_custom_and_default` flakiness in [!3281](https://git.picodata.io/core/picodata/-/merge_requests/3281)
+* **(test)** terminate instances in reverse order in [!2962](https://git.picodata.io/core/picodata/-/merge_requests/2962)
+* **(test)** stabilize test_sync_replication_raft_and_synchro_quorum_loss in [!3367](https://git.picodata.io/core/picodata/-/merge_requests/3367)
+* **(test)** stabilize test_sync_replication_master_death_and_return_rf2 in [!3367](https://git.picodata.io/core/picodata/-/merge_requests/3367)
+* **(test)** make box_region tests pass under ASAN in [!3378](https://git.picodata.io/core/picodata/-/merge_requests/3378)
+* **(test)** remove `test_restart_timing` in [!3390](https://git.picodata.io/core/picodata/-/merge_requests/3390)
+* **(test)** fix config in integration and unit test in [!3395](https://git.picodata.io/core/picodata/-/merge_requests/3395)
+* **(test/tls)** embed test TLS certificates in the executables in [!3252](https://git.picodata.io/core/picodata/-/merge_requests/3252)
+* **(tools)** update VersionAlias import path in build_rolling_binaries in [!3065](https://git.picodata.io/core/picodata/-/merge_requests/3065)
+* **(tools)** skip missing versions in build_rolling_binaries in [!3065](https://git.picodata.io/core/picodata/-/merge_requests/3065)
+* **(tuple)** fix heap-use-after-free in TupleBuilder::into_tuple in [!3059](https://git.picodata.io/core/picodata/-/merge_requests/3059)
+* **(webui)** change existing deps & add the missing ones for eslint in [!3111](https://git.picodata.io/core/picodata/-/merge_requests/3111)
+* **(webui)** fix webui's lint rules in [!3111](https://git.picodata.io/core/picodata/-/merge_requests/3111)
+* **(webui)** increase instance columns widths in [!3340](https://git.picodata.io/core/picodata/-/merge_requests/3340)
+* **(webui mock cluster)** add isVoter and isRaftLeader fields in [!3048](https://git.picodata.io/core/picodata/-/merge_requests/3048)
+* **(webui mock cluster)** add replicasetState field in [!3053](https://git.picodata.io/core/picodata/-/merge_requests/3053)
+* **(yarn)** pin the version of plugin-cyclonedx in .yarnrc.yml in [!3377](https://git.picodata.io/core/picodata/-/merge_requests/3377)
+* handle fiber cancellation during SQL preemption in [!2908](https://git.picodata.io/core/picodata/-/merge_requests/2908)
+* fix(domain/webui) replacing crypto with uuid
 
+Closes #2820
+
+Since the cryptographic function module is not supported in some environments, an error occurs accessing the crypto.randomUUID function. It was decided to replace it with the uuid library. in [!2990](https://git.picodata.io/core/picodata/-/merge_requests/2990)
+* allow using scalar functions in GROUP BY in [!2987](https://git.picodata.io/core/picodata/-/merge_requests/2987)
+* lifetime annotation in Index::meta return type is now more general in [!2994](https://git.picodata.io/core/picodata/-/merge_requests/2994)
+* compatibility for iproto_{listen,advertise}/http_listen in cli/env in [!3021](https://git.picodata.io/core/picodata/-/merge_requests/3021)
+* add #[track_caller] to PicoContext::register_job in [!2995](https://git.picodata.io/core/picodata/-/merge_requests/2995)
+* add replicaset name to vshard config in [!2995](https://git.picodata.io/core/picodata/-/merge_requests/2995)
+* log sleep duration with less precision in [!2995](https://git.picodata.io/core/picodata/-/merge_requests/2995)
+* fix(domain/webui) highlighting the missing instances
+
+Closes #2828
+
+The display and highlighting of missing instances has been added to the replicaset card in [!3072](https://git.picodata.io/core/picodata/-/merge_requests/3072)
+* fix(domain/webui) filter icon
+
+Closes #2848
+
+The search icon has been added to the filter component in [!3073](https://git.picodata.io/core/picodata/-/merge_requests/3073)
+* auto-abort backup DDL when there are offline nodes in [!2871](https://git.picodata.io/core/picodata/-/merge_requests/2871)
+* remove `Changes` section from CHANGELOG.md in [!3154](https://git.picodata.io/core/picodata/-/merge_requests/3154)
+* used to not be able to bootstrap a cluster without at least one voter in the `--peer` set in [!3155](https://git.picodata.io/core/picodata/-/merge_requests/3155)
+* prevent crash when disabling plugin with background jobs in [!3133](https://git.picodata.io/core/picodata/-/merge_requests/3133)
+* fix(domain/webui) change capacity progress label
+
+Closes #1956 in [!3083](https://git.picodata.io/core/picodata/-/merge_requests/3083)
+* fix(domain/webui) display raft leader and voter
+
+The raft leader display has been added to the instance card. A display has been added for shooting range and replicaset cards indicating whether it includes an instance that is a raft ledaer. A "voting" status display has been added for the instance. The display of the "votes" status for the shooting gallery card has been changed.
+
+Closes #1725, #1723 in [!3185](https://git.picodata.io/core/picodata/-/merge_requests/3185)
+* more consistent ASan build via Makefile in [!3187](https://git.picodata.io/core/picodata/-/merge_requests/3187)
+* Updated the docker-compose file, now all instance settings are carried out through configuration files in [!3198](https://git.picodata.io/core/picodata/-/merge_requests/3198)
+* fix(domain/webui) separate memory request
+
+The get data about the memory of the shooting gallery and the instance, a separate request was added that occurs every 2 minutes. The logic of collecting initialized data for the list of ranges, replicases, and instances has been somewhat redesigned.
+
+Closes #2710 in [!3194](https://git.picodata.io/core/picodata/-/merge_requests/3194)
+* increase default timeout scaling factor for ASan to 5.0 in [!3209](https://git.picodata.io/core/picodata/-/merge_requests/3209)
+* Makefile is now compatible with make 3.81 in [!3213](https://git.picodata.io/core/picodata/-/merge_requests/3213)
+* add --with-webui and --skip-asan flags to asan-test-py in [!3219](https://git.picodata.io/core/picodata/-/merge_requests/3219)
+* don't build tests in `make build-*` in [!3227](https://git.picodata.io/core/picodata/-/merge_requests/3227)
+* `make coverage-report` now uses a named file for binary list in [!3228](https://git.picodata.io/core/picodata/-/merge_requests/3228)
+* fix(domain/webui) voter and raft leader filter
+
+New filtering options have been added to the filter, such as searching for an instance based on voter and isRaftLeader.
+
+Closes #2866 in [!3217](https://git.picodata.io/core/picodata/-/merge_requests/3217)
+* retry check for process is dead in test_cross_cluster_isolation in [!3243](https://git.picodata.io/core/picodata/-/merge_requests/3243)
+* wait instance expelled before checking its process dead in [!3241](https://git.picodata.io/core/picodata/-/merge_requests/3241)
+* disable auto-online to check wait_online handles replication error in [!3242](https://git.picodata.io/core/picodata/-/merge_requests/3242)
+* fix(domain/webui) replicaset ready state
+
+A display of the status of the replicaset that has not entered the ready state has been added to the replicaset card.
+
+Closes #1782 in [!3270](https://git.picodata.io/core/picodata/-/merge_requests/3270)
+* get user name in on_access_denied without reading memtx spaces in [!3196](https://git.picodata.io/core/picodata/-/merge_requests/3196)
+* always add master to replication config if no active master transitioning in [!2962](https://git.picodata.io/core/picodata/-/merge_requests/2962)
+* use increased RPC timeouts sender-side for all governor RPC in [!3019](https://git.picodata.io/core/picodata/-/merge_requests/3019)
+* update package 'crossbeam-epoch' to avoid audit error in [!3394](https://git.picodata.io/core/picodata/-/merge_requests/3394)
+* reduce errors in tests with ASAN turned on in [!3398](https://git.picodata.io/core/picodata/-/merge_requests/3398)
+
+### Refactor
+* **(auth)** implement `md5` auth method in Rust in [!3225](https://git.picodata.io/core/picodata/-/merge_requests/3225)
+* **(config)** use a decl macro to reduce repetition of address new-types in [!3252](https://git.picodata.io/core/picodata/-/merge_requests/3252)
+* **(governor)** remove unneeded check in [!2962](https://git.picodata.io/core/picodata/-/merge_requests/2962)
+* **(http_server.rs)** split http into multiple files in [!3368](https://git.picodata.io/core/picodata/-/merge_requests/3368)
+* **(justfile)** simplify test-python, drop verbose recipe in [!3065](https://git.picodata.io/core/picodata/-/merge_requests/3065)
+* **(pgproto)** rename EXPLAIN output column from "QUERY PLAN" to "EXPLAIN" in [!3113](https://git.picodata.io/core/picodata/-/merge_requests/3113)
+* **(sql)** do not derive Serialize for EXPLAIN structs in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** EXPLAIN now uses crate `indenter` in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** reorganize and simplify ColExpr for EXPLAIN in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** use TinyFmtBuffer's contents in EXPLAIN in [!2999](https://git.picodata.io/core/picodata/-/merge_requests/2999)
+* **(sql)** many fixes to EXPLAIN in [!3113](https://git.picodata.io/core/picodata/-/merge_requests/3113)
+* **(sql)** set explicit EXPLAIN modes in mock tests in [!2844](https://git.picodata.io/core/picodata/-/merge_requests/2844)
+* **(sql)** replace take_subtree with subtree views in [!3143](https://git.picodata.io/core/picodata/-/merge_requests/3143)
+* **(sql)** avoid cloning IR for single-rs dispatch in [!3244](https://git.picodata.io/core/picodata/-/merge_requests/3244)
+* **(sql)** pre-resolve LEFT JOIN equality scopes at freeze in [!3261](https://git.picodata.io/core/picodata/-/merge_requests/3261)
+* **(sql)** remove serde attributes from `Plan` struct in [!3261](https://git.picodata.io/core/picodata/-/merge_requests/3261)
+* **(sql)** remove equality propagation transformation in [!3261](https://git.picodata.io/core/picodata/-/merge_requests/3261)
+* **(sql)** split into old and new AST in [!3351](https://git.picodata.io/core/picodata/-/merge_requests/3351)
+* **(sql)** share the optimizer pass order between production and tests in [!3356](https://git.picodata.io/core/picodata/-/merge_requests/3356)
+* **(sql)** split sql-planner crate into 3 smaller ones in [!3379](https://git.picodata.io/core/picodata/-/merge_requests/3379)
+* **(webui)** fix sonarqube warnings in [!3007](https://git.picodata.io/core/picodata/-/merge_requests/3007)
+* **(webui)** fix sonar issues in [!3010](https://git.picodata.io/core/picodata/-/merge_requests/3010)
+* replace duplicated expression match blocks with ExprChildren trait
+* define_str_enum_or_smol_str! macro for better string enums in [!2995](https://git.picodata.io/core/picodata/-/merge_requests/2995)
+* extract define_smolstr_newtype into a separate file in [!2995](https://git.picodata.io/core/picodata/-/merge_requests/2995)
+* use `BackupGuard` to reliably call `box.backup.stop` on backup error in [!2871](https://git.picodata.io/core/picodata/-/merge_requests/2871)
+* rename health status fields for clarity in [!3088](https://git.picodata.io/core/picodata/-/merge_requests/3088)
+* use std::time::Duration for all SQL timeouts in [!3032](https://git.picodata.io/core/picodata/-/merge_requests/3032)
+* move "picodata demo" behind feature flag in [!3115](https://git.picodata.io/core/picodata/-/merge_requests/3115)
+* remove unused reqwest dev-dependency in [!3118](https://git.picodata.io/core/picodata/-/merge_requests/3118)
+* unify TLS configuration handling between `picodata-plugin` and `picodata` in [!2926](https://git.picodata.io/core/picodata/-/merge_requests/2926)
+* log TLS configuration for every configured listener in [!2926](https://git.picodata.io/core/picodata/-/merge_requests/2926)
+* remove now unused `ListenAddress::conflicts_with` in [!2926](https://git.picodata.io/core/picodata/-/merge_requests/2926)
+* use struct to avoid unnamed bool parameters in `load_listener_tls_config_from_files` in [!2926](https://git.picodata.io/core/picodata/-/merge_requests/2926)
+* do not expose APIs exported for `picodata` to plugins in [!2926](https://git.picodata.io/core/picodata/-/merge_requests/2926)
+* introduce helper methods for iteration over plugin configuration in [!2926](https://git.picodata.io/core/picodata/-/merge_requests/2926)
+* replace `cargo::warning` helper with `cargo::warning!` macro in [!3087](https://git.picodata.io/core/picodata/-/merge_requests/3087)
+* cleanup read-only parameter handling in [!3002](https://git.picodata.io/core/picodata/-/merge_requests/3002)
+* some tweaks to sharding governor code in preparation for future work in [!3019](https://git.picodata.io/core/picodata/-/merge_requests/3019)
+
+### Documentation
+* **(auth/ldap)** document the new LDAP YAML configuration in [!3350](https://git.picodata.io/core/picodata/-/merge_requests/3350)
+* **(changelog)** add webui changes in [!3217](https://git.picodata.io/core/picodata/-/merge_requests/3217)
+* **(config)** add wal_dir description in [!3294](https://git.picodata.io/core/picodata/-/merge_requests/3294)
+* **(config)** add `cluster.tier.wal_mode` description in [!3260](https://git.picodata.io/core/picodata/-/merge_requests/3260)
+* **(header)** sync menu content with new picodata.io in [!3138](https://git.picodata.io/core/picodata/-/merge_requests/3138)
+* **(header)** mirror Astro Header DOM and styling from picodata.io in [!3138](https://git.picodata.io/core/picodata/-/merge_requests/3138)
+* **(kirovets)** rename exporter to importer in architecture scheme in [!3318](https://git.picodata.io/core/picodata/-/merge_requests/3318)
+* **(kirovets)** add system params documentation in [!3316](https://git.picodata.io/core/picodata/-/merge_requests/3316)
+* **(kirovets)** add is_public endpoint flag description in [!3315](https://git.picodata.io/core/picodata/-/merge_requests/3315)
+* **(kirovets)** improve KafkaDebezium importer params documentation in [!3314](https://git.picodata.io/core/picodata/-/merge_requests/3314)
+* **(kirovets)** improve parquet importer source params documentation in [!3313](https://git.picodata.io/core/picodata/-/merge_requests/3313)
+* **(kirovets)** add using meta in user defined function in [!3061](https://git.picodata.io/core/picodata/-/merge_requests/3061)
+* **(sirin)** update plugin documentation for 1.2.1 release in [!3238](https://git.picodata.io/core/picodata/-/merge_requests/3238)
+* **(sirin)** update plugin documentation for 1.3.0 release in [!3337](https://git.picodata.io/core/picodata/-/merge_requests/3337)
+* **(sql)** add pico_instance_health_status() description in [!3200](https://git.picodata.io/core/picodata/-/merge_requests/3200)
+* document anonymous blocks / transactions support in [!2938](https://git.picodata.io/core/picodata/-/merge_requests/2938)
+* document unified socket configuration for Picodata config file and settings reference in [!2965](https://git.picodata.io/core/picodata/-/merge_requests/2965)
+* document K8S endpoints for health check API in [!2965](https://git.picodata.io/core/picodata/-/merge_requests/2965)
+* fix and update configuration options names in [!2977](https://git.picodata.io/core/picodata/-/merge_requests/2977)
+* describe LSM compaction for glossary in [!2983](https://git.picodata.io/core/picodata/-/merge_requests/2983)
+* review note for alter_user.md in [!2986](https://git.picodata.io/core/picodata/-/merge_requests/2986)
+* describe opts for _pico_table in [!3008](https://git.picodata.io/core/picodata/-/merge_requests/3008)
+* new group by article in [!3017](https://git.picodata.io/core/picodata/-/merge_requests/3017)
+* update Argus description, fix style and typos in [!3031](https://git.picodata.io/core/picodata/-/merge_requests/3031)
+* updates and fixes for Radix in [!3043](https://git.picodata.io/core/picodata/-/merge_requests/3043)
+* add dev doc, catalog upgrade guide in [!2922](https://git.picodata.io/core/picodata/-/merge_requests/2922)
+* updates and fixes for config.md in [!3056](https://git.picodata.io/core/picodata/-/merge_requests/3056)
+* recover comments about the directory structure used by build.rs in [!3075](https://git.picodata.io/core/picodata/-/merge_requests/3075)
+* new article about JDBC and Weblogic in [!3078](https://git.picodata.io/core/picodata/-/merge_requests/3078)
+* fix typos, prettify screenshots in [!3090](https://git.picodata.io/core/picodata/-/merge_requests/3090)
+* update documentation regarding current state of Sirin plugin in [!3036](https://git.picodata.io/core/picodata/-/merge_requests/3036)
+* improve documentation for transactional blocks in [!3101](https://git.picodata.io/core/picodata/-/merge_requests/3101)
+* unify GA4 measurement ID with main site in [!3138](https://git.picodata.io/core/picodata/-/merge_requests/3138)
+* add Yandex.Metrika counter 99962757 (unified with picodata.io) in [!3138](https://git.picodata.io/core/picodata/-/merge_requests/3138)
+* fix incorrect header bar overlay in [!3140](https://git.picodata.io/core/picodata/-/merge_requests/3140)
+* add marge-bot info to CONTRIBUTING.md in [!3141](https://git.picodata.io/core/picodata/-/merge_requests/3141)
+* fix URLs of Picodata certificates in [!3145](https://git.picodata.io/core/picodata/-/merge_requests/3145)
+* update install instructions for Alt p10 and p11 in [!3152](https://git.picodata.io/core/picodata/-/merge_requests/3152)
+* hide Helm chart occurrences in [!3166](https://git.picodata.io/core/picodata/-/merge_requests/3166)
+* adjust CREATE TABLE IN TIER description in [!3167](https://git.picodata.io/core/picodata/-/merge_requests/3167)
+* update Radix documentation for Radix 1.0.2 in [!3160](https://git.picodata.io/core/picodata/-/merge_requests/3160)
+* add new article on K8S Operator in [!3220](https://git.picodata.io/core/picodata/-/merge_requests/3220)
+* update docker-compose tutorial in [!3203](https://git.picodata.io/core/picodata/-/merge_requests/3203)
+* fix example command for ALTER SYSTEM SET iproto_net_msg_max in [!3230](https://git.picodata.io/core/picodata/-/merge_requests/3230)
+* edit Expression BNF, add _pico_bucket description in [!3208](https://git.picodata.io/core/picodata/-/merge_requests/3208)
+* fix and update LDAP+StartTLS description in [!3259](https://git.picodata.io/core/picodata/-/merge_requests/3259)
+* document LET in transactional blocks in [!3170](https://git.picodata.io/core/picodata/-/merge_requests/3170)
+* document IF in transactional blocks in [!3170](https://git.picodata.io/core/picodata/-/merge_requests/3170)
+* describe Picodata use cases in [!3020](https://git.picodata.io/core/picodata/-/merge_requests/3020)
+* update documentation for Radix 1.0.4 in [!3285](https://git.picodata.io/core/picodata/-/merge_requests/3285)
+* show value/label encoding for state gauges in [!3319](https://git.picodata.io/core/picodata/-/merge_requests/3319)
+* remove traces of the obsolete K8S article in [!3324](https://git.picodata.io/core/picodata/-/merge_requests/3324)
+* remove Riot section in [!3334](https://git.picodata.io/core/picodata/-/merge_requests/3334)
+* update Radix config file example and add some details in [!3338](https://git.picodata.io/core/picodata/-/merge_requests/3338)
+* update plugin-configure description in cli.md in [!3338](https://git.picodata.io/core/picodata/-/merge_requests/3338)
+
+### Performance
+* **(http)** reduce RPC calls in /api/v1/tiers and /api/v1/cluster in [!2991](https://git.picodata.io/core/picodata/-/merge_requests/2991)
+* **(sql)** memoize block statement constant ids across executions in [!3393](https://git.picodata.io/core/picodata/-/merge_requests/3393)
+* **(sql-planner)** avoid extra clone in single-rs dispatch in [!3102](https://git.picodata.io/core/picodata/-/merge_requests/3102)
+* add `pg-gonnect-bench` - a tool for measuring throughput of postgresql connection establishment in [!3225](https://git.picodata.io/core/picodata/-/merge_requests/3225)
+
+### Testing
+* **(auth)** add regression test for role authentication from plugin API in [!2985](https://git.picodata.io/core/picodata/-/merge_requests/2985)
+* **(auth/ldap)** update `ldap` auth tests in [!3252](https://git.picodata.io/core/picodata/-/merge_requests/3252)
+* **(cluster)** fix bucket balance wait skipping all instances when no instances are excluded in [!3071](https://git.picodata.io/core/picodata/-/merge_requests/3071)
+* **(cluster)** support per-tier wait for bucket balancing in [!3091](https://git.picodata.io/core/picodata/-/merge_requests/3091)
+* **(cluster)** integrate discovery check into bucket balancing in [!3091](https://git.picodata.io/core/picodata/-/merge_requests/3091)
+* **(config/ldap)** add unit tests for `ldap` configuration in [!3252](https://git.picodata.io/core/picodata/-/merge_requests/3252)
+* **(framework)** extend version handling utilities in [!2677](https://git.picodata.io/core/picodata/-/merge_requests/2677)
+* **(health)** add new entity for structured error expectations in [!2502](https://git.picodata.io/core/picodata/-/merge_requests/2502)
+* **(health)** replace boolean flags with new structured error entity in [!2502](https://git.picodata.io/core/picodata/-/merge_requests/2502)
+* **(health)** introduce proper health check module in [!2502](https://git.picodata.io/core/picodata/-/merge_requests/2502)
+* **(health)** wait for vshard readiness before verifying distributed ops in [!3065](https://git.picodata.io/core/picodata/-/merge_requests/3065)
+* **(health)** bump DDL timeout to reduce flakiness in rolling upgrades in [!3382](https://git.picodata.io/core/picodata/-/merge_requests/3382)
+* **(pgproto)** combine all cache-related tests into a single file in [!3042](https://git.picodata.io/core/picodata/-/merge_requests/3042)
+* **(registry)** replace slot-based registry with version-keyed runtime map in [!2677](https://git.picodata.io/core/picodata/-/merge_requests/2677)
+* **(registry)** adopt suite to the new lookup API in [!2677](https://git.picodata.io/core/picodata/-/merge_requests/2677)
+* **(registry)** add tests for Registry and Executable in [!3137](https://git.picodata.io/core/picodata/-/merge_requests/3137)
+* **(restart)** fix flaky test_wait_vshard_storage in [!3080](https://git.picodata.io/core/picodata/-/merge_requests/3080)
+* **(rolling)** migrate to new version of the registry API in [!2677](https://git.picodata.io/core/picodata/-/merge_requests/2677)
+* **(rolling)** fall back to previous patch when tagged binary is not yet published in [!2677](https://git.picodata.io/core/picodata/-/merge_requests/2677)
+* **(rolling)** remove data fill methods from cluster deployment in [!2982](https://git.picodata.io/core/picodata/-/merge_requests/2982)
+* **(rolling)** migrate rolling tests to new health checks in [!2502](https://git.picodata.io/core/picodata/-/merge_requests/2502)
+* **(rolling)** do not skip previously temporarily skipped tests in [!2502](https://git.picodata.io/core/picodata/-/merge_requests/2502)
+* **(rolling)** wait for governor to finish operations after cluster upgrade in [!2502](https://git.picodata.io/core/picodata/-/merge_requests/2502)
+* **(rolling)** update `Executable.version` when latest tagged patch is not available yet in [!3071](https://git.picodata.io/core/picodata/-/merge_requests/3071)
+* **(sentinel)** add test for sentinel panic on long activation wait in [!3037](https://git.picodata.io/core/picodata/-/merge_requests/3037)
+* **(sql)** move known defects to a dedicated dir in [!2984](https://git.picodata.io/core/picodata/-/merge_requests/2984)
+* **(sql)** introduce inline_snapshot to some tests in [!3042](https://git.picodata.io/core/picodata/-/merge_requests/3042)
+* **(sql)** move sql-specific tests to test/int/sql in [!3042](https://git.picodata.io/core/picodata/-/merge_requests/3042)
+* **(sql)** implement snapshot tests in sql test framework in [!3025](https://git.picodata.io/core/picodata/-/merge_requests/3025)
+* **(sql)** move known defects of SQL generation to dedicated directory in [!3327](https://git.picodata.io/core/picodata/-/merge_requests/3327)
+* **(sql)** validate that preemption doesn't happen in a transactional block in [!3348](https://git.picodata.io/core/picodata/-/merge_requests/3348)
+* **(sql)** cover iocdu params through SQL test framework in [!3202](https://git.picodata.io/core/picodata/-/merge_requests/3202)
+* **(tcp)** remove flaky external DNS check from `get_libc_addrs` test in [!3274](https://git.picodata.io/core/picodata/-/merge_requests/3274)
+* fix expected catalog versions in upgrade in [!2969](https://git.picodata.io/core/picodata/-/merge_requests/2969)
+* temporarily skip test_upgrade_25_5_to_25_6_check_opts after bump to 26.2.0 in [!2969](https://git.picodata.io/core/picodata/-/merge_requests/2969)
+* fix flaky config tests in [!2970](https://git.picodata.io/core/picodata/-/merge_requests/2970)
+* use pytest-timeout deadline for all retry loops in [!2955](https://git.picodata.io/core/picodata/-/merge_requests/2955)
+* reduce test_process_management flakiness in [!2995](https://git.picodata.io/core/picodata/-/merge_requests/2995)
+* fix bug in _get_target_state_reason, make it easier to detect such bugs in future in [!3057](https://git.picodata.io/core/picodata/-/merge_requests/3057)
+* mark test_wait_vshard_storage flaky in [!3064](https://git.picodata.io/core/picodata/-/merge_requests/3064)
+* make test_rotation less flaky in [!3027](https://git.picodata.io/core/picodata/-/merge_requests/3027)
+* add a set of tests that validate how TLS configuration is printed in [!2926](https://git.picodata.io/core/picodata/-/merge_requests/2926)
+* add --skip flag to inner test harness in [!3122](https://git.picodata.io/core/picodata/-/merge_requests/3122)
+* use current timezone offset instead of historical 1970 offset in [!3139](https://git.picodata.io/core/picodata/-/merge_requests/3139)
+* decouple cargo build and binary resolution from CI mode in [!3144](https://git.picodata.io/core/picodata/-/merge_requests/3144)
+* add test for concurrent waiters on background job token in [!3133](https://git.picodata.io/core/picodata/-/merge_requests/3133)
+* add skip_if attribute to conditionally skip tests in [!3177](https://git.picodata.io/core/picodata/-/merge_requests/3177)
+* skip ASan-incompatible unit tests in [!3177](https://git.picodata.io/core/picodata/-/merge_requests/3177)
+* move peformance tests to separate test/perf directory in [!3151](https://git.picodata.io/core/picodata/-/merge_requests/3151)
+* move test_large_snapshot to test/perf directory in [!3151](https://git.picodata.io/core/picodata/-/merge_requests/3151)
+* add timeout scaling factor for slow environments in [!3151](https://git.picodata.io/core/picodata/-/merge_requests/3151)
+* add skip_asan marker for sanitizer builds in [!3151](https://git.picodata.io/core/picodata/-/merge_requests/3151)
+* mark ASan-incompatible tests with skip_asan in [!3151](https://git.picodata.io/core/picodata/-/merge_requests/3151)
+* tweak Instance.__repr__ in [!3002](https://git.picodata.io/core/picodata/-/merge_requests/3002)
+* move test_config_storage_conflicts_on_restart into test_config_file.py in [!3002](https://git.picodata.io/core/picodata/-/merge_requests/3002)
+* use terminate() over kill() for shutting instances down in [!3096](https://git.picodata.io/core/picodata/-/merge_requests/3096)
+* pass LLVM_PROFILE_NAME to instance subprocess in [!3096](https://git.picodata.io/core/picodata/-/merge_requests/3096)
+* respect CARGO_BUILD_TARGET in the test framework in [!3096](https://git.picodata.io/core/picodata/-/merge_requests/3096)
+* replace build-asan-dev with new ASan targets using sanitizer.py in [!3209](https://git.picodata.io/core/picodata/-/merge_requests/3209)
+* auto-detect correct path to `plug_wrong_version` with codecov in [!3216](https://git.picodata.io/core/picodata/-/merge_requests/3216)
+* fix flaky backup tests in [!3295](https://git.picodata.io/core/picodata/-/merge_requests/3295)
+* replace wait_until_instance_has_this_many_active_buckets with wait_until_buckets_balanced in [!3295](https://git.picodata.io/core/picodata/-/merge_requests/3295)
+* move `md5` and `ldap` auth tests to picodata in [!3225](https://git.picodata.io/core/picodata/-/merge_requests/3225)
+* add more tests for transactional blocks in [!3344](https://git.picodata.io/core/picodata/-/merge_requests/3344)
+* add SQL tests for UUID insertions in [!3349](https://git.picodata.io/core/picodata/-/merge_requests/3349)
+* restructurize the plugin testing system in [!3224](https://git.picodata.io/core/picodata/-/merge_requests/3224)
+* add more tests for compute_bucket_distribution_imbalance in [!3374](https://git.picodata.io/core/picodata/-/merge_requests/3374)
+* fix flaky test_call_normalization in [!3391](https://git.picodata.io/core/picodata/-/merge_requests/3391)
+* fetch current leader to fix flaky test in [!3391](https://git.picodata.io/core/picodata/-/merge_requests/3391)
+
+### Miscellaneous Tasks
+* **(cert)** remove remaining golang related files in third_party/nghttp2 in [!3288](https://git.picodata.io/core/picodata/-/merge_requests/3288)
+* **(cfg)** parametrize `init_core_logger`, drop config dependency in [!3375](https://git.picodata.io/core/picodata/-/merge_requests/3375)
+* **(ir)** replace BlockStatement getters with iterators in [!3170](https://git.picodata.io/core/picodata/-/merge_requests/3170)
+* **(ir)** store let var name as SmolStr in [!3290](https://git.picodata.io/core/picodata/-/merge_requests/3290)
+* **(lua)** use Tarantool's NULL instead of lua nil in [!3094](https://git.picodata.io/core/picodata/-/merge_requests/3094)
+* **(notes)** fix syntax error in [!3320](https://git.picodata.io/core/picodata/-/merge_requests/3320)
+* **(sbroad)** remove unnecessary Eq and PartialEq impls in [!3269](https://git.picodata.io/core/picodata/-/merge_requests/3269)
+* **(sql)** replace 'Trying to add motions' and 'motion key position must exist' panics with errors in [!3266](https://git.picodata.io/core/picodata/-/merge_requests/3266)
+* **(sql)** separate block patterns from parameter values in [!3310](https://git.picodata.io/core/picodata/-/merge_requests/3310)
+* **(sql)** split define_str_enum macro in [!3180](https://git.picodata.io/core/picodata/-/merge_requests/3180)
+* **(test)** move anon block tests to test/int/sql folder in [!3170](https://git.picodata.io/core/picodata/-/merge_requests/3170)
+* **(webui)** try to upgrade various js deps to fix security advisory in [!3055](https://git.picodata.io/core/picodata/-/merge_requests/3055)
+* **(webui)** run yarn dedupe in [!3055](https://git.picodata.io/core/picodata/-/merge_requests/3055)
+* **(webui)** refactor webui's build rules in [!3109](https://git.picodata.io/core/picodata/-/merge_requests/3109)
+* add 26.1 to install_rolling_binaries.sh in [!2969](https://git.picodata.io/core/picodata/-/merge_requests/2969)
+* update minimum python version in pyproject to 3.11 in [!3005](https://git.picodata.io/core/picodata/-/merge_requests/3005)
+* hide `picodata run --interactive` from `--help` in [!2972](https://git.picodata.io/core/picodata/-/merge_requests/2972)
+* tweak sbom infra to fix webui sbom and extend checks in [!2997](https://git.picodata.io/core/picodata/-/merge_requests/2997)
+* introduce tlua::Ignore - a helper struct for ignoring values returned from lua in [!2994](https://git.picodata.io/core/picodata/-/merge_requests/2994)
+* update prepare_source_tree_for_stat_analysis.py in [!2828](https://git.picodata.io/core/picodata/-/merge_requests/2828)
+* remove dead code from prepare_source_tree_for_stat_analysis.py in [!3028](https://git.picodata.io/core/picodata/-/merge_requests/3028)
+* apply python formatting to tools and benchmarks in [!3055](https://git.picodata.io/core/picodata/-/merge_requests/3055)
+* sort alphabetically list of files to be deleted before stat analysis in [!3055](https://git.picodata.io/core/picodata/-/merge_requests/3055)
+* update python deps to fix security advisory in [!3055](https://git.picodata.io/core/picodata/-/merge_requests/3055)
+* exclude more supplementary files from stat analysis in [!3055](https://git.picodata.io/core/picodata/-/merge_requests/3055)
+* report all password policy violations at once in [!2888](https://git.picodata.io/core/picodata/-/merge_requests/2888)
+* print ready banner with connection info after startup in [!2891](https://git.picodata.io/core/picodata/-/merge_requests/2891)
+* update sbom meta for changed deps in [!3074](https://git.picodata.io/core/picodata/-/merge_requests/3074)
+* update 'rand' crate in [!3076](https://git.picodata.io/core/picodata/-/merge_requests/3076)
+* Expression::may_need_parentheses now uses exhaustive match in [!3081](https://git.picodata.io/core/picodata/-/merge_requests/3081)
+* bump raft-rs commit in [!3082](https://git.picodata.io/core/picodata/-/merge_requests/3082)
+* bump rustls-webpki version in [!3086](https://git.picodata.io/core/picodata/-/merge_requests/3086)
+* update axios and follow-redirects webui deps in [!3085](https://git.picodata.io/core/picodata/-/merge_requests/3085)
+* turn on check_quorum property in [!2475](https://git.picodata.io/core/picodata/-/merge_requests/2475)
+* explain CARGO_FLAGS vs. CARGO_FLAGS_EXTRA in Makefile in [!3115](https://git.picodata.io/core/picodata/-/merge_requests/3115)
+* move explain_forward() to a different module in [!3171](https://git.picodata.io/core/picodata/-/merge_requests/3171)
+* clippy warning in [!3002](https://git.picodata.io/core/picodata/-/merge_requests/3002)
+* add code coverage tools in [!3096](https://git.picodata.io/core/picodata/-/merge_requests/3096)
+* adjust Makefile & build.rs in the presence of code coverage in [!3096](https://git.picodata.io/core/picodata/-/merge_requests/3096)
+* add `make coverage-trim-target` for CI jobs
+* place skip_asan marker on tests with short timeouts in [!3219](https://git.picodata.io/core/picodata/-/merge_requests/3219)
+* add a Makefile rule to merge code coverage reports in [!3226](https://git.picodata.io/core/picodata/-/merge_requests/3226)
+* make tools/find-executables.sh more robust in [!3226](https://git.picodata.io/core/picodata/-/merge_requests/3226)
+* delete more files before sonar cube analysis in [!3247](https://git.picodata.io/core/picodata/-/merge_requests/3247)
+* bump vshard in [!3255](https://git.picodata.io/core/picodata/-/merge_requests/3255)
+* add new features to tools/coverage.py in [!3233](https://git.picodata.io/core/picodata/-/merge_requests/3233)
+* give preference to llvm-cxxfilt in tools/coverage.py in [!3233](https://git.picodata.io/core/picodata/-/merge_requests/3233)
+* rename coverage-related Makefile rules and add new ones in [!3233](https://git.picodata.io/core/picodata/-/merge_requests/3233)
+* update js deps for sonar in [!3256](https://git.picodata.io/core/picodata/-/merge_requests/3256)
+* regenerate Cargo.lock to update to latest version of openssl bindings in [!3256](https://git.picodata.io/core/picodata/-/merge_requests/3256)
+* add `make coverage-demo-diff` for local code reviews in [!3268](https://git.picodata.io/core/picodata/-/merge_requests/3268)
+* don't show trivial branch coverage in codecov reports in [!3268](https://git.picodata.io/core/picodata/-/merge_requests/3268)
+* unify rand crate dependency in [!3291](https://git.picodata.io/core/picodata/-/merge_requests/3291)
+* update allowed git sources for audit in [!3293](https://git.picodata.io/core/picodata/-/merge_requests/3293)
+* add missing changelog from older patch releases in [!3297](https://git.picodata.io/core/picodata/-/merge_requests/3297)
+* adjust tile width so that it stays within sane limits in [!3300](https://git.picodata.io/core/picodata/-/merge_requests/3300)
+* call absolute as a method in install rolling binaries script in [!3304](https://git.picodata.io/core/picodata/-/merge_requests/3304)
+* ignore unmaintained proc-macro-error2 in [!3309](https://git.picodata.io/core/picodata/-/merge_requests/3309)
+* update postgres-protocol, postgres-types, pgwire in [!3329](https://git.picodata.io/core/picodata/-/merge_requests/3329)
+* override tarantool's symbol name demangler in [!3336](https://git.picodata.io/core/picodata/-/merge_requests/3336)
+* update memmap2 crate in [!3345](https://git.picodata.io/core/picodata/-/merge_requests/3345)
+* update Ubuntu dependencies in CONTRIBUTING.md in [!3355](https://git.picodata.io/core/picodata/-/merge_requests/3355)
+* bump anyhow to 1.0.103 in [!3366](https://git.picodata.io/core/picodata/-/merge_requests/3366)
+* bump 'tarantool-sys' submodule in [!3380](https://git.picodata.io/core/picodata/-/merge_requests/3380)
+* bump 'tarantool-sys' submodule in [!3380](https://git.picodata.io/core/picodata/-/merge_requests/3380)
+* bump 'tarantool-sys' submodule in [!3380](https://git.picodata.io/core/picodata/-/merge_requests/3380)
+* remove empty file cbo.rs in [!3383](https://git.picodata.io/core/picodata/-/merge_requests/3383)
+* replace DerivedType hashing with bincode in [!3180](https://git.picodata.io/core/picodata/-/merge_requests/3180)
+* port old changelog entries to new format in [!3409](https://git.picodata.io/core/picodata/-/merge_requests/3409)
+* edit fragments in [!3409](https://git.picodata.io/core/picodata/-/merge_requests/3409)
+* freeze submodules for 26.3.0
+* update AUTHORS
+
+### Build
+* **(rolling)** cache binary installation in a dedicated job in [!2677](https://git.picodata.io/core/picodata/-/merge_requests/2677)
+* fix build_rolling_binaries.py in [!2969](https://git.picodata.io/core/picodata/-/merge_requests/2969)
+* trigger pycopin ci to run tests after picodata release in [!2979](https://git.picodata.io/core/picodata/-/merge_requests/2979)
+* disable automatic pipeline for user branch pushes in [!2978](https://git.picodata.io/core/picodata/-/merge_requests/2978)
+* only run certlinters manually in [!2993](https://git.picodata.io/core/picodata/-/merge_requests/2993)
+* Revert "ci: disable automatic pipeline for user branch pushes" in [!3006](https://git.picodata.io/core/picodata/-/merge_requests/3006)
+* upload pytest junit report XMLs to flake-tracker in [!3024](https://git.picodata.io/core/picodata/-/merge_requests/3024)
+* use _SLUG variables for cache key values in [!3092](https://git.picodata.io/core/picodata/-/merge_requests/3092)
+* disable automatic pipeline for user branch pushes in [!3107](https://git.picodata.io/core/picodata/-/merge_requests/3107)
+* use `needs` instead of `stages` in tarantool-module CI in [!3132](https://git.picodata.io/core/picodata/-/merge_requests/3132)
+* fix test-vanilla-* job in tarantool-module pipeline in [!3132](https://git.picodata.io/core/picodata/-/merge_requests/3132)
+* make build-base-image-* job dependencies optional in [!3159](https://git.picodata.io/core/picodata/-/merge_requests/3159)
+* fix docker build add clang dev dependency in [!3150](https://git.picodata.io/core/picodata/-/merge_requests/3150)
+* add /usr/share/picodata directory to docker images in [!3150](https://git.picodata.io/core/picodata/-/merge_requests/3150)
+* added code coverage data collection in [!3211](https://git.picodata.io/core/picodata/-/merge_requests/3211)
+* move distroless images to separate namespace in [!3204](https://git.picodata.io/core/picodata/-/merge_requests/3204)
+* collect code coverage data only for BUILD_PROFILE==dev in [!3240](https://git.picodata.io/core/picodata/-/merge_requests/3240)
+* add jobs to run build and tests with AddressSanitizer in [!3237](https://git.picodata.io/core/picodata/-/merge_requests/3237)
+* split CMake downloads from base cache in [!3239](https://git.picodata.io/core/picodata/-/merge_requests/3239)
+* fix audit job image tag in [!3250](https://git.picodata.io/core/picodata/-/merge_requests/3250)
+* use fs.picodata.io to store code coverage artifacts in [!3249](https://git.picodata.io/core/picodata/-/merge_requests/3249)
+* fix asan-build-dev image tag in [!3275](https://git.picodata.io/core/picodata/-/merge_requests/3275)
+* fix missing CI_COMMIT_BRANCH variable in [!3271](https://git.picodata.io/core/picodata/-/merge_requests/3271)
+* remove `rolling_binaries_cache` from `test-py-sql-linux` job in [!3273](https://git.picodata.io/core/picodata/-/merge_requests/3273)
+* remove `flaky-finder` job in [!3273](https://git.picodata.io/core/picodata/-/merge_requests/3273)
+* add comment with code coverage report url to commits in [!3264](https://git.picodata.io/core/picodata/-/merge_requests/3264)
+* use pypi mirror for poetry and pip in [!3284](https://git.picodata.io/core/picodata/-/merge_requests/3284)
+* build distroless image from package in [!3282](https://git.picodata.io/core/picodata/-/merge_requests/3282)
+* remove deprecated changelog checkbox from MR description in [!3296](https://git.picodata.io/core/picodata/-/merge_requests/3296)
+* enable sccache for rustc in [!3298](https://git.picodata.io/core/picodata/-/merge_requests/3298)
+* validate commit headers with prek instead of pre-commit in [!3305](https://git.picodata.io/core/picodata/-/merge_requests/3305)
+* validate fragment well-formedness in [!3321](https://git.picodata.io/core/picodata/-/merge_requests/3321)
+* specify rust version for macos cargo command in [!3322](https://git.picodata.io/core/picodata/-/merge_requests/3322)
+* move docs jobs to child pipeline in [!3323](https://git.picodata.io/core/picodata/-/merge_requests/3323)
+* trigger examples pipeline on release tag in [!3306](https://git.picodata.io/core/picodata/-/merge_requests/3306)
+* add cargo cache for deploy-coverage job in [!3386](https://git.picodata.io/core/picodata/-/merge_requests/3386)
+* feature freeze 26.2 branch## [26.2.0] - 2026-03-25
+
+### Breaking changes
+
+* prepend "picodata " to SQL version string in [!2968](https://git.picodata.io/core/picodata/-/merge_requests/2968)
+
+### Features
+
+### Testing
+* fix git describe parsing when running exactly on a tag in [!2969](https://git.picodata.io/core/picodata/-/merge_requests/2969)
 
 ## [26.1.4] - 2026-05-28
 
