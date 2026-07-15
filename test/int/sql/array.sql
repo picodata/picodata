@@ -330,6 +330,36 @@ SELECT array[1, 2][1] + 100.5;
 -- EXPECTED:
 101.5
 
+-- TEST: array-literal-text-key-1
+-- SQL:
+select array[10, 20]['1'] * 5.5;
+-- EXPECTED:
+55
+
+-- TEST: array-literal-text-key-2
+-- SQL:
+select array[10, 20]['1'::text] * 5.5;
+-- EXPECTED:
+55
+
+-- TEST: array-literal-computed-text-key-1
+-- SQL:
+select array[10, 20][array['1'][1]] * 5.5;
+-- EXPECTED:
+55
+
+-- TEST: array-literal-computed-int-key-1
+-- SQL:
+select array[10, 20]['0' + 1] * 5.5;
+-- EXPECTED:
+55
+
+-- TEST: array-literal-computed-int-key-2
+-- SQL:
+select array[10, 20][(SELECT '1' * 1)] * 5.5;
+-- EXPECTED:
+55
+
 -- TEST: index-init-clean
 -- SQL:
 CREATE TABLE t_idx (a INT PRIMARY KEY, b INT ARRAY);
@@ -481,25 +511,6 @@ SELECT ARRAY['10', '20']::int[][1];
 SELECT ARRAY[1, 2]::double[][2] + 0.5;
 -- EXPECTED:
 2.5
-
--- TEST: cast-multidim-rejected
--- SQL:
-SELECT b::int[][] FROM t1;
--- ERROR:
-rule parsing error
-
--- TEST: cast-multidim-string-key-error
--- SQL:
-SELECT b::int[]['a'] FROM t1;
--- ERROR:
-failed to parse 'a' as a value of type int
-
-
--- TEST: cast-multidim-deep-rejected
--- SQL:
-SELECT b::int[][][][] FROM t1;
--- ERROR:
-rule parsing error
 
 -- TEST: cast-decimal-into-int-col
 -- SQL:
@@ -657,3 +668,118 @@ WITH cte(a) AS (SELECT $1) SELECT a[1] FROM cte;
 nil
 -- ERROR:
 cannot index expression of type text
+
+-- TEST: array-parameter-key
+-- SQL:
+select array[10, 20][$1];
+-- PARAMS:
+2
+-- EXPECTED:
+20
+
+-- TEST: catalog-object-indexing-returns-any-which-should-still-be-indexable-1
+-- SQL:
+select x['bucket_id_start'] is null
+from (select (_pico_bucket('default')[1]) as x);
+-- EXPECTED:
+false
+
+-- TEST: catalog-object-indexing-returns-any-which-should-still-be-indexable-2
+-- SQL:
+select x['name'] is null
+from (select format[1] as x from _pico_table where name = '_pico_table');
+-- EXPECTED:
+false
+
+-- TEST: regular-array-indexing-produces-well-typed-scalar-which-is-not-indexable-1
+-- SQL:
+select x[1] from (select b[1] as x from t1 where a = 1);
+-- ERROR:
+cannot index expression of type int
+
+-- TEST: regular-array-indexing-produces-well-typed-scalar-which-is-not-indexable-2
+-- SQL:
+select x[1] from (select b::decimal[][1] as x from t1 where a = 1);
+-- ERROR:
+cannot index expression of type numeric
+
+-- TEST: regular-array-indexing-produces-well-typed-scalar-which-is-not-indexable-3
+-- SQL:
+select x[1] from (select b::decimal[][1][2][3][4] as x from t1 where a = 1);
+-- ERROR:
+cannot index expression of type numeric
+
+-- TEST: regular-array-indexing-produces-well-typed-scalar-which-is-not-indexable-4
+-- SQL:
+with q(a) as (
+    select b[1] as x from t1 where a = 1
+)
+select x[1] from (select a as x from (select * from q));
+-- ERROR:
+cannot index expression of type int
+
+-- TEST: multidim-string-key-null-0
+-- SQL:
+SELECT b['1'] FROM t1 WHERE a = 1;
+-- EXPECTED:
+1
+
+-- TEST: multidim-string-key-null-1
+-- SQL:
+SELECT b['1'::text] FROM t1 WHERE a = 1;
+-- EXPECTED:
+1
+
+-- TEST: multidim-string-key-null-2
+-- SQL:
+SELECT b['1' + 1] FROM t1 WHERE a = 1;
+-- EXPECTED:
+2
+
+-- TEST: multidim-string-key-null-3
+-- SQL:
+SELECT b['bad'] FROM t1 WHERE a = 1;
+-- EXPECTED:
+null
+
+-- TEST: multidim-string-key-null-4
+-- SQL:
+SELECT b[1]['bad'] FROM t1 WHERE a = 1;
+-- EXPECTED:
+null
+
+-- TEST: multidim-string-key-null-5
+-- SQL:
+SELECT b[1][2]['bad'] FROM t1 WHERE a = 1;
+-- EXPECTED:
+null
+
+-- TEST: cast-multidim-rejected
+-- SQL:
+SELECT b::int[][] FROM t1;
+-- ERROR:
+rule parsing error
+
+-- TEST: cast-multidim-deep-rejected
+-- SQL:
+SELECT b::int[][][][] FROM t1;
+-- ERROR:
+rule parsing error
+
+-- TEST: cast-multidim-string-key-null-1
+-- SQL:
+SELECT b::int[]['bad'] FROM t1 WHERE a = 1;
+-- EXPECTED:
+null
+
+-- TEST: cast-multidim-string-key-null-2
+-- SQL:
+SELECT b::int[][1]['bad'] FROM t1 WHERE a = 1;
+-- EXPECTED:
+null
+
+-- TEST: cast-multidim-string-key-null-3
+-- SQL:
+SELECT b::int[][1][2]['bad'] FROM t1 WHERE a = 1;
+-- EXPECTED:
+null

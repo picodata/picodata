@@ -9,8 +9,10 @@ pub enum NestedType {
     Boolean,
     Datetime,
     Uuid,
+
     /// Element type for `json[]`.
     Map,
+
     /// Forbidden for user tables.
     Any,
 }
@@ -220,7 +222,7 @@ pub enum ExprKind<Id> {
     /// Examples: `a[1]`, `a[4][8]`, `m['some']['json']['path']`
     IndexChain {
         source: Box<Expr<Id>>,
-        indexes: Vec<Expr<Id>>,
+        keys: Vec<Expr<Id>>,
     },
     /// Comparison expression.
     /// Examples: `1 = b`, (1,2) in (values (1,2))`, `(1,2) = (1,2)`

@@ -5,6 +5,7 @@ edition.workspace = true
 license-file.workspace = true
 
 [dependencies]
+smallvec = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

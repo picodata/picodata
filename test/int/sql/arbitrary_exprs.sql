@@ -314,11 +314,11 @@ SELECT current_state[2] + 1 FROM _pico_instance;
 -- ERROR:
 could not resolve operator overload for \+\(any, int\)
 
--- TEST: test_index_cannot_be_string
+-- TEST: test_text_key_is_missing_in_array
 -- SQL:
 SELECT current_state['lol'::text] FROM _pico_instance;
--- ERROR:
-could not resolve operator overload for \[\]\(array, text\)
+-- EXPECTED:
+null
 
 -- TEST: test_cannot_index_expr_of_random_type
 -- SQL:
@@ -353,11 +353,11 @@ SELECT (SELECT count(*) FROM murmur_tables) = (SELECT count(*) FROM sharded_tabl
 -- EXPECTED:
 true
 
--- TEST: test_map_index_must_be_a_string
+-- TEST: test_int_key_is_missing_in_map
 -- SQL:
 SELECT distribution[1]['ShardedImplicitly'] FROM _pico_table WHERE name = 't';
--- ERROR:
-could not resolve operator overload for \[\]\(map, int, text\)
+-- EXPECTED:
+null
 
 -- TEST: test_subsequent_indexes_must_be_strings_or_integers-1
 -- SQL:
