@@ -1,4 +1,5 @@
 from conftest import Cluster
+from conftest import Instance
 from conftest import log_crawler
 from conftest import Retriable
 from framework.registry import get_or_make_registry
@@ -853,3 +854,124 @@ def test_upgrade_check_proc_instance_details(cluster: Cluster, registry: Registr
         result = instance.call(".proc_instance_details")
         assert result is not None
         assert "instance_dir" in result
+
+
+# Changes to the bootstrap schema and data must have matching upgrade
+# operations. Otherwise, an upgraded cluster may silently end up with
+# a different state than a cluster bootstrapped directly on the same
+# version, which might lead to an unpredictable cluster behavior.
+#
+# See <https://git.picodata.io/core/picodata/issues/2998>.
+@pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        VersionAlias.PREVIOUS_MINOR,
+        VersionAlias.CURRENT,
+    ]
+)
+def test_upgraded_schema_matches_fresh_cluster(
+    cluster: Cluster,
+    registry: Registry,
+):
+    def dump_bootstrap_state(instance: Instance):
+        """
+        Dump schema catalogs and non-topology bootstrap rows. The test captures
+        then this state after an upgrade and a fresh bootstrap. After that, it
+        compares each catalog to detect bootstrap changes without matching upgrades.
+        """
+        return instance.eval(
+            """
+            -- Define the catalogs to dump and the fields
+            -- which uniquely identify a row in each catalog.
+            local catalog_key_fields = {
+                _space = { "name" },
+                _index = { "space_id", "name" },
+                _func = { "name" },
+                _pico_table = { "name" },
+                _pico_index = { "table_id", "name" },
+                _pico_routine = { "name" },
+                _pico_property = { "key" },
+                _pico_db_config = { "key", "scope" },
+                _pico_user = { "name" },
+                _pico_privilege = {
+                    "grantee_id", "object_type", "object_id", "privilege",
+                },
+            }
+
+            -- Define fields to remove because they depend on
+            -- creation order or the path taken to the state.
+            local path_dependent_fields = {
+                _func = { id = true, created = true, last_altered = true },
+                _pico_table = { schema_version = true },
+                _pico_index = { schema_version = true },
+                _pico_routine = { schema_version = true },
+                _pico_user = { schema_version = true },
+                _pico_privilege = { schema_version = true },
+            }
+
+            -- Define generated or path-dependent values to remove while
+            -- retaining their rows, so the presence of entries are checked.
+            local keys_to_remove = {
+                _pico_property = {
+                    global_schema_version = true,
+                    next_schema_version = true,
+                },
+                _pico_db_config = { jwt_secret = true },
+            }
+            local bootstrap_state = {}
+
+            -- Convert every tuple to a map and normalize
+            -- the fields and values defined above.
+            for catalog_name, key_field_names in pairs(catalog_key_fields) do
+                local catalog_rows = {}
+                local fields_to_remove = path_dependent_fields[catalog_name] or {}
+                for _, tuple in box.space[catalog_name]:pairs() do
+                    local normalized_row = tuple:tomap({ names_only = true })
+                    for field_name in pairs(fields_to_remove) do
+                        normalized_row[field_name] = nil
+                    end
+
+                    local catalog_value_keys = keys_to_remove[catalog_name] or {}
+                    if catalog_value_keys[normalized_row.key] then
+                        normalized_row.value = nil
+                    end
+
+                    -- Build a stable key from the catalog's unique fields,
+                    -- allowing the resulting maps to be compared in Python.
+                    local key_parts = {}
+                    for _, field_name in ipairs(key_field_names) do
+                        table.insert(key_parts, tostring(normalized_row[field_name]))
+                    end
+                    local row_key = table.concat(key_parts, ":")
+                    catalog_rows[row_key] = normalized_row
+                end
+                bootstrap_state[catalog_name] = catalog_rows
+            end
+
+            return bootstrap_state
+            """
+        )
+
+    previous = registry.get_or_skip(VersionAlias.PREVIOUS_MINOR)
+    current = registry.get(VersionAlias.CURRENT)
+    assert current is not None
+
+    # XXX: `Cluster.deploy` overrides `sql_ddl_timeout` with the `pytest`'s timeout.
+    # That would make both clusters equal even if a changed bootstrap default had no
+    # matching upgrade operation, so keep the bootstrap value intact in both clusters.
+    cluster.pytest_timeout = None
+
+    # Bootstrap on the previous version and capture the schema after upgrade.
+    cluster.deploy(executable=previous, instance_count=1)
+    cluster.change_executable(current)
+    upgraded_state = dump_bootstrap_state(cluster.leader())
+
+    # Reuse the cluster fixture to bootstrap a clean cluster on the current version.
+    cluster.reset()
+    os.makedirs(cluster.data_dir)  # XXX: `Cluster.reset` removes the data directory.
+    cluster.deploy(executable=current, instance_count=1)
+    fresh_state = dump_bootstrap_state(cluster.leader())
+
+    # Check catalogs separately so pytest reports the mismatching catalog.
+    for catalog_name in upgraded_state:
+        assert upgraded_state[catalog_name] == fresh_state[catalog_name], catalog_name
