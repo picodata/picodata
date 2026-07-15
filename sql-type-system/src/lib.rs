@@ -142,10 +142,10 @@ mod tests {
         expr(ExprKind::Array(exprs))
     }
 
-    fn index_chain(source: Expr, indexes: Vec<Expr>) -> Expr {
+    fn index_chain(source: Expr, keys: Vec<Expr>) -> Expr {
         expr(ExprKind::IndexChain {
             source: source.into(),
-            indexes,
+            keys,
         })
     }
 

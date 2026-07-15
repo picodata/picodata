@@ -155,11 +155,11 @@ pub fn to_type_expr(
         }
         Expression::Index(IndexExpr { child, indexes, .. }) => {
             let source = Box::new(to_type_expr(*child, plan, subquery_map)?);
-            let indexes = indexes
+            let keys = indexes
                 .iter()
                 .map(|idx| to_type_expr(*idx, plan, subquery_map))
                 .collect::<Result<Vec<_>, SbroadError>>()?;
-            let kind = TypeExprKind::IndexChain { source, indexes };
+            let kind = TypeExprKind::IndexChain { source, keys };
             Ok(TypeExpr::new(node_id, kind))
         }
         Expression::Cast(Cast { child, to }) => {

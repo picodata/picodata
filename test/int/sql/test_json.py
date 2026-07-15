@@ -85,8 +85,8 @@ def test_json_extract(cluster: Cluster):
     res = cur.execute("SELECT JSON_EXTRACT_PATH(col, 'd', 'e') FROM t").fetchall()
     assert res == [([1, 2, 3],), (None,)]
 
-    with pytest.raises(psycopg.errors.InternalError, match="cannot index expression of type any"):
-        res = cur.execute("SELECT JSON_EXTRACT_PATH(col, 'd', 'e')[1] FROM t").fetchall()
+    res = cur.execute("SELECT JSON_EXTRACT_PATH(col, 'd', 'e')[1] FROM t").fetchall()
+    assert res == [(1,), (None,)]
 
     res = cur.execute("SELECT JSON_EXTRACT_PATH(col, 'd', NULL) FROM t").fetchall()
     assert res == [(None,), (None,)]

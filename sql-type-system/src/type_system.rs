@@ -476,59 +476,16 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             }
             ExprKind::IndexChain {
                 ref source,
-                ref indexes,
+                ref keys,
             } => {
-                // We choose an array by default because the desired type can determine its type,
-                // whereas `map[key]` is always of type `any`.
-                let source_desired =
+                // We choose array by default because the desired type
+                // can affect its element type; whereas `map[key]`
+                // is always of type `any`.
+                let desired_type =
                     NestedType::try_from(desired_type).map_or(Type::Map, Type::Array);
-                let mut report = self.analyze(source, source_desired)?;
 
-                // Ensure source is a map or an array and determine type for the first index.
-                let first_idx_type = match report.get_type(&source.id) {
-                    Type::Map => Type::Text,
-                    Type::Array(_) => Type::Integer,
-                    other => return Err(Error::CannotIndexExpressionOfType(other)),
-                };
-
-                let mut indexes_iter = indexes.iter();
-                // Analyze first index type.
-                let first_idx = indexes_iter.next().expect("indexes cannot be empty");
-                let r = self.analyze(first_idx, first_idx_type)?;
-                report.extend(r);
-                // Analyze subsequent index types.
-                for idx in indexes_iter {
-                    let r = self.analyze(idx, Type::Text)?;
-                    report.extend(r);
-                }
-
-                // Type check index types:
-                // 1) The first corresponds to the source type,
-                //     i.e. int for arrays and text for maps.
-                // 2) Subsequent indexes are applied to expressions of any type,
-                //    (which can be maps or arrays), so these indexes can have
-                //    either integer or text types.
-                let expected_types = iter::once([first_idx_type, first_idx_type])
-                    .chain(iter::repeat([Type::Integer, Type::Text]));
-                if iter::zip(indexes, expected_types)
-                    .any(|(idx, expected)| !expected.contains(&report.get_type(&idx.id)))
-                {
-                    // Add the source itself to the argument list to make the error message
-                    // clearly indicate a problem with array or map indexing.
-                    let mut args = vec![source.as_ref()];
-                    args.extend(indexes.iter());
-                    return Err(self.could_not_resolve_function_overload_error(
-                        FunctionKind::Operator,
-                        "[]",
-                        &args,
-                    ));
-                }
-
-                let result_type = match report.get_type(&source.id) {
-                    Type::Array(nested) => Type::from(nested),
-                    _ => Type::Any,
-                };
-                report.report(&expr.id, result_type);
+                let (ty, mut report) = self.analyze_index_op(source, keys, desired_type)?;
+                report.report(&expr.id, ty);
                 Ok(report)
             }
             ExprKind::Coalesce(ref args) => {
@@ -634,6 +591,53 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             }
             ExprKind::Array(args) => self.analyze_array_literal(&expr.id, args, desired_type),
         }
+    }
+
+    /// Analyze index operator, e.g. `x[10]` or `x['10']['foo']`.
+    /// The whole chain of square brackets (`[_][_]...`) is considered
+    /// to be a single operation with multiple arguments (keys),
+    /// unless separated by parentheses and such.
+    fn analyze_index_op(
+        &mut self,
+        source: &Expr<Id>,
+        key_exprs: &[Expr<Id>],
+        desired_type: Type,
+    ) -> Result<(Type, TypeReport<Id>), Error> {
+        let mut report = self.analyze(source, desired_type)?;
+        let source_type = report.get_type(&source.id);
+
+        // Ensure that the index operator is applicable to `source`.
+        let result_type = match source_type {
+            Type::Any | Type::Map => Type::Any,
+            Type::Array(nested) => Type::from(nested),
+            other => return Err(Error::CannotIndexExpressionOfType(other)),
+        };
+
+        // We've made patches to Tarantool for arrays to support TEXT indexes.
+        // Thus, both `Array` and `Map` support both key types.
+        let allowed_key_types = iter::repeat([Type::Text, Type::Integer]);
+        for (key, expected) in iter::zip(key_exprs, allowed_key_types) {
+            // However, we always prefer `Text` to `Integer` even for arrays.
+            // Otherwise, we'd have ambiguities due to type coercions affecting
+            // literals, e.g. '10' (TEXT or INTEGER depending on desired type).
+            //
+            // Furthermore, consider `x['10']['20']`. If type of '10' depended
+            // on the type of `x`, it would be very frustrating to say the least.
+            // Even worse, we could have `'10'::integer` and `'20'::text`.
+            let rep = self.analyze(key, Type::Text)?;
+            report.extend(rep);
+
+            if !expected.contains(&report.get_type(&key.id)) {
+                let args: Vec<_> = iter::chain([source], key_exprs).collect();
+                return Err(self.could_not_resolve_function_overload_error(
+                    FunctionKind::Operator,
+                    "[]",
+                    &args,
+                ));
+            }
+        }
+
+        Ok((result_type, report))
     }
 
     /// Infer the type of an array literal using `analyze_homogeneous_exprs`.
