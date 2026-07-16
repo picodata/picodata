@@ -179,7 +179,7 @@ impl std::fmt::Display for Instance {
             self.raft_id,
             self.replicaset_name,
             Transition { from: self.current_state, to: self.target_state },
-            &self.failure_domain,
+            self.failure_domain,
             self.tier,
             self.picodata_version,
         )

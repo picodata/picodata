@@ -1701,7 +1701,7 @@ impl Plan {
                 columns.len()
             )));
         }
-        for (col_id, col_name) in child_columns.into_iter().zip(columns.into_iter()) {
+        for (col_id, col_name) in child_columns.into_iter().zip(columns) {
             let col_alias = self
                 .get_mut_expression_node(col_id)
                 .expect("column expression");

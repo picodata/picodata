@@ -5,7 +5,7 @@ use std::{
 };
 
 thread_local! {
-    static SYMBOL_NAME_BUFFER: RefCell<[u8; 1024]> = RefCell::new([0; _]);
+    static SYMBOL_NAME_BUFFER: RefCell<[u8; 1024]> = const { RefCell::new([0; _]) };
 }
 
 /// Replace tarantool's symbol name demangler (a weak symbol) using this impl (a strong symbol).

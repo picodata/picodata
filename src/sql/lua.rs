@@ -169,12 +169,10 @@ pub(crate) unsafe extern "C" fn execute_dql_dump_lua(
     lua::lua_rawseti(l, -2, 1);
 
     // Remaining rows.
-    let mut idx = 2;
-    for mp_bytes in iter {
+    for (idx, mp_bytes) in (2..).zip(iter) {
         let mut cur = Cursor::new(mp_bytes);
         push_mp_value_to_lua(l, &mut cur).expect("Failed to push a row to Lua");
         lua::lua_rawseti(l, -2, idx);
-        idx += 1;
     }
 
     lua::lua_settable(l, -3);

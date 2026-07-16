@@ -437,7 +437,7 @@ pub(crate) fn get_tier_replication_mode_and_factor(
     Ok((
         tier.replication_mode,
         tier.replication_factor
-            .unwrap_or(config.cluster.default_replication_factor()),
+            .unwrap_or_else(|| config.cluster.default_replication_factor()),
     ))
 }
 

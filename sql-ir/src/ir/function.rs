@@ -149,14 +149,17 @@ impl Plan {
                                 )),
                             ));
                     }
-                    Some(child) => {
-                        if !matches!(self.get_expression_node(*child)?, Expression::Constant(_)) {
-                            return Err(SbroadError::Invalid(
-                                    Entity::Query,
-                                    Some(format_smolstr!(
-                                        "GROUP_CONCAT aggregate function second argument must be a string literal.")),
-                                ));
-                        }
+                    Some(child)
+                        if !matches!(
+                            self.get_expression_node(*child)?,
+                            Expression::Constant(_)
+                        ) =>
+                    {
+                        return Err(SbroadError::Invalid(
+                                Entity::Query,
+                                Some(format_smolstr!(
+                                    "GROUP_CONCAT aggregate function second argument must be a string literal.")),
+                            ));
                     }
                     _ => {}
                 }
