@@ -1,4 +1,5 @@
 from conftest import Cluster
+from conftest import log_crawler
 from conftest import Retriable
 from framework.registry import get_or_make_registry
 from framework.registry import Registry
@@ -132,7 +133,6 @@ def test_node_by_node_sequential_upgrade_success(cluster: Cluster, registry: Reg
     cluster.check_health()
 
 
-@pytest.mark.skip(reason="Temporarily skip, test is broken for 26.3.0")
 @pytest.mark.xdist_group(name="rolling")
 @pytest.mark.required_rolling_versions(
     versions=[
@@ -143,9 +143,16 @@ def test_node_by_node_sequential_upgrade_success(cluster: Cluster, registry: Reg
 def test_node_by_node_leaping_upgrade_failure(cluster: Cluster, registry: Registry):
     """
     Verifies that leap upgrading node by node fails:
+
     1. Start a cluster on the BEFORELAST version.
-    2. Upgrade each node one at a time to the CURRENT version.
-    3. Confirm the whole cluster died successfully.
+
+    2. Upgrade all but the last node to the CURRENT version
+       and verify that the old-version leader rejects them.
+
+    3. Upgrade the last old-version node and verify that it
+       cannot activate without any live peers.
+
+    4. Confirm the whole cluster died successfully.
     """
 
     executable = registry.get_or_skip(VersionAlias.BEFORELAST_MINOR)
@@ -160,10 +167,36 @@ def test_node_by_node_leaping_upgrade_failure(cluster: Cluster, registry: Regist
     current = registry.get(VersionAlias.CURRENT)
     assert current is not None
 
-    error = ExpectedError(log_pattern="mismatches the leader's version")
-    cluster.change_executable(current, error)
+    # Keep the last old-version instance alive so that every instance
+    # upgraded in this loop can reach a peer which rejects the leap
+    # upgrade with a version mismatch. Each rejected current-version
+    # process exits and leaves one fewer live peer in the cluster.
+    mismatch_pattern = "mismatches the leader's version"
+    version_mismatch = ExpectedError(log_pattern=mismatch_pattern)
+    for instance in cluster.instances[:-1]:
+        # `Instance.fail_to_start` accepts any quick non-zero process exit
+        # without checking its `ExpectedError` log pattern, so verify the
+        # actual reason for the rejection with a dedicated crawler.
+        mismatch_crawler = log_crawler(instance, mismatch_pattern)
+        instance.change_executable(current, version_mismatch)
+        mismatch_crawler.wait_matched()
 
-    cluster.check_health(error=error)
+    # Only one old-version instance remains alive. Once it is stopped for the
+    # upgrade, there is no peer left to reject it with a version mismatch.
+    # The restarted process instead keeps trying to activate through dead
+    # peers; `Instance.fail_to_start` records the connection error, waits
+    # for its startup timeout, and then kills the process.
+    no_live_peers = ExpectedError(log_pattern="failed to activate myself: failed to connect")
+    cluster.instances[-1].change_executable(current, no_live_peers)
+
+    # All current-version processes either exited after the version
+    # rejection or were killed after failing to reach a live peer.
+    running_instances = [
+        f"{instance.name} (pid={instance.process.pid})"
+        for instance in cluster.instances
+        if instance.process is not None and instance.process.poll() is None
+    ]
+    assert not running_instances, f"expected the whole cluster to stop, still running: {running_instances}"
 
 
 @pytest.mark.xdist_group(name="rolling")
