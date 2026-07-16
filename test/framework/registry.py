@@ -213,7 +213,7 @@ class Registry:
             pytest.skip(f"{reason}: {hint}")
         return executable
 
-    def next_version(self, after: Version) -> Version:
+    def next_version(self, after: Version, *, skip_on_gap: bool = True) -> Version:
         """
         Finds the next significant version (minor or major)
         after `after`. This method ignores patch updates.
@@ -221,6 +221,12 @@ class Registry:
         It looks for the next immediate minor version. If no minor
         version exists, it looks for the next major version. If no
         major version exists, it returns current version by Git.
+
+        `skip_on_gap` parameter skips the current test when the next available
+        version jumps over an intermediate minor. Calls evaluated in marker
+        decorators must disable it because they run during collection, where
+        `pytest.skip` would affect the entire module instead of a single test.
+        The test body should then call this method with the default.
         """
         executable = self.get(after, resolve=False)
         if executable is None:
@@ -241,8 +247,16 @@ class Registry:
             if candidate_version.major == base_version.major and candidate_version.minor == base_version.minor:
                 continue
 
-            # Since the list is sequential, the first non-patch version
-            # we encounter is the next minor (or major if no minor exists).
+            if (
+                skip_on_gap
+                and candidate_version.major == base_version.major
+                and candidate_version.minor > base_version.minor + 1
+            ):
+                pytest.skip(
+                    f"Cannot test upgrade from {base_version} to {candidate_version}: "
+                    "the next minor version is not available"
+                )
+
             return candidate_version
 
         return self.current_version

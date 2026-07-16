@@ -251,6 +251,28 @@ def test_next_version_skips_patches():
     assert registry.next_version(Version("25.4.1")) == Version("25.5.1")
 
 
+def test_next_version_skips_test_when_minor_is_missing():
+    registry = make_registry(
+        current_version="26.3.0",
+        available_tags=["26.3.0", "26.2.0", "26.1.1"],
+    )
+
+    with pytest.raises(
+        pytest.skip.Exception,
+        match=r"Cannot test upgrade from 26\.1\.1 to 26\.3\.0: the next minor version is not available",
+    ):
+        registry.next_version(Version("26.1.1"))
+
+
+def test_next_version_allows_gap_during_collection():
+    registry = make_registry(
+        current_version="26.3.0",
+        available_tags=["26.3.0", "26.2.0", "26.1.1"],
+    )
+
+    assert registry.next_version(Version("26.1.1"), skip_on_gap=False) == Version("26.3.0")
+
+
 def test_next_version_returns_current_when_no_newer():
     registry = make_registry(
         current_version="25.5.3",

@@ -60,7 +60,7 @@ def test_upgrade_from_previous_minor_to_current(cluster: Cluster, registry: Regi
 @pytest.mark.required_rolling_versions(
     versions=[
         Version("25.5.9"),
-        get_or_make_registry().next_version(Version("25.5.9")),
+        get_or_make_registry().next_version(Version("25.5.9"), skip_on_gap=False),
     ]
 )
 def test_upgrade_from_previous_major_to_current(cluster: Cluster, registry: Registry):
@@ -365,7 +365,7 @@ def test_upgrade_25_5_to_25_6_check_procs(cluster: Cluster, registry: Registry):
 @pytest.mark.required_rolling_versions(
     versions=[
         Version("25.5.9"),
-        get_or_make_registry().next_version(Version("25.5.9")),
+        get_or_make_registry().next_version(Version("25.5.9"), skip_on_gap=False),
     ]
 )
 def test_upgrade_unlogged_tables_existence(cluster: Cluster, registry: Registry):
@@ -718,8 +718,8 @@ cluster:
     versions=[
         Version("25.3.8"),
         Version("25.4.1"),
-        get_or_make_registry().next_version(Version("25.4.1")),
-        get_or_make_registry().next_version(Version("25.5.7")),
+        get_or_make_registry().next_version(Version("25.4.1"), skip_on_gap=False),
+        get_or_make_registry().next_version(Version("25.5.7"), skip_on_gap=False),
     ]
 )
 def test_25_4_1_broken_pico_tier_migration(cluster: Cluster, registry: Registry):
@@ -778,12 +778,11 @@ cluster:
     assert tier_is_default is True
 
 
-@pytest.mark.skip(reason="Temporarily skip, test is broken for 26.3.0")
 @pytest.mark.xdist_group(name="rolling")
 @pytest.mark.required_rolling_versions(
     versions=[
         Version("26.1.1"),
-        get_or_make_registry().next_version(Version("26.1.1")),
+        get_or_make_registry().next_version(Version("26.1.1"), skip_on_gap=False),
     ]
 )
 def test_upgrade_check_proc_instance_details(cluster: Cluster, registry: Registry):

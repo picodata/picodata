@@ -4068,7 +4068,7 @@ def test_plugin_on_cluster_leader_change_all_callbacks(cluster: Cluster):
 
 @pytest.mark.required_rolling_versions(
     versions=[
-        get_or_make_registry().next_version(Version("26.1.4")),
+        get_or_make_registry().next_version(Version("26.1.4"), skip_on_gap=False),
     ]
 )
 def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
@@ -4225,7 +4225,7 @@ def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
 @pytest.mark.skip(reason="Doesnt work on 26.3.0, see https://git.picodata.io/core/picodata/-/issues/3028    ")
 @pytest.mark.required_rolling_versions(
     versions=[
-        get_or_make_registry().next_version(Version("26.1.4")),
+        get_or_make_registry().next_version(Version("26.1.4"), skip_on_gap=False),
     ]
 )
 @pytest.mark.skip_asan("plug_26_1 is a standalone workspace built without ASan profiles")
