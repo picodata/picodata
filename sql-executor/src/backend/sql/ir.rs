@@ -19,7 +19,6 @@ use std::hash::{Hash as _, Hasher as _};
 use std::io::{self, Write as IoWrite};
 use tarantool::msgpack;
 use tarantool::msgpack::{Context, DecodeError};
-use tarantool::tlua::{self, Push};
 use tarantool::tuple::{FunctionArgs, Tuple};
 use twox_hash::XxHash3_64;
 
@@ -31,7 +30,7 @@ use crate::ir::value::Value;
 
 use super::tree::SyntaxData;
 
-#[derive(Debug, Eq, Deserialize, Serialize, Push, Clone)]
+#[derive(Debug, Eq, Deserialize, Serialize, Clone)]
 pub struct PatternWithParams {
     pub pattern: String,
     pub params: Vec<Value>,
