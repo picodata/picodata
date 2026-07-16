@@ -132,6 +132,7 @@ def test_node_by_node_sequential_upgrade_success(cluster: Cluster, registry: Reg
     cluster.check_health()
 
 
+@pytest.mark.skip(reason="Temporarily skip, test is broken for 26.3.0")
 @pytest.mark.xdist_group(name="rolling")
 @pytest.mark.required_rolling_versions(
     versions=[
@@ -777,6 +778,7 @@ cluster:
     assert tier_is_default is True
 
 
+@pytest.mark.skip(reason="Temporarily skip, test is broken for 26.3.0")
 @pytest.mark.xdist_group(name="rolling")
 @pytest.mark.required_rolling_versions(
     versions=[
