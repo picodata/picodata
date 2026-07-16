@@ -102,9 +102,9 @@ column at position 2 is of type int[], but expression is of type decimal[]
 
 -- TEST: select-index-not-null
 -- SQL:
-SELECT b[b[1]] FROM t1 WHERE b IS NOT NULL;
+SELECT b[b[1]] FROM t1 WHERE b IS NOT NULL ORDER BY 1;
 -- EXPECTED:
-1, None, None, 1, None, 1, 1, None
+None, None, None, None, 1, 1, 1, 1
 
 -- TEST: select-index-expression
 -- SQL:

@@ -1,8 +1,9 @@
 //! Value module.
 
+use itertools::Itertools;
 use rmp::Marker;
 use serde::{Deserialize, Serialize, Serializer};
-use smol_str::{format_smolstr, SmolStr, StrExt, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, StrExt};
 use std::cmp::Ordering;
 use std::fmt::{self, Display};
 use std::hash::Hash;
@@ -20,31 +21,6 @@ use tarantool::uuid::Uuid;
 use crate::errors::{Entity, SbroadError};
 use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use crate::ir::value::double::Double;
-
-#[derive(
-    Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Encode, Decode,
-)]
-pub struct Tuple(pub(crate) Vec<Value>);
-
-impl Display for Tuple {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "[{}]",
-            self.0
-                .iter()
-                .map(ToSmolStr::to_smolstr)
-                .collect::<Vec<SmolStr>>()
-                .join(",")
-        )
-    }
-}
-
-impl From<Vec<Value>> for Tuple {
-    fn from(v: Vec<Value>) -> Self {
-        Tuple(v)
-    }
-}
 
 /// SQL uses three-valued logic. We need to implement
 /// it to compare values with each other.
@@ -86,7 +62,7 @@ pub enum Value {
     /// String type.
     String(String),
     /// Tuple type
-    Tuple(Tuple),
+    Tuple(Vec<Value>),
     /// Uuid type
     Uuid(Uuid),
 }
@@ -189,7 +165,7 @@ impl Encode for Value {
             Value::Integer(v) => v.encode(w, context),
             Value::Null => ().encode(w, context),
             Value::String(v) => v.encode(w, context),
-            Value::Tuple(v) => v.0.encode(w, context),
+            Value::Tuple(v) => v.encode(w, context),
             Value::Uuid(v) => v.encode(w, context),
         }
     }
@@ -262,7 +238,9 @@ impl fmt::Display for Value {
             Value::Double(v) => fmt::Display::fmt(&v, f),
             Value::Decimal(v) => fmt::Display::fmt(v, f),
             Value::String(v) => write!(f, "'{v}'"),
-            Value::Tuple(v) => write!(f, "{v}"),
+            Value::Tuple(v) => {
+                write!(f, "[{}]", v.iter().join(","))
+            }
             Value::Uuid(v) => fmt::Display::fmt(v, f),
         }
     }
@@ -341,16 +319,9 @@ impl From<f64> for Value {
     }
 }
 
-impl From<Tuple> for Value {
-    fn from(v: Tuple) -> Self {
-        Value::Tuple(v)
-    }
-}
-
 impl From<Vec<Value>> for Value {
     fn from(v: Vec<Value>) -> Self {
-        let t = Tuple::from(v);
-        Value::Tuple(t)
+        Value::Tuple(v)
     }
 }
 
@@ -802,11 +773,11 @@ impl Value {
                     if matches!(elem_type, UnrestrictedType::Any) {
                         return Ok(Value::Tuple(t));
                     }
-                    let casted =
-                        t.0.into_iter()
-                            .map(|v| v.cast(elem_type))
-                            .collect::<Result<Vec<_>, _>>()?;
-                    Ok(Value::Tuple(Tuple(casted)))
+                    let casted = t
+                        .into_iter()
+                        .map(|v| v.cast(elem_type))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(Value::Tuple(casted))
                 }
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -902,11 +873,11 @@ impl Value {
                 if matches!(elem_type, UnrestrictedType::Any) {
                     return Ok(Value::Tuple(t));
                 }
-                let casted =
-                    t.0.into_iter()
-                        .map(|v| v.cast(elem_type))
-                        .collect::<Result<Vec<_>, _>>()?;
-                Ok(Value::Tuple(Tuple(casted)))
+                let casted = t
+                    .into_iter()
+                    .map(|v| v.cast(elem_type))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Value::Tuple(casted))
             }
             other => Err(SbroadError::Invalid(
                 Entity::Value,
@@ -931,8 +902,8 @@ impl Value {
         };
 
         /// Returns `true` when casting every element of `t` to `nested` is a no-op.
-        fn tuple_matches_nested(t: &Tuple, nested: NestedType) -> bool {
-            t.0.iter().all(|v| match v {
+        fn tuple_matches_nested(t: &[Value], nested: NestedType) -> bool {
+            t.iter().all(|v| match v {
                 Value::Null => true,
                 Value::Boolean(_) => nested == NestedType::Boolean,
                 Value::Datetime(_) => nested == NestedType::Datetime,
@@ -1009,7 +980,7 @@ impl ToHashString for Value {
             Value::Double(v) => v.to_string(),
             Value::Boolean(v) => v.to_string(),
             Value::String(v) => v.to_string(),
-            Value::Tuple(v) => v.to_string(),
+            Value::Tuple(_) => self.to_string(),
             Value::Uuid(v) => v.to_string(),
             Value::Null => "NULL".to_string(),
         }
@@ -1098,18 +1069,18 @@ pub enum MsgPackValue<'v> {
     Integer(&'v i64),
     String(&'v String),
     #[serde(serialize_with = "serialize_tuple_as_msgpack")]
-    Tuple(&'v Tuple),
+    Tuple(&'v Vec<Value>),
     Uuid(&'v Uuid),
     Null(()),
 }
 
-fn serialize_tuple_as_msgpack<S>(t: &&Tuple, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_tuple_as_msgpack<S>(t: &[Value], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
     use serde::ser::SerializeSeq;
-    let mut seq = serializer.serialize_seq(Some(t.0.len()))?;
-    for elem in t.0.iter() {
+    let mut seq = serializer.serialize_seq(Some(t.len()))?;
+    for elem in t.iter() {
         seq.serialize_element(&MsgPackValue::from(elem))?;
     }
     seq.end()
@@ -1143,22 +1114,6 @@ impl Encode for MsgPackValue<'_> {
             MsgPackValue::Tuple(v) => v.encode(w, context),
             MsgPackValue::Uuid(v) => v.encode(w, context),
             MsgPackValue::Null(v) => v.encode(w, context),
-        }
-    }
-}
-
-impl From<Value> for String {
-    fn from(v: Value) -> Self {
-        match v {
-            Value::Integer(v) => v.to_string(),
-            Value::Datetime(v) => v.to_string(),
-            Value::Decimal(v) => v.to_string(),
-            Value::Double(v) => v.to_string(),
-            Value::Boolean(v) => v.to_string(),
-            Value::String(v) => v,
-            Value::Tuple(v) => v.to_string(),
-            Value::Uuid(v) => v.to_string(),
-            Value::Null => "NULL".to_string(),
         }
     }
 }

@@ -1,6 +1,7 @@
 use super::*;
 use insta::assert_yaml_snapshot;
 use pretty_assertions::assert_eq;
+use smol_str::ToSmolStr;
 use tarantool::decimal;
 
 #[test]
@@ -128,7 +129,7 @@ fn string() {
 
 #[test]
 fn tuple() {
-    let t = Tuple::from(vec![Value::Integer(0), Value::String("hello".to_string())]);
+    let t = vec![Value::Integer(0), Value::String("hello".to_string())];
     assert_eq!(
         Value::Tuple(t),
         Value::from(vec![Value::from(0), Value::from("hello")])
@@ -424,12 +425,8 @@ fn trivalent() {
 
 #[test]
 fn array_tuple_cast_coerces_elements() {
-    let t = Tuple::from(vec![
-        Value::Integer(1),
-        Value::Integer(2),
-        Value::Integer(3),
-    ]);
-    let v = Value::Tuple(t.clone());
+    let t = vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)];
+    let v = Value::Tuple(t);
 
     // `Any` element type carries avoids cloning.
     let encoded = v
@@ -470,11 +467,11 @@ fn array_tuple_cast_coerces_elements() {
     assert!(matches!(encoded, EncodedValue::Owned(_)));
 
     // Decimal elements coerce to Double when cast to a DOUBLE array column type.
-    let dec = Value::Tuple(Tuple::from(vec![
+    let dec = Value::Tuple(vec![
         Value::from(Decimal::from_str("1").unwrap()),
         Value::from(Decimal::from_str("2.5").unwrap()),
         Value::Null,
-    ]));
+    ]);
     let casted = dec
         .cast(UnrestrictedType::Array(NestedType::Double))
         .unwrap();
@@ -493,11 +490,11 @@ fn array_tuple_cast_coerces_elements() {
 
 #[test]
 fn cast_array_truncates_decimal_and_double_to_int() {
-    let decimals = Value::Tuple(Tuple::from(vec![
+    let decimals = Value::Tuple(vec![
         Value::from(Decimal::from_str("1.4").unwrap()),
         Value::from(Decimal::from_str("2.5").unwrap()),
         Value::from(Decimal::from_str("-1.5").unwrap()),
-    ]));
+    ]);
     assert_yaml_snapshot!(decimals.cast_array(NestedType::Integer).unwrap(), @r"
     Tuple:
       - Integer: 1
@@ -505,11 +502,11 @@ fn cast_array_truncates_decimal_and_double_to_int() {
       - Integer: -1
     ");
 
-    let doubles = Value::Tuple(Tuple::from(vec![
+    let doubles = Value::Tuple(vec![
         Value::Double(1.4_f64.into()),
         Value::Double(2.5_f64.into()),
         Value::Double((-1.5_f64).into()),
-    ]));
+    ]);
     assert_yaml_snapshot!(doubles.cast_array(NestedType::Integer).unwrap(), @r"
     Tuple:
       - Integer: 1
@@ -554,7 +551,7 @@ fn cast_array_nulls_empty_and_delegates() {
         @r#""Null""#
     );
 
-    let with_null = Value::Tuple(Tuple::from(vec![Value::Integer(1), Value::Null]));
+    let with_null = Value::Tuple(vec![Value::Integer(1), Value::Null]);
     assert_yaml_snapshot!(
         with_null.cast_array(NestedType::Integer).unwrap(),
         @r#"
@@ -565,13 +562,13 @@ fn cast_array_nulls_empty_and_delegates() {
     );
 
     assert_yaml_snapshot!(
-        Value::Tuple(Tuple::from(vec![]))
+        Value::Tuple(vec![])
             .cast_array(NestedType::Integer)
             .unwrap(),
         @"Tuple: []"
     );
 
-    let to_double = Value::Tuple(Tuple::from(vec![Value::Integer(1), Value::Integer(2)]));
+    let to_double = Value::Tuple(vec![Value::Integer(1), Value::Integer(2)]);
     assert_yaml_snapshot!(
         to_double.cast_array(NestedType::Double).unwrap(),
         @r"
@@ -589,11 +586,7 @@ fn cast_array_nulls_empty_and_delegates() {
 
 #[test]
 fn msgpack_value_tuple_serializes_as_bare_msgpack_array() {
-    let t = Tuple::from(vec![
-        Value::Integer(1),
-        Value::Null,
-        Value::String("hi".into()),
-    ]);
+    let t = vec![Value::Integer(1), Value::Null, Value::String("hi".into())];
     let v = Value::Tuple(t);
     let encoded: EncodedValue<'_> = (&v).into();
 
@@ -612,11 +605,7 @@ fn msgpack_value_tuple_serializes_as_bare_msgpack_array() {
 
 #[test]
 fn encode_trait_value_tuple_is_bare_array_and_round_trips() {
-    let v = Value::Tuple(Tuple::from(vec![
-        Value::Integer(1),
-        Value::Null,
-        Value::Integer(3),
-    ]));
+    let v = Value::Tuple(vec![Value::Integer(1), Value::Null, Value::Integer(3)]);
 
     // Encode through the same trait the motion materialization uses.
     let mut bytes = Vec::new();
