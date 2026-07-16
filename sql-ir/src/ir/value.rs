@@ -7,7 +7,6 @@ use std::cmp::Ordering;
 use std::fmt::{self, Display};
 use std::hash::Hash;
 use std::io::Write;
-use std::num::NonZeroI32;
 use std::str::FromStr;
 use tarantool::datetime::Datetime;
 use tarantool::decimal::Decimal;
@@ -15,11 +14,9 @@ use tarantool::ffi::datetime::MP_DATETIME;
 use tarantool::ffi::decimal::MP_DECIMAL;
 use tarantool::ffi::uuid::MP_UUID;
 use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError, ExtStruct};
-use tarantool::tlua;
 use tarantool::tuple::{FieldType, KeyDefPart};
 use tarantool::uuid::Uuid;
 
-use crate::error;
 use crate::errors::{Entity, SbroadError};
 use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use crate::ir::value::double::Double;
@@ -46,56 +43,6 @@ impl Display for Tuple {
 impl From<Vec<Value>> for Tuple {
     fn from(v: Vec<Value>) -> Self {
         Tuple(v)
-    }
-}
-
-impl<L: tlua::AsLua> tlua::Push<L> for Tuple {
-    type Err = tlua::Void;
-
-    #[allow(unreachable_code)]
-    fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
-        match self.0.push_to_lua(lua) {
-            Ok(r) => Ok(r),
-            Err(e) => {
-                error!(Option::from("push ir tuple to lua"), &format!("{:?}", e.0),);
-                Err((tlua::Void::from(e.0), e.1))
-            }
-        }
-    }
-}
-
-impl<L> tlua::PushInto<L> for Tuple
-where
-    L: tlua::AsLua,
-{
-    type Err = tlua::Void;
-
-    #[allow(unreachable_code)]
-    fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
-        match self.0.push_into_lua(lua) {
-            Ok(r) => Ok(r),
-            Err(e) => {
-                error!(
-                    Option::from("push ir tuple into lua"),
-                    &format!("{:?}", e.0),
-                );
-                Err((tlua::Void::from(e.0), e.1))
-            }
-        }
-    }
-}
-
-impl<L> tlua::PushOneInto<L> for Tuple where L: tlua::AsLua {}
-
-impl<L> tlua::LuaRead<L> for Tuple
-where
-    L: tlua::AsLua,
-{
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Tuple, (L, tlua::WrongType)> {
-        match Vec::lua_read_at_position(lua, index) {
-            Ok(v) => Ok(Tuple::from(v)),
-            Err(lua) => Err(lua),
-        }
     }
 }
 
@@ -1213,108 +1160,6 @@ impl From<Value> for String {
             Value::Uuid(v) => v.to_string(),
             Value::Null => "NULL".to_string(),
         }
-    }
-}
-
-impl<L: tlua::AsLua> tlua::Push<L> for Value {
-    type Err = tlua::Void;
-
-    fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
-        match self {
-            Value::Integer(v) => v.push_to_lua(lua),
-            Value::Datetime(v) => v.push_to_lua(lua),
-            Value::Decimal(v) => v.push_to_lua(lua),
-            Value::Double(v) => v.push_to_lua(lua),
-            Value::Boolean(v) => v.push_to_lua(lua),
-            Value::String(v) => v.push_to_lua(lua),
-            Value::Tuple(v) => v.push_to_lua(lua),
-            Value::Uuid(v) => v.push_to_lua(lua),
-            Value::Null => tlua::Null.push_to_lua(lua),
-        }
-    }
-}
-
-impl<L> tlua::PushInto<L> for Value
-where
-    L: tlua::AsLua,
-{
-    type Err = tlua::Void;
-
-    fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
-        match self {
-            Value::Integer(v) => v.push_into_lua(lua),
-            Value::Datetime(v) => v.push_into_lua(lua),
-            Value::Decimal(v) => v.push_into_lua(lua),
-            Value::Double(v) => v.push_into_lua(lua),
-            Value::Boolean(v) => v.push_into_lua(lua),
-            Value::String(v) => v.push_into_lua(lua),
-            Value::Tuple(v) => v.push_into_lua(lua),
-            Value::Uuid(v) => v.push_into_lua(lua),
-            Value::Null => tlua::Null.push_into_lua(lua),
-        }
-    }
-}
-
-impl<L> tlua::PushOneInto<L> for Value where L: tlua::AsLua {}
-
-impl<L> tlua::LuaRead<L> for Value
-where
-    L: tlua::AsLua,
-{
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Value, (L, tlua::WrongType)> {
-        // At the moment Tarantool module can't distinguish between
-        // double and integer/unsigned. So we have to do it manually.
-        if let Ok(v) = f64::lua_read_at_position(&lua, index) {
-            if v.is_subnormal()
-                || v.is_nan()
-                || v.is_infinite()
-                || v.is_finite() && v.fract().abs() >= f64::EPSILON
-            {
-                return Ok(Value::Double(Double::from(v)));
-            }
-        }
-        let lua = match tlua::LuaRead::lua_read_at_position(lua, index) {
-            Ok(v) => return Ok(Self::Integer(v)),
-            Err((lua, _)) => lua,
-        };
-        let lua = match tlua::LuaRead::lua_read_at_position(lua, index) {
-            Ok(v) => {
-                let value: Decimal = v;
-                return Ok(Self::Decimal(value.into()));
-            }
-            Err((lua, _)) => lua,
-        };
-        let lua = match tlua::LuaRead::lua_read_at_position(lua, index) {
-            Ok(v) => {
-                let value: Double = v;
-                return Ok(Self::Double(value));
-            }
-            Err((lua, _)) => lua,
-        };
-        let lua = match tlua::LuaRead::lua_read_at_position(lua, index) {
-            Ok(v) => return Ok(Self::Boolean(v)),
-            Err((lua, _)) => lua,
-        };
-        let lua = match tlua::LuaRead::lua_read_at_position(lua, index) {
-            Ok(v) => return Ok(Self::String(v)),
-            Err((lua, _)) => lua,
-        };
-        let lua = match tlua::LuaRead::lua_read_at_position(lua, index) {
-            Ok(v) => return Ok(Self::Tuple(v)),
-            Err((lua, _)) => lua,
-        };
-        let lua = match tlua::LuaRead::lua_read_at_position(lua, index) {
-            Ok(v) => return Ok(Self::Uuid(v)),
-            Err((lua, _)) => lua,
-        };
-        let Err((lua, _)) = tlua::Null::lua_read_at_position(lua, index) else {
-            return Ok(Self::Null);
-        };
-
-        let err = tlua::WrongType::info("reading value from Lua")
-            .expected("Lua type that can be casted to sbroad value")
-            .actual("unsupported Lua type");
-        Err((lua, err))
     }
 }
 
