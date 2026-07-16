@@ -90,6 +90,12 @@ where
         }
         Ok(None)
     }
+
+    /// Remove every entry, running the eviction function on each.
+    pub fn clear(&mut self) -> Result<(), SbroadError> {
+        while self.pop()?.is_some() {}
+        Ok(())
+    }
 }
 
 impl<Key, Value> Cache<Key, Value> for LRUCache<Key, Value>

@@ -67,6 +67,13 @@ thread_local! {
         Mutex::new(PicoRouterCache::new(DEFAULT_CAPACITY).unwrap()));
 }
 
+/// Flush the node-local router plan (IR) cache.
+///
+/// Returns the number of cached plans that were removed.
+pub fn flush_plan_cache() -> Result<usize, SbroadError> {
+    PLAN_CACHE.with(|cache| cache.lock().flush())
+}
+
 pub fn get_tier_info(tier_name: &str) -> Result<Tier, SbroadError> {
     let node = node::global().map_err(|e| {
         SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
@@ -294,6 +301,15 @@ impl PicoRouterCache {
 
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
+    }
+
+    /// Remove every cached plan, running the eviction hook on each.
+    ///
+    /// Returns the number of plans that were flushed.
+    pub fn flush(&mut self) -> Result<usize, SbroadError> {
+        let count = self.inner.len();
+        self.inner.clear()?;
+        Ok(count)
     }
 }
 

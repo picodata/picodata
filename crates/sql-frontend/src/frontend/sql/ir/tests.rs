@@ -4376,6 +4376,89 @@ fn front_alter_system_local_check_parses_ok() {
 }
 
 #[test]
+fn front_discard_parses_ok() {
+    use crate::ir::node::discard::{Discard, DiscardCache, DiscardDomain};
+    use crate::ir::node::Node;
+
+    let queries_to_check_ok = [
+        (
+            "discard cache sql_stmt",
+            Discard::Cache(DiscardCache::SqlStmt),
+        ),
+        (
+            "DISCARD CACHE SQL_STMT",
+            Discard::Cache(DiscardCache::SqlStmt),
+        ),
+        (
+            "Discard Cache Sql_Router",
+            Discard::Cache(DiscardCache::SqlRouter),
+        ),
+        (
+            "discard  cache\tsql_block",
+            Discard::Cache(DiscardCache::SqlBlock),
+        ),
+        (
+            "DISCARD CACHE SQL_BLOCK;",
+            Discard::Cache(DiscardCache::SqlBlock),
+        ),
+        (
+            r#"discard cache "sql_router""#,
+            Discard::Cache(DiscardCache::SqlRouter),
+        ),
+        ("discard cache", Discard::All(DiscardDomain::Cache)),
+        ("DISCARD CACHE;", Discard::All(DiscardDomain::Cache)),
+        ("discard cache ", Discard::All(DiscardDomain::Cache)),
+    ];
+    let metadata = &RouterConfigurationMock::new();
+    for (query, expected) in queries_to_check_ok {
+        let plan = transform_into_plan(query, &[], metadata).unwrap();
+        let top_id = plan.get_top().unwrap();
+        assert_eq!(
+            plan.get_node(top_id).unwrap(),
+            Node::Discard(expected),
+            "{query}"
+        );
+        assert!(plan.is_discard().unwrap(), "{query}");
+        assert!(!plan.is_dql_or_dml().unwrap(), "{query}");
+    }
+
+    let queries_to_check_err = [
+        "discard",
+        "discard foo",
+        "discard all",
+        "discard sql_stmt",
+        "discard cache all",
+        "discard cache sql_stmt sql_block",
+        "discard cache 'sql_stmt'",
+        "discard cachesql_stmt",
+        "discardcache",
+        "explain discard cache",
+    ];
+    for query in queries_to_check_err {
+        assert!(
+            transform_into_plan(query, &[], metadata).is_err(),
+            "{query}"
+        );
+    }
+
+    let queries_with_unknown_cache = [
+        ("discard cache foo", r#""foo""#),
+        ("discard cache cache", r#""cache""#),
+        ("discard cache sql_stmtx", r#""sql_stmtx""#),
+        ("DISCARD CACHE SQLSTMT", r#""sqlstmt""#),
+        (r#"discard cache "SQL_STMT""#, r#""SQL_STMT""#),
+    ];
+    for (query, name) in queries_with_unknown_cache {
+        let err = transform_into_plan(query, &[], metadata).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("unsupported cache: {name} (supported: sql_stmt, sql_router, sql_block)"),
+            "{query}"
+        );
+    }
+}
+
+#[test]
 fn front_subqueries_interpreted_as_expression() {
     let input = r#"explain (logical) select (values (2)) from "test_space""#;
     let plan = sql_to_optimized_ir(input, vec![]);

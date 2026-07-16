@@ -149,7 +149,8 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
             | Node::Tcl(_)
             | Node::Block(_)
             | Node::Plugin(_)
-            | Node::Deallocate(_) => None,
+            | Node::Deallocate(_)
+            | Node::Discard(_) => None,
         },
         None => None,
     }

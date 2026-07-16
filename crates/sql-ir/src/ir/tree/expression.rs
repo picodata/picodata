@@ -188,7 +188,8 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                 | Node::Relational(_)
                 | Node::Invalid(_)
                 | Node::Plugin(_)
-                | Node::Deallocate(_) => None,
+                | Node::Deallocate(_)
+                | Node::Discard(_) => None,
             }
         }
         None => None,

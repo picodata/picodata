@@ -448,6 +448,10 @@ where
         self.exec_plan.get_ir_plan().is_deallocate()
     }
 
+    pub fn is_discard(&self) -> Result<bool, SbroadError> {
+        self.exec_plan.get_ir_plan().is_discard()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.exec_plan.get_ir_plan().is_empty()
     }

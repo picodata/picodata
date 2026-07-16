@@ -1,4 +1,4 @@
-Command = _{ SOI ~ (AnonymousBlock | Query | ExplainQuery | CallProc | DDL | ACL | TCL | Plugin | Deallocate | EmptyQuery) ~ EOF }
+Command = _{ SOI ~ (AnonymousBlock | Query | ExplainQuery | CallProc | DDL | ACL | TCL | Plugin | Deallocate | Discard | EmptyQuery) ~ EOF }
 
 AnonymousBlock = ${
     ^"do" ~ W ~ ExplicitBlockLanguage? ~
@@ -445,6 +445,9 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
 Deallocate = ${ ^"deallocate" ~ (WithPrepare | WithoutPrepare) }
     WithPrepare = _{ W ~ ^"prepare" ~ W ~ (^"all" | Identifier) }
     WithoutPrepare = _{ W ~ (^"all" | Identifier) }
+
+Discard = ${ ^"discard" ~ W ~ DiscardCache }
+    DiscardCache = ${ ^"cache" ~ (W ~ Identifier)? }
 
 TCL = _{ Begin | Commit | Rollback | End }
     Begin = { ^"begin" }

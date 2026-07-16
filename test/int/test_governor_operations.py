@@ -2,6 +2,7 @@ import pytest
 from conftest import (
     Cluster,
     Instance,
+    Retriable,
     TarantoolError,
 )
 from typing import Any
@@ -544,6 +545,33 @@ def test_governor_op_queue_alter_system(cluster: Cluster):
     # Make sure all steps are complete
     rows = i1.sql("SELECT DISTINCT status FROM _pico_governor_queue")
     assert rows == [["done"]]
+
+    # Sanity check
+    cluster.wait_governor_status("idle")
+
+
+def test_governor_op_queue_discard(cluster: Cluster):
+    i1 = cluster.add_instance()
+
+    # Fill the caches, so that DISCARD reports a non-zero row count
+    i1.sql("CREATE TABLE t (a INT PRIMARY KEY)")
+    i1.sql("SELECT * FROM t")
+
+    def sql_query_count() -> float:
+        family = i1.get_metrics().get("pico_sql_query")
+        return sum(s.value for s in family.samples) if family else 0.0
+
+    def check_done():
+        # `pico_sql_query` counts only the governor
+        assert i1.eval("return box.space._pico_governor_queue:get(1).status") == "done"
+
+    before = sql_query_count()
+    insert_operations(cluster, ["DISCARD CACHE"])
+    Retriable().call(check_done)
+    after = sql_query_count()
+
+    # The governor must run the operation exactly once
+    assert after - before == 1
 
     # Sanity check
     cluster.wait_governor_status("idle")

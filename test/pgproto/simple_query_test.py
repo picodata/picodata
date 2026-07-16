@@ -1,4 +1,5 @@
 import os
+import re
 from decimal import Decimal
 
 import pg8000.dbapi as pg  # type: ignore
@@ -361,6 +362,58 @@ def test_deallocate(postgres: Postgres):
     # run a closed statement2
     with pytest.raises(DatabaseError, match="Couldn't find statement"):
         ps2.run()
+
+    conn.close()
+
+
+@pytest.mark.parametrize("kind", ["CACHE SQL_STMT", "CACHE SQL_ROUTER", "CACHE SQL_BLOCK", "CACHE"])
+@pytest.mark.parametrize("prepare", [False, True])
+def test_discard(postgres: Postgres, kind: str, prepare: bool):
+    user = "admin"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(f"user={user} password={password} host={host} port={port} sslmode=disable")
+    conn.autocommit = True
+
+    # Fill the caches and prepare a named statement on the server.
+    assert conn.execute("SELECT 1", prepare=True).fetchall() == [(1,)]
+
+    cur = conn.execute(f"DISCARD {kind}", prepare=prepare)
+    assert cur.pgresult is not None
+    assert cur.pgresult.status == ExecStatus.COMMAND_OK
+    # The tag carries the number of evicted entries
+    assert cur.statusmessage is not None
+    assert re.fullmatch(rf"DISCARD {kind} \d+", cur.statusmessage)
+
+    # Statements prepared before DISCARD keep working after it.
+    assert conn.execute("SELECT 1", prepare=True).fetchall() == [(1,)]
+    assert conn.execute("SELECT 1", prepare=False).fetchall() == [(1,)]
+
+    conn.close()
+
+
+def test_discard_row_count(postgres: Postgres):
+    user = "admin"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = psycopg.connect(f"user={user} password={password} host={host} port={port} sslmode=disable")
+    conn.autocommit = True
+
+    assert conn.execute("SELECT 1").fetchall() == [(1,)]
+    conn.execute("DISCARD CACHE")
+
+    # Everything has already been evicted
+    assert conn.execute("DISCARD CACHE").statusmessage == "DISCARD CACHE 0"
+
+    conn.execute("CREATE TABLE t (a INT PRIMARY KEY)")
+    conn.execute("SELECT * FROM t")
+    assert conn.execute("DISCARD CACHE SQL_ROUTER").statusmessage == "DISCARD CACHE SQL_ROUTER 1"
 
     conn.close()
 

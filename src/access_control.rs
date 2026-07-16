@@ -849,6 +849,21 @@ pub(crate) fn access_check_alter_system_local(as_user: UserId) -> tarantool::Res
     Ok(())
 }
 
+pub(crate) fn access_check_discard(as_user: UserId) -> tarantool::Result<()> {
+    if !is_superuser(as_user) {
+        // with_su is required to retrieve the name of the user
+        return with_su(ADMIN_ID, || -> tarantool::Result<()> {
+            let sys_user = user_by_id(as_user)?;
+            return Err(BoxError::new(
+                AccessDenied,
+                format!("DISCARD access is denied for user '{}'", sys_user.name),
+            )
+            .into());
+        })?;
+    }
+    Ok(())
+}
+
 // TODO: use this function everywhere we check `id != ADMIN_ID`
 #[inline(always)]
 pub fn is_superuser(user_id: UserId) -> bool {

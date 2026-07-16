@@ -12,6 +12,7 @@ use crate::frontend::sql::type_system;
 
 use crate::ir::columns::RelColumn;
 use crate::ir::node::deallocate::Deallocate;
+use crate::ir::node::discard::{Discard, DiscardCache, DiscardDomain};
 use crate::ir::node::{
     AlterColumn, AlterTable, AlterTableOp, AnonymousBlock, Backup, BlockEntries, BlockEntryKind,
     BlockStatement, Bound, BoundType, Frame, FrameType, Reference, ReferenceAsteriskSource,
@@ -3965,6 +3966,29 @@ pub(in crate::frontend::sql) fn parse_deallocate(
         None
     };
     Ok(Deallocate { name: param_name })
+}
+
+pub(in crate::frontend::sql) fn parse_discard(
+    ast: &AstCore,
+    node: &ParseNode,
+) -> Result<Discard, SbroadError> {
+    let target_node_id = node
+        .children
+        .first()
+        .expect("Discard target node expected.");
+    let target_node = ast.nodes.get_node(*target_node_id)?;
+    match target_node.rule {
+        Rule::DiscardCache => parse_discard_cache(ast, target_node),
+        _ => unreachable!("Unexpected rule: {:?}", target_node.rule),
+    }
+}
+
+fn parse_discard_cache(ast: &AstCore, node: &ParseNode) -> Result<Discard, SbroadError> {
+    let Some(cache_node_id) = node.children.first() else {
+        return Ok(Discard::All(DiscardDomain::Cache));
+    };
+    let name = parse_identifier(ast, *cache_node_id)?;
+    DiscardCache::from_str(&name).map(Discard::Cache)
 }
 
 pub(in crate::frontend::sql) fn parse_select_full<M: Metadata>(

@@ -500,6 +500,9 @@ impl<'q> AbstractSyntaxTree<'q> {
                 Rule::Deallocate => {
                     push_mapped_plan_node(&mut plan, &mut map, id, parse_deallocate(ast, node)?);
                 }
+                Rule::Discard => {
+                    push_mapped_plan_node(&mut plan, &mut map, id, parse_discard(ast, node)?);
+                }
                 Rule::Begin => {
                     push_mapped_plan_node(&mut plan, &mut map, id, Tcl::Begin);
                 }

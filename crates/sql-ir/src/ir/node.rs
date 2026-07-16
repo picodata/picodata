@@ -8,6 +8,7 @@ use acl::{Acl, AclOwned, MutAcl};
 use block::{Block, BlockOwned, MutBlock};
 use ddl::{Ddl, DdlOwned, MutDdl};
 use deallocate::Deallocate;
+use discard::Discard;
 use expression::{ExprOwned, Expression, MutExpression};
 use relational::{MutRelational, RelOwned, Relational};
 use serde::{Deserialize, Serialize};
@@ -43,6 +44,7 @@ pub mod acl;
 pub mod block;
 pub mod ddl;
 pub mod deallocate;
+pub mod discard;
 pub mod expression;
 pub mod plugin;
 pub mod relational;
@@ -1879,6 +1881,7 @@ pub enum Node32 {
     UnionAll(UnionAll),
     Deallocate(Deallocate),
     Tcl(Tcl),
+    Discard(Discard),
     CreateSchema,
     DropSchema,
     SubQueryReference(SubQueryReference),
@@ -1921,6 +1924,7 @@ impl Node32 {
                 Tcl::Commit => NodeOwned::Tcl(Tcl::Commit),
                 Tcl::Rollback => NodeOwned::Tcl(Tcl::Rollback),
             },
+            Node32::Discard(discard) => NodeOwned::Discard(discard),
             Node32::CreateSchema => NodeOwned::Ddl(DdlOwned::CreateSchema),
             Node32::DropSchema => NodeOwned::Ddl(DdlOwned::DropSchema),
             Node32::SubQueryReference(sub_query_reference) => {
@@ -2199,6 +2203,7 @@ pub enum Node<'nodes> {
     Plugin(Plugin<'nodes>),
     Deallocate(&'nodes Deallocate),
     Tcl(Tcl),
+    Discard(Discard),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -2213,6 +2218,7 @@ pub enum MutNode<'nodes> {
     Plugin(MutPlugin<'nodes>),
     Deallocate(&'nodes mut Deallocate),
     Tcl(Tcl),
+    Discard(Discard),
 }
 
 impl Node<'_> {
@@ -2228,6 +2234,7 @@ impl Node<'_> {
             Node::Plugin(plugin) => NodeOwned::Plugin(plugin.get_plugin_owned()),
             Node::Deallocate(deallocate) => NodeOwned::Deallocate((*deallocate).clone()),
             Node::Tcl(tcl) => NodeOwned::Tcl(tcl),
+            Node::Discard(discard) => NodeOwned::Discard(discard),
         }
     }
 }
@@ -2245,6 +2252,7 @@ pub enum NodeOwned {
     Plugin(PluginOwned),
     Deallocate(Deallocate),
     Tcl(Tcl),
+    Discard(Discard),
 }
 
 impl From<NodeOwned> for NodeAligned {
@@ -2259,6 +2267,7 @@ impl From<NodeOwned> for NodeAligned {
             NodeOwned::Plugin(p) => p.into(),
             NodeOwned::Deallocate(d) => d.into(),
             NodeOwned::Tcl(tcl) => tcl.into(),
+            NodeOwned::Discard(discard) => discard.into(),
         }
     }
 }

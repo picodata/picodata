@@ -998,6 +998,7 @@ impl<'p> SyntaxPlan<'p> {
             .expect("node {id} must exist in the plan");
         match node {
             Node::Deallocate(..)
+            | Node::Discard(..)
             | Node::Plugin(..)
             | Node::Ddl(..)
             | Node::Acl(..)

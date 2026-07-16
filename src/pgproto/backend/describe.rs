@@ -15,7 +15,8 @@ use sql::{
     ir::{
         acl::GrantRevokeType,
         node::{
-            acl::Acl, block::Block, ddl::Ddl, plugin::Plugin, relational::Relational, tcl::Tcl,
+            acl::Acl, block::Block, ddl::Ddl, discard::Discard, discard::DiscardCache,
+            discard::DiscardDomain, plugin::Plugin, relational::Relational, tcl::Tcl,
             AnonymousBlock, GrantPrivilege, Node, RevokePrivilege,
         },
         types::DerivedType,
@@ -90,6 +91,10 @@ pub enum CommandTag {
     Update = 13,
     Do = 58,
     AlterSystemLocal = 59,
+    DiscardCacheSqlStmt = 60,
+    DiscardCacheSqlRouter = 61,
+    DiscardCacheSqlBlock = 62,
+    DiscardCache = 63,
 }
 
 impl CommandTag {
@@ -149,6 +154,10 @@ impl CommandTag {
             Self::EmptyQuery => "",
             Self::Backup => "BACKUP",
             Self::AlterSystemLocal => "ALTER SYSTEM LOCAL",
+            Self::DiscardCacheSqlStmt => "DISCARD CACHE SQL_STMT",
+            Self::DiscardCacheSqlRouter => "DISCARD CACHE SQL_ROUTER",
+            Self::DiscardCacheSqlBlock => "DISCARD CACHE SQL_BLOCK",
+            Self::DiscardCache => "DISCARD CACHE",
         }
     }
 }
@@ -190,7 +199,11 @@ impl From<CommandTag> for QueryType {
             CommandTag::Delete
             | CommandTag::Insert
             | CommandTag::Update
-            | CommandTag::CallProcedure => QueryType::Dml,
+            | CommandTag::CallProcedure
+            | CommandTag::DiscardCacheSqlStmt
+            | CommandTag::DiscardCacheSqlRouter
+            | CommandTag::DiscardCacheSqlBlock
+            | CommandTag::DiscardCache => QueryType::Dml,
             CommandTag::Explain => QueryType::Explain,
             CommandTag::Select => QueryType::Dql,
             CommandTag::Backup => QueryType::Backup,
@@ -262,6 +275,13 @@ impl TryFrom<&Node<'_>> for CommandTag {
             Node::Deallocate(deallocate) => match deallocate.name {
                 Some(_) => Ok(CommandTag::Deallocate),
                 None => Ok(CommandTag::DeallocateAll),
+            },
+
+            Node::Discard(discard) => match discard {
+                Discard::Cache(DiscardCache::SqlStmt) => Ok(CommandTag::DiscardCacheSqlStmt),
+                Discard::Cache(DiscardCache::SqlRouter) => Ok(CommandTag::DiscardCacheSqlRouter),
+                Discard::Cache(DiscardCache::SqlBlock) => Ok(CommandTag::DiscardCacheSqlBlock),
+                Discard::All(DiscardDomain::Cache) => Ok(CommandTag::DiscardCache),
             },
 
             Node::Relational(rel) => match rel {

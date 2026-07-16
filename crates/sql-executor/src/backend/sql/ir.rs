@@ -1336,6 +1336,12 @@ where
                             Some("Deallocate nodes are not supported in the generated SQL".into()),
                         ));
                     }
+                    Node::Discard(_) => {
+                        return Err(SbroadError::Unsupported(
+                            Entity::Node,
+                            Some("Discard nodes are not supported in the generated SQL".into()),
+                        ));
+                    }
                     Node::Relational(rel) => match rel {
                         Relational::Except { .. } => sql.push_str("EXCEPT"),
                         Relational::GroupBy { .. } => sql.push_str("GROUP BY"),

@@ -170,6 +170,7 @@ impl Nodes {
                     Tcl::Commit => Node::Tcl(Tcl::Commit),
                     Tcl::Rollback => Node::Tcl(Tcl::Rollback),
                 },
+                Node32::Discard(discard) => Node::Discard(*discard),
                 Node32::CreateSchema => Node::Ddl(Ddl::CreateSchema),
                 Node32::DropSchema => Node::Ddl(Ddl::DropSchema),
                 Node32::SubQueryReference(sq_reference) => {
@@ -323,6 +324,7 @@ impl Nodes {
                         Tcl::Commit => MutNode::Tcl(node::tcl::Tcl::Commit),
                         Tcl::Rollback => MutNode::Tcl(node::tcl::Tcl::Rollback),
                     },
+                    Node32::Discard(discard) => MutNode::Discard(*discard),
                     Node32::CreateSchema => MutNode::Ddl(MutDdl::CreateSchema),
                     Node32::DropSchema => MutNode::Ddl(MutDdl::DropSchema),
                     Node32::SubQueryReference(sq_reference) => {
@@ -1664,6 +1666,15 @@ impl Plan {
         Ok(matches!(self.get_node(top_id)?, Node::Deallocate(_)))
     }
 
+    /// Checks that plan is a discard query.
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is invalid.
+    pub fn is_discard(&self) -> Result<bool, SbroadError> {
+        let top_id = self.get_top()?;
+        Ok(matches!(self.get_node(top_id)?, Node::Discard(_)))
+    }
+
     /// Checks that plan is a DQL query.
     ///
     /// # Errors
@@ -1674,6 +1685,7 @@ impl Plan {
             && !self.is_acl()?
             && !self.is_plugin()?
             && !self.is_deallocate()?
+            && !self.is_discard()?
             && !self.is_tcl()?
             && !self.is_block()?
             && !self.is_dml()?)
@@ -1689,6 +1701,7 @@ impl Plan {
             && !self.is_acl()?
             && !self.is_plugin()?
             && !self.is_deallocate()?
+            && !self.is_discard()?
             && !self.is_tcl()?
             && !self.is_block()?)
     }
@@ -1718,7 +1731,8 @@ impl Plan {
             | Node::Tcl(..)
             | Node::Block(..)
             | Node::Plugin(..)
-            | Node::Deallocate(..) => Err(SbroadError::Invalid(
+            | Node::Deallocate(..)
+            | Node::Discard(..) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!("node is not Relational type: {node:?}")),
             )),
@@ -1743,6 +1757,7 @@ impl Plan {
             | MutNode::Tcl(..)
             | MutNode::Plugin(..)
             | MutNode::Deallocate(..)
+            | MutNode::Discard(..)
             | MutNode::Block(..) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some("Node is not relational".into()),
@@ -1817,6 +1832,7 @@ impl Plan {
             | MutNode::Tcl(..)
             | MutNode::Plugin(..)
             | MutNode::Deallocate(..)
+            | MutNode::Discard(..)
             | MutNode::Block(..) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!(

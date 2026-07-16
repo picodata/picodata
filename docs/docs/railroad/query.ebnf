@@ -1,4 +1,4 @@
-statement   ::= explain | ddl | dml | dql | acl | call | transaction_block
+statement   ::= explain | ddl | dml | dql | acl | call | transaction_block | discard
 explain     ::= 'EXPLAIN' (dml | ('(' 'RAW' (',' 'FMT')? ')')? dql )
 dql         ::= (with? select | values)
                 ('OPTION' '('
@@ -399,6 +399,7 @@ truncate_table ::= 'TRUNCATE' ('TABLE')? table
 backup         ::= 'BACKUP'
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
+discard        ::= 'DISCARD' 'CACHE' ('SQL_STMT' | 'SQL_ROUTER' | 'SQL_BLOCK')?
 alter_table    ::= 'ALTER' 'TABLE' table
                    (
                        ('RENAME' (('COLUMN' column 'TO' column)? | ('TO' table)?))

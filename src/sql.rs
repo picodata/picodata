@@ -1,6 +1,8 @@
 //! Clusterwide SQL query execution.
 
-use crate::access_control::{access_check_alter_system_local, access_check_plugin_system};
+use crate::access_control::{
+    access_check_alter_system_local, access_check_discard, access_check_plugin_system,
+};
 use crate::access_control::{validate_password, UserMetadataKind};
 use crate::backoff::SimpleBackoffManager;
 use crate::cas::Predicate;
@@ -54,8 +56,8 @@ use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Entity, SbroadError};
 use sql::executor::engine::helpers::{
-    build_delete_args, build_insert_args, build_update_args, init_delete_tuple_builder,
-    init_insert_tuple_builder, init_local_update_tuple_builder,
+    build_delete_args, build_insert_args, build_update_args, flush_block_pattern_cache,
+    init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
 };
 use sql::executor::engine::Router;
 use sql::executor::protocol::SchemaInfo;
@@ -67,6 +69,7 @@ use sql::ir::ddl::{AlterSystemType, ParamDef};
 use sql::ir::node::acl::AclOwned;
 use sql::ir::node::block::{Block, BlockOwned};
 use sql::ir::node::ddl::{Ddl, DdlOwned};
+use sql::ir::node::discard::{Discard, DiscardCache, DiscardDomain};
 use sql::ir::node::expression::ExprOwned;
 use sql::ir::node::plugin::{
     AppendServiceToTier, ChangeConfig, CreatePlugin, DisablePlugin, DropPlugin, EnablePlugin,
@@ -325,6 +328,18 @@ fn dispatch_bound_statement_impl<'p>(
             tcl.as_str()
         );
         port_write_dml_response(port, 0);
+        return Ok(());
+    }
+
+    if query.is_discard()? {
+        let ir_plan = query.get_exec_plan().get_ir_plan();
+        let top_id = ir_plan.get_top()?;
+        let discard = ir_plan.get_discard_node(top_id)?;
+        let evicted = execute_discard(discard, effective_user_id())?;
+        // With zero rows the governor marks its operation done itself.
+        // `DISCARD` has no raft entry that would do it.
+        let row_count = if governor_op_id.is_some() { 0 } else { evicted };
+        port_write_dml_response(port, row_count);
         return Ok(());
     }
 
@@ -3124,6 +3139,38 @@ pub fn proc_array_cast(args: ArrayCastArgs) -> Result<RawByteBuf, Error> {
     let nested = NestedType::from_marker(&args.element_type)?;
     let casted = args.array.cast_array(nested)?;
     Ok(RawByteBuf::from(msgpack::encode(&casted)))
+}
+
+/// Returns the total number of entries removed.
+fn execute_discard(discard: Discard, as_user: UserId) -> traft::Result<u64> {
+    access_check_discard(as_user)?;
+
+    let caches = match &discard {
+        Discard::Cache(cache) => std::slice::from_ref(cache),
+        Discard::All(DiscardDomain::Cache) => DiscardCache::ALL.as_slice(),
+    };
+    let evicted = caches
+        .iter()
+        .copied()
+        .map(flush_cache)
+        .collect::<Result<Vec<_>, _>>()?;
+    tlog!(Info, "discarded caches"; "evicted" => %caches
+        .iter()
+        .zip(evicted.iter())
+        .map(|(cache, count)| format_smolstr!("{}={count}", cache.as_str()))
+        .collect::<Vec<_>>()
+        .join(", "));
+    Ok(evicted.into_iter().map(|count| count as u64).sum())
+}
+
+/// Flush a single node-local cache; returns the number of entries removed.
+fn flush_cache(cache: DiscardCache) -> traft::Result<usize> {
+    let evicted = match cache {
+        DiscardCache::SqlStmt => crate::sql::storage::flush_statement_cache()?,
+        DiscardCache::SqlRouter => crate::sql::router::flush_plan_cache()?,
+        DiscardCache::SqlBlock => flush_block_pattern_cache()?,
+    };
+    Ok(evicted)
 }
 
 // Each DML request on global tables has the following plan:

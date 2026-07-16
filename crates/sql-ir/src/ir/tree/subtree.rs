@@ -284,7 +284,8 @@ fn subtree_next<'plan>(
             | Node::Tcl(..)
             | Node::Block(..)
             | Node::Plugin(..)
-            | Node::Deallocate(..) => None,
+            | Node::Deallocate(..)
+            | Node::Discard(..) => None,
             Node::Expression(expr) => match expr {
                 Expression::Window { .. } => iter.handle_window_iter(expr),
                 Expression::Over { .. } => iter.handle_over_iter(expr),

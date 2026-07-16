@@ -54,6 +54,10 @@ impl Plan {
                 Entity::Node,
                 Some("Deallocate node has no type".to_smolstr()),
             )),
+            Node::Discard(_) => Err(SbroadError::Invalid(
+                Entity::Node,
+                Some("Discard node has no type".to_smolstr()),
+            )),
         }
     }
 }

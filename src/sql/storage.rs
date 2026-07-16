@@ -189,6 +189,19 @@ pub fn process_deferred_evictions() -> Result<(), SbroadError> {
     Ok(())
 }
 
+/// Flush the node-local storage statement cache.
+///
+/// Returns the number of cached statements that were removed.
+pub fn flush_statement_cache() -> Result<usize, SbroadError> {
+    let flushed = STATEMENT_CACHE.with(|cache| match cache.get() {
+        Some(cache) => cache.lock().flush(),
+        None => Ok(0),
+    })?;
+    // Finalize the temp tables of the flushed plans outside the cache mutex.
+    process_deferred_evictions()?;
+    Ok(flushed)
+}
+
 #[allow(clippy::module_name_repetitions)]
 pub struct StorageRuntime {
     bucket_count: u64,
@@ -267,6 +280,18 @@ impl PicoStorageCache {
     fn pop(&mut self) -> Result<Option<StorageCacheEntry>, SbroadError> {
         let removed = self.cache.pop()?;
         Ok(removed.inspect(|x| self.mem_used -= x.stmt_size))
+    }
+
+    /// Remove every cached statement, running the eviction hook on each.
+    /// The caller must invoke [`process_deferred_evictions`] afterwards to
+    /// finalize the temp tables of the flushed plans.
+    ///
+    /// Returns the number of statements that were flushed.
+    pub fn flush(&mut self) -> Result<usize, SbroadError> {
+        let count = self.cache.len();
+        while self.pop()?.is_some() {}
+        debug_assert_eq!(self.mem_used, 0);
+        Ok(count)
     }
 
     pub(crate) fn get_or_create_table_lock(&mut self, plan_id: u64) -> TempTableLockRef {

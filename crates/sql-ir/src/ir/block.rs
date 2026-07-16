@@ -24,7 +24,8 @@ impl Plan {
             | Node::Tcl(..)
             | Node::Invalid(..)
             | Node::Plugin(_)
-            | Node::Deallocate(..) => Err(SbroadError::Invalid(
+            | Node::Deallocate(..)
+            | Node::Discard(..) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!(
                     "node {node:?} (id {node_id}) is not Block type"
@@ -48,7 +49,8 @@ impl Plan {
             | MutNode::Tcl(..)
             | MutNode::Invalid(..)
             | MutNode::Plugin(_)
-            | MutNode::Deallocate(..) => Err(SbroadError::Invalid(
+            | MutNode::Deallocate(..)
+            | MutNode::Discard(..) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!(
                     "node {node:?} (id {node_id}) is not Block type"

@@ -715,6 +715,18 @@ thread_local! {
     );
 }
 
+/// Flush the node-local anonymous block pattern cache.
+///
+/// Returns the number of cached block patterns that were removed.
+pub fn flush_block_pattern_cache() -> Result<usize, SbroadError> {
+    BLOCK_PATTERN_CACHE.with(|c| -> Result<usize, SbroadError> {
+        let mut cache = c.borrow_mut();
+        let count = cache.len();
+        cache.clear()?;
+        Ok(count)
+    })
+}
+
 /// Compute the params of a single block query without rendering its SQL.
 fn generate_params_for_block_query(
     plan: &ExecutionPlan,

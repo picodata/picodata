@@ -86,6 +86,7 @@ article.md-typeset.md-typeset ul {
 * [DDL](reference/sql/ddl.md)
 * [DECIMAL](reference/sql_types.md#decimal)
 * [DELETE](reference/sql/delete.md)
+* [DISCARD](reference/sql/discard.md)
 * [DISTINCT](reference/sql/select.md#params)
 * [DML](reference/sql/dml.md)
 * [DO](reference/sql/transactions.md)

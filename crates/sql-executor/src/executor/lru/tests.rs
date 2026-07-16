@@ -48,3 +48,36 @@ fn lru4() {
     cache.put(1, "two".to_string()).unwrap();
     assert_eq!(cache.get(&1).unwrap(), Some(&"two".to_string()));
 }
+
+#[test]
+fn lru_clear() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let evicted = Rc::new(RefCell::new(Vec::new()));
+    let evicted_clone = Rc::clone(&evicted);
+    let evict_fn = Box::new(move |k: &usize, _v: &mut String| {
+        evicted_clone.borrow_mut().push(*k);
+        Ok(())
+    });
+    let mut cache: LRUCache<usize, String> = LRUCache::new(3, Some(evict_fn)).unwrap();
+    cache.put(1, "one".to_string()).unwrap();
+    cache.put(2, "two".to_string()).unwrap();
+    cache.put(3, "three".to_string()).unwrap();
+    assert_eq!(cache.len(), 3);
+
+    cache.clear().unwrap();
+
+    assert_eq!(cache.len(), 0);
+    assert_eq!(cache.is_empty(), true);
+    let mut got = evicted.borrow().clone();
+    got.sort_unstable();
+    assert_eq!(got, vec![1, 2, 3]);
+
+    cache.clear().unwrap();
+    assert_eq!(evicted.borrow().len(), 3);
+
+    assert_eq!(cache.get(&1).unwrap().is_none(), true);
+    cache.put(4, "four".to_string()).unwrap();
+    assert_eq!(cache.get(&4).unwrap(), Some(&"four".to_string()));
+}
