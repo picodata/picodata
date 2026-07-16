@@ -9,7 +9,7 @@ use crate::util::effective_user_id;
 use crate::{cas, config, sql, tlog, traft};
 use ::sql::ir::operator::ConflictStrategy;
 use ::sql::ir::value::double::Double;
-use ::sql::ir::value::{Tuple, Value};
+use ::sql::ir::value::Value;
 use abi_stable::pmr::{RErr, RNone, ROk, ROption, RResult, RSome};
 use abi_stable::std_types::{RDuration, RString, RVec, Tuple2};
 use abi_stable::{sabi_extern_fn, RTuple};
@@ -289,11 +289,11 @@ impl From<SqlValue> for SBroadValue {
             SqlValueInner::Null => SBroadValue(Value::Null),
             SqlValueInner::String(s) => SBroadValue(Value::String(s.to_string())),
             SqlValueInner::Unsigned(u) => SBroadValue(Value::Integer(u as i64)),
-            SqlValueInner::Array(arr) => SBroadValue(Value::Tuple(Tuple::from(
+            SqlValueInner::Array(arr) => SBroadValue(Value::Tuple(
                 arr.into_iter()
                     .map(|v| SBroadValue::from(v).0)
                     .collect::<Vec<_>>(),
-            ))),
+            )),
             SqlValueInner::Uuid(raw_uuid) => SBroadValue(Value::Uuid(Uuid::from_bytes(raw_uuid))),
         }
     }

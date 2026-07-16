@@ -720,7 +720,7 @@ mod tests {
         ]);
         let sb: SbroadValue = pg.try_into().unwrap();
         match sb {
-            SbroadValue::Tuple(t) => assert_eq!(format!("{t}"), "[7,NULL,9]"),
+            SbroadValue::Tuple(_) => assert_eq!(format!("{sb}"), "[7,NULL,9]"),
             other => panic!("expected SbroadValue::Tuple, got {other:?}"),
         }
     }
