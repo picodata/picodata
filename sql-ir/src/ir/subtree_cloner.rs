@@ -116,12 +116,7 @@ impl SubtreeCloner {
                 child: _,
                 output: _,
             })
-            | RelOwned::ScanRelation(ScanRelation {
-                alias: _,
-                output: _,
-                relation: _,
-                ..
-            })
+            | RelOwned::ScanRelation(ScanRelation { .. })
             | RelOwned::ScanCte(ScanCte {
                 alias: _,
                 output: _,

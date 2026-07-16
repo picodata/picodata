@@ -12,7 +12,7 @@ repository.workspace = true
 [workspace.package]
 version = "26.3.0"
 edition = "2021"
-rust-version = "1.89"
+rust-version = "1.97"
 license-file = "LICENSE"
 repository = "https://git.picodata.io/core/picodata"
 

@@ -2127,7 +2127,8 @@ impl CreateIndexParams {
         if !table.operable {
             return Err(CreateIndexError::TableNotOperable {
                 table_name: self.space_name.clone(),
-            })?;
+            }
+            .into());
         }
         let mut filed_names: AHashSet<&str> = AHashSet::with_capacity(table.format.len());
         for field in &table.format {
@@ -2137,7 +2138,8 @@ impl CreateIndexParams {
             if !filed_names.contains(column.as_str()) {
                 return Err(CreateIndexError::FieldUndefined {
                     name: column.clone(),
-                })?;
+                }
+                .into());
             }
         }
 
@@ -2146,41 +2148,46 @@ impl CreateIndexParams {
                 return Err(CreateIndexError::IncompatibleTableEngineOption {
                     engine: table.engine.to_string(),
                     option: opt.type_name().into(),
-                })?;
+                }
+                .into());
             }
             if self.ty != IndexType::Rtree && opt.is_rtree() {
                 return Err(CreateIndexError::IncompatibleIndexTypeOption {
                     ty: self.ty.to_string(),
                     option: opt.type_name().into(),
-                })?;
+                }
+                .into());
             }
             if self.ty != IndexType::Tree && opt.is_tree() {
                 return Err(CreateIndexError::IncompatibleIndexTypeOption {
                     ty: self.ty.to_string(),
                     option: opt.type_name().into(),
-                })?;
+                }
+                .into());
             }
             if let &IndexOption::Unique(false) = opt {
                 if self.ty == IndexType::Hash {
                     return Err(CreateIndexError::NonUniqueIndexType {
                         ty: self.ty.to_string(),
-                    })?;
+                    }
+                    .into());
                 }
             }
             if let &IndexOption::Unique(true) = opt {
                 if self.ty == IndexType::Rtree || self.ty == IndexType::Bitset {
                     return Err(CreateIndexError::UniqueIndexType {
                         ty: self.ty.to_string(),
-                    })?;
+                    }
+                    .into());
                 }
                 // Unique index for the sharded table must include all sharding key columns as a prefix
                 if let Distribution::ShardedImplicitly { sharding_key, .. } = &table.distribution {
                     if sharding_key.len() > self.columns.len() {
-                        return Err(CreateIndexError::IncompatibleUniqueIndexColumns)?;
+                        return Err(CreateIndexError::IncompatibleUniqueIndexColumns.into());
                     }
                     for (sharding_key, column) in sharding_key.iter().zip(&self.columns) {
                         if sharding_key != column {
-                            return Err(CreateIndexError::IncompatibleUniqueIndexColumns)?;
+                            return Err(CreateIndexError::IncompatibleUniqueIndexColumns.into());
                         }
                     }
                 }
@@ -2191,7 +2198,7 @@ impl CreateIndexParams {
             if parts.len() > 1 {
                 return Err(CreateIndexError::IncompatibleIndexMultipleColumns {
                     ty: self.ty.to_string(),
-                })?;
+                });
             }
             Ok(())
         };
@@ -2199,7 +2206,7 @@ impl CreateIndexParams {
             if part.is_nullable == Some(true) {
                 return Err(CreateIndexError::IncompatipleNullableColumn {
                     ty: self.ty.to_string(),
-                })?;
+                });
             }
             Ok(())
         };
@@ -2217,13 +2224,13 @@ impl CreateIndexParams {
                     return Err(CreateIndexError::IncompatibleIndexColumnType {
                         ty: self.ty.to_string(),
                         ctype,
-                    })?;
+                    });
                 }
             } else if types.iter().any(|t| t == &part.r#type) {
                 return Err(CreateIndexError::IncompatibleIndexColumnType {
                     ty: self.ty.to_string(),
                     ctype,
-                })?;
+                });
             }
             Ok(())
         };

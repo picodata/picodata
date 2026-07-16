@@ -1398,12 +1398,13 @@ impl Acl {
                 // as box.schema.user.drop(..) deletes all the related spaces/priveleges/etc.
             }
 
-            Self::DropRole { role_id, .. } => {
-                // See https://git.picodata.io/picodata/tarantool/-/blob/da5ad0fa3ab8940f524cfa9bf3d582347c01fc4a/src/box/alter.cc#L3080
-                if *role_id == PUBLIC_ID || *role_id == SUPER_ID || *role_id == ROLE_REPLICATION_ID
-                {
-                    return Err(TRaftError::other("dropping system role is not allowed"));
-                }
+            // See https://git.picodata.io/picodata/tarantool/-/blob/da5ad0fa3ab8940f524cfa9bf3d582347c01fc4a/src/box/alter.cc#L3080
+            Self::DropRole { role_id, .. }
+                if *role_id == PUBLIC_ID
+                    || *role_id == SUPER_ID
+                    || *role_id == ROLE_REPLICATION_ID =>
+            {
+                return Err(TRaftError::other("dropping system role is not allowed"));
             }
             _ => (),
         }

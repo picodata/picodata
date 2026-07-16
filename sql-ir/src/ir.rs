@@ -3216,15 +3216,15 @@ impl ShardColumnsMap {
                 }
                 return Ok(());
             }
-            Relational::Motion(Motion { policy, .. }) => {
-                // Any motion node that moves data invalidates
-                // bucket_id column selected from that space.
-                // Even Segment policy is no help, because it only
-                // creates index on virtual table but does not actually
-                // add or update bucket_id column.
-                if !matches!(policy, MotionPolicy::Local | MotionPolicy::LocalSegment(_)) {
-                    return Ok(());
-                }
+            // Any motion node that moves data invalidates
+            // bucket_id column selected from that space.
+            // Even Segment policy is no help, because it only
+            // creates index on virtual table but does not actually
+            // add or update bucket_id column.
+            Relational::Motion(Motion { policy, .. })
+                if !matches!(policy, MotionPolicy::Local | MotionPolicy::LocalSegment(_)) =>
+            {
+                return Ok(());
             }
             _ => {}
         }

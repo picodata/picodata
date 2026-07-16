@@ -142,12 +142,10 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                             // If the row contains only leaf nodes (or we don't want to go deeper
                             // into the row tree for some reasons), skip traversal.
                             if !is_leaf || !iter.get_make_row_leaf() {
-                                match list.get(child_step) {
-                                    None => return None,
-                                    Some(child) => {
-                                        *iter.get_child().borrow_mut() += 1;
-                                        return Some(*child);
-                                    }
+                                {
+                                    let child = list.get(child_step)?;
+                                    *iter.get_child().borrow_mut() += 1;
+                                    return Some(*child);
                                 }
                             }
 

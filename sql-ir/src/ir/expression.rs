@@ -1966,10 +1966,10 @@ impl Plan {
                         });
                     }
                 },
-                MutExpression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
-                    if *rel_id == from_id {
-                        *rel_id = to_id
-                    }
+                MutExpression::SubQueryReference(SubQueryReference { rel_id, .. })
+                    if *rel_id == from_id =>
+                {
+                    *rel_id = to_id
                 }
                 _ => {}
             }

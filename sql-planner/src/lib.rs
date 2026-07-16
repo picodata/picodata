@@ -92,7 +92,7 @@ impl PreparedStatement {
                     table_version_map.insert(table.id, version);
                 }
 
-                for (index_pk, _) in plan.index_version_map.iter() {
+                for index_pk in plan.index_version_map.keys() {
                     let version = router.get_index_version_by_pk(index_pk[0], index_pk[1])?;
                     index_version_map.insert(*index_pk, version);
                 }

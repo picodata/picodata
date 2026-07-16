@@ -228,12 +228,7 @@ pub fn to_type_expr(
             let kind = TypeExprKind::Array(exprs);
             Ok(TypeExpr::new(node_id, kind))
         }
-        Expression::ScalarFunction(ScalarFunction {
-            name,
-            children,
-            feature: _,
-            ..
-        }) => match name.as_str() {
+        Expression::ScalarFunction(ScalarFunction { name, children, .. }) => match name.as_str() {
             "coalesce" => {
                 let args = to_type_expr_many(children, plan, subquery_map)?;
                 let kind = TypeExprKind::Coalesce(args);

@@ -12,7 +12,7 @@ keywords = ["lua"]
 repository = "https://github.com/picodata/picodata"
 documentation = "http://docs.rs/tlua"
 license = "MIT"
-rust-version = "1.89"
+rust-version = "1.97"
 
 [dependencies]
 libc = "0.2"
