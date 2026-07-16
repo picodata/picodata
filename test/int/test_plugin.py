@@ -4216,6 +4216,7 @@ def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
     assert poisoned == 2
 
 
+@pytest.mark.skip(reason="Doesnt work on 26.3.0, see https://git.picodata.io/core/picodata/-/issues/3028    ")
 @pytest.mark.required_rolling_versions(
     versions=[
         get_or_make_registry().next_version(Version("26.1.4")),
