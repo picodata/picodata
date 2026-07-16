@@ -3950,6 +3950,11 @@ def test_plugin_on_cluster_leader_change_err(cluster: Cluster):
     time.sleep(1)
     assert i1.raft_leader_id() == 1
 
+    # cure the routes by running .on_config_change
+    i1.sql(f"ALTER PLUGIN {plugin} {version} SET {service}.on_cluster_leader_change_should_return_error='true'")
+    # not all services were able to get the config change to call on_config_change before adding this hack
+    global_wait()
+
     lc2 = log_crawler(
         i2,
         f"service poisoned, {plugin}.{service}:v{version}.on_cluster_leader_change error:.*the error that should happen in on_cluster_leader_change",
@@ -3970,6 +3975,9 @@ def test_plugin_on_cluster_leader_change_err(cluster: Cluster):
     # propose leadership without waiting
     i2.call(".proc_raft_promote")
 
+    # either i2 or i3 can win the election
+    cluster.wait_leader_elected(instances=[i2, i3])
+
     def wait_matched_on_single_instance():
         assert lc2.matched ^ lc3.matched
 
@@ -3980,10 +3988,8 @@ def test_plugin_on_cluster_leader_change_err(cluster: Cluster):
         i3.check_process_alive()
         raise e from e
 
-    assert i2.raft_leader_id() in [2, 3]
-
     [[poisoned]] = i2.sql("SELECT COUNT(*) FROM _pico_service_route WHERE poison = true")
-    assert poisoned == 2
+    assert poisoned == 1
 
 
 def test_plugin_on_cluster_leader_change_all_callbacks(cluster: Cluster):
