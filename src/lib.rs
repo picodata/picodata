@@ -26,7 +26,6 @@ use crate::storage::schema::copy_dir_async;
 use crate::storage::schema::copy_file_async;
 use crate::storage::schema::ddl_meta_space_update_operable;
 use crate::storage::PropertyName;
-use crate::storage::SystemTable;
 use crate::tarantool::{rm_tarantool_files, ListenConfig};
 use crate::traft::error::Error;
 use crate::traft::op;
@@ -2039,115 +2038,6 @@ fn setup_metrics_and_start_http_server(
     Ok(())
 }
 
-/// Migrates HTTP advertise address to `_pico_peer_address` for instances that
-/// were created before HTTP address tracking was implemented.
-///
-/// This is done per-instance rather than via a governor-driven catalog upgrade
-/// because the governor doesn't have enough information to populate addresses
-/// for all instances (e.g. some may be offline at upgrade time). Instead, each
-/// instance writes its own HTTP address on startup, ensuring the migration
-/// completes naturally as instances restart during a rolling upgrade.
-///
-/// The HTTP address is needed by webui to display instance information.
-fn migrate_http_peer_address_if_missing(
-    config: &PicodataConfig,
-    node: &traft::node::Node,
-) -> Result<(), Error> {
-    // Skip migration if the cluster is not fully upgraded to the version that
-    // supports ConnectionType::Http. Writing "http" to _pico_peer_address
-    // while older instances (25.5.x) are still running would cause them to
-    // panic: their EntryIter calls `.expect()` on decode, and "http" is an
-    // unknown ConnectionType variant in those versions.
-    //
-    // Use properties.get() directly instead of cluster_version() to avoid
-    // panicking when ClusterVersion is not yet replicated at postjoin time.
-    let cluster_version = node
-        .storage
-        .properties
-        .get::<SmolStr>(PropertyName::ClusterVersion.as_str())?;
-    let Some(cluster_version) = cluster_version else {
-        tlog!(
-            Info,
-            "skipping HTTP peer address migration: cluster_version not yet available"
-        );
-        return Ok(());
-    };
-    let Ok(cv) = crate::version::Version::try_from(cluster_version.as_str()) else {
-        tlog!(
-            Info,
-            "skipping HTTP peer address migration: cluster_version {cluster_version} is not parseable"
-        );
-        return Ok(());
-    };
-    if cv.major < 25 || (cv.major == 25 && cv.minor < 6) {
-        tlog!(
-            Info,
-            "skipping HTTP peer address migration: cluster_version {cluster_version} \
-             does not yet support ConnectionType::Http"
-        );
-        return Ok(());
-    }
-
-    let raft_id = node.raft_id();
-
-    let http_conn_type = traft::ConnectionType::System(traft::SystemConnectionType::Http);
-    let existing = node.storage.peer_addresses.get(raft_id, &http_conn_type)?;
-
-    if existing.is_some() {
-        return Ok(());
-    }
-
-    tlog!(
-        Info,
-        "migrating HTTP advertise address to _pico_peer_address"
-    );
-
-    let http_advertise = config.instance.http.advertise().to_host_port();
-    let peer_address = traft::PeerAddress {
-        raft_id,
-        address: http_advertise,
-        connection_type: http_conn_type,
-    };
-
-    let op = traft::op::Dml::replace(
-        storage::PeerAddresses::TABLE_ID,
-        &peer_address,
-        schema::ADMIN_ID,
-    )
-    .expect("encoding should not fail");
-
-    let timeout = std::time::Duration::from_secs(30);
-    let deadline = fiber::clock().saturating_add(timeout);
-
-    loop {
-        if fiber::clock() > deadline {
-            return Err(Error::other(
-                "timeout while migrating HTTP peer address to storage",
-            ));
-        }
-
-        // Recreate the predicate on each iteration to get fresh applied_index.
-        // This is necessary because the applied_index can change between iterations
-        // due to concurrent operations (e.g., rebalancing, other raft entries).
-        let ranges = vec![cas::Range::new(storage::PeerAddresses::TABLE_ID)];
-        let predicate = cas::Predicate::with_applied_index(ranges);
-        let cas_req =
-            cas::Request::new(traft::op::Op::Dml(op.clone()), predicate, schema::ADMIN_ID)?;
-
-        let res = cas::compare_and_swap_and_wait(&cas_req, deadline)?;
-        if let Some(e) = res.into_retriable_error() {
-            tlog!(Debug, "CaS for HTTP address migration rejected: {e}");
-            fiber::sleep(std::time::Duration::from_millis(250));
-            continue;
-        }
-
-        tlog!(Info, "HTTP advertise address migration completed");
-        break;
-    }
-
-    Ok(())
-}
-
 fn postjoin(
     config: &PicodataConfig,
     storage: Catalog,
@@ -2279,12 +2169,6 @@ fn postjoin(
         config.instance.failure_domain(),
         boot_timeout,
     )?;
-
-    // Migrate HTTP advertise address for instances upgraded from older versions.
-    // This ensures that HTTP address is present in _pico_peer_address for webui.
-    // Must be done after update_our_target_state_to_online, which establishes
-    // connection with the leader.
-    migrate_http_peer_address_if_missing(config, node)?;
 
     // Wait for target state to change to Online, so that sentinel doesn't send
     // a redundant update instance request.
