@@ -886,14 +886,30 @@ asan:
       - BASE_IMAGE_TAG
       - BASE_IMAGE_LATEST
 
-pack-on-tag:
+pack-on-tag-release:
   stage: pack
   rules:
-    - if: $CI_PIPELINE_SOURCE == "web"
-    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ "/^\d+\.\d+\.\d+$/"
   variables:
     PROJECT_TARGET: "picodata"
     TYPE: "RELEASE"
+    BRANCH_TARGET: $CI_COMMIT_TAG
+  inherit:
+    variables:
+      - TYPE
+      - PROJECT_TARGET
+      - BRANCH_TARGET
+  trigger:
+    project: "picodata/devops/builder"
+    strategy: depend
+
+pack-on-tag-rc:
+  stage: pack
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ "/^.*-rc\d+$/"
+  variables:
+    PROJECT_TARGET: "picodata"
+    TYPE: "NIGHTLY"
     BRANCH_TARGET: $CI_COMMIT_TAG
   inherit:
     variables:
