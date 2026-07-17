@@ -4,11 +4,23 @@
 
 ## Общие сведения {: #intro }
 
-Драйвер Picopyn представляет собой пакет для Python, реализующий подключение и
-работу с СУБД Picodata из Python-приложений. Picopyn основан на пакете [asyncpg].
+Драйвер Picopyn представляет собой пакет для Python, реализующий подключение и работу с СУБД Picodata из Python-приложений.
+
+Picopyn предоставляет как асинхронный, так и синхронный инерфейс.
+
+Дополнительные примеры и подробности реализации можно найти в [документации](https://picopyn.readthedocs.io).
+
+Версионирование:
+
+| Версия Picopyn | Версия Picodata    | Статус                     |
+|----------------|--------------------|----------------------------|
+| <=1.0.0        | >=25.4.x, < 26.2.x | ✅ Полностью поддерживается |
+| -              | >=26.2.x           | ⚠️ Ещё не протестирована    |
 
 [Python-драйвера]: https://git.picodata.io/core/drivers/picopyn
+[PYPI]: https://pypi.org/project/picopyn/
 [asyncpg]: https://github.com/MagicStack/asyncpg
+[psycopg]: https://www.psycopg.org/
 
 ## Поддерживаемые функции {: #features }
 
@@ -17,11 +29,18 @@
 - поддержка пула подключений, возможность настраивать размер пула
 - опциональное автоматическое обнаружение узлов кластера Picodata
 - возможность выбора стратегии балансировки подключений
-- полностью асинхронный API
+- асинхронный API, основанный на [asyncpg]
+- синхронный [DBAPI-совместимый](https://peps.python.org/pep-0249/) API, основанный на [psycopg]
 
 ## Подключение {: #enabling }
 
-Установите драйвер из исходного кода:
+Установите драйвер из [PYPI]:
+
+```shell
+pip install picopyn
+```
+
+Или из исходного кода:
 
 ```shell
 git clone https://git.picodata.io/core/drivers/picopyn.git
@@ -29,11 +48,13 @@ cd picopyn
 make install
 ```
 
-## Пример использования {: #usage_example }
+## Примеры использования {: #usage_example }
+
+### Использование асинхронного драйвера {: #async_driver }
 
 ```python
 import asyncio
-from picopyn import Client
+from picopyn.asynchronous import Client
 
 async def main():
     # create and connect client to the Picodata cluster
@@ -55,9 +76,32 @@ async def main():
 asyncio.run(main())
 ```
 
+### Использование синхронного драйвера {: #sync_driver }
+
+```python
+from picopyn.synchronous import Connection
+
+# create and connect to the picodata cluster
+conn = Connection("postgresql://admin:pass@localhost:5432")
+conn.connect()
+cur = conn.cursor()
+
+# execute DDL operations
+cur.execute('''
+    CREATE TABLE "warehouse" (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY (id)) USING memtx DISTRIBUTED BY (id) OPTION (TIMEOUT = 3.0);
+''')
+
+# execute DML/DQL operations
+cur.execute('INSERT INTO "warehouse" VALUES (%s, %s)', (1, "test"))
+cur.execute('SELECT * FROM "warehouse"')
+print(cur.fetchall())
+
+conn.close()
+```
+
 ## Изменение параметров {: #configure }
 
-### Параметры клиента {: #client_settings }
+### Параметры асинхронного клиента {: #client_settings }
 
 Используйте следующие параметры для класса `Client`:
 
@@ -87,7 +131,7 @@ def random_strategy(connections):
 ...     return random.choice(connections)
 ```
 
-### Параметры пула подключений {: #pool_settings }
+### Параметры асинхронного пула подключений {: #pool_settings }
 
 Используйте следующие параметры для класса `Pool`:
 
