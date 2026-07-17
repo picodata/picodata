@@ -80,3 +80,5 @@ proc_version_info
 proc_wait_bucket_count
 proc_wait_index
 proc_wait_vclock
+proc_log_level
+proc_log_level_map

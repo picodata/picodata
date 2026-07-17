@@ -1,7 +1,8 @@
 use crate::cli::args::LogLevel;
 use crate::traft::error::Error;
 use ::sql::ir::{types::DomainType as SqlType, value::Value as SqlValue};
-use tarantool::define_str_enum;
+use std::collections::BTreeMap;
+use tarantool::{define_str_enum, proc};
 
 define_str_enum! {
     pub enum LocalDynamicParameter {
@@ -47,7 +48,7 @@ mod parameters {
     pub fn get_default_log_level() -> LogLevel {
         PicodataConfig::get().instance.log_level()
     }
-    pub fn get_current_log_level() -> LogLevel {
+    pub fn get_log_level() -> LogLevel {
         let say_level = tarantool::log::current_level();
 
         LogLevel::from(say_level)
@@ -95,14 +96,18 @@ pub fn validate_and_set_dynamic_local_parameter(
     }
 }
 
-pub fn get_dynamic_local_parameter(name: LocalDynamicParameter) -> rmpv::Value {
-    let serialized = match name {
-        LocalDynamicParameter::LogLevel => {
-            let log_level = parameters::get_current_log_level();
+/////////////////////////////////////////////////////////////////////
+// stored procedures to inspect dynamic configs
+/////////////////////////////////////////////////////////////////////
+#[proc]
+pub fn proc_log_level() -> Result<LogLevel, Error> {
+    Ok(parameters::get_log_level())
+}
 
-            rmp_serde::to_vec(&log_level).unwrap()
-        }
-    };
-
-    rmp_serde::from_slice(&serialized).unwrap()
+#[proc]
+pub fn proc_log_level_map() -> Result<BTreeMap<LogLevel, u32>, Error> {
+    Ok(LogLevel::VARIANTS
+        .iter()
+        .map(|&level| (level, tarantool::log::SayLevel::from(level) as u32))
+        .collect())
 }

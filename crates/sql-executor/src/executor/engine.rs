@@ -170,6 +170,20 @@ pub fn get_builtin_functions() -> &'static [Function] {
                 DerivedType::new(UnrestrictedType::Map),
                 false,
             ),
+            Function::new_volatile(
+                get_real_function_name("pico_log_level")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_volatile(
+                get_real_function_name("pico_log_level_map")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::Map),
+                false,
+            ),
         ]
     })
 }

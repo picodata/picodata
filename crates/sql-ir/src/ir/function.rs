@@ -435,6 +435,18 @@ pub const FUNCTION_NAME_MAPPINGS: &[FunctionNameMapping] = &[
         tarantool_symbol: ".proc_picodata_version",
         parameter_list: &[],
     },
+    FunctionNameMapping {
+        sql: "pico_log_level",
+        rust_procedure: "proc_log_level",
+        tarantool_symbol: ".proc_log_level",
+        parameter_list: &[],
+    },
+    FunctionNameMapping {
+        sql: "pico_log_level_map",
+        rust_procedure: "proc_log_level_map",
+        tarantool_symbol: ".proc_log_level_map",
+        parameter_list: &[],
+    },
 ];
 
 /// Maps (maybe quoted or uppercased) name from user to real procedure name in tarantool.

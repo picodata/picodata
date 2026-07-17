@@ -161,6 +161,9 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_instance_details"),
             ("proc_name", "proc_resharding"),
             ("exec_script", InternalScript::InsertWalModeIntoPicoDbConfig.as_str()),
+            // Procs for retrieving runtime log config
+            ("proc_name", "proc_log_level"),
+            ("proc_name", "proc_log_level_map"),
         ],
     ),
 ];
