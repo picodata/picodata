@@ -35,6 +35,7 @@ impl AuthMethod {
 #[cfg(feature = "picodata")]
 mod picodata {
     use super::AuthMethod;
+    use crate::error::BoxError;
     use crate::ffi::tarantool as ffi;
     use std::mem::MaybeUninit;
     use std::ops::Range;
@@ -55,7 +56,7 @@ mod picodata {
         let mut data = MaybeUninit::uninit();
         let mut data_end = MaybeUninit::uninit();
         let svp = unsafe { ffi::box_region_used() };
-        unsafe {
+        let err = unsafe {
             ffi::box_auth_data_prepare(
                 auth_start as _,
                 auth_end as _,
@@ -65,7 +66,10 @@ mod picodata {
                 user_end as _,
                 data.as_mut_ptr(),
                 data_end.as_mut_ptr(),
-            );
+            )
+        };
+        if err < 0 {
+            panic!("Could not prepare auth data: {}", BoxError::last());
         }
         let data = unsafe { data.assume_init() };
         let data_end = unsafe { data_end.assume_init() };
