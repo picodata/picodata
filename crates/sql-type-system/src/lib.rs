@@ -451,6 +451,59 @@ mod tests {
     }
 
     #[test]
+    fn subscript_types() {
+        let type_system = default_type_system();
+
+        let tests = [
+            // Plain map or untyped array indexing yields any.
+            (index_chain(reference(Map), vec![lit(Text)]), Any),
+            (
+                index_chain(reference(Array(NestedType::Any)), vec![lit(Integer)]),
+                Any,
+            ),
+            (
+                index_chain(reference(Map), vec![lit(Text), lit(Integer)]),
+                Any,
+            ),
+            // A typed array yields its element type.
+            (
+                index_chain(reference(Array(NestedType::Integer)), vec![lit(Integer)]),
+                Integer,
+            ),
+            // Json indexing preserves the json type, with text or integer keys
+            // at any level.
+            (index_chain(reference(Json), vec![lit(Text)]), Json),
+            (index_chain(reference(Json), vec![lit(Integer)]), Json),
+            (
+                index_chain(reference(Json), vec![lit(Text), lit(Integer), lit(Text)]),
+                Json,
+            ),
+        ];
+
+        for (expr, result_type) in tests {
+            let mut analyzer = TypeAnalyzer::new(&type_system);
+            analyzer.analyze(&expr, None).unwrap();
+            assert_eq!(analyzer.get_report().get_type(&expr.id), result_type);
+        }
+    }
+
+    #[test]
+    fn subscript_errors() {
+        let type_system = default_type_system();
+
+        let tests = [(
+            index_chain(reference(Integer), vec![lit(Text)]),
+            "cannot index expression of type int",
+        )];
+
+        for (expr, err_msg) in tests {
+            let mut analyzer = TypeAnalyzer::new(&type_system);
+            let error = analyzer.analyze(&expr, None).unwrap_err();
+            assert_eq!(error.to_string(), err_msg);
+        }
+    }
+
+    #[test]
     fn complex_tests() {
         let type_system = default_type_system();
         let type_system_reordered = type_system_with_reordered_rules();
@@ -1302,7 +1355,6 @@ mod tests {
         }
 
         check("coalesce", Text, ExprKind::Coalesce);
-        check("json_extract_path", Map, ExprKind::JsonExtractPath);
         check("format", Text, ExprKind::Format);
     }
 

@@ -298,9 +298,6 @@ pub enum ExprKind<Id> {
         partition_by: Vec<Expr<Id>>,
         frame: Option<Box<WindowFrame<Id>>>,
     },
-    /// Json extract expression.
-    /// Examples: `json_extract_path(field, 'key', 'subkey')`.
-    JsonExtractPath(Vec<Expr<Id>>),
     /// The `format` function: a text format string, then values of any
     /// type. The frontend casts the values to text.
     /// Examples: `format('%s = %L', a, b)`.

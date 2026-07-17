@@ -603,7 +603,6 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 report.report(&expr.id, Type::Text);
                 Ok(report)
             }
-            ExprKind::JsonExtractPath(ref args) => self.analyze_json_extract_path(expr, args),
             ExprKind::Comparison(op, left, right) => self
                 .analyze_comparison_operation(*op, left, right)
                 .map(|report| report_type(report, &expr.id, Type::Boolean)),
@@ -758,42 +757,6 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         Ok(report)
     }
 
-    fn analyze_json_extract_path(
-        &mut self,
-        expr: &Expr<Id>,
-        args: &[Expr<Id>],
-    ) -> Result<TypeReport<Id>, Error> {
-        if args.len() < 2 {
-            return Err(self.could_not_resolve_function_overload_error(
-                FunctionKind::Scalar,
-                "json_extract_path",
-                args,
-            ));
-        };
-        check_argument_count("json_extract_path", args)?;
-
-        let mut report = TypeReport::new();
-        let arg_types = iter::once(Type::Map).chain(iter::repeat(Type::Text));
-        for (arg, ty) in args.iter().zip(arg_types) {
-            let r = self.analyze(arg, ty)?;
-            report.extend(r);
-        }
-
-        let arg_types = iter::once(Type::Map).chain(iter::repeat(Type::Text));
-        for (arg, ty) in args.iter().zip(arg_types) {
-            if report.get_type(&arg.id) != ty {
-                return Err(self.could_not_resolve_function_overload_error(
-                    FunctionKind::Scalar,
-                    "json_extract_path",
-                    args,
-                ));
-            }
-        }
-
-        report.report(&expr.id, Type::Any);
-        Ok(report)
-    }
-
     fn analyze_case(
         &mut self,
         expr: &Expr<Id>,
@@ -942,6 +905,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         let result_type = match source_type {
             Type::Any | Type::Map => Type::Any,
             Type::Array(nested) => Type::from(nested),
+            Type::Json => Type::Json,
             other => return Err(ErrorKind::CannotIndexExpressionOfType(other).into()),
         };
 

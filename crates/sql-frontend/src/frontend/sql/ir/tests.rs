@@ -5454,6 +5454,7 @@ mod global;
 mod index;
 mod insert;
 mod join;
+mod json_extract_path;
 mod like;
 mod limit;
 mod params;

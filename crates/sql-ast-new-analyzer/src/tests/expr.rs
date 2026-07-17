@@ -1535,3 +1535,29 @@ fn volatile_fn_error_precedes_argument_errors() {
         @"semantic error: volatile functions are not allowed in this expression"
     );
 }
+
+// ------------- JSON -------------
+
+#[test]
+fn json_extract_path_desugars_to_subscript() {
+    // Sugar over `[]`, as in the old pipeline: indexing json yields json.
+    insta::assert_snapshot!(
+        analyzed(
+            "SELECT json_extract_path($1, 'a', 'b') FROM t1",
+            &[DerivedType::new(UnrestrictedType::Json)]
+        ),
+        @"SELECT $1::json['a'::text]['b'::text]::json FROM t1"
+    );
+}
+
+#[test]
+fn json_extract_path_arity_error() {
+    insta::assert_snapshot!(
+        analyze_error(r#"SELECT json_extract_path('{}'::json) FROM t1"#, &[]),
+        @"semantic error: json_extract_path expects at least two arguments"
+    );
+    insta::assert_snapshot!(
+        analyze_error("SELECT json_extract_path() FROM t1", &[]),
+        @"semantic error: json_extract_path expects at least two arguments"
+    );
+}

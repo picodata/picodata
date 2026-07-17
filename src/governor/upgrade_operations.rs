@@ -178,6 +178,8 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ),
             ("exec_script", InternalScript::DropPgprotoTestProcedures.as_str()),
             // to_char and to_date became tarantool SQL built-ins.
+            // json_extract_path is superseded by native `[]` subscript
+            // desugaring; drop the now-unreachable builtin.
             ("exec_script", InternalScript::DropObsoleteProcedures.as_str()),
             // Resharder internals
             ("sql", "ALTER SYSTEM RESET resharder_bucket_count_max"),
@@ -673,6 +675,7 @@ fn execute_drop_obsolete_procedures() -> traft::Result<Response> {
             '.proc_update_instance',
             'to_char',
             'to_date',
+            'json_extract_path',
         }
         for _, name in ipairs(obsolete) do
             box.schema.func.drop(name, {if_exists = true})

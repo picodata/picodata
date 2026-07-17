@@ -141,6 +141,7 @@ impl Expression<'_> {
                 Some(_) => *cast_to,
                 None => match plan.get_node_type(*child)?.get() {
                     Some(UnrestrictedType::Array(nested)) => DerivedType::new((*nested).into()),
+                    Some(UnrestrictedType::Json) => DerivedType::new(UnrestrictedType::Json),
                     _ => DerivedType::new(UnrestrictedType::Any),
                 },
             },

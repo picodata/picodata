@@ -34,7 +34,7 @@ use sql_ast_new_nodes::expr::{
 use sql_ast_new_nodes::multiset::MultisetStmt;
 use sql_ast_new_nodes::scope::{Depth, Scope};
 use sql_ast_new_nodes::table_expression::{BoundJoinUsingVar, BoundVar, ColumnRoute};
-use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, AstNodeId, Raw};
+use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, AstNodeId, Raw, RawExprMeta};
 use sql_ir::errors::{Entity, SbroadError};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::table_function::find_table_function;
@@ -678,12 +678,10 @@ fn bind_function_call<'q, M: Metadata>(
                 ResolvedFn::Scalar(function) => function.name.as_str(),
                 ResolvedFn::Aggregate(_) | ResolvedFn::Table(_) => name.as_str(),
             };
-            // Catalog resolution applies to COALESCE and JSON_EXTRACT_PATH;
-            // they and UNNEST use dedicated kinds in the type-system mirror.
+            // COALESCE and UNNEST use dedicated kinds in the type-system mirror.
             // DISTINCT does not affect typing and stays in the node.
             let t_expr_kind = match name.as_str() {
                 "coalesce" => AstTypeExprKind::Coalesce(arg_t_exprs),
-                "json_extract_path" => AstTypeExprKind::JsonExtractPath(arg_t_exprs),
                 "unnest" => AstTypeExprKind::Unnest(arg_t_exprs),
                 _ => AstTypeExprKind::Function(typed_name.to_string(), arg_t_exprs),
             };
@@ -1048,6 +1046,32 @@ fn bind_time_function<'q>(
     ))
 }
 
+/// Rewrite syntactic sugar into the construct it stands for, before it is
+/// bound. A sugared form has no typing and no `_func` object of its own, so it
+/// is bound as what it expands to. Anything else is returned as is.
+fn desugar<'q>(expr: Expr<'q, Raw>) -> AstResult<Expr<'q, Raw>> {
+    match expr.into() {
+        // `json_extract_path(src, k1, k2, ...)` is `src[k1][k2]...`, as in the
+        // old pipeline. The parser accepts `*` only in `count()` and DISTINCT
+        // only in aggregates, so the arguments are a plain list here.
+        ExprInner::FunctionCall(call) if call.name() == "json_extract_path" => {
+            let (_, FunctionCallArgs::Exprs { exprs, .. }, ()) = call.into_parts() else {
+                return Err(analyze_err(format_smolstr!(
+                    "json_extract_path called with `*`"
+                )));
+            };
+            let mut args = exprs.into_iter();
+            let (Some(source), Some(first_key)) = (args.next(), args.next()) else {
+                return Err(semantic_err(format_smolstr!(
+                    "json_extract_path expects at least two arguments"
+                )));
+            };
+            Ok(args.fold(Expr::index(source, first_key), Expr::index))
+        }
+        inner => Ok(Expr::from_parts(inner, RawExprMeta::default())),
+    }
+}
+
 impl<'q> Binder<'q> for Expr<'q, Raw> {
     type BoundNode = (Expr<'q, Analyzed>, AstTypeExpr);
 
@@ -1063,7 +1087,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
         // Not `None` only for SELECT list element and HAVING with expression key to match (compound expr in GROUP BY).
         let grouping_marks = meta.binder.grouping_key_marks();
 
-        let (inner, type_expr) = match self.into() {
+        let (inner, type_expr) = match desugar(self)?.into() {
             ExprInner::Nil => Err(analyze_err(format_smolstr!(
                 "empty expression placeholder reached analysis"
             ))),

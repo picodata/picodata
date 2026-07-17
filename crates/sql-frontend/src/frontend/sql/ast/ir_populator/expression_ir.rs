@@ -12,6 +12,7 @@ use crate::ir::operator::{Arithmetic, Bool, Unary};
 use crate::ir::types::CastType;
 use crate::ir::Plan;
 
+use super::desugar::SugaredFunction;
 use super::ExpressionWalker;
 
 #[derive(Clone, Debug)]
@@ -474,6 +475,8 @@ impl ParseExpression {
                 Entity::Query,
                 Some("DISTINCT modifier is allowed only for aggregate functions".into()),
             ))
+        } else if let Some(sugar) = SugaredFunction::from_name(name) {
+            sugar.desugar(plan, &plan_arg_ids)
         } else {
             // format takes values of any type and prints them as
             // text, so they get the same text as with `::text`.

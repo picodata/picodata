@@ -3,6 +3,7 @@
 //! This module contains the machinery used by the old pest AST to populate
 //! the IR. The parent `frontend::sql` module remains the public SQL facade.
 
+mod desugar;
 mod expression_ir;
 mod expression_parser;
 mod expression_walker;

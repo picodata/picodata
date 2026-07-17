@@ -374,7 +374,6 @@ fn function_to_type_expr(
     let args = to_type_expr_many(children, plan, subquery_map)?;
     let kind = match name {
         "coalesce" => TypeExprKind::Coalesce(args),
-        "json_extract_path" => TypeExprKind::JsonExtractPath(args),
         "unnest" => TypeExprKind::Unnest(args),
         name if get_real_function_name("format") == Some(name) => TypeExprKind::Format(args),
         name => TypeExprKind::Function(name.to_string(), args),
