@@ -144,6 +144,68 @@ cluster:
     assert is_sync is True, f"Expected is_sync=true for sync tier, got {is_sync}"
 
 
+def test_sync_replication_ddl_through_sync_follower(cluster: Cluster):
+    """
+    CREATE TABLE validation does a local dry-run of space creation
+    (test_create_space) which requires the instance to be writable. On a sync
+    tier box.info.ro is forced to true by tarantool raft elections on
+    non-leaders, so the dry-run can't lift
+    the read-onlyness and used to fail with ER_READONLY for global tables and
+    for tables targeting an async tier whenever the DDL was submitted through
+    a sync follower. The dry-run is skipped in clusters with sync tiers.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        async_tier:
+            replication_factor: 1
+            bucket_count: 30
+        sync_tier:
+            replication_factor: 3
+            replication_mode: sync
+            bucket_count: 30
+"""
+    )
+
+    async_i = cluster.add_instance(wait_online=False, tier="async_tier")
+    sync_i1 = cluster.add_instance(wait_online=False, tier="sync_tier")
+    sync_i2 = cluster.add_instance(wait_online=False, tier="sync_tier")
+    sync_i3 = cluster.add_instance(wait_online=False, tier="sync_tier")
+    cluster.wait_online()
+
+    sync_instances = [sync_i1, sync_i2, sync_i3]
+
+    master_name = sync_i1.replicaset_master_name()
+    master = next(i for i in sync_instances if i.name == master_name)
+    follower = next(i for i in sync_instances if i is not master)
+
+    assert follower.eval("return box.info.ro") is True
+
+    # Global DDL through the sync follower.
+    follower.sql("CREATE TABLE global_via_follower (id INT NOT NULL, PRIMARY KEY (id)) DISTRIBUTED GLOBALLY")
+
+    # Sharded DDL targeting the async tier through the sync follower.
+    follower.sql(
+        'CREATE TABLE async_via_follower (id INT NOT NULL, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "async_tier"'
+    )
+
+    def space_exists(instance: Instance, name: str):
+        assert instance.eval(f"return box.space.{name} ~= nil") is True
+
+    # Global tables materialize on every instance.
+    for i in [async_i, *sync_instances]:
+        Retriable().call(space_exists, i, "global_via_follower")
+
+    # The async-tier table exists on the async instance.
+    Retriable().call(space_exists, async_i, "async_via_follower")
+
+    # Global DML through the follower works too.
+    follower.sql("INSERT INTO global_via_follower VALUES (1)")
+    assert follower.sql("SELECT * FROM global_via_follower") == [[1]]
+
+
 def test_sync_replication_terminate_replicas_rf3(cluster: Cluster):
     """
     Test that a sync replicaset (RF=3) is fenced read-only when it loses the
