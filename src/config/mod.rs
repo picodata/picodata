@@ -2978,6 +2978,12 @@ impl AlterSystemParameters {
             .unwrap_or_default()
             .is_sync()
     }
+
+    /// Returns `true` if synchronous replication is enabled on at least one
+    /// tier of the cluster.
+    pub fn cluster_has_synchronous_replication(&self) -> bool {
+        self.per_tier.values().any(|t| t.replication_mode.is_sync())
+    }
 }
 
 /// A special macro helper for referring to alter system parameters thoroughout

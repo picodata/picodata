@@ -1647,9 +1647,8 @@ fn ddl_ir_node_to_op_or_result(
             let tier = schema::choose_table_tier(tier.as_deref(), &topology_cache)?;
 
             // If this is a sharded table in a sync tier, add the Synchronous option.
-            let synchronous_replication_enabled;
             if matches!(distribution, DistributionParam::Sharded) {
-                synchronous_replication_enabled = node
+                let synchronous_replication_enabled = node
                     .alter_system_parameters
                     .borrow()
                     .replication_mode(&tier)
@@ -1657,8 +1656,6 @@ fn ddl_ir_node_to_op_or_result(
                 if synchronous_replication_enabled {
                     opts.push(TableOption::Synchronous(true));
                 }
-            } else {
-                synchronous_replication_enabled = false;
             }
 
             let params = CreateTableParams {
@@ -1689,7 +1686,21 @@ fn ddl_ir_node_to_op_or_result(
 
             params.validate_tier(&topology_cache)?;
             params.check_primary_key(storage)?;
-            if !synchronous_replication_enabled {
+            // The dry-run below creates a space locally, which requires the
+            // instance to be writable. On sync tiers writability is
+            // controlled by tarantool raft elections, so
+            // the dry-run cannot lift the read-onlyness and would fail with
+            // ER_READONLY whenever the request lands on an election follower.
+            // We can get the request for async tier on instance of sync tier and
+            // will not be able to change read-onlyness. That's why
+            // skip this if the cluster has any sync tier.
+            // TODO Get rid of `test_create_space` validation.
+            // See https://git.picodata.io/core/picodata/-/work_items/3055
+            let cluster_has_sync_tier = node
+                .alter_system_parameters
+                .borrow()
+                .cluster_has_synchronous_replication();
+            if !cluster_has_sync_tier {
                 params.test_create_space(storage)?;
             }
             let ddl = params.into_ddl()?;
