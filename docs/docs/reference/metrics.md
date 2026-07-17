@@ -292,6 +292,45 @@ DQL-, так и DML-запросы и отражает реальную нагр
 
 Тип: counter
 
+### pico_table_len
+
+Количество записей в локальной таблице. Для таблицы без первичного индекса
+значение равно нулю. Метрика включает
+системные, пользовательские и временные таблицы с движками `memtx` и `vinyl`.
+
+Метки:
+
+* `table_name` — имя таблицы
+* `table_kind` — тип таблицы: `system`, `user` или `temporary`. Таблицы с
+  идентификаторами от 0 до 1024 включительно являются системными; пространства
+  с `flags.type = "temporary"` — временными; остальные — пользовательскими
+* `engine` — движок таблицы: `memtx` или `vinyl`
+
+Тип: gauge
+
+`pico_table_len{table_name="_pico_table",table_kind="system",engine="memtx"} 24`<br>
+`pico_table_len{table_name="orders",table_kind="user",engine="memtx"} 100`
+
+### pico_table_size_bytes
+
+Общий размер локальной `memtx`-таблицы в байтах: сумма размеров всех кортежей
+и индексов. Метрика аналогична `tnt_space_total_bsize` и включает системные,
+пользовательские и временные таблицы. Размер `vinyl`-таблиц отражают метрики
+`tnt_vinyl_disk_data_size` и `tnt_vinyl_disk_index_size` на уровне инстанса.
+
+Метки:
+
+* `table_name` — имя таблицы
+* `table_kind` — тип таблицы: `system`, `user` или `temporary`. Таблицы с
+  идентификаторами от 0 до 1024 включительно являются системными; пространства
+  с `flags.type = "temporary"` — временными; остальные — пользовательскими
+* `engine` — движок таблицы: `memtx` или `vinyl`
+
+Тип: gauge
+
+`pico_table_size_bytes{table_name="_pico_table",table_kind="system",engine="memtx"} 98383`<br>
+`pico_table_size_bytes{table_name="orders",table_kind="user",engine="memtx"} 49152`
+
 ## Метрики Tarantool {: #tarantool_metrics }
 
 ### lj_gc_allocated_total

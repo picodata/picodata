@@ -2023,7 +2023,6 @@ fn setup_metrics_and_start_http_server(
             "#,
         instance_name_for_metrics.to_string(),
     )?;
-
     // update instance state metrics so it has fresh values from the start
     if let Ok(instances) = storage.instances.all_instances() {
         for instance in instances {

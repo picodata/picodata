@@ -62,6 +62,12 @@ def test_picodata_metrics(cluster: Cluster) -> None:
         "pico_raft_term",
         "pico_raft_state",
         "pico_raft_leader_id",
+        "pico_table_len",
+        "pico_table_size_bytes",
+        "tnt_space_len",
+        "tnt_space_bsize",
+        "tnt_space_index_bsize",
+        "tnt_space_total_bsize",
         "tnt_slab_arena_size",
         "tnt_slab_arena_used",
         "tnt_slab_arena_used_ratio",
@@ -119,6 +125,197 @@ def test_slab_system_metrics_after_startup(instance: Instance) -> None:
 
     # System quota itself is non-zero (matches --memtx-system-memory).
     assert gauge("tnt_slab_system_quota_size") > 0
+
+
+def table_metric_sample(instance: Instance, metric_name: str, table_name: str) -> Sample | None:
+    family = instance.get_metrics().get(metric_name)
+    if family is None:
+        return None
+
+    samples = [sample for sample in family.samples if sample.labels.get("table_name") == table_name]
+    assert len(samples) <= 1, f"Found duplicate {metric_name} metrics for '{table_name}'"
+    return samples[0] if samples else None
+
+
+def table_size_sample(instance: Instance, table_name: str) -> Sample | None:
+    return table_metric_sample(instance, "pico_table_size_bytes", table_name)
+
+
+def table_length_sample(instance: Instance, table_name: str) -> Sample | None:
+    return table_metric_sample(instance, "pico_table_len", table_name)
+
+
+def actual_table_size(instance: Instance, table_name: str) -> int:
+    return instance.eval(
+        """
+        local space = box.space[...]
+        local size = tonumber(space:bsize())
+        for index_id, index in pairs(space.index) do
+            if type(index_id) == 'number' then
+                local ok, index_size = pcall(index.bsize, index)
+                if ok then
+                    size = size + tonumber(index_size)
+                end
+            end
+        end
+        return size
+        """,
+        table_name,
+    )
+
+
+def actual_table_length(instance: Instance, table_name: str) -> int:
+    return instance.eval("return box.space[...]:len()", table_name)
+
+
+# Report every memtx and vinyl data space, including system and temporary spaces.
+@pytest.mark.webui
+def test_table_metrics_classification(instance: Instance) -> None:
+    # Create regular and low-level user spaces covering the supported cases.
+    instance.sql("CREATE TABLE metrics_user (id INTEGER PRIMARY KEY, value TEXT)")
+    instance.eval(
+        """
+        local function next_id()
+            local id = 1025
+            while box.space._space:get{id} ~= nil do
+                id = id + 1
+            end
+            return id
+        end
+
+        local underscore = box.schema.space.create('_metrics_user', {id = next_id()})
+        underscore:create_index('pk')
+        local named_tmp = box.schema.space.create('_tmp_user', {id = next_id()})
+        named_tmp:create_index('pk')
+        local no_primary = box.schema.space.create('metrics_no_primary', {id = next_id()})
+        local vinyl = box.schema.space.create('metrics_vinyl', {
+            id = next_id(),
+            engine = 'vinyl',
+        })
+        vinyl:create_index('pk')
+        """
+    )
+
+    instance.eval(
+        """
+        local space = box.schema.space.create('metrics_temporary', {temporary = true})
+        space:create_index('pk')
+        """
+    )
+    instance.get_metrics()  # Populate the schema-versioned index cache first.
+    instance.eval(
+        """
+        local space = box.schema.space.create('metrics_fully_temporary', {type = 'temporary'})
+        space:create_index('pk')
+        """
+    )
+
+    # Tarantool and Picodata system tables both have IDs in the reserved range
+    # and must expose their current size and tuple count as system metrics.
+    for table_name in ("_space", "_pico_table"):
+        sample = table_size_sample(instance, table_name)
+        assert sample is not None, table_name
+        assert sample.labels["table_kind"] == "system", table_name
+        assert sample.labels["engine"] == "memtx", table_name
+        assert sample.labels["instance_name"] == instance.name, table_name
+        assert sample.value == actual_table_size(instance, table_name), table_name
+
+        length_sample = table_length_sample(instance, table_name)
+        assert length_sample is not None, table_name
+        assert length_sample.value == actual_table_length(instance, table_name), table_name
+
+    # Memtx spaces expose total size; memtx and vinyl spaces expose tuple count.
+    for table_name, engine in (
+        ("metrics_user", "memtx"),
+        ("_metrics_user", "memtx"),
+        ("_tmp_user", "memtx"),
+        ("metrics_no_primary", "memtx"),
+    ):
+        sample = table_size_sample(instance, table_name)
+        assert sample is not None, table_name
+        assert sample.labels["table_kind"] == "user", table_name
+        assert sample.labels["engine"] == engine, table_name
+        assert sample.value == actual_table_size(instance, table_name), table_name
+
+        length_sample = table_length_sample(instance, table_name)
+        assert length_sample is not None, table_name
+        expected_length = 0 if table_name == "metrics_no_primary" else actual_table_length(instance, table_name)
+        assert length_sample.value == expected_length
+
+    assert table_size_sample(instance, "metrics_vinyl") is None
+    vinyl_length = table_length_sample(instance, "metrics_vinyl")
+    assert vinyl_length is not None
+    assert vinyl_length.value == actual_table_length(instance, "metrics_vinyl")
+
+    sample = table_size_sample(instance, "metrics_temporary")
+    assert sample is not None
+    assert sample.labels["table_kind"] == "user"
+    assert sample.labels["engine"] == "memtx"
+    assert sample.value == actual_table_size(instance, "metrics_temporary")
+    length_sample = table_length_sample(instance, "metrics_temporary")
+    assert length_sample is not None
+    assert length_sample.value == actual_table_length(instance, "metrics_temporary")
+
+    sample = table_size_sample(instance, "metrics_fully_temporary")
+    assert sample is not None
+    assert sample.labels["table_kind"] == "temporary"
+    assert sample.value == actual_table_size(instance, "metrics_fully_temporary")
+    length_sample = table_length_sample(instance, "metrics_fully_temporary")
+    assert length_sample is not None
+    assert length_sample.value == actual_table_length(instance, "metrics_fully_temporary")
+
+    # Without a primary index the length is zero and size excludes that index.
+    instance.eval("box.space['_metrics_user'].index[0]:drop()")
+    sample = table_size_sample(instance, "_metrics_user")
+    assert sample is not None, "_metrics_user without primary index"
+    assert sample.value == actual_table_size(instance, "_metrics_user"), "_metrics_user without primary index"
+    length_sample = table_length_sample(instance, "_metrics_user")
+    assert length_sample is not None
+    assert length_sample.value == 0
+
+    # Virtual system views do not store data and must not produce time series.
+    assert table_size_sample(instance, "_vspace") is None, "_vspace"
+    assert table_length_sample(instance, "_vspace") is None, "_vspace"
+
+
+# Refresh values and remove stale series after table renames and drops.
+@pytest.mark.webui
+def test_table_metrics_lifecycle(instance: Instance) -> None:
+    # Create a persistent table and verify its initial exported values.
+    instance.sql("CREATE TABLE metrics_lifecycle (id INTEGER PRIMARY KEY, value TEXT)")
+    initial = table_size_sample(instance, "metrics_lifecycle")
+    assert initial is not None, "metrics_lifecycle"
+    assert initial.value == actual_table_size(instance, "metrics_lifecycle"), "metrics_lifecycle"
+    initial_length = table_length_sample(instance, "metrics_lifecycle")
+    assert initial_length is not None, "metrics_lifecycle"
+    assert initial_length.value == 0, "metrics_lifecycle"
+
+    # Add data and verify that the next scrape updates both existing series.
+    instance.sql("INSERT INTO metrics_lifecycle VALUES (1, 'some metric data')")
+    updated = table_size_sample(instance, "metrics_lifecycle")
+    assert updated is not None, "metrics_lifecycle after INSERT"
+    assert updated.value == actual_table_size(instance, "metrics_lifecycle"), "metrics_lifecycle after INSERT"
+    assert updated.value > initial.value, f"size before={initial.value}, after={updated.value}"
+    updated_length = table_length_sample(instance, "metrics_lifecycle")
+    assert updated_length is not None, "metrics_lifecycle after INSERT"
+    assert updated_length.value == 1, "metrics_lifecycle after INSERT"
+
+    # Rename the table and verify that the old label sets are removed
+    # and the new label sets contain the same table's current values.
+    instance.sql("ALTER TABLE metrics_lifecycle RENAME TO metrics_renamed")
+    assert table_size_sample(instance, "metrics_lifecycle") is None, "old table name"
+    assert table_length_sample(instance, "metrics_lifecycle") is None, "old table name"
+    renamed = table_size_sample(instance, "metrics_renamed")
+    assert renamed is not None, "new table name"
+    assert renamed.value == actual_table_size(instance, "metrics_renamed"), "metrics_renamed"
+    renamed_length = table_length_sample(instance, "metrics_renamed")
+    assert renamed_length is not None, "new table name"
+    assert renamed_length.value == 1, "metrics_renamed"
+
+    # Drop the table and verify that its series disappear on the next scrape.
+    instance.sql("DROP TABLE metrics_renamed")
+    assert table_size_sample(instance, "metrics_renamed") is None, "dropped table"
+    assert table_length_sample(instance, "metrics_renamed") is None, "dropped table"
 
 
 def check_metric(

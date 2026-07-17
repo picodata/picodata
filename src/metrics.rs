@@ -1,5 +1,6 @@
 use crate::config::PicodataConfig;
 use crate::instance::StateVariant;
+use crate::tlog;
 use crate::traft::node;
 use crate::traft::op::{Acl, Ddl, Op};
 use prometheus::{
@@ -10,13 +11,59 @@ use smol_str::format_smolstr;
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
 use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsStr;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 extern "C" {
     fn tarantool_uptime() -> f64;
 }
+
+const TABLE_METRIC_LABEL_NAMES: [&str; 3] = ["table_name", "table_kind", "engine"];
+
+static TABLE_SIZE_BYTES: LazyLock<GaugeVec> = LazyLock::new(|| {
+    GaugeVec::new(
+        Opts::new(
+            "pico_table_size_bytes",
+            "Total number of bytes occupied by memtx table tuples and indexes",
+        ),
+        &TABLE_METRIC_LABEL_NAMES,
+    )
+    .expect("Failed to create pico_table_size_bytes gauge")
+});
+
+static TABLE_LEN: LazyLock<GaugeVec> = LazyLock::new(|| {
+    GaugeVec::new(
+        Opts::new("pico_table_len", "Number of tuples in a table"),
+        &TABLE_METRIC_LABEL_NAMES,
+    )
+    .expect("Failed to create pico_table_len gauge")
+});
+
+#[derive(Clone, PartialEq, Eq)]
+struct TableMetricLabels {
+    table_name: String,
+    table_kind: &'static str,
+    engine: &'static str,
+}
+
+impl TableMetricLabels {
+    fn values(&self) -> [&str; 3] {
+        [&self.table_name, self.table_kind, self.engine]
+    }
+}
+
+#[derive(Default)]
+struct TableMetricsState {
+    entries_by_space_id: HashMap<u32, TableMetricLabels>,
+    next_entries_by_space_id: HashMap<u32, TableMetricLabels>,
+    index_ids_schema_version: u64,
+    index_ids_by_space_id: HashMap<u32, Vec<u32>>,
+}
+
+static TABLE_METRICS_STATE: LazyLock<Mutex<TableMetricsState>> =
+    LazyLock::new(|| Mutex::new(TableMetricsState::default()));
 
 static GOVERNOR_CHANGE_COUNTER: LazyLock<IntCounter> = LazyLock::new(|| {
     IntCounter::with_opts(Opts::new(
@@ -721,8 +768,182 @@ pub fn record_raft_leader_id(leader_id: Option<u64>) {
     RAFT_LEADER_ID.set(leader_id.unwrap_or(0) as f64);
 }
 
+/// Refresh table metrics from Tarantool system spaces.
+pub fn update_table_metrics() {
+    let mut state = TABLE_METRICS_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Err(error) = update_table_index_ids_cache(&mut state) {
+        tlog!(Error, "failed collecting table metrics: {error}");
+        return;
+    }
+    state.next_entries_by_space_id.clear();
+
+    let spaces = tarantool::space::SystemSpace::Space.as_space();
+    let Ok(spaces) = spaces.select(tarantool::index::IteratorType::All, &()) else {
+        tlog!(Error, "failed collecting table metrics: cannot scan _space");
+        return;
+    };
+
+    for tuple in spaces {
+        let (Ok(Some(space_id)), Ok(Some(table_name)), Ok(Some(engine))) = (
+            tuple.field::<u32>(0),
+            tuple.field::<&str>(2),
+            tuple.field::<&str>(3),
+        ) else {
+            tlog!(
+                Error,
+                "failed collecting table metrics: invalid _space tuple"
+            );
+            continue;
+        };
+        let engine = match engine {
+            "memtx" => "memtx",
+            "vinyl" => "vinyl",
+            _ => continue,
+        };
+
+        let table_kind = if space_id <= crate::storage::SPACE_ID_INTERNAL_MAX {
+            "system"
+        } else {
+            let Ok(Some(flags)) =
+                tuple.field::<BTreeMap<Cow<'_, str>, tarantool::util::Value<'_>>>(5)
+            else {
+                tlog!(
+                    Error,
+                    "failed collecting table metrics: invalid _space flags"
+                );
+                continue;
+            };
+            if matches!(
+                flags.get("type"),
+                Some(tarantool::util::Value::Str(kind)) if kind == "temporary"
+            ) {
+                "temporary"
+            } else {
+                "user"
+            }
+        };
+        let labels = TableMetricLabels {
+            table_name: table_name.into(),
+            table_kind,
+            engine,
+        };
+        let metric = if table_kind == "temporary" {
+            table_index_ids_for_space(space_id).and_then(|index_ids| {
+                collect_one_table_metric(space_id, &index_ids, engine == "memtx")
+            })
+        } else {
+            let index_ids = state
+                .index_ids_by_space_id
+                .get(&space_id)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            collect_one_table_metric(space_id, index_ids, engine == "memtx")
+        };
+
+        match metric {
+            Ok((size_bytes, tuple_count)) => {
+                if let Some(size_bytes) = size_bytes {
+                    TABLE_SIZE_BYTES
+                        .with_label_values(&labels.values())
+                        .set(size_bytes as f64);
+                }
+                TABLE_LEN
+                    .with_label_values(&labels.values())
+                    .set(tuple_count as f64);
+                state.next_entries_by_space_id.insert(space_id, labels);
+            }
+            Err(error) => {
+                tlog!(
+                    Error,
+                    "failed collecting table metrics for space {space_id}: {error}"
+                );
+                if let Some(labels) = state.entries_by_space_id.get(&space_id).cloned() {
+                    state.next_entries_by_space_id.insert(space_id, labels);
+                }
+            }
+        }
+    }
+
+    remove_stale_table_metrics(&state.entries_by_space_id, &state.next_entries_by_space_id);
+    let TableMetricsState {
+        entries_by_space_id,
+        next_entries_by_space_id,
+        ..
+    } = &mut *state;
+    std::mem::swap(entries_by_space_id, next_entries_by_space_id);
+}
+
+fn update_table_index_ids_cache(state: &mut TableMetricsState) -> tarantool::Result<()> {
+    let schema_version = crate::tarantool::box_schema_version();
+    if state.index_ids_schema_version == schema_version {
+        return Ok(());
+    }
+
+    let indexes = tarantool::space::SystemSpace::Index.as_space();
+    state.index_ids_by_space_id.clear();
+    for tuple in indexes.select(tarantool::index::IteratorType::All, &())? {
+        let metadata = tuple.decode::<tarantool::index::Metadata<'_>>()?;
+        state
+            .index_ids_by_space_id
+            .entry(metadata.space_id)
+            .or_default()
+            .push(metadata.index_id);
+    }
+    state.index_ids_schema_version = schema_version;
+    Ok(())
+}
+
+fn table_index_ids_for_space(space_id: u32) -> tarantool::Result<Vec<u32>> {
+    let indexes = tarantool::space::SystemSpace::Index.as_space();
+    indexes
+        .select(tarantool::index::IteratorType::Eq, &(space_id,))?
+        .map(|tuple| Ok(tuple.field(1)?.expect("database constraint violation")))
+        .collect()
+}
+
+fn collect_one_table_metric(
+    space_id: u32,
+    index_ids: &[u32],
+    collect_size: bool,
+) -> tarantool::Result<(Option<usize>, usize)> {
+    let space = crate::storage::space_by_id_unchecked(space_id);
+    let size_bytes = if collect_size {
+        let mut size_bytes = space.bsize()?;
+        for &index_id in index_ids {
+            // SAFETY: IDs came from the current contents of Tarantool's _index.
+            let index = unsafe { tarantool::index::Index::from_ids_unchecked(space_id, index_id) };
+            size_bytes += index.bsize()?;
+        }
+        Some(size_bytes)
+    } else {
+        None
+    };
+    let tuple_count = if index_ids.is_empty() {
+        0
+    } else {
+        space.len()?
+    };
+    Ok((size_bytes, tuple_count))
+}
+
+fn remove_stale_table_metrics(
+    previous: &HashMap<u32, TableMetricLabels>,
+    current: &HashMap<u32, TableMetricLabels>,
+) {
+    for (space_id, labels) in previous {
+        if current.get(space_id) != Some(labels) {
+            let _ = TABLE_SIZE_BYTES.remove_label_values(&labels.values());
+            let _ = TABLE_LEN.remove_label_values(&labels.values());
+        }
+    }
+}
+
 pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<()> {
     registry.register(Box::new(CAS_ERRORS_TOTAL.clone()))?;
+    registry.register(Box::new(TABLE_SIZE_BYTES.clone()))?;
+    registry.register(Box::new(TABLE_LEN.clone()))?;
     registry.register(Box::new(CAS_OPS_DURATION.clone()))?;
     registry.register(Box::new(CAS_RECORDS_TOTAL.clone()))?;
     registry.register(Box::new(GOVERNOR_CHANGE_COUNTER.clone()))?;
@@ -774,6 +995,7 @@ pub fn register_metrics(registry: &prometheus::Registry) -> prometheus::Result<(
 
 pub fn collect_from_registry(registry: &prometheus::Registry) -> String {
     update_pico_info_uptime();
+    update_table_metrics();
     let encoder = TextEncoder::new();
     let metric_families = registry.gather();
     encoder.encode_to_string(&metric_families).unwrap()
