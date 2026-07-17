@@ -1,12 +1,12 @@
-import pytest
 import re
 import time
 
+import pytest
 from conftest import (
     Cluster,
+    CommandFailed,
     Instance,
     Retriable,
-    CommandFailed,
     log_crawler,
 )
 
@@ -473,8 +473,17 @@ def test_replication_rpc_protection_from_old_governor(cluster: Cluster):
     # wait till governor starts to configure replication and gets to injected failure
     injection_hit.wait_matched()
 
+    initial_term = i1.raft_term()
+
     # bump term by transferring leadership from i1 to i2
     i1.raft_transfer_leadership(i2.raft_id)
+
+    # wait until i3 learns about the new term before letting i1's stale governor RPC through
+    # otherwise the stale RPC would pass the term check and the expected error would never be logged
+    def i3_learned_new_term():
+        assert i3.raft_term() > initial_term
+
+    Retriable().call(i3_learned_new_term)
 
     # remove injected error
     i1.call("pico._inject_error", "BLOCK_REPLICATION_RPC_ON_CLIENT", False)
