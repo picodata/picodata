@@ -61,14 +61,20 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
     cd cartridge-cli && git checkout 2.12.2 && \
     mage build && mv ./cartridge /usr/local/bin && cd .. && rm -rf cartridge-cli
 
+# To be installed with Cargo components
+ARG DENY_VERSION=0.18.9
+ARG NEXTEST_VERSION=0.9.140
+
 # install rust
 RUN set -e; \
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
 sh -s -- -y --profile default --default-toolchain ${RUST_VERSION} && \
 rustup component add rustfmt && \
-# NOTE: we pin version because these guys love to bump MSRV as early as new
-# version of Rust released, but we do not bump it that fast.
-cargo install --locked cargo-deny --version 0.18.9
+cargo install --locked \
+    # NOTE: we pin version because these guys love to bump MSRV as early as new
+    # version of Rust released, but we do not bump it that fast.
+    cargo-deny@${DENY_VERSION} \
+    cargo-nextest@${NEXTEST_VERSION}
 
 # install sccache for compilation caching
 RUN set -e; \

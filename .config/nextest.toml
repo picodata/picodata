@@ -1,0 +1,80 @@
+# See https://nexte.st/docs/configuration/reference
+
+nextest-version = { required = "0.9.111", recommended = "0.9.140" }
+
+[store]
+# The directory under the workspace root at which nextest-related files are
+# written. Profile-specific storage is currently written to dir/<profile-name>.
+dir = "target/nextest"
+
+[profile.default]
+# Whether to treat flaky tests as passing or failing.
+flaky-result = "pass"
+
+# Number of threads to run tests with. Either an integer or "num-cpus". Can be
+# overridden through the `--test-threads` option.
+test-threads = 4
+
+# Level of status information to display during test runs.
+#
+# Can be overridden through the `--status-level` flag.
+status-level = "skip"
+
+# Level of status information to display in the final summary. Differs from
+# status-level in that it has a separate "flaky" indicator distinct from
+# "retry" (though "retry" works as an alias), and in that "skip" is prioritized
+# over "pass".
+final-status-level = "flaky"
+
+# When to display output for failed tests.
+#
+# Can be overridden through the `--failure-output` option.
+failure-output = "final"
+
+# When to display output for successful tests. Generally best left as "never".
+success-output = "never"
+
+# Treat a test that takes longer than the configured 'period' as slow, and print
+# a message. See <https://nexte.st/docs/features/slow-tests> for more
+# information.
+slow-timeout = { period = "60s", on-timeout = "fail" }
+
+# Failure handling for the test run.
+#
+# For CI runs, consider setting this to false.
+fail-fast = false
+
+# Stop all tests after the configured global timeout.
+#
+# Defaults to 30 years, which is a large enough value to feel "infinite" without
+# running into overflows on various platforms.
+global-timeout = "30y"
+
+
+[profile.default.junit]
+# Path to write the JUnit XML report to, relative to 'store.dir/<profile-name>'.
+# If unset, JUnit reporting is disabled.
+path = "junit_sql.xml"
+
+# Name for the JUnit XML report. When aggregating reports across different test
+# runs, it may be useful to provide separate names for each report.
+report-name = "nextest-run"
+
+# Whether to store successful test output in the JUnit XML report. When true,
+# output is stored in the <system-out> and <system-err> elements of the
+# <testcase> element.
+store-success-output = false
+
+# How flaky-fail tests are reported in the JUnit XML report. "failure" reports
+# them as failures with <failure> and <flakyFailure> elements; "success"
+# reports them as successes, identical to flaky-pass tests.
+flaky-fail-status = "failure"
+
+
+# Profile used in CI, selected via NEXTEST_PROFILE=ci (see .gitlab-ci.yml).
+# Everything not listed here, including the [profile.default.junit] settings, is
+# inherited from `default`. The report lands in target/nextest/ci/junit_sql.xml.
+[profile.ci]
+# CI logs are not interactive, so print a line only for tests that fail rather
+# than for every test that starts.
+status-level = "fail"
