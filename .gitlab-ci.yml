@@ -441,6 +441,10 @@ test-rs-linux:
   extends:
     - .test_rules
     - .parallel
+  variables:
+    # Selects [profile.ci] from .config/nextest.toml, which also determines
+    # where the JUnit report is written: target/nextest/$NEXTEST_PROFILE/
+    NEXTEST_PROFILE: ci
   cache:
     - <<: *cache_git
       policy: pull
@@ -498,8 +502,11 @@ test-rs-linux:
     paths:
       - junit_pytest.xml
       - core*
+      - target/nextest/ci/junit_sql.xml
     reports:
-      junit: junit_pytest.xml
+      junit:
+        - junit_pytest.xml
+        - target/nextest/ci/junit_sql.xml
 
 .test-py-linux_base:
   extends:

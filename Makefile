@@ -123,10 +123,10 @@ DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 CARGO_TEST_FLAGS ?= --workspace --exclude sql-planner --exclude sql-ir --exclude sql-executor --exclude sql-frontend --exclude tarantool --exclude tlua
 
 .PHONY: test-rs
-test-rs: test-picodata-rs test-sql-rs
+test-rs: test-rs-picodata test-rs-sql
 
-.PHONY: test-picodata-rs
-test-picodata-rs:
+.PHONY: test-rs-picodata
+test-rs-picodata:
 	cargo test \
 	  $(MAKE_JOBSERVER_ARGS) \
 	  $(filter-out --workspace, $(CARGO_FLAGS)) \
@@ -143,10 +143,17 @@ test-picodata-rs:
 
 SQL_CRATES = -p sql-ir -p sql-executor -p sql-frontend -p sql-planner
 
-.PHONY: test-sql-rs
-test-sql-rs:
-	cargo test \
-		$(MAKE_JOBSERVER_ARGS) \
+NEXTEST_VERSION := 0.9.140
+
+.PHONY: install-nextest
+install-nextest:
+	cargo install cargo-nextest --version $(NEXTEST_VERSION) $(LOCKED)
+
+.PHONY: test-rs-sql
+test-rs-sql:
+	cargo nextest run \
+		$(if $(MAKE_JOBSERVER_ARGS),--test-threads $(MAKE_JOBSERVER_ARGS)) \
+		$(subst --profile,--cargo-profile,$(CARGO_FLAGS_EXTRA)) \
 		$(SQL_CRATES)
 
 .PHONY: bench-sql-check
@@ -209,7 +216,7 @@ asan-build-dev:
 .PHONY: asan-test-rs
 asan-test-rs: export CARGO_TARGET_DIR = $(TARGET_DIR_ASAN)
 asan-test-rs:
-	tools/sanitizer.py run $(MAKE) test-rs CARGO_TEST_FLAGS="-p picodata"
+	tools/sanitizer.py run $(MAKE) test-rs-picodata CARGO_TEST_FLAGS="-p picodata"
 
 .PHONY: asan-test-py
 asan-test-py: export CARGO_TARGET_DIR = $(TARGET_DIR_ASAN)
