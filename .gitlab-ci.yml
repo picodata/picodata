@@ -458,12 +458,9 @@ test-rs-linux:
       ci-log-section end "sccache-setup"
 
     - |
-      ci-log-section start "test sql-planner" Test sql-planner
-      pushd sql-planner
-      make test
-      make bench_check
-      popd
-      ci-log-section end "test sql-planner"
+      ci-log-section start "check sql benches" Check sql benches
+      make bench-sql-check
+      ci-log-section end "check sql benches"
 
     - |
       ci-log-section start "test" Test

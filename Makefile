@@ -123,7 +123,10 @@ DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 CARGO_TEST_FLAGS ?= --workspace --exclude sql-planner --exclude sql-ir --exclude sql-executor --exclude sql-frontend --exclude tarantool --exclude tlua
 
 .PHONY: test-rs
-test-rs:
+test-rs: test-picodata-rs test-sql-rs
+
+.PHONY: test-picodata-rs
+test-picodata-rs:
 	cargo test \
 	  $(MAKE_JOBSERVER_ARGS) \
 	  $(filter-out --workspace, $(CARGO_FLAGS)) \
@@ -137,6 +140,20 @@ test-rs:
 	  $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
 	  $(CARGO_TEST_FLAGS) \
 	  --doc -- --test-threads 2
+
+SQL_CRATES = -p sql-ir -p sql-executor -p sql-frontend -p sql-planner
+
+.PHONY: test-sql-rs
+test-sql-rs:
+	cargo test \
+		$(MAKE_JOBSERVER_ARGS) \
+		$(SQL_CRATES)
+
+.PHONY: bench-sql-check
+bench-sql-check:
+	cargo bench \
+		$(MAKE_JOBSERVER_ARGS) \
+		$(SQL_CRATES) --no-run
 
 .PHONY: test-py
 test-py:
