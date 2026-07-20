@@ -415,7 +415,7 @@ fn test_bool_folding20() {
 fn test_bool_folding21() {
     use sql::ir::node::relational::Relational;
     use sql::ir::node::Node;
-    use sql::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 
     let query = r#"explain (logical) SELECT * from t WHERE true OR a IN (SELECT a FROM t)"#;
 
@@ -442,7 +442,7 @@ fn test_bool_folding21() {
         },
         REL_CAPACITY,
     );
-    let LevelNode(_, sel_id) = dfs.traverse_into_iter(top).next().expect("selection node");
+    let sel_id = dfs.traverse_into_iter(top).next().expect("selection node");
     let Relational::Selection(sel) = plan.get_relation_node(sel_id).unwrap() else {
         unreachable!()
     };
@@ -457,7 +457,7 @@ fn test_bool_folding21() {
 fn test_bool_folding22() {
     use sql::ir::node::relational::Relational;
     use sql::ir::node::Node;
-    use sql::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 
     // The outer AND does not fold to a constant, but the (`false AND ...`)
     // branch collapses and takes its subquery with it. The remaining
@@ -491,7 +491,7 @@ fn test_bool_folding22() {
         },
         REL_CAPACITY,
     );
-    let LevelNode(_, sel_id) = dfs.traverse_into_iter(top).next().expect("selection node");
+    let sel_id = dfs.traverse_into_iter(top).next().expect("selection node");
     let Relational::Selection(sel) = plan.get_relation_node(sel_id).unwrap() else {
         unreachable!()
     };
@@ -509,7 +509,7 @@ fn test_bool_folding22() {
 fn test_bool_folding23() {
     use sql::ir::node::relational::Relational;
     use sql::ir::node::Node;
-    use sql::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 
     // Same orphan-subquery scenario, but for a Join condition.
     let query = r#"explain (logical)
@@ -538,7 +538,7 @@ fn test_bool_folding23() {
         },
         REL_CAPACITY,
     );
-    let LevelNode(_, join_id) = dfs.traverse_into_iter(top).next().expect("join node");
+    let join_id = dfs.traverse_into_iter(top).next().expect("join node");
     let Relational::Join(join) = plan.get_relation_node(join_id).unwrap() else {
         unreachable!()
     };
@@ -553,7 +553,7 @@ fn test_bool_folding23() {
 fn test_bool_folding24() {
     use sql::ir::node::relational::Relational;
     use sql::ir::node::Node;
-    use sql::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 
     // The outer AND in the join condition does not fold, but the
     // `false AND (t.b IN (sq2))` branch collapses and takes its
@@ -591,7 +591,7 @@ fn test_bool_folding24() {
         },
         REL_CAPACITY,
     );
-    let LevelNode(_, join_id) = dfs.traverse_into_iter(top).next().expect("join node");
+    let join_id = dfs.traverse_into_iter(top).next().expect("join node");
     let Relational::Join(join) = plan.get_relation_node(join_id).unwrap() else {
         unreachable!()
     };

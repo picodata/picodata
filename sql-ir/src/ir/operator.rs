@@ -10,7 +10,7 @@ use crate::ir::node::{
     ScanSubQuery, Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::types::calculate_unified_types;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -1148,7 +1148,7 @@ impl Plan {
         is_distinct: bool,
         needs_shard_col: bool,
     ) -> Result<(NodeId, Option<HashMap<usize, usize>>), SbroadError> {
-        let get_leaf_refs = |expr_id: NodeId| -> Vec<LevelNode<NodeId>> {
+        let get_leaf_refs = |expr_id: NodeId| -> Vec<NodeId> {
             let post_tree = PostOrderWithFilter::new(
                 |node| self.nodes.expr_iter(node, false),
                 |node| {
@@ -1165,11 +1165,11 @@ impl Plan {
 
         fn collect_columns(
             plan: &Plan,
-            leaf_refs: &[LevelNode<NodeId>],
+            leaf_refs: &[NodeId],
         ) -> SmallVec<[usize; Plan::REF_CAPACITY]> {
             let mut cols: SmallVec<[usize; Plan::REF_CAPACITY]> = SmallVec::new();
 
-            for LevelNode(_, ref_id) in leaf_refs {
+            for ref_id in leaf_refs {
                 let expr = plan.get_expression_node(*ref_id);
 
                 let pos = match expr {
@@ -1195,11 +1195,12 @@ impl Plan {
 
         fn transform_reference_positions(
             plan: &mut Plan,
-            leaf_refs: &[LevelNode<NodeId>],
+            leaf_refs: &[NodeId],
             col_pos_transforms: &HashMap<usize, usize>,
         ) {
-            leaf_refs.iter().for_each(|LevelNode(_, ref_id)| {
-                match plan.get_mut_expression_node(*ref_id) {
+            leaf_refs
+                .iter()
+                .for_each(|ref_id| match plan.get_mut_expression_node(*ref_id) {
                     Ok(
                         MutExpression::Reference(Reference { position, .. })
                         | MutExpression::SubQueryReference(SubQueryReference { position, .. }),
@@ -1209,8 +1210,7 @@ impl Plan {
                             .expect("all of leaf references must be mapped");
                     }
                     _ => unreachable!("expected to find only Reference or SubqueryReference"),
-                }
-            });
+                });
         }
 
         let (output, col_pos_transforms) = match self.get_relation_node(parent_rel_id)? {
@@ -1357,7 +1357,7 @@ impl Plan {
 
         let nodes = dft.traverse_into_vec(top);
 
-        for LevelNode(_, proj_id) in nodes {
+        for proj_id in nodes {
             let group_by_id = self.get_group_by(proj_id)?;
             let Some(group_by_id) = group_by_id else {
                 continue;
@@ -1486,7 +1486,7 @@ impl Plan {
 
                     let alias_parents = dft.traverse_into_vec(*gr_expr_id);
 
-                    for LevelNode(_, alias_parent_id) in alias_parents {
+                    for alias_parent_id in alias_parents {
                         // Add all Expression::Alias nodes among expression children
                         for child in self.nodes.expr_iter(alias_parent_id, false) {
                             if let Ok(Node::Expression(Expression::Alias(Alias { name, .. }))) =

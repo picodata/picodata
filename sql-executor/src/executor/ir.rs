@@ -22,7 +22,7 @@ use crate::ir::operator::UpdateStrategy;
 use crate::ir::relation::SpaceEngine;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::subtree::ExecPlanSubtreeIterator;
-use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter};
+use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use crate::ir::{Plan, SubtreeViewKey};
@@ -485,15 +485,7 @@ impl<'plan> SubtreeViewBuilder<'plan> {
             |node| exec_plan.effective_sql_subtree_iter(node, Snapshot::Oldest),
             ir_plan.nodes.len(),
         );
-        let subtree_nodes = subtree.traverse_into_iter(top_id).collect::<Vec<_>>();
-        let node_ids = subtree_nodes
-            .iter()
-            .map(|LevelNode(_, id)| *id)
-            .collect::<Vec<_>>();
-        let node_levels = subtree_nodes
-            .iter()
-            .map(|LevelNode(level, _)| *level as u32)
-            .collect::<Vec<_>>();
+        let node_ids = subtree.traverse_into_iter(top_id).collect::<Vec<_>>();
         let constants = PostOrderWithFilter::new(
             |node| exec_plan.effective_sql_subtree_output_first_iter(node, Snapshot::Oldest),
             |node| {
@@ -506,7 +498,7 @@ impl<'plan> SubtreeViewBuilder<'plan> {
         );
         let mut constant_ids = Vec::new();
         let mut constant_set = HashSet::new();
-        for LevelNode(_, node_id) in constants.traverse_into_iter(top_id) {
+        for node_id in constants.traverse_into_iter(top_id) {
             if constant_set.insert(node_id) {
                 constant_ids.push(node_id);
             }
@@ -554,7 +546,6 @@ impl<'plan> SubtreeViewBuilder<'plan> {
             key: SubtreeViewKey {
                 top_id,
                 node_ids,
-                node_levels,
                 leaf_motions,
                 serialize_as_empty,
             },
@@ -577,11 +568,6 @@ impl<'plan> SubtreeViewBuilder<'plan> {
     /// Returns node ids rendered by the effective SQL subtree.
     pub(crate) fn node_ids(&self) -> &[NodeId] {
         &self.summary.key.node_ids
-    }
-
-    /// Returns tree levels for nodes rendered by the effective SQL subtree.
-    pub(crate) fn node_levels(&self) -> &[u32] {
-        &self.summary.key.node_levels
     }
 
     /// Returns constant node ids in SQL parameter order.
@@ -661,7 +647,7 @@ fn bucket_filter_calculate(
         |node| exec_plan.effective_exec_plan_subtree_iter(node, Snapshot::Oldest),
         plan.nodes.len(),
     );
-    for LevelNode(_, node_id) in subtree.traverse_into_iter(top_id) {
+    for node_id in subtree.traverse_into_iter(top_id) {
         let Ok(Node::Relational(rel)) = plan.get_node(node_id) else {
             continue;
         };

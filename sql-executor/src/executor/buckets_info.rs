@@ -9,7 +9,7 @@ use crate::ir::bucket::Buckets;
 use crate::ir::explain::execution_info::BucketsInfo;
 use crate::ir::node::{block::BlockOwned, relational::Relational, Motion, Node, NodeId};
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::tree::traversal::{LevelNode, PostOrder, REL_CAPACITY};
+use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
 use crate::ir::Plan;
 
 /// Estimate on which buckets query will be executed.
@@ -85,7 +85,7 @@ pub fn buckets_info_from_query<R: Router>(
     // some children have such motions in their subtrees, then
     // such children are to be used for buckets estimation.
     let mut cur_children_without_motions: Vec<NodeId> = Vec::new();
-    for LevelNode(_, id) in dfs_tree.traverse_into_iter(top_id) {
+    for id in dfs_tree.traverse_into_iter(top_id) {
         let rel = ir.get_relation_node(id)?;
         let rel_deps_len = rel.children_len() + rel.subqueries().len();
 
@@ -155,7 +155,7 @@ fn can_estimate_buckets(plan: &Plan) -> Result<bool, SbroadError> {
     let top_id = plan.get_top()?;
 
     let dfs = PostOrder::new(|node| plan.nodes.rel_iter(node), 0);
-    for LevelNode(_, node) in dfs.traverse_into_iter(top_id) {
+    for node in dfs.traverse_into_iter(top_id) {
         let has_segment_motion = matches!(
             plan.get_node(node),
             Ok(Node::Relational(Relational::Motion(Motion {

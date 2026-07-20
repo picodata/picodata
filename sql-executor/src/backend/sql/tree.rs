@@ -14,7 +14,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::tree::traversal::{LevelNode, PostOrder};
+use crate::ir::tree::traversal::PostOrder;
 use crate::ir::tree::Snapshot;
 use crate::ir::types::CastType;
 use crate::ir::Plan;
@@ -1244,14 +1244,12 @@ impl<'p> SyntaxPlan<'p> {
     fn expression_subtree_contains_or(&self, expr_id: NodeId) -> bool {
         let plan = self.plan.get_ir_plan();
         let expr_tree = PostOrder::new(|node| plan.nodes.expr_iter(node, true), plan.nodes.len());
-        expr_tree
-            .traverse_into_iter(expr_id)
-            .any(|LevelNode(_, id)| {
-                matches!(
-                    plan.get_expression_node(id),
-                    Ok(Expression::Bool(BoolExpr { op: Bool::Or, .. }))
-                )
-            })
+        expr_tree.traverse_into_iter(expr_id).any(|id| {
+            matches!(
+                plan.get_expression_node(id),
+                Ok(Expression::Bool(BoolExpr { op: Bool::Or, .. }))
+            )
+        })
     }
 
     fn add_group_by(&mut self, id: NodeId) {
@@ -2687,7 +2685,7 @@ impl<'p> SyntaxPlan<'p> {
             |node| self.nodes.iter(node),
             self.plan.get_ir_plan().nodes.len(),
         );
-        for LevelNode(_, pos) in dfs.traverse_into_iter(top) {
+        for pos in dfs.traverse_into_iter(top) {
             let node = self.nodes.get_sn(pos);
             if pos == top {
                 let select = Select::new(self, None, None, pos)?;
@@ -2778,7 +2776,7 @@ impl<'p> SyntaxPlan<'p> {
                     },
                     capacity,
                 );
-                for id in dft_post.traverse_into_iter(top).map(|level| level.1) {
+                for id in dft_post.traverse_into_iter(top) {
                     if let Ok(Node::Relational(Relational::Motion(Motion { program, .. }))) =
                         ir_plan.get_node(id)
                     {
@@ -2802,7 +2800,7 @@ impl<'p> SyntaxPlan<'p> {
                     },
                     capacity,
                 );
-                for id in dft_post.traverse_into_iter(top).map(|level| level.1) {
+                for id in dft_post.traverse_into_iter(top) {
                     if let Ok(Node::Relational(Relational::Motion(Motion { program, .. }))) =
                         ir_plan.get_node(id)
                     {
@@ -2830,8 +2828,7 @@ impl<'p> SyntaxPlan<'p> {
                     },
                     capacity,
                 );
-                for level_node in dft_post.traverse_into_iter(top) {
-                    let id = level_node.1;
+                for id in dft_post.traverse_into_iter(top) {
                     // it works only for post-order traversal
                     sp.add_plan_node(id);
                     let sn_id = sp.nodes.next_id() - 1;
@@ -2854,8 +2851,7 @@ impl<'p> SyntaxPlan<'p> {
                     capacity,
                 );
 
-                for level_node in dft_post.traverse_into_iter(top) {
-                    let id = level_node.1;
+                for id in dft_post.traverse_into_iter(top) {
                     // it works only for post-order traversal
                     sp.add_plan_node(id);
                     let sn_id = sp.nodes.next_id().saturating_sub(1);

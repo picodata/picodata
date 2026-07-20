@@ -6,7 +6,7 @@ use crate::ir::node::{
     Alias, Constant, MutNode, Node96, NodeId, Parameter, ScalarFunction, Timestamp, ValuesRow,
 };
 use crate::ir::node::{Node32, TimeParameters};
-use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::{ArenaType, Node, Plan};
@@ -125,7 +125,7 @@ impl Plan {
         let top_id = self.get_top()?;
         let nodes = tree.traverse_into_vec(top_id);
 
-        for LevelNode(_, id) in nodes {
+        for id in nodes {
             if let Ok(Node::Relational(Relational::ValuesRow(_))) = self.get_node(id) {
                 self.update_values_row(id)?;
             }
@@ -149,7 +149,7 @@ impl Plan {
             tree.traverse_into_vec(top_id)
         };
 
-        for LevelNode(_, id) in &ref_nodes {
+        for id in &ref_nodes {
             // Before binding, references that referred to
             // parameters had an unknown types,
             // but in fact they should have the types of given parameters.

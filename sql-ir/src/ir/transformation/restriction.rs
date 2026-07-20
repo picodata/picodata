@@ -19,7 +19,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{BoolExpr, Join, Node, NodeId, Reference, Selection, SubQueryReference};
 use crate::ir::operator::{Bool, JoinKind};
 use crate::ir::transformation::equality_facts::Slot;
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::Plan;
 
 /// One restriction clause: the source conjunct node, the column sources
@@ -103,8 +103,7 @@ impl<'p> RestrictionBuilder<'p> {
         let nodes = ir_tree.traverse_into_vec(top_id);
 
         let mut by_rel = HashMap::new();
-        for level_node in &nodes {
-            let rel_id: NodeId = level_node.1;
+        for rel_id in nodes {
             let expr_id = match plan.get_relation_node(rel_id)? {
                 Relational::Selection(Selection { filter, .. }) => *filter,
                 // Only INNER conditions are restrictions; LEFT is skipped.
@@ -155,11 +154,7 @@ impl<'p> RestrictionBuilder<'p> {
             },
             EXPR_CAPACITY,
         );
-        and_tree
-            .traverse_into_vec(expr_id)
-            .into_iter()
-            .map(|LevelNode(_, id)| id)
-            .collect()
+        and_tree.traverse_into_vec(expr_id)
     }
 
     /// Collect what a clause references: the `(rel_id, position)` column sources

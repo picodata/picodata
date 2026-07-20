@@ -82,14 +82,13 @@ fn projection_any_dist_for_expr() {
     let local_proj_id = {
         let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
         dfs.traverse_into_iter(plan.get_top().unwrap())
-            .find(|level_node| {
+            .find(|id| {
                 matches!(
-                    plan.get_relation_node(level_node.1).unwrap(),
+                    plan.get_relation_node(*id).unwrap(),
                     Relational::Projection(_)
                 )
             })
             .unwrap()
-            .1
     };
     assert_eq!(
         Distribution::Any,

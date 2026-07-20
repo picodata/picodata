@@ -839,8 +839,7 @@ fn track_shard_col_pos() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
     let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), 10);
-    for level_node in dfs.traverse_into_iter(top) {
-        let node_id = level_node.1;
+    for node_id in dfs.traverse_into_iter(top) {
         let node = plan.get_relation_node(node_id).unwrap();
         match node {
             Relational::ScanRelation(_) | Relational::Selection(_) => {
@@ -867,8 +866,7 @@ fn track_shard_col_pos() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
     let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), 10);
-    for level_node in dfs.traverse_into_iter(top) {
-        let node_id = level_node.1;
+    for node_id in dfs.traverse_into_iter(top) {
         let node = plan.get_relation_node(node_id).unwrap();
         if let Relational::Join(_) = node {
             assert_eq!(
@@ -890,8 +888,7 @@ fn track_shard_col_pos() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
     let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), 10);
-    for level_node in dfs.traverse_into_iter(top) {
-        let node_id = level_node.1;
+    for node_id in dfs.traverse_into_iter(top) {
         let node = plan.get_relation_node(node_id).unwrap();
         if let Relational::Join(_) = node {
             assert_eq!(
@@ -953,7 +950,7 @@ fn track_shard_col_pos_dropped_above_motion() {
     );
     let joins = dfs.traverse_into_vec(top);
     assert!(!joins.is_empty(), "expected a join in the optimized plan");
-    for join_id in joins.into_iter().map(|level| level.1) {
+    for join_id in joins {
         assert_eq!(get_positions(&plan, join_id), None);
     }
     assert_eq!(get_positions(&plan, top), None);
@@ -976,7 +973,7 @@ fn track_shard_col_pos_dropped_above_motion() {
         !unions.is_empty(),
         "expected a union all in the optimized plan"
     );
-    for union_id in unions.into_iter().map(|level| level.1) {
+    for union_id in unions {
         assert_eq!(get_positions(&plan, union_id), None);
     }
     assert_eq!(get_positions(&plan, top), None);

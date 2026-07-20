@@ -1,7 +1,7 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{Constant, Node, NodeId};
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use crate::ir::{Nodes, Plan};
@@ -78,7 +78,7 @@ impl Plan {
 
         let mut set = HashSet::new();
         let mut vec = Vec::new();
-        for LevelNode(_, node_id) in tree.traverse_into_iter(top_id) {
+        for node_id in tree.traverse_into_iter(top_id) {
             if !set.contains(&node_id) {
                 vec.push(node_id);
                 set.insert(node_id);

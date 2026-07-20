@@ -22,8 +22,8 @@ use super::operator::OrderByEntity;
 use super::types::{CastType, DerivedType};
 use super::{
     distribution, operator, Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat,
-    Constant, Expression, LevelNode, MutExpression, MutNode, Node, NodeId, Reference, Row,
-    ScalarFunction, Trim, UnaryExpr, Value,
+    Constant, Expression, MutExpression, MutNode, Node, NodeId, Reference, Row, ScalarFunction,
+    Trim, UnaryExpr, Value,
 };
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::relational::Relational;
@@ -1739,7 +1739,7 @@ impl Plan {
         // We don't expect much relational references in a row (5 is a reasonable number).
         let mut rel_nodes: HashSet<NodeId, RandomState> =
             HashSet::with_capacity_and_hasher(5, RandomState::new());
-        for LevelNode(_, id) in post_tree.traverse_into_iter(row_id) {
+        for id in post_tree.traverse_into_iter(row_id) {
             self.get_relational_nodes_from_references_into(id, &mut rel_nodes)?;
         }
         Ok(rel_nodes)
@@ -1940,7 +1940,7 @@ impl Plan {
             EXPR_CAPACITY,
         );
         let references = subtree.traverse_into_vec(node_id);
-        for LevelNode(_, id) in references {
+        for id in references {
             match self.get_mut_expression_node(id)? {
                 MutExpression::Reference(Reference { target, .. }) => match target {
                     ReferenceTarget::Leaf => {}
@@ -1996,7 +1996,7 @@ impl Plan {
             EXPR_CAPACITY,
         );
         let references = subtree.traverse_into_vec(expr_id);
-        for LevelNode(_, id) in references {
+        for id in references {
             let node = self.get_mut_expression_node(id)?;
             if let MutExpression::Reference(Reference { target, .. }) = node {
                 if !matches!(target, ReferenceTarget::Single(_)) {

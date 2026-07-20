@@ -3,7 +3,7 @@ use crate::ir::node::{Alias, ArenaType};
 use crate::ir::operator::Bool;
 use crate::ir::relation::{SpaceEngine, Table};
 use crate::ir::test_fixtures::column_user_non_null;
-use crate::ir::tree::traversal::{BreadthFirst, LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::tree::traversal::{BreadthFirst, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -37,17 +37,17 @@ fn expression_bft() {
         EXPR_CAPACITY,
     );
     let mut iter = bft_tree.traverse_into_iter(top);
-    assert_eq!(iter.next(), Some(LevelNode(0, top)));
-    assert_eq!(iter.next(), Some(LevelNode(1, c1c2_and_c2c3)));
-    assert_eq!(iter.next(), Some(LevelNode(1, c4_eq_c5)));
-    assert_eq!(iter.next(), Some(LevelNode(2, c1_eq_c2)));
-    assert_eq!(iter.next(), Some(LevelNode(2, c2_eq_c3)));
-    assert_eq!(iter.next(), Some(LevelNode(2, c4)));
-    assert_eq!(iter.next(), Some(LevelNode(2, c5)));
-    assert_eq!(iter.next(), Some(LevelNode(3, c1)));
-    assert_eq!(iter.next(), Some(LevelNode(3, c2)));
-    assert_eq!(iter.next(), Some(LevelNode(3, c2)));
-    assert_eq!(iter.next(), Some(LevelNode(3, c3)));
+    assert_eq!(iter.next(), Some(top));
+    assert_eq!(iter.next(), Some(c1c2_and_c2c3));
+    assert_eq!(iter.next(), Some(c4_eq_c5));
+    assert_eq!(iter.next(), Some(c1_eq_c2));
+    assert_eq!(iter.next(), Some(c2_eq_c3));
+    assert_eq!(iter.next(), Some(c4));
+    assert_eq!(iter.next(), Some(c5));
+    assert_eq!(iter.next(), Some(c1));
+    assert_eq!(iter.next(), Some(c2));
+    assert_eq!(iter.next(), Some(c2));
+    assert_eq!(iter.next(), Some(c3));
     assert_eq!(iter.next(), None);
 }
 
@@ -101,10 +101,10 @@ fn relational_post() {
     // Traverse the tree
     let dft_post = PostOrder::new(|node| plan.nodes.rel_iter(node), REL_CAPACITY);
     let mut iter = dft_post.traverse_into_iter(top);
-    assert_eq!(iter.next(), Some(LevelNode(1, scan_t1_id)));
-    assert_eq!(iter.next(), Some(LevelNode(2, scan_t2_id)));
-    assert_eq!(iter.next(), Some(LevelNode(1, selection_id)));
-    assert_eq!(iter.next(), Some(LevelNode(0, union_id)));
+    assert_eq!(iter.next(), Some(scan_t1_id));
+    assert_eq!(iter.next(), Some(scan_t2_id));
+    assert_eq!(iter.next(), Some(selection_id));
+    assert_eq!(iter.next(), Some(union_id));
     assert_eq!(iter.next(), None);
 }
 
@@ -185,28 +185,28 @@ fn selection_subquery_dfs_post() {
     // Traverse relational nodes in the plan tree
     let dft_post = PostOrder::new(|node| plan.nodes.rel_iter(node), REL_CAPACITY);
     let mut iter = dft_post.traverse_into_iter(top);
-    assert_eq!(iter.next(), Some(LevelNode(1, scan_t1_id)));
-    assert_eq!(iter.next(), Some(LevelNode(4, scan_t2_id)));
-    assert_eq!(iter.next(), Some(LevelNode(3, selection_t2_id)));
-    assert_eq!(iter.next(), Some(LevelNode(2, proj_id)));
-    assert_eq!(iter.next(), Some(LevelNode(1, sq_id)));
-    assert_eq!(iter.next(), Some(LevelNode(0, selection_t1_id)));
+    assert_eq!(iter.next(), Some(scan_t1_id));
+    assert_eq!(iter.next(), Some(scan_t2_id));
+    assert_eq!(iter.next(), Some(selection_t2_id));
+    assert_eq!(iter.next(), Some(proj_id));
+    assert_eq!(iter.next(), Some(sq_id));
+    assert_eq!(iter.next(), Some(selection_t1_id));
     assert_eq!(iter.next(), None);
 
     // Traverse expression nodes in the selection t2 filter
     let dft_post = PostOrder::new(|node| plan.nodes.expr_iter(node, true), EXPR_CAPACITY);
     let mut iter = dft_post.traverse_into_iter(eq_op);
-    assert_eq!(iter.next(), Some(LevelNode(1, b)));
-    assert_eq!(iter.next(), Some(LevelNode(1, const1)));
-    assert_eq!(iter.next(), Some(LevelNode(0, eq_op)));
+    assert_eq!(iter.next(), Some(b));
+    assert_eq!(iter.next(), Some(const1));
+    assert_eq!(iter.next(), Some(eq_op));
     assert_eq!(iter.next(), None);
 
     // Traverse expression nodes in the selection t1 filter
     let dft_post = PostOrder::new(|node| plan.nodes.expr_iter(node, true), EXPR_CAPACITY);
     let mut iter = dft_post.traverse_into_iter(in_op);
-    assert_eq!(iter.next(), Some(LevelNode(1, a)));
-    assert_eq!(iter.next(), Some(LevelNode(1, c)));
-    assert_eq!(iter.next(), Some(LevelNode(0, in_op)));
+    assert_eq!(iter.next(), Some(a));
+    assert_eq!(iter.next(), Some(c));
+    assert_eq!(iter.next(), Some(in_op));
     assert_eq!(iter.next(), None);
 }
 
@@ -270,15 +270,15 @@ fn subtree_dfs_post() {
     // Traverse relational nodes in the plan tree
     let dft_post = PostOrder::new(|node| plan.subtree_iter(node, false), plan.nodes.len());
     let mut iter = dft_post.traverse_into_iter(top);
-    assert_eq!(iter.next(), Some(LevelNode(3, *c_ref_id)));
-    assert_eq!(iter.next(), Some(LevelNode(2, *alias_id)));
-    assert_eq!(iter.next(), Some(LevelNode(1, proj_row_id)));
-    assert_eq!(iter.next(), Some(LevelNode(2, scan_t1_id)));
-    assert_eq!(iter.next(), Some(LevelNode(4, a_ref)));
-    assert_eq!(iter.next(), Some(LevelNode(3, a)));
-    assert_eq!(iter.next(), Some(LevelNode(3, const1)));
-    assert_eq!(iter.next(), Some(LevelNode(2, eq_op)));
-    assert_eq!(iter.next(), Some(LevelNode(1, selection_t1_id)));
-    assert_eq!(iter.next(), Some(LevelNode(0, proj_id)));
+    assert_eq!(iter.next(), Some(*c_ref_id));
+    assert_eq!(iter.next(), Some(*alias_id));
+    assert_eq!(iter.next(), Some(proj_row_id));
+    assert_eq!(iter.next(), Some(scan_t1_id));
+    assert_eq!(iter.next(), Some(a_ref));
+    assert_eq!(iter.next(), Some(a));
+    assert_eq!(iter.next(), Some(const1));
+    assert_eq!(iter.next(), Some(eq_op));
+    assert_eq!(iter.next(), Some(selection_t1_id));
+    assert_eq!(iter.next(), Some(proj_id));
     assert_eq!(iter.next(), None);
 }
