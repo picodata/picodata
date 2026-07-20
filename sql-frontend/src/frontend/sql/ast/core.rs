@@ -45,7 +45,7 @@ use crate::ir::node::{
 use crate::ir::operator::{OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::options::{OptionKind, OptionParamValue};
 use crate::ir::relation::{ColumnRole, TableKind};
-use crate::ir::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::tree::traversal::{PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::types::{ColumnDefType, DomainType};
 use crate::ir::value::Value;
 use crate::ir::{node::plugin, Plan};
@@ -1003,7 +1003,7 @@ impl AstCore {
                         let expr_tree =
                             PostOrder::new(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
                         let mut reference_met = false;
-                        for LevelNode(_, node_id) in expr_tree.traverse_into_iter(expr_plan_node_id) {
+                        for node_id in expr_tree.traverse_into_iter(expr_plan_node_id) {
 							let node = plan.get_expression_node(node_id)?;
 							match node {
 								Expression::Reference(Reference { target, .. }) => {
@@ -1590,7 +1590,7 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         plan: &Plan,
     ) -> Result<(), SbroadError> {
         let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-        for LevelNode(_, id) in dfs.traverse_into_iter(top_id) {
+        for id in dfs.traverse_into_iter(top_id) {
             match plan.get_relation_node(id)? {
                 Relational::ScanSubQuery(_) => {
                     return Err(SbroadError::Other(format_smolstr!(

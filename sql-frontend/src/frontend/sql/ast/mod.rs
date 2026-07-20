@@ -130,8 +130,7 @@ impl<'q> AbstractSyntaxTree<'q> {
         let mut used_aliases = HashSet::new();
         let mut unnamed_subqueries = Vec::new();
 
-        for level_node in dft_post.traverse_into_iter(top) {
-            let id = level_node.1;
+        for id in dft_post.traverse_into_iter(top) {
             let node = ast.nodes.get_node(id)?;
             match &node.rule {
                 // DQL: relation construction, SELECT stages, and VALUES.

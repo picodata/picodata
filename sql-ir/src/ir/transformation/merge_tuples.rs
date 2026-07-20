@@ -433,10 +433,7 @@ impl Plan {
                 EXPR_CAPACITY,
                 EXPR_CAPACITY,
             );
-            let nodes_and: Vec<NodeId> = tree_and
-                .traverse_into_iter(*id)
-                .map(|level_node| level_node.1)
-                .collect();
+            let nodes_and = tree_and.traverse_into_vec(*id);
             let mut nodes_for_chain: Vec<NodeId> = Vec::with_capacity(nodes_and.len());
             for and_id in nodes_and {
                 let expr = self.get_expression_node(and_id)?;
@@ -497,10 +494,7 @@ impl Plan {
             EXPR_CAPACITY,
             EXPR_CAPACITY,
         );
-        let nodes: Vec<NodeId> = tree
-            .traverse_into_iter(expr_id)
-            .map(|level_node| level_node.1)
-            .collect();
+        let nodes = tree.traverse_into_vec(expr_id);
         let chains = f_build_chains(self, &nodes)?;
 
         // Replace nodes' children with the merged tuples.

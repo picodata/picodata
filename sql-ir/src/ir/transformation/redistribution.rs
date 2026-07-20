@@ -31,9 +31,7 @@ use crate::ir::node::{
     SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
 };
 use crate::ir::transformation::equality_facts::EqualityFacts;
-use crate::ir::tree::traversal::{
-    LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY,
-};
+use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{Node, Plan};
 
@@ -363,7 +361,7 @@ pub fn compare_window_dist(this: &Distribution, other: &Distribution) -> Distrib
 
 impl Plan {
     /// Get unary NOT expression nodes.
-    pub(crate) fn get_not_unary_nodes(&self, top: NodeId) -> Vec<LevelNode<NodeId>> {
+    pub(crate) fn get_not_unary_nodes(&self, top: NodeId) -> Vec<NodeId> {
         let post_tree = PostOrderWithFilter::new(
             |node| self.nodes.expr_iter(node, false),
             |node| {
@@ -387,10 +385,7 @@ impl Plan {
     ///
     /// # Errors
     /// - some of the expression nodes are invalid
-    pub(crate) fn get_bool_nodes_for_resolve_subquery_conflicts(
-        &self,
-        top: NodeId,
-    ) -> Vec<LevelNode<NodeId>> {
+    pub(crate) fn get_bool_nodes_for_resolve_subquery_conflicts(&self, top: NodeId) -> Vec<NodeId> {
         let filter_bool_expr_with_row = |node_id| {
             // Append only booleans with row children.
             let Ok(Node::Expression(Expression::Bool(BoolExpr { left, right, .. }))) =
@@ -436,7 +431,7 @@ impl Plan {
     ///
     /// # Errors
     /// - some of the expression nodes are invalid
-    pub(crate) fn get_unary_nodes_with_row_children(&self, top: NodeId) -> Vec<LevelNode<NodeId>> {
+    pub(crate) fn get_unary_nodes_with_row_children(&self, top: NodeId) -> Vec<NodeId> {
         let filter_unary_expr_with_row = |node_id| {
             // Append only unaries with row children.
             let Ok(Node::Expression(Expression::Unary(UnaryExpr { child, .. }))) =
@@ -497,10 +492,7 @@ impl Plan {
             capacity,
         );
         // We don't expect much relational references in a row (5 is a reasonable number).
-        let ref_nodes = post_tree
-            .traverse_into_iter(row_id)
-            .map(|LevelNode(_, id)| id)
-            .collect();
+        let ref_nodes = post_tree.traverse_into_iter(row_id).collect();
 
         Ok(ref_nodes)
     }
@@ -1146,8 +1138,7 @@ impl Plan {
 
         let not_nodes = self.get_not_unary_nodes(expr_id);
         let mut not_nodes_children = HashSet::with_capacity(not_nodes.len());
-        for level_node in &not_nodes {
-            let not_node_id = level_node.1;
+        for not_node_id in not_nodes {
             let not_node = self.get_expression_node(not_node_id)?;
             if let Expression::Unary(UnaryExpr { child, .. }) = not_node {
                 not_nodes_children.insert(*child);
@@ -1157,7 +1148,7 @@ impl Plan {
         }
 
         let bool_nodes = self.get_bool_nodes_for_resolve_subquery_conflicts(expr_id);
-        for LevelNode(_, bool_node) in &bool_nodes {
+        for bool_node in &bool_nodes {
             let bool_op = BoolOp::from_expr(self, *bool_node)?;
             if self.get_expression_node(bool_op.left)?.is_row() {
                 self.set_rel_expr_distribution(rel_id, bool_op.left)?;
@@ -1167,7 +1158,7 @@ impl Plan {
             }
         }
 
-        for LevelNode(_, bool_node) in &bool_nodes {
+        for bool_node in &bool_nodes {
             let strategies = self.get_sq_node_strategies_for_bool_op(rel_id, *bool_node)?;
             for (id, policy) in strategies {
                 // NOT-wrapped subquery predicates normally need Full (NULL-safety
@@ -1185,7 +1176,7 @@ impl Plan {
         }
 
         let unary_nodes = self.get_unary_nodes_with_row_children(expr_id);
-        for LevelNode(_, unary_node) in &unary_nodes {
+        for unary_node in &unary_nodes {
             let unary_strategy = self.get_sq_node_strategy_for_unary_op(rel_id, *unary_node)?;
             if let Some((id, policy)) = unary_strategy {
                 strategy.upsert_child(id, policy, Program::default());
@@ -1225,8 +1216,7 @@ impl Plan {
         expr_id: NodeId,
     ) -> Result<(), SbroadError> {
         let nodes = self.get_bool_nodes_for_resolve_subquery_conflicts(expr_id);
-        for level_node in &nodes {
-            let node = level_node.1;
+        for node in nodes {
             let bool_op = BoolOp::from_expr(self, node)?;
             if self.get_expression_node(bool_op.left)?.is_row() {
                 self.set_rel_expr_distribution(rel_id, bool_op.left)?;
@@ -2269,7 +2259,7 @@ impl Plan {
         let nodes = post_tree.traverse_into_vec(top_id);
         let mut cte_ref_counts: AHashMap<CteChildId, usize> = AHashMap::with_capacity(CTE_CAPACITY);
         let mut counted_cte_refs = AHashSet::with_capacity(nodes.len());
-        for LevelNode(_, id) in &nodes {
+        for id in &nodes {
             if !counted_cte_refs.insert(*id) {
                 continue;
             }
@@ -2285,7 +2275,7 @@ impl Plan {
         // used to fix Union nodes.
         let mut old_new: AHashMap<NodeId, NodeId> = AHashMap::new();
         let mut values_covered = AHashSet::new();
-        for LevelNode(_, id) in nodes {
+        for id in nodes {
             if visited.contains(&id) {
                 continue;
             }
@@ -2666,7 +2656,7 @@ impl Plan {
         // Our plan is a DAG, we must not add the same motion twice
         // to slices.
         let mut visited_motions_ids = AHashSet::with_capacity(REL_CAPACITY);
-        for LevelNode(_, id) in dfs_tree.traverse_into_iter(top_id) {
+        for id in dfs_tree.traverse_into_iter(top_id) {
             let rel = self.get_relation_node(id)?;
             let subqueries_len = rel.subqueries().len();
 

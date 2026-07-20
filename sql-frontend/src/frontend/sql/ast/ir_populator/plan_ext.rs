@@ -9,9 +9,7 @@ use crate::ir::node::{
     Alias, Constant, GroupBy, Node, Node32, NodeId, Parameter, Reference, ReferenceTarget,
     ScalarFunction,
 };
-use crate::ir::tree::traversal::{
-    LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY,
-};
+use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -92,7 +90,7 @@ impl PlanGroupByOrdinalsExt for Plan {
         }
         let post_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
         let nodes = post_tree.traverse_into_vec(top);
-        for LevelNode(_, id) in nodes {
+        for id in nodes {
             if matches!(self.get_relation_node(id)?, Relational::Projection(_)) {
                 self.adjust_grouping_exprs(id)?;
             }
@@ -159,7 +157,7 @@ impl PlanGroupByOrdinalsExt for Plan {
             EXPR_CAPACITY,
         );
 
-        for LevelNode(_, node_id) in dfs.traverse_into_iter(group_expr) {
+        for node_id in dfs.traverse_into_iter(group_expr) {
             let node = self.get_expression_node(node_id)?;
             if let Expression::ScalarFunction(ScalarFunction {
                 name, is_window, ..

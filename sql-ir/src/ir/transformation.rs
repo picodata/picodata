@@ -172,8 +172,7 @@ impl Plan {
             EXPR_CAPACITY,
         );
         let nodes = ir_tree.traverse_into_vec(top_id);
-        for level_node in &nodes {
-            let id: NodeId = level_node.1;
+        for id in nodes {
             let rel: Relational<'_> = self.get_relation_node(id)?;
             let tree_id = match rel {
                 Relational::Selection(Selection {
@@ -255,8 +254,7 @@ impl Plan {
             EXPR_CAPACITY,
         );
         let nodes = subtree.traverse_into_vec(top_id);
-        for level_node in &nodes {
-            let bool_id = level_node.1;
+        for bool_id in nodes.iter().copied() {
             let expr = self.get_expression_node(bool_id)?;
             if let Expression::Bool(BoolExpr { op, .. }) = expr {
                 if ops.contains(op) || ops.is_empty() {
@@ -295,8 +293,7 @@ impl Plan {
         let remember_old_top_id = SubtreeCloner::clone_subtree(self, top_id)?;
 
         // Traverse top id and fix references got from the map.
-        for level_node in &nodes {
-            let id = level_node.1;
+        for id in nodes {
             let mut expr = self.get_mut_expression_node(id)?;
             for child in expr.expr_children_mut() {
                 map.replace(child);
@@ -657,7 +654,7 @@ impl Plan {
     fn subtree_has_motions(&self, top_id: NodeId) -> Result<bool, SbroadError> {
         let post_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
         for node in post_tree.traverse_into_iter(top_id) {
-            if let Relational::Motion(_) = self.get_relation_node(node.1)? {
+            if let Relational::Motion(_) = self.get_relation_node(node)? {
                 return Ok(true);
             }
         }

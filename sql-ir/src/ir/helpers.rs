@@ -603,8 +603,7 @@ impl Plan {
         let ir_tree = PostOrder::new(|node| self.nodes.rel_iter(node), EXPR_CAPACITY);
 
         let mut buf = String::new();
-        for level_node in ir_tree.traverse_into_iter(node_id) {
-            let id = level_node.1;
+        for id in ir_tree.traverse_into_iter(node_id) {
             if self.formatted_arena_node(&mut buf, 0, id).is_err() {
                 return Err(SbroadError::FailedTo(
                     Action::Serialize,

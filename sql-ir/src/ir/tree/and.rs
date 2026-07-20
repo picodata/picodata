@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use super::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
+use super::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use super::TreeIterator;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{BoolExpr, NodeId};
@@ -72,11 +72,7 @@ impl<'n> Nodes {
             },
             EXPR_CAPACITY,
         );
-        and_tree
-            .traverse_into_vec(top)
-            .into_iter()
-            .map(|LevelNode(_, id)| id)
-            .collect()
+        and_tree.traverse_into_vec(top)
     }
 }
 

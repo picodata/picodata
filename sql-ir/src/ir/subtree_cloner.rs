@@ -13,7 +13,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
-use crate::ir::tree::traversal::{LevelNode, PostOrder};
+use crate::ir::tree::traversal::PostOrder;
 use crate::ir::Plan;
 
 /// Helper struct to clone plan's subtree.
@@ -294,7 +294,7 @@ impl SubtreeCloner {
         let dfs = PostOrder::new(|x| plan.subtree_iter_except_subquery(x, true), capacity);
         let nodes = dfs.traverse_into_vec(top_id);
         let mut invalid_refs = Vec::new();
-        for LevelNode(_, id) in nodes {
+        for id in nodes {
             if self.old_new_map.contains_key(&id) {
                 // IR is a DAG and our DFS traversal does not
                 // track already visited nodes, so we may

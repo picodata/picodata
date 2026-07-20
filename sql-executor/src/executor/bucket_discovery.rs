@@ -18,7 +18,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 
@@ -226,7 +226,7 @@ where
             exec_plan: &self.exec_plan,
         };
 
-        for LevelNode(_, node_id) in tree.traverse_into_iter(top_id) {
+        for node_id in tree.traverse_into_iter(top_id) {
             if self.bucket_map.contains_key(&node_id) {
                 continue;
             }

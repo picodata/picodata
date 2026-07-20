@@ -899,11 +899,10 @@ impl SubtreeViewBuilder<'_> {
             }
         }
 
-        for (node_id, level) in self.node_ids().iter().zip(self.node_levels()) {
+        for node_id in self.node_ids() {
             let node = ir_plan.get_node(*node_id)?;
             hash_plan_id_header(&mut hasher, HashHeaderSalt::Node);
             hash_plan_id_part(&mut hasher, &to_subtree_node_id(*node_id, &node_positions)?)?;
-            hash_plan_id_part(&mut hasher, level)?;
             match node {
                 Node::Expression(Expression::Constant(Constant { value })) => {
                     hash_plan_id_header(&mut hasher, HashHeaderSalt::Constant);

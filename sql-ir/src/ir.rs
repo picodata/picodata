@@ -16,7 +16,6 @@ use std::cell::{OnceCell, RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::slice::{Iter, IterMut};
-use tree::traversal::LevelNode;
 use types::{DerivedType, UnrestrictedType};
 
 use ahash::AHashMap;
@@ -753,7 +752,6 @@ pub struct SubtreeHash {
 pub struct SubtreeViewKey {
     pub top_id: NodeId,
     pub node_ids: Vec<NodeId>,
-    pub node_levels: Vec<u32>,
     pub leaf_motions: Vec<NodeId>,
     pub serialize_as_empty: Vec<(NodeId, bool)>,
 }
@@ -1239,8 +1237,7 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        for level_node in dfs.traverse_into_iter(expr_id) {
-            let id = level_node.1;
+        for id in dfs.traverse_into_iter(expr_id) {
             if !check_top && id == expr_id {
                 continue;
             }
@@ -1788,7 +1785,7 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        let ref_ids = dfs.traverse_into_iter(expr_id).map(|n| n.1).collect();
+        let ref_ids = dfs.traverse_into_iter(expr_id).collect();
         Ok(ref_ids)
     }
 
@@ -1804,7 +1801,7 @@ impl Plan {
             },
             EXPR_CAPACITY,
         );
-        let ref_ids = dfs.traverse_into_iter(expr_id).map(|n| n.1).collect();
+        let ref_ids = dfs.traverse_into_iter(expr_id).collect();
         Ok(ref_ids)
     }
 
@@ -2678,7 +2675,7 @@ impl Plan {
             dfs.traverse_into_vec(expr_id)
         };
 
-        for LevelNode(_, ref_id) in references {
+        for ref_id in references {
             let current_position = match self.get_expression_node(ref_id)? {
                 Expression::Reference(Reference {
                     target, position, ..
@@ -3346,7 +3343,7 @@ impl ShardColumnsMap {
 
     fn update_subtree(&mut self, node_id: NodeId, plan: &Plan) -> Result<(), SbroadError> {
         let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-        for LevelNode(_, id) in dfs.traverse_into_iter(node_id) {
+        for id in dfs.traverse_into_iter(node_id) {
             self.update_node(id, plan)?;
             self.invalid_ids.remove(&id);
         }

@@ -8,7 +8,7 @@ use crate::ir::node::{
     ScalarFunction, SubQueryReference, Trim, UnaryExpr, ValuesRow, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter};
+use crate::ir::tree::traversal::PostOrderWithFilter;
 use crate::ir::types::{DerivedType, UnrestrictedType as SbroadType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -633,7 +633,6 @@ fn coerce_scalar_expr(
         // Filter strings literals that require coercion and aren't casted explicitly.
         strings
             .into_iter()
-            .map(|LevelNode(_, id)| id)
             .filter(|id| !casted_strings.contains(id))
             .collect()
     }
@@ -680,11 +679,7 @@ fn annotate_composite_types(
     };
 
     let post_order = PostOrderWithFilter::new(|node| plan.subtree_iter(node, false), is_target, 0);
-    let targets: Vec<_> = post_order
-        .traverse_into_vec(expr_id)
-        .into_iter()
-        .map(|LevelNode(_, id)| id)
-        .collect();
+    let targets: Vec<_> = post_order.traverse_into_vec(expr_id);
 
     for id in targets {
         match plan.get_mut_expression_node(id)? {

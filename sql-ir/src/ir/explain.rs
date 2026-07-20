@@ -4,7 +4,7 @@ use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::{Bound, BoundType, Frame, FrameType, Limit, Over, Window};
 use super::operator::Unary;
-use super::tree::traversal::{LevelNode, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
+use super::tree::traversal::{PostOrder, EXPR_CAPACITY, REL_CAPACITY};
 use super::types::{CastType, DerivedType};
 use super::value::Value;
 use crate::errors::{Entity, SbroadError};
@@ -538,7 +538,7 @@ impl ColExpr {
         let mut stack = ColExprStack::new(plan, should_fmt);
         let dft_post = PostOrder::new(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
 
-        for LevelNode(_, id) in dft_post.traverse_into_iter(subtree_top) {
+        for id in dft_post.traverse_into_iter(subtree_top) {
             let current_node = plan.get_expression_node(id)?;
 
             match &current_node {
@@ -1668,7 +1668,7 @@ impl LogicalExplain {
         let mut stack: Vec<ExplainTreePart> = Vec::new();
 
         let dft_post = PostOrder::new(|node| ir.nodes.rel_iter(node), REL_CAPACITY);
-        for LevelNode(_, id) in dft_post.traverse_into_iter(top_id) {
+        for id in dft_post.traverse_into_iter(top_id) {
             let node = ir.get_relation_node(id)?;
             let (current, children) = match &node {
                 Relational::Intersect { .. } => {

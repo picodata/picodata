@@ -1,7 +1,7 @@
 use crate::ir::distribution::Distribution;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Node, NodeId};
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
@@ -26,32 +26,22 @@ impl From<&Distribution> for DistMock {
     }
 }
 
-fn collect_relational(
-    plan: &Plan,
-    predicate: impl FnMut(NodeId) -> bool,
-) -> Vec<LevelNode<NodeId>> {
+fn collect_relational(plan: &Plan, predicate: impl FnMut(NodeId) -> bool) -> Vec<NodeId> {
     let rel_tree =
         PostOrderWithFilter::new(|node| plan.nodes.rel_iter(node), predicate, REL_CAPACITY);
     let nodes = rel_tree.traverse_into_vec(plan.get_top().unwrap());
     nodes
 }
 
-fn check_distributions(
-    plan: &Plan,
-    nodes: &[LevelNode<NodeId>],
-    expected_distributions: &[DistMock],
-) {
+fn check_distributions(plan: &Plan, nodes: &[NodeId], expected_distributions: &[DistMock]) {
     assert_eq!(
         expected_distributions.len(),
         nodes.len(),
         "different number of nodes"
     );
-    for (LevelNode(level, id), expected) in nodes.iter().zip(expected_distributions.iter()) {
+    for (id, expected) in nodes.iter().zip(expected_distributions.iter()) {
         let actual: DistMock = plan.get_rel_distribution(*id).unwrap().into();
-        assert_eq!(
-            expected, &actual,
-            "wrong distribution for node ({id:?}) at level {level}"
-        );
+        assert_eq!(expected, &actual, "wrong distribution for node ({id:?})");
     }
 }
 

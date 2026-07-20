@@ -7,7 +7,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, Node, NodeId};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
 use crate::ir::tree::relation::RelationalIterator;
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::Plan;
 use ahash::AHashMap;
 use smol_str::format_smolstr;
@@ -80,7 +80,7 @@ impl PlanSerializeAsEmptyExt for Plan {
         let filter_empty_motion = |node| self.is_serialize_as_empty_motion(node, true);
         let dfs = PostOrderWithFilter::new(iter_children, filter_empty_motion, 4);
 
-        Ok(dfs.traverse_into_iter(top_id).map(|id| id.1).collect())
+        Ok(dfs.traverse_into_iter(top_id).collect())
     }
 
     fn serialize_as_empty_info(
@@ -100,7 +100,7 @@ impl PlanSerializeAsEmptyExt for Plan {
             },
             0,
         );
-        for LevelNode(_, motion_id) in dfs.traverse_into_iter(top_id) {
+        for motion_id in dfs.traverse_into_iter(top_id) {
             motions_ref_count
                 .entry(motion_id)
                 .and_modify(|cnt| *cnt += 1)
@@ -126,7 +126,7 @@ impl PlanSerializeAsEmptyExt for Plan {
                     },
                     REL_CAPACITY,
                 );
-                all_motions.extend(dfs.traverse_into_iter(*top_id).map(|id| id.1));
+                all_motions.extend(dfs.traverse_into_iter(*top_id));
             }
             all_motions
         };

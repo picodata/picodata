@@ -12,7 +12,7 @@ use crate::ir::node::{
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
-use crate::ir::tree::traversal::{LevelNode, PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::{Node, Plan};
 use crate::utils::to_user;
 use std::collections::HashMap;
@@ -488,7 +488,7 @@ impl Plan {
                 EXPR_CAPACITY,
             );
             let nodes = dfs.traverse_into_vec(*col);
-            for LevelNode(_, id) in nodes {
+            for id in nodes {
                 let n = self.get_expression_node(id)?;
                 if n.is_ref() {
                     let alias = match self.get_alias_from_reference_node(&n) {
@@ -516,7 +516,7 @@ impl Plan {
 
         let dfs = PostOrder::new(|x| self.nodes.aggregate_iter(x, false), EXPR_CAPACITY);
         let nodes = dfs.traverse_into_vec(*filter);
-        for LevelNode(_, id) in nodes {
+        for id in nodes {
             if self.get_expression_node(id)?.is_ref() {
                 return Err(SbroadError::Invalid(
 					Entity::Query,

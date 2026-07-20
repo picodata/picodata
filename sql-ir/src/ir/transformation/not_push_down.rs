@@ -85,9 +85,7 @@ fn call_expr_tree_not_push_down(
         EXPR_CAPACITY,
     );
     let nodes = subtree.traverse_into_vec(new_top_id);
-    for level_node in &nodes {
-        let id = level_node.1;
-
+    for id in nodes {
         let expr = plan.get_mut_expression_node(id)?;
         match expr {
             MutExpression::Bool(BoolExpr { left, right, .. }) => {

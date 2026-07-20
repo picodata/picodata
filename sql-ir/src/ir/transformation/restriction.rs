@@ -103,8 +103,7 @@ impl<'p> RestrictionBuilder<'p> {
         let nodes = ir_tree.traverse_into_vec(top_id);
 
         let mut by_rel = HashMap::new();
-        for level_node in &nodes {
-            let rel_id: NodeId = level_node.1;
+        for rel_id in nodes {
             let expr_id = match plan.get_relation_node(rel_id)? {
                 Relational::Selection(Selection { filter, .. }) => *filter,
                 // Only INNER conditions are restrictions; LEFT is skipped.

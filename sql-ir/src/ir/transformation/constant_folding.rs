@@ -6,7 +6,7 @@ use crate::ir::node::{
     UnaryExpr,
 };
 use crate::ir::operator::{Bool, Unary};
-use crate::ir::tree::traversal::{LevelNode, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::value::{Trivalent, TrivalentOrdering, Value};
 use crate::ir::Plan;
 use smol_str::format_smolstr;
@@ -245,7 +245,7 @@ impl Plan {
             // TODO: there is a problem with folding other structures, like cast.
             // CAST(true AND a = 1 AS boolean) wouldn't be folded to CAST(a = 1 AS boolean)
             // because we don't reassign cast child
-            for LevelNode(_, op_id) in op_nodes.iter() {
+            for op_id in op_nodes.iter() {
                 match self.get_mut_expression_node(*op_id)? {
                     MutExpression::Bool(BoolExpr { left, op, right }) => {
                         *left = *const_map.get(left).unwrap_or(left);
@@ -364,7 +364,7 @@ impl Plan {
                         },
                         EXPR_CAPACITY,
                     );
-                    for LevelNode(_, expr_id) in sq_dfs.traverse_into_vec(current_filter) {
+                    for expr_id in sq_dfs.traverse_into_vec(current_filter) {
                         if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) =
                             self.get_expression_node(expr_id)?
                         {

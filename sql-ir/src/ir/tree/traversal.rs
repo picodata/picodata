@@ -3,10 +3,6 @@ use std::collections::VecDeque;
 pub const EXPR_CAPACITY: usize = 64;
 pub const REL_CAPACITY: usize = 32;
 
-/// Pair of (Level of the node in traversal algorithm, `node_id`).
-#[derive(Debug, PartialEq)]
-pub struct LevelNode<T>(pub usize, pub T);
-
 pub struct PostOrder<ChildrenFn, T> {
     inner: PostOrderWithFilter<ChildrenFn, fn(T) -> bool, T>,
 }
@@ -25,11 +21,11 @@ where
     I: Iterator<Item = T>,
     T: Copy,
 {
-    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = T> {
         self.traverse_into_vec(root).into_iter()
     }
 
-    pub fn traverse_into_vec(self, root: T) -> Vec<LevelNode<T>> {
+    pub fn traverse_into_vec(self, root: T) -> Vec<T> {
         self.inner.traverse_into_vec(root)
     }
 }
@@ -37,7 +33,7 @@ where
 pub struct PostOrderWithFilter<ChildrenFn, FilterFn, T> {
     children_fn: ChildrenFn,
     filter_fn: FilterFn,
-    nodes: Vec<LevelNode<T>>,
+    nodes: Vec<T>,
 }
 
 impl<ChildrenFn, FilterFn, T> PostOrderWithFilter<ChildrenFn, FilterFn, T> {
@@ -57,29 +53,29 @@ where
     I: Iterator<Item = T>,
     T: Copy,
 {
-    fn traverse(&mut self, root: T, level: usize) {
+    fn traverse(&mut self, root: T) {
         for child in (self.children_fn)(root) {
-            self.traverse(child, level + 1);
+            self.traverse(child);
         }
         if (self.filter_fn)(root) {
-            self.nodes.push(LevelNode(level, root));
+            self.nodes.push(root);
         }
     }
 
-    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = T> {
         self.traverse_into_vec(root).into_iter()
     }
 
-    pub fn traverse_into_vec(mut self, root: T) -> Vec<LevelNode<T>> {
-        self.traverse(root, 0);
+    pub fn traverse_into_vec(mut self, root: T) -> Vec<T> {
+        self.traverse(root);
         self.nodes
     }
 }
 
 pub struct BreadthFirst<ChildrenFn, T> {
     children_fn: ChildrenFn,
-    queue: VecDeque<LevelNode<T>>,
-    nodes: Vec<LevelNode<T>>,
+    queue: VecDeque<T>,
+    nodes: Vec<T>,
 }
 
 impl<ChildrenFn, T> BreadthFirst<ChildrenFn, T> {
@@ -98,16 +94,16 @@ where
     I: Iterator<Item = T>,
     T: Copy,
 {
-    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = LevelNode<T>> {
+    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = T> {
         self.traverse_into_vec(root).into_iter()
     }
 
-    pub fn traverse_into_vec(mut self, root: T) -> Vec<LevelNode<T>> {
-        self.queue.push_back(LevelNode(0, root));
-        while let Some(LevelNode(level, node)) = self.queue.pop_front() {
-            self.nodes.push(LevelNode(level, node));
+    pub fn traverse_into_vec(mut self, root: T) -> Vec<T> {
+        self.queue.push_back(root);
+        while let Some(node) = self.queue.pop_front() {
+            self.nodes.push(node);
             for child in (self.children_fn)(node) {
-                self.queue.push_back(LevelNode(level + 1, child));
+                self.queue.push_back(child);
             }
         }
         self.nodes
