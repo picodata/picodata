@@ -100,7 +100,7 @@ alias tp := test-python
 [group("test")]
 [doc("`tp`: python tests")]
 test-python PATTERN="test" *ARGS:
-	poetry run pytest {{ PYTEST_JOBS }} -k {{ PATTERN }} {{ ARGS }}
+	uv run pytest {{ PYTEST_JOBS }} -k {{ PATTERN }} {{ ARGS }}
 
 #*************#
 # group: LINT #
@@ -142,9 +142,9 @@ alias lp := lint-python
 [group("lint")]
 [doc("`lp`: python lints")]
 lint-python:
-  poetry run ruff check ./test
-  poetry run ruff format ./test --check --diff
-  poetry run mypy ./test
+  uv run ruff check ./test
+  uv run ruff format ./test --check --diff
+  uv run mypy ./test
 
 #************#
 # group: FMT #
@@ -167,7 +167,7 @@ alias fp := fmt-python
 [group("fmt")]
 [doc("`fp`: python format")]
 fmt-python:
-  poetry run ruff format ./test
+  uv run ruff format ./test
 
 #**************#
 # group: STATS #
@@ -177,19 +177,19 @@ alias sf := flamegraph
 [group("stats")]
 [doc("`sf`: flamegraph for benchmark recipe")]
 flamegraph:
-	{{ LOG_WARN }} poetry run pytest test/manual/test_benchmark.py --with-flamegraph
+	{{ LOG_WARN }} uv run pytest test/manual/test_benchmark.py --with-flamegraph
 
 alias sb := benchmark
 [group("stats")]
 [doc("`sb`: integration sql benchmarks")]
 benchmark:
-	{{ LOG_WARN }} poetry run pytest test/manual/test_benchmark.py
+	{{ LOG_WARN }} uv run pytest test/manual/test_benchmark.py
 
 alias sk := k6
 [group("stats")]
 [doc("`sk`: sql benchmarks with k6")]
 k6:
-	{{ LOG_WARN }} poetry run pytest test/manual/sql/test_sql_perf.py
+	{{ LOG_WARN }} uv run pytest test/manual/sql/test_sql_perf.py
 
 #*************#
 # group: MISC #
@@ -234,7 +234,7 @@ tarantool-patch VERSION=env_var("VER_TNT"):
 [group("misc")]
 [doc("patch tarantool version")]
 generate-snapshot:
-	poetry run python3 test/generate_snapshot.py
+	uv run python3 test/generate_snapshot.py
 
 [group("misc")]
 [doc("build base dockerfile")]
@@ -253,9 +253,9 @@ sort-exports:
 [group("misc")]
 [doc("build binaries needed for rolling upgrade tests")]
 build-rolling *ARGS:
-	poetry run python tools/build_rolling_binaries.py {{ ARGS }}
+	uv run python tools/build_rolling_binaries.py {{ ARGS }}
 
 [group("misc")]
 [doc("collect picodata versions needed for rolling upgrade tests")]
 collect-required-rolling-versions *ARGS:
-	poetry run pytest --collect-only --collect-required-rolling-versions {{ ARGS }}
+	uv run pytest --collect-only --collect-required-rolling-versions {{ ARGS }}

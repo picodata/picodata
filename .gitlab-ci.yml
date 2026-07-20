@@ -309,11 +309,11 @@ clone:
     # the build scripts. Without them the job fails.
     - ./tools/get_tags.py
 
-.poetry-install: &poetry-install |
-  # Poetry install
-  ci-log-section start "poetry-install" Installing python dependencies ...
-  POETRY_VIRTUALENVS_IN_PROJECT=1 PIP_NO_CACHE_DIR=true poetry install --no-interaction --ansi
-  ci-log-section end "poetry-install"
+.uv-sync: &uv-sync |
+  # Install the locked Python environment into the project-local .venv.
+  ci-log-section start "uv-sync" Installing python dependencies ...
+  uv sync --locked
+  ci-log-section end "uv-sync"
 
 make-py-cache:
   stage: clone
@@ -331,9 +331,11 @@ make-py-cache:
         # corresponding dev branch that we fetched during the clone step. This is
         # important because tests should check the dev branch, not the master.
     - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
     - <<: *if-no-docs
   script:
-    - *poetry-install
+    - *uv-sync
 
 .test_rules:
   variables:
@@ -533,7 +535,7 @@ test-py-sql-linux:
     - <<: *py_cache
       policy: pull
   script:
-    - *poetry-install
+    - *uv-sync
     - |
       ci-log-section start "test" Test
       if [ "$BUILD_PROFILE" = "dev" ]; then
@@ -590,17 +592,18 @@ install-rolling-binaries:
         CACHE_POLICY: push
     - <<: *if-build-base-changes-on-dev-branch
       variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
         CACHE_POLICY: pull
     - <<: *if-no-docs
       variables:
         CACHE_POLICY: pull
   script:
     - tools/ensure_checkout.sh
-    - *poetry-install
+    - *uv-sync
     - |
       ci-log-section start "install-rolling-binaries" Installing Picodata binaries needed for rolling upgrade tests ...
       make collect-required-rolling-versions
-      poetry run tools/install_rolling_binaries.py
+      uv run python tools/install_rolling_binaries.py
       ci-log-section end "install-rolling-binaries"
   artifacts:
     paths:
@@ -625,7 +628,7 @@ test-py-not-sql-linux:
     - <<: *rolling_binaries_cache
       policy: pull
   script:
-    - *poetry-install
+    - *uv-sync
     - |
       ci-log-section start "test" Test
       if [ "$BUILD_PROFILE" = "dev" ]; then
@@ -683,7 +686,7 @@ lint:
       sccache --show-stats
       ci-log-section end "sccache-setup"
 
-    - *poetry-install
+    - *uv-sync
     - make lint
     - make -C webui lint
 
@@ -722,7 +725,7 @@ test-patch-picodata:
     - <<: *base_node
       policy: pull
   script:
-    - *poetry-install
+    - *uv-sync
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
     - make build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--features webui,dynamic_build"
     - |
@@ -787,8 +790,8 @@ test-mac-m1:
     - cargo +$RUST_VERSION fmt -- -v --check
     - cargo +$RUST_VERSION clippy --version
     - cargo +$RUST_VERSION clippy --features "load_test webui error_injection" -- --deny clippy::all --no-deps
-    # - *poetry-install
-    # - poetry run pytest --numprocesses auto -v
+    # - *uv-sync
+    # - uv run pytest --numprocesses auto -v
     # - make lint
     # - |
   artifacts:

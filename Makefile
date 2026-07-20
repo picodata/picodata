@@ -164,7 +164,7 @@ bench-sql-check:
 
 .PHONY: test-py
 test-py:
-	poetry run pytest $(PYTEST_NUMPROCESSES) $(PYTEST_FLAGS) -vv --color=yes
+	uv run pytest $(PYTEST_NUMPROCESSES) $(PYTEST_FLAGS) -vv --color=yes
 
 .PHONY: test
 test: test-rs test-py
@@ -257,7 +257,7 @@ coverage-demo-diff:
 
 .PHONY: generate-snapshot
 generate-snapshot:
-	poetry run python3 test/generate_snapshot.py
+	uv run python3 test/generate_snapshot.py
 
 .PHONY: lint-rs
 lint-rs:
@@ -294,9 +294,9 @@ lint-rs:
 
 .PHONY: lint-py
 lint-py:
-	poetry run ruff check ./test
-	poetry run ruff format ./test tools benchmark --check --diff
-	poetry run mypy ./test
+	uv run ruff check ./test
+	uv run ruff format ./test tools benchmark --check --diff
+	uv run mypy ./test
 
 .PHONY: lint
 lint: lint-rs lint-py
@@ -304,7 +304,7 @@ lint: lint-rs lint-py
 .PHONY: fmt
 fmt:
 	cargo fmt
-	poetry run ruff format ./test tools benchmark
+	uv run ruff format ./test tools benchmark
 
 .PHONY: audit
 audit:
@@ -339,15 +339,15 @@ clean:
 
 .PHONY: benchmark
 benchmark:
-	PICODATA_LOG_LEVEL=warn poetry run pytest test/manual/test_benchmark.py
+	PICODATA_LOG_LEVEL=warn uv run pytest test/manual/test_benchmark.py
 
 .PHONY: flamegraph
 flamegraph:
-	PICODATA_LOG_LEVEL=warn poetry run pytest test/manual/test_benchmark.py --with-flamegraph
+	PICODATA_LOG_LEVEL=warn uv run pytest test/manual/test_benchmark.py --with-flamegraph
 
 .PHONY: k6
 k6:
-	PICODATA_LOG_LEVEL=warn poetry run pytest test/manual/sql/test_sql_perf.py
+	PICODATA_LOG_LEVEL=warn uv run pytest test/manual/sql/test_sql_perf.py
 
 .PHONY: install
 install:
@@ -416,17 +416,17 @@ flaky-finder:
 
 .PHONY: collect-versions
 collect-required-rolling-versions:
-	poetry run pytest --collect-only --collect-required-rolling-versions
+	uv run pytest --collect-only --collect-required-rolling-versions
 
 .PHONY: setup-hooks
 setup-hooks:
-	@command -v poetry >/dev/null || { \
-		echo "error: poetry not found on PATH." >&2; exit 2; }
-	@poetry run python -c "import pre_commit" 2>/dev/null || { \
+	@command -v uv >/dev/null || { \
+		echo "error: uv not found on PATH." >&2; exit 2; }
+	@uv run python -c "import pre_commit" 2>/dev/null || { \
 		echo "error: pre-commit not installed in the project venv." >&2; \
-		echo "       run 'poetry install' first, then re-run 'make setup-hooks'." >&2; \
+		echo "       run 'uv sync --frozen' first, then re-run 'make setup-hooks'." >&2; \
 		exit 2; }
-	poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit
+	uv run pre-commit install --hook-type commit-msg --hook-type pre-commit
 	@echo "Installed: .git/hooks/commit-msg, .git/hooks/pre-commit (config: .pre-commit-config.yaml)"
 
 .PHONY: prepare-release

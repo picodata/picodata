@@ -98,7 +98,7 @@ DEAD_LIST = [
     "http/test/",
     "monitoring/README.md",
     "picodata-plugin/README.md",
-    "poetry.lock",
+    "uv.lock",
     "sql-executor/src/backend/sql/ir/tests/",
     "sql-executor/src/executor/tests/",
     "sql-frontend/src/frontend/sql/ir/tests/",

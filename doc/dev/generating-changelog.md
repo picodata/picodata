@@ -19,10 +19,7 @@ single source of truth at `.pre-commit-config.yaml`:
 - `validate-commit-headers` — every commit subject must follow
   [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/).
 
-Install the local hook once after cloning (requires `poetry install` first):
-
 ```bash
-poetry install
 make setup-hooks
 ```
 

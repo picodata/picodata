@@ -1,55 +1,57 @@
-[tool.poetry]
+[project]
 name = "picodata"
-version = "0.1.0"
+dynamic = ["version"]
 description = ""
-authors = ["Your Name <you@example.com>"]
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.11,<4.0"
 readme = "README.md"
-package-mode = false
+dependencies = [
+    "asyncpg>=0.30.0,<0.31",
+    "funcy>=2.0,<3",
+    "msgpack>=1.1.0,<2",
+    "mypy>=1.13.0,<2",
+    "packaging>=24.1,<25",
+    "pexpect>=4.9.0,<5",
+    "pg8000>=1.31.2,<2",
+    "prettytable>=3.12.0,<4",
+    "psycopg[binary]>=3.2.3,<4",
+    # FIXME: unpin (https://git.picodata.io/core/picodata/-/issues/2051)
+    "pytest==8.3.5",
+    "pytest-clarity>=1.0.1,<2",
+    "pytest-repeat>=0.9.3,<0.10",
+    "pytest-xdist>=3.6.1,<4",
+    "pytest-rerunfailures>=15.0,<16",
+    "pytest-flakefinder>=1.1.0,<2",
+    "pytest-timeout>=2.3.1,<3",
+    "python-gitlab>=5.6.0,<6",
+    "pyyaml>=6.0.2,<7",
+    "requests>=2.32.3,<3",
+    "tarantool>=1.2.0,<2",
+    "testcontainers>=4.13.0,<5",
+    "types-pyyaml>=6.0.12.20240917,<7",
+    "types-requests>=2.32.0.20241016,<3",
+    "gitpython>=3.1.43,<4",
+    "tqdm>=4.67.0,<5",
+    "ipdb>=0.13.13,<0.14",
+    "ruff>=0.9.4,<0.10",
+    "prometheus-client>=0.22.1,<0.23",
+    "pre-commit>=4.0,<5",
+    "inline-snapshot>=0.32.5,<0.33",
+    "uuid-utils>=0.16.2,<0.17",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.11,<4.0"
-asyncpg = "^0.30.0"
-funcy = "^2.0"
-msgpack = "^1.1.0"
-mypy = "^1.13.0"
-packaging = "^24.1"
-pexpect = "^4.9.0"
-pg8000 = "^1.31.2"
-prettytable = "^3.12.0"
-psycopg = { version = "^3.2.3", extras = ["binary"] }
-# TODO: unpin (https://git.picodata.io/core/picodata/-/issues/2051)
-pytest = "8.3.5"
-pytest-clarity = "^1.0.1"
-pytest-repeat = "^0.9.3"
-pytest-xdist = "^3.6.1"
-pytest-rerunfailures = "^15.0"
-pytest-flakefinder = "^1.1.0"
-pytest-timeout = "^2.3.1"
-python-gitlab = "^5.6.0"
-pyyaml = "^6.0.2"
-requests = "^2.32.3"
-tarantool = "^1.2.0"
-testcontainers = "^4.13.0"
-types-pyyaml = "^6.0.12.20240917"
-types-requests = "^2.32.0.20241016"
-gitpython = "^3.1.43"
-tqdm = "^4.67.0"
-ipdb = "^0.13.13"
-ruff = "^0.9.4"
-prometheus-client = "^0.22.1"
-pre-commit = "^4.0"
-inline-snapshot = "^0.32.5"
-uuid-utils = "^0.16.2"
-
-# The official pypi.org repository is being blocked.
-[[tool.poetry.source]]
+# Use a picodata mirror of PyPi, since the official pypi.org repository is blocked.
+[[tool.uv.index]]
 name = "picodata"
 url = "https://binary.picodata.io/repository/PyPi/simple/"
-priority = "primary"
+default = true
 
 [tool.ruff]
 line-length = 120
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+# Poetry is no longer used for dependency management in this project.
+# The following [tool.poetry] section exists solely to make `poetry` commands
+# fail with a helpful error message directing users to uv.
+[tool.poetry]
+name = "picodata"
+version = "ERROR: This project has migrated to uv. Use 'uv sync' and 'uv run ...' instead of poetry."
