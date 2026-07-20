@@ -39,7 +39,7 @@ This will create a user named `postgres` with necessary permissions for benchmar
 Fire up another terminal window/tab and initialize the database with using the `init.py` script. Scale is used as a multiplier for table sizes (1, 10 and 100000).
 
 ```bash
-poetry run python init.py \
+uv run python init.py \
     "postgres://postgres:Passw0rd@localhost:4327?sslmode=disable" \
     --scale 10
 ```
