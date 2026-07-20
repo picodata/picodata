@@ -84,9 +84,9 @@ rm -rf "${SCCACHE_BINARY}"
 COPY docker-build-base/ci-log-section /usr/bin/ci-log-section
 COPY tools/clone.sh /usr/bin/clone.sh
 
-# install poetry
-RUN curl -sSL https://install.python-poetry.org | python3 -
-RUN poetry --version
+# install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+RUN uv --version
 
 # install glauth for ldap tests
 RUN set -e; \

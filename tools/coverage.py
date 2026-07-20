@@ -631,7 +631,7 @@ prerequisites:
 
 self-contained example:
     {app} run make
-    {app} run poetry run pytest
+    {app} run uv run pytest
     {app} run cargo test
     {app} report --open
     """

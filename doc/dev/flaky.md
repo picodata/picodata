@@ -48,8 +48,8 @@ The simplest way is doing a while loop that will stop at first test failure with
 but doing it at scale is more involved than using pytest plugins (see the next section).
 
 A simple setup:
-- with `bash`/`zsh`: `for i in $(seq 1 50); do clear; poetry run pytest -s [TEST_PATH]::[TEST_NAME] || break; done`
-- with `fish`: `for i in (seq 1 50); clear; poetry run pytest -s [TEST_PATH]::[TEST_NAME]; or break; end`
+- with `bash`/`zsh`: `for i in $(seq 1 50); do clear; uv run pytest -s [TEST_PATH]::[TEST_NAME] || break; done`
+- with `fish`: `for i in (seq 1 50); clear; uv run pytest -s [TEST_PATH]::[TEST_NAME]; or break; end`
 
 You can do several improvements to this setup:
 - Skip a no-op call to `cargo` in each iteration to make sure the test binaries are up-to-date by passing `CI=1` environment variable
@@ -57,8 +57,8 @@ You can do several improvements to this setup:
   which can be done by explicitly passing `--base-port [NUMBER]` to each instance. Spreading instances 100 ports apart should be enough for our codebase.
 
 Then the command for each window becomes:
-- with `bash`/`zsh`: `make build-dev; while clear && CI=1 poetry run pytest --base-port 3303 -s [TEST_PATH]::[TEST_NAME]; do true; done`
-- with `fish`: `make build-dev; while clear && CI=1 poetry run pytest --base-port 3303 -s [TEST_PATH]::[TEST_NAME]; end`
+- with `bash`/`zsh`: `make build-dev; while clear && CI=1 uv run pytest --base-port 3303 -s [TEST_PATH]::[TEST_NAME]; do true; done`
+- with `fish`: `make build-dev; while clear && CI=1 uv run pytest --base-port 3303 -s [TEST_PATH]::[TEST_NAME]; end`
 
 (add 100 to the `--base-port` number for each window you run the command in).
 
@@ -79,7 +79,7 @@ so using a number 2x the number of your physical CPU codes might be better.
 Here's the command line to utilize both plugins:
 
 ```bash
-poetry run pytest --flake-finder --flake-runs=1000 -n auto [TEST_PATH]::[TEST_NAME]
+uv run pytest --flake-finder --flake-runs=1000 -n auto [TEST_PATH]::[TEST_NAME]
 ```
 
 You might also want to use `-x` flag to stop testing on first test failure, which allows you to see the output of the test failure earlier.

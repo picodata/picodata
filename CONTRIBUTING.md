@@ -145,72 +145,54 @@ The resulting binaries should appear under the `target` subdirectory.
 > Dynamic linking requires for additional dependencies to be installed on the system. For example see [Dynamic build](#dynamic-build). For full list see [Dockerfile](docker-build-base/Dockerfile).
 
 ## Integration testing with pytest
-The following refers to Ubuntu 20.04 LTS. The mileage with other distributions may vary.
+The following relates to all OSs and contains common `uv` commands.
 
-### Ubuntu
+### Installation
 
-#### Installation
+1. Install uv:
+   See [instructions](https://docs.astral.sh/uv/getting-started/installation/).
 
-
-1. Install Python 3.10
-
-     ```bash
-   sudo add-apt-repository ppa:deadsnakes/ppa
-   sudo apt install python3.10 python3.10-distutils
-   curl -sSL https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-   python3.10 get-pip.py
-   ```
-
-3. Install poetry:
-   See [instructions](https://python-poetry.org/docs/#installation).
-
-4. Install dependencies
-
-    ```
-    poetry install
-    ```
-
-
-#### Adding dependencies
+### Adding dependencies
+This step is unnecessary in general unless you want to add whatever dependencies manually, extending the existing pyproject file.
 
 ```bash
-poetry install <dependency-package-name>
+uv add <dependency-package-name>
 ```
 
-#### Running
+### Running
+This step will synchronize all dependencies from the pyproject before running.
 
 ```bash
-python3.10 -m poetry run pytest
+uv run pytest
 ```
 
-or
+or through opening your shell inside the target environment:
 
 ```bash
-python3.10 -m poetry shell
-# A new shell will be opened inside the poetry environment
+uv run $SHELL
 pytest
 ```
 
-#### Running specific test
+### Running specific test
 ```bash
-poetry run pytest -k test_sql_acl
+uv run pytest -k test_sql_acl
 ```
 
-#### Running tests in parallel with pytest-xdist
+### Running tests in parallel with pytest-xdist
 
 ```bash
-poetry run pytest -n 20
+uv run pytest -n 20
 ```
 
-#### Finding flaky tests
+### Finding flaky tests
 
 To identify flaky tests by running them multiple times, use the --flake-finder and --flake-runs options with pytest. For example:
 
 ```bash
-poetry run pytest test/pgproto/datetime_test.py -n=auto -k test_localtimestamp --flake-finder --flake-runs=100
+uv run pytest test/pgproto/datetime_test.py -n=auto -k test_localtimestamp --flake-finder --flake-runs=100
 ```
 
-#### Running tests without rebuilding the binary
+### Running tests without rebuilding the binary
 
 By default pytest in the beginning of the test run invokes cargo build
 to ensure the binary is fresh with all recent changes. This may not be
@@ -223,7 +205,7 @@ For our CI and people who want to avoid builds through pytest there is
 special handling of `CI` environment variable. When it is passed pytest
 will not invoke `cargo build`. You can use this form: `CI=1 pytest ...`
 
-#### Debugging tests
+### Debugging tests
 
 There are a few tricks that help in debugging python tests.
 
@@ -235,7 +217,7 @@ run pytest with `-s` argument to avoid stdout interception. This will open a REP
 way to look around, run arbitrary code, etc. It is more productive compared to endlessly rerunning the test with various
 print statements.
 
-#### Dealing with outdated SQL snapshot tests
+### Dealing with outdated SQL snapshot tests
 
 When working with code, sometimes we need to change the output of certain tests.
 This may look something like this:
@@ -268,7 +250,7 @@ Often it's possible to automatically update "snapshots" of such tests
 by running the test suite with a custom command line flag:
 
 ```shell
-poetry run pytest -v -n $(nproc) --update-sql-snapshots
+uv run pytest -v -n $(nproc) --update-sql-snapshots
 ```
 
 Once the test run has completed, you will see the updated tests both in
@@ -279,89 +261,18 @@ output for the sake of clarity. The subsequent test run should pass, though.
 
 > NOTE: Currently, we only support snapshot updates for `EXPLAIN`.
 
-#### Running manual/test_scaling.py::test_cas_conflicts
+### Running manual/test_scaling.py::test_cas_conflicts
 
 This test is not ran by default, but can be used for benchmarking instance join time and cas conflicts.
 The test plots a chart and therefore also requires `matplotlib` dependency to be avaliable.
 
-Install it with:
+For a one-off local run, add it only to that invocation:
 ```bash
-poetry install matplotlib
+uv run --with matplotlib pytest test/manual/test_scaling.py::test_cas_conflicts
 ```
 
-But do not commit the changes to `pyproject.toml` and `poetry.lock` that this installation generates. As we
-do not want to have `matplotlib` installed by default.
----
-
-### macOS
-
-Note: some details regarding python version tweaking might be outdated, feel free to submit a correction.
-
-#### Installation
-
-The installation sequence requires Python 3.10 or newer, preferably installed via Homebrew.
-
-First check if the required version is available:
-```shell
-brew info python
-```
-
-If it is, go and install it:
-```shell
-brew install python@3.11
-brew link python
-python3 --version
-```
-Check if the default `python3` executable is available and provided by the Homebrew installation:
-
-```shell
-which python3
-```
-_Note_: Python versions <=3.9 such as the one provided by the older `Xcode Developer Tools` will not work.
-
-If the `python3` executable is provided by Homebrew, skip the following part and jump to `poetry` installation.
-Otherwise, that needs to be fixed. Let's find out the local Homebrew installation details:
-
-```shell
-brew config
-```
-The `HOMEBREW_PREFIX` variable should point to the directory where `brew`
-installs packages. Let's create a symlink:
-
-```shell
-ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/python@3.10" /usr/local/bin/python3
-```
-_Note_: Make sure that `/usr/local/bin` is in your `PATH`.
-
-Check `python3` location and version. Now it should be provided by Homebrew:
-
-```shell
-which python3
-python3 --version
-```
-
-Make sure the `pip3` executable also points to the homebrew directory.
-```shell
-which pip3
-```
-If it doesn't, then similarly create a simlink for `pip3`:
-
-```shell
-ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/pip@3.10" /usr/local/bin/pip3
-```
-After that you can install poetry, see [instructions](https://python-poetry.org/docs/#installation):
-
-#### Adding dependencies
-
-```shell
-poetry install --deploy
-```
-
-#### Running
-
-```shell
-poetry run pytest -n auto
-```
+This keeps `pyproject.toml` and `uv.lock` unchanged, because we do not want to
+have `matplotlib` installed by default.
 
 ## Benchmarks and flamegraphs
 
@@ -459,7 +370,7 @@ Rolling upgrade tests expect binaries of older Picodata versions to be available
 To simplify the process, use the provided helper script:
 
 ```bash
-$ poetry run python tools/build_rolling_binaries.py [OPTIONS]
+$ uv run python tools/build_rolling_binaries.py [OPTIONS]
 ````
 
 or, if [Just](https://just.systems/) is installed:
@@ -479,7 +390,7 @@ $ just build-rolling --help
 After the required binaries are built and available in `$PATH`, run the tests:
 
 ```bash
-$ poetry run pytest -k test_rolling
+$ uv run pytest -k test_rolling
 ```
 
 or with [Just](https://just.systems/):
@@ -507,6 +418,70 @@ Commit messages are the primary source of context for code changes. Write clear
 and descriptive commit titles and bodies explaining what changed, why the change
 was necessary, any important design decisions and/or tradeoffs, impact on users,
 compatibility, or performance, etc.
+
+#### Subject line (Conventional Commits)
+
+Every commit subject must follow the
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0):
+
+```
+<type>[(<scope>)][!]: <description>
+```
+
+* `<type>` — one of: `feat`, `fix`, `chore`, `refactor`, `docs` (or `doc`),
+  `perf`, `test`, `revert`, `build`, `ci`, `style`, plus the picodata-specific
+  prefixes `adr`, `git`, `empty`. Anything else (`sql:`, `cli:`, `traft:`, ...)
+  must be moved into the scope, e.g. `refactor(sql): ...`.
+* `(<scope>)` — optional, non-empty noun in parentheses.
+* `!` — optional breaking-change marker before the colon.
+* `<description>` — non-empty, separated from the colon by a single space.
+
+Examples:
+
+```
+feat(sql): support JSON ->> operator
+fix: reject empty replicaset on join
+chore!: drop deprecated RegionBuffer::get
+docs(dev): explain release-note workflow
+```
+
+The format is enforced locally and in CI by a `commit-msg` git hook driven by the
+[pre-commit](https://pre-commit.com/) framework.
+
+#### Installing the hook
+
+The local `commit-msg` hook validates only the commit subject
+(Conventional Commits). It runs the same `pre-commit` config CI uses:
+[`.pre-commit-config.yaml`](./.pre-commit-config.yaml).
+
+The hook needs `pre-commit` from the project's uv-managed environment:
+
+```bash
+make setup-hooks
+```
+
+`make setup-hooks` invokes `uv run pre-commit install --hook-type
+commit-msg`, which writes `.git/hooks/commit-msg`. The first commit
+after installation downloads and caches the upstream
+`conventional-pre-commit` hook.
+
+### Changelog Fragments
+
+When your MR has user-visible impact, add a small Markdown fragment under
+`release_notes/unreleased/`. The release manager consolidates all such
+fragments into a single `RELEASE_NOTES.md` section at release time and
+deletes them.
+
+Internal-only MRs (pure refactor with no behavioural effect, test churn,
+build tooling) do not need a fragment.
+
+`CHANGELOG.md` (developer-facing summary) is generated separately from
+commit subjects by `git-pico-cliff`; it is updated only on release
+branches by `tools/release_changelog.py`. Do not edit either file by hand
+outside the release-MR flow.
+
+See [`release_notes/README.md`](./release_notes/README.md) for the full spec and
+[`doc/dev/generating-changelog.md`](./doc/dev/generating-changelog.md) for the release flow.
 
 ### Merge Request Checklist
 

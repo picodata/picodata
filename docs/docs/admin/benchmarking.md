@@ -10,14 +10,12 @@ TPC-B, используемый в Pgbench по умолчанию.
 
 Убедитесь, что в вашей системе установлены следующие компоненты:
 
-- Python 3.12 или новее
-- [Poetry] (система управления зависимостями Python)
+- `uv` (система управления зависимостями Python и его версиями)
 - [Pgbench] (инструмент тестирования СУБД)
 
 При необходимости установите отсутствующие компоненты с помощью
 пакетного менеджера ОС.
 
-[Poetry]: https://python-poetry.org/docs
 [Pgbench]: https://www.postgresql.org/docs/current/pgbench.html
 
 ## Использование стандартного теста TPC-B {: #benchmark_setup_and_run }
@@ -48,20 +46,15 @@ GRANT WRITE TABLE TO postgres;
 Файлы теста находятся в директории `benchmark/tpcb` в [git-репозитории Picodata].
 
 1. Откройте окно/вкладку терминала в корневой директории исходного кода
-   Picodata и установите зависимости теста:
+   Picodata и инициализируйте тест:
 ```shell
-poetry install
-```
-
-1. Инициализируйте тест:
-```shell
-poetry run python benchmark/tpcb/init.py \
+uv run python benchmark/tpcb/init.py \
     "postgres://postgres:Passw0rd@127.0.0.1:4327?sslmode=disable" \
     --scale 10
 
 ```
 
-1. Запустите тест:
+2. Запустите тест:
 ```shell
 pgbench \
     "postgres://postgres:Passw0rd@127.0.0.1:4327?sslmode=disable" \
