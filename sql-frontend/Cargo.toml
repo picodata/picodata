@@ -16,7 +16,7 @@ pest_derive = "2.0"
 smol_str = { workspace = true }
 sql-ir = { path = "../sql-ir" }
 sql-type-system = { path = "../sql-type-system" }
-sqlformat = "0.4"
+sqlformat = { workspace = true }
 tarantool = { workspace = true, features = ["extra_impls"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["parsing", "formatting", "macros"] }

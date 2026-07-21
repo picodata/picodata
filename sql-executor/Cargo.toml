@@ -26,7 +26,7 @@ smol_str = { workspace = true }
 sql-frontend = { path = "../sql-frontend", optional = true }
 sql-ir = { path = "../sql-ir" }
 sql-protocol = { workspace = true }
-sqlformat = "0.4"
+sqlformat = { workspace = true }
 tarantool = { workspace = true, features = ["extra_impls"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["parsing", "formatting", "macros"] }

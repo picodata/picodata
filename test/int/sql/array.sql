@@ -602,10 +602,11 @@ EXPLAIN (RAW) SELECT ARRAY[1.1]::int[];
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "_pico_array_cast" ([ CAST($1 AS decimal) ], 'int') as "col_1"
+SELECT "_pico_array_cast" ([ CAST(1.1 AS decimal) ], 'int') as "col_1"
 ''
 plan:
     [0] TRIVIAL
+
 
 -- TEST: explain-raw-array-cast-reference
 -- SQL:
@@ -619,3 +620,17 @@ SELECT "_pico_array_cast" ("t1"."b", 'double') as "col_1" FROM "t1"
 ''
 plan:
     [0] SCAN TABLE t1 (~1048576 rows)
+
+
+-- TEST: explain-raw-array-index-parameter-substition-gl3006
+-- SQL:
+explain (raw) select distribution['ShardedImplicitly'] from _pico_table;
+-- EXPECTED:
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT "_pico_table"."distribution" [ CAST('ShardedImplicitly' AS string) ] as "col_1" FROM "_pico_table"
+''
+plan:
+    [0] SCAN TABLE _pico_table (~1048576 rows)
