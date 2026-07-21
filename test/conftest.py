@@ -679,6 +679,12 @@ class CommandFailed(Exception):
         self.stderr = maybe_decode_utf8(stderr)
 
 
+class GracefulShutdownTimedOut(Exception):
+    def __init__(self, instance: "Instance", timeout: int):
+        self.instance = instance
+        self.timeout = timeout
+
+
 def maybe_decode_utf8(s: bytes) -> str | bytes:
     try:
         return s.decode()
@@ -1269,8 +1275,13 @@ class Instance:
             log.info(f"{self} terminated: rc = {rc}")
             self.process = None
             return rc
+        except subprocess.TimeoutExpired:
+            # self.kill() is called in finally anyway after this
+            log.info(f"{self} graceful shutdown timed out with timeout {kill_after_seconds}")
+            raise GracefulShutdownTimedOut(self, kill_after_seconds)
         finally:
             self.kill()
+            self.process = None
 
     def name_or_port(self):
         return self.name or f":{self.port}"
@@ -3278,7 +3289,7 @@ def cluster(cluster_factory) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
     cluster = cluster_factory()
     yield cluster
-    cluster.terminate()
+    cluster.kill()
     log.info(f"Cluster data directory was: {cluster.data_dir}")
 
 
@@ -3298,7 +3309,7 @@ def second_cluster(tmpdir, cluster_names, port_distributor, cargo_build_fixt, re
     cluster.set_service_password("password")
 
     yield cluster
-    cluster.terminate()
+    cluster.kill()
 
 
 @pytest.fixture
