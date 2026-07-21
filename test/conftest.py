@@ -2473,9 +2473,16 @@ class Cluster:
             )
 
         if wait_online:
-            return self.wait_online()
-        else:
-            return self.instances
+            self.wait_online()
+            # We've currently working on a new sharding system and one of the
+            # good things about it is that when joining new instances to the
+            # cluster governor will make sure the buckets are rebalanced before
+            # the instance's state changes to Online. So let's start getting used
+            # to that niceness by emulating it in our testing harness.
+            if self.instances:
+                self.wait_until_buckets_balanced(ignore_if_not_ready=True)
+
+        return self.instances
 
     def reset(self):
         self.kill()
@@ -2894,6 +2901,7 @@ class Cluster:
     def wait_until_buckets_balanced(
         self,
         exclude: list[Instance] | None = None,
+        ignore_if_not_ready: bool = False,
     ):
         """
         Wait until every instance in each tier holds an equal share of buckets.
@@ -2922,7 +2930,7 @@ class Cluster:
         # Collect per-tier aggregates in one shot. Note that the inner join
         # drops tiers with zero replicasets, which guards the division below.
         tier_info = leader.sql("""
-            SELECT t.name, t.bucket_count, COUNT(r.name)
+            SELECT t.name, t.bucket_count, COUNT(r.name), t.vshard_bootstrapped
             FROM _pico_tier t
             JOIN _pico_replicaset r ON r.tier = t.name
             GROUP BY t.name, t.bucket_count;
@@ -2930,19 +2938,25 @@ class Cluster:
 
         # Resolve each tier's expected per-instance bucket count.
         bucket_info = {}
-        for name, bucket_count, replicaset_count in tier_info:
+        for name, bucket_count, replicaset_count, vshard_bootstrapped in tier_info:
             if bucket_count % replicaset_count != 0:
                 error = f"tier {name} cannot spread buckets that are not evenly divisible"
                 hint = f"{bucket_count} buckets across {replicaset_count} replicasets"
                 raise ValueError(f"{error}: {hint}")
-            else:
-                bucket_info[name] = bucket_count // replicaset_count
+
+            bucket_info[name] = (bucket_count // replicaset_count, vshard_bootstrapped)
 
         # Poll each non-excluded instance against its tier's expected share.
         for instance in self.instances:
             if exclude is None or instance not in exclude:
                 tier = instance_mapping[instance.name]
-                buckets = bucket_info[tier]
+                buckets, vshard_bootstrapped = bucket_info[tier]
+
+                if not vshard_bootstrapped:
+                    if ignore_if_not_ready:
+                        continue
+                    assert vshard_bootstrapped, f"tier: {tier}"
+
                 self.wait_until_instance_has_this_many_active_buckets(instance, buckets)
 
     def wait_until_instance_has_this_many_active_buckets(
