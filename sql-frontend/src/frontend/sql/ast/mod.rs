@@ -3,9 +3,7 @@
 //! This module contains a definition of the abstract syntax tree
 //! constructed from the nodes of the `pest` tree iterator nodes.
 
-use crate::frontend::sql::ast::ir_populator::{
-    PlanGroupByOrdinalsExt, PlanParameterTypesExt, PlanSubqueryRowsExt,
-};
+use crate::frontend::sql::ast::ir_populator::{PlanGroupByOrdinalsExt, PlanSubqueryRowsExt};
 extern crate pest;
 
 pub(in crate::frontend::sql) mod core;
@@ -49,7 +47,6 @@ use crate::ir::tree::traversal::PostOrder;
 use crate::ir::value::Value;
 use crate::ir::{ExplainOptions, Plan};
 use tarantool::auth::AuthMethod;
-use type_system::get_parameter_derived_types;
 
 use self::ir_populator::{
     can_assign, dql_return_columns, parse_scalar_expr, parse_select, parse_values_rows,
@@ -432,15 +429,7 @@ impl<'q> AbstractSyntaxTree<'q> {
                     )?;
                 }
                 Rule::BlockLetStatement => {
-                    build_block_let_statement_ir(
-                        ast,
-                        id,
-                        node,
-                        &mut map,
-                        &type_analyzer,
-                        &mut worker,
-                        &mut plan,
-                    )?;
+                    build_block_let_statement_ir(ast, id, node, &mut map, &mut worker, &mut plan)?;
                 }
                 Rule::BlockIfCondition => build_block_if_condition_ir(
                     id,
@@ -455,14 +444,9 @@ impl<'q> AbstractSyntaxTree<'q> {
                     build_block_if_body_statement_ir(ast, id, node, &mut map)?;
                 }
                 Rule::BlockIfStatement => {}
-                Rule::AnonymousBlock => build_anonymous_block_ir(
-                    ast,
-                    id,
-                    &mut map,
-                    &mut type_analyzer,
-                    &worker,
-                    &mut plan,
-                )?,
+                Rule::AnonymousBlock => {
+                    build_anonymous_block_ir(ast, id, &mut map, &worker, &mut plan)?
+                }
                 Rule::CallProc => build_call_proc_ir(
                     ast,
                     id,
@@ -523,9 +507,6 @@ impl<'q> AbstractSyntaxTree<'q> {
         }
 
         plan.tier = tiers.next().flatten().cloned();
-
-        let param_types = get_parameter_derived_types(&type_analyzer);
-        plan.set_types_in_parameter_nodes(&param_types)?;
 
         // Some recalculations that need to be performed after all parameter types are known.
         // TODO: They are likely to be redundant and should be removed because now parameters get
@@ -1975,7 +1956,6 @@ fn build_block_let_statement_ir<M>(
     node_id: usize,
     node: &ParseNode,
     map: &mut Translation,
-    type_analyzer: &type_system::TypeAnalyzer,
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
 ) -> Result<(), SbroadError>
@@ -1993,9 +1973,6 @@ where
         .expect("BlockLetStatement must have a SubQuery child");
     let subquery_plan_id = map.get(*subquery_ast_id)?;
     let rhs = plan.get_rel_child(subquery_plan_id, 0)?;
-
-    let param_types = get_parameter_derived_types(type_analyzer);
-    plan.set_types_in_parameter_nodes(&param_types)?;
 
     // LET requires a single-column RHS; multi-row handling is a runtime concern.
     let columns = dql_return_columns(plan, rhs)?;
@@ -2070,17 +2047,12 @@ fn build_anonymous_block_ir<M>(
     ast: &AstCore,
     node_id: usize,
     map: &mut Translation,
-    type_analyzer: &mut type_system::TypeAnalyzer,
     worker: &ExpressionWalker<M>,
     plan: &mut Plan,
 ) -> Result<(), SbroadError>
 where
     M: Metadata,
 {
-    // Set parameter types before `parse_anonymous_block` reads block metadata.
-    let param_types = get_parameter_derived_types(type_analyzer);
-    plan.set_types_in_parameter_nodes(&param_types)?;
-
     let block = parse_anonymous_block(ast, node_id, map, plan, worker)?;
     push_mapped_plan_node(plan, map, node_id, block);
     Ok(())

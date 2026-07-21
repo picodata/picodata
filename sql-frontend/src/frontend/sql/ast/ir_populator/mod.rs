@@ -9,9 +9,7 @@ mod expression_walker;
 mod helpers;
 mod params;
 mod plan_ext;
-pub(in crate::frontend::sql) use plan_ext::{
-    PlanGroupByOrdinalsExt, PlanParameterTypesExt, PlanSubqueryRowsExt,
-};
+pub(in crate::frontend::sql) use plan_ext::{PlanGroupByOrdinalsExt, PlanSubqueryRowsExt};
 mod select_set;
 mod values;
 
