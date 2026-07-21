@@ -1448,3 +1448,30 @@ fn equality_facts_lj_scope_absent_when_on_has_no_eq() {
         "no eq facts in ON => no scope entry"
     );
 }
+
+#[test]
+fn or_partition_intersection_derives_var_eq() {
+    // (a=1 AND b=1 AND c=1) OR (b=c):
+    //   chain 1 makes a, b, c all equal through the shared constant 1, so
+    //   `b = c` holds there; chain 2 states `b = c` directly. The OR therefore
+    //   implies `b = c` unconditionally -- even though the two chains share no
+    //   constant. Intersecting the chains' *partitions* keeps that: b and c are
+    //   grouped in both, while `a` and the constant 1 are absent from chain 2
+    //   and drop out.
+    let input = r#"SELECT "a", "b", "c" FROM "t"
+        WHERE ("a" = 1 AND "b" = 1 AND "c" = 1) OR "b" = "c""#;
+    let plan = optimized_to_equality_facts(input, vec![]);
+    let top = plan.get_top().unwrap();
+    let facts = plan.facts.unwrap();
+
+    let a = facts.class_of_slot(top, 0).unwrap();
+    let b = facts.class_of_slot(top, 1).unwrap();
+    let c = facts.class_of_slot(top, 2).unwrap();
+    assert_eq!(b, c, "the OR implies b = c");
+    assert_ne!(a, b, "a is not forced equal to b/c across the OR");
+    // `a=1`/`b=1`/`c=1` hold in only one chain, so no class is pinned to a value.
+    assert!(
+        facts.classes.iter().all(|cl| cl.constant.is_none()),
+        "no constant is unconditional across the OR"
+    );
+}
