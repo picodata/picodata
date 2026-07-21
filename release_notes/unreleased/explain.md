@@ -7,3 +7,8 @@
   output ([!3330]).
 - Reflect the planning caveats for queries with UNION of global and sharded
   tables in EXPLAIN(RAW) ([!3357]).
+
+## fix/sql
+
+- Fix a bug where parameters were not substituted with values in index
+  expressions within EXPLAIN(RAW) output.

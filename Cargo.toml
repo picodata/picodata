@@ -86,7 +86,6 @@ smallvec = { workspace = true, features = ["write"] }
 smol_str = { workspace = true }
 socket2 = { workspace = true }
 sql-protocol = { workspace = true }
-sqlformat = "0.4"
 sqlparser = { version = "0.40", features = ["visitor"] }
 stringprep = "0.1"
 subtle = "2.5"
@@ -171,6 +170,7 @@ serde_json = "1.0"
 smallvec = { version = "1.15", features = ["const_generics"] }
 smol_str = { version = "0.3", features = ["serde"] }
 socket2 = "0.5"
+sqlformat = "0.5"
 sql-protocol = { path = "sql-protocol" }
 syn = { version = "2.0" }
 tarantool = { path = "tarantool/tarantool", features = ["picodata"] }
