@@ -621,7 +621,6 @@ SELECT "_pico_array_cast" ("t1"."b", 'double') as "col_1" FROM "t1"
 plan:
     [0] SCAN TABLE t1 (~1048576 rows)
 
-
 -- TEST: explain-raw-array-index-parameter-substition-gl3006
 -- SQL:
 explain (raw) select distribution['ShardedImplicitly'] from _pico_table;
@@ -634,3 +633,27 @@ SELECT "_pico_table"."distribution" [ CAST('ShardedImplicitly' AS string) ] as "
 ''
 plan:
     [0] SCAN TABLE _pico_table (~1048576 rows)
+
+-- TEST: column-gets-parameter-type-gl-3042
+-- SQL:
+SELECT "COLUMN_1"[1] FROM (VALUES ($1));
+-- PARAMS:
+nil
+-- ERROR:
+cannot index expression of type text
+
+-- TEST: subquery-column-gets-parameter-type-gl-3042
+-- SQL:
+SELECT a[1] FROM (SELECT $1 AS a);
+-- PARAMS:
+nil
+-- ERROR:
+cannot index expression of type text
+
+-- TEST: cte-column-gets-parameter-type-gl-3042
+-- SQL:
+WITH cte(a) AS (SELECT $1) SELECT a[1] FROM cte;
+-- PARAMS:
+nil
+-- ERROR:
+cannot index expression of type text

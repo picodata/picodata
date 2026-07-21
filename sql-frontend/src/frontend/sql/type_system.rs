@@ -114,6 +114,7 @@ pub fn to_type_expr(
         Expression::LetVarRef(LetVarRef { var_type, .. }) => {
             // LET variables behave like typed references.
             let Some(sbroad_type) = var_type.get() else {
+                // TODO: Forbid vars with no type once we get rid of unknown type in the IR.
                 return Ok(TypeExpr::new(node_id, TypeExprKind::Null));
             };
             let ty = Type::from(*sbroad_type);
@@ -128,14 +129,25 @@ pub fn to_type_expr(
             let kind = TypeExprKind::Literal(ty);
             Ok(TypeExpr::new(node_id, kind))
         }
-        Expression::Reference(Reference { col_type, .. })
-        | Expression::SubQueryReference(SubQueryReference { col_type, .. }) => {
+        Expression::Reference(Reference {
+            col_type, target, ..
+        }) => {
             let Some(sbroad_type) = col_type.get() else {
-                // Parameterized queries can create references of unknown type. This will be
-                // fixed once we support parameter types inference. But until then, we'll treat
-                // them as nulls, to avoid annoying errors.
-                // Eventually, this should be an error or even a panic.
-                return Ok(TypeExpr::new(node_id, TypeExprKind::Null));
+                if target.is_leaf() {
+                    // Placeholder for a GROUP BY alias: still treated as NULL because
+                    // it only gets typed later in `fix_groupby_aliases`. To be fixed by
+                    // the ongoing parser rewrite.
+                    return Ok(TypeExpr::new(node_id, TypeExprKind::Null));
+                }
+                return Err(SbroadError::other("reference has unknown type"));
+            };
+            let ty = Type::from(*sbroad_type);
+            let kind = TypeExprKind::Reference(ty);
+            Ok(TypeExpr::new(node_id, kind))
+        }
+        Expression::SubQueryReference(SubQueryReference { col_type, .. }) => {
+            let Some(sbroad_type) = col_type.get() else {
+                return Err(SbroadError::other("reference has unknown type"));
             };
             let ty = Type::from(*sbroad_type);
             let kind = TypeExprKind::Reference(ty);
@@ -580,8 +592,9 @@ pub fn analyze_and_coerce_scalar_expr(
 ) -> Result<(), SbroadError> {
     analyze_scalar_expr(type_analyzer, expr_id, desired_type, plan, subquery_map)?;
     let report = type_analyzer.get_report();
+    let params = get_parameter_derived_types(type_analyzer);
     coerce_scalar_expr(report, expr_id, plan)?;
-    annotate_composite_types(report, expr_id, plan)
+    annotate_composite_types(report, &params, expr_id, plan)
 }
 
 /// Coerce expression types in accordance with the type report.
@@ -668,6 +681,7 @@ fn coerce_scalar_expr(
 /// Write inferred result types onto composite expressions.
 fn annotate_composite_types(
     report: &TypeReport,
+    param_types: &[DerivedType],
     expr_id: NodeId,
     plan: &mut Plan,
 ) -> Result<(), SbroadError> {
@@ -675,7 +689,10 @@ fn annotate_composite_types(
         let Ok(expr) = plan.get_expression_node(id) else {
             return false;
         };
-        matches!(expr, Expression::ArrayLiteral(_) | Expression::Index(_))
+        matches!(
+            expr,
+            Expression::ArrayLiteral(_) | Expression::Index(_) | Expression::Parameter(_)
+        )
     };
 
     let post_order = PostOrderWithFilter::new(|node| plan.subtree_iter(node, false), is_target, 0);
@@ -689,6 +706,9 @@ fn annotate_composite_types(
             MutExpression::Index(IndexExpr { cast_to, .. }) => {
                 *cast_to = DerivedType::from(report.get_type(&id));
             }
+            MutExpression::Parameter(Parameter {
+                param_type, index, ..
+            }) => *param_type = param_types[*index as usize - 1],
             _ => unreachable!("filter restricts node kinds"),
         }
     }
@@ -789,9 +809,10 @@ pub fn analyze_values_rows(
             new_list.clone_from(list);
         }
 
+        let params = get_parameter_derived_types(type_analyzer);
         for child in &new_list {
             coerce_scalar_expr(report, *child, plan)?;
-            annotate_composite_types(report, *child, plan)?;
+            annotate_composite_types(report, &params, *child, plan)?;
         }
 
         if let MutExpression::Row(Row { list, .. }) = plan.get_mut_expression_node(data)? {

@@ -1,16 +1,13 @@
 use smol_str::format_smolstr;
-use sql_type_system::error::Error as TypeSystemError;
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::metadata::Metadata;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    Alias, Constant, GroupBy, Node, Node32, NodeId, Parameter, Reference, ReferenceTarget,
-    ScalarFunction,
+    Alias, Constant, GroupBy, Node, NodeId, Reference, ReferenceTarget, ScalarFunction,
 };
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
-use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
@@ -231,41 +228,6 @@ impl PlanGroupByOrdinalsExt for Plan {
             }
 
             self.check_grouping_expr_subtree(child)?;
-        }
-
-        Ok(())
-    }
-}
-
-pub(in crate::frontend::sql) trait PlanParameterTypesExt {
-    /// Set inferred parameter types in all parameters nodes.
-    fn set_types_in_parameter_nodes(&mut self, params: &[DerivedType]) -> Result<(), SbroadError>;
-}
-
-impl PlanParameterTypesExt for Plan {
-    /// Set inferred parameter types in all parameters nodes.
-    fn set_types_in_parameter_nodes(&mut self, params: &[DerivedType]) -> Result<(), SbroadError> {
-        for node in self.nodes.iter32_mut() {
-            if let Node32::Parameter(Parameter {
-                ref mut param_type,
-                ref index,
-                ..
-            }) = node
-            {
-                let could_not_determine_parameter_type =
-                    || TypeSystemError::CouldNotDetermineParameterType(*index - 1);
-
-                let index = (*index - 1) as usize;
-                let derived = params
-                    .get(index)
-                    .ok_or_else(could_not_determine_parameter_type)?;
-
-                if derived.get().is_none() {
-                    return Err(could_not_determine_parameter_type().into());
-                }
-
-                *param_type = *derived;
-            }
         }
 
         Ok(())
