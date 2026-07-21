@@ -394,7 +394,7 @@ def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
         i2.replicaset_name: 1.0,
         i3.replicaset_name: 0.0,
     }
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500, max_retries=15)
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
     cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
 
     # Vshard configuration was updated

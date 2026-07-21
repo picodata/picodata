@@ -2963,11 +2963,13 @@ class Cluster:
         self,
         i: Instance,
         expected: int,
-        max_retries: int | None = None,
+        timeout: int | None = None,
     ):
-        if max_retries is None:
-            max_retries = 10
+        if timeout is None:
+            timeout = _DEFAULT_TIMEOUT
+
         attempt = 1
+        deadline = time.time() + timeout
         previous_active = None
         while True:
             instances_with_rebalancer = []
@@ -3019,9 +3021,7 @@ class Cluster:
             )
 
             if actual_active == previous_active:
-                if attempt < max_retries:
-                    attempt += 1
-                else:
+                if time.time() > deadline:
                     if len(instances_with_rebalancer) == 0:
                         message = "vshard.rebalancer is not running anywhere!"
                     elif len(instances_with_rebalancer) == 1:
@@ -3030,6 +3030,8 @@ class Cluster:
                         message = f"more than 1 vshard.rebalancer: {instances_with_rebalancer}"
                     log.error(f"vshard.storage.info.bucket.active stopped changing: {message}")
                     assert actual_active == expected, message
+
+                attempt += 1
             else:
                 # Something changed -> reset retry counter
                 attempt = 1
