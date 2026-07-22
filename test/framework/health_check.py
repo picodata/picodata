@@ -95,17 +95,23 @@ class HealthCheck:
             # HTTP health endpoints were introduced in version 26 by major.
             # See <https://git.picodata.io/core/picodata/merge_requests/2834>.
             if version.major >= 26:
-                uri = f"http://{instance.http_listen}/api/v1"
 
-                liveness_request = requests.get(f"{uri}/health/live")
-                assert liveness_request.status_code == 200, "wrong HTTP liveness probe response code"
-                liveness_content = json.loads(liveness_request.content)
-                assert liveness_content["status"] == "ok", "wrong HTTP liveness probe response answer"
+                def check():
+                    uri = f"http://{instance.http_listen}/api/v1"
 
-                readiness_request = requests.get(f"{uri}/health/ready")
-                assert readiness_request.status_code == 200, "wrong HTTP readiness probe response code"
-                readiness_content = json.loads(readiness_request.content)
-                assert readiness_content["status"] == "ok", "wrong HTTP readiness probe response answer"
+                    liveness_request = requests.get(f"{uri}/health/live")
+                    assert liveness_request.status_code == 200, "wrong HTTP liveness probe response code"
+                    liveness_content = json.loads(liveness_request.content)
+                    assert liveness_content["status"] == "ok", "wrong HTTP liveness probe response answer"
+
+                    readiness_request = requests.get(f"{uri}/health/ready")
+                    assert readiness_request.status_code == 200, "wrong HTTP readiness probe response code"
+                    readiness_content = json.loads(readiness_request.content)
+                    assert readiness_content["status"] == "ok", "wrong HTTP readiness probe response answer"
+
+                # Must be retriable because HTTP endpoints are updated
+                # asynchronously with instance state updates
+                Retriable().call(check)
             else:
                 (current_state, _), _ = Retriable().call(Instance.states, instance)
                 if current_state != "Online":
