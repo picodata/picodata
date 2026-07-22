@@ -538,6 +538,30 @@ Closes #1782 in [!3270](https://git.picodata.io/core/picodata/-/merge_requests/3
 ### Testing
 * fix git describe parsing when running exactly on a tag in [!2969](https://git.picodata.io/core/picodata/-/merge_requests/2969)
 
+## [25.1.6] - 2026-07-13
+
+### Fixes
+
+- Fixed excessive logging when DdlCommit could not be applied on a replica.
+- Queries of the form `(a OR b) AND (c OR d) AND (e OR f)...` could grow 
+  exponentially after DNF conversion. This led to a stack overflow. A limit of 
+  512 disjunctions has been added; if this limit is exceeded, the DNF is not 
+  constructed. You may notice this in the `EXPLAIN` output:
+  `Query (STORAGE)`. It is recommended to rewrite such queries [picodata!3353].
+
+## [26.1.5] - 2026-07-01
+
+## Features
+
+- [picodata#2952] Added the `instance.wal_dir` configuration parameter, which
+  sets the directory where WAL files are stored.
+- Extended constant folding: AND/OR identities, identity rules for equality with
+  true and inequality with false.
+
+## Fixes
+
+- [picodata#3312] Discovery no longer panics on multi-address nodes.
+
 ## [26.1.4] - 2026-05-28
 
 ### Fixes
