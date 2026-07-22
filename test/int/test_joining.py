@@ -979,7 +979,7 @@ def test_join_prefers_replicaset_matching_instance_name(cluster: Cluster):
     r3_i1.terminate()
     with pytest.raises(expected_exception=CommandFailed):
         cluster.expel(r3_i1, force=True, timeout=1)
-    cluster.leader().wait_governor_status("transfer buckets from replicaset")
+    cluster.wait_governor_status("transfer buckets from replicaset")
     [[r3_state]] = cluster.leader().sql(
         """
         SELECT state
@@ -998,7 +998,7 @@ def test_join_prefers_replicaset_matching_instance_name(cluster: Cluster):
     # call `Instance.wait_online` method, which blocks until the instance's
     # grade becomes "Online" - and that never happens in this scenario. The
     # governor is currently busy transferring buckets away from "default_3" (see
-    # `Instance.wait_governor_status` call above), and that step has a higher
+    # `Cluster.wait_governor_status` call above), and that step has a higher
     # priority than activating newly joined instances, so the governor won't
     # get around to onlining "default_3_2" until "default_3" is fully expelled,
     # which we don't wait for in this test. What we actually care about here -

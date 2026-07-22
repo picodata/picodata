@@ -247,13 +247,13 @@ cluster:
 
     # Terminate one replica — the quorum (2) is still met, writes still succeed
     replicas[0].terminate()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     master.sql("INSERT INTO t VALUES (2, 'still_ok')")
 
     # Terminate the second replica — the master is now below the synchro quorum
     # and the governor fences the replicaset read-only
     replicas[1].terminate()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     assert master.eval("return box.info.ro")
     master_id = master.eval("return box.info.id")
@@ -277,7 +277,7 @@ cluster:
     replicas[1].start()
     replicas[0].wait_online()
     replicas[1].wait_online()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Writes work again
     master.sql("INSERT INTO t VALUES (4, 'recovered')")
@@ -341,7 +341,7 @@ cluster:
 
     # Terminate replica
     replica.terminate()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # On quorum loss the replicaset is fenced read-only: the master keeps the
     # synchro queue ownership but no longer accepts writes.
@@ -364,7 +364,7 @@ cluster:
     assert master.eval("return box.info.synchro.queue.len") == 0
 
     replica.start_and_wait()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Writes work again
     master.sql("INSERT INTO t VALUES (3, 'ok')")
@@ -431,7 +431,7 @@ cluster:
     # Terminate master
     master.terminate()
     # Wait for master switchover
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     new_master_name = replicas[0].replicaset_master_name()
     new_master = next(i for i in replicas if i.name == new_master_name)
@@ -446,7 +446,7 @@ cluster:
     # Terminate new master
     new_master.terminate()
     # Wait for master switchover
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     last_replica = next(i for i in replicas if i.name != new_master_name)
     last_replica_id = last_replica.eval("return box.info.id")
@@ -476,7 +476,7 @@ cluster:
     new_master.start()
     master.wait_online()
     new_master.wait_online()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Writes are unblocked
     last_replica.sql("INSERT INTO t VALUES (4, 'final_ok')")
@@ -539,7 +539,7 @@ cluster:
     # Create table and write initial data
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql("INSERT INTO t VALUES (1, 'initial')")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     master_id = master.eval("return box.info.id")
     replica_id = replica.eval("return box.info.id")
@@ -563,7 +563,7 @@ cluster:
 
     # Terminate replica
     replica.terminate()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # On quorum loss the replicaset is fenced read-only: the master keeps the
     # synchro queue ownership but no longer accepts writes.
@@ -591,7 +591,7 @@ cluster:
     master.terminate()
     replica.start_and_wait()
     master.start_and_wait()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Writes are unblocked
     master.sql("INSERT INTO t VALUES (3, 'ok')")
@@ -644,7 +644,7 @@ cluster:
     # Create table and write initial data
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql(f"INSERT INTO t VALUES {','.join([str((i, 'initial')) for i in range(1, 17)])}")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # The replica dies ungracefully, so it never reports going Offline
     # itself. Speed up the automatic failure detection. Arm the aggressive
@@ -656,7 +656,7 @@ cluster:
     # The replica "segfaults" and cannot be restarted.
     replica.kill()
     cluster.wait_has_states(replica, "Offline", "Offline")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # On quorum loss the replicaset is fenced read-only: the master keeps the
     # synchro queue ownership but no longer accepts writes.
@@ -674,7 +674,7 @@ cluster:
     # See this file's header, now we do not support recovery process
     cluster.expel(replica)
     cluster.wait_has_states(replica, "Expelled", "Expelled")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
 
 def test_sync_replication_master_death_rf2(cluster: Cluster):
@@ -713,13 +713,13 @@ cluster:
     # Create table and write initial data
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql(f"INSERT INTO t VALUES {','.join([str((i, 'initial')) for i in range(1, 17)])}")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     master_id = master.eval("return box.info.id")
     # Kill master
     master.kill()
     cluster.wait_has_states(master, "Offline", "Offline")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Check RO, limbo owner and length
     assert replica.eval("return box.info.ro")
@@ -743,7 +743,7 @@ cluster:
     # See this file's header
     cluster.expel(master)
     cluster.wait_has_states(master, "Expelled", "Expelled")
-    leader.wait_governor_status("apply clusterwide schema change")
+    cluster.wait_governor_status("apply clusterwide schema change")
 
 
 def test_sync_replication_master_death_with_unconfirmed_txns_rf2(cluster: Cluster):
@@ -783,7 +783,7 @@ cluster:
 
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql(f"INSERT INTO t VALUES {','.join([str((i, 'confirmed')) for i in range(1, 17)])}")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     master_id = master.eval("return box.info.id")
 
@@ -814,7 +814,7 @@ cluster:
     # The master "segfaults"
     master.kill()
     cluster.wait_has_states(master, "Offline", "Offline")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     assert replica.eval("return box.info.ro")
     assert replica.eval("return box.info.synchro.queue.owner") == master_id
@@ -829,7 +829,7 @@ cluster:
 
     cluster.expel(master)
     cluster.wait_has_states(master, "Expelled", "Expelled")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
 
 def test_sync_replication_master_death_and_return_rf2(cluster: Cluster):
@@ -868,7 +868,7 @@ cluster:
     # Create table and write initial data
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql("INSERT INTO t VALUES (1, 'initial')")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     master_id = master.eval("return box.info.id")
     replica_id = replica.eval("return box.info.id")
@@ -887,7 +887,7 @@ cluster:
     # below fail.
     leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 30")
 
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Check RO, limbo owner and length
     assert replica.eval("return box.info.ro")
@@ -908,7 +908,7 @@ cluster:
     assert replica.eval("return box.space.t:count()") == 1
 
     master.start_and_wait()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     assert master.eval("return box.info.ro")
     assert not replica.eval("return box.info.ro")
@@ -965,7 +965,7 @@ cluster:
     # Expel the master — should trigger switchover to a replica
     cluster.expel(master, force=True)
     cluster.wait_has_states(master, "Expelled", "Expelled")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Determine new master
     new_master_name = replicas[0].replicaset_master_name()
@@ -989,7 +989,7 @@ cluster:
 
     # Add new replica
     i4 = cluster.add_instance(tier="sync_tier")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     i4.eval("return box.space.t:select()")
     assert res == [[1, 14, "before_expel"], [2, 30, "after_expel"]]
@@ -1031,7 +1031,7 @@ cluster:
     # Create table and write initial data
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql(f"INSERT INTO t VALUES {','.join([str((i, 'initial')) for i in range(1, 17)])}")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Speed up the failure detection of the expelled replicas. Arm the
     # aggressive timeout as late as possible: while in effect it also
@@ -1045,7 +1045,7 @@ cluster:
     cluster.wait_has_states(replicas[0], "Expelled", "Expelled")
     cluster.expel(replicas[1], force=True)
     cluster.wait_has_states(replicas[1], "Expelled", "Expelled")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     assert master.eval("return box.info.ro")
     master_id = master.eval("return box.info.id")
@@ -1094,7 +1094,7 @@ cluster:
     # Create table and write initial data
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql(f"INSERT INTO t VALUES {','.join([str((i, 'initial')) for i in range(1, 17)])}")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Speed up the failure detection of the expelled master. Arm the
     # aggressive timeout as late as possible: while in effect it also
@@ -1106,7 +1106,7 @@ cluster:
     # the replicaset is fenced read-only.
     cluster.expel(master, force=True)
     cluster.wait_has_states(master, "Expelled", "Expelled")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     assert replica.eval("return box.info.ro")
     assert replica.eval("return box.info.synchro.queue.len") == 0
@@ -1175,7 +1175,7 @@ cluster:
     # Governor should be stuck transferring replication leader: synchronization
     # is blocked, so the "demoting old master and synchronizing new master"
     # substep keeps retrying and the status stays put.
-    leader.wait_governor_status("transfer replication leader")
+    cluster.wait_governor_status("transfer replication leader")
 
     # Neither old master nor new master is writable during transition.
     def both_read_only():
@@ -1188,7 +1188,7 @@ cluster:
     new_master.call("pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", False)
 
     # Wait for switchover to complete
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # New master owns the synchro queue and is writable
     assert not new_master.eval("return box.info.ro")
@@ -1230,9 +1230,8 @@ cluster:
     )
 
     cluster.deploy(instance_count=3, tier="arbiter")
-    leader = cluster.leader()
     master = cluster.add_instance(tier="sync_tier")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     assert not master.eval("return box.info.ro")
     master_id = master.eval("return box.info.id")
@@ -1252,7 +1251,7 @@ cluster:
     # Once the new instance is online, the replicaset is ready and the writes
     # work.
     replica = cluster.add_instance(tier="sync_tier")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     master.sql("INSERT INTO t VALUES (1, 'initial')")
     for i in [master, replica]:
         # Data is okay
@@ -1327,7 +1326,7 @@ cluster:
 
     # The governor fences the replicaset: the master (the raft leader itself)
     # becomes read-only and retains synchro queue ownership.
-    master.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     assert master.raft_leader_id() == master_raft_id, "master should remain the raft leader"
     assert master.eval("return box.info.ro") is True, "fenced master must become read-only"
 
@@ -1342,7 +1341,7 @@ cluster:
     replicas[1].start()
     replicas[0].wait_online()
     replicas[1].wait_online()
-    master.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     assert master.eval("return box.info.ro") is False
 
@@ -1418,11 +1417,7 @@ cluster:
     replicas[0].start_and_wait()
     replicas[1].start_and_wait()
 
-    # Both restarted voters can trigger raft re-elections, so the raft leader
-    # may change several times before the cluster settles. Re-resolve the
-    # leader on every attempt instead of pinning a possibly-stale one: a stale
-    # leader makes wait_governor_status raise the fatal NotALeader right away.
-    Retriable().call(lambda: cluster.leader().wait_governor_status("idle"))
+    cluster.wait_governor_status("idle")
 
     assert not master.eval("return box.info.ro")
 
@@ -1461,7 +1456,6 @@ cluster:
     )
 
     arbiters = cluster.deploy(instance_count=3, tier="arbiter")
-    leader = cluster.leader()
 
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier", replicaset_name="r1")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier", replicaset_name="r1")
@@ -1479,7 +1473,7 @@ cluster:
         assert i.eval("return box.space.t:count()") == 16
 
     i3 = cluster.add_instance(tier="sync_tier", replicaset_name="r2")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # DDL is applied successfully.
     assert i3.eval("return box.space.t:select()") == []
@@ -1491,7 +1485,7 @@ cluster:
         assert i.eval("return box.space.t:count()") == 17
 
     i4 = cluster.add_instance(tier="sync_tier", replicaset_name="r2")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Wait for the rebalancer to spread buckets evenly across the two sync replicasets
     cluster.wait_until_buckets_balanced(exclude=arbiters)
@@ -1547,7 +1541,7 @@ cluster:
 
     # Create table and write initial data
     leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Wait for the rebalancer to spread buckets evenly across the two sync replicasets
     cluster.wait_until_buckets_balanced(exclude=arbiters)
@@ -1570,7 +1564,7 @@ cluster:
     # The replica "segfaults" and cannot be restarted.
     replica.kill()
     cluster.wait_has_states(replica, "Offline", "Offline")
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # On quorum loss the replicaset is fenced read-only: the master keeps the
     # synchro queue ownership but no longer accepts writes.
@@ -1674,7 +1668,7 @@ cluster:
     # gets excluded from the replication config, its box_promote() hangs and it
     # never becomes Online. With the fix it comes up normally.
     master.wait_online()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # The master is writable, owns the synchro queue, and synchronous writes
     # replicate to the replica.

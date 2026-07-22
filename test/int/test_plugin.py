@@ -1624,7 +1624,7 @@ def test_on_leader_change(cluster: Cluster):
         ops=[("=", "target_master_name", i2.name)],
     )
     cluster.raft_wait_index(index)
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     assert i1.replicaset_master_name() == i2.name
 
     # on_leader_change called at i1 and i2
@@ -1643,7 +1643,7 @@ def test_on_leader_change(cluster: Cluster):
     leader.call("pico._inject_error", error_injection, i2.name)
     i2.call("pico._inject_error", error_injection, i2.name)
 
-    counter = leader.wait_governor_status("idle")
+    counter = cluster.wait_governor_status("idle")
     cluster.wait_has_states(i2, "Offline", "Offline")
 
     # Governor calls on_leader_change callback on `i1`
@@ -1658,7 +1658,7 @@ def test_on_leader_change(cluster: Cluster):
     leader.call("pico._inject_error", error_injection, None)
     i2.call("pico._inject_error", error_injection, None)
 
-    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
     # `i2` has come to it's senses
     i2.wait_online()
 
@@ -1694,7 +1694,7 @@ def test_error_on_leader_change(cluster: Cluster):
         ops=[("=", "target_master_name", i2.name)],
     )
     cluster.raft_wait_index(index)
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     assert i1.replicaset_master_name() == i2.name
 
     plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": True}, i2)
@@ -2753,7 +2753,7 @@ cluster:
     counter = i1.governor_step_counter()
     # Start expel and wait until governor performs all necessary steps
     cluster.expel(i3, peer=i1, force=True)
-    i1.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     # Check RPC directly to expelled instance
     context = make_context()
@@ -2788,7 +2788,7 @@ cluster:
     counter = i1.governor_step_counter()
     # Expell the whole replicaset
     cluster.expel(i4, peer=i1, force=True)
-    i1.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     [[r2_uuid]] = i1.sql(""" SELECT "uuid" FROM _pico_replicaset WHERE name = 'r2' """)
 
@@ -4048,7 +4048,7 @@ def test_plugin_on_cluster_leader_change_all_callbacks(cluster: Cluster):
         ops=[("=", "target_master_name", i3.name)],
     )
     cluster.raft_wait_index(index)
-    i2.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     assert i2.replicaset_master_name() == i3.name
 
     def check_on_leader_change():
@@ -4100,7 +4100,7 @@ def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
         ops=[("=", "target_master_name", i2.name)],
     )
     cluster.raft_wait_index(index)
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     assert i1.replicaset_master_name() == i2.name
 
     def check_step_1():
@@ -4129,7 +4129,7 @@ def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
     )
     cluster.raft_wait_index(index)
 
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     assert i1.replicaset_master_name() == i3.name
 
     def check_step_2():
@@ -4165,7 +4165,7 @@ def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
         ops=[("=", "target_master_name", i1.name)],
     )
     cluster.raft_wait_index(index)
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     assert i1.replicaset_master_name() == i1.name
 
     def check_step_3():
@@ -4201,7 +4201,7 @@ def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
         ops=[("=", "target_master_name", i2.name)],
     )
     cluster.raft_wait_index(index)
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     assert i1.replicaset_master_name() == i2.name
 
     def check_step_4():
@@ -4293,7 +4293,7 @@ def test_plugin_on_cluster_leader_change_not_present(cluster: Cluster, registry:
         ops=[("=", "target_master_name", i3.name)],
     )
     cluster.raft_wait_index(index)
-    i2.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     assert i2.replicaset_master_name() == i3.name
 
     def check_on_leader_change():

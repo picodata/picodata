@@ -38,7 +38,8 @@ def insert_operations(cluster: Cluster, ops: list[str]) -> int:
 @pytest.mark.xdist_group(name="compat")
 def test_catalog_upgrade_from_25_3_1_to_25_4_1_ok(instance: Instance):
     i = instance
-    i.wait_governor_status("idle")
+    assert i.cluster
+    i.cluster.wait_governor_status("idle")
 
     res = i.sql("SELECT * FROM _pico_governor_queue")
     assert res == [
@@ -400,7 +401,7 @@ cluster:
     )
     i2.raft_wait_index(index)
 
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     res = i1.sql("SELECT status FROM _pico_governor_queue")
     assert res == [["done"]]
 
@@ -437,7 +438,7 @@ cluster:
     )
     i2.raft_wait_index(index)
 
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
     res = i1.sql("SELECT status, status_description FROM _pico_governor_queue")
     assert res == [
         [

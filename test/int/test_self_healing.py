@@ -253,7 +253,7 @@ def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
 
     # Wait until governor starts applying the DDL.
     # This will block because both followers can't apply.
-    i1.wait_governor_status("apply clusterwide schema change")
+    cluster.wait_governor_status("apply clusterwide schema change")
 
     # FIXME: this is going to be flaky, need some way to make this stable
     time.sleep(3)
@@ -261,13 +261,8 @@ def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
     i2.call("pico._inject_error", "BLOCK_WHEN_PERSISTING_DDL_COMMIT", False)
     i3.call("pico._inject_error", "BLOCK_WHEN_PERSISTING_DDL_COMMIT", False)
 
-    # Due to high CI load, the test could take longer, which may result in exceeding the
-    # election timeout - because of the enabled check_quorum setting, i1 then steps down
-    # as leader. So at this point, once injections are disabled, we might have a different
-    # leader. To avoid failure, fetch the leader again, possibly waiting until we have one.
-    leader = cluster.wait_leader_elected()
     # Wait until governor finishes with all the needed changes.
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
 
 def test_sentinel_backoff(cluster: Cluster):
@@ -309,7 +304,7 @@ def test_sentinel_backoff(cluster: Cluster):
 
     Retriable().call(check_sentinel_failed_with_injection)
 
-    old_counter = i1.wait_governor_status("idle")
+    old_counter = cluster.wait_governor_status("idle")
     # Everybody thinks `i3` is Offline
     i1.wait_has_states("Offline", "Offline", target=i3)
     assert i3._get_target_state_reason() == "injected offline"
@@ -335,7 +330,7 @@ def test_sentinel_backoff(cluster: Cluster):
 
     old_index_of_attempt = Retriable().call(check_sentinel_succeeded_and_is_waiting)
 
-    counter = i1.wait_governor_status("update current sharding configuration")
+    counter = cluster.wait_governor_status("update current sharding configuration")
     # Governor has performed 4 steps:
     # - change target_state=Online (also bump config versions)
     # - configure replication within replicaset (with `i3` isolated from others)
@@ -358,7 +353,7 @@ def test_sentinel_backoff(cluster: Cluster):
     i1.wait_has_states("Online", "Online", target=i3)
     assert i3._get_target_state_reason() == "auto-online"
 
-    counter = i1.wait_governor_status("idle")
+    counter = cluster.wait_governor_status("idle")
     # Also just 2 steps, no spam
     assert counter - old_counter == 2
     old_counter = counter
@@ -542,14 +537,14 @@ cluster:
     storage_1_1.start()
     # Governor is stuck waiting until instance synchronizes with replicaset,
     # which will never happen
-    leader.wait_governor_status("replicaset sync")
+    cluster.wait_governor_status("replicaset sync")
     cluster.wait_has_states(storage_1_1, "Offline", "Online")
 
     # Now let's enable auto offline due due to replication error
     leader.sql("ALTER SYSTEM SET governor_check_replication_error = true")
 
     # After that auto offline by sentinel works rather quick
-    counter = leader.wait_governor_status("idle")
+    counter = cluster.wait_governor_status("idle")
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")
 
     reason = storage_1_1._get_target_state_reason()
@@ -569,7 +564,7 @@ cluster:
     # while it's broken
     storage_1_1.terminate()
     storage_1_1.start()
-    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")
 
     # Instance is still actually alive, and we can go fix it manually, or
@@ -591,7 +586,7 @@ cluster:
     storage_1_1.env.pop(f"PICODATA_ERROR_INJECTION_{auto_online_failure}", None)
     storage_1_1.start()
     storage_1_1.wait_online()
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # This guy is also still online obviously
     storage_1_2.wait_online()

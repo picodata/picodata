@@ -224,7 +224,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     # This will block until i5 synchronizes with old master, which it won't
     # until the injected error is disabled.
     time.sleep(1)  # Just in case, nothing really relies on this sleep
-    i1.wait_governor_status("transfer replication leader")
+    cluster.wait_governor_status("transfer replication leader")
 
     # neither old master no new master is writable until the switchover is not finalized
     assert i4.eval("return box.info.ro") is True
@@ -234,7 +234,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     i5.call("pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", False)
 
     # Wait until governor finishes with all the needed changes.
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     assert i5.eval("return box.space.mytable.id") is not None
     vclock = get_vclock_without_local(i5)
@@ -272,7 +272,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
     # This will block until i5 synchronizes with old master, which it won't
     # until the injected error is disabled.
     time.sleep(1)  # Just in case, nothing really relies on this sleep
-    i1.wait_governor_status("transfer replication leader")
+    cluster.wait_governor_status("transfer replication leader")
 
     # i4 does not become expelled until the switchover if finalized
     cluster.wait_has_states(i4, "Online", "Expelled")
@@ -281,7 +281,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
     i5.call("pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", False)
 
     # Wait until governor finishes with all the needed changes.
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Only now the instance gets expelled and shuts down
     cluster.wait_has_states(i4, "Expelled", "Expelled")
@@ -331,7 +331,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     # and tries to reconfigure replication between them which will require i5 to synchronize first.
     # This will block until i5 synchronizes with old master, which it won't
     # because it's currently offline.
-    i1.wait_governor_status("transfer replication leader")
+    cluster.wait_governor_status("transfer replication leader")
 
     # i4 does not become expelled until the switchover if finalized
     cluster.wait_has_states(i4, "Online", "Expelled")
@@ -340,7 +340,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     i5.start()
 
     # Wait until governor finishes with all the needed changes.
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Only now the instance gets expelled and shuts down
     cluster.wait_has_states(i4, "Expelled", "Expelled")
@@ -372,7 +372,7 @@ cluster:
     storage2 = cluster.add_instance(wait_online=False, tier="storage")
     cluster.wait_online()
 
-    counter = leader.wait_governor_status("idle")
+    counter = cluster.wait_governor_status("idle")
 
     assert storage1.replicaset_name == storage2.replicaset_name
 
@@ -383,7 +383,7 @@ cluster:
     storage1.terminate()
 
     # Make sure governor is not blocked by an offline replicaset
-    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     # Adding a new replicaset
     storage3 = cluster.add_instance(wait_online=False, tier="storage")
@@ -426,7 +426,7 @@ cluster:
     )
     assert current_master == target_master
 
-    counter = leader.wait_governor_status("idle")
+    counter = cluster.wait_governor_status("idle")
 
     # Request a master switchover in an Offline replicaset
     leader.sql(
@@ -445,7 +445,7 @@ cluster:
 
     # Bump a vshard config version to force governor do perform a step
     leader.sql("UPDATE _pico_tier SET target_vshard_config_version = target_vshard_config_version + 1")
-    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     [[current_master, target_master]] = leader.sql(
         "SELECT current_master_name, target_master_name FROM _pico_replicaset WHERE name = ?", storage1.replicaset_name
@@ -531,7 +531,7 @@ def test_replication_demote_protection_from_old_governor(cluster: Cluster):
     term_error.wait_matched()
 
     # wait until governor performs all the necessary actions
-    i2.wait_governor_status("idle", old_step_counter=old_step_counter)
+    cluster.wait_governor_status("idle", old_step_counter=old_step_counter)
 
     def check_replication():
         # check raft statuses
@@ -599,7 +599,7 @@ def test_fixing_broken_replication(cluster: Cluster):
     # reconfigure replication
     i1.sql("UPDATE _pico_replicaset SET target_config_version = target_config_version + 1 WHERE name = 'default_1'")
     i2.raft_wait_index(i1.raft_get_index())
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # got "duplicate key" conflict, replication is stopped
     info_replication = i1.eval("return box.info.replication")
@@ -615,7 +615,7 @@ def test_fixing_broken_replication(cluster: Cluster):
     # repaire replication
     i1.sql("UPDATE _pico_replicaset SET target_config_version = target_config_version + 1 WHERE name = 'default_1'")
     i2.raft_wait_index(i1.raft_get_index())
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # it is OK now
     info_replication = i1.eval("return box.info.replication")

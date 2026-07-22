@@ -715,7 +715,7 @@ class Retriable:
 
     def __init__(
         self,
-        fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
+        fatal: Type[Exception] | Tuple[Type[Exception], ...] = ProcessDead,
         fatal_predicate: Callable[[Exception], bool] = lambda x: False,
     ) -> None:
         """
@@ -1210,7 +1210,7 @@ class Instance:
         sudo: bool = False,
         user: str | None = None,
         password: str | None = None,
-        fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
+        fatal: Type[Exception] | Tuple[Type[Exception], ...] = ProcessDead,
         fatal_predicate: Callable[[Exception], bool] | str = lambda x: False,
     ) -> dict:
         """Retry SQL query with constant rate until success or fatal is raised"""
@@ -2078,30 +2078,14 @@ Last governor error is:
         info = self.call(".proc_runtime_info")["internal"]
         return info["governor_step_counter"]
 
-    def wait_governor_status(
-        self,
-        expected_status: str,
-        old_step_counter: int | None = None,
-    ) -> int:
-        log.info(f"Instance.wait_governor_status({self}, '{expected_status}', old_step_counter={old_step_counter})")
+    def get_governor_status(self) -> Tuple[str, int]:
+        info = self.call(".proc_runtime_info")["internal"]
+        actual_status = info["governor_loop_status"]
+        if actual_status == "not a leader":
+            raise NotALeader("not a leader")
 
-        assert expected_status != "not a leader", "use another function"
-
-        def impl():
-            info = self.call(".proc_runtime_info")["internal"]
-            actual_status = info["governor_loop_status"]
-            if actual_status == "not a leader":
-                raise NotALeader("not a leader")
-
-            step_counter = info["governor_step_counter"]
-            if old_step_counter:
-                assert old_step_counter != step_counter
-
-            assert actual_status == expected_status
-
-            return step_counter
-
-        return Retriable(fatal=NotALeader).call(impl)
+        step_counter = info["governor_step_counter"]
+        return actual_status, step_counter
 
     def grant_privilege(self, user, privilege: str, object_type: str, object_name: Optional[str] = None):
         if privilege == "execute" and object_type == "role":
@@ -2536,6 +2520,27 @@ class Cluster:
                 pass
 
         return self.instances
+
+    def wait_governor_status(
+        self,
+        expected_status: str,
+        old_step_counter: int | None = None,
+    ) -> int:
+        log.info(f"Cluster.wait_governor_status({self}, '{expected_status}', old_step_counter={old_step_counter})")
+
+        assert expected_status != "not a leader", "use another function"
+
+        def impl():
+            leader = self.leader()
+            actual_status, step_counter = leader.get_governor_status()
+            if old_step_counter:
+                assert old_step_counter != step_counter
+
+            assert actual_status == expected_status
+
+            return step_counter
+
+        return Retriable(fatal=(NotALeader, ProcessDead)).call(impl)
 
     def set_config_file(self, config: dict | None = None, yaml: str | None = None):
         assert config or yaml
@@ -3116,7 +3121,7 @@ class Cluster:
     ):
         for instance in self.instances:
             instance.change_executable(to, error)
-        self.leader().wait_governor_status("idle")
+        self.wait_governor_status("idle")
 
     def pick_random_instance(
         self,

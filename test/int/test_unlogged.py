@@ -125,7 +125,7 @@ cluster:
         """,
     )
 
-    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     [[master_name]] = leader.sql("SELECT current_master_name FROM _pico_replicaset WHERE tier = 'storage'")
     assert storage_1_2.name == master_name
@@ -159,7 +159,7 @@ cluster:
         """,
     )
 
-    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     [[master_name]] = leader.sql("SELECT current_master_name FROM _pico_replicaset WHERE tier = 'storage'")
     assert storage_1_1.name == master_name

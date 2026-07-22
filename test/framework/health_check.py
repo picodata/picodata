@@ -117,8 +117,8 @@ class HealthCheck:
         self.cluster.wait_until_buckets_balanced(exclude=self.exclude)
 
     def _wait_governor_finish_activities(self) -> None:
-        leader = Retriable().call(self.cluster.leader)
-        leader.wait_governor_status("idle")
+        self.cluster.wait_governor_status("idle")
+        leader = self.cluster.leader()
 
         queue = leader.sql("""
             SELECT op, op_format, status, status_description

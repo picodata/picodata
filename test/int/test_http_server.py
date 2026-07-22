@@ -779,7 +779,7 @@ def test_webui_replicaset_state_field(cluster: Cluster):
 
     cluster.add_instance(wait_online=True, tier="red")
     # Wait until governor sets the replicaset to ready state.
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # Now replicaset has rf=2 instances, it should become "ready".
     with get_url(f"http://{http_listen}/api/v1/tiers", auth_token) as response:

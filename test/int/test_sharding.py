@@ -223,7 +223,7 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
     i1.sql(update_target_master, i4.name, "r2")
 
     # Wait until governor performs all the necessary actions
-    i1.wait_governor_status("idle", old_step_counter=old_step_counter)
+    cluster.wait_governor_status("idle", old_step_counter=old_step_counter)
 
     # Make sure vshard config version changed.
     wait_current_vshard_config_changed(i1, old_vshard_config_version)
@@ -452,7 +452,7 @@ cluster:
 
 def test_backoff_proc_sharding(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     lc1 = log_crawler(i1, "sleeping due to backoff, timeout: 1")
     lc2 = log_crawler(i1, "sleeping due to backoff, timeout: 3")
@@ -480,7 +480,7 @@ def test_backoff_proc_sharding(cluster: Cluster):
     i1.sql(
         "UPDATE _pico_tier SET target_vshard_config_version = target_vshard_config_version + 1 WHERE name = 'default'"
     )
-    i1.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
 
 def test_bucket_rebalancing_5_replicasets(cluster: Cluster):

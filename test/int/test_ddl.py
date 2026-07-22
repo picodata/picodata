@@ -924,7 +924,7 @@ cluster:
     )
 
     # Wait until it catches up the raft state
-    voter_2.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     # Make sure the DDL was applied
     assert storage_2.call("box.space._space.index.name:get", "top_g") is not None
@@ -2787,14 +2787,14 @@ cluster:
     # XXX: at this point we would timeout if the bug we're testing would reappear.
     # After that governor blocks trying to configure sharding, because the new
     # replicaset cannot advance in raft log application
-    leader.wait_governor_status("update current sharding configuration", old_step_counter=counter)
+    cluster.wait_governor_status("update current sharding configuration", old_step_counter=counter)
 
     # Unblock them
     storage_2_1.call("pico._inject_error", error_injection, False)
     storage_2_2.call("pico._inject_error", error_injection, False)
 
     # Now the new replicaset successfully finishes catching up
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     replication_errors = []
     try:
@@ -2898,7 +2898,7 @@ cluster:
     assert storage_1_2.name == master_name
 
     # And governor has successfully applied the DDL
-    counter = leader.wait_governor_status("idle")
+    counter = cluster.wait_governor_status("idle")
 
     # Now let's restart the deposed master, it has also applied the DDL, but
     # failed to replicate it to the replicas. After that `storage_1_2` applied
@@ -2913,7 +2913,7 @@ cluster:
     #
     # Thus governor will technically finish with it's responsibilities and go
     # into `idle` state.
-    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     # And the instance with broken replication will be Offline
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")

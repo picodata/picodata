@@ -131,7 +131,7 @@ cluster:
     storage_3 = cluster.add_instance(tier="storage", wait_online=False)
     cluster.wait_online()
 
-    counter = leader.wait_governor_status("idle")
+    counter = cluster.wait_governor_status("idle")
 
     [[current_master, target_master]] = leader.sql(
         "SELECT current_master_name, target_master_name FROM _pico_replicaset WHERE name = ?",
@@ -152,7 +152,7 @@ rerun with --force if you still want to expel the instance"""
     storage_3.terminate()
 
     # Synchronization: make sure governor does all it wanted
-    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     # Check expelling offline replicas, this should be ok because no data loss
     cluster.expel(storage_2, force=False)
@@ -243,7 +243,7 @@ cluster:
     # Expel one of the replicas in the full replicaset, wait until the change is finalized
     counter = leader.governor_step_counter()
     cluster.expel(storage_1_2, force=True)
-    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     # Check `picodata expel` idempotency
     cluster.expel(storage_1_2, timeout=1)
@@ -274,7 +274,7 @@ rerun with --force if you still want to expel the instance"""
 
     # Offline replicasets aren't allowed to be expelled,
     # so the cluster is blocked attempting to rebalance
-    counter = leader.wait_governor_status("transfer buckets from replicaset")
+    counter = cluster.wait_governor_status("transfer buckets from replicaset")
 
     # Instance's target state changed to Expelled, but it is still offline
     cluster.wait_has_states(storage_2_1, "Offline", "Expelled")
@@ -290,7 +290,7 @@ rerun with --force if you still want to expel the instance"""
     storage5.start()
 
     # NOTE: wait_online doesn't work because bucket rebalancing has higher priortiy
-    leader.wait_governor_status("transfer buckets from replicaset", old_step_counter=counter)
+    cluster.wait_governor_status("transfer buckets from replicaset", old_step_counter=counter)
 
     # Update the fields on the object
     Retriable().call(storage5.instance_info)
@@ -322,7 +322,7 @@ rerun with --force if you still want to expel the instance"""
     storage_2_1.call("pico._inject_error", "TIMEOUT_IN_PROC_WAIT_BUCKET_COUNT", False)
 
     # The buckets are finally able to be rebalanced
-    leader.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
     # The instance's state (both current and target) automatically changes to Expelled
     cluster.wait_has_states(storage_2_1, "Expelled", "Expelled")
@@ -378,7 +378,7 @@ cluster:
     counter = leader.governor_step_counter()
     cluster.expel(storage_1_2, force=True)
     cluster.expel(storage_1_1, force=True)
-    leader.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     response = storage_1_3.call("box.execute", 'SELECT "uuid" FROM "_cluster"')
     replicaset_uuids = set(uuid for [uuid] in response["rows"])
@@ -421,7 +421,7 @@ cluster:
     cluster.wait_leader_elected()
     cluster.add_instance(name="storage_1", tier="storage")
 
-    counter = arbiter_1.wait_governor_status("idle")
+    counter = cluster.wait_governor_status("idle")
 
     # Verify arbiter tier has bucket_count=0
     [[bucket_count]] = arbiter_1.sql("SELECT bucket_count FROM _pico_tier WHERE name = 'arbiter'")
@@ -445,7 +445,7 @@ cluster:
     cluster.expel(arbiter_2, force=True)
     cluster.wait_has_states(arbiter_2, "Expelled", "Expelled")
 
-    arbiter_1.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_step_counter=counter)
 
     # Verify the replicaset is expelled
     [[state]] = arbiter_1.sql(
