@@ -2206,7 +2206,7 @@ Last governor error is:
         log.info(f"Instance.change_executable({self.name}, from={self.executable.version}, to={to}, error={error})")
 
         (_, incarnation), _ = self.states()
-        self.terminate()
+        self.terminate(kill_after_seconds=_DEFAULT_TIMEOUT)
         self.executable = to
         if error is not None:
             self.fail_to_start(error=error)
