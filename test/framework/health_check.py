@@ -338,7 +338,14 @@ class HealthCheck:
             ##########################################################
 
             for table in [products_table, restock_table, archive_table, temporary_table]:
-                result = instance.sql(f"DROP TABLE IF EXISTS {table};")
+                ddl_timeout = _ddl_apply_timeout()
+                result = instance.sql(
+                    f"""
+                    DROP TABLE IF EXISTS {table}
+                    OPTION (TIMEOUT = {ddl_timeout});
+                """,
+                    timeout=ddl_timeout,
+                )
                 assert result["row_count"] == 1
 
 
