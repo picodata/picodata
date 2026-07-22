@@ -362,6 +362,7 @@ struct EventReplicaset {
   pub raft: Raft,
 
   pub replicaset_uuid: String,
+  pub tier: Option<String>,
   pub current_master_uuid: Option<String>,
 }
 
@@ -371,7 +372,6 @@ struct EventInstance {
   pub timestamp: String,
   pub raft: Raft,
   
-  pub tier: Option<String>,
   pub replicaset_uuid: Option<String>,
   pub instance_uuid: String,
   pub current_state: Option<String>,
@@ -416,6 +416,7 @@ struct Range {
     "index": 2
   },
   "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
+  "tier": "default",
 }
 ```
 
@@ -445,7 +446,6 @@ struct Range {
     "term": 1,
     "index": 2
   },
-  "tier": "default",
   "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
   "instance_uuid": "268a62a-8af6-4a3d-9f24-23e6c5f4bb32",
   "current_state": "Online",
@@ -636,6 +636,7 @@ Cнепшот состоит из трёх частей:
     "index": 2
   },
   "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
+  "tier": "default",
 }
 ```
 
@@ -650,7 +651,6 @@ Cнепшот состоит из трёх частей:
     "term": 1,
     "index": 2
   },
-  "tier": "default",
   "replicaset_uuid": "9e273105-5af8-4f77-8f47-3d9a68f772ca",
   "instance_uuid": "268a62a-8af6-4a3d-9f24-23e6c5f4bb32",
   "current_state": "Offline",
