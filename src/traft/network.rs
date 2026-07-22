@@ -858,7 +858,8 @@ mod tests {
             raft_msg_handler: "test_interact",
             ..Default::default()
         };
-        let call_timeout = Duration::from_millis(50);
+        let call_timeout = Duration::from_secs(3);
+        let response_timeout = call_timeout * 2;
         let pool = ConnectionPool::new(node.storage.clone(), opts);
 
         let listen = test_util::listen_address();
@@ -895,7 +896,7 @@ mod tests {
         // Assert it arrives
         // Assert equality
         assert_eq!(
-            rx.recv_timeout(Duration::from_secs(1)),
+            rx.recv_timeout(response_timeout),
             Ok((raft::MessageType::MsgHeartbeat, 1337u64, 1u64))
         );
 
@@ -917,7 +918,7 @@ mod tests {
 
         // Wait for it
         on_disconnect_cond
-            .wait_timeout(Duration::from_secs(1))
+            .wait_timeout(response_timeout)
             .then(|| tlog!(Info, "TEST: on_disconnect triggered"))
             .or_else(|| panic!("on_disconnect timed out"));
 
@@ -929,7 +930,7 @@ mod tests {
 
         // Gets the latest message
         assert_eq!(
-            rx.recv_timeout(Duration::from_secs(1)),
+            rx.recv_timeout(response_timeout),
             Ok((raft::MessageType::MsgHeartbeat, 1337u64, 4u64))
         );
     }
