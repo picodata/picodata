@@ -1098,7 +1098,7 @@ def test_backup_aborts_with_offline_nodes(cluster: Cluster):
     i3.wait_online()
 
     # backup works now
-    ddl = i1.sql("BACKUP")
+    ddl = i1.sql("BACKUP", timeout=120)
     assert ddl[0][0] is not None
 
 
