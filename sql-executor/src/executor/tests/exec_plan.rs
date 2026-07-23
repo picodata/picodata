@@ -1898,3 +1898,104 @@ fn dql_subtree_projection_windows_stay_in_original_plan() {
         );
     }
 }
+
+/// Two independent motions over `test_space`.
+fn two_motion_exec_plan() -> (ExecutionPlan, NodeId, NodeId) {
+    let plan = sql_to_optimized_ir(
+        r#"SELECT * FROM "test_space"
+        WHERE "id" in (SELECT "identification_number" FROM "hash_testing" WHERE "sys_op" < 3)
+            OR "id" in (SELECT "identification_number" FROM "hash_testing" WHERE "sys_op" > 5)"#,
+        vec![],
+    );
+    let motions: Vec<NodeId> = plan
+        .nodes
+        .iter136()
+        .enumerate()
+        .filter_map(|(offset, node)| {
+            matches!(node, crate::ir::node::Node136::Motion(_)).then_some(NodeId {
+                offset: u32::try_from(offset).expect("node offset must fit into u32"),
+                arena_type: ArenaType::Arena136,
+            })
+        })
+        .collect();
+    assert_eq!(2, motions.len(), "expected exactly two motions");
+
+    (ExecutionPlan::new(plan), motions[0], motions[1])
+}
+
+fn materialize(exec_plan: &mut ExecutionPlan, motion_id: NodeId) {
+    let mut vtable = VirtualTable::new();
+    vtable.add_column(vcolumn_integer_user_non_null());
+    exec_plan
+        .get_mut_vtables()
+        .insert(motion_id, Rc::new(vtable));
+}
+
+#[test]
+fn plan_id_ignores_vtables_outside_the_dispatched_subtree() {
+    let (mut exec_plan, first_motion, second_motion) = two_motion_exec_plan();
+    let subtree_top = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(first_motion)
+        .unwrap();
+
+    let before = exec_plan.calculate_plan_id(subtree_top).unwrap();
+    materialize(&mut exec_plan, second_motion);
+    let after = exec_plan.calculate_plan_id(subtree_top).unwrap();
+
+    assert_eq!(
+        before, after,
+        "materializing a motion outside the subtree changed its plan id"
+    );
+}
+
+#[test]
+fn plan_id_tracks_vtables_inside_the_dispatched_subtree() {
+    let (mut exec_plan, first_motion, _) = two_motion_exec_plan();
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let before = exec_plan.set_plan_id(top_id).unwrap();
+    materialize(&mut exec_plan, first_motion);
+    let after = exec_plan.set_plan_id(top_id).unwrap();
+
+    assert_ne!(
+        before, after,
+        "materializing a motion inside the subtree left a stale memoized plan id"
+    );
+}
+
+#[test]
+fn subtree_vtables_are_limited_to_the_dispatched_subtree() {
+    let (mut exec_plan, first_motion, second_motion) = two_motion_exec_plan();
+    materialize(&mut exec_plan, first_motion);
+    materialize(&mut exec_plan, second_motion);
+
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let plan_id = exec_plan.set_plan_id(top_id).unwrap();
+    let mut whole_query: Vec<SmolStr> = exec_plan
+        .subtree_vtables(top_id, plan_id)
+        .unwrap()
+        .into_keys()
+        .collect();
+    whole_query.sort();
+    assert_eq!(
+        vec![
+            table_name(plan_id, first_motion),
+            table_name(plan_id, second_motion)
+        ],
+        whole_query
+    );
+
+    let subtree_top = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(first_motion)
+        .unwrap();
+    let plan_id = exec_plan.set_plan_id(subtree_top).unwrap();
+    assert!(
+        exec_plan
+            .subtree_vtables(subtree_top, plan_id)
+            .unwrap()
+            .is_empty(),
+        "a motion subtree must not carry the virtual tables of its siblings"
+    );
+}

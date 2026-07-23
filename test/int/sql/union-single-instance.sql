@@ -372,12 +372,12 @@ buckets = any
 │ 3. Query (DYN-FILTERED STORAGE, <= 1/1) │
 ╰─────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( SELECT "COL_0" FROM "_tmp_4072506348059201696_1136" ) UNION ALL SELECT * FROM "g"
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( SELECT "COL_0" FROM "_tmp_7715005722479766141_1136" ) UNION ALL SELECT * FROM "g"
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~24 rows)
     [1] EXECUTE LIST SUBQUERY 2
-    [2] SCAN TABLE _tmp_4072506348059201696_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_7715005722479766141_1136 (~1048576 rows)
     [3] SCAN TABLE g (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 3 (UNION ALL)
 ''
@@ -424,12 +424,12 @@ buckets = any
 │ 3. Query (DYN-FILTERED STORAGE, <= 1/1) │
 ╰─────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" = CAST(5 AS int) and "t"."a" in ( SELECT "COL_0" FROM "_tmp_16809533235020255237_1136" ) UNION ALL SELECT * FROM "g"
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" = CAST(5 AS int) and "t"."a" in ( SELECT "COL_0" FROM "_tmp_10018790888256490906_1136" ) UNION ALL SELECT * FROM "g"
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~1 row)
     [1] EXECUTE LIST SUBQUERY 2
-    [2] SCAN TABLE _tmp_16809533235020255237_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_10018790888256490906_1136 (~1048576 rows)
     [3] SCAN TABLE g (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 3 (UNION ALL)
 ''

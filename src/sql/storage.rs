@@ -653,12 +653,6 @@ impl Vshard for StorageRuntime {
 
         if plan.is_raw_explain() {
             let plan_id = ex_plan.get_plan_id()?;
-            let vtables = ex_plan
-                .get_vtables()
-                .iter()
-                .map(|(node_id, table)| (table_name(plan_id, *node_id), table.clone()))
-                .collect::<HashMap<_, _>>();
-
             let has_segment_motion = ex_plan.has_segment_motion(top_id);
             if ex_plan.has_serialize_as_empty_motion(top_id) {
                 let replicasets = replicasets_by_buckets(buckets)?;
@@ -672,9 +666,11 @@ impl Vshard for StorageRuntime {
                     port.add_mp(&mp_num);
                 }
 
+                // Disabling `serialize_as_empty` changes the effective subtree.
                 let mut explain_once =
                     |sql: String,
                      params: LocalSqlParams,
+                     vtables: &HashMap<SmolStr, Rc<VirtualTable>>,
                      buckets: &Buckets,
                      motion_info: MotionInfo| {
                         let schema_info = SchemaInfo::new(
@@ -684,7 +680,7 @@ impl Vshard for StorageRuntime {
                         let miss_info = ExpandedLocalExecutionInfo {
                             schema_info,
                             plan_id,
-                            vtables: &vtables,
+                            vtables,
                             sql,
                         };
 
@@ -727,20 +723,23 @@ impl Vshard for StorageRuntime {
                 let sql_params = sub_plan.local_sql_params(top_id, Snapshot::Oldest)?;
                 let ids = sql_params.constant_ids();
                 let local_sql = generate_local_dql_sql(&sub_plan, top_id, plan_id, ids)?;
+                let sub_vtables = sub_plan.subtree_vtables(top_id, plan_id)?;
                 let motion_info = MotionInfo::new_for_query(has_segment_motion, Some(false));
-                explain_once(local_sql, sql_params, buckets, motion_info)?;
+                explain_once(local_sql, sql_params, &sub_vtables, buckets, motion_info)?;
 
                 if replicasets.len() > 1 {
                     let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
                     let ids = sql_params.constant_ids();
                     let local_sql = generate_local_dql_sql(ex_plan, top_id, plan_id, ids)?;
+                    let vtables = ex_plan.subtree_vtables(top_id, plan_id)?;
                     let motion_info = MotionInfo::new_for_query(has_segment_motion, Some(true));
-                    explain_once(local_sql, sql_params, &Buckets::All, motion_info)?;
+                    explain_once(local_sql, sql_params, &vtables, &Buckets::All, motion_info)?;
                 }
             } else {
                 let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
                 let ids = sql_params.constant_ids();
                 let sql = generate_local_dql_sql(ex_plan, top_id, plan_id, ids)?;
+                let vtables = ex_plan.subtree_vtables(top_id, plan_id)?;
                 let schema_info = SchemaInfo::new(
                     plan.table_version_map.clone(),
                     plan.index_version_map.clone(),
@@ -776,11 +775,7 @@ impl Vshard for StorageRuntime {
         port_write_metadata_for_top(port, ex_plan, top_id)?;
 
         let plan_id = ex_plan.get_plan_id()?;
-        let vtables = ex_plan
-            .get_vtables()
-            .iter()
-            .map(|(node_id, table)| (table_name(plan_id, *node_id), table.clone()))
-            .collect::<HashMap<_, _>>();
+        let vtables = ex_plan.subtree_vtables(top_id, plan_id)?;
         let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
         let info = LocalExecutionInfo::new(
             &vtables,
