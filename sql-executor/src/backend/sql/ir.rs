@@ -11,7 +11,6 @@ use crate::ir::relation::Column;
 use crate::ir::types::DerivedType;
 use crate::ir::SubtreeHash;
 use ahash::{AHashMap, AHashSet};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::fmt::Write as _;
@@ -1034,7 +1033,8 @@ impl ExecutionPlan {
         &self,
         top_id: NodeId,
     ) -> Result<(u64, usize), SbroadError> {
-        let subtree_hash = SubtreeViewBuilder::new(self, top_id)?.subtree_hash()?;
+        let view = SubtreeViewBuilder::new(self, top_id)?;
+        let subtree_hash = view.subtree_hash()?;
         let mut hasher = XxHash3_64::new();
         hasher.write_u64(subtree_hash.hash);
 
@@ -1042,18 +1042,15 @@ impl ExecutionPlan {
             hash_plan_id_header(&mut hasher, HashHeaderSalt::RawExplain);
         }
 
-        self.get_vtables()
-            .iter()
-            .sorted_by_key(|(node_id, _)| node_id.offset)
-            .try_for_each(|(node_id, vtable)| -> Result<(), SbroadError> {
-                hash_plan_id_header(&mut hasher, HashHeaderSalt::Vtable);
-                hash_plan_id_part(&mut hasher, node_id)?;
-                for column in vtable.get_columns() {
-                    hash_plan_id_part(&mut hasher, column.name.as_str())?;
-                    hash_plan_id_part(&mut hasher, &column.r#type)?;
-                }
-                Ok(())
-            })?;
+        // We need only virtual tables from the subtree.
+        for (node_id, vtable) in view.vtables() {
+            hash_plan_id_header(&mut hasher, HashHeaderSalt::Vtable);
+            hash_plan_id_part(&mut hasher, &node_id)?;
+            for column in vtable.get_columns() {
+                hash_plan_id_part(&mut hasher, column.name.as_str())?;
+                hash_plan_id_part(&mut hasher, &column.r#type)?;
+            }
+        }
 
         Ok((hasher.finish(), subtree_hash.sql_parameter_count))
     }

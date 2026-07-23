@@ -2,10 +2,8 @@ use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::{table_name, write_insert_args, TupleBuilderPattern};
 use crate::executor::engine::VersionMap;
-use crate::executor::ir::{DqlSubtree, ExecutionPlan, SubtreeViewBuilder};
-use crate::executor::vtable::{
-    VTableTuple, VirtualTable, VirtualTableMap, VirtualTableTupleEncoder,
-};
+use crate::executor::ir::{DqlSubtree, ExecutionPlan};
+use crate::executor::vtable::{VTableTuple, VirtualTable, VirtualTableTupleEncoder};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::NodeId;
 use crate::ir::relation::Column;
@@ -760,20 +758,20 @@ pub struct ExecutionCacheMissData {
     pub sql: String,
 }
 
+/// Describes the temporary tables storage has to create for a dispatch.
 fn vtables_metadata(
-    plan_id: u64,
-    vtables: &VirtualTableMap,
+    vtables: &HashMap<SmolStr, Rc<VirtualTable>>,
 ) -> HashMap<SmolStr, Vec<(SmolStr, ColumnType)>> {
     vtables
         .iter()
-        .map(|(k, v)| {
-            let columns = v
+        .map(|(name, table)| {
+            let columns = table
                 .get_columns()
                 .iter()
                 .map(|column| (column.name.clone(), column.r#type.into()));
-            (table_name(plan_id, *k), columns.collect::<Vec<_>>())
+            (name.clone(), columns.collect())
         })
-        .collect::<HashMap<_, _>>()
+        .collect()
 }
 
 impl TryFrom<&ExecutionData> for ExecutionCacheMissData {
@@ -797,7 +795,7 @@ impl TryFrom<&ExecutionData> for ExecutionCacheMissData {
         };
         Ok(Self {
             schema_info,
-            vtables_meta: vtables_metadata(value.get_plan_id(), value.plan.get_vtables()),
+            vtables_meta: vtables_metadata(&value.vtables),
             sql,
         })
     }
@@ -823,7 +821,7 @@ impl TryFrom<&DqlProtocol> for ExecutionCacheMissData {
         };
         Ok(Self {
             schema_info,
-            vtables_meta: vtables_metadata(value.get_plan_id(), value.plan.get_vtables()),
+            vtables_meta: vtables_metadata(&value.vtables),
             sql,
         })
     }
@@ -909,15 +907,8 @@ pub fn build_dql_protocol_for_top(
 ) -> Result<DqlProtocol, SbroadError> {
     let plan_id = exec_plan.get_plan_id()?;
     let sql_top_id = dql_sql_top_id_for_top(&exec_plan, top_id)?;
-    let subtree = SubtreeViewBuilder::new(&exec_plan, sql_top_id)?;
     let sql_params = exec_plan.local_sql_params(sql_top_id, Snapshot::Oldest)?;
-    let subtree = subtree.node_ids().iter().copied().collect::<HashSet<_>>();
-    let vtables = exec_plan
-        .get_vtables()
-        .iter()
-        .filter(|(node_id, _)| subtree.contains(node_id))
-        .map(|(k, t)| (table_name(plan_id, *k), t.clone()))
-        .collect();
+    let vtables = exec_plan.subtree_vtables(sql_top_id, plan_id)?;
     let (constant_ids, params) = sql_params.into_parts();
 
     Ok(DqlProtocol {
@@ -943,11 +934,7 @@ pub fn build_dql_data_source(
     let plan_id = exec_plan.get_plan_id()?;
     let sql_top_id = dql_sql_top_id(&exec_plan)?;
     let sql_params = exec_plan.local_sql_params(sql_top_id, Snapshot::Oldest)?;
-    let vtables = exec_plan
-        .get_vtables()
-        .iter()
-        .map(|(k, t)| (table_name(plan_id, *k), t.clone()))
-        .collect();
+    let vtables = exec_plan.subtree_vtables(sql_top_id, plan_id)?;
     let (constant_ids, params) = sql_params.into_parts();
 
     Ok(ExecutionData {
@@ -964,8 +951,55 @@ pub fn build_dql_data_source(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::sql_to_optimized_ir;
+    use crate::ir::node::{ArenaType, Node136, NodeId};
+    use crate::test_helpers::{sql_to_optimized_ir, vcolumn_integer_user_non_null};
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn cache_miss_metadata_matches_the_shipped_vtables() {
+        let plan = sql_to_optimized_ir(
+            r#"SELECT * FROM "test_space"
+            WHERE "id" in (SELECT "identification_number" FROM "hash_testing" WHERE "sys_op" < 3)
+                OR "id" in (SELECT "identification_number" FROM "hash_testing" WHERE "sys_op" > 5)"#,
+            vec![],
+        );
+        let motions: Vec<NodeId> = plan
+            .nodes
+            .iter136()
+            .enumerate()
+            .filter_map(|(offset, node)| {
+                matches!(node, Node136::Motion(_)).then_some(NodeId {
+                    offset: u32::try_from(offset).expect("node offset must fit into u32"),
+                    arena_type: ArenaType::Arena136,
+                })
+            })
+            .collect();
+        assert_eq!(2, motions.len(), "expected exactly two motions");
+
+        let mut exec_plan = ExecutionPlan::new(plan);
+        for motion_id in &motions {
+            let mut vtable = VirtualTable::new();
+            vtable.add_column(vcolumn_integer_user_non_null());
+            exec_plan
+                .get_mut_vtables()
+                .insert(*motion_id, Rc::new(vtable));
+        }
+
+        // Dispatching one motion subtree.
+        let subtree_top = exec_plan
+            .get_ir_plan()
+            .get_motion_subtree_root(motions[0])
+            .unwrap();
+        exec_plan.set_plan_id(subtree_top).unwrap();
+        let dql = build_dql_protocol_for_top(Rc::new(exec_plan), subtree_top, 42).unwrap();
+        assert!(dql.vtables().is_empty());
+
+        let miss = ExecutionCacheMissData::try_from(&dql).unwrap();
+        assert_eq!(
+            dql.vtables().keys().collect::<HashSet<_>>(),
+            miss.vtables_meta.keys().collect::<HashSet<_>>()
+        );
+    }
 
     #[test]
     fn dql_protocol_cache_miss_matches_execution_data() {

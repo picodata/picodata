@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use ahash::{AHashMap, AHashSet};
@@ -7,6 +7,7 @@ use itertools::Itertools;
 use smol_str::{format_smolstr, SmolStr};
 
 use crate::errors::{Action, Entity, SbroadError};
+use crate::executor::engine::helpers::table_name;
 use crate::executor::engine::helpers::vshard::PlanSerializeAsEmptyExt;
 use crate::executor::engine::Vshard;
 use crate::executor::vtable::{VirtualTable, VirtualTableMap};
@@ -404,6 +405,8 @@ pub struct SubtreeDispatchFlags {
 struct SubtreeViewSummary {
     key: SubtreeViewKey,
     constant_ids: Vec<NodeId>,
+    /// Motions inside the subtree that already have a materialized vtable.
+    vtable_ids: Vec<NodeId>,
     dispatch_flags: SubtreeDispatchFlags,
 }
 
@@ -500,18 +503,18 @@ impl<'plan> SubtreeViewBuilder<'plan> {
 
         let mut leaf_motions = Vec::new();
         let mut serialize_as_empty = Vec::new();
+        let mut vtable_ids = Vec::new();
         let mut dispatch_flags = SubtreeDispatchFlags::default();
 
         for node_id in &node_ids {
             if exec_plan.effective_motion_leaf_output(*node_id).is_some() {
                 leaf_motions.push(*node_id);
             }
-            if !dispatch_flags.has_segmented_tables {
-                if let Some(vtable) = exec_plan.get_vtables().get(node_id) {
-                    if !vtable.get_bucket_index().is_empty() {
-                        dispatch_flags.has_segmented_tables = true;
-                        dispatch_flags.segmented_motion_id = Some(*node_id);
-                    }
+            if let Some(vtable) = exec_plan.get_vtables().get(node_id) {
+                vtable_ids.push(*node_id);
+                if !dispatch_flags.has_segmented_tables && !vtable.get_bucket_index().is_empty() {
+                    dispatch_flags.has_segmented_tables = true;
+                    dispatch_flags.segmented_motion_id = Some(*node_id);
                 }
             }
             if let Node::Relational(Relational::Motion(Motion { program, .. })) =
@@ -532,6 +535,10 @@ impl<'plan> SubtreeViewBuilder<'plan> {
             }
         }
 
+        // Sorting gives the plan id hash a stable order.
+        vtable_ids.sort_unstable_by_key(|node_id| (node_id.offset, node_id.arena_type));
+        vtable_ids.dedup();
+
         Ok(SubtreeViewSummary {
             key: SubtreeViewKey {
                 top_id,
@@ -540,6 +547,7 @@ impl<'plan> SubtreeViewBuilder<'plan> {
                 serialize_as_empty,
             },
             constant_ids,
+            vtable_ids,
             dispatch_flags,
         })
     }
@@ -562,6 +570,17 @@ impl<'plan> SubtreeViewBuilder<'plan> {
     /// Returns constant node ids in SQL parameter order.
     pub(crate) fn constant_ids(&self) -> &[NodeId] {
         &self.summary.constant_ids
+    }
+
+    /// Returns motions of this subtree paired with their materialized virtual tables.
+    pub(crate) fn vtables(&self) -> impl ExactSizeIterator<Item = (NodeId, &Rc<VirtualTable>)> {
+        let vtables = self.exec_plan.get_vtables();
+        self.summary.vtable_ids.iter().map(move |&node_id| {
+            let vtable = vtables
+                .get(&node_id)
+                .expect("subtree vtable ids are collected from the vtable map");
+            (node_id, vtable)
+        })
     }
 
     /// Returns dispatch flags derived for this effective subtree.
@@ -788,6 +807,13 @@ impl ExecutionPlan {
         self.bucket_filter = None;
     }
 
+    /// Drops everything derived from the IR shape or the virtual table map.
+    fn invalidate_derived_caches(&mut self) {
+        self.subtree_view_cache.clear();
+        self.plan_id_cache.clear();
+        self.plan_id_sql_parameter_count_cache.clear();
+    }
+
     /// Disables `SerializeAsEmptyTable` for selected motions through an overlay.
     ///
     /// Cached effective subtree and plan-id metadata is cleared because SQL
@@ -796,11 +822,9 @@ impl ExecutionPlan {
         &mut self,
         motion_ids: impl IntoIterator<Item = NodeId>,
     ) {
-        self.subtree_view_cache.clear();
+        self.invalidate_derived_caches();
         self.plan_id = None;
         self.plan_id_sql_parameter_count = None;
-        self.plan_id_cache.clear();
-        self.plan_id_sql_parameter_count_cache.clear();
         self.serialize_as_empty_disabled_motions.extend(motion_ids);
     }
 
@@ -844,7 +868,7 @@ impl ExecutionPlan {
                 Some(format_smolstr!("node ({motion_id:?}) is not motion")),
             ));
         };
-        self.subtree_view_cache.clear();
+        self.invalidate_derived_caches();
         self.unlinked_motions.insert(motion_id);
         Ok(())
     }
@@ -1235,7 +1259,7 @@ impl ExecutionPlan {
 
     #[allow(dead_code)]
     pub fn get_mut_ir_plan(&mut self) -> &mut Plan {
-        self.subtree_view_cache.clear();
+        self.invalidate_derived_caches();
         Rc::make_mut(&mut self.plan)
     }
 
@@ -1245,13 +1269,28 @@ impl ExecutionPlan {
     }
 
     pub fn get_mut_vtables(&mut self) -> &mut VirtualTableMap {
-        self.subtree_view_cache.clear();
+        self.invalidate_derived_caches();
         &mut self.vtables
     }
 
     pub fn set_vtables(&mut self, vtables: VirtualTableMap) {
-        self.subtree_view_cache.clear();
+        self.invalidate_derived_caches();
         self.vtables = vtables;
+    }
+
+    /// Returns virtual tables visible from the effective subtree at `sql_top_id`.
+    pub fn subtree_vtables(
+        &self,
+        sql_top_id: NodeId,
+        plan_id: u64,
+    ) -> Result<HashMap<SmolStr, Rc<VirtualTable>>, SbroadError> {
+        let view = SubtreeViewBuilder::new(self, sql_top_id)?;
+        let subtree_vtables = view.vtables();
+        let mut vtables = HashMap::with_capacity(subtree_vtables.len());
+        for (node_id, vtable) in subtree_vtables {
+            vtables.insert(table_name(plan_id, node_id), Rc::clone(vtable));
+        }
+        Ok(vtables)
     }
 
     pub fn contains_vtable_for_motion(&self, motion_id: NodeId) -> bool {

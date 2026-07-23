@@ -152,6 +152,27 @@ SELECT * FROM cte2;
 -- EXPECTED:
 1, 1, 1
 
+-- TEST: cte-values-no-rename-self-join
+-- SQL:
+WITH cte AS (VALUES (1))
+SELECT * FROM cte JOIN cte t2 ON cte."COLUMN_1" = t2."COLUMN_1";
+-- EXPECTED:
+1, 1
+
+-- TEST: cte-values-no-rename-union-all
+-- SQL:
+WITH cte AS (VALUES (1)) SELECT * FROM cte UNION ALL SELECT * FROM cte;
+-- EXPECTED:
+1, 1
+
+-- TEST: cte-values-no-rename-three-refs
+-- SQL:
+WITH cte AS (VALUES (1))
+SELECT t.c FROM (SELECT count(*) as c FROM cte c1 JOIN cte c2 ON true) t
+JOIN cte ON true;
+-- EXPECTED:
+1
+
 -- TEST: init
 -- SQL:
 DROP TABLE IF EXISTS t1;
