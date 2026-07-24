@@ -1154,6 +1154,54 @@ END $$;
 -- ERROR:
 statement 1 \(DML\) and statement 2 \(DML\): different buckets: \[1934\] and \[1410\]
 
+-- TEST: explain-cte-values
+-- SQL:
+EXPLAIN WITH cte AS (values (1))
+SELECT * FROM cte JOIN cte t2 ON true;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (cte."COLUMN_1"::int -> "COLUMN_1", t2."COLUMN_1"::int -> "COLUMN_1")
+  join on (true::bool)
+    scan cte cte($0)
+    scan cte t2($0)
+subquery $0:
+  motion [policy: full, program: ReshardIfNeeded]
+    values
+      value ROW(1::int)
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = any
+
+-- TEST: explain-raw-cte-values
+-- SQL:
+EXPLAIN (raw) WITH cte AS (values (1))
+SELECT * FROM cte JOIN cte t2 ON true;
+-- EXPECTED:
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
+''
+VALUES (CAST(1 AS int))
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT * FROM ( SELECT "COL_0" FROM "_tmp_235879829348562803_0136" ) as "cte" INNER JOIN ( SELECT "COL_0" FROM "_tmp_235879829348562803_0136" ) as "t2" ON CAST(true AS bool)
+''
+plan:
+    [0] SCAN TABLE _tmp_235879829348562803_0136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_235879829348562803_0136 (~1048576 rows)
+
 -- TEST: explain-insert-with-buckets-setup
 -- SQL:
 DROP TABLE IF EXISTS t;

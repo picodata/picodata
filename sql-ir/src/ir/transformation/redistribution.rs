@@ -2282,7 +2282,10 @@ impl Plan {
 
             // Before processing the node itself we ensure that each of its children that is a
             // `Values` node is covered with a `Motion::Full`.
-            {
+            //
+            // A `ScanCte` whose direct child is a `Values` is materialized in
+            // `resolve_cte_conflicts`.
+            if !matches!(self.get_relation_node(id)?, Relational::ScanCte(_)) {
                 let children = self.get_relation_children(id)?;
 
                 let mut strategy = Strategy::new(id);

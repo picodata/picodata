@@ -1,8 +1,29 @@
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::transform_into_plan;
+use crate::ir::node::relational::Relational;
+use crate::ir::node::Motion;
+use crate::ir::transformation::redistribution::MotionPolicy;
+use crate::ir::Plan;
 use pretty_assertions::assert_eq;
 use sql_executor::executor::engine::mock::RouterConfigurationMock;
 use sql_executor::test_helpers::sql_to_optimized_ir;
+
+fn full_motion_count(plan: &Plan) -> usize {
+    plan.slices()
+        .slices()
+        .iter()
+        .flat_map(|slice| slice.positions().iter())
+        .filter(|id| {
+            matches!(
+                plan.get_relation_node(**id).unwrap(),
+                Relational::Motion(Motion {
+                    policy: MotionPolicy::Full,
+                    ..
+                })
+            )
+        })
+        .count()
+}
 
 #[test]
 fn cte() {
@@ -254,6 +275,17 @@ fn reuse_cte_values_without_rename() {
         values
           value ROW(1::int)
     ");
+}
+
+#[test]
+fn reuse_cte_bare_values_self_join_materializes_once() {
+    let sql = r#"
+        WITH cte AS (VALUES(1, 2))
+        SELECT * FROM cte JOIN cte t2 ON cte."COLUMN_1" = t2."COLUMN_2"
+    "#;
+    let plan = sql_to_optimized_ir(sql, vec![]);
+
+    insta::assert_snapshot!(full_motion_count(&plan), @"1");
 }
 
 #[test]
