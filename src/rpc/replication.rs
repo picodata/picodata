@@ -53,9 +53,10 @@ use crate::traft::node::{Node, NodeImpl};
 use crate::traft::op::Op;
 use crate::traft::{node, RaftTerm, Result};
 use smol_str::SmolStr;
+use std::cell::Cell;
 use std::time::Duration;
 use tarantool::clock::INFINITY;
-use tarantool::error::BoxError;
+use tarantool::error::{BoxError, Error as TarantoolError, TarantoolErrorCode};
 use tarantool::index::IteratorType;
 use tarantool::space::{Space, SystemSpace};
 use tarantool::tlua::Object;
@@ -102,21 +103,23 @@ crate::define_rpc_request! {
         // and ignores it if nothing changed
         set_cfg_field("replication", &replication_cfg)?;
 
-        if req.is_master {
-            let (replication_mode, replication_factor) = get_this_tier_replication_mode_and_factor()?;
-            let synchronous_replication_enabled = replication_mode.is_sync();
-            if synchronous_replication_enabled {
-                let quorum = (replication_factor / 2 + 1) as usize;
-                set_cfg_field("replication_synchro_quorum", quorum)?;
-                // Intentionally large timeout. We do not want the limbo
-                // to be rollbacked upon short timeout expiration.
-                set_cfg_field("replication_synchro_timeout", INFINITY.as_secs())?;
-            }
+        let (replication_mode, replication_factor) = get_this_tier_replication_mode_and_factor()?;
+        let synchronous_replication_enabled = replication_mode.is_sync();
 
-            // If synchro is enabled, call box_promote() to take ownership
-            // of the txn limbo. This is idempotent — if already the leader, it
-            // returns immediately.
-            set_read_only(false, synchronous_replication_enabled)?;
+        if synchronous_replication_enabled {
+            set_cfg_field("replication_synchro_quorum", replication_factor / 2 + 1)?;
+            set_cfg_field("replication_synchro_timeout", INFINITY.as_secs())?;
+            set_cfg_field("election_mode", "manual")?;
+            // Effective read-onlyness is supplied by the election role.
+            set_cfg_field("read_only", false)?;
+        } else if req.is_master {
+            set_read_only(false)?;
+        } else {
+            // Everybody else should be read-only
+            set_read_only(true)?;
+        }
+
+        if !node.is_readonly() {
             // _cluster is replicated from master to replicas, so we need to
             // update it on the master only.
             // Errors are not fatal here, we do not need to stop the process,
@@ -125,9 +128,6 @@ crate::define_rpc_request! {
             if let Err(e) = update_sys_cluster() {
                 tlog!(Error, "failed to update _cluster: {e}");
             }
-        } else {
-            // Everybody else should be read-only
-            set_read_only(true, false)?;
         }
 
         Ok(Response {})
@@ -304,17 +304,12 @@ fn update_sys_cluster() -> Result<()> {
 /// Changes the current instance's read-only parameter.
 /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-basic-read-only)
 /// for more.
-/// If `need_promote` is true then also call box_promote().
 ///
 /// Calls the [`Service::on_leader_change`] callbacks if the parameter actually
 /// changed.
 ///
 /// [`Service::on_leader_change`]: picodata_plugin::plugin::interface::Service::on_leader_change
-pub fn set_read_only(new_read_only: bool, need_promote: bool) -> Result<()> {
-    if need_promote {
-        box_promote()?;
-    }
-
+pub fn set_read_only(new_read_only: bool) -> Result<()> {
     let node = node::global()?;
     // XXX: Currently we just change the box.cfg.read_only option of the
     // instance but at some point we will implement support for
@@ -331,33 +326,98 @@ pub fn set_read_only(new_read_only: bool, need_promote: bool) -> Result<()> {
             return Err(Error::other(format!("instance is still in read only mode: {ro_reason}")));
         };
     } else {
-        // Make asynchronous intentionally because do not want to block
-        // "configure replication" step due to synchronous transactions.
-        transaction_force_async(|| -> Result<()> {
-            let pico_table = PicoTable::new();
-            pico_table.truncate_unlogged_tables()?;
-            Ok(())
-        })?;
+        truncate_unlogged_tables()?;
     }
 
     if old_read_only != new_read_only {
-        // errors ignored because it must be already handled by plugin manager itself
-        let res = node.plugin_manager.handle_replicaset_leader_change();
-        if let Err(e) = res {
-            tlog!(Error, "on_leader_change error: {e}");
-        }
+        call_plugin_leader_change_callbacks(node);
     }
 
     Ok(())
 }
 
-/// Get replication mode and replication factor for current instance's tier.
+/// Truncates all unlogged tables. Must happen whenever this instance stops
+/// being the replicaset master, so that the data written to unlogged tables
+/// while it was the master doesn't resurface if it becomes the master again.
+fn truncate_unlogged_tables() -> Result<()> {
+    // Make asynchronous intentionally because do not want to block
+    // "configure replication" step due to synchronous transactions.
+    transaction_force_async(|| -> Result<()> {
+        let pico_table = PicoTable::new();
+        pico_table.truncate_unlogged_tables()?;
+        Ok(())
+    })?;
+    Ok(())
+}
+
+/// Notifies plugins of a replicaset leadership change by calling their
+/// [`Service::on_leader_change`] callbacks.
+///
+/// [`Service::on_leader_change`]: picodata_plugin::plugin::interface::Service::on_leader_change
+fn call_plugin_leader_change_callbacks(node: &Node) {
+    // errors ignored because it must be already handled by plugin manager itself
+    let res = node.plugin_manager.handle_replicaset_leader_change();
+    if let Err(e) = res {
+        tlog!(Error, "on_leader_change error: {e}");
+    }
+}
+
+thread_local! {
+    /// The role for which [`handle_election_leader_change`] last ran the
+    /// leadership-transition side effects.
+    static LAST_HANDLED_IS_LEADER: Cell<bool> = Cell::default();
+}
+
+/// The single idempotent role-transition handler for election-driven
+/// (sync-tier) replicaset leadership changes:
+///
+/// - on losing leadership the unlogged tables are truncated, so that the data
+///   written while this instance was the master doesn't resurface if it wins
+///   an election later (e.g. it was fenced on quorum loss and re-promoted);
+/// - in both directions plugins are notified via their `on_leader_change`
+///   callbacks, so they don't retain a stale `is_master` state.
+pub(crate) fn handle_election_leader_change(is_leader: bool) -> Result<()> {
+    let node = node::global()?;
+
+    if LAST_HANDLED_IS_LEADER.get() == is_leader {
+        return Ok(());
+    }
+
+    if is_leader {
+        tlog!(
+            Info,
+            "gained replicaset leadership in a tarantool raft election"
+        );
+    } else {
+        tlog!(
+            Info,
+            "lost replicaset leadership, truncating unlogged tables"
+        );
+        // On error the handled role is not updated, so a later election event
+        // will retry the truncation.
+        truncate_unlogged_tables()?;
+    }
+
+    call_plugin_leader_change_callbacks(node);
+    LAST_HANDLED_IS_LEADER.set(is_leader);
+
+    Ok(())
+}
+
+/// Get replication mode and factor for current instance's tier.
 ///
 /// We do not use wait_index in [`proc_replication`] (see header of this file),
 /// so cannot get values from topology_cache reliably.
 /// That's why we get values from config.
 fn get_this_tier_replication_mode_and_factor() -> Result<(ReplicationMode, u8)> {
-    let config = &PicodataConfig::get();
+    get_tier_replication_mode_and_factor(PicodataConfig::get())
+}
+
+/// Same as [`get_this_tier_replication_mode_and_factor`], but reads from the provided
+/// config instead of the global one.
+pub(crate) fn get_tier_replication_mode_and_factor(
+    config: &PicodataConfig,
+) -> Result<(ReplicationMode, u8)> {
     let my_tier_name = config.effective_instance_tier();
     let Some(tiers) = &config.cluster.tier else {
         return Ok((
@@ -394,7 +454,7 @@ crate::define_rpc_request! {
         // of the file for explanation.
         node.status().check_term(req.term)?;
 
-        set_read_only(true, false)?;
+        set_read_only(true)?;
 
         let vclock = Vclock::current();
         let vclock = vclock.ignore_zero();
@@ -409,5 +469,215 @@ crate::define_rpc_request! {
     /// Response to [`DemoteRequest`].
     pub struct DemoteResponse {
         pub vclock: Vclock,
+    }
+}
+
+crate::define_rpc_request! {
+    /// Promotes the target instance to the tarantool raft election leader of
+    /// its replicaset. Only supported for synchronous-replication tiers, where
+    /// replicaset writability is gated by tarantool raft elections
+    /// (`election_mode = 'manual'`).
+    ///
+    /// Initiates an election with this instance as the candidate
+    /// (`box.ctl.promote`) and waits for its result (in `manual` mode this is
+    /// bounded by the election timeout). The caller must give
+    /// the request a deadline which outlasts a whole election round (see
+    /// [`crate::tarantool::promote_rpc_timeout`]), otherwise a lost election
+    /// is never observed as the typed response and looks like a transport
+    /// timeout instead. Winning the election
+    /// also claims the synchro txn limbo via the PROMOTE entry, which makes the
+    /// instance writable. Note that the election itself provides the
+    /// "synchronize before promotion" guarantee: a candidate only gets a vote
+    /// from a peer whose vclock is not ahead of the candidate's, so a stale
+    /// target cannot win until it has caught up.
+    fn proc_replication_promote(req: PromoteRequest) -> Result<PromoteResponse> {
+        let node = node::global()?;
+        // Must not call node.wait_index(...) here. See doc-comments at the top
+        // of the file for explanation.
+        node.status().check_term(req.term)?;
+
+        let (replication_mode, _) = get_this_tier_replication_mode_and_factor()?;
+        if !replication_mode.is_sync() {
+            return Err(Error::other("proc_replication_promote is only supported for synchronous-replication tiers"));
+        }
+
+        crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::timeout()));
+
+        if !crate::tarantool::box_is_ro() {
+            // Already the writable election leader, nothing to do.
+            return Ok(PromoteResponse::Promoted {
+                vclock: Vclock::current().ignore_zero(),
+            });
+        }
+
+        let promote_result = match injected_election_loss() {
+            Some(error) => Err(error),
+            None => box_promote(),
+        };
+
+        if let Err(error) = promote_result {
+            let error_code = tarantool_error_code(&error);
+            let error_type = tarantool_error_type(&error);
+            if classify_local_promotion_error(error_code, error_type)
+                == PromotionErrorDisposition::LostElection
+            {
+                let (leader_id, leader_uuid) = current_election_leader()?;
+                return Ok(PromoteResponse::LostElection {
+                    error_code,
+                    leader_id,
+                    leader_uuid,
+                });
+            }
+            return Err(error.into());
+        }
+
+        if let Some(ro_reason) = box_ro_reason() {
+            return Err(Error::other(format!("instance is still in read only mode after promotion: {ro_reason}")));
+        };
+
+        Ok(PromoteResponse::Promoted {
+            vclock: Vclock::current().ignore_zero(),
+        })
+    }
+
+    /// Request to promote the instance to the tarantool raft election leader
+    /// of its replicaset.
+    pub struct PromoteRequest {
+        pub term: RaftTerm,
+    }
+
+    pub enum PromoteResponse {
+        Promoted {
+            vclock: Vclock,
+        },
+        LostElection {
+            error_code: u32,
+            /// Tarantool-local replica id, if an election leader is known.
+            leader_id: Option<u32>,
+            /// UUID corresponding to `leader_id`, used by the governor to map
+            /// the leader back to an eligible Picodata instance.
+            leader_uuid: Option<SmolStr>,
+        },
+    }
+}
+
+/// Pretend `box_promote` ended with a lost election.
+///
+/// This is for governor's handling of a lost election can be tested
+/// deterministically.
+fn injected_election_loss() -> Option<TarantoolError> {
+    crate::error_injection!("LOSE_ELECTION_ON_PROMOTION" => {
+        return Some(TarantoolError::Tarantool(BoxError::new(
+            TarantoolErrorCode::Timeout as u32,
+            "injected election loss",
+        )));
+    });
+
+    None
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PromotionErrorDisposition {
+    LostElection,
+    RetrySameTarget,
+    Propagate,
+}
+
+/// Classify an error produced locally by `box_promote`.
+///
+/// Only a lost/stale election becomes a typed outcome. Other retryable
+/// failures remain RPC errors, which preserves the governor's existing
+/// retry/backoff behavior; safety errors are likewise propagated unchanged.
+fn classify_local_promotion_error(error_code: u32, error_type: &str) -> PromotionErrorDisposition {
+    // An election which ended with nobody elected is reported by
+    // `box_raft_try_promote` via `diag_set(TimedOut)`, which is a system
+    // error (ER_SYSTEM, "timed out") rather than ER_TIMEOUT, so it has to be
+    // recognized by the error type.
+    if error_type == TIMED_OUT_ERROR_TYPE
+        || error_code == TarantoolErrorCode::Timeout as u32
+        || error_code == TarantoolErrorCode::InterferingPromote as u32
+    {
+        return PromotionErrorDisposition::LostElection;
+    }
+
+    if error_code == TarantoolErrorCode::NoElectionQuorum as u32
+        || error_code == TarantoolErrorCode::OldTerm as u32
+        || error_code == TarantoolErrorCode::InterferingElections as u32
+        // ER_IN_ANOTHER_PROMOTE is newer than the generated Rust enum.
+        || error_code == 278
+    {
+        return PromotionErrorDisposition::RetrySameTarget;
+    }
+
+    PromotionErrorDisposition::Propagate
+}
+
+/// `type_TimedOut` from tarantool's `exception.cc`.
+const TIMED_OUT_ERROR_TYPE: &str = "TimedOut";
+
+fn tarantool_error_code(error: &TarantoolError) -> u32 {
+    match error {
+        TarantoolError::Tarantool(error) | TarantoolError::Remote(error) => error.error_code(),
+        _ => ErrorCode::Other as u32,
+    }
+}
+
+fn tarantool_error_type(error: &TarantoolError) -> &str {
+    match error {
+        TarantoolError::Tarantool(error) | TarantoolError::Remote(error) => error.error_type(),
+        _ => "Unknown",
+    }
+}
+
+/// Return the current election leader and its UUID from `_cluster`.
+fn current_election_leader() -> Result<(Option<u32>, Option<SmolStr>)> {
+    let leader_id = crate::tarantool::box_info_election()?.leader;
+    if leader_id == 0 {
+        return Ok((None, None));
+    }
+
+    let sys_cluster = Space::from(SystemSpace::Cluster);
+    let leader_uuid = match sys_cluster.get(&[leader_id])? {
+        Some(tuple) => tuple.field::<&str>(1)?.map(SmolStr::new),
+        None => None,
+    };
+
+    Ok((Some(leader_id), leader_uuid))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn promotion_error_classification() {
+        // This is what a lost election actually looks like: a system error of
+        // type "TimedOut", see `box_raft_try_promote`.
+        assert_eq!(
+            classify_local_promotion_error(TarantoolErrorCode::System as u32, TIMED_OUT_ERROR_TYPE),
+            PromotionErrorDisposition::LostElection
+        );
+        assert_eq!(
+            classify_local_promotion_error(TarantoolErrorCode::Timeout as u32, "ClientError"),
+            PromotionErrorDisposition::LostElection
+        );
+        assert_eq!(
+            classify_local_promotion_error(
+                TarantoolErrorCode::InterferingPromote as u32,
+                "ClientError"
+            ),
+            PromotionErrorDisposition::LostElection
+        );
+        assert_eq!(
+            classify_local_promotion_error(
+                TarantoolErrorCode::NoElectionQuorum as u32,
+                "ClientError"
+            ),
+            PromotionErrorDisposition::RetrySameTarget
+        );
+        assert_eq!(
+            classify_local_promotion_error(TarantoolErrorCode::SplitBrain as u32, "ClientError"),
+            PromotionErrorDisposition::Propagate
+        );
     }
 }

@@ -7,8 +7,7 @@ use crate::governor::plan::stage::*;
 use crate::has_states;
 use crate::instance::Instance;
 use crate::instance::InstanceName;
-use crate::replicaset::Replicaset;
-use crate::replicaset::ReplicasetState;
+use crate::replicaset::{has_synchro_quorum, Replicaset};
 use crate::rpc;
 use crate::schema::ADMIN_ID;
 use crate::storage;
@@ -42,13 +41,6 @@ pub fn handle_self_read_only<'i>(
         return None;
     }
 
-    let this_instance = topology_ref.try_this_instance()?;
-    let this_replicaset = topology_ref.try_this_replicaset()?;
-
-    if this_replicaset.effective_master_name() != Some(&this_instance.name) {
-        return None;
-    }
-
     // Governor (raft leader) is the master of it's replicaset but it's
     // currently read_only. This could be a problem, because if there are any
     // unapplied DDL operations, our raft_main_loop will be blocked. Normally
@@ -66,41 +58,23 @@ pub fn handle_self_read_only<'i>(
     // corresponding step.
 
     let synchronous_replication_enabled = db_config.is_synchronous_replication();
-
-    // For a sync replicaset the self-unfence must respect the synchro quorum,
-    // exactly like `proc_replication` does (see the quorum/Ready checks in
-    // src/rpc/replication.rs). Otherwise, when the raft leader happens to be the
-    // master of a sync replicaset that has lost its quorum, the governor would
-    // `box_promote()` it back to writable — undoing the fencing (or hanging,
-    // waiting for a quorum that can no longer be reached). We only apply this
-    // when the replicaset is `Ready`; while it is still bootstrapping the master
-    // is expected to be promoted below quorum, same as in `proc_replication`.
-    if synchronous_replication_enabled && this_replicaset.state == ReplicasetState::Ready {
-        let this_tier = topology_ref.try_this_tier()?;
-        let quorum = (this_tier.replication_factor / 2 + 1) as usize;
-        let online_count = topology_ref
-            .all_instances()
-            .filter(|instance| {
-                instance.replicaset_name == this_replicaset.name && instance.may_respond()
-            })
-            .count();
-        if online_count < quorum {
-            // The replicaset cannot form a synchro quorum, so keep it fenced
-            // read-only instead of self-promoting.
-            tlog!(
-                Warning,
-                "raft leader cannot be promoted to read_only=false due to synchro quorum loss"
-            );
-            return None;
-        }
+    // In a sync tier writability of the replicaset is gated by tarantool raft
+    // elections and flipping "read_only" here cannot lift the forced read-only
+    // state of a non-leader. The equivalent self-heal - the designated master
+    // promoting itself back to election leadership - is performed by the
+    // election watcher on the instance itself, no governor step is needed.
+    if synchronous_replication_enabled {
+        return None;
     }
 
-    Some(
-        SelfReadOnlyFalse {
-            synchronous_replication_enabled,
-        }
-        .into(),
-    )
+    let this_instance = topology_ref.try_this_instance()?;
+    let this_replicaset = topology_ref.try_this_replicaset()?;
+
+    if this_replicaset.effective_master_name() != Some(&this_instance.name) {
+        return None;
+    }
+
+    Some(SelfReadOnlyFalse {}.into())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -114,7 +88,7 @@ pub fn handle_replication_config<'i>(
     applied: RaftIndex,
 ) -> Result<Option<Plan<'i>>> {
     let Some((replicaset, targets, replicaset_peers)) =
-        get_replicaset_to_configure(topology_ref, peer_addresses)
+        get_replicaset_to_configure(topology_ref, db_config, peer_addresses)
     else {
         return Ok(None);
     };
@@ -124,17 +98,7 @@ pub fn handle_replication_config<'i>(
     debug_assert!(!targets.is_empty());
     let replicaset_name = replicaset.name.clone();
 
-    let mut master_name = replicaset.effective_master_name().cloned();
-
-    let tier = topology_ref.tier_by_name(&replicaset.tier)?;
-    let synchronous_replication_enabled = db_config.replication_mode(&tier.name).is_sync();
-    if synchronous_replication_enabled {
-        let quorum = (tier.replication_factor / 2 + 1) as usize;
-        if replicaset_peers.len() < quorum && replicaset.state == ReplicasetState::Ready {
-            tlog!(Info, "synchronous replication quorum is lost, trying to set read_only=true for all instances of replicaset '{replicaset_name}'");
-            master_name = None;
-        }
-    }
+    let master_name = replicaset.effective_master_name().cloned();
 
     let mut ops = UpdateOps::new();
     ops.assign(
@@ -167,6 +131,7 @@ pub fn handle_replication_config<'i>(
 #[allow(clippy::type_complexity)]
 fn get_replicaset_to_configure<'t>(
     topology_ref: &'t TopologyCacheRef,
+    db_config: &AlterSystemParameters,
     peer_addresses: &HashMap<RaftId, SmolStr>,
 ) -> Option<(&'t Replicaset, Vec<(InstanceName, RaftId)>, Vec<SmolStr>)> {
     for replicaset in topology_ref.all_replicasets() {
@@ -174,6 +139,12 @@ fn get_replicaset_to_configure<'t>(
             // Already configured
             continue;
         }
+
+        // In a sync tier replicas follow the elected leader and a deposed
+        // master cannot introduce replication conflicts (synchronous
+        // replication + PROMOTE guarantee a linear history), so the
+        // sync-isolation of waking up instances below is not needed.
+        let governor_driven_sync = !db_config.replication_mode(&replicaset.tier).is_sync();
 
         let replicaset_name = &replicaset.name;
         let mut targets = Vec::new();
@@ -194,7 +165,8 @@ fn get_replicaset_to_configure<'t>(
 
             targets.push((instance_name.clone(), instance.raft_id));
 
-            if instance.replication_sync_needed()
+            if governor_driven_sync
+                && instance.replication_sync_needed()
                 && Some(instance_name) != replicaset.effective_master_name()
             {
                 // Don't add the waking up instance to other replica
@@ -262,16 +234,175 @@ fn get_replicaset_to_configure<'t>(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// handle_sync_master_election_promote
+////////////////////////////////////////////////////////////////////////////////
+
+/// Handles a master change in a synchronous-replication tier:
+/// `target_master_name` != `current_master_name`. This covers both the
+/// voluntary switchover (manual retargeting via CAS, expel of a live master)
+/// and dead-master failover - when the master goes offline the governor
+/// retargets mastership to an online replica and this stage transfers it
+/// there.
+///
+/// In a sync tier replicaset writability is gated by tarantool raft elections
+/// in `manual` mode, so the transfer is performed by promoting the target via
+/// [`rpc::replication::proc_replication_promote`] (`box.ctl.promote`): the
+/// target wins an election with a higher term and the incumbent (if still
+/// alive) is deposed by it, becoming read-only. The election vclock rules
+/// guarantee the target has caught up before it can win.
+///
+/// The promotion is only attempted when enough replicaset members are alive
+/// to plausibly win the election. An election below the quorum can never
+/// succeed, and retrying it forever would wedge the governor loop - the
+/// replicaset must simply stay read-only (fenced) until enough members
+/// return.
+pub fn handle_sync_master_election_promote<'i>(
+    topology_ref: &TopologyCacheRef,
+    db_config: &AlterSystemParameters,
+    term: RaftTerm,
+) -> Result<Option<Plan<'i>>> {
+    for replicaset in topology_ref.all_replicasets() {
+        if replicaset.current_master_name == replicaset.target_master_name {
+            continue;
+        }
+
+        let Ok(tier) = topology_ref.tier_by_name(&replicaset.tier) else {
+            warn_or_panic!("No info for tier {}", replicaset.tier);
+            continue;
+        };
+        if !db_config.replication_mode(&tier.name).is_sync() {
+            continue;
+        }
+
+        let new_master_name = replicaset.target_master_name.clone();
+        let Ok(new_master) = topology_ref.instance_by_name(&new_master_name) else {
+            warn_or_panic!("No info for instance {new_master_name}");
+            continue;
+        };
+
+        if !new_master.may_respond() {
+            // Can't promote an instance which is down; the failure detector
+            // will retarget mastership if this goes on.
+            continue;
+        }
+
+        let old_master_name = replicaset.current_master_name.clone();
+
+        if !has_synchro_quorum(replicaset, topology_ref) {
+            tlog!(
+                Info,
+                "not promoting {new_master_name} as master of replicaset {}: not enough live members to win the election",
+                replicaset.name,
+            );
+            continue;
+        }
+
+        let replicaset_name = replicaset.name.clone();
+
+        let mut replicaset_dml = UpdateOps::new();
+        replicaset_dml.assign(
+            column_name!(Replicaset, current_master_name),
+            &new_master_name,
+        )?;
+
+        let ranges = vec![
+            // We make a decision based on these instances' state so the operation
+            // should fail in case there's a change to it in the uncommitted log
+            cas::Range::new(storage::Instances::TABLE_ID).eq([&old_master_name]),
+            cas::Range::new(storage::Instances::TABLE_ID).eq([&new_master_name]),
+        ];
+
+        let promote_rpc = rpc::replication::PromoteRequest { term };
+        let fallback_candidates = deterministic_fallback_candidates(
+            replicaset,
+            &new_master_name,
+            topology_ref.all_instances(),
+        );
+
+        return Ok(Some(
+            ReplicasetMasterElectionPromote {
+                replicaset_name,
+                old_master_name,
+                new_master_name,
+                promote_rpc,
+                replicaset_dml,
+                fallback_candidates,
+                ranges,
+            }
+            .into(),
+        ));
+    }
+
+    Ok(None)
+}
+
+/// Return eligible alternatives in deterministic "next after failed target"
+/// order. The reported election leader can override this order at execution
+/// time, once the promotion RPC returns it.
+fn deterministic_fallback_candidates<'a>(
+    replicaset: &Replicaset,
+    failed_target: &InstanceName,
+    instances: impl IntoIterator<Item = &'a Instance>,
+) -> Vec<PromotionCandidate> {
+    let mut eligible: Vec<_> = instances
+        .into_iter()
+        .filter(|instance| {
+            instance.replicaset_name == replicaset.name
+                && instance.may_respond()
+                && has_states!(instance, * -> Online)
+        })
+        .collect();
+    eligible.sort_by(|left, right| left.name.cmp(&right.name));
+
+    if let Some(position) = eligible
+        .iter()
+        .position(|instance| instance.name == failed_target)
+    {
+        let len = eligible.len();
+        eligible.rotate_left((position + 1) % len);
+    }
+
+    eligible
+        .into_iter()
+        .filter(|instance| instance.name != failed_target)
+        .map(|instance| PromotionCandidate {
+            name: instance.name.clone(),
+            uuid: instance.uuid.clone(),
+        })
+        .collect()
+}
+
+pub(super) fn choose_fallback_candidate<'a>(
+    candidates: &'a [PromotionCandidate],
+    reported_leader_uuid: Option<&str>,
+) -> Option<&'a PromotionCandidate> {
+    reported_leader_uuid
+        .and_then(|uuid| candidates.iter().find(|candidate| candidate.uuid == uuid))
+        .or_else(|| candidates.first())
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // handle_replicaset_master_switchover
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn handle_replicaset_master_switchover<'i>(
     topology_ref: &TopologyCacheRef,
+    db_config: &AlterSystemParameters,
     term: RaftTerm,
     sync_timeout: std::time::Duration,
 ) -> Result<Option<Plan<'i>>> {
     for replicaset in topology_ref.all_replicasets() {
         if replicaset.current_master_name == replicaset.target_master_name {
+            continue;
+        }
+
+        let Ok(tier) = topology_ref.tier_by_name(&replicaset.tier) else {
+            warn_or_panic!("No info for tier {}", replicaset.tier);
+            continue;
+        };
+        if db_config.replication_mode(&tier.name).is_sync() {
+            // Mastership of sync-tier replicasets is decided by tarantool raft
+            // elections, see handle_sync_master_election_promote.
             continue;
         }
 
@@ -303,11 +434,6 @@ pub fn handle_replicaset_master_switchover<'i>(
             // Offline while synchronizing with the old master.
             continue;
         }
-
-        let Ok(tier) = topology_ref.tier_by_name(&replicaset.tier) else {
-            warn_or_panic!("No info for tier {}", replicaset.tier);
-            continue;
-        };
 
         let replicaset_name = replicaset.name.clone();
         let promotion_vclock = replicaset.promotion_vclock.clone();
@@ -397,6 +523,7 @@ pub fn handle_replicaset_master_switchover<'i>(
 
 pub fn handle_replicaset_sync<'a>(
     topology_ref: &TopologyCacheRef,
+    db_config: &AlterSystemParameters,
     term: RaftTerm,
     applied: RaftIndex,
     global_catalog_version: &SmolStr,
@@ -413,7 +540,7 @@ pub fn handle_replicaset_sync<'a>(
         return Ok(None);
     }
 
-    let Some((replicaset, targets)) = get_replicaset_to_sync(topology_ref) else {
+    let Some((replicaset, targets)) = get_replicaset_to_sync(topology_ref, db_config) else {
         return Ok(None);
     };
 
@@ -520,6 +647,7 @@ pub fn handle_replicaset_sync<'a>(
 
 fn get_replicaset_to_sync<'i>(
     topology_ref: &'i TopologyCacheRef,
+    db_config: &AlterSystemParameters,
 ) -> Option<(&'i Replicaset, Vec<&'i Instance>)> {
     let mut replicaset: Option<&Replicaset> = None;
     let mut targets = Vec::new();
@@ -543,11 +671,16 @@ fn get_replicaset_to_sync<'i>(
                 continue;
             }
         } else {
-            replicaset = topology_ref.replicaset_by_name(replicaset_name).ok();
-            if replicaset.is_none() {
+            let Ok(found) = topology_ref.replicaset_by_name(replicaset_name) else {
                 warn_or_panic!("replicaset '{replicaset_name}' info not found (needed for instance '{instance_name}')");
                 continue;
+            };
+            if db_config.replication_mode(&found.tier).is_sync() {
+                // Sync-tier replicas follow the elected leader on their own;
+                // the governor doesn't orchestrate replication sync for them.
+                continue;
             }
+            replicaset = Some(found);
         }
 
         targets.push(instance);
@@ -560,4 +693,120 @@ fn get_replicaset_to_sync<'i>(
 
     let replicaset = replicaset.expect("already checked");
     Some((replicaset, targets))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ReplicationMode;
+    use crate::instance::{State, StateVariant};
+    use crate::tier::TierConfig;
+    use crate::topology_cache::TopologyCache;
+
+    #[test]
+    fn fallback_candidates_rotate_deterministically_and_prefer_reported_leader() {
+        let mut replicaset = Replicaset::for_tests();
+        replicaset.name = "r".into();
+
+        let mut instances = Vec::new();
+        for name in ["i3", "i1", "i2", "i4"] {
+            let mut instance = Instance::for_tests();
+            instance.name = name.into();
+            instance.uuid = format!("{name}-uuid").into();
+            instance.replicaset_name = replicaset.name.clone();
+            if name == "i4" {
+                instance.target_state = State::new(StateVariant::Expelled, 1);
+            }
+            instances.push(instance);
+        }
+
+        let candidates = deterministic_fallback_candidates(&replicaset, &"i2".into(), &instances);
+        let names: Vec<_> = candidates
+            .iter()
+            .map(|candidate| candidate.name.as_ref())
+            .collect();
+        assert_eq!(names, ["i3", "i1"]);
+
+        let selected = choose_fallback_candidate(&candidates, Some("i1-uuid")).unwrap();
+        assert_eq!(selected.name, "i1");
+        let selected = choose_fallback_candidate(&candidates, Some("unknown")).unwrap();
+        assert_eq!(selected.name, "i3");
+    }
+
+    #[test]
+    fn master_switchover_plan_depends_on_replication_mode() {
+        let topology = TopologyCache::for_tests();
+
+        let mut old_master = Instance::for_tests();
+        old_master.name = "i1".into();
+        old_master.uuid = "i1-uuid".into();
+        old_master.raft_id = 1;
+        old_master.replicaset_name = "r".into();
+        old_master.replicaset_uuid = "r-uuid".into();
+        old_master.tier = "storage".into();
+
+        let mut new_master = old_master.clone();
+        new_master.name = "i2".into();
+        new_master.uuid = "i2-uuid".into();
+        new_master.raft_id = 2;
+
+        let mut replicaset = Replicaset::for_tests();
+        replicaset.name = "r".into();
+        replicaset.uuid = "r-uuid".into();
+        replicaset.current_master_name = old_master.name.clone();
+        replicaset.target_master_name = new_master.name.clone();
+        replicaset.tier = "storage".into();
+
+        let mut tier = Tier::default();
+        tier.name = "storage".into();
+        tier.replication_factor = 2;
+
+        topology.update_instance(None, Some(old_master));
+        topology.update_instance(None, Some(new_master));
+        topology.update_replicaset(None, Some(replicaset));
+        topology.update_tier(None, Some(tier.clone()));
+        let topology_ref = topology.get();
+
+        let mut db_config = AlterSystemParameters::default();
+        let mut tier_config = TierConfig::for_tier(&tier);
+        tier_config.replication_mode = ReplicationMode::Async;
+        db_config
+            .per_tier
+            .insert(tier.name.clone(), tier_config.clone());
+
+        let legacy_plan = handle_replicaset_master_switchover(
+            &topology_ref,
+            &db_config,
+            7,
+            std::time::Duration::from_secs(1),
+        )
+        .unwrap();
+        assert!(matches!(
+            legacy_plan,
+            Some(Plan::ReplicasetMasterConsistentSwitchover { .. })
+        ));
+        assert!(
+            handle_sync_master_election_promote(&topology_ref, &db_config, 7)
+                .unwrap()
+                .is_none()
+        );
+
+        tier_config.replication_mode = ReplicationMode::Sync;
+        db_config.per_tier.insert(tier.name.clone(), tier_config);
+
+        assert!(handle_replicaset_master_switchover(
+            &topology_ref,
+            &db_config,
+            7,
+            std::time::Duration::from_secs(1),
+        )
+        .unwrap()
+        .is_none());
+        let election_plan =
+            handle_sync_master_election_promote(&topology_ref, &db_config, 7).unwrap();
+        assert!(matches!(
+            election_plan,
+            Some(Plan::ReplicasetMasterElectionPromote { .. })
+        ));
+    }
 }

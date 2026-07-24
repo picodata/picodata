@@ -67,6 +67,7 @@ proc_read_index
 proc_replicaset_name
 proc_replication
 proc_replication_demote
+proc_replication_promote
 proc_replication_sync
 proc_resharding
 proc_rpc_dispatch
