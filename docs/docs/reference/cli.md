@@ -1060,6 +1060,7 @@ picodata status -t 10
 
 Аналогичная переменная окружения: `PICODATA_IPROTO_TLS_KEY`
 
+<!--
 ## picodata demo {: #demo }
 
 Запускает демонстрационный кластер Picodata на локальном узле. В
@@ -1090,3 +1091,4 @@ picodata status -t 10
     - iproto: `3001`
     - pgproto: `postgres://admin:T0psecret@127.0.0.1:5433`
     ```
+-->
