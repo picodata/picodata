@@ -909,7 +909,7 @@ cluster:
     # Kill the replicaset master to trigger master switchover
     storage_1.terminate()
 
-    counter = voter_2.governor_step_counter()
+    counter = voter_2.governor_progress()
 
     # Finally unblock the raft entry
     storage_2.call("pico._inject_error", injection, False)
@@ -924,7 +924,7 @@ cluster:
     )
 
     # Wait until it catches up the raft state
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     # Make sure the DDL was applied
     assert storage_2.call("box.space._space.index.name:get", "top_g") is not None
@@ -2762,7 +2762,7 @@ cluster:
     assert storage_2_1.replicaset_name == storage_2_2.replicaset_name
     replicaset_storage_2 = storage_2_1.replicaset_name
 
-    counter = leader.governor_step_counter()
+    counter = leader.governor_progress()
 
     # Trigger replicaset master switchover (Look at this monstrosity of a SQL
     # query! Normally I wouldn't do it this way, but I was curious if sbroad
@@ -2787,7 +2787,7 @@ cluster:
     # XXX: at this point we would timeout if the bug we're testing would reappear.
     # After that governor blocks trying to configure sharding, because the new
     # replicaset cannot advance in raft log application
-    cluster.wait_governor_status("update current sharding configuration", old_step_counter=counter)
+    cluster.wait_governor_status("update current sharding configuration", old_progress=counter)
 
     # Unblock them
     storage_2_1.call("pico._inject_error", error_injection, False)
@@ -2913,7 +2913,7 @@ cluster:
     #
     # Thus governor will technically finish with it's responsibilities and go
     # into `idle` state.
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     # And the instance with broken replication will be Offline
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")

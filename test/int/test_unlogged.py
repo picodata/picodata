@@ -108,7 +108,7 @@ cluster:
             bulky_insert_sql += f"({i * batch_size * 100 + batch_size})"
             storage_1_1.sql(bulky_insert_sql)
 
-    counter = leader.governor_step_counter()
+    counter = leader.governor_progress()
 
     # Switch the master, now it should be storage_1_2
     leader.sql(
@@ -125,7 +125,7 @@ cluster:
         """,
     )
 
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     [[master_name]] = leader.sql("SELECT current_master_name FROM _pico_replicaset WHERE tier = 'storage'")
     assert storage_1_2.name == master_name
@@ -142,7 +142,7 @@ cluster:
         size = storage_1_1.eval(f"return box.space.{table_name}:bsize()")
         assert size == 0
 
-    counter = leader.governor_step_counter()
+    counter = leader.governor_progress()
 
     # Switch the master again, now it should be storage_1_1
     leader.sql(
@@ -159,7 +159,7 @@ cluster:
         """,
     )
 
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     [[master_name]] = leader.sql("SELECT current_master_name FROM _pico_replicaset WHERE tier = 'storage'")
     assert storage_1_1.name == master_name

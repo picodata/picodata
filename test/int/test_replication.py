@@ -383,7 +383,7 @@ cluster:
     storage1.terminate()
 
     # Make sure governor is not blocked by an offline replicaset
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     # Adding a new replicaset
     storage3 = cluster.add_instance(wait_online=False, tier="storage")
@@ -445,7 +445,7 @@ cluster:
 
     # Bump a vshard config version to force governor do perform a step
     leader.sql("UPDATE _pico_tier SET target_vshard_config_version = target_vshard_config_version + 1")
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     [[current_master, target_master]] = leader.sql(
         "SELECT current_master_name, target_master_name FROM _pico_replicaset WHERE name = ?", storage1.replicaset_name
@@ -513,8 +513,6 @@ def test_replication_demote_protection_from_old_governor(cluster: Cluster):
         "TermMismatch: operation request from different term",
     )
 
-    old_step_counter = i1.governor_step_counter()
-
     # update the replicaset configuration to set i2 as the new target master
     i1.sql("UPDATE _pico_replicaset SET target_master_name = ? WHERE name = 'r1'", i2.name)
 
@@ -531,7 +529,8 @@ def test_replication_demote_protection_from_old_governor(cluster: Cluster):
     term_error.wait_matched()
 
     # wait until governor performs all the necessary actions
-    cluster.wait_governor_status("idle", old_step_counter=old_step_counter)
+    # note that old_progress is not needed because leader is changed
+    cluster.wait_governor_status("idle")
 
     def check_replication():
         # check raft statuses

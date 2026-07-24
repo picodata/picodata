@@ -1658,7 +1658,7 @@ def test_on_leader_change(cluster: Cluster):
     leader.call("pico._inject_error", error_injection, None)
     i2.call("pico._inject_error", error_injection, None)
 
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
     # `i2` has come to it's senses
     i2.wait_online()
 
@@ -2750,10 +2750,10 @@ cluster:
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
 
     # Check RPC after expel
-    counter = i1.governor_step_counter()
+    counter = i1.governor_progress()
     # Start expel and wait until governor performs all necessary steps
     cluster.expel(i3, peer=i1, force=True)
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     # Check RPC directly to expelled instance
     context = make_context()
@@ -2785,10 +2785,10 @@ cluster:
     assert instance_name == i4.name
     assert echo == b"replicaset-of-expelled"
 
-    counter = i1.governor_step_counter()
+    counter = i1.governor_progress()
     # Expell the whole replicaset
     cluster.expel(i4, peer=i1, force=True)
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     [[r2_uuid]] = i1.sql(""" SELECT "uuid" FROM _pico_replicaset WHERE name = 'r2' """)
 

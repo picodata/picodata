@@ -152,7 +152,7 @@ rerun with --force if you still want to expel the instance"""
     storage_3.terminate()
 
     # Synchronization: make sure governor does all it wanted
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     # Check expelling offline replicas, this should be ok because no data loss
     cluster.expel(storage_2, force=False)
@@ -241,9 +241,9 @@ cluster:
     assert storage_2_1.replicaset_name == "storage_2"
 
     # Expel one of the replicas in the full replicaset, wait until the change is finalized
-    counter = leader.governor_step_counter()
+    counter = leader.governor_progress()
     cluster.expel(storage_1_2, force=True)
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     # Check `picodata expel` idempotency
     cluster.expel(storage_1_2, timeout=1)
@@ -290,7 +290,7 @@ rerun with --force if you still want to expel the instance"""
     storage5.start()
 
     # NOTE: wait_online doesn't work because bucket rebalancing has higher priortiy
-    cluster.wait_governor_status("transfer buckets from replicaset", old_step_counter=counter)
+    cluster.wait_governor_status("transfer buckets from replicaset", old_progress=counter)
 
     # Update the fields on the object
     Retriable().call(storage5.instance_info)
@@ -375,10 +375,10 @@ cluster:
     assert replicaset_uuids == set((storage_1_1.uuid(), storage_1_2.uuid(), storage_1_3.uuid()))
 
     # Expel two of the replicas in the full replicaset, wait until the change is finalized
-    counter = leader.governor_step_counter()
+    counter = leader.governor_progress()
     cluster.expel(storage_1_2, force=True)
     cluster.expel(storage_1_1, force=True)
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     response = storage_1_3.call("box.execute", 'SELECT "uuid" FROM "_cluster"')
     replicaset_uuids = set(uuid for [uuid] in response["rows"])
@@ -445,7 +445,7 @@ cluster:
     cluster.expel(arbiter_2, force=True)
     cluster.wait_has_states(arbiter_2, "Expelled", "Expelled")
 
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
 
     # Verify the replicaset is expelled
     [[state]] = arbiter_1.sql(

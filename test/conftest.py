@@ -669,6 +669,20 @@ class NotALeader(Exception):
     pass
 
 
+@dataclass
+class GovernorProgress:
+    """A governor step_counter reading tagged with the instance it came from.
+
+    step_counter is only meaningful relative to another reading taken from
+    the same instance: it's reset when that instance's process restarts, and
+    unrelated counters can coincidentally collide or diverge for reasons that
+    have nothing to do with actual progress.
+    """
+
+    leader: "Instance"
+    step_counter: int
+
+
 class ReplicationBroken(AssertionError):
     pass
 
@@ -2074,9 +2088,9 @@ Last governor error is:
             timeout=timeout + 1,  # this timeout is for network call
         )
 
-    def governor_step_counter(self) -> int:
+    def governor_progress(self) -> GovernorProgress:
         info = self.call(".proc_runtime_info")["internal"]
-        return info["governor_step_counter"]
+        return GovernorProgress(self, info["governor_step_counter"])
 
     def get_governor_status(self) -> Tuple[str, int]:
         info = self.call(".proc_runtime_info")["internal"]
@@ -2524,21 +2538,27 @@ class Cluster:
     def wait_governor_status(
         self,
         expected_status: str,
-        old_step_counter: int | None = None,
-    ) -> int:
-        log.info(f"Cluster.wait_governor_status({self}, '{expected_status}', old_step_counter={old_step_counter})")
+        old_progress: GovernorProgress | None = None,
+    ) -> GovernorProgress:
+        log.info(f"Cluster.wait_governor_status({self}, '{expected_status}', old_progress={old_progress})")
 
         assert expected_status != "not a leader", "use another function"
 
         def impl():
             leader = self.leader()
             actual_status, step_counter = leader.get_governor_status()
-            if old_step_counter:
-                assert old_step_counter != step_counter
+            # step_counter is only comparable to a reading taken from the
+            # same instance. If leadership has moved elsewhere since
+            # old_progress was recorded -- gracefully (Plan::TransferLeadership)
+            # or via a crash -- that's already sufficient evidence of
+            # progress, so the comparison is skipped instead of being run
+            # against an unrelated instance's counter.
+            if old_progress and old_progress.leader is leader:
+                assert old_progress.step_counter != step_counter
 
             assert actual_status == expected_status
 
-            return step_counter
+            return GovernorProgress(leader, step_counter)
 
         return Retriable(fatal=(NotALeader, ProcessDead)).call(impl)
 

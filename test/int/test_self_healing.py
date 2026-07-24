@@ -304,7 +304,7 @@ def test_sentinel_backoff(cluster: Cluster):
 
     Retriable().call(check_sentinel_failed_with_injection)
 
-    old_counter = cluster.wait_governor_status("idle")
+    old_progress = cluster.wait_governor_status("idle")
     # Everybody thinks `i3` is Offline
     i1.wait_has_states("Offline", "Offline", target=i3)
     assert i3._get_target_state_reason() == "injected offline"
@@ -330,7 +330,7 @@ def test_sentinel_backoff(cluster: Cluster):
 
     old_index_of_attempt = Retriable().call(check_sentinel_succeeded_and_is_waiting)
 
-    counter = cluster.wait_governor_status("update current sharding configuration")
+    progress = cluster.wait_governor_status("update current sharding configuration")
     # Governor has performed 4 steps:
     # - change target_state=Online (also bump config versions)
     # - configure replication within replicaset (with `i3` isolated from others)
@@ -339,8 +339,8 @@ def test_sentinel_backoff(cluster: Cluster):
     #
     # This is important, because it shows that there weren't a bunch of
     # redundant state updates (regression test for the original bug report)
-    assert counter - old_counter == 4
-    old_counter = counter
+    assert progress.step_counter - old_progress.step_counter == 4
+    old_progress = progress
 
     # Now `i3` is trying to go back Online, but cannot yet, because it's raft loop is broken
     i1.wait_has_states("Offline", "Online", target=i3)
@@ -353,10 +353,10 @@ def test_sentinel_backoff(cluster: Cluster):
     i1.wait_has_states("Online", "Online", target=i3)
     assert i3._get_target_state_reason() == "auto-online"
 
-    counter = cluster.wait_governor_status("idle")
+    progress = cluster.wait_governor_status("idle")
     # Also just 2 steps, no spam
-    assert counter - old_counter == 2
-    old_counter = counter
+    assert progress.step_counter - old_progress.step_counter == 2
+    old_progress = progress
 
     info = i3.call(".proc_runtime_info")
     internal = info["internal"]
@@ -564,7 +564,7 @@ cluster:
     # while it's broken
     storage_1_1.terminate()
     storage_1_1.start()
-    cluster.wait_governor_status("idle", old_step_counter=counter)
+    cluster.wait_governor_status("idle", old_progress=counter)
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")
 
     # Instance is still actually alive, and we can go fix it manually, or
