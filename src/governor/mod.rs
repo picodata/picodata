@@ -1,3 +1,4 @@
+use self::replication::choose_fallback_candidate;
 use self::upgrade_operations::proc_internal_script;
 use crate::cas;
 use crate::column_name;
@@ -23,6 +24,7 @@ use crate::rpc::enable_service::proc_enable_service;
 use crate::rpc::load_plugin_dry_run::proc_load_plugin_dry_run;
 use crate::rpc::replication::proc_replication;
 use crate::rpc::replication::proc_replication_demote;
+use crate::rpc::replication::proc_replication_promote;
 use crate::rpc::replication::proc_replication_sync;
 use crate::rpc::replication::set_read_only;
 use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
@@ -37,6 +39,7 @@ use crate::storage::Catalog;
 use crate::storage::SystemTable;
 use crate::storage::ToEntryIter;
 use crate::sync::proc_get_vclock;
+use crate::tarantool::promote_rpc_timeout;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
@@ -343,18 +346,12 @@ impl Loop {
                 sleep_timeout = Some(Loop::RETRY_TIMEOUT);
             }
 
-            Plan::SelfReadOnlyFalse(SelfReadOnlyFalse {
-                synchronous_replication_enabled,
-            }) => {
+            Plan::SelfReadOnlyFalse(SelfReadOnlyFalse {}) => {
                 set_status!("make raft leader read_only = false");
                 governor_substep! {
-                    "making governor read_only = false" [
-                        "synchronous_replication_enabled" => ?synchronous_replication_enabled,
-                    ]
+                    "making governor read_only = false"
                     async {
-                        // If synchro is enabled, call box_promote() to take ownership
-                        // of the txn limbo.
-                        set_read_only(false, synchronous_replication_enabled)?;
+                        set_read_only(false)?;
                         // Add a short sleep to avoid infinite looping in case of bugs
                         sleep_timeout = Some(Loop::RETRY_TIMEOUT);
                     }
@@ -525,6 +522,126 @@ impl Loop {
                         }
                     }
                 }
+            }
+
+            Plan::ReplicasetMasterElectionPromote(ReplicasetMasterElectionPromote {
+                replicaset_name,
+                old_master_name,
+                new_master_name,
+                promote_rpc,
+                mut replicaset_dml,
+                fallback_candidates,
+                ranges,
+            }) => {
+                set_status!("transfer replication leader");
+                tlog!(
+                    Info,
+                    "transferring replicaset mastership from {old_master_name} to {new_master_name} via election"
+                );
+
+                let mut promote_response = None;
+                governor_substep! {
+                    "promoting new master via election" [
+                        "new_master_name" => %new_master_name,
+                        "replicaset_name" => %replicaset_name,
+                    ]
+                    async {
+                        // A lost election is only reported once the election
+                        // round is over, which takes longer than the common
+                        // RPC timeout, see `promote_rpc_timeout`. Giving up
+                        // earlier would hide the typed response below, leaving
+                        // the governor to retry the same target forever.
+                        let promote_timeout = rpc_timeout.max(promote_rpc_timeout());
+                        let response = pool
+                            .call(
+                                &new_master_name,
+                                proc_name!(proc_replication_promote),
+                                &promote_rpc,
+                                promote_timeout,
+                            )?
+                            .await?;
+                        promote_response = Some(response);
+                    }
+                }
+
+                match promote_response.expect("set by the previous substep") {
+                    rpc::replication::PromoteResponse::Promoted { vclock } => {
+                        governor_substep! {
+                            "updating replicaset current master id" [
+                                "replicaset_name" => %replicaset_name,
+                                "current_master_name" => ?new_master_name,
+                                "promotion_vclock" => ?vclock,
+                            ]
+                            async {
+                                replicaset_dml.assign(
+                                    column_name!(Replicaset, promotion_vclock),
+                                    &vclock,
+                                )?;
+                                let master_actualize_dml = Dml::update(
+                                    storage::Replicasets::TABLE_ID,
+                                    &[&replicaset_name],
+                                    replicaset_dml,
+                                    ADMIN_ID,
+                                )?;
+
+                                let predicate = cas::Predicate::new(applied, ranges);
+                                let cas = cas::Request::new(master_actualize_dml, predicate, ADMIN_ID)?;
+                                let deadline =
+                                    fiber::clock().saturating_add(raft_op_timeout);
+                                cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                            }
+                        }
+                    }
+                    rpc::replication::PromoteResponse::LostElection {
+                        error_code,
+                        leader_id,
+                        leader_uuid,
+                    } => {
+                        tlog!(
+                            Warning,
+                            "promotion of {new_master_name} lost election, retargeting replicaset {replicaset_name}";
+                            "error_code" => error_code,
+                            "reported_leader_id" => ?leader_id,
+                            "reported_leader_uuid" => ?leader_uuid,
+                        );
+                        governor_substep! {
+                            "retargeting failed synchronous promotion" [
+                                "replicaset_name" => %replicaset_name,
+                                "failed_target" => %new_master_name,
+                                "fallback" => ?fallback_candidates,
+                            ]
+                            async {
+                                let fallback = choose_fallback_candidate(&fallback_candidates, leader_uuid.as_deref()).cloned();
+                                let Some(fallback) = fallback else {
+                                    return Err(Error::other("promotion lost election and no fallback candidate exists"));
+                                };
+
+                                let mut update_ops = UpdateOps::new();
+                                update_ops.assign(
+                                    column_name!(Replicaset, target_master_name),
+                                    &fallback.name,
+                                )?;
+                                let dml = Dml::update(
+                                    storage::Replicasets::TABLE_ID,
+                                    &[&replicaset_name],
+                                    update_ops,
+                                    ADMIN_ID,
+                                )?;
+                                let mut fallback_ranges = ranges;
+                                fallback_ranges.push(
+                                    cas::Range::new(storage::Instances::TABLE_ID)
+                                        .eq([&fallback.name]),
+                                );
+                                let predicate =
+                                    cas::Predicate::new(applied, fallback_ranges);
+                                let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
+                                let deadline =
+                                    fiber::clock().saturating_add(raft_op_timeout);
+                                cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                            }
+                        }
+                    }
+                };
             }
 
             Plan::Downgrade(Downgrade {

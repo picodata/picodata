@@ -148,7 +148,16 @@ crate::define_rpc_request! {
                         return nil
                     end",
                 )?;
-                if current_sharding_param.is_none() || current_sharding_param.unwrap() != config.sharding {
+                // `vshard.storage.cfg` updates `current_cfg` before it finishes
+                // creating the storage spaces. In particular, the call may fail
+                // with ER_READONLY while a synchronous replicaset is electing its
+                // master. Treat a missing `_bucket` as an incomplete
+                // configuration so the governor can safely retry the RPC after
+                // the master becomes writable.
+                let storage_is_initialized = Space::find("_bucket").is_some();
+                if current_sharding_param.as_ref() != Some(&config.sharding)
+                    || !storage_is_initialized
+                {
                     lua.exec_with(
                         "vshard = require('vshard')
                         vshard.storage.cfg(..., box.info.uuid)",

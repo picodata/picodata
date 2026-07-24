@@ -12,6 +12,7 @@ use crate::governor::replication::handle_replicaset_master_switchover;
 use crate::governor::replication::handle_replicaset_sync;
 use crate::governor::replication::handle_replication_config;
 use crate::governor::replication::handle_self_read_only;
+use crate::governor::replication::handle_sync_master_election_promote;
 use crate::governor::resharding::handle_resharding;
 use crate::governor::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::has_states;
@@ -241,11 +242,13 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // replicaset master switchover
+    // replicaset master switchover for asynchronous-replication tiers
     //
     // This must be done after instances have (re)configured replication
     // because master switchover requires synchronizing via tarantool replication.
-    if let Some(plan) = handle_replicaset_master_switchover(topology_ref, term, rpc_timeout)? {
+    if let Some(plan) =
+        handle_replicaset_master_switchover(topology_ref, db_config, term, rpc_timeout)?
+    {
         debug_assert_plan_kind!(
             plan,
             Plan::ReplicasetMasterConsistentSwitchover { .. }
@@ -256,13 +259,27 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // replication sync for waking up instances
+    // replicaset master switchover for synchronous-replication tiers
+    //
+    // In a sync tier replicaset writability is gated by tarantool raft
+    // elections in `manual` mode, so mastership is transferred by promoting
+    // the target via an election.
+    if let Some(plan) = handle_sync_master_election_promote(topology_ref, db_config, term)? {
+        debug_assert_plan_kind!(plan, Plan::ReplicasetMasterElectionPromote { .. });
+
+        return Ok(plan);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // replication sync for waking up instances of asynchronous-replication
+    // tiers (sync-tier replicas follow the elected leader on their own)
     //
     // This must be done after
     // - instances have (re)configured replication
     // - replicaset master is actualized
     if let Some(plan) = handle_replicaset_sync(
         topology_ref,
+        db_config,
         term,
         applied,
         &global_catalog_version,
@@ -811,6 +828,12 @@ use stage::*;
 pub mod stage {
     use super::*;
 
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct PromotionCandidate {
+        pub name: InstanceName,
+        pub uuid: SmolStr,
+    }
+
     define_plan! {
         pub struct ConfChange {
             pub conf_change: raft::prelude::ConfChangeV2,
@@ -824,9 +847,7 @@ pub mod stage {
         }
 
         /// See comments in [`handle_self_read_only`] for explanation.
-        pub struct SelfReadOnlyFalse {
-            pub synchronous_replication_enabled: bool,
-        }
+        pub struct SelfReadOnlyFalse {}
 
         pub struct UpdateCurrentVshardConfig {
             /// All instances which need to handle `rpc` request before `cas` can be applied.
@@ -924,6 +945,40 @@ pub mod stage {
 
             /// Optional operations to bump versions of replication and sharding configs.
             pub bump_dml: Vec<Dml>,
+
+            /// Cas ranges for the operation.
+            pub ranges: Vec<cas::Range>,
+        }
+
+        pub struct ReplicasetMasterElectionPromote {
+            /// This replicaset is changing it's master.
+            pub replicaset_name: ReplicasetName,
+
+            /// This instance is the current master (possibly already dead or
+            /// expelled). It is not demoted explicitly - if it is still
+            /// alive, it will be deposed by the election which the new master
+            /// wins. Name only used for logging.
+            pub old_master_name: InstanceName,
+
+            /// This is the new master. It will be sent a
+            /// [`rpc::replication::proc_replication_promote`] request to win a
+            /// tarantool raft election within the replicaset.
+            pub new_master_name: InstanceName,
+
+            /// Request to call [`rpc::replication::proc_replication_promote`] on the new master.
+            pub promote_rpc: rpc::replication::PromoteRequest,
+
+            /// Partial update of `_pico_replicaset`. The governor adds the
+            /// vclock returned by a successful promotion before constructing
+            /// the atomic CAS operation. This vclock will be written as
+            /// `_pico_replicaset.promotion_vclock`. This field is not used
+            /// under synchronous replication. We fill it for debugging
+            /// purposes and to be stay compatible with the asynchronous
+            /// replication code.
+            pub replicaset_dml: UpdateOps,
+
+            /// Eligible online alternatives, excluding `new_master_name`.
+            pub fallback_candidates: Vec<PromotionCandidate>,
 
             /// Cas ranges for the operation.
             pub ranges: Vec<cas::Range>,
@@ -1486,16 +1541,23 @@ pub fn get_replicaset_to_expel<'r>(
             // Expelled instance is not a master, nothing else to do
             continue;
         } else {
-            // Master of the replicaset is being expelled. This means that this
-            // is the last instance in the replicaset....
-            debug_assert_eq!(
-                instances
-                    .iter()
-                    .filter(|i| i.replicaset_name == replicaset_name)
-                    .filter(|i| has_states!(i, not Expelled -> *))
-                    .count(),
-                1
-            );
+            // Master of the replicaset is being expelled. Normally this means
+            // that this is the last instance in the replicaset (mastership is
+            // always moved away first). In a synchronous-replication tier
+            // however the recorded master may be expelled while other members
+            // remain: mastership is moved by promoting the target in a
+            // tarantool raft election, and if the master died below the
+            // synchro quorum no election can be won.
+            // The replicaset lives on in that case (master-less until
+            // the quorum is restored) and must NOT be expelled.
+            let remaining = instances
+                .iter()
+                .filter(|i| i.replicaset_name == replicaset_name)
+                .filter(|i| has_states!(i, not Expelled -> *))
+                .count();
+            if remaining != 1 {
+                continue;
+            }
         }
 
         let Some(tier) = tiers.get(tier_id) else {

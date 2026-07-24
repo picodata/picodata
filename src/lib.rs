@@ -110,6 +110,7 @@ pub mod sharding;
 pub mod sql;
 pub mod storage;
 pub mod sync;
+mod synchro_election_watcher;
 pub mod tarantool;
 pub mod tier;
 pub mod tlog;
@@ -2203,6 +2204,11 @@ fn postjoin(
     }
 
     node.sentinel_loop.on_self_activate();
+
+    let (replication_mode, _) = rpc::replication::get_tier_replication_mode_and_factor(config)?;
+    if replication_mode.is_sync() {
+        synchro_election_watcher::start_synchro_election_watcher()?;
+    }
 
     Ok(())
 }

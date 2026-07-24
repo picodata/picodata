@@ -3,18 +3,20 @@ pub mod test_util;
 
 use crate::config::WalMode;
 use crate::config::{
-    BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig, TlsListenerSettings,
+    BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig, ReplicationMode, TlsListenerSettings,
 };
 use crate::instance::Instance;
 use crate::introspection::Introspection;
 use crate::pico_service::pico_service_password;
 use crate::preemption::vdbe_yield_handler;
 use crate::rpc::join;
+use crate::rpc::replication::get_tier_replication_mode_and_factor;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::port::{dispatch_dump_mp, PicoPortOwned};
 use crate::tlog;
 use crate::traft::{self, error::Error};
 use crate::{config_parameter_path, tls};
+use ::tarantool::clock::INFINITY;
 use ::tarantool::error::{Error as TntError, IntoBoxError};
 use ::tarantool::ffi::uuid::tt_uuid;
 use ::tarantool::fiber;
@@ -37,6 +39,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::slice;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tlua::CallError;
 
 #[macro_export]
@@ -107,6 +110,18 @@ pub fn package() -> &'static str {
 
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_election_mode_depends_on_replication_mode() {
+        assert_eq!(
+            runtime_election_mode(ReplicationMode::Sync),
+            ElectionMode::Manual
+        );
+        assert_eq!(
+            runtime_election_mode(ReplicationMode::Async),
+            ElectionMode::Off
+        );
+    }
 
     #[::tarantool::test]
     fn test_version() {
@@ -378,6 +393,12 @@ impl Cfg {
 
             // During restore we don't set up the replication.
             bootstrap_strategy: Some(BootstrapStrategy::Auto),
+            // Elections stay off even for sync tiers: restore is a local
+            // recovery, which gets no automatic promotion in `manual` mode, so
+            // the instance would be stuck read-only and unable to restore.
+            // With elections off the cfg read_only=false above makes it
+            // writable. Correct election mode will be applied after
+            // the instance rejoins the cluster.
             election_mode: ElectionMode::Off,
 
             wal_mode: config.this_instance_wal_mode(),
@@ -421,8 +442,6 @@ impl Cfg {
             // irrelevant.
             bootstrap_strategy: Some(BootstrapStrategy::Auto),
 
-            election_mode: ElectionMode::Off,
-
             wal_mode: config.this_instance_wal_mode(),
 
             // Disabling automatic snapshots doesn't make sense for us
@@ -434,6 +453,7 @@ impl Cfg {
         };
 
         res.set_core_parameters(config)?;
+        res.set_replication_parameters(config)?;
         Ok(res)
     }
 
@@ -460,8 +480,6 @@ impl Cfg {
 
             wal_mode: config.this_instance_wal_mode(),
 
-            election_mode: ElectionMode::Off,
-
             // Disabling automatic snapshots doesn't make sense for us
             checkpoint_enabled: true,
 
@@ -471,6 +489,7 @@ impl Cfg {
         };
 
         res.set_core_parameters(config)?;
+        res.set_replication_parameters(config)?;
         Ok(res)
     }
 
@@ -533,8 +552,6 @@ impl Cfg {
             // about it.
             bootstrap_strategy: Some(BootstrapStrategy::Legacy),
 
-            election_mode: ElectionMode::Off,
-
             wal_mode: config.this_instance_wal_mode(),
 
             // Disabling automatic snapshots doesn't make sense for us
@@ -544,6 +561,7 @@ impl Cfg {
         };
 
         res.set_core_parameters(config)?;
+        res.set_replication_parameters(config)?;
 
         // This option is required when using `bootstrap_strategy = legacy`.
         //
@@ -599,6 +617,33 @@ impl Cfg {
 
         res.set_core_parameters(config)?;
         Ok(res)
+    }
+
+    /// Set the replication parameters this instance's tier runs with:
+    /// the election mode and, on a synchronous tier, the synchro
+    /// quorum and timeout.
+    fn set_replication_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
+        let (replication_mode, replication_factor) = get_tier_replication_mode_and_factor(config)?;
+        self.election_mode = runtime_election_mode(replication_mode);
+
+        if replication_mode.is_sync() {
+            let quorum = replication_factor / 2 + 1;
+            self.user_configured_fields
+                .insert("replication_synchro_quorum".into(), quorum.into());
+            self.user_configured_fields.insert(
+                "replication_synchro_timeout".into(),
+                INFINITY.as_secs().into(),
+            );
+            // This is tarantool's own default, but it is set explicitly,
+            // because the deadline the governor gives to a promotion is
+            // derived from it, see [`promote_rpc_timeout`].
+            self.user_configured_fields.insert(
+                "election_timeout".into(),
+                ELECTION_TIMEOUT.as_secs_f64().into(),
+            );
+        }
+
+        Ok(())
     }
 
     fn set_core_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
@@ -685,6 +730,49 @@ impl Cfg {
 
         Ok(())
     }
+}
+
+/// The election mode instances of a tier run with:
+/// elections are only used on synchronous-replication tiers. `Manual` means
+/// nobody self-nominates - an instance only becomes the leader (and thus
+/// writable) when `box.ctl.promote` is called on it.
+fn runtime_election_mode(replication_mode: ReplicationMode) -> ElectionMode {
+    if replication_mode.is_sync() {
+        ElectionMode::Manual
+    } else {
+        ElectionMode::Off
+    }
+}
+
+/// The `box.cfg.election_timeout` synchronous tiers run with, see
+/// [`Cfg::set_replication_parameters`].
+const ELECTION_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Tarantool randomizes the duration of an election round by adding up to
+/// `election_timeout * max_shift` to it (see `raft_new_random_election_shift`
+/// in tarantool-sys), so that concurrent candidates don't keep splitting the
+/// vote. This is tarantool's default `max_shift`, which we never reconfigure.
+const ELECTION_TIMEOUT_MAX_SHIFT: f64 = 0.1;
+
+/// The deadline for a [`crate::rpc::replication::proc_replication_promote`]
+/// request.
+///
+/// `box.ctl.promote` in `manual` election mode has no timeout of its own: it
+/// blocks until the election round it started resolves. A round which elects
+/// nobody - a split vote, or a candidate too stale to collect votes — only
+/// ends once the raft election timer fires, which takes [`ELECTION_TIMEOUT`]
+/// plus a random shift of up to `ELECTION_TIMEOUT * ELECTION_TIMEOUT_MAX_SHIFT`.
+pub(crate) fn promote_rpc_timeout() -> Duration {
+    // Some slack on top of the round for the WAL write of the bumped term and
+    // for the network.
+    const SLACK: Duration = Duration::from_secs(1);
+
+    longest_election_round() + SLACK
+}
+
+/// The longest an election round may take, see [`ELECTION_TIMEOUT_MAX_SHIFT`].
+fn longest_election_round() -> Duration {
+    ELECTION_TIMEOUT.mul_f64(1.0 + ELECTION_TIMEOUT_MAX_SHIFT)
 }
 
 pub fn is_box_configured() -> bool {
@@ -951,6 +1039,34 @@ pub fn box_schema_version() -> u64 {
 
     // Safety: always safe
     unsafe { ffi::box_schema_version() }
+}
+
+/// The subset of `box.info.election` we're interested in.
+#[derive(Clone, Debug, LuaRead)]
+pub struct BoxInfoElection {
+    /// The current raft term.
+    pub term: u64,
+    /// The raft state of this instance: "follower", "candidate" or "leader".
+    pub state: String,
+    /// `box.info.id` of the current raft leader, 0 if there's none.
+    pub leader: u32,
+}
+
+/// Reads `box.info.election` via the lua C api.
+///
+/// Note that this doesn't use `lua_state().eval("return box.info.election")`
+/// on purpose: an eval means parsing the lua chunk and generating the bytecode
+/// for it on each and every call, which is a waste for something this hot.
+pub fn box_info_election() -> Result<BoxInfoElection, Error> {
+    let lua = lua_state();
+    let box_: LuaTable<_> = lua
+        .get("box")
+        .ok_or_else(|| Error::other("box is not initialized"))?;
+    let info: LuaTable<_> = box_
+        .try_get("info")
+        .map_err(|e| Error::other(format!("failed to read box.info: {e}")))?;
+    info.try_get("election")
+        .map_err(|e| Error::other(format!("failed to read box.info.election: {e}")))
 }
 
 #[inline(always)]
