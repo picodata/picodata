@@ -1271,17 +1271,32 @@ class Instance:
             timeout=timeout,
         )
 
-    def terminate(self, kill_after_seconds=10) -> int | None:
+    def terminate(self, kill_after_seconds=10, on_shutdown_timeout: int | None = None) -> int | None:
         """Terminate the instance gracefully with SIGTERM"""
         if self.process is None:
             # Be idempotent
             return None
 
-        log.info(f"Instance.terminate({self}, kill_after_seconds={kill_after_seconds}) termintating instance ...")
+        log.info(
+            f"Instance.terminate({self}, kill_after_seconds={kill_after_seconds}, on_shutdown_timeout={on_shutdown_timeout}) termintating instance ..."
+        )
 
+        # Wake the process up in case it was suspended via SIGSTOP (happens in some tests)
         with suppress(ProcessLookupError, PermissionError):
             os.killpg(self.process.pid, signal.SIGCONT)
 
+        if on_shutdown_timeout:
+            try:
+                self.eval("box.ctl.set_on_shutdown_timeout(...)", on_shutdown_timeout)
+            except ProcessDead:
+                # It's possible that the process was terminated before we called
+                # this function, e.g. if the instance was expelled with --force.
+                # In such cases `self.process` is not set to `None`, so the guard
+                # above doesn't help us. Thankfully the code bellow doesn't break
+                # if the process is already dead, so let's just pass through.
+                pass
+
+        # Send SIGTERM to trigger graceful shutdown
         self.process.terminate()
 
         try:
@@ -1294,6 +1309,8 @@ class Instance:
             log.info(f"{self} graceful shutdown timed out with timeout {kill_after_seconds}")
             raise GracefulShutdownTimedOut(self, kill_after_seconds)
         finally:
+            # SIGKILL the process as a fallback to avoid leaving stray picodata
+            # processes hanging around in the background
             self.kill()
             self.process = None
 
@@ -2712,16 +2729,19 @@ class Cluster:
         for instance in self.instances:
             instance.kill()
 
-    def terminate(self):
+    def terminate(self, on_shutdown_timeout: int | None = None):
         log.info("Cluster.terminate()")
         errors = []
         for instance in reversed(self.instances):
             try:
-                instance.terminate()
+                instance.terminate(on_shutdown_timeout=on_shutdown_timeout)
             except Exception as e:
                 errors.append(e)
         if errors:
-            raise Exception(errors)
+            if len(errors) == 1:
+                raise errors[0] from errors[0]
+            else:
+                raise Exception(errors)
 
     def remove_data(self):
         shutil.rmtree(self.data_dir)
@@ -3330,7 +3350,13 @@ def cluster(cluster_factory) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
     cluster = cluster_factory()
     yield cluster
-    cluster.kill()
+    # XXX: We use terminate (SIGTERM) instead of kill (SIGKILL), because we rely
+    # on the `atexit` callback to dump the coverage information collected during
+    # the process's runtime.
+    #
+    # We use an overriden on_shutdown_timeout to speed up the graceful shutdown
+    # (the default is 30 seconds).
+    cluster.terminate(on_shutdown_timeout=1)
     log.info(f"Cluster data directory was: {cluster.data_dir}")
 
 
@@ -3350,7 +3376,13 @@ def second_cluster(tmpdir, cluster_names, port_distributor, cargo_build_fixt, re
     cluster.set_service_password("password")
 
     yield cluster
-    cluster.kill()
+    # XXX: We use terminate (SIGTERM) instead of kill (SIGKILL), because we rely
+    # on the `atexit` callback to dump the coverage information collected during
+    # the process's runtime.
+    #
+    # We use an overriden on_shutdown_timeout to speed up the graceful shutdown
+    # (the default is 30 seconds).
+    cluster.terminate(on_shutdown_timeout=1)
 
 
 @pytest.fixture

@@ -21,9 +21,12 @@ def test_sql_log(instance: Instance, protocol_type: str):
 
     instance.start()
 
-    user = "pico_service"
-
     if protocol_type == "pgproto":
+        # We don't want to use 'pico_service' user for pgproto connections
+        # because pico_service is configured with 'chap-sha1' auth method, while
+        # pg-proto uses 'md5'. We could change pico_service's auth method, but
+        # this would break iproto RPCs authorized via pico_service.
+        user = "admin"
         password = "P@ssw0rd"
         instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
@@ -33,6 +36,7 @@ def test_sql_log(instance: Instance, protocol_type: str):
         cur = conn.cursor()
         execute_func = cur.execute
     else:
+        user = "pico_service"
         execute_func = instance.sql
 
     set_sql_log(True, execute_func)
