@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import hmac
 import json
 import ssl
 import time
@@ -83,6 +86,31 @@ def get_url(url: str, auth_token: Optional[str]) -> Any:
         return get_unauthorized(url)
 
     return get_authorized(url, auth_token)
+
+
+def make_expired_token(token: str, secret: str) -> str:
+    # Stage 1: Split the token and decode its claims.
+    header, encoded_payload, _ = token.split(".")
+    padding_length = (-len(encoded_payload)) % 4
+    padded_payload = encoded_payload + ("=" * padding_length)
+    payload_bytes = base64.urlsafe_b64decode(padded_payload)
+    claims = json.loads(payload_bytes)
+
+    # Stage 2: Expire the token and re-encode the payload.
+    claims["exp"] = 0
+    payload_json = json.dumps(claims, separators=(",", ":"))
+    encoded_payload = base64.urlsafe_b64encode(payload_json.encode()).rstrip(b"=").decode()
+    unsigned_token = f"{header}.{encoded_payload}"
+
+    # Stage 3: Sign and rebuild the token.
+    signature_bytes = hmac.new(
+        secret.encode(),
+        unsigned_token.encode(),
+        hashlib.sha256,
+    ).digest()
+    encoded_signature = base64.urlsafe_b64encode(signature_bytes).rstrip(b"=").decode()
+
+    return f"{unsigned_token}.{encoded_signature}"
 
 
 def get_voter_raft_ids(instance: Instance) -> set:
@@ -868,6 +896,51 @@ def test_jwt_session_refresh_success(instance: Instance):
     assert isinstance(new_tokens["refresh"], str)
     assert len(new_tokens["auth"].split(".")) == 3
     assert len(new_tokens["refresh"].split(".")) == 3
+
+
+@pytest.mark.webui
+def test_jwt_rejects_missing_token(instance: Instance):
+    set_jwt_enabled(instance, True)
+
+    with pytest.raises(HTTPError) as error:
+        get_unauthorized(f"http://{instance.http_listen}/api/v1/tiers")
+
+    assert error.value.code == 401
+    assert str(error.value.fp.read(), "utf-8") == '{"error":"authError","errorMessage":"invalid authorization header"}'
+
+
+@pytest.mark.webui
+def test_jwt_rejects_token_with_invalid_signature(instance: Instance):
+    set_jwt_enabled(instance, True)
+    token = get_auth_token(instance)
+    header, payload, signature = token.split(".")
+    replacement = "A" if signature[-1] != "A" else "B"
+    token = f"{header}.{payload}.{signature[:-1]}{replacement}"
+
+    with pytest.raises(HTTPError) as error:
+        get_authorized(f"http://{instance.http_listen}/api/v1/tiers", token)
+
+    assert error.value.code == 401
+    assert (
+        str(error.value.fp.read(), "utf-8")
+        == '{"error":"authError","errorMessage":"invalid jwt: signature has failed verification"}'
+    )
+
+
+@pytest.mark.webui
+def test_jwt_rejects_expired_token(instance: Instance):
+    secret = "test-jwt-secret"
+    instance.sql(f"ALTER SYSTEM SET jwt_secret = '{secret}'")
+    token = make_expired_token(get_auth_token(instance), secret)
+
+    with pytest.raises(HTTPError) as error:
+        get_authorized(f"http://{instance.http_listen}/api/v1/tiers", token)
+
+    assert error.value.code == 401
+    assert (
+        str(error.value.fp.read(), "utf-8")
+        == '{"error":"sessionExpired","errorMessage":"invalid jwt: token has expired"}'
+    )
 
 
 @pytest.mark.webui
