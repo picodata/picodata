@@ -6,7 +6,6 @@ use crate::backoff::SimpleBackoffManager;
 use crate::cas::Predicate;
 use crate::catalog::governor_queue;
 use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
-use crate::column_name;
 use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
 use crate::metrics;
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
@@ -31,6 +30,7 @@ use crate::util::effective_user_id;
 use crate::version::Version;
 use crate::{audit, schema};
 use crate::{cas, has_states, plugin, tlog};
+use crate::{column_name, tlog_ratelimited};
 
 use ::tarantool::access_control::{
     box_access_check_ddl, box_access_check_space, PrivType, SchemaObjectType as TntSchemaObjectType,
@@ -319,7 +319,7 @@ fn dispatch_bound_statement_impl<'p>(
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;
         let tcl = ir_plan.get_tcl_node(top_id)?;
-        tlog!(
+        tlog_ratelimited!(
             Warning,
             "Transactions are currently unsupported. Empty query response provided for {}.",
             tcl.as_str()

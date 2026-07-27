@@ -21,6 +21,7 @@ use super::base64_decode_array;
 use super::key::{ScramKey, SCRAM_KEY_LEN};
 use super::signature::SignatureBuilder;
 use crate::sasl::ChannelBinding;
+use crate::tlog_ratelimited;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine as _;
 use std::fmt;
@@ -78,8 +79,7 @@ impl<'a> ClientFirstMessage<'a> {
 
         // https://github.com/postgres/postgres/blob/f83908798f78c4cafda217ca875602c88ea2ae28/src/backend/libpq/auth-scram.c#L13-L14
         if !username.is_empty() {
-            // XXX: We don't want to print this line w/o some kind of rate limit.
-            // tlog!(Warning, "scram username provided, but is not expected")
+            tlog_ratelimited!(Warning, "scram username provided, but is not expected")
         }
 
         let nonce = parts.next()?.strip_prefix("r=")?;

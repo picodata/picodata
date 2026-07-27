@@ -371,6 +371,10 @@ def test_tcl(postgres: Postgres):
     host = postgres.host
     port = postgres.port
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+    # We use `tlog_ratelimited!` on the "Transactions are currently unsupported ..." message to not spam the logs.
+    # This test does run enough transactions to trigger the rate limit, and expects to find all the logs,
+    # so disable the rate limit.
+    postgres.instance.call("pico._inject_error", "DISABLE_LOG_RATE_LIMIT", True)
 
     prefix = "Transactions are currently unsupported. Empty query response provided for"
 
