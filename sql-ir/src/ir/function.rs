@@ -1,8 +1,8 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::aggregates::AggregateKind;
-use crate::ir::node::expression::{Expression, MutExpression};
-use crate::ir::node::{ArenaType, Node96};
-use crate::ir::node::{Cast, NodeId, ScalarFunction};
+use crate::ir::node::expression::{ExprChildren, Expression};
+use crate::ir::node::{ArenaType, Node32, Node96};
+use crate::ir::node::{Cast, Concat, NodeId, ScalarFunction};
 use crate::ir::types::CastType;
 use crate::ir::Plan;
 use crate::utils::normalize_name_from_sql;
@@ -10,6 +10,7 @@ use crate::utils::to_user;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql_type_system::type_system::TypeAnalyzer;
+use sql_type_system::TypeReport;
 
 use super::expression::{FunctionFeature, VolatilityType};
 use super::types::{DerivedType, UnrestrictedType};
@@ -247,78 +248,134 @@ impl Plan {
         Ok(id)
     }
 
-    /// Add explicit casts for ScalarFunction arguments
+    /// Add explicit casts for some Expressions in IR plan.
+    /// Exact expressions:
+    ///   - ScalarFunction
+    ///   - Concat
     pub fn explicit_cast_func_args(
         &mut self,
         type_analyzer: &TypeAnalyzer<NodeId>,
     ) -> Result<(), SbroadError> {
-        let func_node_ids: Vec<NodeId> = self
+        self.cast_scalar_fn_args(type_analyzer.get_report())?;
+        self.cast_concat_operator_args()
+    }
+
+    /// We add these casts in order to avoid SQL errors on local execution stage
+    fn cast_scalar_fn_args(&mut self, type_report: &TypeReport<NodeId>) -> Result<(), SbroadError> {
+        let scalar_fns = self
             .nodes
             .iter96()
             .enumerate()
-            .filter(|(_, node)| matches!(node, Node96::ScalarFunction(_)))
-            .map(|(offset, _)| NodeId {
-                offset: offset.try_into().unwrap(),
-                arena_type: ArenaType::Arena96,
+            .filter_map(|(offset, node)| {
+                if let Node96::ScalarFunction(scalar_fn) = node {
+                    Some((
+                        NodeId {
+                            offset: offset.try_into().unwrap(),
+                            arena_type: ArenaType::Arena96,
+                        },
+                        scalar_fn.children.clone(),
+                    ))
+                } else {
+                    None
+                }
             })
-            .collect();
+            .collect::<Vec<(NodeId, Vec<NodeId>)>>();
 
-        for func_node_id in func_node_ids {
-            let Expression::ScalarFunction(ScalarFunction { children: args, .. }) =
-                self.get_expression_node(func_node_id)?
-            else {
-                unreachable!("expected only ScalarFunctions");
-            };
+        for (node_id, args) in scalar_fns.into_iter() {
+            for (idx, arg_id) in args.iter().enumerate() {
+                let arg_id = *arg_id;
+                let arg_expr = self.get_expression_node(arg_id)?;
 
-            let args = args.clone();
-            let type_report = type_analyzer.get_report();
-
-            for (idx, arg_node_id) in args.iter().enumerate() {
-                let arg_node_id = *arg_node_id;
-                let arg_expr = self.get_expression_node(arg_node_id)?;
-                // `GROUP BY` aliases can still appear here as placeholders. Type analysis
-                // records the type for the aliased child expression, not for the alias node.
-                let report_arg_node_id = self.get_child_under_alias(arg_node_id)?;
+                let get_cast_type = || {
+                    /*
+                        `GROUP BY` aliases can still appear here as placeholders. Type analysis
+                        records the type for the aliased child expression, not for the alias node.
+                    */
+                    DerivedType::from(type_report.get_type(&self.get_child_under_alias(arg_id)?))
+                        .get()
+                        .filter(|ty| ty.is_scalar())
+                        .map_or(Ok(None), |ty| CastType::try_from(&ty).map(Some))
+                };
 
                 let cast_type = match arg_expr {
                     Expression::CountAsterisk(_) => continue,
-                    Expression::Cast(Cast { to, .. }) => {
-                        let arg_type = DerivedType::from(type_report.get_type(&report_arg_node_id));
-                        let arg_type = arg_type
-                            .get()
-                            .expect("expected defined type from type analyzer");
-                        if !arg_type.is_scalar() {
-                            continue;
-                        }
-                        let cast_type = CastType::try_from(&arg_type)?;
-
-                        if *to == cast_type {
-                            continue;
-                        }
-                        cast_type
-                    }
-                    _ => {
-                        let arg_type = DerivedType::from(type_report.get_type(&report_arg_node_id));
-                        let arg_type = arg_type
-                            .get()
-                            .expect("expected defined type from type analyzer");
-                        if !arg_type.is_scalar() {
-                            continue;
-                        }
-                        CastType::try_from(&arg_type)?
-                    }
+                    Expression::Cast(Cast { to, .. }) => get_cast_type()?.filter(|ty| *to != *ty),
+                    _ => get_cast_type()?,
+                };
+                let Some(cast_type) = cast_type else {
+                    continue;
                 };
 
-                let cast_id = self.add_cast(arg_node_id, cast_type)?;
-                let MutExpression::ScalarFunction(ScalarFunction { children, .. }) =
-                    self.get_mut_expression_node(func_node_id)?
-                else {
-                    unreachable!("expected only ScalarFunctions");
-                };
-                children[idx] = cast_id;
+                let cast_id = self.add_cast(arg_id, cast_type)?;
+                let mut scalar_fn_node_mut = self.get_mut_expression_node(node_id)?;
+                let child_mut = scalar_fn_node_mut
+                    .expr_children_mut()
+                    .into_iter()
+                    .nth(idx)
+                    .expect("`idx` is in bounds of children array");
+
+                *child_mut = cast_id;
             }
         }
 
+        Ok(())
+    }
+
+    /// Cast non-text argument of concat (`||`) operator into text.
+    /// Each overload of the `||` operator must satisfy the following requirements:
+    ///   - Both arguments must be scalar.
+    ///   - At least one argument must be `Text`.
+    ///     The invariant above must be consistent with overloads definition of `||`
+    ///     in Picodata SQL type system (see `frontend::sql::type_system` module
+    ///     in the `sql-frontend` crate).
+    fn cast_concat_operator_args(&mut self) -> Result<(), SbroadError> {
+        let concat_nodes = self
+            .nodes
+            .iter32()
+            .enumerate()
+            .filter_map(|(offset, node)| {
+                if let Node32::Concat(concat) = node {
+                    Some((
+                        NodeId {
+                            offset: offset.try_into().unwrap(),
+                            arena_type: ArenaType::Arena32,
+                        },
+                        concat.clone(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<(NodeId, Concat)>>();
+
+        for (node_id, concat) in concat_nodes.into_iter() {
+            let args = concat.expr_children();
+
+            for (idx, arg_id) in args.into_iter().enumerate() {
+                /*
+                    `GROUP BY` aliases can still appear here as placeholders. Type analysis
+                    records the type for the aliased child expression.
+                    Type system report does not have alias nodes.
+                    Hence, we unconditionally cast all arguments to String
+
+                    We expect e.g. such expressions
+                    `1 || '1'`, `1.5 || '1'`, `'x' || 1.5 + 1`
+                    `SELECT a::int AS a1 FROM t GROUP BY a1, a1 || 'x';`
+                    to be valid
+                */
+
+                let cast_id = self.add_cast(arg_id, CastType::String)?;
+
+                let mut concat_node_mut = self.get_mut_expression_node(node_id)?;
+                let child_mut = concat_node_mut
+                    .expr_children_mut()
+                    .into_iter()
+                    .nth(idx)
+                    .expect("`idx` is in bounds of children array");
+
+                *child_mut = cast_id;
+            }
+        }
         Ok(())
     }
 }

@@ -514,6 +514,7 @@ impl Expression<'_> {
 
     /// If applicable, check if the operator in the node is associative.
     /// The main use of this method is to put less paretheses in expressions.
+    /// Take into account associativity in Tarantool SQL layer.
     /// Associativity is `(a * b) * c = a * (b * c)`.
     pub fn is_associative(&self) -> bool {
         match self {

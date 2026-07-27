@@ -1,10 +1,9 @@
 use crate::errors::SbroadError;
-use crate::ir::node::expression::MutExpression;
 use crate::ir::node::Cast;
 use crate::ir::types::CastType;
 use crate::ir::Plan;
 
-use super::{MutNode, NodeId};
+use super::NodeId;
 
 impl Plan {
     /// Adds a cast expression to the plan.
@@ -17,11 +16,6 @@ impl Plan {
             to: to_type,
         };
         let cast_id = self.nodes.push(cast_expr.into());
-
-        let child_plan_node = self.get_mut_node(expr_id)?;
-        if let MutNode::Expression(MutExpression::Parameter(ty)) = child_plan_node {
-            ty.param_type.set(to_type.into());
-        }
 
         Ok(cast_id)
     }

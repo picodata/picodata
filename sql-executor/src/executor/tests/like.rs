@@ -6,7 +6,7 @@ fn like1_test() {
     let info = get_broadcast(r#"SELECT a || 'a' like 'ab' FROM t1"#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT \"t1\".\"a\" || CAST($1 AS string) LIKE CAST($2 AS string) ESCAPE CAST($3 AS string) as \"col_1\" FROM \"t1\""
+      - "SELECT CAST (\"t1\".\"a\" as string) || CAST($1 AS string) LIKE CAST($2 AS string) ESCAPE CAST($3 AS string) as \"col_1\" FROM \"t1\""
       - - String: a
         - String: ab
         - String: "\\"

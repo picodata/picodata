@@ -15,9 +15,9 @@ fn concat2_test() {
     let sql =
         r#"explain (logical) SELECT "a" FROM "t1" WHERE CAST('1' as string) || "a" || '2' = '42'"#;
     let plan = sql_to_optimized_ir(sql, vec![]);
-    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @"
     projection (t1.a::string -> a)
-      selection (('1'::string || t1.a::string) || '2'::string = '42'::string)
+      selection (('1'::string || t1.a::string::string)::string || '2'::string = '42'::string)
         scan t1
     ");
 }
