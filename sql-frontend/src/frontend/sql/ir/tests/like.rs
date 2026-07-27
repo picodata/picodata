@@ -59,7 +59,7 @@ fn like_explain1() {
 
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t1.a::string LIKE t1.a::string ESCAPE '\'::string -> col_1)
-      selection (t1.a::string || 'a'::string LIKE 'a'::string || 'a'::string ESCAPE '\'::string)
+      selection (t1.a::string::string || 'a'::string LIKE 'a'::string || 'a'::string ESCAPE '\'::string)
         scan t1
     ");
 }
@@ -72,7 +72,7 @@ fn like_explain2() {
 
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t1.a::string LIKE t1.a::string ESCAPE '\'::string -> col_1)
-      selection (t1.a::string || 'a'::string LIKE 'a'::string || 'a'::string ESCAPE 'x'::string)
+      selection (t1.a::string::string || 'a'::string LIKE 'a'::string || 'a'::string ESCAPE 'x'::string)
         scan t1
     ");
 }

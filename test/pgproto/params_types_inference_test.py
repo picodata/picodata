@@ -448,10 +448,6 @@ def test_params_inference_with_client_provided_types(postgres: Postgres):
     assert rows == [[2.0, 1.0, 1.0]]
     assert cols_oids(conn) == [type_oid("float8"), type_oid("float8"), type_oid("float8")]
 
-    # Specify unsuitable type and catch an error.
-    with pytest.raises(DatabaseError, match=r"could not resolve operator overload for ||(uuid, text)"):
-        rows = conn.run("SELECT :p || 'text'", p=1, types={"p": type_oid("uuid")})
-
 
 def test_parameter_types_defaulting(postgres: Postgres):
     user = "Парам Парамыч"

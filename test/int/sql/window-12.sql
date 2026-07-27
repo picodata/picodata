@@ -42,7 +42,7 @@ sbroad: could not resolve operator overload for -\(text, int\)
 -- SQL:
 SELECT count(*) OVER (ORDER BY current_date || 5) FROM t6;
 -- ERROR:
-sbroad: could not resolve operator overload for ||(datetime, int)
+sbroad: could not resolve operator overload for \|\|\(datetime, int\)
 
 -- TEST: window12-2.4
 -- SQL:

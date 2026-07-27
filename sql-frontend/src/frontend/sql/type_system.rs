@@ -405,8 +405,22 @@ fn default_type_system() -> TypeSystem {
         // Logical operations.
         Function::new_operator("or", [Boolean, Boolean], Boolean),
         Function::new_operator("and", [Boolean, Boolean], Boolean),
-        // String operations.
+        // Concat `||` operator.
         Function::new_operator("||", [Text, Text], Text),
+        Function::new_operator("||", [Integer, Text], Text),
+        Function::new_operator("||", [Text, Integer], Text),
+        Function::new_operator("||", [Double, Text], Text),
+        Function::new_operator("||", [Text, Double], Text),
+        Function::new_operator("||", [Numeric, Text], Text),
+        Function::new_operator("||", [Text, Numeric], Text),
+        Function::new_operator("||", [Boolean, Text], Text),
+        Function::new_operator("||", [Text, Boolean], Text),
+        Function::new_operator("||", [Datetime, Text], Text),
+        Function::new_operator("||", [Text, Datetime], Text),
+        Function::new_operator("||", [Uuid, Text], Text),
+        Function::new_operator("||", [Text, Uuid], Text),
+        Function::new_operator("||", [Map, Text], Text),
+        Function::new_operator("||", [Text, Map], Text),
         // Functions.
         Function::new_scalar(
             // TODO:

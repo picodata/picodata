@@ -22,8 +22,8 @@ use super::operator::OrderByEntity;
 use super::types::{CastType, DerivedType};
 use super::{
     distribution, operator, Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat,
-    Constant, Expression, MutExpression, MutNode, Node, NodeId, Reference, Row, ScalarFunction,
-    Trim, UnaryExpr, Value,
+    Constant, Expression, MutExpression, Node, NodeId, Reference, Row, ScalarFunction, Trim,
+    UnaryExpr, Value,
 };
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::relational::Relational;

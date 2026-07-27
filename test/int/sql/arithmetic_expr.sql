@@ -946,3 +946,282 @@ SELECT 5 / -2;
 SELECT 1 + (SELECT '2');
 -- ERROR:
 could not resolve operator overload for \+\(int, text\)
+
+-- TEST: concat-precedence-0
+-- SQL:
+DROP TABLE IF EXISTS arithmetic_space;
+CREATE TABLE arithmetic_space (int_col int primary key, double_col double, numeric_col numeric, bool_col bool, datetime_col datetime, uuid_col uuid, string_col string);
+INSERT INTO arithmetic_space
+VALUES (1, 1.1, 2.2, true, '2003-07-08T19:13:00+03:00'::datetime, '11111111-1111-1111-1111-111111111111'::uuid, '123'),
+        (2, 2.1, 4.4, false, '2009-06-10T13:31:00+03:00'::datetime, '22222222-2222-2222-2222-222222222222'::uuid, '123'),
+        (3, 3.1, 6.6, true, '2016-12-22T15:51:00+03:00'::datetime, '33333333-3333-3333-3333-333333333333'::uuid, '123');
+
+-- TEST: concat-precedence-1
+-- SQL:
+SELECT 'x' || 52 + 152;
+-- EXPECTED:
+'x204'
+
+-- TEST: concat-precedence-2
+-- SQL:
+SELECT 152 + 52 || 'x';
+-- EXPECTED:
+'204x'
+
+-- TEST: concat-precedence-3
+-- SQL:
+SELECT 'x' || 0.99;
+-- EXPECTED:
+'x0.99'
+
+-- TEST: concat-precedence-4
+-- SQL:
+SELECT 0.99 || 'x';
+-- EXPECTED:
+'0.99x'
+
+-- TEST: concat-precedence-5
+-- SQL:
+SELECT 'x' || 0.8 + 0.7 + 2003;
+-- EXPECTED:
+'x2004.5'
+
+-- TEST: concat-precedence-6
+-- SQL:
+SELECT 0.8 + 0.7 + 2003 || 'x';
+-- EXPECTED:
+'2004.5x'
+
+-- TEST: concat-precedence-7
+-- SQL:
+SELECT 'HELL ' || 'bd2eff94-9c4f-4526-a3b6-3c379b7e2c4a'::uuid;
+-- EXPECTED:
+'HELL bd2eff94-9c4f-4526-a3b6-3c379b7e2c4a'
+
+-- TEST: concat-precedence-8
+-- SQL:
+SELECT 'bd2eff94-9c4f-4526-a3b6-3c379b7e2c4a'::uuid || ' HELL';
+-- EXPECTED:
+'bd2eff94-9c4f-4526-a3b6-3c379b7e2c4a HELL'
+
+-- TEST: concat-precedence-9
+-- SQL:
+SELECT 'HELL EXISTS: ' || (SELECT FALSE)::string;
+-- EXPECTED:
+'HELL EXISTS: FALSE'
+
+-- TEST: concat-precedence-10
+-- SQL:
+SELECT 'HELL EXISTS ' || (SELECT TRUE) || 'LIE';
+-- EXPECTED:
+'HELL EXISTS TRUELIE'
+
+-- TEST: concat-precedence-11
+-- SQL:
+SELECT int_col AS alias FROM arithmetic_space GROUP BY 'x' || alias;
+-- ERROR:
+column "int_col" is not found in grouping expressions!
+
+-- TEST: concat-precedence-12
+-- SQL:
+SELECT 'x' || int_col AS alias FROM arithmetic_space GROUP BY alias;
+-- UNORDERED:
+'x1', 'x2', 'x3'
+
+-- TEST: concat-precedence-13
+-- SQL:
+SELECT 'SHOULD FAIL' || ARRAY[3., 2, 1];
+-- ERROR:
+could not resolve operator overload for \|\|\(text, numeric\[\]\)
+
+-- TEST: concat-precedence-14
+-- SQL:
+SELECT 'TOO TIGHT `IS` PRECEDENCE FIXED IN https://git.picodata.io/core/picodata/-/issues/1876: ' || int_col IS NULL FROM arithmetic_space LIMIT 1;
+-- EXPECTED:
+'TOO TIGHT `IS` PRECEDENCE FIXED IN https://git.picodata.io/core/picodata/-/issues/1876: FALSE'
+
+-- TEST: concat-precedence-15
+-- SQL:
+SELECT 1 || 2;
+-- ERROR:
+could not resolve operator overload for \|\|\(int, int\)
+
+-- TEST: concat-precedence-16
+-- SQL:
+SELECT 'x' || NULL;
+-- EXPECTED:
+NULL
+
+-- TEST: concat-precedence-17
+-- SQL:
+SELECT NULL || 'x';
+-- EXPECTED:
+NULL
+
+-- TEST: concat-precedence-18
+-- SQL:
+SELECT 'x' || $1;
+-- PARAMS:
+5
+-- EXPECTED:
+'x5'
+
+-- TEST: concat-precedence-19
+-- SQL:
+SELECT 'x' || $1;
+-- PARAMS:
+nil
+-- EXPECTED:
+NULL
+
+-- TEST: concat-precedence-20
+-- SQL:
+SELECT bool_col || 'y' FROM arithmetic_space LIMIT 1;
+-- EXPECTED:
+'TRUEy'
+
+-- TEST: concat-precedence-21
+-- SQL:
+SELECT 'y' || double_col FROM arithmetic_space LIMIT 1;
+-- EXPECTED:
+'y1.1'
+
+-- TEST: concat-precedence-22
+-- SQL:
+SELECT int_col || 'x' as ax FROM arithmetic_space ORDER BY ax;
+-- EXPECTED:
+'1x', '2x', '3x'
+
+-- TEST: concat-precedence-23
+-- SQL:
+SELECT int_col + $1, $1 || 'x' FROM arithmetic_space;
+-- PARAMS:
+2
+-- EXPECTED:
+3, '2x', 4, '2x', 5, '2x'
+
+-- TEST: concat-precedence-24
+-- SQL:
+SELECT int_col AS alias FROM arithmetic_space GROUP BY alias, alias || 'x';
+-- EXPECTED:
+1, 2, 3
+
+-- TEST: concat-precedence-25
+-- SQL:
+SELECT 'x' || 2 * 3;
+-- EXPECTED:
+'x6'
+
+-- TEST: concat-precedence-26
+-- SQL:
+SELECT 2 * 3 || 'x';
+-- EXPECTED:
+'6x'
+
+-- TEST: concat-precedence-27
+-- SQL:
+SELECT 'x' || 7 % 4;
+-- EXPECTED:
+'x3'
+
+-- TEST: concat-precedence-28
+-- SQL:
+SELECT 7 % 4 || 'x';
+-- EXPECTED:
+'3x'
+
+-- TEST: concat-precedence-29
+-- SQL:
+SELECT 'x' || 6 / 2;
+-- EXPECTED:
+'x3'
+
+-- TEST: concat-precedence-30
+-- SQL:
+SELECT 6 / 2 || 'x';
+-- EXPECTED:
+'3x'
+
+-- TEST: concat-precedence-31
+-- SQL:
+SELECT 'x' || 1 + 2 * 3;
+-- EXPECTED:
+'x7'
+
+-- TEST: concat-precedence-32
+-- SQL:
+SELECT 2 * 3 + 1 || 'x';
+-- EXPECTED:
+'7x'
+
+-- TEST: concat-precedence-33
+-- SQL:
+SELECT 'x' || 1 = 'x1';
+-- EXPECTED:
+true
+
+-- TEST: concat-precedence-34
+-- SQL:
+SELECT 'x1' = 'x' || 1;
+-- EXPECTED:
+true
+
+-- TEST: concat-precedence-35
+-- SQL:
+SELECT int_col || 'x' FROM arithmetic_space;
+-- UNORDERED:
+'1x', '2x', '3x'
+
+-- TEST: concat-precedence-36
+-- SQL:
+SELECT double_col || 'x' FROM arithmetic_space;
+-- UNORDERED:
+'1.1x', '2.1x', '3.1x'
+
+-- TEST: concat-precedence-37
+-- SQL:
+SELECT numeric_col || 'x' FROM arithmetic_space;
+-- UNORDERED:
+'2.2x', '4.4x', '6.6x'
+
+-- TEST: concat-precedence-38
+-- SQL:
+SELECT bool_col || 'x' FROM arithmetic_space;
+-- UNORDERED:
+'TRUEx', 'FALSEx', 'TRUEx'
+
+-- TEST: concat-precedence-39
+-- SQL:
+SELECT datetime_col || 'x' FROM arithmetic_space;
+-- UNORDERED:
+'2003-07-08T19:13:00+0300x', '2009-06-10T13:31:00+0300x', '2016-12-22T15:51:00+0300x'
+
+-- TEST: concat-precedence-40
+-- SQL:
+SELECT 'x' || datetime_col FROM arithmetic_space;
+-- UNORDERED:
+'x2003-07-08T19:13:00+0300', 'x2009-06-10T13:31:00+0300', 'x2016-12-22T15:51:00+0300'
+
+-- TEST: concat-precedence-41
+-- SQL:
+SELECT uuid_col || 'x' FROM arithmetic_space;
+-- UNORDERED:
+'11111111-1111-1111-1111-111111111111x', '22222222-2222-2222-2222-222222222222x', '33333333-3333-3333-3333-333333333333x'
+
+-- TEST: concat-precedence-42
+-- SQL:
+SELECT bool_col || 'x' FROM arithmetic_space;
+-- UNORDERED:
+'TRUEx', 'TRUEx', 'FALSEx'
+
+-- TEST: concat-precedence-43
+-- SQL:
+SELECT string_col || 'x' FROM arithmetic_space;
+-- UNORDERED:
+'123x', '123x', '123x'
+
+-- TEST: concat-precedence-44
+-- SQL:
+SELECT double_col || 'x' FROM arithmetic_space;
+-- UNORDERED:
+'1.1x', '2.1x', '3.1x'
