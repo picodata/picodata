@@ -791,6 +791,8 @@ def test_backup_works_with_vinyl(cluster: Cluster):
     cluster.set_share_dir(shared_dir)
     cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
     i1, i2 = cluster.wait_online()
+    # Wait for vshard to bootstrap and all buckets to become active before issuing DDL.
+    cluster.wait_until_buckets_balanced()
 
     # Create vinyl table.
     table_name = "t"
