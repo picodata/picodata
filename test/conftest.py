@@ -64,6 +64,21 @@ from framework.util import ExpectedError
 
 pytest_plugins = "framework.sqltester"
 
+# Teach the tarantool msgpack unpacker how to decode native JSON values
+# (MP_JSON, ext type 20). The upstream driver ships decoders for decimal, uuid,
+# datetime and friends, but not json, so a bare `SELECT <json column>` would
+# otherwise raise NotImplementedError. The MP_JSON payload is just the msgpack
+# encoding of the json value itself, so we decode it into the corresponding
+# python object, mirroring what psycopg does for json over pgproto.
+_MP_JSON_EXT_CODE = 20
+
+
+def _decode_mp_json(data, unpacker=None):
+    return msgpack.unpackb(data, raw=False)
+
+
+tarantool.msgpack_ext.unpacker.decoders[_MP_JSON_EXT_CODE] = _decode_mp_json  # type: ignore
+
 # ---------------------------------------------------------------------------
 # Timeout scaling for slow environments (e.g. ASan-instrumented builds)
 # ---------------------------------------------------------------------------
