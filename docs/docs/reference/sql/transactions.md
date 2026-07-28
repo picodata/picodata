@@ -123,7 +123,7 @@ END $$;
   модифицирующих: то есть, все `RETURN QUERY SELECT ...` должны идти до
   [DML] и дальше уже появиться не могут.
 
-[перемещения данных]: explain.md#data_motion_types
+[перемещения данных]: explain_facets/logical.md#data_motion_types
 [шардированным]: ../../overview/glossary.md#sharding
 [DML]: dml.md
 [DQL]: dql.md

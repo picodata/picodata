@@ -672,3 +672,13 @@ Prepared Statement (Подготовленный запрос) — это мех
 (ROLLBACK). Транзакционное исполнение обеспечивает целостность данных,
 следуя [принципам ACID](#isolation) (атомарность, согласованность,
 изолированность, долговечность).
+
+## Фасет {: #explain_facet }
+
+Фасет — режим отображения вывода команды EXPLAIN, определяющий, какую именно
+информацию о запросе показать (например,
+[RAW](../reference/sql/explain_facets/raw.md),
+[LOGICAL](../reference/sql/explain_facets/logical.md),
+[BUCKETS](../reference/sql/explain_facets/buckets.md),
+[FORWARD](../reference/sql/explain_facets/forward.md),
+[CONTEXT](../reference/sql/explain_facets/context.md)).

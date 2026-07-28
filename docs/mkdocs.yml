@@ -81,6 +81,13 @@ nav:
       - reference/sql/ddl.md
       - reference/sql/dml.md
       - reference/sql/dql.md
+      - Средства для отладки запросов:
+          - Использование EXPLAIN: reference/sql/explain.md
+          - reference/sql/explain_facets/raw.md
+          - reference/sql/explain_facets/logical.md
+          - reference/sql/explain_facets/buckets.md
+          - reference/sql/explain_facets/forward.md
+          - reference/sql/explain_facets/context.md
       - reference/sql/non_block.md
       - reference/sql/object.md
       - reference/sql_types.md
@@ -110,7 +117,7 @@ nav:
           - reference/sql/drop_role.md
           - reference/sql/drop_table.md
           - reference/sql/drop_user.md
-          - reference/sql/explain.md
+          - EXPLAIN: reference/sql/explain.md
           - reference/sql/grant.md
           - reference/sql/insert.md
           - reference/sql/revoke.md
