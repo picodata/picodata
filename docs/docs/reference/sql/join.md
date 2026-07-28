@@ -86,7 +86,7 @@ Picodata поддерживает два типа соединения: `INNER J
 Покажем это на примере соединения по равенству колонок для таблиц
 `items` и `orders`.
 
-??? example "Тестовые таблицы"
+??? example "Подготовка тестового окружения"
     Примеры использования команд включают в себя запросы к [тестовым
     таблицам](../legend.md).
 
@@ -196,7 +196,7 @@ ON items.name = orders.item;
 
 См. также:
 
-- [EXPLAIN и варианты перемещения данных](explain.md#data_motion_types)
+- [EXPLAIN и варианты перемещения данных](explain_facets/logical.md#data_motion_types)
 
 ### Отсутствие перемещения {: #no_motion }
 
@@ -209,21 +209,18 @@ ON items.name = orders.item;
 своим колонкам "id":
 
 ```sql
-sql> EXPLAIN SELECT items.name, items.stock, orders.amount
+EXPLAIN (LOGICAL)
+SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
 ON items.id = orders.id;
-projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
-    join on ROW("ITEMS"."ID"::integer) = ROW("ORDERS"."ID"::integer)
-        scan "ITEMS"
-            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
-                scan "ITEMS"
-        scan "ORDERS"
-            projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
-                scan "ORDERS"
-execution options:
-sql_vdbe_opcode_max = 45000
-sql_motion_row_max = 5000
+```
+
+```
+projection (items.name::string -> name, items.stock::int -> stock, orders.amount::int -> amount)
+  join on (items.id::int = orders.id::int)
+    scan items
+    scan orders
 ```
 
 ### Частичное перемещение {: #segment_motion }
@@ -236,21 +233,20 @@ sql_motion_row_max = 5000
 "orders" — по какой-то другой колонке:
 
 ```sql
-sql> EXPLAIN SELECT items.name, items.stock, orders.amount
-FROM items
-INNER JOIN orders
-ON items.id = orders.id;
-projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
-    join on ROW("ITEMS"."ID"::integer) = ROW("ORDERS"."ID"::integer)
-        scan "ITEMS"
-            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
-                scan "ITEMS"
-        scan "ORDERS"
-            projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
-                scan "ORDERS"
-execution options:
-sql_vdbe_opcode_max = 45000
-sql_motion_row_max = 5000
+EXPLAIN (LOGICAL) SELECT id, item FROM orders
+JOIN
+(SELECT nmbr, product FROM deliveries) AS new_table
+ON orders.id = new_table.nmbr;
+```
+
+```sql
+projection (orders.id::int -> id, orders.item::string -> item)
+  join on (orders.id::int = new_table.nmbr::int)
+    scan orders
+    motion [policy: segment([ref(nmbr)]), program: ReshardIfNeeded]
+      scan new_table
+        projection (deliveries.nmbr::int -> nmbr, deliveries.product::string -> product)
+          scan deliveries
 ```
 
 ### Полное перемещение {: #full_motion }
@@ -265,60 +261,51 @@ sql_motion_row_max = 5000
 том, что обе таблицы распределены только по `id`:
 
 ```sql
-sql> EXPLAIN SELECT items.name, items.stock, orders.amount
+EXPLAIN (LOGICAL) SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
 ON items.name = orders.item;
-projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
-    join on ROW("ITEMS"."NAME"::string) = ROW("ORDERS"."ITEM"::string)
-        scan "ITEMS"
-            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
-                scan "ITEMS"
-        motion [policy: full]
-            scan "ORDERS"
-                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
-                    scan "ORDERS"
-execution options:
-sql_vdbe_opcode_max = 45000
-sql_motion_row_max = 5000
+```
+
+```sql
+projection (items.name::string -> name, items.stock::int -> stock, orders.amount::int -> amount)
+  join on (items.name::string = orders.item::string)
+    scan items
+    motion [policy: full, program: ReshardIfNeeded]
+      projection (orders.id::int -> id, orders.bucket_id::int -> bucket_id, orders.item::string -> item, orders.amount::int -> amount, orders.since::datetime -> since)
+        scan orders
 ```
 
 Также, при использовании математических выражений или литералов, перемещение всегда будет полным:
 
 ```sql
-sql> EXPLAIN SELECT items.name, items.stock, orders.amount
+EXPLAIN (LOGICAL) SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
 ON items.id > 2;
-projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
-    join on ROW("ITEMS"."ID"::integer) > ROW(2::int)
-        scan "ITEMS"
-            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
-                scan "ITEMS"
-        motion [policy: full]
-            scan "ORDERS"
-                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
-                    scan "ORDERS"
-execution options:
-sql_vdbe_opcode_max = 45000
-sql_motion_row_max = 5000
 ```
 
 ```sql
-sql> EXPLAIN SELECT items.name, items.stock, orders.amount
+projection (items.name::string -> name, items.stock::int -> stock, orders.amount::int -> amount)
+  join on (items.id::int > 2::int)
+    scan items
+    motion [policy: full, program: ReshardIfNeeded]
+      projection (orders.id::int -> id, orders.bucket_id::int -> bucket_id, orders.item::string -> item, orders.amount::int -> amount, orders.since::datetime -> since)
+        scan orders
+```
+
+```sql
+EXPLAIN (LOGICAL) SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
 ON TRUE;
-projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
-    join on true::boolean
-        scan "ITEMS"
-            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
-                scan "ITEMS"
-        motion [policy: full]
-            scan "ORDERS"
-                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
-                    scan "ORDERS"
-execution options:
-sql_vdbe_opcode_max = 45000
-sql_motion_row_max = 5000
+```
+
+```sql
+projection (items.name::string -> name, items.stock::int -> stock, orders.amount::int -> amount)
+  join on (true::bool)
+    scan items
+    motion [policy: full, program: ReshardIfNeeded]
+      projection (orders.id::int -> id, orders.bucket_id::int -> bucket_id, orders.item::string -> item, orders.amount::int -> amount, orders.since::datetime -> since)
+        scan orders
 ```

@@ -152,67 +152,71 @@ ORDER BY name;
 
 ??? example "План исполнения запроса"
     ```sql
-    EXPLAIN(RAW,FMT) SELECT name,amount FROM customers WHERE id !=3 GROUP BY amount,name HAVING sum(amount) > 100 ORDER BY name;
-    1. Query (STORAGE):
-    SELECT
-    "customers"."amount" as "gr_expr_1",
-    "customers"."name" as "gr_expr_2",
-    sum (CAST ("customers"."amount" as int)) as "sum_1"
-    FROM
-    "customers"
-    WHERE
-    "customers"."id" <> CAST(3 AS int)
-    GROUP BY
-    "customers"."amount",
-    "customers"."name"
-    +----------+-------+------+-------------------------------------+
-    | selectid | order | from | detail                              |
-    +===============================================================+
-    | 0        | 0     | 0    | SCAN TABLE customers (~983040 rows) |
-    |----------+-------+------+-------------------------------------|
-    | 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY        |
-    +----------+-------+------+-------------------------------------+
+    EXPLAIN (RAW, FMT) SELECT name, amount FROM customers WHERE id !=3 GROUP BY amount,name HAVING sum(amount) > 100 ORDER BY name;
+    ```
 
-    2. Query (ROUTER):
+    ```sql
+    ╭──────────────────────────╮
+    │ 1. Query (WHOLE STORAGE) │
+    ╰──────────────────────────╯
+    
     SELECT
-    "name",
-    "amount"
+      "customers"."amount" as "gr_expr_1",
+      "customers"."name" as "gr_expr_2",
+      sum (CAST ("customers"."amount" as int)) as "sum_1"
     FROM
-    (
+      "customers"
+    WHERE
+      "customers"."id" <> CAST(3 AS int)
+    GROUP BY
+      "customers"."amount",
+      "customers"."name"
+    
+    plan:
+        [0] SCAN TABLE customers (~983040 rows)
+        [0] USE TEMP B-TREE FOR GROUP BY
+    
+    ╭───────────────────╮
+    │ 2. Query (ROUTER) │
+    ╰───────────────────╯
+    
+    SELECT
+      "name",
+      "amount"
+    FROM
+      (
         SELECT
-        "COL_1" as "name",
-        "COL_0" as "amount"
+          "COL_1" as "name",
+          "COL_0" as "amount"
         FROM
-        (
+          (
             SELECT
-            "COL_0",
-            "COL_1",
-            "COL_2"
+              "COL_0",
+              "COL_1",
+              "COL_2"
             FROM
-            "_tmp_9999946914108385841_0136"
-        )
+              "_tmp_3176007081912592988_0136"
+          )
         GROUP BY
-        "COL_0",
-        "COL_1"
+          "COL_0",
+          "COL_1"
         HAVING
-        sum ("COL_2") > CAST(100 AS int)
-    )
+          sum ("COL_2") > CAST(100 AS int)
+      )
     ORDER BY
-    "name"
-    +----------+-------+------+----------------------------------------------------------+
-    | selectid | order | from | detail                                                   |
-    +====================================================================================+
-    | 0        | 0     | 0    | SCAN TABLE _tmp_9999946914108385841_0136 (~1048576 rows) |
-    |----------+-------+------+----------------------------------------------------------|
-    | 0        | 0     | 0    | USE TEMP B-TREE FOR GROUP BY                             |
-    |----------+-------+------+----------------------------------------------------------|
-    | 0        | 0     | 0    | USE TEMP B-TREE FOR ORDER BY                             |
-    +----------+-------+------+----------------------------------------------------------+
+      "name"
+    
+    plan:
+        [0] SCAN TABLE _tmp_3176007081912592988_0136 (~1048576 rows)
+        [0] USE TEMP B-TREE FOR GROUP BY
+        [0] USE TEMP B-TREE FOR ORDER BY
     ```
 
 См. также:
 
-- [Просмотр низкоуровневого плана запроса](explain.md#raw_query)
+- [EXPLAIN](explain.md)
+
+- [Фасет RAW](explain_facets/raw.md)
 
 ## Перемещение данных {: #groupby_motions }
 
@@ -227,21 +231,20 @@ ORDER BY name;
 фиксирует ключ шардирования:
 
 ```sql
-EXPLAIN SELECT id, SUM(amount) FROM customers WHERE id = 1 GROUP BY id;
+EXPLAIN (LOGICAL) SELECT id, SUM(amount) FROM customers WHERE id = 1 GROUP BY id;
 ```
 
 ??? example "Существенная часть плана"
     ```sql
-    projection ("customers"."id"::int -> "id", sum("customers"."amount") -> "col_1")
-        group by ("customers"."id"::int)
-            selection "customers"."id"::int = 1::int
-                scan "customers"
-    buckets = [1750]
+    projection (customers.id::int -> id, sum(customers.amount::int::int)::decimal -> col_1)
+      group by (customers.id::int)
+        selection (customers.id::int = 1::int)
+          scan customers
     ```
 
 См. также:
 
-- [Отсутствие перемещения](explain.md#no_motion).
+- [Отсутствие перемещения](explain_facets/logical.md#no_motion).
 
 Важно не то, какая колонка указана в `GROUP BY`, а сколько бакетов
 затрагивает запрос после фильтрации.
@@ -252,7 +255,7 @@ EXPLAIN SELECT id, SUM(amount) FROM customers WHERE id = 1 GROUP BY id;
 - локальная вставка/материализация (данные в пределах одного узла)
 - частичное/полное перемещение (данные расположены на разных узлах)
 
-[перемещения данных]: explain.md/#data_motion_types
+[перемещения данных]: explain_facets/logical.md/#data_motion_types
 
 Один из таких вариантов — полное перемещение данных. Оно часто
 появляется, когда группировка идёт по колонке, не входящей в ключ
@@ -261,23 +264,22 @@ EXPLAIN SELECT id, SUM(amount) FROM customers WHERE id = 1 GROUP BY id;
 плане появляется `motion [policy: full]`:
 
 ```sql
-EXPLAIN SELECT name, COUNT(*) AS count FROM customers
+EXPLAIN (LOGICAL) SELECT name, COUNT(*) AS count FROM customers
 WHERE id <> 3
 GROUP BY name;
 ```
 
 ??? example "Существенная часть плана"
     ```sql
-    projection ("gr_expr_1"::string -> "name", sum("count_1") -> "count")
-        group by ("gr_expr_1"::string)
-            motion [policy: full, program: ReshardIfNeeded]
-                projection ("customers"."name"::string -> "gr_expr_1", count(*) -> "count_1")
-                    group by ("customers"."name"::string)
-                        selection "customers"."id"::int <> 3::int
-                            scan "customers"
-    buckets = [1-16384]
+    projection (gr_expr_1::string -> name, sum(count_1::int)::int -> count)
+      group by (gr_expr_1::string)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (customers.name::string -> gr_expr_1, count(*)::int -> count_1)
+            group by (customers.name::string)
+              selection (customers.id::int <> 3::int)
+                scan customers
     ```
 
 См. также:
 
-- [Перемещение данных](explain.md/#data_motion_types)
+- [Перемещение данных](explain_facets/logical.md#data_motion_types)

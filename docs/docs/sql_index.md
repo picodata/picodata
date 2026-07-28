@@ -53,6 +53,7 @@ article.md-typeset.md-typeset ul {
 
 * [BACKUP](reference/sql/backup.md)
 * [BOOLEAN](reference/sql_types.md#boolean)
+* [BUCKETS](reference/sql/explain_facets/buckets.md)
 
 <b>C</b>
 
@@ -61,6 +62,7 @@ article.md-typeset.md-typeset ul {
 * [CAST](reference/sql/cast.md)
 * [COALESCE](reference/sql/coalesce.md)
 * [column](reference/sql/object.md)
+* [CONTEXT](reference/sql/explain_facets/context.md)
 * [COUNT](reference/sql/aggregate.md#functions)
 * [CREATE INDEX](reference/sql/create_index.md)
 * [CREATE PLUGIN](reference/sql/create_plugin.md)
@@ -98,6 +100,10 @@ article.md-typeset.md-typeset ul {
 * [EXPLAIN](reference/sql/explain.md)
 * [expression](reference/sql/aggregate.md#expression)
 
+<b>F</b>
+
+* [FORWARD](reference/sql/explain_facets/forward.md)
+
 <b>G</b>
 
 * [GRANT](reference/sql/grant.md)
@@ -126,13 +132,14 @@ article.md-typeset.md-typeset ul {
 * [LIMIT ALL](reference/sql/select.md#params)
 * [LIMIT NULL](reference/sql/select.md#params)
 * [LOCALTIMESTAMP](reference/sql/time_and_date.md#localtimestamp)
+* [LOGICAL](reference/sql/explain_facets/logical.md)
 * [LOWER](reference/sql/lower.md)
 
 <b>M</b>
 
 * [MAX](reference/sql/aggregate.md#functions)
 * [MIN](reference/sql/aggregate.md#functions)
-* [motion](reference/sql/explain.md#data_motion_types)
+* [motion](reference/sql/explain_facets/logical.md#data_motion_types)
 
 <b>O</b>
 
@@ -151,16 +158,17 @@ article.md-typeset.md-typeset ul {
 * [PICO_RAFT_LEADER_UUID](reference/sql/system_functions.md#pico_raft_leader_uuid)
 * [plugin](architecture/plugins.md)
 * [procedure](admin/access_control.md#proc_access)
-* [projection](reference/sql/explain.md#plan_structure)
+* [projection](reference/sql/explain_facets/logical.md#query-with-scan)
 
 <b>R</b>
 
+* [RAW](reference/sql/explain_facets/raw.md)
 * [REVOKE](reference/sql/revoke.md)
 * [role](admin/access_control.md#role_model)
 
 <b>S</b>
 
-* [scan](reference/sql/explain.md#plan_structure)
+* [scan](reference/sql/explain_facets/logical.md#query-with-scan)
 * [SELECT](reference/sql/select.md)
 * [sharding key](overview/glossary.md#sharding_key)
 * [stored procedure](overview/glossary.md#stored_procedure)
