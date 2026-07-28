@@ -437,7 +437,8 @@ class AbstractCluster(ABC):
 
         yield runner_cls(cluster)
 
-        cluster.terminate()
+        # Speed up graceful shutdown so teardown doesn't hit the default 30s wait.
+        cluster.terminate(on_shutdown_timeout=1)
 
     def test_sql(
         self,
