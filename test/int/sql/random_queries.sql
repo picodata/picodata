@@ -212,6 +212,41 @@ SELECT * FROM t GROUP BY a, b ORDER BY 1;
 -- EXPECTED:
 1, 1, 2, 1, 3, 2, 4, 3
 
+-- TEST: test-creation-with-json-type
+-- SQL:
+CREATE TABLE s (a INT PRIMARY KEY, b JSON);
+
+-- TEST: test-dml-with-json-type
+-- SQL:
+INSERT INTO s VALUES (1, '{
+    "glossary": {
+        "title": "example glossary",
+        "GlossDiv": {
+            "title": "S",
+            "GlossList": {
+                "GlossEntry": {
+                    "ID": "SGML",
+                    "SortAs": "SGML",
+                    "GlossTerm": "Standard Generalized Markup Language",
+                    "Acronym": "SGML",
+                    "Abbrev": "ISO 8879:1986",
+                    "GlossDef": {
+                        "para": "A meta-markup language, used to create markup languages such as DocBook.",
+                        "GlossSeeAlso": ["GML", "XML"]
+                    },
+                    "GlossSee": "markup"
+                }
+            }
+        }
+    }
+}');
+
+-- TEST: test-select-with-json-type
+-- SQL:
+SELECT a, b['glossary']['title'] FROM s;
+-- EXPECTED:
+1, 'example glossary'
+
 -- TEST: test-json-is-not-keyword-1
 -- SQL:
 CREATE TABLE tc (JSON int primary key);
