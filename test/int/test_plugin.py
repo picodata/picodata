@@ -22,12 +22,9 @@ from conftest import (
     log_crawler,
 )
 from framework.ldap import LdapServer
-from framework.log import log
-from framework.registry import Registry, get_or_make_registry
 from framework.thread import spawn_thread
 from framework.util import copy_plugin_library
 from framework.util.build import Executable, cargo_build_path, project_plugins_path
-from packaging.version import Version
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -4066,11 +4063,6 @@ def test_plugin_on_cluster_leader_change_all_callbacks(cluster: Cluster):
     Retriable().call(check_on_stop)
 
 
-@pytest.mark.required_rolling_versions(
-    versions=[
-        get_or_make_registry().next_version(Version("26.1.4"), skip_on_gap=False),
-    ]
-)
 def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
     plugin = _PLUGIN_ON_CLUSTER_LEADER_CHANGE
     version = "0.1.0"
@@ -4222,14 +4214,8 @@ def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
     assert poisoned == 2
 
 
-@pytest.mark.skip(reason="Doesnt work on 26.3.0, see https://git.picodata.io/core/picodata/-/issues/3028    ")
-@pytest.mark.required_rolling_versions(
-    versions=[
-        get_or_make_registry().next_version(Version("26.1.4"), skip_on_gap=False),
-    ]
-)
 @pytest.mark.skip_asan("plug_26_1 is a standalone workspace built without ASan profiles")
-def test_plugin_on_cluster_leader_change_not_present(cluster: Cluster, registry: Registry):
+def test_plugin_on_cluster_leader_change_not_present(cluster: Cluster):
     """
     Check that the absence of the new callback on_cluster_leader_change in a plugin
     built with picodata-plugin of version 26.1, but on picodata of version 26.2 does
@@ -4243,13 +4229,18 @@ def test_plugin_on_cluster_leader_change_not_present(cluster: Cluster, registry:
         cluster, plugin, version, services=[service], configuration={"dummy_value_to_change": 80085}
     )
 
-    executable = registry.get(registry.next_version(Version("26.1.4")))
-    log.info(f"executable is {executable}")
+    def restart_with_set_envs(i: Instance):
+        i.env["PICODATA_UNSAFE_DISABLE_PLUGIN_COMPATIBILITY_CHECK"] = "1"
+        i.restart()
+        i.wait_online()
 
     # wait for the first instance to be the raft leader
-    i1 = cluster.add_instance(wait_online=True, init_replication_factor=3, executable=executable)
-    i2 = cluster.add_instance(wait_online=True, executable=executable)
-    i3 = cluster.add_instance(wait_online=True, executable=executable)
+    i1 = cluster.add_instance(wait_online=True, init_replication_factor=3)
+    restart_with_set_envs(i1)
+    i2 = cluster.add_instance(wait_online=True)
+    restart_with_set_envs(i2)
+    i3 = cluster.add_instance(wait_online=True)
+    restart_with_set_envs(i3)
 
     assert i1.raft_leader_id() == 1
 
