@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import json
 import logging
 import os
 import textwrap
@@ -277,21 +278,32 @@ class PgprotoRunner(AbstractRunner):
             return cur.fetchall()
 
 
-# Split `input_string` by `split_by`, except inside `[...]` arrays and
-# single-quoted strings.
+# Split `input_string` by `split_by`, except inside `[...]` arrays, `{...}`
+# JSON objects and string literals. A single-quoted string is an SQL-tester
+# text literal; a double-quoted one (with backslash escapes) is a JSON string,
+# which only occurs inside a `[...]`/`{...}` cell.
 def _split_top_level(input_string: str, split_by: str) -> list[str]:
     elements = []
     depth = 0
-    in_quotes = False
+    quote = None
+    escaped = False
     cur_start = 0
     for i, ch in enumerate(input_string):
-        if ch == "'":
-            in_quotes = not in_quotes
-        elif in_quotes:
-            continue
-        elif ch == "[":
+        if quote == '"':
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                quote = None
+        elif quote == "'":
+            if ch == "'":
+                quote = None
+        elif ch == "'" or (ch == '"' and depth > 0):
+            quote = ch
+        elif ch in "[{":
             depth += 1
-        elif ch == "]":
+        elif ch in "]}":
             depth -= 1
         elif ch == split_by and depth == 0:
             elements.append(input_string[cur_start:i])
@@ -300,7 +312,7 @@ def _split_top_level(input_string: str, split_by: str) -> list[str]:
     return elements
 
 
-def _parse_line(input_string, lead_sym: Any, split_by: str):
+def _parse_line(input_string, lead_sym: Any, split_by: str, nested: bool = False):
     result: list[Any] = []
     # Strip trailing whitespace so that a trailing comma is skipped rather
     # than parsed as a blank (NULL) element: `[1, 2, ]` is `[1, 2]`.
@@ -320,12 +332,21 @@ def _parse_line(input_string, lead_sym: Any, split_by: str):
         if element.lower() == "":
             continue
 
+        elif element.startswith("{"):
+            # A JSON object is a single cell; parse it into the python value
+            # the runners normalize json results to.
+            result.append(json.loads(element))
+        elif nested and element.startswith('"'):
+            # A JSON string inside a JSON array.
+            result.append(json.loads(element))
         elif element.startswith("'") and element.endswith("'"):
             # If element in single quotes, remove them and add as string
             result.append(element[1:-1])
         elif element.startswith("[") and element.endswith("]"):
-            # If element in square brackets, parse it as an array
-            result.append(_parse_line(element[1:-1], lead_sym, split_by))
+            # If element in square brackets, parse it as an array. This also
+            # covers JSON arrays: their numbers, `true`/`false` and `null`
+            # parse the same way, and nested objects/strings are handled above.
+            result.append(_parse_line(element[1:-1], lead_sym, split_by, nested=True))
         elif element.lower() in {"null", "none", "nil"}:
             # If element is a null, add as None
             result.append(None)
