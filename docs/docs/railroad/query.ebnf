@@ -3,7 +3,8 @@ explain     ::= 'EXPLAIN' (dml | ('(' 'RAW' (',' 'FMT')? ')')? dql )
 dql         ::= (with? select | values)
                 ('OPTION' '('
                     (
-                        'read_preference' '=' ('LEADER' | 'REPLICA' | 'ANY')
+                        'forward' '=' ('ON' | 'OFF' | 'RO_TO_RW')
+                        | 'read_preference' '=' ('LEADER' | 'REPLICA' | 'ANY')
                         | ('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned
                     )
                     (','
