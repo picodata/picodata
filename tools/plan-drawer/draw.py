@@ -1,9 +1,9 @@
+import argparse
 import json
-from typing import Any, Dict, List, Optional, Tuple, Union
+import sys
 from dataclasses import dataclass
 from enum import Enum
-import argparse
-import sys
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 class ArenaType(Enum):
@@ -82,6 +82,7 @@ class RustParser:
             self._try_parse_array,
             self._try_parse_identifier,  # Before object parsing to catch Rust structs
             self._try_parse_collection,  # Handle sets and collections
+            self._try_parse_angle_token,  # Handle opaque tokens like <uninit>
         ]
 
         for parser in parsers:
@@ -129,12 +130,30 @@ class RustParser:
         pos += 1  # skip ')'
         return value, pos
 
+    def _try_parse_angle_token(self, s: str, pos: int) -> Optional[Tuple[str, int]]:
+        """Try to parse opaque tokens printed with angle brackets, e.g. <uninit>."""
+        if pos >= len(s) or s[pos] != "<":
+            return None
+        end = s.find(">", pos)
+        if end == -1:
+            return None
+        return s[pos : end + 1], end + 1
+
     def _try_parse_number(self, s: str, pos: int) -> Optional[Tuple[Union[int, float], int]]:
         """Try to parse a number (int or float)."""
         if pos >= len(s) or not (s[pos].isdigit() or s[pos] == "-"):
             return None
 
         start = pos
+
+        # Hex literal, e.g. 0x0 or 0xFF (used by things like ExplainOptions(0x0))
+        if s[pos] == "0" and pos + 1 < len(s) and s[pos + 1] in ("x", "X"):
+            hex_pos = pos + 2
+            while hex_pos < len(s) and s[hex_pos] in "0123456789abcdefABCDEF":
+                hex_pos += 1
+            if hex_pos > pos + 2:  # at least one hex digit
+                return int(s[pos:hex_pos], 16), hex_pos
+
         if s[pos] == "-":
             pos += 1
 
