@@ -718,30 +718,32 @@ fn format_explain_buckets(
                 }
             }
             _ => {
-                let sym = if is_dyn_filtered { "<=" } else { "=" };
                 let repr = buckets_repr(buckets, bucket_count);
-                format!("buckets {sym} {repr}")
+                format!("buckets <= {repr}")
             }
         };
 
         return Ok(repr);
     }
 
-    match buckets {
+    let repr = buckets_repr(buckets, bucket_count);
+    let formatted_buckets = match buckets {
         Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() && is_dyn_filtered => {
-            let buckets_repr = buckets_repr(&Buckets::All, bucket_count);
-            Ok(format!("buckets <= {buckets_repr}"))
+            let repr = buckets_repr(&Buckets::All, bucket_count);
+            format!("buckets <= {repr}")
         }
         Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() => {
-            let buckets_repr = buckets_repr(buckets, bucket_count);
-            Ok(format!("buckets = {buckets_repr}"))
+            format!("buckets = {repr}")
         }
-        _ => {
+        Buckets::Filtered(_) => {
             let sym = if is_dyn_filtered { "<=" } else { "=" };
-            let buckets_repr = buckets_repr(buckets, bucket_count);
-            Ok(format!("buckets {sym} {buckets_repr}"))
+            format!("buckets {sym} {repr}")
         }
-    }
+        Buckets::All => format!("buckets <= {repr}"),
+        Buckets::Any => format!("buckets = {repr}"),
+    };
+
+    Ok(formatted_buckets)
 }
 
 /// Contains the SQL query that is executed in VDBE.

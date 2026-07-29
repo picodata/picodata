@@ -39,14 +39,14 @@ pub fn buckets_info_from_query<R: Router>(
             unreachable!("plan.is_block() returned true, but top is {block:?}")
         };
         let buckets = query.calculate_block_buckets(&block)?;
-        return Ok(BucketsInfo::new_calculated(buckets, true, bucket_count));
+        return Ok(BucketsInfo::new_calculated(buckets, bucket_count));
     }
 
     if ir.is_sharded_insert()? {
         let buckets = query.try_calculate_sharded_insert_buckets()?;
 
         return Ok(buckets.map_or(BucketsInfo::Unknown, |buckets| {
-            BucketsInfo::new_calculated(buckets, true, bucket_count)
+            BucketsInfo::new_calculated(buckets, bucket_count)
         }));
     }
 
@@ -127,12 +127,7 @@ pub fn buckets_info_from_query<R: Router>(
     }
 
     let buckets = estimated_buckets.expect("there's at least one subtree");
-
-    // Estimation is exact if we only have single
-    // executable subtree == whole plan
-    let is_exact = without_motions_ids.len() == 1 && without_motions_ids.contains(&top_id);
-
-    let buckets_info = BucketsInfo::new_calculated(buckets, is_exact, bucket_count);
+    let buckets_info = BucketsInfo::new_calculated(buckets, bucket_count);
 
     Ok(buckets_info)
 }

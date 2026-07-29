@@ -167,7 +167,7 @@ plan:
     [0] SCAN TABLE t1 (~1048576 rows)
         [0] SEARCH TABLE t2 USING PRIMARY KEY (a=?) (~1 row)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭─────────────────────────────────╮
 │ 2. Query (DYN-FILTERED STORAGE) │

@@ -428,6 +428,6 @@ projection (t.key::int -> key, t.value::string -> value)
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
     assert data["is_finished"] is True

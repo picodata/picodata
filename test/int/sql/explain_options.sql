@@ -55,7 +55,7 @@ SELECT "t"."a", "t"."b", "t"."c", "t"."bucket_id" FROM "t"
 plan:
     [0] SCAN TABLE t (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭──────────────────────────╮
 │ 2. Query (WHOLE STORAGE) │
@@ -69,7 +69,7 @@ plan:
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 3. Query (ROUTER) │
@@ -88,7 +88,7 @@ buckets = any
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: raw-buckets-union-many
 -- SQL:
@@ -116,7 +116,7 @@ GROUP BY
 plan:
     [0] SCAN TABLE t (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -455,7 +455,7 @@ plan:
     [0] SCAN TABLE t (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -473,7 +473,7 @@ buckets = any
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: logical-buckets-select
 -- SQL:
@@ -502,7 +502,7 @@ limit 1
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: logical-raw-insert
 -- SQL:
@@ -571,7 +571,7 @@ limit 1
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: raw-buckets-forward-logical-select
 -- SQL:
@@ -614,7 +614,7 @@ plan:
     [0] SCAN TABLE t (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -715,7 +715,7 @@ SELECT "t"."b" FROM "t"
 plan:
     [0] SCAN TABLE t (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭──────────────────────────╮
 │ 2. Query (WHOLE STORAGE) │
@@ -748,7 +748,7 @@ plan:
         [0] SCAN TABLE _tmp_6068817417698660462_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 3. Query (ROUTER) │
@@ -792,7 +792,7 @@ forward analysis (on > ro_to_rw > off):
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: raw-forward-delete
 -- SQL:
@@ -909,7 +909,7 @@ explain (buckets, context) delete from t where a = 42;
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Context                                                            
@@ -1492,7 +1492,7 @@ plan:
     [0] SCAN TABLE t (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -1510,7 +1510,7 @@ buckets = any
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: raw-buckets-select-join
 -- SQL:
@@ -1530,13 +1530,13 @@ plan:
     [0] SCAN TABLE t (~1048576 rows)
         [0] SEARCH TABLE g USING PRIMARY KEY (a=?) (~1 row)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: raw-buckets-fmt-select-join
 -- SQL:
@@ -1588,7 +1588,7 @@ plan:
         [0] SEARCH TABLE g USING PRIMARY KEY (a=?) (~1 row)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -1646,7 +1646,7 @@ buckets = any
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: raw-buckets-logical-select-subquery
 -- SQL:
@@ -1772,7 +1772,7 @@ SELECT "t"."a" FROM "t"
 plan:
     [0] SCAN TABLE t (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -2069,7 +2069,7 @@ buckets = any
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets <= [1410,1934]
+buckets = [1410,1934]
 
 -- TEST: raw-buckets-logical-simple-select-dyn-filtered-x/k
 -- SQL:
@@ -2109,7 +2109,7 @@ SELECT min (CAST ("tt"."d" as int)) as "min_1" FROM "tt"
 plan:
     [0] SCAN TABLE tt (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -2205,7 +2205,7 @@ SELECT min (CAST ("tt"."d" as int)) as "min_1" FROM "tt"
 plan:
     [0] SCAN TABLE tt (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │

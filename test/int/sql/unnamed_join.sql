@@ -124,7 +124,7 @@ subquery $1:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: unnamed_join_cte_name_conflict
 -- SQL:
@@ -162,7 +162,7 @@ subquery $1:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: unnamed_join_alias_name_conflict
 -- SQL:
@@ -200,7 +200,7 @@ subquery $1:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: unnamed_join_table_name_conflict_prepare
 -- SQL:
@@ -249,4 +249,4 @@ subquery $1:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]

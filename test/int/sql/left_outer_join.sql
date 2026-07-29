@@ -125,7 +125,7 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_inner_segment_motion-1
 -- SQL:
@@ -202,7 +202,7 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_outer_segment_motion
 -- SQL:
@@ -274,7 +274,7 @@ subquery $0:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_sq_with_segment_motion-1
 -- SQL:

@@ -682,9 +682,7 @@ where
         let info = crate::executor::buckets_info::buckets_info_from_query(self)?;
         let forward = match info {
             BucketsInfo::Unknown => crate::ir::options::Forward::On,
-            BucketsInfo::Calculated {
-                bounded_buckets, ..
-            } => self
+            BucketsInfo::Calculated(bounded_buckets) => self
                 .get_coordinator()
                 .get_possible_forward_option(&bounded_buckets.buckets, &mut None)?,
         };
