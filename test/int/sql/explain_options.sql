@@ -171,9 +171,9 @@ FROM
       "_tmp_8622389225456398617_1136"
   )
 ORDER BY
-'  3'
+  3
 LIMIT
-'  5'
+  5
 ''
 plan:
     [2] SCAN TABLE t (~1048576 rows)
@@ -204,9 +204,9 @@ FROM
     )
   )
 ORDER BY
-'  3'
+  3
 LIMIT
-'  5'
+  5
 ''
 plan:
     [0] SCAN TABLE _tmp_7262994641693291397_2136 (~1048576 rows)
@@ -739,9 +739,9 @@ FROM
       "t"."a"
   )
 ORDER BY
-'  1'
+  1
 LIMIT
-'  1'
+  1
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
@@ -771,9 +771,9 @@ FROM
       "COL_0"
   )
 ORDER BY
-'  1'
+  1
 LIMIT
-'  1'
+  1
 ''
 plan:
     [0] SCAN TABLE _tmp_14535502943246813910_1136 (~1048576 rows)
@@ -1265,7 +1265,7 @@ VALUES
     CAST(42 AS int),
     CAST(2.5 AS decimal),
     CAST('lol' AS string),
-'    739'
+    739
   )
 ''
 insert into t on conflict: fail
@@ -1315,7 +1315,7 @@ VALUES
     CAST(42 AS int),
     CAST(2.5 AS decimal),
     CAST('lol' AS string),
-'    739'
+    739
   )
 ''
 plan:
@@ -1579,9 +1579,9 @@ FROM
       "g"."c"
   )
 ORDER BY
-'  4'
+  4
 LIMIT
-'  10'
+  10
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
@@ -1631,9 +1631,9 @@ FROM
       "COL_5"
   )
 ORDER BY
-'  4'
+  4
 LIMIT
-'  10'
+  10
 ''
 plan:
     [0] SCAN TABLE _tmp_12104036685945726089_0136 (~1048576 rows)
@@ -1788,7 +1788,7 @@ FROM
       "_tmp_451440689119907658_0136"
   )
 ORDER BY
-'  1'
+  1
 ''
 plan:
     [0] SCAN TABLE _tmp_451440689119907658_0136 (~1048576 rows)
@@ -1986,7 +1986,7 @@ FROM
       "_tmp_8910649238617144144_1136"
   )
 ORDER BY
-'  1'
+  1
 ''
 plan:
     [0] SCAN TABLE _tmp_8910649238617144144_1136 (~1048576 rows)
@@ -2361,3 +2361,44 @@ buckets = [626,1403,2426]
 ──────────────────────────────────────────────────────────────────────
 ''
 buckets = [626,1403,2426]
+
+-- TEST: order-by-position-fmt-values
+-- SQL:
+EXPLAIN (raw, fmt)
+SELECT * FROM (VALUES (1)) ORDER BY 1;
+-- EXPECTED:
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
+''
+VALUES (CAST(1 AS int))
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT
+  "COL_0" as "COLUMN_1"
+FROM
+  (
+    SELECT
+      *
+    FROM
+      (
+        (
+          SELECT
+            "COL_0"
+          FROM
+            "_tmp_17381978922652183369_0136"
+        )
+      ) as "unnamed_subquery"
+  )
+ORDER BY
+  1
+''
+plan:
+    [0] SCAN TABLE _tmp_17381978922652183369_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR ORDER BY
