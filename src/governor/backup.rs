@@ -148,14 +148,12 @@ pub async fn collect_proc_apply_backup(
     let mut fs = FuturesUnordered::new();
     for instance_name in targets {
         tlog!(Info, "calling proc_apply_backup"; "instance_name" => %instance_name);
-        let resp = pool
-            .call(
-                &instance_name,
-                proc_name!(proc_apply_backup),
-                rpc,
-                rpc_timeout,
-            )
-            .map_err(OnError::Retry)?;
+        let resp = pool.call(
+            &instance_name,
+            proc_name!(proc_apply_backup),
+            rpc,
+            rpc_timeout,
+        );
         fs.push(async move { (instance_name, resp.await) });
     }
 
@@ -220,7 +218,7 @@ pub async fn collect_proc_backup_abort_clear(
             proc_name!(proc_backup_abort_clear),
             rpc,
             rpc_timeout,
-        )?;
+        );
         fs.push(async move {
             match resp.await {
                 Ok(rpc::ddl_backup::ResponseClear::Ok) => {

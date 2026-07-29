@@ -107,7 +107,7 @@ pub(crate) fn send_rpc_request(
         crate::proc_name!(rpc::server::proc_rpc_dispatch),
         &args,
         timeout,
-    )?;
+    );
     // FIXME: remove this extra allocation for RawByteBuf
     let output: RawByteBuf = fiber::block_on(future)?;
     process_rpc_output(&output)
@@ -128,7 +128,7 @@ fn call_builtin_stored_proc(
 
     let args = RawBytes::new(input);
 
-    let future = pool.call_raw(instance_name, proc, args, timeout)?;
+    let future = pool.call_raw(instance_name, proc, args, timeout);
     // FIXME: remove this extra allocation for RawByteBuf
     let output: RawByteBuf = fiber::block_on(future)?;
 

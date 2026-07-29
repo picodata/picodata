@@ -219,7 +219,7 @@ pub fn compare_and_swap(
         let future = async {
             let timeout = deadline.duration_since(fiber::clock());
             node.pool
-                .call(&leader_id, proc_name!(proc_cas_v2), request, timeout)?
+                .call(&leader_id, proc_name!(proc_cas_v2), request, timeout)
                 .timeout(timeout)
                 .await
                 .map_err(Into::into)

@@ -602,7 +602,7 @@ impl ConnectionPool {
         proc_name: &'static str,
         req: &R,
         timeout: Duration,
-    ) -> Result<impl Future<Output = Result<R::Response>>>
+    ) -> impl Future<Output = Result<R::Response>>
     where
         R: rpc::RequestArgs,
     {
@@ -624,7 +624,7 @@ impl ConnectionPool {
         proc: &'static str,
         args: &Args,
         timeout: Duration,
-    ) -> Result<impl Future<Output = Result<Response>>>
+    ) -> impl Future<Output = Result<Response>>
     where
         Response: tarantool::tuple::DecodeOwned + 'static,
         Args: ToTupleBuffer + ?Sized,
@@ -643,8 +643,21 @@ impl ConnectionPool {
         if let Some(test_override) = &self.test_override {
             handle_test_override(test_override, id, proc, args, timeout, on_response);
         } else {
-            let worker = id.get_or_create_in(self)?;
-            worker.rpc_raw(proc, args, timeout, on_response);
+            let worker = id.get_or_create_in(self);
+            match worker {
+                Ok(worker) => {
+                    // `on_response` callback will handle the RPC response or a
+                    // request encoding error, and the result will be available
+                    // via the `rx` channel
+                    worker.rpc_raw(proc, args, timeout, on_response);
+                }
+                Err(e) => {
+                    // Report the error directly to the `on_response` callback
+                    // and it will be available to the caller once we extract
+                    // it from the `rx` channel bellow
+                    on_response(Err(e));
+                }
+            }
         }
 
         // We use an explicit type implementing Future instead of defining an
@@ -654,7 +667,7 @@ impl ConnectionPool {
             let rx = Pin::new(&mut rx);
             Future::poll(rx, cx).map(|r| r.unwrap_or_else(|_| Err(Error::other("disconnected"))))
         });
-        Ok(f)
+        f
     }
 }
 
@@ -813,16 +826,13 @@ mod tests {
         crate::init_sbroad();
         crate::init_stored_procedures();
 
-        let result: u32 = fiber::block_on(
-            pool.call_raw(
-                &instance.raft_id,
-                "test_stored_proc",
-                &(1u32, 2u32),
-                Duration::MAX,
-            )
-            .unwrap(),
-        )
-        .unwrap();
+        let f = pool.call_raw(
+            &instance.raft_id,
+            "test_stored_proc",
+            &(1u32, 2u32),
+            Duration::MAX,
+        );
+        let result: u32 = fiber::block_on(f).unwrap();
         assert_eq!(result, 3u32);
     }
 

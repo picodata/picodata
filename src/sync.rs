@@ -232,7 +232,7 @@ pub fn wait_for_index_globally(
 
         for instance_name in targets {
             tlog!(Debug, "calling proc_wait_index"; "instance_name" => %instance_name);
-            let resp = pool.call(**instance_name, proc_name!(proc_wait_index), &rpc, timeout)?;
+            let resp = pool.call(**instance_name, proc_name!(proc_wait_index), &rpc, timeout);
             fs.push_back(resp);
         }
 
@@ -343,7 +343,6 @@ mod tests {
                 &GetVclockRpc {},
                 Duration::MAX,
             )
-            .unwrap()
             .await
             .unwrap();
         assert_eq!(result, Vclock::current());
@@ -357,7 +356,6 @@ mod tests {
             },
             Duration::MAX,
         )
-        .unwrap()
         .await
         .unwrap();
     }

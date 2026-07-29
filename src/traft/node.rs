@@ -2801,14 +2801,6 @@ impl NodeImpl {
                 &req,
                 SNAPSHOT_CHUNK_REQUEST_TIMEOUT,
             );
-            let fut = unwrap_ok_or!(fut,
-                Err(e) => {
-                    tlog!(Warning, "failed requesting next snapshot chunk: {e}");
-                    self.main_loop_status("error when receiving snapshot");
-                    fiber::sleep(MainLoop::TICK * 4);
-                    continue;
-                }
-            );
 
             let resp = fiber::block_on(fut);
             let mut resp = unwrap_ok_or!(resp,

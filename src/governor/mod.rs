@@ -402,7 +402,7 @@ impl Loop {
                         "replicaset_name" => %replicaset_name,
                     ]
                     async {
-                        let vclock = pool.call(&new_master_name, proc_name!(proc_get_vclock), &get_vclock_rpc, rpc_timeout)?.await?;
+                        let vclock = pool.call(&new_master_name, proc_name!(proc_get_vclock), &get_vclock_rpc, rpc_timeout).await?;
                         promotion_vclock = Some(vclock);
                     }
                 }
@@ -464,10 +464,10 @@ impl Loop {
                     async {
                         tlog!(Info, "calling proc_replication_demote on current master: {old_master_name}");
                         crate::error_injection!(block "BLOCK_REPLICATION_DEMOTE");
-                        let f_demote = pool.call(&old_master_name, proc_name!(proc_replication_demote), &demote_rpc, rpc_timeout)?;
+                        let f_demote = pool.call(&old_master_name, proc_name!(proc_replication_demote), &demote_rpc, rpc_timeout);
 
                         tlog!(Info, "calling proc_replication_sync on target master: {new_master_name}");
-                        let f_sync = pool.call(&new_master_name, proc_name!(proc_replication_sync), &sync_rpc, rpc_timeout)?;
+                        let f_sync = pool.call(&new_master_name, proc_name!(proc_replication_sync), &sync_rpc, rpc_timeout);
                         let f_sync = async {
                             let res = f_sync.await;
                             update_replication_error(instance_reachability, new_master_raft_id, res.as_ref().err());
@@ -558,7 +558,7 @@ impl Loop {
                                 proc_name!(proc_replication_promote),
                                 &promote_rpc,
                                 promote_timeout,
-                            )?
+                            )
                             .await?;
                         promote_response = Some(response);
                     }
@@ -692,7 +692,7 @@ impl Loop {
 
                             crate::error_injection!(block "BLOCK_REPLICATION_RPC_ON_CLIENT");
 
-                            let resp = pool.call(&instance_name, proc_name!(proc_replication), &rpc, rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_replication), &rpc, rpc_timeout);
                             fs.push(async move {
                                 let res = resp.await;
                                 update_replication_error(instance_reachability, raft_id, res.as_ref().err());
@@ -769,7 +769,7 @@ impl Loop {
                     ]
                     async {
                         tlog!(Info, "calling proc_get_vclock on current master: {master_name}");
-                        let f_vclock = pool.call(&master_name, proc_name!(proc_get_vclock), &get_vclock_rpc, rpc_timeout)?;
+                        let f_vclock = pool.call(&master_name, proc_name!(proc_get_vclock), &get_vclock_rpc, rpc_timeout);
 
                         let mut fs = vec![];
                         debug_assert_eq!(laggers.len(), dmls.len());
@@ -778,7 +778,7 @@ impl Loop {
                             tlog!(Info, "calling proc_replication_sync on {instance_name}");
 
                             let sync_timeout = rpc_timeout.saturating_add(Duration::from_secs(1));
-                            let resp = pool.call(&instance_name, proc_name!(proc_replication_sync), &sync_rpc, sync_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_replication_sync), &sync_rpc, sync_timeout);
                             fs.push(async move {
                                 let res = resp.await;
                                 update_replication_error(instance_reachability, raft_id, res.as_ref().err());
@@ -876,7 +876,7 @@ impl Loop {
                         "tier" => %tier_name,
                     ]
                     async {
-                        pool.call(target, proc_name!(proc_sharding_bootstrap), &rpc, rpc_timeout)?.await?;
+                        pool.call(target, proc_name!(proc_sharding_bootstrap), &rpc, rpc_timeout).await?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
@@ -920,7 +920,7 @@ impl Loop {
                         let mut fs = FuturesUnordered::new();
                         for master_name in targets_batch {
                             tlog!(Info, "calling proc_resharding"; "instance_name" => %master_name);
-                            let resp = pool.call(&master_name, proc_name!(proc_resharding), &rpc, rpc_timeout)?;
+                            let resp = pool.call(&master_name, proc_name!(proc_resharding), &rpc, rpc_timeout);
                             fs.push(async move { (master_name, resp.await) });
                         }
 
@@ -999,7 +999,7 @@ impl Loop {
                             "replicaset_name" => %replicaset_name,
                         ]
                         async {
-                            pool.call(target, proc_name!(proc_wait_bucket_count), &rpc, rpc_timeout)?.await?;
+                            pool.call(target, proc_name!(proc_wait_bucket_count), &rpc, rpc_timeout).await?;
                         }
                     }
                 }
@@ -1039,7 +1039,7 @@ impl Loop {
                         let mut fs = FuturesUnordered::new();
                         for (instance_name, dml) in targets_batch {
                             tlog!(Info, "calling proc_before_online"; "instance_name" => %instance_name);
-                            let resp = pool.call(&instance_name, proc_name!(proc_before_online), &rpc, plugin_rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_before_online), &rpc, plugin_rpc_timeout);
                             fs.push(async move { (instance_name, dml, resp.await) });
                         }
 
@@ -1446,7 +1446,7 @@ impl Loop {
                         let mut fs = FuturesUnordered::new();
                         for instance_name in targets_batch {
                             tlog!(Info, "calling proc_load_plugin_dry_run"; "instance_name" => %instance_name, "plugin" => %plugin);
-                            let resp = pool.call(&instance_name, proc_name!(proc_load_plugin_dry_run), &rpc, plugin_rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_load_plugin_dry_run), &rpc, plugin_rpc_timeout);
                             fs.push(async move { (instance_name, resp.await) });
                         }
 
@@ -1518,7 +1518,7 @@ impl Loop {
                         let mut fs = FuturesUnordered::new();
                         for instance_name in targets_batch {
                             tlog!(Info, "calling enable_plugin"; "instance_name" => %instance_name, "plugin" => %plugin);
-                            let resp = pool.call(&instance_name, proc_name!(proc_enable_plugin), &rpc, on_start_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_enable_plugin), &rpc, on_start_timeout);
                             fs.push(async move { (instance_name, resp.await) });
                         }
 
@@ -1631,7 +1631,7 @@ impl Loop {
                         let mut fs = FuturesUnordered::new();
                         for instance_name in enable_targets_batch {
                             tlog!(Info, "calling proc_enable_service"; "instance_name" => %instance_name, "service" => %service);
-                            let resp = pool.call(&instance_name, proc_name!(proc_enable_service), &enable_rpc, plugin_rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_enable_service), &enable_rpc, plugin_rpc_timeout);
                             fs.push(async move { (instance_name, resp.await) });
                         }
 
@@ -1665,7 +1665,7 @@ impl Loop {
                             let mut fs = vec![];
                             for instance_name in last_step_info.ok_instances() {
                                 tlog!(Info, "calling proc_disable_service"; "instance_name" => %instance_name, "service" => %service);
-                                let resp = pool.call(instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
+                                let resp = pool.call(instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout);
                                 fs.push(resp);
                             }
                             // FIXME: over here we completely ignore the result of the RPC above.
@@ -1683,7 +1683,7 @@ impl Loop {
                             let mut fs = FuturesUnordered::new();
                             for instance_name in disable_targets_batch {
                                 tlog!(Info, "calling proc_disable_service"; "instance_name" => %instance_name, "service" => %service);
-                                let resp = pool.call(&instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
+                                let resp = pool.call(&instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout);
                                 fs.push(async move { (instance_name, resp.await) });
                             }
 
@@ -1757,7 +1757,7 @@ impl Loop {
                         let mut fs = FuturesUnordered::new();
                         for instance_name in targets_batch {
                             tlog!(Info, "calling proc_sharding"; "instance_name" => %instance_name);
-                            let resp = pool.call(&instance_name, proc_name!(proc_sharding), &rpc, rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_sharding), &rpc, rpc_timeout);
                             fs.push(async move { (instance_name, resp.await) });
                         }
 
@@ -1873,7 +1873,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_name in targets {
                             tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
-                            let resp = pool.call(&instance_name, proc_name!(proc_apply_schema_change), &rpc, ddl_rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_apply_schema_change), &rpc, ddl_rpc_timeout);
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => Ok(()),
@@ -1929,7 +1929,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_name in targets {
                             tlog!(Info, "calling proc_internal_script"; "instance_name" => %instance_name);
-                            let resp = pool.call(&instance_name, proc_name!(proc_internal_script), &rpc, rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_internal_script), &rpc, rpc_timeout);
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => Ok(()),

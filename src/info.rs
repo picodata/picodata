@@ -461,7 +461,7 @@ fn proc_instance_dir(uuid: SmolStr) -> Result<Option<String>, Error> {
                     crate::proc_name!(proc_instance_dir),
                     &(uuid,),
                     REDIRECT_RPC_TIMEOUT,
-                )?
+                )
                 .await
         };
         Ok(fiber::block_on(future)?)
@@ -517,7 +517,7 @@ fn proc_config_file(uuid: SmolStr) -> Result<Option<String>, Error> {
                     crate::proc_name!(proc_config_file),
                     &(uuid,),
                     REDIRECT_RPC_TIMEOUT,
-                )?
+                )
                 .await
         };
         Ok(fiber::block_on(future)?)
@@ -807,7 +807,7 @@ pub fn proc_instance_health_status(uuid: SmolStr) -> Result<Option<HealthStatus>
                         crate::proc_name!(proc_instance_health_status),
                         &(uuid,),
                         REDIRECT_RPC_TIMEOUT,
-                    )?
+                    )
                     .await
             };
             Ok(fiber::block_on(future)?)

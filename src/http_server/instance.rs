@@ -66,7 +66,7 @@ fn http_api_instance_detail(uuid: String) -> ApiResult<InstanceResponse> {
                     ".proc_instance_details",
                     &(),
                     DEFAULT_TIMEOUT,
-                )?
+                )
                 .await
         };
         fiber::block_on(future)?

@@ -395,17 +395,12 @@ where
     let node = node::global().expect("should be init");
 
     let args = (timeout.as_secs_f64(), request_id, plan_id);
-    let future = node
-        .pool
-        .call_raw::<_, RawByteBuf>(
-            &raft_id,
-            crate::proc_name!(proc_query_metadata),
-            &args,
-            timeout,
-        )
-        .map_err(|e| {
-            SbroadError::DispatchError(format_smolstr!("Failed to call proc_query_metadata: {e}"))
-        })?;
+    let future = node.pool.call_raw::<_, RawByteBuf>(
+        &raft_id,
+        crate::proc_name!(proc_query_metadata),
+        &args,
+        timeout,
+    );
 
     let raw: RawByteBuf = fiber::block_on(future).map_err(|e| {
         SbroadError::DispatchError(format_smolstr!("proc_query_metadata call failed: {e}"))

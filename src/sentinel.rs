@@ -376,7 +376,7 @@ pub async fn call_proc_update_instance(
         proc_name!(proc_update_instance_v2),
         request,
         timeout,
-    )?
+    )
     .await?;
 
     Ok(())

@@ -349,14 +349,12 @@ pub async fn collect_proc_apply_schema_change(
     let mut fs = FuturesUnordered::new();
     for instance_name in targets {
         tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
-        let resp = pool
-            .call(
-                &instance_name,
-                proc_name!(proc_apply_schema_change),
-                rpc,
-                rpc_timeout,
-            )
-            .map_err(OnError::Retry)?;
+        let resp = pool.call(
+            &instance_name,
+            proc_name!(proc_apply_schema_change),
+            rpc,
+            rpc_timeout,
+        );
         fs.push(async move { (instance_name, resp.await) });
     }
 

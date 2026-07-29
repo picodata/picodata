@@ -9,13 +9,12 @@ use crate::tier::Tier;
 use crate::traft::network::ConnectionPool;
 use crate::traft::{self, node};
 use crate::util::Uppercase;
-use crate::{has_states, tlog, unwrap_ok_or};
+use crate::{has_states, tlog};
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use tarantool::fiber;
-use tarantool::fiber::r#async::timeout::IntoTimeout;
 
 /// Response from instances:
 /// - `raft_id`: instance raft_id to find Instance to store data
@@ -243,22 +242,12 @@ async fn get_instances_data(
             continue;
         }
 
-        let res = pool.call_raw(
+        let future = pool.call_raw(
             &instance.name,
             ".proc_runtime_info_v2",
             &(),
             DEFAULT_TIMEOUT,
         );
-        let future = unwrap_ok_or!(res,
-            Err(e) => {
-                tlog!(Error, "webui: error on calling .proc_runtime_info_v2 on instance {}: {e}", instance.name);
-                continue;
-            }
-        // we have to add timeout directly to future due
-        // to the bug in connection pool that does not consider
-        // timeout when establishing TCP connection
-        // See https://git.picodata.io/picodata/picodata/picodata/-/issues/943
-        ).timeout(DEFAULT_TIMEOUT);
         fs.push({
             async move {
                 let mut data = InstanceDataResponse {
