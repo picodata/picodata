@@ -279,6 +279,31 @@ def _parse_line(input_string, lead_sym: Any, split_by: str):
     return result
 
 
+# Parse the body of an EXPLAIN `-- EXPECTED:` block into raw text lines.
+#
+# Unlike `_parse_line` (used for comma-separated typed literals in do_execsql/PARAMS
+# blocks), EXPLAIN output must be compared verbatim: every line is opaque plan/SQL
+# text, so numbers, `true`/`false`, `null` etc. must NOT be coerced to typed Python
+# values (e.g. `float("  1")` silently succeeds and turns the string "  1" into 1.0,
+# which then never matches the string produced by the SQL driver on the next run).
+# The only special cases are the `''` marker `--update-sql-snapshots` writes for a
+# genuinely empty line, and legacy lines manually wrapped in quotes to survive the
+# old coercion logic.
+def _parse_explain_body(body: str) -> list[str]:
+    result: list[str] = []
+
+    for element in body.split("\n"):
+        if element == "":
+            continue
+        elif element.startswith("'") and element.endswith("'"):
+            # If element in single quotes, remove them and add as string
+            result.append(element[1:-1])
+        else:
+            result.append(element)
+
+    return result
+
+
 def parse_file(cls: Type, file_name: str) -> list:
     test_file = Path(inspect.getfile(cls)).parent / file_name
     content = test_file.read_text()
@@ -333,7 +358,7 @@ def parse_file(cls: Type, file_name: str) -> list:
             span = match.span("body")
             is_exact = kind == "EXPECTED"
             if query.lower().startswith("explain"):
-                expected = _parse_line(match.group("body"), "\n", "\n")
+                expected = _parse_explain_body(match.group("body"))
             else:
                 expected = _parse_line(match.group("body"), None, ",")
 

@@ -477,9 +477,9 @@ FROM
       "testing_space"."COL_3"
   )
 ORDER BY
-'  1'
+  1
 LIMIT
-'  1'
+  1
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
@@ -528,9 +528,9 @@ FROM
       "COL_5"
   )
 ORDER BY
-'  1'
+  1
 LIMIT
-'  1'
+  1
 ''
 plan:
     [0] SCAN TABLE _tmp_12186943914245522898_1136 (~1048576 rows)
