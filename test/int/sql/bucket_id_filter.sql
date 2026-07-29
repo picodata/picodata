@@ -383,7 +383,7 @@ projection (t.a::int -> a)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: cast-is-not-a-bucket-predicate-explain
 -- SQL:
@@ -401,7 +401,7 @@ projection (t.a::int -> a)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: parameter-routes-at-execution-time
 -- SQL:

@@ -173,7 +173,7 @@ motion [policy: full, program: RemoveDuplicates]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_explain_union_with_named_window
 -- SQL:
@@ -195,7 +195,7 @@ motion [policy: full, program: RemoveDuplicates]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_union_all_with_window_func
 -- SQL:
@@ -222,7 +222,7 @@ union all
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: explain-union-global-sharded-1
 -- SQL:
@@ -262,7 +262,7 @@ buckets <= [1-3000]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: explain-union-global-sharded-2
 -- SQL:
@@ -380,7 +380,7 @@ SELECT min (CAST ("t"."a" as int)) as "min_1" FROM "t"
 plan:
     [0] SCAN TABLE t (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -446,7 +446,7 @@ SELECT min (CAST ("t"."a" as int)) as "min_1" FROM "t"
 plan:
     [0] SCAN TABLE t (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │

@@ -24,20 +24,20 @@ buckets = [2997]
 explain (buckets) select * from (select * from t where a = 5 and c = 'lol') t
 join (select * from tt where d = 5) tt on t.a = tt.d;
 -- EXPECTED:
-buckets <= [219,442]
+buckets = [219,442]
 
 -- TEST: buckets-join-all
 -- SQL:
 explain (buckets) select * from t join tt on t.a = tt.d and t.c = '5';
 -- EXPECTED:
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: buckets-many-all
 -- SQL:
 explain (buckets) select * from t join (select * from tt union select * from tt)
 tt on t.a = tt.d group by 1, 2, 3, 4 order by 2 limit 3;
 -- EXPECTED:
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: buckets-delete-filtered
 -- SQL:
@@ -49,7 +49,7 @@ buckets = [2520,2997]
 -- SQL:
 explain (buckets) delete from t where true;
 -- EXPECTED:
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: buckets-update-filtered
 -- SQL:
@@ -61,7 +61,7 @@ buckets = [739]
 -- SQL:
 explain (buckets) update t set b = d + 1 from tt;
 -- EXPECTED:
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: buckets-insert-filtered
 -- SQL:
@@ -104,3 +104,17 @@ DO $$ BEGIN
 END $$;
 -- EXPECTED:
 buckets = [2426]
+
+-- TEST: buckets-upper-bound-seq-scan
+-- SQL:
+EXPLAIN (buckets)
+SELECT * FROM tt;
+-- EXPECTED:
+buckets <= [1-3000]
+
+-- TEST: buckets-exact-when-router-aggr-is-present
+-- SQL:
+EXPLAIN (buckets)
+SELECT COUNT(*) FROM tt WHERE d = 1 OR d = 42;
+-- EXPECTED:
+buckets = [1934,2426]

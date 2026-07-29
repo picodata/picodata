@@ -340,7 +340,7 @@ subquery $0:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-order-by
 -- SQL:
@@ -366,7 +366,7 @@ subquery $0:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-projection-nested
 -- SQL:
@@ -393,7 +393,7 @@ subquery $1:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-group-by
 -- SQL:
@@ -420,7 +420,7 @@ subquery $1:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-selection
 -- SQL:
@@ -443,7 +443,7 @@ subquery $0:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-projection-several
 -- SQL:
@@ -470,7 +470,7 @@ subquery $1:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test-distinct-with-subquery-single-column
 -- SQL:
@@ -574,7 +574,7 @@ subquery $0:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-distinct-with-column
 -- SQL:
@@ -600,7 +600,7 @@ subquery $0:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-distinct-several
 -- SQL:
@@ -631,7 +631,7 @@ subquery $1:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-distinct-from-table
 -- SQL:
@@ -657,7 +657,7 @@ subquery $0:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test-explain-plan-subquery-as-expression-under-distinct-in-insert
 -- SQL:

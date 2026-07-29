@@ -167,7 +167,7 @@ projection (explain.id::int -> id)
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     cur.execute(query)
@@ -185,7 +185,7 @@ projection (explain.id::int -> id)
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     cur.execute('drop table "explain";')

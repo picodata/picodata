@@ -16,12 +16,7 @@ pub enum BucketsInfo {
     /// We can't calculate buckets for this query,
     /// see `can_estimate_buckets`
     Unknown,
-    Calculated {
-        bounded_buckets: BoundedBuckets,
-        /// True if estimation is correct, otherwise
-        /// it means this is an upper bound.
-        is_exact: bool,
-    },
+    Calculated(BoundedBuckets),
 }
 
 impl Display for BucketsInfo {
@@ -30,17 +25,11 @@ impl Display for BucketsInfo {
             BucketsInfo::Unknown => {
                 write!(f, "buckets = unknown")
             }
-            BucketsInfo::Calculated {
-                bounded_buckets,
-                is_exact,
-            } => {
+            BucketsInfo::Calculated(bounded_buckets) => {
                 let repr = buckets_repr(&bounded_buckets.buckets, bounded_buckets.bucket_count);
-                // For buckets ANY and ALL there is no sense to handle in the
-                // output the case when bucket count is not exact.
                 match bounded_buckets.buckets {
-                    Buckets::Any | Buckets::All => write!(f, "buckets = {repr}",),
-                    _ if *is_exact => write!(f, "buckets = {repr}",),
-                    _ => write!(f, "buckets <= {repr}",),
+                    Buckets::All => write!(f, "buckets <= {repr}"),
+                    Buckets::Any | Buckets::Filtered(_) => write!(f, "buckets = {repr}"),
                 }
             }
         }
@@ -48,13 +37,10 @@ impl Display for BucketsInfo {
 }
 
 impl BucketsInfo {
-    pub fn new_calculated(buckets: Buckets, is_exact: bool, bucket_count: u64) -> Self {
-        BucketsInfo::Calculated {
-            bounded_buckets: BoundedBuckets {
-                buckets,
-                bucket_count,
-            },
-            is_exact,
-        }
+    pub fn new_calculated(buckets: Buckets, bucket_count: u64) -> Self {
+        BucketsInfo::Calculated(BoundedBuckets {
+            buckets,
+            bucket_count,
+        })
     }
 }

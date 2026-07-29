@@ -47,7 +47,7 @@ subquery $0:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_join_explain
 -- SQL:
@@ -85,7 +85,7 @@ projection (t3.id::int -> id, t3.name::string -> name, t8.tid::int -> tid)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_valid_explain
 -- SQL:
@@ -134,7 +134,7 @@ projection (arithmetic_space.id::int -> id)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_explain_arithmetic_selection-2
 -- SQL:
@@ -152,7 +152,7 @@ projection (arithmetic_space.id::int -> id)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_explain_arithmetic_selection-3
 -- SQL:
@@ -191,7 +191,7 @@ projection (t3.id::int -> id, t3.a::int -> a, t8.id1::int -> id1)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_explain_arithmetic_selection-4
 -- SQL:
@@ -230,7 +230,7 @@ projection (t3.id::int -> id, t3.a::int -> a, t8.id1::int -> id1)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_explain_arithmetic_projection-1
 -- SQL:
@@ -247,7 +247,7 @@ projection (arithmetic_space.id::int + 2::int -> col_1)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_explain_arithmetic_projection-2
 -- SQL:
@@ -264,7 +264,7 @@ projection (arithmetic_space.a::int + arithmetic_space.b::int * arithmetic_space
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_explain_arithmetic_projection-3
 -- SQL:
@@ -281,7 +281,7 @@ projection ((arithmetic_space.a::int + arithmetic_space.b::int) * arithmetic_spa
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_explain_arithmetic_projection-4
 -- SQL:
@@ -298,7 +298,7 @@ projection (arithmetic_space.a::int > arithmetic_space.b::int -> col_1)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_explain_arithmetic_projection-5
 -- SQL:
@@ -315,7 +315,7 @@ projection (arithmetic_space.a::int is null -> col_1)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: test_explain_trim-1
 -- SQL:

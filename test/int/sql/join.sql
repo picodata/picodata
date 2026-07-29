@@ -167,7 +167,7 @@ plan:
     [0] SCAN TABLE t1 (~1048576 rows)
         [0] SEARCH TABLE t2 USING PRIMARY KEY (a=?) (~1 row)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭─────────────────────────────────╮
 │ 2. Query (DYN-FILTERED STORAGE) │
@@ -252,7 +252,7 @@ SELECT "ct2"."b", "ct2"."bucket_id" FROM "ct2"
 plan:
     [0] SCAN TABLE ct2 (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭────────────────────────────────────────╮
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
@@ -270,7 +270,7 @@ buckets = [1934]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: explain-cross-table-constant-conditions-2
 -- SQL:
@@ -289,7 +289,7 @@ SELECT "ct2"."b", "ct2"."bucket_id" FROM "ct2"
 plan:
     [0] SCAN TABLE ct2 (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭────────────────────────────────────────╮
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
@@ -308,7 +308,7 @@ buckets = [1934,1958]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: explain-cross-table-constant-conditions-3
 -- SQL:
@@ -327,7 +327,7 @@ SELECT "ct1"."a", "ct1"."bucket_id" FROM "ct1"
 plan:
     [0] SCAN TABLE ct1 (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭────────────────────────────────────────╮
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
@@ -345,7 +345,7 @@ buckets = [1410]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 
 -- TEST: explain-cross-table-constant-conditions-4
 -- SQL:
@@ -364,7 +364,7 @@ SELECT "ct2"."b", "ct2"."bucket_id" FROM "ct2"
 plan:
     [0] SCAN TABLE ct2 (~1048576 rows)
 ''
-buckets = [1-3000]
+buckets <= [1-3000]
 ''
 ╭────────────────────────────────────────╮
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
@@ -382,4 +382,4 @@ buckets = [1934]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1-3000]
+buckets <= [1-3000]

@@ -6565,7 +6565,7 @@ projection (t.a::int -> a)
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     # Reading from a single bucket => single node
@@ -6661,7 +6661,7 @@ motion [policy: full, program: RemoveDuplicates]
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     # ---------------------- DML ----------------------
@@ -6700,7 +6700,7 @@ insert into t on conflict: fail
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     # Update: update non-sharding column
@@ -6720,7 +6720,7 @@ update t (b = col_0)
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     # Update sharding column
@@ -6758,7 +6758,7 @@ delete from t
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     # Dml on global table
@@ -6779,7 +6779,7 @@ insert into g on conflict: fail
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     lines = i1.sql("explain insert into g select u, v from g")
@@ -6891,7 +6891,7 @@ projection (t.a::int -> a)
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     new_sql_vdbe_opcode_max = 50000
@@ -6912,7 +6912,7 @@ projection (t.a::int -> a)
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     new_sql_motion_row_max = 6000
@@ -6934,7 +6934,7 @@ projection (t.a::int -> a)
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     # `option` clause has highest priority
