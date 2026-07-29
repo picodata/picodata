@@ -74,6 +74,15 @@ impl<T> Receiver<T> {
     pub fn is_closed(&self) -> bool {
         Rc::weak_count(&self.0) == 0
     }
+
+    pub fn is_ready(&self) -> bool {
+        let raw = self.0.as_ptr();
+        // SAFETY: fiber channels are only used in tx thread
+        match unsafe { &*raw } {
+            State::Ready(_) => true,
+            State::Pending(_) => self.is_closed(),
+        }
+    }
 }
 
 impl<T> Future for Receiver<T> {
@@ -200,15 +209,19 @@ mod tests {
     fn drop_sender() {
         let (tx, rx) = channel::<i32>();
         assert!(!rx.is_closed());
+        assert!(!rx.is_ready());
         drop(tx);
         assert!(rx.is_closed());
+        assert!(rx.is_ready());
         assert_eq!(fiber::block_on(rx).unwrap_err(), RecvError);
     }
 
     #[crate::test(tarantool = "crate")]
     fn receive_non_blocking() {
         let (tx, rx) = channel::<i32>();
+        assert!(!rx.is_ready());
         tx.send(56).unwrap();
+        assert!(rx.is_ready());
         assert_eq!(fiber::block_on(rx), Ok(56));
     }
 

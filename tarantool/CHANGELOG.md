@@ -46,6 +46,8 @@
 - `index::SortOrder` and optional sort order metadata in `index::Part`.
 - `index::Index::{select_after, tuple_position, tuple_position_unchecked}`
   methods and `index::TuplePosition` struct for pagination support.
+- `fiber::async::oneshot::Receiver::is_ready` method which allows to check if
+  message is ready without consuming the result.
 
 ### Added (picodata)
 
