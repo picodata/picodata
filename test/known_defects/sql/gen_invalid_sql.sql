@@ -74,10 +74,10 @@ plan:
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" FROM "_tmp_7934279834277496778_0136" LIMIT 1
+SELECT "COL_0" FROM "_tmp_17386813860577470255_0136" LIMIT 1
 ''
 plan:
-    [0] SCAN TABLE _tmp_7934279834277496778_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_17386813860577470255_0136 (~1048576 rows)
 ''
 ╭───────────────────╮
 │ 4. Query (ROUTER) │
@@ -92,13 +92,13 @@ Failed to compile SQL statement: Failed to execute an empty SQL statement
 │ 5. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "_tmp_7002119783055804240_2136" ) as "a" ON ( SELECT "COL_0" FROM "_tmp_7002119783055804240_3136" )
+SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "_tmp_7614758452345458251_2136" ) as "a" ON ( SELECT "COL_0" FROM "_tmp_7614758452345458251_3136" )
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
     [0] EXECUTE SCALAR SUBQUERY 1
-    [1] SCAN TABLE _tmp_7002119783055804240_3136 (~1048576 rows)
-        [0] SCAN TABLE _tmp_7002119783055804240_2136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_7614758452345458251_3136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_7614758452345458251_2136 (~1048576 rows)
 
 
 -- TEST: intersect-without-braces
@@ -111,21 +111,21 @@ Query 3 from EXPLAIN \(RAW\): Failed to compile SQL statement: Syntax error at l
 -- SQL:
 EXPLAIN (RAW) SELECT 1 from t UNION SELECT 0 EXCEPT SELECT 1 from t;
 -- EXPECTED:
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" UNION select cast(null as int) as "col_1" where false
+SELECT CAST(1 AS int) as "col_1" FROM "t" UNION SELECT CAST(0 AS int) as "col_1"
 ''
 plan:
     [1] SCAN TABLE t (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION)
 ''
-╭──────────────────────────╮
-│ 2. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" UNION select cast(null as int) as "col_1" where false
+SELECT CAST(1 AS int) as "col_1" FROM "t" UNION SELECT CAST(0 AS int) as "col_1"
 ''
 plan:
     [1] SCAN TABLE t (~1048576 rows)
@@ -135,7 +135,7 @@ plan:
 │ 3. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" INTERSECT ( SELECT "COL_0" FROM "_tmp_9162583575142203342_3136" )
+SELECT CAST(1 AS int) as "col_1" FROM "t" INTERSECT ( SELECT "COL_0" FROM "_tmp_15769400759591105729_3136" )
 ''
 plan:
 Failed to compile SQL statement: Syntax error at line 1 near '('
@@ -144,9 +144,9 @@ Failed to compile SQL statement: Syntax error at line 1 near '('
 │ 4. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" FROM "_tmp_15197742904724328793_1136" EXCEPT SELECT "COL_0" FROM "_tmp_15197742904724328793_4136"
+SELECT "COL_0" FROM "_tmp_8471199590266309925_1136" EXCEPT SELECT "COL_0" FROM "_tmp_8471199590266309925_4136"
 ''
 plan:
-    [1] SCAN TABLE _tmp_15197742904724328793_1136 (~1048576 rows)
-    [2] SCAN TABLE _tmp_15197742904724328793_4136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_8471199590266309925_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_8471199590266309925_4136 (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (EXCEPT)
