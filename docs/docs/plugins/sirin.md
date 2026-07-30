@@ -17,28 +17,28 @@ Cassandra v4) поверх резидентной СУБД Picodata. Sirin по�
 
 ### Таблица совместимости {: #compatibility_table }
 
-| Возможность Cassandra                | Статус в Sirin      |
-| ------------------------------------ | ------------------- |
-| CQL (основные операторы)             | ✅ Поддерживается   |
-| Prepared statements                  | ✅ Поддерживается    |
-| Named parameter markers              | ✅ Поддерживается      |
-| Pagination                           | ✅ Поддерживается      |
-| TTL                                  | ✅ Поддерживаются      |
-| Static columns                       | ✅ Поддерживаются      |
-| Телеметрия                           | ✅ Поддерживается      |
-| Инструменты (cqlsh, DBeaver, picodata admin) | ✅ Поддерживается      |
-| BATCH                                | ✅ Поддерживается      |
-| Управление ролями и правами (CREATE/ALTER/DROP ROLE, GRANT, REVOKE) | ✅ Поддерживается |
-| Lightweight transactions (LWT)       | 🟡 Частично |
-| User-defined types (UDT)             | ❌ Не поддерживаются |
-| Материализованные представления (MV) | ❌ Не поддерживаются |
-| GROUP BY                             | ❌ Не поддерживается |
+| Возможность Cassandra                                               | Статус в Sirin      |
+|---------------------------------------------------------------------|---------------------|
+| CQL (основные операторы)                                            | ✅ Поддерживается    |
+| Prepared statements                                                 | ✅ Поддерживается    |
+| Named parameter markers                                             | ✅ Поддерживается    |
+| Pagination                                                          | ✅ Поддерживается    |
+| TTL                                                                 | ✅ Поддерживаются    |
+| Static columns                                                      | ✅ Поддерживаются    |
+| Телеметрия                                                          | ✅ Поддерживается    |
+| Инструменты (cqlsh, DBeaver, picodata admin)                        | ✅ Поддерживается    |
+| BATCH                                                               | ✅ Поддерживается    |
+| Управление ролями и правами (CREATE/ALTER/DROP ROLE, GRANT, REVOKE) | ✅ Поддерживается    |
+| Lightweight transactions (LWT)                                      | ✅ Поддерживается    |
+| User-defined types (UDT)                                            | ❌ Не поддерживаются |
+| Материализованные представления (MV)                                | ❌ Не поддерживаются |
+| GROUP BY                                                            | ❌ Не поддерживается |
 
 
 ### Ограничения {: #limitations }
 
-- `CREATE KEYSPACE` и `DROP KEYSPACE` поддерживаются синтаксически, но параметры replication_strategy
-  и replication_factor игнорируются. Настройки берутся из конфигурации Picodata
+- `CREATE KEYSPACE`, `ALTER KEYSPACE` и `DROP KEYSPACE` поддерживаются синтаксически, но параметры
+  replication_strategy и replication_factor игнорируются. Настройки берутся из конфигурации Picodata
 - репликация управляется средствами Picodata
 - [движок хранения] по умолчанию — vinyl. Все настройки vinyl влияют на характеристики хранения
 - материализованные представления (MV) отсутствуют
@@ -150,6 +150,26 @@ CREATE KEYSPACE IF NOT EXISTS mykeyspace
 
 ```sql
 DROP KEYSPACE IF EXISTS mykeyspace;
+```
+
+#### ALTER KEYSPACE {: #alter_keyspace }
+
+Проверяет существование пространства имён (с учётом `IF EXISTS`), но не изменяет его —
+`replication` и `durable_writes` принимаются синтаксически и не применяются: репликацией
+управляет Picodata.
+
+```bnf
+<alter-keyspace-stmt> ::= ALTER KEYSPACE [IF EXISTS] <ks-name>
+                          [WITH REPLICATION = <map-literal>]
+                          [AND DURABLE_WRITES = <boolean>]
+```
+
+- `IF EXISTS` — не возвращает ошибку, если пространство имён не существует
+
+Пример:
+
+```sql
+ALTER KEYSPACE mykeyspace WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '3'};
 ```
 
 #### CREATE TABLE {: #create_table }
@@ -285,7 +305,7 @@ CREATE TABLE events (
 - `IF EXISTS` — пропускает пары, у которых исходный столбец отсутствует, вместо возврата ошибки
 - переименование обычных и статических столбцов не поддерживается
 
-**DROP** — удаляет столбцы (на уровне БД помечает их как удаленные; данные при этом не уничтожаются физически):
+**DROP** — удаляет столбцы (на уровне БД помечает их как удалённые; данные при этом не уничтожаются физически):
 
 - `IF EXISTS` — пропускает столбцы, которых нет, вместо возврата ошибки
 - удаление столбцов первичного ключа не поддерживается
@@ -376,7 +396,7 @@ INSERT INTO mykeyspace.users (user_id, email, name)
     VALUES (uuid(), 'alice@example.com', 'Alice');
 ```
 
-```sql title="Вставка с TTL (строка удалится через 1 час)"--
+```sql title="Вставка с TTL (строка удалится через 1 час)"
 INSERT INTO mykeyspace.sessions (session_id, user_id)
     VALUES (uuid(), 123e4567-e89b-12d3-a456-426614174000)
     USING TTL 3600;
@@ -399,21 +419,22 @@ INSERT INTO mykeyspace.users (user_id, email)
                   [USING TTL <int>]
                   SET <assignment> [',' <assignment>]*
                   WHERE <where-clause>
-                  [IF EXISTS]
+                  [<if-clause>]
 
 <assignment> ::= <column-name> '=' <value>
                | <column-name> '=' <column-name> '+' <value>
                | <column-name> '=' <column-name> '-' <value>
 ```
 
-- `IF EXISTS` — обновляет строку только если она существует (см. [LWT](#lwt))
+- `<if-clause>` — делает выполнение `UPDATE` условным (см. [LWT](#lwt)): `IF EXISTS` либо
+  `IF <condition> [AND <condition> ...]`
 - `USING TTL <int>` — устанавливает время жизни (в секундах) для обновляемой строки. Допустимый диапазон: от `0` до `630720000` (20 лет). Значение `0` сбрасывает TTL — срок жизни строки становится неограниченным. Не применяется к таблицам с колонками типа `counter`
 
 **Ограничения Sirin:**
 
 - `USING TIMESTAMP` не поддерживается
 - операции над коллекциями (`col = col + [...]`, `map[key] = value`) не поддерживаются
-- произвольные `IF`-условия (`IF col = val`) не поддерживаются, только `IF EXISTS`
+- ограничения `IF`-условий описаны в разделе [LWT](#lwt)
 
 **Виды присваиваний:**
 
@@ -450,6 +471,13 @@ UPDATE mykeyspace.users
     IF EXISTS;
 ```
 
+```sql title="Обновление только при выполнении условия на значение столбца"
+UPDATE mykeyspace.users
+    SET name = 'Bob'
+    WHERE user_id = 123e4567-e89b-12d3-a456-426614174000
+    IF status = 'pending';
+```
+
 #### DELETE {: #delete }
 
 Удаляет строку целиком или значения отдельных столбцов. Операция всегда задаётся
@@ -459,15 +487,18 @@ UPDATE mykeyspace.users
 <delete-stmt> ::= DELETE [<column-name> [',' <column-name>]*]
                   FROM [<keyspace-name> '.'] <table-name>
                   WHERE <where-clause>
-                  [IF EXISTS]
+                  [<if-clause>]
 ```
 
 - Если список столбцов не указан — удаляется вся строка.
 - Если список столбцов указан — удаляются только значения этих столбцов (столбцы
   получают значение `null`). Столбцы первичного ключа удалить нельзя.
-- `IF EXISTS` — удаляет строку только если она существует (см. [LWT](#lwt))
+- `<if-clause>` — делает выполнение `DELETE` условным (см. [LWT](#lwt)): `IF EXISTS` либо
+  `IF <condition> [AND <condition> ...]`
 - `USING TIMESTAMP` — не поддерживается
 - `WHERE` должен содержать как минимум полный ключ партиционирования
+- удаление отдельной пары ключ-значение из `map` (`DELETE col[key] FROM ...`) не
+  поддерживается — можно удалить только весь столбец целиком
 
 Примеры:
 
@@ -480,6 +511,12 @@ DELETE FROM mykeyspace.users
 DELETE FROM mykeyspace.users
     WHERE user_id = 123e4567-e89b-12d3-a456-426614174000
     IF EXISTS;
+```
+
+```sql title="Удаление строки при выполнении условия на значение столбца"
+DELETE FROM mykeyspace.users
+    WHERE user_id = 123e4567-e89b-12d3-a456-426614174000
+    IF status = 'inactive';
 ```
 
 ```sql title="Удаление значения отдельного столбца"
@@ -498,7 +535,7 @@ DELETE FROM mykeyspace.events
 Читает данные из таблицы.
 
 ```bnf
-<select-stmt> ::= SELECT <select-clause>
+<select-stmt> ::= SELECT [DISTINCT] <select-clause>
                   FROM [<keyspace-name> '.'] <table-name>
                   [WHERE <where-clause>]
                   [ORDER BY <column-name> [ASC | DESC] [',' ...]]
@@ -535,6 +572,24 @@ WHERE device_id = 123e4567-e89b-12d3-a456-426614174000
 По умолчанию Sirin, как и Cassandra, запрещает запросы, требующие полного сканирования всех
 партиций. Такие запросы необходимо явно пометить `ALLOW FILTERING`. Следует использовать
 осторожно на больших таблицах.
+
+**DISTINCT**
+
+`SELECT DISTINCT` возвращает по одной строке на уникальную партицию.
+
+- в списке столбцов должен быть указан весь ключ партиционирования целиком; дополнительно
+  можно указать статические столбцы — колонки кластеризации и обычные колонки не допускаются
+- `WHERE` может фильтровать только по столбцам ключа партиционирования и статическим столбцам
+- `ORDER BY` допускается, только если ключ партиционирования полностью зафиксирован через `=` или `IN`
+- не поддерживается для системных таблиц (`system.*`, `system_schema.*`)
+
+```sql title="Уникальные партиции таблицы"
+SELECT DISTINCT region, sensor_id FROM sensors;
+```
+
+```sql title="Уникальные партиции вместе со статическим столбцом"
+SELECT DISTINCT region, sensor_id, firmware FROM sensors;
+```
 
 **Ограничения:**
 
@@ -581,7 +636,7 @@ SELECT * FROM mykeyspace.users
 ```
 
 Батч может содержать операторы `INSERT`, `UPDATE` и `DELETE`. Операции могут
-производится над разными таблицами.
+производиться над разными таблицами.
 
 - `UNLOGGED` — в Cassandra отключает журнал батча для повышения производительности; в Sirin
   принимается синтаксически, поведение не меняется.
@@ -610,11 +665,40 @@ Lightweight transactions позволяют выполнять операции 
 
 На данный момент поддерживаются:
 
-| Оператор | Конструкция | Описание |
-|---|---|---|
-| `INSERT` | `IF NOT EXISTS` | Вставить строку только если её нет |
-| `UPDATE` | `IF EXISTS` | Обновить строку только если она есть |
-| `DELETE` | `IF EXISTS` | Удалить строку только если она есть |
+| Оператор | Конструкция                            | Описание                                                             |
+|----------|----------------------------------------|----------------------------------------------------------------------|
+| `INSERT` | `IF NOT EXISTS`                        | Вставить строку только если её нет                                   |
+| `UPDATE` | `IF EXISTS`                            | Обновить строку только если она есть                                 |
+| `UPDATE` | `IF <condition> [AND <condition> ...]` | Обновить строку только если выполняются условия на значения столбцов |
+| `DELETE` | `IF EXISTS`                            | Удалить строку только если она есть                                  |
+| `DELETE` | `IF <condition> [AND <condition> ...]` | Удалить строку только если выполняются условия на значения столбцов  |
+
+**Условия (`IF <condition>`)**
+
+Каждое условие сравнивает значение обычного или статического столбца с выражением:
+
+| Форма                    | Описание                                   |
+|--------------------------|--------------------------------------------|
+| `col = value`            | Равно                                      |
+| `col != value`           | Не равно                                   |
+| `col > value`            | Больше                                     |
+| `col >= value`           | Больше или равно                           |
+| `col < value`            | Меньше                                     |
+| `col <= value`           | Меньше или равно                           |
+| `col IN (value, ...)`    | Значение столбца входит в список           |
+| `col CONTAINS value`     | Значение входит в коллекцию (`set`, `map`) |
+| `col CONTAINS KEY value` | Ключ входит в `map`                        |
+
+Несколько условий объединяются через `AND`.
+
+**Ограничения:**
+
+- в условии нельзя использовать столбцы первичного ключа — они уже заданы в `WHERE`
+- условия на столбцы типа `counter` не поддерживаются; более того, `IF EXISTS` тоже
+  не поддерживается для таблиц, содержащих `counter`-столбцы
+- `CONTAINS` применим только к столбцам типа `set` и `map`, `CONTAINS KEY` — только к `map`
+- сравнение с `NULL` допустимо только через `=` и `!=`; операторы `>`, `>=`, `<`, `<=`
+  со значением `NULL` возвращают ошибку
 
 Каждый LWT-запрос возвращает результирующий набор с псевдостолбцом `[applied]`:
 
@@ -645,6 +729,18 @@ UPDATE mykeyspace.users SET name = 'Bob'
  [applied]
 -----------
      False
+```
+
+```sql title="Обновить только при выполнении условий на несколько столбцов"
+UPDATE mykeyspace.users SET balance = 100
+    WHERE user_id = 123e4567-e89b-12d3-a456-426614174000
+    IF balance = 50 AND status = 'active';
+```
+
+```sql title="Удалить только если значение столбца входит в список"
+DELETE FROM mykeyspace.users
+    WHERE user_id = 123e4567-e89b-12d3-a456-426614174000
+    IF status IN ('inactive', 'banned');
 ```
 
 ### Аутентификация и управление правами доступа {: #security }
@@ -870,7 +966,6 @@ REVOKE data_readers FROM alice;
 
 Примеры:
 
-```sql
 ```sql title="Разрешить чтение из всех таблиц пространства имён ks1"
 GRANT SELECT ON KEYSPACE ks1 TO data_readers;
 ```
@@ -1106,11 +1201,43 @@ INSERT INTO sessions (id, user_id) VALUES (uuid(), 42) USING TTL 600;
 
 ### Конфигурация плагина {: #plugin_configuration }
 
+#### Сетевой адрес (advertise url) {: #router_listener }
+
+Адрес и порт, на которых сервис `router` принимает соединения по
+протоколу Cassandra, задаются не в `plugin_config.yaml`, а в
+конфигурации самого инстанса Picodata (`picodata.yaml`) через блок
+параметров `listener` для плагина — см.
+[`instance.plugin`](../reference/config.md#instance_plugin).
+
+```yaml
+instance:
+  # ...
+  plugin:
+    sirin:
+      service:
+        router:
+          listener:
+            enabled: true
+            listen: "0.0.0.0:9042"
+            advertise: "10.20.1.1:9042"
+            tls:
+              enabled: false
+```
+
+- `listen` — адрес, на котором сервис слушает входящие соединения
+- `advertise` — адрес, который клиенты получают через `system.local` / `system.peers` /
+  `system.peers_v2` и используют для прямых подключений к узлу, в том числе для
+  token-aware роутинга запросов драйвером. Если не задан, равен `listen`
+- `tls` — настройка TLS-соединения. На данный момент не поддерживается.
+
+Без этого блока сервис `router` не запустится — Picodata потребует явно
+указать параметры `listener`
+для сервиса плагина.
+
+Остальные параметры плагина задаются, как и раньше, в `plugin_config.yaml`:
+
 ```yaml
 router:
-  addr: 0.0.0.0:9042        # Адрес, на котором будет доступен протокол cassandra
-  max_clients: 100          # Максимальное количество конкурентных соединений на узел
-
   auth:
     is_required: false      # Включить обязательную аутентификацию. По умолчанию false.
     permissions_validity: 2s  # Интервал обновления кэша прав пользователя в рамках
@@ -1162,7 +1289,7 @@ router:
 без перезапуска кластера:
 
 ```sql
-ALTER PLUGIN sirin 1.1.0 SET router.auth.is_required='true';
+ALTER PLUGIN sirin 1.4.0 SET router.auth.is_required='true';
 ```
 
 Параметр `permissions_validity` задаёт интервал, с которым Sirin проверяет изменения прав в рамках
@@ -1170,5 +1297,5 @@ ALTER PLUGIN sirin 1.1.0 SET router.auth.is_required='true';
 действовать не позднее чем через 2 секунды — без разрыва соединения.
 
 ```sql
-ALTER PLUGIN sirin 1.1.0 SET router.auth.permissions_validity='5s';
+ALTER PLUGIN sirin 1.4.0 SET router.auth.permissions_validity='5s';
 ```
