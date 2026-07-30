@@ -107,6 +107,9 @@
 //!
 //! - `slot -> class`
 //! - `class -> optional constant`
+//! - `class -> anchor` (the root of its domain — the highest node the class
+//!   still describes, for consumers that must key something without a column to
+//!   key it by)
 //! - `rel -> domain` (one domain per rel by construction — see above)
 //!
 //! It does not keep provenance, derivation trees, or an explicit list of class
@@ -372,6 +375,42 @@ pub struct EquivalenceClass {
     pub params: Box<[u16]>,
     pub constant: Option<Value>,
     contradictory: bool,
+    pub anchor: NodeId,
+}
+
+/// The value that each member of the class is equal to
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ClassPin<'a> {
+    Const(&'a Value),
+    Param(u16),
+}
+
+impl EquivalenceClass {
+    /// The value this class is pinned to, if any.
+    ///
+    /// A literal wins over a parameter. It is known at planning time, so a clause
+    /// built from it can prune buckets, while a parameter only resolves at bind
+    /// time.
+    ///
+    /// `None` when:
+    /// - the class is contradictory (unsatisfiable — nothing derived from it may
+    ///   be emitted, and its `constant` is already dropped, so a param must not
+    ///   sneak in as the pin);
+    /// - the class doesn't have a constant or param to pin at all (`a = b` and no more)
+    #[must_use]
+    pub fn pin(&self) -> Option<ClassPin<'_>> {
+        if self.contradictory {
+            return None;
+        }
+        match &self.constant {
+            // A NULL constant is not a usable pin: `col = NULL` is never TRUE
+            // under SQL three-valued logic, so nothing may be derived from it.
+            Some(Value::Null) => None,
+            Some(value) => Some(ClassPin::Const(value)),
+            // `params` is sorted, so the lowest index is a deterministic pick.
+            None => self.params.first().copied().map(ClassPin::Param),
+        }
+    }
 }
 
 /// Identifier of an output slot used by the public API.
@@ -438,6 +477,17 @@ pub struct EqualityFacts {
     /// rows, but they're correct *inside* the join's local scope (matched
     /// rows) and let motion planning detect co-located outer joins.
     pub scopes: AHashMap<NodeId, ResolvedScope>,
+    /// Declared type of each query parameter, keyed by 1-based index.
+    ///
+    /// When a class pins on a parameter (`$1 = $2` pins on `$1`) there is no
+    /// `Value` nor column slot to borrow a type from, so a consumer emitting the
+    /// pin looks it up here to synthesize a typed `Parameter($1)`.
+    param_types: AHashMap<u16, DerivedType>,
+    /// The subtree root the analysis ran on — the root of the top domain.
+    /// A consumer placing clauses by [`EquivalenceClass::anchor`] can check
+    /// against it that the facts it holds were built for the subtree it is
+    /// walking, and not left over from another one.
+    analyzed_top: NodeId,
 }
 
 /// Raw cross-side equalities collected for a LEFT JOIN during `analyze`.
@@ -665,10 +715,97 @@ impl EqualityFacts {
         self.const_of_class(class_id)
     }
 
+    /// Every class that pins a value, as `(pin, class)`.
+    ///
+    /// The pin holds unconditionally in the class' domain — `LEFT JOIN`
+    /// scope-only pins live in [`ResolvedScope`], not in the global classes — so
+    /// a value surfaced here is safe to push down to a base relation.
+    // Only the `enrich_restrictions` pass reads the facts back out; without it
+    // these accessors are unused, but the analysis they sit on is not.
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn pinned_classes(&self) -> impl Iterator<Item = (ClassPin<'_>, &EquivalenceClass)> {
+        self.classes
+            .iter()
+            .filter_map(|class| Some((class.pin()?, class)))
+    }
+
+    /// The subtree root these facts were analyzed for. Every
+    /// [`EquivalenceClass::anchor`] lies within it.
+    #[must_use]
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn analyzed_top(&self) -> NodeId {
+        self.analyzed_top
+    }
+
+    /// The declared type of query parameter `index` (1-based), or unknown when
+    /// the parameter never reached the analysis.
+    #[must_use]
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn param_type(&self, index: u16) -> DerivedType {
+        self.param_types
+            .get(&index)
+            .copied()
+            .unwrap_or_else(DerivedType::unknown)
+    }
+
+    /// Register inserted nodes as passthroughs in the equality facts.
+    /// For each `(child_rel, new_rels)` pair, copy the child's domain and output
+    /// classes to every new node and add its slots to the corresponding classes.
+    ///
+    /// The enrich pass calls this after inserting all filter and subquery nodes.
+    /// This preserves the equalities used by the motion pass to recognize
+    /// co-located joins. Batching the updates rebuilds each affected class's
+    /// members only once.
+    #[cfg(feature = "enrich_restrictions")]
+    pub(super) fn register_passthroughs(
+        &mut self,
+        passthroughs: &[(NodeId, SmallVec<[NodeId; 3]>)],
+    ) {
+        let mut added: AHashMap<ClassId, Vec<Slot>> = AHashMap::new();
+        for (child_rel, new_rels) in passthroughs {
+            let Some((&last_rel, other_rels)) = new_rels.split_last() else {
+                continue;
+            };
+            let (Some(domain), Some(child_classes)) = (
+                self.domains.get(child_rel).copied(),
+                self.slot_classes.get(child_rel).cloned(),
+            ) else {
+                continue;
+            };
+            for (pos, class_id) in child_classes.iter().enumerate() {
+                let Some(class_id) = class_id else {
+                    continue;
+                };
+                added
+                    .entry(*class_id)
+                    .or_default()
+                    .extend(new_rels.iter().map(|&new_rel| Slot::new(new_rel, pos)));
+            }
+            // The last rel takes the owned copy, the others clone it.
+            for &new_rel in other_rels {
+                self.domains.insert(new_rel, domain);
+                self.slot_classes.insert(new_rel, child_classes.clone());
+            }
+            self.domains.insert(last_rel, domain);
+            self.slot_classes.insert(last_rel, child_classes);
+        }
+        for (class_id, slots) in added {
+            let class =
+                &mut self.classes[usize::try_from(class_id.0).expect("class id fits usize")];
+            // Inserted nodes have no slots in the existing members.
+            // Re-sort to keep the members invariant: sorted by Slot::Ord for
+            // deterministic iteration.
+            let mut members = std::mem::take(&mut class.members).into_vec();
+            members.extend(slots);
+            members.sort_unstable();
+            class.members = members.into_boxed_slice();
+        }
+    }
+
     /// Number of output slots tracked for a relational node, if the analyzer
     /// visited it. Returns `0` for nodes outside the analyzed subtree.
     #[must_use]
-    pub fn slot_count(&self, rel_id: NodeId) -> usize {
+    pub(super) fn slot_count(&self, rel_id: NodeId) -> usize {
         self.slot_classes
             .get(&rel_id)
             .map(|slots| slots.len())
@@ -795,6 +932,7 @@ struct EqualityFactsBuilder {
     members: UnionFind<EqualityFactAtom>,
     domains: AHashMap<NodeId, DomainId>,
     origins: AHashMap<NodeId, Vec<SlotKey>>,
+    domain_roots: Vec<NodeId>,
     scoped: AHashMap<NodeId, ScopedFacts>,
 }
 
@@ -804,6 +942,7 @@ impl EqualityFactsBuilder {
             members: UnionFind::with_capacity(capacity),
             domains: AHashMap::with_hasher(equality_facts_hash_state()),
             origins: AHashMap::with_hasher(equality_facts_hash_state()),
+            domain_roots: Vec::new(),
             scoped: AHashMap::with_hasher(equality_facts_hash_state()),
         }
     }
@@ -861,7 +1000,7 @@ impl EqualityFactsBuilder {
 
     /// Union every atom of one equivalence class into the global union-find as
     /// a star around the first atom. Handles `slot = slot`, `slot = const`,
-    /// `slot = param` and the slotless `const = param` gate (`x = 1 AND x = $1`
+    /// `slot = param` and the slotless `const = param` one-time filter (`x = 1 AND x = $1`
     /// surviving an `OR`) uniformly — the class emerges from the union-find, no
     /// pairwise facts are materialized.
     fn union_atoms(&mut self, group: FactGroup) {
@@ -878,7 +1017,7 @@ impl EqualityFactsBuilder {
         }
     }
 
-    fn freeze(self) -> EqualityFacts {
+    fn freeze(self, param_types: AHashMap<u16, DerivedType>) -> EqualityFacts {
         let groups = self.members.groups_number();
 
         let mut root_to_class: AHashMap<UnionFindGroup, ClassId> =
@@ -890,8 +1029,23 @@ impl EqualityFactsBuilder {
         let mut const_conflict: Vec<bool> = Vec::with_capacity(groups);
         let mut class_params: Vec<Vec<u16>> = Vec::with_capacity(groups);
         let mut class_members: Vec<Vec<Slot>> = Vec::with_capacity(groups);
+        // The domain every atom of the class agreed on. One per class by
+        // construction: constants and params are domain-tagged, slots inherit
+        // their rel's domain, and nothing ever unions across the boundary -- a
+        // subquery body is opaque, set-operation arms are opaque, and
+        // `union_join_output` skips the nullable side. `note_domain` asserts it.
+        let mut class_domain: Vec<Option<DomainId>> = Vec::with_capacity(groups);
         let mut canonical_slot_classes: AHashMap<NodeId, Vec<Option<ClassId>>> =
             AHashMap::with_capacity_and_hasher(self.domains.len(), equality_facts_hash_state());
+
+        fn note_domain(class_domain: &mut [Option<DomainId>], class_id: ClassId, domain: DomainId) {
+            let seen = &mut class_domain[class_id.0 as usize];
+            debug_assert!(
+                seen.is_none_or(|prev| prev == domain),
+                "class {class_id:?} spans domains {seen:?} and {domain:?}"
+            );
+            *seen = Some(domain);
+        }
 
         for (atom, group) in self.members.into_groups() {
             let class_id = *root_to_class.entry(group).or_insert_with(|| {
@@ -900,11 +1054,13 @@ impl EqualityFactsBuilder {
                 const_conflict.push(false);
                 class_params.push(Vec::new());
                 class_members.push(Vec::new());
+                class_domain.push(None);
                 id
             });
 
             match atom {
-                EqualityFactAtom::Constant(_, value) => {
+                EqualityFactAtom::Constant(domain, value) => {
+                    note_domain(&mut class_domain, class_id, domain);
                     // Multiple constants in the same UF group can happen
                     // either inside one AND-region (already killed by
                     // `LocalFacts::into_facts` as `DeriveOutcome::Dead`) or
@@ -934,7 +1090,8 @@ impl EqualityFactsBuilder {
 
                     class_const[i] = Some(value);
                 }
-                EqualityFactAtom::Param(_, param_index) => {
+                EqualityFactAtom::Param(domain, param_index) => {
+                    note_domain(&mut class_domain, class_id, domain);
                     // Keep every distinct param as a class member.
                     let params = &mut class_params[class_id.0 as usize];
                     if !params.contains(&param_index) {
@@ -942,6 +1099,13 @@ impl EqualityFactsBuilder {
                     }
                 }
                 EqualityFactAtom::Slot(SlotKey { rel_id, output_idx }) => {
+                    // `record_domain` pinned the rel before any of its slots
+                    // were interned, so the lookup always hits.
+                    let domain = *self
+                        .domains
+                        .get(&rel_id)
+                        .expect("slot interned before its rel's domain was recorded");
+                    note_domain(&mut class_domain, class_id, domain);
                     let classes = canonical_slot_classes.entry(rel_id).or_default();
                     if classes.len() <= output_idx {
                         classes.resize(output_idx + 1, None);
@@ -965,11 +1129,20 @@ impl EqualityFactsBuilder {
                     continue;
                 }
 
+                // A singleton class still needs a domain so its `anchor`
+                // resolves in the materialization step below; the slot
+                // inherits its rel's recorded domain.
+                let domain = *self
+                    .domains
+                    .get(&origin.rel_id)
+                    .expect("slot interned before its rel's domain was recorded");
+
                 let class_id = ClassId(class_const.len() as u32);
                 class_const.push(None);
                 const_conflict.push(false);
                 class_params.push(Vec::new());
                 class_members.push(vec![Slot::new(origin.rel_id, origin.output_idx)]);
+                class_domain.push(Some(domain));
 
                 let classes = canonical_slot_classes.entry(origin.rel_id).or_default();
                 if classes.len() <= origin.output_idx {
@@ -1008,16 +1181,24 @@ impl EqualityFactsBuilder {
             .zip(const_conflict)
             .zip(class_params)
             .zip(class_members)
-            .map(|(((constant, contradictory), mut params), mut members)| {
-                members.sort();
-                params.sort_unstable();
-                EquivalenceClass {
-                    members: members.into_boxed_slice(),
-                    params: params.into_boxed_slice(),
-                    constant,
-                    contradictory,
-                }
-            })
+            .zip(class_domain)
+            .map(
+                |((((constant, contradictory), mut params), mut members), domain)| {
+                    members.sort();
+                    params.sort_unstable();
+                    // A class exists only because an atom created it, and every atom
+                    // carries a domain, so both lookups are total.
+                    let domain = domain.expect("class built without an atom");
+                    let anchor = self.domain_roots[domain.0];
+                    EquivalenceClass {
+                        members: members.into_boxed_slice(),
+                        params: params.into_boxed_slice(),
+                        constant,
+                        contradictory,
+                        anchor,
+                    }
+                },
+            )
             .collect();
 
         // Resolve every per-LEFT-JOIN scope once, using the just-built
@@ -1044,6 +1225,9 @@ impl EqualityFactsBuilder {
             classes,
             domains: self.domains,
             scopes,
+            param_types,
+            // Domain 0 is the one `get_equality_facts` opened for its `top_id`.
+            analyzed_top: self.domain_roots[0],
         }
     }
 }
@@ -1060,6 +1244,9 @@ pub struct EqualityAnalysis<'p> {
     // fact propagation is ever added, clone the body per call-site instead
     // of weakening the contract here.
     visited_shared_bodies: AHashSet<NodeId>,
+    // Declared type of each query parameter, captured as equality terms are
+    // extracted.
+    param_types: AHashMap<u16, DerivedType>,
 }
 
 impl<'p> EqualityAnalysis<'p> {
@@ -1072,12 +1259,13 @@ impl<'p> EqualityAnalysis<'p> {
             builder: EqualityFactsBuilder::new(plan.nodes.len()),
             next_domain_id: DomainId(0),
             visited_shared_bodies: AHashSet::with_hasher(equality_facts_hash_state()),
+            param_types: AHashMap::with_hasher(equality_facts_hash_state()),
         };
 
-        let top_domain = analyzer.fresh_domain();
+        let top_domain = analyzer.open_domain(top_id);
         analyzer.analyze(top_id, top_domain)?;
 
-        Ok(analyzer.builder.freeze())
+        Ok(analyzer.builder.freeze(analyzer.param_types))
     }
 
     fn alias_passthrough_output(
@@ -1186,7 +1374,7 @@ impl<'p> EqualityAnalysis<'p> {
             if !self.visited_shared_bodies.insert(*subquery) {
                 continue;
             }
-            let sub_domain = self.fresh_domain();
+            let sub_domain = self.open_domain(*subquery);
             self.analyze(*subquery, sub_domain)?;
         }
 
@@ -1211,13 +1399,13 @@ impl<'p> EqualityAnalysis<'p> {
                     self.analyze(*child_id, domain_id)?;
                     self.alias_projection_output(rel_id, *child_id)?;
                 } else {
-                    let inner_domain = self.fresh_domain();
-                    if let Some(having_id) = having {
-                        self.analyze(*having_id, inner_domain)?;
-                    } else if let Some(group_by_id) = group_by {
-                        self.analyze(*group_by_id, inner_domain)?;
-                    } else if let Some(child_id) = child {
-                        self.analyze(*child_id, inner_domain)?;
+                    // The root is the node actually analyzed under the
+                    // aggregation, never the projection itself: a fact about the
+                    // rows feeding an aggregate says nothing about the rows
+                    // coming out of it.
+                    if let Some(inner_root) = having.or(*group_by).or(*child) {
+                        let inner_domain = self.open_domain(inner_root);
+                        self.analyze(inner_root, inner_domain)?;
                     }
                 }
             }
@@ -1231,7 +1419,7 @@ impl<'p> EqualityAnalysis<'p> {
             | Relational::GroupBy(GroupBy { child, .. })
             | Relational::Having(Having { child, .. })
             | Relational::OrderBy(OrderBy { child, .. }) => {
-                let child_domain = self.fresh_domain();
+                let child_domain = self.open_domain(*child);
                 self.analyze(*child, child_domain)?;
             }
 
@@ -1241,7 +1429,7 @@ impl<'p> EqualityAnalysis<'p> {
                 // rest rely on the body being opaque — ScanCte's own output
                 // slots carry outer-scope facts independently.
                 if self.visited_shared_bodies.insert(*child) {
-                    let child_domain = self.fresh_domain();
+                    let child_domain = self.open_domain(*child);
                     self.analyze(*child, child_domain)?;
                 }
             }
@@ -1261,7 +1449,7 @@ impl<'p> EqualityAnalysis<'p> {
                 }
                 JoinKind::LeftOuter => {
                     self.analyze(*left, domain_id)?;
-                    let right_domain = self.fresh_domain();
+                    let right_domain = self.open_domain(*right);
                     self.analyze(*right, right_domain)?;
                     self.alias_join_output(rel_id, *left, *right, false)?;
                     // The ON condition is unsafe to apply globally because
@@ -1295,7 +1483,7 @@ impl<'p> EqualityAnalysis<'p> {
                     // - cross-side: null-extension on the right breaks
                     //   the equality on unmatched rows.
                     // Both are correctly captured by `ScopedFacts` already.
-                    let scope_domain = self.fresh_domain();
+                    let scope_domain = self.open_domain(rel_id);
                     self.collect_scoped_facts(*condition, scope_domain, rel_id)?;
                 }
             },
@@ -1309,7 +1497,7 @@ impl<'p> EqualityAnalysis<'p> {
                     self.analyze(*child, domain_id)?;
                     self.alias_passthrough_output(rel_id, *child)?;
                 } else {
-                    let child_domain = self.fresh_domain();
+                    let child_domain = self.open_domain(*child);
                     self.analyze(*child, child_domain)?;
                 }
             }
@@ -1318,9 +1506,9 @@ impl<'p> EqualityAnalysis<'p> {
             | Relational::Union(Union { left, right, .. })
             | Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. }) => {
-                let left_domain = self.fresh_domain();
+                let left_domain = self.open_domain(*left);
                 self.analyze(*left, left_domain)?;
-                let right_domain = self.fresh_domain();
+                let right_domain = self.open_domain(*right);
                 self.analyze(*right, right_domain)?;
             }
 
@@ -1330,7 +1518,7 @@ impl<'p> EqualityAnalysis<'p> {
             | Relational::Delete(Delete {
                 child: Some(child), ..
             }) => {
-                let child_domain = self.fresh_domain();
+                let child_domain = self.open_domain(*child);
                 self.analyze(*child, child_domain)?;
             }
 
@@ -1344,12 +1532,21 @@ impl<'p> EqualityAnalysis<'p> {
         Ok(())
     }
 
-    fn fresh_domain(&mut self) -> DomainId {
+    /// Open a domain for `root`: the node analyzed in it, and — since a domain
+    /// only ever grows downwards from there — the highest node its facts reach.
+    /// The root is remembered so a frozen class can name it; see
+    /// [`EquivalenceClass::anchor`].
+    fn open_domain(&mut self, root: NodeId) -> DomainId {
         let domain_id = self.next_domain_id;
         self.next_domain_id.inc();
+        debug_assert_eq!(
+            self.builder.domain_roots.len(),
+            domain_id.0,
+            "domain ids must stay dense to index `domain_roots`"
+        );
+        self.builder.domain_roots.push(root);
         domain_id
     }
-
     fn is_safe_subtree(&self, rel_id: NodeId) -> Result<bool, SbroadError> {
         let rel = self.plan.get_relation_node(rel_id)?;
         let is_safe = match rel {
@@ -1380,8 +1577,10 @@ impl<'p> EqualityAnalysis<'p> {
                     && self.projection_is_direct_ref(rel_id, child.expect("checked above"))?
                     && self.is_safe_subtree(child.expect("checked above"))?
             }
-            // Transparent wrapper around a subquery: safe if the subquery itself is safe.
-            Relational::ScanSubQuery(ScanSubQuery { child, .. }) => self.is_safe_subtree(*child)?,
+            // Row-identity-preserving boundary. Don't recurse into the body:
+            // `analyze` re-gates every subquery on its own `is_safe_subtree(*child)`,
+            // so a barrier inside must not block a clean passthrough above it.
+            Relational::ScanSubQuery(_) => true,
             // Inner join preserves row identity on both sides and lets facts flow through.
             // Outer joins pad non-matching rows with NULLs, so an equality
             // fact from the nullable side may not hold for every output row.
@@ -1517,7 +1716,7 @@ impl<'p> EqualityAnalysis<'p> {
         let mut facts = Vec::with_capacity(capacity);
         for group in partition {
             // Star over the class's slots plus its pinned constant. Params (and
-            // the slotless const=param gate) are not surfaced in `LEFT JOIN`
+            // the slotless const=param one-time filter) are not surfaced in `LEFT JOIN`
             // scoped facts yet; they only feed the global pins for enrichment.
             let mut rep: Option<SlotKey> = None;
             let mut constant = None;
@@ -1552,7 +1751,7 @@ impl<'p> EqualityAnalysis<'p> {
     /// Replaces the old per-DNF-chain analysis: an OR arm here plays the role a
     /// DNF chain used to, and the intersection is computed directly on the tree.
     fn derive(
-        &self,
+        &mut self,
         node: NodeId,
         nulls_in: &[SlotKey],
         domain: DomainId,
@@ -1604,7 +1803,7 @@ impl<'p> EqualityAnalysis<'p> {
     /// may itself be an `OR`. This is the old `collect_chain_facts`, generalized
     /// so an `OR` conjunct contributes the intersection of its arms' facts.
     fn derive_conjuncts(
-        &self,
+        &mut self,
         conjuncts: &[NodeId],
         nulls_in: &[SlotKey],
         domain: DomainId,
@@ -1666,22 +1865,28 @@ impl<'p> EqualityAnalysis<'p> {
                         continue;
                     }
                     for (left_term, right_term) in left_terms.into_iter().zip(right_terms) {
-                        if let FactAtom::Slot(ref slot) = left_term.atom {
-                            if null_slots.contains(slot) {
-                                return Ok(DeriveOutcome::Dead);
-                            }
+                        let is_null_slot = |term: &FactTerm| match &term.atom {
+                            FactAtom::Slot(slot) => null_slots.contains(slot),
+                            _ => false,
+                        };
+                        if [&left_term, &right_term].into_iter().any(is_null_slot) {
+                            return Ok(DeriveOutcome::Dead);
                         }
-                        if let FactAtom::Slot(ref slot) = right_term.atom {
-                            if null_slots.contains(slot) {
-                                return Ok(DeriveOutcome::Dead);
-                            }
-                        }
+
                         if left_term.atom == FactAtom::Other || right_term.atom == FactAtom::Other {
                             continue;
                         }
                         if left_term.ty != right_term.ty {
                             continue;
                         }
+
+                        for term in [&left_term, &right_term] {
+                            if let FactAtom::Param { param_index, .. } = term.atom {
+                                let ty = self.param_types.entry(param_index).or_insert(term.ty);
+                                debug_assert_eq!(*ty, term.ty, "Param types must be consistent");
+                            }
+                        }
+
                         local.union(left_term.atom, right_term.atom);
                     }
                 }

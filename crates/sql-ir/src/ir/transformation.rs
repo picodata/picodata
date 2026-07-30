@@ -6,6 +6,8 @@ mod bool_in;
 mod cast_constants;
 mod constant_folding;
 mod dnf;
+#[cfg(feature = "enrich_restrictions")]
+mod enrich_restrictions;
 pub mod equality_facts;
 mod merge_tuples;
 mod not_push_down;
@@ -276,8 +278,10 @@ pub enum Stage {
     FoldBooleanTree,
     SplitColumns,
     Restrictions,
-    Dnf,
     EqualityFacts,
+    #[cfg(feature = "enrich_restrictions")]
+    EnrichRestrictions,
+    Dnf,
     MergeTuples,
     AddMotions,
     UpdateSubstring,
@@ -414,6 +418,15 @@ impl Plan {
             Stage::EqualityFacts,
             plan.analyze_equality_facts_in_subtree(top_id)?
         );
+        // Derive what the equality classes imply back onto Plan
+        #[cfg(feature = "enrich_restrictions")]
+        {
+            stage!(
+                plan,
+                Stage::EnrichRestrictions,
+                plan.enrich_restrictions_from_facts(top_id)?
+            );
+        }
         stage!(plan, Stage::Dnf, plan.set_dnf_in_subtree(top_id)?);
         stage!(
             plan,

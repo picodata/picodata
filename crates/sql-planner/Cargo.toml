@@ -25,8 +25,8 @@ pretty_assertions = { workspace = true }
 rand = { workspace = true }
 smol_str = { workspace = true }
 tarantool = { workspace = true, features = ["standalone_decimal","extra_impls"] }
-# Self-referential dev-dependency: forces the `mock` feature on for the
-# whitebox test suite in tests/ without affecting downstream builds.
+# Self-referential dev-dependency: forces the `mock` feature on for the whitebox
+# test suite in tests/ without affecting downstream builds.
 sql-planner = { path = ".", features = ["mock"] }
 criterion = { workspace = true }
 dhat = "0.3"
@@ -40,6 +40,7 @@ name = "sql"
 [features]
 mock = ["sql-ir/mock", "sql-executor/mock", "sql-frontend/mock"]
 __bench_ast_new = ["sql-frontend/__bench_ast_new"]
+enrich_restrictions = ["sql-ir/enrich_restrictions"]
 
 [[bench]]
 name = "ast_fill"

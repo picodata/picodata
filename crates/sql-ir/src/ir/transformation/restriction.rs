@@ -35,6 +35,17 @@ pub struct RestrictInfo {
 }
 
 impl RestrictInfo {
+    /// A clause derived from the equality facts It is built from class
+    /// members only, so it never references a subquery.
+    #[must_use]
+    pub fn implied(clause: NodeId, slots: SmallVec<[Slot; 2]>) -> Self {
+        Self {
+            clause,
+            slots,
+            subqueries: SmallVec::new(),
+        }
+    }
+
     /// The clause's source expression node.
     #[must_use]
     pub fn clause(&self) -> NodeId {
@@ -78,6 +89,9 @@ impl Restrictions {
     #[must_use]
     pub fn for_rel(&self, rel_id: NodeId) -> Option<&Restriction> {
         self.by_rel.get(&rel_id)
+    }
+    pub fn add(&mut self, rel_id: NodeId, info: RestrictInfo) {
+        self.by_rel.entry(rel_id).or_default().clauses.push(info);
     }
 }
 

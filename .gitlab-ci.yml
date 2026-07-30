@@ -528,10 +528,12 @@ test-rs-linux:
       - junit_pytest.xml
       - core*
       - target/nextest/ci/junit_sql.xml
+      - target/nextest/sql-enrich/junit_sql_enrich.xml
     reports:
       junit:
         - junit_pytest.xml
         - target/nextest/ci/junit_sql.xml
+        - target/nextest/sql-enrich/junit_sql_enrich.xml
 
 .test-py-linux_base:
   extends:

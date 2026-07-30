@@ -7,8 +7,8 @@ use crate::ir::columns::RelColumn;
 use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
     Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, LetVarRef, Motion, MutNode,
-    NodeId, OrderBy, Projection, Reference, ReferenceTarget, ScanCte, ScanRelation, ScanSubQuery,
-    Selection, SubQueryReference, Union, UnionAll, Update, Values,
+    NodeId, OrderBy, Projection, Reference, ReferenceAsteriskSource, ReferenceTarget, ScanCte,
+    ScanRelation, ScanSubQuery, Selection, SubQueryReference, Union, UnionAll, Update, Values,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
@@ -1092,6 +1092,34 @@ impl Plan {
     /// - the child output cannot be converted into a projection output row
     pub fn add_proj_with_default(&mut self, child: NodeId) -> Result<NodeId, SbroadError> {
         self.add_proj(child, vec![], &[], false, false)
+    }
+
+    /// Add a `SELECT *` projection preserving the child's column order, names,
+    /// and types. Include the system shard column when `needs_shard_col` is true.
+    /// The SQL backend expands `*` when needed to control system column visibility.
+    ///
+    /// # Errors
+    /// - `child` is not a relational node
+    /// - the child output cannot be converted into a projection output row
+    pub fn add_proj_star(
+        &mut self,
+        child: NodeId,
+        needs_shard_col: bool,
+    ) -> Result<NodeId, SbroadError> {
+        // One asterisk covers the whole output
+        let asterisk = Some(ReferenceAsteriskSource::new(None, 0));
+        let output = self.add_row_for_output(child, &[], needs_shard_col, asterisk)?;
+        let proj = Projection {
+            child: Some(child),
+            subqueries: vec![],
+            windows: vec![],
+            output,
+            is_distinct: false,
+            group_by: None,
+            having: None,
+            distribution: None,
+        };
+        self.add_relational(proj.into())
     }
 
     pub fn add_proj_with_col_reduction(

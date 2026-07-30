@@ -728,7 +728,11 @@ impl ColExpr {
                     );
                     stack.push((expr, id));
                 }
-                Expression::Parameter(_) => (),
+                Expression::Parameter(param) => {
+                    let expr =
+                        ColExpr::Const(format_smolstr!("${}", param.index), param.param_type);
+                    stack.push((expr, id));
+                }
                 Expression::LetVarRef(let_var_ref) => {
                     let expr = ColExpr::Const(
                         format_smolstr!(":{}", let_var_ref.name),

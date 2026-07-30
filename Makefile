@@ -157,6 +157,17 @@ test-rs-sql:
 		$(if $(MAKE_JOBSERVER_ARGS),--test-threads $(MAKE_JOBSERVER_ARGS)) \
 		$(subst --profile,--cargo-profile,$(CARGO_FLAGS_EXTRA)) \
 		$(SQL_CRATES)
+	# The `enrich_restrictions` pass is off by default (turning it on crate-wide
+	# would leak into every SQL test's plan via feature unification), so its
+	# whitebox tests run in a second invocation: the feature on, filtered to just
+	# those tests, under their own nextest profile so the report is separate.
+	cargo nextest run \
+		$(if $(MAKE_JOBSERVER_ARGS),--test-threads $(MAKE_JOBSERVER_ARGS)) \
+		$(subst --profile,--cargo-profile,$(CARGO_FLAGS_EXTRA)) \
+		--profile sql-enrich \
+		--features enrich_restrictions \
+		-p sql-planner \
+		-E 'test(/transformation::enrich_restrictions/)'
 
 .PHONY: bench-sql-check
 bench-sql-check:

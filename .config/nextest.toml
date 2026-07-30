@@ -78,3 +78,14 @@ flaky-fail-status = "failure"
 # CI logs are not interactive, so print a line only for tests that fail rather
 # than for every test that starts.
 status-level = "fail"
+
+# Profile for the feature-gated `enrich_restrictions` whitebox tests. They need
+# that feature on, which changes the plans other SQL tests snapshot, so they run
+# in a second invocation. This profile keeps their report separate from the main
+# one instead of clobbering it.
+# Report lands in target/nextest/sql-enrich/junit_sql_enrich.xml.
+[profile.sql-enrich]
+status-level = "fail"
+
+[profile.sql-enrich.junit]
+path = "junit_sql_enrich.xml"

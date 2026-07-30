@@ -36,3 +36,5 @@ sql-ir = { path = ".", features = ["mock"] }
 
 [features]
 mock = []
+# Derive what equality classes imply back onto plan
+enrich_restrictions = []
