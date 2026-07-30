@@ -58,7 +58,7 @@ Picodata с включённым плагином Ouroboros. В этом кла�
 учитывает семантику данных.
 
 !!! note "Примечание"
-    Начиная с версии 2.0.0 плагин Ouroboros требует наличия
+    Начиная с версии 2.0.1 плагин Ouroboros требует наличия
     пользователя (пользователей) с правами как
     минимум на чтение всех таблиц (спейсов) в источнике и запись во все таблицы (спейсы) в
     приёмнике. Это должно быть обеспечено до запуска Ouroboros. Данные
@@ -88,7 +88,7 @@ Picodata с включённым плагином Ouroboros. В этом кла�
 
 ```
 └── ouroboros
-    └── 2.0.0
+    └── 2.0.1
         ├── deps.toml                     # файл со списком зависимостей плагина
         ├── libouroboros.so               # основная часть плагина, разделяемая библиотека
         ├── manifest.yaml                 # манифест, задающий исходную конфигурацию плагина
@@ -117,7 +117,7 @@ Picodata с включённым плагином Ouroboros. В этом кла�
     ```yaml
     description: Plugin tnt clusters replication
     name: ouroboros
-    version: 2.0.0
+    version: 2.0.1
     services:
       - name: ouroboros
         description: ouroboros descr
@@ -235,11 +235,11 @@ picodata run --share-dir=<SHARE-DIR> ...
 следующих SQL-команд (пример для тира `default`):
 
 ```sql
-CREATE PLUGIN ouroboros 2.0.0;
-ALTER PLUGIN ouroboros 2.0.0 SET migration_context.tier='default';
-ALTER PLUGIN ouroboros MIGRATE TO 2.0.0;
-ALTER PLUGIN ouroboros 2.0.0 ADD SERVICE ouroboros TO TIER default;
-ALTER PLUGIN ouroboros 2.0.0 ENABLE;
+CREATE PLUGIN ouroboros 2.0.1;
+ALTER PLUGIN ouroboros 2.0.1 SET migration_context.tier='default';
+ALTER PLUGIN ouroboros MIGRATE TO 2.0.1;
+ALTER PLUGIN ouroboros 2.0.1 ADD SERVICE ouroboros TO TIER default;
+ALTER PLUGIN ouroboros 2.0.1 ENABLE;
 ```
 
 [административной консоли]: ../tutorial/connecting.md#admin_console
@@ -249,7 +249,7 @@ ALTER PLUGIN ouroboros 2.0.0 ENABLE;
 ### Подготовка {: #preparation }
 
 1. Изучите [документацию по развёртыванию кластера
-   Picodata](../admin/deploy_ansible.md). Выполнить инструкции по
+   Picodata](../admin/deploy_ansible.md). Выполните инструкции по
    установке роли.
 2. Скачайте нужную версию плагина `ouroboros` и положите пакет в рабочую
    директорию.
@@ -301,7 +301,7 @@ all:
 
     plugins:
       ouroboros:
-        path: "ouroboros_2.0.0.tar.gz"
+        path: "ouroboros_2.0.1.tar.gz"
         services:
           tiers:
             - default
@@ -372,7 +372,7 @@ all:
 
 - ouroboros.yml
 - picodata.yml
-- ouroboros_config.yml
+- ouroboros-config.yml
 - ouroboros_xxxxx.tar.gz
 
 Запустите раскатку Ouroboros:
@@ -398,7 +398,7 @@ ouroboros-cli --host localhost --port 15001 --user superadmin --password Pa55w0r
 - `check-records` — сверяет количество записей в кластере-источнике и кластере-приёмнике по таблицам (спейсам) и бакетам
 - `reverse`       — разворачивает направление репликации, т.е. меняет источник и приёмник местами
 - `cmp-producer`  — проверяет, все ли нужные репликасеты источника есть в плане переноса данных
-- `cmp-schemas `  — сравнивает схемы данных (шардированные таблицы) на источнике и приёмнике
+- `cmp-schemas`   — сравнивает схемы данных (шардированные таблицы) на источнике и приёмнике
 - `export`        — выгрузка данных Ouroboros в виде набора SQL-команд
 - `import`        — загрузка ранее выгруженных данных Ouroboros из набора SQL-команд
 
@@ -448,7 +448,7 @@ ouroboros-cli --host localhost --port 15001 --user superadmin --password Pa55w0r
 git clone https://git.picodata.io/picodata/plugin/uroboros.git
 ```
 
-Соберите разделяемые библиотеки Ouroboros (требуется актуальные версии Rust, Cargo, GNU Make):
+Соберите разделяемые библиотеки Ouroboros (требуются актуальные версии Rust, Cargo, GNU Make):
 
 ```bash
 cd ouroboros
@@ -465,7 +465,7 @@ make build
 
 <!--  ## Проверка плагина вручную {: #manual_test }
 
-Скопируйте библиотеки Uruboros, файл манифеста и файлы миграций в директорию
+Скопируйте библиотеки Ouruboros, файл манифеста и файлы миграций в директорию
 плагина. Выполните следующий набор команд из основной директории
 репозитория:
 
