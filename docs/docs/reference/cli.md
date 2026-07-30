@@ -215,6 +215,10 @@ picodata run -c instance.log.level=verbose -c instance.instance_dir=/path/to/dir
 
 Пример: `default_1_1`.
 
+См. также:
+
+- [Автоматическое назначение имён](../tutorial/node_add.md#naming_convention)
+
 Аналогичная переменная окружения: `PICODATA_INSTANCE_NAME`<br>
 Аналогичный параметр файла конфигурации: [`instance.name`]
 
