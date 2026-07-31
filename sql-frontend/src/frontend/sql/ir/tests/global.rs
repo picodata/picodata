@@ -993,11 +993,11 @@ fn check_plan_except_global_vs_segment() {
           scan global_t
       motion [policy: full, program: ReshardIfNeeded]
         intersect
-          projection (t2.e::int -> e, t2.f::int -> f)
-            scan t2
           projection (global_t.a::int -> a, global_t.b::int -> b)
             selection (global_t.a::int = 1::int)
               scan global_t
+          projection (t2.e::int -> e, t2.f::int -> f)
+            scan t2
     ");
 }
 
@@ -1019,10 +1019,10 @@ fn check_plan_except_global_vs_any() {
         scan global_t
       motion [policy: full, program: ReshardIfNeeded]
         intersect
-          projection (t2.e::int -> e)
-            scan t2
           projection (global_t.a::int -> a)
             scan global_t
+          projection (t2.e::int -> e)
+            scan t2
     ");
 }
 
@@ -1152,8 +1152,6 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
                 scan global_t
       motion [policy: full, program: ReshardIfNeeded]
         intersect
-          projection (t2.e::int -> e)
-            scan t2
           projection (global_t.b::int -> b)
             selection (global_t.a::int = 1::int)
               left join on (global_t.a::int = unnamed_subquery."B"::int)
@@ -1161,5 +1159,7 @@ fn check_plan_except_non_trivial_global_subtree_vs_any() {
                 scan unnamed_subquery
                   projection (global_t.b::int -> "B")
                     scan global_t
+          projection (t2.e::int -> e)
+            scan t2
     "#);
 }

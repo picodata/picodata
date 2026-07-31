@@ -51,8 +51,6 @@ fn front_select_chaining_2() {
             scan t3
       motion [policy: full, program: ReshardIfNeeded]
         intersect
-          projection (t3.b::int::string -> col_1)
-            scan t3
           motion [policy: full, program: RemoveDuplicates]
             union
               union all
@@ -62,6 +60,8 @@ fn front_select_chaining_2() {
                   scan t2
               projection (t3.a::string -> a)
                 scan t3
+          projection (t3.b::int::string -> col_1)
+            scan t3
     ");
 }
 

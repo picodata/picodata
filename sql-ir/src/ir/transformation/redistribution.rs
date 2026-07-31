@@ -2070,8 +2070,8 @@ impl Plan {
             self.get_rel_distribution(right_id)?.clone(),
         )?;
         let intersect = Intersect {
-            left: right_id,
-            right: cloned_left_id,
+            left: cloned_left_id,
+            right: right_id,
             output: intersect_output_id,
         };
         let intersect_id = self.add_relational(intersect.into())?;

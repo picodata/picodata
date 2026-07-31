@@ -986,7 +986,7 @@ fn global_except() {
             TEMPLATE,
         );
         assert_yaml_snapshot!(sql, @r#"
-        pattern: "SELECT \"t2\".\"e\" FROM \"t2\" INTERSECT SELECT \"global_t\".\"a\" FROM \"global_t\""
+        pattern: "SELECT \"global_t\".\"a\" FROM \"global_t\" INTERSECT SELECT \"t2\".\"e\" FROM \"t2\""
         params: []
         "#);
 
