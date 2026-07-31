@@ -412,13 +412,8 @@ impl Plan {
             // For queries of the form `SELECT DISTINCT a, <SQ_1>, ..., <SQ_n> FROM t`,
             // where each SQ_i is a scalar subquery,
             // we need to collect these subqueries so they can be attached to subsequent local nodes.
-            for ref_id in self.get_refs_from_subtree(proj_col_id)? {
-                if matches!(
-                    self.get_expression_node(ref_id)?,
-                    Expression::SubQueryReference { .. }
-                ) {
-                    scalar_sqs.insert(self.get_relational_from_reference_node(ref_id)?);
-                }
+            for ref_id in self.get_sq_refs_from_subtree(proj_col_id)? {
+                scalar_sqs.insert(self.get_relational_from_reference_node(ref_id)?);
             }
 
             let col = SubtreeCloner::clone_subtree(self, proj_col_id)?;
