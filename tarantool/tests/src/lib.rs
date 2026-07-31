@@ -538,6 +538,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             #[cfg(feature = "picodata")]
             {
                 tests.append(&mut tests![
+                    tuple::key_def_sort_order,
                     proc::return_port,
                     proc::dump_port_to_lua,
                     sql::prepared_source_query,

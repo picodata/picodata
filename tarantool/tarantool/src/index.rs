@@ -372,6 +372,21 @@ crate::define_str_enum! {
     }
 }
 
+crate::define_str_enum! {
+    #![coerce_from_str]
+    /// Sort order of an index part.
+    #[derive(Default)]
+    pub enum SortOrder {
+        #[default]
+        Asc = "asc",
+        Desc = "desc",
+    }
+}
+
+fn is_ascending_or_none(sort_order: &Option<SortOrder>) -> bool {
+    !matches!(sort_order, Some(SortOrder::Desc))
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // IndexPart
 ////////////////////////////////////////////////////////////////////////////////
@@ -399,6 +414,8 @@ pub struct Part<T = NumOrStr> {
     pub is_nullable: Option<bool>,
     #[serde(default)]
     pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "is_ascending_or_none")]
+    pub sort_order: Option<SortOrder>,
 }
 
 macro_rules! define_setters {
@@ -422,6 +439,7 @@ impl<T> Part<T> {
             collation: None,
             is_nullable: None,
             path: None,
+            sort_order: None,
         }
     }
 
@@ -430,6 +448,15 @@ impl<T> Part<T> {
         collation(collation: impl Into<String>)
         is_nullable(is_nullable: bool)
         path(path: impl Into<String>)
+    }
+
+    #[inline(always)]
+    pub fn sort_order(mut self, sort_order: SortOrder) -> Self {
+        self.sort_order = match sort_order {
+            SortOrder::Asc => None,
+            SortOrder::Desc => Some(SortOrder::Desc),
+        };
+        self
     }
 
     #[inline(always)]
@@ -517,6 +544,7 @@ impl From<Part<String>> for Part {
             collation: value.collation,
             is_nullable: value.is_nullable,
             path: value.path,
+            sort_order: value.sort_order,
         }
     }
 }
@@ -530,6 +558,57 @@ impl From<Part<u32>> for Part {
             collation: value.collation,
             is_nullable: value.is_nullable,
             path: value.path,
+            sort_order: value.sort_order,
+        }
+    }
+}
+
+#[cfg(test)]
+mod part_tests {
+    use super::*;
+
+    type PartWithoutSortOrder = (
+        String,
+        Option<FieldType>,
+        Option<String>,
+        Option<bool>,
+        Option<String>,
+    );
+
+    fn array_len(bytes: &[u8]) -> usize {
+        match rmp_serde::from_slice(bytes).unwrap() {
+            rmpv::Value::Array(items) => items.len(),
+            value => panic!("expected an array, got {value:?}"),
+        }
+    }
+
+    #[test]
+    fn part_sort_order_wire_compatibility() {
+        let without_sort_order: PartWithoutSortOrder = ("field".into(), None, None, None, None);
+        let old = rmp_serde::to_vec(&without_sort_order).unwrap();
+        let asc =
+            rmp_serde::to_vec(&Part::<String>::field("field").sort_order(SortOrder::Asc)).unwrap();
+        let desc =
+            rmp_serde::to_vec(&Part::<String>::field("field").sort_order(SortOrder::Desc)).unwrap();
+        let asc6 = b"\x96\xa5field\xc0\xc0\xc0\xc0\xa3asc".to_vec();
+
+        let cases = [
+            ("old", old, None, 5, 5, true),
+            ("asc", asc, None, 5, 5, true),
+            ("desc", desc, Some(SortOrder::Desc), 6, 6, false),
+            ("asc6", asc6, Some(SortOrder::Asc), 6, 5, true),
+        ];
+        for (name, input, order, input_len, output_len, compatible) in cases {
+            assert_eq!(array_len(&input), input_len, "{name}");
+            let part: Part<String> = rmp_serde::from_slice(&input).unwrap();
+            assert_eq!(part.sort_order, order, "{name}");
+
+            let output = rmp_serde::to_vec(&part).unwrap();
+            assert_eq!(array_len(&output), output_len, "{name}");
+            if compatible {
+                let old: PartWithoutSortOrder = rmp_serde::from_slice(&output).unwrap();
+                assert_eq!(old, without_sort_order, "{name}");
+            }
         }
     }
 }
@@ -1014,6 +1093,16 @@ impl Index {
 // Metadata
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Controls whether a [`KeyDef`] follows the natural or physical index order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyDefOrder {
+    /// Ignore the sort order of index parts.
+    Natural,
+    /// Preserve the sort order of index parts.
+    #[cfg(feature = "picodata")]
+    Index,
+}
+
 /// Representation of a tuple holding index metadata in system `_index` space.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct Metadata<'a> {
@@ -1029,12 +1118,12 @@ impl Encode for Metadata<'_> {}
 impl Metadata<'_> {
     /// Construct a [`KeyDef`] instance from index parts.
     #[inline(always)]
-    pub fn to_key_def(&self) -> KeyDef {
+    pub fn to_key_def(&self, order: KeyDefOrder) -> KeyDef {
         // TODO: we could optimize by caching these things and only recreating
         // then once box_schema_version changes.
         let mut kd_parts = Vec::with_capacity(self.parts.len());
         for p in &self.parts {
-            kd_parts.push(KeyDefPart::from_index_part(p));
+            kd_parts.push(KeyDefPart::from_index_part(p, order));
         }
         KeyDef::new(&kd_parts).unwrap()
     }
@@ -1045,7 +1134,10 @@ impl Metadata<'_> {
     /// the latter is used to compare tuples of a space, while the former is
     /// used to compare only the keys.
     #[inline]
-    pub fn to_key_def_for_key(&self) -> KeyDef {
+    pub fn to_key_def_for_key(&self, order: KeyDefOrder) -> KeyDef {
+        #[cfg(not(feature = "picodata"))]
+        let _ = order;
+
         let mut kd_parts = Vec::with_capacity(self.parts.len());
         for (p, i) in self.parts.iter().zip(0..) {
             let collation = p.collation.as_deref().map(|s| {
@@ -1064,6 +1156,11 @@ impl Metadata<'_> {
                 // but in the key the part will be placed at the top level,
                 // hence path is always empty
                 path: None,
+                #[cfg(feature = "picodata")]
+                sort_order: match order {
+                    KeyDefOrder::Natural => None,
+                    KeyDefOrder::Index => p.sort_order,
+                },
             };
             kd_parts.push(kd_p);
         }
@@ -1206,7 +1303,10 @@ mod tests {
             .part(("id", FieldType::Unsigned))
             .create()
             .unwrap();
-        let key_def = index.meta().unwrap().to_key_def_for_key();
+        let key_def = index
+            .meta()
+            .unwrap()
+            .to_key_def_for_key(KeyDefOrder::Natural);
 
         assert!(key_def
             .compare_with_key(

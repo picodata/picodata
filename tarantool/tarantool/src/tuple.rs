@@ -937,13 +937,13 @@ impl From<index::FieldType> for FieldType {
 /// You can construct one of these from an explicit list of key part definitions
 /// using [`Self::new`], or automtically from an index's metadata like so:
 /// ```no_run
-/// # use tarantool::index::Index;
+/// # use tarantool::index::{Index, KeyDefOrder};
 /// # use tarantool::space::Space;
 /// # use tarantool::tuple::KeyDef;
 /// let space = Space::find("some_space").unwrap();
 /// let index = space.index("some_index").unwrap();
 /// let meta = index.meta().unwrap();
-/// let key_def: KeyDef = meta.to_key_def();
+/// let key_def: KeyDef = meta.to_key_def(KeyDefOrder::Natural);
 /// ```
 #[derive(Debug)]
 pub struct KeyDef {
@@ -957,15 +957,20 @@ pub struct KeyDefPart<'a> {
     pub collation: Option<Cow<'a, CStr>>,
     pub is_nullable: bool,
     pub path: Option<Cow<'a, CStr>>,
+    #[cfg(feature = "picodata")]
+    pub sort_order: Option<index::SortOrder>,
 }
 
 impl<'a> KeyDefPart<'a> {
     fn as_tt(&self) -> ffi::box_key_part_def_t {
-        let flags = if self.is_nullable {
-            ffi::BoxKeyDefPartFlag::IS_NULLABLE.bits()
-        } else {
-            0
-        };
+        let mut flags = 0;
+        if self.is_nullable {
+            flags |= ffi::BoxKeyDefPartFlag::IS_NULLABLE.bits();
+        }
+        #[cfg(feature = "picodata")]
+        if self.sort_order == Some(index::SortOrder::Desc) {
+            flags |= ffi::BoxKeyDefPartFlag::SORT_ORDER_DESC.bits();
+        }
         ffi::box_key_part_def_t {
             meat: ffi::BoxKeyDefPart {
                 fieldno: self.field_no,
@@ -981,7 +986,10 @@ impl<'a> KeyDefPart<'a> {
         }
     }
 
-    pub fn from_index_part(p: &'a index::Part<u32>) -> Self {
+    pub fn from_index_part(p: &'a index::Part<u32>, order: index::KeyDefOrder) -> Self {
+        #[cfg(not(feature = "picodata"))]
+        let _ = order;
+
         let collation = p.collation.as_deref().map(|s| {
             CString::new(s)
                 .expect("it's your fault if you put '\0' in collation")
@@ -998,6 +1006,11 @@ impl<'a> KeyDefPart<'a> {
             is_nullable: p.is_nullable.unwrap_or(false),
             collation,
             path,
+            #[cfg(feature = "picodata")]
+            sort_order: match order {
+                index::KeyDefOrder::Natural => None,
+                index::KeyDefOrder::Index => p.sort_order,
+            },
         }
     }
 }
@@ -1149,13 +1162,6 @@ impl Drop for KeyDef {
     #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_key_def_delete(self.inner.as_ptr()) }
-    }
-}
-
-impl From<&index::Metadata<'_>> for KeyDef {
-    #[inline(always)]
-    fn from(meta: &index::Metadata<'_>) -> Self {
-        meta.to_key_def()
     }
 }
 
@@ -2062,7 +2068,10 @@ mod test {
             .create()
             .unwrap();
 
-        let key_def = index.meta().unwrap().to_key_def();
+        let key_def = index
+            .meta()
+            .unwrap()
+            .to_key_def(index::KeyDefOrder::Natural);
 
         let tuple = Tuple::new(&["foo"]).unwrap();
         let e = key_def.extract_key(&tuple).unwrap_err();
