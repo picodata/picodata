@@ -2022,6 +2022,8 @@ where
     let projection_id = plan.add_select_without_scan(&[alias_id])?;
     plan.fix_subquery_rows(worker, projection_id)?;
     map.add(node_id, projection_id);
+
+    worker.reset_windows();
     Ok(())
 }
 

@@ -787,8 +787,7 @@ impl AstCore {
         plan.fix_subquery_rows(worker, projection_id)?;
         map.add(node_id, projection_id);
 
-        worker.curr_named_windows.clear();
-        worker.curr_windows.clear();
+        worker.reset_windows();
         Ok(())
     }
 
@@ -909,6 +908,8 @@ impl AstCore {
         let projection_id = plan.add_select_without_scan(&proj_columns)?;
         plan.fix_subquery_rows(worker, projection_id)?;
         map.add(node_id, projection_id);
+
+        worker.reset_windows();
         Ok(())
     }
 

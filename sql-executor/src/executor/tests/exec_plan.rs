@@ -1619,6 +1619,68 @@ fn subtree_plan_id_12() {
     )
 }
 
+/// The window of a scan-less CTE must not leak into the next projection.
+#[test]
+fn plan_id_with_window_in_scanless_cte() {
+    let plan = sql_to_optimized_ir(
+        r#"with cte as (select max(1) over ()) select max("a") over () from "t""#,
+        vec![],
+    );
+    let mut exec_plan = ExecutionPlan::new(plan);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    exec_plan.set_plan_id(top_id).unwrap();
+}
+
+/// `EXCEPT` over a global and a sharded table clones the global side into an
+/// `INTERSECT`. `group_by` and `having` are not reported as children of a projection,
+/// so `SubtreeCloner` has to remap them by hand.
+#[test]
+fn cloned_projection_does_not_share_group_by_and_having() {
+    use sql_ir::ir::node::Node96;
+    let plan = sql_to_optimized_ir(
+        r#"select "a" from "global_t" group by "a" having count(*) > 1 except select "b" from "t""#,
+        vec![],
+    );
+    let (group_bys, havings): (Vec<NodeId>, Vec<NodeId>) =
+        plan.nodes
+            .iter96()
+            .fold((Vec::new(), Vec::new()), |(mut gb, mut hv), node| {
+                if let Node96::Projection(projection) = node {
+                    gb.extend(projection.group_by);
+                    hv.extend(projection.having);
+                }
+                (gb, hv)
+            });
+
+    // The original projection and its clone under the `INTERSECT`.
+    assert_eq!(2, group_bys.len());
+    assert_ne!(group_bys[0], group_bys[1]);
+    assert_eq!(2, havings.len());
+    assert_ne!(havings[0], havings[1]);
+}
+
+/// Every motion subtree is hashed on its own, and so is the plan top, so a window
+/// must belong to the projection it is serialized with.
+#[test]
+fn plan_id_with_cloned_window_under_except() {
+    let plan = sql_to_optimized_ir(
+        r#"select max("a") over () from "t" except select "b" from "t""#,
+        vec![],
+    );
+    let mut exec_plan = ExecutionPlan::new(plan);
+    for slice in exec_plan.get_ir_plan().clone_slices().slices() {
+        for motion_id in slice.positions() {
+            let subtree_top = exec_plan
+                .get_ir_plan()
+                .get_motion_subtree_root(*motion_id)
+                .unwrap();
+            exec_plan.set_plan_id(subtree_top).unwrap();
+        }
+    }
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    exec_plan.set_plan_id(top_id).unwrap();
+}
+
 #[test]
 fn subtree_plan_id_raw_explain() {
     check_subtree_plan_ids_not_equal(
