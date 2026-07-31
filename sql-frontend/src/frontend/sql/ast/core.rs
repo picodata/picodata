@@ -3278,6 +3278,10 @@ pub(in crate::frontend::sql) fn parse_create_table(
         ));
     }
 
+    if pk_contains_bucket_id {
+        pk_keys.insert(0, DEFAULT_BUCKET_ID_COLUMN_NAME.into());
+    }
+
     Ok(CreateTable {
         name: table_name,
         format: columns,
@@ -3289,7 +3293,6 @@ pub(in crate::frontend::sql) fn parse_create_table(
         wait_applied_globally,
         timeout,
         tier,
-        pk_contains_bucket_id,
         vinyl_options,
     })
 }

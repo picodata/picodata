@@ -48,7 +48,7 @@ def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
     assert math.isclose(res, TABLE_SIZE / 2, abs_tol=200)
 
     # check schema correctness
-    res = i1.sql("SELECT id, format, distribution FROM _pico_table WHERE name = 'sharded_table'")
+    res = i1.sql("SELECT id, format, distribution, opts FROM _pico_table WHERE name = 'sharded_table'")
     assert res[0][1] == [
         {
             "field_type": "unsigned",
@@ -59,6 +59,7 @@ def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
         {"field_type": "integer", "is_nullable": True, "name": "b"},
     ]
     assert res[0][2] == {"ShardedImplicitly": [["a"], "murmur3", "default"]}
+    assert {"pk_contains_bucket_id": [True]} in res[0][3]  # type: ignore
     table_id = res[0][0]
     res = i1.sql(f"SELECT parts FROM _pico_index WHERE table_id = {table_id}")
     assert res[0][0] == [
@@ -163,6 +164,51 @@ def test_simple_table_having_bucket_id_in_pk(cluster: Cluster, engine: str):
     res = i1.eval(f"return box.space._space:select({table_id})")
     assert res == []
     res = i1.eval(f"return box.space._index:select({table_id})")
+
+
+def test_embedded_bucket_id_ddl(cluster: Cluster):
+    i1 = cluster.add_instance()
+    cluster.wait_until_buckets_balanced()
+
+    space_id = 887
+    i1.propose_create_space(
+        dict(
+            id=space_id,
+            name="embedded_bucket_id",
+            format=[dict(name="a", type="integer", is_nullable=False)],
+            primary_key=[dict(field="bucket_id"), dict(field="a")],
+            distribution=dict(
+                kind="sharded_implicitly",
+                sharding_key=["a"],
+                sharding_fn="murmur3",
+                tier="default",
+            ),
+            engine="memtx",
+            owner=0,
+        )
+    )
+
+    [[table_format, opts]] = i1.sql(f"SELECT format, opts FROM _pico_table WHERE id = {space_id}")
+    assert table_format == [
+        {
+            "name": "bucket_id",
+            "field_type": "unsigned",
+            "is_nullable": False,
+        },
+        {"name": "a", "field_type": "integer", "is_nullable": False},
+    ]
+    assert opts == []
+
+    indexes = i1.sql(f"SELECT id, parts FROM _pico_index WHERE table_id = {space_id}")
+    assert indexes == [
+        [
+            0,
+            [
+                ["bucket_id", "unsigned", None, False, None],
+                ["a", "integer", None, False, None],
+            ],
+        ]
+    ]
 
 
 @pytest.mark.skip_asan("vshard's internal CALL_TIMEOUT_MIN (0.5s) is too short for ASan-instrumented bulk inserts")
