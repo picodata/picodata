@@ -471,3 +471,223 @@ subquery $1:
 ──────────────────────────────────────────────────────────────────────
 ''
 buckets = [1-3000]
+
+-- TEST: test-distinct-with-subquery-single-column
+-- SQL:
+SELECT DISTINCT (VALUES (1)) FROM testing_space;
+-- EXPECTED:
+1
+
+-- TEST: test-distinct-with-subquery-from-table
+-- SQL:
+SELECT DISTINCT (SELECT a FROM t1) FROM testing_space;
+-- EXPECTED:
+1
+
+-- TEST: test-distinct-with-subquery-several
+-- SQL:
+SELECT DISTINCT (VALUES (1)), (VALUES (2)) FROM testing_space;
+-- EXPECTED:
+1, 2
+
+-- TEST: test-distinct-with-subquery-and-column
+-- SQL:
+SELECT DISTINCT "product_units", (SELECT a FROM t1) FROM testing_space ORDER BY 1;
+-- EXPECTED:
+1, 1, 2, 1, 4, 1
+
+-- TEST: test-distinct-with-subquery-and-string-column
+-- SQL:
+SELECT DISTINCT "name", (SELECT c FROM t1) FROM testing_space ORDER BY 1;
+-- EXPECTED:
+'1', 1, '123', 1, '2', 1
+
+-- TEST: test-distinct-with-subquery-inside-arithmetic
+-- SQL:
+SELECT DISTINCT "product_units" + (SELECT a FROM t1) FROM testing_space ORDER BY 1;
+-- EXPECTED:
+2, 3, 5
+
+-- TEST: test-distinct-with-subquery-inside-multiplication
+-- SQL:
+SELECT DISTINCT (SELECT b FROM t1) * "product_units" FROM testing_space ORDER BY 1;
+-- EXPECTED:
+1, 2, 4
+
+-- TEST: test-distinct-with-nested-subquery
+-- SQL:
+SELECT DISTINCT (SELECT (VALUES (7)) FROM t1) FROM testing_space;
+-- EXPECTED:
+7
+
+-- TEST: test-distinct-with-subquery-and-order-by
+-- SQL:
+SELECT DISTINCT (SELECT a FROM t1), "product_units" FROM testing_space ORDER BY 2 DESC;
+-- EXPECTED:
+1, 4, 1, 2, 1, 1
+
+-- TEST: test-distinct-with-subquery-over-single-row-table
+-- SQL:
+SELECT DISTINCT (SELECT a FROM t1) FROM t1;
+-- EXPECTED:
+1
+
+-- TEST: test-distinct-with-subquery-in-where
+-- SQL:
+SELECT DISTINCT "product_units" FROM testing_space WHERE "id" > (SELECT a FROM t1) ORDER BY 1;
+-- EXPECTED:
+1, 2, 4
+
+-- TEST: test-distinct-aggregate-over-subquery
+-- SQL:
+SELECT count(DISTINCT (SELECT a FROM t1)) FROM testing_space;
+-- EXPECTED:
+1
+
+-- TEST: test-distinct-with-subquery-and-group-by
+-- SQL:
+SELECT DISTINCT sum("product_units") + (SELECT a FROM t1) FROM testing_space GROUP BY "name" ORDER BY 1;
+-- EXPECTED:
+3, 4, 7
+
+-- TEST: test-explain-plan-subquery-as-expression-under-distinct
+-- SQL:
+EXPLAIN SELECT DISTINCT (values (1)) from testing_space;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (gr_expr_1::int -> col_1)
+  group by (gr_expr_1::int) output (gr_expr_1::int)
+    motion [policy: full, program: ReshardIfNeeded]
+      projection (ROW($0) -> gr_expr_1)
+        group by (ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+          scan testing_space
+subquery $0:
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value ROW(1::int)
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1-3000]
+
+-- TEST: test-explain-plan-subquery-as-expression-under-distinct-with-column
+-- SQL:
+EXPLAIN SELECT DISTINCT "product_units", (values (1)) from testing_space;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (gr_expr_1::int -> product_units, gr_expr_2::int -> col_1)
+  group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int)
+    motion [policy: full, program: ReshardIfNeeded]
+      projection (testing_space.product_units::int -> gr_expr_1, ROW($0) -> gr_expr_2)
+        group by (testing_space.product_units::int, ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+          scan testing_space
+subquery $0:
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value ROW(1::int)
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1-3000]
+
+-- TEST: test-explain-plan-subquery-as-expression-under-distinct-several
+-- SQL:
+EXPLAIN SELECT DISTINCT (values (1)), (values (2)) from testing_space;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (gr_expr_1::int -> col_1, gr_expr_2::int -> col_2)
+  group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int)
+    motion [policy: full, program: ReshardIfNeeded]
+      projection (ROW($1) -> gr_expr_1, ROW($0) -> gr_expr_2)
+        group by (ROW($1), ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+          scan testing_space
+subquery $0:
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value ROW(2::int)
+subquery $1:
+  scan
+    motion [policy: full, program: ReshardIfNeeded]
+      values
+        value ROW(1::int)
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1-3000]
+
+-- TEST: test-explain-plan-subquery-as-expression-under-distinct-from-table
+-- SQL:
+EXPLAIN SELECT DISTINCT (SELECT a FROM t1) from testing_space;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (gr_expr_1::int -> col_1)
+  group by (gr_expr_1::int) output (gr_expr_1::int)
+    motion [policy: full, program: ReshardIfNeeded]
+      projection (ROW($0) -> gr_expr_1)
+        group by (ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+          scan testing_space
+subquery $0:
+  motion [policy: full, program: ReshardIfNeeded]
+    scan
+      projection (t1.a::int -> a)
+        scan t1
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1-3000]
+
+-- TEST: test-explain-plan-subquery-as-expression-under-distinct-in-insert
+-- SQL:
+EXPLAIN INSERT INTO t1 VALUES ((SELECT DISTINCT (SELECT a FROM t1) FROM testing_space), 1, 1);
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+insert into t1 on conflict: fail
+  motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
+    values
+      value ROW(ROW($1), 1::int, 1::int)
+subquery $0:
+  motion [policy: full, program: ReshardIfNeeded]
+    scan
+      projection (t1.a::int -> a)
+        scan t1
+subquery $1:
+  motion [policy: full, program: ReshardIfNeeded]
+    scan
+      projection (gr_expr_1::int -> col_1)
+        group by (gr_expr_1::int) output (gr_expr_1::int)
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (ROW($0) -> gr_expr_1)
+              group by (ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+                scan testing_space
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = unknown
