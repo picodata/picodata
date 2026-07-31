@@ -106,6 +106,7 @@ pbkdf2 = { version = "0.12.1", features = ["simple", "std"] }
 
 [build-dependencies]
 git-version = "0.3"
+proc-macro2 = { version = "1.0", features = ["span-locations"] }
 quote = { workspace = true }
 syn = { version = "2.0", features = ["full", "extra-traits", "printing"] }
 
