@@ -239,6 +239,14 @@ where
         }
     }
 
+    /// Reset the window context accumulated for the projection we have just built.
+    /// Otherwise the parsed windows leak into the next `Projection` that is built
+    /// by the same worker.
+    pub(in crate::frontend::sql) fn reset_windows(&mut self) {
+        self.curr_named_windows.clear();
+        self.curr_windows.clear();
+    }
+
     /// Resolve the double linking problem in BETWEEN operator. On the AST to IR step
     /// we transform `left BETWEEN center AND right` construction into
     /// `left >= center AND left <= right`, where the same `left` expression is reused

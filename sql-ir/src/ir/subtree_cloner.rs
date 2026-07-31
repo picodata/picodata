@@ -18,6 +18,24 @@ use crate::ir::Plan;
 
 /// Helper struct to clone plan's subtree.
 /// Assumes that all parameters are bound.
+///
+/// The subtree is walked in post-order, so a node is copied only after everything
+/// it points down at, and `old_new_map` already knows the new ids of its
+/// descendants by the time the node itself is cloned.
+///
+/// Links to other plan nodes fall into three groups, each handled differently:
+///
+/// - Children and output are remapped generically for every relational node in
+///   [`Self::clone_relational`];
+/// - Subqueries are shared, not copied. The `subqueries` lists of relational
+///   nodes and `SubQueryReference::rel_id` keep pointing at the original nodes;
+/// - Everything else must be remapped by hand. Any other field holding a
+///   `NodeId` (`filter`, `gr_exprs`, `windows`, `group_by`, ...) needs its own arm
+///   in the `match` of [`Self::clone_relational`].
+///
+/// Links that point up the tree cannot be resolved during the post-order walk.
+/// They are collected into `nodes_with_backward_references` and patched afterwards
+/// by [`Self::replace_backward_refs`].
 pub struct SubtreeCloner {
     old_new_map: AHashMap<NodeId, NodeId>,
     nodes_with_backward_references: Vec<NodeId>,
@@ -86,15 +104,6 @@ impl SubtreeCloner {
             | RelOwned::SelectWithoutScan(SelectWithoutScan {
                 subqueries: _,
                 output: _,
-            })
-            | RelOwned::Projection(Projection {
-                child: _,
-                subqueries: _,
-                windows: _,
-                output: _,
-                is_distinct: _,
-                group_by: _,
-                having: _,
             })
             | RelOwned::Insert(Insert {
                 relation: _,
@@ -207,6 +216,25 @@ impl SubtreeCloner {
                         | MotionOpcode::ReshardIfNeeded
                         | MotionOpcode::SerializeAsEmptyTable(_) => {}
                     }
+                }
+            }
+            RelOwned::Projection(Projection {
+                child: _,
+                subqueries: _,
+                windows,
+                output: _,
+                is_distinct: _,
+                group_by,
+                having,
+            }) => {
+                *windows = self.copy_list(windows)?;
+                // `group_by` and `having` take the place of `child` when they
+                // are set, so `set_children` above leaves them untouched.
+                if let Some(group_by) = group_by {
+                    *group_by = self.get_new_id(*group_by)?;
+                }
+                if let Some(having) = having {
+                    *having = self.get_new_id(*having)?;
                 }
             }
             RelOwned::GroupBy(GroupBy {

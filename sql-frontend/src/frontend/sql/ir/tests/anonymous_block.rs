@@ -540,3 +540,27 @@ fn if_resolution_errors() {
         assert!(error.to_string().contains(error_pattern));
     }
 }
+
+/// The `IF` condition is parsed without a projection of its own, so its window used
+/// to survive in the parser state and get attached to the projection of the following
+/// `INSERT`.
+#[test]
+fn if_condition_window_does_not_leak_into_projection() {
+    use crate::ir::node::Node96;
+    let plan = sql_to_ir_without_bind(
+        "DO $$ BEGIN \
+            IF count(*) OVER () > 0 THEN DELETE FROM t2; END IF; \
+            INSERT INTO t2 SELECT max(e) OVER (), f, g, h FROM t2; \
+        END $$",
+        &[],
+    );
+    let windows: Vec<usize> = plan
+        .nodes
+        .iter96()
+        .filter_map(|node| match node {
+            Node96::Projection(projection) => Some(projection.windows.len()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(vec![1], windows);
+}
