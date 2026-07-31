@@ -44,6 +44,12 @@ EXCEPT SELECT e.c FROM t d JOIN g e ON e.a = d.b GROUP BY e.c;
 -- EXPECTED:
 1
 
+-- TEST: one-sharded-one-global-intersect-order
+-- SQL:
+SELECT a FROM g UNION ALL SELECT b FROM g EXCEPT SELECT c FROM t;
+-- EXPECTED:
+1
+
 -- TEST: global-shared-union-except
 -- SQL:
 SELECT a FROM g UNION SELECT b FROM g EXCEPT SELECT c FROM t;
@@ -136,11 +142,11 @@ plan:
 │ 7. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT CAST(7 AS int) as "col_1" FROM "t2" INTERSECT SELECT "COL_0" FROM "_tmp_14749159624914206987_11136"
+SELECT "COL_0" FROM "_tmp_4833309638689066778_11136" INTERSECT SELECT CAST(7 AS int) as "col_1" FROM "t2"
 ''
 plan:
-    [1] SCAN TABLE t2 (~1048576 rows)
-    [2] SCAN TABLE _tmp_14749159624914206987_11136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_4833309638689066778_11136 (~1048576 rows)
+    [2] SCAN TABLE t2 (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (INTERSECT)
 ''
 ╭───────────────────╮
@@ -183,11 +189,11 @@ plan:
 │ 3. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" INTERSECT SELECT "COL_0" FROM "_tmp_15246870093412425065_3136"
+SELECT "COL_0" FROM "_tmp_9824794765106002969_3136" INTERSECT SELECT CAST(1 AS int) as "col_1" FROM "t"
 ''
 plan:
-    [1] SCAN TABLE t (~1048576 rows)
-    [2] SCAN TABLE _tmp_15246870093412425065_3136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_9824794765106002969_3136 (~1048576 rows)
+    [2] SCAN TABLE t (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (INTERSECT)
 ''
 ╭───────────────────╮
@@ -200,7 +206,6 @@ plan:
     [1] SCAN TABLE _tmp_8471199590266309925_1136 (~1048576 rows)
     [2] SCAN TABLE _tmp_8471199590266309925_4136 (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (EXCEPT)
-
 
 -- TEST: explain-raw-scalar-union-except
 -- SQL:
@@ -230,11 +235,11 @@ plan:
 │ 3. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" INTERSECT SELECT "COL_0" FROM "_tmp_15246870093412425065_3136"
+SELECT "COL_0" FROM "_tmp_9824794765106002969_3136" INTERSECT SELECT CAST(1 AS int) as "col_1" FROM "t"
 ''
 plan:
-    [1] SCAN TABLE t (~1048576 rows)
-    [2] SCAN TABLE _tmp_15246870093412425065_3136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_9824794765106002969_3136 (~1048576 rows)
+    [2] SCAN TABLE t (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (INTERSECT)
 ''
 ╭───────────────────╮
@@ -247,3 +252,44 @@ plan:
     [1] SCAN TABLE _tmp_8471199590266309925_1136 (~1048576 rows)
     [2] SCAN TABLE _tmp_8471199590266309925_4136 (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (EXCEPT)
+
+-- TEST: one-sharded-one-global-intersect-order-union-all-chain
+-- SQL:
+SELECT c FROM g UNION ALL SELECT a FROM g UNION ALL SELECT b FROM g
+EXCEPT SELECT c FROM t;
+-- EXPECTED:
+1
+
+-- TEST: one-sharded-one-global-intersect-order-multiple-columns
+-- SQL:
+SELECT a, b FROM g UNION ALL SELECT b, c FROM g EXCEPT SELECT a, b FROM t;
+-- EXPECTED:
+1, 1
+
+-- TEST: one-sharded-one-global-intersect-order-group-by
+-- SQL:
+SELECT a FROM g GROUP BY a UNION ALL SELECT b FROM g GROUP BY b
+EXCEPT SELECT c FROM t;
+-- EXPECTED:
+1
+
+-- TEST: one-sharded-one-global-intersect-order-filter-subquery
+-- SQL:
+SELECT a FROM g WHERE (SELECT 0) <= a UNION ALL SELECT b FROM g
+EXCEPT SELECT c FROM t;
+-- EXPECTED:
+1
+
+-- TEST: one-sharded-one-global-intersect-order-chained-except
+-- SQL:
+SELECT a FROM g UNION ALL SELECT b FROM g
+EXCEPT SELECT c FROM t
+EXCEPT SELECT b FROM t;
+-- EXPECTED:
+1
+
+-- TEST: one-sharded-one-global-compound-sharded-side
+-- SQL:
+SELECT a FROM g EXCEPT SELECT * FROM (SELECT b FROM t UNION ALL SELECT c FROM t) AS s;
+-- EXPECTED:
+1
