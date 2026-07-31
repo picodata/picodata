@@ -369,7 +369,7 @@ def parse_file(cls: Type, file_name: str) -> list:
 
 def sql_test_file(file_name: str):
     def inner(cls):
-        cls = pytest.mark.xdist_group(name=f"{file_name}#{cls.__name__}")(cls)
+        cls = pytest.mark.xdist_group(name=file_name)(cls)
         cls.params = parse_file(cls, file_name)
         return cls
 
