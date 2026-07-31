@@ -614,6 +614,7 @@ impl Value {
             collation: None,
             is_nullable: true,
             path: None,
+            sort_order: None,
         }
     }
 

@@ -43,6 +43,7 @@
 ### Added
 
 - `tlua::Ignore` helper struct for handling multiple return values when some of them are not important
+- `index::SortOrder` and optional sort order metadata in `index::Part`.
 
 ### Added (picodata)
 
@@ -50,6 +51,8 @@
   helpers and their `into_sql_*` variants for Picodata update opcodes; unlike
   the existing `add`, `sub`, `and`, and `or`, these propagate NULL with SQL
   three-valued semantics.
+- Descending index parts in key definitions. `index::KeyDefOrder::Index`
+  follows physical index order, while `KeyDefOrder::Natural` ignores it.
 
 ### Fixed
 
@@ -57,6 +60,23 @@
 - `space::UpdateOps` `into_assign`, `into_add`, etc. methods for user convenience
 - `Index::meta` return value now states `'static` instead of `'_`
   which now allows more correct usage code to compile.
+
+### Breaking
+
+- `index::Metadata::to_key_def`, `index::Metadata::to_key_def_for_key`, and
+  `tuple::KeyDefPart::from_index_part` now require an explicit
+  `index::KeyDefOrder` argument. Use `KeyDefOrder::Natural` to preserve the
+  previous comparison behavior.
+- `From<&index::Metadata> for tuple::KeyDef` has been removed. Replace
+  `KeyDef::from(&metadata)` with
+  `metadata.to_key_def(KeyDefOrder::Natural)`.
+- `index::Part` has a new `sort_order` field. Existing struct literals must
+  initialize it; use `None` for ascending order.
+
+### Breaking (picodata)
+
+- `tuple::KeyDefPart` has a new `sort_order` field. Existing struct literals
+  must initialize it; use `None` for ascending order.
 
 
 # [11.0.0] Mar 19 2026

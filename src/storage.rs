@@ -58,7 +58,7 @@ use tarantool::index::FieldType as IndexFieldType;
 #[allow(unused_imports)]
 use tarantool::index::Metadata as IndexMetadata;
 use tarantool::index::Part;
-use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType};
+use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType, KeyDefOrder};
 use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
@@ -563,8 +563,8 @@ fn get_or_create_key_def(cache: &mut KeyDefCache, id: KeyDefId) -> tarantool::Re
             let index = unsafe { Index::from_ids_unchecked(table_id, index_id) };
             let index_metadata = index.meta()?;
             let key_def = match kind {
-                KeyDefKind::ForKey => index_metadata.to_key_def_for_key(),
-                KeyDefKind::Regular => index_metadata.to_key_def(),
+                KeyDefKind::ForKey => index_metadata.to_key_def_for_key(KeyDefOrder::Natural),
+                KeyDefKind::Regular => index_metadata.to_key_def(KeyDefOrder::Natural),
             };
             let key_def = Rc::new(key_def);
             v.insert(key_def.clone());

@@ -262,6 +262,7 @@ fn build_index_context(
                 collation: key_part_cstr(part.collation.as_deref(), &index_def.name, "collation")?,
                 is_nullable,
                 path: key_part_cstr(part.path.as_deref(), &index_def.name, "path")?,
+                sort_order: None,
             })
         })
         .collect::<Result<Vec<_>>>()?;

@@ -538,6 +538,7 @@ impl IndexDef {
                 collation: part.collation.clone(),
                 is_nullable: part.is_nullable,
                 path: part.path.clone(),
+                sort_order: None,
             });
         }
 
@@ -2100,6 +2101,7 @@ impl CreateIndexParams {
                 collation: None,
                 is_nullable: Some(column.is_nullable),
                 path: None,
+                sort_order: None,
             };
             parts.push(part);
         }

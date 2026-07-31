@@ -3,6 +3,11 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 use tarantool::ffi::tarantool as ffi;
+use tarantool::index::KeyDefOrder;
+#[cfg(feature = "picodata")]
+use tarantool::index::{FieldType as IndexFieldType, IndexType, Part, SortOrder};
+#[cfg(feature = "picodata")]
+use tarantool::space::{FieldType as SpaceFieldType, Space};
 use tarantool::tlua::{Index, Indexable, Nil};
 use tarantool::tuple::{
     Encode, FieldType, KeyDef, KeyDefPart, RawByteBuf, RawBytes, Tuple, TupleBuffer,
@@ -281,7 +286,7 @@ pub fn tuple_compare_with_key() {
     let space = tarantool::space::Space::find("test_s2").unwrap();
     let index = space.index("primary").unwrap();
     let meta = index.meta().unwrap();
-    let key_def = meta.to_key_def();
+    let key_def = meta.to_key_def(KeyDefOrder::Natural);
     assert_eq!(key_def.compare_with_key(&tuple, &[0x1d]), Ordering::Equal);
 
     let key_def = KeyDef::new([
@@ -334,6 +339,59 @@ pub fn tuple_compare_with_key() {
     ])
     .unwrap();
     assert_eq!(key_def.compare_with_key(&key, &key), Ordering::Equal);
+}
+
+#[cfg(feature = "picodata")]
+pub fn key_def_sort_order() {
+    let space = Space::builder("test_key_def_sort_order")
+        .field(("a", SpaceFieldType::Integer))
+        .field(("b", SpaceFieldType::Integer))
+        .create()
+        .unwrap();
+    let index = space
+        .index_builder("pk")
+        .index_type(IndexType::Tree)
+        .part(Part::<String>::new("a", IndexFieldType::Integer).sort_order(SortOrder::Desc))
+        .part(Part::<String>::new("b", IndexFieldType::Integer).sort_order(SortOrder::Asc))
+        .create()
+        .unwrap();
+
+    let metadata = index.meta().unwrap();
+    assert_eq!(metadata.parts[0].sort_order, Some(SortOrder::Desc));
+    assert_eq!(metadata.parts[1].sort_order, None);
+
+    let check = |natural: KeyDef, index: KeyDef| {
+        for (lhs, rhs, natural_order, index_order) in [
+            (
+                (1_i64, 0_i64),
+                (2_i64, 0_i64),
+                Ordering::Less,
+                Ordering::Greater,
+            ),
+            (
+                (1_i64, 0_i64),
+                (1_i64, 1_i64),
+                Ordering::Less,
+                Ordering::Less,
+            ),
+        ] {
+            let lhs = Tuple::new(&lhs).unwrap();
+            let rhs = Tuple::new(&rhs).unwrap();
+            assert_eq!(natural.compare(&lhs, &rhs), natural_order);
+            assert_eq!(index.compare(&lhs, &rhs), index_order);
+        }
+    };
+
+    check(
+        metadata.to_key_def(KeyDefOrder::Natural),
+        metadata.to_key_def(KeyDefOrder::Index),
+    );
+    check(
+        metadata.to_key_def_for_key(KeyDefOrder::Natural),
+        metadata.to_key_def_for_key(KeyDefOrder::Index),
+    );
+
+    space.drop().unwrap();
 }
 
 pub fn to_and_from_lua() {

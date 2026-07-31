@@ -29,7 +29,7 @@ use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
 use tarantool::fiber::r#async::oneshot;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
-use tarantool::index::IndexId;
+use tarantool::index::{IndexId, KeyDefOrder};
 use tarantool::session::UserId;
 use tarantool::space::{Space, SpaceId};
 use tarantool::time::Instant;
@@ -782,7 +782,7 @@ fn add_tuple_cas_keys(
         // Inoperable unique indexes still matter while DropIndex/RenameIndex
         // is pending: their DDL entry must conflict with stale CAS requests.
         let metadata = index_def.to_index_metadata(&table_def);
-        let key_def = metadata.to_key_def();
+        let key_def = metadata.to_key_def(KeyDefOrder::Natural);
         let key = key_def.extract_key(tuple)?;
         let unique_key = CasKey {
             index_id: index_def.id,
@@ -1247,7 +1247,9 @@ fn check_unique_key_dml_predicate(
                 return Err(Error::ConflictFound(entry_index));
             };
 
-            let key_def = index_def.to_index_metadata(&table_def).to_key_def_for_key();
+            let key_def = index_def
+                .to_index_metadata(&table_def)
+                .to_key_def_for_key(KeyDefOrder::Natural);
             let predicate_key = Tuple::new(predicate_key)?;
             for key in cas
                 .unique_keys
@@ -1285,7 +1287,9 @@ fn check_unique_key_dml_predicate(
                 return Err(Error::ConflictFound(entry_index));
             };
 
-            let key_def = index_def.to_index_metadata(&table_def).to_key_def();
+            let key_def = index_def
+                .to_index_metadata(&table_def)
+                .to_key_def(KeyDefOrder::Natural);
             if key_def.compare_with_key(&tuple, predicate_key).is_eq() {
                 return Err(Error::ConflictFound(entry_index));
             }
@@ -1804,7 +1808,7 @@ fn handle_test_override(inbox: &OverrideChannel, request: &Request) -> Result<Ca
 /// Predicate tests based on the CaS Design Document.
 mod tests {
     use sql::ir::operator::ConflictStrategy;
-    use tarantool::index::{FieldType as IndexFieldType, IndexId, IndexType, Part};
+    use tarantool::index::{FieldType as IndexFieldType, IndexId, IndexType, Part, SortOrder};
     use tarantool::space::{
         Field, FieldType as SpaceFieldType, SpaceEngineType, SpaceType, UpdateOps,
     };
@@ -2004,6 +2008,50 @@ mod tests {
                 Range::new(table).eq(key.clone())
             )
         }
+    }
+
+    #[::tarantool::test]
+    fn cas_desc_primary_key_uses_natural_range() {
+        const SPACE_NAME: &str = "cas_desc_primary_key_range";
+
+        if let Some(space) = Space::find(SPACE_NAME) {
+            space.drop().unwrap();
+        }
+
+        let space = Space::builder(SPACE_NAME)
+            .space_type(SpaceType::Temporary)
+            .engine(SpaceEngineType::Memtx)
+            .format([Field::from(("id", SpaceFieldType::Unsigned)).is_nullable(false)])
+            .create()
+            .unwrap();
+        let primary_part =
+            Part::<String>::new("id", IndexFieldType::Unsigned).sort_order(SortOrder::Desc);
+        space
+            .index_builder("primary")
+            .id(0)
+            .unique(true)
+            .index_type(IndexType::Tree)
+            .part(primary_part)
+            .create()
+            .unwrap();
+
+        let table = space.id();
+        let range = Range::new(table).ge((10_u64,));
+        let insert = |id| Dml::Insert {
+            table,
+            tuple: (id,).to_tuple_buffer().unwrap(),
+            initiator: ADMIN_ID,
+            conflict_strategy: ConflictStrategy::DoFail,
+            cas: None,
+        };
+
+        assert!(matches!(
+            check_primary_dml_range(42, &insert(20), &range),
+            Err(Error::ConflictFound { conflict_index: 42 })
+        ));
+        check_primary_dml_range(42, &insert(5), &range).unwrap();
+
+        space.drop().unwrap();
     }
 
     #[::tarantool::test]

@@ -1223,6 +1223,8 @@ bitflags! {
     /// Key part definition flag.
     pub struct BoxKeyDefPartFlag: u32 {
         const IS_NULLABLE = 1 << 0;
+        #[cfg(feature = "picodata")]
+        const SORT_ORDER_DESC = 1 << 2;
     }
 }
 
