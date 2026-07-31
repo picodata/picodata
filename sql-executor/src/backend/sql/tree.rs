@@ -931,6 +931,7 @@ impl<'p> SyntaxPlan<'p> {
                         Relational::Union { .. }
                             | Relational::UnionAll { .. }
                             | Relational::Except { .. }
+                            | Relational::Intersect { .. }
                             | Relational::ScanCte { .. }
                             | Relational::Limit { .. }
                     );
@@ -938,7 +939,7 @@ impl<'p> SyntaxPlan<'p> {
                     if !should_cover_with_parentheses {
                         assert!(
                             vtable_alias.is_none(),
-                            "Virtual table under Union/UnionAll/Except/CTE must not have an alias."
+                            "Virtual table under Union/UnionAll/Except/Intersect/CTE/Limit must not have an alias."
                         );
                     }
                 }
