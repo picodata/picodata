@@ -5,6 +5,7 @@ use crate::access_control::{validate_password, UserMetadataKind};
 use crate::backoff::SimpleBackoffManager;
 use crate::cas::Predicate;
 use crate::catalog::governor_queue;
+use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::column_name;
 use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
 use crate::metrics;
@@ -1589,6 +1590,55 @@ fn build_vinyl_index_options(vinyl_options: &VinylOptions) -> traft::Result<Vec<
     Ok(opts)
 }
 
+// Keep the virtual bucket_id outside of primary_key in the DDL payload and
+// encode its presence as a table option for compatibility with Picodata
+// instances running versions that don't support an embedded bucket_id part.
+fn encode_bucket_id_as_table_option(
+    distribution: DistributionParam,
+    primary_key: &mut Vec<SmolStr>,
+) -> Option<TableOption> {
+    if matches!(distribution, DistributionParam::Sharded)
+        && primary_key
+            .first()
+            .is_some_and(|part| part == DEFAULT_BUCKET_ID_COLUMN_NAME)
+    {
+        primary_key.remove(0);
+        Some(TableOption::PkContainsBucketId(true))
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_bucket_id_as_table_option_preserves_compatibility() {
+        let mut primary_key = vec!["bucket_id".into(), "a".into()];
+        let option = encode_bucket_id_as_table_option(DistributionParam::Sharded, &mut primary_key);
+        assert_eq!(primary_key, vec![SmolStr::from("a")]);
+        assert_eq!(option, Some(TableOption::PkContainsBucketId(true)));
+
+        for (name, distribution, mut primary_key) in [
+            ("sharded", DistributionParam::Sharded, vec!["a".into()]),
+            (
+                "global",
+                DistributionParam::Global,
+                vec!["bucket_id".into()],
+            ),
+        ] {
+            let expected = primary_key.clone();
+            assert_eq!(
+                encode_bucket_id_as_table_option(distribution, &mut primary_key),
+                None,
+                "{name}"
+            );
+            assert_eq!(primary_key, expected, "{name}");
+        }
+    }
+}
+
 fn ddl_ir_node_to_op_or_result(
     ddl: &DdlOwned,
     current_user: UserId,
@@ -1610,7 +1660,6 @@ fn ddl_ir_node_to_op_or_result(
             tier,
             if_not_exists,
             unlogged,
-            pk_contains_bucket_id,
             vinyl_options,
             ..
         }) => {
@@ -1628,14 +1677,14 @@ fn ddl_ir_node_to_op_or_result(
                 DistributionParam::Global
             };
 
-            let primary_key = primary_key.clone();
+            let mut primary_key = primary_key.clone();
             let sharding_key = sharding_key.clone();
             let mut opts = vec![];
             if *unlogged {
                 opts.push(TableOption::Unlogged(true));
             }
-            if *pk_contains_bucket_id {
-                opts.push(TableOption::PkContainsBucketId(*pk_contains_bucket_id));
+            if let Some(option) = encode_bucket_id_as_table_option(distribution, &mut primary_key) {
+                opts.push(option);
             }
 
             // Build index options from vinyl options.

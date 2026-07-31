@@ -139,6 +139,31 @@ fn infer_sk_from_pk() {
 }
 
 #[test]
+fn virtual_bucket_id_is_part_of_primary_key() {
+    let input = r#"create table t (a int, primary key (bucket_id, a))"#;
+
+    let metadata = &RouterConfigurationMock::new();
+    let plan = transform_into_plan(input, &[], metadata).unwrap();
+    let top_id = plan.get_top().unwrap();
+    let top_node = plan.get_ddl_node(top_id).unwrap();
+
+    let Ddl::CreateTable(CreateTable {
+        primary_key,
+        sharding_key,
+        ..
+    }) = top_node
+    else {
+        panic!("expected create table")
+    };
+
+    assert_eq!(
+        primary_key,
+        &vec!["bucket_id".to_smolstr(), "a".to_smolstr()]
+    );
+    assert_eq!(sharding_key, &Some(vec!["a".to_smolstr()]));
+}
+
+#[test]
 fn infer_alias_int2_int4_int8_bigint_smallint() {
     let input =
         r#"create table t ("a" int2 primary key, "b" int4, "c" int8, "d" bigint, "e" smallint)"#;

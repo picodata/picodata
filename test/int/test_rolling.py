@@ -584,6 +584,58 @@ cluster:
     Retriable().call(assert_version, cluster, future_version, registry)
 
 
+@pytest.mark.required_rolling_versions(versions=[VersionAlias.PREVIOUS_MINOR, VersionAlias.CURRENT])
+@pytest.mark.xdist_group(name="rolling")
+def test_bucket_id_pk_ddl_catchup_from_previous_minor(cluster: Cluster, registry: Registry):
+    old = registry.get_or_skip(VersionAlias.PREVIOUS_MINOR)
+    current = registry.get(VersionAlias.CURRENT)
+    assert current is not None
+
+    cluster.deploy(executable=old, instance_count=4, init_replication_factor=2)
+
+    leader = cluster.leader()
+    lagging = cluster.pick_random_instance(exclude=[leader])
+    lagging.terminate()
+    cluster.check_health(exclude=[lagging])
+
+    leader.sql(
+        "CREATE TABLE bucket_id_tail "
+        "(a INT NOT NULL, PRIMARY KEY (bucket_id, a)) "
+        "DISTRIBUTED BY (a) WAIT APPLIED LOCALLY"
+    )
+    ddl_index = leader.raft_get_index()
+    for instance in cluster.instances:
+        if instance is not lagging:
+            instance.raft_wait_index(ddl_index)
+
+    for instance in cluster.instances:
+        if instance is not lagging:
+            instance.change_executable(current)
+
+    lagging.executable = current
+    lagging.start_and_wait()
+    lagging.raft_wait_index(ddl_index)
+    Retriable().call(assert_version, cluster, VersionAlias.CURRENT, registry)
+    cluster.check_health()
+
+    [[table_id, table_format]] = lagging.sql("SELECT id, format FROM _pico_table WHERE name = 'bucket_id_tail'")
+    assert table_format == [
+        {"name": "bucket_id", "field_type": "unsigned", "is_nullable": False},
+        {"name": "a", "field_type": "integer", "is_nullable": False},
+    ]
+
+    indexes = lagging.sql(f"SELECT id, parts FROM _pico_index WHERE table_id = {table_id}")
+    assert indexes == [
+        [
+            0,
+            [
+                ["bucket_id", "unsigned", None, False, None],
+                ["a", "integer", None, False, None],
+            ],
+        ]
+    ]
+
+
 @pytest.mark.webui
 @pytest.mark.xdist_group(name="rolling")
 @pytest.mark.required_rolling_versions(

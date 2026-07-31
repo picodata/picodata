@@ -2330,7 +2330,19 @@ impl NodeImpl {
                 opts,
                 index_opts,
             } => {
-                for pk_part in &mut primary_key {
+                let has_embedded_bucket_id = !distribution.is_global()
+                    && primary_key
+                        .first()
+                        .is_some_and(|part| part.field.as_str() == DEFAULT_BUCKET_ID_COLUMN_NAME);
+
+                for (part_index, pk_part) in primary_key.iter_mut().enumerate() {
+                    if has_embedded_bucket_id && part_index == 0 {
+                        // Virtual bucket_id is not included in format.
+                        pk_part.r#type = Some(index::FieldType::Unsigned);
+                        pk_part.is_nullable = Some(false);
+                        continue;
+                    }
+
                     let name = &pk_part.field;
                     let field = format.iter().find(|f| f.name == *name);
                     let Some(field) = field else {
@@ -2363,8 +2375,8 @@ impl NodeImpl {
                     pk_part.is_nullable = Some(field.is_nullable);
                 }
 
-                let has_bucket_id_in_pk = opts.contains(&TableOption::PkContainsBucketId(true));
-                if has_bucket_id_in_pk {
+                let has_bucket_id_option = opts.contains(&TableOption::PkContainsBucketId(true));
+                if has_bucket_id_option && !has_embedded_bucket_id {
                     primary_key.insert(
                         0,
                         index::Part::field(DEFAULT_BUCKET_ID_COLUMN_NAME)
@@ -2372,6 +2384,7 @@ impl NodeImpl {
                             .is_nullable(false),
                     );
                 }
+                let has_bucket_id_in_pk = has_embedded_bucket_id || has_bucket_id_option;
 
                 // Build primary key options: unique + vinyl options from table.
                 let mut pk_opts = Vec::with_capacity(1 + index_opts.len());
