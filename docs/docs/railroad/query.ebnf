@@ -230,7 +230,7 @@ alter_index ::=     'ALTER' 'INDEX' ('IF' 'EXISTS')? index
                      ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 create_index ::= 'CREATE' 'UNIQUE'? 'INDEX' ('IF' 'NOT' 'EXISTS')? index 'ON' table
                  ('USING' ('TREE' | 'HASH' | 'RTREE' | 'BITSET'))?
-                 '(' column (',' column)* ')' ('WITH' '('
+                 '(' column ('ASC' | 'DESC')? (',' column ('ASC' | 'DESC')?)* ')' ('WITH' '('
                      (
                          ('BLOOM_FPR' '=' decimal)
                          | ('PAGE_SIZE' '=' unsigned)
@@ -271,8 +271,8 @@ create_role    ::= 'CREATE' 'ROLE' ('IF' 'NOT' 'EXISTS')? role
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 create_table   ::= 'CREATE' 'UNLOGGED'? 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                    '('
-                       column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')? (',' column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY')?)*
-                       (',' 'PRIMARY' 'KEY' '(' (bucket_id ',')? column (',' column)* ')')?
+                       column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY' ('ASC' | 'DESC')?)? (',' column column_def_type ('NOT'? 'NULL')? ('PRIMARY' 'KEY' ('ASC' | 'DESC')?)?)*
+                       (',' 'PRIMARY' 'KEY' '(' (bucket_id ('ASC' | 'DESC')? ',')? column ('ASC' | 'DESC')? (',' column ('ASC' | 'DESC')?)* ')')?
                    ')'
                    ('USING' ('MEMTX' | 'VINYL'
                    ('WITH' '('

@@ -39,6 +39,14 @@
   индекс](../../overview/glossary.md#auto_index) `bucket_id` не создается.
   Синтаксис с `bucket_id` поддерживается только для шардированных таблиц.
 
+    Для каждой колонки первичного ключа можно указать порядок сортировки:
+    `ASC` (по возрастанию) или `DESC` (по убыванию). Если порядок не
+    указан, используется `ASC`. Порядок определяет направление
+    соответствующей части первичного индекса. Его можно задать как в
+    списке колонок (`PRIMARY KEY (a DESC, b ASC)`), так и после встроенного
+    ограничения (`id INTEGER PRIMARY KEY DESC`). Для виртуальной колонки
+    `bucket_id` порядок задается тем же способом.
+
 * **DISTRIBUTED GLOBALLY** — глобальное распределение таблицы. В результате данные в
   таблице идентичны на всех экземплярах кластера и синхронизируются через Raft-журнал.
   Поддерживается только для движка хранения данных `memtx`
@@ -113,9 +121,19 @@ OPTION (TIMEOUT = 3.0);
 
 ```sql title="Создание таблицы с ограничением PRIMARY KEY в определении колонки"
 CREATE TABLE warehouse (
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY DESC,
     item TEXT NOT NULL,
     type TEXT NOT NULL)
+USING memtx DISTRIBUTED BY (id)
+OPTION (TIMEOUT = 3.0);
+```
+
+```sql title="Создание таблицы с составным первичным ключом"
+CREATE TABLE warehouse (
+    id INTEGER NOT NULL,
+    item TEXT NOT NULL,
+    type TEXT NOT NULL,
+    PRIMARY KEY (id DESC, item ASC))
 USING memtx DISTRIBUTED BY (id)
 OPTION (TIMEOUT = 3.0);
 ```
