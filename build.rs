@@ -197,7 +197,7 @@ fn export_public_symbols() {
 fn check_plugins_ffi() {
     let definitions_filename = "src/plugin/ffi.rs";
     cargo::rerun_if_changed(definitions_filename);
-    let declarations_filename = "picodata-plugin/src/internal/ffi.rs";
+    let declarations_filename = "crates/picodata-plugin/src/internal/ffi.rs";
     cargo::rerun_if_changed(declarations_filename);
 
     if std::env::var("SKIP_FFI_CHECK").is_ok() {

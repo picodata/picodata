@@ -100,9 +100,9 @@ va_list = ">=0.1.4"
 zeroize = "1.8"
 
 # Bundled modules
-pico_proc_macro = { path = "pico_proc_macro" }
+pico_proc_macro = { path = "crates/pico_proc_macro" }
 picodata-plugin = { workspace = true, features = ["internal_test", "internal"] }
-sql-planner = { path = "sql-planner" }
+sql-planner = { path = "crates/sql-planner" }
 tarantool = { workspace = true, features = [
     "test",
     "stored_procs_slice",
@@ -125,7 +125,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 build-rs-helpers = { workspace = true }
-tarantool-build = { path = "tarantool-build" }
+tarantool-build = { path = "crates/tarantool-build" }
 
 bindgen = "0.72.1"
 doxygen-bindgen = "0.1.3"
@@ -140,7 +140,7 @@ file_shred = { git = "https://git.picodata.io/core/file_shred", branch = "rand-0
 
 [workspace.dependencies]
 ahash = "0.8"
-build-rs-helpers = { path = "build-rs-helpers" }
+build-rs-helpers = { path = "crates/build-rs-helpers" }
 chrono = "0.4"
 clap = "4.5"
 comfy-table = "7.2"
@@ -148,7 +148,7 @@ git-version = "0.3"
 indenter = "0.3"
 insta = "1.42"
 openssl = "0.10"
-picodata-plugin = { path = "picodata-plugin" }
+picodata-plugin = { path = "crates/picodata-plugin" }
 postgres-types = { version = "0.2", features = [
     "array-impls",
     "with-serde_json-1",
@@ -171,7 +171,7 @@ smallvec = { version = "1.15", features = ["const_generics"] }
 smol_str = { version = "0.3", features = ["serde"] }
 socket2 = "0.5"
 sqlformat = "0.5"
-sql-protocol = { path = "sql-protocol" }
+sql-protocol = { path = "crates/sql-protocol" }
 syn = { version = "2.0" }
 tarantool = { path = "tarantool/tarantool", features = ["picodata"] }
 thiserror = "2"
@@ -198,15 +198,15 @@ harness = false
 resolver = "2"
 members = [
     ".",
-    "build-rs-helpers",
-    "pico_proc_macro",
-    "sql-executor",
-    "sql-frontend",
-    "sql-ir",
-    "sql-planner",
-    "sql-protocol",
-    "sql-type-system",
-    "tarantool-build",
+    "crates/build-rs-helpers",
+    "crates/pico_proc_macro",
+    "crates/sql-executor",
+    "crates/sql-frontend",
+    "crates/sql-ir",
+    "crates/sql-planner",
+    "crates/sql-protocol",
+    "crates/sql-type-system",
+    "crates/tarantool-build",
     "test/plugins/testplug",
 ]
 
