@@ -80,7 +80,7 @@ nav:
       - reference/sql/dml.md
       - reference/sql/dql.md
       - Средства для отладки запросов:
-          - Использование EXPLAIN: reference/sql/explain.md
+          - reference/sql/explain.md
           - reference/sql/explain_facets/raw.md
           - reference/sql/explain_facets/logical.md
           - reference/sql/explain_facets/buckets.md
@@ -115,7 +115,7 @@ nav:
           - reference/sql/drop_role.md
           - reference/sql/drop_table.md
           - reference/sql/drop_user.md
-          - EXPLAIN: reference/sql/explain.md
+          - reference/sql/explain_hop.md
           - reference/sql/grant.md
           - reference/sql/insert.md
           - reference/sql/revoke.md
