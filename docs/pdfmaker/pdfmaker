@@ -1,0 +1,1900 @@
+#!/usr/bin/env python3
+"""Build a PDF from selected Picodata documentation sections."""
+
+from __future__ import annotations
+
+import argparse
+import html
+import os
+import re
+import sys
+import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+try:
+    from bs4 import BeautifulSoup, NavigableString
+except ImportError:  # pragma: no cover - startup diagnostic
+    print(
+        "Ошибка: для работы pdfmaker нужен Python-пакет beautifulsoup4.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+ROOT = Path(__file__).resolve().parent
+CONFIG_FILENAME = "pdfmaker.cfg"
+SECTION_HEADING_LEVELS = {"h2": 2, "h3": 3, "h4": 4, "h5": 5}
+
+DOC_TYPES = {
+    "operator": {
+        "title": "Руководство оператора",
+        "default_pdf": ROOT / "PDF" / "OperatorGuide.pdf",
+    },
+    "admin": {
+        "title": "Руководство администратора",
+        "default_pdf": ROOT / "PDF" / "AdministratorGuide.pdf",
+    },
+}
+
+REMOVE_BLOCK_RE = re.compile(
+    r"^\s*(?:См\.?\s+также|Читайте\s+далее|Читать\s+далее)\s*:?.*$",
+    re.IGNORECASE,
+)
+INLINE_REMOVE_RE = re.compile(
+    r"(?:^|\s)(?:См\.?\s+также|Читайте\s+далее|Читать\s+далее)\s*:?.*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+class PdfmakerError(Exception):
+    """User-facing build error."""
+
+
+@dataclass
+class PdfmakerConfig:
+    path: Path | None = None
+    excluded_sections: dict[str, list[str]] = field(default_factory=dict)
+    excluded_lines: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ReportContext:
+    styles: dict
+    fonts: dict[str, str]
+    temp_dir: Path
+    doc_width: float
+    wide_table_mode: str = "scale"
+    image_counter: int = 0
+
+
+@dataclass
+class TableCellContent:
+    markup: str
+    text: str
+    is_header: bool = False
+
+
+TABLE_FONT_SIZE = 7.7
+TABLE_LEADING = 10
+WIDE_TABLE_MIN_FONT_SIZE = 5.2
+WIDE_TABLE_VERTICAL_FONT_SIZE = 6.8
+WIDE_TABLE_MIN_COLUMNS = 5
+ASCII_TABLE_MIN_COLUMNS = 5
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="pdfmaker",
+        description="Создаёт PDF из указанных поддиректорий документации Picodata.",
+    )
+    parser.add_argument(
+        "-o",
+        "--operator",
+        action="store_true",
+        help="создать документ типа 'Руководство оператора'",
+    )
+    parser.add_argument(
+        "-a",
+        "--admin",
+        action="store_true",
+        help="создать документ типа 'Руководство администратора'",
+    )
+    parser.add_argument(
+        "--pdf",
+        metavar="PATH",
+        help="путь к выходному PDF-файлу",
+    )
+    parser.add_argument(
+        "--keep-html",
+        metavar="PATH",
+        help="сохранить промежуточный HTML для отладки",
+    )
+    parser.add_argument(
+        "--wide-table-mode",
+        choices=("scale", "vertical"),
+        default="scale",
+        help=(
+            "как автоматически уплотнять широкие Markdown-таблицы в PDF: "
+            "scale — уменьшать шрифт, vertical — поворачивать заголовки столбцов"
+        ),
+    )
+    parser.add_argument(
+        "sections",
+        nargs="*",
+        help="поддиректории с документацией, например: admin architecture dev",
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.operator and args.admin:
+        parser.error("укажите только один тип выходного документа: -o или -a")
+    if not args.operator and not args.admin:
+        parser.error(
+            "не указан тип выходного документа: добавьте -o для Руководства "
+            "оператора или -a для Руководства администратора"
+        )
+    if not args.sections:
+        parser.error(
+            "не указаны поддиректории с документацией, например: "
+            "pdfmaker -a admin"
+        )
+
+    args.doc_type = "operator" if args.operator else "admin"
+    return args
+
+
+def normalize_section(value: str) -> Path:
+    raw = value.strip()
+    if raw.endswith("/index.html"):
+        raw = raw[: -len("/index.html")]
+    raw = raw.strip("/")
+
+    rel_path = Path(raw)
+    if not raw or rel_path.is_absolute() or ".." in rel_path.parts:
+        raise PdfmakerError(f"некорректная поддиректория: {value!r}")
+
+    full_path = (ROOT / rel_path).resolve()
+    try:
+        full_path.relative_to(ROOT)
+    except ValueError as exc:
+        raise PdfmakerError(f"поддиректория вне каталога документации: {value}") from exc
+
+    if not full_path.is_dir():
+        raise PdfmakerError(f"поддиректория не найдена: {value}")
+    return full_path
+
+
+def normalize_config_page(value: str) -> Path:
+    raw = value.strip()
+    if raw.endswith("/index.html"):
+        raw = raw[: -len("/index.html")]
+    raw = raw.strip("/")
+
+    rel_path = Path(raw)
+    if not raw or rel_path.is_absolute() or ".." in rel_path.parts:
+        raise PdfmakerError(f"некорректный раздел в excluded_sections: {value!r}")
+
+    index_html = (ROOT / rel_path / "index.html").resolve()
+    try:
+        index_html.relative_to(ROOT)
+    except ValueError as exc:
+        raise PdfmakerError(
+            f"раздел в excluded_sections вне каталога документации: {value}"
+        ) from exc
+
+    if not index_html.is_file():
+        raise PdfmakerError(
+            f"раздел в excluded_sections не найден: {value} (ожидался index.html)"
+        )
+    return index_html
+
+
+def page_id(index_html: Path) -> str:
+    rel = index_html.relative_to(ROOT).as_posix()
+    suffix = "/index.html"
+    if rel.endswith(suffix):
+        return rel[: -len(suffix)]
+    if rel == "index.html":
+        return ""
+    return rel
+
+
+def normalize_text_pattern(value: object) -> str:
+    return re.sub(r"\s+", " ", str(value).replace("\xa0", " ")).strip()
+
+
+def parse_excluded_sections(raw: object) -> dict[str, list[str]]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise PdfmakerError("блок excluded_sections должен быть словарём")
+
+    result: dict[str, list[str]] = {}
+    for section, section_ids in raw.items():
+        if not isinstance(section, str) or not section.strip():
+            raise PdfmakerError(
+                "ключи в excluded_sections должны быть непустыми строками"
+            )
+        if not isinstance(section_ids, list):
+            raise PdfmakerError(
+                f"значение excluded_sections.{section} должно быть списком id"
+            )
+
+        index_html = normalize_config_page(section)
+        source_id = page_id(index_html)
+        parsed_ids: list[str] = []
+        for section_id in section_ids:
+            if not isinstance(section_id, str) or not section_id.strip():
+                raise PdfmakerError(
+                    f"в excluded_sections.{section} должен быть список непустых строк"
+                )
+            parsed_ids.append(section_id.strip().lstrip("#"))
+
+        result.setdefault(source_id, []).extend(parsed_ids)
+    return result
+
+
+def parse_excluded_lines(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        candidates = raw
+    else:
+        candidates = [raw]
+    return [
+        pattern
+        for pattern in map(normalize_text_pattern, candidates)
+        if pattern
+    ]
+
+
+def load_article(index_html: Path):
+    try:
+        source = index_html.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise PdfmakerError(f"не удалось прочитать {index_html}: {exc}") from exc
+
+    soup = BeautifulSoup(source, "html.parser")
+    article = soup.select_one("article.md-content__inner")
+    if article is None:
+        raise PdfmakerError(f"не найден основной контент: {index_html}")
+    return article
+
+
+def heading_id_matches(
+    source_id: str,
+    actual_id: str | None,
+    requested_id: str,
+) -> bool:
+    if not actual_id:
+        return False
+    return requested_id == actual_id or requested_id == f"{source_id}/{actual_id}"
+
+
+def find_section_heading(article, source_id: str, requested_id: str):
+    for heading in article.find_all(list(SECTION_HEADING_LEVELS)):
+        if heading_id_matches(source_id, heading.get("id"), requested_id):
+            return heading
+    return None
+
+
+def validate_excluded_sections(config: PdfmakerConfig) -> None:
+    for source_id, section_ids in config.excluded_sections.items():
+        index_html = ROOT / source_id / "index.html"
+        article = load_article(index_html)
+        available_ids = [
+            heading.get("id")
+            for heading in article.find_all(list(SECTION_HEADING_LEVELS))
+            if heading.get("id")
+        ]
+
+        for section_id in section_ids:
+            if find_section_heading(article, source_id, section_id) is not None:
+                continue
+
+            sample = ", ".join(available_ids[:10]) or "нет h2-h5 с id"
+            raise PdfmakerError(
+                f"{config.path}: в excluded_sections.{source_id} не найден "
+                f"подраздел с id {section_id!r}. Доступные id: {sample}"
+            )
+
+
+def load_pdfmaker_config() -> PdfmakerConfig:
+    config_path = Path.cwd() / CONFIG_FILENAME
+    if not config_path.exists():
+        return PdfmakerConfig()
+
+    try:
+        import yaml
+    except ImportError as exc:  # pragma: no cover - startup diagnostic
+        raise PdfmakerError(
+            f"найден {config_path}, но для YAML-конфигурации нужен пакет PyYAML"
+        ) from exc
+
+    try:
+        raw_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise PdfmakerError(f"не удалось разобрать {config_path}: {exc}") from exc
+
+    if raw_config is None:
+        raw_config = {}
+    if not isinstance(raw_config, dict):
+        raise PdfmakerError(
+            f"{config_path}: верхний уровень YAML должен быть словарём"
+        )
+
+    config = PdfmakerConfig(
+        path=config_path,
+        excluded_sections=parse_excluded_sections(raw_config.get("excluded_sections")),
+        excluded_lines=parse_excluded_lines(raw_config.get("excluded_lines")),
+    )
+    validate_excluded_sections(config)
+    return config
+
+
+def load_toc_order() -> dict[str, int]:
+    toc_path = ROOT / "picodata_docs.html"
+    if not toc_path.exists():
+        return {}
+
+    soup = BeautifulSoup(toc_path.read_text(encoding="utf-8"), "html.parser")
+    order: dict[str, int] = {}
+    for anchor in soup.select("article.pd-toc a[href]"):
+        href = anchor.get("href", "").lstrip("#").strip("/")
+        if not href or href in order:
+            continue
+        if (ROOT / href / "index.html").exists():
+            order[href] = len(order)
+    return order
+
+
+def collect_pages(sections: list[str], toc_order: dict[str, int]) -> list[Path]:
+    pages: list[Path] = []
+    seen: set[Path] = set()
+
+    for section in sections:
+        section_dir = normalize_section(section)
+        section_pages = list(section_dir.rglob("index.html"))
+        section_pages.sort(
+            key=lambda path: (
+                toc_order.get(identifier := page_id(path), 1_000_000),
+                identifier,
+            )
+        )
+        if not section_pages:
+            raise PdfmakerError(f"в поддиректории нет страниц index.html: {section}")
+
+        for path in section_pages:
+            resolved = path.resolve()
+            if resolved not in seen:
+                pages.append(resolved)
+                seen.add(resolved)
+
+    return pages
+
+
+def is_blank(node) -> bool:
+    return isinstance(node, NavigableString) and not str(node).strip()
+
+
+def remove_related_blocks(article) -> None:
+    for tag in list(article.find_all(["p", "div"])):
+        text = tag.get_text(" ", strip=True).replace("\xa0", " ")
+        if not REMOVE_BLOCK_RE.match(text):
+            continue
+
+        sibling = tag.next_sibling
+        tag.decompose()
+
+        while sibling is not None:
+            next_sibling = sibling.next_sibling
+            if is_blank(sibling):
+                sibling.extract()
+            elif getattr(sibling, "name", None) in {"ul", "ol"}:
+                sibling.decompose()
+            else:
+                break
+            sibling = next_sibling
+
+
+def remove_following_inside(container, node) -> None:
+    current = node
+    while current is not None and current is not container:
+        for sibling in list(current.next_siblings):
+            sibling.extract()
+        current = current.parent
+
+
+def trim_inline_related_text(article) -> None:
+    for tag in list(article.find_all(["p", "li"])):
+        for text_node in list(tag.find_all(string=True)):
+            match = INLINE_REMOVE_RE.search(str(text_node))
+            if not match:
+                continue
+
+            prefix = NavigableString(str(text_node)[: match.start()].rstrip())
+            text_node.replace_with(prefix)
+            remove_following_inside(tag, prefix)
+            break
+
+
+def remove_node(node) -> None:
+    if hasattr(node, "decompose"):
+        node.decompose()
+    else:
+        node.extract()
+
+
+def remove_section_from_heading(heading) -> None:
+    heading_level = SECTION_HEADING_LEVELS[heading.name]
+    current = heading
+    while current is not None:
+        next_sibling = current.next_sibling
+        current_level = SECTION_HEADING_LEVELS.get(getattr(current, "name", None))
+        if (
+            current is not heading
+            and current_level is not None
+            and current_level <= heading_level
+        ):
+            break
+
+        remove_node(current)
+        current = next_sibling
+
+
+def remove_excluded_sections(article, source_id: str, section_ids: list[str]) -> None:
+    for section_id in section_ids:
+        heading = find_section_heading(article, source_id, section_id)
+        if heading is None:
+            continue
+        remove_section_from_heading(heading)
+
+
+def remove_excluded_line_paragraphs(article, patterns: list[str]) -> None:
+    if not patterns:
+        return
+
+    for paragraph in list(article.find_all("p")):
+        text = normalize_text_pattern(paragraph.get_text(" ", strip=True))
+        if any(pattern in text for pattern in patterns):
+            paragraph.decompose()
+
+
+def replace_missing_image(tag, label: str) -> None:
+    placeholder = BeautifulSoup(
+        f'<p class="missing-image">[{html.escape(label)}]</p>', "html.parser"
+    ).p
+    tag.replace_with(placeholder)
+
+
+def rewrite_local_resource(tag, attr: str, source_dir: Path) -> None:
+    value = tag.get(attr)
+    if not value or value.startswith("data:"):
+        return
+
+    parsed = urlparse(value)
+    if parsed.scheme in {"http", "https"}:
+        label = tag.get("alt") or value
+        replace_missing_image(tag, f"Изображение недоступно: {label}")
+        return
+    if parsed.scheme and parsed.scheme != "file":
+        return
+
+    local_part = unquote(parsed.path)
+    if not local_part:
+        return
+
+    # A leading slash in generated HTML denotes the documentation root, not
+    # the host filesystem root.  file:// URLs, on the other hand, are absolute.
+    if parsed.scheme == "file":
+        resource_path = Path(local_part).resolve()
+    elif local_part.startswith("/"):
+        resource_path = (ROOT / local_part.lstrip("/")).resolve()
+    else:
+        resource_path = (source_dir / local_part).resolve()
+
+    try:
+        resource_path.relative_to(ROOT)
+    except ValueError:
+        label = tag.get("alt") or local_part
+        replace_missing_image(tag, f"Изображение вне каталога документации: {label}")
+        return
+
+    if resource_path.is_file():
+        tag[attr] = resource_path.as_uri()
+    else:
+        label = tag.get("alt") or local_part
+        replace_missing_image(tag, f"Изображение не найдено: {label}")
+
+
+def clean_article(index_html: Path, config: PdfmakerConfig) -> str:
+    source_id = page_id(index_html)
+    article = load_article(index_html)
+
+    for selector in [
+        "nav",
+        "form",
+        "script",
+        "style",
+        ".md-content__button",
+        ".md-feedback",
+        ".md-dialog",
+        ".headerlink",
+    ]:
+        for tag in list(article.select(selector)):
+            tag.decompose()
+
+    for anchor in list(article.find_all("a")):
+        if not anchor.get_text(strip=True) and not anchor.find("img"):
+            anchor.decompose()
+            continue
+        anchor.unwrap()
+
+    remove_excluded_sections(article, source_id, config.excluded_sections.get(source_id, []))
+    remove_excluded_line_paragraphs(article, config.excluded_lines)
+    remove_related_blocks(article)
+    trim_inline_related_text(article)
+
+    for tag in list(article.find_all(["img", "embed", "source"])):
+        rewrite_local_resource(tag, "src", index_html.parent)
+    for tag in list(article.find_all(["object"])):
+        rewrite_local_resource(tag, "data", index_html.parent)
+
+    for tag in list(article.find_all(["p", "li", "td", "th"])):
+        if tag.get_text(strip=True) or tag.find(["img", "table", "pre", "code"]):
+            continue
+        tag.decompose()
+
+    rel = html.escape(source_id, quote=True)
+    title = article.find("h1")
+    title_text = title.get_text(" ", strip=True) if title else source_id
+    print(f"Добавлена страница: {source_id} — {title_text}", flush=True)
+    return f'<section class="doc-article" data-source="{rel}">{article.decode_contents()}</section>'
+
+
+def css_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+
+
+def build_cover(document_title: str) -> str:
+    logo_path = ROOT / "assets" / "pdficon.svg"
+    logo = ""
+    if logo_path.exists():
+        logo = (
+            f'<img class="cover-logo" src="{html.escape(logo_path.as_uri(), quote=True)}" '
+            'alt="Picodata logo">'
+        )
+
+    return f"""
+<section class="cover">
+  <div class="cover-brand">
+    {logo}
+    <span>Picodata</span>
+  </div>
+  <h1>{html.escape(document_title)}</h1>
+</section>
+"""
+
+
+def build_html(document_title: str, articles: list[str]) -> str:
+    header = css_string(document_title)
+    title = html.escape(document_title)
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+@page {{
+  size: A4;
+  margin: 22mm 16mm 18mm 16mm;
+  @top-center {{
+    content: "{header}";
+    color: #5f6872;
+    font-family: "DejaVu Sans", Arial, sans-serif;
+    font-size: 9pt;
+  }}
+  @bottom-right {{
+    content: counter(page);
+    color: #5f6872;
+    font-family: "DejaVu Sans", Arial, sans-serif;
+    font-size: 9pt;
+  }}
+}}
+
+html, body {{
+  color: #16222e;
+  font-family: "DejaVu Sans", Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.45;
+  margin: 0;
+}}
+
+.cover {{
+  align-items: center;
+  break-after: page;
+  display: flex;
+  flex-direction: column;
+  height: 255mm;
+  justify-content: center;
+  text-align: center;
+}}
+
+.cover-brand {{
+  align-items: center;
+  color: #16222e;
+  display: flex;
+  font-size: 13pt;
+  font-weight: 600;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 14mm;
+}}
+
+.cover-logo {{
+  height: 22px;
+  width: auto;
+}}
+
+.cover h1 {{
+  font-size: 20pt;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+}}
+
+.doc-article {{
+  break-before: page;
+}}
+
+h1, h2, h3, h4, h5, h6 {{
+  break-after: avoid;
+  color: #16222e;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0 0 8pt;
+}}
+
+h1 {{ font-size: 18pt; }}
+h2 {{ font-size: 14pt; margin-top: 18pt; }}
+h3 {{ font-size: 12pt; margin-top: 14pt; }}
+h4, h5, h6 {{ font-size: 10.5pt; margin-top: 10pt; }}
+
+p, ul, ol, table, pre, blockquote, .admonition {{
+  margin-top: 0;
+  margin-bottom: 8pt;
+}}
+
+ul, ol {{
+  padding-left: 18pt;
+}}
+
+li {{
+  margin-bottom: 3pt;
+}}
+
+code {{
+  background: #f2f4f7;
+  border-radius: 2px;
+  font-family: "DejaVu Sans Mono", "Roboto Mono", monospace;
+  font-size: 8.6pt;
+  padding: 0 2pt;
+}}
+
+pre {{
+  background: #f6f8fa;
+  border: 1px solid #d8dee4;
+  border-radius: 3px;
+  break-inside: avoid;
+  color: #24292f;
+  font-family: "DejaVu Sans Mono", "Roboto Mono", monospace;
+  font-size: 8pt;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  padding: 8pt;
+  white-space: pre-wrap;
+}}
+
+pre code {{
+  background: transparent;
+  border-radius: 0;
+  font-size: inherit;
+  padding: 0;
+}}
+
+table {{
+  border-collapse: collapse;
+  break-inside: auto;
+  font-size: 8.3pt;
+  table-layout: fixed;
+  width: 100%;
+}}
+
+th, td {{
+  border: 1px solid #d8dee4;
+  padding: 4pt 5pt;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}}
+
+th {{
+  background: #f2f4f7;
+  font-weight: 700;
+}}
+
+img, svg {{
+  display: block;
+  height: auto;
+  margin: 8pt auto;
+  max-height: 230mm;
+  max-width: 100%;
+}}
+
+blockquote, .admonition {{
+  background: #f8fafc;
+  border-left: 3px solid #e23956;
+  padding: 7pt 9pt;
+}}
+
+.admonition-title {{
+  font-weight: 700;
+  margin-bottom: 4pt;
+}}
+
+.tabbed-labels, .md-tabs, .md-sidebar, .md-footer, .md-header, .md-nav {{
+  display: none;
+}}
+
+.missing-image {{
+  border: 1px dashed #b8c0cc;
+  color: #6b7280;
+  font-size: 8.5pt;
+  padding: 6pt;
+}}
+</style>
+</head>
+<body>
+{build_cover(document_title)}
+{''.join(articles)}
+</body>
+</html>
+"""
+
+
+def first_existing(paths: list[str]) -> str | None:
+    for path in paths:
+        if Path(path).exists():
+            return path
+    return None
+
+
+def register_reportlab_fonts() -> dict[str, str]:
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    regular = first_existing(
+        [
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
+        ]
+    )
+    bold = first_existing(
+        [
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/google-noto/NotoSans-Bold.ttf",
+        ]
+    )
+    italic = first_existing(
+        [
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Oblique.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+            "/usr/share/fonts/google-noto/NotoSans-Italic.ttf",
+        ]
+    )
+    bold_italic = first_existing(
+        [
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-BoldOblique.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+            "/usr/share/fonts/google-noto/NotoSans-BoldItalic.ttf",
+        ]
+    )
+    mono = first_existing(
+        [
+            "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "/usr/share/fonts/google-noto/NotoSansMono-Regular.ttf",
+        ]
+    )
+
+    if not regular:
+        raise PdfmakerError("не найден TTF-шрифт с поддержкой кириллицы")
+
+    fonts = {
+        "regular": "DejaVuSans",
+        "bold": "DejaVuSans-Bold",
+        "italic": "DejaVuSans-Oblique",
+        "bold_italic": "DejaVuSans-BoldOblique",
+        "mono": "DejaVuSansMono",
+    }
+
+    pdfmetrics.registerFont(TTFont(fonts["regular"], regular))
+    pdfmetrics.registerFont(TTFont(fonts["bold"], bold or regular))
+    pdfmetrics.registerFont(TTFont(fonts["italic"], italic or regular))
+    pdfmetrics.registerFont(TTFont(fonts["bold_italic"], bold_italic or bold or regular))
+    pdfmetrics.registerFont(TTFont(fonts["mono"], mono or regular))
+    pdfmetrics.registerFontFamily(
+        fonts["regular"],
+        normal=fonts["regular"],
+        bold=fonts["bold"],
+        italic=fonts["italic"],
+        boldItalic=fonts["bold_italic"],
+    )
+    return fonts
+
+
+def make_reportlab_styles(fonts: dict[str, str]) -> dict:
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+
+    sample = getSampleStyleSheet()
+    body = ParagraphStyle(
+        "Body",
+        parent=sample["BodyText"],
+        fontName=fonts["regular"],
+        fontSize=10.5,
+        leading=15,
+        spaceAfter=7,
+        textColor=colors.HexColor("#16222e"),
+    )
+    return {
+        "body": body,
+        "cover_brand": ParagraphStyle(
+            "CoverBrand",
+            parent=body,
+            alignment=1,
+            fontName=fonts["bold"],
+            fontSize=13,
+            leading=18,
+            spaceAfter=28,
+        ),
+        "cover_title": ParagraphStyle(
+            "CoverTitle",
+            parent=body,
+            alignment=1,
+            fontName=fonts["bold"],
+            fontSize=20,
+            leading=25,
+        ),
+        "h1": ParagraphStyle(
+            "H1",
+            parent=body,
+            fontName=fonts["bold"],
+            fontSize=18,
+            leading=23,
+            spaceBefore=0,
+            spaceAfter=9,
+            keepWithNext=True,
+        ),
+        "h2": ParagraphStyle(
+            "H2",
+            parent=body,
+            fontName=fonts["bold"],
+            fontSize=14,
+            leading=18,
+            spaceBefore=12,
+            spaceAfter=7,
+            keepWithNext=True,
+        ),
+        "h3": ParagraphStyle(
+            "H3",
+            parent=body,
+            fontName=fonts["bold"],
+            fontSize=12,
+            leading=16,
+            spaceBefore=10,
+            spaceAfter=6,
+            keepWithNext=True,
+        ),
+        "h4": ParagraphStyle(
+            "H4",
+            parent=body,
+            fontName=fonts["bold"],
+            fontSize=10.5,
+            leading=15,
+            spaceBefore=8,
+            spaceAfter=5,
+            keepWithNext=True,
+        ),
+        "code": ParagraphStyle(
+            "Code",
+            parent=body,
+            fontName=fonts["mono"],
+            fontSize=7.8,
+            leading=10,
+            leftIndent=6,
+            rightIndent=6,
+            spaceBefore=3,
+            spaceAfter=8,
+            backColor=colors.HexColor("#f6f8fa"),
+            borderColor=colors.HexColor("#d8dee4"),
+            borderWidth=0.4,
+            borderPadding=5,
+            wordWrap="CJK",
+        ),
+        "table_cell": ParagraphStyle(
+            "TableCell",
+            parent=body,
+            fontSize=7.7,
+            leading=10,
+            wordWrap="CJK",
+        ),
+        "caption": ParagraphStyle(
+            "Caption",
+            parent=body,
+            alignment=1,
+            fontSize=8.5,
+            leading=11,
+            textColor=colors.HexColor("#5f6872"),
+        ),
+        "toc_title": ParagraphStyle(
+            "TOCTitle",
+            parent=body,
+            alignment=1,
+            fontName=fonts["bold"],
+            fontSize=18,
+            leading=23,
+            spaceAfter=14,
+        ),
+    }
+
+
+def make_toc(fonts: dict[str, str]):
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus.tableofcontents import TableOfContents
+
+    toc = TableOfContents()
+    toc.dotsMinLevel = 0
+    toc.levelStyles = [
+        ParagraphStyle(
+            "TOCLevel0",
+            fontName=fonts["bold"],
+            fontSize=10.5,
+            leading=14,
+            leftIndent=0,
+            firstLineIndent=0,
+            spaceBefore=5,
+            textColor=colors.HexColor("#16222e"),
+        ),
+        ParagraphStyle(
+            "TOCLevel1",
+            fontName=fonts["regular"],
+            fontSize=9.5,
+            leading=12,
+            leftIndent=14,
+            firstLineIndent=0,
+            spaceBefore=2,
+            textColor=colors.HexColor("#16222e"),
+        ),
+        ParagraphStyle(
+            "TOCLevel2",
+            fontName=fonts["regular"],
+            fontSize=8.7,
+            leading=11,
+            leftIndent=28,
+            firstLineIndent=0,
+            spaceBefore=1,
+            textColor=colors.HexColor("#16222e"),
+        ),
+    ]
+    return toc
+
+
+def make_doc_template(output_pdf: Path, document_title: str, fonts: dict[str, str]):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate
+
+    class TocDocTemplate(SimpleDocTemplate):
+        toc_levels = {"H1": 0, "H2": 1, "H3": 2}
+
+        def afterFlowable(self, flowable):
+            if not isinstance(flowable, Paragraph):
+                return
+            level = self.toc_levels.get(flowable.style.name)
+            if level is None:
+                return
+            text = flowable.getPlainText()
+            if text:
+                self.notify("TOCEntry", (level, text, self.page))
+
+    return TocDocTemplate(
+        str(output_pdf),
+        pagesize=A4,
+        rightMargin=16 * mm,
+        leftMargin=16 * mm,
+        topMargin=22 * mm,
+        bottomMargin=18 * mm,
+        title=document_title,
+    )
+
+
+def inline_markup(node, ctx: ReportContext) -> str:
+    if isinstance(node, NavigableString):
+        return html.escape(re.sub(r"\s+", " ", str(node)))
+
+    name = getattr(node, "name", "")
+    if not name:
+        return ""
+    if name == "br":
+        return "<br/>"
+    if name in {"script", "style", "nav", "form"}:
+        return ""
+    if name in {"strong", "b"}:
+        return f"<b>{inline_children(node, ctx)}</b>"
+    if name in {"em", "i"}:
+        return f"<i>{inline_children(node, ctx)}</i>"
+    if name == "code":
+        text = html.escape(node.get_text("", strip=False))
+        return f'<font name="{ctx.fonts["mono"]}">{text}</font>'
+    if name == "sup":
+        return f"<super>{inline_children(node, ctx)}</super>"
+    if name == "sub":
+        return f"<sub>{inline_children(node, ctx)}</sub>"
+    if name == "img":
+        return html.escape(node.get("alt") or "")
+    return inline_children(node, ctx)
+
+
+def inline_children(tag, ctx: ReportContext) -> str:
+    return "".join(inline_markup(child, ctx) for child in tag.children)
+
+
+def paragraph_from_markup(markup: str, style):
+    from reportlab.platypus import Paragraph
+
+    markup = markup.strip()
+    if not markup:
+        return None
+    return Paragraph(markup, style)
+
+
+def table_paragraph_style(
+    ctx: ReportContext,
+    name: str,
+    font_size: float,
+    leading: float,
+    *,
+    bold: bool = False,
+    mono: bool = False,
+    alignment: int = 0,
+):
+    from reportlab.lib.styles import ParagraphStyle
+
+    if mono:
+        font_name = ctx.fonts["mono"]
+    elif bold:
+        font_name = ctx.fonts["bold"]
+    else:
+        font_name = ctx.fonts["regular"]
+
+    return ParagraphStyle(
+        name,
+        parent=ctx.styles["table_cell"],
+        fontName=font_name,
+        fontSize=font_size,
+        leading=leading,
+        alignment=alignment,
+        wordWrap="CJK",
+        splitLongWords=1,
+    )
+
+
+def plain_table_markup(text: str) -> str:
+    lines = [html.escape(line.strip()) for line in text.splitlines()]
+    return "<br/>".join(line for line in lines if line) or " "
+
+
+def estimate_text_width(text: str, font_name: str, font_size: float) -> float:
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    normalized = re.sub(r"\s+", " ", text.strip())
+    if not normalized:
+        return 18
+
+    token_widths = [
+        stringWidth(token, font_name, font_size)
+        for token in re.split(r"[\s,;|/]+", normalized)
+        if token
+    ]
+    longest_token = max(token_widths, default=0)
+    full_line = stringWidth(normalized, font_name, font_size)
+
+    # Prefer a readable no-wrap width, but cap long prose so it can still wrap.
+    return max(22, min(max(longest_token + 8, full_line * 0.55), 170))
+
+
+def table_column_count(rows: list[list[TableCellContent]]) -> int:
+    return max((len(row) for row in rows), default=0)
+
+
+def estimate_table_col_widths(
+    rows: list[list[TableCellContent]],
+    ctx: ReportContext,
+    font_size: float,
+    *,
+    include_header: bool = True,
+    mono: bool = False,
+) -> list[float]:
+    columns = table_column_count(rows)
+    font_name = ctx.fonts["mono"] if mono else ctx.fonts["regular"]
+    widths = [22.0] * columns
+
+    for row in rows:
+        for column, cell in enumerate(row):
+            if cell.is_header and not include_header:
+                continue
+            widths[column] = max(
+                widths[column],
+                estimate_text_width(cell.text, font_name, font_size),
+            )
+
+    return widths
+
+
+def is_wide_table(rows: list[list[TableCellContent]], ctx: ReportContext) -> bool:
+    columns = table_column_count(rows)
+    if columns < 4:
+        return False
+
+    preferred_widths = estimate_table_col_widths(rows, ctx, TABLE_FONT_SIZE)
+    natural_width = sum(preferred_widths)
+    equal_column_width = ctx.doc_width / columns
+
+    if columns >= 7 and equal_column_width < 74:
+        return True
+    if columns >= WIDE_TABLE_MIN_COLUMNS and natural_width > ctx.doc_width * 1.05:
+        return True
+    return natural_width > ctx.doc_width * 1.35
+
+
+def fitted_col_widths(preferred_widths: list[float], total_width: float) -> list[float]:
+    columns = len(preferred_widths)
+    if not columns:
+        return []
+
+    floor = min(32, total_width / columns * 0.7)
+    widths = [max(width, floor) for width in preferred_widths]
+    width_sum = sum(widths)
+
+    if width_sum <= total_width:
+        extra = (total_width - width_sum) / columns
+        return [width + extra for width in widths]
+
+    flexible = sum(max(width - floor, 0) for width in widths)
+    if flexible <= 0:
+        return [total_width / columns] * columns
+
+    excess = width_sum - total_width
+    fitted = [
+        width - excess * max(width - floor, 0) / flexible
+        for width in widths
+    ]
+    scale = total_width / sum(fitted)
+    return [width * scale for width in fitted]
+
+
+def rotated_paragraph(markup: str, text: str, style):
+    from reportlab.platypus import Flowable, Paragraph
+
+    class RotatedParagraph(Flowable):
+        def __init__(self, markup: str, text: str, style):
+            super().__init__()
+            self.markup = markup
+            self.text = text
+            self.style = style
+            self.paragraph = Paragraph(markup, style)
+            self.paragraph_width = 0
+            self.paragraph_height = 0
+
+        def wrap(self, avail_width, _avail_height):
+            font_name = getattr(self.style, "fontName", "Helvetica")
+            font_size = getattr(self.style, "fontSize", WIDE_TABLE_VERTICAL_FONT_SIZE)
+            natural_width = estimate_text_width(self.text, font_name, font_size)
+            paragraph_width = max(24, min(145, natural_width))
+            self.paragraph_width, self.paragraph_height = self.paragraph.wrap(
+                paragraph_width,
+                max(avail_width, 18),
+            )
+            self.width = max(14, min(avail_width, self.paragraph_height + 1))
+            self.height = self.paragraph_width
+            return self.width, self.height
+
+        def draw(self):
+            offset = max((self.width - self.paragraph_height) / 2, 0)
+            self.canv.saveState()
+            self.canv.translate(offset + self.paragraph_height, 0)
+            self.canv.rotate(90)
+            self.paragraph.drawOn(self.canv, 0, 0)
+            self.canv.restoreState()
+
+    return RotatedParagraph(markup, text, style)
+
+
+def looks_like_markdown_table(tag) -> bool:
+    if tag.get("class") or tag.get("id"):
+        return False
+    if tag.find(["button", "input", "select", "textarea", "script", "style"]):
+        return False
+    for cell in tag.find_all(["th", "td"]):
+        if cell.get("rowspan") or cell.get("colspan"):
+            return False
+    return bool(tag.find("th"))
+
+
+def table_flowables_from_rows(
+    rows: list[list[TableCellContent]],
+    first_row_is_header: bool,
+    ctx: ReportContext,
+    *,
+    wide_candidate: bool,
+    force_wide: bool = False,
+    mono: bool = False,
+) -> list:
+    from reportlab.lib import colors
+    from reportlab.platypus import Paragraph, Table, TableStyle
+
+    if not rows:
+        return []
+
+    columns = table_column_count(rows)
+    for row in rows:
+        while len(row) < columns:
+            row.append(TableCellContent(" ", " "))
+
+    wide = force_wide or (wide_candidate and is_wide_table(rows, ctx))
+    mode = ctx.wide_table_mode if wide else "normal"
+    if mode == "vertical" and not first_row_is_header:
+        mode = "scale"
+
+    font_size = TABLE_FONT_SIZE
+    leading = TABLE_LEADING
+    left_padding = right_padding = 4
+    top_padding = bottom_padding = 3
+    include_header_in_widths = True
+
+    if mode == "scale":
+        preferred = estimate_table_col_widths(
+            rows,
+            ctx,
+            TABLE_FONT_SIZE,
+            include_header=True,
+            mono=mono,
+        )
+        scale = min(1.0, ctx.doc_width / max(sum(preferred), 1))
+        font_size = max(WIDE_TABLE_MIN_FONT_SIZE, TABLE_FONT_SIZE * scale)
+        leading = max(font_size + 1.2, TABLE_LEADING * scale)
+        left_padding = right_padding = max(1.8, 4 * scale)
+        top_padding = bottom_padding = max(1.6, 3 * scale)
+    elif mode == "vertical":
+        font_size = WIDE_TABLE_VERTICAL_FONT_SIZE
+        leading = font_size + 1.4
+        left_padding = right_padding = 2.2
+        top_padding = bottom_padding = 2
+        include_header_in_widths = False
+
+    cell_style = table_paragraph_style(
+        ctx,
+        f"TableCell-{mode}-{font_size:.2f}",
+        font_size,
+        leading,
+        mono=mono,
+    )
+    header_style = table_paragraph_style(
+        ctx,
+        f"TableHeader-{mode}-{font_size:.2f}",
+        font_size,
+        leading,
+        bold=True,
+        mono=mono,
+    )
+
+    preferred_widths = estimate_table_col_widths(
+        rows,
+        ctx,
+        font_size,
+        include_header=include_header_in_widths,
+        mono=mono,
+    )
+    if not any(width > 22 for width in preferred_widths):
+        preferred_widths = estimate_table_col_widths(
+            rows,
+            ctx,
+            font_size,
+            include_header=True,
+            mono=mono,
+        )
+    col_widths = (
+        fitted_col_widths(preferred_widths, ctx.doc_width)
+        if wide
+        else [ctx.doc_width / columns] * columns
+    )
+
+    table_rows = []
+    for row_index, row in enumerate(rows):
+        rendered_row = []
+        for cell in row:
+            style = header_style if cell.is_header else cell_style
+            if mode == "vertical" and row_index == 0 and first_row_is_header:
+                rendered_row.append(rotated_paragraph(cell.markup, cell.text, style))
+            else:
+                rendered_row.append(Paragraph(cell.markup, style))
+        table_rows.append(rendered_row)
+
+    table = Table(
+        table_rows,
+        colWidths=col_widths,
+        repeatRows=1 if first_row_is_header else 0,
+        splitByRow=True,
+    )
+    style = TableStyle(
+        [
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#d8dee4")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), left_padding),
+            ("RIGHTPADDING", (0, 0), (-1, -1), right_padding),
+            ("TOPPADDING", (0, 0), (-1, -1), top_padding),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), bottom_padding),
+        ]
+    )
+    if first_row_is_header:
+        style.add("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f4f7"))
+        style.add("FONTNAME", (0, 0), (-1, 0), ctx.fonts["bold"])
+        style.add("VALIGN", (0, 0), (-1, 0), "BOTTOM" if mode == "vertical" else "TOP")
+    table.setStyle(style)
+    return [table]
+
+
+def text_flowables(tag, ctx: ReportContext, style=None) -> list:
+    style = style or ctx.styles["body"]
+    para = paragraph_from_markup(inline_children(tag, ctx), style)
+    return [para] if para else []
+
+
+def code_preformatted_flowable(text: str, ctx: ReportContext):
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    from reportlab.platypus import Preformatted
+
+    base_style = ctx.styles["code"]
+    lines_source = text.strip("\n").splitlines() or [""]
+    available_width = max(
+        60,
+        ctx.doc_width
+        - base_style.leftIndent
+        - base_style.rightIndent
+        - base_style.borderPadding * 2,
+    )
+    longest_width = max(
+        stringWidth(line, ctx.fonts["mono"], base_style.fontSize)
+        for line in lines_source
+    )
+
+    style = base_style
+    if longest_width > available_width:
+        scale = max(0.62, available_width / longest_width)
+        font_size = max(4.8, base_style.fontSize * scale)
+        style = ParagraphStyle(
+            "CodeWide",
+            parent=base_style,
+            fontSize=font_size,
+            leading=max(font_size + 1.4, base_style.leading * scale),
+        )
+
+    char_width = max(stringWidth("M", ctx.fonts["mono"], style.fontSize), 1)
+    max_chars = max(42, int(available_width / char_width))
+    lines = []
+    for line in lines_source:
+        if len(line) <= max_chars:
+            lines.append(line)
+            continue
+        prefix = re.match(r"^\s*", line).group(0)
+        width = max(40, max_chars - len(prefix))
+        chunks = [line[i : i + width] for i in range(0, len(line), width)]
+        lines.append(chunks[0])
+        lines.extend(prefix + chunk for chunk in chunks[1:])
+    return Preformatted("\n".join(lines), style)
+
+
+def is_ascii_table_top(line: str) -> bool:
+    stripped = line.rstrip()
+    return (
+        stripped.startswith("+")
+        and stripped.endswith("+")
+        and stripped.count("+") >= 3
+        and set(stripped) <= set("+-= ")
+    )
+
+
+def is_ascii_table_line(line: str) -> bool:
+    stripped = line.rstrip()
+    if not stripped:
+        return False
+    if stripped.startswith("|") and stripped.endswith("|"):
+        return True
+    return is_ascii_table_top(stripped) or is_ascii_table_separator(stripped)
+
+
+def is_ascii_table_separator(line: str) -> bool:
+    stripped = line.rstrip()
+    return (
+        bool(stripped)
+        and stripped[0] in "+|"
+        and stripped[-1] in "+|"
+        and "+" in stripped
+        and set(stripped) <= set("+-=| ")
+    )
+
+
+def split_ascii_table_row(line: str, boundaries: list[int]) -> list[str]:
+    padded = line.rstrip().ljust(boundaries[-1] + 1)
+    return [
+        padded[boundaries[index] + 1 : boundaries[index + 1]].strip()
+        for index in range(len(boundaries) - 1)
+    ]
+
+
+def parse_ascii_table_block(lines: list[str]) -> tuple[list[list[TableCellContent]], bool] | None:
+    if not lines or not is_ascii_table_top(lines[0]):
+        return None
+
+    top = lines[0].rstrip()
+    boundaries = [index for index, char in enumerate(top) if char == "+"]
+    columns = len(boundaries) - 1
+    if columns < ASCII_TABLE_MIN_COLUMNS:
+        return None
+
+    rows: list[list[str]] = []
+    current_row: list[str] | None = None
+    first_row_is_header = False
+
+    for line in lines[1:]:
+        stripped = line.rstrip()
+        if is_ascii_table_separator(stripped):
+            if current_row is not None:
+                rows.append(current_row)
+                current_row = None
+            if "=" in stripped and rows:
+                first_row_is_header = True
+            continue
+        if not (stripped.startswith("|") and stripped.endswith("|")):
+            continue
+
+        cells = split_ascii_table_row(stripped, boundaries)
+        if current_row is None:
+            current_row = [""] * columns
+        for index, value in enumerate(cells):
+            if not value:
+                continue
+            current_row[index] = (
+                f"{current_row[index]}\n{value}" if current_row[index] else value
+            )
+
+    if current_row is not None:
+        rows.append(current_row)
+    if not rows:
+        return None
+
+    table_rows = [
+        [
+            TableCellContent(
+                plain_table_markup(cell),
+                re.sub(r"\s+", " ", cell.strip()),
+                is_header=first_row_is_header and row_index == 0,
+            )
+            for cell in row
+        ]
+        for row_index, row in enumerate(rows)
+    ]
+    return table_rows, first_row_is_header
+
+
+def code_flowables(text: str, ctx: ReportContext) -> list:
+    source_lines = text.strip("\n").splitlines()
+    segments = []
+    code_lines: list[str] = []
+    index = 0
+
+    while index < len(source_lines):
+        line = source_lines[index]
+        if is_ascii_table_top(line):
+            end = index + 1
+            while end < len(source_lines) and is_ascii_table_line(source_lines[end]):
+                end += 1
+
+            parsed = parse_ascii_table_block(source_lines[index:end])
+            if parsed is not None:
+                rows, first_row_is_header = parsed
+                if is_wide_table(rows, ctx):
+                    if code_lines:
+                        segments.append(("code", "\n".join(code_lines)))
+                        code_lines = []
+                    segments.append(("table", rows, first_row_is_header))
+                    index = end
+                    continue
+
+        code_lines.append(line)
+        index += 1
+
+    if code_lines:
+        segments.append(("code", "\n".join(code_lines)))
+
+    if not any(segment[0] == "table" for segment in segments):
+        return [code_preformatted_flowable(text, ctx)]
+
+    flowables = []
+    for segment in segments:
+        if segment[0] == "code":
+            code_text = segment[1]
+            if code_text.strip():
+                flowables.append(code_preformatted_flowable(code_text, ctx))
+        else:
+            _kind, rows, first_row_is_header = segment
+            flowables.extend(
+                table_flowables_from_rows(
+                    rows,
+                    first_row_is_header,
+                    ctx,
+                    wide_candidate=True,
+                    force_wide=True,
+                )
+            )
+    return flowables
+
+
+def image_flowable(tag, ctx: ReportContext):
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Image as RLImage
+    from reportlab.platypus import Paragraph
+
+    src = tag.get("src") or tag.get("data")
+    alt = tag.get("alt") or "изображение"
+    if not src:
+        return Paragraph(f"[{html.escape(alt)}]", ctx.styles["caption"])
+
+    parsed = urlparse(src)
+    if parsed.scheme != "file":
+        return Paragraph(f"[{html.escape(alt)}]", ctx.styles["caption"])
+
+    image_path = Path(unquote(parsed.path))
+    if not image_path.exists():
+        return Paragraph(f"[{html.escape(alt)}]", ctx.styles["caption"])
+
+    try:
+        if image_path.suffix.lower() == ".svg":
+            import cairosvg
+
+            ctx.image_counter += 1
+            png_path = ctx.temp_dir / f"image-{ctx.image_counter}.png"
+            cairosvg.svg2png(url=str(image_path), write_to=str(png_path))
+            image_path = png_path
+
+        from PIL import Image as PILImage
+
+        with PILImage.open(image_path) as image:
+            width_px, height_px = image.size
+
+        if width_px <= 0 or height_px <= 0:
+            raise ValueError("изображение имеет нулевой размер")
+
+        width = width_px * 0.75
+        height = height_px * 0.75
+        max_width = ctx.doc_width
+        max_height = 210 * mm
+        scale = min(max_width / width, max_height / height, 1.0)
+        return RLImage(str(image_path), width=width * scale, height=height * scale)
+    except Exception:
+        return Paragraph(f"[{html.escape(alt)}]", ctx.styles["caption"])
+
+
+def table_flowable(tag, ctx: ReportContext):
+    rows = []
+    first_row_is_header = False
+    for row_index, tr in enumerate(tag.find_all("tr")):
+        cells = tr.find_all(["th", "td"], recursive=False)
+        if not cells:
+            continue
+        if row_index == 0 and any(cell.name == "th" for cell in cells):
+            first_row_is_header = True
+        rows.append(
+            [
+                TableCellContent(
+                    cell_markup(cell, ctx),
+                    re.sub(r"\s+", " ", cell.get_text(" ", strip=True)),
+                    is_header=cell.name == "th",
+                )
+                for cell in cells
+            ]
+        )
+
+    if not rows:
+        return []
+
+    return table_flowables_from_rows(
+        rows,
+        first_row_is_header,
+        ctx,
+        wide_candidate=looks_like_markdown_table(tag),
+    )
+
+
+def cell_markup(cell, ctx: ReportContext) -> str:
+    parts = []
+    for child in cell.children:
+        name = getattr(child, "name", "")
+        if name in {"p", "div", "ul", "ol", "pre", "table"} and parts:
+            parts.append("<br/>")
+        if name in {"ul", "ol"}:
+            items = []
+            for index, li in enumerate(child.find_all("li", recursive=False), start=1):
+                marker = f"{index}." if name == "ol" else "•"
+                items.append(f"{marker} {inline_children(li, ctx)}")
+            parts.append("<br/>".join(items))
+        elif name == "pre":
+            parts.append(f'<font name="{ctx.fonts["mono"]}">{html.escape(child.get_text())}</font>')
+        else:
+            parts.append(inline_markup(child, ctx))
+    return "".join(parts).strip() or " "
+
+
+def list_flowables(tag, ctx: ReportContext, level: int = 0) -> list:
+    from reportlab.lib.styles import ParagraphStyle
+
+    flowables = []
+    style = ParagraphStyle(
+        f"ListLevel{level}",
+        parent=ctx.styles["body"],
+        leftIndent=level * 14,
+        firstLineIndent=0,
+        spaceAfter=4,
+    )
+    ordered = tag.name == "ol"
+
+    for index, item in enumerate(tag.find_all("li", recursive=False), start=1):
+        inline_parts = []
+        nested_blocks = []
+        for child in item.children:
+            name = getattr(child, "name", "")
+            if name in {"ul", "ol", "table", "pre", "div", "blockquote"}:
+                nested_blocks.append(child)
+            else:
+                inline_parts.append(inline_markup(child, ctx))
+
+        marker = f"{index}." if ordered else "•"
+        para = paragraph_from_markup(f"{marker} {''.join(inline_parts)}", style)
+        if para:
+            flowables.append(para)
+        for block in nested_blocks:
+            flowables.extend(node_flowables(block, ctx, level + 1))
+    return flowables
+
+
+def node_flowables(node, ctx: ReportContext, list_level: int = 0) -> list:
+    from reportlab.platypus import HRFlowable, Spacer
+
+    if isinstance(node, NavigableString):
+        if not str(node).strip():
+            return []
+        para = paragraph_from_markup(html.escape(str(node).strip()), ctx.styles["body"])
+        return [para] if para else []
+
+    name = getattr(node, "name", "")
+    if not name:
+        return []
+
+    classes = set(node.get("class", []))
+    if name in {"script", "style", "nav", "form"}:
+        return []
+    if name == "hr":
+        return [HRFlowable(width="100%", thickness=0.4), Spacer(1, 6)]
+    if name in {"h1", "h2", "h3"}:
+        return text_flowables(node, ctx, ctx.styles[name])
+    if name in {"h4", "h5", "h6"}:
+        return text_flowables(node, ctx, ctx.styles["h4"])
+    if name == "p":
+        if node.find(["img", "object"], recursive=False):
+            flowables = []
+            for child in node.children:
+                if getattr(child, "name", "") in {"img", "object"}:
+                    flowables.append(image_flowable(child, ctx))
+                elif isinstance(child, NavigableString) and not str(child).strip():
+                    continue
+                else:
+                    flowables.extend(node_flowables(child, ctx, list_level))
+            return flowables
+        return text_flowables(node, ctx)
+    if name in {"img", "object"}:
+        return [image_flowable(node, ctx)]
+    if name == "pre" or "highlight" in classes:
+        return code_flowables(node.get_text("", strip=False), ctx)
+    if name in {"ul", "ol"}:
+        return list_flowables(node, ctx, list_level)
+    if name == "table":
+        return table_flowable(node, ctx)
+    if name in {"blockquote", "details", "figure", "figcaption"} or "admonition" in classes:
+        flowables = []
+        if "admonition" in classes:
+            flowables.append(Spacer(1, 4))
+        for child in node.children:
+            flowables.extend(node_flowables(child, ctx, list_level))
+        if name == "figcaption":
+            for flowable in flowables:
+                if hasattr(flowable, "style"):
+                    flowable.style = ctx.styles["caption"]
+        return flowables
+    if name == "dl":
+        flowables = []
+        for child in node.children:
+            flowables.extend(node_flowables(child, ctx, list_level))
+        return flowables
+    if name == "dt":
+        return [paragraph_from_markup(f"<b>{inline_children(node, ctx)}</b>", ctx.styles["body"])]
+    if name == "dd":
+        return text_flowables(node, ctx)
+
+    flowables = []
+    for child in node.children:
+        flowables.extend(node_flowables(child, ctx, list_level))
+    return flowables
+
+
+def reportlab_article_flowables(article_html: str, ctx: ReportContext) -> list:
+    soup = BeautifulSoup(article_html, "html.parser")
+    section = soup.select_one("section.doc-article") or soup
+    flowables = []
+    for child in section.children:
+        flowables.extend(node_flowables(child, ctx))
+    return [flowable for flowable in flowables if flowable is not None]
+
+
+def render_pdf_reportlab(
+    document_title: str,
+    articles: list[str],
+    output_pdf: Path,
+    *,
+    wide_table_mode: str,
+) -> None:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Image as RLImage
+    from reportlab.platypus import PageBreak, Paragraph, Spacer
+
+    fonts = register_reportlab_fonts()
+    styles = make_reportlab_styles(fonts)
+    output_pdf.parent.mkdir(parents=True, exist_ok=True)
+
+    doc = make_doc_template(output_pdf, document_title, fonts)
+
+    def on_first_page(canvas, _doc):
+        pass
+
+    def on_later_page(canvas, _doc):
+        canvas.saveState()
+        canvas.setFont(fonts["regular"], 9)
+        canvas.setFillColorRGB(0.37, 0.41, 0.45)
+        canvas.drawCentredString(A4[0] / 2, A4[1] - 12 * mm, document_title)
+        canvas.drawRightString(A4[0] - 16 * mm, 9 * mm, str(canvas.getPageNumber()))
+        canvas.restoreState()
+
+    with tempfile.TemporaryDirectory(prefix="pdfmaker-reportlab-") as tmpdir:
+        temp_dir = Path(tmpdir)
+        ctx = ReportContext(
+            styles=styles,
+            fonts=fonts,
+            temp_dir=temp_dir,
+            doc_width=doc.width,
+            wide_table_mode=wide_table_mode,
+        )
+        story = [Spacer(1, 92 * mm)]
+
+        logo_path = ROOT / "assets" / "pdficon.svg"
+        if logo_path.exists():
+            try:
+                import cairosvg
+
+                logo_png = temp_dir / "logo.png"
+                cairosvg.svg2png(url=str(logo_path), write_to=str(logo_png), output_width=44)
+                story.append(RLImage(str(logo_png), width=22, height=22))
+                story.append(Spacer(1, 4))
+            except Exception:
+                pass
+
+        story.append(Paragraph("Picodata", styles["cover_brand"]))
+        story.append(Paragraph(f"<b>{html.escape(document_title)}</b>", styles["cover_title"]))
+        story.append(PageBreak())
+        story.append(Paragraph("Содержание", styles["toc_title"]))
+        story.append(make_toc(fonts))
+        story.append(PageBreak())
+
+        for index, article in enumerate(articles):
+            if index:
+                story.append(PageBreak())
+            story.extend(reportlab_article_flowables(article, ctx))
+
+        doc.multiBuild(story, onFirstPage=on_first_page, onLaterPages=on_later_page)
+
+
+def render_pdf_atomically(
+    document_title: str,
+    articles: list[str],
+    output_pdf: Path,
+    *,
+    wide_table_mode: str,
+) -> None:
+    """Render beside the destination and publish only a complete PDF."""
+    output_pdf.parent.mkdir(parents=True, exist_ok=True)
+    temp_fd, temp_name = tempfile.mkstemp(
+        prefix=f".{output_pdf.name}.",
+        suffix=".tmp.pdf",
+        dir=output_pdf.parent,
+    )
+    os.close(temp_fd)
+    temp_pdf = Path(temp_name)
+    try:
+        render_pdf_reportlab(
+            document_title,
+            articles,
+            temp_pdf,
+            wide_table_mode=wide_table_mode,
+        )
+        temp_pdf.replace(output_pdf)
+    finally:
+        temp_pdf.unlink(missing_ok=True)
+
+
+def main(argv: list[str]) -> int:
+    try:
+        args = parse_args(argv)
+        document = DOC_TYPES[args.doc_type]
+        document_title = document["title"]
+        output_pdf = Path(args.pdf).resolve() if args.pdf else document["default_pdf"]
+
+        keep_path = Path(args.keep_html).resolve() if args.keep_html else None
+        if keep_path == output_pdf:
+            raise PdfmakerError("пути --pdf и --keep-html должны различаться")
+
+        config = load_pdfmaker_config()
+        toc_order = load_toc_order()
+        pages = collect_pages(args.sections, toc_order)
+        articles = [clean_article(path, config) for path in pages]
+        if keep_path is not None:
+            keep_path.parent.mkdir(parents=True, exist_ok=True)
+            keep_path.write_text(build_html(document_title, articles), encoding="utf-8")
+
+        render_pdf_atomically(
+            document_title,
+            articles,
+            output_pdf,
+            wide_table_mode=args.wide_table_mode,
+        )
+
+        print(f"PDF создан: {output_pdf}")
+        return 0
+    except PdfmakerError as exc:
+        print(f"Ошибка: {exc}", file=sys.stderr)
+        return 1
+    except ModuleNotFoundError as exc:
+        package = exc.name or "неизвестный пакет"
+        print(f"Ошибка: для работы pdfmaker нужен Python-пакет {package}.", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        print(f"Ошибка ввода-вывода: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
