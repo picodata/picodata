@@ -961,7 +961,23 @@ mod tests {
             raft_msg_handler: "test_interact",
             ..Default::default()
         };
-        let call_timeout = Duration::from_millis(50);
+        // NOTE: keep these timeouts generous.
+        //
+        // `pool.send` sets the deadline for the request to `fiber::clock() +
+        // call_timeout`. But `fiber::clock` doesn't ask the OS what time it is,
+        // it returns the time remembered by the event loop, which is only
+        // updated once per event loop iteration. The code above runs without
+        // yielding, so by the time we get here that remembered time can be much
+        // older than the real one: tens or even hundreds of milliseconds on a
+        // busy CI machine.
+        //
+        // So in the end the request only gets `call_timeout` minus that
+        // difference. And if the difference turns out to be bigger than
+        // `call_timeout`, the request is already expired before anyone tries to
+        // send it: it gets dropped, the handler below never receives anything
+        // and the test fails waiting for a message which will never arrive.
+        let call_timeout = Duration::from_secs(10);
+        const RECV_TIMEOUT: Duration = Duration::from_secs(10);
 
         let pool = ConnectionPool::new(node.storage.clone(), opts);
         let listen = test_util::listen_address();
@@ -996,7 +1012,7 @@ mod tests {
             // Assert it arrives
             // Assert equality
             assert_eq!(
-                rx.recv_timeout(Duration::from_secs(1)),
+                rx.recv_timeout(RECV_TIMEOUT),
                 Ok((raft::MessageType::MsgHeartbeat, 1337u64, i))
             );
         }
@@ -1008,7 +1024,7 @@ mod tests {
         }
         for i in 0..10 {
             assert_eq!(
-                rx.recv_timeout(Duration::from_secs(1)),
+                rx.recv_timeout(RECV_TIMEOUT),
                 Ok((raft::MessageType::MsgHeartbeat, 1337u64, i))
             );
         }
@@ -1018,7 +1034,7 @@ mod tests {
         }
         for i in 10..20 {
             assert_eq!(
-                rx.recv_timeout(Duration::from_secs(1)),
+                rx.recv_timeout(RECV_TIMEOUT),
                 Ok((raft::MessageType::MsgHeartbeat, 1337u64, i))
             );
         }
