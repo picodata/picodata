@@ -38,6 +38,7 @@ use ::tarantool::auth::{AuthData, AuthDef};
 use ::tarantool::decimal::Decimal;
 use ::tarantool::error::IntoBoxError;
 use ::tarantool::error::{BoxError, Error as TarantoolError, TarantoolErrorCode};
+use ::tarantool::index::SortOrder;
 use ::tarantool::schema::function::func_next_reserved_id;
 use ::tarantool::session::{with_su, UserId};
 use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace, UpdateOps};
@@ -1595,12 +1596,15 @@ fn build_vinyl_index_options(vinyl_options: &VinylOptions) -> traft::Result<Vec<
 // instances running versions that don't support an embedded bucket_id part.
 fn encode_bucket_id_as_table_option(
     distribution: DistributionParam,
-    primary_key: &mut Vec<SmolStr>,
+    primary_key: &mut Vec<(SmolStr, SortOrder)>,
 ) -> Option<TableOption> {
     if matches!(distribution, DistributionParam::Sharded)
         && primary_key
+            .iter()
+            .all(|(_, sort_order)| *sort_order == SortOrder::Asc)
+        && primary_key
             .first()
-            .is_some_and(|part| part == DEFAULT_BUCKET_ID_COLUMN_NAME)
+            .is_some_and(|(name, _)| name == DEFAULT_BUCKET_ID_COLUMN_NAME)
     {
         primary_key.remove(0);
         Some(TableOption::PkContainsBucketId(true))
@@ -1615,17 +1619,30 @@ mod tests {
 
     #[test]
     fn encode_bucket_id_as_table_option_preserves_compatibility() {
-        let mut primary_key = vec!["bucket_id".into(), "a".into()];
+        let part = |name, sort_order| (SmolStr::from(name), sort_order);
+        let mut primary_key = vec![part("bucket_id", SortOrder::Asc), part("a", SortOrder::Asc)];
         let option = encode_bucket_id_as_table_option(DistributionParam::Sharded, &mut primary_key);
-        assert_eq!(primary_key, vec![SmolStr::from("a")]);
+        assert_eq!(primary_key, vec![part("a", SortOrder::Asc)]);
         assert_eq!(option, Some(TableOption::PkContainsBucketId(true)));
 
         for (name, distribution, mut primary_key) in [
-            ("sharded", DistributionParam::Sharded, vec!["a".into()]),
             (
-                "global",
+                "descending sharded primary key",
+                DistributionParam::Sharded,
+                vec![
+                    part("bucket_id", SortOrder::Asc),
+                    part("a", SortOrder::Desc),
+                ],
+            ),
+            (
+                "sharded primary key without bucket_id",
+                DistributionParam::Sharded,
+                vec![part("a", SortOrder::Asc)],
+            ),
+            (
+                "global bucket_id column",
                 DistributionParam::Global,
-                vec!["bucket_id".into()],
+                vec![part("bucket_id", SortOrder::Asc)],
             ),
         ] {
             let expected = primary_key.clone();

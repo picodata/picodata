@@ -8,39 +8,47 @@ use crate::ir::{
     types::{ColumnDefType, DomainType as DataType, NestedType},
 };
 use sql_executor::executor::engine::mock::RouterConfigurationMock;
+use tarantool::index::SortOrder;
 
 fn column_def_type(data_type: DataType) -> ColumnDefType {
     data_type.try_into().unwrap()
 }
 
 #[test]
-fn infer_not_null_on_pk1() {
-    let input = r#"create table t (a int primary key) distributed globally"#;
+fn inline_primary_key_sort_order() {
+    for (input, expected_order) in [
+        (
+            r#"create table t (a int primary key) distributed globally"#,
+            SortOrder::Asc,
+        ),
+        (
+            r#"create table t (a int primary key asc) distributed globally"#,
+            SortOrder::Asc,
+        ),
+        (
+            r#"create table t (a int primary key desc) distributed globally"#,
+            SortOrder::Desc,
+        ),
+    ] {
+        let metadata = &RouterConfigurationMock::new();
+        let plan = transform_into_plan(input, &[], metadata).unwrap();
+        let top_node = plan.get_ddl_node(plan.get_top().unwrap()).unwrap();
+        let Ddl::CreateTable(CreateTable {
+            format,
+            primary_key,
+            ..
+        }) = top_node
+        else {
+            panic!("expected create table")
+        };
 
-    let metadata = &RouterConfigurationMock::new();
-    let plan = transform_into_plan(input, &[], metadata).unwrap();
-    let top_id = plan.get_top().unwrap();
-    let top_node = plan.get_ddl_node(top_id).unwrap();
+        assert!(!format[0].is_nullable);
+        assert_eq!(primary_key, &vec![("a".into(), expected_order)]);
+    }
 
-    let Ddl::CreateTable(CreateTable {
-        format,
-        primary_key,
-        ..
-    }) = top_node
-    else {
-        panic!("expected create table")
-    };
-
-    let def = ColumnDef {
-        name: "a".into(),
-        data_type: column_def_type(DataType::Integer),
-        is_nullable: false,
-    };
-
-    assert_eq!(format, &vec![def]);
-
-    let expected_pk: Vec<SmolStr> = vec!["a".into()];
-    assert_eq!(primary_key, &expected_pk);
+    let invalid = r#"create table t (a int, primary key desc (a)) distributed globally"#;
+    let error = transform_into_plan(invalid, &[], &RouterConfigurationMock::new()).unwrap_err();
+    assert!(error.to_string().contains("rule parsing error"));
 }
 
 #[test]
@@ -101,7 +109,10 @@ fn infer_not_null_on_pk2() {
 
     assert_eq!(format, &vec![def_a, def_b, def_c]);
 
-    let expected_pk: Vec<SmolStr> = vec!["a".into(), "b".into()];
+    let expected_pk = vec![
+        (SmolStr::from("a"), SortOrder::Asc),
+        (SmolStr::from("b"), SortOrder::Asc),
+    ];
     assert_eq!(primary_key, &expected_pk);
 }
 
@@ -158,9 +169,51 @@ fn virtual_bucket_id_is_part_of_primary_key() {
 
     assert_eq!(
         primary_key,
-        &vec!["bucket_id".to_smolstr(), "a".to_smolstr()]
+        &vec![
+            ("bucket_id".to_smolstr(), SortOrder::Asc),
+            ("a".to_smolstr(), SortOrder::Asc),
+        ]
     );
     assert_eq!(sharding_key, &Some(vec!["a".to_smolstr()]));
+}
+
+#[test]
+fn primary_key_sort_order() {
+    let cases = [
+        (
+            r#"create table t (a int, b int, primary key (a desc, b asc)) distributed globally"#,
+            vec![
+                ("a".to_smolstr(), SortOrder::Desc),
+                ("b".to_smolstr(), SortOrder::Asc),
+            ],
+            None,
+        ),
+        (
+            r#"create table t (a int, primary key (bucket_id desc, a asc))"#,
+            vec![
+                ("bucket_id".to_smolstr(), SortOrder::Desc),
+                ("a".to_smolstr(), SortOrder::Asc),
+            ],
+            Some(vec!["a".to_smolstr()]),
+        ),
+    ];
+
+    for (input, expected_primary_key, expected_sharding_key) in cases {
+        let metadata = &RouterConfigurationMock::new();
+        let plan = transform_into_plan(input, &[], metadata).unwrap();
+        let top_node = plan.get_ddl_node(plan.get_top().unwrap()).unwrap();
+        let Ddl::CreateTable(CreateTable {
+            primary_key,
+            sharding_key,
+            ..
+        }) = top_node
+        else {
+            panic!("expected create table")
+        };
+
+        assert_eq!(primary_key, &expected_primary_key);
+        assert_eq!(sharding_key, &expected_sharding_key);
+    }
 }
 
 #[test]
