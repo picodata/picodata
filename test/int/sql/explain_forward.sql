@@ -174,3 +174,63 @@ END $$
 OPTION (FORWARD = ON);
 -- EXPECTED:
 None, 1
+
+-- TEST: test-explain-forward-bucket-id
+-- SQL:
+EXPLAIN (FORWARD) SELECT * FROM t WHERE bucket_id = 1934;
+-- EXPECTED:
+forward analysis (on > ro_to_rw > off):
+  forward = off
+
+-- TEST: test-forward-bucket-id
+-- SQL:
+SELECT a FROM t WHERE bucket_id = 1934
+OPTION (FORWARD = OFF);
+-- EXPECTED:
+1
+
+-- TEST: test-explain-forward-bucket-id-out-of-range
+-- SQL:
+EXPLAIN (FORWARD) SELECT * FROM t WHERE bucket_id = 999999;
+-- EXPECTED:
+forward analysis (on > ro_to_rw > off):
+  forward = off
+
+-- TEST: test-forward-bucket-id-out-of-range
+-- SQL:
+SELECT a FROM t WHERE bucket_id = 999999
+OPTION (FORWARD = OFF);
+
+-- TEST: test-explain-forward-bucket-id-or-not-sharding-key
+-- SQL:
+EXPLAIN (FORWARD) SELECT * FROM t WHERE bucket_id = 1934 OR b = 'lol';
+-- EXPECTED:
+forward analysis (on > ro_to_rw > off):
+  forward = on
+
+-- TEST: test-forward-bucket-id-or-not-sharding-key-off-error
+-- SQL:
+SELECT * FROM t WHERE bucket_id = 1934 OR b = 'lol'
+OPTION (FORWARD = OFF);
+-- ERROR:
+sbroad: invalid option: cannot satisfy "forward = off": buckets span multiple nodes and are not present on the current node
+
+-- TEST: test-explain-forward-bucket-id-block-query
+-- SQL:
+EXPLAIN (FORWARD) DO $$ BEGIN
+    RETURN QUERY SELECT b FROM t WHERE bucket_id = 1410;
+    UPDATE t SET b = 'lol' WHERE bucket_id = 1410;
+END $$;
+-- EXPECTED:
+forward analysis (on > ro_to_rw > off):
+  forward = off
+
+-- TEST: test-forward-bucket-id-block-query
+-- SQL:
+DO $$ BEGIN
+    RETURN QUERY SELECT b FROM t WHERE bucket_id = 1410;
+    UPDATE t SET b = 'lol' WHERE bucket_id = 1410;
+END $$
+OPTION (FORWARD = OFF);
+-- EXPECTED:
+'lol'

@@ -565,7 +565,185 @@ fn prepared_single_sharding_key_aggregate_stays_single_node() {
 }
 
 #[test]
-fn prepared_single_sharding_key_with_constant_keeps_full_motion_for_aggregate() {
+fn explicit_bucket_id_constant_stays_single_node_for_order_by() {
+    let query = r#"SELECT "id"
+        FROM "test_space"
+        WHERE "bucket_id" = 42
+        ORDER BY "id""#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn explicit_bucket_id_constant_stays_single_node_for_limit() {
+    let query = r#"SELECT "id"
+        FROM "test_space"
+        WHERE "bucket_id" = 42
+        LIMIT 1"#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn explicit_bucket_id_anded_with_unrelated_filter_stays_single_node() {
+    let query = r#"SELECT "id"
+        FROM "test_space"
+        WHERE "bucket_id" = 42 AND "sys_op" = 1
+        ORDER BY "id""#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn explicit_bucket_id_anded_with_sharding_key_stays_single_node() {
+    let query = r#"SELECT "id"
+        FROM "test_space"
+        WHERE "bucket_id" = 42 AND "id" = 1
+        ORDER BY "id""#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn explicit_bucket_id_zero_stays_single_node_for_order_by() {
+    let query = r#"SELECT "id"
+        FROM "test_space"
+        WHERE "bucket_id" = 0
+        ORDER BY "id""#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn explicit_bucket_id_above_motion_keeps_full_motion() {
+    let query = r#"SELECT "t2"."e"
+        FROM (SELECT "id" FROM "test_space") AS "o"
+        JOIN "t2" ON "o"."id" = "t2"."f"
+        WHERE "t2"."bucket_id" = 42
+        ORDER BY "t2"."e""#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert!(
+        has_full_motion(&plan),
+        "expected a full motion: the inner rows were resharded, so their \
+         bucket_id no longer locates them, got slices: {:?}",
+        plan.slices()
+    );
+}
+
+#[test]
+fn explicit_bucket_id_stays_single_node_for_aggregate() {
+    let query = r#"SELECT count(*)
+        FROM "test_space"
+        WHERE "bucket_id" = 42"#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn sharding_key_without_bucket_id_stays_single_node_for_aggregate() {
+    let query = r#"SELECT count(*)
+        FROM "test_space"
+        WHERE "id" = 1"#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn explicit_bucket_id_ored_with_sharding_key_keeps_full_motion() {
+    let query = r#"SELECT "id"
+        FROM "test_space"
+        WHERE ("bucket_id" = 42 AND "id" = 1) OR "bucket_id" = 43
+        ORDER BY "id""#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert!(
+        has_full_motion(&plan),
+        "expected a full motion: the two OR arms may resolve to different \
+         buckets, got slices: {:?}",
+        plan.slices()
+    );
+}
+
+#[test]
+fn explicit_bucket_id_parameter_stays_single_node() {
+    let query = r#"SELECT "id"
+        FROM "test_space"
+        WHERE "bucket_id" = $1
+        ORDER BY "id""#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn explicit_bucket_id_parameter_stays_single_node_for_aggregate() {
+    let query = r#"SELECT count(*)
+        FROM "test_space"
+        WHERE "bucket_id" = $1"#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn explicit_bucket_id_decimal_parameter_stays_single_node_for_aggregate() {
+    let query = r#"SELECT count(*)
+        FROM "test_space"
+        WHERE "bucket_id" = $1"#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Decimal)]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn explicit_bucket_id_non_integer_constant_stays_single_node_for_aggregate() {
+    let query = r#"SELECT count(*)
+        FROM "test_space"
+        WHERE "bucket_id" = 42.5"#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+#[test]
+fn explicit_bucket_id_ored_with_unrelated_filter_keeps_full_motion() {
+    let query = r#"SELECT "id"
+        FROM "test_space"
+        WHERE "bucket_id" = 42 OR "sys_op" > 5
+        ORDER BY "id""#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert!(
+        has_full_motion(&plan),
+        "expected a full motion when the OR arm is unrestricted, got slices: {:?}",
+        plan.slices()
+    );
+}
+
+#[test]
+fn prepared_single_sharding_key_with_constant_stays_single_node_for_aggregate() {
     let query = r#"SELECT count(*)
         FROM "t5"
         WHERE "a" = $1 AND "a" = 1"#;
@@ -576,7 +754,7 @@ fn prepared_single_sharding_key_with_constant_keeps_full_motion_for_aggregate() 
 }
 
 #[test]
-fn prepared_reused_single_sharding_key_parameters_keep_full_motion_for_aggregate() {
+fn prepared_reused_single_sharding_key_parameters_stay_single_node_for_aggregate() {
     let query = r#"SELECT count(*)
         FROM "t5"
         WHERE "a" = $1 AND "a" = $1 AND "a" = $2"#;

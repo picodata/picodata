@@ -6,7 +6,7 @@ use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::ExecutingQuery;
-use crate::ir::bucket::{Buckets, BucketsResolver};
+use crate::ir::bucket::{value_to_bucket_id, Buckets, BucketsResolver};
 use crate::ir::distribution::Distribution;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
@@ -51,6 +51,27 @@ impl<C: Router> BucketsResolver for ExecutorBucketsResolver<'_, C> {
         let bucket_set = [bucket].into_iter().collect();
 
         Ok(Buckets::new_filtered(bucket_set))
+    }
+
+    fn buckets_from_bucket_id(
+        &self,
+        value: &Value,
+        tier: Option<&SmolStr>,
+    ) -> Result<Buckets, SbroadError> {
+        let bucket_count = self
+            .coordinator
+            .get_vshard_object_by_tier(tier)?
+            .bucket_count();
+
+        let buckets = match value_to_bucket_id(value) {
+            Some(id) if (1..=bucket_count).contains(&id) => {
+                let bucket_set = [id].into_iter().collect();
+                Buckets::new_filtered(bucket_set)
+            }
+            _ => Buckets::new_empty(),
+        };
+
+        Ok(buckets)
     }
 }
 

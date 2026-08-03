@@ -13,7 +13,7 @@ use twox_hash::XxHash3_64;
 use crate::errors::{Action, Entity, SbroadError};
 // Planner tests import this module with a glob and reach the pipeline's
 // `Stage` through it; keep the re-export so `redistribution::*` exposes it.
-use crate::ir::bucket::{Buckets, BucketsResolver};
+use crate::ir::bucket::{value_to_bucket_id, Buckets, BucketsResolver};
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::expression::ColumnPositionMap;
 use crate::ir::node::expression::Expression;
@@ -578,7 +578,7 @@ impl Plan {
     }
 
     /// Recursively traverses to the first `Selection` node and
-    /// tries to prove that we will end up in exactly one bucket.
+    /// tries to prove that we will end up in a single bucket.
     pub(crate) fn is_single_node_subtree(&self, rel_id: NodeId) -> Result<bool, SbroadError> {
         struct StaticResolver;
 
@@ -599,6 +599,18 @@ impl Plan {
                 values.iter().for_each(|value| value.hash(&mut hasher));
                 let hash = hasher.finish();
                 Ok(Buckets::new_filtered(HashSet::from_iter([hash])))
+            }
+
+            fn buckets_from_bucket_id(
+                &self,
+                value: &Value,
+                _tier: Option<&SmolStr>,
+            ) -> Result<Buckets, SbroadError> {
+                let buckets = match value_to_bucket_id(value) {
+                    Some(id) if id >= 1 => Buckets::new_at_most_one(),
+                    _ => Buckets::new_empty(),
+                };
+                Ok(buckets)
             }
         }
 

@@ -7,10 +7,23 @@ use smol_str::{format_smolstr, SmolStr};
 use crate::errors::{Entity, SbroadError};
 use crate::ir::distribution::Distribution;
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::{expression::Expression, BoolExpr, NodeId};
+use crate::ir::node::{
+    expression::Expression, BoolExpr, Constant, NodeId, Reference, ReferenceTarget,
+};
 use crate::ir::operator::Bool;
-use crate::ir::value::Value;
-use crate::ir::Plan;
+use crate::ir::value::{value_to_decimal_or_error, Value};
+use crate::ir::{Plan, Positions};
+
+/// Memoizes `bucket_id` position lookups within a single expression.
+type ShardPositionsCache = SmallVec<[(NodeId, Option<Positions>); 4]>;
+
+/// The only bucket a `bucket_id = <value>` predicate can match, if any.
+#[must_use]
+pub fn value_to_bucket_id(value: &Value) -> Option<u64> {
+    // Going through a decimal keeps us in step with `Value::eq`, which compares
+    // the numeric types the very same way.
+    value_to_decimal_or_error(value).ok()?.floor().to_u64()
+}
 
 /// We can apply some conservative optimizations during planning.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -139,6 +152,12 @@ impl Buckets {
         })
     }
 
+    /// Get at most one bucket, possibly none.
+    #[must_use]
+    pub fn new_at_most_one() -> Self {
+        Buckets::Filtered(BucketSet::EstimatedCount { lower: 0, upper: 1 })
+    }
+
     /// Returns `true` if a query with these buckets can be executed
     /// on a single node and does not require motion.
     pub fn is_single_node(&self) -> bool {
@@ -217,9 +236,124 @@ pub trait BucketsResolver {
         values: &[&Value],
         tier: Option<&SmolStr>,
     ) -> Result<Buckets, SbroadError>;
+
+    /// Buckets implied by an explicit `bucket_id = <value>` predicate.
+    ///
+    /// The result must never hold more than one bucket. The planner counts on
+    /// such a predicate to drop the reduce stage.
+    fn buckets_from_bucket_id(
+        &self,
+        value: &Value,
+        tier: Option<&SmolStr>,
+    ) -> Result<Buckets, SbroadError>;
+}
+
+/// Accumulate `other` into a conjunction with `acc`.
+fn conjunct_into(acc: &mut Option<Buckets>, other: Buckets) {
+    *acc = Some(match acc.take() {
+        Some(acc) => acc.conjunct(&other),
+        None => other,
+    });
 }
 
 impl Plan {
+    /// Positions of the `bucket_id` system column in the node's output, memoized
+    /// in `cache` for the duration of one expression.
+    fn shard_columns_positions(
+        &self,
+        node_id: NodeId,
+        cache: &mut ShardPositionsCache,
+    ) -> Result<Option<Positions>, SbroadError> {
+        if let Some((_, positions)) = cache.iter().find(|(id, _)| *id == node_id) {
+            return Ok(*positions);
+        }
+        let Some(context) = self.context.as_ref() else {
+            return Ok(None);
+        };
+        let positions = context
+            .borrow_mut()
+            .get_shard_columns_positions(node_id, self)?
+            .copied();
+        cache.push((node_id, positions));
+        Ok(positions)
+    }
+
+    /// Whether the reference points to the `bucket_id` system column in the
+    /// output of every node it targets.
+    fn is_shard_column_ref(
+        &self,
+        target: &ReferenceTarget,
+        position: usize,
+        cache: &mut ShardPositionsCache,
+    ) -> Result<bool, SbroadError> {
+        if target.is_empty() {
+            return Ok(false);
+        }
+        for child_id in target.iter() {
+            // For a node with multiple targets every target must refer to the shard column.
+            let Some(positions) = self.shard_columns_positions(*child_id, cache)? else {
+                return Ok(false);
+            };
+            if positions[0] != Some(position) && positions[1] != Some(position) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Collect buckets from an `Eq` whose operands pin the `bucket_id` system
+    /// column to a constant or a parameter.
+    fn collect_buckets_from_bucket_id_eq(
+        &self,
+        left_id: NodeId,
+        right_id: NodeId,
+        resolver: &impl BucketsResolver,
+        tier: Option<&SmolStr>,
+        buckets: &mut Option<Buckets>,
+    ) -> Result<(), SbroadError> {
+        let operands = |id: NodeId| -> Result<SmallVec<[NodeId; 4]>, SbroadError> {
+            match self.get_expression_node(id)? {
+                Expression::Row(_) => Ok(self.get_row_list(id)?.iter().copied().collect()),
+                _ => Ok(SmallVec::from_slice(&[id])),
+            }
+        };
+
+        let mut cache = ShardPositionsCache::new();
+        for (cols_id, vals_id) in [(left_id, right_id), (right_id, left_id)] {
+            let cols = operands(cols_id)?;
+            let vals = operands(vals_id)?;
+            if cols.len() != vals.len() {
+                continue;
+            }
+            for (col_id, val_id) in cols.iter().zip(vals.iter()) {
+                // `None` here stands for "the value is not known yet".
+                let value = match self.get_expression_node(*val_id)? {
+                    Expression::Constant(Constant { value }) => Some(value),
+                    Expression::Parameter(_) => None,
+                    _ => continue,
+                };
+                let Expression::Reference(Reference {
+                    target, position, ..
+                }) = self.get_expression_node(*col_id)?
+                else {
+                    continue;
+                };
+                if !self.is_shard_column_ref(target, *position, &mut cache)? {
+                    continue;
+                }
+
+                let value_buckets = match value {
+                    Some(value) => resolver.buckets_from_bucket_id(value, tier)?,
+                    // The binding has not yet occurred.
+                    None => Buckets::new_at_most_one(),
+                };
+                conjunct_into(buckets, value_buckets);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Inner logic of `get_expression_tree_buckets` for simple expressions (without OR and AND
     /// operators).
     /// In general it returns `Buckets::All`, but in some cases (e.g. `Eq` and `In` operators) it
@@ -230,11 +364,23 @@ impl Plan {
         expr_id: NodeId,
         resolver: &impl BucketsResolver,
     ) -> Result<Option<Buckets>, SbroadError> {
-        // The only possible case there will be several `Buckets` in the vec is when we have `Eq`.
+        // Conjunction of everything collected for this expression.
+        // The only case several `Buckets` are conjuncted here is `Eq`.
         // See the logic of its handling below.
-        let mut buckets = Vec::new();
+        let mut buckets = None;
         let tier = self.tier.as_ref();
         let expr = self.get_expression_node(expr_id)?;
+
+        // Try to collect buckets from an explicit `bucket_id = value` predicate.
+        if let Expression::Bool(BoolExpr {
+            op: Bool::Eq,
+            left,
+            right,
+            ..
+        }) = expr
+        {
+            self.collect_buckets_from_bucket_id_eq(*left, *right, resolver, tier, &mut buckets)?;
+        }
 
         // Try to collect buckets from expression of type `sharding_key = value`
         if let Expression::Bool(BoolExpr {
@@ -276,8 +422,9 @@ impl Plan {
                     };
 
                     if let Some(motion_id) = motion_id {
-                        if let Some(buckets) = resolver.buckets_from_motion(motion_id)? {
-                            return Ok(Some(buckets));
+                        if let Some(motion_buckets) = resolver.buckets_from_motion(motion_id)? {
+                            conjunct_into(&mut buckets, motion_buckets);
+                            return Ok(buckets);
                         }
                     }
 
@@ -351,25 +498,17 @@ impl Plan {
                             continue;
                         }
                         if has_parameter {
-                            buckets.push(Buckets::new_estimated(1));
+                            conjunct_into(&mut buckets, Buckets::new_estimated(1));
                         } else if !values.is_empty() {
                             let values_buckets = resolver.buckets_from_values(&values, tier)?;
-                            buckets.push(values_buckets);
+                            conjunct_into(&mut buckets, values_buckets);
                         }
                     }
                 }
             }
         }
 
-        if buckets.is_empty() {
-            return Ok(None);
-        }
-
-        let merged = buckets
-            .into_iter()
-            .fold(Buckets::Any, |acc, b| acc.conjunct(&b));
-
-        Ok(Some(merged))
+        Ok(buckets)
     }
 
     /// Inner logic of `bucket_discovery` for expressions (currently it's called only on
