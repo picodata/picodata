@@ -4,18 +4,24 @@
 
 ## Общие сведения {: #intro }
 
-Драйвер Picopyn представляет собой пакет для Python, реализующий подключение и работу с СУБД Picodata из Python-приложений.
+Драйвер Picopyn представляет собой пакет для Python, реализующий
+подключение и работу с СУБД Picodata из Python-приложений.
 
-Picopyn предоставляет как асинхронный, так и синхронный инерфейс.
+Picopyn предоставляет как асинхронный, так и синхронный интерфейс.
 
-Дополнительные примеры и подробности реализации можно найти в [документации](https://picopyn.readthedocs.io).
+Дополнительные примеры и подробности реализации можно найти на
+[странице Readthedocs для Picopyn](https://picopyn.readthedocs.io).
 
-Версионирование:
+Версии драйвера Picopyn требуют определённых версий СУБД Picodata.
+Ниже показана таблица совместимости версий:
 
-| Версия Picopyn | Версия Picodata    | Статус                     |
-|----------------|--------------------|----------------------------|
-| <=1.0.0        | >=25.4.x, < 26.2.x | ✅ Полностью поддерживается |
-| -              | >=26.2.x           | ⚠️ Ещё не протестирована    |
+| Picopyn         | Picodata          |
+|-----------------|-------------------|
+| 0.1.1           | >=25.2.1, <25.4.4 |
+| 0.2.0           | >=25.4.4, <25.5.1 |
+| 1.0.0           | >=25.5.1, <26.1.x |
+| ⚠️ В разработке | >=26.1.1, <26.2.x |
+
 
 [Python-драйвера]: https://git.picodata.io/core/drivers/picopyn
 [PYPI]: https://pypi.org/project/picopyn/
@@ -45,7 +51,7 @@ pip install picopyn
 ```shell
 git clone https://git.picodata.io/core/drivers/picopyn.git
 cd picopyn
-make install
+pip install -e .
 ```
 
 ## Примеры использования {: #usage_example }
@@ -57,7 +63,7 @@ import asyncio
 from picopyn.asynchronous import Client
 
 async def main():
-    # create and connect client to the Picodata cluster
+    # create and connect client to the picodata cluster
     client = Client(dsn="postgresql://admin:pass@localhost:5432")
     await client.connect()
 
@@ -66,9 +72,9 @@ async def main():
         CREATE TABLE "warehouse" (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY (id)) USING memtx DISTRIBUTED BY (id) OPTION (TIMEOUT = 3.0);
     ''')
 
-    # execute DML operations
-    await client.execute('INSERT INTO \"warehouse\" VALUES ($1::int, $2::varchar)', 1, "test")
-    rows = await client.fetch('SELECT * FROM \"warehouse\"')
+    # execute DML/DQL operations
+    await client.execute('INSERT INTO "warehouse" VALUES ($1::int, $2::varchar)', 1, "test")
+    rows = await client.fetch('SELECT * FROM "warehouse"')
     print(rows)
 
     await client.close()
@@ -79,24 +85,21 @@ asyncio.run(main())
 ### Использование синхронного драйвера {: #sync_driver }
 
 ```python
-from picopyn.synchronous import Connection
+from picopyn.synchronous import connect
 
 # create and connect to the picodata cluster
-conn = Connection("postgresql://admin:pass@localhost:5432")
-conn.connect()
-cur = conn.cursor()
+with connect("postgresql://admin:pass@localhost:5432") as conn:
+    cur = conn.cursor()
 
-# execute DDL operations
-cur.execute('''
-    CREATE TABLE "warehouse" (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY (id)) USING memtx DISTRIBUTED BY (id) OPTION (TIMEOUT = 3.0);
-''')
+    # execute DDL operations
+    cur.execute('''
+        CREATE TABLE "warehouse" (id INTEGER NOT NULL, item TEXT NOT NULL, PRIMARY KEY (id)) USING memtx DISTRIBUTED BY (id) OPTION (TIMEOUT = 3.0);
+    ''')
 
-# execute DML/DQL operations
-cur.execute('INSERT INTO "warehouse" VALUES (%s, %s)', (1, "test"))
-cur.execute('SELECT * FROM "warehouse"')
-print(cur.fetchall())
-
-conn.close()
+    # execute DML/DQL operations
+    cur.execute('INSERT INTO "warehouse" VALUES (%s, %s)', (1, "test"))
+    cur.execute('SELECT * FROM "warehouse"')
+    print(cur.fetchall())
 ```
 
 ## Изменение параметров {: #configure }

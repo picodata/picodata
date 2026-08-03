@@ -8,6 +8,7 @@
 - [JDBC](connectors/jdbc.md)
 - [Go](connectors/go.md)
 - [Rust](connectors/rust.md)
+- [Python](connectors/picopyn.md)
 
 См. также:
 
