@@ -12,7 +12,7 @@
 //!        |             |
 //!     sql-ast-new-parser       &str -> AbstractSyntaxTree<Raw>
 //!
-//!   sql-ast-new-corpus         real-world DQL, for tests
+//!   sql-ast-new-corpus         real-world DQL, for tests and benches
 //! ```
 //!
 //! The analysis stage becomes a crate of its own next, hanging off the node

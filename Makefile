@@ -273,6 +273,7 @@ lint-rs:
 	    $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
 	    --workspace \
 	    --benches \
+		--examples \
 	    --tests
 
 	cargo clippy --version
@@ -332,6 +333,10 @@ lint-sql: check-sql-formatter
 	  { diff -u queries.sql "$$tmp" \
 	      || { echo >&2 "queries.sql is not formatted; run 'make fmt' to fix it"; exit 1; }; }
 
+.PHONY: fmt-sql
+fmt-sql: check-sql-formatter
+	cd $(SQL_CORPUS_DIR) && $(SQL_FORMATTER) -c sql_format.json --fix queries.sql
+
 .PHONY: lint
 lint: lint-rs lint-py lint-sql
 
@@ -339,6 +344,7 @@ lint: lint-rs lint-py lint-sql
 fmt:
 	cargo fmt
 	uv run ruff format ./test tools benchmark
+	$(MAKE) fmt-sql
 
 .PHONY: audit
 audit:

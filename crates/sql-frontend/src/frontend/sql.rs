@@ -10,7 +10,7 @@ use crate::ir::Plan;
 
 use crate::frontend::sql::planner::Planner;
 
-mod ast_new;
+pub mod ast_new;
 mod error;
 mod insert_conflict;
 mod planner;
@@ -20,7 +20,7 @@ pub mod ir;
 pub mod tree;
 mod type_system;
 
-trait Ast<'q> {
+pub trait Ast<'q> {
     type AnalyzedAst;
 
     fn new(query: &'q str) -> Result<Self, SbroadError>

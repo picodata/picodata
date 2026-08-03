@@ -8,7 +8,8 @@ edition.workspace = true
 
 # No dependencies: the crate is an `include_str!` of the corpus plus the splitter
 # that cuts it into statements. Everything that *consumes* the corpus — the
-# round-trip test below — depends on this crate, not the other way round.
+# round-trip test below, the `ast_fill` benchmarks — depends on this crate, not
+# the other way round.
 
 [dev-dependencies]
 sql-ast-new-parser = { path = "../sql-ast-new-parser" }

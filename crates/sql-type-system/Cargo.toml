@@ -9,8 +9,9 @@ smallvec = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-criterion = "0.5.1"
+criterion = { workspace = true }
 
 [[bench]]
 name = "benchmark"
 harness = false
+test = false

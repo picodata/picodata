@@ -8,14 +8,14 @@
 //! a test to fail.
 //!
 //! A `-- TEST: <name>` comment names the statements after it — the name a
-//! test failure reports. The file is kept
+//! test failure or a criterion benchmark id reports. The file is kept
 //! `sql-formatter`-formatted (`make fmt` rewrites it, `make lint-sql`
 //! enforces it — see `README.md` for the version pinning).
 //!
 //! The corpus is a crate of its own so that it never reaches production builds
-//! and so that every stage's tests can reach it without a dependency on the
-//! frontend. It has no dependencies at all: consumers depend on it, not the
-//! other way round.
+//! and so that every stage's tests and benchmarks can reach it without a
+//! dependency on the frontend. It has no dependencies at all: consumers depend
+//! on it, not the other way round.
 //!
 //!
 //! # The round-trip invariant
@@ -25,6 +25,9 @@
 //! so render-idempotence is the fixed point that *is* checkable — and because
 //! rendering re-derives grouping from the same precedence ladder the parser
 //! used, a tree grouped the wrong way fails the re-render comparison.
+//!
+//! Besides validation, the corpus feeds the `ast_fill` benchmarks and the
+//! `ast_fill_alloc` allocation profile through [`corpus_queries`].
 
 const CORPUS: &str = include_str!("queries.sql");
 
