@@ -7,10 +7,10 @@
 
 ![Alter table](../../images/ebnf/alter_table.svg)
 
-### Тип колонки {: #column_def_type }
+### Тип колонки {: #unrestricted_type }
 
 ??? note "Диаграмма"
-    ![Column type](../../images/ebnf/column_def_type.svg)
+    ![Column type](../../images/ebnf/unrestricted_type.svg)
 
 ## Параметры {: #params }
 
