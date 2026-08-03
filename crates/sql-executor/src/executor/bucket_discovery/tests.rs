@@ -749,3 +749,205 @@ fn bool_eq_true_on_sharding_key() {
 
     assert_eq!(Buckets::new_filtered(expected), buckets);
 }
+
+/// Buckets for a query text against the mock router.
+fn buckets_of(query: &str) -> Buckets {
+    buckets_of_with_params(query, vec![])
+}
+
+/// Buckets for a query text with bound parameters against the mock router.
+fn buckets_of_with_params(query: &str, params: Vec<Value>) -> Buckets {
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, params).unwrap();
+    let top = query.get_exec_plan().get_ir_plan().get_top().unwrap();
+    query.bucket_discovery(top).unwrap()
+}
+
+#[test]
+fn explicit_bucket_id_eq() {
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id = 42"#),
+        Buckets::Filtered(BucketSet::Exact(collection!(42)))
+    );
+}
+
+#[test]
+fn explicit_bucket_id_eq_reversed_operands() {
+    assert_eq!(
+        buckets_of(r#"select * from test_space where 42 = bucket_id"#),
+        Buckets::Filtered(BucketSet::Exact(collection!(42)))
+    );
+}
+
+#[test]
+fn explicit_bucket_id_disjunction() {
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id = 42 or bucket_id = 43"#),
+        Buckets::Filtered(BucketSet::Exact(collection!(42, 43)))
+    );
+}
+
+#[test]
+fn explicit_bucket_id_in_list() {
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id in (42, 43)"#),
+        Buckets::Filtered(BucketSet::Exact(collection!(42, 43)))
+    );
+}
+
+#[test]
+fn explicit_bucket_id_anded_with_unrelated_filter() {
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id = 42 and sys_op = 1"#),
+        Buckets::Filtered(BucketSet::Exact(collection!(42)))
+    );
+}
+
+#[test]
+fn explicit_bucket_id_in_row_form() {
+    assert_eq!(
+        buckets_of(
+            r#"select t1.id from test_space as t1
+               join test_space as t2
+               on t1.bucket_id = 42 and t2.bucket_id = 42"#
+        ),
+        Buckets::Filtered(BucketSet::Exact(collection!(42)))
+    );
+}
+
+#[test]
+fn explicit_bucket_id_conflicting_with_sharding_key() {
+    let coordinator = RouterRuntimeMock::new();
+    let one = Value::from(1);
+    let id_bucket = coordinator.determine_bucket_id(&[&one]).unwrap();
+    assert_ne!(
+        id_bucket, 42,
+        "test relies on a hash collision not happening"
+    );
+
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id = 42 and id = 1"#),
+        Buckets::Filtered(BucketSet::Exact(collection!()))
+    );
+}
+
+#[test]
+fn explicit_bucket_id_ored_with_unrelated_filter() {
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id = 42 or sys_op > 5"#),
+        Buckets::All
+    );
+}
+
+#[test]
+fn explicit_bucket_id_out_of_range() {
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id = 10001"#),
+        Buckets::new_empty()
+    );
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id = 0"#),
+        Buckets::new_empty()
+    );
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id = -1"#),
+        Buckets::new_empty()
+    );
+}
+
+#[test]
+fn explicit_bucket_id_under_cast_is_not_a_bucket_predicate() {
+    assert_eq!(
+        buckets_of(r#"select * from test_space where cast(bucket_id as string) = '42'"#),
+        Buckets::All
+    );
+}
+
+#[test]
+fn explicit_bucket_id_with_bound_parameter() {
+    assert_eq!(
+        buckets_of_with_params(
+            r#"select * from test_space where bucket_id = ?"#,
+            vec![Value::from(42)]
+        ),
+        Buckets::Filtered(BucketSet::Exact(collection!(42)))
+    );
+}
+
+fn decimal(s: &str) -> Value {
+    Value::Decimal(Box::new(s.parse().unwrap()))
+}
+
+#[test]
+fn explicit_bucket_id_with_non_integer_parameter() {
+    for value in [
+        decimal("42"),
+        decimal("42.5"),
+        decimal("42.99"),
+        Value::Double(42.0.into()),
+        Value::Double(42.5.into()),
+    ] {
+        assert_eq!(
+            buckets_of_with_params(
+                r#"select * from test_space where bucket_id = ?"#,
+                vec![value.clone()]
+            ),
+            Buckets::Filtered(BucketSet::Exact(collection!(42))),
+            "{value:?} points at bucket 42"
+        );
+    }
+
+    for value in [
+        decimal("-1"),
+        decimal("-1.5"),
+        decimal("0.5"),
+        Value::Double(f64::NAN.into()),
+        Value::Double(f64::INFINITY.into()),
+        Value::Null,
+    ] {
+        assert_eq!(
+            buckets_of_with_params(
+                r#"select * from test_space where bucket_id = ?"#,
+                vec![value.clone()]
+            ),
+            Buckets::new_empty(),
+            "{value:?} matches nothing"
+        );
+    }
+}
+
+#[test]
+fn explicit_bucket_id_with_non_integer_constant() {
+    for query in [
+        r#"select * from test_space where bucket_id = 42.0"#,
+        r#"select * from test_space where bucket_id = 42.5"#,
+        r#"select * from test_space where bucket_id = 42e0"#,
+        r#"select * from test_space where bucket_id = 4.25e1"#,
+    ] {
+        assert_eq!(
+            buckets_of(query),
+            Buckets::Filtered(BucketSet::Exact(collection!(42))),
+            "{query}"
+        );
+    }
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id = -1.5"#),
+        Buckets::new_empty()
+    );
+}
+
+#[test]
+fn explicit_bucket_id_with_string_constant() {
+    assert_eq!(
+        buckets_of(r#"select * from test_space where bucket_id = '42'"#),
+        Buckets::Filtered(BucketSet::Exact(collection!(42)))
+    );
+}
+
+#[test]
+fn explicit_bucket_id_in_delete() {
+    assert_eq!(
+        buckets_of(r#"delete from test_space where bucket_id = 42"#),
+        Buckets::Filtered(BucketSet::Exact(collection!(42)))
+    );
+}
