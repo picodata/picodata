@@ -2950,7 +2950,7 @@ pub(in crate::frontend::sql) fn parse_create_table(
     );
     let mut table_name = SmolStr::default();
     let mut columns: Vec<ColumnDef> = Vec::new();
-    let mut pk_keys: Vec<SmolStr> = Vec::new();
+    let mut pk_keys: Vec<(SmolStr, SortOrder)> = Vec::new();
     let mut raw_pk_keys = Vec::new();
     let mut shard_key: Vec<SmolStr> = Vec::new();
     let mut engine_type: SpaceEngineType = SpaceEngineType::default();
@@ -2961,7 +2961,7 @@ pub(in crate::frontend::sql) fn parse_create_table(
     let mut if_not_exists = DEFAULT_IF_NOT_EXISTS;
     let mut unlogged = DEFAULT_UNLOGGED;
     let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
-    let mut pk_contains_bucket_id = false;
+    let mut bucket_id_sort_order = None;
     let mut vinyl_options = VinylOptions::default();
 
     let nullable_primary_key_column_error = Err(SbroadError::Invalid(
@@ -3011,7 +3011,7 @@ pub(in crate::frontend::sql) fn parse_create_table(
                                     explicit_null_columns.insert(name);
                                 }
                             }
-                            Rule::PrimaryKeyMark => {
+                            Rule::InlinePrimaryKey => {
                                 if !pk_keys.is_empty() {
                                     return primary_key_already_declared_error;
                                 }
@@ -3022,7 +3022,12 @@ pub(in crate::frontend::sql) fn parse_create_table(
                                 }
                                 // Infer not null on primary key column
                                 is_nullable = false;
-                                pk_keys.push(name);
+                                let sort_order = parse_optional_sort_order(
+                                    ast,
+                                    def_child_node.children.get(1).copied(),
+                                )?
+                                .unwrap_or_default();
+                                pk_keys.push((name, sort_order));
                             }
                             _ => panic!("Unexpected rules met under ColumnDef."),
                         }
@@ -3042,8 +3047,8 @@ pub(in crate::frontend::sql) fn parse_create_table(
                 let pk_node = ast.nodes.get_node(*child_id)?;
                 // First child is a `PrimaryKeyMark` that we should skip.
                 for pk_col_id in pk_node.children.iter().skip(1) {
-                    let pk_col_name = parse_identifier(ast, *pk_col_id)?;
-                    raw_pk_keys.push(pk_col_name);
+                    let (pk_col_name, sort_order) = parse_ordered_identifier(ast, *pk_col_id)?;
+                    raw_pk_keys.push((pk_col_name, sort_order.unwrap_or_default()));
                 }
             }
             Rule::Engine => {
@@ -3203,7 +3208,7 @@ pub(in crate::frontend::sql) fn parse_create_table(
         }
     }
 
-    for (pk_index, pk_col_name) in raw_pk_keys.into_iter().enumerate() {
+    for (pk_index, (pk_col_name, sort_order)) in raw_pk_keys.into_iter().enumerate() {
         let mut column_found = false;
         for column in &mut columns {
             if column.name == pk_col_name {
@@ -3219,7 +3224,7 @@ pub(in crate::frontend::sql) fn parse_create_table(
         if !column_found {
             if !is_global && pk_col_name == DEFAULT_BUCKET_ID_COLUMN_NAME {
                 if pk_index == 0 {
-                    pk_contains_bucket_id = true;
+                    bucket_id_sort_order = Some(sort_order);
                     continue;
                 } else {
                     return Err(SbroadError::Invalid(
@@ -3237,11 +3242,11 @@ pub(in crate::frontend::sql) fn parse_create_table(
                 )),
             ));
         }
-        pk_keys.push(pk_col_name);
+        pk_keys.push((pk_col_name, sort_order));
     }
 
     if pk_keys.is_empty() {
-        if pk_contains_bucket_id {
+        if bucket_id_sort_order.is_some() {
             return Err(SbroadError::Invalid(
                 Entity::PrimaryKey,
                 Some(format_smolstr!(
@@ -3269,7 +3274,7 @@ pub(in crate::frontend::sql) fn parse_create_table(
     }
     // infer sharding key from primary key
     if shard_key.is_empty() && !is_global {
-        for pk_key in &pk_keys {
+        for (pk_key, _) in &pk_keys {
             let sharding_column = columns.iter().find(|c| c.name == *pk_key).ok_or_else(|| {
                 SbroadError::Other(format_smolstr!("Primary key column {pk_key} not found."))
             })?;
@@ -3282,7 +3287,7 @@ pub(in crate::frontend::sql) fn parse_create_table(
                 ));
             }
         }
-        shard_key.clone_from(&pk_keys);
+        shard_key.extend(pk_keys.iter().map(|(name, _)| name.clone()));
     }
 
     let sharding_key = if !shard_key.is_empty() {
@@ -3312,8 +3317,8 @@ pub(in crate::frontend::sql) fn parse_create_table(
         ));
     }
 
-    if pk_contains_bucket_id {
-        pk_keys.insert(0, DEFAULT_BUCKET_ID_COLUMN_NAME.into());
+    if let Some(sort_order) = bucket_id_sort_order {
+        pk_keys.insert(0, (DEFAULT_BUCKET_ID_COLUMN_NAME.into(), sort_order));
     }
 
     Ok(CreateTable {

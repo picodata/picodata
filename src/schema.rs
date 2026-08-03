@@ -1891,6 +1891,8 @@ pub enum CreateTableError {
     DuplicateFieldName(SmolStr),
     #[error("no field with name: {0}")]
     FieldUndefined(SmolStr),
+    #[error("primary key must include at least one column in addition to bucket_id")]
+    IncompletePrimaryKey,
     #[error("distribution is `sharded`, but neither `by_field` nor `sharding_key` is set")]
     ShardingPolicyUndefined,
     #[error("only one of sharding policy fields (`by_field`, `sharding_key`) should be set")]
@@ -2274,7 +2276,7 @@ pub struct CreateTableParams {
     pub(crate) id: SpaceId,
     pub(crate) name: SmolStr,
     pub(crate) format: Vec<Field>,
-    pub(crate) primary_key: Vec<SmolStr>,
+    pub(crate) primary_key: Vec<(SmolStr, SortOrder)>,
     pub(crate) distribution: DistributionParam,
     pub(crate) by_field: Option<SmolStr>,
     pub(crate) sharding_key: Option<Vec<SmolStr>>,
@@ -2343,11 +2345,22 @@ impl CreateTableParams {
                 return Err(CreateTableError::DuplicateFieldName(field.name.clone()).into());
             }
         }
-        // All primary key components exist in fields
-        for part in &self.primary_key {
+        // All primary key components except the virtual bucket_id exist in fields
+        let mut has_non_bucket_id_part = false;
+        for (part_index, (part, _)) in self.primary_key.iter().enumerate() {
+            let is_virtual_bucket_id = self.distribution == DistributionParam::Sharded
+                && part_index == 0
+                && part == DEFAULT_BUCKET_ID_COLUMN_NAME;
+            if is_virtual_bucket_id {
+                continue;
+            }
+            has_non_bucket_id_part = true;
             if !field_names.contains(part.as_str()) {
                 return Err(CreateTableError::FieldUndefined(part.clone()).into());
             }
+        }
+        if !self.primary_key.is_empty() && !has_non_bucket_id_part {
+            return Err(CreateTableError::IncompletePrimaryKey.into());
         }
         // Global spaces must have memtx engine
         if self.distribution == DistributionParam::Global
@@ -2504,7 +2517,11 @@ impl CreateTableParams {
     }
 
     pub fn into_ddl(self) -> traft::Result<Ddl> {
-        let primary_key: Vec<_> = self.primary_key.into_iter().map(Part::field).collect();
+        let primary_key: Vec<_> = self
+            .primary_key
+            .into_iter()
+            .map(|(field, sort_order)| Part::field(field).sort_order(sort_order))
+            .collect();
         let format: Vec<_> = self
             .format
             .into_iter()
@@ -2868,7 +2885,7 @@ mod tests {
             id: new_id,
             name: new_space.into(),
             format: vec![field1.clone()],
-            primary_key: vec![field2.name.clone()],
+            primary_key: vec![(field2.name.clone(), SortOrder::Asc)],
             distribution: DistributionParam::Global,
             by_field: None,
             sharding_key: None,
@@ -2883,6 +2900,35 @@ mod tests {
         .validate()
         .unwrap_err();
         assert_eq!(err.to_string(), "no field with name: field2");
+
+        let err = CreateTableParams {
+            id: new_id,
+            name: new_space.into(),
+            format: vec![field1.clone()],
+            primary_key: vec![(DEFAULT_BUCKET_ID_COLUMN_NAME.into(), SortOrder::Asc)],
+            distribution: DistributionParam::Sharded,
+            by_field: None,
+            sharding_key: Some(vec![field1.name.clone()]),
+            sharding_fn: None,
+            engine: None,
+            timeout: None,
+            owner: ADMIN_ID,
+            tier: DEFAULT_TIER.into(),
+            opts: vec![],
+            index_opts: vec![],
+        }
+        .validate()
+        .unwrap_err();
+        assert!(matches!(
+            &err,
+            Error::Ddl(DdlError::CreateTable(
+                CreateTableError::IncompletePrimaryKey
+            ))
+        ));
+        assert_eq!(
+            err.to_string(),
+            "primary key must include at least one column in addition to bucket_id"
+        );
 
         let err = CreateTableParams {
             id: new_id,
@@ -2994,7 +3040,7 @@ mod tests {
             id: new_id,
             name: new_space.into(),
             format: vec![field1.clone(), field2.clone()],
-            primary_key: vec![field2.name.clone()],
+            primary_key: vec![(field2.name.clone(), SortOrder::Asc)],
             distribution: DistributionParam::Sharded,
             by_field: Some(field2.name.clone()),
             sharding_key: None,
@@ -3013,7 +3059,7 @@ mod tests {
             id: new_id,
             name: new_space.into(),
             format: vec![field1, field2.clone()],
-            primary_key: vec![field2.name],
+            primary_key: vec![(field2.name, SortOrder::Asc)],
             distribution: DistributionParam::Global,
             by_field: None,
             sharding_key: None,

@@ -1055,7 +1055,7 @@ pub struct VinylOptions {
 pub struct CreateTable {
     pub name: SmolStr,
     pub format: Vec<ColumnDef>,
-    pub primary_key: Vec<SmolStr>,
+    pub primary_key: Vec<(SmolStr, SortOrder)>,
     /// If `None`, create global table.
     pub sharding_key: Option<Vec<SmolStr>>,
     /// Vinyl is supported only for sharded tables.
