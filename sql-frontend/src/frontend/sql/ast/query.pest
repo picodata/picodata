@@ -232,7 +232,7 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
         Hash = { ^"hash" }
         RTree = { ^"rtree" }
         BitSet = { ^"bitset" }
-    Parts = !{ Identifier ~ ("," ~ Identifier)* }
+    Parts = !{ OrderedIdentifier ~ ("," ~ OrderedIdentifier)* }
     IndexOptions = ${ ^"with" ~ WO ~ "(" ~ WO ~ IndexOptionsParams ~ WO ~ ")" }
         IndexOptionsParams = _{ IndexOptionParam ~ (WO ~ "," ~ WO ~ IndexOptionParam)* }
     IndexOptionParam = { VinylOptionParam | Dimension | Distance | Hint }
@@ -401,6 +401,7 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
     Delete = ${ ^"delete" ~ W ~ ^"from" ~ W ~ (PublicSchema)? ~ IndexedTableScan ~ (W ~ ^"where" ~ W ~ DeleteFilter)? }
     	DeleteFilter = { Expr }
 
+OrderedIdentifier = ${ Identifier ~ (W ~ OrderFlag)? }
 Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
     DelimitedIdentifier = @{ ("\"" ~ ((!("\"") ~ ANY) | "\"\"")* ~ "\"") }
     RegularIdentifier = @{ !KeywordCoverage ~
