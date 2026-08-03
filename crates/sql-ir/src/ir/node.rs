@@ -15,7 +15,7 @@ use smol_str::{format_smolstr, SmolStr};
 
 use crate::errors::SbroadError;
 use tarantool::{
-    index::{IndexType, RtreeIndexDistanceType},
+    index::{IndexType, RtreeIndexDistanceType, SortOrder},
     space::SpaceEngineType,
 };
 use tcl::Tcl;
@@ -1202,7 +1202,7 @@ impl From<RenameRoutine> for NodeAligned {
 pub struct CreateIndex {
     pub name: SmolStr,
     pub table_name: SmolStr,
-    pub columns: Vec<SmolStr>,
+    pub columns: Vec<(SmolStr, SortOrder)>,
     pub unique: bool,
     pub if_not_exists: bool,
     pub index_type: IndexType,

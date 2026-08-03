@@ -36,7 +36,7 @@ use tarantool::index::IndexId;
 use tarantool::index::IteratorType;
 use tarantool::index::Metadata as IndexMetadata;
 use tarantool::index::{
-    FieldType as IndexFieldType, IndexOptions, IndexType, Part, RtreeIndexDistanceType,
+    FieldType as IndexFieldType, IndexOptions, IndexType, Part, RtreeIndexDistanceType, SortOrder,
 };
 use tarantool::msgpack;
 use tarantool::session::{with_su, UserId};
@@ -538,7 +538,7 @@ impl IndexDef {
                 collation: part.collation.clone(),
                 is_nullable: part.is_nullable,
                 path: part.path.clone(),
-                sort_order: None,
+                sort_order: part.sort_order,
             });
         }
 
@@ -2028,7 +2028,7 @@ impl CreateProcParams {
 pub struct CreateIndexParams {
     pub(crate) name: SmolStr,
     pub(crate) space_name: SmolStr,
-    pub(crate) columns: Vec<SmolStr>,
+    pub(crate) columns: Vec<(SmolStr, SortOrder)>,
     pub(crate) ty: IndexType,
     pub(crate) opts: Vec<IndexOption>,
     pub(crate) initiator: UserId,
@@ -2082,7 +2082,7 @@ impl CreateIndexParams {
         let table = self.table(storage)?;
         let mut parts = Vec::with_capacity(self.columns.len());
 
-        for column_name in &self.columns {
+        for (column_name, sort_order) in &self.columns {
             let found = table.format.iter().find(|c| &c.name == column_name);
             let Some(column) = found else {
                 return Err(CreateIndexError::FieldUndefined {
@@ -2095,14 +2095,9 @@ impl CreateIndexParams {
                     ty: self.ty.to_string(),
                     ctype: column.field_type.to_string(),
                 })?;
-            let part = Part {
-                field: (&**column_name).into(),
-                r#type: Some(index_field_type),
-                collation: None,
-                is_nullable: Some(column.is_nullable),
-                path: None,
-                sort_order: None,
-            };
+            let part = Part::<String>::new(column_name.as_str(), index_field_type)
+                .is_nullable(column.is_nullable)
+                .sort_order(*sort_order);
             parts.push(part);
         }
         Ok(parts)
@@ -2136,7 +2131,7 @@ impl CreateIndexParams {
         for field in &table.format {
             filed_names.insert(field.name.as_str());
         }
-        for column in &self.columns {
+        for (column, _) in &self.columns {
             if !filed_names.contains(column.as_str()) {
                 return Err(CreateIndexError::FieldUndefined {
                     name: column.clone(),
@@ -2187,7 +2182,7 @@ impl CreateIndexParams {
                     if sharding_key.len() > self.columns.len() {
                         return Err(CreateIndexError::IncompatibleUniqueIndexColumns.into());
                     }
-                    for (sharding_key, column) in sharding_key.iter().zip(&self.columns) {
+                    for (sharding_key, (column, _)) in sharding_key.iter().zip(&self.columns) {
                         if sharding_key != column {
                             return Err(CreateIndexError::IncompatibleUniqueIndexColumns.into());
                         }

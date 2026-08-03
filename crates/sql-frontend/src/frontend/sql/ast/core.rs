@@ -26,7 +26,7 @@ use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
 };
-use tarantool::index::{IndexType, RtreeIndexDistanceType};
+use tarantool::index::{IndexType, RtreeIndexDistanceType, SortOrder};
 
 use crate::errors::Entity::AST;
 use crate::errors::{Entity, SbroadError};
@@ -1837,6 +1837,34 @@ pub(in crate::frontend::sql) fn parse_identifier(
     )?))
 }
 
+fn parse_sort_order(ast: &AstCore, node_id: usize) -> Result<SortOrder, SbroadError> {
+    Ok(match ast.nodes.get_node(node_id)?.rule {
+        Rule::Asc => SortOrder::Asc,
+        Rule::Desc => SortOrder::Desc,
+        rule => unreachable!("unexpected sort order rule: {rule:?}"),
+    })
+}
+
+fn parse_optional_sort_order(
+    ast: &AstCore,
+    node_id: Option<usize>,
+) -> Result<Option<SortOrder>, SbroadError> {
+    node_id
+        .map(|node_id| parse_sort_order(ast, node_id))
+        .transpose()
+}
+
+fn parse_ordered_identifier(
+    ast: &AstCore,
+    node_id: usize,
+) -> Result<(SmolStr, Option<SortOrder>), SbroadError> {
+    let node = ast.nodes.get_node(node_id)?;
+    debug_assert_eq!(node.rule, Rule::OrderedIdentifier);
+    let name = parse_identifier(ast, node.children[0])?;
+    let sort_order = parse_optional_sort_order(ast, node.children.get(1).copied())?;
+    Ok((name, sort_order))
+}
+
 pub(in crate::frontend::sql) fn parse_optional_identifier(
     ast: &AstCore,
     node_id: usize,
@@ -2659,6 +2687,7 @@ pub(in crate::frontend::sql) fn parse_create_index(
     let mut if_not_exists = DEFAULT_IF_NOT_EXISTS;
     let mut timeout = get_default_timeout();
     let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
+    let mut has_explicit_sort_order = false;
 
     let first_child = |node: &ParseNode| -> &ParseNode {
         let child_id = node.children.first().expect("Expected to see first child");
@@ -2696,12 +2725,9 @@ pub(in crate::frontend::sql) fn parse_create_index(
                 let parts_node = ast.nodes.get_node(*child_id)?;
                 columns.reserve(parts_node.children.len());
                 for part_id in &parts_node.children {
-                    let single_part_node = ast.nodes.get_node(*part_id)?;
-                    assert!(
-                        single_part_node.rule == Rule::Identifier,
-                        "Unexpected part node: {single_part_node:?}"
-                    );
-                    columns.push(parse_identifier(ast, *part_id)?);
+                    let (name, sort_order) = parse_ordered_identifier(ast, *part_id)?;
+                    has_explicit_sort_order |= sort_order.is_some();
+                    columns.push((name, sort_order.unwrap_or_default()));
                 }
             }
             Rule::IndexOptions => {
@@ -2764,6 +2790,14 @@ pub(in crate::frontend::sql) fn parse_create_index(
             Rule::WaitAppliedLocally => wait_applied_globally = false,
             _ => panic!("Unexpected index rule: {child_node:?}"),
         }
+    }
+    if index_type != IndexType::Tree && has_explicit_sort_order {
+        return Err(SbroadError::Invalid(
+            Entity::Index,
+            Some(format_smolstr!(
+                "{index_type} index does not support explicit sort order"
+            )),
+        ));
     }
     let index = CreateIndex {
         name,
