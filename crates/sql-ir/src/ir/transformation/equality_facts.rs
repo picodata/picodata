@@ -325,7 +325,7 @@ enum EqualityFactAtom {
 }
 
 /// Public (with its fields below) for the whitebox tests in
-/// `sql-planner/tests/planner_tests`; not part of the planner API.
+/// `crates/sql-planner/tests/planner_tests`; not part of the planner API.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Hash)]
 pub struct ClassId(u32);
 
@@ -347,7 +347,7 @@ pub struct ClassId(u32);
 ///   an empty result.
 ///
 /// The type and its fields are public for the whitebox tests in
-/// `sql-planner/tests/planner_tests`; not part of the planner API.
+/// `crates/sql-planner/tests/planner_tests`; not part of the planner API.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EquivalenceClass {
     pub members: Box<[Slot]>,
@@ -409,7 +409,7 @@ impl Ord for Slot {
 // explicit domain guard.
 //
 // The `classes` / `scopes` fields are public for the whitebox tests in
-// `sql-planner/tests/planner_tests`; not part of the planner API.
+// `crates/sql-planner/tests/planner_tests`; not part of the planner API.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EqualityFacts {
     slot_classes: HashMap<NodeId, Box<[Option<ClassId>]>>,
@@ -441,7 +441,7 @@ struct ScopedFacts {
 /// Frozen per-LEFT-JOIN scope.
 ///
 /// The type and its fields are public for the whitebox tests in
-/// `sql-planner/tests/planner_tests`; not part of the planner API.
+/// `crates/sql-planner/tests/planner_tests`; not part of the planner API.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ResolvedScope {
     /// `class -> representative class of its scope-group`.  Classes that
@@ -457,7 +457,7 @@ pub struct ResolvedScope {
 /// Per-group payload inside a [`ResolvedScope`].
 ///
 /// The type and its fields are public for the whitebox tests in
-/// `sql-planner/tests/planner_tests`; not part of the planner API.
+/// `crates/sql-planner/tests/planner_tests`; not part of the planner API.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReprInfo {
     /// Constant pinned for the whole group in this scope, if any.
@@ -939,7 +939,7 @@ impl EqualityFactsBuilder {
     }
 }
 
-/// Public for the whitebox tests in `sql-planner/tests/planner_tests`;
+/// Public for the whitebox tests in `crates/sql-planner/tests/planner_tests`;
 /// production code runs the analysis through
 /// [`Plan::analyze_equality_facts`].
 pub struct EqualityAnalysis<'p> {

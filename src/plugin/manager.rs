@@ -135,7 +135,7 @@ impl PluginManager {
     /// The constants below are supposed to be in the picodata-plugin-proc-macro crate, but proc-macro crates
     /// disallow exporting anything, other than proc macros. This can be avoided by creating a separate
     /// crate, but it seems like an overkill. Just make sure the names below match what is written
-    /// in picodata-plugin-proc-macro/src/lib.rs:79.
+    /// in crates/picodata-plugin-proc-macro/src/lib.rs:79.
     const SERVICE_REGISTRAR_EXPORT_NAME: &'static str = "pico_service_registrar";
     const MIGRATION_VALIDATOR_EXPORT_NAME: &'static str = "pico_migration_validator";
 
