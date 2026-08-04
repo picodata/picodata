@@ -1,0 +1,14 @@
+[package]
+name = "sql-ast-new-corpus"
+version = "0.1.0"
+rust-version.workspace = true
+authors = ["Picodata"]
+license-file.workspace = true
+edition.workspace = true
+
+# No dependencies: the crate is an `include_str!` of the corpus plus the splitter
+# that cuts it into statements. Everything that *consumes* the corpus — the
+# round-trip test below — depends on this crate, not the other way round.
+
+[dev-dependencies]
+sql-ast-new-parser = { path = "../sql-ast-new-parser" }

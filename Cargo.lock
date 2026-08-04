@@ -3744,6 +3744,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sql-ast-new-corpus"
+version = "0.1.0"
+dependencies = [
+ "sql-ast-new-parser",
+]
+
+[[package]]
 name = "sql-ast-new-grammar"
 version = "0.1.0"
 dependencies = [

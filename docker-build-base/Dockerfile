@@ -85,6 +85,13 @@ mv "${SCCACHE_BINARY}/sccache" /usr/local/bin/ && \
 chmod +x /usr/local/bin/sccache && \
 rm -rf "${SCCACHE_BINARY}"
 
+# install sql-formatter (used by the lint job via `make lint-sql`)
+# NOTE: we pin the version because the formatter's output changes between
+# releases, and the committed SQL corpus is byte-compared against it.
+# Keep in sync with SQL_FORMATTER_VERSION in the root Makefile — `make lint-sql`
+# asserts the installed version, so drift fails the lint job loudly.
+RUN npm install -g sql-formatter@15.8.2
+
 # install prek (used by the validate-commit-headers job)
 RUN set -e; \
 PREK_VERSION="v0.4.4"; \

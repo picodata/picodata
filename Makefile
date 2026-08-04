@@ -120,7 +120,7 @@ DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 # memory usage caused by doc tests compilation model. Doc tests are compiled as part of actual test run.
 # So, each parallel thread lanuched by cargo test spawns full blown compiler for each doctest
 # which at the end leads to OOM.
-CARGO_TEST_FLAGS ?= --workspace --exclude sql-planner --exclude sql-ir --exclude sql-executor --exclude sql-frontend --exclude sql-ast-new-nodes --exclude sql-ast-new-parser --exclude tarantool --exclude tlua
+CARGO_TEST_FLAGS ?= --workspace --exclude sql-planner --exclude sql-ir --exclude sql-executor --exclude sql-frontend --exclude sql-ast-new-nodes --exclude sql-ast-new-parser --exclude sql-ast-new-corpus --exclude tarantool --exclude tlua
 
 .PHONY: test-rs
 test-rs: test-rs-picodata test-rs-sql
@@ -142,7 +142,7 @@ test-rs-picodata:
 	  --doc -- --test-threads 2
 
 SQL_CRATES = -p sql-ir -p sql-executor -p sql-frontend -p sql-planner \
-            -p sql-ast-new-nodes -p sql-ast-new-parser
+            -p sql-ast-new-nodes -p sql-ast-new-parser -p sql-ast-new-corpus
 
 NEXTEST_VERSION := 0.9.140
 
@@ -299,8 +299,41 @@ lint-py:
 	uv run ruff format ./test tools benchmark --check --diff
 	uv run mypy ./test
 
+# Verify the DQL corpus is formatted per its README (sql-formatter has no
+# --check mode, so we format to a temp file and diff against the committed one).
+SQL_CORPUS_DIR := crates/sql-ast-new-corpus/src
+
+# sql-formatter comes preinstalled in the CI image (docker-build-base/Dockerfile).
+# The version is pinned there and asserted here: the formatter's output changes
+# between releases, so a locally installed different version would rewrite the
+# whole corpus and disagree with CI.
+SQL_FORMATTER := sql-formatter
+SQL_FORMATTER_VERSION := 15.8.2
+
+.PHONY: check-sql-formatter
+check-sql-formatter:
+	@ver=$$($(SQL_FORMATTER) --version 2>/dev/null) || { \
+		echo "error: $(SQL_FORMATTER) not found on PATH." >&2; \
+		echo "       run 'npm install -g sql-formatter@$(SQL_FORMATTER_VERSION)'." >&2; \
+		exit 2; }; \
+	[ "$$ver" = "$(SQL_FORMATTER_VERSION)" ] || { \
+		echo "error: sql-formatter $$ver found, but the corpus is formatted with $(SQL_FORMATTER_VERSION)." >&2; \
+		echo "       run 'npm install -g sql-formatter@$(SQL_FORMATTER_VERSION)'." >&2; \
+		exit 2; }
+
+# Not a pipe into `diff`: the recipe shell is /bin/sh, so `pipefail` isn't available
+# and a crashing formatter would be reported as a 5k-line "not formatted" diff
+# instead of the tooling error it is.
+.PHONY: lint-sql
+lint-sql: check-sql-formatter
+	@tmp=$$(mktemp) && trap 'rm -f "$$tmp"' EXIT && cd $(SQL_CORPUS_DIR) && \
+	  { $(SQL_FORMATTER) -c sql_format.json queries.sql > "$$tmp" \
+	      || { echo >&2 "error: sql-formatter failed on queries.sql"; exit 2; }; } && \
+	  { diff -u queries.sql "$$tmp" \
+	      || { echo >&2 "queries.sql is not formatted; run 'make fmt' to fix it"; exit 1; }; }
+
 .PHONY: lint
-lint: lint-rs lint-py
+lint: lint-rs lint-py lint-sql
 
 .PHONY: fmt
 fmt:
