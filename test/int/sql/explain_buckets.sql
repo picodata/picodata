@@ -73,7 +73,7 @@ buckets = [2036]
 -- SQL:
 explain (buckets) insert into t select * from g;
 -- EXPECTED:
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: buckets-insert-any
 -- SQL:

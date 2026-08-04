@@ -1269,7 +1269,7 @@ insert into t on conflict: fail
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: explain-insert-with-buckets-4
 -- SQL:
@@ -1296,7 +1296,7 @@ subquery $0:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: explain-insert-with-buckets-5
 -- SQL:

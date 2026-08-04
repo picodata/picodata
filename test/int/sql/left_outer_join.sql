@@ -164,7 +164,7 @@ projection ("T1"."A"::int -> "A", "T2"."B"::int -> "B")
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: test_inner_full_motion-1
 -- SQL:
@@ -319,7 +319,7 @@ subquery $0:
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: test_table_with_nulls1
 -- SQL:

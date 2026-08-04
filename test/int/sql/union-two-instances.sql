@@ -426,7 +426,7 @@ buckets <= [1-3000]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: explain-union-global-sharded-6
 -- SQL:
@@ -478,4 +478,4 @@ buckets <= [219]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]

@@ -23,12 +23,13 @@
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
 use crate::errors::{Entity, SbroadError};
+use crate::executor::buckets_info::bounded_buckets_from_query;
 use crate::executor::engine::helpers::generate_pattern_with_params_for_block;
 use crate::executor::engine::{BlockQuery, Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
 use crate::ir::bucket::{BucketSet, Buckets};
-use crate::ir::explain::{execution_info::BucketsInfo, LogicalExplain};
+use crate::ir::explain::LogicalExplain;
 use crate::ir::node::block::BlockOwned;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
@@ -679,13 +680,9 @@ where
     }
 
     pub fn explain_forward(&mut self) -> Result<String, SbroadError> {
-        let info = crate::executor::buckets_info::buckets_info_from_query(self)?;
-        let forward = match info {
-            BucketsInfo::Unknown => crate::ir::options::Forward::On,
-            BucketsInfo::Calculated(bounded_buckets) => self
-                .get_coordinator()
-                .get_possible_forward_option(&bounded_buckets.buckets, &mut None)?,
-        };
+        let bounded_buckets = bounded_buckets_from_query(self)?;
+        let coord = self.get_coordinator();
+        let forward = coord.get_possible_forward_option(&bounded_buckets.buckets, &mut None)?;
 
         let mut buf = String::new();
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
@@ -722,7 +719,7 @@ where
     }
 
     pub fn explain_buckets(&mut self) -> Result<String, SbroadError> {
-        let info = crate::executor::buckets_info::buckets_info_from_query(self)?;
+        let bounded_buckets = bounded_buckets_from_query(self)?;
         let mut buf = String::new();
         let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
         if !explain_options.has_single_facet() {
@@ -730,7 +727,7 @@ where
             writeln!(&mut buf).unwrap();
         }
 
-        write!(&mut buf, "{info}").unwrap();
+        write!(&mut buf, "{bounded_buckets}").unwrap();
 
         Ok(buf)
     }
