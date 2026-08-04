@@ -1,0 +1,393 @@
+Command = _{ SOI ~ (DqlStmt | EmptyQuery) ~ EOF }
+
+Table = @{ Identifier }
+CteOrTable = @{ Table }
+IndexedByExpr = { ^"indexed" ~ W ~ ^"by" ~ W ~ Identifier }
+PublicSchema = _{ (^"public" | ("\"public\"")) ~ "."}
+
+// -- DQL
+DqlStmt = ${ MultisetStmt ~ SqlOption? }
+MultisetStmt = ${
+    WO
+    ~ (Ctes ~ W)?
+    ~ MultisetInner
+    ~ (W ~ OrderBy)?
+    ~ (W ~ Limit)?
+    ~ WO
+}
+
+    Ctes = _{ ^"with" ~ W ~ Cte ~ (WO ~ "," ~ WO ~ Cte)* }
+        Cte = ${
+            Identifier ~ (WO ~ CteColumns)? ~ W ~ ^"as" ~ WO ~ LParen ~ MultisetStmt ~ RParen
+        }
+        CteColumns = _{ LParen ~ IdentList ~ RParen }
+        IdentList = _{ Identifier ~ (WO ~ "," ~ WO ~ Identifier)* }
+
+    MultisetInner = ${ MultisetPrimary ~ (W ~ MultisetOp ~ W ~ MultisetPrimary)* }
+    MultisetPrimary = _{
+        (LParen ~ WO ~ MultisetStmt ~ WO ~ RParen) | (SelectStmt | ValuesStmt)
+    }
+    MultisetOp = _{ UnionOp | ExceptOp | IntersectOp }
+        UnionOp = ${ ^"union" ~ (W ~ MultisetOpDupElimination)? }
+        ExceptOp = ${ ^"except" ~ (W ~ MultisetOpDupElimination)? }
+        IntersectOp = ${ ^"intersect" ~ (W ~ MultisetOpDupElimination)? }
+            MultisetOpDupElimination = { (^"all" | ^"distinct") ~ KwEnd }
+
+    ValuesStmt = { ^"values" ~ WO ~ ValuesRow ~ (WO ~ Comma ~ WO ~ ValuesRow)* }
+        ValuesRow = {  LParen ~ WO ~ Expr ~ WO ~ (Comma ~ WO ~ Expr)* ~ WO ~ RParen }
+
+SelectStmt = ${ SelectList ~ (W ~ TableExpression)? }
+    SelectList = ${ ^"select" ~ (W ~ Distinct)? ~ W ~ SelectListElement ~ (WO ~ "," ~ WO ~ SelectListElement)* }
+        SelectListElement = _{ Asterisk | Column }
+        Column = ${ (PublicSchema)? ~ Expr ~ (W ~ Alias)? }
+        Asterisk = ${ (Identifier ~ ".")? ~ "*" }
+        Alias = _{ (^"as" ~ W)? ~ Identifier }
+
+    // `KwEnd` is load-bearing here, not decorative: `SelectList` spells the
+    // clause as `(W ~ Distinct)? ~ W`, so the whitespace that follows the
+    // keyword sits *outside* the optional group. Without the boundary,
+    // `SELECT distinct_x` matches `DISTINCT`, then fails the required `W` at
+    // `_x` — and PEG never backtracks into a succeeded `?`, so the whole
+    // statement is rejected instead of reading `distinct_x` as a column.
+    Distinct = { ^"distinct" ~ KwEnd }
+
+
+    TableExpression = ${
+        From
+        ~ (W ~ Where)?
+        ~ (W ~ GroupBy)?
+        ~ (W ~ Having)?
+        ~ (W ~ NamedWindows)?
+    }
+
+    From = ${ ^"from" ~ W ~ TableFactor ~ (W ~ JoinedTable)* }
+        TableFactor = ${ TupleSource ~ (W ~ IndexedByExpr)? }
+        TupleSource = _{
+            (((PublicSchema)? ~ CteOrTable) | SubQuery)
+            ~ (W ~ (^"as" ~ W)? ~ !(^"indexed" ~ W ~ ^"by" ~ W) ~ Identifier)?
+        }
+        SubQuery = _{ LParen ~ MultisetStmt ~ RParen }
+
+        JoinedTable = ${
+            JoinType ~ W ~ TableFactor ~ (W ~ JoinCondition)?
+        }
+            JoinType = _{ InnerJoin | LeftJoin | CrossJoin }
+                InnerJoin = { (^"inner" ~ W)? ~ ^"join" }
+                LeftJoin = { ^"left" ~ (W ~ ^"outer")? ~ W ~ ^"join" }
+                CrossJoin = { ^"cross" ~ W ~ ^"join" }
+            JoinCondition = _{ (^"on" ~ W ~ Expr) | ^"using" ~ WO ~ LParen ~ WO ~ IdentList ~ WO ~ RParen }
+
+    Where = _{ ^"where" ~ W ~ Selection }
+        Selection = { Expr }
+    GroupBy = { ^"group" ~ W ~ ^"by" ~ W ~ Expr ~ (WO ~ "," ~ WO ~ Expr)* }
+    Having = { ^"having" ~ W ~ Expr }
+    NamedWindows = { ^"window" ~ W ~ WindowDef ~ (WO ~ "," ~ WO ~ WindowDef)* }
+        WindowDef = ${ Identifier ~ W ~ ^"as" ~ WO ~ WindowBody }
+
+
+    OrderBy = ${
+        ^"order" ~ W ~ ^"by"
+        ~ W ~ OrderByElement
+        ~ (WO ~ Comma ~ WO ~ OrderByElement)*
+    }
+        OrderByElement = ${
+            Expr
+            ~ (W ~ (Asc | Desc))?
+            ~ (W ~ (NullsFirst | NullsLast))?
+        }
+        Asc = { ^"asc" ~ KwEnd }
+        Desc = { ^"desc" ~ KwEnd }
+        NullsFirst = { ^"nulls" ~ W ~ ^"first" ~ KwEnd }
+        NullsLast = { ^"nulls" ~ W ~ ^"last" ~ KwEnd }
+
+    Limit = ${ ^"limit" ~ W ~ (Unsigned | LimitAll) }
+    LimitAll = { (^"all" ~ KwEnd) | Null }
+
+    SqlOption = { ^"option" ~ WO ~ "(" ~ WO ~ OptionParams ~ WO ~ ")" }
+        OptionParams = _{ OptionParam ~ (WO ~ "," ~ WO ~ OptionParam)* }
+    OptionParam = _{ VdbeOpcodeMax | MotionRowMax | ReadPreference | Forward }
+    VdbeOpcodeMax = { ^"sql_vdbe_opcode_max" ~ WO ~ "=" ~ WO ~ (Unsigned | Parameter) }
+    MotionRowMax = { ^"sql_motion_row_max" ~ WO ~ "=" ~ WO ~ (Unsigned | Parameter) }
+    ReadPreference = { ^"read_preference" ~ WO ~ "=" ~ WO ~ (Leader | Replica | Any | Parameter) }
+        Leader = { ^"leader" ~ KwEnd }
+        Replica = { ^"replica" ~ KwEnd }
+        Any = { ^"any" ~ KwEnd }
+    Forward = { ^"forward" ~ WO ~ "=" ~ WO ~ (ForwardOn | ForwardOff | ForwardROtoRW | Parameter) }
+        ForwardOn = { ^"on" ~ KwEnd }
+        ForwardOff = { ^"off" ~ KwEnd }
+        ForwardROtoRW = { ^"ro_to_rw" ~ KwEnd }
+
+Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
+    // The content is non-empty. Reject a zero-length delimited identifier (`""`) at parse time.
+    DelimitedIdentifier = @{ ("\"" ~ ((!("\"") ~ ANY) | "\"\"")+ ~ "\"") }
+    RegularIdentifier = @{ !KeywordCoverage ~
+                            RegularIdentifierFirstApplicableSymbol ~
+                            RegularIdentifierApplicableSymbol* ~
+                            &IdentifierInapplicableSymbol }
+        RegularIdentifierFirstApplicableSymbol = { !(IdentifierInapplicableSymbol | ASCII_DIGIT) ~ ANY }
+        RegularIdentifierApplicableSymbol = { !IdentifierInapplicableSymbol ~ ANY }
+        IdentifierInapplicableSymbol = { WHITESPACE | "$" | "?" | "." | "," | "(" | EOF | ")" | "\"" | ":" | ";" | "[" | "]"
+                                       | "'" | ArithInfixOp | ConcatInfixOp | NotEq | GtEq
+                                       | Gt | LtEq | Lt | Eq }
+        // Zero-width token boundary. The next char cannot continue an identifier.
+        // The scannerless analog of a lexer's token split.
+        // Every expression keyword/number token ends with it, so `(true)and(false)`
+        // parses while `trueand` stays an identifier and `1and` is trailing junk.
+        KwEnd = _{ &IdentifierInapplicableSymbol }
+        KeywordCoverage = { Keyword ~ IdentifierInapplicableSymbol }
+            // Note: In case two keywords with the same prefix are met, shorter ones must go after longest.
+            //       E.g. ^"in" must go after ^"insert" because keywords traversal stops on the first match.
+            //       Please, try to keep the list in alphabetical order.
+            Keyword = {  ^"all" | ^"and" | ^"array" | ^"asc" | ^"as"
+                        | ^"begin" | ^"between" | ^"by"
+                        | ^"case" | ^"cast" | ^"current_date" | ^"current_timestamp" | ^"current_time"
+                        | ^"desc" | ^"distinct"
+                        | ^"else" | ^"end" | ^"except" | ^"exists"
+                        | ^"false" | ^"filter" | ^"from" | ^"group"
+                        | ^"having" | ^"inner" | ^"intersect" | ^"into" | ^"in" | ^"is"
+                        | ^"join" | ^"left" | ^"limit" | ^"localtimestamp" | ^"localtime" | ^"not" | ^"null"
+                        | ^"on" | ^"option" | ^"order" | ^"or" | ^"outer" | ^"over" | ^"primary"
+                        | ^"select" | ^"set" | ^"similar" | ^"substring"
+                        | ^"table" | ^"then" | ^"to" | ^"true"
+                        | ^"cross" | ^"union" | ^"using"
+                        | ^"values" | ^"when" | ^"where" | ^"window" | ^"with"
+                        }
+
+EmptyQuery = { WHITESPACE* }
+
+// General expressions.
+// This is the heart of the expression syntax.
+Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (WO ~ In ~ WO ~ ((ValuesRow ~ (WO ~ IsPostfix)*) | ExprAtomValue)))* }
+    // Keyword operators need a token boundary (`KwEnd` inside each keyword
+    // token), not surrounding whitespace: `(true)and(false)` is legal, as in
+    // PG, whose lexer splits the tokens on its own. `a andy` stays an
+    // aliased column because `KwEnd` refuses `and` glued to `y`.
+    ExprInfixOpo = _{ WO ~ (ExprInfixOpSep | ExprInfixOpNoSep) ~ WO }
+    ExprInfixOpSep = _{ Like | Similar | Escape | Between | And | Or }
+        In    = { (NotFlag ~ WO)? ~ ^"in" ~ KwEnd }
+        // The negation lives inside the operator token,
+        // giving `NOT LIKE` the operator's own binding tier.
+        Like = { (NotFlag ~ WO)? ~ (^"ilike" | ^"like") ~ KwEnd }
+        Similar = { (NotFlag ~ WO)? ~ ^"similar" ~ KwEnd }
+        Escape = { ^"escape" ~ KwEnd }
+        // The whole `BETWEEN <middle> AND` sequence is a single infix operator
+        // token, so `AND` never has to be disambiguated between the boolean
+        // operator and the BETWEEN separator (PostgreSQL solves the same
+        // ambiguity with its restricted `b_expr` operand, mirrored here by
+        // `BExpr`).
+        Between       = ${ (NotFlag ~ WO)? ~ ^"between" ~ KwEnd ~ WO ~ BExpr ~ WO ~ ^"and" ~ KwEnd }
+        And           = { ^"and" ~ KwEnd }
+        Or            = { ^"or" ~ KwEnd }
+    ExprInfixOpNoSep = _{ ArithInfixOp | CmpInfixOp | ConcatInfixOp }
+        ConcatInfixOp = { "||" }
+        ArithInfixOp  = _{ Add | Subtract | Modulo | Multiply | Divide }
+            Add      = { "+" }
+            Subtract = { "-" }
+            Modulo   = { "%" }
+            Multiply = { "*" }
+            Divide   = { "/" }
+        CmpInfixOp    = _{ NotEq | GtEq | Gt | LtEq | Lt | Eq }
+            Eq    = { "=" }
+            Gt    = { ">" }
+            GtEq  = { ">=" }
+            Lt    = { "<" }
+            LtEq  = { "<=" }
+            NotEq = { "<>" | "!=" }
+    // BETWEEN's middle operand. Only the symbol operators (comparison, `||`,
+    // arithmetic) over `CExpr` operands.
+    // No keyword operators (AND / OR / NOT / IS / IN / LIKE / SIMILAR / ESCAPE / BETWEEN),
+    // so the following `AND` always closes the enclosing BETWEEN.
+    // A new symbol operator tighter than BETWEEN must be added here as well (via `ExprInfixOpNoSep`).
+    BExpr = ${ CExpr ~ (WO ~ ExprInfixOpNoSep ~ WO ~ CExpr)* }
+    ExprAtomValue = _{ (UnaryNot ~ WO)* ~ CExpr ~ (WO ~ IsPostfix)* }
+    // Self-delimited primary with any interleaving of index and cast suffixes.
+    // Common operand core of `Expr` and `BExpr`.
+    CExpr = _{ AtomicExpr ~ (IndexPostfix | CastPostfix)* }
+        UnaryNot   = { NotFlag }
+        IndexPostfix = { WO ~ "[" ~ WO ~ Expr ~ WO ~ "]" }
+        CastPostfix = { WO ~ "::" ~ WO ~ CastTarget }
+        IsPostfix = ${ ^"is" ~ KwEnd ~ WO ~ (NotFlag ~ WO)? ~ (True | False | Unknown | Null) }
+            Unknown = { ^"unknown" ~ KwEnd }
+        AtomicExpr = _{ Literal | Parameter | Over | CastOp | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime
+                    | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | ArrayLiteral | ValuesRow }
+            // The numeric alternatives are boundary-guarded at this use site,
+            // not inside the tokens: `Integer` is a building block of
+            // `Decimal`/`Double`, and non-expression sites (LIMIT, type
+            // precision, vinyl options) have no adjacent operator that could
+            // absorb the junk. `1and 2` must fail to lex as a number rather
+            // than parse as `1 AND 2` — PG rejects it in the lexer
+            // ("trailing junk after numeric literal").
+            Literal = { True | False | Null | ((Double | Decimal | Unsigned | Integer) ~ KwEnd) | SingleQuotedString }
+                True     = { ^"true" ~ KwEnd }
+                False    = { ^"false" ~ KwEnd }
+                Null     = { ^"null" ~ KwEnd }
+                Decimal = @{ Integer ~ ("." ~ ASCII_DIGIT*) }
+                Double = @{ Integer ~ ("." ~ ASCII_DIGIT*)? ~ (^"e" ~ Integer) }
+                Integer = @{ ("+" | "-")? ~ ASCII_DIGIT+ }
+                Unsigned = @{ ASCII_DIGIT+ }
+                SingleQuotedString = @{ "'" ~ ((!("'") ~ ANY) | "''")* ~ "'" }
+            Parameter = { PgParameter | TntParameter }
+                TntParameter = @{ "?" }
+                // `$1and` is junk, as in PG ("trailing junk after parameter").
+                PgParameter = ${ "$" ~ Unsigned ~ KwEnd }
+            IdentifierWithOptionalContinuation = ${ Identifier ~ (ReferenceContinuation | (WO ~ FunctionInvocationContinuation))? }
+                ReferenceContinuation          = ${ "." ~ Identifier }
+                FunctionInvocationContinuation = !{ "(" ~ (CountAsterisk | FunctionArgs)? ~ ")" }
+                    FunctionArgs = ${ (Distinct ~ W)? ~ FunctionArgsExprs }
+                        FunctionArgsExprs = _{ Expr ~ (WO ~ "," ~ WO ~ Expr)* }
+                    CountAsterisk = { "*" }
+            Over = ${
+                Identifier
+                ~ WO ~ WindowFunctionArgs
+                ~ (WO ~ WindowFunctionFilter)?
+                ~ WO ~ ^"over" ~ ((WO ~ WindowBody) | (W ~ Identifier))
+            }
+                WindowFunctionArgs = { "(" ~ WO ~ (CountAsterisk | WindowFunctionArgsInner)? ~ WO ~ ")" }
+                    WindowFunctionArgsInner = !{  (Expr ~ ("," ~ Expr)*) }
+                WindowFunctionFilter = ${ ^"filter" ~ WO ~ "(" ~ WO ~ ^"where" ~ W ~ Expr ~ WO ~ ")" }
+                    WindowBody = ${ "(" ~ WO ~ WindowBodyInner? ~ WO ~ ")" }
+                        // Ordered alternatives enforce BaseWindowName < PARTITION BY < ORDER BY < frame
+                        // clause order and forbid duplicates. Frame/order/partition alternatives are
+                        // tried BEFORE BaseWindowName so that ROWS/RANGE/PARTITION (which are
+                        // not in the Keyword list) are not consumed as a base window identifier
+                        // (PEG: a succeeded alternative is never backtracked into).
+                        WindowBodyInner = _{
+                              WindowFrame
+                            | (WindowOrderBy ~ (W ~ WindowFrame)?)
+                            | (WindowPartition ~ (W ~ WindowOrderBy)? ~ (W ~ WindowFrame)?)
+                            | (BaseWindowName ~ (W ~ WindowPartition)? ~ (W ~ WindowOrderBy)? ~ (W ~ WindowFrame)?)
+                        }
+                            BaseWindowName = @{ Identifier }
+                            WindowPartition = ${ ^"partition" ~ W ~ ^"by" ~ W ~ Expr ~ (WO ~ "," ~ WO ~ Expr)* }
+                            WindowOrderBy = ${ ^"order" ~ W ~ ^"by" ~ W ~ OrderByElement ~ (WO ~ "," ~ WO ~ OrderByElement)* }
+                            WindowFrame = ${ WindowFrameType ~ W ~ (WindowFrameSingle | WindowFrameBetween) }
+                                WindowFrameType = _{ WindowFrameTypeRange | WindowFrameTypeRows }
+                                    WindowFrameTypeRange = { ^"range" }
+                                    WindowFrameTypeRows = { ^"rows" }
+                                WindowFrameSingle = { WindowFrameBound }
+                                WindowFrameBetween = ${ ^"between" ~ W ~ WindowFrameBound ~ W ~ ^"and" ~ W ~ WindowFrameBound }
+                                WindowFrameBound = _{ PrecedingUnbounded | PrecedingOffset | CurrentRow | FollowingUnbounded | FollowingOffset }
+                                    PrecedingUnbounded = ${ ^"unbounded" ~ W ~ ^"preceding" ~ KwEnd }
+                                    PrecedingOffset = ${ Expr ~ W ~ ^"preceding" ~ KwEnd }
+                                    CurrentRow = ${ ^"current" ~ W ~ ^"row" ~ KwEnd }
+                                    FollowingOffset = ${ Expr ~ W ~ ^"following" ~ KwEnd }
+                                    FollowingUnbounded = ${ ^"unbounded" ~ W ~ ^"following" ~ KwEnd }
+            ExpressionInParentheses = !{ "(" ~ Expr ~ ")" }
+            Substring = ${ ^"substring" ~ WO ~ "(" ~ WO ~ SubstringVariant ~ WO ~ ")" }
+                SubstringVariant = _{ SubstringFromFor | SubstringRegular | SubstringFor | SubstringFrom | SubstringSimilar }
+                    SubstringFromFor = ${ Expr ~ W ~ ^"from" ~ W ~ Expr ~ W ~ ^"for" ~ W ~ Expr }
+                    SubstringRegular = ${ Expr ~ (WO ~ "," ~ WO ~ Expr) ~ (WO ~ "," ~ WO ~ Expr) }
+                    SubstringFor = ${ Expr ~ W ~ ^"for" ~ W ~ Expr }
+                    SubstringFrom = ${ (Expr ~ W ~ ^"from" ~ W ~ Expr) | (Expr ~ (WO ~ "," ~ WO ~ Expr)) }
+                    //  Single-expression fallback (must stay last): covers the
+                    //  regex form `SUBSTRING(str SIMILAR pat ESCAPE esc)`, whose
+                    //  SIMILAR/ESCAPE chain parses as one infix expression.
+                    SubstringSimilar = ${ Expr }
+            //  The niladics are ordered choices tried *before*
+            //  `IdentifierWithOptionalContinuation`, and their precision
+            //  argument is optional, so without `KwEnd` the keyword steals the
+            //  prefix of any longer identifier: `current_date_col` would parse
+            //  as `CURRENT_DATE` plus junk. `KwEnd` is zero-width and `(` is a
+            //  boundary character, so `CURRENT_TIME(3)` still matches.
+            CurrentDate = { ^"current_date" ~ KwEnd }
+            CurrentTime = { ^"current_time" ~ KwEnd ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
+            CurrentTimestamp = { ^"current_timestamp" ~ KwEnd ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
+            LocalTime = { ^"localtime" ~ KwEnd ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
+            LocalTimestamp = { ^"localtimestamp" ~ KwEnd ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
+            Trim = ${
+                ^"trim" ~ WO ~ "(" ~ WO ~ (TrimOption ~ W ~ ^"from" ~ W)? ~ TrimTarget ~ WO ~ ")"
+            }
+                TrimOption = _{ ((TrimKind ~ W)? ~ TrimPattern) | TrimKind }
+                TrimKind = { (TrimKindLeading | TrimKindTrailing | TrimKindBoth) }
+                    TrimKindLeading = { ^"leading" }
+                    TrimKindTrailing = { ^"trailing" }
+                    TrimKindBoth = { ^"both" }
+                TrimPattern = { Expr }
+                TrimTarget = { Expr }
+
+            Case = ${
+                ^"case" ~ W ~
+                (Expr ~ W)? ~
+                (CaseWhenBlock ~ W)+ ~
+                (CaseElseBlock ~ W)? ~
+                ^"end" ~ KwEnd
+            }
+                CaseWhenBlock = ${ ^"when" ~ W ~ Expr ~ W ~ ^"then" ~ W ~ Expr }
+                CaseElseBlock = ${ ^"else" ~ W ~ Expr }
+            ArrayLiteral = ${ ^"array" ~ WO ~ "[" ~ WO ~ (Expr ~ (WO ~ "," ~ WO ~ Expr)*)? ~ WO ~ "]" }
+
+            CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ CastTarget ~ WO ~ ")" }
+
+                //  Cast targets admit an array suffix: `int[]`, `int ARRAY`,
+                //  `int ARRAY[5]` (the bound is accepted and ignored).
+                //  Multidimensional bracket typing (`T[][]`, `T[N][M]`) is a
+                //  DDL-only feature, and DDL is out of this grammar's scope.
+                //  `KwEnd` after `Type` keeps a type name from swallowing the
+                //  prefix of a longer word: `a::intx` is an unknown type, not
+                //  a cast to `int` trailed by junk. `[` and whitespace are both
+                //  boundary characters, so `int[]` / `int ARRAY` still match.
+                CastTarget = { Type ~ KwEnd ~ CastArraySuffix? }
+                    CastArraySuffix = _{ (WO ~ EmptyBracket) | (W ~ CastArrayKeyword) }
+                        EmptyBracket = { "[" ~ WO ~ "]" }
+                        //  The `&IdentifierInapplicableSymbol` guard keeps a
+                        //  trailing alias intact: `a::int arrayx` is a cast to
+                        //  `int` aliased `arrayx`, not an `int[]` cast followed
+                        //  by `x` (deliberate divergence from the old grammar,
+                        //  cf. the `count(*) overw` keyword-boundary fix).
+                        CastArrayKeyword = { ^"array" ~ &IdentifierInapplicableSymbol ~ (WO ~ ArraySizedBound)? }
+                            ArraySizedBound = { "[" ~ WO ~ Unsigned ~ WO ~ "]" }
+
+                Type = { TypeBool | TypeDatetime | TypeDecimal | TypeDouble | TypeInt | TypeJSON
+                                   | TypeString | TypeText | TypeVarchar | TypeUuid }
+
+                    TypeBool = { (^"boolean" | ^"bool") }
+                    TypeDatetime = { ^"datetime" }
+                    TypeDecimal = { ((^"decimal" | ^"number" | ^"numeric") ~ ("(" ~ WO ~ Unsigned ~ WO ~ ("," ~ WO ~ Integer ~ WO)? ~ ")")?) }
+                    TypeDouble = { ^"double" }
+                    TypeInt = { (^"integer" | ^"bigint" | ^"smallint" | ^"int" ~ ("2" | "4" | "8")?) }
+                    TypeJSON = { ^"json" }
+                    TypeString = { ^"string" }
+                    TypeText = { ^"text" }
+                    TypeUuid = { ^"uuid" }
+                    TypeVarchar = { ^"varchar" ~ ("(" ~ WO ~ Unsigned ~ WO ~ ")")? }
+            UnaryOperator = _{ Exists }
+                Exists = ${ (NotFlag ~ W)? ~ ^"exists" ~ W ~ SubQuery }
+
+NotFlag = { ^"not" ~ KwEnd }
+
+// Rules of whitespaces application:
+// * WHITESPACE builtin rule is used for implicit whitespace application. Whenever you use non-atomic rule
+//   any "~" sign means that next token may be read without spaces between.
+//   It's used for parsing expressions (because it's hard to apply whitespaces by hand for them) and
+//   cases when we don't require whitespaces between tokens.
+// * W  -- read at least one whitespace under atomic rule (W is a shorthand of "WHITESPACE").
+// * WO -- read possible whitespaces. Used for cases when space may be ommited, e.g. when
+//         we deal with expressions separated by commas (WO is a shorthand of "WHITESPACE OPTIONAL").
+// * Hack: If only a part of rule should be atomic you may move to a separate rule and mark it atomic.
+// * Reminder: All rules under atomic rules also considered to be atomic :(
+//             But we may put explamation mark (`!`) before rule to make it non-atomic
+//             (note that we can't mark rule non-atomic and silent at the same time).
+// * When we face with rule sequences like
+//   { RULE ~ OPTIONAL_RULE? ~ NON_OPTIONAL_RULE }
+//   or
+//   { RULE ~ OPTIONAL_RULE_1? ~ OPTIONAL_RULE_2? }  <-- if non of the optional rule met, we don't require whitspace after RULE.
+//   we have to be careful about where to require whitespaces.
+//   Solutions for this two cases:
+//   { Rule ~ W ~ (OPTIONAL_RULE ~ W)? ~ NON_OPTIONAL_RULE }
+//   and
+//   { RULE ~ (W ~ OPTIONAL_RULE_1)? ~ (W ~ OPTIONAL_RULE_2)? }
+// * If we are dealing with repetition like
+//   { REPEATING_RULE ~ ("," ~ REPEATING_RULE)* ~ OTHER_RULE }
+//   solution looks like
+//   { REPEATING_RULES ~ W ~ OTHER_RULE }
+//      REPEATING_RULES = _{ REPEATING_RULE ~ (WO ~ "," ~ WO ~ REPEATING_RULE)* }
+// * Note: Keep in mind that rule like `!{ RULE_1 ~ ("," ~ RULE_2)* }` will consume possible
+//         whitespaces that follow the `RULE_1` rule.
+WHITESPACE = _{ " " | "\t" | "\n" | "\r\n" }
+W  = _{ WHITESPACE+ }
+WO = _{ WHITESPACE* }
+EOF = { (";" ~ WO)* ~ EOI }
+
+LParen = _{ ^"(" }
+RParen = _{ ^")" }
+Comma = _{ ^"," }

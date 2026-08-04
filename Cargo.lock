@@ -3752,6 +3752,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sql-ast-new-grammar"
+version = "0.1.0"
+dependencies = [
+ "pest",
+ "pest_derive",
+]
+
+[[package]]
+name = "sql-ast-new-nodes"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "pest",
+ "smol_str",
+ "sql-ast-new-grammar",
+ "sql-ir",
+ "sql-type-system",
+]
+
+[[package]]
 name = "sql-executor"
 version = "0.1.0"
 dependencies = [

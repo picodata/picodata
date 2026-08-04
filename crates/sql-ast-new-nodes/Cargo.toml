@@ -1,0 +1,19 @@
+[package]
+name = "sql-ast-new-nodes"
+version = "0.1.0"
+rust-version.workspace = true
+authors = ["Picodata"]
+license-file.workspace = true
+edition.workspace = true
+
+[dependencies]
+pest = "2.0"
+smol_str = { workspace = true }
+sql-ast-new-grammar = { path = "../sql-ast-new-grammar" }
+# `sql_ir::errors::SbroadError`, data types, stuff of relation schema
+sql-ir = { path = "../sql-ir" }
+# `sql_type_system::error::Error`
+sql-type-system = { path = "../sql-type-system" }
+
+[dev-dependencies]
+insta = { workspace = true, features = ["yaml"] }

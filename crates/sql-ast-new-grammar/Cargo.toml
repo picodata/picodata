@@ -1,0 +1,11 @@
+[package]
+name = "sql-ast-new-grammar"
+version = "0.1.0"
+rust-version.workspace = true
+authors = ["Picodata"]
+license-file.workspace = true
+edition.workspace = true
+
+[dependencies]
+pest = "2.0"
+pest_derive = "2.0"

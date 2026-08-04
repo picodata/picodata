@@ -200,6 +200,8 @@ members = [
     ".",
     "crates/build-rs-helpers",
     "crates/pico_proc_macro",
+    "crates/sql-ast-new-grammar",
+    "crates/sql-ast-new-nodes",
     "crates/sql-executor",
     "crates/sql-frontend",
     "crates/sql-ir",
