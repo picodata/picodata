@@ -3764,6 +3764,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sql-ast-new-parser"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "lazy_static",
+ "pest",
+ "smol_str",
+ "sql-ast-new-grammar",
+ "sql-ast-new-nodes",
+ "sql-ir",
+]
+
+[[package]]
 name = "sql-executor"
 version = "0.1.0"
 dependencies = [
@@ -3811,6 +3824,8 @@ dependencies = [
  "pest_derive",
  "pretty_assertions",
  "smol_str",
+ "sql-ast-new-nodes",
+ "sql-ast-new-parser",
  "sql-executor",
  "sql-frontend",
  "sql-ir",

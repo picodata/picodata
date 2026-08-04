@@ -21,11 +21,14 @@ impl<'q, State: AstState<'q>> Expr<'q, State> {
     pub(crate) fn precedence(&self) -> Precedence {
         match &self.inner {
             ExprInner::BinaryOperation(operation) => operation.op.precedence(),
-            // The only unary operator the grammar produces is NOT: numeric
-            // signs are folded into the literals at parse time.
-            ExprInner::UnaryOperation(_) | ExprInner::Exists(Exists { is_not: true, .. }) => {
-                Precedence::Not
-            }
+            ExprInner::UnaryOperation(UnaryOperation {
+                operator: UnaryOp::Not,
+                ..
+            })
+            | ExprInner::Exists(Exists { is_not: true, .. }) => Precedence::Not,
+            // The unary signs; a sign directly adjacent to a number is not
+            // this node — it folds into the literal token at parse time.
+            ExprInner::UnaryOperation(_) => Precedence::UnarySign,
             ExprInner::Like(_)
             | ExprInner::Similar(_)
             | ExprInner::Between(_)
@@ -66,8 +69,15 @@ impl<'q, State: AstState<'q>> Display for ExprInner<'q, State> {
             ExprInner::Nil => write!(f, "Nil"),
             ExprInner::BinaryOperation(operation) => write!(f, "{operation}"),
             ExprInner::UnaryOperation(UnaryOperation { operand, operator }) => {
+                // The space after a sign is load-bearing: `- 1` re-parses as
+                // this node over a literal, while a glued `-1` would lex as
+                // one signed-literal token and change the tree shape.
                 write!(f, "{operator} ")?;
-                write_operand(f, operand, Precedence::Not, OperandPos::Left)
+                let tier = match operator {
+                    UnaryOp::Not => Precedence::Not,
+                    UnaryOp::Minus | UnaryOp::Plus => Precedence::UnarySign,
+                };
+                write_operand(f, operand, tier, OperandPos::Left)
             }
             ExprInner::ColumnRef(col_ref) => write!(f, "{col_ref}"),
             ExprInner::Literal(Literal { value, quotes, .. }) => {
@@ -124,6 +134,8 @@ pub enum Precedence {
     Additive,
     /// `* / %`.
     Multiplicative,
+    /// Prefix `-` and `+`: tighter than every infix operator, looser than the postfixes.
+    UnarySign,
     /// Postfix `::type` and `[index]`: one tier, since the grammar accepts
     /// them interleaved (`ExprAtomValue = ... ~ (IndexPostfix | CastPostfix)*`)
     /// and grouping among postfixes is their left-to-right stream order, so
@@ -149,6 +161,15 @@ enum OperandPos {
     NonAssoc,
 }
 
+/// Whether an operand rendered at tier `op` in position `pos` has to be
+/// parenthesized, given the tier `precedence` of its own rendering.
+fn needs_parentheses(precedence: Precedence, op: Precedence, pos: OperandPos) -> bool {
+    match pos {
+        OperandPos::Left => precedence < op,
+        OperandPos::Right | OperandPos::NonAssoc => precedence <= op,
+    }
+}
+
 /// Render `operand` in a position that admits unparenthesized expressions of
 /// tier `op` ([`Left`](OperandPos::Left) position) or strictly tighter
 /// ([`Right`](OperandPos::Right) and [`NonAssoc`](OperandPos::NonAssoc)
@@ -160,12 +181,7 @@ fn write_operand<'q, State: AstState<'q>>(
     op: Precedence,
     pos: OperandPos,
 ) -> Result<(), Error> {
-    let precedence = State::display_precedence(operand);
-    let needs_parentheses = match pos {
-        OperandPos::Left => precedence < op,
-        OperandPos::Right | OperandPos::NonAssoc => precedence <= op,
-    };
-    if needs_parentheses {
+    if needs_parentheses(State::display_precedence(operand), op, pos) {
         write!(f, "({operand})")
     } else {
         write!(f, "{operand}")
@@ -173,6 +189,16 @@ fn write_operand<'q, State: AstState<'q>>(
 }
 
 impl BinaryOp {
+    /// Comparisons are non-associative; every other binary tier is
+    /// left-associative.
+    fn left_operand_pos(&self) -> OperandPos {
+        if matches!(self, BinaryOp::Comparison(_)) {
+            OperandPos::NonAssoc
+        } else {
+            OperandPos::Left
+        }
+    }
+
     fn precedence(&self) -> Precedence {
         match self {
             BinaryOp::Boolean(BooleanOp::Or) => Precedence::Or,
@@ -192,14 +218,7 @@ impl BinaryOp {
 impl<'q, State: AstState<'q>> Display for BinaryOperation<'q, State> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         let precedence = self.op.precedence();
-        // Comparisons are non-associative; every other binary tier is
-        // left-associative.
-        let left_pos = if matches!(self.op, BinaryOp::Comparison(_)) {
-            OperandPos::NonAssoc
-        } else {
-            OperandPos::Left
-        };
-        write_operand(f, &self.left, precedence, left_pos)?;
+        write_operand(f, &self.left, precedence, self.op.left_operand_pos())?;
         write!(f, " {} ", self.op)?;
         write_operand(f, &self.right, precedence, OperandPos::Right)
     }
@@ -334,20 +353,74 @@ impl<'q, State: AstState<'q>> Display for Similar<'q, State> {
     }
 }
 
+/// Whether the bare rendering of `expr` is a `BExpr`: the restricted grammar of
+/// BETWEEN's middle operand, which admits only the symbol operators —
+/// comparisons, `||` and arithmetic — over signed, postfixed primaries. No
+/// keyword operator (AND/OR/NOT/IS/IN/LIKE/SIMILAR/BETWEEN/ESCAPE) may appear
+/// in it, so that the `AND` the parser meets next always closes the BETWEEN.
+///
+/// The tier of the root does not answer this on its own, because a tighter
+/// keyword operator renders bare underneath a symbol one: `('a' LIKE 'b') = true`
+/// is a comparison, but it renders as `'a' LIKE 'b' = true` — correct as a
+/// standalone expression, since `Matching` binds tighter than `Comparison`, and
+/// rejected as a middle operand. So the walk descends through every operand the
+/// rendering leaves unparenthesized.
+///
+/// Mirrors `BExpr` in `query.pest`: a symbol operator added there has to be
+/// admitted here too.
+fn renders_as_bexpr<'q, State: AstState<'q>>(expr: &Expr<'q, State>) -> bool {
+    // Anything binding at the postfix tier or tighter renders as a `CExpr` — a
+    // self-delimited primary under a run of `::type`/`[i]` suffixes — whatever
+    // it holds. This is also how an `Analyzed` node qualifies: its type suffix
+    // parenthesizes whatever it decorates (`(a AND b)::bool`).
+    if State::display_precedence(expr) >= Precedence::Postfix {
+        return true;
+    }
+    match &expr.inner {
+        // `ExprInfixOpNoSep` is every binary tier except the boolean one.
+        ExprInner::BinaryOperation(operation) => {
+            let precedence = operation.op.precedence();
+            !matches!(operation.op, BinaryOp::Boolean(_))
+                && operand_renders_as_bexpr(
+                    &operation.left,
+                    precedence,
+                    operation.op.left_operand_pos(),
+                )
+                && operand_renders_as_bexpr(&operation.right, precedence, OperandPos::Right)
+        }
+        // The unary signs sit inside `CExpr`; prefix `NOT` does not.
+        ExprInner::UnaryOperation(UnaryOperation { operand, operator }) => {
+            !matches!(operator, UnaryOp::Not)
+                && operand_renders_as_bexpr(operand, Precedence::UnarySign, OperandPos::Left)
+        }
+        // `[NOT] EXISTS (...)` is an `AtomicExpr`, keyword and all — the
+        // subquery delimits it — even though the negated form binds at the
+        // `NOT` tier.
+        ExprInner::Exists(_) => true,
+        // Every tier still reachable here is a keyword operator, and `BExpr`
+        // has no production for one.
+        _ => false,
+    }
+}
+
+/// Whether an operand rendered at (`op`, `pos`) stays within `BExpr`: either
+/// [`write_operand`] parenthesizes it into a primary, or it is a `BExpr` itself.
+fn operand_renders_as_bexpr<'q, State: AstState<'q>>(
+    operand: &Expr<'q, State>,
+    op: Precedence,
+    pos: OperandPos,
+) -> bool {
+    needs_parentheses(State::display_precedence(operand), op, pos) || renders_as_bexpr(operand)
+}
+
 impl<'q, State: AstState<'q>> Display for Between<'q, State> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write_operand(f, &self.left, Precedence::Matching, OperandPos::NonAssoc)?;
         write!(f, " {}BETWEEN ", if self.is_not { "NOT " } else { "" })?;
-        // The middle operand is grammatically `BExpr`.
-        // Only the symbol operators — comparisons, `||` and arithmetic — over postfixed atoms.
-        // No keyword operators (AND/OR/NOT/IS/IN/LIKE/SIMILAR/BETWEEN/ESCAPE).
-        let center_precedence = State::display_precedence(&self.center);
-        let center_needs_parentheses =
-            center_precedence < Precedence::Comparison || center_precedence == Precedence::Matching;
-        if center_needs_parentheses {
-            write!(f, "({})", self.center)?;
-        } else {
+        if renders_as_bexpr(&self.center) {
             write!(f, "{}", self.center)?;
+        } else {
+            write!(f, "({})", self.center)?;
         }
         write!(f, " AND ")?;
         write_operand(f, &self.right, Precedence::Matching, OperandPos::NonAssoc)

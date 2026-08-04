@@ -202,6 +202,7 @@ members = [
     "crates/pico_proc_macro",
     "crates/sql-ast-new-grammar",
     "crates/sql-ast-new-nodes",
+    "crates/sql-ast-new-parser",
     "crates/sql-executor",
     "crates/sql-frontend",
     "crates/sql-ir",

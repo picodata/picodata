@@ -144,9 +144,7 @@ impl<'q> From<'q, Analyzed> {
     pub fn pop_entry(&mut self) -> AstResult<FromEntry<'q, Analyzed>> {
         self.tbl_factors
             .pop()
-            .ok_or(ast_invariant_err(format_smolstr!(
-                "expected to find entry in FROM"
-            )))
+            .ok_or_else(|| ast_invariant_err(format_smolstr!("expected to find entry in FROM")))
     }
 
     /// Route a raw reference to `(relation position, column position)` within this FROM.

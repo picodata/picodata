@@ -14,6 +14,8 @@ lazy_static = "1.4"
 pest = "2.0"
 pest_derive = "2.0"
 smol_str = { workspace = true }
+sql-ast-new-nodes = { path = "../sql-ast-new-nodes" }
+sql-ast-new-parser = { path = "../sql-ast-new-parser" }
 sql-ir = { path = "../sql-ir" }
 sql-type-system = { path = "../sql-type-system" }
 sqlformat = { workspace = true }

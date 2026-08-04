@@ -200,10 +200,22 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (WO ~ In ~ WO ~ ((Va
     // A new symbol operator tighter than BETWEEN must be added here as well (via `ExprInfixOpNoSep`).
     BExpr = ${ CExpr ~ (WO ~ ExprInfixOpNoSep ~ WO ~ CExpr)* }
     ExprAtomValue = _{ (UnaryNot ~ WO)* ~ CExpr ~ (WO ~ IsPostfix)* }
-    // Self-delimited primary with any interleaving of index and cast suffixes.
-    // Common operand core of `Expr` and `BExpr`.
-    CExpr = _{ AtomicExpr ~ (IndexPostfix | CastPostfix)* }
+    // Self-delimited primary with any interleaving of index and cast suffixes,
+    // optionally preceded by unary signs (`- a`, `+ a[1]`, `- - a`).
+    // Common operand core of `Expr` and `BExpr` — like PostgreSQL's `b_expr`,
+    // BETWEEN's middle operand admits the signs too.
+    // The signs sit inside the operand rule, so they bind tighter than every
+    // infix operator; the Pratt parser puts the postfixes (`::`, `[]`) tighter
+    // still, as in PG (`-a::int` is `-(a::int)`).
+    CExpr = _{ (UnarySign ~ WO)* ~ AtomicExpr ~ (IndexPostfix | CastPostfix)* }
         UnaryNot   = { NotFlag }
+        UnarySign = _{ UnaryMinus | UnaryPlus }
+            // `!ASCII_DIGIT` makes a sign-adjacent number lex as one signed
+            // literal token (below), keeping `-1` a literal and letting
+            // i64::MIN's spelling fit. The sign-repetition guards (`!"-"`, `!"+"`)
+            // keep `--`/`++` a syntax error.
+            UnaryMinus = @{ "-" ~ !("-" | ASCII_DIGIT) }
+            UnaryPlus  = @{ "+" ~ !("+" | ASCII_DIGIT) }
         IndexPostfix = { WO ~ "[" ~ WO ~ Expr ~ WO ~ "]" }
         CastPostfix = { WO ~ "::" ~ WO ~ CastTarget }
         IsPostfix = ${ ^"is" ~ KwEnd ~ WO ~ (NotFlag ~ WO)? ~ (True | False | Unknown | Null) }

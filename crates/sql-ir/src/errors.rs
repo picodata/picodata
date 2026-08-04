@@ -256,6 +256,8 @@ pub enum Action {
     Truncate,
     Update,
     Upsert,
+    Parse,
+    Analyze,
 }
 
 impl fmt::Display for Action {
@@ -283,6 +285,8 @@ impl fmt::Display for Action {
             Action::Truncate => "truncate".to_smolstr(),
             Action::Update => "update".to_smolstr(),
             Action::Upsert => "upsert".to_smolstr(),
+            Action::Parse => "parse".to_smolstr(),
+            Action::Analyze => "analyze".to_smolstr(),
         };
         write!(f, "{p}")
     }

@@ -39,8 +39,10 @@ pub fn transform_into_plan(
     param_types: &[DerivedType],
     metadata: &impl Metadata,
 ) -> Result<Plan, SbroadError> {
-    if let Ok(ast) = crate::frontend::sql::ast_new::AbstractSyntaxTree::new(query) {
-        if let Ok(analyzed) = ast.analyze(metadata, param_types) {
+    if let Ok(ast) = crate::frontend::sql::ast_new::new_stub(query) {
+        if let Ok(analyzed) =
+            crate::frontend::sql::ast_new::analyze_stub(ast, metadata, param_types)
+        {
             if let Ok(plan) = Planner::new().plan(analyzed) {
                 return Ok(plan);
             }
@@ -49,7 +51,7 @@ pub fn transform_into_plan(
     transform_into_plan_old(query, param_types, metadata)
 }
 
-fn transform_into_plan_old(
+pub fn transform_into_plan_old(
     query: &str,
     param_types: &[DerivedType],
     metadata: &impl Metadata,
