@@ -18,42 +18,82 @@ use crate::ir::Plan;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BucketSet {
     /// The actual `bucket_id`, which we can only determine at runtime.
+    ///
+    /// The `bucket_id`s are known here, so for a pair of `Exact` sets both
+    /// operations are exact as well: conjunction (`AND`) intersects the sets,
+    /// disjunction (`OR`) unites them, dropping the duplicates.
     Exact(HashSet<u64, RepeatableState>),
     /// Lower and upper bound, inclusive for the number of distinct `bucket_id`s.
     /// This field is used only for static analysis during planning.
-    Unknown(usize, usize),
+    ///
+    /// The `bucket_id`s behind the bounds are unknown, so as soon as such an
+    /// operand takes part in an operation, the result can't be an `Exact` set
+    /// anymore and we propagate the bounds only (an `Exact` operand contributes
+    /// its length as both of its bounds):
+    /// - conjunction (`AND`) takes the minimum of the upper bounds, as an
+    ///   intersection is never larger than the smaller operand, and resets the
+    ///   lower bound to 0, as the operands may be disjoint (`a = 1 and a = 2`);
+    /// - disjunction (`OR`) sums both bounds, as we can't detect an overlap
+    ///   between the operands and have to treat them as disjoint. The sums are
+    ///   saturating to avoid overflow.
+    EstimatedCount { lower: usize, upper: usize },
 }
 
 impl BucketSet {
+    /// Intersection of the `bucket_id`s the sets stand for.
     fn conjunct(&self, other: &BucketSet) -> Result<BucketSet, SbroadError> {
         match (self, other) {
-            (BucketSet::Exact(a), BucketSet::Exact(b)) => {
-                Ok(BucketSet::Exact(a.intersection(b).copied().collect()))
+            (BucketSet::Exact(a_set), BucketSet::Exact(b_set)) => Ok(BucketSet::Exact(
+                a_set.intersection(b_set).copied().collect(),
+            )),
+            (BucketSet::Exact(set), BucketSet::EstimatedCount { upper, .. })
+            | (BucketSet::EstimatedCount { upper, .. }, BucketSet::Exact(set)) => {
+                Ok(BucketSet::EstimatedCount {
+                    lower: 0,
+                    upper: set.len().min(*upper),
+                })
             }
-            (BucketSet::Exact(a), BucketSet::Unknown(_, rb))
-            | (BucketSet::Unknown(_, rb), BucketSet::Exact(a)) => {
-                Ok(BucketSet::Unknown(0, a.len().min(*rb)))
-            }
-            (BucketSet::Unknown(_, ra), BucketSet::Unknown(_, rb)) => {
-                Ok(BucketSet::Unknown(0, *ra.min(rb)))
+            (
+                BucketSet::EstimatedCount { upper: a_upper, .. },
+                BucketSet::EstimatedCount { upper: b_upper, .. },
+            ) => {
+                let lower = 0;
+                let upper = *a_upper.min(b_upper);
+                Ok(BucketSet::EstimatedCount { lower, upper })
             }
         }
     }
 
+    /// Union of the `bucket_id`s the sets stand for.
     fn disjunct(&self, other: &BucketSet) -> Result<BucketSet, SbroadError> {
         match (self, other) {
-            (BucketSet::Exact(a), BucketSet::Exact(b)) => {
-                Ok(BucketSet::Exact(a.union(b).copied().collect()))
+            (BucketSet::Exact(a_set), BucketSet::Exact(b_set)) => {
+                Ok(BucketSet::Exact(a_set.union(b_set).copied().collect()))
             }
-            (BucketSet::Exact(a), BucketSet::Unknown(lb, rb))
-            | (BucketSet::Unknown(lb, rb), BucketSet::Exact(a)) => Ok(BucketSet::Unknown(
-                a.len().saturating_add(*lb),
-                a.len().saturating_add(*rb),
-            )),
-            (BucketSet::Unknown(la, ra), BucketSet::Unknown(lb, rb)) => Ok(BucketSet::Unknown(
-                la.saturating_add(*lb),
-                ra.saturating_add(*rb),
-            )),
+            (BucketSet::Exact(set), BucketSet::EstimatedCount { lower, upper })
+            | (BucketSet::EstimatedCount { lower, upper }, BucketSet::Exact(set)) => {
+                let final_lower = set.len().saturating_add(*lower);
+                let final_upper = set.len().saturating_add(*upper);
+                Ok(BucketSet::EstimatedCount {
+                    lower: final_lower,
+                    upper: final_upper,
+                })
+            }
+            (
+                BucketSet::EstimatedCount {
+                    lower: a_lower,
+                    upper: a_upper,
+                },
+                BucketSet::EstimatedCount {
+                    lower: b_lower,
+                    upper: b_upper,
+                },
+            ) => {
+                let lower = a_lower.saturating_add(*b_lower);
+                let upper = a_upper.saturating_add(*b_upper);
+
+                Ok(BucketSet::EstimatedCount { lower, upper })
+            }
         }
     }
 }
@@ -86,8 +126,11 @@ impl Buckets {
 
     /// Get an unknown set of buckets.
     #[must_use]
-    pub fn new_unknown(count: usize) -> Self {
-        Buckets::Filtered(BucketSet::Unknown(count, count))
+    pub fn new_estimated(count: usize) -> Self {
+        Buckets::Filtered(BucketSet::EstimatedCount {
+            lower: count,
+            upper: count,
+        })
     }
 
     /// Returns `true` if a query with these buckets can be executed
@@ -99,7 +142,7 @@ impl Buckets {
         match self {
             // We should insert `Motion(Full)` when lower bound is 0.
             // https://git.picodata.io/core/picodata/-/issues/2788
-            Buckets::Filtered(BucketSet::Unknown(1, 1)) => true,
+            Buckets::Filtered(BucketSet::EstimatedCount { lower: 1, upper: 1 }) => true,
             Buckets::Filtered(BucketSet::Exact(a)) if a.len() == 1 => true,
             Buckets::Any | Buckets::All | Buckets::Filtered(_) => false,
         }
@@ -154,11 +197,11 @@ impl Display for Buckets {
                 }
                 write!(f, "]")
             }
-            Buckets::Filtered(BucketSet::Unknown(l, r)) => {
-                if l != r {
-                    write!(f, "unknown({l}..={r})")
+            Buckets::Filtered(BucketSet::EstimatedCount { lower, upper }) => {
+                if lower != upper {
+                    write!(f, "estimated count ({lower}..={upper})")
                 } else {
-                    write!(f, "unknown({l})")
+                    write!(f, "estimated count ({lower})")
                 }
             }
         }
@@ -308,7 +351,7 @@ impl Plan {
                             continue;
                         }
                         if has_parameter {
-                            buckets.push(Buckets::new_unknown(1));
+                            buckets.push(Buckets::new_estimated(1));
                         } else if !values.is_empty() {
                             let values_buckets = resolver.buckets_from_values(&values, tier)?;
                             buckets.push(values_buckets);

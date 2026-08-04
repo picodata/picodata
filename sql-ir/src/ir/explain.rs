@@ -1595,11 +1595,11 @@ pub fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
 
             format!("[{}]", ranges.join(","))
         }
-        Buckets::Filtered(BucketSet::Unknown(l, r)) => {
-            if l != r {
-                format!("unknown({l}..={r})")
+        Buckets::Filtered(BucketSet::EstimatedCount { lower, upper }) => {
+            if lower != upper {
+                format!("estimated count ({lower}..={upper})")
             } else {
-                format!("unknown({l})")
+                format!("estimated count ({lower})")
             }
         }
         Buckets::Any => "any".into(),
