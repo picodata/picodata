@@ -218,7 +218,7 @@ buckets = any
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: buckets-raw-fmt-delete
 -- SQL:
@@ -666,7 +666,7 @@ forward analysis (on > ro_to_rw > off):
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: raw-buckets-forward-logical-fmt-select-join
 -- SQL:
@@ -1698,7 +1698,7 @@ buckets <= [1-3000]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: buckets-does-not-intersperse-with-raw-for-transactions
 -- SQL:
@@ -1823,7 +1823,7 @@ buckets <= [1-3000]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: raw-buckets-logical-select-dyn-filtered
 -- SQL:
@@ -1897,7 +1897,7 @@ buckets <= [1-3000]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 
 -- TEST: raw-buckets-logical-select-order-by-dyn-filtered
@@ -1998,7 +1998,7 @@ buckets = any
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 
 -- TEST: raw-buckets-cte
@@ -2163,7 +2163,7 @@ buckets <= [1410,1934,1958]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 
 -- TEST: raw-buckets-select-with-dyn-filtered
@@ -2255,7 +2255,7 @@ buckets <= [1-3000]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: raw-buckets-select-with-empty-buckets
 -- SQL:

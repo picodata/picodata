@@ -6622,7 +6622,7 @@ projection (t.a::int -> a)
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = unknown\
+buckets <= [1-3000]\
 """)
 
     # Reading from global table
@@ -6742,7 +6742,7 @@ update t2 (c = col_0, bucket_id = col_1, d = col_2)
  # Buckets                                                            \n\
 ──────────────────────────────────────────────────────────────────────
 
-buckets = unknown\
+buckets <= [1-3000]\
 """)
 
     # Delete

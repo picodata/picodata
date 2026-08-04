@@ -201,7 +201,7 @@ buckets <= [1-3000]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = unknown
+buckets <= [1-3000]
 
 -- TEST: test-cross-table-constant-conditions-0
 -- SQL:

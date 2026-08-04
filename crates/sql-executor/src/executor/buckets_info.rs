@@ -1,12 +1,12 @@
 //! Bucket estimation for EXPLAIN of executing queries.
 
 use ahash::AHashSet;
+use sql_ir::ir::explain::execution_info::BoundedBuckets;
 
 use crate::errors::SbroadError;
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ExecutingQuery;
 use crate::ir::bucket::Buckets;
-use crate::ir::explain::execution_info::BucketsInfo;
 use crate::ir::node::{block::BlockOwned, relational::Relational, Motion, Node, NodeId};
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
@@ -14,19 +14,15 @@ use crate::ir::Plan;
 
 /// Estimate on which buckets query will be executed.
 /// If query consists only of single subtree we
-/// can predict buckets precisely. If there are multiple
-/// subtrees we calculate the upper bound:
+/// can predict buckets precisely. Otherwise the
+/// upper bound is returned.
 ///
 /// We gather all subtrees from plan that don't have
 /// non-local motions and call `bucket_discovery` for
-/// each such node, then we merge (disjunct) all buckets
-/// for upper bound estimate.
-///
-/// In case we can't compute buckets for this query, we
-/// `BucketsInfo::Unknown` variant.
-pub fn buckets_info_from_query<R: Router>(
+/// each such node, then we merge (disjunct) all buckets.
+pub fn bounded_buckets_from_query<R: Router>(
     query: &mut ExecutingQuery<'_, R>,
-) -> Result<BucketsInfo, SbroadError> {
+) -> Result<BoundedBuckets, SbroadError> {
     let ir = query.get_exec_plan().get_ir_plan();
     let coord = query.get_coordinator();
     let vshard = coord.get_current_vshard_object().unwrap();
@@ -39,19 +35,18 @@ pub fn buckets_info_from_query<R: Router>(
             unreachable!("plan.is_block() returned true, but top is {block:?}")
         };
         let buckets = query.calculate_block_buckets(&block)?;
-        return Ok(BucketsInfo::new_calculated(buckets, bucket_count));
+        return Ok(BoundedBuckets::new(buckets, bucket_count));
     }
 
     if ir.is_sharded_insert()? {
         let buckets = query.try_calculate_sharded_insert_buckets()?;
 
-        return Ok(buckets.map_or(BucketsInfo::Unknown, |buckets| {
-            BucketsInfo::new_calculated(buckets, bucket_count)
-        }));
+        let actual_buckets = buckets.unwrap_or(Buckets::All);
+        return Ok(BoundedBuckets::new(actual_buckets, bucket_count));
     }
 
     if !can_estimate_buckets(ir)? {
-        return Ok(BucketsInfo::Unknown);
+        return Ok(BoundedBuckets::new(Buckets::All, bucket_count));
     }
 
     let top_id = ir.get_top()?;
@@ -127,7 +122,7 @@ pub fn buckets_info_from_query<R: Router>(
     }
 
     let buckets = estimated_buckets.expect("there's at least one subtree");
-    let buckets_info = BucketsInfo::new_calculated(buckets, bucket_count);
+    let buckets_info = BoundedBuckets::new(buckets, bucket_count);
 
     Ok(buckets_info)
 }
