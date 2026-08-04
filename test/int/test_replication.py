@@ -297,6 +297,10 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
 def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     cluster: Cluster,
 ):
+    # This test waits on the governor switching a replicaset master over while
+    # a replica is offline, so keep the stock governor rpc timeouts instead of
+    # the CI-tuned ones.
+    cluster.tune_timeouts = False
     # These guys are for quorum.
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
     # These are being tested.

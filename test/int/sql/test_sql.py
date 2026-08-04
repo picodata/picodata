@@ -6080,6 +6080,9 @@ def test_limit(cluster: Cluster):
 
 
 def test_alter_system_property(cluster: Cluster):
+    # This test asserts on the default values of the parameters that the
+    # CI timeout tuning overrides, so it must see the stock defaults.
+    cluster.tune_timeouts = False
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
 

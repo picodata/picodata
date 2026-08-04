@@ -2977,6 +2977,9 @@ cluster:
 """
     )
 
+    # Governor reaction timing is what this test asserts on, so keep the stock
+    # governor rpc timeouts instead of the CI-tuned ones.
+    cluster.tune_timeouts = False
     leader = cluster.add_instance(tier="default", wait_online=False)
     cluster.add_instance(tier="storage", wait_online=False)
     cluster.add_instance(tier="storage", wait_online=False)

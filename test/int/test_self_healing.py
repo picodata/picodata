@@ -15,6 +15,9 @@ def normalize_durations(reason: str) -> str:
 
 @pytest.fixture
 def cluster3(cluster: Cluster):
+    # These tests assert on how quickly the cluster reacts to failures, so
+    # keep the stock governor rpc timeouts instead of the CI-tuned ones.
+    cluster.tune_timeouts = False
     cluster.deploy(instance_count=3)
     return cluster
 
@@ -239,6 +242,9 @@ def test_instance_automatic_offline_after_leader_change(cluster: Cluster):
 
 @pytest.mark.skip_asan("Raft leader step-down races the observed governor status under ASan overhead")
 def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
+    # Governor reaction timing is what this test asserts on, so keep the stock
+    # governor rpc timeouts instead of the CI-tuned ones.
+    cluster.tune_timeouts = False
     i1, i2, i3 = cluster.deploy(instance_count=3)
 
     i2.call("pico._inject_error", "BLOCK_WHEN_PERSISTING_DDL_COMMIT", True)
@@ -266,6 +272,9 @@ def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
 
 
 def test_sentinel_backoff(cluster: Cluster):
+    # Governor reaction timing is what this test asserts on, so keep the stock
+    # governor rpc timeouts instead of the CI-tuned ones.
+    cluster.tune_timeouts = False
     i1, i2, i3 = cluster.deploy(instance_count=3)
 
     # Make it so the instance stops receiving raft log updates right after it

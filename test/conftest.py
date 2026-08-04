@@ -245,6 +245,11 @@ def _apply_timeout_scale_factor(config: pytest.Config):
         log.info(f"Scaled timeout by {scale_factor}: {ini_timeout} -> {scaled}")
 
 
+def get_pytest_timeout(config: pytest.Config) -> float:
+    """Per-test timeout from pytest-timeout as a number, not the raw ini string."""
+    return float(config.getini("timeout"))
+
+
 def pytest_addoption(parser: pytest.Parser):
     parser.addoption(
         "--with-flamegraph",
@@ -2283,6 +2288,12 @@ class Cluster:
     # Used to set ALTER SYSTEM sql_ddl_timeout after cluster starts.
     pytest_timeout: int | float | None = None
 
+    # Tests which assert on governor reaction timing must opt out of the CI
+    # timeout tuning done in `wait_online`, otherwise the governor is too slow
+    # to react and such tests hit the pytest timeout. Tests which assert on the
+    # default values of the tuned parameters must opt out as well.
+    tune_timeouts: bool = True
+
     def __repr__(self):
         ports = ",".join(str(i.port) for i in self.instances)
         return f'Cluster("{self.base_host}:{{{ports}}}", n={len(self.instances)})'
@@ -2537,18 +2548,26 @@ class Cluster:
 
         log.info(f" {self} deployed ".center(80, "="))
 
-        # Set DDL timeout from the pytest-timeout setting so that
-        # tests don't need to hardcode OPTION(TIMEOUT = N) in SQL.
-        # Skip on old versions (e.g. rolling upgrade tests) that
-        # don't have the sql_ddl_timeout parameter.
-        if self.pytest_timeout and self.instances:
-            try:
+        # For stability in loaded CI increase various timeouts up to pytest-timeout value.
+        # Setting timeouts with ALTER SYSTEM so that tests don't need to hardcode OPTION(TIMEOUT = N)
+        # for ddl timeout and manually tweak other timeouts that cant be set per query.
+        if self.tune_timeouts and self.pytest_timeout and self.instances:
+            for timeout_parameter_name in [
+                "sql_ddl_timeout",
+                "governor_ddl_rpc_timeout",
+                "governor_plugin_rpc_timeout",
+            ]:
+                # check if parameter exists (supported on this version of picodata - important for rolling tests)
+                res = self.instances[0].sql(
+                    f"SELECT key FROM _pico_db_config WHERE key='{timeout_parameter_name}'",
+                )
+                if not res:
+                    continue
+
                 self.instances[0].sql(
-                    f"ALTER SYSTEM SET sql_ddl_timeout = {self.pytest_timeout}",
+                    f"ALTER SYSTEM SET {timeout_parameter_name} = {self.pytest_timeout}",
                     sudo=True,
                 )
-            except Exception:
-                pass
 
         return self.instances
 
@@ -3324,7 +3343,7 @@ def class_tmp_dir(tmpdir_factory):
 
 @pytest.fixture(scope="class")
 def cluster_factory(class_tmp_dir, cluster_names, port_distributor, cargo_build_fixt, request):
-    pytest_timeout = request.config.getini("timeout")
+    pytest_timeout = get_pytest_timeout(request.config)
 
     def cluster_factory_():
         # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
@@ -3369,7 +3388,7 @@ def second_cluster(tmpdir, cluster_names, port_distributor, cargo_build_fixt, re
         data_dir=cluster2_dir,
         base_host=BASE_HOST,
         port_distributor=port_distributor,
-        pytest_timeout=request.config.getini("timeout"),
+        pytest_timeout=get_pytest_timeout(request.config),
     )
 
     cluster.set_service_password("password")

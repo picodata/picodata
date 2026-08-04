@@ -1323,6 +1323,9 @@ DROP DATABASE everything;
 
 
 def test_migration_lock(cluster: Cluster):
+    # This test relies on sentinel noticing a frozen instance, which the
+    # CI-tuned governor rpc timeouts make far too slow.
+    cluster.tune_timeouts = False
     i1 = cluster.add_instance(wait_online=True)
     i2 = cluster.add_instance(wait_online=False, replicaset_name="storage")
     i3 = cluster.add_instance(wait_online=False, replicaset_name="storage")
