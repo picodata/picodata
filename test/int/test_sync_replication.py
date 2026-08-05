@@ -1303,7 +1303,7 @@ cluster:
 
     # Writes do not work: the master alone does not meet the synchro quorum.
     with pytest.raises(TimeoutError):
-        master.sql("INSERT INTO t VALUES (42, 'ok')")
+        master.sql("INSERT INTO t VALUES (42, 'ok')", timeout=10)
     assert master.eval("return box.space.t:count()") == 1
     assert master.eval("return box.info.synchro.queue.len") == 0
 

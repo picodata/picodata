@@ -1888,7 +1888,8 @@ def test_operability_of_global_and_sharded_table(cluster: Cluster):
         i1.sql(
             f"""
             CREATE TABLE {table_name} (id INTEGER PRIMARY KEY);
-            """
+            """,
+            timeout=10,
         )
 
     with pytest.raises(TarantoolError) as err:
@@ -1915,7 +1916,8 @@ def test_operability_of_global_and_sharded_table(cluster: Cluster):
         i1.sql(
             f"""
             CREATE TABLE {table_name} (id INTEGER PRIMARY KEY) DISTRIBUTED GLOBALLY;
-            """
+            """,
+            timeout=10,
         )
 
     with pytest.raises(TarantoolError) as err:
@@ -2033,7 +2035,7 @@ def test_truncate_stops_rebalancing_before(cluster: Cluster):
     with pytest.raises(TimeoutError):
         # Send TRUNCATE request before rebalancing starts.
         # It should be blocked.
-        r1.sql("TRUNCATE test")
+        r1.sql("TRUNCATE test", timeout=10)
     lc.wait_matched()
 
     # Check that all buckets are stored on the r1.
@@ -2126,7 +2128,7 @@ def test_truncate_stops_rebalancing_after(cluster: Cluster):
     with pytest.raises(TimeoutError):
         # Execute TRUNCATE while rebalancing is in progress.
         # If fails because rebalancer has refed storages.
-        r1.sql("TRUNCATE test")
+        r1.sql("TRUNCATE test", timeout=10)
 
     lc = log_crawler(rebalancer_r, "The cluster is balanced ok")
     r1.eval("vshard.storage.internal.errinj.ERRINJ_LAST_SEND_DELAY = false")
@@ -2230,7 +2232,7 @@ def test_truncate_is_applied_during_node_wakeup_for_sharded_table(cluster: Clust
     with pytest.raises(TimeoutError):
         # TRUNCATE can't be executed because one of
         # the replicasets masters is down.
-        i1.sql("TRUNCATE t")
+        i1.sql("TRUNCATE t", timeout=10)
 
     # Table should not be operable before schema change is completed (before TRUNCATE is applied
     # on all replicasets' masters).
@@ -2305,7 +2307,7 @@ def test_truncate_is_applied_from_snapshot_for_sharded_table(cluster: Cluster):
     i2.terminate()
 
     with pytest.raises(TimeoutError):
-        i1.sql("TRUNCATE t")
+        i1.sql("TRUNCATE t", timeout=10)
 
     # Compact the log to trigger snapshot applying on the catching up instance.
     i1.raft_compact_log()

@@ -307,7 +307,7 @@ def test_backup_abort_is_called(cluster: Cluster):
     lc = log_crawler(i1, injection_log)
     with pytest.raises(TimeoutError):
         # Send BACKUP request.
-        i1.sql("BACKUP")
+        i1.sql("BACKUP", timeout=10)
     lc.wait_matched()
 
     # Manually call box.backup.start() to cause abort of backup.
@@ -339,7 +339,7 @@ def test_backup_enables_read_only_on_prepare_sharded(cluster: Cluster):
     lc = log_crawler(i1, injection_log)
     with pytest.raises(TimeoutError):
         # Send BACKUP request.
-        i1.sql("BACKUP")
+        i1.sql("BACKUP", timeout=10)
     lc.wait_matched()
 
     with pytest.raises(TarantoolError, match="cannot be modified now as DDL operation is in progress"):
@@ -376,7 +376,7 @@ def test_backup_enables_read_only_on_prepare_global(cluster: Cluster):
     lc = log_crawler(i1, injection_log)
     with pytest.raises(TimeoutError):
         # Send BACKUP request.
-        i1.sql("BACKUP")
+        i1.sql("BACKUP", timeout=10)
     lc.wait_matched()
 
     # Write to global table is disabled because its `operable`
@@ -413,7 +413,7 @@ def test_backup_disables_read_only_mode_on_abort(cluster: Cluster):
     lc = log_crawler(i1, injection_log)
     with pytest.raises(TimeoutError):
         # Send BACKUP request.
-        i1.sql("BACKUP")
+        i1.sql("BACKUP", timeout=10)
     lc.wait_matched()
 
     with pytest.raises(TarantoolError, match="cannot be modified now as DDL operation is in progress"):
@@ -517,7 +517,7 @@ def _test_backup_executes_correctly_on_instance_termination(cluster: Cluster):
 
     # Backup is not executed because one instance is down.
     with pytest.raises(TimeoutError):
-        i2.sql("BACKUP")
+        i2.sql("BACKUP", timeout=10)
 
     # Restart i1.
     i1.start()
@@ -562,7 +562,7 @@ def test_backup_aborts_on_instance_restart(cluster: Cluster):
     # Backup is not executed because of the error injection.
     lc = log_crawler(i3, injection_log)
     with pytest.raises(TimeoutError):
-        i2.sql("BACKUP")
+        i2.sql("BACKUP", timeout=10)
     lc.wait_matched()
 
     # now restart i3
@@ -606,7 +606,7 @@ def _test_backup_makes_replica_read_only_on_master_down(cluster: Cluster):
 
     lc = log_crawler(i1, injection_log)
     with pytest.raises(TimeoutError):
-        i1.sql("BACKUP")
+        i1.sql("BACKUP", timeout=10)
     lc.wait_matched()
 
     # i1 is in read-only mode.
@@ -701,7 +701,7 @@ def test_backup_removes_partially_created_dir_on_abort(cluster: Cluster):
     with pytest.raises(TimeoutError):
         # Send BACKUP request.
         # Backup directory would be created on i1, but not on i2.
-        i1.sql("BACKUP")
+        i1.sql("BACKUP", timeout=10)
     lc.wait_matched()
 
     new_backup_timestamp = get_backup_timestamp_unfinished(i1)
@@ -754,7 +754,7 @@ def test_backup_does_not_fail_when_backup_retries(cluster: Cluster):
     with pytest.raises(TimeoutError):
         # Send BACKUP request.
         # Backup directory would be created on i1, but not on i2.
-        i1.sql("BACKUP")
+        i1.sql("BACKUP", timeout=10)
     lc.wait_matched()
 
     new_backup_timestamp = get_backup_timestamp_unfinished(i1)
@@ -1029,7 +1029,7 @@ def test_backup_manual_abort(cluster: Cluster):
     # Backup is not completed because a replica is down.
     lc = log_crawler(i3, injection_log)
     with pytest.raises(TimeoutError):
-        i2.sql("BACKUP")
+        i2.sql("BACKUP", timeout=10)
     lc.wait_matched()
 
     # we cannot insert into t1 due to an in-progress backup DDL

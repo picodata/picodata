@@ -254,7 +254,8 @@ def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
         i1.sql(
             """
             CREATE TABLE dining_table (id INTEGER NOT NULL PRIMARY KEY) DISTRIBUTED BY (id)
-            """
+            """,
+            timeout=10,
         )
 
     # Wait until governor starts applying the DDL.

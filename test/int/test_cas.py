@@ -491,7 +491,7 @@ def test_cas_operable_table(cluster: Cluster):
     i1.wait_online()
 
     with pytest.raises(TimeoutError):
-        i1.sql("CREATE TABLE warehouse (id INTEGER PRIMARY KEY) DISTRIBUTED GLOBALLY;")
+        i1.sql("CREATE TABLE warehouse (id INTEGER PRIMARY KEY) DISTRIBUTED GLOBALLY;", timeout=10)
     lc.wait_matched()
 
     with pytest.raises(TarantoolError) as e1:

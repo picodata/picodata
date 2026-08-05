@@ -920,6 +920,9 @@ class Instance:
     symlink_created = False
     cluster: "Cluster | None" = None
 
+    # Used as a timeout for network operations
+    pytest_timeout: int | float | None = None
+
     @property
     def instance_dir(self):
         assert self._instance_dir
@@ -1191,7 +1194,7 @@ class Instance:
         sudo=False,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = DEFAULT_RPC_TIMEOUT,
+        timeout: Optional[int | float] = None,
         error_log_level: int = logging.ERROR,
     ):
         """
@@ -1203,6 +1206,10 @@ class Instance:
             If the response instead contains just the "row_count" field, this
             parameter is ignored.
         """
+
+        if timeout is None:
+            timeout = self.pytest_timeout if self.pytest_timeout is not None else DEFAULT_RPC_TIMEOUT
+
         # NOTE: Not using short_expr at first intentionally
         log.info(f"{self.name or self.port} RPC SQL `{sql}` {clamp_for_logs(params)} {options}", stacklevel=2)
         short_sql = shorten_expr_for_log(sql)
@@ -2704,6 +2711,7 @@ class Cluster:
             config_path=self.config_path,
             audit=audit,
             cluster=self,
+            pytest_timeout=self.pytest_timeout,
         )
 
         instance.setup_logging(log_to_console, log_to_file, os.getenv("INSTANCE_LOG"))

@@ -116,7 +116,7 @@ def test_replica_error(cluster: Cluster):
 
     # i1 is the only node in replicaset (leader)
     with pytest.raises(TimeoutError):
-        i1.sql(dql_query)
+        i1.sql(dql_query, timeout=10)
 
 
 def test_replica_alter_system(cluster: Cluster):
