@@ -115,7 +115,7 @@ pub fn bounded_buckets_from_query<R: Router>(
     for child_id in &without_motions_ids {
         let buckets = query.bucket_discovery(*child_id)?;
         if let Some(ebuckets) = estimated_buckets.as_mut() {
-            *ebuckets = ebuckets.disjunct(&buckets)?;
+            *ebuckets = ebuckets.disjunct(&buckets);
         } else {
             estimated_buckets = Some(buckets);
         }

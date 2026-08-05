@@ -429,7 +429,7 @@ where
                         .bucket_map
                         .get(&second_rel.output())
                         .expect("of the second union all child from the bucket map.");
-                    let buckets = first_buckets.disjunct(second_buckets)?;
+                    let buckets = first_buckets.disjunct(second_buckets);
                     self.bucket_map.insert(*output, buckets);
                 }
                 Relational::Intersect(Intersect {
@@ -448,7 +448,7 @@ where
                         .bucket_map
                         .get(&second_rel.output())
                         .expect("of the second intersect child from the bucket map.");
-                    let buckets = first_buckets.disjunct(second_buckets)?;
+                    let buckets = first_buckets.disjunct(second_buckets);
                     self.bucket_map.insert(*output, buckets);
                 }
                 Relational::Selection(Selection {
@@ -490,7 +490,7 @@ where
                     };
 
                     self.bucket_map
-                        .insert(output_id, child_buckets.conjunct(&filter_buckets)?);
+                        .insert(output_id, child_buckets.conjunct(&filter_buckets));
                 }
                 Relational::Join(Join {
                     left,
@@ -535,10 +535,10 @@ where
                                 &resolver,
                             )?;
                             inner_buckets
-                                .disjunct(&outer_buckets)?
-                                .conjunct(&filter_buckets)?
+                                .disjunct(&outer_buckets)
+                                .conjunct(&filter_buckets)
                         }
-                        JoinKind::LeftOuter => inner_buckets.disjunct(&outer_buckets)?,
+                        JoinKind::LeftOuter => inner_buckets.disjunct(&outer_buckets),
                     };
                     self.bucket_map.insert(output_id, join_buckets);
                 }
