@@ -1,8 +1,6 @@
 use std::collections::HashSet;
 use std::fmt::Display;
 
-use itertools::FoldWhile::{Continue, Done};
-use itertools::Itertools;
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr};
 
@@ -41,17 +39,17 @@ pub enum BucketSet {
 
 impl BucketSet {
     /// Intersection of the `bucket_id`s the sets stand for.
-    fn conjunct(&self, other: &BucketSet) -> Result<BucketSet, SbroadError> {
+    fn conjunct(&self, other: &BucketSet) -> BucketSet {
         match (self, other) {
-            (BucketSet::Exact(a_set), BucketSet::Exact(b_set)) => Ok(BucketSet::Exact(
-                a_set.intersection(b_set).copied().collect(),
-            )),
+            (BucketSet::Exact(a_set), BucketSet::Exact(b_set)) => {
+                BucketSet::Exact(a_set.intersection(b_set).copied().collect())
+            }
             (BucketSet::Exact(set), BucketSet::EstimatedCount { upper, .. })
             | (BucketSet::EstimatedCount { upper, .. }, BucketSet::Exact(set)) => {
-                Ok(BucketSet::EstimatedCount {
+                BucketSet::EstimatedCount {
                     lower: 0,
                     upper: set.len().min(*upper),
-                })
+                }
             }
             (
                 BucketSet::EstimatedCount { upper: a_upper, .. },
@@ -59,25 +57,25 @@ impl BucketSet {
             ) => {
                 let lower = 0;
                 let upper = *a_upper.min(b_upper);
-                Ok(BucketSet::EstimatedCount { lower, upper })
+                BucketSet::EstimatedCount { lower, upper }
             }
         }
     }
 
     /// Union of the `bucket_id`s the sets stand for.
-    fn disjunct(&self, other: &BucketSet) -> Result<BucketSet, SbroadError> {
+    fn disjunct(&self, other: &BucketSet) -> BucketSet {
         match (self, other) {
             (BucketSet::Exact(a_set), BucketSet::Exact(b_set)) => {
-                Ok(BucketSet::Exact(a_set.union(b_set).copied().collect()))
+                BucketSet::Exact(a_set.union(b_set).copied().collect())
             }
             (BucketSet::Exact(set), BucketSet::EstimatedCount { lower, upper })
             | (BucketSet::EstimatedCount { lower, upper }, BucketSet::Exact(set)) => {
                 let final_lower = set.len().saturating_add(*lower);
                 let final_upper = set.len().saturating_add(*upper);
-                Ok(BucketSet::EstimatedCount {
+                BucketSet::EstimatedCount {
                     lower: final_lower,
                     upper: final_upper,
-                })
+                }
             }
             (
                 BucketSet::EstimatedCount {
@@ -92,7 +90,7 @@ impl BucketSet {
                 let lower = a_lower.saturating_add(*b_lower);
                 let upper = a_upper.saturating_add(*b_upper);
 
-                Ok(BucketSet::EstimatedCount { lower, upper })
+                BucketSet::EstimatedCount { lower, upper }
             }
         }
     }
@@ -149,34 +147,26 @@ impl Buckets {
     }
 
     /// Conjunction of two sets of buckets.
-    ///
-    /// # Errors
-    /// - Buckets that can't be conjuncted
-    pub fn conjunct(&self, buckets: &Buckets) -> Result<Buckets, SbroadError> {
-        let buckets = match (self, buckets) {
+    pub fn conjunct(&self, buckets: &Buckets) -> Buckets {
+        match (self, buckets) {
             (Buckets::All, Buckets::All) => Buckets::All,
             (Buckets::Filtered(b), Buckets::All) | (Buckets::All, Buckets::Filtered(b)) => {
                 Buckets::Filtered(b.clone())
             }
-            (Buckets::Filtered(a), Buckets::Filtered(b)) => Buckets::Filtered(a.conjunct(b)?),
+            (Buckets::Filtered(a), Buckets::Filtered(b)) => Buckets::Filtered(a.conjunct(b)),
             (Buckets::Any, _) => buckets.clone(),
             (_, Buckets::Any) => self.clone(),
-        };
-        Ok(buckets)
+        }
     }
 
     /// Disjunction of two sets of buckets.
-    ///
-    /// # Errors
-    /// - Buckets that can't be disjuncted
-    pub fn disjunct(&self, buckets: &Buckets) -> Result<Buckets, SbroadError> {
-        let buckets = match (self, buckets) {
+    pub fn disjunct(&self, buckets: &Buckets) -> Buckets {
+        match (self, buckets) {
             (Buckets::All, _) | (_, Buckets::All) => Buckets::All,
-            (Buckets::Filtered(a), Buckets::Filtered(b)) => Buckets::Filtered(a.disjunct(b)?),
+            (Buckets::Filtered(a), Buckets::Filtered(b)) => Buckets::Filtered(a.disjunct(b)),
             (Buckets::Any, _) => buckets.clone(),
             (_, Buckets::Any) => self.clone(),
-        };
-        Ok(buckets)
+        }
     }
 }
 
@@ -367,11 +357,7 @@ impl Plan {
 
         let merged = buckets
             .into_iter()
-            .fold_while(Ok(Buckets::Any), |acc, b| match acc {
-                Ok(a) => Continue(a.conjunct(&b)),
-                Err(_) => Done(acc),
-            })
-            .into_inner()?;
+            .fold(Buckets::Any, |acc, b| acc.conjunct(&b));
 
         Ok(Some(merged))
     }
@@ -432,14 +418,14 @@ impl Plan {
                 let node_buckets = self
                     .get_buckets_from_expr(node_id, resolver)?
                     .unwrap_or_else(|| default_buckets.clone());
-                chain_buckets = chain_buckets.conjunct(&node_buckets)?;
+                chain_buckets = chain_buckets.conjunct(&node_buckets);
             }
             result.push(chain_buckets);
         }
 
         if let Some((first, other)) = result.split_first_mut() {
             for buckets in other {
-                *first = first.disjunct(buckets)?;
+                *first = first.disjunct(buckets);
             }
             return Ok(first.clone());
         }
