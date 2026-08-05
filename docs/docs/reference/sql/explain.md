@@ -138,7 +138,7 @@ Failed to compile SQL statement: misuse of aggregate function MAX()
 
 В Picodata для `EXPLAIN` также существует опция `FMT`, которая применяется к
 фасетам. В случае `LOGICAL` форматирование применяется к плану. В случае `RAW`
-форматирование применяется к локальным sql-запросам и их планам. Ниже приведены
+форматирование применяется к локальным SQL-запросам и их планам. Ниже приведены
 примеры.
 
 Пример с `LOGICAL`:
@@ -166,7 +166,7 @@ projection (
   scan warehouse
 ```
 
-Пример с RAW:
+Пример с `RAW`:
 
 ```sql
 EXPLAIN (RAW) SELECT * FROM warehouse;
