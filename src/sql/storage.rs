@@ -11,8 +11,7 @@ use crate::traft::node;
 use serde::{Deserialize, Serialize};
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sql::errors::{Action, Entity, SbroadError};
-use sql::executor::engine::helpers::vshard::serialize_as_empty_motions_to_disable;
-use sql::executor::engine::helpers::vshard::PlanSerializeAsEmptyExt;
+use sql::executor::engine::helpers::vshard::disable_serialize_as_empty_for_subtree;
 use sql::executor::engine::helpers::{
     set_block_pattern_cache_hooks, table_name, vshard::get_random_bucket, BlockPatternCacheHooks,
 };
@@ -655,13 +654,17 @@ impl Vshard for StorageRuntime {
             let plan_id = ex_plan.get_plan_id()?;
             let has_segment_motion = ex_plan.has_segment_motion(top_id);
             if ex_plan.has_serialize_as_empty_motion(top_id) {
-                let replicasets = replicasets_by_buckets(buckets)?;
                 // If motion has serialize_as_empty opcode and it's executed on
                 // multiple replicasets, Picodata will generate two different
                 // SQL queries for its subtree. We have to include each of them
                 // in EXPLAIN (RAW). Here we append the number of queries to
                 // port to successfully decode it later.
-                if replicasets.len() > 1 {
+                //
+                // `Buckets::Any` is a single node by definition, so it never
+                // needs the second query.
+                let multiple_replicasets =
+                    !matches!(buckets, Buckets::Any) && replicasets_by_buckets(buckets)?.len() > 1;
+                if multiple_replicasets {
                     let mp_num = tarantool::msgpack::encode(&[2]);
                     port.add_mp(&mp_num);
                 }
@@ -714,12 +717,7 @@ impl Vshard for StorageRuntime {
                 //
                 // is executed on all remaining replicasets. The purpose of the code below is
                 // to reflect these caveats in EXPLAIN (RAW).
-                let sae_info = sub_plan.get_ir_plan().serialize_as_empty_info(top_id)?;
-                if let Some(ref info) = sae_info {
-                    let disabled_motions =
-                        serialize_as_empty_motions_to_disable(sub_plan.get_ir_plan(), info)?;
-                    sub_plan.disable_serialize_as_empty_for_motions(disabled_motions);
-                }
+                disable_serialize_as_empty_for_subtree(&mut sub_plan, top_id)?;
                 let sql_params = sub_plan.local_sql_params(top_id, Snapshot::Oldest)?;
                 let ids = sql_params.constant_ids();
                 let local_sql = generate_local_dql_sql(&sub_plan, top_id, plan_id, ids)?;
@@ -727,7 +725,7 @@ impl Vshard for StorageRuntime {
                 let motion_info = MotionInfo::new_for_query(has_segment_motion, Some(false));
                 explain_once(local_sql, sql_params, &sub_vtables, buckets, motion_info)?;
 
-                if replicasets.len() > 1 {
+                if multiple_replicasets {
                     let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
                     let ids = sql_params.constant_ids();
                     let local_sql = generate_local_dql_sql(ex_plan, top_id, plan_id, ids)?;

@@ -707,6 +707,10 @@ fn format_explain_buckets(
             Buckets::All => {
                 format!("buckets <= [1-{bucket_count}]")
             }
+            Buckets::Any => {
+                let repr = buckets_repr(buckets, bucket_count);
+                format!("buckets = {repr}")
+            }
             Buckets::Filtered(_) if !as_empty => {
                 let replicasets = replicasets_by_buckets(buckets)?;
                 if replicasets.len() > 1 {

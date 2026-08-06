@@ -217,13 +217,9 @@ fn prepare_single_rs_ir_plan_with_serialize_as_empty_info(
     sae_info: Option<SerializeAsEmptyInfo>,
 ) -> Result<ExecutionPlan, SbroadError> {
     if let Some(ref info) = sae_info {
-        let disabled_motions = serialize_as_empty_motions_to_disable(sub_plan.get_ir_plan(), info)?;
-        sub_plan.disable_serialize_as_empty_for_motions(disabled_motions);
+        disable_serialize_as_empty_with_info(&mut sub_plan, top_id, info)?;
     }
     filter_vtable(&mut sub_plan, bucket_ids)?;
-    if sae_info.is_some() {
-        sub_plan.set_plan_id(top_id)?;
-    }
     Ok(sub_plan)
 }
 
@@ -249,7 +245,7 @@ fn trim_serialize_as_empty_vtables(
     Ok(())
 }
 
-pub fn serialize_as_empty_motions_to_disable(
+fn serialize_as_empty_motions_to_disable(
     plan: &Plan,
     info: &SerializeAsEmptyInfo,
 ) -> Result<Vec<NodeId>, SbroadError> {
@@ -268,6 +264,32 @@ pub fn serialize_as_empty_motions_to_disable(
     Ok(disabled_motions)
 }
 
+/// Renders the `SerializeAsEmptyTable` motions of `top_id` in full.
+fn disable_serialize_as_empty_with_info(
+    sub_plan: &mut ExecutionPlan,
+    top_id: NodeId,
+    info: &SerializeAsEmptyInfo,
+) -> Result<(), SbroadError> {
+    let disabled_motions = serialize_as_empty_motions_to_disable(sub_plan.get_ir_plan(), info)?;
+    sub_plan.disable_serialize_as_empty_for_motions(disabled_motions);
+    // Due to changes to the temporary table, the `plan_id` needs to be updated.
+    sub_plan.set_plan_id(top_id)?;
+    Ok(())
+}
+
+/// Renders the `SerializeAsEmptyTable` motions of `top_id` in full.
+///
+/// Does nothing if the subtree has no such motions.
+pub fn disable_serialize_as_empty_for_subtree(
+    sub_plan: &mut ExecutionPlan,
+    top_id: NodeId,
+) -> Result<(), SbroadError> {
+    let Some(info) = sub_plan.get_ir_plan().serialize_as_empty_info(top_id)? else {
+        return Ok(());
+    };
+    disable_serialize_as_empty_with_info(sub_plan, top_id, &info)
+}
+
 pub fn get_random_bucket(runtime: &impl Vshard) -> Buckets {
     let bucket_id: u64 = rand::random_range(1..=runtime.bucket_count());
     let bucket_set = [bucket_id].into_iter().collect();
@@ -277,7 +299,9 @@ pub fn get_random_bucket(runtime: &impl Vshard) -> Buckets {
 #[cfg(test)]
 mod tests {
 
-    use super::{prepare_rs_to_ir_map, PlanSerializeAsEmptyExt};
+    use super::{
+        disable_serialize_as_empty_for_subtree, prepare_rs_to_ir_map, PlanSerializeAsEmptyExt,
+    };
     use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
     use crate::executor::engine::helpers::table_name;
     use crate::executor::ir::ExecutionPlan;
@@ -495,5 +519,38 @@ mod tests {
                 assert_eq!(Some(true), effective_serialize_as_empty(plan, *motion_id));
             }
         }
+    }
+
+    #[test]
+    fn disable_serialize_as_empty_for_subtree_refreshes_plan_id() {
+        let plan = sql_to_optimized_ir(
+            r#"select "a" from "global_t" union all select "e" from "t2""#,
+            vec![],
+        );
+        let top_id = plan.get_top().expect("top node");
+        let mut exec_plan = ExecutionPlan::new(plan);
+        let sae_info = exec_plan
+            .get_ir_plan()
+            .serialize_as_empty_info(top_id)
+            .expect("serialize_as_empty info")
+            .expect("serialize_as_empty info must exist");
+
+        let plan_id_before = exec_plan.set_plan_id(top_id).expect("plan id");
+        let sql_before = sql(&exec_plan, top_id);
+
+        disable_serialize_as_empty_for_subtree(&mut exec_plan, top_id).expect("disable sae");
+
+        for motion_id in &sae_info.target_motion_ids {
+            assert_eq!(
+                Some(false),
+                effective_serialize_as_empty(&exec_plan, *motion_id)
+            );
+        }
+
+        // Disabling the opcode drops the memoized plan id.
+        let plan_id_after = exec_plan.get_plan_id().expect("plan id must be refreshed");
+
+        assert_ne!(sql_before, sql(&exec_plan, top_id));
+        assert_ne!(plan_id_before, plan_id_after);
     }
 }

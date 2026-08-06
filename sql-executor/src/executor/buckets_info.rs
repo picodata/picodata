@@ -119,8 +119,8 @@ pub fn buckets_info_from_query<R: Router>(
     let mut estimated_buckets: Option<Buckets> = None;
     for child_id in &without_motions_ids {
         let buckets = query.bucket_discovery(*child_id)?;
-        if let Some(ebuckets) = estimated_buckets.as_mut() {
-            *ebuckets = ebuckets.disjunct(&buckets);
+        if let Some(estimated) = estimated_buckets.as_mut() {
+            *estimated = estimated.disjunct(&buckets);
         } else {
             estimated_buckets = Some(buckets);
         }

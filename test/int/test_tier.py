@@ -263,6 +263,12 @@ cluster:
     assert table_size(storage_instance, "table_in_storage") == 2
     assert table_size(router_instance, "table_in_router") == 2
 
+    # ensure that query with `Buckets::Any` works correctly with differenct tiers
+    for instance in [storage_instance, router_instance]:
+        for table in ["table_in_storage", "table_in_router"]:
+            dql = instance.sql(f"""SELECT 1 UNION ALL SELECT "id" FROM "{table}" WHERE false""")
+            assert dql == [[1]]
+
 
 def get_vshards_opinion_about_replicaset_masters(i: Instance, tier_name: str):
     return i.eval(

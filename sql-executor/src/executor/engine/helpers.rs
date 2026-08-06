@@ -1436,6 +1436,11 @@ pub fn dispatch_impl<'p>(
         }
     };
     let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
+    if matches!(buckets, Buckets::Any) {
+        // The subtree goes to a single node, which makes the per-replicaset
+        // customization useless.
+        vshard::disable_serialize_as_empty_for_subtree(plan, top_id)?;
+    }
     plan.prepare_bucket_filter_for_dispatch(top_id, buckets)?;
     let frozen_plan = Rc::new(std::mem::take(plan));
     let dispatch_result = if frozen_plan.get_ir_plan().is_raw_explain() {
@@ -1507,14 +1512,6 @@ pub fn dispatch_by_buckets<'p>(
                         "plan customization is needed only when executing on multiple replicasets"
                             .into(),
                     ),
-                ));
-            }
-            // Check that all vtables don't have index. Because if they do,
-            // they will be filtered later by filter_vtable
-            if let Some(motion_id) = flags.segmented_motion_id {
-                return Err(SbroadError::Invalid(
-                    Entity::Motion,
-                    Some(format_smolstr!("Motion ({motion_id:?}) in subtree with distribution Single, but policy is not Full.")),
                 ));
             }
             runtime.exec_ir_on_any_node(sub_plan, top_id, buckets, port)?;
