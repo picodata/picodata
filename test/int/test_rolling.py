@@ -592,9 +592,17 @@ def test_bucket_id_pk_ddl_catchup_from_previous_minor(cluster: Cluster, registry
     assert current is not None
 
     cluster.deploy(executable=old, instance_count=4, init_replication_factor=2)
+    cluster.check_health()
 
     leader = cluster.leader()
-    lagging = cluster.pick_random_instance(exclude=[leader])
+    # Keep vshard masters running: this test covers DDL catch-up, not master failover.
+    lagging_candidates = [
+        instance
+        for instance in cluster.instances
+        if instance is not leader and instance.replicaset_master_name() != instance.name
+    ]
+    assert lagging_candidates, "expected a non-leader replicaset follower"
+    lagging = lagging_candidates[0]
     lagging.terminate()
     cluster.check_health(exclude=[lagging])
 
