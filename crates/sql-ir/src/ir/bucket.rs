@@ -94,6 +94,14 @@ impl BucketSet {
             }
         }
     }
+
+    /// Returns `true` if `BucketSet` is proven to be empty.
+    fn is_empty(&self) -> bool {
+        match self {
+            BucketSet::EstimatedCount { upper, .. } => *upper == 0,
+            BucketSet::Exact(b) => b.is_empty(),
+        }
+    }
 }
 
 /// Buckets are used to determine which nodes to send the query to.
@@ -149,13 +157,13 @@ impl Buckets {
     /// Conjunction of two sets of buckets.
     pub fn conjunct(&self, buckets: &Buckets) -> Buckets {
         match (self, buckets) {
-            (Buckets::All, Buckets::All) => Buckets::All,
-            (Buckets::Filtered(b), Buckets::All) | (Buckets::All, Buckets::Filtered(b)) => {
-                Buckets::Filtered(b.clone())
-            }
             (Buckets::Filtered(a), Buckets::Filtered(b)) => Buckets::Filtered(a.conjunct(b)),
-            (Buckets::Any, _) => buckets.clone(),
-            (_, Buckets::Any) => self.clone(),
+            (Buckets::All, Buckets::Filtered(b))
+            | (Buckets::Filtered(b), Buckets::All)
+            | (Buckets::Any, Buckets::Filtered(b))
+            | (Buckets::Filtered(b), Buckets::Any) => Buckets::Filtered(b.clone()),
+            (Buckets::All, Buckets::All) => Buckets::All,
+            (Buckets::Any, _) | (_, Buckets::Any) => Buckets::Any,
         }
     }
 
@@ -164,8 +172,14 @@ impl Buckets {
         match (self, buckets) {
             (Buckets::All, _) | (_, Buckets::All) => Buckets::All,
             (Buckets::Filtered(a), Buckets::Filtered(b)) => Buckets::Filtered(a.disjunct(b)),
-            (Buckets::Any, _) => buckets.clone(),
-            (_, Buckets::Any) => self.clone(),
+            (Buckets::Any, Buckets::Filtered(b)) | (Buckets::Filtered(b), Buckets::Any) => {
+                if b.is_empty() {
+                    Buckets::Any
+                } else {
+                    Buckets::Filtered(b.clone())
+                }
+            }
+            (Buckets::Any, Buckets::Any) => Buckets::Any,
         }
     }
 }

@@ -397,8 +397,6 @@ pub struct SubtreeDispatchFlags {
     pub has_segmented_tables: bool,
     /// Whether the subtree contains per-replicaset customization opcodes.
     pub has_customization_opcodes: bool,
-    /// Motion whose materialized vtable makes the subtree segmented.
-    pub(crate) segmented_motion_id: Option<NodeId>,
 }
 
 #[derive(Debug)]
@@ -512,24 +510,19 @@ impl<'plan> SubtreeViewBuilder<'plan> {
             }
             if let Some(vtable) = exec_plan.get_vtables().get(node_id) {
                 vtable_ids.push(*node_id);
-                if !dispatch_flags.has_segmented_tables && !vtable.get_bucket_index().is_empty() {
+                if !vtable.get_bucket_index().is_empty() {
                     dispatch_flags.has_segmented_tables = true;
-                    dispatch_flags.segmented_motion_id = Some(*node_id);
                 }
             }
             if let Node::Relational(Relational::Motion(Motion { program, .. })) =
                 ir_plan.get_node(*node_id)?
             {
-                if program
-                    .0
-                    .iter()
-                    .any(|op| matches!(op, MotionOpcode::SerializeAsEmptyTable(_)))
-                {
-                    dispatch_flags.has_customization_opcodes = true;
-                }
                 match exec_plan.effective_serialize_as_empty_state(*node_id, program) {
                     SerializeAsEmptyState::Absent => {}
-                    SerializeAsEmptyState::Enabled => serialize_as_empty.push((*node_id, true)),
+                    SerializeAsEmptyState::Enabled => {
+                        dispatch_flags.has_customization_opcodes = true;
+                        serialize_as_empty.push((*node_id, true));
+                    }
                     SerializeAsEmptyState::Disabled => serialize_as_empty.push((*node_id, false)),
                 }
             }
@@ -818,7 +811,7 @@ impl ExecutionPlan {
     ///
     /// Cached effective subtree and plan-id metadata is cleared because SQL
     /// shape can change.
-    pub fn disable_serialize_as_empty_for_motions(
+    pub(crate) fn disable_serialize_as_empty_for_motions(
         &mut self,
         motion_ids: impl IntoIterator<Item = NodeId>,
     ) {

@@ -300,13 +300,13 @@ plan:
     [2] SCAN TABLE g (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 2 (UNION ALL)
 ''
-buckets = []
+buckets = any
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = []
+buckets = any
 
 -- TEST: explain-union-global-sharded-4
 -- SQL:

@@ -1877,7 +1877,7 @@ fn mock_dispatch<'p>(
             let mp = rmp_serde::to_vec(&DispatchInfo::All(pattern, params)).unwrap();
             port.add_mp(mp.as_slice());
         }
-        Buckets::Any if is_single => {
+        Buckets::Any if !flags.has_customization_opcodes => {
             let (pattern, params) = to_sql(&plan, top_id);
             let mp = rmp_serde::to_vec(&DispatchInfo::Any(pattern, params)).unwrap();
             port.add_mp(mp.as_slice());
