@@ -3241,6 +3241,7 @@ impl ShardColumnsMap {
         if !children_contain_shard_positions {
             // The children do not contain any shard columns, no need to check
             // the output.
+            self.memo.remove(&node_id);
             return Ok(());
         }
 
@@ -3297,6 +3298,8 @@ impl ShardColumnsMap {
         }
         if new_positions[0].is_some() {
             self.memo.insert(node_id, new_positions);
+        } else {
+            self.memo.remove(&node_id);
         }
         Ok(())
     }

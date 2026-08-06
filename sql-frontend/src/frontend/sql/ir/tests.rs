@@ -5,7 +5,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::NodeId;
 use crate::ir::options::Options;
 use crate::ir::transformation::Stage;
-use crate::ir::tree::traversal::PostOrder;
+use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter};
 use crate::ir::types::{DerivedType, UnrestrictedType as Type};
 use crate::ir::value::Value;
 use crate::ir::{Plan, Positions};
@@ -933,6 +933,53 @@ fn track_shard_col_pos() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
     assert_eq!(None, get_positions(&plan, top));
+}
+
+#[test]
+fn track_shard_col_pos_dropped_above_motion() {
+    // The outer subquery projects no `bucket_id`, so after the inner is covered
+    // with a motion neither join child carries shard positions any more.
+    let input = r#"
+    select * from (select "id" from "test_space") as o
+    join "t2" on o."id" = "t2"."f"
+    "#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+    let top = plan.get_top().unwrap();
+
+    let dfs = PostOrderWithFilter::new(
+        |x| plan.nodes.rel_iter(x),
+        |x| matches!(plan.get_relation_node(x), Ok(Relational::Join(_))),
+        10,
+    );
+    let joins = dfs.traverse_into_vec(top);
+    assert!(!joins.is_empty(), "expected a join in the optimized plan");
+    for join_id in joins.into_iter().map(|level| level.1) {
+        assert_eq!(get_positions(&plan, join_id), None);
+    }
+    assert_eq!(get_positions(&plan, top), None);
+
+    let input = r#"
+    select * from (select "bucket_id", "e" from "t2" limit 1)
+    union all
+    select "bucket_id", "id" from "test_space"
+    "#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+    let top = plan.get_top().unwrap();
+
+    let dfs = PostOrderWithFilter::new(
+        |x| plan.nodes.rel_iter(x),
+        |x| matches!(plan.get_relation_node(x), Ok(Relational::UnionAll(_))),
+        10,
+    );
+    let unions = dfs.traverse_into_vec(top);
+    assert!(
+        !unions.is_empty(),
+        "expected a union all in the optimized plan"
+    );
+    for union_id in unions.into_iter().map(|level| level.1) {
+        assert_eq!(get_positions(&plan, union_id), None);
+    }
+    assert_eq!(get_positions(&plan, top), None);
 }
 
 #[test]
