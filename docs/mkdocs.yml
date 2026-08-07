@@ -81,6 +81,7 @@ nav:
       - reference/sql/ddl.md
       - reference/sql/dml.md
       - reference/sql/dql.md
+      - Transcation Control Language: reference/sql/transactions.md
       - Средства для отладки запросов:
           - reference/sql/explain.md
           - reference/sql/explain_facets/raw.md
@@ -92,7 +93,6 @@ nav:
       - reference/sql/object.md
       - reference/sql_types.md
       - reference/sql/parametrization.md
-      - reference/sql/transactions.md
       - reference/ansi_sql.md
       - Команды:
           - reference/sql/alter_index.md
@@ -111,6 +111,7 @@ nav:
           - reference/sql/create_table.md
           - reference/sql/create_user.md
           - reference/sql/delete.md
+          - reference/sql/do.md
           - reference/sql/drop_index.md
           - reference/sql/drop_plugin.md
           - reference/sql/drop_procedure.md
@@ -119,7 +120,10 @@ nav:
           - reference/sql/drop_user.md
           - reference/sql/explain_hop.md
           - reference/sql/grant.md
+          - reference/sql/if.md
           - reference/sql/insert.md
+          - reference/sql/let.md
+          - reference/sql/return_query.md
           - reference/sql/revoke.md
           - reference/sql/select.md
           - reference/sql/truncate_table.md

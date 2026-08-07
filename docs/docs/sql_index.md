@@ -83,8 +83,8 @@ article.md-typeset.md-typeset ul {
 * [DELETE](reference/sql/delete.md)
 * [DISTINCT](reference/sql/select.md#params)
 * [DML](reference/sql/dml.md)
-* [DOUBLE](reference/sql_types.md#double)
 * [DO](reference/sql/transactions.md)
+* [DOUBLE](reference/sql_types.md#double)
 * [DQL](reference/sql/dql.md)
 * [DROP INDEX](reference/sql/drop_index.md)
 * [DROP PLUGIN](reference/sql/drop_plugin.md)
@@ -112,6 +112,7 @@ article.md-typeset.md-typeset ul {
 
 <b>I</b>
 
+* [IF](reference/sql/if.md)
 * [ILIKE](reference/sql/ilike.md)
 * [INDEXED BY](reference/sql/indexed_by.md)
 * [INSTANCE_UUID](reference/sql/system_functions.md#instance_uuid)
@@ -127,6 +128,7 @@ article.md-typeset.md-typeset ul {
 <b>L</b>
 
 * [LEFT OUTER JOIN](reference/sql/join.md#left_join)
+* [LET](reference/sql/let.md)
 * [LIKE](reference/sql/like.md)
 * [LIMIT](reference/sql/select.md#params)
 * [LIMIT ALL](reference/sql/select.md#params)
@@ -163,6 +165,7 @@ article.md-typeset.md-typeset ul {
 <b>R</b>
 
 * [RAW](reference/sql/explain_facets/raw.md)
+* [RETURN QUERY](reference/sql/return_query.md)
 * [REVOKE](reference/sql/revoke.md)
 * [role](admin/access_control.md#role_model)
 
