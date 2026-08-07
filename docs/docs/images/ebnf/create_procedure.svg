@@ -339,7 +339,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      class="terminal"
      x="446"
      y="163"
-     id="text29">SS</text>
+     id="text29">\$\$</text>
   <a
      xlink:href="../insert"
      xlink:title="insert"
@@ -428,7 +428,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      class="terminal"
      x="628"
      y="163"
-     id="text37">SS</text>
+     id="text37">\$\$</text>
   <rect
      x="380"
      y="277"

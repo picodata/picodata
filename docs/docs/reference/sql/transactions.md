@@ -20,6 +20,15 @@
 
 [параметризованных запросах]: ./parametrization.md
 
+## Синтаксис {: #syntax }
+
+![Transaction block](../../images/ebnf/transaction_block.svg)
+
+### Команда блока {: #block_statement }
+
+??? note "Диаграмма"
+    ![Block statement](../../images/ebnf/block_statement.svg)
+
 ## Поддерживаемые команды исполнения {: #supported_statements }
 
 На данный момент для транзакционных блоков поддерживаются следующие
@@ -83,6 +92,8 @@ END $$;
 
 ## Возврат строк через `RETURN QUERY` {: #return_query }
 
+![Return query](../../images/ebnf/return_query.svg)
+
 Команда `RETURN QUERY` позволяет добавить результат исполнения [DQL]-запроса
 в множество строк, которое будет возвращено из транзакции в качестве результата.
 В отличие от классических императивных языков программирования, в Picodata
@@ -118,6 +129,8 @@ END $$;
 
 ## `LET`-переменные {: #let_statement }
 
+![Let statement](../../images/ebnf/let_statement.svg)
+
 Команда `LET` связывает c именованной переменной результат запроса.
 
 Пример:
@@ -151,8 +164,25 @@ END $$;
 
 ## Условные блоки `IF` {: #if_statement }
 
+![If statement](../../images/ebnf/if_statement.svg)
+
 Команда `IF <expr> THEN ... END IF;` выполняет вложенные [DML]-команды
 и `RETURN QUERY`, если выражение `<expr>` истинно.
+
+### DML-команда {: #block_dml }
+
+??? note "Диаграмма"
+    ![Block DML](../../images/ebnf/block_dml.svg)
+
+### Выражение {: #expression }
+
+??? note "Диаграмма"
+    ![Expression](../../images/ebnf/expression.svg)
+
+### Литерал {: #literal }
+
+??? note "Диаграмма"
+    ![Literal](../../images/ebnf/literal.svg)
 
 Пример:
 
