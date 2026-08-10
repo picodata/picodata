@@ -2,6 +2,7 @@ use super::*;
 use crate::backend::sql::ir::block_pattern_key;
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::executor::engine::helpers::table_name;
+use crate::executor::engine::helpers::vshard::disable_serialize_as_empty_for_subtree;
 use crate::executor::engine::mock::TEMPLATE;
 use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
 use crate::ir::node::block::BlockOwned;
@@ -45,7 +46,7 @@ fn get_sql_from_execution_plan(
         .execution_view()
         .dql_subtree(top_id)
         .unwrap();
-    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, snapshot, false).unwrap();
+    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, snapshot).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let params = exec_plan.local_sql_params(top_id, snapshot).unwrap();
@@ -111,7 +112,7 @@ fn dql_subtree_generates_same_sql_as_execution_plan() {
         .local_sql_params(top_id, Snapshot::Oldest)
         .unwrap();
 
-    let old_sp = SyntaxPlan::new(&exec_plan, top_id, Snapshot::Oldest, false).unwrap();
+    let old_sp = SyntaxPlan::new(&exec_plan, top_id, Snapshot::Oldest).unwrap();
     let old_ordered = OrderedSyntaxNodes::try_from(old_sp).unwrap();
     let old_nodes = old_ordered.to_syntax_data().unwrap();
     let old_sql = exec_plan
@@ -128,7 +129,7 @@ fn dql_subtree_generates_same_sql_as_execution_plan() {
         .execution_view()
         .dql_subtree(top_id)
         .unwrap();
-    let new_sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false).unwrap();
+    let new_sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest).unwrap();
     let new_ordered = OrderedSyntaxNodes::try_from(new_sp).unwrap();
     let new_nodes = new_ordered.to_syntax_data().unwrap();
     let new_sql = subtree
@@ -256,7 +257,7 @@ fn mark_motion_unlinked_keeps_ir_child() {
     let constants = exec_plan
         .get_ir_plan()
         .get_const_list(top_id, Snapshot::Oldest);
-    let sp = SyntaxPlan::new(exec_plan, top_id, Snapshot::Oldest, false).unwrap();
+    let sp = SyntaxPlan::new(exec_plan, top_id, Snapshot::Oldest).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let sql = exec_plan
@@ -1938,7 +1939,7 @@ fn dql_subtree_projection_windows_stay_in_original_plan() {
         .execution_view()
         .dql_subtree(projection)
         .unwrap();
-    SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false).unwrap();
+    SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest).unwrap();
 
     {
         let Node::Relational(Relational::Projection(Projection { windows, .. })) =
@@ -2059,5 +2060,124 @@ fn subtree_vtables_are_limited_to_the_dispatched_subtree() {
             .unwrap()
             .is_empty(),
         "a motion subtree must not carry the virtual tables of its siblings"
+    );
+}
+
+/// A plan whose global branch carries a `SerializeAsEmptyTable` motion.
+fn serialize_as_empty_exec_plan() -> (ExecutionPlan, NodeId) {
+    let plan = sql_to_optimized_ir(
+        r#"select "a" from "global_t" union all select "e" from "t2""#,
+        vec![],
+    );
+    let top_id = plan.get_top().unwrap();
+
+    (ExecutionPlan::new(plan), top_id)
+}
+
+#[test]
+fn normalize_for_dispatch_is_free_without_opcodes() {
+    let plan = sql_to_optimized_ir(r#"select sum("a") from "t5""#, vec![]);
+    let top_id = plan.get_top().unwrap();
+    let mut exec_plan = ExecutionPlan::new(plan);
+
+    exec_plan.set_plan_id(top_id).unwrap();
+    let before = exec_plan.get_plan_id().unwrap();
+    exec_plan
+        .normalize_for_dispatch(top_id, &Buckets::Any)
+        .unwrap();
+
+    assert_eq!(
+        before,
+        exec_plan.get_plan_id().unwrap(),
+        "a plan without customization opcodes must not be re-hashed"
+    );
+}
+
+#[test]
+fn normalize_for_dispatch_disables_sae_at_any() {
+    let (mut exec_plan, top_id) = serialize_as_empty_exec_plan();
+    assert!(
+        exec_plan
+            .subtree_dispatch_flags_at(top_id)
+            .unwrap()
+            .has_customization_opcodes
+    );
+
+    exec_plan.set_plan_id(top_id).unwrap();
+    exec_plan
+        .normalize_for_dispatch(top_id, &Buckets::Any)
+        .unwrap();
+
+    assert!(
+        !exec_plan
+            .subtree_dispatch_flags_at(top_id)
+            .unwrap()
+            .has_customization_opcodes,
+        "a single node makes the per-replicaset customization useless"
+    );
+    // Normalization only invalidates the id, the caller re-hashes.
+    assert!(exec_plan.get_plan_id().is_err());
+}
+
+#[test]
+fn normalize_for_dispatch_is_noop_for_multiple_replicasets() {
+    let (mut exec_plan, top_id) = serialize_as_empty_exec_plan();
+
+    exec_plan.set_plan_id(top_id).unwrap();
+    let before = exec_plan.get_plan_id().unwrap();
+    exec_plan
+        .normalize_for_dispatch(top_id, &Buckets::All)
+        .unwrap();
+
+    assert!(
+        exec_plan
+            .subtree_dispatch_flags_at(top_id)
+            .unwrap()
+            .has_customization_opcodes,
+        "the per-replicaset customization must survive a multi-replicaset dispatch"
+    );
+    assert_eq!(before, exec_plan.get_plan_id().unwrap());
+}
+
+#[test]
+fn normalize_then_hash_matches_hash_then_normalize() {
+    let (mut old_order, top_id) = serialize_as_empty_exec_plan();
+    old_order.set_plan_id(top_id).unwrap();
+    disable_serialize_as_empty_for_subtree(&mut old_order, top_id).unwrap();
+    let old_plan_id = old_order.set_plan_id(top_id).unwrap();
+
+    let (mut new_order, _) = serialize_as_empty_exec_plan();
+    new_order
+        .normalize_for_dispatch(top_id, &Buckets::Any)
+        .unwrap();
+    let new_plan_id = new_order.set_plan_id(top_id).unwrap();
+
+    assert_eq!(old_plan_id, new_plan_id);
+}
+
+#[test]
+fn serialize_as_empty_overlay_is_cleared_after_dispatch() {
+    let sql = r#"SELECT 1 UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1 AND "a" = 2"#;
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let top_id = query.get_exec_plan().get_ir_plan().get_top().unwrap();
+    assert!(
+        query
+            .get_exec_plan()
+            .subtree_dispatch_flags_at(top_id)
+            .unwrap()
+            .has_customization_opcodes
+    );
+
+    let mut port = PortMocked::new();
+    query.dispatch(&mut port).unwrap();
+
+    assert!(
+        query
+            .get_exec_plan()
+            .subtree_dispatch_flags_at(top_id)
+            .unwrap()
+            .has_customization_opcodes,
+        "the serialize-as-empty overlay must not outlive its dispatch"
     );
 }

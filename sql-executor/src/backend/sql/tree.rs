@@ -790,8 +790,6 @@ pub struct SyntaxPlan<'p> {
     /// map of { name, sn_id }.
     plan: &'p dyn SqlExecutionView,
     snapshot: Snapshot,
-    /// If set to `true`, all children of the local motions will be added.
-    skip_serialize_as_empty_opcode: bool,
 }
 
 #[allow(dead_code)]
@@ -1357,8 +1355,7 @@ impl<'p> SyntaxPlan<'p> {
 
         let empty_table_state = self.plan.effective_serialize_as_empty_state(id, program);
         if empty_table_state != SerializeAsEmptyState::Absent {
-            let is_enabled = empty_table_state.is_enabled() && !self.skip_serialize_as_empty_opcode;
-            if is_enabled {
+            if empty_table_state.is_enabled() {
                 let output_cols = plan.get_row_list(*output).expect("row aliases");
                 // We need to preserve types when doing `select null`,
                 // otherwise tarantool will cast it to `scalar`.
@@ -2733,7 +2730,6 @@ impl<'p> SyntaxPlan<'p> {
             top: None,
             plan,
             snapshot: Snapshot::Latest,
-            skip_serialize_as_empty_opcode: false,
         }
     }
 
@@ -2747,87 +2743,74 @@ impl<'p> SyntaxPlan<'p> {
         plan: &'p ExecutionPlan,
         top: NodeId,
         snapshot: Snapshot,
-        skip_serialize_as_empty_opcode: bool,
     ) -> Result<Self, SbroadError> {
-        Self::new_for_view(plan, top, snapshot, skip_serialize_as_empty_opcode)
+        Self::new_for_view(plan, top, snapshot)
     }
 
     pub fn new_for_dql_subtree(
         plan: &'p DqlSubtree<'_>,
         snapshot: Snapshot,
-        skip_serialize_as_empty_opcode: bool,
     ) -> Result<Self, SbroadError> {
-        Self::new_for_view(
-            plan,
-            plan.sql_top_id(),
-            snapshot,
-            skip_serialize_as_empty_opcode,
-        )
+        Self::new_for_view(plan, plan.sql_top_id(), snapshot)
     }
 
     fn new_for_view(
         plan: &'p dyn SqlExecutionView,
         top: NodeId,
         snapshot: Snapshot,
-        skip_serialize_as_empty_opcode: bool,
     ) -> Result<Self, SbroadError> {
         let mut sp = SyntaxPlan::empty(plan);
         sp.snapshot = snapshot;
-        sp.skip_serialize_as_empty_opcode = skip_serialize_as_empty_opcode;
         let ir_plan = plan.get_ir_plan();
 
         // Wrap plan's nodes and preserve their ids.
         let capacity = ir_plan.nodes.len();
         let mut empty_motion_ids = HashSet::new();
-        if !skip_serialize_as_empty_opcode {
-            match snapshot {
-                Snapshot::Latest => {
-                    let dft_post = PostOrder::new(
-                        |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
-                            if plan.effective_motion_leaf_output(node).is_some() {
-                                Box::new(std::iter::empty())
-                            } else {
-                                Box::new(ir_plan.subtree_iter(node, false))
-                            }
-                        },
-                        capacity,
-                    );
-                    for LevelNode(_, id) in dft_post.traverse_into_iter(top) {
-                        if let Ok(Node::Relational(Relational::Motion(Motion {
-                            program, ..
-                        }))) = ir_plan.get_node(id)
+        match snapshot {
+            Snapshot::Latest => {
+                let dft_post = PostOrder::new(
+                    |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
+                        if plan.effective_motion_leaf_output(node).is_some() {
+                            Box::new(std::iter::empty())
+                        } else {
+                            Box::new(ir_plan.subtree_iter(node, false))
+                        }
+                    },
+                    capacity,
+                );
+                for id in dft_post.traverse_into_iter(top).map(|level| level.1) {
+                    if let Ok(Node::Relational(Relational::Motion(Motion { program, .. }))) =
+                        ir_plan.get_node(id)
+                    {
+                        if plan
+                            .effective_serialize_as_empty_state(id, program)
+                            .is_enabled()
                         {
-                            if plan
-                                .effective_serialize_as_empty_state(id, program)
-                                .is_enabled()
-                            {
-                                empty_motion_ids.insert(id);
-                            }
+                            empty_motion_ids.insert(id);
                         }
                     }
                 }
-                Snapshot::Oldest => {
-                    let dft_post = PostOrder::new(
-                        |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
-                            if plan.effective_motion_leaf_output(node).is_some() {
-                                Box::new(std::iter::empty())
-                            } else {
-                                Box::new(ir_plan.flashback_subtree_iter(node))
-                            }
-                        },
-                        capacity,
-                    );
-                    for LevelNode(_, id) in dft_post.traverse_into_iter(top) {
-                        if let Ok(Node::Relational(Relational::Motion(Motion {
-                            program, ..
-                        }))) = ir_plan.get_node(id)
+            }
+            Snapshot::Oldest => {
+                let dft_post = PostOrder::new(
+                    |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
+                        if plan.effective_motion_leaf_output(node).is_some() {
+                            Box::new(std::iter::empty())
+                        } else {
+                            Box::new(ir_plan.flashback_subtree_iter(node))
+                        }
+                    },
+                    capacity,
+                );
+                for id in dft_post.traverse_into_iter(top).map(|level| level.1) {
+                    if let Ok(Node::Relational(Relational::Motion(Motion { program, .. }))) =
+                        ir_plan.get_node(id)
+                    {
+                        if plan
+                            .effective_serialize_as_empty_state(id, program)
+                            .is_enabled()
                         {
-                            if plan
-                                .effective_serialize_as_empty_state(id, program)
-                                .is_enabled()
-                            {
-                                empty_motion_ids.insert(id);
-                            }
+                            empty_motion_ids.insert(id);
                         }
                     }
                 }

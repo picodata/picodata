@@ -239,7 +239,7 @@ buckets <= [1-3000]
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets <= [1-3000]
+buckets = [1-3000]
 
 -- TEST: explain-raw-global-join-sharded
 -- SQL:

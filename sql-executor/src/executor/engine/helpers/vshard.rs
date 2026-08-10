@@ -88,6 +88,9 @@ impl PlanSerializeAsEmptyExt for Plan {
         top_id: NodeId,
     ) -> Result<Option<SerializeAsEmptyInfo>, SbroadError> {
         let top_ids = self.collect_top_ids(top_id)?;
+        if top_ids.is_empty() {
+            return Ok(None);
+        }
 
         let mut motions_ref_count: AHashMap<NodeId, usize> = AHashMap::new();
         let dfs = PostOrderWithFilter::new(
@@ -105,10 +108,6 @@ impl PlanSerializeAsEmptyExt for Plan {
                 .entry(motion_id)
                 .and_modify(|cnt| *cnt += 1)
                 .or_insert(1);
-        }
-
-        if top_ids.is_empty() {
-            return Ok(None);
         }
 
         // all motion nodes that are inside the subtrees
@@ -217,7 +216,9 @@ fn prepare_single_rs_ir_plan_with_serialize_as_empty_info(
     sae_info: Option<SerializeAsEmptyInfo>,
 ) -> Result<ExecutionPlan, SbroadError> {
     if let Some(ref info) = sae_info {
-        disable_serialize_as_empty_with_info(&mut sub_plan, top_id, info)?;
+        disable_serialize_as_empty_with_info(&mut sub_plan, info)?;
+        // Due to changes to the temporary table, the `plan_id` needs to be updated.
+        sub_plan.set_plan_id(top_id)?;
     }
     filter_vtable(&mut sub_plan, bucket_ids)?;
     Ok(sub_plan)
@@ -264,16 +265,13 @@ fn serialize_as_empty_motions_to_disable(
     Ok(disabled_motions)
 }
 
-/// Renders the `SerializeAsEmptyTable` motions of `top_id` in full.
+/// Renders the `SerializeAsEmptyTable` motions described by `info` in full.
 fn disable_serialize_as_empty_with_info(
     sub_plan: &mut ExecutionPlan,
-    top_id: NodeId,
     info: &SerializeAsEmptyInfo,
 ) -> Result<(), SbroadError> {
     let disabled_motions = serialize_as_empty_motions_to_disable(sub_plan.get_ir_plan(), info)?;
     sub_plan.disable_serialize_as_empty_for_motions(disabled_motions);
-    // Due to changes to the temporary table, the `plan_id` needs to be updated.
-    sub_plan.set_plan_id(top_id)?;
     Ok(())
 }
 
@@ -287,7 +285,7 @@ pub fn disable_serialize_as_empty_for_subtree(
     let Some(info) = sub_plan.get_ir_plan().serialize_as_empty_info(top_id)? else {
         return Ok(());
     };
-    disable_serialize_as_empty_with_info(sub_plan, top_id, &info)
+    disable_serialize_as_empty_with_info(sub_plan, &info)
 }
 
 pub fn get_random_bucket(runtime: &impl Vshard) -> Buckets {
@@ -362,7 +360,7 @@ mod tests {
     }
 
     fn sql(plan: &ExecutionPlan, top_id: NodeId) -> String {
-        let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest, false).expect("syntax plan");
+        let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest).expect("syntax plan");
         let ordered = OrderedSyntaxNodes::try_from(sp).expect("ordered syntax nodes");
         let nodes = ordered.to_syntax_data().expect("syntax data");
         let params = plan
@@ -522,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn disable_serialize_as_empty_for_subtree_refreshes_plan_id() {
+    fn disable_serialize_as_empty_for_subtree_drops_plan_id() {
         let plan = sql_to_optimized_ir(
             r#"select "a" from "global_t" union all select "e" from "t2""#,
             vec![],
@@ -547,10 +545,11 @@ mod tests {
             );
         }
 
-        // Disabling the opcode drops the memoized plan id.
-        let plan_id_after = exec_plan.get_plan_id().expect("plan id must be refreshed");
-
+        // Callers must re-hash after normalization.
+        assert!(exec_plan.get_plan_id().is_err());
         assert_ne!(sql_before, sql(&exec_plan, top_id));
+
+        let plan_id_after = exec_plan.set_plan_id(top_id).expect("plan id");
         assert_ne!(plan_id_before, plan_id_after);
     }
 }

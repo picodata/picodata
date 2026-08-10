@@ -27,7 +27,7 @@ fn check_sql_with_snapshot(
 
     let params = ex_plan.local_sql_params(top_id, snapshot).unwrap();
 
-    let sp = SyntaxPlan::new(&ex_plan, top_id, snapshot, false).unwrap();
+    let sp = SyntaxPlan::new(&ex_plan, top_id, snapshot).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let sql = ex_plan
@@ -51,7 +51,7 @@ fn local_sql_params_do_not_mutate_constants() {
         .expect("local sql params");
     assert_eq!(params.params(), &[Value::from(1)]);
 
-    let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Latest, false).unwrap();
+    let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Latest).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let sql = ex_plan
