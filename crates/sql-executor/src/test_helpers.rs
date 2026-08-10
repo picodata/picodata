@@ -80,7 +80,7 @@ pub fn check_transformation(
         .local_sql_params(top_id, Snapshot::Latest)
         .expect("local sql params");
 
-    let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Latest, false).unwrap();
+    let sp = SyntaxPlan::new(&ex_plan, top_id, Snapshot::Latest).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let sql = ex_plan

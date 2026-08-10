@@ -1898,7 +1898,7 @@ fn to_sql(plan: &ExecutionPlan, top_id: NodeId) -> (String, Vec<Value>) {
         .execution_view()
         .dql_subtree(top_id)
         .expect("dql subtree");
-    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false).unwrap();
+    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let params = plan

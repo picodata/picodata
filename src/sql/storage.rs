@@ -91,7 +91,7 @@ fn generate_local_dql_sql(
     constant_ids: &[NodeId],
 ) -> Result<String, SbroadError> {
     let subtree = ex_plan.freeze().execution_view().dql_subtree(top_id)?;
-    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false)?;
+    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest)?;
     let ordered = OrderedSyntaxNodes::try_from(sp)?;
     let nodes = ordered.to_syntax_data()?;
     subtree.generate_sql(&nodes, plan_id, table_name, Some(constant_ids))

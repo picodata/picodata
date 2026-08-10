@@ -413,13 +413,14 @@ where
             return Ok(());
         }
 
+        let buckets = self.bucket_discovery(top_id)?;
+        self.enforce_forward_option(&buckets)?;
+
+        self.exec_plan.normalize_for_dispatch(top_id, &buckets)?;
         let plan_id_target = self.exec_plan.get_plan_id_target()?;
         if let Some(node_id) = plan_id_target {
             self.exec_plan.set_plan_id(node_id)?;
         }
-
-        let buckets = self.bucket_discovery(top_id)?;
-        self.enforce_forward_option(&buckets)?;
 
         let query_num = self.exec_plan.get_vtables().len();
         self.coordinator

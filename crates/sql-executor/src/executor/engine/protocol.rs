@@ -780,7 +780,7 @@ impl TryFrom<&ExecutionData> for ExecutionCacheMissData {
     fn try_from(value: &ExecutionData) -> Result<Self, Self::Error> {
         let sql = {
             let plan_id = value.get_plan_id();
-            let sp = SyntaxPlan::new(&value.plan, value.sql_top_id, Snapshot::Oldest, false)?;
+            let sp = SyntaxPlan::new(&value.plan, value.sql_top_id, Snapshot::Oldest)?;
             let on = OrderedSyntaxNodes::try_from(sp)?;
             let a = on.to_syntax_data()?;
             value
@@ -808,7 +808,7 @@ impl TryFrom<&DqlProtocol> for ExecutionCacheMissData {
         let sql = {
             let plan_id = value.get_plan_id();
             let subtree = value.dql_subtree()?;
-            let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest, false)?;
+            let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest)?;
             let on = OrderedSyntaxNodes::try_from(sp)?;
             let a = on.to_syntax_data()?;
             subtree.generate_sql(&a, plan_id, table_name, Some(value.constant_ids.as_slice()))?

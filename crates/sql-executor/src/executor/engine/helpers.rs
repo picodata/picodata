@@ -1071,7 +1071,7 @@ pub fn generate_pattern_with_params_for_block(
         );
     }
 
-    let sp = SyntaxPlan::new(plan, query_id, Snapshot::Oldest, false)?;
+    let sp = SyntaxPlan::new(plan, query_id, Snapshot::Oldest)?;
     let mut on = OrderedSyntaxNodes::try_from(sp)?;
     if use_colon_params {
         on.render_params_with_colon();
@@ -1240,7 +1240,7 @@ fn generate_insert_pattern_for_block(
     envelope.push_str(&bucket_col_name);
     envelope.push_str("\")");
 
-    let sp = SyntaxPlan::new(plan, insert.child, Snapshot::Oldest, false)?;
+    let sp = SyntaxPlan::new(plan, insert.child, Snapshot::Oldest)?;
     let mut on = OrderedSyntaxNodes::try_from(sp)?;
     if use_colon_params {
         on.render_params_with_colon();
@@ -1436,11 +1436,6 @@ pub fn dispatch_impl<'p>(
         }
     };
     let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
-    if matches!(buckets, Buckets::Any) {
-        // The subtree goes to a single node, which makes the per-replicaset
-        // customization useless.
-        vshard::disable_serialize_as_empty_for_subtree(plan, top_id)?;
-    }
     plan.prepare_bucket_filter_for_dispatch(top_id, buckets)?;
     let frozen_plan = Rc::new(std::mem::take(plan));
     let dispatch_result = if frozen_plan.get_ir_plan().is_raw_explain() {
@@ -1459,6 +1454,7 @@ pub fn dispatch_impl<'p>(
                 })?;
                 let mut restored = restored;
                 restored.clear_bucket_filter();
+                restored.clear_serialize_as_empty_overlay();
                 *plan = restored;
                 return Ok(());
             };
@@ -1486,6 +1482,7 @@ pub fn dispatch_impl<'p>(
     })?;
     let mut restored = restored;
     restored.clear_bucket_filter();
+    restored.clear_serialize_as_empty_overlay();
     *plan = restored;
     dispatch_result
 }
@@ -1578,6 +1575,8 @@ pub fn materialize_values(
         let columns = vtable_columns(exec_plan.get_ir_plan(), values_id)?;
 
         let mut port = runtime.new_port();
+        // The dispatch mode is fixed, so settle the SQL shape before hashing it.
+        exec_plan.normalize_for_dispatch(values_id, &Buckets::Any)?;
         exec_plan.set_plan_id(values_id)?;
         runtime.dispatch(exec_plan, values_id, &Buckets::Any, &mut port)?;
 
@@ -1681,6 +1680,8 @@ pub fn materialize_motion(
         !top_node.is_dml(),
         "materialize motion can be called only for DQL queries"
     );
+    // The buckets are already known.
+    plan.normalize_for_dispatch(top_id, buckets)?;
     plan.set_plan_id(top_id)?;
 
     // We should get a motion alias name before dispatching the subtree.

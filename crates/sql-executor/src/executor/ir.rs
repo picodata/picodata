@@ -8,14 +8,16 @@ use smol_str::{format_smolstr, SmolStr};
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::helpers::table_name;
-use crate::executor::engine::helpers::vshard::PlanSerializeAsEmptyExt;
+use crate::executor::engine::helpers::vshard::{
+    disable_serialize_as_empty_for_subtree, PlanSerializeAsEmptyExt,
+};
 use crate::executor::engine::Vshard;
 use crate::executor::vtable::{VirtualTable, VirtualTableMap};
 use crate::executor::Buckets;
 use crate::ir::bucket::BucketSet;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
-use crate::ir::node::{Alias, Motion, Node, Node136, NodeId, Reference, SubQueryReference, Update};
+use crate::ir::node::{Alias, Motion, Node, NodeId, Reference, SubQueryReference, Update};
 use crate::ir::operator::UpdateStrategy;
 use crate::ir::relation::SpaceEngine;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
@@ -795,9 +797,43 @@ impl ExecutionPlan {
         Ok(())
     }
 
+    /// Fixes the SQL shape for the chosen dispatch mode.
+    ///
+    /// Must run after the buckets are known and before the plan is hashed:
+    /// a `plan_id` is only valid for the shape that is actually dispatched.
+    pub(crate) fn normalize_for_dispatch(
+        &mut self,
+        top_id: NodeId,
+        buckets: &Buckets,
+    ) -> Result<(), SbroadError> {
+        // The subtree goes to a single node, which makes the per-replicaset
+        // customization useless.
+        if !matches!(buckets, Buckets::Any) {
+            return Ok(());
+        }
+        if !self
+            .subtree_dispatch_flags_at(top_id)?
+            .has_customization_opcodes
+        {
+            return Ok(());
+        }
+        disable_serialize_as_empty_for_subtree(self, top_id)
+    }
+
     /// Clears the bucket filter overlay after dispatch customization.
     pub(crate) fn clear_bucket_filter(&mut self) {
         self.bucket_filter = None;
+    }
+
+    /// Drops the `SerializeAsEmptyTable` overlay applied for a single dispatch.
+    pub(crate) fn clear_serialize_as_empty_overlay(&mut self) {
+        if self.serialize_as_empty_disabled_motions.is_empty() {
+            return;
+        }
+        self.serialize_as_empty_disabled_motions.clear();
+        self.invalidate_derived_caches();
+        self.plan_id = None;
+        self.plan_id_sql_parameter_count = None;
     }
 
     /// Drops everything derived from the IR shape or the virtual table map.
@@ -1389,29 +1425,6 @@ impl ExecutionPlan {
         self.vtables
             .values()
             .any(|t| !t.get_bucket_index().is_empty())
-    }
-
-    /// Return true if plan needs to be customized for each storage.
-    /// I.e we can't send the same plan to all storages.
-    ///
-    /// The check is done by iterating over the plan nodes arena,
-    /// and checking whether motion node contains serialize as empty
-    /// opcode. Be sure there are no dead nodes in the plan arena:
-    /// nodes that are not referenced by actual plan tree.
-    #[must_use]
-    pub fn has_customization_opcodes(&self) -> bool {
-        for node in self.get_ir_plan().nodes.iter136() {
-            if let Node136::Motion(Motion { program, .. }) = node {
-                if program
-                    .0
-                    .iter()
-                    .any(|op| matches!(op, MotionOpcode::SerializeAsEmptyTable(_)))
-                {
-                    return true;
-                }
-            }
-        }
-        false
     }
 
     /// Returns dispatch flags derived from the effective subtree at `top_id`.
