@@ -22,8 +22,8 @@ use crate::ir::Plan;
 use crate::utils::normalize_name_from_sql;
 
 use super::{
-    connect_escape_to_like_node, find_interim_between, parse_param, ExpressionWalker, OrderNulls,
-    ParseExpression, ParseExpressionInfixOperator,
+    connect_escape_to_like_node, find_interim_between, parse_param, ExpressionWalker, LetVarLookup,
+    LetVarScope, OrderNulls, ParseExpression, ParseExpressionInfixOperator,
 };
 
 fn parse_trim<M: Metadata>(
@@ -866,32 +866,39 @@ where
                     // surprising, so we report the conflict instead of
                     // silently picking one.
                     let is_bare_ident = is_simple_id && scan_name.is_none();
-                    let let_decl = worker.let_scope.lookup(&col_name);
                     // FIXME: use let chain after bumping rust to 2024
-                    if let (Some(let_decl), true) = (let_decl, is_bare_ident) {
-                        let let_ty = let_decl.ty;
-                        for rel_id in referred_relation_ids {
-                            if worker.build_columns_map(plan, *rel_id).is_ok()
-                                && worker
-                                    .columns_map_get_positions(*rel_id, &col_name, None)
-                                    .is_ok()
+                    if is_bare_ident {
+                        match worker.let_scope.resolve(&col_name) {
+                            LetVarLookup::Live { ty: let_ty } => {
+                                if worker.resolves_to_column(plan, referred_relation_ids, &col_name)
+                                {
+                                    return Err(SbroadError::Other(format_smolstr!(
+                                        "column reference \"{col_name}\" is ambiguous: it could \
+                                         refer to either a LET variable or a table column"
+                                    )));
+                                }
+                                worker.let_scope.mark_used(&col_name);
+                                let plan_id = plan.nodes.push(
+                                    LetVarRef {
+                                        name: col_name.clone(),
+                                        var_type: let_ty,
+                                    }
+                                    .into(),
+                                );
+                                worker.reference_to_name_map.insert(plan_id, col_name);
+                                return Ok(ParseExpression::PlanId { plan_id });
+                            }
+                            LetVarLookup::OutOfScope
+                                if !worker.resolves_to_column(
+                                    plan,
+                                    referred_relation_ids,
+                                    &col_name,
+                                ) =>
                             {
-                                return Err(SbroadError::Other(format_smolstr!(
-                                    "column reference \"{col_name}\" is ambiguous: \
-                                     it could refer to either a LET variable or a table column"
-                                )));
+                                return Err(LetVarScope::out_of_scope_error(&col_name))
                             }
+                            LetVarLookup::OutOfScope | LetVarLookup::Unknown => (),
                         }
-                        worker.let_scope.mark_used(&col_name);
-                        let plan_id = plan.nodes.push(
-                            LetVarRef {
-                                name: col_name.clone(),
-                                var_type: let_ty,
-                            }
-                            .into(),
-                        );
-                        worker.reference_to_name_map.insert(plan_id, col_name);
-                        return Ok(ParseExpression::PlanId { plan_id });
                     }
 
                     if referred_relation_ids.is_empty() {

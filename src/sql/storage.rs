@@ -23,7 +23,7 @@ use sql::executor::{Port, PortType};
 use sql::ir::bucket::Buckets;
 use sql::ir::explain::execution_info::BoundedBuckets;
 use sql::ir::helpers::RepeatableState;
-use sql::ir::node::BlockStatement;
+use sql::ir::node::BlockEntries;
 use sql::ir::options::Options;
 use std::cell::{OnceCell, RefCell};
 use std::time::Duration;
@@ -984,8 +984,13 @@ pub fn explain_execute_block<'p>(
     buckets: &Buckets,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
-    let bucket_count = block.bucket_count;
-    let params = &mut block.params.into_iter();
+    let BlockExecData {
+        statements,
+        params,
+        bucket_count,
+        ..
+    } = block;
+    let params = &mut params.into_iter();
 
     let bucket_info = BoundedBuckets {
         buckets: buckets.clone(),
@@ -1008,34 +1013,12 @@ pub fn explain_execute_block<'p>(
     };
 
     let next_params = |params: &mut IntoIter<_>| params.next().expect("not enough params");
-    for (idx, stmt) in block.statements.into_iter().enumerate() {
-        match stmt {
-            BlockStatement::ReturnQuery(p) => {
-                let explain_query = ExplainQuery::ReturnQuery(&p.pattern);
-                explain_one(explain_query, &p, &next_params(params))?;
-            }
-            BlockStatement::Query(p) => {
-                let explain_query = ExplainQuery::Query(&p.pattern);
-                explain_one(explain_query, &p, &next_params(params))?;
-            }
-            BlockStatement::Let { ref query, var } => {
-                let is_used = block.unused_lets.contains(&idx);
-                let explain_query = ExplainQuery::Let {
-                    query: &query.pattern,
-                    var,
-                    is_used,
-                };
-                explain_one(explain_query, query, &next_params(params))?;
-            }
-            BlockStatement::If { cond, body } => {
-                let explain_query = ExplainQuery::IfCond(&cond.pattern);
-                explain_one(explain_query, &cond, &next_params(params))?;
-                for p in body {
-                    let explain_query = ExplainQuery::IfBody(&p.pattern);
-                    explain_one(explain_query, &p, &next_params(params))?;
-                }
-            }
-        }
+    // One entry per query, in execution order -- the same order `params` is
+    // indexed by, and the order the router expects when it names the stages.
+    for entry in BlockEntries::new(&statements) {
+        let query = entry.query;
+        let explain_query = ExplainQuery::new(&query.pattern);
+        explain_one(explain_query, query, &next_params(params))?;
     }
 
     Ok(())

@@ -1,7 +1,7 @@
 use ahash::AHashMap;
 use pest::iterators::Pair;
 use smol_str::{format_smolstr, SmolStr};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::errors::SbroadError;
 use crate::frontend::sql::ast::{PairToAstIdTranslation, Rule};
@@ -22,11 +22,10 @@ pub(in crate::frontend::sql) const COLUMN_POSITIONS_CACHE_CAPACITY: usize = 10;
 /// in the parsing result returned from pest. Used for preallocating `reference_to_name_map`.
 pub(in crate::frontend::sql) const REFERENCES_MAP_CAPACITY: usize = 50;
 
-/// Helper struct holding values and references needed for `parse_expr` calls.
 /// One LET declaration tracked by the parser's block scope.
 ///
 /// Stored in execution order by [`LetVarScope`]. `used` flips to `true` the
-/// first time a downstream block statement resolves to this declaration;
+/// first time a downstream block statement resolves to this declaration.
 #[derive(Debug, Clone)]
 pub(in crate::frontend::sql) struct LetVarDecl {
     /// Id of the RHS query.
@@ -36,8 +35,33 @@ pub(in crate::frontend::sql) struct LetVarDecl {
     // FIXME: Infer the type using type system so there will be no variables of unknown type.
     pub(in crate::frontend::sql) ty: DerivedType,
     /// Whether at least one later block statement referenced this
-    /// declaration. Resets to `false` on redeclaration.
+    /// declaration. A redeclaration starts over with a fresh entry, so the
+    /// flag always describes one binding rather than a name.
     pub(in crate::frontend::sql) used: bool,
+}
+
+/// A visibility scope for IF body.
+/// Used to invalidate names of its LET variables.
+#[derive(Debug, Clone, Default)]
+struct LetScopeFrame {
+    declared: Vec<SmolStr>,
+}
+
+impl LetScopeFrame {
+    fn binds(&self, name: &str) -> bool {
+        self.declared.iter().any(|declared| declared == name)
+    }
+}
+
+/// What [`LetVarScope::resolve`] made of a bare identifier.
+#[derive(Debug, Clone, Copy)]
+pub(in crate::frontend::sql) enum LetVarLookup {
+    /// A variable that is live here, with the type its references take.
+    Live { ty: DerivedType },
+    /// A variable this block declared, but whose scope has since ended.
+    OutOfScope,
+    /// Not a LET variable at all -- a column, or a typo.
+    Unknown,
 }
 
 /// LET-variable scope for a single transactional block.
@@ -48,59 +72,147 @@ pub(in crate::frontend::sql) struct LetVarDecl {
 /// block-statement subtrees see the updated scope when they run identifier
 /// resolution inside `parse_expr_pratt`.
 ///
-/// Shadowing is allowed only when the new RHS type matches the previously
-/// recorded type; otherwise the parser rejects the redeclaration.
+/// An IF body opens a nested scope: a LET declared in it is a new variable
+/// that disappears at `END IF`. Within one scope a repeated LET is a
+/// re-assignment instead, allowed only when the new RHS type matches the
+/// recorded one.
+///
+/// A name may be reused by scopes that do not overlap -- two sibling IF bodies,
+/// or a body and the top level after it -- and those are unrelated variables
+/// that happen to share a runtime slot. Sharing is safe because a reference
+/// only ever resolves to a binding that is live at that point, and a live
+/// binding is always assigned earlier in execution order than the reference,
+/// with no other assignment to the name in between.
 #[derive(Debug, Default, Clone)]
 pub(in crate::frontend::sql) struct LetVarScope {
     /// All declarations in source order. We keep the full history (rather
     /// than a flat name → decl map) so the unused-LET check can point at
-    /// the specific shadowed binding that was never referenced.
+    /// the specific binding that was never referenced.
     pub(in crate::frontend::sql) decls: Vec<LetVarDecl>,
     /// `name → index into decls` of the currently-active binding for that
-    /// name. Lookups consult only this map; shadowed entries are reachable
-    /// only via `decls` for diagnostics.
+    /// name. Lookups consult only this map; bindings that went out of scope
+    /// are reachable only via `decls` for diagnostics.
     pub(in crate::frontend::sql) by_name: HashMap<SmolStr, usize>,
+    /// Open IF bodies, innermost last.
+    frames: Vec<LetScopeFrame>,
+    /// Every name ever declared in this block, live or not. Lets us tell
+    /// "never heard of it" apart from "went out of scope at END IF".
+    declared_names: HashSet<SmolStr>,
 }
 
 impl LetVarScope {
-    pub(in crate::frontend::sql) fn lookup(&self, name: &str) -> Option<&LetVarDecl> {
-        self.by_name.get(name).map(|idx| &self.decls[*idx])
-    }
-
     pub(in crate::frontend::sql) fn mark_used(&mut self, name: &str) {
         if let Some(idx) = self.by_name.get(name).copied() {
             self.decls[idx].used = true;
         }
     }
 
-    /// Push a fresh LET declaration. Returns an error if an existing binding
-    /// with the same name has a different type — same-type redeclaration is
-    /// allowed and shares the runtime aVar slot (see `build_var_slots` in
-    /// `src/vdbe/txn.rs`).
+    /// What a bare identifier means to this scope. Call sites resolve columns
+    /// themselves, so this only reports what the LET scope knows -- but they
+    /// all report [`LetVarLookup::OutOfScope`] the same way, via
+    /// [`Self::out_of_scope_error`].
+    pub(in crate::frontend::sql) fn resolve(&self, name: &str) -> LetVarLookup {
+        match self.by_name.get(name) {
+            Some(idx) => LetVarLookup::Live {
+                ty: self.decls[*idx].ty,
+            },
+            // Declared somewhere in the block but no longer live: say so,
+            // rather than let the name fall through and blame a missing
+            // column. Call sites still let a real column win -- the variable
+            // does not exist here, so there is nothing to be ambiguous with.
+            None if self.declared_names.contains(name) => LetVarLookup::OutOfScope,
+            None => LetVarLookup::Unknown,
+        }
+    }
+
+    pub(in crate::frontend::sql) fn out_of_scope_error(name: &str) -> SbroadError {
+        SbroadError::Other(format_smolstr!("LET variable \"{name}\" is out of scope"))
+    }
+
+    pub(in crate::frontend::sql) fn push_frame(&mut self) {
+        self.frames.push(LetScopeFrame::default());
+    }
+
+    /// Unbinds the names the closing body introduced. The declarations
+    /// themselves stay in `decls` for the unused-LET report.
+    pub(in crate::frontend::sql) fn pop_frame(&mut self) {
+        let Some(frame) = self.frames.pop() else {
+            debug_assert!(false, "END IF without a matching IF body scope");
+            return;
+        };
+        for name in &frame.declared {
+            self.by_name.remove(name);
+        }
+    }
+
+    /// Index of the binding for `name` if it was declared in the innermost
+    /// open scope -- i.e. if declaring `name` again re-assigns it rather than
+    /// introducing a new variable that shadows an outer one. Outside any IF
+    /// body every live binding is local.
+    fn local_binding(&self, name: &str) -> Option<usize> {
+        let idx = *self.by_name.get(name)?;
+        match self.frames.last() {
+            Some(frame) => frame.binds(name).then_some(idx),
+            None => Some(idx),
+        }
+    }
+
+    /// Push a fresh LET declaration for `name`.
+    ///
+    /// Re-declaring a variable of the innermost scope re-assigns it, so the
+    /// types have to match. A name nothing else is using introduces a new
+    /// variable of any type.
+    ///
+    /// Re-declaring one that belongs to an *enclosing* scope is rejected. It
+    /// could only mean shadowing, and since a scope ends at `END IF`, the
+    /// value assigned inside would be silently thrown away there -- while the
+    /// obvious reading is that the outer variable was being updated. There is
+    /// no separate assignment syntax to say which was meant, so we make the
+    /// author rename instead of guessing.
     pub(in crate::frontend::sql) fn declare(
         &mut self,
         id: NodeId,
         name: SmolStr,
         ty: DerivedType,
     ) -> Result<(), SbroadError> {
-        if let Some(prev) = self.lookup(&name) {
-            // Compare only when both sides have a known type. An unknown
-            // type matches anything.
-            if let (Some(prev_ty), Some(new_ty)) = (prev.ty.get(), ty.get()) {
-                if prev_ty != new_ty {
-                    return Err(SbroadError::Other(format_smolstr!(
-                        "LET variable \"{name}\" cannot be redeclared with a different type \
-                         (was {prev_ty}, now {new_ty})"
-                    )));
+        match self.local_binding(&name) {
+            Some(prev_idx) => {
+                let prev = &self.decls[prev_idx];
+                // Compare only when both sides have a known type. An unknown
+                // type matches anything.
+                if let (Some(prev_ty), Some(new_ty)) = (prev.ty.get(), ty.get()) {
+                    if prev_ty != new_ty {
+                        return Err(SbroadError::Other(format_smolstr!(
+                            "LET variable \"{name}\" cannot be redeclared with a different type \
+                             (was {prev_ty}, now {new_ty})"
+                        )));
+                    }
+                }
+            }
+            None if self.by_name.contains_key(&name) => {
+                return Err(SbroadError::Other(format_smolstr!(
+                    "LET variable \"{name}\" is already declared outside IF body"
+                )))
+            }
+            // A name this scope has not bound yet. Record it on the frame so
+            // that `END IF` unbinds it again. A re-assignment takes the arm
+            // above and needs no record: reaching it means the frame already
+            // holds the name.
+            None => {
+                if let Some(frame) = self.frames.last_mut() {
+                    frame.declared.push(name.clone());
                 }
             }
         }
+
         let idx = self.decls.len();
         self.decls.push(LetVarDecl {
             query_id: id,
             ty,
             used: false,
         });
+
+        self.declared_names.insert(name.clone());
         self.by_name.insert(name, idx);
         Ok(())
     }
@@ -171,7 +283,8 @@ where
     /// Maps a `BlockLetStatement` AST node id to the LET variable's
     /// normalized name, so `parse_anonymous_block` can recover the name
     /// when it builds `BlockStatement::Let { var, query }` from the
-    /// `Translation` map (which carries only the RHS plan id).
+    /// `Translation` map (which carries only the RHS plan id). It is the
+    /// same name every reference to the variable compiles to (`:{name}`).
     pub(in crate::frontend::sql) let_var_names: HashMap<usize, SmolStr>,
 }
 
@@ -237,6 +350,20 @@ where
         } else {
             col_map.get(col_name)
         }
+    }
+
+    pub(in crate::frontend::sql) fn resolves_to_column(
+        &mut self,
+        plan: &Plan,
+        referred_relation_ids: &[NodeId],
+        col_name: &str,
+    ) -> bool {
+        referred_relation_ids.iter().any(|rel_id| {
+            self.build_columns_map(plan, *rel_id).is_ok()
+                && self
+                    .columns_map_get_positions(*rel_id, col_name, None)
+                    .is_ok()
+        })
     }
 
     /// Reset the window context accumulated for the projection we have just built.

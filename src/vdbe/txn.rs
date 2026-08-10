@@ -3,7 +3,7 @@ use super::insert;
 use super::{alloc_zeroed, reserve, reserve_one};
 use ::sql::executor::engine::{BlockQuery, BlockRuntimeHook, VersionMap};
 use ::sql::executor::vdbe::{SqlError, SqlStmt};
-use ::sql::ir::node::BlockStatement;
+use ::sql::ir::node::{BlockEntries, BlockEntriesMut, BlockEntryKind, BlockStatement};
 use ::sql::ir::operator::ConflictUpdateValue;
 use smol_str::SmolStr;
 use std::collections::HashMap;
@@ -261,8 +261,18 @@ impl CompiledSubprogram {
 
 /// Assign aVar slots to LET variables and IF condition results.
 ///
-/// LET variable slots are shared across reassignments (same name → same slot).
+/// One slot per LET variable *name*, so a reassignment reuses its slot -- and
+/// so do two variables that merely happen to share a name because their scopes
+/// do not overlap (sibling IF bodies, say). The frontend only ever resolves a
+/// reference to a binding assigned earlier in this same execution order, with
+/// no other assignment to the name in between, so a shared slot always holds
+/// the value the reference was resolved against.
+///
 /// Each IF gets one anonymous slot for its condition boolean.
+///
+/// Slots are handed out in execution order, at any nesting depth, so the
+/// consumers below can re-walk the block with the same iterator and line their
+/// statements up with these slots one-to-one.
 ///
 /// Returns `(let_vars, if_cond_slots, total_var_slots)`.
 fn build_var_slots<S>(
@@ -273,31 +283,88 @@ fn build_var_slots<S>(
     let mut if_cond_slots: Vec<i32> = Vec::new();
     let mut next = base_slot + 1;
 
-    for stmt in stmts {
-        match stmt {
-            BlockStatement::Let { var, .. } => {
-                let_vars.entry(var.clone()).or_insert_with(|| {
+    for entry in BlockEntries::new(stmts) {
+        match entry.location.kind {
+            BlockEntryKind::Let { var } => {
+                let_vars.entry(var).or_insert_with(|| {
                     let slot = next;
                     next += 1;
                     slot
                 });
             }
-            BlockStatement::If { .. } => {
+            BlockEntryKind::IfCondition => {
                 if_cond_slots.push(next);
                 next += 1;
             }
-            BlockStatement::ReturnQuery(_) | BlockStatement::Query(_) => {}
+            BlockEntryKind::ReturnQuery | BlockEntryKind::Query => {}
         }
     }
 
     (let_vars, if_cond_slots, next - 1)
 }
 
-/// Assemble compiled statements into a single root VDBE program.
+/// Emit one statement list into `vdbe`, recursing into IF bodies.
 ///
-/// For `Subprogram` items: one OP_Program each.
+/// For plain items: one OP_Program each.
 /// For `If` items: condition OP_Program, OP_Variable + OP_IfNot in root,
-/// body OP_Programs, then the OP_IfNot jump target is patched.
+/// then the body (which may open IFs of its own), then the OP_IfNot jump
+/// target is patched past everything the body emitted.
+///
+/// `if_cond_slots` is drained in step with the traversal -- [`build_var_slots`]
+/// filled it walking the very same block in the very same order.
+///
+/// # Safety
+/// Calls tarantool VDBE C APIs.
+unsafe fn emit_block_stmts(
+    vdbe: &mut Vdbe,
+    parser: &mut Parse,
+    stmts: Vec<BlockStatement<CompiledSubprogram>>,
+    if_cond_slots: &mut impl Iterator<Item = i32>,
+) {
+    // Link the subprogram to the root VDBE (for cleanup) and call it.
+    unsafe fn emit_program(vdbe: &mut Vdbe, parser: &mut Parse, cs: CompiledSubprogram) {
+        let first_arg_cell = 0;
+        let exception_jump_addr = 0;
+
+        let state_cell = reserve_one(&mut parser.nMem);
+        let sp_ptr = Box::into_raw(cs.into_subprogram());
+        sqlVdbeLinkSubProgram(vdbe, sp_ptr);
+        sqlVdbeAddOp!(
+            vdbe, OP_Program,
+            first_arg_cell, exception_jump_addr, state_cell,
+            sp_ptr.cast() => P4_SUBPROGRAM,
+        );
+    }
+
+    for stmt in stmts {
+        match stmt {
+            BlockStatement::Let { query: cs, .. }
+            | BlockStatement::ReturnQuery(cs)
+            | BlockStatement::Query(cs) => emit_program(vdbe, parser, cs),
+            BlockStatement::If { cond, body } => {
+                let cond_slot = if_cond_slots
+                    .next()
+                    .expect("build_var_slots reserves a slot per IF condition");
+
+                // Condition subprogram writes boolean to aVar[cond_slot - 1].
+                emit_program(vdbe, parser, cond);
+
+                let cond_reg = reserve_one(&mut parser.nMem);
+                sqlVdbeAddOp!(vdbe, OP_Variable, cond_slot, cond_reg, 1);
+
+                // Skip body if condition is false or NULL (p3=1 → jump on null).
+                let ifnot_addr = sqlVdbeAddOp!(vdbe, OP_IfNot, cond_reg, 0, 1);
+
+                emit_block_stmts(vdbe, parser, body, if_cond_slots);
+
+                // Patch OP_IfNot to jump to the first opcode past the body.
+                (*vdbe.aOp.add(ifnot_addr as usize)).p2 = vdbe.nOp;
+            }
+        }
+    }
+}
+
+/// Assemble compiled statements into a single root VDBE program.
 ///
 /// # Safety
 /// Calls tarantool VDBE C APIs.
@@ -319,62 +386,7 @@ unsafe fn assemble_block_vdbe(
         parser.nVar = n_var;
         reserve(&mut parser.nMem, n_mem);
 
-        let first_arg_cell = 0;
-        let exception_jump_addr = 0;
-        let mut if_idx = 0usize;
-
-        for item in compiled {
-            match item {
-                BlockStatement::Let { query: cs, .. }
-                | BlockStatement::ReturnQuery(cs)
-                | BlockStatement::Query(cs) => {
-                    let state_cell = reserve_one(&mut parser.nMem);
-                    let sp_ptr = Box::into_raw(cs.into_subprogram());
-                    sqlVdbeLinkSubProgram(vdbe, sp_ptr);
-                    sqlVdbeAddOp!(
-                        vdbe, OP_Program,
-                        first_arg_cell, exception_jump_addr, state_cell,
-                        sp_ptr.cast() => P4_SUBPROGRAM,
-                    );
-                }
-                BlockStatement::If { cond, body } => {
-                    let cond_slot = if_cond_slots[if_idx];
-                    if_idx += 1;
-
-                    // Condition subprogram writes boolean to aVar[cond_slot - 1].
-                    let cond_state_cell = reserve_one(&mut parser.nMem);
-                    let cond_ptr = Box::into_raw(cond.into_subprogram());
-                    sqlVdbeLinkSubProgram(vdbe, cond_ptr);
-                    sqlVdbeAddOp!(
-                        vdbe, OP_Program,
-                        first_arg_cell, exception_jump_addr, cond_state_cell,
-                        cond_ptr.cast() => P4_SUBPROGRAM,
-                    );
-
-                    // Load condition result from aVar into a register.
-                    let cond_reg = reserve_one(&mut parser.nMem);
-                    sqlVdbeAddOp!(vdbe, OP_Variable, cond_slot, cond_reg, 1);
-
-                    // Skip body if condition is false or NULL (p3=1 → jump on null).
-                    let ifnot_addr = sqlVdbeAddOp!(vdbe, OP_IfNot, cond_reg, 0, 1);
-
-                    // Body subprograms — all linked to the root VDBE for cleanup.
-                    for body_cs in body {
-                        let state_cell = reserve_one(&mut parser.nMem);
-                        let body_ptr = Box::into_raw(body_cs.into_subprogram());
-                        sqlVdbeLinkSubProgram(vdbe, body_ptr);
-                        sqlVdbeAddOp!(
-                            vdbe, OP_Program,
-                            first_arg_cell, exception_jump_addr, state_cell,
-                            body_ptr.cast() => P4_SUBPROGRAM,
-                        );
-                    }
-
-                    // Patch OP_IfNot to jump to the first opcode past the body.
-                    (*vdbe.aOp.add(ifnot_addr as usize)).p2 = vdbe.nOp;
-                }
-            }
-        }
+        emit_block_stmts(vdbe, parser, compiled, &mut if_cond_slots.iter().copied());
 
         sqlVdbeAddOp!(vdbe, OP_Halt);
         // `sql_stmt_est_size` and `sql_stmt_query_str` both read `zSql`, so it
@@ -394,164 +406,116 @@ pub(crate) fn compile_transactional_block(
     stmts: &[BlockStatement<BlockQuery>],
     table_versions: &VersionMap,
 ) -> Result<SqlStmt, SqlError> {
+    fn compile_stmt(
+        stmt: &BlockStatement<BlockQuery>,
+    ) -> Result<BlockStatement<CompiledSubprogram>, String> {
+        Ok(match stmt {
+            BlockStatement::Let { var, query } => BlockStatement::Let {
+                var: var.clone(),
+                query: CompiledSubprogram::compile(query)?,
+            },
+            BlockStatement::ReturnQuery(query) => {
+                BlockStatement::ReturnQuery(CompiledSubprogram::compile(query)?)
+            }
+            BlockStatement::Query(query) => {
+                BlockStatement::Query(CompiledSubprogram::compile(query)?)
+            }
+            BlockStatement::If { cond, body } => BlockStatement::If {
+                cond: CompiledSubprogram::compile(cond)?,
+                body: body
+                    .iter()
+                    .map(compile_stmt)
+                    .collect::<Result<Vec<_>, String>>()?,
+            },
+        })
+    }
+
     let mut hooks = Vec::new();
     let mut compiled = stmts
         .iter()
-        .map(|stmt| {
-            Ok(match stmt {
-                BlockStatement::Let { var, query } => {
-                    let query = CompiledSubprogram::compile(query)?;
-                    BlockStatement::Let {
-                        var: var.clone(),
-                        query,
-                    }
-                }
-                BlockStatement::ReturnQuery(query) => {
-                    let query = CompiledSubprogram::compile(query)?;
-                    BlockStatement::ReturnQuery(query)
-                }
-                BlockStatement::Query(query) => {
-                    let query = CompiledSubprogram::compile(query)?;
-                    BlockStatement::Query(query)
-                }
-                BlockStatement::If { cond, body } => {
-                    let cond = CompiledSubprogram::compile(cond)?;
-                    let body = body
-                        .iter()
-                        .map(CompiledSubprogram::compile)
-                        .collect::<Result<Vec<_>, _>>()?;
-                    BlockStatement::If { cond, body }
-                }
-            })
-        })
+        .map(compile_stmt)
         .collect::<Result<Vec<_>, String>>()?;
 
-    let total_number_of_positional_params: i32 = compiled
-        .iter()
-        .map(|stmt| match stmt {
-            BlockStatement::Let { query, .. }
-            | BlockStatement::ReturnQuery(query)
-            | BlockStatement::Query(query) => query.count_positional_parameters(),
-            BlockStatement::If { cond, body } => {
-                cond.count_positional_parameters()
-                    + body
-                        .iter()
-                        .map(|b| b.count_positional_parameters())
-                        .sum::<i32>()
-            }
-        })
+    let total_number_of_positional_params: i32 = BlockEntries::new(&compiled)
+        .map(|entry| entry.query.count_positional_parameters())
         .sum();
 
     // Allocate aVar slots for LET variables and IF condition results.
-    let (all_let_vars, if_cond_slots, total_var_slots) =
+    let (let_var_slots, if_cond_slots, total_var_slots) =
         build_var_slots(&compiled, total_number_of_positional_params);
 
     // Patch OP_ResultRow: LET -> named slot, IF cond -> anonymous slot.
-    let mut if_idx = 0usize;
-    for cs in &mut compiled {
-        match cs {
-            BlockStatement::Let { var, query: sp } => {
-                sp.patch_let_result_row(all_let_vars[var.as_str()]);
+    let mut if_cond_slots_iter = if_cond_slots.iter().copied();
+    for entry in BlockEntriesMut::new(&mut compiled) {
+        match entry.location.kind {
+            BlockEntryKind::Let { var } => {
+                let slot = let_var_slots[var.as_str()];
+                entry.query.patch_let_result_row(slot);
             }
-            BlockStatement::If { cond, .. } => {
-                cond.patch_let_result_row(if_cond_slots[if_idx]);
-                if_idx += 1;
+            BlockEntryKind::IfCondition => {
+                let slot = if_cond_slots_iter.next().unwrap();
+                entry.query.patch_let_result_row(slot);
             }
-            BlockStatement::ReturnQuery(_) | BlockStatement::Query(_) => {}
+            _ => {}
         }
     }
 
     // Patch OP_Variable slots in execution order, tracking defined LET vars
     // to catch forward references and unknown variable names.
+    //
+    // `defined_let_vars` only grows: a LET inside an IF body stays "defined"
+    // past `END IF`, and nothing here notices that a false condition leaves
+    // its slot NULL. So this is a check against a name that no statement
+    // assigns before this one *anywhere* in the block, not a scope check --
+    // IF scoping is settled in the frontend, which rejects a reference to a
+    // variable whose body has ended before it ever reaches us.
     let mut cumulative_offset = 0i32;
     let mut defined_let_vars: HashMap<SmolStr, i32> = HashMap::new();
-    for cs in &mut compiled {
-        match cs {
-            BlockStatement::Let { var, query: sp } => {
-                sp.patch_and_attach(
-                    &mut cumulative_offset,
-                    &mut hooks,
-                    &all_let_vars,
-                    &defined_let_vars,
-                    table_versions,
-                )?;
-                defined_let_vars.insert(var.clone(), all_let_vars[var.as_str()]);
-            }
-            BlockStatement::ReturnQuery(sp) | BlockStatement::Query(sp) => {
-                sp.patch_and_attach(
-                    &mut cumulative_offset,
-                    &mut hooks,
-                    &all_let_vars,
-                    &defined_let_vars,
-                    table_versions,
-                )?;
-            }
-            BlockStatement::If { cond, body } => {
-                // Condition and body queries can see LET vars defined before
-                // this IF.
-                cond.patch_and_attach(
-                    &mut cumulative_offset,
-                    &mut hooks,
-                    &all_let_vars,
-                    &defined_let_vars,
-                    table_versions,
-                )?;
-                for body_sp in body.iter_mut() {
-                    body_sp.patch_and_attach(
-                        &mut cumulative_offset,
-                        &mut hooks,
-                        &all_let_vars,
-                        &defined_let_vars,
-                        table_versions,
-                    )?;
-                }
-            }
+    for entry in BlockEntriesMut::new(&mut compiled) {
+        let declared_var = match &entry.location.kind {
+            BlockEntryKind::Let { var } => Some(var.clone()),
+            _ => None,
+        };
+        entry.query.patch_and_attach(
+            &mut cumulative_offset,
+            &mut hooks,
+            &let_var_slots,
+            &defined_let_vars,
+            table_versions,
+        )?;
+        // A LET only becomes visible to the statements that follow it.
+        if let Some(var) = declared_var {
+            let slot = let_var_slots[var.as_str()];
+            defined_let_vars.insert(var, slot);
         }
     }
 
-    // All `RETURN QUERY` statements must agree on the number of result
-    // columns. `LET` and `IF cond` write to aVar; plain `Query` and IF body
-    // queries are DML.
+    // All `RETURN QUERY` statements must agree on the number of result columns,
+    // however deeply they are nested. `LET` and `IF cond` write to aVar; plain
+    // `Query` is DML.
     let n_res_column = {
         let mut n: Option<u16> = None;
-        let mut check = |sp: &CompiledSubprogram| -> Result<(), String> {
+        let return_queries = BlockEntries::new(&compiled)
+            .filter(|entry| entry.location.kind == BlockEntryKind::ReturnQuery);
+        for entry in return_queries {
+            let n_res_column = entry.query.n_res_column;
             match n {
-                None => {
-                    n = Some(sp.n_res_column);
-                    Ok(())
+                None => n = Some(n_res_column),
+                Some(expected) if expected != n_res_column => {
+                    return Err(format!(
+                        "all result statements must return the same number of columns \
+                         (expected {expected}, got {n_res_column})"
+                    )
+                    .into())
                 }
-                Some(expected) if expected != sp.n_res_column => Err(format!(
-                    "all result statements must return the same number of columns \
-                     (expected {expected}, got {})",
-                    sp.n_res_column
-                )),
-                Some(_) => Ok(()),
-            }
-        };
-        for cs in &compiled {
-            match cs {
-                BlockStatement::ReturnQuery(sp) => check(sp)?,
-                BlockStatement::Let { .. }
-                | BlockStatement::Query(_)
-                | BlockStatement::If { .. } => {}
+                Some(_) => {}
             }
         }
         n.unwrap_or(1)
     };
 
-    let max_n_mem = compiled
-        .iter()
-        .map(|cs| match cs {
-            BlockStatement::Let { query, .. }
-            | BlockStatement::ReturnQuery(query)
-            | BlockStatement::Query(query) => query.subprogram.nMem,
-            BlockStatement::If { cond, body } => body
-                .iter()
-                .map(|b| b.subprogram.nMem)
-                .max()
-                .unwrap_or(0)
-                .max(cond.subprogram.nMem),
-        })
+    let max_n_mem = BlockEntries::new(&compiled)
+        .map(|entry| entry.query.subprogram.nMem)
         .max()
         .unwrap_or(1);
 

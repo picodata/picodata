@@ -18,7 +18,7 @@ pub(in crate::frontend::sql) use expression_ir::{
     ParseExpression, ParseExpressionInfixOperator,
 };
 pub(in crate::frontend::sql) use expression_parser::{parse_expr_no_type_check, parse_scalar_expr};
-pub(in crate::frontend::sql) use expression_walker::{ExpressionWalker, LetVarScope};
+pub(in crate::frontend::sql) use expression_walker::{ExpressionWalker, LetVarLookup, LetVarScope};
 pub(in crate::frontend::sql) use helpers::{
     can_assign, dql_return_columns, parse_trimmed_unsigned_from_str, parse_unsigned, OrderNulls,
 };

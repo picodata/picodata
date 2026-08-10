@@ -981,17 +981,17 @@ projection (g.c::string::int -> col_1)
   selection (true::bool)
     scan g
 ''
-╭──────────────────────────────────────────╮
-│ 2. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭────────────────────────────────────────────╮
+│ 2.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
 ''
 SELECT CAST(:var_1 AS int) = CAST(300 AS int) as "cond"
 ''
 projection (:var_1::int = 300::int -> cond)
 ''
-╭──────────────────────────────────────────╮
-│ 3. If body (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭───────────────────────────────────────────────────╮
+│ 2.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
 ''
 INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(42 AS int), 2426)
 ''
@@ -1000,7 +1000,7 @@ insert into tt on conflict: fail
     value ROW(42::int)
 ''
 ╭────────────────────────────────────────╮
-│ 4. Query (CONST-FILTERED STORAGE, 1/1) │
+│ 3. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
 INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(42 AS int), 2426)
@@ -1071,17 +1071,17 @@ SELECT "g"."a" FROM "g"
 projection (g.a::int -> a)
   scan g
 ''
-╭──────────────────────────────────────────╮
-│ 4. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭────────────────────────────────────────────╮
+│ 4.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
 ''
 SELECT CAST(:a2 AS double) as "cond"
 ''
 projection (:a2::double -> cond)
 ''
-╭──────────────────────────────────────────╮
-│ 5. If body (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭───────────────────────────────────────────────────╮
+│ 4.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
 ''
 UPDATE "t" SET "b" = CAST(5.5 AS decimal) WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('kek' AS string)
 ''
@@ -1090,17 +1090,17 @@ update t (b = col_0)
     selection ((t.a::int = 42::int and t.c::string = 'kek'::string))
       scan t
 ''
-╭──────────────────────────────────────────╮
-│ 6. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭────────────────────────────────────────────╮
+│ 5.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
 ''
 SELECT CAST(:a1 AS int) = CAST(-1 AS int) as "cond"
 ''
 projection (:a1::int = -1::int -> cond)
 ''
-╭──────────────────────────────────────────╮
-│ 7. If body (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭───────────────────────────────────────────────────╮
+│ 5.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
 ''
 INSERT INTO "t" ("a", "c", "bucket_id") VALUES (CAST(42 AS int), CAST('kek' AS string), 2873)
 ''
@@ -1139,36 +1139,36 @@ SELECT "g"."a" FROM "g"
 plan:
     [0] SCAN TABLE g (~1048576 rows)
 ''
-╭──────────────────────────────────────────╮
-│ 4. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭────────────────────────────────────────────╮
+│ 4.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
 ''
 SELECT CAST(:a2 AS double) as "cond"
 ''
 plan:
     [0] TRIVIAL
 ''
-╭──────────────────────────────────────────╮
-│ 5. If body (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭───────────────────────────────────────────────────╮
+│ 4.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
 ''
 UPDATE "t" SET "b" = CAST(5.5 AS decimal) WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('kek' AS string)
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
 ''
-╭──────────────────────────────────────────╮
-│ 6. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭────────────────────────────────────────────╮
+│ 5.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
 ''
 SELECT CAST(:a1 AS int) = CAST(-1 AS int) as "cond"
 ''
 plan:
     [0] TRIVIAL
 ''
-╭──────────────────────────────────────────╮
-│ 7. If body (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭───────────────────────────────────────────────────╮
+│ 5.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
 ''
 INSERT INTO "t" ("a", "c", "bucket_id") VALUES (CAST(42 AS int), CAST('kek' AS string), 2873)
 ''
@@ -1713,18 +1713,18 @@ end $$;
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────────────────────╮
-│ 1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭────────────────────────────────────────────╮
+│ 1.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
 ''
 SELECT CAST(true AS bool) as "cond"
 ''
 plan:
     [0] TRIVIAL
 ''
-╭──────────────────────────────────────────╮
-│ 2. If body (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭───────────────────────────────────────────────────╮
+│ 1.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
 ''
 UPDATE "b" SET "val" = "b"."id" WHERE "b"."id" = CAST(1 AS int)
 ''

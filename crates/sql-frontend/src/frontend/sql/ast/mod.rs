@@ -431,19 +431,27 @@ impl<'q> AbstractSyntaxTree<'q> {
                 Rule::BlockLetStatement => {
                     build_block_let_statement_ir(ast, id, node, &mut map, &mut worker, &mut plan)?;
                 }
-                Rule::BlockIfCondition => build_block_if_condition_ir(
-                    id,
-                    node,
-                    &mut map,
-                    &mut type_analyzer,
-                    pairs_map,
-                    &mut worker,
-                    &mut plan,
-                )?,
+                Rule::BlockIfCondition => {
+                    build_block_if_condition_ir(
+                        id,
+                        node,
+                        &mut map,
+                        &mut type_analyzer,
+                        pairs_map,
+                        &mut worker,
+                        &mut plan,
+                    )?;
+                    // Post-order visits an IF as condition, then body
+                    // statements, then the IF node itself -- so opening the
+                    // body scope here and closing it there brackets the body
+                    // exactly, at any nesting depth. The condition is already
+                    // planned, so it stays outside the scope it opens.
+                    worker.let_scope.push_frame();
+                }
                 Rule::BlockIfBodyStatement => {
                     build_block_if_body_statement_ir(ast, id, node, &mut map)?;
                 }
-                Rule::BlockIfStatement => {}
+                Rule::BlockIfStatement => worker.let_scope.pop_frame(),
                 Rule::AnonymousBlock => {
                     build_anonymous_block_ir(ast, id, &mut map, &worker, &mut plan)?
                 }

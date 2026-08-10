@@ -16,7 +16,7 @@ use crate::utils::to_user;
 use sql_type_system::expr::Type as SqlType;
 
 use super::ast::core::{parse_normalized_identifier, AstCore};
-use super::ast::ir_populator::{parse_param_with_positions, LetVarScope};
+use super::ast::ir_populator::{parse_param_with_positions, LetVarLookup, LetVarScope};
 use super::ast::{ParseNode, ParsingPairsMap, Rule};
 use super::error::{InsertConflictError as ConflictError, Result, SqlFrontendError};
 use super::ir::value_from_node;
@@ -116,13 +116,22 @@ fn parse_update_operand(
         });
     }
     if let Some(name) = parse_unqualified_update_identifier(ast, node_id)? {
-        let Some(let_decl) = ctx.let_scope.lookup(&name) else {
-            return Err(ConflictError::UnsupportedLiteral {
-                kind: format_smolstr!("{:?}", node.rule),
+        let var_type = match ctx.let_scope.resolve(&name) {
+            LetVarLookup::Live { ty } => ty,
+            // A dead variable is not a variable, so if the name is also a
+            // column it simply means the column -- and a bare column is not a
+            // legal RHS here, which the arm below reports. Only when nothing
+            // else can explain the name do we point at the ended scope.
+            LetVarLookup::OutOfScope if find_column(relation, &name).is_err() => {
+                return Err(LetVarScope::out_of_scope_error(&name).into())
             }
-            .into());
+            LetVarLookup::OutOfScope | LetVarLookup::Unknown => {
+                return Err(ConflictError::UnsupportedLiteral {
+                    kind: format_smolstr!("{:?}", node.rule),
+                }
+                .into())
+            }
         };
-        let var_type = let_decl.ty;
         if find_column(relation, &name).is_ok() {
             return Err(ConflictError::LetColumnAmbiguous { name }.into());
         }
@@ -232,7 +241,7 @@ fn is_target_column(
         if &name != target_column_name {
             return Ok(false);
         }
-        if ctx.let_scope.lookup(&name).is_some() {
+        if matches!(ctx.let_scope.resolve(&name), LetVarLookup::Live { .. }) {
             return Err(ConflictError::LetColumnAmbiguous { name }.into());
         }
         return Ok(true);

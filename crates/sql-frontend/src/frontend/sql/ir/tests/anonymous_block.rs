@@ -86,10 +86,9 @@ fn anonymous_blocks_parsing_errors() {
             "DO LANGUAGE SQL $$ BEGIN RETURN QUERY SELECT false; RETURN QUERY SELECT true, 1; END $$",
             "RETURN QUERY types cannot be matched",
         ),
-        // QUERY and IF statements must follow LET and RETURN QUERY statements
         (
             "DO LANGUAGE SQL $$ BEGIN UPDATE t2 SET e = f; RETURN QUERY SELECT 2; END $$",
-            "QUERY and IF statements must follow LET and RETURN QUERY statements",
+            "LET and RETURN QUERY statements must precede all DML statements",
         ),
         // DDL is not supported in blocks.
         (
@@ -249,13 +248,13 @@ fn block_query_has_motions_errors() {
             "DO $$ BEGIN \
                 IF (SELECT b FROM t1) > 0 THEN UPDATE t2 SET e = f; END IF; \
             END $$",
-            "statement 1 (IF condition)",
+            "statement 1.1 (IF condition)",
         ),
         (
             "DO $$ BEGIN \
                 IF true THEN INSERT INTO t1 SELECT a, b FROM t1; END IF; \
             END $$",
-            "statement 1 (IF body, query 1)",
+            "statement 1.2 (DML)",
         ),
         (
             "DO $$ BEGIN \
@@ -271,7 +270,7 @@ fn block_query_has_motions_errors() {
                     INSERT INTO t1 SELECT a, b FROM t1; \
                 END IF; \
             END $$",
-            "statement 1 (IF body, query 2)",
+            "statement 1.3 (DML)",
         ),
     ];
 
@@ -478,6 +477,123 @@ fn if_resolution_ok() {
             END IF; \
             UPDATE t2 SET e = f; \
         END $$",
+        // RETURN QUERY inside the body is the only source of returned rows.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN RETURN QUERY SELECT 1; END IF; \
+        END $$",
+        // RETURN QUERY inside the body may be followed by DML in the same body.
+        "DO $$ BEGIN \
+            LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+            IF v > 0 THEN \
+                RETURN QUERY SELECT v; \
+                UPDATE t2 SET e = v; \
+            END IF; \
+        END $$",
+        // Top-level and nested RETURN QUERY agree on types.
+        "DO $$ BEGIN \
+            RETURN QUERY SELECT 1; \
+            IF 1 > 0 THEN RETURN QUERY SELECT 2; END IF; \
+        END $$",
+        // Several IF blocks, each returning rows.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN RETURN QUERY SELECT 1; END IF; \
+            IF 2 > 0 THEN RETURN QUERY SELECT 2; END IF; \
+        END $$",
+        // An IF is not a write in itself: one whose body only reads may
+        // precede a top-level RETURN QUERY.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN RETURN QUERY SELECT 1; END IF; \
+            RETURN QUERY SELECT 2; \
+        END $$",
+        // ... and a LET, which may then feed the DML that follows.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN RETURN QUERY SELECT 1; END IF; \
+            LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+            UPDATE t2 SET e = v; \
+        END $$",
+        // A LET declared in the body feeds the DML next to it.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN \
+                LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+                UPDATE t2 SET e = v; \
+            END IF; \
+        END $$",
+        // A body LET may be seeded from one declared before the IF.
+        "DO $$ BEGIN \
+            LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+            IF v > 0 THEN \
+                LET w = (SELECT v + 1); \
+                UPDATE t2 SET e = w; \
+            END IF; \
+        END $$",
+        // Sibling bodies are separate scopes, so each may bind the same name
+        // to a variable of its own, of an unrelated type. They share a runtime
+        // slot, which is safe: neither body can read the other's value.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN LET v = (SELECT 1); END IF; \
+            IF 2 > 0 THEN LET v = (SELECT 'x'); END IF; \
+        END $$",
+        // A body LET may take the name of a column: while it is live the two
+        // never meet, since a body-local LET cannot be read from a query over
+        // that table (that would be ambiguous, see `let_resolution_errors`).
+        // Once END IF frees the name, the column resolves as usual.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN LET e = (SELECT 1); END IF; \
+            RETURN QUERY SELECT e FROM t2; \
+        END $$",
+        // Same, in a position where the reference is the only thing that could
+        // have named the dead variable.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN LET f = (SELECT 1); END IF; \
+            UPDATE t2 SET e = f WHERE f > 0; \
+        END $$",
+        // An empty body is a well-formed no-op -- the condition still runs.
+        "DO $$ BEGIN IF 1 > 0 THEN END IF; END $$",
+        // ... including as one branch among several, and nested.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN END IF; \
+            IF 2 > 0 THEN \
+                IF 3 > 0 THEN END IF; \
+                UPDATE t2 SET e = f; \
+            END IF; \
+        END $$",
+        // A name freed by END IF can also be reused at the top level.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN LET v = (SELECT 'x'); END IF; \
+            LET v = (SELECT 1); \
+            UPDATE t2 SET e = v; \
+        END $$",
+        // IFs nest, and an inner condition may read a LET of the enclosing
+        // body since it is evaluated in that scope.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN \
+                LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+                IF v > 0 THEN \
+                    RETURN QUERY SELECT v; \
+                    UPDATE t2 SET e = v; \
+                END IF; \
+            END IF; \
+        END $$",
+        // Each level keeps its own scope, so sibling inner bodies may bind the
+        // same name to variables of their own. (Neither may hold DML: the
+        // second body's LET would then be a read after a write.)
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN \
+                IF 2 > 0 THEN LET v = (SELECT 1); END IF; \
+                IF 3 > 0 THEN LET v = (SELECT 'x'); END IF; \
+            END IF; \
+        END $$",
+        // Three levels deep, with statements interleaved at every level.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN \
+                UPDATE t2 SET e = f; \
+                IF 2 > 0 THEN \
+                    DELETE FROM t2 WHERE e = 0; \
+                    IF 3 > 0 THEN UPDATE t2 SET f = e; END IF; \
+                END IF; \
+                UPDATE t2 SET e = f WHERE e <> f; \
+            END IF; \
+        END $$",
     ];
 
     for query in cases {
@@ -491,36 +607,158 @@ fn if_resolution_ok() {
 #[test]
 fn if_resolution_errors() {
     let cases = [
-        // SELECT (DQL) is not allowed in body — `SELECT 1;` parses as a
+        // A bare SELECT (DQL) is not allowed in body -- `SELECT 1;` parses as a
         // `BlockQueryStatement` but is rejected by the IF body's DML check.
+        // Use RETURN QUERY to return rows.
         (
             "DO $$ BEGIN \
                 IF 1 > 0 THEN SELECT 1; END IF; \
             END $$",
-            "IF body may only contain DML statements",
+            "bare DQL is not allowed, use LET or RETURN QUERY",
         ),
-        // LET is not allowed inside IF body.
+        // A body LET is a read, so it is bound by the ordering rule too.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN \
+                    UPDATE t2 SET e = f; \
+                    LET v = (SELECT 1); \
+                END IF; \
+            END $$",
+            "LET and RETURN QUERY statements must precede all DML statements",
+        ),
+        // A body LET keeps the rest of the LET rules: single-column RHS...
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN LET v = (SELECT a, b FROM t1); END IF; \
+            END $$",
+            "LET RHS must be a single-column query",
+        ),
+        // A body LET falls out of scope at END IF.
         (
             "DO $$ BEGIN \
                 IF 1 > 0 THEN LET v = (SELECT 1); END IF; \
+                RETURN QUERY SELECT v; \
             END $$",
-            "LET is not allowed inside IF body",
+            "LET variable \"v\" is out of scope",
         ),
-        // RETURN QUERY is not allowed inside IF body.
+        // Same, when the reference could otherwise have resolved to a column.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN LET vv = (SELECT 1); END IF; \
+                UPDATE t2 SET e = vv; \
+            END $$",
+            "LET variable \"vv\" is out of scope",
+        ),
+        // Shadowing an enclosing LET is rejected rather than silently
+        // discarded at END IF -- whatever the types are.
+        (
+            "DO $$ BEGIN \
+                LET v = (SELECT 1::int); \
+                IF 1 > 0 THEN LET v = (SELECT 'x'); END IF; \
+            END $$",
+            "is already declared outside IF body",
+        ),
+        (
+            "DO $$ BEGIN \
+                LET v = (SELECT 1); \
+                IF 1 > 0 THEN LET v = (SELECT 2); END IF; \
+                RETURN QUERY SELECT v; \
+            END $$",
+            "is already declared outside IF body",
+        ),
+        // ... and neither is a repeated LET within one body.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN \
+                    LET v = (SELECT 1::int); \
+                    LET v = (SELECT 'x'); \
+                    UPDATE t2 SET e = v; \
+                END IF; \
+            END $$",
+            "cannot be redeclared with a different type",
+        ),
+        // Reads must precede writes inside the IF body as well.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN \
+                    UPDATE t2 SET e = f; \
+                    RETURN QUERY SELECT 1; \
+                END IF; \
+            END $$",
+            "LET and RETURN QUERY statements must precede all DML statements",
+        ),
+        // The same rule spans nesting levels: the DML sits at the top level,
+        // the read is inside the IF body.
+        (
+            "DO $$ BEGIN \
+                UPDATE t2 SET e = f; \
+                IF 1 > 0 THEN RETURN QUERY SELECT 1; END IF; \
+            END $$",
+            "LET and RETURN QUERY statements must precede all DML statements",
+        ),
+        // A nested RETURN QUERY takes part in the block's type inference, so it
+        // must agree with the other RETURN QUERY statements.
+        (
+            "DO $$ BEGIN \
+                RETURN QUERY SELECT 1; \
+                IF 1 > 0 THEN RETURN QUERY SELECT 'x'; END IF; \
+            END $$",
+            "RETURN QUERY types cannot be matched",
+        ),
+        // The agreement holds between two nested RETURN QUERY statements too.
         (
             "DO $$ BEGIN \
                 IF 1 > 0 THEN RETURN QUERY SELECT 1; END IF; \
+                IF 2 > 0 THEN RETURN QUERY SELECT 1, 2; END IF; \
             END $$",
-            "RETURN QUERY is not allowed inside IF body",
+            "RETURN QUERY types cannot be matched",
         ),
-        // Nested IF is not allowed.
+        // Every rule keeps applying however deep the IFs go: a bare DQL...
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN IF 2 > 0 THEN SELECT 1; END IF; END IF; \
+            END $$",
+            "bare DQL is not allowed, use LET or RETURN QUERY",
+        ),
+        // ...the reads-before-writes ordering, across nesting levels...
         (
             "DO $$ BEGIN \
                 IF 1 > 0 THEN \
                     IF 2 > 0 THEN UPDATE t2 SET e = f; END IF; \
+                    RETURN QUERY SELECT 1; \
                 END IF; \
             END $$",
-            "nested IF is not allowed",
+            "LET and RETURN QUERY statements must precede all DML statements",
+        ),
+        // ...and the ban on shadowing an enclosing LET.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN \
+                    LET v = (SELECT 1); \
+                    IF 2 > 0 THEN LET v = (SELECT 2); UPDATE t2 SET e = v; END IF; \
+                END IF; \
+            END $$",
+            "is already declared outside IF body",
+        ),
+        // An inner LET is gone once its own body ends.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN \
+                    IF 2 > 0 THEN LET v = (SELECT 1); END IF; \
+                    UPDATE t2 SET e = v; \
+                END IF; \
+            END $$",
+            "LET variable \"v\" is out of scope",
+        ),
+        // ON CONFLICT DO UPDATE resolves LET names on its own path; it must
+        // explain an ended scope the same way, not as an unsupported literal.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN LET incr = (SELECT 1); END IF; \
+                INSERT INTO \"t\" VALUES (1, 1, 1, 1) \
+                    ON CONFLICT (\"a\") DO UPDATE SET \"c\" = \"c\" + incr; \
+            END $$",
+            "LET variable \"incr\" is out of scope",
         ),
         // Can't interleave IF with DQL.
         (
@@ -530,7 +768,7 @@ fn if_resolution_errors() {
                 END IF; \
                 RETURN QUERY SELECT 1;
             END $$",
-            "QUERY and IF statements must follow LET and RETURN QUERY statements",
+            "LET and RETURN QUERY statements must precede all DML statements",
         ),
     ];
 
@@ -563,4 +801,115 @@ fn if_condition_window_does_not_leak_into_projection() {
         })
         .collect();
     assert_eq!(vec![1], windows);
+}
+
+/// A `RETURN QUERY` nested in an `IF` body defines the block's output format
+/// just like a top-level one. Without this the block claims zero columns while
+/// the VDBE still emits rows, and pgproto fails with "Expected 0 columns".
+#[test]
+fn if_body_return_query_defines_output_format() {
+    use crate::ir::node::block::Block;
+    use crate::ir::types::{DerivedType, UnrestrictedType};
+
+    let return_columns = |query: &str| {
+        let plan = sql_to_ir_without_bind(query, &[]);
+        let top_id = plan.get_top().unwrap();
+        let Block::Anonymous(block) = plan.get_block_node(top_id).unwrap() else {
+            panic!("expected an anonymous block");
+        };
+        block.return_columns.clone()
+    };
+
+    let columns = return_columns(
+        "DO $$ BEGIN \
+            LET v = (SELECT 1); \
+            IF v >= 0 THEN RETURN QUERY SELECT v; END IF; \
+        END $$",
+    );
+    assert_eq!(
+        vec![DerivedType::new(UnrestrictedType::Integer)],
+        columns.iter().map(|c| c.1).collect::<Vec<_>>()
+    );
+
+    // Multi-column bodies are picked up as well: the VDBE used to fall back to
+    // a single result column whenever no top-level RETURN QUERY was present.
+    let columns = return_columns(
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN RETURN QUERY SELECT 1, 'x'; END IF; \
+        END $$",
+    );
+    assert_eq!(
+        vec![
+            DerivedType::new(UnrestrictedType::Integer),
+            DerivedType::new(UnrestrictedType::String),
+        ],
+        columns.iter().map(|c| c.1).collect::<Vec<_>>()
+    );
+}
+
+/// A LET variable compiles to a runtime slot named after the source
+/// identifier, at every nesting depth and however often the name is reused by
+/// scopes that do not overlap. Renaming the slot to keep such variables apart
+/// would be redundant -- they cannot observe each other's values -- and would
+/// leak invented names like `v_2` into EXPLAIN and the generated SQL.
+#[test]
+fn let_slots_are_named_after_the_source_identifier() {
+    use crate::ir::node::block::Block;
+    use crate::ir::node::BlockStatement;
+
+    let let_vars = |query: &str| {
+        let plan = sql_to_ir_without_bind(query, &[]);
+        let top_id = plan.get_top().unwrap();
+        let Block::Anonymous(block) = plan.get_block_node(top_id).unwrap() else {
+            panic!("expected an anonymous block");
+        };
+        fn collect(stmts: &[BlockStatement<crate::ir::node::NodeId>], out: &mut Vec<String>) {
+            for stmt in stmts {
+                match stmt {
+                    BlockStatement::Let { var, .. } => out.push(var.to_string()),
+                    BlockStatement::If { body, .. } => collect(body, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut vars = Vec::new();
+        collect(&block.statements, &mut vars);
+        vars
+    };
+
+    // Sibling bodies reusing a name.
+    assert_eq!(
+        vec![":v", ":v"],
+        let_vars(
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN LET v = (SELECT 1); RETURN QUERY SELECT v; END IF; \
+                IF 2 > 0 THEN LET v = (SELECT 2); RETURN QUERY SELECT v; END IF; \
+            END $$"
+        )
+    );
+
+    // A body first, then the top level -- the top-level variable is an ordinary
+    // one and must not be renamed on account of the body that preceded it.
+    assert_eq!(
+        vec![":v", ":v"],
+        let_vars(
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN LET v = (SELECT 1); RETURN QUERY SELECT v; END IF; \
+                LET v = (SELECT 2); \
+                UPDATE t2 SET e = v; \
+            END $$"
+        )
+    );
+
+    // A redeclaration within one scope is a re-assignment of the same slot.
+    assert_eq!(
+        vec![":v", ":v"],
+        let_vars(
+            "DO $$ BEGIN \
+                LET v = (SELECT 1); \
+                LET v = (SELECT v + 1); \
+                UPDATE t2 SET e = v; \
+            END $$"
+        )
+    );
 }
