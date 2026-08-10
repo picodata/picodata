@@ -30,10 +30,11 @@ use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
 use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::explain::LogicalExplain;
-use crate::ir::node::block::BlockOwned;
+use crate::ir::node::block::{Block, BlockOwned};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    AnonymousBlock, BlockEntries, BlockStatement, Insert, Motion, NodeId, StatementLocation,
+    AnonymousBlock, BlockEntries, BlockEntryKind, BlockStatement, Insert, Motion, NodeId,
+    StatementLocation,
 };
 use crate::ir::options::OptionKind;
 use crate::ir::transformation::redistribution::MotionPolicy;
@@ -210,12 +211,37 @@ impl MotionInfo {
     }
 }
 
-pub fn format_let_entry(is_unused: bool, var_name: &str) -> String {
-    if is_unused {
-        format!("**Unused** let \"{var_name}\"")
-    } else {
-        format!("Let \"{var_name}\"")
+/// Dotted position of a block stage, trailing dot included: `2.`, `2.3.1.`.
+/// See [`StatementLocation::explain_path`] for the numbering itself, which
+/// error messages share so that the two always name a statement alike.
+pub fn format_block_stage_number(location: &StatementLocation) -> String {
+    let mut number = String::new();
+    for idx in location.explain_path() {
+        write!(&mut number, "{idx}.").unwrap();
     }
+    number
+}
+
+/// Label of a block stage: what the statement is, behind one `If body: ` for
+/// every IF body it sits in. So `Let "x"` at the top level, `If body: Let "x"`
+/// one level in, `If body: If body: Let "x"` two levels in.
+pub fn format_block_stage_label(location: &StatementLocation, is_unused_let: bool) -> String {
+    let mut label = "If body: ".repeat(location.if_body_depth());
+    match &location.kind {
+        BlockEntryKind::IfCondition => label.push_str("If cond"),
+        BlockEntryKind::Query => label.push_str("Query"),
+        BlockEntryKind::ReturnQuery => label.push_str("Return query"),
+        BlockEntryKind::Let { var } => {
+            let var = var.strip_prefix(':').unwrap_or(var.as_str());
+            let s = if is_unused_let {
+                format!("**Unused** let \"{var}\"")
+            } else {
+                format!("Let \"{var}\"")
+            };
+            label.push_str(&s);
+        }
+    }
+    label
 }
 
 impl<'a, C> ExecutingQuery<'a, C>
@@ -615,59 +641,27 @@ where
             let explain_options = self.exec_plan.get_ir_plan().explain_options;
             let should_fmt = explain_options.contains(ExplainOptions::Fmt);
 
-            let mut stmt_idx = 0;
-            let mut statements = block_statements.iter().enumerate().peekable();
-            while let Some((idx, stmt)) = statements.next() {
-                let mut explain_one = |buf: &mut String,
-                                       query: &(BlockQuery, Vec<Value>),
-                                       kind: &str| {
-                    let (query, params) = query;
-                    let motion_info = MotionInfo::new_for_transaction();
-                    let source = C::build_explain_query_location(&buckets, &motion_info);
-                    write_explain_header2!(buf, "{}. {} ({source})", stmt_idx + 1, kind).unwrap();
-                    writeln!(buf).unwrap();
+            // One stage per query, in execution order -- the same order
+            // `logical_explains` and `unused_lets` are indexed by.
+            let mut entries = BlockEntries::new(&block_statements).enumerate().peekable();
+            while let Some((idx, entry)) = entries.next() {
+                let is_unused_let = unused_lets.contains(&idx);
+                let number = format_block_stage_number(&entry.location);
+                let stage = format_block_stage_label(&entry.location, is_unused_let);
 
-                    let sql = format_sql(&query.pattern, params, should_fmt);
-                    writeln!(buf, "{sql}").unwrap();
-                    writeln!(buf).unwrap();
+                let (query, params) = entry.query;
+                let motion_info = MotionInfo::new_for_transaction();
+                let source = C::build_explain_query_location(&buckets, &motion_info);
+                write_explain_header2!(&mut buf, "{number} {stage} ({source})").unwrap();
+                writeln!(&mut buf).unwrap();
 
-                    write!(buf, "{}", logical_explains[stmt_idx]).unwrap();
+                let sql = format_sql(&query.pattern, params, should_fmt);
+                write!(&mut buf, "{sql}\n\n").unwrap();
 
-                    stmt_idx += 1;
-                };
+                write!(&mut buf, "{}", logical_explains[idx]).unwrap();
 
-                match stmt {
-                    BlockStatement::ReturnQuery(query) => {
-                        explain_one(&mut buf, query, "Return query")
-                    }
-                    BlockStatement::Query(query) => explain_one(&mut buf, query, "Query"),
-                    BlockStatement::Let { query, var } => {
-                        let var = var.strip_prefix(':').unwrap_or(var.as_str());
-                        let kind = format_let_entry(unused_lets.contains(&idx), var);
-                        explain_one(&mut buf, query, &kind)
-                    }
-                    BlockStatement::If { cond, body } => {
-                        explain_one(&mut buf, cond, "If cond");
-                        let mut body_iter = body.iter().peekable();
-                        writeln!(&mut buf).unwrap();
-                        writeln!(&mut buf).unwrap();
-
-                        while let Some(body_query) = body_iter.next() {
-                            explain_one(&mut buf, body_query, "If body");
-
-                            let has_next = body_iter.peek().is_some();
-                            if has_next {
-                                writeln!(&mut buf).unwrap();
-                                writeln!(&mut buf).unwrap();
-                            }
-                        }
-                    }
-                };
-
-                let has_next = statements.peek().is_some();
-                if has_next {
-                    writeln!(&mut buf).unwrap();
-                    writeln!(&mut buf).unwrap();
+                if entries.peek().is_some() {
+                    write!(&mut buf, "\n\n").unwrap();
                 }
             }
         } else {
@@ -698,17 +692,33 @@ where
     }
 
     pub fn explain_raw<'p>(&mut self, port: &mut impl Port<'p>) -> Result<String, SbroadError> {
-        let explain_options = self.get_exec_plan().get_ir_plan().explain_options;
+        let ir_plan = self.get_exec_plan().get_ir_plan();
+
+        let explain_options = ir_plan.explain_options;
         let mut format_options = RawExplainOptions::empty();
         if explain_options.contains(ExplainOptions::Fmt) {
             format_options.insert(RawExplainOptions::Fmt);
         }
-        let is_block = self.get_exec_plan().get_ir_plan().is_block()?;
+
+        let top_id = ir_plan.get_top()?;
+        let maybe_block_stages = ir_plan
+            .get_block_node(top_id)
+            .and_then(|block| match block {
+                Block::CallProcedure(_) => Ok(vec![]),
+                Block::Anonymous(block) => BlockStageHeader::from_anon_block(block),
+            })
+            .ok();
+
+        let is_block = maybe_block_stages.is_some();
         if explain_options.contains(ExplainOptions::Buckets) && !is_block {
             format_options.insert(RawExplainOptions::ShowBuckets);
         }
 
-        let raw_explain = RawExplain::from_port(port, format_options)?;
+        // The storage emits one port entry per block statement but knows
+        // nothing of the block's shape, so the headers are named here, where
+        // the plan still is.
+        let stages = maybe_block_stages.unwrap_or_default();
+        let raw_explain = RawExplain::from_port(port, format_options, stages)?;
         let mut buf = String::new();
         if !explain_options.has_single_facet() {
             write_explain_header1!(&mut buf, "# Raw plan").unwrap();
@@ -948,10 +958,35 @@ impl std::fmt::Display for ExplainIndex {
     }
 }
 
+/// Number and label of one transactional-block stage, worked out on the router
+/// from the block's shape. See [`format_block_stage_number`] and
+/// [`format_block_stage_label`].
+#[derive(Debug)]
+pub struct BlockStageHeader {
+    number: String,
+    label: String,
+}
+
+impl BlockStageHeader {
+    fn from_anon_block(block: &AnonymousBlock) -> Result<Vec<Self>, SbroadError> {
+        let unused_lets = block.get_unused_lets();
+        let stages = BlockEntries::new(&block.statements)
+            .enumerate()
+            .map(|(idx, entry)| BlockStageHeader {
+                number: format_block_stage_number(&entry.location),
+                label: format_block_stage_label(&entry.location, unused_lets.contains(&idx)),
+            })
+            .collect();
+
+        Ok(stages)
+    }
+}
+
 fn write_raw_explain_entry(
     f: &mut fmt::Formatter<'_>,
     entry: &QueryEntry,
     idx: ExplainIndex,
+    stage: Option<&BlockStageHeader>,
     format_options: RawExplainOptions,
 ) -> fmt::Result {
     let should_fmt = format_options.contains(RawExplainOptions::Fmt);
@@ -961,9 +996,17 @@ fn write_raw_explain_entry(
         Err(err) => err.clone(),
     };
 
-    let (kind, source) = (&entry.query, &entry.location);
-
-    write_explain_header2!(f, "{idx} {kind} ({source})")?;
+    let source = &entry.location;
+    match stage {
+        Some(stage) => {
+            let (number, label) = (&stage.number, &stage.label);
+            write_explain_header2!(f, "{number} {label} ({source})")?;
+        }
+        None => {
+            let kind = &entry.query;
+            write_explain_header2!(f, "{idx} {kind} ({source})")?;
+        }
+    }
     write!(f, "\n{sql}\n\n")?;
     write!(f, "plan:\n{plan}")?;
 
@@ -988,6 +1031,10 @@ bitflags! {
 struct RawExplain {
     entries: Vec<RawExplainEntry>,
     format_options: RawExplainOptions,
+    /// Headers for a transactional block, one per entry in the same order.
+    /// Empty for anything else, and deliberately also when the count does not
+    /// match the entries -- better plain numbering than wrong labels.
+    stages: Vec<BlockStageHeader>,
 }
 
 impl fmt::Display for RawExplain {
@@ -1000,6 +1047,7 @@ impl fmt::Display for RawExplain {
                         f,
                         entry,
                         ExplainIndex(idx + 1, None),
+                        self.stages.get(idx),
                         self.format_options,
                     )?;
                 }
@@ -1010,6 +1058,7 @@ impl fmt::Display for RawExplain {
                             f,
                             entry,
                             ExplainIndex(idx + 1, Some(i + 1)),
+                            None,
                             self.format_options,
                         )?;
 
@@ -1038,6 +1087,7 @@ impl RawExplain {
     pub fn from_port<'p>(
         port: &mut impl Port<'p>,
         format_options: RawExplainOptions,
+        stages: Vec<BlockStageHeader>,
     ) -> Result<RawExplain, SbroadError> {
         let mut port_iter = port.iter().peekable();
         let mut explain_entries = Vec::new();
@@ -1065,6 +1115,7 @@ impl RawExplain {
         Ok(Self {
             entries: explain_entries,
             format_options,
+            stages,
         })
     }
 }

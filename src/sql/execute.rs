@@ -751,45 +751,23 @@ fn format_explain_buckets(
 }
 
 /// Contains the SQL query that is executed in VDBE.
-pub enum ExplainQuery<'a> {
-    IfCond(&'a str),
-    IfBody(&'a str),
-    Let {
-        query: &'a str,
-        var: SmolStr,
-        is_used: bool,
-    },
-    Query(&'a str),
-    ReturnQuery(&'a str),
+///
+/// A transactional block sends one of these per statement, but the storage
+/// cannot name them: only the router knows the block's shape. It labels them
+/// itself when rendering, so the `kind` shipped here is used solely by
+/// ordinary, non-block queries.
+pub struct ExplainQuery<'a> {
+    sql: &'a str,
+}
+
+impl<'a> ExplainQuery<'a> {
+    #[must_use]
+    pub fn new(sql: &'a str) -> Self {
+        Self { sql }
+    }
 }
 
 impl<'p> ExplainQuery<'_> {
-    fn kind(&self) -> String {
-        match self {
-            Self::Let { var, is_used, .. } => {
-                let var = var.strip_prefix(':').unwrap_or(var.as_str());
-                if *is_used {
-                    format!("**Unused** let \"{var}\"")
-                } else {
-                    format!("Let \"{var}\"")
-                }
-            }
-            Self::IfCond(_) => "If cond".to_string(),
-            Self::IfBody(_) => "If body".to_string(),
-            Self::Query(_) => "Query".to_string(),
-            Self::ReturnQuery(_) => "Return query".to_string(),
-        }
-    }
-
-    fn sql_query(&self) -> String {
-        match self {
-            Self::IfCond(sql) | Self::Query(sql) | Self::IfBody(sql) | Self::ReturnQuery(sql) => {
-                sql.to_string()
-            }
-            Self::Let { query, .. } => query.to_string(),
-        }
-    }
-
     /// Execute explain query in VDBE and append result to port.
     ///
     /// # Preconditions
@@ -804,8 +782,7 @@ impl<'p> ExplainQuery<'_> {
         raw_plan_hook_details: impl IntoIterator<Item: AsRef<str>>,
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError> {
-        let kind = self.kind();
-        let mp_header = encode(&[kind]);
+        let mp_header = encode(&["Query"]);
         port.add_mp(&mp_header);
 
         let location = build_explain_query_location(&bucket_info.buckets, &motion_info);
@@ -816,8 +793,8 @@ impl<'p> ExplainQuery<'_> {
         let mp_buckets_repr = encode(&[buckets_repr]);
         port.add_mp(&mp_buckets_repr);
 
-        let sql_query = self.sql_query();
-        let mp_query = encode(&[&sql_query]);
+        let sql_query = &self.sql;
+        let mp_query = encode(&[sql_query]);
         port.add_mp(&mp_query);
 
         let mp_params = encode(&params.to_vec());
@@ -834,7 +811,7 @@ impl<'p> ExplainQuery<'_> {
             RawExplainProvider::new(raw_plan_hook_details).map_err(raw_explain_hook_err)?;
         let compile_result = match raw_explain_provider {
             Some(mut provider) => {
-                let result = provider.compile(&sql_query);
+                let result = provider.compile(sql_query);
                 match result {
                     Ok(mut stmt) => {
                         provider.finish().map_err(raw_explain_hook_err)?;
@@ -844,7 +821,7 @@ impl<'p> ExplainQuery<'_> {
                     Err(err) => Err(err),
                 }
             }
-            None => SqlStmt::compile(&sql_query),
+            None => SqlStmt::compile(sql_query),
         };
 
         match compile_result {
@@ -950,7 +927,7 @@ pub fn explain_execute<'p>(
         bucket_count,
     };
 
-    let explain_query = ExplainQuery::Query(miss_info.sql());
+    let explain_query = ExplainQuery::new(miss_info.sql());
     explain_query.execute_guarded(
         params,
         &buckets_info,

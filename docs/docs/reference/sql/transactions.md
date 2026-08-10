@@ -29,6 +29,21 @@
 ??? note "Диаграмма"
     ![Block statement](../../images/ebnf/block_statement.svg)
 
+### DML-команда {: #block_dml }
+
+??? note "Диаграмма"
+    ![Block DML](../../images/ebnf/block_dml.svg)
+
+### Выражение {: #expression }
+
+??? note "Диаграмма"
+    ![Expression](../../images/ebnf/expression.svg)
+
+### Литерал {: #literal }
+
+??? note "Диаграмма"
+    ![Literal](../../images/ebnf/literal.svg)
+
 ## Поддерживаемые команды исполнения {: #supported_statements }
 
 На данный момент для транзакционных блоков поддерживаются следующие
@@ -41,9 +56,9 @@
 - `LET <name> = (<DQL>);` — выполнить вложенный запрос, возвращающий
   одну колонку, и сохранить результат в переменной `<name>`, доступной
   в последующих командах блока (см. [ниже](#let_statement)).
-- `IF <expr> THEN ... END IF;` — условно выполнить вложенные [DML]-команды
-  и `RETURN QUERY`, если выражение `<expr>` истинно (см.
-  [ниже](#if_statement)).
+- `IF <expr> THEN ... END IF;` — условно выполнить вложенные [DML]-команды,
+  `RETURN QUERY`, `LET` и другие `IF`-блоки, если выражение `<expr>`
+  истинно (см. [ниже](#if_statement)).
 
 ## Пример использования {: #usage_example }
 
@@ -78,9 +93,9 @@
 ```sql
 DO $$ BEGIN
   LET cur = (SELECT n FROM dataset WHERE id = $1);
-  
+
   RETURN QUERY SELECT $1 AS id, cur;
-  
+
   IF cur % 2 != 0 THEN
     UPDATE dataset SET n = 3 * n + 1 WHERE id = $1;
   END IF;
@@ -150,50 +165,46 @@ END $$;
     * в запросе `RETURN QUERY`,
     * в определении другой `LET`-переменной,
     * в `SET` команд `UPDATE` и `INSERT ... ON CONFLICT (...) DO UPDATE`.
-- На данный момент тело `IF`-блока не может содержать определений `LET`-переменных.
+- `LET` можно использовать и в теле `IF`-блока, но такая переменная
+  видна только внутри этого тела и перестает существовать на `END IF`.
+- В разных `IF`-блоках можно объявлять переменные с одинаковым именем —
+  это разные переменные, их типы могут не совпадать.
+- Переменную нельзя объявить в теле `IF`, если снаружи уже объявлена
+  переменная с тем же именем. Такое объявление создало бы отдельную
+  переменную, значение которой потерялось бы на `END IF`, хотя
+  выглядит оно как обновление внешней переменной. Выберите другое имя.
 - Запрос в определении `LET`-переменной должен вернуть не более одной строки,
   состоящей из одной колонки; в противном случае транзакция будет
   отменена с ошибкой. Если запрос не вернет ни одной строки,
   переменная получит значение `NULL`.
-- Переменная не может быть объявлена повторно с другим типом.
-  Повторное объявление с тем же типом разрешено.
+- В пределах одной области видимости переменная не может быть объявлена
+  повторно с другим типом; повторное объявление с тем же типом разрешено.
+  Проверка не выполняется, если тип одной из сторон не удалось вывести —
+  например, у `LET v = (SELECT $1)` с неограниченным параметром.
 - Если в некотором запросе упоминается колонка таблицы, имя которой
-  совпадает с именем ранее введенной `LET`-переменной, упоминание
+  совпадает с именем видимой в этой точке `LET`-переменной, упоминание
   считается неоднозначным и приводит к ошибке на стадии планирования
-  транзакции.
+  транзакции. Переменная, вышедшая из области видимости на `END IF`,
+  такой неоднозначности не создает: имя относится к колонке.
 
 ## Условные блоки `IF` {: #if_statement }
 
 ![If statement](../../images/ebnf/if_statement.svg)
 
-Команда `IF <expr> THEN ... END IF;` выполняет вложенные [DML]-команды
-и `RETURN QUERY`, если выражение `<expr>` истинно.
-
-### DML-команда {: #block_dml }
-
-??? note "Диаграмма"
-    ![Block DML](../../images/ebnf/block_dml.svg)
-
-### Выражение {: #expression }
-
-??? note "Диаграмма"
-    ![Expression](../../images/ebnf/expression.svg)
-
-### Литерал {: #literal }
-
-??? note "Диаграмма"
-    ![Literal](../../images/ebnf/literal.svg)
+Команда `IF <expr> THEN ... END IF;` выполняет вложенные [DML]-команды,
+`RETURN QUERY`, `LET` и другие `IF`-блоки, если выражение `<expr>`
+истинно.
 
 Пример:
 
 ```sql
 DO $$ BEGIN
   LET cur_balance = (SELECT balance FROM wallet WHERE client_id = 1);
-  
+
   RETURN QUERY
     SELECT first_name, last_name, cur_balance as old_balance
     FROM client WHERE id = 1;
-    
+
   IF cur_balance < 1e6 THEN
     UPDATE wallet SET balance = cur_balance + 1e6 WHERE client_id = 1;
     UPDATE client SET first_name = 'Richie', last_name = 'Rich' WHERE id = 1;
@@ -216,14 +227,14 @@ END $$;
 ```sql
 DO $$ BEGIN
   LET cur_balance = (SELECT balance FROM wallet WHERE client_id = 1);
-  LET new_balance = (SELECT cur_balance * 1.05);
-  
   IF cur_balance > 0 THEN
+    LET new_balance = (SELECT cur_balance * 1.05);
+
     RETURN QUERY
       SELECT first_name || ' ' || last_name AS client,
              (new_balance - cur_balance)::int AS interest
       FROM client WHERE id = 1;
-    
+
     UPDATE wallet SET balance = new_balance WHERE client_id = 1;
   END IF;
 END $$;
@@ -238,18 +249,74 @@ END $$;
 (1 row)
 ```
 
+`LET` в теле `IF` позволяет не вычислять значение, если оно не понадобится:
+
+```sql
+DO $$ BEGIN
+  LET cur_balance = (SELECT balance FROM wallet WHERE client_id = 1);
+  IF cur_balance > 0 THEN
+    LET bonus = (SELECT (cur_balance * 0.01)::int);
+    UPDATE wallet SET balance = cur_balance + bonus WHERE client_id = 1;
+  END IF;
+END $$;
+```
+
+Область видимости такой переменной ограничена телом `IF`-блока: обращение
+к `bonus` после `END IF` приведет к ошибке на стадии планирования. Благодаря
+этому не возникает ситуации, когда переменная незаметно оказывается `NULL`
+из-за того, что условие не выполнилось.
+
+Имена в разных `IF`-блоках независимы — это разные переменные, и типы у них
+могут различаться (на примере переменной `x`):
+
+```sql
+DO $$ BEGIN
+  LET first_name = (SELECT first_name FROM client WHERE id = 1);
+  IF first_name = 'Richie' THEN
+    LET x = (SELECT 'Found ' || first_name || '!');
+    RETURN QUERY SELECT x;
+  END IF;
+
+  LET last_name = (SELECT last_name FROM client WHERE id = 1);
+  IF last_name = 'Rich' THEN
+    RETURN QUERY SELECT 'Looks like he will get even richer.';
+    LET x = (SELECT 10000);
+    UPDATE wallet SET balance = balance + x WHERE client_id = 1;
+  END IF;
+END $$;
+```
+
+```
+┌─────────────────────────────────────┐
+│                col_1                │
+├─────────────────────────────────────┤
+│ Found Richie!                       │
+│ Looks like he will get even richer. │
+└─────────────────────────────────────┘
+(2 rows)
+```
+
 Правила применения `IF`:
 
 - Условие должно быть скалярным булевым выражением; ссылки на колонки
   таблиц в условии не допускаются — используйте `LET` для подготовки
   значений.
 - В транзакции можно использовать несколько `IF`-блоков.
-- В теле допускаются только [DML]-команды (`UPDATE` / `DELETE` /
-  `INSERT`) и `RETURN QUERY`. Команды `LET` и вложенный `IF` внутри
-  тела не разрешены.
+- В теле допускаются [DML]-команды (`UPDATE` / `DELETE` / `INSERT`),
+  `RETURN QUERY`, `LET` и вложенные `IF`-блоки. Глубина вложенности не
+  ограничена; тело вложенного блока выполняется, только если истинны
+  условия всех объемлющих блоков.
+- Тело может быть пустым: `IF <expr> THEN END IF;` — корректная команда.
+  Условие при этом все равно вычисляется, но никаких действий не
+  выполняется.
+- Тело `IF`-блока образует собственную область видимости для
+  `LET`-переменных — подробнее см. [выше](#let_statement).
 - Внутри тела действует то же правило порядка команд, что и в блоке
   целиком: `RETURN QUERY` должен быть расположен до [DML]-команд (см.
   [ограничения](#limitations)).
+- Сам по себе `IF` не считается модифицирующей командой — учитывается
+  только содержимое его тела. Если тело лишь читает, после такого
+  `IF`-блока по-прежнему можно использовать `LET` и `RETURN QUERY`.
 - Тип результата транзакции определяется всеми командами `RETURN QUERY`
   блока, включая вложенные в тело `IF`. Все они должны возвращать
   одинаковый набор типов колонок; имена колонок берутся из первой такой

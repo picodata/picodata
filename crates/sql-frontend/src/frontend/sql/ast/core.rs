@@ -13,8 +13,9 @@ use crate::frontend::sql::type_system;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, AnonymousBlock, Backup, BlockEntries,
-    BlockStatement, Bound, BoundType, Frame, FrameType, Reference, ReferenceAsteriskSource,
-    RenameIndex, Row, SubQueryReference, TruncateTable, Values, ValuesRow, Window,
+    BlockEntryKind, BlockStatement, Bound, BoundType, Frame, FrameType, Reference,
+    ReferenceAsteriskSource, RenameIndex, Row, SubQueryReference, TruncateTable, Values, ValuesRow,
+    Window,
 };
 use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use ::core::panic;
@@ -1610,6 +1611,128 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         Ok(())
     }
 
+    // Every `RETURN QUERY` in the block (top-level or inside an IF body)
+    // contributes to the block's output format, so they all must agree on the
+    // column types. Names are taken from the first one.
+    fn merge_return_columns(
+        return_columns: &mut Vec<(String, DerivedType)>,
+        columns: Vec<(String, DerivedType)>,
+    ) -> Result<(), SbroadError> {
+        if return_columns.is_empty() {
+            *return_columns = columns;
+            return Ok(());
+        }
+
+        let return_types: Vec<_> = return_columns.iter().map(|c| c.1).collect();
+        let query_types: Vec<_> = columns.iter().map(|c| c.1).collect();
+        if return_types != query_types {
+            return Err(SbroadError::Other(format_smolstr!(
+                "RETURN QUERY types cannot be matched ([{}] and [{}])",
+                return_types.iter().join(", "),
+                query_types.iter().join(", "),
+            )));
+        }
+
+        Ok(())
+    }
+
+    // The master loop has already pushed the LET decl into `worker.let_scope`
+    // and stashed the variable name in `worker.let_var_names`, both keyed by
+    // the `BlockLetStatement` node; here we just rebuild the statement by
+    // combining the name with the RHS plan id forwarded through `map`. Works
+    // at any nesting depth, since that loop walks the whole AST.
+    fn build_let(
+        map: &Translation,
+        plan: &Plan,
+        let_var_names: &HashMap<usize, SmolStr>,
+        stmt_ast_id: usize,
+    ) -> Result<BlockStatement<NodeId>, SbroadError> {
+        let sub_query_id = map.get(stmt_ast_id)?;
+        let query_id = plan.get_rel_child(sub_query_id, 0).unwrap();
+
+        let var = let_var_names.get(&stmt_ast_id).cloned().ok_or_else(|| {
+            SbroadError::other("LET variable name was not recorded during parsing")
+        })?;
+        Ok(BlockStatement::Let {
+            var: format_smolstr!(":{var}"),
+            query: query_id,
+        })
+    }
+
+    // Recurses through `BlockIfStatement`, so IFs may nest freely. Statements
+    // legal at the top level are legal in a body, with one exception: a bare
+    // DQL, which would silently drop its rows.
+    fn build_if(
+        ast: &AstCore,
+        map: &Translation,
+        plan: &Plan,
+        let_var_names: &HashMap<usize, SmolStr>,
+        return_columns: &mut Vec<(String, DerivedType)>,
+        if_ast_id: usize,
+    ) -> Result<BlockStatement<NodeId>, SbroadError> {
+        // Children: [BlockIfCondition, BlockIfBodyStatement*].
+        let node = ast.nodes.get_node(if_ast_id)?;
+        let mut children = node.children.iter();
+        let cond_ast_id = children.next().expect("IF must have a condition");
+        let cond_id = map.get(*cond_ast_id)?;
+
+        let cond_cols = dql_return_columns(plan, cond_id)?;
+        if cond_cols.len() != 1 {
+            return Err(SbroadError::other(
+                "IF condition must produce a single column",
+            ));
+        }
+
+        let mut body: Vec<BlockStatement<NodeId>> = Vec::new();
+        for body_ast_id in children {
+            let body_ast = ast.nodes.get_node(*body_ast_id)?;
+            let inner_ast_id = body_ast
+                .children
+                .first()
+                .expect("BlockIfBodyStatement must have an inner statement");
+            match ast.nodes.get_node(*inner_ast_id)?.rule {
+                Rule::BlockQueryStatement => {
+                    let query_id = map.get(*body_ast_id)?;
+                    let node = plan.get_relation_node(query_id)?;
+                    if !node.is_dml() {
+                        // Same reasoning as at the top level, so same wording.
+                        return Err(SbroadError::other(
+                            "bare DQL is not allowed, use LET or RETURN QUERY",
+                        ));
+                    }
+                    body.push(BlockStatement::Query(query_id));
+                }
+                Rule::BlockReturnQueryStatement => {
+                    let query_id = map.get(*body_ast_id)?;
+                    let node = plan.get_relation_node(query_id)?;
+                    if node.is_dml() {
+                        return Err(SbroadError::other("RETURN QUERY may only contain DQL"));
+                    }
+                    let columns = dql_return_columns(plan, query_id)?;
+                    merge_return_columns(return_columns, columns)?;
+                    body.push(BlockStatement::ReturnQuery(query_id));
+                }
+                Rule::BlockLetStatement => {
+                    body.push(build_let(map, plan, let_var_names, *inner_ast_id)?)
+                }
+                Rule::BlockIfStatement => body.push(build_if(
+                    ast,
+                    map,
+                    plan,
+                    let_var_names,
+                    return_columns,
+                    *inner_ast_id,
+                )?),
+                rule => unreachable!("{rule:?} is not a block statement inside IF body"),
+            }
+        }
+
+        Ok(BlockStatement::If {
+            cond: cond_id,
+            body,
+        })
+    }
+
     let node = ast.nodes.get_node(node_id)?;
     let mut statements = Vec::new();
     let mut return_columns: Vec<(String, DerivedType)> = Vec::new();
@@ -1621,19 +1744,7 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
             Rule::BlockReturnQueryStatement => {
                 let query_id = map.get(*child_id)?;
                 let columns = dql_return_columns(plan, query_id)?;
-                if !return_columns.is_empty() {
-                    let return_types: Vec<_> = return_columns.iter().map(|c| c.1).collect();
-                    let query_types: Vec<_> = columns.iter().map(|c| c.1).collect();
-                    if return_types != query_types {
-                        return Err(SbroadError::Other(format_smolstr!(
-                            "RETURN QUERY types cannot be matched ([{}] and [{}])",
-                            return_types.iter().join(", "),
-                            query_types.iter().join(", "),
-                        )));
-                    }
-                } else {
-                    return_columns = columns;
-                }
+                merge_return_columns(&mut return_columns, columns)?;
                 statements.push(BlockStatement::ReturnQuery(query_id));
             }
             Rule::BlockQueryStatement => {
@@ -1642,80 +1753,22 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
                     // So nobody will be confused that `DO $$ BEGIN SELECT 1; END $$`
                     // doesn't return rows.
                     return Err(SbroadError::other(
-                        "QUERY statements must execute DML queries, use RETURN QUERY to return rows",
+                        "bare DQL is not allowed, use LET or RETURN QUERY",
                     ));
                 }
                 statements.push(BlockStatement::Query(query_id));
             }
             Rule::BlockLetStatement => {
-                // The master loop has already pushed the LET decl into
-                // `worker.let_scope` and stashed the variable name in
-                // `worker.let_var_names`; here we just rebuild the
-                // BlockStatement::Let by combining the name with the RHS
-                // plan id forwarded through `map`.
-                let sub_query_id = map.get(*child_id)?;
-                let query_id = plan
-                    .get_rel_child(sub_query_id, 0)
-                    .expect("subquery cannot miss a child");
-
-                let var = worker.let_var_names.get(child_id).cloned().ok_or_else(|| {
-                    SbroadError::other("LET variable name was not recorded during parsing")
-                })?;
-                statements.push(BlockStatement::Let {
-                    var: format_smolstr!(":{var}"),
-                    query: query_id,
-                });
+                statements.push(build_let(map, plan, &worker.let_var_names, *child_id)?)
             }
-            Rule::BlockIfStatement => {
-                // Children: [BlockIfCondition, BlockIfBodyStatement+].
-                let mut children = child.children.iter();
-                let cond_ast_id = children.next().expect("IF must have a condition");
-                let cond_id = map.get(*cond_ast_id)?;
-
-                let cond_cols = dql_return_columns(plan, cond_id)?;
-                if cond_cols.len() != 1 {
-                    return Err(SbroadError::other(
-                        "IF condition must produce a single column",
-                    ));
-                }
-
-                let mut body_ids: Vec<NodeId> = Vec::new();
-                for body_ast_id in children {
-                    let body_ast = ast.nodes.get_node(*body_ast_id)?;
-                    let inner_ast_id = body_ast
-                        .children
-                        .first()
-                        .expect("BlockIfBodyStatement must have an inner statement");
-                    match ast.nodes.get_node(*inner_ast_id)?.rule {
-                        Rule::BlockQueryStatement => {
-                            let query_id = map.get(*body_ast_id)?;
-                            if !plan.get_relation_node(query_id)?.is_dml() {
-                                return Err(SbroadError::other(
-                                    "IF body may only contain DML statements",
-                                ));
-                            }
-                            body_ids.push(query_id);
-                        }
-                        Rule::BlockLetStatement => {
-                            return Err(SbroadError::other("LET is not allowed inside IF body"));
-                        }
-                        Rule::BlockReturnQueryStatement => {
-                            return Err(SbroadError::other(
-                                "RETURN QUERY is not allowed inside IF body",
-                            ));
-                        }
-                        Rule::BlockIfStatement => {
-                            return Err(SbroadError::other("nested IF is not allowed"));
-                        }
-                        rule => unreachable!("{rule:?} is not a block statement inside IF body"),
-                    }
-                }
-
-                statements.push(BlockStatement::If {
-                    cond: cond_id,
-                    body: body_ids,
-                });
-            }
+            Rule::BlockIfStatement => statements.push(build_if(
+                ast,
+                map,
+                plan,
+                &worker.let_var_names,
+                &mut return_columns,
+                *child_id,
+            )?),
             rule => unreachable!("{rule:?} is unexpected according to the grammar"),
         }
     }
@@ -1748,17 +1801,23 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
     }
 
     // Force users to write statements as they are executed (dql before dml).
-    for (id1, id2) in node.children.windows(2).map(|pair| (pair[0], pair[1])) {
-        let r1 = ast.nodes.get_node(id1)?.rule;
-        let r2 = ast.nodes.get_node(id2)?.rule;
-        if let (
-            Rule::BlockQueryStatement | Rule::BlockIfStatement,
-            Rule::BlockLetStatement | Rule::BlockReturnQueryStatement,
-        ) = (r1, r2)
-        {
-            return Err(SbroadError::Other(format_smolstr!(
-                "QUERY and IF statements must follow LET and RETURN QUERY statements",
-            )));
+    // The rule spans the whole block, at any nesting depth: neither LET nor
+    // RETURN QUERY may appear after the first DML, wherever either of them
+    // sits. An IF as such is neither -- it constrains its body statements only,
+    // so an IF that reads (or does nothing) may well precede a LET or a RETURN
+    // QUERY. IF conditions are exempt too: they don't return rows to the user.
+    {
+        let mut seen_dml = false;
+        for entry in BlockEntries::new(&statements) {
+            match entry.location.kind {
+                BlockEntryKind::Query => seen_dml = true,
+                BlockEntryKind::ReturnQuery | BlockEntryKind::Let { .. } if seen_dml => {
+                    return Err(SbroadError::Other(format_smolstr!(
+                        "LET and RETURN QUERY statements must precede all DML statements",
+                    )));
+                }
+                _ => (),
+            }
         }
     }
 

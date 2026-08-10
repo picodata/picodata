@@ -17,7 +17,7 @@ AnonymousBlockCode = _{ ^"begin" ~ W ~ (WO ~ BlockStatement ~ WO)+ ~ WO ~ ^"end"
       BlockQueryStatement = { Query ~ WO ~ ";" }
       BlockIfStatement = {
           ^"if" ~ W ~ BlockIfCondition ~ W ~ ^"then"
-          ~ (WO ~ BlockIfBodyStatement ~ WO)+
+          ~ (WO ~ BlockIfBodyStatement ~ WO)*
           ~ WO ~ ^"end" ~ W ~ ^"if" ~ WO ~ ";"
       }
         BlockIfCondition = { Expr }

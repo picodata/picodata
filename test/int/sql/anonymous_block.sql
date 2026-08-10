@@ -346,7 +346,7 @@ BEGIN
   SELECT * FROM _pico_table;
 END $$;
 -- ERROR:
-QUERY statements must execute DML queries, use RETURN QUERY to return rows
+bare DQL is not allowed, use LET or RETURN QUERY
 
 -- TEST: let-and-return-query-stmts-must-come-before-dml
 -- SQL:
@@ -356,7 +356,7 @@ BEGIN
   RETURN QUERY SELECT * FROM _pico_table;
 END $$;
 -- ERROR:
-QUERY and IF statements must follow LET and RETURN QUERY statements
+LET and RETURN QUERY statements must precede all DML statements
 
 -- TEST: insert-single-row
 -- SQL:
@@ -1566,42 +1566,644 @@ BEGIN
   END IF;
 END $$;
 -- ERROR:
-IF body may only contain DML statements
+bare DQL is not allowed, use LET or RETURN QUERY
 
--- TEST: if-body-no-let
+-- TEST: if-body-let-init
+-- SQL:
+DROP TABLE IF EXISTS t5;
+CREATE TABLE t5 (pk INT PRIMARY KEY, a INT);
+INSERT INTO t5 VALUES (1, 10);
+
+-- TEST: if-body-let-feeds-body-dml
 -- SQL:
 DO $$
 BEGIN
   IF true THEN
+    LET v = (SELECT a FROM t5 WHERE pk = 1);
+    UPDATE t5 SET a = v * 2 WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: if-body-let-feeds-body-dml-check
+-- SQL:
+SELECT a FROM t5 WHERE pk = 1;
+-- EXPECTED:
+20,
+
+-- TEST: if-body-let-seeded-from-outer-let
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t5 WHERE pk = 1);
+  IF v > 0 THEN
+    LET w = (SELECT v + 5);
+    RETURN QUERY SELECT w;
+    UPDATE t5 SET a = w WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+25
+
+-- TEST: if-body-let-seeded-from-outer-let-check
+-- SQL:
+SELECT a FROM t5 WHERE pk = 1;
+-- EXPECTED:
+25,
+
+-- TEST: if-body-let-out-of-scope-after-end-if
+-- SQL:
+DO $$
+BEGIN
+  LET g = (SELECT a FROM t5 WHERE pk = 1);
+  IF g > 0 THEN
+    LET v = (SELECT g * 2);
+  END IF;
+  RETURN QUERY SELECT v;
+END $$;
+-- ERROR:
+LET variable "v" is out of scope
+
+-- TEST: if-body-let-cannot-shadow-an-outer-one
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t5 WHERE pk = 1);
+  IF v > 0 THEN
     LET v = (SELECT 1);
   END IF;
 END $$;
 -- ERROR:
-LET is not allowed inside IF body
+LET variable "v" is already declared outside IF body
 
--- TEST: if-body-no-return-query
+-- TEST: sibling-if-bodies-bind-the-name-independently
 -- SQL:
 DO $$
 BEGIN
   IF true THEN
-    RETURN QUERY SELECT 1;
+    LET v = (SELECT a FROM t5 WHERE pk = 1);
+    RETURN QUERY SELECT v;
+  END IF;
+  IF true THEN
+    LET v = (SELECT a * 3 FROM t5 WHERE pk = 1);
+    RETURN QUERY SELECT v;
+  END IF;
+END $$;
+-- EXPECTED:
+25, 75
+
+-- TEST: sibling-if-bodies-may-bind-unrelated-types
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN LET v = (SELECT 1); END IF;
+  IF true THEN LET v = (SELECT 'x'); END IF;
+END $$;
+
+-- TEST: if-body-let-after-body-dml
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    UPDATE t5 SET a = 1 WHERE pk = 1;
+    LET v = (SELECT a FROM t5 WHERE pk = 1);
   END IF;
 END $$;
 -- ERROR:
-RETURN QUERY is not allowed inside IF body
+LET and RETURN QUERY statements must precede all DML statements
 
--- TEST: if-body-no-nested-if
+-- TEST: if-body-let-must-be-single-column
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    LET v = (SELECT pk, a FROM t5 WHERE pk = 1);
+  END IF;
+END $$;
+-- ERROR:
+LET RHS must be a single-column query
+
+-- TEST: if-body-return-query-init
+-- SQL:
+DROP TABLE IF EXISTS t4;
+CREATE TABLE t4 (pk INT PRIMARY KEY, a INT);
+INSERT INTO t4 VALUES (1, 10);
+
+-- TEST: if-body-return-query-without-tables
+-- SQL:
+DO $$
+BEGIN
+  LET x = (SELECT 1);
+  IF x >= 0 THEN
+    RETURN QUERY SELECT x;
+  END IF;
+END $$;
+-- EXPECTED:
+1
+
+-- TEST: if-body-return-query-fires
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t4 WHERE pk = 1);
+  IF v >= 0 THEN
+    RETURN QUERY SELECT v;
+  END IF;
+END $$;
+-- EXPECTED:
+10
+
+-- TEST: if-body-return-query-skipped
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t4 WHERE pk = 1);
+  IF v < 0 THEN
+    RETURN QUERY SELECT v;
+  END IF;
+END $$;
+
+-- TEST: if-body-return-query-multi-column
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t4 WHERE pk = 1);
+  IF v >= 0 THEN
+    RETURN QUERY SELECT v, v * 2;
+  END IF;
+END $$;
+-- EXPECTED:
+10, 20
+
+-- TEST: if-body-return-query-then-dml
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t4 WHERE pk = 1);
+  IF v >= 0 THEN
+    RETURN QUERY SELECT v;
+    UPDATE t4 SET a = a + 1 WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+10
+
+-- TEST: if-body-return-query-then-dml-check
+-- SQL:
+SELECT a FROM t4 WHERE pk = 1;
+-- EXPECTED:
+11,
+
+-- TEST: if-body-return-query-joins-top-level-one
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t4 WHERE pk = 1);
+  RETURN QUERY SELECT v;
+  IF v >= 0 THEN
+    RETURN QUERY SELECT v * 10;
+  END IF;
+END $$;
+-- EXPECTED:
+11, 110
+
+-- TEST: read-only-if-may-precede-reads
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t4 WHERE pk = 1);
+  IF v >= 0 THEN
+    RETURN QUERY SELECT v;
+  END IF;
+  RETURN QUERY SELECT v * 100;
+  UPDATE t4 SET a = a WHERE pk = 1;
+END $$;
+-- EXPECTED:
+11, 1100
+
+-- TEST: empty-if-body-is-a-no-op
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+  END IF;
+END $$;
+
+-- TEST: empty-if-body-with-a-false-condition
+-- SQL:
+DO $$
+BEGIN
+  IF false THEN
+  END IF;
+END $$;
+
+-- TEST: empty-if-body-alongside-real-work
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t4 WHERE pk = 1);
+  IF v > 0 THEN
+  END IF;
+  RETURN QUERY SELECT v;
+  UPDATE t4 SET a = v WHERE pk = 1;
+END $$;
+-- EXPECTED:
+11
+
+-- TEST: empty-if-body-alongside-real-work-check
+-- SQL:
+SELECT a FROM t4 WHERE pk = 1;
+-- EXPECTED:
+11,
+
+-- TEST: empty-nested-if-body
 -- SQL:
 DO $$
 BEGIN
   IF true THEN
     IF true THEN
-      UPDATE t2 SET b = 0 WHERE pk = 1;
     END IF;
+    UPDATE t4 SET a = 42 WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: empty-nested-if-body-check
+-- SQL:
+SELECT a FROM t4 WHERE pk = 1;
+-- EXPECTED:
+42,
+
+-- TEST: explain-stage-numbering
+-- SQL:
+EXPLAIN (raw)
+DO $$ BEGIN
+    LET a = (SELECT 'hello');
+    IF true THEN
+        LET x = (SELECT 1);
+        LET y = (SELECT 1);
+    END IF;
+END $$;
+-- EXPECTED:
+╭────────────────────────────────╮
+│ 1. **Unused** let "a" (ROUTER) │
+╰────────────────────────────────╯
+''
+SELECT CAST('hello' AS string) as "col_1"
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────────╮
+│ 2.1. If cond (ROUTER) │
+╰───────────────────────╯
+''
+SELECT CAST(true AS bool) as "cond"
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────────────────────────────╮
+│ 2.2. If body: **Unused** let "x" (ROUTER) │
+╰───────────────────────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1"
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────────────────────────────╮
+│ 2.3. If body: **Unused** let "y" (ROUTER) │
+╰───────────────────────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1"
+''
+plan:
+    [0] TRIVIAL
+
+-- TEST: explain-stage-numbering-matches-the-logical-plan
+-- SQL:
+EXPLAIN
+DO $$ BEGIN
+    LET a = (SELECT 'hello');
+    IF true THEN
+        LET x = (SELECT 1);
+        LET y = (SELECT 1);
+    END IF;
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────────────────╮
+│ 1. **Unused** let "a" (ROUTER) │
+╰────────────────────────────────╯
+''
+SELECT CAST('hello' AS string) as "col_1"
+''
+projection ('hello'::string -> col_1)
+''
+╭───────────────────────╮
+│ 2.1. If cond (ROUTER) │
+╰───────────────────────╯
+''
+SELECT CAST(true AS bool) as "cond"
+''
+projection (true::bool -> cond)
+''
+╭───────────────────────────────────────────╮
+│ 2.2. If body: **Unused** let "x" (ROUTER) │
+╰───────────────────────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1"
+''
+projection (1::int -> col_1)
+''
+╭───────────────────────────────────────────╮
+│ 2.3. If body: **Unused** let "y" (ROUTER) │
+╰───────────────────────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1"
+''
+projection (1::int -> col_1)
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = any
+
+-- TEST: explain-nested-if-stage-numbering
+-- SQL:
+EXPLAIN (raw)
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t4 WHERE pk = 1);
+  IF v > 0 THEN
+    RETURN QUERY SELECT v;
+    IF v > 1 THEN
+      UPDATE t4 SET a = v + 1 WHERE pk = 1;
+    END IF;
+    UPDATE t4 SET a = v + 2 WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+╭──────────────────────────────────────────╮
+│ 1. Let "v" (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────╯
+''
+SELECT "t4"."a" FROM "t4" WHERE "t4"."pk" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE t4 USING PRIMARY KEY (pk=?) (~1 row)
+''
+╭────────────────────────────────────────────╮
+│ 2.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
+''
+SELECT CAST(:v AS int) > CAST(0 AS int) as "cond"
+''
+plan:
+    [0] TRIVIAL
+''
+╭──────────────────────────────────────────────────────────╮
+│ 2.2. If body: Return query (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────────────────────╯
+''
+SELECT CAST(:v AS int) as "col_1"
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────────────────────────────────────────╮
+│ 2.3.1. If body: If cond (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────────╯
+''
+SELECT CAST(:v AS int) > CAST(1 AS int) as "cond"
+''
+plan:
+    [0] TRIVIAL
+''
+╭──────────────────────────────────────────────────────────────╮
+│ 2.3.2. If body: If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────────────────────────╯
+''
+UPDATE "t4" SET "a" = CAST(:v AS int) + CAST(1 AS int) WHERE "t4"."pk" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE t4 USING PRIMARY KEY (pk=?) (~1 row)
+''
+╭───────────────────────────────────────────────────╮
+│ 2.4. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
+''
+UPDATE "t4" SET "a" = CAST(:v AS int) + CAST(2 AS int) WHERE "t4"."pk" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE t4 USING PRIMARY KEY (pk=?) (~1 row)
+
+-- TEST: explain-if-body-return-query
+-- SQL:
+EXPLAIN (raw)
+DO $$
+BEGIN
+  IF true THEN
+    RETURN QUERY SELECT 1;
+    UPDATE t4 SET a = a WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+╭────────────────────────────────────────────╮
+│ 1.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
+''
+SELECT CAST(true AS bool) as "cond"
+''
+plan:
+    [0] TRIVIAL
+''
+╭──────────────────────────────────────────────────────────╮
+│ 1.2. If body: Return query (CONST-FILTERED STORAGE, 1/1) │
+╰──────────────────────────────────────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1"
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────────────────────────────────────╮
+│ 1.3. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
+''
+UPDATE "t4" SET "a" = "t4"."a" WHERE "t4"."pk" = CAST(1 AS int)
+''
+plan:
+    [0] SEARCH TABLE t4 USING PRIMARY KEY (pk=?) (~1 row)
+
+-- TEST: if-body-return-query-after-body-dml
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t4 WHERE pk = 1);
+  IF v >= 0 THEN
+    UPDATE t4 SET a = a + 1 WHERE pk = 1;
+    RETURN QUERY SELECT v;
   END IF;
 END $$;
 -- ERROR:
-nested IF is not allowed
+LET and RETURN QUERY statements must precede all DML statements
+
+-- TEST: if-body-return-query-after-top-level-dml
+-- SQL:
+DO $$
+BEGIN
+  UPDATE t4 SET a = a + 1 WHERE pk = 1;
+  IF true THEN
+    RETURN QUERY SELECT 1;
+  END IF;
+END $$;
+-- ERROR:
+LET and RETURN QUERY statements must precede all DML statements
+
+-- TEST: if-body-return-query-type-mismatch
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT 1;
+  IF true THEN
+    RETURN QUERY SELECT 'x';
+  END IF;
+END $$;
+-- ERROR:
+RETURN QUERY types cannot be matched
+
+-- TEST: nested-if-init
+-- SQL:
+DROP TABLE IF EXISTS t6;
+CREATE TABLE t6 (pk INT PRIMARY KEY, a INT);
+INSERT INTO t6 VALUES (1, 0);
+
+-- TEST: nested-if-both-true-fires
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    IF true THEN
+      UPDATE t6 SET a = a + 1 WHERE pk = 1;
+    END IF;
+  END IF;
+END $$;
+
+-- TEST: nested-if-both-true-fires-check
+-- SQL:
+SELECT a FROM t6 WHERE pk = 1;
+-- EXPECTED:
+1,
+
+-- TEST: nested-if-inner-false-skips-only-inner
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    IF false THEN
+      UPDATE t6 SET a = a + 10 WHERE pk = 1;
+    END IF;
+    UPDATE t6 SET a = a + 100 WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: nested-if-inner-false-skips-only-inner-check
+-- SQL:
+SELECT a FROM t6 WHERE pk = 1;
+-- EXPECTED:
+101,
+
+-- TEST: nested-if-outer-false-skips-the-whole-subtree
+-- SQL:
+DO $$
+BEGIN
+  IF false THEN
+    UPDATE t6 SET a = a + 1000 WHERE pk = 1;
+    IF true THEN
+      UPDATE t6 SET a = a + 10000 WHERE pk = 1;
+    END IF;
+    UPDATE t6 SET a = a + 100000 WHERE pk = 1;
+  END IF;
+END $$;
+
+-- TEST: nested-if-outer-false-skips-the-whole-subtree-check
+-- SQL:
+SELECT a FROM t6 WHERE pk = 1;
+-- EXPECTED:
+101,
+
+-- TEST: nested-if-three-levels-deep
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    IF true THEN
+      IF true THEN
+        UPDATE t6 SET a = 7 WHERE pk = 1;
+      END IF;
+    END IF;
+  END IF;
+END $$;
+
+-- TEST: nested-if-three-levels-deep-check
+-- SQL:
+SELECT a FROM t6 WHERE pk = 1;
+-- EXPECTED:
+7,
+
+-- TEST: nested-if-return-query-and-let
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t6 WHERE pk = 1);
+  IF v > 0 THEN
+    LET w = (SELECT v * 2);
+    IF w > 0 THEN
+      RETURN QUERY SELECT v, w;
+      UPDATE t6 SET a = w WHERE pk = 1;
+    END IF;
+  END IF;
+END $$;
+-- EXPECTED:
+7, 14
+
+-- TEST: nested-if-return-query-and-let-check
+-- SQL:
+SELECT a FROM t6 WHERE pk = 1;
+-- EXPECTED:
+14,
+
+-- TEST: nested-if-let-is-out-of-scope-in-the-enclosing-body
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    IF true THEN
+      LET v = (SELECT 1);
+    END IF;
+    UPDATE t6 SET a = v WHERE pk = 1;
+  END IF;
+END $$;
+-- ERROR:
+LET variable "v" is out of scope
+
+-- TEST: nested-if-ordering-spans-levels
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    IF true THEN
+      UPDATE t6 SET a = 1 WHERE pk = 1;
+    END IF;
+    RETURN QUERY SELECT 1;
+  END IF;
+END $$;
+-- ERROR:
+LET and RETURN QUERY statements must precede all DML statements
 
 -- TEST: if-cross-sharded-tables
 -- SQL:
@@ -1634,27 +2236,27 @@ BEGIN
   END IF;
 END $$;
 -- EXPECTED:
-╭──────────────────────────────────────────╮
-│ 1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭────────────────────────────────────────────╮
+│ 1.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
 ''
 SELECT CAST(true AS bool) as "cond"
 ''
 plan:
     [0] TRIVIAL
 ''
-╭──────────────────────────────────────────╮
-│ 2. If body (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭───────────────────────────────────────────────────╮
+│ 1.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
 ''
 UPDATE "t2" SET "b" = CAST(1234 AS int) WHERE "t2"."pk" = CAST(1 AS int)
 ''
 plan:
     [0] SEARCH TABLE t2 USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭──────────────────────────────────────────╮
-│ 3. If body (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭───────────────────────────────────────────────────╮
+│ 1.3. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
 ''
 UPDATE "t3" SET "b" = CAST(5678 AS int) WHERE "t3"."pk" = CAST(1 AS int)
 ''
@@ -1688,7 +2290,7 @@ BEGIN
   END IF;
 END $$;
 -- ERROR:
-statement 1 \(IF body, query 1\) and statement 1 \(IF body, query 2\): different buckets: \[1934\] and \[1410\]
+statement 1.2 \(DML\) and statement 1.3 \(DML\): different buckets: \[1934\] and \[1410\]
 
 -- TEST: error-with-let-location
 -- SQL:

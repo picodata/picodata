@@ -219,17 +219,17 @@ limit 1
           selection (tt.d::int = 2::int)
             scan tt
 ''
-╭──────────────────────────────────────────╮
-│ 2. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭────────────────────────────────────────────╮
+│ 2.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
 ''
 SELECT CAST(:a AS int) = CAST(5 AS int) as "cond"
 ''
 projection (:a::int = 5::int -> cond)
 ''
-╭──────────────────────────────────────────╮
-│ 3. If body (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭───────────────────────────────────────────────────╮
+│ 2.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
 ''
 INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(2 AS int), 1410)
 ''
@@ -238,7 +238,7 @@ insert into tt on conflict: fail
     value ROW(2::int)
 ''
 ╭────────────────────────────────────────╮
-│ 4. Query (CONST-FILTERED STORAGE, 1/1) │
+│ 3. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
 DELETE FROM "tt" WHERE "tt"."d" = CAST(2 AS int)
@@ -324,17 +324,17 @@ SELECT CAST(1 AS int) as "col_1"
 ''
 projection (1::int -> col_1)
 ''
-╭──────────────────────────────────────────╮
-│ 3. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭────────────────────────────────────────────╮
+│ 3.1. If cond (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────────╯
 ''
 SELECT CAST(:a AS int) = CAST(5 AS int) as "cond"
 ''
 projection (:a::int = 5::int -> cond)
 ''
-╭──────────────────────────────────────────╮
-│ 4. If body (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────╯
+╭───────────────────────────────────────────────────╮
+│ 3.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
 ''
 INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(2 AS int), 1410)
 ''

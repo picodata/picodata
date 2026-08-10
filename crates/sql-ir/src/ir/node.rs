@@ -1428,12 +1428,26 @@ pub enum BlockStatement<T> {
     ///
     /// `cond` must be a scalar boolean query (`SELECT <bool_expr>`).
     /// NULL condition skips the body.
-    If { cond: T, body: Vec<T> },
+    ///
+    /// The body holds any statement legal at the top level -- DML, `RETURN
+    /// QUERY`, `LET` and `IF` alike -- and may be empty. A `LET` declared in it
+    /// goes out of scope at `END IF`; the parser enforces that.
+    If {
+        cond: T,
+        body: Vec<BlockStatement<T>>,
+    },
 }
 
 impl<T> BlockStatement<T> {
     /// Map every query subtree inside the statement using `f`.
     pub fn try_map<F, U, E>(self, mut f: F) -> Result<BlockStatement<U>, E>
+    where
+        F: FnMut(T) -> Result<U, E>,
+    {
+        self.try_map_impl(&mut f)
+    }
+
+    fn try_map_impl<F, U, E>(self, f: &mut F) -> Result<BlockStatement<U>, E>
     where
         F: FnMut(T) -> Result<U, E>,
     {
@@ -1446,29 +1460,69 @@ impl<T> BlockStatement<T> {
             },
             Self::If { cond, body } => BlockStatement::If {
                 cond: f(cond)?,
-                body: body.into_iter().map(f).collect::<Result<_, _>>()?,
+                body: body
+                    .into_iter()
+                    .map(|stmt| stmt.try_map_impl(f))
+                    .collect::<Result<_, _>>()?,
             },
         })
     }
+
+    /// What this statement does with the query [`BlockEntries`] yields for it.
+    fn entry_kind(&self) -> BlockEntryKind {
+        match self {
+            Self::ReturnQuery(_) => BlockEntryKind::ReturnQuery,
+            Self::Query(_) => BlockEntryKind::Query,
+            Self::Let { var, .. } => BlockEntryKind::Let {
+                var: SmolStr::clone(var),
+            },
+            Self::If { .. } => BlockEntryKind::IfCondition,
+        }
+    }
 }
 
-/// Where a query subtree sits inside a transactional block. Yielded by
-/// [`BlockEntries`] / [`BlockEntriesMut`] and used to build user-facing
-/// error messages that point at the offending statement.
+/// What the statement behind a [`BlockEntry`] does. Mirrors [`BlockStatement`]
+/// without the payload; an `If` yields its condition first, hence
+/// [`Self::IfCondition`].
 ///
-/// Top-level statements and IF body items are reported with 1-based indices.
+/// Survives nesting: a `RETURN QUERY` keeps reporting itself as one however
+/// deep in IF bodies it is buried. [`StatementLocation`] pairs it with the
+/// *where*.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum BlockEntryKind {
+    ReturnQuery,
+    Query,
+    Let { var: SmolStr },
+    IfCondition,
+}
+
+impl Display for BlockEntryKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReturnQuery => write!(f, "RETURN QUERY"),
+            Self::Query => write!(f, "DML"),
+            Self::Let { var } => {
+                let var = var.strip_prefix(':').unwrap_or(var.as_str());
+                write!(f, "LET \"{var}\"")
+            }
+            Self::IfCondition => write!(f, "IF condition"),
+        }
+    }
+}
+
+/// Where a query subtree sits inside a transactional block, and what it does.
+/// Yielded by [`BlockEntries`] / [`BlockEntriesMut`] and used to build
+/// user-facing error messages that point at the offending statement.
+///
+/// `stmt_idx` is the 0-based index of the enclosing *top-level* statement;
+/// `body_path` holds one 0-based index per IF body between there and here,
+/// outermost first, and is empty for a top-level statement. So two statements
+/// at the same depth of different bodies never read alike.
 #[derive(Debug, Clone, Hash)]
-pub enum StatementLocation {
-    /// `statement N (RETURN QUERY)`
-    ReturnQuery { stmt_idx: usize },
-    /// `statement N (DML)`
-    Query { stmt_idx: usize },
-    /// `statement N (LET <name>)`
-    Let { stmt_idx: usize, name: SmolStr },
-    /// `statement N (IF condition)`.
-    IfCondition { stmt_idx: usize },
-    /// `statement N (IF body, query M)`.
-    IfBody { stmt_idx: usize, body_idx: usize },
+pub struct StatementLocation {
+    pub stmt_idx: usize,
+    pub body_path: Vec<usize>,
+    pub kind: BlockEntryKind,
 }
 
 impl StatementLocation {
@@ -1483,6 +1537,25 @@ impl StatementLocation {
     pub fn wrap_error_with(&self, other: &StatementLocation, err: SbroadError) -> SbroadError {
         SbroadError::Other(format_smolstr!("{self} and {other}: {err}"))
     }
+
+    /// How many IF bodies enclose this statement.
+    pub fn if_body_depth(&self) -> usize {
+        self.body_path.len()
+    }
+
+    /// 1-based path naming this statement's place in the block.
+    /// Used both for EXPLAIN stage headers and for the location in
+    /// an error message, so that an error and the EXPLAIN of the same
+    /// block agree on what to call a statement.
+    pub fn explain_path(&self) -> Vec<usize> {
+        let mut path = Vec::with_capacity(self.body_path.len() + 2);
+        path.push(self.stmt_idx + 1);
+        path.extend(self.body_path.iter().map(|idx| idx + 2));
+        if self.kind == BlockEntryKind::IfCondition {
+            path.push(1);
+        }
+        path
+    }
 }
 
 /// Wrapper yielded by [`BlockEntries`]: an inner query subtree paired with
@@ -1490,6 +1563,8 @@ impl StatementLocation {
 /// auto-prefix any error the closure returns with this entry's location.
 pub struct BlockEntry<'a, T> {
     pub query: &'a T,
+    /// Where the query sits and what it does; `location.kind` is the one
+    /// source of truth for the latter.
     pub location: StatementLocation,
 }
 
@@ -1521,6 +1596,8 @@ impl<'a, T> BlockEntry<'a, T> {
 /// Mutable variant of [`BlockEntry`].
 pub struct BlockEntryMut<'a, T> {
     pub query: &'a mut T,
+    /// Where the query sits and what it does; `location.kind` is the one
+    /// source of truth for the latter.
     pub location: StatementLocation,
 }
 
@@ -1551,29 +1628,13 @@ impl<'a, T> BlockEntryMut<'a, T> {
 
 impl Display for StatementLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ReturnQuery { stmt_idx } => {
-                write!(f, "statement {} (RETURN QUERY)", stmt_idx + 1)
-            }
-            Self::Query { stmt_idx } => {
-                write!(f, "statement {} (DML)", stmt_idx + 1)
-            }
-            Self::Let { stmt_idx, name } => {
-                let name = name.strip_prefix(":").expect("name always has ':' prefix");
-                write!(f, "statement {} (LET \"{}\")", stmt_idx + 1, name)
-            }
-            Self::IfCondition { stmt_idx } => {
-                write!(f, "statement {} (IF condition)", stmt_idx + 1)
-            }
-            Self::IfBody { stmt_idx, body_idx } => {
-                write!(
-                    f,
-                    "statement {} (IF body, query {})",
-                    stmt_idx + 1,
-                    body_idx + 1,
-                )
-            }
-        }
+        let path = self
+            .explain_path()
+            .iter()
+            .map(usize::to_string)
+            .collect::<Vec<_>>()
+            .join(".");
+        write!(f, "statement {path} ({})", self.kind)
     }
 }
 
@@ -1581,27 +1642,42 @@ impl Display for StatementLocation {
 /// yielding a [`BlockEntry`] per query in execution order.
 pub struct BlockEntries<'a, T> {
     stmts: Enumerate<Iter<'a, BlockStatement<T>>>,
-    if_body: Option<IfBodyCursor<Iter<'a, T>>>,
+    if_body: Vec<IfBodyCursor<Iter<'a, BlockStatement<T>>>>,
 }
 
 /// Mutable variant of [`BlockEntries`].
 pub struct BlockEntriesMut<'a, T> {
     stmts: Enumerate<IterMut<'a, BlockStatement<T>>>,
-    if_body: Option<IfBodyCursor<IterMut<'a, T>>>,
+    if_body: Vec<IfBodyCursor<IterMut<'a, BlockStatement<T>>>>,
 }
 
-/// State carried while yielding the body items of one IF statement.
+/// One IF body being traversed. Cursors form a stack (innermost last), so a
+/// body statement that is itself an IF simply pushes another frame. `stmt_idx`
+/// is inherited from the enclosing frame and always names the *top-level*
+/// statement the body belongs to; `path_prefix` spells out the route from
+/// there down to this body.
 struct IfBodyCursor<I> {
     stmt_idx: usize,
+    path_prefix: Vec<usize>,
     body_idx: usize,
     items: I,
+}
+
+impl<I> IfBodyCursor<I> {
+    /// Path to the next body item, advancing the body counter.
+    fn next_path(&mut self) -> Vec<usize> {
+        let mut path = self.path_prefix.clone();
+        path.push(self.body_idx);
+        self.body_idx += 1;
+        path
+    }
 }
 
 impl<'a, T> BlockEntries<'a, T> {
     pub fn new(stmts: &'a [BlockStatement<T>]) -> Self {
         Self {
             stmts: stmts.iter().enumerate(),
-            if_body: None,
+            if_body: Vec::new(),
         }
     }
 }
@@ -1610,7 +1686,7 @@ impl<'a, T> BlockEntriesMut<'a, T> {
     pub fn new(stmts: &'a mut [BlockStatement<T>]) -> Self {
         Self {
             stmts: stmts.iter_mut().enumerate(),
-            if_body: None,
+            if_body: Vec::new(),
         }
     }
 }
@@ -1619,46 +1695,44 @@ impl<'a, T> Iterator for BlockEntries<'a, T> {
     type Item = BlockEntry<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(cursor) = &mut self.if_body {
-            if let Some(query) = cursor.items.next() {
-                let location = StatementLocation::IfBody {
-                    stmt_idx: cursor.stmt_idx,
-                    body_idx: cursor.body_idx,
-                };
-                cursor.body_idx += 1;
-                return Some(BlockEntry { query, location });
+        // Drain the innermost IF body first, popping frames that ran out.
+        let (stmt_idx, stmt, body_path) = loop {
+            let Some(cursor) = self.if_body.last_mut() else {
+                let (stmt_idx, stmt) = self.stmts.next()?;
+                break (stmt_idx, stmt, Vec::new());
+            };
+            let stmt_idx = cursor.stmt_idx;
+            match cursor.items.next() {
+                Some(stmt) => break (stmt_idx, stmt, cursor.next_path()),
+                None => {
+                    self.if_body.pop();
+                }
             }
-            self.if_body = None;
-        }
-        let (stmt_idx, stmt) = self.stmts.next()?;
-        match stmt {
-            BlockStatement::ReturnQuery(query) => Some(BlockEntry {
-                query,
-                location: StatementLocation::ReturnQuery { stmt_idx },
-            }),
-            BlockStatement::Query(query) => Some(BlockEntry {
-                query,
-                location: StatementLocation::Query { stmt_idx },
-            }),
-            BlockStatement::Let { query, var } => Some(BlockEntry {
-                query,
-                location: StatementLocation::Let {
-                    stmt_idx,
-                    name: SmolStr::clone(var),
-                },
-            }),
+        };
+
+        let kind = stmt.entry_kind();
+        let query = match stmt {
+            BlockStatement::ReturnQuery(query)
+            | BlockStatement::Query(query)
+            | BlockStatement::Let { query, .. } => query,
+            // The body is yielded right after the condition.
             BlockStatement::If { cond, body } => {
-                self.if_body = Some(IfBodyCursor {
+                self.if_body.push(IfBodyCursor {
                     stmt_idx,
+                    path_prefix: body_path.clone(),
                     body_idx: 0,
                     items: body.iter(),
                 });
-                Some(BlockEntry {
-                    query: cond,
-                    location: StatementLocation::IfCondition { stmt_idx },
-                })
+                cond
             }
-        }
+        };
+
+        let location = StatementLocation {
+            stmt_idx,
+            body_path,
+            kind,
+        };
+        Some(BlockEntry { query, location })
     }
 }
 
@@ -1666,46 +1740,44 @@ impl<'a, T> Iterator for BlockEntriesMut<'a, T> {
     type Item = BlockEntryMut<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(cursor) = &mut self.if_body {
-            if let Some(query) = cursor.items.next() {
-                let location = StatementLocation::IfBody {
-                    stmt_idx: cursor.stmt_idx,
-                    body_idx: cursor.body_idx,
-                };
-                cursor.body_idx += 1;
-                return Some(BlockEntryMut { query, location });
+        // Drain the innermost IF body first, popping frames that ran out.
+        let (stmt_idx, stmt, body_path) = loop {
+            let Some(cursor) = self.if_body.last_mut() else {
+                let (stmt_idx, stmt) = self.stmts.next()?;
+                break (stmt_idx, stmt, Vec::new());
+            };
+            let stmt_idx = cursor.stmt_idx;
+            match cursor.items.next() {
+                Some(stmt) => break (stmt_idx, stmt, cursor.next_path()),
+                None => {
+                    self.if_body.pop();
+                }
             }
-            self.if_body = None;
-        }
-        let (stmt_idx, stmt) = self.stmts.next()?;
-        match stmt {
-            BlockStatement::ReturnQuery(query) => Some(BlockEntryMut {
-                query,
-                location: StatementLocation::ReturnQuery { stmt_idx },
-            }),
-            BlockStatement::Query(query) => Some(BlockEntryMut {
-                query,
-                location: StatementLocation::Query { stmt_idx },
-            }),
-            BlockStatement::Let { query, var } => Some(BlockEntryMut {
-                query,
-                location: StatementLocation::Let {
-                    stmt_idx,
-                    name: SmolStr::clone(var),
-                },
-            }),
+        };
+
+        let kind = stmt.entry_kind();
+        let query = match stmt {
+            BlockStatement::ReturnQuery(query)
+            | BlockStatement::Query(query)
+            | BlockStatement::Let { query, .. } => query,
+            // The body is yielded right after the condition.
             BlockStatement::If { cond, body } => {
-                self.if_body = Some(IfBodyCursor {
+                self.if_body.push(IfBodyCursor {
                     stmt_idx,
+                    path_prefix: body_path.clone(),
                     body_idx: 0,
                     items: body.iter_mut(),
                 });
-                Some(BlockEntryMut {
-                    query: cond,
-                    location: StatementLocation::IfCondition { stmt_idx },
-                })
+                cond
             }
-        }
+        };
+
+        let location = StatementLocation {
+            stmt_idx,
+            body_path,
+            kind,
+        };
+        Some(BlockEntryMut { query, location })
     }
 }
 
@@ -1735,12 +1807,10 @@ pub struct AnonymousBlock {
 impl AnonymousBlock {
     pub fn get_unused_lets(&self) -> HashSet<usize> {
         let mut unused_lets = HashSet::with_capacity(self.unused_lets.len());
-        for (idx, stmt) in self.statements.iter().enumerate() {
-            match stmt {
-                BlockStatement::Let { query, .. } if self.unused_lets.contains(query) => {
-                    unused_lets.insert(idx);
-                }
-                _ => continue,
+        for (idx, entry) in BlockEntries::new(&self.statements).enumerate() {
+            let is_let = matches!(entry.location.kind, BlockEntryKind::Let { .. });
+            if is_let && self.unused_lets.contains(entry.query) {
+                unused_lets.insert(idx);
             }
         }
 
