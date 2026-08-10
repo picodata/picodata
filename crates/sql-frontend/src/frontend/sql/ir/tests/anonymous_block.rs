@@ -432,6 +432,27 @@ fn let_resolution_errors() {
             END $$",
             "cannot be redeclared with a different type",
         ),
+        // A delimited identifier can hold anything, but a LET name ends up in
+        // the generated SQL as `:{name}`, so it has to stay a single bound
+        // parameter token.
+        (
+            r#"DO $$ BEGIN LET "my var" = (SELECT 1); UPDATE t2 SET e = "my var"; END $$"#,
+            r#"LET variable name "my var" is invalid: it contains ' '"#,
+        ),
+        // A digit-leading name is worse than malformed: `:1` is what a
+        // positional parameter looks like, so it would silently read $1.
+        (
+            r#"DO $$ BEGIN LET "1" = (SELECT 1); UPDATE t2 SET e = "1"; END $$"#,
+            r#"LET variable name "1" is invalid: it starts with a digit"#,
+        ),
+        (
+            r#"DO $$ BEGIN LET "1x" = (SELECT 1); UPDATE t2 SET e = "1x"; END $$"#,
+            r#"LET variable name "1x" is invalid: it starts with a digit"#,
+        ),
+        (
+            r#"DO $$ BEGIN LET "" = (SELECT 1); END $$"#,
+            r#"LET variable name "" is invalid: it is empty"#,
+        ),
     ];
 
     for (query, error_pattern) in cases {
