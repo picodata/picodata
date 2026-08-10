@@ -64,6 +64,40 @@ pub(in crate::frontend::sql) enum LetVarLookup {
     Unknown,
 }
 
+/// Reject a LET name that cannot survive the trip through generated SQL.
+///
+/// References compile to `:{name}`, so the name has to be something the
+/// storage's SQL lexer reads back as one bound-parameter token, and something
+/// `ParamName` (in `src/vdbe/txn.rs`) can tell apart from a positional `:N`
+/// parameter. Delimited identifiers let a user write anything at all --
+/// `LET "my var"`, `LET "1"` -- so the check has to happen here rather than in
+/// the grammar.
+fn validate_let_var_name(name: &str) -> Result<(), SbroadError> {
+    let invalid = |reason: &str| {
+        Err(SbroadError::Other(format_smolstr!(
+            "LET variable name \"{name}\" is invalid: {reason}. A name must \
+             start with a letter or underscore and hold only letters, digits \
+             and underscores"
+        )))
+    };
+    match name.chars().next() {
+        None => return invalid("it is empty"),
+        Some(c) if c.is_ascii_digit() => {
+            // `:1` is indistinguishable from positional parameter $1, and
+            // `:1x` does not even parse as one.
+            return invalid("it starts with a digit");
+        }
+        Some(c) if !c.is_alphabetic() && c != '_' => {
+            return invalid("it starts with a character that is not a letter or underscore")
+        }
+        Some(_) => (),
+    }
+    if let Some(c) = name.chars().find(|c| !c.is_alphanumeric() && *c != '_') {
+        return invalid(&format!("it contains {c:?}"));
+    }
+    Ok(())
+}
+
 /// LET-variable scope for a single transactional block.
 ///
 /// The parser walks the AST in post-order; we install a new declaration into
@@ -175,6 +209,7 @@ impl LetVarScope {
         name: SmolStr,
         ty: DerivedType,
     ) -> Result<(), SbroadError> {
+        validate_let_var_name(&name)?;
         match self.local_binding(&name) {
             Some(prev_idx) => {
                 let prev = &self.decls[prev_idx];
