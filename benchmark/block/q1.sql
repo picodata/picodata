@@ -1,7 +1,6 @@
-\set aid0 (random(1, 100000 * :scale))
-\set aid :aid0
-\set delta random(-5000, 5000)
+\set uid    (random(1, 100000 * :scale))
+\set amount (random(1, 100))
 
-SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
-UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;
-UPDATE pgbench_accounts SET abalance = abalance - :delta WHERE aid = :aid;
+SELECT balance FROM checking WHERE user_id = :uid;
+UPDATE checking SET balance = balance - :amount WHERE user_id = :uid;
+UPDATE savings  SET balance = balance + :amount WHERE user_id = :uid;

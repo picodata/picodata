@@ -1,7 +1,5 @@
-\set aid (random(1, 100000 * :scale))
-\set tid (random(1, 10 * :scale))
-\set bid (random(1, 1 * :scale))
-\set delta random(-5000, 5000)
+\set id     (random(1, 2000000000))
+\set uid    (random(1, 100000 * :scale))
+\set amount (random(-5000, 5000))
 
-INSERT INTO pgbench_history (tid, bid, aid, delta, mtime)
-    VALUES (:tid, :bid, :aid, :delta, NULL);
+INSERT INTO ledger (id, user_id, amount) VALUES (:id, :uid, :amount) ON CONFLICT DO NOTHING;

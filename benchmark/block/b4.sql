@@ -2,7 +2,5 @@
 
 DO $$
 BEGIN
-    INSERT INTO pgbench_block_conflict_counter VALUES (:id, 0)
-    ON CONFLICT("bucket_id", "id") DO UPDATE
-    SET "counter" = "counter" + 1;
+  INSERT INTO counter (id, value) VALUES (:id, 0) ON CONFLICT (id) DO UPDATE SET value = value + 1;
 END $$
