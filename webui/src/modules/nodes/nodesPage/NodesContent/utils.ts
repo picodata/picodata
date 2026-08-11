@@ -318,9 +318,9 @@ const filterYesNoValueByExpressionType = (
 ) => {
   switch (expressionType) {
     case ExpressionEnum.Is:
-      return typeof valueA === "boolean" && valueB;
+      return typeof valueA === "boolean" && valueA === valueB;
     case ExpressionEnum.IsNotOneOf:
-      return !valueA;
+      return valueB ? !valueA : valueA;
     case ExpressionEnum.IsOneOf:
       return (valueB as unknown[]).includes(valueA);
     default:
