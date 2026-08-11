@@ -175,6 +175,7 @@ BEGIN
   UPDATE t SET a = a + 1 WHERE pk = 3;
   UPDATE t SET a = a * 2 WHERE pk = 3;
 END $$;
+-- EXPECTED:
 
 -- TEST: updates-no-return-query-check
 -- SQL:
@@ -188,6 +189,7 @@ DO $$
 BEGIN
   UPDATE t SET a = coalesce(42, 42), b = (2 + 2)::int WHERE pk = 3;
 END $$;
+-- EXPECTED:
 
 -- TEST: update-2-columns-check
 -- SQL:
@@ -201,6 +203,7 @@ DO $$
 BEGIN
   UPDATE t INDEXED BY ta SET b = 3::int + 3::int, a = coalesce(42 + 1, null) WHERE pk = 3;
 END $$;
+-- EXPECTED:
 
 -- TEST: update-indexed-by-check
 -- SQL:
@@ -364,6 +367,7 @@ DO $$
 BEGIN
   INSERT INTO t VALUES (10, 100, 100);
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-single-row-check
 -- SQL:
@@ -377,6 +381,7 @@ DO $$
 BEGIN
   INSERT INTO t (pk, a, b) VALUES (11, 101, 111);
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-with-explicit-columns-check
 -- SQL:
@@ -390,6 +395,7 @@ DO $$
 BEGIN
   INSERT INTO t VALUES (12, 1, 1), (12, 2, 2) ON CONFLICT DO REPLACE;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-multi-row-same-bucket-check
 -- SQL:
@@ -403,6 +409,7 @@ DO $$
 BEGIN
   INSERT INTO t VALUES (13, 1 + 2, 4 * 5);
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-with-arithmetic-non-key-check
 -- SQL:
@@ -417,6 +424,7 @@ BEGIN
   INSERT INTO t VALUES (14, 1, 1);
   UPDATE t SET a = 99 WHERE pk = 14;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-with-update-same-bucket-check
 -- SQL:
@@ -431,6 +439,7 @@ BEGIN
   INSERT INTO t VALUES (15, 1, 1);
   INSERT INTO t VALUES (15, 2, 2) ON CONFLICT DO REPLACE;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-replace-check
 -- SQL:
@@ -445,6 +454,7 @@ BEGIN
   INSERT INTO t VALUES (16, 1, 1);
   INSERT INTO t VALUES (16, 2, 2) ON CONFLICT DO NOTHING;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-nothing-check
 -- SQL:
@@ -458,6 +468,7 @@ DO $$
 BEGIN
   INSERT INTO iocdu VALUES (17, 170, 170) ON CONFLICT (pk) DO UPDATE SET a = a + 1;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-no-conflict-check
 -- SQL:
@@ -517,8 +528,10 @@ plan:
 -- SQL:
 DO $$
 BEGIN
-  INSERT INTO iocdu VALUES (1, 0, 0) ON CONFLICT (pk) DO UPDATE SET a = a + 1, b = b + 10;
+  INSERT INTO iocdu VALUES (1, 0, 0)
+    ON CONFLICT (pk) DO UPDATE SET a = a + 1, b = b + 10;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-primary-key-check
 -- SQL:
@@ -530,8 +543,10 @@ SELECT * FROM iocdu WHERE pk = 1;
 -- SQL:
 DO $$
 BEGIN
-  INSERT INTO iocdu_u VALUES (1, 3, 20, 0) ON CONFLICT (sk, val) DO UPDATE SET note = note + 1;
+  INSERT INTO iocdu_u VALUES (1, 3, 20, 0)
+    ON CONFLICT (sk, val) DO UPDATE SET note = note + 1;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-secondary-index-check
 -- SQL:
@@ -544,8 +559,9 @@ SELECT * FROM iocdu_u WHERE sk = 1 AND id = 2;
 DO $$
 BEGIN
   INSERT INTO iocdu_masked_unique VALUES (1, 1, 20, 0)
-  ON CONFLICT (sk, id) DO UPDATE SET c = c + 1;
+    ON CONFLICT (sk, id) DO UPDATE SET c = c + 1;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-target-conflict-masks-secondary-unique-check
 -- SQL:
@@ -560,6 +576,7 @@ DO $$
 BEGIN
   INSERT INTO iocdu VALUES (433, 0, 0), (1618, 0, 0) ON CONFLICT (pk) DO UPDATE SET a = a + 10;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-multi-row-same-bucket-check
 -- SQL:
@@ -573,7 +590,7 @@ SELECT * FROM iocdu WHERE pk = 433 OR pk = 1618;
 DO $$
 BEGIN
   INSERT INTO iocdu_dup_empty VALUES (1, 10), (1, 20)
-  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+    ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
 END $$;
 -- ERROR:
 ON CONFLICT DO UPDATE command cannot affect row a second time
@@ -589,7 +606,7 @@ SELECT COUNT(*) FROM iocdu_dup_empty;
 DO $$
 BEGIN
   INSERT INTO iocdu_dup_existing VALUES (1, 1), (1, 2)
-  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+    ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
 END $$;
 -- ERROR:
 ON CONFLICT DO UPDATE command cannot affect row a second time
@@ -605,10 +622,11 @@ SELECT * FROM iocdu_dup_existing;
 DO $$
 BEGIN
   INSERT INTO iocdu_dup_separate VALUES (1, 1)
-  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+    ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
   INSERT INTO iocdu_dup_separate VALUES (1, 2)
-  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+    ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-separate-statements-check
 -- SQL:
@@ -621,16 +639,18 @@ SELECT * FROM iocdu_dup_separate;
 DO $$
 BEGIN
   INSERT INTO iocdu_dup_cached VALUES (1, 1)
-  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+    ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-seen-keys-reset-2
 -- SQL:
 DO $$
 BEGIN
   INSERT INTO iocdu_dup_cached VALUES (1, 1)
-  ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
+    ON CONFLICT (pk) DO UPDATE SET amount = amount + 1;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-seen-keys-reset-check
 -- SQL:
@@ -643,8 +663,9 @@ SELECT * FROM iocdu_dup_cached;
 DO $$
 BEGIN
   INSERT INTO iocdu_dup_nullable VALUES (1, 1, NULL, 0), (1, 2, NULL, 0)
-  ON CONFLICT (sk, u) DO UPDATE SET note = note + 1;
+    ON CONFLICT (sk, u) DO UPDATE SET note = note + 1;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-duplicate-null-target-check
 -- SQL:
@@ -658,7 +679,7 @@ SELECT * FROM iocdu_dup_nullable ORDER BY id;
 DO $$
 BEGIN
   INSERT INTO iocdu_dup_vinyl VALUES (1, 1, 10), (1, 1, 20)
-  ON CONFLICT (sk, id) DO UPDATE SET amount = amount + 1;
+    ON CONFLICT (sk, id) DO UPDATE SET amount = amount + 1;
 END $$;
 -- ERROR:
 ON CONFLICT DO UPDATE command cannot affect row a second time
@@ -677,6 +698,7 @@ BEGIN
     INSERT INTO iocdu VALUES (1, 0, 0) ON CONFLICT (pk) DO UPDATE SET b = b + 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-if-body-check
 -- SQL:
@@ -693,6 +715,7 @@ BEGIN
     INSERT INTO iocdu_let VALUES (1, 1) ON CONFLICT (pk) DO UPDATE SET b = b + m;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-let-primary-key-check
 -- SQL:
@@ -706,11 +729,12 @@ DO $$
 BEGIN
   LET extra = (SELECT $2);
   INSERT INTO iocdu_param VALUES (1, 1)
-  ON CONFLICT (pk) DO UPDATE SET b = b + $1;
+    ON CONFLICT (pk) DO UPDATE SET b = b + $1;
 END $$;
 -- PARAMS:
 7,
 0
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-param-rhs-check
 -- SQL:
@@ -742,9 +766,11 @@ DO $$
 BEGIN
   LET m = (SELECT note FROM iocdu_let_u WHERE sk = 1 AND id = 1);
   IF m > 0 THEN
-    INSERT INTO iocdu_let_u VALUES (1, 3, 20, 0) ON CONFLICT (sk, val) DO UPDATE SET note = note + m;
+    INSERT INTO iocdu_let_u VALUES (1, 3, 20, 0)
+      ON CONFLICT (sk, val) DO UPDATE SET note = note + m;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-let-secondary-index-check
 -- SQL:
@@ -757,8 +783,10 @@ SELECT * FROM iocdu_let_u WHERE sk = 1 AND id = 2;
 DO $$
 BEGIN
   LET m = (SELECT NULL);
-  INSERT INTO iocdu_let_null VALUES (1, 5) ON CONFLICT (pk) DO UPDATE SET b = b + m;
+  INSERT INTO iocdu_let_null VALUES (1, 5)
+    ON CONFLICT (pk) DO UPDATE SET b = b + m;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-let-null-no-conflict-check
 -- SQL:
@@ -771,8 +799,10 @@ SELECT * FROM iocdu_let_null;
 DO $$
 BEGIN
   LET m = (SELECT NULL);
-  INSERT INTO iocdu_let_null VALUES (1, 99) ON CONFLICT (pk) DO UPDATE SET b = b + m;
+  INSERT INTO iocdu_let_null VALUES (1, 99)
+    ON CONFLICT (pk) DO UPDATE SET b = b + m;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-let-null-conflict-check
 -- SQL:
@@ -786,8 +816,9 @@ DO $$
 BEGIN
   LET d = (SELECT 1.25::decimal);
   INSERT INTO iocdu_decimal_let VALUES (1, 0::decimal)
-  ON CONFLICT (pk) DO UPDATE SET amount = amount + d;
+    ON CONFLICT (pk) DO UPDATE SET amount = amount + d;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-decimal-let-check
 -- SQL:
@@ -801,8 +832,9 @@ DO $$
 BEGIN
   LET d = (SELECT 1);
   INSERT INTO iocdu_double_let VALUES (1, 0)
-  ON CONFLICT (pk) DO UPDATE SET amount = amount + d;
+    ON CONFLICT (pk) DO UPDATE SET amount = amount + d;
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-on-conflict-do-update-double-let-cast-check
 -- SQL:
@@ -815,7 +847,7 @@ SELECT amount FROM iocdu_double_let;
 DO $$
 BEGIN
   INSERT INTO iocdu_nullable_target (a) VALUES (1)
-  ON CONFLICT (b, a) DO UPDATE SET b = b + 1;
+    ON CONFLICT (b, a) DO UPDATE SET b = b + 1;
 END $$;
 -- ERROR:
 duplicate key exists in table "iocdu_nullable_target"
@@ -825,7 +857,7 @@ duplicate key exists in table "iocdu_nullable_target"
 DO $$
 BEGIN
   INSERT INTO iocdu_nullable_target (a) VALUES (1)
-  ON CONFLICT (b, a) DO UPDATE SET iocdu_nullable_target.b = iocdu_nullable_target.b + 1;
+    ON CONFLICT (b, a) DO UPDATE SET iocdu_nullable_target.b = iocdu_nullable_target.b + 1;
 END $$;
 -- ERROR:
 ON CONFLICT DO UPDATE SET target column must not be table-qualified
@@ -834,7 +866,8 @@ ON CONFLICT DO UPDATE SET target column must not be table-qualified
 -- SQL:
 DO $$
 BEGIN
-  INSERT INTO iocdu_u VALUES (1, 4, 10, 0) ON CONFLICT (sk, val) DO UPDATE SET note = note + 2;
+  INSERT INTO iocdu_u VALUES (1, 4, 10, 0)
+    ON CONFLICT (sk, val) DO UPDATE SET note = note + 2;
 END $$;
 -- ERROR:
 duplicate key exists in table "iocdu_u"
@@ -850,7 +883,7 @@ SELECT * FROM iocdu_u WHERE sk = 1 AND id = 1;
 DO $$
 BEGIN
   INSERT INTO iocdu_integer_overflow VALUES (1, 2)
-  ON CONFLICT (pk) DO UPDATE SET b = b + 1;
+    ON CONFLICT (pk) DO UPDATE SET b = b + 1;
 END $$;
 -- ERROR:
 Integer overflow
@@ -860,7 +893,7 @@ Integer overflow
 DO $$
 BEGIN
   INSERT INTO iocdu_integer_overflow VALUES (3, 2)
-  ON CONFLICT (pk) DO UPDATE SET b = b + 9223372036854775807;
+    ON CONFLICT (pk) DO UPDATE SET b = b + 9223372036854775807;
 END $$;
 -- ERROR:
 Integer overflow
@@ -870,7 +903,7 @@ Integer overflow
 DO $$
 BEGIN
   INSERT INTO iocdu_integer_overflow VALUES (3, 2)
-  ON CONFLICT (pk) DO UPDATE SET b = b + 9223372036854775807;
+    ON CONFLICT (pk) DO UPDATE SET b = b + 9223372036854775807;
 END $$;
 -- ERROR:
 Integer overflow
@@ -934,6 +967,7 @@ DO $$
 BEGIN
   INSERT INTO t VALUES (433, 1, 1), (1618, 2, 2);
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-different-pks-same-bucket-check
 -- SQL:
@@ -948,6 +982,7 @@ DO $$
 BEGIN
   INSERT INTO t VALUES (300, COALESCE(NULL, 99), ABS(-7));
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-with-function-call-non-key-check
 -- SQL:
@@ -961,6 +996,7 @@ DO $$
 BEGIN
   INSERT INTO t VALUES (400::int, 99, 7);
 END $$;
+-- EXPECTED:
 
 -- TEST: insert-cast-constant-from-dk-check
 -- SQL:
@@ -1060,10 +1096,12 @@ Reached a limit on max executed vdbe opcodes. Limit: 1
 -- TEST: block-delete-1
 -- SQL:
 do $$ BEGIN DELETE FROM t WHERE pk = 1; END $$;
+-- EXPECTED:
 
 -- TEST: block-delete-1-check
 -- SQL:
 SELECT * FROM t WHERE pk = 1;
+-- EXPECTED:
 
 -- TEST: block-delete-2
 -- SQL:
@@ -1084,6 +1122,7 @@ END $$;
 -- TEST: block-delete-with-return-query-check
 -- SQL:
 SELECT * FROM t WHERE pk = 2;
+-- EXPECTED:
 
 -- TEST: explain-block-delete-with-return-query
 -- SQL:
@@ -1115,6 +1154,7 @@ plan:
 -- TEST: block-delete-with-return-query-check
 -- SQL:
 SELECT * FROM t WHERE pk = 2;
+-- EXPECTED:
 
 -- TEST: explain-block-multistmt-with-constants
 -- SQL:
@@ -1238,6 +1278,7 @@ BEGIN
   LET v = (SELECT a FROM t1 WHERE pk = 1);
   UPDATE t2 SET b = v + 100 WHERE pk = 1;
 END $$;
+-- EXPECTED:
 
 -- TEST: let-feeds-update-check
 -- SQL:
@@ -1398,6 +1439,7 @@ BEGIN
     UPDATE t2 SET b = 99 WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: if-true-fires-check
 -- SQL:
@@ -1450,6 +1492,7 @@ BEGIN
     UPDATE t2 SET b = 111 WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: if-let-feeds-cond-check
 -- SQL:
@@ -1466,6 +1509,7 @@ BEGIN
     UPDATE t2 SET b = v + 500 WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: if-let-feeds-body-check
 -- SQL:
@@ -1482,6 +1526,7 @@ BEGIN
     UPDATE t2 SET b = 888 WHERE pk = 4;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: if-multiple-body-stmts-check
 -- SQL:
@@ -1500,6 +1545,7 @@ BEGIN
   UPDATE t2 SET a = a + 123 WHERE pk = 4;
   UPDATE t2 SET b = b + 456 WHERE pk = 4;
 END $$;
+-- EXPECTED:
 
 -- TEST: updates-after-if-check
 -- SQL:
@@ -1519,6 +1565,7 @@ BEGIN
   UPDATE t2 SET a = a + v WHERE pk = 4;
   UPDATE t2 SET b = b + v * 2 WHERE pk = 4;
 END $$;
+-- EXPECTED:
 
 -- TEST: updates-with-let-var-after-check
 -- SQL:
@@ -1583,6 +1630,7 @@ BEGIN
     UPDATE t5 SET a = v * 2 WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: if-body-let-feeds-body-dml-check
 -- SQL:
@@ -1658,6 +1706,7 @@ BEGIN
   IF true THEN LET v = (SELECT 1); END IF;
   IF true THEN LET v = (SELECT 'x'); END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: if-body-let-after-body-dml
 -- SQL:
@@ -1721,6 +1770,7 @@ BEGIN
     RETURN QUERY SELECT v;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: if-body-return-query-multi-column
 -- SQL:
@@ -1782,19 +1832,43 @@ END $$;
 
 -- TEST: empty-if-body-is-a-no-op
 -- SQL:
-DO $$
-BEGIN
-  IF true THEN
-  END IF;
-END $$;
+DO $$ BEGIN IF true THEN END IF; END $$;
+-- EXPECTED:
+
+-- TEST: explain-empty-if-body-is-a-no-op
+-- SQL:
+explain (raw, logical)
+DO $$ BEGIN IF true THEN END IF; END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+╭───────────────────────╮
+│ 1.1. If cond (ROUTER) │
+╰───────────────────────╯
+''
+SELECT CAST(true AS bool) as "cond"
+''
+projection (true::bool -> cond)
+''
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭───────────────────────╮
+│ 1.1. If cond (ROUTER) │
+╰───────────────────────╯
+''
+SELECT CAST(true AS bool) as "cond"
+''
+plan:
+    [0] TRIVIAL
 
 -- TEST: empty-if-body-with-a-false-condition
 -- SQL:
-DO $$
-BEGIN
-  IF false THEN
-  END IF;
-END $$;
+DO $$ BEGIN IF false THEN END IF; END $$;
+-- EXPECTED:
 
 -- TEST: empty-if-body-alongside-real-work
 -- SQL:
@@ -1825,6 +1899,7 @@ BEGIN
     UPDATE t4 SET a = 42 WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: empty-nested-if-body-check
 -- SQL:
@@ -2092,6 +2167,7 @@ BEGIN
     END IF;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: nested-if-both-true-fires-check
 -- SQL:
@@ -2110,6 +2186,7 @@ BEGIN
     UPDATE t6 SET a = a + 100 WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: nested-if-inner-false-skips-only-inner-check
 -- SQL:
@@ -2129,6 +2206,7 @@ BEGIN
     UPDATE t6 SET a = a + 100000 WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: nested-if-outer-false-skips-the-whole-subtree-check
 -- SQL:
@@ -2148,6 +2226,7 @@ BEGIN
     END IF;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: nested-if-three-levels-deep-check
 -- SQL:
@@ -2214,6 +2293,7 @@ BEGIN
     UPDATE t3 SET b = 5678 WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: if-cross-sharded-tables-check
 -- SQL:
@@ -2321,10 +2401,12 @@ DO $$ BEGIN RETURN QUERY SELECT a FROM tc WHERE pk = 1; END $$;
 -- TEST: cache-dml-first
 -- SQL:
 DO $$ BEGIN UPDATE tc SET a = a + 1 WHERE pk = 2; END $$;
+-- EXPECTED:
 
 -- TEST: cache-dml-second
 -- SQL:
 DO $$ BEGIN UPDATE tc SET a = a + 1 WHERE pk = 2; END $$;
+-- EXPECTED:
 
 -- TEST: cache-dml-check
 -- SQL:
@@ -2351,6 +2433,7 @@ BEGIN
     UPDATE tc SET a = a + v WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: cache-let-and-if-check
 -- SQL:
@@ -2417,6 +2500,7 @@ DO $$ BEGIN RETURN QUERY SELECT a FROM sc WHERE pk = 1; END $$;
 -- TEST: schema-change-dml-warmup
 -- SQL:
 DO $$ BEGIN UPDATE sc SET a = a + 1 WHERE pk = 1; END $$;
+-- EXPECTED:
 
 -- TEST: schema-change-dml-bump-version
 -- SQL:
@@ -2426,6 +2510,7 @@ CREATE TABLE sc_unrelated_dml (pk INT PRIMARY KEY, a INT);
 -- TEST: schema-change-dml-after-bump
 -- SQL:
 DO $$ BEGIN UPDATE sc SET a = a + 1 WHERE pk = 1; END $$;
+-- EXPECTED:
 
 -- TEST: schema-change-dml-check
 -- SQL:
@@ -2442,6 +2527,7 @@ BEGIN
     UPDATE sc SET a = a + v WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: schema-change-let-if-bump-version
 -- SQL:
@@ -2457,6 +2543,7 @@ BEGIN
     UPDATE sc SET a = a + v WHERE pk = 1;
   END IF;
 END $$;
+-- EXPECTED:
 
 -- TEST: schema-change-let-if-check
 -- SQL:
@@ -2497,6 +2584,7 @@ DO $$ BEGIN RETURN QUERY SELECT a FROM sc WHERE pk = 1; END $$;
 -- TEST: schema-change-after-alter-own-table-dml
 -- SQL:
 DO $$ BEGIN UPDATE sc SET a = a + 1 WHERE pk = 1; END $$;
+-- EXPECTED:
 
 -- TEST: schema-change-after-alter-own-table-check
 -- SQL:
