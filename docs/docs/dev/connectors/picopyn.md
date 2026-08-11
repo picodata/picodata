@@ -24,7 +24,6 @@ Picopyn предоставляет как асинхронный, так и си
 
 
 [Python-драйвера]: https://git.picodata.io/core/drivers/picopyn
-[asyncpg]: https://github.com/MagicStack/asyncpg
 
 ## Поддерживаемые функции {: #features }
 
