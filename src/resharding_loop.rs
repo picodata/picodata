@@ -7,6 +7,8 @@ use crate::replicaset::Replicaset;
 use crate::resharding_loop::action::ReshardingAction;
 use crate::resharding_loop::action::*;
 use crate::schema::ADMIN_ID;
+use crate::simulation::platform::Platform;
+use crate::simulation::platform::PlatformActual;
 use crate::storage::Replicasets;
 use crate::storage::SystemTable;
 use crate::tlog;
@@ -17,7 +19,6 @@ use crate::traft::op::Dml;
 use crate::traft::op::Op;
 use crate::traft::RaftIndex;
 use crate::util::NoYieldsRefCell;
-use crate::vshard;
 use crate::vshard::VshardBucketRecord;
 use crate::vshard::VshardBucketState;
 use crate::vshard::VshardBucketState as VBS;
@@ -86,10 +87,32 @@ impl ReshardingLoop {
             .func_async(async move {
                 let mut requested_status_rx = requested_status_rx;
                 let mut actual_status_tx = actual_status_tx;
+
+                // The fiber starts before the global node is initialized, but
+                // resharding_loop requires it, so we wait explicitly. Thankfully
+                // we only have to do this once at program start.
+                let platform;
                 loop {
-                    let res =
-                        resharding_loop(&mut requested_status_rx, &mut actual_status_tx, &state_tx)
+                    let Ok(node) = node::global() else {
+                        _ = requested_status_rx
+                            .changed()
+                            .timeout(RESHARDING_LOOP_SHORT_RETRY)
                             .await;
+                        continue;
+                    };
+
+                    platform = PlatformActual::new(node);
+                    break;
+                }
+
+                loop {
+                    let res = resharding_loop(
+                        &platform,
+                        &state_tx,
+                        &mut requested_status_rx,
+                        &mut actual_status_tx,
+                    )
+                    .await;
                     match res {
                         Ok(()) => {
                             // TODO backoff
@@ -245,9 +268,10 @@ pub struct ReshardingLoopState {
 /// `state` is the mutable state with information about the inner goings on of
 /// the resharding loop mainly for debugging purposes.
 async fn resharding_loop(
+    platform: &impl Platform,
+    state: &Rc<NoYieldsRefCell<ReshardingLoopState>>,
     requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
     actual_status: &mut watch::Sender<(ReshardingStatus, u64)>,
-    state: &Rc<NoYieldsRefCell<ReshardingLoopState>>,
 ) -> Result<()> {
     let (_curr_status, curr_version) = actual_status.get();
     // Is updated in `ReshardingLoop::do_resharding`
@@ -260,9 +284,9 @@ async fn resharding_loop(
         return Ok(());
     }
 
-    let node = node::global()?;
-    let my_instance_name = node.topology_cache.my_instance_name();
-    let i_am_replicaset_master = node.topology_cache.with(|topology_ref| {
+    let topology_cache = platform.topology_cache();
+    let my_instance_name = topology_cache.my_instance_name();
+    let i_am_replicaset_master = topology_cache.with(|topology_ref| {
         topology_ref
             .this_replicaset()
             .effective_master_name()
@@ -274,20 +298,20 @@ async fn resharding_loop(
     if !i_am_replicaset_master {
         tlog!(Debug, "not replicaset master, going to sleep");
 
-        _ = node.wait_index_change(Duration::from_secs(10));
+        _ = platform.wait_index_change(Duration::from_secs(10));
         return Ok(());
     }
 
     // XXX Maybe let's have a sepparate parameter for resharding timeouts?
     // But than again maybe let's not...
-    let cas_timeout = node
-        .alter_system_parameters
+    let cas_timeout = platform
+        .alter_system_parameters()
         .borrow()
         .governor_raft_op_timeout();
 
-    let applied = node.get_index();
+    let applied = platform.applied_index();
 
-    let action = plan_resharding_action(state, want_status)?;
+    let action = plan_resharding_action(platform, state, want_status)?;
     let action_kind = action.kind();
     state.borrow_mut().last_action = action_kind;
 
@@ -307,21 +331,11 @@ async fn resharding_loop(
             let (start, end) = range.into_inner();
             tlog!(Debug, "resharding_loop_status = '{action_kind}' (_bucket update {start}..{end} {from_state:?} -> '{to_state}')");
 
-            log_bucket_changes(&changes, &node.topology_cache.get())?; // TODO(resharding): remove from final implementation
+            log_bucket_changes(&changes, &topology_cache.get())?; // TODO(resharding): remove from final implementation
 
-            transaction(|| -> Result<_> {
-                for bucket in changes {
-                    SPACE_BUCKET.replace(&bucket)?;
-                }
+            platform.write_local_buckets(changes)?;
 
-                // TODO(sharding): update _schema.local_bucket_state_version so
-                // that replicas can synchronize global _pico_bucket updates
-                // with sharded table updates
-
-                Ok(())
-            })?;
-
-            inspect_space_bucket(&node.topology_cache.get())?; // TODO(resharding): remove from final implementation
+            inspect_space_bucket(platform)?; // TODO(resharding): remove from final implementation
         }
 
         Action::ActualizeBucketStateVersion(ActualizeBucketStateVersion { version_bump }) => {
@@ -333,17 +347,17 @@ async fn resharding_loop(
 
             // Wait for vshard discovery to complete before bumping version
             // This ensures route_map is up-to-date on this instance
-            let tier_name = node.topology_cache.my_tier_name();
-            vshard::wait_router_discovery_complete(tier_name, cas_timeout)?;
+            let tier_name = topology_cache.my_tier_name();
+            platform.wait_router_discovery_complete(tier_name, cas_timeout)?;
 
-            do_cas_requests(applied, version_bump.into_iter().collect(), cas_timeout)?;
+            platform.do_cas(applied, version_bump.into_iter().collect(), cas_timeout)?;
         }
 
         Action::GoIdle => {
             tlog!(Debug, "resharding_loop_status = '{action_kind}'");
 
-            inspect_space_bucket(&node.topology_cache.get())?; // TODO(resharding): remove from final implementation
-            assert_all_buckets_rw()?; // TODO(resharding): remove from final implementation
+            inspect_space_bucket(platform)?; // TODO(resharding): remove from final implementation
+            assert_all_buckets_rw(platform)?; // TODO(resharding): remove from final implementation
 
             _ = actual_status.send((ReshardingStatus::Idle, next_version));
         }
@@ -359,14 +373,13 @@ async fn resharding_loop(
 ////////////////////////////////////////////////////////////////////////////////
 
 fn plan_resharding_action(
+    platform: &impl Platform,
     _state: &NoYieldsRefCell<ReshardingLoopState>,
     want_status: ReshardingStatus,
 ) -> Result<ReshardingAction> {
     let _guard = tarantool::fiber::NoYieldsGuard::with_message("no yields allowed here!");
 
-    let node = node::global()?;
-
-    let topology_ref = node.topology_cache.get();
+    let topology_ref = platform.topology_cache().get();
     let this_replicaset = topology_ref.this_replicaset();
 
     ////////////////////////////////////////////////////////////////////////////
@@ -384,7 +397,7 @@ fn plan_resharding_action(
     // handle initial bucket distribution
     //
     if want_status == ReshardingStatus::Initialize {
-        let action = initialize_sharded_states(this_replicaset, &topology_ref)?;
+        let action = initialize_sharded_states(platform, this_replicaset, &topology_ref)?;
         debug_assert_action_kind!(
             action,
             ReshardingAction::ActualizeBucketStateVersion { .. }
@@ -402,6 +415,7 @@ fn plan_resharding_action(
 ////////////////////////////////////////////////////////////////////////////////
 
 fn initialize_sharded_states(
+    platform: &impl Platform,
     this_replicaset: &Replicaset,
     topology_ref: &TopologyCacheRef,
 ) -> Result<ReshardingAction> {
@@ -450,7 +464,7 @@ fn initialize_sharded_states(
         ));
     }
 
-    inspect_space_bucket(topology_ref)?; // TODO(resharding): remove from final implementation
+    inspect_space_bucket(platform)?; // TODO(resharding): remove from final implementation
 
     //
     // Check states in _bucket
@@ -459,7 +473,8 @@ fn initialize_sharded_states(
     for range in ranges.iter().cloned() {
         // Note: must first set as "receiving" because otherwise vshard's on_commit trigger will fail
         let (from_state, to_state) = (None, VBS::Receiving);
-        let changes = find_sharded_bucket_updates(range.clone(), from_state, to_state, None)?;
+        let changes =
+            find_sharded_bucket_updates(platform, range.clone(), from_state, to_state, None)?;
         if !changes.is_empty() {
             return Ok(ReshardingAction::ActualizeShardedState(
                 ActualizeShardedState {
@@ -472,7 +487,8 @@ fn initialize_sharded_states(
         }
 
         let (from_state, to_state) = (Some(VBS::Receiving), VBS::Active);
-        let changes = find_sharded_bucket_updates(range.clone(), from_state, to_state, None)?;
+        let changes =
+            find_sharded_bucket_updates(platform, range.clone(), from_state, to_state, None)?;
         if !changes.is_empty() {
             return Ok(ReshardingAction::ActualizeShardedState(
                 ActualizeShardedState {
@@ -538,7 +554,7 @@ fn make_actualization_dmls(replicaset: &Replicaset) -> Result<Vec<Dml>> {
 // - do cas don't wait
 // - ...
 // - wait for all cas responses at once
-fn do_cas_requests(applied: RaftIndex, dmls: Vec<Dml>, timeout: Duration) -> Result<()> {
+pub fn do_cas_requests(applied: RaftIndex, dmls: Vec<Dml>, timeout: Duration) -> Result<()> {
     tlog!(Debug, "sending cas request: {dmls:?}");
     let op = Op::single_dml_or_batch(dmls);
     let predicate = cas::Predicate::new(applied, []);
@@ -549,6 +565,33 @@ fn do_cas_requests(applied: RaftIndex, dmls: Vec<Dml>, timeout: Duration) -> Res
     // try again
     res.no_retries()?;
 
+    Ok(())
+}
+
+pub fn read_local_buckets(start: u64, end: u64) -> Result<Vec<VshardBucketRecord>> {
+    let mut res = vec![];
+    for tuple in SPACE_BUCKET.select(IteratorType::GE, &[start])? {
+        let bucket: VshardBucketRecord = tuple.decode()?;
+        if bucket.bucket_id > end {
+            break;
+        }
+        res.push(bucket);
+    }
+    Ok(res)
+}
+
+pub fn write_local_buckets(buckets: Vec<VshardBucketRecord>) -> Result<()> {
+    transaction(|| -> Result<_> {
+        for bucket in buckets {
+            SPACE_BUCKET.replace(&bucket)?;
+        }
+
+        // TODO(sharding): update _schema.local_bucket_state_version so
+        // that replicas can synchronize global _pico_bucket updates
+        // with sharded table updates
+
+        Ok(())
+    })?;
     Ok(())
 }
 
@@ -586,34 +629,34 @@ fn log_bucket_changes(
     Ok(())
 }
 
-fn inspect_space_bucket(topology_ref: &TopologyCacheRef) -> Result<()> {
-    let mut iter = SPACE_BUCKET.select(IteratorType::All, &())?;
+fn inspect_space_bucket(platform: &impl Platform) -> Result<()> {
+    let topology_ref = platform.topology_cache().get();
+    let mut iter = read_all_local_buckets(platform)?.into_iter();
 
-    let Some(tuple) = iter.next() else {
+    let Some(bucket) = iter.next() else {
         tlog!(Debug, "space '_bucket' is empty!");
         return Ok(());
     };
 
     tlog!(Debug, "space '_bucket' contents:");
 
-    let mut curr_bucket: VshardBucketRecord = tuple.decode()?;
+    let mut curr_bucket = bucket;
     let mut end = curr_bucket.bucket_id;
 
-    for tuple in iter {
-        let bucket: VshardBucketRecord = tuple.decode()?;
+    for bucket in iter {
         assert!(bucket.bucket_id > end);
         if bucket.bucket_id > end + 1
             || (bucket.state, &bucket.peer) != (curr_bucket.state, &curr_bucket.peer)
         {
             // Flush range
-            inspect_vshard_bucket_range("", &curr_bucket, end, topology_ref)?;
+            inspect_vshard_bucket_range("", &curr_bucket, end, &topology_ref)?;
             curr_bucket.clone_from(&bucket);
         }
 
         end = bucket.bucket_id;
     }
 
-    inspect_vshard_bucket_range("", &curr_bucket, end, topology_ref)?;
+    inspect_vshard_bucket_range("", &curr_bucket, end, &topology_ref)?;
 
     Ok(())
 }
@@ -644,11 +687,13 @@ fn inspect_vshard_bucket_range(
     Ok(())
 }
 
-fn assert_all_buckets_rw() -> Result<()> {
-    let index_status = SPACE_BUCKET
-        .index("status")
-        .expect("database constraint violation");
+/// Reads the whole local `_bucket` space. Only used by the debugging helpers
+/// below, which report on all of it.
+fn read_all_local_buckets(platform: &impl Platform) -> Result<Vec<VshardBucketRecord>> {
+    platform.read_local_buckets(0, u64::MAX)
+}
 
+fn assert_all_buckets_rw(platform: &impl Platform) -> Result<()> {
     const NON_RW_STATUSES: &[VshardBucketState] = &[
         VshardBucketState::Pinned,
         VshardBucketState::Sending,
@@ -656,9 +701,9 @@ fn assert_all_buckets_rw() -> Result<()> {
         VshardBucketState::Receiving,
         VshardBucketState::Garbage,
     ];
-    for status in NON_RW_STATUSES {
-        if let Some(tuple) = index_status.min(&[status])? {
-            panic!("non rw tuple {tuple:?}");
+    for bucket in read_all_local_buckets(platform)? {
+        if NON_RW_STATUSES.contains(&bucket.state) {
+            panic!("non rw tuple {bucket:?}");
         }
     }
 

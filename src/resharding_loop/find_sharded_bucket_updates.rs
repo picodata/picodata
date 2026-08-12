@@ -1,31 +1,23 @@
+use super::Platform;
 use crate::catalog::pico_bucket::BucketIdRange;
 use crate::tlog;
 use crate::vshard::VshardBucketRecord;
 use crate::vshard::VshardBucketState;
-use crate::vshard::SPACE_BUCKET;
 use crate::Result;
 use smol_str::SmolStr;
-use tarantool::index::IteratorType;
 
 ////////////////////////////////////////////////////////////////////////////////
 // find_sharded_bucket_updates
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn find_sharded_bucket_updates(
+    platform: &impl Platform,
     range: BucketIdRange,
     from_state: Option<VshardBucketState>,
     to_state: VshardBucketState,
     expected_peer: Option<SmolStr>,
 ) -> Result<Vec<VshardBucketRecord>> {
-    let (start, end) = (*range.start(), *range.end());
-    let mut actual_buckets = vec![];
-    for tuple in SPACE_BUCKET.select(IteratorType::GE, &[start])? {
-        let bucket: VshardBucketRecord = tuple.decode()?;
-        if bucket.bucket_id > end {
-            break;
-        }
-        actual_buckets.push(bucket);
-    }
+    let actual_buckets = platform.read_local_buckets(*range.start(), *range.end())?;
 
     Ok(find_sharded_bucket_updates_impl(
         range,
@@ -78,7 +70,7 @@ fn find_sharded_bucket_updates_impl(
 
     let first_bucket_id = first.bucket_id;
 
-    // Callers always select with IteratorType::GE on the range start, so the
+    // Callers read via `Platform::read_local_buckets(start, end)`, so the
     // slice never holds buckets before the range.
     debug_assert!(first_bucket_id >= start, "{first_bucket_id} < {start}");
 

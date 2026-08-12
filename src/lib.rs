@@ -108,6 +108,7 @@ pub mod schema;
 mod scram;
 pub mod sentinel;
 pub mod sharding;
+mod simulation;
 pub mod sql;
 pub mod storage;
 pub mod sync;
