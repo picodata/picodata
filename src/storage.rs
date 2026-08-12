@@ -426,49 +426,115 @@ impl Catalog {
     ///   * `None` in case of delete (because the tuple is gone) and 'insert on conflict do nothing'.
     #[inline]
     pub fn do_dml(&self, dml: &Dml) -> tarantool::Result<Option<Tuple>> {
-        let space = space_by_id_unchecked(dml.table_id());
-        match dml {
-            Dml::Insert {
-                tuple,
-                conflict_strategy,
-                ..
-            } => {
-                let conflict_policy = ConflictPolicy::try_from(conflict_strategy)
-                    .map_err(|e| TntError::Other(e.to_string().into()))?;
-                match conflict_policy {
-                    ConflictPolicy::DoFail => space.insert(tuple).map(Some),
-                    ConflictPolicy::DoReplace => space.replace(tuple).map(Some),
-                    ConflictPolicy::DoNothing => match space.insert(tuple) {
-                        Ok(tuple) => Ok(Some(tuple)),
-                        Err(TntError::Tarantool(e))
-                            if e.error_code() == TntErrorCode::TupleFound as u32 =>
-                        {
-                            Ok(None)
-                        }
-                        Err(e) => Err(e),
-                    },
-                }
-            }
-            Dml::Replace { tuple, .. } => space.replace(tuple).map(Some),
-            Dml::Update { key, ops, .. } => space.update(key, ops),
-            Dml::Delete {
-                key,
-                metainfo: None,
-                ..
-            } => space.delete(key).map(|_| None),
-            Dml::Delete {
-                metainfo: Some(info),
-                ..
-            } => {
-                let rt = StorageRuntime::new();
-                let mut port = TarantoolPort::new_port_c();
-                let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
-                full_delete_execute(&rt, info, &mut pico_port)
-                    .map_err(|sbroad_err| TntError::Other(format!("{}", sbroad_err).into()))?;
-                Ok(None)
-            }
+        let (old, new) = self.do_dml_inner(dml, false)?;
+        debug_assert_eq!(old, None);
+        Ok(new)
+    }
+
+    /// Perform the `dml` operation on the local storage.
+    ///
+    /// Returns a pair of optional tuples `(old, new)`, see [`do_dml_on_space`],
+    /// which this is a thin wrapper around.
+    #[inline(always)]
+    pub fn do_dml_inner(
+        &self,
+        dml: &Dml,
+        need_old: bool,
+    ) -> tarantool::Result<(Option<Tuple>, Option<Tuple>)> {
+        do_dml_on_space(&space_by_id_unchecked(dml.table_id()), dml, need_old)
+    }
+}
+
+/// Looks up the tuple `dml` is about to replace in `space`.
+fn get_old_tuple(space: &Space, dml: &Dml) -> tarantool::Result<Option<Tuple>> {
+    match dml {
+        // There may be no previous version for inserts.
+        Dml::Insert { .. } => Ok(None),
+        Dml::Update { key, .. } => space.get(key),
+        Dml::Delete { key, .. } => space.get(key),
+        Dml::Replace { tuple, .. } => {
+            let tuple = Tuple::from(tuple);
+            let key_def = cached_key_def(space.id(), 0)?;
+            let key = key_def.extract_key(&tuple)?;
+            space.get(&key)
         }
     }
+}
+
+/// Perform the `dml` operation to a given `space`.
+///
+/// The `space` parameter allows to override the target of the `dml` for testing
+/// purposes. The production caller [`Catalog::do_dml`] passes the `space` which
+/// is expected by the `dml` operation.
+///
+/// Returns a pair of optional tuples `(old, new)`, where `new` is the tuple
+/// which was inserted into the space via the `dml` operation, and `old` is
+/// the tuple which was replaced by the `dml` operation.
+///
+/// Note that if `need_old` is `false`, `old` is always `None`, as we skip
+/// the attempt to look it up.
+///
+/// `new` tuple has possible values:
+///   * `Some(tuple)` in case of insert (except for on conflict do nothing) and replace;
+///   * `Some(tuple)` or `None` depending on update's result (it may be NOP);
+///   * `None` in case of delete (because the tuple is gone) and 'insert on conflict do nothing'.
+pub fn do_dml_on_space(
+    space: &Space,
+    dml: &Dml,
+    need_old: bool,
+) -> tarantool::Result<(Option<Tuple>, Option<Tuple>)> {
+    // First, get the old tuple, if needed
+    let old = if need_old {
+        get_old_tuple(space, dml)?
+    } else {
+        None
+    };
+
+    // Second, apply the dml and get the new tuple
+    let new = match dml {
+        Dml::Insert {
+            tuple,
+            conflict_strategy,
+            ..
+        } => {
+            let conflict_policy = ConflictPolicy::try_from(conflict_strategy)
+                .map_err(|e| TntError::Other(e.to_string().into()))?;
+            match conflict_policy {
+                ConflictPolicy::DoFail => space.insert(tuple).map(Some),
+                ConflictPolicy::DoReplace => space.replace(tuple).map(Some),
+                ConflictPolicy::DoNothing => match space.insert(tuple) {
+                    Ok(tuple) => Ok(Some(tuple)),
+                    Err(TntError::Tarantool(e))
+                        if e.error_code() == TntErrorCode::TupleFound as u32 =>
+                    {
+                        Ok(None)
+                    }
+                    Err(e) => Err(e),
+                },
+            }
+        }
+        Dml::Replace { tuple, .. } => space.replace(tuple).map(Some),
+        Dml::Update { key, ops, .. } => space.update(key, ops),
+        Dml::Delete {
+            key,
+            metainfo: None,
+            ..
+        } => space.delete(key).map(|_| None),
+        Dml::Delete {
+            metainfo: Some(info),
+            ..
+        } => {
+            let rt = StorageRuntime::new();
+            let mut port = TarantoolPort::new_port_c();
+            let mut pico_port = PicoPortC::from(unsafe { port.as_mut_port_c() });
+            full_delete_execute(&rt, info, &mut pico_port)
+                .map_err(|sbroad_err| TntError::Other(format!("{}", sbroad_err).into()))?;
+            Ok(None)
+        }
+    };
+    let new = new?;
+
+    Ok((old, new))
 }
 
 /// Return a `KeyDef` to be used for comparing **tuples** of the corresponding global table.

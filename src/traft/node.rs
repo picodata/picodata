@@ -38,7 +38,6 @@ use crate::schema::SchemaObjectType;
 use crate::schema::{Distribution, IndexDef, IndexOption, TableDef, TableOption};
 use crate::sentinel;
 use crate::static_ref;
-use crate::storage::cached_key_def;
 use crate::storage::schema::acl;
 use crate::storage::schema::ddl_abort_on_master;
 use crate::storage::schema::ddl_meta_drop_routine;
@@ -47,7 +46,6 @@ use crate::storage::schema::ddl_meta_space_update_operable;
 use crate::storage::schema::ddl_truncate_space_on_master;
 use crate::storage::snapshot::RaftSnapshot;
 use crate::storage::snapshot::SnapshotData;
-use crate::storage::space_by_id;
 use crate::storage::DbConfig;
 use crate::storage::ToEntryIter;
 use crate::storage::{self, Catalog, PropertyName, SystemTable};
@@ -1201,51 +1199,59 @@ impl NodeImpl {
         let table_id = op.table_id();
         let initiator = op.initiator();
 
-        // In order to implement the audit log events, we have to compare
-        // tuples from certain system spaces before and after a DML operation.
+        // In order to implement the audit log events as well as topology_cache
+        // we have to compare tuples from certain system spaces before and after
+        // a DML operation.
         //
-        // In theory, we could move this code to `do_dml`, but in practice we
-        // cannot do that just yet, because we aren't allowed to universally call
-        // `extract_key` for arbitrary tuple/space pairs due to insufficient validity
-        // checks on its side -- it might just crash for user input.
+        // Currently this requires a redundant storage lookup, for that reason
+        // we only do this if necessary, hence the check.
         //
-        // Remeber, we're not the only ones using CaS; users may call it for their
-        // own spaces, thus emitting unrestricted (and unsafe) DML records.
+        // TODO: It would be more efficient to use `on_replace` triggers for
+        // that, as they get `old` and `new` tuples for free from tarantool.
         //
-        // TODO: merge this into `do_dml` once `box_tuple_extract_key` is fixed.
-        let old = match table_id {
-            s @ (storage::Properties::TABLE_ID
-            | storage::Instances::TABLE_ID
-            | storage::Replicasets::TABLE_ID
-            | storage::Tiers::TABLE_ID
-            | PicoBucket::TABLE_ID
-            | PicoReshardingState::TABLE_ID
-            | storage::ServiceRouteTable::TABLE_ID) => {
-                let s = space_by_id(s).expect("system space must exist");
-                match &op {
-                    // There may be no previous version for inserts.
-                    Dml::Insert { .. } => Ok(None),
-                    Dml::Update { key, .. } => s.get(key),
-                    Dml::Delete { key, .. } => s.get(key),
-                    Dml::Replace { tuple, .. } => {
-                        let tuple = Tuple::from(tuple);
-                        let key_def =
-                            cached_key_def(s.id(), 0).expect("index for space must be found");
-                        let key = key_def
-                            .extract_key(&tuple)
-                            .expect("cas should validate operation before committing a log entry");
-                        s.get(&key)
-                    }
-                }
-            }
-            _ => Ok(None),
-        };
+        // Unfortunately it's not as simple as it may seem. Here's the order of
+        // events in a tarantool's memtx transaction:
+        //
+        // - before_replace(old, new) (allowed to change the `new` tuple)
+        // - update storage
+        // - on_replace(old, new)
+        // - YIELD
+        // - if write to disk succeeds
+        //     - on_wal_write()
+        //     - YIELD
+        //     - synchro CONFIRM
+        //     - on_commit()
+        // - if write to disk fails
+        //     - on_rollback()
+        //
+        // This means that after current fiber yields other fibers can read
+        // uncommitted data from spaces.
+        //
+        // This means that things like `TopologyCache` - a coherent in-memory
+        // cache for system tables, we must do something like:
+        // - on_replace: TopologyCache::update(old, new)
+        // - on_replace: set on_rollback trigger
+        // - on_rollback: TopologyCache::update(new, old)
+        //
+        // Other things like `do_audit_logging_for_instance_update` or
+        // `try_notify_startup_complete` should probably not happen before actual
+        // commit, meaning:
+        // - on_replace: set on_commit trigger
+        // - on_commit: react to committed change
+        //
+        // See <https://git.picodata.io/core/picodata/-/issues/1149>
+        let need_old = matches!(
+            table_id,
+            storage::Properties::TABLE_ID
+                | storage::Instances::TABLE_ID
+                | storage::Replicasets::TABLE_ID
+                | storage::Tiers::TABLE_ID
+                | PicoBucket::TABLE_ID
+                | PicoReshardingState::TABLE_ID
+                | storage::ServiceRouteTable::TABLE_ID
+        );
 
-        // Perform DML and combine both tuple versions into a pair.
-        let res = old.and_then(|old| {
-            let new = self.storage.do_dml(op)?;
-            Ok((old, new))
-        });
+        let res = self.storage.do_dml_inner(op, need_old);
         let (old, new) = match res {
             Ok(v) => v,
             Err(e) => {
@@ -1253,8 +1259,6 @@ impl NodeImpl {
             }
         };
 
-        // FIXME: all of this should be done only after the transaction is committed
-        // See <https://git.picodata.io/core/picodata/-/issues/1149>
         match table_id {
             storage::Instances::TABLE_ID => {
                 let old = old
