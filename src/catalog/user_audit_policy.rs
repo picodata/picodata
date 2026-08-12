@@ -86,24 +86,11 @@ impl PicoUserAuditPolicy {
         }
     }
 
-    /// NOTE: this is new space since 25.4.1
-    /// We need to create the new space only on masters
-    /// to avoid duplicate key problem.
-    /// That's why space creating logic is in separate function.
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-        space
-            .index_builder("_pico_user_audit_policy_pkey")
-            .unique(true)
-            .part("user_id")
-            .part("policy_id")
-            .if_not_exists(true)
-            .create()?;
+        let (space, _indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
+
+        debug_assert_eq!(self.space.id(), space.id());
 
         Ok(())
     }

@@ -334,23 +334,11 @@ impl PicoBucket {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_primary = space
-            .index_builder("_pico_bucket_index_primary")
-            .unique(true)
-            .part("tier_name")
-            .part("bucket_id_start")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index_primary.id(), index_primary.id());
+        debug_assert_eq!(self.index_primary.id(), indexes[0].id());
 
         Ok(())
     }

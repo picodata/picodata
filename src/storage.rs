@@ -55,6 +55,7 @@ use tarantool::error::BoxError;
 use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::ffi::sql::Port as TarantoolPort;
 use tarantool::index::FieldType as IndexFieldType;
+use tarantool::index::IndexOptions;
 #[allow(unused_imports)]
 use tarantool::index::Metadata as IndexMetadata;
 use tarantool::index::Part;
@@ -583,6 +584,49 @@ pub trait SystemTable {
 
     fn index_definitions() -> Vec<crate::schema::IndexDef>;
 
+    /// Creates this table's space all of its indexes using the schema
+    /// definitions from the trait implementation.
+    ///
+    /// Parameters `name`, `id` and `space_type` will override the defaults
+    /// for testing purposes.
+    ///
+    /// Returns the `Space` struct and `Vec<Index>` which should be used by
+    /// callers to verify the ids.
+    fn create_space(
+        name: &str,
+        id: Option<SpaceId>,
+        space_type: SpaceType,
+    ) -> tarantool::Result<(Space, Vec<Index>)> {
+        let mut builder = Space::builder(name)
+            .space_type(space_type)
+            .format(Self::format())
+            .if_not_exists(true);
+        if let Some(id) = id {
+            builder = builder.id(id);
+        }
+        let space = builder.create()?;
+
+        let index_defs = Self::index_definitions();
+        let mut indexes = Vec::with_capacity(index_defs.len());
+        for mut index_def in index_defs {
+            // XXX: normalize parts for backwards compatibility.
+            for part in &mut index_def.parts {
+                if part.is_nullable == Some(false) {
+                    part.is_nullable = None;
+                }
+            }
+
+            let index_name = index_def.name.clone();
+
+            let mut options = IndexOptions::from(index_def);
+            options.if_not_exists = Some(true);
+
+            indexes.push(space.create_index(&index_name, &options)?);
+        }
+
+        Ok((space, indexes))
+    }
+
     /// Serializes `tuple` and returns an [`Dml::Insert`] into this table as admin.
     #[inline(always)]
     fn dml_insert(tuple: &impl ToTupleBuffer) -> Dml {
@@ -670,31 +714,12 @@ impl Indexes {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
-        let index_id = space
-            .index_builder("_pico_index_id")
-            .unique(true)
-            .part("table_id")
-            .part("id")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_name = space
-            .index_builder("_pico_index_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
-
-        debug_assert_eq!(space.id(), self.space.id());
-        debug_assert_eq!(index_id.id(), self.index_id.id());
-        debug_assert_eq!(index_name.id(), self.index_name.id());
+        debug_assert_eq!(self.space.id(), space.id());
+        debug_assert_eq!(self.index_id.id(), indexes[0].id());
+        debug_assert_eq!(self.index_name.id(), indexes[1].id());
 
         Ok(())
     }
@@ -839,23 +864,11 @@ impl PeerAddresses {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index = space
-            .index_builder("_pico_peer_address_raft_id")
-            .unique(true)
-            .part("raft_id")
-            .part("connection_type")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index.id(), index.id());
+        debug_assert_eq!(self.index.id(), indexes[0].id());
 
         Ok(())
     }
@@ -1171,46 +1184,14 @@ impl Instances {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_instance_name = space
-            .index_builder("_pico_instance_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_instance_uuid = space
-            .index_builder("_pico_instance_uuid")
-            .unique(true)
-            .part("uuid")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_raft_id = space
-            .index_builder("_pico_instance_raft_id")
-            .unique(true)
-            .part("raft_id")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_replicaset_name = space
-            .index_builder("_pico_instance_replicaset_name")
-            .unique(false)
-            .part("replicaset_name")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index_instance_name.id(), index_instance_name.id());
-        debug_assert_eq!(self.index_instance_uuid.id(), index_instance_uuid.id());
-        debug_assert_eq!(self.index_raft_id.id(), index_raft_id.id());
-        debug_assert_eq!(self.index_replicaset_name.id(), index_replicaset_name.id());
+        debug_assert_eq!(self.index_instance_name.id(), indexes[0].id());
+        debug_assert_eq!(self.index_instance_uuid.id(), indexes[1].id());
+        debug_assert_eq!(self.index_raft_id.id(), indexes[2].id());
+        debug_assert_eq!(self.index_replicaset_name.id(), indexes[3].id());
 
         Ok(())
     }
@@ -1410,24 +1391,13 @@ impl Properties {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index = space
-            .index_builder("_pico_property_key")
-            .unique(true)
-            .part("key")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         on_replace(space.id(), Self::on_replace)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index.id(), index.id());
+        debug_assert_eq!(self.index.id(), indexes[0].id());
 
         Ok(())
     }
@@ -1637,30 +1607,12 @@ impl Replicasets {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_replicaset_name = space
-            .index_builder("_pico_replicaset_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_replicaset_uuid = space
-            .index_builder("_pico_replicaset_uuid")
-            .unique(true)
-            .part("uuid")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index_replicaset_name.id(), index_replicaset_name.id());
-        debug_assert_eq!(self.index_replicaset_uuid.id(), index_replicaset_uuid.id());
+        debug_assert_eq!(self.index_replicaset_name.id(), indexes[0].id());
+        debug_assert_eq!(self.index_replicaset_uuid.id(), indexes[1].id());
 
         Ok(())
     }
@@ -1866,38 +1818,13 @@ impl Users {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_id = space
-            .index_builder("_pico_user_id")
-            .unique(true)
-            .part("id")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_name = space
-            .index_builder("_pico_user_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_owner_id = space
-            .index_builder("_pico_user_owner_id")
-            .unique(false)
-            .part("owner")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index_id.id(), index_id.id());
-        debug_assert_eq!(self.index_name.id(), index_name.id());
-        debug_assert_eq!(self.index_owner_id.id(), index_owner_id.id());
+        debug_assert_eq!(self.index_id.id(), indexes[0].id());
+        debug_assert_eq!(self.index_name.id(), indexes[1].id());
+        debug_assert_eq!(self.index_owner_id.id(), indexes[2].id());
 
         Ok(())
     }
@@ -2050,31 +1977,12 @@ impl Privileges {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let primary_key = space
-            .index_builder("_pico_privilege_primary")
-            .unique(true)
-            .parts(["grantee_id", "object_type", "object_id", "privilege"])
-            .if_not_exists(true)
-            .create()?;
-
-        let object_idx = space
-            .index_builder("_pico_privilege_object")
-            .unique(false)
-            .part("object_type")
-            .part("object_id")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.primary_key.id(), primary_key.id());
-        debug_assert_eq!(self.object_idx.id(), object_idx.id());
+        debug_assert_eq!(self.primary_key.id(), indexes[0].id());
+        debug_assert_eq!(self.object_idx.id(), indexes[1].id());
 
         Ok(())
     }
@@ -2257,22 +2165,11 @@ impl Tiers {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_name = space
-            .index_builder("_pico_tier_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index_name.id(), index_name.id());
+        debug_assert_eq!(self.index_name.id(), indexes[0].id());
 
         Ok(())
     }
@@ -2379,38 +2276,13 @@ impl Routines {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_id = space
-            .index_builder("_pico_routine_id")
-            .unique(true)
-            .part("id")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_name = space
-            .index_builder("_pico_routine_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_owner_id = space
-            .index_builder("_pico_routine_owner_id")
-            .unique(false)
-            .part("owner")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index_id.id(), index_id.id());
-        debug_assert_eq!(self.index_name.id(), index_name.id());
-        debug_assert_eq!(self.index_owner_id.id(), index_owner_id.id());
+        debug_assert_eq!(self.index_id.id(), indexes[0].id());
+        debug_assert_eq!(self.index_name.id(), indexes[1].id());
+        debug_assert_eq!(self.index_owner_id.id(), indexes[2].id());
 
         Ok(())
     }
@@ -2529,23 +2401,11 @@ impl Plugins {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let primary_key = space
-            .index_builder("_pico_plugin_name")
-            .unique(true)
-            .part("name")
-            .part("version")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.primary_key.id(), primary_key.id());
+        debug_assert_eq!(self.primary_key.id(), indexes[0].id());
 
         Ok(())
     }
@@ -2658,24 +2518,11 @@ impl Services {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_name = space
-            .index_builder("_pico_service_name")
-            .unique(true)
-            .part("plugin_name")
-            .part("name")
-            .part("version")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index_name.id(), index_name.id());
+        debug_assert_eq!(self.index_name.id(), indexes[0].id());
 
         Ok(())
     }
@@ -2817,25 +2664,11 @@ impl ServiceRouteTable {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let primary_key = space
-            .index_builder("_pico_service_routing_key")
-            .unique(true)
-            .part("plugin_name")
-            .part("plugin_version")
-            .part("service_name")
-            .part("instance_name")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.primary_key.id(), primary_key.id());
+        debug_assert_eq!(self.primary_key.id(), indexes[0].id());
 
         Ok(())
     }
@@ -2967,23 +2800,11 @@ impl PluginMigrations {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let primary_key = space
-            .index_builder("_pico_plugin_migration_primary_key")
-            .unique(true)
-            .part("plugin_name")
-            .part("migration_file")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.primary_key.id(), primary_key.id());
+        debug_assert_eq!(self.primary_key.id(), indexes[0].id());
 
         Ok(())
     }
@@ -3048,25 +2869,11 @@ impl PluginConfig {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let primary = space
-            .index_builder("_pico_plugin_config_pk")
-            .unique(true)
-            .part("plugin")
-            .part("version")
-            .part("entity")
-            .part("key")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.primary.id(), primary.id());
+        debug_assert_eq!(self.primary.id(), indexes[0].id());
 
         Ok(())
     }
@@ -3336,33 +3143,12 @@ impl DbConfig {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let primary = space
-            .index_builder("_pico_db_config_pk")
-            .unique(true)
-            .part("key")
-            .part("scope")
-            .if_not_exists(true)
-            .create()?;
-
-        // FIXME: we do not need this index really
-        // because "key" field are covered under primary index.
-        let secondary = space
-            .index_builder("_pico_db_config_key")
-            .unique(false)
-            .part("key")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.primary.id(), primary.id());
-        debug_assert_eq!(self.secondary.id(), secondary.id());
+        debug_assert_eq!(self.primary.id(), indexes[0].id());
+        debug_assert_eq!(self.secondary.id(), indexes[1].id());
 
         Ok(())
     }

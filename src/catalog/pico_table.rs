@@ -86,38 +86,13 @@ impl PicoTable {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_id = space
-            .index_builder("_pico_table_id")
-            .unique(true)
-            .part("id")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_name = space
-            .index_builder("_pico_table_name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_owner_id = space
-            .index_builder("_pico_table_owner_id")
-            .unique(false)
-            .part("owner")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index_id.id(), index_id.id());
-        debug_assert_eq!(self.index_name.id(), index_name.id());
-        debug_assert_eq!(self.index_owner_id.id(), index_owner_id.id());
+        debug_assert_eq!(self.index_id.id(), indexes[0].id());
+        debug_assert_eq!(self.index_name.id(), indexes[1].id());
+        debug_assert_eq!(self.index_owner_id.id(), indexes[2].id());
 
         Ok(())
     }

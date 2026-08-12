@@ -149,25 +149,11 @@ impl PicoReshardingState {
     }
 
     pub fn create(&self) -> tarantool::Result<()> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_primary = space
-            .index_builder("_pico_resharding_state_index_primary")
-            .unique(true)
-            .part("tier_name")
-            .part("type")
-            .part("current_replicaset_name")
-            .part("target_replicaset_name")
-            .if_not_exists(true)
-            .create()?;
+        let (space, indexes) =
+            Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
 
         debug_assert_eq!(self.space.id(), space.id());
-        debug_assert_eq!(self.index_primary.id(), index_primary.id());
+        debug_assert_eq!(self.index_primary.id(), indexes[0].id());
 
         Ok(())
     }
