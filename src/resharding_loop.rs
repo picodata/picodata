@@ -41,6 +41,7 @@ use tarantool::transaction::transaction;
 
 mod action;
 mod find_sharded_bucket_updates;
+pub mod test;
 
 pub use action::ReshardingActionKind;
 
@@ -267,7 +268,7 @@ pub struct ReshardingLoopState {
 ///
 /// `state` is the mutable state with information about the inner goings on of
 /// the resharding loop mainly for debugging purposes.
-async fn resharding_loop(
+pub(crate) async fn resharding_loop(
     platform: &impl Platform,
     state: &Rc<NoYieldsRefCell<ReshardingLoopState>>,
     requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
@@ -298,7 +299,7 @@ async fn resharding_loop(
     if !i_am_replicaset_master {
         tlog!(Debug, "not replicaset master, going to sleep");
 
-        _ = platform.wait_index_change(Duration::from_secs(10));
+        _ = platform.wait_until_master(Duration::from_secs(10));
         return Ok(());
     }
 

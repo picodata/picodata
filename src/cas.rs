@@ -984,7 +984,7 @@ impl Predicate {
 /// Checks if `entry_op` changes anything within the `predicates`.
 ///
 /// `entry_index` is only used to report error `ConflictFound`.
-fn check_predicate(
+pub(crate) fn check_predicate(
     entry_index: RaftIndex,
     entry_op: &Op,
     predicates: &CasPredicates,
@@ -1022,10 +1022,10 @@ fn check_predicate(
 }
 
 #[derive(Default)]
-struct CasPredicates(Vec<CasPredicate>);
+pub(crate) struct CasPredicates(Vec<CasPredicate>);
 
 impl CasPredicates {
-    fn extend_ranges(&mut self, ranges: impl IntoIterator<Item = Range>) {
+    pub(crate) fn extend_ranges(&mut self, ranges: impl IntoIterator<Item = Range>) {
         for range in ranges {
             self.add(CasPredicate::PrimaryRange(range));
         }

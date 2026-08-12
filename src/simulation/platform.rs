@@ -1,7 +1,6 @@
 //! [`Platform`] abstracts every leaf IO operation performed by
-//! [`resharding_loop`] behind a trait, so that multiple isolated
-//! instances of the resharding logic can be run in one process for the purpose
-//! of simulation testing.
+//! simulated code behind a trait, so that multiple isolated instances can be
+//! run in one process for the purpose of simulation testing.
 //!
 //! [`PlatformActual`] is the actual production implementation; the simulation
 //! provides one of its own.
@@ -24,7 +23,7 @@ use std::time::Duration;
 /// Abstractions for all platform interactions in resharding_loop.
 ///
 /// See also module-level doc-comments.
-pub(crate) trait Platform {
+pub trait Platform {
     //
     // accessors
     //
@@ -54,10 +53,10 @@ pub(crate) trait Platform {
     /// Real implementation redirects to [`resharding_loop::do_cas_requests`].
     fn do_cas(&self, applied: RaftIndex, dmls: Vec<Dml>, timeout: Duration) -> Result<()>;
 
-    /// Wait until current instance's raft applied index changes.
+    /// Wait until current instance becomes the replicaset master.
     ///
     /// Real implementation redirects to [`node::Node::wait_index_change`].
-    fn wait_index_change(&self, timeout: Duration) -> Result<RaftIndex>;
+    fn wait_until_master(&self, timeout: Duration) -> Result<RaftIndex>;
 
     //
     // local `_bucket`
@@ -90,7 +89,7 @@ pub(crate) trait Platform {
 
 /// Production implementation of [`Platform`].
 /// See also module-level doc-comments.
-pub(crate) struct PlatformActual {
+pub struct PlatformActual {
     node: &'static node::Node,
 }
 
@@ -117,7 +116,7 @@ impl Platform for PlatformActual {
         resharding_loop::do_cas_requests(applied, dmls, timeout)
     }
 
-    fn wait_index_change(&self, timeout: Duration) -> Result<RaftIndex> {
+    fn wait_until_master(&self, timeout: Duration) -> Result<RaftIndex> {
         self.node.wait_index_change(timeout)
     }
 
