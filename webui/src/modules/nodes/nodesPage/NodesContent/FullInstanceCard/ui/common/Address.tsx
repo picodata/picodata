@@ -4,6 +4,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import { HiddenBox } from "shared/ui/HiddenBox";
 import { useShowSnackBar } from "shared/ui/SnackBar/SnackBar";
 import { useTranslation } from "shared/intl";
+import { copyText } from "shared/utils/copyText";
 
 import { EllipsisBlock } from "../common";
 
@@ -27,21 +28,15 @@ export const Address = ({ value }: AddressProps) => {
   const showSnackBar = useShowSnackBar();
   const { translation } = useTranslation();
   const copyTextTranslation = translation.common.messages.copyText;
-  const clickHandler = () => {
-    try {
-      navigator.clipboard.writeText(value || "");
-      showSnackBar({
-        title: copyTextTranslation.title,
-        description: copyTextTranslation.successDescription,
-        type: "success",
-      });
-    } catch (e) {
-      showSnackBar({
-        title: copyTextTranslation.title,
-        description: copyTextTranslation.errorDescription,
-        type: "error",
-      });
-    }
+  const clickHandler = async () => {
+    const copied = await copyText(value || "");
+    showSnackBar({
+      title: copyTextTranslation.title,
+      description: copied
+        ? copyTextTranslation.successDescription
+        : copyTextTranslation.errorDescription,
+      type: copied ? "success" : "error",
+    });
   };
 
   return (
