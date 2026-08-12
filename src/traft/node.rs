@@ -52,6 +52,7 @@ use crate::storage::{self, Catalog, PropertyName, SystemTable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::topology_cache::TopologyCache;
+use crate::topology_cache::TopologyChange;
 use crate::traft;
 use crate::traft::error::box_error_eq;
 use crate::traft::error::to_error_other;
@@ -1259,112 +1260,56 @@ impl NodeImpl {
             }
         };
 
-        match table_id {
-            storage::Instances::TABLE_ID => {
-                let old = old
-                    .as_ref()
-                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
+        if table_id == storage::DbConfig::TABLE_ID {
+            let new_tuple = new.expect("can't delete tuple from _pico_db_config");
+            return Ok(Some(AppliedDml {
+                table: storage::DbConfig::TABLE_ID,
+                new_tuple,
+            }));
+        }
 
-                let new = new
-                    .as_ref()
-                    .map(|x| x.decode().expect("format was already verified"));
+        let res = TopologyChange::decode(table_id, old.as_ref(), new.as_ref());
+        let change = match res {
+            Ok(None) => {
+                // Not a table the topology cache knows anything about.
+                return Ok(None);
+            }
+            Ok(Some(v)) => v,
+            Err(e) => {
+                return Err(storage_corrupted(format!(
+                    "TopologyCache::update failed: {e}"
+                )));
+            }
+        };
 
-                // Handle insert, replace, update in _pico_instance
-                if let Some(new) = &new {
-                    // Dml::Delete mandates that new tuple is None.
-                    assert!(!matches!(op, Dml::Delete { .. }));
+        if let TopologyChange::Instance { old, new } = &change {
+            // Handle insert, replace, update in _pico_instance
+            if let Some(new) = new {
+                let initiator_def = user_by_id(initiator).expect("user must exist");
 
-                    let initiator_def = user_by_id(initiator).expect("user must exist");
+                do_audit_logging_for_instance_update(old.as_ref(), new, &initiator_def);
 
-                    do_audit_logging_for_instance_update(old.as_ref(), new, &initiator_def);
-
-                    if old.as_ref().map(|x| x.current_state) != Some(new.current_state) {
-                        metrics::record_instance_state(
-                            &new.tier,
-                            &new.name,
-                            &new.current_state.variant,
-                        );
-                    }
+                if old.as_ref().map(|x| x.current_state) != Some(new.current_state) {
+                    metrics::record_instance_state(
+                        &new.tier,
+                        &new.name,
+                        &new.current_state.variant,
+                    );
                 }
-
-                self.instance_reachability
-                    .borrow_mut()
-                    .update_instance(old.as_ref(), new.as_ref());
-
-                self.topology_cache.update_instance(old, new);
-
-                self.try_notify_startup_complete();
             }
 
-            storage::Replicasets::TABLE_ID => {
-                let old = old
-                    .as_ref()
-                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
-                let new = new
-                    .as_ref()
-                    .map(|x| x.decode().expect("format was already verified"));
-                self.topology_cache.update_replicaset(old, new);
+            self.instance_reachability
+                .borrow_mut()
+                .update_instance(old.as_ref(), new.as_ref());
+        }
 
-                self.try_notify_startup_complete();
-            }
+        self.topology_cache.update(change);
 
-            storage::Tiers::TABLE_ID => {
-                let old = old
-                    .as_ref()
-                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
-                let new = new
-                    .as_ref()
-                    .map(|x| x.decode().expect("format was already verified"));
-                self.topology_cache.update_tier(old, new);
-            }
-
-            storage::ServiceRouteTable::TABLE_ID => {
-                let old = old
-                    .as_ref()
-                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
-                let new = new
-                    .as_ref()
-                    .map(|x| x.decode().expect("format was already verified"));
-                self.topology_cache.update_service_route(old, new);
-            }
-
-            storage::DbConfig::TABLE_ID => {
-                let new_tuple = new.expect("can't delete tuple from _pico_db_config");
-                return Ok(Some(AppliedDml {
-                    table: storage::DbConfig::TABLE_ID,
-                    new_tuple,
-                }));
-            }
-
-            PicoBucket::TABLE_ID => {
-                let old = old
-                    .as_ref()
-                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
-                let new = new
-                    .as_ref()
-                    .map(|x| x.decode().expect("format was already verified"));
-
-                // TEMPORARY:
-                tlog!(Info, "update _pico_bucket: {old:?} -> {new:?}");
-
-                self.topology_cache.update_bucket_record(old, new);
-            }
-
-            PicoReshardingState::TABLE_ID => {
-                let old = old
-                    .as_ref()
-                    .map(|x| x.decode().expect("schema upgrade not supported yet"));
-                let new = new
-                    .as_ref()
-                    .map(|x| x.decode().expect("format was already verified"));
-
-                // TEMPORARY:
-                tlog!(Info, "update _pico_resharding_state: {old:?} -> {new:?}");
-
-                self.topology_cache.update_resharding_state_record(old, new);
-            }
-
-            _ => {}
+        if matches!(
+            table_id,
+            storage::Instances::TABLE_ID | storage::Replicasets::TABLE_ID
+        ) {
+            self.try_notify_startup_complete();
         }
 
         Ok(None)

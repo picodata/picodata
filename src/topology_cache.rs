@@ -1,5 +1,7 @@
 #![allow(unused_parens)]
 use crate::catalog::pico_bucket::BucketRecord;
+use crate::catalog::pico_bucket::PicoBucket;
+use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::pico_resharding_state::ReshardingStateRecord;
 use crate::instance::Instance;
 use crate::instance::State;
@@ -8,6 +10,11 @@ use crate::schema::ServiceRouteItem;
 use crate::sharding::BucketsInfo;
 use crate::sharding::TierBucketsInfo;
 use crate::storage::Catalog;
+use crate::storage::Instances;
+use crate::storage::Replicasets;
+use crate::storage::ServiceRouteTable;
+use crate::storage::SystemTable as _;
+use crate::storage::Tiers;
 use crate::storage::ToEntryIter;
 use crate::tier::Tier;
 #[allow(unused_imports)]
@@ -23,6 +30,9 @@ use std::cell::OnceCell;
 use std::collections::HashMap;
 use tarantool::fiber::safety::NoYieldsRef;
 use tarantool::fiber::safety::NoYieldsRefCell;
+use tarantool::space::SpaceId;
+use tarantool::tuple::DecodeOwned;
+use tarantool::tuple::Tuple;
 
 pub type TopologyCacheRef<'a> = NoYieldsRef<'a, TopologyCacheMutable>;
 
@@ -254,11 +264,27 @@ impl TopologyCache {
         self.get().replicaset_by_uuid(uuid).cloned()
     }
 
-    /// Updates the instance record.
+    /// Updates the cached records to reflect a committed DML entry.
     ///
     /// This function should only be called from [`NodeImpl::handle_dml_entry`].
     ///
     /// [`NodeImpl::handle_dml_entry`]: crate::traft::node::NodeImpl::handle_dml_entry
+    pub(crate) fn update(&self, change: TopologyChange) {
+        match change {
+            TopologyChange::Instance { old, new } => self.update_instance(old, new),
+            TopologyChange::Replicaset { old, new } => self.update_replicaset(old, new),
+            TopologyChange::Tier { old, new } => self.update_tier(old, new),
+            TopologyChange::ServiceRoute { old, new } => self.update_service_route(old, new),
+            TopologyChange::BucketRecord { old, new } => self.update_bucket_record(old, new),
+            TopologyChange::ReshardingStateRecord { old, new } => {
+                self.update_resharding_state_record(old, new)
+            }
+        }
+    }
+
+    /// Updates the instance record.
+    ///
+    /// This function should only be called from [`Self::update`].
     #[inline(always)]
     pub(crate) fn update_instance(&self, old: Option<Instance>, new: Option<Instance>) {
         if let Some(new) = &new {
@@ -284,7 +310,7 @@ impl TopologyCache {
 
     /// Updates the replicaset record.
     ///
-    /// This function should only be called from [`NodeImpl::handle_dml_entry`].
+    /// This function should only be called from [`Self::update`].
     #[inline(always)]
     pub(crate) fn update_replicaset(&self, old: Option<Replicaset>, new: Option<Replicaset>) {
         self.inner.borrow_mut().update_replicaset(old, new)
@@ -292,7 +318,7 @@ impl TopologyCache {
 
     /// Updates the tier record.
     ///
-    /// This function should only be called from [`NodeImpl::handle_dml_entry`].
+    /// This function should only be called from [`Self::update`].
     #[inline(always)]
     pub(crate) fn update_tier(&self, old: Option<Tier>, new: Option<Tier>) {
         self.inner.borrow_mut().update_tier(old, new)
@@ -300,7 +326,7 @@ impl TopologyCache {
 
     /// Updates the service route record.
     ///
-    /// This function should only be called from [`NodeImpl::handle_dml_entry`].
+    /// This function should only be called from [`Self::update`].
     #[inline(always)]
     pub(crate) fn update_service_route(
         &self,
@@ -312,7 +338,7 @@ impl TopologyCache {
 
     /// Updates the `_pico_bucket` record
     ///
-    /// This function should only be called from [`NodeImpl::handle_dml_entry`].
+    /// This function should only be called from [`Self::update`].
     #[inline(always)]
     pub(crate) fn update_bucket_record(
         &self,
@@ -327,7 +353,7 @@ impl TopologyCache {
 
     /// Updates the `_pico_bucket` record
     ///
-    /// This function should only be called from [`NodeImpl::handle_dml_entry`].
+    /// This function should only be called from [`Self::update`].
     #[inline(always)]
     pub(crate) fn update_resharding_state_record(
         &self,
@@ -984,6 +1010,81 @@ impl TopologyCacheMutable {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// TopologyChange
+////////////////////////////////////////////////////////////////////////////////
+
+/// The `old`/`new` pair of an applied DML operation to one of the topology
+/// system tables.
+///
+/// Used in [`TopologyCache::update`].
+pub(crate) enum TopologyChange {
+    Instance {
+        old: Option<Instance>,
+        new: Option<Instance>,
+    },
+    Replicaset {
+        old: Option<Replicaset>,
+        new: Option<Replicaset>,
+    },
+    Tier {
+        old: Option<Tier>,
+        new: Option<Tier>,
+    },
+    ServiceRoute {
+        old: Option<ServiceRouteItem>,
+        new: Option<ServiceRouteItem>,
+    },
+    BucketRecord {
+        old: Option<BucketRecord>,
+        new: Option<BucketRecord>,
+    },
+    ReshardingStateRecord {
+        old: Option<ReshardingStateRecord>,
+        new: Option<ReshardingStateRecord>,
+    },
+}
+
+impl TopologyChange {
+    pub(crate) fn decode(
+        table_id: SpaceId,
+        old: Option<&Tuple>,
+        new: Option<&Tuple>,
+    ) -> Result<Option<Self>> {
+        match table_id {
+            Instances::TABLE_ID => {
+                let (old, new) = decode_pair(old, new)?;
+                Ok(Some(Self::Instance { old, new }))
+            }
+            Replicasets::TABLE_ID => {
+                let (old, new) = decode_pair(old, new)?;
+                Ok(Some(Self::Replicaset { old, new }))
+            }
+            Tiers::TABLE_ID => {
+                let (old, new) = decode_pair(old, new)?;
+                Ok(Some(Self::Tier { old, new }))
+            }
+            ServiceRouteTable::TABLE_ID => {
+                let (old, new) = decode_pair(old, new)?;
+                Ok(Some(Self::ServiceRoute { old, new }))
+            }
+            PicoBucket::TABLE_ID => {
+                let (old, new) = decode_pair(old, new)?;
+                Ok(Some(Self::BucketRecord { old, new }))
+            }
+            PicoReshardingState::TABLE_ID => {
+                let (old, new) = decode_pair(old, new)?;
+                Ok(Some(Self::ReshardingStateRecord { old, new }))
+            }
+            _ => return Ok(None),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// miscellaneous
+////////////////////////////////////////////////////////////////////////////////
+
 /// Value of this type is returned from [`TopologyCacheMutable::check_service_route`].
 pub enum ServiceRouteCheck {
     Ok,
@@ -1021,6 +1122,19 @@ where
         cell.set(new).expect("was empty");
     }
 }
+
+fn decode_pair<T: DecodeOwned>(
+    old: Option<&Tuple>,
+    new: Option<&Tuple>,
+) -> Result<(Option<T>, Option<T>)> {
+    let old = old.map(|t| t.decode()).transpose()?;
+    let new = new.map(|t| t.decode()).transpose()?;
+    Ok((old, new))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// tests
+////////////////////////////////////////////////////////////////////////////////
 
 mod tests {
     use super::*;
