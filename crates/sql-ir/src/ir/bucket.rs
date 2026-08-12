@@ -141,16 +141,12 @@ impl Buckets {
 
     /// Returns `true` if a query with these buckets can be executed
     /// on a single node and does not require motion.
-    ///
-    /// For queries with conflicting conditions, such as `a = 1 and a = 2`,
-    /// returns `false` to avoid skipping the reduce stage.
     pub fn is_single_node(&self) -> bool {
         match self {
-            // We should insert `Motion(Full)` when lower bound is 0.
-            // https://git.picodata.io/core/picodata/-/issues/2788
-            Buckets::Filtered(BucketSet::EstimatedCount { lower: 1, upper: 1 }) => true,
-            Buckets::Filtered(BucketSet::Exact(a)) if a.len() == 1 => true,
-            Buckets::Any | Buckets::All | Buckets::Filtered(_) => false,
+            Buckets::Filtered(BucketSet::EstimatedCount { upper, .. }) => *upper <= 1,
+            Buckets::Filtered(BucketSet::Exact(a)) => a.len() <= 1,
+            Buckets::Any => true,
+            Buckets::All => false,
         }
     }
 

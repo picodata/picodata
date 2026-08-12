@@ -1045,15 +1045,19 @@ fn bucket_dispatch<'p>(
     buckets: &Buckets,
     tier: Option<&str>,
 ) -> Result<(), SbroadError> {
-    if let Buckets::Filtered(BucketSet::Exact(bucket_set)) = buckets {
-        if bucket_set.is_empty() {
-            empty_plan_write_for_top(port, &ex_plan, top_id)?;
-            return Ok(());
-        }
-    }
-
     let timeout = DEFAULT_QUERY_TIMEOUT;
     let flags = ex_plan.subtree_dispatch_flags_at(top_id)?;
+
+    if let Buckets::Filtered(BucketSet::Exact(bucket_set)) = buckets {
+        if bucket_set.is_empty() {
+            // No bucket matches, so no row exists anywhere in the cluster.
+            return if flags.emits_row_from_empty_input {
+                runtime.exec_ir_on_any_node(ex_plan, top_id, buckets, port)
+            } else {
+                empty_plan_write_for_top(port, &ex_plan, top_id)
+            };
+        }
+    }
 
     if !flags.has_segmented_tables && !flags.has_customization_opcodes {
         single_plan_dispatch(port, ex_plan, top_id, buckets, timeout, tier)?;

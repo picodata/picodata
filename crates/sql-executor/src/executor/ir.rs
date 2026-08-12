@@ -399,6 +399,9 @@ pub struct SubtreeDispatchFlags {
     pub has_segmented_tables: bool,
     /// Whether the subtree contains per-replicaset customization opcodes.
     pub has_customization_opcodes: bool,
+    /// Whether the subtree can produce a row even when it reads nothing —
+    /// `count(*)` over no rows is `0`, not "no row".
+    pub emits_row_from_empty_input: bool,
 }
 
 #[derive(Debug)]
@@ -509,6 +512,11 @@ impl<'plan> SubtreeViewBuilder<'plan> {
         for node_id in &node_ids {
             if exec_plan.effective_motion_leaf_output(*node_id).is_some() {
                 leaf_motions.push(*node_id);
+            }
+            if let Ok(Node::Expression(expr)) = ir_plan.get_node(*node_id) {
+                if expr.is_aggregate_fun() {
+                    dispatch_flags.emits_row_from_empty_input = true;
+                }
             }
             if let Some(vtable) = exec_plan.get_vtables().get(node_id) {
                 vtable_ids.push(*node_id);
