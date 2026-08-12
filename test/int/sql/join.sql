@@ -202,3 +202,184 @@ buckets <= [1-3000]
 ──────────────────────────────────────────────────────────────────────
 ''
 buckets <= [1-3000]
+
+-- TEST: test-cross-table-constant-conditions-0
+-- SQL:
+DROP TABLE IF EXISTS ct1;
+DROP TABLE IF EXISTS ct2;
+CREATE TABLE ct1 (a int primary key);
+CREATE TABLE ct2 (b int primary key);
+INSERT INTO ct1 VALUES (1);
+INSERT INTO ct2 VALUES (2);
+
+-- TEST: test-cross-table-constant-conditions-1
+-- SQL:
+SELECT * FROM ct1 JOIN ct2 ON a = 1 AND b = 2;
+-- EXPECTED:
+1, 2
+
+-- TEST: test-cross-table-constant-conditions-2
+-- SQL:
+SELECT * FROM ct1 JOIN ct2 ON a IN (1, 3) AND b = 2;
+-- EXPECTED:
+1, 2
+
+-- TEST: test-cross-table-constant-conditions-3
+-- SQL:
+SELECT * FROM ct2 JOIN ct1 ON a = 1 AND b = 2;
+-- EXPECTED:
+2, 1
+
+-- TEST: test-cross-table-constant-conditions-4
+-- SQL:
+SELECT * FROM ct1 JOIN ct2 ON a = 1 AND b = 3;
+-- EXPECTED:
+
+-- TEST: explain-cross-table-constant-conditions-1
+-- SQL:
+EXPLAIN(RAW, BUCKETS) SELECT * FROM ct1 JOIN ct2 ON a = 1 AND b = 2;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT "ct2"."b", "ct2"."bucket_id" FROM "ct2"
+''
+plan:
+    [0] SCAN TABLE ct2 (~1048576 rows)
+''
+buckets <= [1-3000]
+''
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+SELECT "ct1"."a", "ct2"."COL_0" as "b" FROM "ct1" INNER JOIN ( SELECT "COL_0", "COL_1" FROM "_tmp_13033488754963760571_0136" ) as "ct2" ON "ct1"."a" = CAST(1 AS int) and "ct2"."COL_0" = CAST(2 AS int)
+''
+plan:
+    [0] SEARCH TABLE ct1 USING PRIMARY KEY (a=?) (~1 row)
+        [0] SCAN TABLE _tmp_13033488754963760571_0136 (~262144 rows)
+''
+buckets = [1934]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets <= [1-3000]
+
+-- TEST: explain-cross-table-constant-conditions-2
+-- SQL:
+EXPLAIN(RAW, BUCKETS) SELECT * FROM ct1 JOIN ct2 ON a IN (1, 3) AND b = 2;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT "ct2"."b", "ct2"."bucket_id" FROM "ct2"
+''
+plan:
+    [0] SCAN TABLE ct2 (~1048576 rows)
+''
+buckets <= [1-3000]
+''
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+SELECT "ct1"."a", "ct2"."COL_0" as "b" FROM "ct1" INNER JOIN ( SELECT "COL_0", "COL_1" FROM "_tmp_7213719929112855807_0136" ) as "ct2" ON "ct1"."a" in (CAST(1 AS int), CAST(3 AS int)) and "ct2"."COL_0" = CAST(2 AS int)
+''
+plan:
+    [0] SEARCH TABLE ct1 USING PRIMARY KEY (a=?) (~2 rows)
+    [0] EXECUTE LIST SUBQUERY 1
+        [0] SCAN TABLE _tmp_7213719929112855807_0136 (~262144 rows)
+''
+buckets = [1934,1958]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets <= [1-3000]
+
+-- TEST: explain-cross-table-constant-conditions-3
+-- SQL:
+EXPLAIN(RAW, BUCKETS) SELECT * FROM ct2 JOIN ct1 ON a = 1 AND b = 2;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT "ct1"."a", "ct1"."bucket_id" FROM "ct1"
+''
+plan:
+    [0] SCAN TABLE ct1 (~1048576 rows)
+''
+buckets <= [1-3000]
+''
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+SELECT "ct2"."b", "ct1"."COL_0" as "a" FROM "ct2" INNER JOIN ( SELECT "COL_0", "COL_1" FROM "_tmp_8820775687444526810_0136" ) as "ct1" ON "ct1"."COL_0" = CAST(1 AS int) and "ct2"."b" = CAST(2 AS int)
+''
+plan:
+    [0] SEARCH TABLE ct2 USING PRIMARY KEY (b=?) (~1 row)
+        [0] SCAN TABLE _tmp_8820775687444526810_0136 (~262144 rows)
+''
+buckets = [1410]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets <= [1-3000]
+
+-- TEST: explain-cross-table-constant-conditions-4
+-- SQL:
+EXPLAIN(RAW, BUCKETS) SELECT * FROM ct1 JOIN ct2 ON a = 1 AND b = 3;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT "ct2"."b", "ct2"."bucket_id" FROM "ct2"
+''
+plan:
+    [0] SCAN TABLE ct2 (~1048576 rows)
+''
+buckets <= [1-3000]
+''
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+SELECT "ct1"."a", "ct2"."COL_0" as "b" FROM "ct1" INNER JOIN ( SELECT "COL_0", "COL_1" FROM "_tmp_13033488754963760571_0136" ) as "ct2" ON "ct1"."a" = CAST(1 AS int) and "ct2"."COL_0" = CAST(3 AS int)
+''
+plan:
+    [0] SEARCH TABLE ct1 USING PRIMARY KEY (a=?) (~1 row)
+        [0] SCAN TABLE _tmp_13033488754963760571_0136 (~262144 rows)
+''
+buckets = [1934]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets <= [1-3000]

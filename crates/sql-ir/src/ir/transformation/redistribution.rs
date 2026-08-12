@@ -1232,7 +1232,6 @@ impl Plan {
     ///
     /// # Errors
     /// - Failed to set row distribution in the join condition tree.
-    #[allow(clippy::too_many_lines)]
     fn resolve_join_conflicts(
         &mut self,
         rel_id: NodeId,
@@ -1257,6 +1256,7 @@ impl Plan {
             self.calculate_strategy_for_left_join_with_global_tbl(rel_id, join_kind)?
         {
             self.insert_motion_nodes(strategy)?;
+            self.set_rows_distributions_in_expr(rel_id, cond_id)?;
             return Ok(());
         }
 
@@ -1288,6 +1288,7 @@ impl Plan {
         }
 
         self.insert_motion_nodes(strategy)?;
+        self.set_rows_distributions_in_expr(rel_id, cond_id)?;
 
         Ok(())
     }
