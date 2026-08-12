@@ -82,6 +82,7 @@ nav:
       - reference/sql/dql.md
       - Transaction Control Language: reference/sql/transactions.md
       - Средства для отладки запросов:
+          - reference/sql/forward_option.md
           - reference/sql/explain.md
           - reference/sql/explain_facets/raw.md
           - reference/sql/explain_facets/logical.md
