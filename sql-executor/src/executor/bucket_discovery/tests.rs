@@ -586,6 +586,80 @@ fn tbl_join_tuple_constant_condition1() {
 }
 
 #[test]
+fn tbl_join_cross_table_constant_conditions1() {
+    let query = r#"
+    select * from "t5"
+    inner join "t4"
+    on "t5"."a" = 1 and "t4"."c" = 'x'
+"#;
+
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top = plan.get_top().unwrap();
+    let buckets = query.bucket_discovery(top).unwrap();
+    let param = Value::from(1);
+    let bucket = query
+        .get_coordinator()
+        .determine_bucket_id(&[&param])
+        .unwrap();
+    let bucket_set: HashSet<_, _> = vec![bucket].into_iter().collect();
+
+    assert_eq!(Buckets::new_filtered(bucket_set), buckets);
+}
+
+#[test]
+fn tbl_join_cross_table_constant_conditions2() {
+    let query = r#"
+    select * from "t5"
+    inner join "t4"
+    on "t5"."a" in (1, 2) and "t4"."c" = 'x'
+"#;
+
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top = plan.get_top().unwrap();
+    let buckets = query.bucket_discovery(top).unwrap();
+    let param1 = Value::from(1);
+    let param2 = Value::from(2);
+    let bucket1 = query
+        .get_coordinator()
+        .determine_bucket_id(&[&param1])
+        .unwrap();
+    let bucket2 = query
+        .get_coordinator()
+        .determine_bucket_id(&[&param2])
+        .unwrap();
+    let bucket_set: HashSet<_, _> = vec![bucket1, bucket2].into_iter().collect();
+
+    assert_eq!(Buckets::new_filtered(bucket_set), buckets);
+}
+
+#[test]
+fn tbl_join_cross_table_constant_conditions3() {
+    let query = r#"
+    select * from "t5"
+    inner join "t3_2"
+    on "t5"."a" = 1 and "t3_2"."a" = 2
+"#;
+
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top = plan.get_top().unwrap();
+    let buckets = query.bucket_discovery(top).unwrap();
+    let param = Value::from(1);
+    let bucket = query
+        .get_coordinator()
+        .determine_bucket_id(&[&param])
+        .unwrap();
+    let bucket_set: HashSet<_, _> = vec![bucket].into_iter().collect();
+
+    assert_eq!(Buckets::new_filtered(bucket_set), buckets);
+}
+
+#[test]
 fn global_tbl_groupby() {
     let query = r#"select "a", avg("b") from "global_t" group by "a" having sum("b") > 10"#;
 
