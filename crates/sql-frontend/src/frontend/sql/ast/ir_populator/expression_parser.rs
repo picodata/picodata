@@ -858,53 +858,50 @@ where
                         }
                     };
 
-                    // LET-variable resolution. Only applies to bare identifiers
-                    // inside an anonymous block — qualified `t.x` always
-                    // refers to a column. If the LET scope has the name we
-                    // also probe the relation columns to detect ambiguity:
-                    // a column with the same name shadowing a LET would be
-                    // surprising, so we report the conflict instead of
-                    // silently picking one.
+                    // LET-variable resolution. Only applies to bare identifiers inside an anonymous block
+                    // — qualified `t.x` always refers to a column. If the LET scope has the name we also
+                    // probe the relation columns to detect ambiguity: a column with the same name shadowing
+                    // a LET would be surprising, so we report the conflict instead of silently picking one.
                     let is_bare_ident = is_simple_id && scan_name.is_none();
-                    // FIXME: use let chain after bumping rust to 2024
                     if is_bare_ident {
-                        match worker.let_scope.resolve(&col_name) {
-                            LetVarLookup::Live { ty: let_ty } => {
-                                if worker.resolves_to_column(plan, referred_relation_ids, &col_name)
-                                {
+                        match worker.let_scope.resolve_by_name(&col_name) {
+                            LetVarLookup::Live(decl) => {
+                                let var_type = decl.ty;
+                                let is_column = worker.resolves_to_column(plan, referred_relation_ids, &col_name);
+                                if is_column {
                                     return Err(SbroadError::Other(format_smolstr!(
                                         "column reference \"{col_name}\" is ambiguous: it could \
                                          refer to either a LET variable or a table column"
                                     )));
                                 }
-                                worker.let_scope.mark_used(&col_name);
+                                worker.let_scope.mark_as_used(&col_name);
                                 let plan_id = plan.nodes.push(
                                     LetVarRef {
                                         name: col_name.clone(),
-                                        var_type: let_ty,
+                                        var_type,
                                     }
                                     .into(),
                                 );
                                 worker.reference_to_name_map.insert(plan_id, col_name);
                                 return Ok(ParseExpression::PlanId { plan_id });
                             }
-                            LetVarLookup::OutOfScope
-                                if !worker.resolves_to_column(
-                                    plan,
-                                    referred_relation_ids,
-                                    &col_name,
-                                ) =>
-                            {
-                                return Err(LetVarScope::out_of_scope_error(&col_name))
-                            }
-                            LetVarLookup::OutOfScope | LetVarLookup::Unknown => (),
+                            LetVarLookup::OutOfScope => {
+                                let is_column = worker.resolves_to_column(plan, referred_relation_ids, &col_name);
+                                if !is_column {
+                                    return Err(LetVarScope::out_of_scope_error(&col_name));
+                                }
+                            },
+                            LetVarLookup::Unknown => (),
                         }
                     }
 
                     if referred_relation_ids.is_empty() {
                         return Err(SbroadError::Invalid(
                             Entity::Expression,
-                            Some(format_smolstr!("Reference {first_identifier} met under Values that is unsupported. For string literals use single quotes."))
+                            Some(format_smolstr!(
+                                "Reference {first_identifier} met under Values that is unsupported. \
+                                    For string literals use single quotes.")
+                            )
                         ))
                     }
 

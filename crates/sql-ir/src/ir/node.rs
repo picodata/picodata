@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::iter::Enumerate;
 use std::slice::{Iter, IterMut};
@@ -1421,8 +1421,17 @@ pub enum BlockStatement<T> {
 
     /// Assign the scalar result of `query` to variable `var`.
     ///
+    /// `is_used` is settled while parsing: some later statement referenced
+    /// this binding, and EXPLAIN flags the ones nothing reads as dead code.
+    /// It travels with the statement rather than in a side table keyed by
+    /// position, so every form the statement is mapped into keeps it.
+    ///
     /// Example: `LET :x = (SELECT a FROM t WHERE pk = 1);`
-    Let { var: SmolStr, query: T },
+    Let {
+        var: SmolStr,
+        query: T,
+        is_used: bool,
+    },
 
     /// Conditional block: execute `body` statements only when `cond` is true.
     ///
@@ -1454,9 +1463,14 @@ impl<T> BlockStatement<T> {
         Ok(match self {
             Self::ReturnQuery(v) => BlockStatement::ReturnQuery(f(v)?),
             Self::Query(v) => BlockStatement::Query(f(v)?),
-            Self::Let { var, query } => BlockStatement::Let {
+            Self::Let {
+                var,
+                query,
+                is_used,
+            } => BlockStatement::Let {
                 var,
                 query: f(query)?,
+                is_used,
             },
             Self::If { cond, body } => BlockStatement::If {
                 cond: f(cond)?,
@@ -1473,8 +1487,9 @@ impl<T> BlockStatement<T> {
         match self {
             Self::ReturnQuery(_) => BlockEntryKind::ReturnQuery,
             Self::Query(_) => BlockEntryKind::Query,
-            Self::Let { var, .. } => BlockEntryKind::Let {
+            Self::Let { var, is_used, .. } => BlockEntryKind::Let {
                 var: SmolStr::clone(var),
+                is_used: *is_used,
             },
             Self::If { .. } => BlockEntryKind::IfCondition,
         }
@@ -1492,7 +1507,7 @@ impl<T> BlockStatement<T> {
 pub enum BlockEntryKind {
     ReturnQuery,
     Query,
-    Let { var: SmolStr },
+    Let { var: SmolStr, is_used: bool },
     IfCondition,
 }
 
@@ -1501,7 +1516,9 @@ impl Display for BlockEntryKind {
         match self {
             Self::ReturnQuery => write!(f, "RETURN QUERY"),
             Self::Query => write!(f, "DML"),
-            Self::Let { var } => {
+            // Whether the variable is used says nothing about *which*
+            // statement this is, so it stays out of the location.
+            Self::Let { var, .. } => {
                 let var = var.strip_prefix(':').unwrap_or(var.as_str());
                 write!(f, "LET \"{var}\"")
             }
@@ -1715,7 +1732,6 @@ impl<'a, T> Iterator for BlockEntries<'a, T> {
             BlockStatement::ReturnQuery(query)
             | BlockStatement::Query(query)
             | BlockStatement::Let { query, .. } => query,
-            // The body is yielded right after the condition.
             BlockStatement::If { cond, body } => {
                 self.if_body.push(IfBodyCursor {
                     stmt_idx,
@@ -1732,6 +1748,7 @@ impl<'a, T> Iterator for BlockEntries<'a, T> {
             body_path,
             kind,
         };
+
         Some(BlockEntry { query, location })
     }
 }
@@ -1760,7 +1777,6 @@ impl<'a, T> Iterator for BlockEntriesMut<'a, T> {
             BlockStatement::ReturnQuery(query)
             | BlockStatement::Query(query)
             | BlockStatement::Let { query, .. } => query,
-            // The body is yielded right after the condition.
             BlockStatement::If { cond, body } => {
                 self.if_body.push(IfBodyCursor {
                     stmt_idx,
@@ -1777,6 +1793,7 @@ impl<'a, T> Iterator for BlockEntriesMut<'a, T> {
             body_path,
             kind,
         };
+
         Some(BlockEntryMut { query, location })
     }
 }
@@ -1801,21 +1818,6 @@ pub struct AnonymousBlock {
     /// Vector of column names and types returned via RETURN QUERY statement(s).
     /// This vector is empty if there is no RETURN QUERY statements.
     pub return_columns: Vec<(String, DerivedType)>,
-    pub unused_lets: HashSet<NodeId>,
-}
-
-impl AnonymousBlock {
-    pub fn get_unused_lets(&self) -> HashSet<usize> {
-        let mut unused_lets = HashSet::with_capacity(self.unused_lets.len());
-        for (idx, entry) in BlockEntries::new(&self.statements).enumerate() {
-            let is_let = matches!(entry.location.kind, BlockEntryKind::Let { .. });
-            if is_let && self.unused_lets.contains(entry.query) {
-                unused_lets.insert(idx);
-            }
-        }
-
-        unused_lets
-    }
 }
 
 impl From<AnonymousBlock> for NodeAligned {

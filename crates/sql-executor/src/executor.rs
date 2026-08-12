@@ -225,18 +225,18 @@ pub fn format_block_stage_number(location: &StatementLocation) -> String {
 /// Label of a block stage: what the statement is, behind one `If body: ` for
 /// every IF body it sits in. So `Let "x"` at the top level, `If body: Let "x"`
 /// one level in, `If body: If body: Let "x"` two levels in.
-pub fn format_block_stage_label(location: &StatementLocation, is_unused_let: bool) -> String {
+pub fn format_block_stage_label(location: &StatementLocation) -> String {
     let mut label = "If body: ".repeat(location.if_body_depth());
     match &location.kind {
         BlockEntryKind::IfCondition => label.push_str("If cond"),
         BlockEntryKind::Query => label.push_str("Query"),
         BlockEntryKind::ReturnQuery => label.push_str("Return query"),
-        BlockEntryKind::Let { var } => {
+        BlockEntryKind::Let { var, is_used } => {
             let var = var.strip_prefix(':').unwrap_or(var.as_str());
-            let s = if is_unused_let {
-                format!("**Unused** let \"{var}\"")
-            } else {
+            let s = if *is_used {
                 format!("Let \"{var}\"")
+            } else {
+                format!("**Unused** let \"{var}\"")
             };
             label.push_str(&s);
         }
@@ -633,7 +633,6 @@ where
             };
 
             let logical_explains = self.get_block_logical(&block)?;
-            let unused_lets = block.get_unused_lets();
 
             let buckets = self.calculate_block_buckets(&block)?;
             let block_statements = self.generate_block_patterns(block, &buckets)?;
@@ -642,12 +641,11 @@ where
             let should_fmt = explain_options.contains(ExplainOptions::Fmt);
 
             // One stage per query, in execution order -- the same order
-            // `logical_explains` and `unused_lets` are indexed by.
+            // `logical_explains` is indexed by.
             let mut entries = BlockEntries::new(&block_statements).enumerate().peekable();
             while let Some((idx, entry)) = entries.next() {
-                let is_unused_let = unused_lets.contains(&idx);
                 let number = format_block_stage_number(&entry.location);
-                let stage = format_block_stage_label(&entry.location, is_unused_let);
+                let stage = format_block_stage_label(&entry.location);
 
                 let (query, params) = entry.query;
                 let motion_info = MotionInfo::new_for_transaction();
@@ -969,12 +967,10 @@ pub struct BlockStageHeader {
 
 impl BlockStageHeader {
     fn from_anon_block(block: &AnonymousBlock) -> Result<Vec<Self>, SbroadError> {
-        let unused_lets = block.get_unused_lets();
         let stages = BlockEntries::new(&block.statements)
-            .enumerate()
-            .map(|(idx, entry)| BlockStageHeader {
+            .map(|entry| BlockStageHeader {
                 number: format_block_stage_number(&entry.location),
-                label: format_block_stage_label(&entry.location, unused_lets.contains(&idx)),
+                label: format_block_stage_label(&entry.location),
             })
             .collect();
 

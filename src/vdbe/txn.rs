@@ -285,7 +285,7 @@ fn build_var_slots<S>(
 
     for entry in BlockEntries::new(stmts) {
         match entry.location.kind {
-            BlockEntryKind::Let { var } => {
+            BlockEntryKind::Let { var, .. } => {
                 let_vars.entry(var).or_insert_with(|| {
                     let slot = next;
                     next += 1;
@@ -410,9 +410,14 @@ pub(crate) fn compile_transactional_block(
         stmt: &BlockStatement<BlockQuery>,
     ) -> Result<BlockStatement<CompiledSubprogram>, String> {
         Ok(match stmt {
-            BlockStatement::Let { var, query } => BlockStatement::Let {
+            BlockStatement::Let {
+                var,
+                query,
+                is_used,
+            } => BlockStatement::Let {
                 var: var.clone(),
                 query: CompiledSubprogram::compile(query)?,
+                is_used: *is_used,
             },
             BlockStatement::ReturnQuery(query) => {
                 BlockStatement::ReturnQuery(CompiledSubprogram::compile(query)?)
@@ -448,7 +453,7 @@ pub(crate) fn compile_transactional_block(
     let mut if_cond_slots_iter = if_cond_slots.iter().copied();
     for entry in BlockEntriesMut::new(&mut compiled) {
         match entry.location.kind {
-            BlockEntryKind::Let { var } => {
+            BlockEntryKind::Let { var, .. } => {
                 let slot = let_var_slots[var.as_str()];
                 entry.query.patch_let_result_row(slot);
             }
@@ -473,7 +478,7 @@ pub(crate) fn compile_transactional_block(
     let mut defined_let_vars: HashMap<SmolStr, i32> = HashMap::new();
     for entry in BlockEntriesMut::new(&mut compiled) {
         let declared_var = match &entry.location.kind {
-            BlockEntryKind::Let { var } => Some(var.clone()),
+            BlockEntryKind::Let { var, .. } => Some(var.clone()),
             _ => None,
         };
         entry.query.patch_and_attach(

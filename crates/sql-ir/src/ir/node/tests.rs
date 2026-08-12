@@ -7,7 +7,7 @@ use crate::ir::node::{
 fn test_node_size() {
     assert_eq!(std::mem::size_of::<Node32>(), 40);
     assert_eq!(std::mem::size_of::<Node64>(), 72);
-    assert_eq!(std::mem::size_of::<Node96>(), 96);
+    assert_eq!(std::mem::size_of::<Node96>(), 88);
     assert_eq!(std::mem::size_of::<Node136>(), 112);
     assert_eq!(std::mem::size_of::<Node232>(), 208);
 }
@@ -18,6 +18,7 @@ fn nested_block() -> Vec<BlockStatement<u32>> {
         BlockStatement::Let {
             var: ":v".into(),
             query: 0,
+            is_used: true,
         },
         BlockStatement::If {
             cond: 1,
@@ -48,7 +49,10 @@ fn block_entries_walk_nested_ifs_in_execution_order() {
     let kinds: Vec<BlockEntryKind> = BlockEntries::new(&stmts).map(|e| e.location.kind).collect();
     assert_eq!(
         vec![
-            BlockEntryKind::Let { var: ":v".into() },
+            BlockEntryKind::Let {
+                var: ":v".into(),
+                is_used: true,
+            },
             BlockEntryKind::IfCondition,
             BlockEntryKind::ReturnQuery,
             BlockEntryKind::IfCondition,

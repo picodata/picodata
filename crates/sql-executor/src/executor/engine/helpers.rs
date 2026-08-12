@@ -1342,8 +1342,6 @@ pub fn dispatch_impl<'p>(
             _ => None,
         };
 
-        let unused_lets = block.get_unused_lets();
-
         let use_colon_params = !plan.get_ir_plan().is_raw_explain();
         let cache_key: Option<u64> = if use_colon_params {
             Some(block_pattern_key(plan, &block.statements)?)
@@ -1411,7 +1409,6 @@ pub fn dispatch_impl<'p>(
         let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
         let exec_block = BlockExecData {
             statements,
-            unused_lets,
             params,
             table_versions,
             index_versions,

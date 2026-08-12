@@ -934,3 +934,73 @@ fn let_slots_are_named_after_the_source_identifier() {
         )
     );
 }
+
+/// A LET carries whether anything referenced it, so EXPLAIN can flag dead code
+/// without a side table keyed by the statement's position. The flag rides on
+/// the statement itself, at any nesting depth.
+#[test]
+fn let_statements_record_whether_they_are_used() {
+    use crate::ir::node::block::Block;
+    use crate::ir::node::BlockStatement;
+
+    let used_flags = |query: &str| {
+        let plan = sql_to_ir_without_bind(query, &[]);
+        let top_id = plan.get_top().unwrap();
+        let Block::Anonymous(block) = plan.get_block_node(top_id).unwrap() else {
+            panic!("expected an anonymous block");
+        };
+        fn collect(stmts: &[BlockStatement<crate::ir::node::NodeId>], out: &mut Vec<bool>) {
+            for stmt in stmts {
+                match stmt {
+                    BlockStatement::Let { is_used, .. } => out.push(*is_used),
+                    BlockStatement::If { body, .. } => collect(body, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut flags = Vec::new();
+        collect(&block.statements, &mut flags);
+        flags
+    };
+
+    // The first binding is dead: the redeclaration does not read it, and the
+    // UPDATE reads the second one.
+    assert_eq!(
+        vec![false, true],
+        used_flags(
+            "DO $$ BEGIN \
+                LET v = (SELECT 1); \
+                LET v = (SELECT 2); \
+                UPDATE t2 SET e = v; \
+            END $$"
+        )
+    );
+
+    // Same inside an IF body, where the flag has to survive the nesting.
+    assert_eq!(
+        vec![false, true],
+        used_flags(
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN \
+                    LET v = (SELECT 1); \
+                    LET v = (SELECT 2); \
+                    UPDATE t2 SET e = v; \
+                END IF; \
+            END $$"
+        )
+    );
+
+    // A body-local LET nothing reads, next to one that feeds the DML.
+    assert_eq!(
+        vec![true, false],
+        used_flags(
+            "DO $$ BEGIN \
+                LET used = (SELECT 1); \
+                IF 1 > 0 THEN \
+                    LET spare = (SELECT 2); \
+                    UPDATE t2 SET e = used; \
+                END IF; \
+            END $$"
+        )
+    );
+}

@@ -11,7 +11,7 @@ use crate::ir::node::NodeId;
 use crate::ir::types::{DerivedType, NestedType};
 use crate::utils::MutexLike;
 use crate::{ir::helpers::RepeatableState, ir::node::BlockStatement};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -445,7 +445,6 @@ pub struct BlockExecData {
     pub statements: Vec<BlockStatement<BlockQuery>>,
     /// Per-query parameters in `BlockStatement::iter()` order.
     pub params: Vec<Vec<Value>>,
-    pub unused_lets: HashSet<usize>,
     pub table_versions: VersionMap,
     pub index_versions: HashMap<[u32; 2], u64, RepeatableState>,
     pub vdbe_max_steps: u64,

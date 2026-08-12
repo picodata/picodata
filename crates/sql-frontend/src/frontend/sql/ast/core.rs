@@ -87,7 +87,7 @@ use crate::ir::ddl::SetParamValue;
 
 use super::ir_populator::{
     can_assign, dql_return_columns, parse_param, parse_parameter_for_option, parse_scalar_expr,
-    parse_unsigned, parse_values_rows, ExpressionWalker, OrderNulls,
+    parse_unsigned, parse_values_rows, ExpressionWalker, LetVarScope, OrderNulls,
 };
 use super::*;
 use crate::ir::options::Timeout;
@@ -1636,26 +1636,26 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         Ok(())
     }
 
-    // The master loop has already pushed the LET decl into `worker.let_scope`
-    // and stashed the variable name in `worker.let_var_names`, both keyed by
-    // the `BlockLetStatement` node; here we just rebuild the statement by
-    // combining the name with the RHS plan id forwarded through `map`. Works
-    // at any nesting depth, since that loop walks the whole AST.
+    // The master loop has already pushed the LET decl into `worker.let_scope`,
+    // keyed by the RHS query id; here we just rebuild the statement from that
+    // decl, reaching it through the RHS `map` forwarded for us. Works at any
+    // nesting depth, since that loop walks the whole AST.
     fn build_let(
         map: &Translation,
         plan: &Plan,
-        let_var_names: &HashMap<usize, SmolStr>,
+        scope: &LetVarScope,
         stmt_ast_id: usize,
     ) -> Result<BlockStatement<NodeId>, SbroadError> {
         let sub_query_id = map.get(stmt_ast_id)?;
         let query_id = plan.get_rel_child(sub_query_id, 0).unwrap();
 
-        let var = let_var_names.get(&stmt_ast_id).cloned().ok_or_else(|| {
-            SbroadError::other("LET variable name was not recorded during parsing")
-        })?;
+        let decl = scope
+            .resolve_by_id(query_id)
+            .ok_or_else(|| SbroadError::other("LET declaration was not recorded during parsing"))?;
         Ok(BlockStatement::Let {
-            var: format_smolstr!(":{var}"),
+            var: format_smolstr!(":{}", decl.name),
             query: query_id,
+            is_used: decl.is_used,
         })
     }
 
@@ -1666,7 +1666,7 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         ast: &AstCore,
         map: &Translation,
         plan: &Plan,
-        let_var_names: &HashMap<usize, SmolStr>,
+        scope: &LetVarScope,
         return_columns: &mut Vec<(String, DerivedType)>,
         if_ast_id: usize,
     ) -> Result<BlockStatement<NodeId>, SbroadError> {
@@ -1712,14 +1712,12 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
                     merge_return_columns(return_columns, columns)?;
                     body.push(BlockStatement::ReturnQuery(query_id));
                 }
-                Rule::BlockLetStatement => {
-                    body.push(build_let(map, plan, let_var_names, *inner_ast_id)?)
-                }
+                Rule::BlockLetStatement => body.push(build_let(map, plan, scope, *inner_ast_id)?),
                 Rule::BlockIfStatement => body.push(build_if(
                     ast,
                     map,
                     plan,
-                    let_var_names,
+                    scope,
                     return_columns,
                     *inner_ast_id,
                 )?),
@@ -1733,6 +1731,7 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         })
     }
 
+    let scope = &worker.let_scope;
     let node = ast.nodes.get_node(node_id)?;
     let mut statements = Vec::new();
     let mut return_columns: Vec<(String, DerivedType)> = Vec::new();
@@ -1758,14 +1757,12 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
                 }
                 statements.push(BlockStatement::Query(query_id));
             }
-            Rule::BlockLetStatement => {
-                statements.push(build_let(map, plan, &worker.let_var_names, *child_id)?)
-            }
+            Rule::BlockLetStatement => statements.push(build_let(map, plan, scope, *child_id)?),
             Rule::BlockIfStatement => statements.push(build_if(
                 ast,
                 map,
                 plan,
-                &worker.let_var_names,
+                scope,
                 &mut return_columns,
                 *child_id,
             )?),
@@ -1788,14 +1785,16 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
     // All options must be specified for this block.
     if block_options_count != plan.raw_options.len() {
         return Err(SbroadError::other(
-            "OPTION cannot be specified for individual queries within a transaction; specify it for the entire DO block instead"
+            "OPTION cannot be specified for individual queries \
+             within a transaction; specify it for the entire DO block instead",
         ));
     }
 
     for opt in &plan.raw_options {
         if opt.kind == OptionKind::MotionRowMax {
             return Err(SbroadError::other(
-                "transaction cannot have any motions; SQL_MOTION_ROW_MAX is not applicable to transactions",
+                "transaction cannot have any motions; \
+                 SQL_MOTION_ROW_MAX is not applicable to transactions",
             ));
         }
     }
@@ -1871,17 +1870,9 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         }
     }
 
-    let mut unused_lets = HashSet::new();
-    for var_decl in &worker.let_scope.decls {
-        if !var_decl.used {
-            unused_lets.insert(var_decl.query_id);
-        }
-    }
-
     Ok(AnonymousBlock {
         statements,
         return_columns,
-        unused_lets,
     })
 }
 

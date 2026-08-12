@@ -116,8 +116,8 @@ fn parse_update_operand(
         });
     }
     if let Some(name) = parse_unqualified_update_identifier(ast, node_id)? {
-        let var_type = match ctx.let_scope.resolve(&name) {
-            LetVarLookup::Live { ty } => ty,
+        let var_type = match ctx.let_scope.resolve_by_name(&name) {
+            LetVarLookup::Live(decl) => decl.ty,
             // A dead variable is not a variable, so if the name is also a
             // column it simply means the column -- and a bare column is not a
             // legal RHS here, which the arm below reports. Only when nothing
@@ -135,7 +135,7 @@ fn parse_update_operand(
         if find_column(relation, &name).is_ok() {
             return Err(ConflictError::LetColumnAmbiguous { name }.into());
         }
-        ctx.let_scope.mark_used(&name);
+        ctx.let_scope.mark_as_used(&name);
         let node = ctx.plan.nodes.push(LetVarRef { name, var_type }.into());
         return Ok(ParsedUpdateOperand {
             node,
@@ -241,7 +241,10 @@ fn is_target_column(
         if &name != target_column_name {
             return Ok(false);
         }
-        if matches!(ctx.let_scope.resolve(&name), LetVarLookup::Live { .. }) {
+        if matches!(
+            ctx.let_scope.resolve_by_name(&name),
+            LetVarLookup::Live { .. }
+        ) {
             return Err(ConflictError::LetColumnAmbiguous { name }.into());
         }
         return Ok(true);

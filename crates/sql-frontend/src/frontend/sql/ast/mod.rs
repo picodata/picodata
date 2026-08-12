@@ -1992,8 +1992,7 @@ where
     }
     let var_type = columns[0].1;
 
-    worker.let_scope.declare(rhs, var_name.clone(), var_type)?;
-    worker.let_var_names.insert(node_id, var_name);
+    worker.let_scope.declare(rhs, var_name, var_type)?;
     map.add(node_id, subquery_plan_id);
     Ok(())
 }
