@@ -18,7 +18,7 @@ comfy-table = { workspace = true }
 hash32 = "0.2"
 itertools = "0.10"
 lazy_static = "1.4"
-lru = "0.16.0"
+lru = "0.18.2"
 pest = "2.0"
 pest_derive = "2.0"
 rand = { workspace = true }
