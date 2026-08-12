@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use proc_macro_error2::{proc_macro_error, SpanRange};
+use proc_macro_error3::{proc_macro_error, SpanRange};
 use quote::{quote, ToTokens};
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, Attribute, AttributeArgs, DeriveInput,
@@ -35,7 +35,7 @@ mod msgpack {
 
     use darling::FromDeriveInput;
     use proc_macro2::TokenStream;
-    use proc_macro_error2::{abort, SpanRange};
+    use proc_macro_error3::{abort, SpanRange};
     use quote::{format_ident, quote, quote_spanned, ToTokens};
     use syn::{
         parse_quote, spanned::Spanned, Data, Field, Fields, FieldsNamed, FieldsUnnamed,
