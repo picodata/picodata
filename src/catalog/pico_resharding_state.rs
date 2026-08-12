@@ -137,9 +137,14 @@ impl PicoReshardingState {
     ";
 
     pub const fn new() -> Self {
+        Self::with_id(Self::TABLE_ID)
+    }
+
+    /// A constructor with ability to override the `space_id` for testing purposes.
+    pub const fn with_id(space_id: SpaceId) -> Self {
         Self {
-            space: space_by_id_unchecked(Self::TABLE_ID),
-            index_primary: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            space: space_by_id_unchecked(space_id),
+            index_primary: index_by_ids_unchecked(space_id, 0),
         }
     }
 

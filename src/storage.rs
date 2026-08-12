@@ -1156,12 +1156,17 @@ impl SystemTable for Instances {
 
 impl Instances {
     pub const fn new() -> Self {
+        Self::with_id(Self::TABLE_ID)
+    }
+
+    /// A constructor with ability to override the `space_id` for testing purposes.
+    pub const fn with_id(space_id: SpaceId) -> Self {
         Self {
-            space: space_by_id_unchecked(Self::TABLE_ID),
-            index_instance_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
-            index_instance_uuid: index_by_ids_unchecked(Self::TABLE_ID, 1),
-            index_raft_id: index_by_ids_unchecked(Self::TABLE_ID, 2),
-            index_replicaset_name: index_by_ids_unchecked(Self::TABLE_ID, 3),
+            space: space_by_id_unchecked(space_id),
+            index_instance_name: index_by_ids_unchecked(space_id, 0),
+            index_instance_uuid: index_by_ids_unchecked(space_id, 1),
+            index_raft_id: index_by_ids_unchecked(space_id, 2),
+            index_replicaset_name: index_by_ids_unchecked(space_id, 3),
         }
     }
 
@@ -1619,10 +1624,15 @@ impl SystemTable for Replicasets {
 
 impl Replicasets {
     pub const fn new() -> Self {
+        Self::with_id(Self::TABLE_ID)
+    }
+
+    /// A constructor with ability to override the `space_id` for testing purposes.
+    pub const fn with_id(space_id: SpaceId) -> Self {
         Self {
-            space: space_by_id_unchecked(Self::TABLE_ID),
-            index_replicaset_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
-            index_replicaset_uuid: index_by_ids_unchecked(Self::TABLE_ID, 1),
+            space: space_by_id_unchecked(space_id),
+            index_replicaset_name: index_by_ids_unchecked(space_id, 0),
+            index_replicaset_uuid: index_by_ids_unchecked(space_id, 1),
         }
     }
 
@@ -2235,9 +2245,14 @@ impl SystemTable for Tiers {
 }
 impl Tiers {
     pub const fn new() -> Self {
+        Self::with_id(Self::TABLE_ID)
+    }
+
+    /// A constructor with ability to override the `space_id` for testing purposes.
+    pub const fn with_id(space_id: SpaceId) -> Self {
         Self {
-            space: space_by_id_unchecked(Self::TABLE_ID),
-            index_name: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            space: space_by_id_unchecked(space_id),
+            index_name: index_by_ids_unchecked(space_id, 0),
         }
     }
 
@@ -2790,9 +2805,14 @@ impl SystemTable for ServiceRouteTable {
 }
 impl ServiceRouteTable {
     pub const fn new() -> Self {
+        Self::with_id(Self::TABLE_ID)
+    }
+
+    /// A constructor with ability to override the `space_id` for testing purposes.
+    pub const fn with_id(space_id: SpaceId) -> Self {
         Self {
-            space: space_by_id_unchecked(Self::TABLE_ID),
-            primary_key: index_by_ids_unchecked(Self::TABLE_ID, 0),
+            space: space_by_id_unchecked(space_id),
+            primary_key: index_by_ids_unchecked(space_id, 0),
         }
     }
 
