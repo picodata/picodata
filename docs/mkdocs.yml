@@ -80,7 +80,7 @@ nav:
       - reference/sql/ddl.md
       - reference/sql/dml.md
       - reference/sql/dql.md
-      - Transcation Control Language: reference/sql/transactions.md
+      - Transaction Control Language: reference/sql/transactions.md
       - Средства для отладки запросов:
           - reference/sql/explain.md
           - reference/sql/explain_facets/raw.md
