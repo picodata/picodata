@@ -463,8 +463,9 @@ ALTER PLUGIN radix MIGRATE TO 1.0.6 OPTION(TIMEOUT=300);
 CREATE USER default WITH PASSWORD 'замените на ваш пароль' USING md5;
 ```
 
-Данному пользователю также следует выдать права для
-работы с объектами БД:
+Данному пользователю также следует выдать роли `radix_reader` и
+`radix_writer` (появляются в Picodata после выполнения
+[миграций](#plugin_migrate) Radix) для работы с объектами БД:
 
 ```sql
 GRANT radix_reader TO default;
@@ -665,7 +666,8 @@ Control List) — система прав пользователей, в кот�
 
 #### Предустановленные роли {: #auth_roles }
 
-В Picodata доступны следующие роли:
+После выполнения [миграций](#plugin_migrate) Radix в SQL-интерфейсе Picodata становятся
+доступны следующие роли::
 
 - Глобальные:
     - `radix_reader` — доступ на чтение ко всем данным,
@@ -784,21 +786,303 @@ OK
     В версии Radix 1.0.5 пользователю по умолчанию можно задать
     только пустой пароль. Для других пользователей такого ограничения нет.
 
-#### Разделение доступов по БД {: #access_separation }
+#### Переход на Radix при использовании ACL {: #migrate_acl }
+
+Если у вас есть инсталляция Redis с настроенными правами (ACL), которые
+необходимо перенести в Radix, то для этого потребуется отдельный набор
+действий.
+
+Для начала убедитесь, что на данном этапе в кластере Picodata уже
+выполнены необходимые предварительные настройки для Radix, включая:
+
+- [Добавление плагина в кластере](#plugin_add)
+- [Добавление сервиса и установка параметров](#plugin_enable_details)
+- [Запуск миграции](#plugin_migrate)
+
+При этом, сам плагин Radix ещё не включён.
+
+Далее выполните следующие шаги:
+
+1. Создайте файл с правами ACL в Redis до начала миграции и отредактируйте его
+1. [Создайте пользователей], указанных в этом файле, в Picodata
+1. Задайте расположение этого файла в параметре `aclfile` в конфигурации плагина Radix
+1. Запустите Radix
+1. Загрузите файл с правами с помощью команды `ACL LOAD`
+
+[Создайте пользователей]: ../admin/access_control.md#create_user
+
+Разберём эти шаги подробнее.
+
+**Создание файла с правами**
+
+Пусть файл с ACL-правами лежит по пути `/tmp/users.acl`. Он получен командой `ACL SAVE` в Redis.
+
+**Проверка и редактирование файла с правами**
+
+Посмотрим на содержание файла с правами:
+
+```acl title="Пример файла `/tmp/users.acl`"
+user cache off sanitize-payload ~cache:* resetchannels -@all +get +set (~some-key resetchannels -@all +set)
+user default on nopass sanitize-payload ~* &* +@all
+user epic-user off sanitize-payload #42a9798b99d4afcec9995e47a1d246b98ebc96be7a732323eee39d924006ee1d ~this-key resetchannels -@all +get
+user pubsub on sanitize-payload #4cb5461c1904e3be5b941a47fba6c3afdf97a6f8f2712207eb8226443fa62f81 resetchannels &channels:* -@all +subscribe
+```
+
+Так как пользователи создаются на уровне Picodata, этот файл нужно
+проверить и отредактировать:
+
+- Пользователю `default` в Redis соответствует пользователь, указанный в параметре
+  `authorization_mode.default_user_name` [конфигурации
+  Radix](#default_user_name) (по умолчанию это также `default`). Если вы
+  меняли значение `authorization_mode.default_user_name` на собственное,
+  то нужно будет указать его вместо `default` в файле с правами.
+- У Radix нет возможности управлять пользователями и их правами через
+  интерфейс Redis, так что создание пользователя и задание пароля
+  происходит в Picodata. По этой причине из файла с правами надо удалить
+  всё, что связано с паролями (строки с префиксами `>`, `<`, `#`, `!` и
+  строка `nopass`).
+- Метки включения пользователя (`off` и `on`) задаются в Picodata — их тоже
+  нужно убрать из файла с правами.
+
+Если пробовать загрузить этот файл без необходимых правок,
+Radix будет возвращать ошибки c подсказками по их устранению:
+
+???+ example "Пользователь не создан"
+    ```
+    127.0.0.1:7301> acl load
+    (error) ERR users.acl:1: user cache not found
+    ```
+
+???+ example "Не удалены спецификаторы пароля"
+    ```
+    127.0.0.1:7301> acl load
+    (error) ERR users.acl:1: change user password is prohibited, use Picodata SQL for it (https://docs.picodata.io/picodata/stable/reference/sql/ter_user/#examples)
+    ```
+
+???+ example "Не удалены метки включения"
+    ```
+    127.0.0.1:7301> acl load
+    (error) ERR users.acl:1: change user status is prohibited, use Picodata SQL for it (https://docs.picodata.io/picodata/stable/reference/sql/ter_user/#examples)
+    ```
+
+После исправлений файл `/tmp/users.acl` станет выглядеть так:
+
+```
+user cache sanitize-payload ~cache:* resetchannels -@all +get +set (~some-key resetchannels -@all +set)
+user default sanitize-payload ~* &* +@all
+user epic-user sanitize-payload ~this-key resetchannels -@all +get
+user pubsub sanitize-payload resetchannels &channels:* -@all +subscribe
+```
+
+Теперь создайте пользователей в Picodata и выдайте им необходимые роли:
 
 ```sql
-CREATE USER app_1_user WITH PASSWORD 'pwd1';
-GRANT radix_reader_0 TO app_1_user;
-GRANT radix_writer_0 TO app_1_user;
+CREATE USER cache WITH PASSWORD 'cachePassword123' OPTION(TIMEOUT=1200);
+GRANT radix_reader TO cache OPTION(TIMEOUT=1200);
+GRANT radix_writer TO cache OPTION(TIMEOUT=1200);
+-- пользователь выключен (`user cache off ...`) в users.acl, выключим его и здесь;
+ALTER USER cache NOLOGIN;
 
-CREATE USER app_2_user WITH PASSWORD 'pwd2';
-GRANT radix_reader_0 TO app_2_user;
-GRANT radix_writer_2 TO app_2_user;
+CREATE USER default WITH PASSWORD 'S0mePass' OPTION(TIMEOUT=1200);
+GRANT radix_reader TO default OPTION(TIMEOUT=1200);
+GRANT radix_writer TO default OPTION(TIMEOUT=1200);
 
-CREATE USER app_3_user WITH PASSWORD 'pwd3';
-GRANT radix_reader_0 TO app_3_user;
-GRANT radix_writer_5 TO app_3_user;
+CREATE USER "epic-user" WITH PASSWORD 'Password8' OPTION(TIMEOUT=1200);
+GRANT radix_reader TO "epic-user" OPTION(TIMEOUT=1200);
+GRANT radix_writer TO "epic-user" OPTION(TIMEOUT=1200);
+
+CREATE USER pubsub WITH PASSWORD 'PUBSUBPass0' OPTION(TIMEOUT=1200);
+GRANT radix_reader TO pubsub OPTION(TIMEOUT=1200);
+GRANT radix_writer TO pubsub OPTION(TIMEOUT=1200);
 ```
+
+**Включение авторизации**
+
+Включите в Radix авторизацию, указав путь к файлу с правами и имя пользователя по умолчанию:
+
+```sql
+ALTER PLUGIN radix 1.0.6 SET radix.authorization_mode='{ "state": "enabled", "aclfile": "/tmp/users.acl", "default_user_name": "default" }';
+```
+
+**Включение плагина**
+
+Включите плагин Radix в Picodata:
+
+```sql
+ALTER PLUGIN radix 1.0.6 ENABLE;
+```
+
+При первом запуске заданному по умолчанию пользователю выдается ACL на
+доступ ко всем командам Radix, всем ключам и каналам (`+@all ~* &*`).
+Этот пользователь имеет возможность загрузить права из файла в кластере
+с включённой авторизацией.
+
+**Загрузка прав**
+
+Подключитесь к Radix и загрузите права:
+
+```shell
+$ redis-cli -p 7301127.0.0.1:7301> auth S0mePass
+OK
+127.0.0.1:7301> acl whoami
+"default"
+127.0.0.1:7301> acl list
+1) "user cache off sanitize-payload resetchannels -@all"
+2) "user default on sanitize-payload ~* &* +@all"
+3) "user epic-user on sanitize-payload resetchannels -@all"
+4) "user pubsub on sanitize-payload resetchannels -@all"
+127.0.0.1:7301> acl load
+OK
+127.0.0.1:7301> acl list
+1) "user cache off sanitize-payload ~cache:* resetchannels -@all +get +set (~some-key resetchannels -@all +set)"
+2) "user default on sanitize-payload ~* &* +@all"
+3) "user epic-user on sanitize-payload ~this-key resetchannels -@all +get"
+4) "user pubsub on sanitize-payload &channels:* -@all +subscribe"
+```
+
+По выводу первого `ACL LIST` можно увидеть, что пользователи создаются
+без прав, а после `ACL LOAD` права соответствуют настройкам из
+`users.acl`.
+
+Проверьте права пользователей (для их обновления нужно закончить текущую
+сессию и запустить новую):
+
+```shell
+$ redis-cli -p 7301
+127.0.0.1:7301> get this-key
+(error) NOAUTH Authentication required
+127.0.0.1:7301> auth default S0mePass
+OK
+127.0.0.1:7301> get this-key
+(nil)
+127.0.0.1:7301> set this-key hello!
+OK
+127.0.0.1:7301> get this-key
+"hello!"
+127.0.0.1:7301> auth epic-user Password8
+OK
+127.0.0.1:7301> get this-key
+"hello!"
+127.0.0.1:7301> get other-key
+(error) NOPERM No permissions to access a key
+127.0.0.1:7301> subscribe channels:123
+(error) NOPERM User epic-user has no permissions to run the 'subscribe' command
+127.0.0.1:7301> auth cache cachePassword123
+(error) WRONGPASS invalid username-password pair or user is disabled.
+127.0.0.1:7301> auth pubsub PUBSUBPass0
+OK
+127.0.0.1:7301> subscribe wrong-chan:123
+(error) NOPERM No permissions to access a channel
+127.0.0.1:7301> subscribe channels:123
+1) "subscribe"
+2) "channels:123"
+3) (integer) 1
+Reading messages... (press Ctrl-C to quit or any key to type command)
+```
+
+Права пользователей хранятся в Picodata, так что после перезапуска не
+нужно будет выставлять их заново, как в Redis. Поэтому опциональный
+параметр `aclfile` можно в дальнейшем опустить.
+
+#### Разделение доступов по БД {: #access_separation }
+
+Представим, что одно приложение пишет и читает какие-то
+данные в БД №0 Redis и два других приложения, которые имеют отдельные
+БД (например, №2 и №5) в Redis, но при этом читают данные БД №0:
+
+- Приложение 1:
+  - БД 0, чтение и запись.
+- Приложение 2:
+  - БД 0, чтение.
+  - БД 2, чтение и запись.
+- Приложение 3:
+  - БД 0, чтение.
+  - БД 5, чтение и запись.
+
+Будем считать, что [пользователем по умолчанию](#default_user_name) является `default` с полным доступом.
+
+```sql title="создайте пользователя для Приложения 1"
+CREATE USER app_1_user WITH PASSWORD 'S0m1Str2ngP3ssword-1' OPTION(TIMEOUT=1200);
+GRANT radix_reader_0 TO app_1_user OPTION(TIMEOUT=1200);
+GRANT radix_writer_0 TO app_1_user OPTION(TIMEOUT=1200);
+```
+
+```sql title="создайте пользователя для Приложения 2"
+CREATE USER app_2_user WITH PASSWORD 'S0m1Str2ngP3ssword-2' OPTION(TIMEOUT=1200);
+GRANT radix_reader_0 TO app_2_user OPTION(TIMEOUT=1200);
+GRANT radix_reader_2 TO app_2_user OPTION(TIMEOUT=1200);
+GRANT radix_writer_2 TO app_2_user OPTION(TIMEOUT=1200);
+```
+
+```sql title="создайте пользователя для Приложения 3"
+create USER app_3_user WITH PASSWORD 'S0m1Str2ngP3ssword-3' OPTION(TIMEOUT=1200);
+GRANT radix_reader_0 TO app_3_user OPTION(TIMEOUT=1200);
+GRANT radix_reader_5 TO app_3_user OPTION(TIMEOUT=1200);
+GRANT radix_writer_5 TO app_3_user OPTION(TIMEOUT=1200);
+```
+
+Выдайте права пользователям:
+
+```shell
+$ redis-cli -p 7301
+127.0.0.1:7301> auth default S0mePass
+OK
+127.0.0.1:7301> acl setuser app_1_user +@all ~cache:*
+OK
+127.0.0.1:7301> acl setuser app_2_user -@all (+get %R~cache:*) (+@all %RW~app2:*)
+OK
+127.0.0.1:7301> acl setuser app_3_user +@all %R~cache:* %RW~app3:*
+OK
+```
+
+Проверьте, что приложение 1 может читать и писать в свою БД:
+
+```shell
+$ redis-cli -p 7301
+127.0.0.1:7301> auth app_1_user S0m1Str2ngP3ssword-1
+OK
+127.0.0.1:7301> set cache:12345 'hi from user 1!'
+OK
+127.0.0.1:7301> get cache:12345
+"hi from user 1!"
+127.0.0.1:7301> select 2
+(error) INSUFFICIENT PRIVILEGES no required rights assigned
+127.0.0.1:7301> select 5
+(error) INSUFFICIENT PRIVILEGES no required rights assigned
+127.0.0.1:7301> lrange cache:list-key 0 -1
+(empty array)
+```
+
+Как видно, у приложения имеется полный доступ к своим данным, но нет доступа к данным других приложений. Посмотрим на приложение 2:
+
+```shell
+$ redis-cli -p 7301
+127.0.0.1:7301> auth app_2_user S0m1Str2ngP3ssword-2
+OK
+127.0.0.1:7301> get cache:12345
+"hi from user 1!"
+127.0.0.1:7301> set cache:12345 'hello, user 1, this is user 2!'
+(error) NOPERM No permissions to access a key
+127.0.0.1:7301> get cache:12345
+"hi from user 1!"
+127.0.0.1:7301> lrange cache:list-key 0 -1
+(error) NOPERM No permissions to access a key
+127.0.0.1:7301> select 2
+OK
+127.0.0.1:7301[2]> get cache:12345
+(nil)
+127.0.0.1:7301[2]> set app2:data my_data
+OK
+127.0.0.1:7301[2]> get app2:data
+"my_data"
+127.0.0.1:7301[2]> select 5
+(error) INSUFFICIENT PRIVILEGES no required rights assigned
+```
+
+Второе приложение может прочитать данные первого, свои данные, но не
+может прочитать данные третьего приложения. Попытка записи в данные
+первого падает с ошибкой, а в свои — нет. Для третьего пользователя
+результат будет аналогичным.
 
 #### Примеры управления доступом {: #auth_examples }
 
@@ -1461,6 +1745,9 @@ ACL LOAD
 конфигурации Radix). Существующие правила ACL переписываются (сначала
 удаляются все заданные правила ACL, а потом загружаются из файла).
 
+!!! warning "Внимание!"
+    ACL-файлы из Redis необходимо предварительно отредактировать. См. [подробнее](#migrate_acl).
+
 #### acl log {: #acl_log }
 
 ```sql
@@ -1493,6 +1780,11 @@ ACL SAVE
 Записывает текущие ACL-правила на сервере Radix в `aclfile`. Для работы
 этой команды необходимо настроить расположение файла `aclfile` задаётся
 в разделе [authorization_mode](#auth_mode) конфигурации Radix).
+
+!!! warning "Внимание!"
+    Формат ACL-файла в Radix соответствует формату
+    Redis. Перед загрузкой этого файла командой `ACL LOAD` его необходимо
+    предварительно отредактировать. См. [подробнее](#migrate_acl).
 
 #### acl setuser {: #acl_setuser }
 
