@@ -5,9 +5,29 @@ pub mod sequence;
 pub mod space;
 
 use crate::error::Error;
+#[cfg(feature = "picodata")]
+use crate::error::{TarantoolError, TarantoolErrorCode};
+#[cfg(feature = "picodata")]
+use crate::ffi::tarantool as ffi;
 use crate::index::IteratorType;
 use crate::space::{Space, SystemSpace};
 use crate::tuple::Tuple;
+
+/// Checks that a string is a valid Tarantool identifier.
+#[cfg(feature = "picodata")]
+pub fn check_identifier(identifier: &str) -> Result<(), Error> {
+    let Ok(len) = identifier.len().try_into() else {
+        return Err(
+            TarantoolError::new(TarantoolErrorCode::Identifier, "identifier is too long").into(),
+        );
+    };
+
+    // SAFETY: the pointer is valid for the explicitly provided string length.
+    if unsafe { ffi::identifier_check(identifier.as_ptr().cast(), len) } != 0 {
+        return Err(TarantoolError::last().into());
+    }
+    Ok(())
+}
 
 fn resolve_user_or_role(user: &str) -> Result<Option<u32>, Error> {
     let space_vuser: Space = SystemSpace::VUser.into();

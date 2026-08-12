@@ -39,14 +39,14 @@ use tarantool::index::{
     FieldType as IndexFieldType, IndexOptions, IndexType, Part, RtreeIndexDistanceType, SortOrder,
 };
 use tarantool::msgpack;
+use tarantool::schema::space::NAME_MAX;
 use tarantool::session::{with_su, UserId};
 use tarantool::space::SpaceId;
-use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType, TypedArray};
-use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
+use tarantool::space::{FieldType, SpaceEngineType, TypedArray};
+use tarantool::space::{Metadata as SpaceMetadata, Space, SystemSpace};
 use tarantool::time::Instant;
 use tarantool::tlua;
 use tarantool::tlua::LuaRead;
-use tarantool::transaction::{transaction, TransactionError};
 use tarantool::tuple::Encode;
 use tarantool::util::Value;
 
@@ -2341,6 +2341,11 @@ impl CreateTableParams {
     }
 
     pub fn validate(&self) -> traft::Result<()> {
+        check_identifier(&self.name)?;
+        for field in &self.format {
+            check_identifier(&field.name)?;
+        }
+
         // Check space id fits in the allowed range
         if self.id <= SPACE_ID_INTERNAL_MAX {
             crate::tlog!(Warning, "requested space id {} is in the range 0..={SPACE_ID_INTERNAL_MAX} reserved for future use by picodata, you may have a conflict in a future version", self.id);
@@ -2453,76 +2458,6 @@ impl CreateTableParams {
         Ok(())
     }
 
-    /// Create space and then rollback.
-    ///
-    /// Should be used for checking if a space with these params can be created.
-    pub fn test_create_space(&self, storage: &Catalog) -> traft::Result<()> {
-        let user = storage
-            .users
-            .by_id(self.owner)?
-            .ok_or_else(|| Error::Other(format!("user with id {} not found", self.owner).into()))?
-            .name;
-
-        // TODO: This is needed because we do a dry-run of space creation to verify it's parameters,
-        // which may fail if the operation is initiated on a read-only replica. For this reason we
-        // temporarily switch off the read-only mode. This however will stop working once we add support
-        // for synchronous transactions, because read-onlyness will be controlled by the internal raft machinery.
-        // At that point we will need to rewrite this code and implement the explicit verification of the parameters.
-        let lua = ::tarantool::lua_state();
-        let was_read_only: bool = lua.eval(
-            "local is_ro = box.cfg.read_only
-            if is_ro then
-                box.cfg { read_only = false }
-            end
-            return is_ro",
-        )?;
-
-        let space_type = if self.is_unlogged() {
-            SpaceType::DataTemporary
-        } else {
-            SpaceType::Normal
-        };
-
-        let err = transaction(|| -> Result<(), Option<tarantool::error::Error>> {
-            // TODO: allow create_space to accept user by id
-            ::tarantool::schema::space::create_space(
-                &self.name,
-                &SpaceCreateOptions {
-                    if_not_exists: false,
-                    engine: self.engine.unwrap_or_default(),
-                    id: Some(self.id),
-                    field_count: self.format.len() as u32,
-                    user: Some(user.to_string()),
-                    space_type,
-                    format: Some(
-                        self.format
-                            .iter()
-                            .cloned()
-                            .map(tarantool::space::Field::from)
-                            .collect(),
-                    ),
-                },
-            )
-            .map_err(Some)?;
-            // Rollback space creation
-            Err(None)
-        })
-        .unwrap_err();
-
-        if was_read_only {
-            lua.exec("box.cfg { read_only = true }")?;
-        }
-
-        match err {
-            // Space was successfully created and rolled back
-            TransactionError::RolledBack(None) => Ok(()),
-            // Space creation failed
-            TransactionError::RolledBack(Some(err)) => Err(err.into()),
-            // Error during commit or rollback
-            err => panic!("transaction mechanism should not fail: {err:?}"),
-        }
-    }
-
     pub fn into_ddl(self) -> traft::Result<Ddl> {
         let primary_key: Vec<_> = self
             .primary_key
@@ -2566,11 +2501,16 @@ impl CreateTableParams {
         };
         Ok(res)
     }
+}
 
-    #[inline(always)]
-    fn is_unlogged(&self) -> bool {
-        self.opts.contains(&TableOption::Unlogged(true))
+fn check_identifier(identifier: &str) -> traft::Result<()> {
+    if identifier.len() > NAME_MAX {
+        return Err(Error::other(format!(
+            "identifier is too long (maximum is {NAME_MAX} bytes)"
+        )));
     }
+    tarantool::schema::check_identifier(identifier)?;
+    Ok(())
 }
 
 /// Checks if space referred by the name exists.
@@ -2757,101 +2697,7 @@ pub fn abort_ddl(deadline: Instant) -> traft::Result<RaftIndex> {
 mod tests {
     use super::*;
     use crate::tier::DEFAULT_TIER;
-    use tarantool::{auth::AuthMethod, space::FieldType};
-
-    fn storage() -> Catalog {
-        let storage = Catalog::for_tests();
-        storage
-            .users
-            .insert(&UserDef {
-                id: ADMIN_ID,
-                name: SmolStr::new_static("admin"),
-                schema_version: 0,
-                auth: Some(AuthDef::new(AuthMethod::Md5, String::from(""))),
-                owner: ADMIN_ID,
-                ty: UserMetadataKind::User,
-            })
-            .unwrap();
-        storage
-    }
-
-    #[::tarantool::test]
-    fn test_create_space() {
-        let storage = storage();
-        CreateTableParams {
-            id: 1337,
-            name: "friends_of_peppa".into(),
-            format: vec![
-                Field {
-                    name: "id".into(),
-                    r#type: FieldType::Integer,
-                    is_nullable: false,
-                },
-                Field {
-                    name: "name".into(),
-                    r#type: FieldType::String,
-                    is_nullable: false,
-                },
-            ],
-            primary_key: vec![],
-            distribution: DistributionParam::Global,
-            by_field: None,
-            sharding_key: None,
-            sharding_fn: None,
-            engine: None,
-            timeout: None,
-            owner: ADMIN_ID,
-            tier: DEFAULT_TIER.into(),
-            opts: vec![],
-            index_opts: vec![],
-        }
-        .test_create_space(&storage)
-        .unwrap();
-        assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
-
-        CreateTableParams {
-            id: 1337,
-            name: "friends_of_peppa".into(),
-            format: vec![],
-            primary_key: vec![],
-            distribution: DistributionParam::Sharded,
-            by_field: None,
-            sharding_key: None,
-            sharding_fn: None,
-            engine: Some(SpaceEngineType::Vinyl),
-            timeout: None,
-            owner: ADMIN_ID,
-            tier: DEFAULT_TIER.into(),
-            opts: vec![],
-            index_opts: vec![],
-        }
-        .test_create_space(&storage)
-        .unwrap();
-        assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
-
-        let err = CreateTableParams {
-            id: 0,
-            name: "friends_of_peppa".into(),
-            format: vec![],
-            primary_key: vec![],
-            distribution: DistributionParam::Global,
-            by_field: None,
-            sharding_key: None,
-            sharding_fn: None,
-            engine: None,
-            timeout: None,
-            owner: ADMIN_ID,
-            tier: DEFAULT_TIER.into(),
-            opts: vec![],
-            index_opts: vec![],
-        }
-        .test_create_space(&storage)
-        .unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "box error: CreateSpace: Failed to create space 'friends_of_peppa': space id 0 is reserved"
-        );
-    }
+    use tarantool::space::FieldType;
 
     #[::tarantool::test]
     fn ddl() {
@@ -2867,6 +2713,40 @@ mod tests {
             r#type: FieldType::Any,
             is_nullable: false,
         };
+
+        let err = CreateTableParams {
+            id: new_id,
+            name: new_space.into(),
+            format: vec![Field {
+                name: "invalid\nname".into(),
+                r#type: FieldType::Any,
+                is_nullable: false,
+            }],
+            primary_key: vec![],
+            distribution: DistributionParam::Global,
+            by_field: None,
+            sharding_key: None,
+            sharding_fn: None,
+            engine: None,
+            timeout: None,
+            owner: ADMIN_ID,
+            tier: DEFAULT_TIER.into(),
+            opts: vec![],
+            index_opts: vec![],
+        }
+        .validate()
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "box error: Identifier: Invalid identifier 'invalid\nname' (expected printable symbols only or it is too long)"
+        );
+
+        assert_eq!(
+            check_identifier(&"a".repeat(NAME_MAX + 1))
+                .unwrap_err()
+                .to_string(),
+            format!("identifier is too long (maximum is {NAME_MAX} bytes)")
+        );
 
         let err = CreateTableParams {
             id: new_id,
@@ -3061,6 +2941,7 @@ mod tests {
         }
         .validate()
         .unwrap();
+        assert!(Space::find(new_space).is_none());
 
         let err = CreateTableParams {
             id: new_id,

@@ -14,6 +14,14 @@ use crate::unwrap_or;
 use crate::util::Value;
 use std::collections::BTreeMap;
 
+/// Maximum length of a Tarantool schema object name in bytes.
+///
+/// Copied from `BOX_NAME_MAX` in `tarantool-sys/src/box/schema_def.h`.
+//
+// XXX: We deliberately keep it in sync manually instead of querying
+// `box.schema.NAME_MAX` through Lua: it is not expected to change.
+pub const NAME_MAX: usize = 65_000;
+
 /// Create a space.
 /// (for details see [box.schema.space.create()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
 ///

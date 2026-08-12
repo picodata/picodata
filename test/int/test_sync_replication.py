@@ -182,15 +182,7 @@ cluster:
 
 
 def test_sync_replication_ddl_through_sync_follower(cluster: Cluster):
-    """
-    CREATE TABLE validation does a local dry-run of space creation
-    (test_create_space) which requires the instance to be writable. On a sync
-    tier box.info.ro is forced to true by tarantool raft elections on
-    non-leaders, so the dry-run can't lift
-    the read-onlyness and used to fail with ER_READONLY for global tables and
-    for tables targeting an async tier whenever the DDL was submitted through
-    a sync follower. The dry-run is skipped in clusters with sync tiers.
-    """
+    """CREATE TABLE works through a read-only synchronous follower."""
     cluster.set_config_file(
         yaml="""
 cluster:

@@ -1472,6 +1472,12 @@ extern "C" {
     pub fn box_schema_version() -> u64;
 }
 
+#[cfg(feature = "picodata")]
+extern "C" {
+    /// Checks that a string is a valid Tarantool identifier.
+    pub fn identifier_check(identifier: *const c_char, len: c_int) -> c_int;
+}
+
 // Session.
 #[cfg(feature = "picodata")]
 extern "C" {
