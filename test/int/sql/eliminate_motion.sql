@@ -170,19 +170,16 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND a = 2 GROUP BY a;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (sum(count_1::int)::int -> col_1)
-  group by (gr_expr_1::int) output (gr_expr_1::int, count_1::int)
-    motion [policy: full, program: ReshardIfNeeded]
-      projection (t1.a::int -> gr_expr_1, count(*)::int -> count_1)
-        group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
-          selection ((t1.a::int = 1::int and t1.a::int < 10::int and t1.a::int = 2::int))
-            scan t1
+projection (count(*)::int -> col_1)
+  group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
+    selection ((t1.a::int = 1::int and t1.a::int < 10::int and t1.a::int = 2::int))
+      scan t1
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets <= []
+buckets = []
 
 -- TEST: distinct-1
 -- SQL:
@@ -836,7 +833,7 @@ buckets = [2752]
 -- SQL:
 SELECT count(*) FROM t WHERE a = 1 AND a = 2;
 -- EXPECTED:
-null
+0
 
 -- TEST: scalar-agg-2
 -- SQL:
@@ -846,17 +843,15 @@ EXPLAIN SELECT count(*) FROM t WHERE a = 1 AND a = 2;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (sum(count_1::int)::int -> col_1)
-  motion [policy: full, program: ReshardIfNeeded]
-    projection (count(*)::int -> count_1)
-      selection ((t.a::int = 1::int and t.a::int = 2::int))
-        scan t
+projection (count(*)::int -> col_1)
+  selection ((t.a::int = 1::int and t.a::int = 2::int))
+    scan t
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets <= []
+buckets = []
 
 -- TEST: init-3
 -- SQL:

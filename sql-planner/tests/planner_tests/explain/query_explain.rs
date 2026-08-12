@@ -121,7 +121,7 @@ fn test_query_explain_prepared_single_key_aggregate_stays_single_node() {
 }
 
 #[test]
-fn test_query_explain_prepared_single_key_with_constant_keeps_reduce_stage() {
+fn test_query_explain_prepared_single_key_with_constant_drops_reduce_stage() {
     let sql = r#"explain (logical, buckets) select count(*)
         from t5
         where a = $1 and a = 1"#;
@@ -134,22 +134,20 @@ fn test_query_explain_prepared_single_key_with_constant_keeps_reduce_stage() {
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
-    projection (sum(count_1::int)::int -> col_1)
-      motion [policy: full, program: ReshardIfNeeded]
-        projection (count(*)::int -> count_1)
-          selection ((t5.a::int = 1::int and t5.a::int = 1::int))
-            scan t5
+    projection (count(*)::int -> col_1)
+      selection ((t5.a::int = 1::int and t5.a::int = 1::int))
+        scan t5
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
 
-    buckets <= [3940]
+    buckets = [3940]
     ");
 }
 
 #[test]
-fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
+fn test_query_explain_prepared_reused_parameters_drops_reduce_stage() {
     let sql = r#"explain (logical, buckets) select count(*)
         from t5
         where a = $1 and a = $1 and a = $2"#;
@@ -166,17 +164,15 @@ fn test_query_explain_prepared_reused_parameters_keep_reduce_stage() {
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
-    projection (sum(count_1::int)::int -> col_1)
-      motion [policy: full, program: ReshardIfNeeded]
-        projection (count(*)::int -> count_1)
-          selection ((t5.a::int = 1::int and t5.a::int = 1::int and t5.a::int = 1::int))
-            scan t5
+    projection (count(*)::int -> col_1)
+      selection ((t5.a::int = 1::int and t5.a::int = 1::int and t5.a::int = 1::int))
+        scan t5
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
 
-    buckets <= [3940]
+    buckets = [3940]
     ");
 }
 

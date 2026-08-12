@@ -572,11 +572,7 @@ fn prepared_single_sharding_key_with_constant_keeps_full_motion_for_aggregate() 
 
     let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
 
-    assert!(
-        has_full_motion(&plan),
-        "expected a full motion for aggregate prepared-path, got slices: {:?}",
-        plan.slices()
-    );
+    assert_eq!(*plan.slices(), Slices::empty());
 }
 
 #[test]
@@ -593,11 +589,7 @@ fn prepared_reused_single_sharding_key_parameters_keep_full_motion_for_aggregate
         ],
     );
 
-    assert!(
-        has_full_motion(&plan),
-        "expected a full motion for aggregate prepared-path, got slices: {:?}",
-        plan.slices()
-    );
+    assert_eq!(*plan.slices(), Slices::empty());
 }
 
 #[test]
