@@ -4,7 +4,9 @@ use self::{client::PgClient, error::PgResult, tls::TlsAcceptor};
 use crate::config::PgprotoConfig;
 use crate::{static_ref, storage::Catalog, tlog, traft::error::Error};
 use prometheus::IntCounter;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+#[cfg(target_os = "linux")]
+use smol_str::ToSmolStr;
+use smol_str::{format_smolstr, SmolStr};
 #[cfg(target_os = "linux")]
 use std::os::linux::net::SocketAddrExt;
 use std::{
