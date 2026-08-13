@@ -75,6 +75,72 @@ def get_backup_timestamp_finished(i: Instance):
 ################### BACKUP TESTS ###################
 
 
+# Verify the complete BACKUP/RESTORE cycle with custom storage directories:
+#
+# 1. Run the instance with either separate directories or a nested layout.
+#    The former catches assumptions that all files live in `instance_dir`; the
+#    latter catches prefix-based engine detection because a vinyl path can also
+#    be located under `memtx.dir`.
+# 2. Insert row 1 and run BACKUP. BACKUP creates snapshot A containing row 1.
+# 3. Insert row 2 and create snapshot B. Snapshot B is newer than the backup
+#    and verifies that restore removes stale data from custom `memtx.dir` and
+#    `vinyl.dir` instead of recovering from it.
+# 4. Insert row 3 after snapshot B. This guarantees a WAL change newer than B.
+#    Also, without it, checkpoint GC could remove the WAL containing row 2.
+# 5. Restore snapshot A and verify that only row 1 remains. Rows 2 and 3 would
+#    expose failures to replace newer snapshots or clean custom `wal_dir`.
+#
+# Both layouts must restore engine files into their configured directories.
+# See <https://git.picodata.io/core/picodata/-/work_items/3090>.
+@pytest.mark.parametrize("nested", [False, True], ids=["separate", "nested"])
+def test_backup_restore_with_custom_data_dirs(cluster: Cluster, nested: bool):
+    instance_dir = Path(cluster.data_dir, "i1")
+    if nested:
+        wal_dir = instance_dir / "wal"
+        memtx_dir = instance_dir
+        vinyl_dir = instance_dir / "vinyl"
+    else:
+        wal_dir = Path(cluster.data_dir, "wal")
+        memtx_dir = Path(cluster.data_dir, "memtx")
+        vinyl_dir = Path(cluster.data_dir, "vinyl")
+
+    cluster.set_config_file(
+        yaml=f"""
+cluster:
+    name: test
+    tier:
+        default:
+            replication_factor: 1
+            can_vote: true
+instance:
+    instance_dir: {instance_dir}
+    wal_dir: {wal_dir}
+    memtx:
+        dir: {memtx_dir}
+    vinyl:
+        dir: {vinyl_dir}
+"""
+    )
+    cluster.set_service_password("password")
+    instance = cluster.add_instance(name="i1")
+
+    instance.sql("CREATE TABLE memtx_table (id INT PRIMARY KEY)")
+    instance.sql("CREATE TABLE vinyl_table (id INT PRIMARY KEY) USING VINYL")
+    instance.sql("INSERT INTO memtx_table VALUES (1)")
+    instance.sql("INSERT INTO vinyl_table VALUES (1)")
+    backup_name = instance.sql("BACKUP", timeout=40)[0][0]
+    instance.sql("INSERT INTO memtx_table VALUES (2)")
+    instance.sql("INSERT INTO vinyl_table VALUES (2)")
+    instance.call("box.snapshot")
+    instance.sql("INSERT INTO memtx_table VALUES (3)")
+    instance.sql("INSERT INTO vinyl_table VALUES (3)")
+
+    cluster.restore(backup_name)
+
+    assert instance.sql("SELECT * FROM memtx_table") == [[1]]
+    assert instance.sql("SELECT * FROM vinyl_table") == [[1]]
+
+
 def test_backup_basic_restore_sharded_table(cluster: Cluster):
     shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
