@@ -268,7 +268,7 @@ fn get_replicaset_to_configure<'t>(
 pub fn handle_replicaset_master_switchover<'i>(
     topology_ref: &TopologyCacheRef,
     term: RaftTerm,
-    sync_timeout: std::time::Duration,
+    rpc_timeout: std::time::Duration,
 ) -> Result<Option<Plan<'i>>> {
     for replicaset in topology_ref.all_replicasets() {
         if replicaset.current_master_name == replicaset.target_master_name {
@@ -359,7 +359,7 @@ pub fn handle_replicaset_master_switchover<'i>(
         let sync_rpc = rpc::replication::ReplicationSyncRequest {
             term,
             vclock: promotion_vclock.clone(),
-            timeout: sync_timeout,
+            timeout: rpc_timeout,
         };
 
         let new_master_raft_id = topology_ref.instance_by_name(&new_master_name)?.raft_id;
@@ -400,7 +400,7 @@ pub fn handle_replicaset_sync<'a>(
     term: RaftTerm,
     applied: RaftIndex,
     global_catalog_version: &SmolStr,
-    sync_timeout: std::time::Duration,
+    rpc_timeout: std::time::Duration,
 ) -> Result<Option<Plan<'a>>> {
     if !version_is_new_enough(
         global_catalog_version,
@@ -427,7 +427,7 @@ pub fn handle_replicaset_sync<'a>(
     let sync_rpc = rpc::replication::ReplicationSyncRequest {
         term,
         vclock: promotion_vclock.clone(),
-        timeout: sync_timeout,
+        timeout: rpc_timeout,
     };
 
     let mut bump_dml = vec![];

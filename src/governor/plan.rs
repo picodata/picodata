@@ -80,7 +80,7 @@ pub(super) fn action_plan<'i>(
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
     plugin_op: Option<&'i PluginOp>,
-    sync_timeout: Duration,
+    rpc_timeout: Duration,
     batch_size: usize,
     global_cluster_version: SmolStr,
     schema_version: u64,
@@ -244,7 +244,7 @@ pub(super) fn action_plan<'i>(
     //
     // This must be done after instances have (re)configured replication
     // because master switchover requires synchronizing via tarantool replication.
-    if let Some(plan) = handle_replicaset_master_switchover(topology_ref, term, sync_timeout)? {
+    if let Some(plan) = handle_replicaset_master_switchover(topology_ref, term, rpc_timeout)? {
         debug_assert_plan_kind!(
             plan,
             Plan::ReplicasetMasterConsistentSwitchover { .. }
@@ -265,7 +265,7 @@ pub(super) fn action_plan<'i>(
         term,
         applied,
         &global_catalog_version,
-        sync_timeout,
+        rpc_timeout,
     )? {
         debug_assert_plan_kind!(
             plan,
@@ -316,7 +316,7 @@ pub(super) fn action_plan<'i>(
         instances,
         replicasets,
         topology_ref,
-        sync_timeout,
+        rpc_timeout,
         batch_size,
     )? {
         debug_assert_plan_kind!(
@@ -339,7 +339,7 @@ pub(super) fn action_plan<'i>(
         applied,
         topology_ref,
         db_config,
-        sync_timeout,
+        rpc_timeout,
     )? {
         debug_assert_plan_kind!(
             plan,
@@ -364,7 +364,7 @@ pub(super) fn action_plan<'i>(
         instances,
         replicasets,
         db_config,
-        sync_timeout,
+        rpc_timeout,
     )? {
         debug_assert_plan_kind!(plan, Plan::ShardingBoot { .. });
 
@@ -387,7 +387,7 @@ pub(super) fn action_plan<'i>(
         let rpc = rpc::sharding::WaitBucketCountRequest {
             term,
             applied,
-            timeout: sync_timeout,
+            timeout: rpc_timeout,
             expected_bucket_count: 0,
         };
 
@@ -558,7 +558,7 @@ pub(super) fn action_plan<'i>(
         topology_ref,
         term,
         applied,
-        sync_timeout,
+        rpc_timeout,
         &global_cluster_version,
         &global_catalog_version,
         cluster_name,
@@ -587,7 +587,7 @@ pub(super) fn action_plan<'i>(
         schema_version,
         term,
         applied,
-        sync_timeout,
+        rpc_timeout,
         batch_size,
     )? {
         debug_assert_plan_kind!(
@@ -617,7 +617,7 @@ pub(super) fn action_plan<'i>(
         services,
         term,
         applied,
-        sync_timeout,
+        rpc_timeout,
         batch_size,
     )? {
         debug_assert_plan_kind!(
@@ -726,7 +726,7 @@ pub(super) fn action_plan<'i>(
         pending_catalog_version,
         global_catalog_version,
         applied,
-        sync_timeout,
+        rpc_timeout,
     )? {
         return Ok(plan);
     }
@@ -1558,7 +1558,7 @@ pub fn handle_instances_becoming_online<'i>(
     topology_ref: &TopologyCacheRef,
     term: RaftTerm,
     applied: RaftIndex,
-    sync_timeout: Duration,
+    rpc_timeout: Duration,
     global_cluster_version: &SmolStr,
     global_catalog_version: &SmolStr,
     cluster_name: &'static str,
@@ -1674,7 +1674,7 @@ pub fn handle_instances_becoming_online<'i>(
     let rpc = rpc::before_online::Request {
         term,
         applied,
-        timeout: sync_timeout,
+        timeout: rpc_timeout,
     };
 
     let predicate = cas::Predicate::new(applied, common_ranges.into_vec());

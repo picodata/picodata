@@ -43,7 +43,7 @@ pub fn handle_plugin_op<'i>(
     services: &HashMap<PluginIdentifier, Vec<&ServiceDef>>,
     term: RaftTerm,
     applied: RaftIndex,
-    sync_timeout: Duration,
+    rpc_timeout: Duration,
     batch_size: usize,
 ) -> Result<Option<Plan<'i>>> {
     let Some(plugin_op) = plugin_op else {
@@ -68,7 +68,7 @@ pub fn handle_plugin_op<'i>(
                 plugins,
                 term,
                 applied,
-                sync_timeout,
+                rpc_timeout,
                 batch_size,
             );
         }
@@ -86,7 +86,7 @@ pub fn handle_plugin_op<'i>(
                 services,
                 term,
                 applied,
-                sync_timeout,
+                rpc_timeout,
                 batch_size,
             );
         }
@@ -109,7 +109,7 @@ pub fn handle_plugin_op<'i>(
                 services,
                 term,
                 applied,
-                sync_timeout,
+                rpc_timeout,
                 batch_size,
             );
         }
@@ -136,7 +136,7 @@ pub fn handle_create_plugin<'i>(
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     term: RaftTerm,
     applied: RaftIndex,
-    sync_timeout: Duration,
+    rpc_timeout: Duration,
     batch_size: usize,
 ) -> Result<Option<Plan<'i>>> {
     // We must check if step kind is different from the one we tried on
@@ -169,7 +169,7 @@ pub fn handle_create_plugin<'i>(
     let rpc = rpc::load_plugin_dry_run::Request {
         term,
         applied,
-        timeout: sync_timeout,
+        timeout: rpc_timeout,
     };
 
     let plugin_def = manifest.plugin_def();
@@ -241,7 +241,7 @@ pub fn handle_enable_plugin<'i>(
     services: &HashMap<PluginIdentifier, Vec<&ServiceDef>>,
     term: RaftTerm,
     applied: RaftIndex,
-    sync_timeout: Duration,
+    rpc_timeout: Duration,
     batch_size: usize,
 ) -> Result<Option<Plan<'i>>> {
     // We must check if step kind is different from the one we tried on
@@ -289,7 +289,7 @@ pub fn handle_enable_plugin<'i>(
     let rpc = rpc::enable_plugin::Request {
         term,
         applied,
-        timeout: sync_timeout,
+        timeout: rpc_timeout,
     };
 
     let mut enable_ops = UpdateOps::new();
@@ -341,7 +341,7 @@ pub fn handle_alter_service_tiers<'i>(
     services: &HashMap<PluginIdentifier, Vec<&ServiceDef>>,
     term: RaftTerm,
     applied: RaftIndex,
-    sync_timeout: Duration,
+    rpc_timeout: Duration,
     batch_size: usize,
 ) -> Result<Option<Plan<'i>>> {
     // We must check if step kind is different from the one we tried on
@@ -466,12 +466,12 @@ pub fn handle_alter_service_tiers<'i>(
     let enable_rpc = rpc::enable_service::Request {
         term,
         applied,
-        timeout: sync_timeout,
+        timeout: rpc_timeout,
     };
     let disable_rpc = rpc::disable_service::Request {
         term,
         applied,
-        timeout: sync_timeout,
+        timeout: rpc_timeout,
     };
 
     Ok(Some(

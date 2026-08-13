@@ -30,7 +30,7 @@ pub(super) fn handle_governor_queue<'i>(
     pending_catalog_version: Option<SmolStr>,
     current_catalog_version: SmolStr,
     applied: RaftIndex,
-    sync_timeout: Duration,
+    rpc_timeout: Duration,
 ) -> Result<Option<Plan<'i>>> {
     // check cluster version
     let global_cluster_version = Version::try_from(global_cluster_version)
@@ -68,7 +68,7 @@ pub(super) fn handle_governor_queue<'i>(
             pending_catalog_version,
             current_catalog_version,
             applied,
-            sync_timeout,
+            rpc_timeout,
         );
     }
 
@@ -77,7 +77,7 @@ pub(super) fn handle_governor_queue<'i>(
         .iter()
         .find(|op| op.status == GovernorOpStatus::Pending && op.kind != GovernorOpKind::Upgrade)
     {
-        return run_governor_operation(topology_ref, next_op, applied, sync_timeout);
+        return run_governor_operation(topology_ref, next_op, applied, rpc_timeout);
     }
 
     Ok(None)
@@ -90,7 +90,7 @@ fn handle_catalog_upgrade<'i>(
     pending_catalog_version: SmolStr,
     current_catalog_version: SmolStr,
     applied: RaftIndex,
-    sync_timeout: Duration,
+    rpc_timeout: Duration,
 ) -> Result<Option<Plan<'i>>> {
     tlog!(
         Info,
@@ -132,7 +132,7 @@ fn handle_catalog_upgrade<'i>(
     // check if we have at least one pending upgrade operation
     // run it in such case
     if let Some(next_op) = pending_upgrade_operation {
-        return run_governor_operation(topology_ref, next_op, applied, sync_timeout);
+        return run_governor_operation(topology_ref, next_op, applied, rpc_timeout);
     }
 
     // we have all upgrade operations completed here
@@ -146,7 +146,7 @@ fn run_governor_operation<'i>(
     topology_ref: &TopologyCacheRef,
     op: &'i GovernorOperationDef,
     applied: RaftIndex,
-    sync_timeout: Duration,
+    rpc_timeout: Duration,
 ) -> Result<Option<Plan<'i>>> {
     tlog!(Info, "next governor operation to apply: {}", op);
     let cas_on_success = make_change_status_cas(op.id, applied, false, None)?;
@@ -163,7 +163,7 @@ fn run_governor_operation<'i>(
             let rpc = rpc::ddl_apply::Request {
                 term: cas_on_success.predicate.term,
                 applied,
-                timeout: sync_timeout,
+                timeout: rpc_timeout,
             };
             let targets = rpc::replicasets_masters(topology_ref);
             Ok(Some(
