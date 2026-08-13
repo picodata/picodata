@@ -565,7 +565,7 @@ fn proc_raft_interact(raft_messages)
 ### .proc_raft_join {: #proc_raft_join }
 
 ```rust
-fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_address, failure_domain, tier, picodata_version) -> Result
+fn proc_raft_join(cluster_name, instance_name, replicaset_name, iproto_advertise, failure_domain, tier, picodata_version) -> Result
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader),
@@ -583,7 +583,7 @@ fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_addres
 - `cluster_name`: (MP_STR)
 - `instance_name`: (MP_STR | MP_NIL)
 - `replicaset_name`: (MP_STR | MP_NIL) идентификатор [репликасета](../overview/glossary.md#replicaset)
-- `advertise_address`: (MP_STR)
+- `iproto_advertise`: (MP_STR)
 - `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain)
 - `tier`: (MP_STR) идентификатор [тира]
 - `picodata_version`: (MP_STR) версия инстанса

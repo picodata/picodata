@@ -262,7 +262,7 @@ pub(crate) fn setup() {
         Fields:
 
             - raft_id (number)
-            - advertise_address (string)
+            - iproto_advertise (string)
             - name (string)
             - uuid (string)
             - replicaset_name (string)
@@ -281,7 +281,7 @@ pub(crate) fn setup() {
             picodata> pico.instance_info()
             ---
             - raft_id: 1
-              advertise_address: 127.0.0.1:3301
+              iproto_advertise: 127.0.0.1:3301
               name: i1
               uuid: 68d4a766-4144-3248-aeb4-e212356716e4
               tier: storage

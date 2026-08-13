@@ -233,7 +233,8 @@ impl State {
 #[repr(C)]
 pub struct InstanceInfo {
     raft_id: u64,
-    advertise_address: RString,
+    #[sabi(rename = advertise_address)]
+    iproto_advertise: RString,
     name: RString,
     uuid: RString,
     replicaset_name: RString,
@@ -248,7 +249,7 @@ impl InstanceInfo {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         raft_id: u64,
-        advertise_address: String,
+        iproto_advertise: String,
         name: String,
         instance_uuid: String,
         replicaset_name: String,
@@ -260,7 +261,7 @@ impl InstanceInfo {
     ) -> Self {
         Self {
             raft_id,
-            advertise_address: RString::from(advertise_address),
+            iproto_advertise: RString::from(iproto_advertise),
             name: RString::from(name),
             uuid: RString::from(instance_uuid),
             replicaset_name: RString::from(replicaset_name),
@@ -278,8 +279,13 @@ impl InstanceInfo {
     }
 
     /// Returns address where other instances can connect to this instance.
+    pub fn iproto_advertise(&self) -> &str {
+        self.iproto_advertise.as_str()
+    }
+
+    #[deprecated = "use iproto_advertise instead"]
     pub fn advertise_address(&self) -> &str {
-        self.advertise_address.as_str()
+        self.iproto_advertise()
     }
 
     /// Returns the persisted `InstanceName` of the current instance.

@@ -1910,7 +1910,7 @@ fn start_pre_join(
         cluster_name: config.cluster_name().into(),
         instance_name: config.instance.name(),
         replicaset_name: config.instance.replicaset_name(),
-        advertise_address: config.instance.iproto.advertise().to_host_port(),
+        iproto_advertise: config.instance.iproto.advertise().to_host_port(),
         pgproto_advertise_address: config.instance.pgproto.advertise().to_host_port(),
         failure_domain: config.instance.failure_domain().clone(),
         tier: config.effective_instance_tier().to_smolstr(),

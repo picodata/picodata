@@ -53,7 +53,7 @@ crate::define_rpc_request! {
         pub cluster_name: SmolStr,
         pub instance_name: Option<InstanceName>,
         pub replicaset_name: Option<ReplicasetName>,
-        pub advertise_address: SmolStr,
+        pub iproto_advertise: SmolStr,
         pub pgproto_advertise_address: SmolStr,
         pub failure_domain: FailureDomain,
         pub tier: SmolStr,
@@ -148,7 +148,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 .filter(|i| !has_states!(i, Expelled -> *))
                 .map(|i| i.raft_id);
             let mut replication_addresses = storage.peer_addresses.addresses_by_ids(replicas)?;
-            replication_addresses.insert(req.advertise_address.clone());
+            replication_addresses.insert(req.iproto_advertise.clone());
 
             let topology_ref = node.topology_cache.get();
             let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
@@ -173,7 +173,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 
         let peer_address = traft::PeerAddress {
             raft_id: instance.raft_id,
-            address: req.advertise_address.clone(),
+            address: req.iproto_advertise.clone(),
             connection_type: traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
         };
         let pgproto_peer_address = traft::PeerAddress {
@@ -284,7 +284,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             .filter(|i| !has_states!(i, Expelled -> *))
             .map(|i| i.raft_id);
         let mut replication_addresses = storage.peer_addresses.addresses_by_ids(replicas)?;
-        replication_addresses.insert(req.advertise_address.clone());
+        replication_addresses.insert(req.iproto_advertise.clone());
 
         let topology_ref = node.topology_cache.get();
         let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
