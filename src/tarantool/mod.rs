@@ -1007,11 +1007,12 @@ extern "C" fn xlog_shredding_remove_cb(
 }
 
 pub fn rm_tarantool_files(
-    instance_dir: impl AsRef<std::path::Path>,
+    data_dir: impl AsRef<std::path::Path>,
 ) -> Result<(), tarantool::error::Error> {
-    let entries = std::fs::read_dir(instance_dir)?;
-    for entry in entries {
-        let path = entry?.path();
+    for entry in std::fs::read_dir(data_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
         if !path.is_file() {
             continue;
         }
@@ -1019,8 +1020,7 @@ pub fn rm_tarantool_files(
         let Some(ext) = path.extension() else {
             continue;
         };
-
-        if ext != "xlog" && ext != "snap" {
+        if ext != "xlog" && ext != "snap" && ext != "vylog" {
             continue;
         }
 

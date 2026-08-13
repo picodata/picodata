@@ -1705,8 +1705,19 @@ fn restore_from_backup(config: &PicodataConfig, backup_path: &PathBuf) -> Result
         )));
     }
 
-    // Cleanup the instance directory with WALs existing before BACKUP run.
-    rm_tarantool_files(instance_dir)?;
+    // A backup represents the database at its snapshot LSN, while the current
+    // data directories may contain snapshots, WALs, and vinyl runs created at
+    // later LSNs. Tarantool would recover these newer files together with the
+    // backup and advance past the requested point, so remove them before
+    // copying the backup.
+    for dir in [
+        instance_dir,
+        config.instance.memtx_dir(),
+        config.instance.vinyl_dir(),
+        config.instance.wal_dir(),
+    ] {
+        rm_tarantool_files(dir)?;
+    }
 
     // Move data from backup dir to instance data dir.
     for entry in fs::read_dir(backup_path)? {
@@ -1728,11 +1739,25 @@ fn restore_from_backup(config: &PicodataConfig, backup_path: &PathBuf) -> Result
             continue;
         }
 
-        let path_dest = instance_dir.join(entry_name);
+        // Tarantool looks for each engine's files only in its configured
+        // directory, but the BACKUP merges memtx and vinyl entries under
+        // one root and does not record which configured directory each came
+        // from. The extension provides that missing mapping: `.snap` goes to
+        // `memtx.dir`, `.xlog` to `wal_dir`, and vinyl files to `vinyl.dir`.
+        // Non-share directories contain nested vinyl `.run`/`.index` files
+        // and go to `vinyl.dir` as well.
+        let destination_dir = if path_src.is_dir() {
+            config.instance.vinyl_dir()
+        } else {
+            match path_src.extension().and_then(|ext| ext.to_str()) {
+                Some("snap") => config.instance.memtx_dir(),
+                Some("xlog") => config.instance.wal_dir(),
+                Some("vylog" | "run" | "index") => config.instance.vinyl_dir(),
+                _ => instance_dir,
+            }
+        };
+        let path_dest = destination_dir.join(entry_name);
 
-        // We don't have to check extenstion here
-        // as we want to move all files from backup dir
-        // (including .picodata-cookie and config) into instance_dir.
         if path_src.is_file() {
             // TODO: Am I right that we want to copy files without using
             //       hardlinks when restoring from a backup?

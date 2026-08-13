@@ -813,11 +813,36 @@ pub fn backup_local(
     })?;
     tlog!(Info, "Created backup dir {}", backup_path.display());
 
-    // Backup files from box.backup.
+    // Tarantool reports backup files as absolute paths rooted in each engine's
+    // configured directory. To store portable paths, strip the corresponding
+    // engine root rather than `instance_dir`.
+    //
+    // XXX: The source root cannot be inferred from the first matching prefix.
+    // For example, consider this valid nested layout:
+    //
+    //   memtx.dir = /data/i1
+    //   vinyl.dir = /data/i1/vinyl
+    //
+    // A file under /data/i1/vinyl matches both roots. Its extension identifies
+    // the engine unambiguously and therefore determines which root to strip.
+    // For more context, see <https://git.picodata.io/core/picodata/-/work_items/3090>.
     for box_backup_path in box_backup_files {
-        let box_backup_file_name = box_backup_path
-            .strip_prefix(instance_dir)
-            .expect("box.backup.start() should return paths inside the instance directory");
+        let source_dir = match box_backup_path.extension().and_then(|ext| ext.to_str()) {
+            Some("snap") => config.memtx_dir(),
+            Some("vylog" | "run" | "index") => config.vinyl_dir(),
+            _ => {
+                return Err(Error::other(format!(
+                    "box.backup.start() returned an unexpected path: {}",
+                    box_backup_path.display()
+                )))
+            }
+        };
+        let box_backup_file_name = box_backup_path.strip_prefix(source_dir).map_err(|_| {
+            Error::other(format!(
+                "box.backup.start() returned a path outside its configured data directory: {}",
+                box_backup_path.display()
+            ))
+        })?;
         let dest_path = backup_path.join(box_backup_file_name);
 
         if let Some(parent) = dest_path.parent() {
