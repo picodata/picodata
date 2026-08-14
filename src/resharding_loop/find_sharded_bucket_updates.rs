@@ -6,7 +6,6 @@ use crate::vshard::SPACE_BUCKET;
 use crate::Result;
 use smol_str::SmolStr;
 use tarantool::index::IteratorType;
-use tarantool::tuple::Tuple;
 
 ////////////////////////////////////////////////////////////////////////////////
 // find_sharded_bucket_updates
@@ -18,10 +17,23 @@ pub fn find_sharded_bucket_updates(
     to_state: VshardBucketState,
     expected_peer: Option<SmolStr>,
 ) -> Result<Vec<VshardBucketRecord>> {
-    let start = range.start();
-    let iter = SPACE_BUCKET.select(IteratorType::GE, &[start])?;
+    let (start, end) = (*range.start(), *range.end());
+    let mut actual_buckets = vec![];
+    for tuple in SPACE_BUCKET.select(IteratorType::GE, &[start])? {
+        let bucket: VshardBucketRecord = tuple.decode()?;
+        if bucket.bucket_id > end {
+            break;
+        }
+        actual_buckets.push(bucket);
+    }
 
-    find_sharded_bucket_updates_impl(range, from_state, to_state, expected_peer, iter)
+    Ok(find_sharded_bucket_updates_impl(
+        range,
+        from_state,
+        to_state,
+        expected_peer,
+        &actual_buckets,
+    ))
 }
 
 fn find_sharded_bucket_updates_impl(
@@ -29,14 +41,12 @@ fn find_sharded_bucket_updates_impl(
     from_state: Option<VshardBucketState>,
     to_state: VshardBucketState,
     expected_peer: Option<SmolStr>,
-    iter: impl Iterator<Item = Tuple>,
-) -> Result<Vec<VshardBucketRecord>> {
+    actual_buckets: &[VshardBucketRecord],
+) -> Vec<VshardBucketRecord> {
     let (start, end) = range.into_inner();
 
     #[rustfmt::skip]
     tlog!(Debug, "per _pico_bucket: [{start}..{end}, {to_state:?}, {expected_peer:?}]");
-
-    let mut iter = iter.peekable();
 
     let handle_no_buckets = |changes: &mut Vec<_>, start, end| {
         debug_assert!(start <= end, "{start}, {end}");
@@ -59,24 +69,24 @@ fn find_sharded_bucket_updates_impl(
 
     let mut changes = vec![];
 
-    let Some(first) = iter.peek() else {
+    let Some(first) = actual_buckets.first() else {
         // No buckets in _bucket so far, must insert new ones
         handle_no_buckets(&mut changes, start, end);
 
-        return Ok(changes);
+        return changes;
     };
 
-    let first_bucket_id: u64 = first.field(0)?.expect("database constraint violation");
+    let first_bucket_id = first.bucket_id;
 
     // Callers always select with IteratorType::GE on the range start, so the
-    // iterator never yields buckets before the range.
+    // slice never holds buckets before the range.
     debug_assert!(first_bucket_id >= start, "{first_bucket_id} < {start}");
 
     if first_bucket_id > end {
         // No _bucket buckets in target range, must insert new ones
         handle_no_buckets(&mut changes, start, end);
 
-        return Ok(changes);
+        return changes;
     }
 
     if first_bucket_id > start {
@@ -86,8 +96,8 @@ fn find_sharded_bucket_updates_impl(
 
     let mut last_bucket_id = first_bucket_id;
 
-    for tuple in iter {
-        let bucket_id: u64 = tuple.field(0)?.expect("database constraint violation");
+    for bucket in actual_buckets {
+        let bucket_id = bucket.bucket_id;
         debug_assert!(bucket_id >= start, "{bucket_id} < {start}");
 
         if bucket_id > end {
@@ -101,9 +111,7 @@ fn find_sharded_bucket_updates_impl(
 
         last_bucket_id = bucket_id;
 
-        let actual_state: VshardBucketState =
-            tuple.field(1)?.expect("database constraint violation");
-
+        let actual_state = bucket.state;
         if Some(actual_state) == from_state {
             if actual_state != to_state {
                 // Such buckets already exists, but have a different state, must update
@@ -121,7 +129,7 @@ fn find_sharded_bucket_updates_impl(
         handle_no_buckets(&mut changes, last_bucket_id + 1, end);
     }
 
-    Ok(changes)
+    changes
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -137,11 +145,15 @@ mod test {
         from_state: Option<VshardBucketState>,
         to_state: VshardBucketState,
         peer: Option<&str>,
-        existing: Vec<VshardBucketRecord>,
+        actual_buckets: Vec<VshardBucketRecord>,
     ) -> Vec<VshardBucketRecord> {
-        let iter = existing.iter().map(|r| Tuple::new(r).unwrap());
-        find_sharded_bucket_updates_impl(range, from_state, to_state, peer.map(Into::into), iter)
-            .unwrap()
+        find_sharded_bucket_updates_impl(
+            range,
+            from_state,
+            to_state,
+            peer.map(Into::into),
+            &actual_buckets,
+        )
     }
 
     fn active(id: u64) -> VshardBucketRecord {
