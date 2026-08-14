@@ -712,3 +712,60 @@ def test_upgraded_schema_matches_fresh_cluster(
     # Check catalogs separately so pytest reports the mismatching catalog.
     for catalog_name in upgraded_state:
         assert upgraded_state[catalog_name] == fresh_state[catalog_name], catalog_name
+
+
+def read_parameter(instance: Instance, key: str):
+    """
+    Read a global-scope parameter from `_pico_db_config`, or `None` if the
+    cluster has no row for it.
+    """
+    res = instance.sql("SELECT value FROM _pico_db_config WHERE key = ?", key)
+    if not res:
+        return None
+    assert len(res) == 1, res
+    return res[0][0]
+
+
+# The 26.3.1 catalog upgrade adds `governor_ddl_rpc_timeout` and raises the
+# default of `governor_common_rpc_timeout` from 3.0 to 7.0.
+@pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        VersionAlias.PREVIOUS_MINOR,
+        VersionAlias.CURRENT,
+    ]
+)
+def test_upgrade_governor_rpc_timeouts(cluster: Cluster, registry: Registry):
+    previous = registry.get_or_skip(VersionAlias.PREVIOUS_MINOR)
+    current = registry.get(VersionAlias.CURRENT)
+    assert current is not None
+
+    cluster.deploy(executable=previous, instance_count=1)
+    i1 = cluster.leader()
+
+    # A cluster bootstrapped before the upgrade has no row for the ddl timeout
+    # and holds the old common timeout default.
+    assert read_parameter(i1, "governor_ddl_rpc_timeout") is None
+    assert read_parameter(i1, "governor_common_rpc_timeout") == 3.0
+
+    cluster.change_executable(current)
+    i1 = cluster.leader()
+
+    assert read_parameter(i1, "governor_ddl_rpc_timeout") == 30.0
+    assert read_parameter(i1, "governor_common_rpc_timeout") == 7.0
+
+    # Now the same upgrade on a cluster whose common timeout was tuned away from
+    # the old default. Only the exact old default counts as untouched, so the
+    # tuned value must survive.
+    cluster.reset()
+    os.makedirs(cluster.data_dir)  # XXX: `Cluster.reset` removes the data directory.
+    cluster.deploy(executable=previous, instance_count=1)
+    i1 = cluster.leader()
+
+    i1.sql("ALTER SYSTEM SET governor_common_rpc_timeout = 5", sudo=True)
+
+    cluster.change_executable(current)
+    i1 = cluster.leader()
+
+    assert read_parameter(i1, "governor_ddl_rpc_timeout") == 30.0
+    assert read_parameter(i1, "governor_common_rpc_timeout") == 5.0

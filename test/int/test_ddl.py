@@ -1,4 +1,7 @@
+import os
 import re
+import signal
+
 import pytest
 import yaml
 from conftest import (
@@ -10,6 +13,76 @@ from conftest import (
     log_crawler,
     ReplicationBroken,
 )
+
+# The governor logs this when a step's RPC fails and the step is retried behind
+# an exponential backoff.
+BACKOFF_LOG_LINE = "sleeping due to backoff"
+
+
+def test_slow_ddl_apply_does_not_backoff(cluster: Cluster):
+    # Two single-instance replicasets, so both instances are replicaset masters
+    # and the DDL apply RPC is sent to each.
+    i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=1)
+
+    def block_apply_on_i2_for(seconds: int):
+        # Set the block synchronously first, so there is no race with the RPC,
+        # then release it from a background fiber.
+        i2.call("pico._inject_error", "BLOCK_APPLY_SCHEMA_CHANGE_TRANSACTION", True)
+        i2.eval(
+            """
+            local fiber = require('fiber')
+            local delay = ...
+            fiber.create(function()
+                fiber.sleep(delay)
+                pico._inject_error("BLOCK_APPLY_SCHEMA_CHANGE_TRANSACTION", false)
+            end)
+            """,
+            seconds,
+        )
+
+    # Positive case: with the ddl timeout below the block duration the apply RPC
+    # times out and the step backs off, so the message must appear. A timed out
+    # apply is retried rather than aborted, so the DDL still completes once the
+    # block is released. Without this half the negative case below would keep
+    # passing if the message was reworded or stopped being reachable at all.
+    i1.sql("ALTER SYSTEM SET governor_ddl_rpc_timeout = 1", sudo=True)
+    lc = log_crawler(i1, BACKOFF_LOG_LINE)
+    block_apply_on_i2_for(5)
+    assert i1.sql("CREATE TABLE t1 (id INT PRIMARY KEY)", timeout=60)["row_count"] == 1
+    lc.wait_matched()
+
+    # Negative case: same block, ddl timeout back at its 30s default. The apply
+    # outlives the 7s common timeout but fits within the ddl timeout, so the
+    # step never backs off.
+    i1.sql("ALTER SYSTEM RESET governor_ddl_rpc_timeout", sudo=True)
+    lc = log_crawler(i1, BACKOFF_LOG_LINE)
+    block_apply_on_i2_for(10)
+    assert i1.sql("CREATE TABLE t2 (id INT PRIMARY KEY)", timeout=60)["row_count"] == 1
+    assert not lc.matched
+
+
+def test_ddl_rpc_timeout_does_not_delay_offline_detection(cluster: Cluster):
+    # A large ddl timeout must NOT slow failure detection. Detection is driven by
+    # the raft send deadline (governor_common_rpc_timeout), which we leave at its
+    # default; only governor_ddl_rpc_timeout is raised.
+    #
+    # Three instances so freezing one keeps raft quorum and the surviving leader
+    # can still mark the frozen instance Offline.
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    i1.sql("ALTER SYSTEM SET governor_ddl_rpc_timeout = 300", sudo=True)
+    i1.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1", sudo=True)
+
+    # Freeze i3 so it stops answering, without closing its TCP connection.
+    assert i3.process
+    os.killpg(i3.process.pid, signal.SIGSTOP)
+    try:
+        # With the split this happens within a few seconds. With a single knob at
+        # 300 the raft send deadline would be 300s and this would exceed the test
+        # budget.
+        cluster.wait_has_states(i3, "Offline", "Offline")
+    finally:
+        os.killpg(i3.process.pid, signal.SIGCONT)
 
 
 def test_ddl_abort(cluster: Cluster):

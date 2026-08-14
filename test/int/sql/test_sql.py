@@ -641,6 +641,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "governor_auto_offline_timeout",
         "governor_check_replication_error",
         "governor_common_rpc_timeout",
+        "governor_ddl_rpc_timeout",
         "governor_plugin_rpc_timeout",
         "governor_raft_op_timeout",
         "governor_rpc_batch_size",
@@ -6103,6 +6104,7 @@ def test_alter_system_property(cluster: Cluster):
         ("governor_raft_op_timeout", "", 10),
         ("governor_common_rpc_timeout", "", 10),
         ("governor_plugin_rpc_timeout", "", 20),
+        ("governor_ddl_rpc_timeout", "", 60),
     ]
 
     default_prop = []

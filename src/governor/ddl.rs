@@ -53,7 +53,7 @@ pub fn handle_pending_ddl<'i>(
     schema_version: u64,
     term: RaftTerm,
     applied: RaftIndex,
-    rpc_timeout: Duration,
+    ddl_rpc_timeout: Duration,
     batch_size: usize,
 ) -> Result<Option<Plan<'i>>> {
     let Some((ref ddl, pending_schema_version)) = *pending_ddl else {
@@ -72,7 +72,7 @@ pub fn handle_pending_ddl<'i>(
             *timestamp,
             term,
             applied,
-            rpc_timeout,
+            ddl_rpc_timeout,
             batch_size,
         );
     }
@@ -87,7 +87,7 @@ pub fn handle_pending_ddl<'i>(
             *id,
             term,
             applied,
-            rpc_timeout,
+            ddl_rpc_timeout,
             batch_size,
         );
     }
@@ -112,7 +112,7 @@ pub fn handle_pending_ddl<'i>(
     let rpc = rpc::ddl_apply::Request {
         term,
         applied,
-        timeout: rpc_timeout,
+        timeout: ddl_rpc_timeout,
     };
 
     Ok(Some(
@@ -151,7 +151,7 @@ fn handle_truncate_table<'i>(
     table_id: SpaceId,
     term: RaftTerm,
     applied: RaftIndex,
-    rpc_timeout: Duration,
+    ddl_rpc_timeout: Duration,
     batch_size: usize,
 ) -> Result<Option<Plan<'i>>> {
     let table_def = tables.get(&table_id).expect("failed to get table_def");
@@ -231,7 +231,7 @@ fn handle_truncate_table<'i>(
     let rpc = rpc::ddl_apply::Request {
         term,
         applied,
-        timeout: rpc_timeout,
+        timeout: ddl_rpc_timeout,
     };
 
     let ranges = cas::Range::for_op(&Op::DdlCommit)?;

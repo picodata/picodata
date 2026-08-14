@@ -75,6 +75,8 @@ pub(crate) const DEFAULT_SQL_LOG: bool = false;
 pub(crate) const DEFAULT_SQL_RUNTIME_CONCURRENCY_MAX: u64 = 50;
 pub const DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION: bool = false;
 pub const DEFAULT_REPLICATION_MODE: ReplicationMode = ReplicationMode::Async;
+pub const DEFAULT_GOVERNOR_DDL_RPC_TIMEOUT: f64 = 30.0;
+pub const DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT: f64 = 7.0;
 
 pub use ::sql::ir::types::DomainType as SbroadType;
 pub use tls::{TlsClientMethod, TlsClientSettings, TlsListenerSettings};
@@ -2646,7 +2648,7 @@ pub struct AlterSystemParameters {
     /// other instances.
     /// Governor will only wait for the RPC responses for this many seconds before going to the new loop iteration.
     #[introspection(sbroad_type = SbroadType::Double)]
-    #[introspection(config_default = 3.0)]
+    #[introspection(config_default = DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT)]
     pub governor_common_rpc_timeout: f64,
 
     /// Governor sets up the plugin system by making RPC requests to other instances.
@@ -2654,6 +2656,21 @@ pub struct AlterSystemParameters {
     #[introspection(sbroad_type = SbroadType::Double)]
     #[introspection(config_default = 10.0)]
     pub governor_plugin_rpc_timeout: f64,
+
+    /// Governor applies global schema changes (CREATE TABLE, CREATE INDEX,
+    /// TRUNCATE, BACKUP) by making RPC requests to replicaset masters. A single
+    /// schema change (for example creating a vinyl table, which writes the
+    /// `.vylog`, or building a large index) can take far longer than an ordinary
+    /// governor RPC. Timing it out only restarts the work behind a backoff, so
+    /// these RPCs get their own timeout.
+    ///
+    /// Note this is deliberately separate from
+    /// [`governor_common_rpc_timeout`](field@Self::governor_common_rpc_timeout),
+    /// which also bounds raft message delivery and therefore drives
+    /// unreachability detection.
+    #[introspection(sbroad_type = SbroadType::Double)]
+    #[introspection(config_default = DEFAULT_GOVERNOR_DDL_RPC_TIMEOUT)]
+    pub governor_ddl_rpc_timeout: f64,
 
     /// Maximum number of RPCs governor will send at once during one governor
     /// step.
@@ -2946,6 +2963,12 @@ impl AlterSystemParameters {
     #[inline]
     pub fn governor_plugin_rpc_timeout(&self) -> std::time::Duration {
         std::time::Duration::from_secs_f64(self.governor_plugin_rpc_timeout)
+    }
+
+    /// See [`governor_ddl_rpc_timeout`](field@Self::governor_ddl_rpc_timeout).
+    #[inline]
+    pub fn governor_ddl_rpc_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs_f64(self.governor_ddl_rpc_timeout)
     }
 
     /// See [`raft_snapshot_read_view_close_timeout`](field@Self::raft_snapshot_read_view_close_timeout).

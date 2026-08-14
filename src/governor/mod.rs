@@ -111,6 +111,7 @@ impl Loop {
         let raft_op_timeout = db_config.governor_raft_op_timeout();
         let rpc_timeout = db_config.governor_common_rpc_timeout();
         let plugin_rpc_timeout = db_config.governor_plugin_rpc_timeout();
+        let ddl_rpc_timeout = db_config.governor_ddl_rpc_timeout();
         let batch_size = db_config.governor_rpc_batch_size;
 
         let instances: Vec<_> = topology_ref.all_instances().cloned().collect();
@@ -224,6 +225,7 @@ impl Loop {
             &services,
             plugin_op.as_ref(),
             rpc_timeout,
+            ddl_rpc_timeout,
             batch_size,
             global_cluster_version,
             schema_version,
@@ -254,6 +256,7 @@ impl Loop {
         // Governor uses the RPC error messages to log them and to save
         // them in the `governor_loop_last_error` field of `proc_runtime_info_v2`.
         let rpc_timeout = rpc_timeout.saturating_add(Duration::from_secs(1));
+        let ddl_rpc_timeout = ddl_rpc_timeout.saturating_add(Duration::from_secs(1));
 
         // Must be dropped before yielding
         drop(topology_ref);
@@ -1001,7 +1004,7 @@ impl Loop {
                             targets_batch,
                             &rpc,
                             pool,
-                            rpc_timeout,
+                            ddl_rpc_timeout,
                         ).await;
 
                         last_step_info.report_stats();
@@ -1086,7 +1089,7 @@ impl Loop {
                                 &tier,
                                 tier_masters_count,
                                 &rpc,
-                                rpc_timeout,
+                                ddl_rpc_timeout,
                                 pool.test_override.as_ref(),
                             )?;
 
@@ -1103,7 +1106,7 @@ impl Loop {
                             other_tiers_masters_batch,
                             &rpc,
                             pool,
-                            rpc_timeout,
+                            ddl_rpc_timeout,
                         ).await;
 
                         last_step_info.report_stats();
@@ -1193,7 +1196,7 @@ impl Loop {
                                 masters_batch,
                                 &rpc_master,
                                 pool,
-                                rpc_timeout,
+                                ddl_rpc_timeout,
                             ).await;
 
                             last_step_info.report_stats();
@@ -1223,7 +1226,7 @@ impl Loop {
                                 replicas_batch,
                                 &rpc_replica,
                                 pool,
-                                rpc_timeout,
+                                ddl_rpc_timeout,
                             ).await;
 
                             last_step_info.report_stats();
@@ -1265,7 +1268,7 @@ impl Loop {
                                 &targets_total,
                                 &rpc_clear,
                                 pool,
-                                rpc_timeout,
+                                ddl_rpc_timeout,
                             ).await {
                                 tlog!(Error, "Clearing failed backup failed, ignoring the error and continuing abort: {}", e);
                             }
@@ -1753,7 +1756,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_name in targets {
                             tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
-                            let resp = pool.call(&instance_name, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
+                            let resp = pool.call(&instance_name, proc_name!(proc_apply_schema_change), &rpc, ddl_rpc_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => Ok(()),

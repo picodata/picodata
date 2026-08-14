@@ -81,6 +81,7 @@ pub(super) fn action_plan<'i>(
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
     plugin_op: Option<&'i PluginOp>,
     rpc_timeout: Duration,
+    ddl_rpc_timeout: Duration,
     batch_size: usize,
     global_cluster_version: SmolStr,
     schema_version: u64,
@@ -587,7 +588,7 @@ pub(super) fn action_plan<'i>(
         schema_version,
         term,
         applied,
-        rpc_timeout,
+        ddl_rpc_timeout,
         batch_size,
     )? {
         debug_assert_plan_kind!(

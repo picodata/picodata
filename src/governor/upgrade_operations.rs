@@ -1,10 +1,13 @@
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::pico_table::PicoTable;
+use crate::config::apply_parameter;
 use crate::config::DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION;
+use crate::config::DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT;
+use crate::config::DEFAULT_GOVERNOR_DDL_RPC_TIMEOUT;
 use crate::config::DEFAULT_REPLICATION_MODE;
 use crate::storage::schema::ddl_change_format_on_master;
-use crate::storage::{Instances, Replicasets, SystemTable, Tiers};
+use crate::storage::{DbConfig, Instances, Replicasets, SystemTable, Tiers};
 use crate::tier::DEFAULT_TIER;
 use crate::traft;
 use crate::{system_parameter_name, tlog};
@@ -130,6 +133,19 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
         "26.2.2",
         &[("exec_script", InternalScript::DropObsoleteProcedures.as_str())],
     ),
+    (
+        "26.3.1",
+        &[
+            (
+                "exec_script",
+                InternalScript::InsertGovernorDdlRpcTimeoutIntoPicoDbConfig.as_str(),
+            ),
+            (
+                "exec_script",
+                InternalScript::UpdateGovernorCommonRpcTimeoutInPicoDbConfig.as_str(),
+            ),
+        ],
+    ),
 ];
 
 tarantool::define_str_enum! {
@@ -214,6 +230,21 @@ tarantool::define_str_enum! {
         /// ```
         InsertWalModeIntoPicoDbConfig = "insert_wal_mode_into_pico_db_config",
 
+        /// Global configuration parameter:
+        /// ```ignore
+        /// INSERT INTO _pico_db_config VALUES ('governor_ddl_rpc_timeout', '', 30.0)
+        /// ```
+        InsertGovernorDdlRpcTimeoutIntoPicoDbConfig = "insert_governor_ddl_rpc_timeout_into_pico_db_config",
+
+        /// Global configuration parameter. Raises the default from 3.0 to 7.0
+        /// only for clusters whose stored value is still exactly the old default,
+        /// which preserves any value tuned to something other than 3.0:
+        /// ```ignore
+        /// UPDATE _pico_db_config SET value = 7.0
+        ///     WHERE key = 'governor_common_rpc_timeout' AND value = 3.0
+        /// ```
+        UpdateGovernorCommonRpcTimeoutInPicoDbConfig = "update_governor_common_rpc_timeout_in_pico_db_config",
+
         /// Drop obsolete versions of internal procedures from `_func`.
         DropObsoleteProcedures = "drop_obsolete_procedures",
     }
@@ -264,6 +295,12 @@ crate::define_rpc_request! {
 
             InternalScript::InsertWalModeIntoPicoDbConfig =>
                 insert_wal_mode_into_pico_db_config(),
+
+            InternalScript::InsertGovernorDdlRpcTimeoutIntoPicoDbConfig =>
+                insert_governor_ddl_rpc_timeout_into_pico_db_config(),
+
+            InternalScript::UpdateGovernorCommonRpcTimeoutInPicoDbConfig =>
+                update_governor_common_rpc_timeout_in_pico_db_config(),
 
             InternalScript::DropObsoleteProcedures =>
                 execute_drop_obsolete_procedures(),
@@ -393,6 +430,75 @@ fn insert_wal_mode_into_pico_db_config() -> traft::Result<Response> {
         }
         Ok(())
     })?;
+
+    Ok(Response {})
+}
+
+/// Writes a global-scope parameter into `_pico_db_config` and refreshes the
+/// in-memory parameter cache of this instance.
+///
+/// [`DbConfig::replace`] writes the local space directly instead of going
+/// through raft, so the applied-DML path in `NodeImpl::handle_committed_entries`,
+/// which is what normally calls [`apply_parameter`], never runs for it. Without
+/// the explicit call the table reports the new value while the instance keeps
+/// using the old one until its next restart.
+fn replace_global_parameter(name: &str, value: &impl serde::Serialize) -> traft::Result<()> {
+    let node = traft::node::global()?;
+
+    transaction::transaction(|| -> traft::Result<()> {
+        node.storage
+            .db_config
+            .replace(name, DbConfig::GLOBAL_SCOPE, value)?;
+        Ok(())
+    })?;
+
+    let tuple = node
+        .storage
+        .db_config
+        .primary
+        .get(&(name, DbConfig::GLOBAL_SCOPE))?
+        .expect("was just written by the transaction above");
+
+    // Yields, hence it is done after the transaction commits.
+    apply_parameter(
+        &node.alter_system_parameters,
+        tuple,
+        node.topology_cache.my_tier_name(),
+    )?;
+
+    Ok(())
+}
+
+fn insert_governor_ddl_rpc_timeout_into_pico_db_config() -> traft::Result<Response> {
+    // Global-scope parameter, so a single row with the empty tier scope.
+    replace_global_parameter(
+        system_parameter_name!(governor_ddl_rpc_timeout),
+        &DEFAULT_GOVERNOR_DDL_RPC_TIMEOUT,
+    )?;
+
+    Ok(Response {})
+}
+
+fn update_governor_common_rpc_timeout_in_pico_db_config() -> traft::Result<Response> {
+    // Historical default we are migrating away from. _pico_db_config stores only
+    // the value, not whether it was left at the default or set explicitly, so we
+    // key off the value alone: a cluster still holding the old default exactly is
+    // moved to the new one. This preserves any value tuned to something other than
+    // 3.0. The one case it cannot preserve is an operator who set exactly 3.0,
+    // which is indistinguishable from an untouched cluster and is also moved to 7.0.
+    const PREVIOUS_DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT: f64 = 3.0;
+
+    let node = traft::node::global()?;
+    let current: Option<f64> = node.storage.db_config.get(
+        system_parameter_name!(governor_common_rpc_timeout),
+        DbConfig::GLOBAL_SCOPE,
+    )?;
+    if current == Some(PREVIOUS_DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT) {
+        replace_global_parameter(
+            system_parameter_name!(governor_common_rpc_timeout),
+            &DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT,
+        )?;
+    }
 
     Ok(Response {})
 }

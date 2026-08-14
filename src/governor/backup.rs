@@ -38,7 +38,7 @@ pub fn handle_backup<'i>(
     timestamp: i64,
     term: RaftTerm,
     applied: RaftIndex,
-    rpc_timeout: Duration,
+    ddl_rpc_timeout: Duration,
     batch_size: usize,
 ) -> Result<Option<Plan<'i>>> {
     // We must check if step kind is different from the one we tried on
@@ -100,7 +100,7 @@ pub fn handle_backup<'i>(
     let rpc_master = rpc::ddl_backup::Request {
         term,
         applied,
-        timeout: rpc_timeout,
+        timeout: ddl_rpc_timeout,
         is_master: true,
     };
 
