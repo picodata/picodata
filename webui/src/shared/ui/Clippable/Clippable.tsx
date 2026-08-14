@@ -1,6 +1,8 @@
 import { PropsWithChildren, useRef, useState } from "react";
 import { SxProps } from "@mui/material";
 
+import { copyText as copyTextToClipboard } from "shared/utils/copyText";
+
 import { HiddenWrapper } from "../HiddenWrapper/HiddenWrapper";
 
 import { ClippableIcon } from "./ClippableIcon";
@@ -45,7 +47,7 @@ export const Clippable = (props: PropsWithChildren<ClippableProps>) => {
     </Root>
   );
 
-  function copyText() {
+  async function copyText() {
     const clipText =
       typeof text === "function"
         ? text(ref.current?.innerText ?? "")
@@ -55,7 +57,11 @@ export const Clippable = (props: PropsWithChildren<ClippableProps>) => {
       return;
     }
 
-    navigator.clipboard.writeText(clipText);
+    const copied = await copyTextToClipboard(clipText);
+
+    if (!copied) {
+      return;
+    }
 
     setClipped(true);
     setTimeout(() => setClipped(false), iconTimeout);
