@@ -1808,7 +1808,14 @@ class Instance:
             # Normalize the arguments
             target = self
 
-        info = self.call(".proc_instance_info", target.name, timeout=timeout, error_log_level=error_log_level)
+        # Ask about the instance by name only when it's a different one. Names
+        # are reused: `choose_instance_name` gives the name of an expelled
+        # instance to the next one joining, and _pico_instance is keyed by
+        # name, so while an instance replays the raft log a lookup by its name
+        # may describe its predecessor. Passing None makes the instance report
+        # the record it tracks by raft_id, which is never reused.
+        requested_name = None if target is self else target.name
+        info = self.call(".proc_instance_info", requested_name, timeout=timeout, error_log_level=error_log_level)
         assert isinstance(info, dict)
 
         assert isinstance(info["raft_id"], int)

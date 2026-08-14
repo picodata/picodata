@@ -1282,7 +1282,7 @@ def test_picodata_status_basic(cluster: Cluster):
     assert strip(data.decode()) == strip(output)
 
 
-def assert_status_info(inst: Instance, cluster: Cluster, username: str, password_file: str, err: bool = False):
+def assert_status_info(inst: Instance, cluster: Cluster, username: str, password_file: str):
     picodata_executable = Executable.current()
 
     info = inst.instance_info()
@@ -1294,35 +1294,17 @@ def assert_status_info(inst: Instance, cluster: Cluster, username: str, password
     base_addr = inst.iproto_listen
 
     inst_addr = f"{username}@{base_addr}"
-    if err:
-        proc = subprocess.Popen(
-            [
-                picodata_executable.command,
-                "status",
-                "--peer",
-                inst_addr,
-                "--service-password-file",
-                password_file,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        _, stderr = proc.communicate()
-        assert proc.returncode != 0
-        assert f"AccessDenied: Read access to space '_raft_state' is denied for user '{username}'" in stderr
-    else:
-        data = subprocess.check_output(
-            [
-                picodata_executable.command,
-                "status",
-                "--peer",
-                inst_addr,
-                "--service-password-file",
-                password_file,
-            ],
-        )
-        output = f"""\
+    data = subprocess.check_output(
+        [
+            picodata_executable.command,
+            "status",
+            "--peer",
+            inst_addr,
+            "--service-password-file",
+            password_file,
+        ],
+    )
+    output = f"""\
  CLUSTER NAME: {cluster_name}
  CLUSTER UUID: {cluster_uuid}
  TIER/DOMAIN: default
@@ -1330,7 +1312,7 @@ def assert_status_info(inst: Instance, cluster: Cluster, username: str, password
  name         state    uuid                                   uri
 {inst_name}   Online   {inst_uuid}   {base_addr}
 """
-        assert strip(data.decode()) == strip(output)
+    assert strip(data.decode()) == strip(output)
 
 
 def test_picodata_status_custom_user(cluster: Cluster):
@@ -1360,12 +1342,15 @@ def test_picodata_status_custom_user(cluster: Cluster):
     res = inst.sql(f"CREATE USER {username} WITH PASSWORD '{general_password}' USING MD5", sudo=True)
     assert isinstance(res, dict)
     assert res["row_count"] == 1
-    assert_status_info(inst, cluster, username, password_file, err=True)
+    # A user with no privileges of its own still sees the same output: status
+    # reports only _pico_instance and _pico_peer_address, and the `public` role
+    # granted to every user holds read on both.
+    assert_status_info(inst, cluster, username, password_file)
 
     res = inst.sql(f"GRANT READ TABLE TO {username}", sudo=True)
     assert isinstance(res, dict)
     assert res["row_count"] == 1
-    assert_status_info(inst, cluster, username, password_file, err=False)
+    assert_status_info(inst, cluster, username, password_file)
 
 
 def test_picodata_status_short_instance_name(cluster: Cluster):

@@ -7,6 +7,7 @@ use crate::sentinel::ActionKind;
 use crate::sentinel::FailStreakInfo;
 use crate::traft;
 use crate::traft::error::Error;
+use crate::traft::error::IdOfInstance;
 use crate::traft::node;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
@@ -187,10 +188,25 @@ impl InstanceInfo {
         let instance;
         match instance_name {
             None => {
-                let instance_name = node.raft_storage.instance_name()?;
-                let instance_name =
-                    instance_name.expect("should be persisted before Node is initialized");
-                instance = node.storage.instances.get(&instance_name)?;
+                // Instance names are reused: `choose_instance_name` gives the
+                // name of an expelled instance to the next one joining, and
+                // _pico_instance is keyed by name. While an instance replays
+                // the raft log its own record is transiently replaced by its
+                // predecessor's, so resolving self by name may describe a
+                // different instance. `TopologyCache` tracks the current
+                // instance by raft_id, which is never reused.
+                //
+                // Reading from the cache performs no access check. That is
+                // intentional: the same record is readable by any
+                // authenticated user through _pico_instance, on which the
+                // `public` role holds read.
+                let topology_ref = node.topology_cache.get();
+                let Some(this_instance) = topology_ref.try_this_instance() else {
+                    return Err(Error::NoSuchInstance(IdOfInstance::RaftId(
+                        node.topology_cache.my_raft_id,
+                    )));
+                };
+                instance = this_instance.clone();
             }
             Some(instance_name) => {
                 instance = node.storage.instances.get(instance_name)?;
