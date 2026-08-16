@@ -88,6 +88,11 @@ variables:
 # Anchor syntax explained here:
 # https://docs.gitlab.com/ee/ci/yaml/yaml_optimization.html
 #
+# Scheduled pipelines for release branches are set up to execute audit task.
+# Other jobs running there is an unintended consequence,
+# aimed at avoiding unnecessary complication of the pipeline rules.
+
+
 .rules:
   - &if-build-base-changes-on-master-branch
     if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
@@ -192,6 +197,9 @@ tarantool-module-trigger:
     strategy: depend
   needs: []
   rules:
+    # scheduled pipelines on release branches are for audit, not for tests or builds
+    - if: ($CI_COMMIT_BRANCH =~ /^\d+\.\d+$/) && ($CI_PIPELINE_SOURCE == "schedule")
+      when: never
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -348,6 +356,9 @@ make-py-cache:
     # additional optimizations.
     # The actual "release" profile is only used when running on master branch.
   rules:
+      # scheduled pipelines on release branches are for audit, not for tests or builds
+    - if: ($CI_COMMIT_BRANCH =~ /^\d+\.\d+$/) && ($CI_PIPELINE_SOURCE == "schedule")
+      when: never
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
       variables:
         RELEASE_PROFILE: &release-profile "release"
@@ -698,6 +709,9 @@ lint:
 
 .test-patch-rules: &test-patch-rules
   rules:
+    # scheduled pipelines on release branches are for audit, not for tests or builds
+    - if: ($CI_COMMIT_BRANCH =~ /^\d+\.\d+$/) && ($CI_PIPELINE_SOURCE == "schedule")
+      when: never
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE == "schedule")
     - <<: *if-build-base-changes-on-dev-branch
       when: manual
@@ -766,6 +780,9 @@ test-mac-m1:
     GIT_STRATEGY: fetch
     GIT_SUBMODULE_STRATEGY: recursive
   rules:
+    # scheduled pipelines on release branches are for audit, not for tests or builds
+    - if: ($CI_COMMIT_BRANCH =~ /^\d+\.\d+$/) && ($CI_PIPELINE_SOURCE == "schedule")
+      when: never
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
     - when: manual
       allow_failure: true
@@ -805,6 +822,9 @@ test-mac-m1:
   stage: test
   needs: []
   rules:
+      # scheduled pipelines on release branches are for audit, not for tests or builds
+    - if: ($CI_COMMIT_BRANCH =~ /^\d+\.\d+$/) && ($CI_PIPELINE_SOURCE == "schedule")
+      when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         compare_to: *main-branch
@@ -939,6 +959,9 @@ docker-compose:
   tags:
     - picodata-shell
   rules:
+    # scheduled pipelines on release branches are for audit, not for tests or builds
+    - if: ($CI_COMMIT_BRANCH =~ /^\d+\.\d+$/) && ($CI_PIPELINE_SOURCE == "schedule")
+      when: never
     - if: ($CI_COMMIT_BRANCH != $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE == "schedule")
       changes:
         compare_to: *main-branch
@@ -1008,10 +1031,26 @@ audit:
     CACHE_POLICY: pull
   rules:
     - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
+    - if: ($CI_COMMIT_BRANCH =~ /^\d+\.\d+$/) && ($CI_PIPELINE_SOURCE == "schedule")
+      allow_failure: true
     - when: manual
       allow_failure: true
   script:
     - make audit
+  after_script:
+    - |
+      if [ "$CI_JOB_STATUS" == "failed" -a $CI_PIPELINE_SOURCE = "schedule" -a $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH ]; then
+        MESSAGE="Проверка cargo deny завершилась с ошибкой для ${CI_PROJECT_NAME} на ветке ${CI_COMMIT_BRANCH}
+
+        Пайплайн: ${CI_PIPELINE_URL}
+
+        Необходимо проверить зависимости."
+
+        curl --silent --fail --show-error --retry 3 --retry-max-time 30 \
+          -X POST "${NOTIFICATION_API}/bot${AUDIT_NOTIFY_BOT_TOKEN}/sendMessage" \
+          -H 'Content-Type: application/json' \
+          -d "{\"chat_id\": \"${AUDIT_NOTIFY_CHAT_ID}\", \"text\": \"${MESSAGE}\"}"
+      fi
 
 clear-sccache:
   stage: test
