@@ -2695,6 +2695,180 @@ def test_drop_table_pause_rebalancing(cluster: Cluster):
         assert rebalancing_is_active
 
 
+def test_drop_table_pauses_rebalancing_only_in_tables_tier(cluster: Cluster):
+    """
+    DROP TABLE pauses bucket rebalancing only in the tier which stores the
+    table's data. Other tiers rebalance their own buckets independently, so
+    their rebalancers must be left alone.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        red:
+            replication_factor: 1
+            can_vote: true
+        blue:
+            replication_factor: 1
+            can_vote: false
+"""
+    )
+
+    red = cluster.add_instance(name="red_1", tier="red", wait_online=False)
+    blue = cluster.add_instance(name="blue_1", tier="blue", wait_online=False)
+    cluster.wait_online()
+
+    ddl = red.sql(
+        """
+        CREATE TABLE red_table (id INT PRIMARY KEY)
+        DISTRIBUTED BY (id) IN TIER "red"
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    def is_rebalancer_active(i: Instance) -> bool:
+        return i.eval("return vshard.storage.internal.is_rebalancer_active")
+
+    assert is_rebalancer_active(red)
+    assert is_rebalancer_active(blue)
+
+    # Block the governor after the DDL was applied on the masters but before it
+    # was committed, i.e. while the rebalancer is supposed to be paused.
+    leader = cluster.leader()
+    error_injection = "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT"
+    leader.call("pico._inject_error", error_injection, True)
+    lc = log_crawler(leader, f"ERROR INJECTION '{error_injection}'")
+
+    with pytest.raises(TimeoutError):
+        # Shouldn't wait too long, because governor is blocked
+        red.sql("DROP TABLE red_table", timeout=3)
+
+    lc.wait_matched()
+
+    # Only the table's own tier pauses rebalancing.
+    assert not is_rebalancer_active(red)
+    assert is_rebalancer_active(blue)
+
+    lc = log_crawler(leader, "UNBLOCKING")
+    leader.call("pico._inject_error", error_injection, False)
+    lc.wait_matched()
+
+    Retriable().call(check_no_pending_schema_change, red)
+    assert red.sql("SELECT * FROM _pico_table WHERE name = 'red_table'") == []
+
+    # Rebalancing is back on everywhere.
+    assert is_rebalancer_active(red)
+    assert is_rebalancer_active(blue)
+
+
+def test_drop_table_in_tier_with_unconfigured_vshard(cluster: Cluster):
+    """
+    A tier whose replicasets are not yet filled up to the replication factor
+    never gets `vshard.storage.cfg` called (see `proc_sharding`). Dropping a
+    table of such a tier must not crash its own instances either.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        red:
+            replication_factor: 2
+            can_vote: true
+        blue:
+            replication_factor: 1
+            can_vote: false
+"""
+    )
+
+    red = cluster.add_instance(name="red_1", tier="red", wait_online=False)
+    blue = cluster.add_instance(name="blue_1", tier="blue", wait_online=False)
+    cluster.wait_online()
+
+    # The 'red' replicaset is not filled up to the replication factor, so vshard
+    # storage is never configured on red_1, even though 'red' has buckets.
+    [[vshard_bootstrapped]] = red.sql("SELECT vshard_bootstrapped FROM _pico_tier WHERE name = 'red'")
+    assert vshard_bootstrapped is False
+    assert not red.eval("return vshard.storage.internal.is_configured")
+    assert blue.eval("return vshard.storage.internal.is_configured")
+
+    ddl = blue.sql(
+        """
+        CREATE TABLE red_table (id INT PRIMARY KEY)
+        DISTRIBUTED BY (id) IN TIER "red"
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = blue.sql("DROP TABLE red_table OPTION (TIMEOUT = 10)")
+    assert ddl["row_count"] == 1
+
+    red.check_process_alive()
+    assert red.eval("return box.space.red_table == nil")
+    cluster.wait_governor_status("idle")
+
+
+def test_drop_table_with_zero_bucket_tier(cluster: Cluster):
+    """
+    DROP TABLE must not crash the instances of an arbiter tier (bucket_count=0).
+
+    `vshard.storage.cfg` is never called on such instances (see `proc_sharding`),
+    so `vshard.storage.rebalancer_enable()` fails there with
+    'storage is not configured'.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        storage:
+            replication_factor: 1
+            can_vote: false
+"""
+    )
+
+    arbiter = cluster.add_instance(name="arbiter_1", tier="arbiter", wait_online=False)
+    storage = cluster.add_instance(name="storage_1", tier="storage", wait_online=False)
+    cluster.wait_online()
+
+    # The arbiter instance has a vshard router for the 'storage' tier, but its
+    # own vshard storage is not configured.
+    assert arbiter.eval("return vshard ~= nil")
+    assert not arbiter.eval("return vshard.storage.internal.is_configured")
+
+    # A sharded table lives in the 'storage' tier, but the space itself is
+    # created on every replicaset master, the arbiter one included.
+    ddl = storage.sql(
+        """
+        CREATE TABLE sharded_table (id INT PRIMARY KEY)
+        DISTRIBUTED BY (id) IN TIER "storage"
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    assert ddl["row_count"] == 1
+    assert arbiter.eval("return box.space.sharded_table ~= nil")
+
+    ddl = storage.sql("DROP TABLE sharded_table OPTION (TIMEOUT = 10)")
+    assert ddl["row_count"] == 1
+
+    # The arbiter instance must survive the DdlCommit and drop the space.
+    arbiter.check_process_alive()
+    assert arbiter.eval("return box.space.sharded_table == nil")
+    assert arbiter.sql("SELECT * FROM _pico_table WHERE name = 'sharded_table'") == []
+
+    # The cluster is still functional: another DDL goes through.
+    ddl = storage.sql("CREATE TABLE global_table (id INT PRIMARY KEY) DISTRIBUTED GLOBALLY OPTION (TIMEOUT = 10)")
+    assert ddl["row_count"] == 1
+    cluster.wait_governor_status("idle")
+
+
 def test_ddl_in_heterogeneous_cluster_is_prohibited(cluster: Cluster):
     error_injection = "UPDATE_PICODATA_VERSION"
     cluster.set_service_password("secret")
