@@ -1087,3 +1087,34 @@ with t_alias_arg(a) as (values (1), (2), (3))
 select a as dd from t_alias_arg group by dd, abs(dd) order by dd;
 -- EXPECTED:
 1, 2, 3
+
+-- TEST: test_groupby_current_date
+-- SQL:
+SELECT count(*) FROM "arithmetic_space" GROUP BY current_date;
+-- EXPECTED:
+4
+
+-- TEST: test_groupby_duplicated_current_date
+-- SQL:
+SELECT count(*) FROM "arithmetic_space" GROUP BY current_date, current_date;
+-- EXPECTED:
+4
+
+-- TEST: test_groupby_current_date_in_projection
+-- SQL:
+SELECT current_date = current_date FROM "arithmetic_space" GROUP BY current_date;
+-- EXPECTED:
+true
+
+-- TEST: test_groupby_distinct_timestamps
+-- SQL:
+SELECT count(*) FROM "arithmetic_space" GROUP BY current_date, current_timestamp, localtimestamp;
+-- EXPECTED:
+4
+
+-- TEST: test_groupby_column_and_current_date
+-- SQL:
+SELECT "a", count(*) FROM "arithmetic_space" GROUP BY "a", current_date ORDER BY "a";
+-- EXPECTED:
+1, 2,
+2, 2

@@ -287,6 +287,26 @@ impl Program {
     pub fn new(program: Vec<MotionOpcode>) -> Self {
         Program(program)
     }
+
+    /// Compares two programs the way [`PartialEq`] does, but treats the plan node ids
+    /// pointing inside the owning motion subtree as insignificant.
+    #[must_use]
+    pub fn is_equal_ignoring_inner_ids(&self, other: &Self) -> bool {
+        if self.0.len() != other.0.len() {
+            return false;
+        }
+        self.0
+            .iter()
+            .zip(other.0.iter())
+            .all(|(lhs, rhs)| match (lhs, rhs) {
+                // Points at the motion under the inner join right below the owning one.
+                (
+                    MotionOpcode::AddMissingRowsForLeftJoin { motion_id: _ },
+                    MotionOpcode::AddMissingRowsForLeftJoin { motion_id: _ },
+                ) => true,
+                _ => lhs == rhs,
+            })
+    }
 }
 
 type ChildId = NodeId;
