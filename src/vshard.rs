@@ -32,8 +32,18 @@ use tarantool::tuple::Encode;
 use tarantool::tuple::ToTupleBuffer;
 use tarantool::tuple::Tuple;
 
-fn is_vshard_not_initialized() -> crate::traft::Result<bool> {
-    crate::tarantool::eval("return vshard == nil").map_err(TraftError::from)
+/// Returns `true` if `vshard.storage.cfg` hasn't been called on this instance,
+/// which means the whole `vshard.storage.*` API is unusable here: it raises a
+/// `STORAGE_IS_DISABLED` lua error instead of doing anything.
+///
+/// Note that checking the `vshard` global alone is not enough:
+/// `vshard.storage.cfg` is only called for the instance's own tier and only if
+/// that tier has buckets, so on an instance of a tier with `bucket_count == 0`
+/// (an arbiter tier) the `vshard` global is set while the storage is not
+/// configured.
+fn is_vshard_storage_not_configured() -> crate::traft::Result<bool> {
+    crate::tarantool::eval("return vshard == nil or not vshard.storage.internal.is_configured")
+        .map_err(TraftError::from)
 }
 
 fn is_rebalancing_in_progress() -> crate::traft::Result<bool> {
@@ -56,7 +66,7 @@ fn is_rebalancer_here() -> crate::traft::Result<bool> {
 
 /// Enable the rebalancer if it's active on this instance.
 pub(crate) fn enable_rebalancer() -> crate::traft::Result<()> {
-    if is_vshard_not_initialized()? {
+    if is_vshard_storage_not_configured()? {
         return Ok(());
     }
 
@@ -71,7 +81,7 @@ pub(crate) fn enable_rebalancer() -> crate::traft::Result<()> {
 ///
 /// Return error if rebalancing is in progress or instance is not a replicaset leader.
 pub(crate) fn disable_rebalancer() -> crate::traft::Result<()> {
-    if is_vshard_not_initialized()? {
+    if is_vshard_storage_not_configured()? {
         return Ok(());
     }
 

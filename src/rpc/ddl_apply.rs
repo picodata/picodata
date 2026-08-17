@@ -202,10 +202,27 @@ pub fn apply_schema_change(
         }
 
         Ddl::DropTable { id, .. } => {
+            let table = storage
+                .pico_table
+                .get(id)
+                .map_err(|e| Error::Aborted(e.into()))?
+                .expect("table metadata is only deleted after the drop is committed");
+            // Rebalancing pause only concerns the tier
+            // which actually stores the table's data: other tiers rebalance
+            // their own buckets independently and global tables have no buckets
+            // at all. Note that the vshard storage may not even be configured
+            // on instances of other tiers, in which case touching the
+            // rebalancer is an error.
+            let should_pause_rebalancing = table
+                .distribution
+                .in_tier()
+                .is_some_and(|tier| tier == my_tier_name);
+
             // That means function called from governor.
             if !is_commit {
-                crate::vshard::disable_rebalancer().map_err(Error::Other)?;
-
+                if should_pause_rebalancing {
+                    crate::vshard::disable_rebalancer().map_err(Error::Other)?;
+                }
                 // Space is only dropped on commit.
                 // Don't change local_schema_version because the change will be
                 // appied later in raft_main_loop.
@@ -217,7 +234,9 @@ pub fn apply_schema_change(
                 return Err(Error::Aborted(e.into()));
             }
 
-            crate::vshard::enable_rebalancer().map_err(Error::Other)?;
+            if should_pause_rebalancing {
+                crate::vshard::enable_rebalancer().map_err(Error::Other)?;
+            }
         }
 
         Ddl::RenameTable {
