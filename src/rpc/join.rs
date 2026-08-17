@@ -130,6 +130,18 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             &req.uuid,
         )?;
 
+        node.topology_cache.with(|topology| {
+            crate::compatibility::ensure_no_more_than_two_minor_versions(
+                topology
+                    .all_instances()
+                    .filter(|other| {
+                        other.name != instance.name && !has_states!(other, Expelled -> *)
+                    })
+                    .map(|other| other.picodata_version.as_str())
+                    .chain(std::iter::once(req.picodata_version.as_str())),
+            )
+        })?;
+
         if instance_exists {
             let peer_addresses = node
                 .storage

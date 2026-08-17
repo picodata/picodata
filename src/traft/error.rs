@@ -101,6 +101,8 @@ pub enum Error {
         old_version: SmolStr,
         new_version: SmolStr,
     },
+    #[error("cluster cannot contain more than two Picodata minor versions, found: {versions}")]
+    TooManyPicodataMinorVersions { versions: SmolStr },
     #[error("operation request from different term {requested}, current term is {current}")]
     TermMismatch {
         requested: RaftTerm,
