@@ -61,8 +61,8 @@ export const instances = {
   },
   list: {
     common: {
-      hasRaftLeader: "has raft leader",
-      hasVoter: "has voter",
+      hasRaftLeader: "Has governor",
+      hasVoter: "Has voter",
     },
     tierCard: {
       name: {
@@ -153,7 +153,7 @@ export const instances = {
         folders: "Folders",
         addresses: "Addresses",
         statuses: "Statuses",
-        raftLeader: "Raft leader",
+        raftLeader: "Governor",
         leader: "Leader",
         voter: "Voter",
         log: "Log",
