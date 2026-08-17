@@ -33,7 +33,6 @@ import {
   InstanceTypeBlock,
   LeaderBlock,
   RaftLeaderBlock,
-  StyledLeaderIcon,
   ValueHidden,
   VersionRoot,
 } from "./StyledComponents";
@@ -55,6 +54,8 @@ export const InstanceCardAlt = memo(
   }: InstanceCardAltProps) => {
     const { translation } = useTranslation();
     const instanceTranslations = translation.pages.instances.list.instanceCard;
+    const commonContentTranslations =
+      translation.pages.instances.list.fullInstanceCard.commonContent;
     const { openFullInstanceCard } = useOpenFullInstanceCard();
 
     const instanceNameClickHandler = () => {
@@ -92,8 +93,7 @@ export const InstanceCardAlt = memo(
                 <InstanceTypeBlock>
                   {instance.isRaftLeader ? (
                     <RaftLeaderBlock>
-                      <StyledLeaderIcon />
-                      <span>raft leader</span>
+                      <span>{commonContentTranslations.raftLeader}</span>
                     </RaftLeaderBlock>
                   ) : null}
                   {instance.isLeader ? (

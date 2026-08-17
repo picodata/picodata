@@ -9,7 +9,7 @@ export const components = {
     currentState: "Instance state",
     leaderState: "Leader state",
     searchForThisText: "Search for this text",
-    raftLeader: "Raft leader",
+    raftLeader: "Governor",
     voter: "Voter",
   },
   networkState: {

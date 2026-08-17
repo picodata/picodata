@@ -63,7 +63,7 @@ export const instances: TPages["instances"] = {
   },
   list: {
     common: {
-      hasRaftLeader: "Включает в себя Raft Leader инстанс",
+      hasRaftLeader: "Включает в себя Губернатора",
       hasVoter: "Включает в себя голосующий инстанс",
     },
     tierCard: {
@@ -155,7 +155,7 @@ export const instances: TPages["instances"] = {
         folders: "Директории",
         addresses: "Адреса",
         statuses: "Статусы",
-        raftLeader: "Raft лидер",
+        raftLeader: "Губернатор",
         leader: "Лидер",
         voter: "Голосующий",
         log: "Лог",

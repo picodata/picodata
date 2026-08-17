@@ -11,7 +11,7 @@ export const components: (typeof en)["components"] = {
     currentState: "Стейт инстанса",
     leaderState: "Стейт лидера",
     searchForThisText: "Поиск по тексту",
-    raftLeader: "Raft leader",
+    raftLeader: "Губернатор",
     voter: "Голосует",
   },
   networkState: {
