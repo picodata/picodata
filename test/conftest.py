@@ -924,6 +924,10 @@ class Instance:
     pytest_timeout: int | float | None = None
 
     @property
+    def default_rpc_timeout(self) -> int | float:
+        return self.pytest_timeout if self.pytest_timeout is not None else DEFAULT_RPC_TIMEOUT
+
+    @property
     def instance_dir(self):
         assert self._instance_dir
         return self._instance_dir
@@ -1208,7 +1212,7 @@ class Instance:
         """
 
         if timeout is None:
-            timeout = self.pytest_timeout if self.pytest_timeout is not None else DEFAULT_RPC_TIMEOUT
+            timeout = self.default_rpc_timeout
 
         # NOTE: Not using short_expr at first intentionally
         log.info(f"{self.name or self.port} RPC SQL `{sql}` {clamp_for_logs(params)} {options}", stacklevel=2)
@@ -3273,8 +3277,15 @@ class PgStorage:
     def describe_portal(self, id: int, name: str) -> dict:
         return self.instance.call("pico.pg_describe_portal", id, name)
 
-    def execute(self, id: int, name: str, max_rows: int) -> dict:
-        return self.instance.call("pico.pg_execute", id, name, max_rows)
+    def execute(self, id: int, name: str, max_rows: int, timeout: Optional[int | float] = None) -> dict:
+        # `pg_execute` runs the statement to completion, so it needs the same
+        # treatment as `Instance.sql`. `Instance.call` would otherwise cap the
+        # socket at DEFAULT_RPC_TIMEOUT while the server keeps waiting for
+        # `sql_ddl_timeout`, making the client the tighter of the two.
+        if timeout is None:
+            timeout = self.instance.default_rpc_timeout
+
+        return self.instance.call("pico.pg_execute", id, name, max_rows, timeout=timeout)
 
     def flush(self):
         for id in self.client_ids:
@@ -3324,8 +3335,8 @@ class PgClient:
     def describe_portal(self, name: str) -> dict:
         return self.storage.describe_portal(self.id, name)
 
-    def execute(self, name: str, max_rows: int = -1) -> dict:
-        return self.storage.execute(self.id, name, max_rows)
+    def execute(self, name: str, max_rows: int = -1, timeout: Optional[int | float] = None) -> dict:
+        return self.storage.execute(self.id, name, max_rows, timeout=timeout)
 
     def parse(self, name: str, sql: str, param_oids: list[int] | None = None) -> int:
         return self.storage.parse(self.id, name, sql, param_oids)
