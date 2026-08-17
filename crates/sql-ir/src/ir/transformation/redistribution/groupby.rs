@@ -15,7 +15,7 @@ use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy}
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::{Node, Plan};
 use crate::utils::to_user;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ir::helpers::RepeatableState;
 use crate::utils::{OrderedMap, OrderedSet};
@@ -78,7 +78,7 @@ impl Hash for GroupingExpression<'_> {
 
 impl PartialEq for GroupingExpression<'_> {
     fn eq(&self, other: &Self) -> bool {
-        let comp = Comparator::new(self.plan);
+        let comp = Comparator::new_structural(self.plan);
         comp.are_subtrees_equal(self.id, other.id).unwrap_or(false)
     }
 }
@@ -152,11 +152,7 @@ impl<'plan> ExpressionMapper<'plan> {
     fn find(&mut self, current: NodeId, parent_expr: Option<NodeId>) -> Result<(), SbroadError> {
         let expr_node = self.plan.get_expression_node(current)?;
 
-        if expr_node.is_subquery_ref() {
-            return Ok(());
-        }
-
-        let comparator = Comparator::new(self.plan);
+        let comparator = Comparator::new_structural(self.plan);
         if let Some(gr_expr) = self
             .gr_exprs
             .iter()
@@ -423,6 +419,59 @@ impl Plan {
         Ok(Some(group_by_id))
     }
 
+    /// Remove from `rel_id` subqueries every scalar subquery that no expression
+    /// of that node references anymore.
+    fn prune_unreferenced_subqueries(&mut self, rel_id: NodeId) -> Result<(), SbroadError> {
+        let rel_node = self.get_relation_node(rel_id)?;
+        let subqueries = rel_node.subqueries().to_vec();
+        if subqueries.is_empty() {
+            return Ok(());
+        }
+
+        // Expressions that may hold a subquery reference for this node kind.
+        let expr_roots = match rel_node {
+            Relational::Projection(Projection {
+                output, windows, ..
+            }) => {
+                let mut roots = Vec::with_capacity(windows.len() + 1);
+                roots.push(*output);
+                roots.extend(windows.iter().copied());
+                roots
+            }
+            Relational::Having(Having { filter, output, .. }) => vec![*filter, *output],
+            Relational::GroupBy(GroupBy {
+                gr_exprs, output, ..
+            }) => {
+                let mut roots = Vec::with_capacity(gr_exprs.len() + 1);
+                roots.push(*output);
+                roots.extend(gr_exprs.iter().copied());
+                roots
+            }
+            _ => unreachable!("unexpected node to prune subqueries of: {rel_node:?}"),
+        };
+
+        let mut referenced = HashSet::with_capacity(subqueries.len());
+        for root in expr_roots {
+            for ref_id in self.get_sq_refs_from_subtree(root)? {
+                let ref_node = self.get_expression_node(ref_id)?;
+                match ref_node {
+                    Expression::SubQueryReference(SubQueryReference { rel_id, .. }) => {
+                        referenced.insert(*rel_id);
+                    }
+                    _ => unreachable!("Expected SubQueryReference, got: {ref_node:?}"),
+                }
+            }
+        }
+
+        let kept = subqueries
+            .into_iter()
+            .filter(|sq_id| referenced.contains(sq_id))
+            .collect();
+        self.get_mut_relation_node(rel_id)?.set_subqueries(kept);
+
+        Ok(())
+    }
+
     /// Fill grouping expression map (see comments next to
     /// `GroupbyExpressionsMap` definition).
     #[allow(clippy::too_many_lines)]
@@ -645,6 +694,8 @@ impl Plan {
             }
 
             self.set_grouping_exprs(groupby_info.id, grouping_exprs_local)?;
+            // Duplicated grouping expressions were collapsed above.
+            self.prune_unreferenced_subqueries(groupby_info.id)?;
             self.fill_grouping_exprs_map(proj, groupby_info)?;
 
             self.set_rel_output_distribution(groupby_info.id)?;
@@ -845,6 +896,10 @@ impl Plan {
 
         self.set_target_in_subtree(proj_output, child)?;
 
+        // `scalar_sqs` is collected before duplicated grouping expressions are collapsed,
+        // so it may mention subqueries of expressions that didn't make it into the output.
+        self.prune_unreferenced_subqueries(proj_id)?;
+
         self.set_rel_output_distribution(proj_id)?;
 
         Ok(proj_id)
@@ -1033,14 +1088,12 @@ impl Plan {
     /// * `upper_local_proj` - id of the upper local Projection node
     /// * `aggrs` - list of metadata about aggregates
     /// * `groupby_info` - information about Map (local) and Reduce (final) GroupBy
-    /// * `scalar_sqs` - ScanSubQuery nodes with scalar results which we met earlier in Projection/GroupBy/Having
     fn adjust_finals(
         &mut self,
         final_proj: NodeId,
         upper_local_proj: NodeId,
         aggrs: &Vec<Aggregate>,
         groupby_info: &Option<GroupByInfo>,
-        scalar_sqs: &OrderedSet<NodeId, RepeatableState>,
     ) -> Result<(), SbroadError> {
         let having = self.get_having(final_proj)?;
         let group_by = self.get_group_by(final_proj)?;
@@ -1102,42 +1155,19 @@ impl Plan {
             }
         }
 
-        // In case final Projection or Having had an aggregate referencing scalar SubQuery,
-        // we have to remove this SubQuery from children.
+        // Drop the scalar subqueries final Projection and Having no longer use:
+        // the ones moved down to the Map (local) stage (e.g. arguments of aggregates)
+        // and the ones whose expression has just been replaced with a reference to
+        // a local alias.
         // After this we have to fix `target` fields of references because of
         // children shift.
         // Note that we are doing it after there are no references that we've copied to other operators
         // left (e.g. for aggregates they are replaced with aliases above).
 
-        let filter = |children: &Vec<NodeId>| -> Vec<NodeId> {
-            let mut res = Vec::with_capacity(children.len());
-            children.iter().for_each(|child_id| {
-                if !scalar_sqs.contains_key(child_id) {
-                    res.push(*child_id);
-                }
-            });
-            res
-        };
-
         if let Some(having) = having {
-            if let Relational::Having(Having { subqueries, .. }) = self.get_relation_node(having)? {
-                let filtered_subqueries = filter(subqueries);
-                let mut having_node = self.get_mut_relation_node(having)?;
-                having_node.set_subqueries(filtered_subqueries);
-            } else {
-                unreachable!("expected Having IR node");
-            }
+            self.prune_unreferenced_subqueries(having)?;
         }
-
-        if let Relational::Projection(Projection { subqueries, .. }) =
-            self.get_relation_node(final_proj)?
-        {
-            let filtered_subqueries = filter(subqueries);
-            let mut proj_node = self.get_mut_relation_node(final_proj)?;
-            proj_node.set_subqueries(filtered_subqueries);
-        } else {
-            unreachable!("expected Projection IR node");
-        }
+        self.prune_unreferenced_subqueries(final_proj)?;
 
         Ok(())
     }
@@ -1373,13 +1403,7 @@ impl Plan {
             }
         }
 
-        self.adjust_finals(
-            final_proj,
-            upper_local_proj,
-            &aggrs,
-            &groupby_info,
-            &scalar_sqs,
-        )?;
+        self.adjust_finals(final_proj, upper_local_proj, &aggrs, &groupby_info)?;
 
         self.add_motion_to_two_stage(final_proj, upper_local_proj)?;
 

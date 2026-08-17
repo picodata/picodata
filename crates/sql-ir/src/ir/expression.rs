@@ -15,8 +15,9 @@ use std::hash::{Hash, Hasher};
 use std::ops::Bound::Included;
 
 use super::node::{
-    Bound, BoundType, GroupBy, Having, Join, Like, OrderBy, Over, ReferenceTarget, Selection,
-    Window,
+    Bound, BoundType, Except, GroupBy, Having, Intersect, Join, Like, Limit, Motion, OrderBy, Over,
+    Projection, ReferenceTarget, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
+    Union, UnionAll, Values, ValuesRow, Window,
 };
 use super::operator::OrderByEntity;
 use super::types::{CastType, DerivedType};
@@ -254,6 +255,11 @@ impl Eq for PlanExpr<'_> {}
 pub struct Comparator<'plan> {
     plan: &'plan Plan,
     state: Option<&'plan mut dyn Hasher>,
+    /// Compare subtrees by their structure instead of by node identity.
+    ///
+    /// Two [`SubQueryReference`] are equal if the queries they point at are equal,
+    /// and two [`Expression::Alias`] are equal if their names and children are.
+    structural: bool,
 }
 
 pub const EXPR_HASH_DEPTH: usize = 5;
@@ -261,7 +267,20 @@ pub const EXPR_HASH_DEPTH: usize = 5;
 impl<'plan> Comparator<'plan> {
     #[must_use]
     pub fn new(plan: &'plan Plan) -> Self {
-        Comparator { plan, state: None }
+        Comparator {
+            plan,
+            state: None,
+            structural: false,
+        }
+    }
+
+    #[must_use]
+    pub fn new_structural(plan: &'plan Plan) -> Self {
+        Comparator {
+            plan,
+            state: None,
+            structural: true,
+        }
     }
 
     pub fn set_hasher<H: Hasher>(&mut self, state: &'plan mut H) {
@@ -314,7 +333,26 @@ impl<'plan> Comparator<'plan> {
         if let Node::Expression(left) = l {
             if let Node::Expression(right) = r {
                 match left {
-                    Expression::Alias(_) | Expression::Timestamp(_) => {}
+                    Expression::Alias(Alias {
+                        name: l_name,
+                        child: l_child,
+                    }) if self.structural => {
+                        if let Expression::Alias(Alias {
+                            name: r_name,
+                            child: r_child,
+                        }) = right
+                        {
+                            return Ok(
+                                l_name == r_name && self.are_subtrees_equal(*l_child, *r_child)?
+                            );
+                        }
+                    }
+                    Expression::Alias(_) => {}
+                    Expression::Timestamp(l_timestamp) => {
+                        if let Expression::Timestamp(r_timestamp) = right {
+                            return Ok(l_timestamp == r_timestamp);
+                        }
+                    }
                     Expression::Parameter(Parameter {
                         param_type: l_param_type,
                         index: l_index,
@@ -458,9 +496,9 @@ impl<'plan> Comparator<'plan> {
                                 (None, None) => {}
                                 _ => return Ok(false),
                             }
-                            return Ok(l_stable_func == r_stable_func
-                                && filter_equal
-                                && l_window == r_window);
+                            return Ok(filter_equal
+                                && self.are_subtrees_equal(*l_stable_func, *r_stable_func)?
+                                && self.are_subtrees_equal(*l_window, *r_window)?);
                         }
                     }
                     Expression::CountAsterisk(_) => {
@@ -502,13 +540,18 @@ impl<'plan> Comparator<'plan> {
                                     self.are_subtrees_equal(*search_expr_left, *search_expr_right)?;
                             }
 
-                            let when_blocks_equal = when_blocks_left
-                                .iter()
-                                .zip(when_blocks_right.iter())
-                                .all(|((cond_l, res_l), (cond_r, res_r))| {
-                                    self.are_subtrees_equal(*cond_l, *cond_r).unwrap_or(false)
-                                        && self.are_subtrees_equal(*res_l, *res_r).unwrap_or(false)
-                                });
+                            if when_blocks_left.len() != when_blocks_right.len() {
+                                return Ok(false);
+                            }
+                            for ((cond_l, res_l), (cond_r, res_r)) in
+                                when_blocks_left.iter().zip(when_blocks_right.iter())
+                            {
+                                if !self.are_subtrees_equal(*cond_l, *cond_r)?
+                                    || !self.are_subtrees_equal(*res_l, *res_r)?
+                                {
+                                    return Ok(false);
+                                }
+                            }
 
                             let mut else_expr_equal =
                                 else_expr_left.is_none() && else_expr_right.is_none();
@@ -518,7 +561,7 @@ impl<'plan> Comparator<'plan> {
                                 else_expr_equal =
                                     self.are_subtrees_equal(*else_expr_left, *else_expr_right)?;
                             }
-                            return Ok(search_expr_equal && when_blocks_equal && else_expr_equal);
+                            return Ok(search_expr_equal && else_expr_equal);
                         }
                     }
                     Expression::Arithmetic(ArithmeticExpr {
@@ -548,13 +591,8 @@ impl<'plan> Comparator<'plan> {
                             ..
                         }) = right
                         {
-                            if indexes_left.len() != indexes_right.len() {
-                                return Ok(false);
-                            }
                             return Ok(self.are_subtrees_equal(*child_left, *child_right)?
-                                && indexes_left.iter().zip(indexes_right.iter()).all(|(l, r)| {
-                                    self.are_subtrees_equal(*l, *r).unwrap_or(false)
-                                }));
+                                && cmp_expr_vec(indexes_left, indexes_right)?);
                         }
                     }
                     Expression::Cast(Cast {
@@ -671,8 +709,17 @@ impl<'plan> Comparator<'plan> {
                             ..
                         }) = right
                         {
-                            // We can be sure that the subtree is equal only if the target rel_id is the same
-                            return Ok(l_position == r_position && l_rel_id == r_rel_id);
+                            if l_position != r_position {
+                                return Ok(false);
+                            }
+                            if l_rel_id == r_rel_id {
+                                return Ok(true);
+                            }
+                            // Different target nodes may still hold the same query.
+                            if self.structural {
+                                return self.are_rel_subtrees_equal(*l_rel_id, *r_rel_id);
+                            }
+                            return Ok(false);
                         }
                     }
                     Expression::Row(Row {
@@ -682,13 +729,7 @@ impl<'plan> Comparator<'plan> {
                             list: list_right, ..
                         }) = right
                         {
-                            if list_left.len() != list_right.len() {
-                                return Ok(false);
-                            }
-                            return Ok(list_left
-                                .iter()
-                                .zip(list_right.iter())
-                                .all(|(l, r)| self.are_subtrees_equal(*l, *r).unwrap_or(false)));
+                            return cmp_expr_vec(list_left, list_right);
                         }
                     }
                     Expression::ArrayLiteral(ArrayLiteral {
@@ -698,13 +739,7 @@ impl<'plan> Comparator<'plan> {
                             list: list_right, ..
                         }) = right
                         {
-                            if list_left.len() != list_right.len() {
-                                return Ok(false);
-                            }
-                            return Ok(list_left
-                                .iter()
-                                .zip(list_right.iter())
-                                .all(|(l, r)| self.are_subtrees_equal(*l, *r).unwrap_or(false)));
+                            return cmp_expr_vec(list_left, list_right);
                         }
                     }
                     Expression::ScalarFunction(ScalarFunction {
@@ -732,9 +767,7 @@ impl<'plan> Comparator<'plan> {
                                 && is_aggr_left == is_aggr_right
                                 && volatility_type_left == volatility_type_right
                                 && is_window_left == is_window_right
-                                && children_left.iter().zip(children_right.iter()).all(
-                                    |(l, r)| self.are_subtrees_equal(*l, *r).unwrap_or(false),
-                                ));
+                                && cmp_expr_vec(children_left, children_right)?);
                         }
                     }
                     Expression::Unary(UnaryExpr {
@@ -754,6 +787,418 @@ impl<'plan> Comparator<'plan> {
             }
         }
         Ok(false)
+    }
+
+    /// Checks are the relational subtrees `lhs` and `rhs` describe the same query.
+    ///
+    /// Nodes are compared by their own scalar fields plus, recursively, their children,
+    /// expression fields and output row. Two nodes of different kinds are never equal.
+    ///
+    /// Scan aliases take no part in the comparison. An alias is a scope-local name
+    /// consumed by the frontend during name resolution.
+    fn are_rel_subtrees_equal(&self, lhs: NodeId, rhs: NodeId) -> Result<bool, SbroadError> {
+        // Besides being a shortcut, this keeps subtrees shared between the compared
+        // nodes (e.g. the body of a CTE scanned twice) from being walked again.
+        if lhs == rhs {
+            return Ok(true);
+        }
+
+        let l = self.plan.get_relation_node(lhs)?;
+        let r = self.plan.get_relation_node(rhs)?;
+
+        if std::mem::discriminant(&l) != std::mem::discriminant(&r) {
+            return Ok(false);
+        }
+
+        let cmp_rels = |l: &[NodeId], r: &[NodeId]| -> Result<bool, SbroadError> {
+            if l.len() != r.len() {
+                return Ok(false);
+            }
+            for (l, r) in l.iter().zip(r.iter()) {
+                if !self.are_rel_subtrees_equal(*l, *r)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        };
+        let cmp_exprs = |l: &[NodeId], r: &[NodeId]| -> Result<bool, SbroadError> {
+            if l.len() != r.len() {
+                return Ok(false);
+            }
+            for (l, r) in l.iter().zip(r.iter()) {
+                if !self.are_subtrees_equal(*l, *r)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        };
+        let cmp_opt_rel = |l: &Option<NodeId>, r: &Option<NodeId>| -> Result<bool, SbroadError> {
+            match (l, r) {
+                (None, None) => Ok(true),
+                (Some(l), Some(r)) => self.are_rel_subtrees_equal(*l, *r),
+                _ => Ok(false),
+            }
+        };
+
+        // Output row and the number of attached subqueries are common to every node kind.
+        let (l_output, r_output) = (l.output(), r.output());
+        if l.subqueries().len() != r.subqueries().len()
+            || !self.are_subtrees_equal(l_output, r_output)?
+        {
+            return Ok(false);
+        }
+
+        match l {
+            Relational::ScanRelation(ScanRelation {
+                relation: l_relation,
+                indexed_by: l_indexed_by,
+                alias: _,
+                output: _,
+            }) => {
+                if let Relational::ScanRelation(ScanRelation {
+                    relation: r_relation,
+                    indexed_by: r_indexed_by,
+                    ..
+                }) = r
+                {
+                    return Ok(l_relation == r_relation && l_indexed_by == r_indexed_by);
+                }
+            }
+            Relational::ScanSubQuery(ScanSubQuery {
+                child: l_child,
+                alias: _,
+                output: _,
+            }) => {
+                if let Relational::ScanSubQuery(ScanSubQuery { child: r_child, .. }) = r {
+                    return self.are_rel_subtrees_equal(*l_child, *r_child);
+                }
+            }
+            Relational::ScanCte(ScanCte {
+                child: l_child,
+                alias: _,
+                output: _,
+            }) => {
+                if let Relational::ScanCte(ScanCte { child: r_child, .. }) = r {
+                    return self.are_rel_subtrees_equal(*l_child, *r_child);
+                }
+            }
+            Relational::Projection(Projection {
+                child: l_child,
+                windows: l_windows,
+                is_distinct: l_is_distinct,
+                group_by: l_group_by,
+                having: l_having,
+                subqueries: _,
+                output: _,
+            }) => {
+                if let Relational::Projection(Projection {
+                    child: r_child,
+                    windows: r_windows,
+                    is_distinct: r_is_distinct,
+                    group_by: r_group_by,
+                    having: r_having,
+                    ..
+                }) = r
+                {
+                    return Ok(l_is_distinct == r_is_distinct
+                        && cmp_exprs(l_windows, r_windows)?
+                        && cmp_opt_rel(l_child, r_child)?
+                        && cmp_opt_rel(l_group_by, r_group_by)?
+                        && cmp_opt_rel(l_having, r_having)?);
+                }
+            }
+            Relational::Selection(Selection {
+                child: l_child,
+                filter: l_filter,
+                subqueries: _,
+                output: _,
+            }) => {
+                if let Relational::Selection(Selection {
+                    child: r_child,
+                    filter: r_filter,
+                    ..
+                }) = r
+                {
+                    return Ok(self.are_subtrees_equal(*l_filter, *r_filter)?
+                        && self.are_rel_subtrees_equal(*l_child, *r_child)?);
+                }
+            }
+            Relational::Having(Having {
+                child: l_child,
+                filter: l_filter,
+                subqueries: _,
+                output: _,
+            }) => {
+                if let Relational::Having(Having {
+                    child: r_child,
+                    filter: r_filter,
+                    ..
+                }) = r
+                {
+                    return Ok(self.are_subtrees_equal(*l_filter, *r_filter)?
+                        && self.are_rel_subtrees_equal(*l_child, *r_child)?);
+                }
+            }
+            Relational::GroupBy(GroupBy {
+                child: l_child,
+                gr_exprs: l_gr_exprs,
+                subqueries: _,
+                output: _,
+            }) => {
+                if let Relational::GroupBy(GroupBy {
+                    child: r_child,
+                    gr_exprs: r_gr_exprs,
+                    ..
+                }) = r
+                {
+                    return Ok(cmp_exprs(l_gr_exprs, r_gr_exprs)?
+                        && self.are_rel_subtrees_equal(*l_child, *r_child)?);
+                }
+            }
+            Relational::OrderBy(OrderBy {
+                child: l_child,
+                order_by_elements: l_elements,
+                subqueries: _,
+                output: _,
+            }) => {
+                if let Relational::OrderBy(OrderBy {
+                    child: r_child,
+                    order_by_elements: r_elements,
+                    ..
+                }) = r
+                {
+                    if l_elements.len() != r_elements.len() {
+                        return Ok(false);
+                    }
+                    for (l_element, r_element) in l_elements.iter().zip(r_elements.iter()) {
+                        if l_element.order_type != r_element.order_type {
+                            return Ok(false);
+                        }
+                        let entities_equal = match (&l_element.entity, &r_element.entity) {
+                            (
+                                OrderByEntity::Index { value: l_value },
+                                OrderByEntity::Index { value: r_value },
+                            ) => l_value == r_value,
+                            (
+                                OrderByEntity::Expression { expr_id: l_expr_id },
+                                OrderByEntity::Expression { expr_id: r_expr_id },
+                            ) => self.are_subtrees_equal(*l_expr_id, *r_expr_id)?,
+                            _ => false,
+                        };
+                        if !entities_equal {
+                            return Ok(false);
+                        }
+                    }
+                    return self.are_rel_subtrees_equal(*l_child, *r_child);
+                }
+            }
+            Relational::Limit(Limit {
+                child: l_child,
+                limit: l_limit,
+                output: _,
+            }) => {
+                if let Relational::Limit(Limit {
+                    child: r_child,
+                    limit: r_limit,
+                    ..
+                }) = r
+                {
+                    return Ok(
+                        l_limit == r_limit && self.are_rel_subtrees_equal(*l_child, *r_child)?
+                    );
+                }
+            }
+            Relational::Join(Join {
+                left: l_left,
+                right: l_right,
+                condition: l_condition,
+                kind: l_kind,
+                subqueries: _,
+                output: _,
+            }) => {
+                if let Relational::Join(Join {
+                    left: r_left,
+                    right: r_right,
+                    condition: r_condition,
+                    kind: r_kind,
+                    ..
+                }) = r
+                {
+                    let l_sides = [*l_left, *l_right];
+                    let r_sides = [*r_left, *r_right];
+                    return Ok(l_kind == r_kind
+                        && self.are_subtrees_equal(*l_condition, *r_condition)?
+                        && self.do_refs_match_sides(
+                            *l_condition,
+                            *r_condition,
+                            &l_sides,
+                            &r_sides,
+                        )?
+                        && self.do_refs_match_sides(l_output, r_output, &l_sides, &r_sides)?
+                        && self.are_rel_subtrees_equal(*l_left, *r_left)?
+                        && self.are_rel_subtrees_equal(*l_right, *r_right)?);
+                }
+            }
+            Relational::Except(Except {
+                left: l_left,
+                right: l_right,
+                output: _,
+            }) => {
+                if let Relational::Except(Except {
+                    left: r_left,
+                    right: r_right,
+                    ..
+                }) = r
+                {
+                    return Ok(self.are_rel_subtrees_equal(*l_left, *r_left)?
+                        && self.are_rel_subtrees_equal(*l_right, *r_right)?);
+                }
+            }
+            Relational::Intersect(Intersect {
+                left: l_left,
+                right: l_right,
+                output: _,
+            }) => {
+                if let Relational::Intersect(Intersect {
+                    left: r_left,
+                    right: r_right,
+                    ..
+                }) = r
+                {
+                    return Ok(self.are_rel_subtrees_equal(*l_left, *r_left)?
+                        && self.are_rel_subtrees_equal(*l_right, *r_right)?);
+                }
+            }
+            Relational::Union(Union {
+                left: l_left,
+                right: l_right,
+                output: _,
+            }) => {
+                if let Relational::Union(Union {
+                    left: r_left,
+                    right: r_right,
+                    ..
+                }) = r
+                {
+                    return Ok(self.are_rel_subtrees_equal(*l_left, *r_left)?
+                        && self.are_rel_subtrees_equal(*l_right, *r_right)?);
+                }
+            }
+            Relational::UnionAll(UnionAll {
+                left: l_left,
+                right: l_right,
+                output: _,
+            }) => {
+                if let Relational::UnionAll(UnionAll {
+                    left: r_left,
+                    right: r_right,
+                    ..
+                }) = r
+                {
+                    return Ok(self.are_rel_subtrees_equal(*l_left, *r_left)?
+                        && self.are_rel_subtrees_equal(*l_right, *r_right)?);
+                }
+            }
+            Relational::Values(Values {
+                children: l_children,
+                output: _,
+            }) => {
+                if let Relational::Values(Values {
+                    children: r_children,
+                    ..
+                }) = r
+                {
+                    return cmp_rels(l_children, r_children);
+                }
+            }
+            Relational::ValuesRow(ValuesRow {
+                data: l_data,
+                subqueries: _,
+                output: _,
+            }) => {
+                if let Relational::ValuesRow(ValuesRow { data: r_data, .. }) = r {
+                    return self.are_subtrees_equal(*l_data, *r_data);
+                }
+            }
+            Relational::SelectWithoutScan(SelectWithoutScan {
+                subqueries: _,
+                output: _,
+            }) => {
+                // Output and subqueries were compared above, nothing else to check.
+                return Ok(true);
+            }
+            Relational::Motion(Motion {
+                child: l_child,
+                policy: l_policy,
+                program: l_program,
+                // Inherited from the motion child, so it is a scan alias as well.
+                alias: _,
+                output: _,
+            }) => {
+                if let Relational::Motion(Motion {
+                    child: r_child,
+                    policy: r_policy,
+                    program: r_program,
+                    ..
+                }) = r
+                {
+                    return Ok(l_policy == r_policy
+                        && l_program.is_equal_ignoring_inner_ids(r_program)
+                        && cmp_opt_rel(l_child, r_child)?);
+                }
+            }
+            // DML never appears inside a scalar subquery.
+            Relational::Delete(_) | Relational::Insert(_) | Relational::Update(_) => {
+                return Ok(false)
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Checks that every [`Expression::Reference`] of the structurally equal expressions
+    /// `lhs` and `rhs` points at the same relational child of its own node.
+    fn do_refs_match_sides(
+        &self,
+        lhs: NodeId,
+        rhs: NodeId,
+        l_children: &[NodeId],
+        r_children: &[NodeId],
+    ) -> Result<bool, SbroadError> {
+        let sides = |target: &ReferenceTarget, children: &[NodeId]| -> Vec<Option<usize>> {
+            target
+                .iter()
+                .map(|id| children.iter().position(|child| child == id))
+                .collect()
+        };
+
+        if let (
+            Expression::Reference(Reference {
+                target: l_target, ..
+            }),
+            Expression::Reference(Reference {
+                target: r_target, ..
+            }),
+        ) = (
+            self.plan.get_expression_node(lhs)?,
+            self.plan.get_expression_node(rhs)?,
+        ) {
+            if sides(l_target, l_children) != sides(r_target, r_children) {
+                return Ok(false);
+            }
+        }
+
+        // The two expressions are already known to be structurally equal, so their
+        // children come in the same order and in the same number.
+        let l_exprs: Vec<NodeId> = self.plan.nodes.expr_iter(lhs, false).collect();
+        let r_exprs: Vec<NodeId> = self.plan.nodes.expr_iter(rhs, false).collect();
+        for (l, r) in l_exprs.iter().zip(r_exprs.iter()) {
+            if !self.do_refs_match_sides(*l, *r, l_children, r_children)? {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
     }
 
     pub fn hash_for_child_expr(&mut self, child: NodeId, depth: usize) {

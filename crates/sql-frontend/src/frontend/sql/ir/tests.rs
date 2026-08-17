@@ -2172,6 +2172,700 @@ fn front_sql_groupby_expression4() {
 }
 
 #[test]
+fn front_sql_groupby_expression_with_sq() {
+    let input = r#"explain (logical) SELECT "a" + (select 1) FROM "t"
+        group by "a" + (select 1)"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_expression_with_different_sq() {
+    let input = r#"SELECT "a" + (select 1) FROM "t" group by "a" + (select 2)"#;
+
+    let metadata = &RouterConfigurationMock::new();
+    let err = transform_into_plan(input, &[], metadata)
+        .unwrap()
+        .optimize()
+        .unwrap_err();
+
+    assert_eq!(
+        "invalid query: column \"a\" is not found in grouping expressions!",
+        err.to_string()
+    );
+}
+
+#[test]
+fn front_sql_groupby_expression_with_sq_as_subexpression() {
+    let input = r#"explain (logical) SELECT "a" + (select 2) + (select 1) FROM "t"
+        group by "a" + (select 2)"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int + ROW($1) -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (2::int -> col_1)
+    subquery $1:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_expression_with_sq_wrong_operand_order() {
+    let input = r#"SELECT "a" + (select 1) + (select 2) FROM "t" group by "a" + (select 2)"#;
+
+    let metadata = &RouterConfigurationMock::new();
+    let err = transform_into_plan(input, &[], metadata)
+        .unwrap()
+        .optimize()
+        .unwrap_err();
+
+    assert_eq!(
+        "invalid query: column \"a\" is not found in grouping expressions!",
+        err.to_string()
+    );
+}
+
+#[test]
+fn front_sql_groupby_expression_with_sq_commuted() {
+    let input = r#"SELECT "a" + (select 1) FROM "t" group by (select 1) + "a""#;
+
+    let metadata = &RouterConfigurationMock::new();
+    let err = transform_into_plan(input, &[], metadata)
+        .unwrap()
+        .optimize()
+        .unwrap_err();
+
+    assert_eq!(
+        "invalid query: column \"a\" is not found in grouping expressions!",
+        err.to_string()
+    );
+}
+
+#[test]
+fn front_sql_groupby_expression_with_table_sq() {
+    let input = r#"explain (logical) SELECT "a" + (select "e" from "t2") FROM "t"
+        group by "a" + (select "e" from "t2")"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t2.e::int -> e)
+            scan t2
+    ");
+}
+
+#[test]
+fn front_sql_groupby_expression_with_table_sq_different_column() {
+    let input = r#"SELECT "a" + (select "e" from "t2") FROM "t"
+        group by "a" + (select "f" from "t2")"#;
+
+    let metadata = &RouterConfigurationMock::new();
+    let err = transform_into_plan(input, &[], metadata)
+        .unwrap()
+        .optimize()
+        .unwrap_err();
+
+    assert_eq!(
+        "invalid query: column \"a\" is not found in grouping expressions!",
+        err.to_string()
+    );
+}
+
+#[test]
+fn front_sql_groupby_expression_with_nested_sq() {
+    let input = r#"explain (logical) SELECT "a" + (select (select 1)) FROM "t"
+        group by "a" + (select (select 1))"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($1) -> gr_expr_1)
+            group by (t.a::int + ROW($1)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    subquery $1:
+      scan
+        projection (ROW($0) -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_sq_only() {
+    let input = r#"explain (logical) SELECT (select 1) FROM "t" group by (select 1)"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (ROW($0) -> gr_expr_1)
+            group by (ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_expression_with_duplicate_sq() {
+    let input = r#"explain (logical) SELECT "a" + (select 1) FROM "t"
+        group by "a" + (select 1), "a" + (select 1)"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_expression_with_sq_and_column() {
+    let input = r#"explain (logical) SELECT "a" + (select 1) FROM "t"
+        group by "a" + (select 1), "b""#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1, t.b::int -> gr_expr_2)
+            group by (t.a::int + ROW($0), t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_expression_with_sq_and_aggregate() {
+    let input = r#"explain (logical) SELECT "a" + (select 1), count(*) FROM "t"
+        group by "a" + (select 1)"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1, sum(count_1::int)::int -> col_2)
+      group by (gr_expr_1::int) output (gr_expr_1::int, count_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1, count(*)::int -> count_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_expression_with_sq_in_having() {
+    let input = r#"explain (logical) SELECT "a" + (select 1) FROM "t"
+        group by "a" + (select 1) having "a" + (select 1) > 0"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      having (gr_expr_1::int > 0::int)
+        group by (gr_expr_1::int) output (gr_expr_1::int)
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (t.a::int + ROW($0) -> gr_expr_1)
+              group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_select_distinct_expression_with_sq() {
+    let input = r#"explain (logical) SELECT distinct "a" + (select 1) FROM "t""#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_select_distinct_duplicated_sq() {
+    let input = r#"explain (logical) SELECT distinct (select 1), (select 1) FROM "t""#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1, gr_expr_1::int -> col_2)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (ROW($0) -> gr_expr_1)
+            group by (ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_distinct_aggregate_sq_next_to_grouping_expr_sq() {
+    let input = r#"explain (logical) SELECT count(distinct "a" + (select 1)) FROM "t"
+        group by "a" + (select 1)"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (count(distinct gr_expr_2::int)::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int, gr_expr_2::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($1) -> gr_expr_1, (t.a::int + ROW($0))::int -> gr_expr_2)
+            group by (t.a::int + ROW($1), (t.a::int + ROW($0))::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    subquery $1:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_sq_with_join_on_swapped_sides() {
+    let input = r#"SELECT "a" + (SELECT sum("x"."c") FROM "t" AS "x" JOIN "t" AS "y" ON "x"."a" = "y"."b") FROM "t"
+        GROUP BY "a" + (SELECT sum("x"."c") FROM "t" AS "x" JOIN "t" AS "y" ON "y"."a" = "x"."b")"#;
+    let err = sql_to_optimized_ir_add_motions_err(input);
+    assert_eq!(
+        err.to_string(),
+        r#"invalid query: column "a" is not found in grouping expressions!"#
+    );
+}
+
+#[test]
+fn front_sql_groupby_sq_with_join() {
+    let input = r#"explain (logical) SELECT "a" + (SELECT sum("x"."c") FROM "t" AS "x" JOIN "t" AS "y" ON "x"."a" = "y"."b") FROM "t"
+        GROUP BY "a" + (SELECT sum("x"."c") FROM "t" AS "x" JOIN "t" AS "y" ON "x"."a" = "y"."b")"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::decimal -> col_1)
+      group by (gr_expr_1::decimal) output (gr_expr_1::decimal)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (sum(sum_1::decimal)::decimal -> col_1)
+            motion [policy: full, program: ReshardIfNeeded]
+              projection (sum(x.c::int::int)::decimal -> sum_1)
+                join on (x.a::int = y.b::int)
+                  scan t -> x
+                  motion [policy: full, program: ReshardIfNeeded]
+                    projection (y.a::int -> a, y.b::int -> b, y.c::int -> c, y.d::int -> d, y.bucket_id::int -> bucket_id)
+                      scan t -> y
+    ")
+}
+
+#[test]
+fn front_sql_groupby_expression_with_sq_over_unnamed_derived_table() {
+    let input = r#"explain (logical) SELECT "a" + (SELECT "b" FROM (SELECT "b" FROM "t" LIMIT 1)) FROM "t"
+        GROUP BY "a" + (SELECT "b" FROM (SELECT "b" FROM "t" LIMIT 1))"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (unnamed_subquery.b::int -> b)
+            scan unnamed_subquery
+              limit 1
+                motion [policy: full, program: ReshardIfNeeded]
+                  limit 1
+                    projection (t.b::int -> b)
+                      scan t
+    ");
+}
+
+#[test]
+fn front_sql_groupby_expression_with_sq_over_differently_aliased_derived_table() {
+    let input = r#"explain (logical) SELECT "a" + (SELECT "b" FROM (SELECT "b" FROM "t" LIMIT 1) AS "q1") FROM "t"
+        GROUP BY "a" + (SELECT "b" FROM (SELECT "b" FROM "t" LIMIT 1) AS "q2")"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (q2.b::int -> b)
+            scan q2
+              limit 1
+                motion [policy: full, program: ReshardIfNeeded]
+                  limit 1
+                    projection (t.b::int -> b)
+                      scan t
+    ");
+}
+
+#[test]
+fn front_sql_groupby_expression_with_sq_over_differently_aliased_scan() {
+    let input = r#"explain (logical) SELECT "a" + (SELECT sum("x"."b") FROM "t" AS "x") FROM "t"
+        GROUP BY "a" + (SELECT sum("y"."b") FROM "t" AS "y")"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::decimal -> col_1)
+      group by (gr_expr_1::decimal) output (gr_expr_1::decimal)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (sum(sum_1::decimal)::decimal -> col_1)
+            motion [policy: full, program: ReshardIfNeeded]
+              projection (sum(y.b::int::int)::decimal -> sum_1)
+                scan t -> y
+    ");
+}
+
+#[test]
+fn front_sql_groupby_sq_with_join_over_unnamed_derived_table() {
+    // The motion over the derived table inherits its generated scan alias.
+    let input = r#"explain (logical) SELECT "a" + (SELECT sum("e") FROM "t2" JOIN (SELECT "a" FROM "t") ON "e" = "a") FROM "t"
+        GROUP BY "a" + (SELECT sum("e") FROM "t2" JOIN (SELECT "a" FROM "t") ON "e" = "a")"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::decimal -> col_1)
+      group by (gr_expr_1::decimal) output (gr_expr_1::decimal)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (sum(sum_1::decimal)::decimal -> col_1)
+            motion [policy: full, program: ReshardIfNeeded]
+              projection (sum(t2.e::int::int)::decimal -> sum_1)
+                join on (t2.e::int = unnamed_subquery.a::int)
+                  scan t2
+                  motion [policy: full, program: ReshardIfNeeded]
+                    scan unnamed_subquery
+                      projection (t.a::int -> a)
+                        scan t
+    ");
+}
+
+#[test]
+fn front_sql_groupby_sq_with_left_join_over_global_table() {
+    // The motion reducing the left join carries the id of the motion that materializes
+    // its outer child, and the two subqueries get different ones.
+    let input = r#"explain (logical) SELECT "a" + (SELECT sum("e") FROM "global_t" LEFT JOIN "t2" ON true) FROM "t"
+        GROUP BY "a" + (SELECT sum("e") FROM "global_t" LEFT JOIN "t2" ON true)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::decimal -> col_1)
+      group by (gr_expr_1::decimal) output (gr_expr_1::decimal)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (sum(unnamed_join.e::int::int)::decimal -> col_1)
+          motion [policy: full, program: AddMissingRowsForLeftJoin]
+            projection (global_t.a::int -> a, global_t.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
+              join on (true::bool)
+                motion [policy: full, program: ReshardIfNeeded]
+                  projection (global_t.a::int -> a, global_t.b::int -> b)
+                    scan global_t
+                scan t2
+    ");
+}
+
+#[test]
+fn front_sql_groupby_sq_with_different_left_joins_over_global_table() {
+    let input = r#"SELECT "a" + (SELECT sum("e") FROM "global_t" LEFT JOIN "t2" ON true) FROM "t"
+        GROUP BY "a" + (SELECT sum("e") FROM "global_t" LEFT JOIN "t2" ON "a" = "e")"#;
+    let err = sql_to_optimized_ir_add_motions_err(input);
+    assert_eq!(
+        err.to_string(),
+        r#"invalid query: column "a" is not found in grouping expressions!"#
+    );
+}
+
+#[test]
+fn front_sql_groupby_expression_with_different_derived_tables() {
+    let input = r#"SELECT "a" + (SELECT "b" FROM (SELECT "b" FROM "t" LIMIT 1)) FROM "t"
+        GROUP BY "a" + (SELECT "b" FROM (SELECT "b" FROM "t" LIMIT 2))"#;
+    let err = sql_to_optimized_ir_add_motions_err(input);
+    assert_eq!(
+        err.to_string(),
+        r#"invalid query: column "a" is not found in grouping expressions!"#
+    );
+}
+
+#[test]
+fn front_sql_groupby_expression_with_deeply_nested_sq() {
+    // Keep the depth modest: parsing nested subqueries is itself exponential, so a
+    // deeper query spends minutes in the frontend before the planner is even reached.
+    let depth = 12;
+    let sq = format!("{}1{}", "(select ".repeat(depth), ")".repeat(depth));
+    let input = format!(r#"explain (logical) SELECT "a" + {sq} FROM "t" group by "a" + {sq}"#);
+
+    let plan = sql_to_optimized_ir(&input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($11) -> gr_expr_1)
+            group by (t.a::int + ROW($11)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    subquery $1:
+      scan
+        projection (ROW($0) -> col_1)
+    subquery $2:
+      scan
+        projection (ROW($1) -> col_1)
+    subquery $3:
+      scan
+        projection (ROW($2) -> col_1)
+    subquery $4:
+      scan
+        projection (ROW($3) -> col_1)
+    subquery $5:
+      scan
+        projection (ROW($4) -> col_1)
+    subquery $6:
+      scan
+        projection (ROW($5) -> col_1)
+    subquery $7:
+      scan
+        projection (ROW($6) -> col_1)
+    subquery $8:
+      scan
+        projection (ROW($7) -> col_1)
+    subquery $9:
+      scan
+        projection (ROW($8) -> col_1)
+    subquery $10:
+      scan
+        projection (ROW($9) -> col_1)
+    subquery $11:
+      scan
+        projection (ROW($10) -> col_1)
+    ")
+}
+
+#[test]
+fn front_sql_groupby_expression_with_window_sq() {
+    let input = r#"explain (logical) SELECT "a" + (select count(*) over () from "t") FROM "t"
+        group by "a" + (select count(*) over () from "t")"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.a::int + ROW($0) -> gr_expr_1)
+            group by (t.a::int + ROW($0)) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (count(*) over () -> col_1)
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (t.a::int -> a)
+              scan t
+    ");
+}
+
+#[test]
+fn front_sql_groupby_expression_with_different_window_sq() {
+    let input = r#"SELECT "a" + (select count(*) over (partition by "b") from "t") FROM "t"
+        group by "a" + (select count(*) over (partition by "c") from "t")"#;
+    let err = sql_to_optimized_ir_add_motions_err(input);
+    assert_eq!(
+        err.to_string(),
+        r#"invalid query: column "a" is not found in grouping expressions!"#
+    );
+}
+
+#[test]
+fn front_sql_groupby_expression_with_different_window_func_sq() {
+    let input = r#"SELECT "a" + (select count(*) over () from "t") FROM "t"
+        group by "a" + (select sum("b") over () from "t")"#;
+    let err = sql_to_optimized_ir_add_motions_err(input);
+    assert_eq!(
+        err.to_string(),
+        r#"invalid query: column "a" is not found in grouping expressions!"#
+    );
+}
+
+#[test]
+fn front_sql_groupby_expression_with_different_func_arity() {
+    let input = r#"SELECT substr(cast("d" as text), 1) FROM "t"
+        group by substr(cast("d" as text), 1, 2)"#;
+    let err = sql_to_optimized_ir_add_motions_err(input);
+    assert_eq!(
+        err.to_string(),
+        r#"invalid query: column "d" is not found in grouping expressions!"#
+    );
+}
+
+#[test]
+fn front_sql_groupby_expression_with_different_case_arm_count() {
+    let input = r#"SELECT case when "d" = 1 then 10 end FROM "t"
+        group by case when "d" = 1 then 10 when "d" = 2 then 20 end"#;
+    let err = sql_to_optimized_ir_add_motions_err(input);
+    assert_eq!(
+        err.to_string(),
+        r#"invalid query: column "d" is not found in grouping expressions!"#
+    );
+}
+
+#[test]
+fn front_sql_groupby_column_with_unrelated_sq_in_projection() {
+    let input = r#"explain (logical) SELECT (select 1) FROM "t" group by "b""#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (ROW($0) -> col_1)
+      group by (gr_expr_1::int) output (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t.b::int -> gr_expr_1)
+            group by (t.b::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              scan t
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_having_exists_sq() {
+    let input = r#"explain (logical) SELECT "a" FROM "t" group by "a"
+        having exists (select 1 from "t2")"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> a)
+      having (exists ROW($0))
+        group by (gr_expr_1::int) output (gr_expr_1::int)
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (t.a::int -> gr_expr_1)
+              group by (t.a::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                scan t
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (1::int -> col_1)
+            scan t2
+    ");
+}
+
+#[test]
+fn front_sql_groupby_having_in_sq() {
+    let input = r#"explain (logical) SELECT "a" FROM "t" group by "a"
+        having "a" in (select "e" from "t2")"#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (gr_expr_1::int -> a)
+      having (gr_expr_1::int in ROW($0))
+        group by (gr_expr_1::int) output (gr_expr_1::int)
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (t.a::int -> gr_expr_1)
+              group by (t.a::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                scan t
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t2.e::int -> e)
+            scan t2
+    ");
+}
+
+#[test]
 fn front_sql_groupby_with_aggregates() {
     let input = r#"
         explain (logical) select * from (select "a", "b", sum("c") as "c" from "t" group by "a", "b") as t1
