@@ -36,7 +36,7 @@ use crate::ir::node::{
     AnonymousBlock, BlockEntries, BlockEntryKind, BlockStatement, Insert, Motion, NodeId,
     StatementLocation,
 };
-use crate::ir::options::OptionKind;
+use crate::ir::options::{Forward, OptionKind};
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::value::Value;
 use crate::ir::{ExplainOptions, Plan, Slices};
@@ -769,12 +769,19 @@ where
     /// RAW mode must be skipped here since other EXPLAIN modes do not trigger
     /// dispatch or motion materialization machinery.
     fn enforce_forward_option(&mut self, buckets: &Buckets) -> Result<(), SbroadError> {
+        let ir_plan = self.exec_plan.get_ir_plan();
+        let forward_option = ir_plan.effective_options.forward;
+
+        // `forward = on` is the default and is always satisfiable,
+        // so skip the expensive replicaset resolution.
+        if matches!(forward_option, Forward::On) {
+            return Ok(());
+        }
+
         if self.is_raw_explain() {
             return Ok(());
         }
 
-        let ir_plan = self.exec_plan.get_ir_plan();
-        let forward_option = ir_plan.effective_options.forward;
         self.coordinator.enforce_forward_option(
             forward_option,
             buckets,
