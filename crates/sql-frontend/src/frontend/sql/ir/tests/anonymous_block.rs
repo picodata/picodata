@@ -407,7 +407,7 @@ fn let_resolution_errors() {
         // lookup misses.
         (
             "DO $$ BEGIN LET v = (SELECT v + 1); UPDATE t2 SET e = v; END $$",
-            "Reference v met under Values",
+            "could not resolve reference \"v\"",
         ),
         // Ambiguity: relation `t2` has a column `e`, and a LET also named
         // `e`. A bare `e` inside an UPDATE on `t2` would otherwise be

@@ -896,13 +896,9 @@ where
                     }
 
                     if referred_relation_ids.is_empty() {
-                        return Err(SbroadError::Invalid(
-                            Entity::Expression,
-                            Some(format_smolstr!(
-                                "Reference {first_identifier} met under Values that is unsupported. \
-                                    For string literals use single quotes.")
-                            )
-                        ))
+                        // Remove quotes to omit repetitions.
+                        let unknown_identifier = first_identifier.trim_matches('"');
+                        return Err(SbroadError::Other(format_smolstr!("could not resolve reference \"{unknown_identifier}\"")));
                     }
 
                     let plan_left_id = referred_relation_ids

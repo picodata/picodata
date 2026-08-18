@@ -3407,9 +3407,10 @@ fn non_existent_references_in_values_do_not_panic() {
     let plan = transform_into_plan(input, &[], metadata);
     let err = plan.unwrap_err();
 
-    assert!(err
-        .to_string()
-        .contains("Reference \"nonexistent_reference\" met under Values that is unsupported. For string literals use single quotes."));
+    assert_eq!(
+        err.to_string(),
+        "could not resolve reference \"nonexistent_reference\""
+    );
 }
 
 #[test]
