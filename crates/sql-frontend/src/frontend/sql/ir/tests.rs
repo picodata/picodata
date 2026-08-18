@@ -4311,6 +4311,28 @@ fn front_subqueries_interpreted_as_expression_nested() {
 }
 
 #[test]
+fn front_subqueries_interpreted_as_expression_in_every_values_row() {
+    let input = r#"explain (logical) values ((values (1))), ((values (2)))"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    values
+      value ROW(ROW($1))
+      value ROW(ROW($0))
+    subquery $0:
+      scan
+        motion [policy: full, program: ReshardIfNeeded]
+          values
+            value ROW(2::int)
+    subquery $1:
+      scan
+        motion [policy: full, program: ReshardIfNeeded]
+          values
+            value ROW(1::int)
+    ");
+}
+
+#[test]
 fn front_subqueries_interpreted_as_expression_under_group_by() {
     let input =
         r#"explain (logical) SELECT COUNT(*) FROM "test_space" GROUP BY "id" + (VALUES (1))"#;

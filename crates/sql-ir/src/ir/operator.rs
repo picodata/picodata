@@ -7,7 +7,7 @@ use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
     Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, LetVarRef, Motion, MutNode,
     NodeId, OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation,
-    ScanSubQuery, Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
+    ScanSubQuery, Selection, SubQueryReference, Union, UnionAll, Update, Values,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
@@ -1790,51 +1790,15 @@ impl Plan {
         self.add_relational(limit.into())
     }
 
-    /// Adds a values row node.
-    ///
-    /// # Errors
-    /// - Row node is not of a row type
-    pub fn add_values_row(&mut self, expr_row_id: NodeId) -> Result<NodeId, SbroadError> {
-        let row = self.get_expression_node(expr_row_id)?;
-        let columns = row.clone_row_list()?;
-        let mut aliases: Vec<NodeId> = Vec::with_capacity(columns.len());
-        let mut col_idx = 0;
-        for col_id in columns {
-            // Generate a row of aliases for the incoming row.
-            col_idx += 1;
-            // The column names are generated according to tarantool naming of anonymous columns
-            let name = format!("COLUMN_{col_idx}");
-            let alias_id = self.nodes.add_alias(&name, col_id)?;
-            aliases.push(alias_id);
-        }
-        let output = self.nodes.add_row(aliases, None);
-
-        let values_row = ValuesRow {
-            output,
-            data: expr_row_id,
-            subqueries: vec![],
-        };
-        self.add_relational(values_row.into())
-    }
-
     /// Adds values node.
     ///
     /// # Errors
-    /// - No child nodes
-    /// - Child node is not relational
-    pub fn add_values(&mut self, value_rows: Vec<NodeId>) -> Result<NodeId, SbroadError> {
+    /// - Row node is not of a row type
+    pub fn add_values(&mut self, rows: Vec<NodeId>) -> Result<NodeId, SbroadError> {
         // Check that all rows in the values node have the same amount of columns.
         let mut last_len = None;
-        for value_row_id in &value_rows {
-            let Relational::ValuesRow(ValuesRow { output, .. }) =
-                self.get_relation_node(*value_row_id)?
-            else {
-                return Err(SbroadError::Invalid(
-                    Entity::Node,
-                    Some("all children of a Values node must be ValuesRow".into()),
-                ));
-            };
-            let len = self.get_row_list(*output)?.len();
+        for row_id in &rows {
+            let len = self.get_row_list(*row_id)?.len();
             match last_len {
                 None => last_len = Some(len),
                 Some(last_len) if last_len != len => {
@@ -1848,11 +1812,8 @@ impl Plan {
         }
 
         let mut types = Vec::new();
-        for row_id in &value_rows {
-            let value_row = self.get_relation_node(*row_id)?;
-            let output_id = value_row.output();
-            let output: Expression<'_> = self.get_expression_node(output_id)?;
-            let row_list = output.get_row_list()?;
+        for row_id in &rows {
+            let row_list = self.get_row_list(*row_id)?;
             let tuple_types: Result<Vec<DerivedType>, SbroadError> = row_list
                 .iter()
                 .map(|col_id| {
@@ -1866,22 +1827,17 @@ impl Plan {
         // TODO: Change `types` type to iterator to avoid allocations.
         let unified_types = calculate_unified_types(types.into_iter())?;
 
-        // Generate a row of aliases referencing all the children.
-        let first_row_id = value_rows
-            .first()
-            .expect("VALUES ROW must always come after VALUES");
-        let values_row = self.get_relation_node(*first_row_id)?;
-        let row_len = self.get_row_list(values_row.output())?.len();
-
-        let mut aliases: Vec<NodeId> = Vec::with_capacity(row_len);
+        // Generate a row of aliases referencing all the rows.
+        let mut aliases: Vec<NodeId> = Vec::with_capacity(unified_types.len());
         for (pos, unified_type) in unified_types.iter().enumerate() {
             let ref_id = self.nodes.add_ref(
-                ReferenceTarget::Values(value_rows.clone()),
+                ReferenceTarget::Values(rows.clone()),
                 pos,
                 unified_type.1,
                 None,
                 false,
             );
+            // The column names are generated according to tarantool naming of anonymous columns.
             let name = format_smolstr!("COLUMN_{}", pos + 1);
             let alias_id = self.nodes.add_alias(&name, ref_id)?;
             aliases.push(alias_id);
@@ -1890,7 +1846,8 @@ impl Plan {
 
         let values = Values {
             output,
-            children: value_rows,
+            rows,
+            subqueries: Vec::new(),
         };
         self.add_relational(values.into())
     }
@@ -2258,8 +2215,7 @@ impl Plan {
             | Relational::Union { .. }
             | Relational::UnionAll { .. }
             | Relational::Values { .. }
-            | Relational::Limit { .. }
-            | Relational::ValuesRow { .. } => Ok(None),
+            | Relational::Limit { .. } => Ok(None),
         }
     }
 
@@ -2304,12 +2260,11 @@ impl Plan {
             | Relational::UnionAll(UnionAll { left, right, .. })
             | Relational::Union(Union { left, right, .. })
             | Relational::Join(Join { left, right, .. }) => Children::Couple(left, right),
-            Relational::Values(Values { children, .. }) => Children::Many(children),
             Relational::Motion(Motion { child: None, .. })
             | Relational::Delete(Delete { child: None, .. })
             | Relational::ScanRelation(_)
             | Relational::SelectWithoutScan(_)
-            | Relational::ValuesRow(_)
+            | Relational::Values(_)
             | Relational::Projection(Projection { child: None, .. }) => Children::None,
             Relational::Projection(Projection {
                 child,
@@ -2337,7 +2292,7 @@ impl Plan {
             | Relational::Having(Having { subqueries, .. })
             | Relational::Selection(Selection { subqueries, .. })
             | Relational::SelectWithoutScan(SelectWithoutScan { subqueries, .. })
-            | Relational::ValuesRow(ValuesRow { subqueries, .. })
+            | Relational::Values(Values { subqueries, .. })
             | Relational::GroupBy(GroupBy { subqueries, .. })
             | Relational::OrderBy(OrderBy { subqueries, .. })
             | Relational::Projection(Projection { subqueries, .. }) => {

@@ -23,7 +23,6 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::node::block::{Block, BlockOwned, MutBlock};
 use crate::ir::node::{
     AnonymousBlock, BlockEntriesMut, BoolExpr, Insert, Join, Motion, NodeId, Selection, Values,
-    ValuesRow,
 };
 use crate::ir::operator::Bool;
 use crate::ir::options::Options;
@@ -533,8 +532,8 @@ impl Plan {
 
         // Eliminate the motion under an INSERT in a transaction.
         //
-        // Expected shape: Insert -> Motion(Segment | LocalSegment) -> Values -> ValuesRow*.
-        // Each ValuesRow cell at a sharding-key position must be a Constant or Parameter
+        // Expected shape: Insert -> Motion(Segment | LocalSegment) -> Values.
+        // Each value row cell at a sharding-key position must be a Constant or Parameter
         // (parameters become constants after binding). Other cells may hold arbitrary
         // expressions — they will be evaluated by the storage's local SQL.
         fn eliminate_insert_motion(plan: &mut Plan, insert_id: NodeId) -> Result<(), SbroadError> {
@@ -555,14 +554,18 @@ impl Plan {
 
             let values_id = plan.get_rel_child(motion_id, 0)?;
             let Relational::Values(Values {
-                children: values_rows,
-                ..
+                rows, subqueries, ..
             }) = plan.get_relation_node(values_id)?
             else {
                 return Ok(());
             };
+            if !subqueries.is_empty() {
+                return Err(SbroadError::other(
+                    "INSERT in transaction does not support subqueries in VALUES",
+                ));
+            }
 
-            // Collect cell positions in each ValuesRow's data tuple that correspond to
+            // Collect cell positions in each value row that correspond to
             // sharding-key columns.
             let key_positions: Vec<usize> = key
                 .targets
@@ -573,19 +576,8 @@ impl Plan {
                 })
                 .collect();
 
-            for row_id in values_rows {
-                let Relational::ValuesRow(ValuesRow {
-                    data, subqueries, ..
-                }) = plan.get_relation_node(*row_id)?
-                else {
-                    panic!("Expected ValuesRow under Values, got {row_id:?}");
-                };
-                if !subqueries.is_empty() {
-                    return Err(SbroadError::other(
-                        "INSERT in transaction does not support subqueries in VALUES",
-                    ));
-                }
-                let row_list = plan.get_row_list(*data)?;
+            for row_id in rows {
+                let row_list = plan.get_row_list(*row_id)?;
                 for pos in &key_positions {
                     let cell_id = *row_list
                         .get(*pos)

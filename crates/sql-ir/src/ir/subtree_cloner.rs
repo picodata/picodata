@@ -9,7 +9,7 @@ use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, Node, NodeAligned,
     NodeId, OrderBy, Projection, Reference, ReferenceTarget, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
+    SelectWithoutScan, Selection, Union, UnionAll, Update, Values,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
@@ -97,11 +97,7 @@ impl SubtreeCloner {
         // when a new field is added to a struct, this match must
         // be updated, or compilation will fail.
         match &mut copied {
-            RelOwned::Values(Values {
-                output: _,
-                children: _,
-            })
-            | RelOwned::SelectWithoutScan(SelectWithoutScan {
+            RelOwned::SelectWithoutScan(SelectWithoutScan {
                 subqueries: _,
                 output: _,
             })
@@ -264,12 +260,12 @@ impl SubtreeCloner {
                 }
                 *order_by_elements = new_order_by_elements;
             }
-            RelOwned::ValuesRow(ValuesRow {
+            RelOwned::Values(Values {
                 output: _,
-                data,
+                rows,
                 subqueries: _,
             }) => {
-                *data = self.get_new_id(*data)?;
+                *rows = self.copy_list(rows)?;
             }
         }
 

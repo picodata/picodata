@@ -236,9 +236,16 @@ impl Expression<'_> {
 
         let mut types = Vec::new();
 
-        for target_rel_id in target.iter() {
-            let target_rel = plan.get_relation_node(*target_rel_id)?;
-            let columns = plan.get_row_list(target_rel.output())?;
+        for target_id in target.iter() {
+            // `Values` targets are the value rows themselves, all other targets
+            // are relational nodes we take the columns from.
+            let columns = match target {
+                ReferenceTarget::Values(_) => plan.get_row_list(*target_id)?,
+                _ => {
+                    let target_rel = plan.get_relation_node(*target_id)?;
+                    plan.get_row_list(target_rel.output())?
+                }
+            };
             let column_id = *columns.get(*position).unwrap_or_else(|| {
                 panic!("reference expression has no target column at position {position}")
             });

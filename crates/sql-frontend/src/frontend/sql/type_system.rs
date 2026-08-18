@@ -1,11 +1,10 @@
 use crate::errors::SbroadError;
 use crate::frontend::sql::get_real_function_name;
 use crate::ir::node::expression::{Expression, MutExpression};
-use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant,
     Frame, FrameType, IndexExpr, LetVarRef, Like, NodeId, Over, Parameter, Reference, Row,
-    ScalarFunction, SubQueryReference, Trim, UnaryExpr, ValuesRow, Window,
+    ScalarFunction, SubQueryReference, Trim, UnaryExpr, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
 use crate::ir::tree::traversal::PostOrderWithFilter;
@@ -797,11 +796,9 @@ pub fn analyze_values_rows(
 ) -> Result<(), SbroadError> {
     let mut type_rows = Vec::with_capacity(rows.len());
     for row_id in rows {
-        if let Relational::ValuesRow(ValuesRow { data, .. }) = plan.get_relation_node(*row_id)? {
-            if let Expression::Row(Row { list, .. }) = plan.get_expression_node(*data)? {
-                let row = to_type_expr_many(list, plan, subquery_map)?;
-                type_rows.push(row);
-            }
+        if let Expression::Row(Row { list, .. }) = plan.get_expression_node(*row_id)? {
+            let row = to_type_expr_many(list, plan, subquery_map)?;
+            type_rows.push(row);
         }
     }
 
@@ -810,15 +807,7 @@ pub fn analyze_values_rows(
     let report = type_analyzer.get_report();
     let mut new_list = Vec::new();
     for row_id in rows {
-        let data = if let Relational::ValuesRow(ValuesRow { data, .. }) =
-            plan.get_relation_node(*row_id)?
-        {
-            *data
-        } else {
-            unreachable!();
-        };
-
-        if let Expression::Row(Row { list, .. }) = plan.get_expression_node(data)? {
+        if let Expression::Row(Row { list, .. }) = plan.get_expression_node(*row_id)? {
             // Here we clone again...
             new_list.clone_from(list);
         }
@@ -829,7 +818,7 @@ pub fn analyze_values_rows(
             annotate_composite_types(report, &params, *child, plan)?;
         }
 
-        if let MutExpression::Row(Row { list, .. }) = plan.get_mut_expression_node(data)? {
+        if let MutExpression::Row(Row { list, .. }) = plan.get_mut_expression_node(*row_id)? {
             // Here we clone again...
             new_list.clone_into(list);
         }

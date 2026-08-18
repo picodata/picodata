@@ -14,7 +14,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Constant, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, Node,
     NodeId, OrderBy, Projection, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
-    Selection, Union, UnionAll, Update, Values, ValuesRow,
+    Selection, Union, UnionAll, Update, Values,
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
@@ -125,17 +125,13 @@ where
         motion_key: &MotionKey,
     ) -> Result<Option<Buckets>, SbroadError> {
         let plan = self.exec_plan.get_ir_plan();
-        let Relational::Values(Values { children, .. }) = plan.get_relation_node(values_id)? else {
+        let Relational::Values(Values { rows, .. }) = plan.get_relation_node(values_id)? else {
             panic!("expected Values, got {values_id:?}");
         };
 
         let mut bucket_set = HashSet::with_hasher(RepeatableState);
-        for row_id in children {
-            let Relational::ValuesRow(ValuesRow { data, .. }) = plan.get_relation_node(*row_id)?
-            else {
-                panic!("expected ValuesRow, got {row_id:?}");
-            };
-            let row_list = plan.get_row_list(*data)?;
+        for row_id in rows {
+            let row_list = plan.get_row_list(*row_id)?;
             let Some(bucket_id) = self.try_calculate_values_row_bucket_id(row_list, motion_key)?
             else {
                 return Ok(None);
@@ -188,7 +184,7 @@ where
 
     /// Compute buckets for a block-optimized INSERT whose Motion node has been
     /// eliminated, leaving Values directly under Insert. Sharding-key cells in
-    /// each ValuesRow are guaranteed (by the block optimizer) to be Constants
+    /// each value row are guaranteed (by the block optimizer) to be Constants
     /// after parameter binding.
     fn insert_buckets_from_values(
         &self,
@@ -563,8 +559,7 @@ where
                     };
                     self.bucket_map.insert(output_id, join_buckets);
                 }
-                Relational::Values(Values { output, .. })
-                | Relational::ValuesRow(ValuesRow { output, .. }) => {
+                Relational::Values(Values { output, .. }) => {
                     // We can materialize buckets on any node.
                     self.bucket_map.insert(*output, Buckets::Any);
                 }

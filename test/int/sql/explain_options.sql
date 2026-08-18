@@ -2392,7 +2392,7 @@ FROM
           SELECT
             "COL_0"
           FROM
-            "_tmp_17381978922652183369_0136"
+            "_tmp_4399507777115325582_0136"
         )
       ) as "unnamed_subquery"
   )
@@ -2400,5 +2400,5 @@ ORDER BY
   1
 ''
 plan:
-    [0] SCAN TABLE _tmp_17381978922652183369_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_4399507777115325582_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY

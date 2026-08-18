@@ -868,12 +868,12 @@ plan:
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES ( ( SELECT CAST(1 AS int) as "col_1"), ( SELECT "COL_0" FROM "_tmp_5491313082045343550_1136" ), CAST(42 AS int) + CAST(67 AS int) )
+VALUES ( ( SELECT CAST(1 AS int) as "col_1"), ( SELECT "COL_0" FROM "_tmp_17994295031343572563_1136" ), CAST(42 AS int) + CAST(67 AS int) )
 ''
 plan:
     [0] EXECUTE SCALAR SUBQUERY 1
     [0] EXECUTE SCALAR SUBQUERY 2
-    [2] SCAN TABLE _tmp_5491313082045343550_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_17994295031343572563_1136 (~1048576 rows)
 
 -- TEST: test_raw_explain-25
 -- SQL:
@@ -1196,11 +1196,11 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT * FROM ( SELECT "COL_0" FROM "_tmp_235879829348562803_0136" ) as "cte" INNER JOIN ( SELECT "COL_0" FROM "_tmp_235879829348562803_0136" ) as "t2" ON CAST(true AS bool)
+SELECT * FROM ( SELECT "COL_0" FROM "_tmp_14135110205572124809_0136" ) as "cte" INNER JOIN ( SELECT "COL_0" FROM "_tmp_14135110205572124809_0136" ) as "t2" ON CAST(true AS bool)
 ''
 plan:
-    [0] SCAN TABLE _tmp_235879829348562803_0136 (~1048576 rows)
-        [0] SCAN TABLE _tmp_235879829348562803_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_14135110205572124809_0136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_14135110205572124809_0136 (~1048576 rows)
 
 -- TEST: explain-insert-with-buckets-setup
 -- SQL:

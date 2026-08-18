@@ -2,8 +2,7 @@ use crate::{
     errors::SbroadError,
     ir::{
         node::{
-            expression::Expression, relational::Relational, Cast, Motion, NodeId, Parameter,
-            Values, ValuesRow,
+            expression::Expression, relational::Relational, Cast, Motion, NodeId, Parameter, Values,
         },
         transformation::redistribution::{MotionPolicy, Target},
         types::UnrestrictedType,
@@ -55,22 +54,18 @@ impl Plan {
             return Ok(Vec::new());
         };
 
-        let Relational::Values(Values { children, .. }) =
+        let Relational::Values(Values { rows, .. }) =
             self.get_relation_node(child.expect("MOTION must contain child"))?
         else {
             return Ok(Vec::new());
         };
 
-        if children.len() > 1 {
+        if rows.len() > 1 {
             return Ok(Vec::new());
         }
 
         let mut param_idx = Vec::new();
-        let row_node = self.get_relation_node(children[0])?;
-        let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
-            panic!("Expected ValuesRow under Values. Got {row_node:?}.")
-        };
-        let row_list = self.get_row_list(*data)?;
+        let row_list = self.get_row_list(rows[0])?;
 
         for target in motion_key.targets.iter() {
             if let Target::Reference(pos) = target {

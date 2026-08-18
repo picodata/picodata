@@ -1,4 +1,3 @@
-use crate::frontend::sql::ast::ir_populator::PlanSubqueryRowsExt;
 use pest::iterators::Pairs;
 
 use crate::errors::SbroadError;
@@ -38,9 +37,7 @@ where
             plan,
             true,
         )?;
-        let values_row_id = plan.add_values_row(expr_id)?;
-        plan.fix_subquery_rows(worker, values_row_id)?;
-        values_rows_ids.push(values_row_id);
+        values_rows_ids.push(expr_id);
     }
 
     type_system::analyze_values_rows(

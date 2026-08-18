@@ -14,8 +14,7 @@ use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::{
     Alias, AlterColumn, AlterTable, AlterTableOp, AnonymousBlock, Backup, BlockEntries,
     BlockEntryKind, BlockStatement, Bound, BoundType, Frame, FrameType, Reference,
-    ReferenceAsteriskSource, RenameIndex, Row, SubQueryReference, TruncateTable, Values, ValuesRow,
-    Window,
+    ReferenceAsteriskSource, RenameIndex, Row, SubQueryReference, TruncateTable, Values, Window,
 };
 use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use ::core::panic;
@@ -4080,32 +4079,28 @@ pub(in crate::frontend::sql) fn parse_insert_source<M: Metadata>(
             })?;
 
             let values_id = plan.add_values(values_rows_ids)?;
+            plan.fix_subquery_rows(worker, values_id)?;
 
-            let Relational::Values(Values { children, .. }) = plan.get_relation_node(values_id)?
-            else {
+            let Relational::Values(Values { rows, .. }) = plan.get_relation_node(values_id)? else {
                 panic!("Expected to insert Values, got something else");
             };
 
             let report = type_analyzer.get_report();
-            for row_id in children {
-                if let Relational::ValuesRow(ValuesRow { data, .. }) =
-                    plan.get_relation_node(*row_id)?
-                {
-                    let Expression::Row(Row { list, .. }) = plan.get_expression_node(*data)? else {
-                        panic!("Expected to get Row as ValuesRow child, got something else");
-                    };
+            for row_id in rows {
+                let Expression::Row(Row { list, .. }) = plan.get_expression_node(*row_id)? else {
+                    panic!("Expected to get Row as Values child, got something else");
+                };
 
-                    for (idx, expr_id) in list.iter().enumerate() {
-                        let coltype = column_types[idx];
-                        let exprtype = report.get_type(expr_id);
-                        if !can_assign(exprtype.into(), coltype) {
-                            return Err(SbroadError::Other(format_smolstr!(
-                                "INSERT column at position {} is of type {}, but expression is of type {}",
-                                idx + 1,
-                                Type::from(coltype),
-                                exprtype,
-                            )));
-                        }
+                for (idx, expr_id) in list.iter().enumerate() {
+                    let coltype = column_types[idx];
+                    let exprtype = report.get_type(expr_id);
+                    if !can_assign(exprtype.into(), coltype) {
+                        return Err(SbroadError::Other(format_smolstr!(
+                            "INSERT column at position {} is of type {}, but expression is of type {}",
+                            idx + 1,
+                            Type::from(coltype),
+                            exprtype,
+                        )));
                     }
                 }
             }

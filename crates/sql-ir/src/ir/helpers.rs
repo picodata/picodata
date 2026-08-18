@@ -6,7 +6,7 @@ use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::node::{
     Alias, ArrayLiteral, BoolExpr, Case, Constant, Delete, GroupBy, Having, Join, Motion, NodeId,
     OrderBy, Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, SubQueryReference,
-    TimeParameters, Trim, UnaryExpr, Update, ValuesRow,
+    TimeParameters, Trim, UnaryExpr, Update, Values,
 };
 use crate::ir::operator::OrderByEntity;
 use crate::ir::tree::traversal::{PostOrder, EXPR_CAPACITY};
@@ -485,11 +485,12 @@ impl Plan {
                             writeln_with_tabulation(buf, tabulation_number + 2, format!("Order_by_element: {order_by_entity_str} [order_type = {order_by_type:?}]").as_str())?;
                         }
                     }
-                    Relational::Values { .. } => writeln!(buf, "Values")?,
-                    Relational::ValuesRow(ValuesRow { data, .. }) => {
-                        writeln!(buf, "ValuesRow")?;
-                        writeln_with_tabulation(buf, tabulation_number + 1, "Data")?;
-                        self.formatted_arena_node(buf, tabulation_number + 1, *data)?;
+                    Relational::Values(Values { rows, .. }) => {
+                        writeln!(buf, "Values")?;
+                        for row in rows {
+                            writeln_with_tabulation(buf, tabulation_number + 1, "Data")?;
+                            self.formatted_arena_node(buf, tabulation_number + 1, *row)?;
+                        }
                     }
                     Relational::Motion(Motion { policy, alias, .. }) => {
                         write!(buf, "Motion [policy = {policy:?}, alias = ")?;
@@ -538,8 +539,7 @@ impl Plan {
                     | Relational::UnionAll(_)
                     | Relational::Update(_)
                     | Relational::Having(_)
-                    | Relational::GroupBy(_)
-                    | Relational::ValuesRow(_) => {
+                    | Relational::GroupBy(_) => {
                         writeln_with_tabulation(buf, tabulation_number + 1, "Children:")?;
                         for child in &relation.children() {
                             writeln_with_tabulation(

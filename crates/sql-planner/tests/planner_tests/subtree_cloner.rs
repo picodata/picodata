@@ -2,10 +2,8 @@ use sql::helpers::sql_to_optimized_ir;
 
 #[test]
 fn except_transform_with_dag_plan() {
-    // In this plan we have Const node referred twice:
-    // both `data` and `output` of `ValuesRow` fields
-    // are refferring to it. Let's check except transformation
-    // with global table works in this case.
+    // Let's check except transformation with global table works
+    // when the left side is a VALUES scan.
 
     let input =
         r#"explain (logical) select 1 from (values (1)) except select e from t2 where e = 1"#;

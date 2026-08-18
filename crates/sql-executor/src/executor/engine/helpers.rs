@@ -25,7 +25,7 @@ use crate::{
     ir::{
         node::{
             relational::Relational, Alias, Constant, Delete, Insert, Limit, Motion, NodeId, Update,
-            Values, ValuesRow,
+            Values,
         },
         operator::{
             BlockConflictDoUpdate, ConflictDoUpdate, ConflictStrategy, ConflictUpdateItem,
@@ -1549,19 +1549,15 @@ pub fn materialize_values(
 ) -> Result<VirtualTable, SbroadError> {
     let child_node = exec_plan.get_ir_plan().get_node(values_id)?;
 
-    let Node::Relational(Relational::Values(Values { ref children, .. })) = child_node else {
+    let Node::Relational(Relational::Values(Values { ref rows, .. })) = child_node else {
         panic!("Values node expected. Got {child_node:?}.")
     };
 
-    // Check if there is only constant children, e.g. `VALUES (1,2,3)`. In that case we can
+    // Check if there are only constant rows, e.g. `VALUES (1,2,3)`. In that case we can
     // materialize VALUES locally avoiding expensive `dispatch()` call.
     let mut only_constants = true;
-    'rows_loop: for row_id in children {
-        let row_node = exec_plan.get_ir_plan().get_relation_node(*row_id)?;
-        let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
-            panic!("Expected ValuesRow under Values. Got {row_node:?}.")
-        };
-        for column_id in exec_plan.get_ir_plan().get_row_list(*data)? {
+    'rows_loop: for row_id in rows {
+        for column_id in exec_plan.get_ir_plan().get_row_list(*row_id)? {
             let column_node = exec_plan.get_ir_plan().get_node(*column_id)?;
             if !matches!(column_node, Node::Expression(Expression::Constant(_))) {
                 only_constants = false;
@@ -1597,7 +1593,7 @@ pub fn materialize_values(
         vtable
     } else {
         let limit = exec_plan.get_ir_plan().effective_options.sql_motion_row_max;
-        let values_count = children.len();
+        let values_count = rows.len();
         if limit > 0 && limit < values_count as i64 {
             return Err(SbroadError::ExecutionError(format_smolstr!(
                 "Exceeded maximum number of rows ({}) in virtual table: {}",
@@ -1606,34 +1602,22 @@ pub fn materialize_values(
             )));
         }
 
-        let first_row_id = children
-            .first()
-            .expect("Values node must contain children.");
-        let row_node = exec_plan.get_ir_plan().get_relation_node(*first_row_id)?;
-        let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
-            panic!("Expected ValuesRow, got {row_node:?}.")
-        };
+        let first_row_id = rows.first().expect("Values node must contain rows.");
         let columns_len = exec_plan
             .get_ir_plan()
-            .get_expression_node(*data)?
+            .get_expression_node(*first_row_id)?
             .get_row_list()?
             .len();
 
         // Create vtable columns with default column field (that will be fixed later).
         let mut vtable = VirtualTable::with_columns(vec![Column::default(); columns_len]);
         // All children are constants, can materialize VALUES locally and take all constants.
-        vtable.get_mut_tuples().reserve(children.len());
-        for row_id in children.clone() {
-            let row_node = exec_plan.get_mut_ir_plan().get_relation_node(row_id)?;
-            let Relational::ValuesRow(ValuesRow { data, .. }) = row_node else {
-                panic!("Expected ValuesRow under Values. Got {row_node:?}.")
-            };
-
-            let data = *data;
+        vtable.get_mut_tuples().reserve(rows.len());
+        for row_id in rows.clone() {
             let mut row: VTableTuple = Vec::with_capacity(columns_len);
             for idx in 0..columns_len {
                 let plan = exec_plan.get_mut_ir_plan();
-                let column_id = plan.get_row_list(data)?[idx];
+                let column_id = plan.get_row_list(row_id)?[idx];
                 let column_node = plan.get_mut_expression_node(column_id)?;
                 let MutExpression::Constant(Constant { ref mut value, .. }) = column_node else {
                     unreachable!("checked before that there can be only constants");

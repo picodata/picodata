@@ -463,7 +463,6 @@ fn is_sql_scope_boundary(rel_node: &Relational<'_>) -> bool {
             | Relational::Union(_)
             | Relational::UnionAll(_)
             | Relational::Values(_)
-            | Relational::ValuesRow(_)
     )
 }
 
@@ -744,10 +743,10 @@ fn to_subtree_reference_target(
             to_subtree_reference_node_id(ir_plan, *left, node_positions)?,
             to_subtree_reference_node_id(ir_plan, *right, node_positions)?,
         )),
-        ReferenceTarget::Values(values) => Ok(ReferenceTarget::Values(
-            values
-                .iter()
-                .map(|id| to_subtree_reference_node_id(ir_plan, *id, node_positions))
+        // Value rows are plain expressions always rendered as a part of the subtree.
+        ReferenceTarget::Values(rows) => Ok(ReferenceTarget::Values(
+            rows.iter()
+                .map(|id| to_subtree_node_id(*id, node_positions))
                 .collect::<Result<Vec<_>, _>>()?,
         )),
     }
@@ -836,8 +835,10 @@ fn normalize_plan_id_relational(
                 }
             }
         }
-        RelOwned::ValuesRow(values_row) => {
-            values_row.data = to_subtree_node_id(values_row.data, node_positions)?;
+        RelOwned::Values(values) => {
+            for row in &mut values.rows {
+                *row = to_subtree_node_id(*row, node_positions)?;
+            }
         }
         RelOwned::ScanCte(_)
         | RelOwned::Except(_)
@@ -851,8 +852,7 @@ fn normalize_plan_id_relational(
         | RelOwned::ScanSubQuery(_)
         | RelOwned::SelectWithoutScan(_)
         | RelOwned::UnionAll(_)
-        | RelOwned::Union(_)
-        | RelOwned::Values(_) => {}
+        | RelOwned::Union(_) => {}
     }
     Ok(())
 }
@@ -1454,7 +1454,6 @@ where
                         Relational::ScanSubQuery { .. }
                         | Relational::ScanCte { .. }
                         | Relational::Motion { .. }
-                        | Relational::ValuesRow { .. }
                         | Relational::Limit { .. } => {}
                         Relational::Selection { .. } => {
                             sql.push_str("WHERE");
