@@ -28,7 +28,7 @@ use crate::ir::node::ReferenceTarget::Single;
 use crate::ir::node::{
     BoolExpr, Except, GroupBy, Having, Intersect, Join, Limit, Motion, NodeId, OrderBy, Projection,
     Reference, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
-    SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values, ValuesRow, Window,
+    SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values, Window,
 };
 use crate::ir::transformation::equality_facts::EqualityFacts;
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
@@ -793,7 +793,7 @@ impl Plan {
         let children = self.get_relation_children(parent_id)?;
         let subqueries = self.get_relation_subqueries(parent_id)?;
         if children.is_empty() && subqueries.is_empty() {
-            // E.g., case of ValuesRow without SubQueries children.
+            // E.g., case of Values without SubQueries children.
             return Ok(());
         }
 
@@ -2407,7 +2407,15 @@ impl Plan {
                     // (native or resulted from children).
                     self.set_rel_output_distribution(id)?;
                 }
-                RelOwned::Values(Values { output, .. }) => {
+                RelOwned::Values(Values { output, rows, .. }) => {
+                    let mut correct_nodes = AHashSet::new();
+                    for row in rows {
+                        let row_strategy = self.resolve_sq_conflicts(id, row)?;
+                        correct_nodes.extend(row_strategy.get_rel_ids());
+                        self.insert_motion_nodes(row_strategy)?;
+                    }
+                    self.adjust_sqs_of_rel_node(id, &correct_nodes)?;
+
                     self.set_dist(output, Distribution::Global)?;
                 }
                 RelOwned::GroupBy(GroupBy {
@@ -2427,8 +2435,7 @@ impl Plan {
                     output,
                     filter: data,
                     ..
-                })
-                | RelOwned::ValuesRow(ValuesRow { output, data, .. }) => {
+                }) => {
                     let strategy = self.resolve_sq_conflicts(id, data)?;
                     let correct_rel_ids = strategy.get_rel_ids();
                     self.insert_motion_nodes(strategy)?;

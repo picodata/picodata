@@ -6,7 +6,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     ArrayLiteral, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, NodeId,
     OrderBy, Projection, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, SubQueryReference, Union, UnionAll, Update, Values, ValuesRow,
+    SelectWithoutScan, Selection, SubQueryReference, Union, UnionAll, Update, Values,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::{Node, Nodes, Plan};
@@ -488,19 +488,17 @@ fn subtree_next<'plan>(
                     }
                     None
                 }
-                Relational::Values(Values {
-                    output, children, ..
-                }) => {
+                Relational::Values(Values { output, rows, .. }) => {
                     let step = *iter.get_child().borrow();
                     *iter.get_child().borrow_mut() += 1;
 
                     let once_output = std::iter::once(*output);
-                    let children_iter = children.iter().copied();
+                    let rows_iter = rows.iter().copied();
 
                     if iter.output_first() {
-                        once_output.chain(children_iter).nth(step)
+                        once_output.chain(rows_iter).nth(step)
                     } else {
-                        children_iter.chain(once_output).nth(step)
+                        rows_iter.chain(once_output).nth(step)
                     }
                 }
                 Relational::SelectWithoutScan(SelectWithoutScan {
@@ -620,18 +618,6 @@ fn subtree_next<'plan>(
                             None
                         }
                     }
-                }
-                Relational::ValuesRow(ValuesRow { data, output, .. }) => {
-                    let step = *iter.get_child().borrow();
-
-                    *iter.get_child().borrow_mut() += 1;
-                    if step == 0 {
-                        return Some(*data);
-                    }
-                    if iter.need_output() && step == 1 {
-                        return Some(*output);
-                    }
-                    None
                 }
                 Relational::ScanRelation(ScanRelation { output, .. }) => {
                     if iter.need_output() {

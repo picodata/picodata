@@ -14,7 +14,7 @@ use crate::ir::node::{
     Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Constant, Delete, Having, IndexExpr,
     Insert, Join, Motion as MotionRel, NodeId, Reference, Row as RowExpr, ScalarFunction, ScanCte,
     ScanRelation, ScanSubQuery, Selection, SubQueryReference, Timestamp, Trim, UnaryExpr,
-    Update as UpdateRel, Values, ValuesRow,
+    Update as UpdateRel, Values,
 };
 use crate::ir::operator::{
     Bool, ConflictStrategy, JoinKind, OrderByElement, OrderByEntity, OrderByType,
@@ -1939,26 +1939,22 @@ impl LogicalExplain {
 
                     (join, vec![left, right])
                 }
-                Relational::ValuesRow(ValuesRow {
-                    data, subqueries, ..
+                Relational::Values(Values {
+                    rows, subqueries, ..
                 }) => {
                     let sq_ref_map = LogicalExplain::get_sq_ref_map(
                         &mut stack,
                         &mut known_subqueries,
                         subqueries,
                     );
-                    let row = ColExpr::new(ir, *data, &sq_ref_map, should_fmt)?;
-
-                    (ExplainNode::ValueRow(row), vec![])
-                }
-                Relational::Values(Values { children, .. }) => {
-                    let Some(start_pos) = stack.len().checked_sub(children.len()) else {
-                        return Err(SbroadError::UnexpectedNumberOfValues(
-                            "Insert node has insufficient row values.".into(),
-                        ));
-                    };
-                    let children = stack[start_pos..].to_vec();
-                    stack.truncate(start_pos);
+                    let mut children = Vec::with_capacity(rows.len());
+                    for row_id in rows {
+                        let row = ColExpr::new(ir, *row_id, &sq_ref_map, should_fmt)?;
+                        children.push(ExplainTreePart {
+                            current: ExplainNode::ValueRow(row),
+                            children: Vec::new(),
+                        });
+                    }
 
                     (ExplainNode::Value, children)
                 }

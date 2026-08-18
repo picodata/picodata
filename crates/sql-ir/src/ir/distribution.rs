@@ -585,7 +585,7 @@ impl Plan {
     /// as far as required children data is stored on each replicaset.
     ///
     /// In case all required children have Global distribution it improves
-    /// Global distribution based on subqueries in case there are any (note that `ValuesRow` has
+    /// Global distribution based on subqueries in case there are any (note that `Values` has
     /// not required children).
     /// Otherwise, it returns `None`.
     ///

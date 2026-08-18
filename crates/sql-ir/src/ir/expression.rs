@@ -17,7 +17,7 @@ use std::ops::Bound::Included;
 use super::node::{
     Bound, BoundType, Except, GroupBy, Having, Intersect, Join, Like, Limit, Motion, OrderBy, Over,
     Projection, ReferenceTarget, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
-    Union, UnionAll, Values, ValuesRow, Window,
+    Union, UnionAll, Values, Window,
 };
 use super::operator::OrderByEntity;
 use super::types::{CastType, DerivedType};
@@ -810,17 +810,6 @@ impl<'plan> Comparator<'plan> {
             return Ok(false);
         }
 
-        let cmp_rels = |l: &[NodeId], r: &[NodeId]| -> Result<bool, SbroadError> {
-            if l.len() != r.len() {
-                return Ok(false);
-            }
-            for (l, r) in l.iter().zip(r.iter()) {
-                if !self.are_rel_subtrees_equal(*l, *r)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        };
         let cmp_exprs = |l: &[NodeId], r: &[NodeId]| -> Result<bool, SbroadError> {
             if l.len() != r.len() {
                 return Ok(false);
@@ -1100,24 +1089,12 @@ impl<'plan> Comparator<'plan> {
                 }
             }
             Relational::Values(Values {
-                children: l_children,
-                output: _,
-            }) => {
-                if let Relational::Values(Values {
-                    children: r_children,
-                    ..
-                }) = r
-                {
-                    return cmp_rels(l_children, r_children);
-                }
-            }
-            Relational::ValuesRow(ValuesRow {
-                data: l_data,
+                rows: l_rows,
                 subqueries: _,
                 output: _,
             }) => {
-                if let Relational::ValuesRow(ValuesRow { data: r_data, .. }) = r {
-                    return self.are_subtrees_equal(*l_data, *r_data);
+                if let Relational::Values(Values { rows: r_rows, .. }) = r {
+                    return cmp_exprs(l_rows, r_rows);
                 }
             }
             Relational::SelectWithoutScan(SelectWithoutScan {
@@ -2327,6 +2304,12 @@ impl Plan {
                     self.replace_target_in_subtree(ref_node, from, to)?;
                 }
             }
+            Relational::Values(Values { rows, .. }) => {
+                let rows = rows.clone();
+                for row in rows {
+                    self.replace_target_in_subtree(row, from, to)?;
+                }
+            }
             Relational::Selection(Selection { filter, .. }) => {
                 let filter = *filter;
                 self.replace_target_in_subtree(filter, from, to)?;
@@ -2359,8 +2342,6 @@ impl Plan {
             Relational::SelectWithoutScan(_) => {}
             Relational::UnionAll(_) => {}
             Relational::Union(_) => {}
-            Relational::Values(_) => {}
-            Relational::ValuesRow(_) => {}
         }
 
         Ok(())

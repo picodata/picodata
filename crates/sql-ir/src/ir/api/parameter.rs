@@ -1,12 +1,9 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::expression::{FunctionFeature, Substring};
 use crate::ir::node::expression::{Expression, MutExpression};
-use crate::ir::node::relational::Relational;
-use crate::ir::node::{
-    Alias, Constant, MutNode, Node96, NodeId, Parameter, ScalarFunction, Timestamp, ValuesRow,
-};
+use crate::ir::node::{Constant, MutNode, Node96, NodeId, Parameter, ScalarFunction, Timestamp};
 use crate::ir::node::{Node32, TimeParameters};
-use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::{ArenaType, Node, Plan};
@@ -83,54 +80,6 @@ impl Plan {
                 val: resolve_value(param_values, val),
             })
             .collect()
-    }
-
-    /// Synchronize values row output with the data tuple after parameter binding.
-    ///
-    /// ValuesRow fields `data` and `output` are referencing the same nodes. We exclude
-    /// their output from nodes traversing. And in case parameters are met under ValuesRow, we don't update
-    /// references in its output. That why we have to traverse the tree one more time fixing output.
-    fn update_values_row(&mut self, id: NodeId) -> Result<(), SbroadError> {
-        let values_row = self.get_node(id)?;
-        let (output_id, data_id) =
-            if let Node::Relational(Relational::ValuesRow(ValuesRow { output, data, .. })) =
-                values_row
-            {
-                (*output, *data)
-            } else {
-                panic!("Expected a values row: {values_row:?}")
-            };
-        let data = self.get_expression_node(data_id)?;
-        let data_list = data.clone_row_list()?;
-        let output = self.get_expression_node(output_id)?;
-        let output_list = output.clone_row_list()?;
-        for (pos, alias_id) in output_list.iter().enumerate() {
-            let new_child_id = *data_list
-                .get(pos)
-                .unwrap_or_else(|| panic!("Node not found at position {pos}"));
-            let alias = self.get_mut_expression_node(*alias_id)?;
-            if let MutExpression::Alias(Alias { ref mut child, .. }) = alias {
-                *child = new_child_id;
-            } else {
-                panic!("Expected an alias: {alias:?}")
-            }
-        }
-        Ok(())
-    }
-
-    pub fn update_value_rows(&mut self) -> Result<(), SbroadError> {
-        // Note: `need_output` is set to false for `subtree_iter` specially to avoid traversing
-        //       the same nodes twice. See `update_values_row` for more info.
-        let tree = PostOrder::new(|node| self.subtree_iter(node, false), self.nodes.len());
-        let top_id = self.get_top()?;
-        let nodes = tree.traverse_into_vec(top_id);
-
-        for id in nodes {
-            if let Ok(Node::Relational(Relational::ValuesRow(_))) = self.get_node(id) {
-                self.update_values_row(id)?;
-            }
-        }
-        Ok(())
     }
 
     pub fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {

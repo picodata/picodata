@@ -113,7 +113,6 @@ impl Nodes {
                 Node32::Unary(unary) => Node::Expression(Expression::Unary(unary)),
                 Node32::Union(un) => Node::Relational(Relational::Union(un)),
                 Node32::UnionAll(union_all) => Node::Relational(Relational::UnionAll(union_all)),
-                Node32::Values(values) => Node::Relational(Relational::Values(values)),
                 Node32::Deallocate(deallocate) => Node::Deallocate(deallocate),
                 Node32::Tcl(tcl) => match *tcl {
                     Tcl::Begin => Node::Tcl(Tcl::Begin),
@@ -161,9 +160,7 @@ impl Nodes {
                 Node64::Selection(sel) => Node::Relational(Relational::Selection(sel)),
                 Node64::SetParam(set_param) => Node::Ddl(Ddl::SetParam(set_param)),
                 Node64::SetTransaction(set_trans) => Node::Ddl(Ddl::SetTransaction(set_trans)),
-                Node64::ValuesRow(values_row) => {
-                    Node::Relational(Relational::ValuesRow(values_row))
-                }
+                Node64::Values(values) => Node::Relational(Relational::Values(values)),
             }),
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
                 Node96::AnonymousBlock(block) => Node::Block(Block::Anonymous(block)),
@@ -262,7 +259,6 @@ impl Nodes {
                     Node32::SelectWithoutScan(select) => {
                         MutNode::Relational(MutRelational::SelectWithoutScan(select))
                     }
-                    Node32::Values(values) => MutNode::Relational(MutRelational::Values(values)),
                     Node32::Deallocate(deallocate) => MutNode::Deallocate(deallocate),
                     Node32::Tcl(tcl) => match *tcl {
                         Tcl::Begin => MutNode::Tcl(node::tcl::Tcl::Begin),
@@ -329,9 +325,7 @@ impl Nodes {
                     Node64::SetTransaction(set_trans) => {
                         MutNode::Ddl(MutDdl::SetTransaction(set_trans))
                     }
-                    Node64::ValuesRow(values_row) => {
-                        MutNode::Relational(MutRelational::ValuesRow(values_row))
-                    }
+                    Node64::Values(values) => MutNode::Relational(MutRelational::Values(values)),
                 }),
             ArenaType::Arena96 => self
                 .arena96
@@ -1151,11 +1145,6 @@ impl Plan {
             | Relational::UnionAll { .. }
             | Relational::Union { .. }
             | Relational::Values { .. } => Ok(ref_parent_node_id),
-            Relational::ValuesRow { .. } => {
-                panic!(
-                    "Reference source search shouldn't reach unsupported node {ref_source_node:?}."
-                )
-            }
         }
     }
 
@@ -2012,6 +2001,10 @@ impl Plan {
     pub fn get_alias_from_reference_node(&self, node: &Expression) -> Result<&str, SbroadError> {
         let (ref_node_target_child, position) = match node {
             Expression::Reference(Reference {
+                target: ReferenceTarget::Values(_),
+                ..
+            }) => unreachable!("get_alias_from_reference_node: value rows have no named columns"),
+            Expression::Reference(Reference {
                 target, position, ..
             }) => (
                 target
@@ -2124,7 +2117,6 @@ impl Plan {
             | Relational::Update { .. }
             | Relational::Values { .. }
             | Relational::Having { .. }
-            | Relational::ValuesRow { .. }
             | Relational::Limit { .. } => Ok(*top_id),
             Relational::Motion { .. } | Relational::Insert { .. } | Relational::Delete { .. } => {
                 Err(SbroadError::Invalid(
@@ -3104,7 +3096,6 @@ impl Plan {
                 | Relational::Except(_)
                 | Relational::ScanRelation(_)
                 | Relational::Values(_)
-                | Relational::ValuesRow(_)
                 | Relational::Intersect(_)
                 | Relational::Selection(_)
                 | Relational::SelectWithoutScan(_)

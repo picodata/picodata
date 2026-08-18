@@ -8,9 +8,9 @@ use crate::ir::node::Delete;
 use crate::ir::node::{
     Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except,
     FrameType, GroupBy, Having, IndexExpr, Intersect, Join, Like, Limit, Motion, Node, NodeId,
-    OrderBy, Over, Parameter, Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction,
-    ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, SubQueryReference, Trim,
-    UnaryExpr, Union, UnionAll, Values, ValuesRow, Window,
+    OrderBy, Over, Parameter, Projection, Reference, ReferenceAsteriskSource, ReferenceTarget, Row,
+    ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
+    SubQueryReference, Trim, UnaryExpr, Union, UnionAll, Values, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::MotionPolicy;
@@ -1039,7 +1039,6 @@ impl<'p> SyntaxPlan<'p> {
                 Relational::ScanRelation { .. } => self.add_scan_relation(id),
                 Relational::SelectWithoutScan { .. } => self.add_select_without_scan(id),
                 Relational::Motion { .. } => self.add_motion(id),
-                Relational::ValuesRow { .. } => self.add_values_row(id),
                 Relational::Values { .. } => self.add_values(id),
                 Relational::Limit { .. } => self.add_limit(id),
             },
@@ -1645,31 +1644,18 @@ impl<'p> SyntaxPlan<'p> {
         arena.push_sn_plan(sn);
     }
 
-    fn add_values_row(&mut self, id: NodeId) {
-        let (_, row) = self.prologue_rel(id);
-        let Relational::ValuesRow(ValuesRow { data, .. }) = row else {
-            panic!("Expected VALUES ROW node");
-        };
-        let data_sn_id = self.pop_from_stack(*data, id);
-        let sn = SyntaxNode::new_pointer(id, None, vec![data_sn_id]);
-        self.nodes.push_sn_plan(sn);
-    }
-
     fn add_values(&mut self, id: NodeId) {
         let (_, values) = self.prologue_rel(id);
-        let Relational::Values(Values {
-            children, output, ..
-        }) = values
-        else {
+        let Relational::Values(Values { rows, output, .. }) = values else {
             panic!("Expected VALUES node");
         };
         let output_plan_id = *output;
         // The syntax nodes on the stack are in the reverse order.
-        let plan_children = children.iter().rev().copied().collect::<Vec<_>>();
-        let mut syntax_children = Vec::with_capacity(plan_children.len());
+        let plan_rows = rows.iter().rev().copied().collect::<Vec<_>>();
+        let mut syntax_children = Vec::with_capacity(plan_rows.len());
 
-        for child_id in &plan_children {
-            syntax_children.push(self.pop_from_stack(*child_id, id));
+        for row_id in &plan_rows {
+            syntax_children.push(self.pop_from_stack(*row_id, id));
         }
 
         // Consume the output from the stack.
@@ -1685,7 +1671,7 @@ impl<'p> SyntaxPlan<'p> {
         nodes.push(
             *syntax_children
                 .first()
-                .expect("values must have at least one child"),
+                .expect("values must have at least one row"),
         );
         let sn = SyntaxNode::new_pointer(id, None, nodes);
         arena.push_sn_plan(sn);
@@ -1751,12 +1737,15 @@ impl<'p> SyntaxPlan<'p> {
         let child_expr = plan
             .get_expression_node(child)
             .expect("alias child expression");
-        if let Expression::Reference(_) = child_expr {
-            let alias = self.plan.reference_alias(&child_expr).expect("alias name");
-            if alias == name {
-                let sn = SyntaxNode::new_pointer(id, None, vec![child_sn_id]);
-                self.nodes.push_sn_plan(sn);
-                return;
+        if let Expression::Reference(Reference { target, .. }) = child_expr {
+            // Value rows have no named columns to compare the alias with.
+            if !matches!(target, ReferenceTarget::Values(_)) {
+                let alias = self.plan.reference_alias(&child_expr).expect("alias name");
+                if alias == name {
+                    let sn = SyntaxNode::new_pointer(id, None, vec![child_sn_id]);
+                    self.nodes.push_sn_plan(sn);
+                    return;
+                }
             }
         }
         let alias_sn_id = self.nodes.push_sn_non_plan(SyntaxNode::new_alias(name));

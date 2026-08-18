@@ -519,7 +519,6 @@ impl<'q> AbstractSyntaxTree<'q> {
         // Some recalculations that need to be performed after all parameter types are known.
         // TODO: They are likely to be redundant and should be removed because now parameters get
         // their types as soon as they are parsed but it needs to be investigated.
-        plan.update_value_rows()?;
         plan.recalculate_ref_types()?;
 
         // This was the last pass in this pipeline that is allowed to consult
@@ -998,6 +997,7 @@ where
     let values_rows_ids =
         parse_values_rows(&node.children, type_analyzer, &[], pairs_map, worker, plan)?;
     let plan_values_id = plan.add_values(values_rows_ids)?;
+    plan.fix_subquery_rows(worker, plan_values_id)?;
     map.add(node_id, plan_values_id);
     Ok(())
 }

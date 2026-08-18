@@ -267,6 +267,7 @@ pub enum ReferenceTarget {
     Leaf,
     Single(NodeId),
     Union(NodeId, NodeId),
+    /// Rows (`Expression::Row`) of the `Values` node the reference belongs to.
     Values(Vec<NodeId>),
 }
 
@@ -896,33 +897,19 @@ impl From<UnionAll> for NodeAligned {
 pub struct Values {
     /// Output tuple.
     pub output: NodeId,
-    /// Non-empty list of value rows.
-    pub children: Vec<NodeId>,
-}
-
-impl From<Values> for NodeAligned {
-    fn from(value: Values) -> Self {
-        Self::Node32(Node32::Values(value))
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct ValuesRow {
-    /// Output tuple of aliases.
-    pub output: NodeId,
-    /// The data tuple.
-    pub data: NodeId,
+    /// Non-empty list of value rows (`Expression::Row`).
+    pub rows: Vec<NodeId>,
     /// A list of subqueries is required for the rows containing
     /// sub-queries. For example, the row `(1, (select a from t))`
-    /// requires `subqueries` to keep projection node. If the row
-    /// contains only constants (i.e. `(1, 2)`), then `subqueries`
+    /// requires `subqueries` to keep projection node. If the rows
+    /// contain only constants (i.e. `(1, 2)`), then `subqueries`
     /// should be empty.
     pub subqueries: Vec<NodeId>,
 }
 
-impl From<ValuesRow> for NodeAligned {
-    fn from(value: ValuesRow) -> Self {
-        Self::Node64(Node64::ValuesRow(value))
+impl From<Values> for NodeAligned {
+    fn from(value: Values) -> Self {
+        Self::Node64(Node64::Values(value))
     }
 }
 
@@ -1861,7 +1848,6 @@ pub enum Node32 {
     Intersect(Intersect),
     SelectWithoutScan(SelectWithoutScan),
     UnionAll(UnionAll),
-    Values(Values),
     Deallocate(Deallocate),
     Tcl(Tcl),
     CreateSchema,
@@ -1899,7 +1885,6 @@ impl Node32 {
             Node32::Unary(unary) => NodeOwned::Expression(ExprOwned::Unary(unary)),
             Node32::Union(un) => NodeOwned::Relational(RelOwned::Union(un)),
             Node32::UnionAll(union_all) => NodeOwned::Relational(RelOwned::UnionAll(union_all)),
-            Node32::Values(values) => NodeOwned::Relational(RelOwned::Values(values)),
             Node32::Deallocate(deallocate) => NodeOwned::Deallocate(deallocate),
             Node32::Tcl(tcl) => match tcl {
                 Tcl::Begin => NodeOwned::Tcl(Tcl::Begin),
@@ -1930,7 +1915,7 @@ pub enum Node64 {
     Case(Case),
     Selection(Selection),
     Having(Having),
-    ValuesRow(ValuesRow),
+    Values(Values),
     OrderBy(OrderBy),
     CallProcedure(CallProcedure),
     Join(Join),
@@ -1983,7 +1968,7 @@ impl Node64 {
             Node64::SetTransaction(set_trans) => {
                 NodeOwned::Ddl(DdlOwned::SetTransaction(set_trans))
             }
-            Node64::ValuesRow(values_row) => NodeOwned::Relational(RelOwned::ValuesRow(values_row)),
+            Node64::Values(values) => NodeOwned::Relational(RelOwned::Values(values)),
         }
     }
 }

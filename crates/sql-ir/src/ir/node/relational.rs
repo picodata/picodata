@@ -4,7 +4,7 @@ use smol_str::SmolStr;
 use super::{
     ArenaType, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion,
     NodeAligned, NodeId, OrderBy, Projection, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, Union, UnionAll, Update, Values, ValuesRow,
+    SelectWithoutScan, Selection, Union, UnionAll, Update, Values,
 };
 use crate::{
     errors::{Entity, SbroadError},
@@ -34,7 +34,6 @@ pub enum RelOwned {
     UnionAll(UnionAll),
     Union(Union),
     Values(Values),
-    ValuesRow(ValuesRow),
 }
 
 impl From<RelOwned> for NodeAligned {
@@ -60,7 +59,6 @@ impl From<RelOwned> for NodeAligned {
             RelOwned::UnionAll(union_all) => union_all.into(),
             RelOwned::Update(update) => update.into(),
             RelOwned::Values(values) => values.into(),
-            RelOwned::ValuesRow(values_row) => values_row.into(),
         }
     }
 }
@@ -75,14 +73,13 @@ impl RelOwned {
             RelOwned::Union(_)
             | RelOwned::UnionAll(_)
             | RelOwned::Except(_)
-            | RelOwned::Values(_)
             | RelOwned::Intersect(_)
             | RelOwned::Limit(_)
             | RelOwned::SelectWithoutScan(_) => ArenaType::Arena32,
             RelOwned::ScanCte(_)
             | RelOwned::Selection(_)
             | RelOwned::Having(_)
-            | RelOwned::ValuesRow(_)
+            | RelOwned::Values(_)
             | RelOwned::OrderBy(_)
             | RelOwned::Join(_)
             | RelOwned::Delete(_)
@@ -101,12 +98,6 @@ impl RelOwned {
     /// - wrong number of children for the given node
     pub fn set_children(&mut self, children: Vec<NodeId>) {
         match self {
-            RelOwned::Values(Values {
-                children: ref mut old,
-                ..
-            }) => {
-                *old = children;
-            }
             RelOwned::Except(Except { left, right, .. })
             | RelOwned::UnionAll(UnionAll { left, right, .. })
             | RelOwned::Intersect(Intersect { left, right, .. })
@@ -142,7 +133,7 @@ impl RelOwned {
                 *child = children[0];
             }
             RelOwned::SelectWithoutScan(SelectWithoutScan { .. })
-            | RelOwned::ValuesRow(ValuesRow { .. })
+            | RelOwned::Values(Values { .. })
             | RelOwned::ScanRelation(ScanRelation { .. }) => {
                 assert!(children.is_empty(), "scan must have no children!");
             }
@@ -188,12 +179,11 @@ impl RelOwned {
             | RelOwned::UnionAll(UnionAll { left, right, .. })
             | RelOwned::Union(Union { left, right, .. })
             | RelOwned::Join(Join { left, right, .. }) => Children::Couple(left, right),
-            RelOwned::Values(Values { children, .. }) => Children::Many(children),
             RelOwned::Delete(Delete { child: None, .. })
             | RelOwned::Motion(Motion { child: None, .. })
             | RelOwned::ScanRelation(_)
             | RelOwned::SelectWithoutScan(_)
-            | RelOwned::ValuesRow(_) => Children::None,
+            | RelOwned::Values(_) => Children::None,
 
             RelOwned::Projection(Projection {
                 child,
@@ -257,14 +247,11 @@ impl RelOwned {
                 ref mut right,
                 ..
             }) => MutChildren::Couple(left, right),
-            RelOwned::Values(Values {
-                ref mut children, ..
-            }) => MutChildren::Many(children),
             RelOwned::Delete(Delete { child: None, .. })
             | RelOwned::Motion(Motion { child: None, .. })
             | RelOwned::ScanRelation(_)
             | RelOwned::SelectWithoutScan(_)
-            | RelOwned::ValuesRow(_) => MutChildren::None,
+            | RelOwned::Values(_) => MutChildren::None,
             RelOwned::Projection(Projection {
                 ref mut child,
                 group_by,
@@ -297,7 +284,7 @@ impl RelOwned {
             | RelOwned::SelectWithoutScan(SelectWithoutScan {
                 ref mut subqueries, ..
             })
-            | RelOwned::ValuesRow(ValuesRow {
+            | RelOwned::Values(Values {
                 ref mut subqueries, ..
             })
             | RelOwned::GroupBy(GroupBy {
@@ -338,8 +325,7 @@ impl RelOwned {
             | RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. })
             | RelOwned::Union(Union { output, .. })
             | RelOwned::UnionAll(UnionAll { output, .. })
-            | RelOwned::Values(Values { output, .. })
-            | RelOwned::ValuesRow(ValuesRow { output, .. }) => output,
+            | RelOwned::Values(Values { output, .. }) => output,
         }
     }
 }
@@ -371,7 +357,6 @@ pub enum Relational<'a> {
     UnionAll(&'a UnionAll),
     Union(&'a Union),
     Values(&'a Values),
-    ValuesRow(&'a ValuesRow),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -397,7 +382,6 @@ pub enum MutRelational<'a> {
     UnionAll(&'a mut UnionAll),
     Union(&'a mut Union),
     Values(&'a mut Values),
-    ValuesRow(&'a mut ValuesRow),
 }
 
 impl MutRelational<'_> {
@@ -426,8 +410,7 @@ impl MutRelational<'_> {
             | MutRelational::SelectWithoutScan(SelectWithoutScan { output, .. })
             | MutRelational::Union(Union { output, .. })
             | MutRelational::UnionAll(UnionAll { output, .. })
-            | MutRelational::Values(Values { output, .. })
-            | MutRelational::ValuesRow(ValuesRow { output, .. }) => output,
+            | MutRelational::Values(Values { output, .. }) => output,
         }
     }
 
@@ -456,14 +439,11 @@ impl MutRelational<'_> {
             | MutRelational::UnionAll(UnionAll { left, right, .. })
             | MutRelational::Union(Union { left, right, .. })
             | MutRelational::Join(Join { left, right, .. }) => MutChildren::Couple(left, right),
-            MutRelational::Values(Values {
-                ref mut children, ..
-            }) => MutChildren::Many(children),
             MutRelational::Delete(Delete { child: None, .. })
             | MutRelational::Motion(Motion { child: None, .. })
             | MutRelational::ScanRelation(_)
             | MutRelational::SelectWithoutScan(_)
-            | MutRelational::ValuesRow(_) => MutChildren::None,
+            | MutRelational::Values(_) => MutChildren::None,
             MutRelational::Projection(Projection {
                 child,
                 group_by,
@@ -487,12 +467,6 @@ impl MutRelational<'_> {
     /// - wrong number of children for the given node
     pub fn set_children(&mut self, children: Vec<NodeId>) {
         match self {
-            MutRelational::Values(Values {
-                children: ref mut old,
-                ..
-            }) => {
-                *old = children;
-            }
             MutRelational::Except(Except { left, right, .. })
             | MutRelational::UnionAll(UnionAll { left, right, .. })
             | MutRelational::Intersect(Intersect { left, right, .. })
@@ -520,7 +494,7 @@ impl MutRelational<'_> {
                 *child = Some(children[0]);
             }
             MutRelational::SelectWithoutScan(SelectWithoutScan { .. })
-            | MutRelational::ValuesRow(ValuesRow { .. })
+            | MutRelational::Values(Values { .. })
             | MutRelational::ScanRelation(ScanRelation { .. }) => {
                 assert!(children.is_empty(), "scan must have no children!");
             }
@@ -560,7 +534,7 @@ impl MutRelational<'_> {
                 subqueries: ref mut old,
                 ..
             })
-            | MutRelational::ValuesRow(ValuesRow {
+            | MutRelational::Values(Values {
                 subqueries: ref mut old,
                 ..
             })
@@ -591,7 +565,7 @@ impl MutRelational<'_> {
             | MutRelational::Selection(Selection { subqueries, .. })
             | MutRelational::Having(Having { subqueries, .. })
             | MutRelational::SelectWithoutScan(SelectWithoutScan { subqueries, .. })
-            | MutRelational::ValuesRow(ValuesRow { subqueries, .. })
+            | MutRelational::Values(Values { subqueries, .. })
             | MutRelational::GroupBy(GroupBy { subqueries, .. })
             | MutRelational::OrderBy(OrderBy { subqueries, .. })
             | MutRelational::Projection(Projection { subqueries, .. }) => subqueries.push(sq_id),
@@ -657,8 +631,7 @@ impl Relational<'_> {
             | Relational::SelectWithoutScan(SelectWithoutScan { output, .. })
             | Relational::Union(Union { output, .. })
             | Relational::UnionAll(UnionAll { output, .. })
-            | Relational::Values(Values { output, .. })
-            | Relational::ValuesRow(ValuesRow { output, .. }) => *output,
+            | Relational::Values(Values { output, .. }) => *output,
         }
     }
 
@@ -686,12 +659,11 @@ impl Relational<'_> {
             | Relational::UnionAll(UnionAll { left, right, .. })
             | Relational::Union(Union { left, right, .. })
             | Relational::Join(Join { left, right, .. }) => Children::Couple(left, right),
-            Relational::Values(Values { children, .. }) => Children::Many(children),
             Relational::Delete(Delete { child: None, .. })
             | Relational::Motion(Motion { child: None, .. })
             | Relational::ScanRelation(_)
             | Relational::SelectWithoutScan(SelectWithoutScan { .. })
-            | Relational::ValuesRow(ValuesRow { .. }) => Children::None,
+            | Relational::Values(Values { .. }) => Children::None,
             Relational::Projection(Projection {
                 child,
                 having,
@@ -715,7 +687,7 @@ impl Relational<'_> {
             | Relational::Having(Having { subqueries, .. })
             | Relational::Selection(Selection { subqueries, .. })
             | Relational::SelectWithoutScan(SelectWithoutScan { subqueries, .. })
-            | Relational::ValuesRow(ValuesRow { subqueries, .. })
+            | Relational::Values(Values { subqueries, .. })
             | Relational::GroupBy(GroupBy { subqueries, .. })
             | Relational::OrderBy(OrderBy { subqueries, .. })
             | Relational::Projection(Projection { subqueries, .. }) => Children::Many(subqueries),
@@ -818,7 +790,6 @@ impl Relational<'_> {
             Relational::Union { .. } => "Union",
             Relational::UnionAll { .. } => "UnionAll",
             Relational::Values { .. } => "Values",
-            Relational::ValuesRow { .. } => "ValuesRow",
         }
     }
 
@@ -845,7 +816,6 @@ impl Relational<'_> {
             Relational::UnionAll(union_all) => RelOwned::UnionAll((*union_all).clone()),
             Relational::Update(upd) => RelOwned::Update((*upd).clone()),
             Relational::Values(values) => RelOwned::Values((*values).clone()),
-            Relational::ValuesRow(values_row) => RelOwned::ValuesRow((*values_row).clone()),
         }
     }
 }

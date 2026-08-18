@@ -1241,7 +1241,6 @@ impl<'p> EqualityAnalysis<'p> {
             Relational::ScanRelation(_)
             | Relational::SelectWithoutScan(_)
             | Relational::Values(_)
-            | Relational::ValuesRow(_)
             | Relational::Delete(Delete { child: None, .. }) => {}
         }
 
@@ -1260,8 +1259,7 @@ impl<'p> EqualityAnalysis<'p> {
             // Leaf nodes: rows come directly from storage or literals, no transformations.
             Relational::ScanRelation(_)
             | Relational::SelectWithoutScan(_)
-            | Relational::Values(_)
-            | Relational::ValuesRow(_) => true,
+            | Relational::Values(_) => true,
             // Selection only filters rows without changing their values.
             Relational::Selection(Selection { child, .. }) => self.is_safe_subtree(*child)?,
             // Projection is safe only when every output column is a direct reference to a
