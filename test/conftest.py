@@ -2559,14 +2559,18 @@ class Cluster:
 
         log.info(f" {self} deployed ".center(80, "="))
 
-        # For stability in loaded CI increase various timeouts up to pytest-timeout value.
+        # For stability in loaded CI increase various timeouts close to pytest-timeout value.
         # Setting timeouts with ALTER SYSTEM so that tests don't need to hardcode OPTION(TIMEOUT = N)
         # for ddl timeout and manually tweak other timeouts that cant be set per query.
+        # The per-attempt governor RPC timeouts are kept below the rest, so that a stuck
+        # RPC times out and logs the receiver's reason while the test is still running.
+        # pytest-timeout counts from the start of the test while these count from the
+        # start of the query, so they need a gap to expire first.
         if self.tune_timeouts and self.pytest_timeout and self.instances:
-            for timeout_parameter_name in [
-                "sql_ddl_timeout",
-                "governor_ddl_rpc_timeout",
-                "governor_plugin_rpc_timeout",
+            for timeout_parameter_name, timeout_value in [
+                ("sql_ddl_timeout", self.pytest_timeout),
+                ("governor_ddl_rpc_timeout", self.pytest_timeout - 10),
+                ("governor_plugin_rpc_timeout", self.pytest_timeout - 10),
             ]:
                 # check if parameter exists (supported on this version of picodata - important for rolling tests)
                 res = self.instances[0].sql(
@@ -2576,7 +2580,7 @@ class Cluster:
                     continue
 
                 self.instances[0].sql(
-                    f"ALTER SYSTEM SET {timeout_parameter_name} = {self.pytest_timeout}",
+                    f"ALTER SYSTEM SET {timeout_parameter_name} = {timeout_value}",
                     sudo=True,
                 )
 
