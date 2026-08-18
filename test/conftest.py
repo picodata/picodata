@@ -3724,6 +3724,58 @@ def ldap_server_starttls(cluster: Cluster, port_distributor: PortDistributor) ->
 GITLAB_URL = "https://git.picodata.io/"
 PICODATA_GITLAB_PROJECT_ID = 58
 
+# Flaky test retries collected during the current test session.
+_flaky_test_retries: set[str] = set()
+
+
+def _report_flaky_test_retries_to_gitlab(node_ids: set[str]):
+    gitlab_token = os.getenv("PYTEST_REPORT_GITLAB_TOKEN")
+    if not (os.getenv("CI") and gitlab_token):
+        reason = "not a CI run" if not os.getenv("CI") else "PYTEST_REPORT_GITLAB_TOKEN is not set"
+        log.info(f"Skipping flaky test report to GitLab: {reason}")
+        return
+
+    import gitlab
+
+    gl = gitlab.Gitlab(url=GITLAB_URL, private_token=gitlab_token)
+    project = gl.projects.get(id=PICODATA_GITLAB_PROJECT_ID, lazy=True)
+
+    job_url = os.getenv("CI_JOB_URL")
+    assert job_url
+
+    for node_id in sorted(node_ids):
+        try:
+            _report_flaky_test_retry_to_gitlab(project, node_id, job_url)
+        except Exception:
+            log.exception(f"Failed to report flaky test {node_id} to GitLab")
+
+
+def _report_flaky_test_retry_to_gitlab(project, node_id: str, job_url: str):
+    issue_title = f"flaky: {node_id}"
+    search_issues = project.issues.list(search=issue_title)
+
+    issue = None
+    for search_issue in search_issues:
+        if search_issue.title == issue_title:
+            issue = search_issue
+            break
+
+    if issue is None:
+        raise Exception(
+            f"Cant find ticket to report flaky test result. Test name: {node_id}, search result: {search_issues}"
+        )
+
+    if issue.state == "closed":
+        issue.state_event = "reopen"
+        issue.save()
+
+    issue.discussions.create(
+        {
+            "body": f"[AUTOMATIC COMMENT] The test failed once again. \
+        See logs and cluster files in job artifacts: {job_url}"
+        }
+    )
+
 
 @pytest.hookimpl
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
@@ -3742,36 +3794,15 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
         # Not marked as flaky
         return
 
-    gitlab_token = os.getenv("PYTEST_REPORT_GITLAB_TOKEN")
-    if not (os.getenv("CI") and gitlab_token):
-        return
+    _flaky_test_retries.add(item.nodeid)
 
-    import gitlab
 
-    gl = gitlab.Gitlab(url=GITLAB_URL, private_token=gitlab_token)
-    project = gl.projects.get(id=PICODATA_GITLAB_PROJECT_ID, lazy=True)
-
-    issue_title = f"flaky: {item.nodeid}"
-    search_issues = project.issues.list(search=issue_title)
-
-    issue = None
-    for search_issue in search_issues:
-        if search_issue.title == issue_title:
-            issue = search_issue
-            break
-
-    if issue is None:
-        raise Exception(
-            f"Cant find ticket to report flaky test result. Test name: {item.nodeid}, search result: {search_issues}"
-        )
-
-    job_url = os.getenv("CI_JOB_URL")
-    assert job_url
-    if issue.state == "closed":
-        issue.state_event = "reopen"
-        issue.save()
-
-    issue.discussions.create({"body": f"[AUTOMATIC COMMENT] Failed once again: {job_url}"})
+def pytest_sessionfinish(session: pytest.Session, exitstatus: pytest.ExitCode):
+    if _flaky_test_retries:
+        try:
+            _report_flaky_test_retries_to_gitlab(_flaky_test_retries)
+        except Exception:
+            log.exception("Failed to report flaky test retries to GitLab")
 
 
 @pytest.fixture(scope="session")
