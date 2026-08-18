@@ -1113,9 +1113,11 @@ cluster:
     cluster.wait_has_states(replica, "Offline", "Offline")
     leader.wait_governor_status("idle")
 
-    # Writes are blocked, because read_only=true
-    with pytest.raises(Exception, match="Failed to get replicaset from bucket"):
-        leader.sql("INSERT INTO t VALUES (42, 'not_ok')", timeout=1)
+    # Writes don't complete, because read_only=true. Note that the router keeps
+    # the query until the whole replicaset returns, so the row is written later,
+    # even though the client has already given up on it.
+    with pytest.raises(TimeoutError):
+        leader.sql("INSERT INTO t VALUES (42, 'deferred')", timeout=1)
 
     # DDL is blocked too, but we have record about it in raft log
     with pytest.raises(TimeoutError):
@@ -1140,10 +1142,11 @@ cluster:
     Retriable().call(new_master_promoted)
 
     # The limbo state is replicated after the promotion, so the replica's view
-    # of the queue owner converges a moment later.
+    # of the queue owner converges a moment later. The write deferred while the
+    # replicaset was down is applied by then, so there are 2 rows, not 1.
     def limbo_converged():
         for i in [new_master, new_replica]:
-            assert i.eval("return box.space.t:count()") == 1
+            assert i.eval("return box.space.t:count()") == 2
             assert i.eval("return box.info.synchro.queue.owner") == new_master_id
             assert i.eval("return box.info.synchro.queue.len") == 0
 
@@ -1156,7 +1159,7 @@ cluster:
     # the first attempts.
     def write_and_ddl_converged():
         for i in [new_master, new_replica]:
-            assert i.eval("return box.space.t:count()") == 2
+            assert i.eval("return box.space.t:count()") == 3
             assert i.eval("return box.space.t2:count()") == 0
 
     Retriable().call(write_and_ddl_converged)
