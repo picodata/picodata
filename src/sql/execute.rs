@@ -1288,6 +1288,7 @@ fn determine_insert_bucket_id<R: Vshard>(
     runtime: &R,
     vt_tuple: &VTableTuple,
     motion_key: &MotionKey,
+    buf: &mut Vec<u8>,
 ) -> Result<u64, SbroadError> {
     let mut shard_key_tuple = Vec::with_capacity(motion_key.targets.len());
     for target in &motion_key.targets {
@@ -1307,7 +1308,7 @@ fn determine_insert_bucket_id<R: Vshard>(
         }
     }
 
-    runtime.determine_bucket_id(&shard_key_tuple)
+    runtime.determine_bucket_id_with_buf(&shard_key_tuple, buf)
 }
 
 fn build_insert_bucket_index<R: Vshard>(
@@ -1325,8 +1326,9 @@ fn build_insert_bucket_index<R: Vshard>(
 
     let mut bucket_index: HashMap<u64, Vec<usize>, RepeatableState> =
         HashMap::with_hasher(RepeatableState);
+    let mut buf = Vec::new();
     for (pos, vt_tuple) in vtable.get_tuples().iter().enumerate() {
-        let bucket_id = determine_insert_bucket_id(runtime, vt_tuple, motion_key)?;
+        let bucket_id = determine_insert_bucket_id(runtime, vt_tuple, motion_key, &mut buf)?;
         bucket_index.entry(bucket_id).or_default().push(pos);
     }
     Ok(Some(bucket_index))

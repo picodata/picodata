@@ -636,8 +636,12 @@ impl Vshard for StorageRuntime {
         get_random_bucket(self)
     }
 
-    fn determine_bucket_id(&self, s: &[&Value]) -> Result<u64, SbroadError> {
-        calculate_bucket_id(s, self.bucket_count())
+    fn determine_bucket_id_with_buf(
+        &self,
+        s: &[&Value],
+        buf: &mut Vec<u8>,
+    ) -> Result<u64, SbroadError> {
+        calculate_bucket_id(s, self.bucket_count(), buf)
     }
 
     fn exec_ir_on_any_node<'p>(

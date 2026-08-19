@@ -25,6 +25,7 @@ use tarantool::fiber::Mutex;
 use tarantool::session::with_su;
 use tarantool::time::Instant;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
@@ -50,8 +51,9 @@ use crate::metrics::{
     record_router_cache_hit, record_router_cache_miss, record_router_cache_statement_added,
     record_router_cache_statement_evicted,
 };
+use smallvec::SmallVec;
 use tarantool::space::SpaceId;
-use tarantool::tuple::{KeyDef, Tuple};
+use tarantool::tuple::{FieldType, KeyDef, ToTupleBuffer, Tuple};
 
 use super::dispatch::{custom_plan_dispatch, single_plan_dispatch};
 use super::port::PicoPortOwned;
@@ -680,7 +682,21 @@ pub fn replicasets_by_buckets(buckets: &Buckets) -> Result<Vec<String>, SbroadEr
     }
 }
 
-pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result<u64, SbroadError> {
+thread_local! {
+    /// Last key definition used to calculate bucket ids,
+    /// along with the types of the shard key it was built for.
+    static LAST_KEY_DEF: RefCell<Option<(Vec<FieldType>, KeyDef)>> = const { RefCell::new(None) };
+}
+
+/// Calculate the bucket id for the given sharding key.
+///
+/// The sharding key is encoded into `buf`, which is reset beforehand: pass the
+/// same buffer for every tuple to avoid an allocation per tuple.
+pub(crate) fn calculate_bucket_id(
+    tuple: &[&Value],
+    bucket_count: u64,
+    buf: &mut Vec<u8>,
+) -> Result<u64, SbroadError> {
     if bucket_count == 0 {
         return Err(SbroadError::FailedTo(
             Action::Create,
@@ -688,36 +704,59 @@ pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result
             "cannot calculate bucket id: tier has bucket_count=0 (no sharded data)".to_smolstr(),
         ));
     }
-    let wrapped_tuple = tuple
-        .iter()
-        .map(|v| MsgPackValue::from(*v))
-        .collect::<Vec<_>>();
-    let tnt_tuple = Tuple::new(&wrapped_tuple).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Create,
-            Some(Entity::Tuple),
-            format_smolstr!("{e:?}"),
-        )
-    })?;
-    let mut key_parts = Vec::with_capacity(tuple.len());
-    for (pos, value) in tuple.iter().enumerate() {
-        let pos = u32::try_from(pos).map_err(|_| {
-            SbroadError::FailedTo(
-                Action::Create,
-                Some(Entity::KeyDef),
-                "Tuple is too long".to_smolstr(),
-            )
-        })?;
-        key_parts.push(value.as_key_def_part(pos));
-    }
-    let key = KeyDef::new(key_parts.as_slice()).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Create,
-            Some(Entity::KeyDef),
-            format_smolstr!("{e:?}"),
-        )
-    })?;
-    Ok(u64::from(key.hash(&tnt_tuple)) % bucket_count + 1)
+
+    LAST_KEY_DEF.with_borrow_mut(|cached| {
+        // Key def creation is expensive, while the bucket id is calculated for
+        // every row of a virtual table, where all the rows must have the same types.
+        // So the last key def is kept and reused until the types change.
+        let hit = cached.as_ref().is_some_and(|(types, _)| {
+            types.len() == tuple.len()
+                && tuple
+                    .iter()
+                    .zip(types)
+                    .all(|(value, tp)| value.field_type() == *tp)
+        });
+        if !hit {
+            let mut key_parts = Vec::with_capacity(tuple.len());
+            for (pos, value) in tuple.iter().enumerate() {
+                let pos = u32::try_from(pos).map_err(|_| {
+                    SbroadError::FailedTo(
+                        Action::Create,
+                        Some(Entity::KeyDef),
+                        "Tuple is too long".to_smolstr(),
+                    )
+                })?;
+                key_parts.push(value.as_key_def_part(pos));
+            }
+            let key_def = KeyDef::new(key_parts.as_slice()).map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Create,
+                    Some(Entity::KeyDef),
+                    format_smolstr!("{e:?}"),
+                )
+            })?;
+            let types = tuple.iter().map(|value| value.field_type()).collect();
+            *cached = Some((types, key_def));
+        }
+        let (_, key_def) = cached.as_ref().expect("key def is cached above");
+
+        buf.clear();
+        let wrapped_tuple: SmallVec<[MsgPackValue; 8]> =
+            tuple.iter().map(|v| MsgPackValue::from(*v)).collect();
+        let tnt_tuple = wrapped_tuple
+            .as_slice()
+            .write_tuple_data(buf)
+            .and_then(|()| Tuple::try_from_slice(buf))
+            .map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Create,
+                    Some(Entity::Tuple),
+                    format_smolstr!("{e:?}"),
+                )
+            })?;
+
+        Ok(u64::from(key_def.hash(&tnt_tuple)) % bucket_count + 1)
+    })
 }
 
 impl Vshard for Tier {
@@ -748,8 +787,12 @@ impl Vshard for Tier {
         get_random_bucket(self)
     }
 
-    fn determine_bucket_id(&self, s: &[&Value]) -> Result<u64, SbroadError> {
-        calculate_bucket_id(s, self.bucket_count())
+    fn determine_bucket_id_with_buf(
+        &self,
+        s: &[&Value],
+        buf: &mut Vec<u8>,
+    ) -> Result<u64, SbroadError> {
+        calculate_bucket_id(s, self.bucket_count(), buf)
     }
 
     fn exec_ir_on_any_node<'p>(
@@ -794,8 +837,12 @@ impl Vshard for &Tier {
         get_random_bucket(self)
     }
 
-    fn determine_bucket_id(&self, s: &[&Value]) -> Result<u64, SbroadError> {
-        calculate_bucket_id(s, self.bucket_count())
+    fn determine_bucket_id_with_buf(
+        &self,
+        s: &[&Value],
+        buf: &mut Vec<u8>,
+    ) -> Result<u64, SbroadError> {
+        calculate_bucket_id(s, self.bucket_count(), buf)
     }
 
     fn exec_ir_on_buckets<'p>(

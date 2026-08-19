@@ -341,6 +341,7 @@ impl VirtualTable {
         runtime: &impl Vshard,
     ) -> Result<(), SbroadError> {
         let mut index = HashMap::with_hasher(RepeatableState);
+        let mut buf = Vec::new();
         for (pos, tuple) in self.get_tuples().iter().enumerate() {
             let mut shard_key_tuple: Vec<&Value> = Vec::new();
             for target in &motion_key.targets {
@@ -361,7 +362,7 @@ impl VirtualTable {
                     }
                 }
             }
-            let bucket_id = runtime.determine_bucket_id(&shard_key_tuple)?;
+            let bucket_id = runtime.determine_bucket_id_with_buf(&shard_key_tuple, &mut buf)?;
             match index.entry(bucket_id) {
                 Entry::Vacant(entry) => {
                     entry.insert(vec![pos]);
@@ -429,6 +430,7 @@ impl VirtualTable {
         let mut delete_tuple: VTableTuple = vec![Value::Null; delete_tuple_pattern.len()];
         let mut delete_tuples: Vec<VTableTuple> = Vec::with_capacity(self.get_tuples().len());
         let tuples_len = self.get_tuples().len();
+        let mut buf = Vec::new();
         for (pos, insert_tuple) in self.get_mut_tuples().iter_mut().enumerate() {
             for (idx, c) in delete_tuple_pattern.iter().enumerate() {
                 if let TupleBuilderCommand::TakePosition(pos) = c {
@@ -463,8 +465,10 @@ impl VirtualTable {
 
             // When popping we got these keys in reverse order. That's why we need to use `reverse`.
             old_shard_key.reverse();
-            let bucket_id =
-                runtime.determine_bucket_id(&old_shard_key.iter().collect::<Vec<&Value>>())?;
+            let bucket_id = runtime.determine_bucket_id_with_buf(
+                &old_shard_key.iter().collect::<Vec<&Value>>(),
+                &mut buf,
+            )?;
             index.add_entry(bucket_id, tuples_len + pos);
             delete_tuples.push(delete_tuple.clone());
         }
@@ -527,6 +531,7 @@ impl VirtualTable {
             self.create_delete_tuples(runtime, old_shard_columns_len)?;
 
         // Index insert tuple, using new shard key values.
+        let mut buf = Vec::new();
         for (pointer, update_tuple) in self.get_mut_tuples().iter_mut().enumerate() {
             let mut update_tuple_shard_key = Vec::with_capacity(new_shard_columns_positions.len());
             for pos in new_shard_columns_positions {
@@ -541,7 +546,8 @@ impl VirtualTable {
                 })?;
                 update_tuple_shard_key.push(value);
             }
-            let bucket_id = runtime.determine_bucket_id(&update_tuple_shard_key)?;
+            let bucket_id =
+                runtime.determine_bucket_id_with_buf(&update_tuple_shard_key, &mut buf)?;
             index.add_entry(bucket_id, pointer);
         }
         let delete_tuple_len = delete_tuples.first().map(Vec::len);

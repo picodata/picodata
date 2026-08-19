@@ -594,9 +594,10 @@ impl Value {
         }
     }
 
+    /// Tarantool field type the value is encoded with.
     #[must_use]
-    pub fn as_key_def_part(&self, field_no: u32) -> KeyDefPart<'_> {
-        let field_type = match self {
+    pub fn field_type(&self) -> FieldType {
+        match self {
             Value::Boolean(_) => FieldType::Boolean,
             Value::Integer(_) => FieldType::Integer,
             Value::Datetime(_) => FieldType::Datetime,
@@ -606,10 +607,14 @@ impl Value {
             Value::Tuple(_) => FieldType::Array,
             Value::Uuid(_) => FieldType::Uuid,
             Value::Null => FieldType::Any,
-        };
+        }
+    }
+
+    #[must_use]
+    pub fn as_key_def_part(&self, field_no: u32) -> KeyDefPart<'_> {
         KeyDefPart {
             field_no,
-            field_type,
+            field_type: self.field_type(),
             collation: None,
             is_nullable: true,
             path: None,

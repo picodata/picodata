@@ -507,5 +507,20 @@ pub trait Vshard {
     /// # Errors
     /// - Internal error. Under normal conditions we should always return
     ///   bucket id successfully.
-    fn determine_bucket_id(&self, s: &[&Value]) -> Result<u64, SbroadError>;
+    fn determine_bucket_id(&self, s: &[&Value]) -> Result<u64, SbroadError> {
+        self.determine_bucket_id_with_buf(s, &mut Vec::new())
+    }
+
+    /// Same as [`Vshard::determine_bucket_id`], but encodes the sharding key
+    /// into the given buffer. Use it when bucket ids are calculated for many
+    /// tuples in a row to avoid an allocation per tuple.
+    ///
+    /// # Errors
+    /// - Internal error. Under normal conditions we should always return
+    ///   bucket id successfully.
+    fn determine_bucket_id_with_buf(
+        &self,
+        s: &[&Value],
+        buf: &mut Vec<u8>,
+    ) -> Result<u64, SbroadError>;
 }

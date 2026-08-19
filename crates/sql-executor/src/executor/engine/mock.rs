@@ -1280,7 +1280,11 @@ impl Vshard for RouterRuntimeMock {
         get_random_bucket(self)
     }
 
-    fn determine_bucket_id(&self, s: &[&Value]) -> Result<u64, SbroadError> {
+    fn determine_bucket_id_with_buf(
+        &self,
+        s: &[&Value],
+        _buf: &mut Vec<u8>,
+    ) -> Result<u64, SbroadError> {
         Ok(bucket_id_by_tuple(s, self.bucket_count()))
     }
 
@@ -1316,7 +1320,11 @@ impl Vshard for &RouterRuntimeMock {
         get_random_bucket(self)
     }
 
-    fn determine_bucket_id(&self, s: &[&Value]) -> Result<u64, SbroadError> {
+    fn determine_bucket_id_with_buf(
+        &self,
+        s: &[&Value],
+        _buf: &mut Vec<u8>,
+    ) -> Result<u64, SbroadError> {
         Ok(bucket_id_by_tuple(s, self.bucket_count()))
     }
 
