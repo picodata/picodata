@@ -308,7 +308,9 @@ fn build_var_slots<S>(
 /// For plain items: one OP_Program each.
 /// For `If` items: condition OP_Program, OP_Variable + OP_IfNot in root,
 /// then the body (which may open IFs of its own), then the OP_IfNot jump
-/// target is patched past everything the body emitted.
+/// target is patched past everything the body emitted. An ELSE body follows
+/// that same layout: the THEN body ends with an OP_Goto over it, and OP_IfNot
+/// lands on its first opcode instead of past the IF.
 ///
 /// `if_cond_slots` is drained in step with the traversal -- [`build_var_slots`]
 /// filled it walking the very same block in the very same order.
@@ -341,7 +343,11 @@ unsafe fn emit_block_stmts(
             BlockStatement::Let { query: cs, .. }
             | BlockStatement::ReturnQuery(cs)
             | BlockStatement::Query(cs) => emit_program(vdbe, parser, cs),
-            BlockStatement::If { cond, body } => {
+            BlockStatement::If {
+                cond,
+                body,
+                else_body,
+            } => {
                 let cond_slot = if_cond_slots
                     .next()
                     .expect("build_var_slots reserves a slot per IF condition");
@@ -357,8 +363,21 @@ unsafe fn emit_block_stmts(
 
                 emit_block_stmts(vdbe, parser, body, if_cond_slots);
 
-                // Patch OP_IfNot to jump to the first opcode past the body.
-                (*vdbe.aOp.add(ifnot_addr as usize)).p2 = vdbe.nOp;
+                if else_body.is_empty() {
+                    // Patch OP_IfNot to jump to the first opcode past the body.
+                    (*vdbe.aOp.add(ifnot_addr as usize)).p2 = vdbe.nOp;
+                } else {
+                    // Having run the THEN body, jump over the ELSE one.
+                    let goto_addr = sqlVdbeAddOp!(vdbe, OP_Goto, 0, 0);
+
+                    // A false condition lands here, on the ELSE body.
+                    (*vdbe.aOp.add(ifnot_addr as usize)).p2 = vdbe.nOp;
+
+                    emit_block_stmts(vdbe, parser, else_body, if_cond_slots);
+
+                    // Patch OP_Goto to jump past everything the ELSE emitted.
+                    (*vdbe.aOp.add(goto_addr as usize)).p2 = vdbe.nOp;
+                }
             }
         }
     }
@@ -425,9 +444,17 @@ pub(crate) fn compile_transactional_block(
             BlockStatement::Query(query) => {
                 BlockStatement::Query(CompiledSubprogram::compile(query)?)
             }
-            BlockStatement::If { cond, body } => BlockStatement::If {
+            BlockStatement::If {
+                cond,
+                body,
+                else_body,
+            } => BlockStatement::If {
                 cond: CompiledSubprogram::compile(cond)?,
                 body: body
+                    .iter()
+                    .map(compile_stmt)
+                    .collect::<Result<Vec<_>, String>>()?,
+                else_body: else_body
                     .iter()
                     .map(compile_stmt)
                     .collect::<Result<Vec<_>, String>>()?,

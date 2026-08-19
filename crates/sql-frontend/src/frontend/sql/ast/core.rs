@@ -1658,9 +1658,54 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         })
     }
 
-    // Recurses through `BlockIfStatement`, so IFs may nest freely. Statements
-    // legal at the top level are legal in a body, with one exception: a bare
-    // DQL, which would silently drop its rows.
+    // One statement of an IF body, THEN or ELSE alike. Statements legal at the
+    // top level are legal in a body, with one exception: a bare DQL, which
+    // would silently drop its rows.
+    fn build_if_body_stmt(
+        ast: &AstCore,
+        map: &Translation,
+        plan: &Plan,
+        scope: &LetVarScope,
+        return_columns: &mut Vec<(String, DerivedType)>,
+        body_ast_id: usize,
+    ) -> Result<BlockStatement<NodeId>, SbroadError> {
+        let body_ast = ast.nodes.get_node(body_ast_id)?;
+        let inner_ast_id = body_ast
+            .children
+            .first()
+            .expect("BlockIfBodyStatement must have an inner statement");
+        Ok(match ast.nodes.get_node(*inner_ast_id)?.rule {
+            Rule::BlockQueryStatement => {
+                let query_id = map.get(body_ast_id)?;
+                let node = plan.get_relation_node(query_id)?;
+                if !node.is_dml() {
+                    // Same reasoning as at the top level, so same wording.
+                    return Err(SbroadError::other(
+                        "bare DQL is not allowed, use LET or RETURN QUERY",
+                    ));
+                }
+                BlockStatement::Query(query_id)
+            }
+            Rule::BlockReturnQueryStatement => {
+                let query_id = map.get(body_ast_id)?;
+                let node = plan.get_relation_node(query_id)?;
+                if node.is_dml() {
+                    return Err(SbroadError::other("RETURN QUERY may only contain DQL"));
+                }
+                let columns = dql_return_columns(plan, query_id)?;
+                merge_return_columns(return_columns, columns)?;
+                BlockStatement::ReturnQuery(query_id)
+            }
+            Rule::BlockLetStatement => build_let(map, plan, scope, *inner_ast_id)?,
+            Rule::BlockIfStatement => {
+                build_if(ast, map, plan, scope, return_columns, *inner_ast_id)?
+            }
+            rule => unreachable!("{rule:?} is not a block statement inside IF body"),
+        })
+    }
+
+    // Recurses through `BlockIfStatement` (both branches), so IFs may nest
+    // freely.
     fn build_if(
         ast: &AstCore,
         map: &Translation,
@@ -1669,7 +1714,7 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         return_columns: &mut Vec<(String, DerivedType)>,
         if_ast_id: usize,
     ) -> Result<BlockStatement<NodeId>, SbroadError> {
-        // Children: [BlockIfCondition, BlockIfBodyStatement*].
+        // Children: [BlockIfCondition, BlockIfBodyStatement*, BlockElseBlock?].
         let node = ast.nodes.get_node(if_ast_id)?;
         let mut children = node.children.iter();
         let cond_ast_id = children.next().expect("IF must have a condition");
@@ -1683,50 +1728,44 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         }
 
         let mut body: Vec<BlockStatement<NodeId>> = Vec::new();
-        for body_ast_id in children {
-            let body_ast = ast.nodes.get_node(*body_ast_id)?;
-            let inner_ast_id = body_ast
-                .children
-                .first()
-                .expect("BlockIfBodyStatement must have an inner statement");
-            match ast.nodes.get_node(*inner_ast_id)?.rule {
-                Rule::BlockQueryStatement => {
-                    let query_id = map.get(*body_ast_id)?;
-                    let node = plan.get_relation_node(query_id)?;
-                    if !node.is_dml() {
-                        // Same reasoning as at the top level, so same wording.
-                        return Err(SbroadError::other(
-                            "bare DQL is not allowed, use LET or RETURN QUERY",
-                        ));
-                    }
-                    body.push(BlockStatement::Query(query_id));
-                }
-                Rule::BlockReturnQueryStatement => {
-                    let query_id = map.get(*body_ast_id)?;
-                    let node = plan.get_relation_node(query_id)?;
-                    if node.is_dml() {
-                        return Err(SbroadError::other("RETURN QUERY may only contain DQL"));
-                    }
-                    let columns = dql_return_columns(plan, query_id)?;
-                    merge_return_columns(return_columns, columns)?;
-                    body.push(BlockStatement::ReturnQuery(query_id));
-                }
-                Rule::BlockLetStatement => body.push(build_let(map, plan, scope, *inner_ast_id)?),
-                Rule::BlockIfStatement => body.push(build_if(
+        let mut else_body: Vec<BlockStatement<NodeId>> = Vec::new();
+        for child_ast_id in children {
+            match ast.nodes.get_node(*child_ast_id)?.rule {
+                Rule::BlockIfBodyStatement => body.push(build_if_body_stmt(
                     ast,
                     map,
                     plan,
                     scope,
                     return_columns,
-                    *inner_ast_id,
+                    *child_ast_id,
                 )?),
-                rule => unreachable!("{rule:?} is not a block statement inside IF body"),
+                // ELSE holds the statements a THEN body does; the keyword node
+                // among them is a parsing landmark only (see the grammar).
+                Rule::BlockElseBlock => {
+                    let else_ast = ast.nodes.get_node(*child_ast_id)?;
+                    for stmt_ast_id in &else_ast.children {
+                        match ast.nodes.get_node(*stmt_ast_id)?.rule {
+                            Rule::BlockElseKeyword => (),
+                            Rule::BlockIfBodyStatement => else_body.push(build_if_body_stmt(
+                                ast,
+                                map,
+                                plan,
+                                scope,
+                                return_columns,
+                                *stmt_ast_id,
+                            )?),
+                            rule => unreachable!("{rule:?} is not an ELSE branch child"),
+                        }
+                    }
+                }
+                rule => unreachable!("{rule:?} is not an IF statement child"),
             }
         }
 
         Ok(BlockStatement::If {
             cond: cond_id,
             body,
+            else_body,
         })
     }
 

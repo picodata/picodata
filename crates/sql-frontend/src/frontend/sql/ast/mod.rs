@@ -451,6 +451,14 @@ impl<'q> AbstractSyntaxTree<'q> {
                 Rule::BlockIfBodyStatement => {
                     build_block_if_body_statement_ir(ast, id, node, &mut map)?;
                 }
+                // The ELSE keyword sits between the two bodies, which is
+                // exactly where the THEN scope ends and the ELSE one starts.
+                // The branches are alternatives, so neither can read what the
+                // other bound -- each gets a frame of its own.
+                Rule::BlockElseKeyword => {
+                    worker.let_scope.pop_frame();
+                    worker.let_scope.push_frame();
+                }
                 Rule::BlockIfStatement => worker.let_scope.pop_frame(),
                 Rule::AnonymousBlock => {
                     build_anonymous_block_ir(ast, id, &mut map, &worker, &mut plan)?

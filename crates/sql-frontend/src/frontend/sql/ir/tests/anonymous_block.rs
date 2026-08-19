@@ -615,6 +615,68 @@ fn if_resolution_ok() {
                 UPDATE t2 SET e = f WHERE e <> f; \
             END IF; \
         END $$",
+        // An ELSE branch takes the statements a THEN body does.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN UPDATE t2 SET e = f; ELSE DELETE FROM t2; END IF; \
+        END $$",
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN \
+                UPDATE t2 SET e = f; \
+                DELETE FROM t2 WHERE e = 0; \
+            ELSE \
+                UPDATE t2 SET f = e; \
+                DELETE FROM t2 WHERE f = 0; \
+            END IF; \
+        END $$",
+        // Both branches may return rows, as long as the types agree.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN RETURN QUERY SELECT 1; ELSE RETURN QUERY SELECT 2; END IF; \
+        END $$",
+        // An empty ELSE branch is a well-formed no-op, as an empty body is.
+        "DO $$ BEGIN IF 1 > 0 THEN UPDATE t2 SET e = f; ELSE END IF; END $$",
+        "DO $$ BEGIN IF 1 > 0 THEN ELSE UPDATE t2 SET e = f; END IF; END $$",
+        "DO $$ BEGIN IF 1 > 0 THEN ELSE END IF; END $$",
+        // Branches are alternatives, so each binds LET names of its own --
+        // even the same name, at an unrelated type.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN \
+                LET v = (SELECT 1); \
+                RETURN QUERY SELECT v; \
+            ELSE \
+                LET v = (SELECT 'x'); \
+                DELETE FROM t1 WHERE a = v; \
+            END IF; \
+        END $$",
+        // An ELSE-branch LET may be seeded from one declared before the IF.
+        "DO $$ BEGIN \
+            LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+            IF v > 0 THEN \
+                RETURN QUERY SELECT v; \
+            ELSE \
+                LET w = (SELECT v + 1); \
+                UPDATE t2 SET e = w; \
+            END IF; \
+        END $$",
+        // IFs nest in an ELSE branch as they do in a THEN body, and the
+        // chain of `ELSE IF` this makes is the way to write a cascade.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN \
+                UPDATE t2 SET e = f; \
+            ELSE \
+                IF 2 > 0 THEN \
+                    UPDATE t2 SET f = e; \
+                ELSE \
+                    DELETE FROM t2; \
+                END IF; \
+            END IF; \
+        END $$",
+        // An IF with an ELSE is still no write in itself: one whose branches
+        // only read may precede a top-level LET or RETURN QUERY.
+        "DO $$ BEGIN \
+            IF 1 > 0 THEN RETURN QUERY SELECT 1; ELSE RETURN QUERY SELECT 2; END IF; \
+            LET v = (SELECT b FROM t1 WHERE a = 'x'); \
+            UPDATE t2 SET e = v; \
+        END $$",
     ];
 
     for query in cases {
@@ -704,6 +766,20 @@ fn if_resolution_errors() {
                 IF 1 > 0 THEN \
                     UPDATE t2 SET e = f; \
                     RETURN QUERY SELECT 1; \
+                END IF; \
+            END $$",
+            "LET and RETURN QUERY statements must precede all DML statements",
+        ),
+        // Branches are alternatives at runtime, but the ordering rule is a
+        // source-order one: an ELSE-branch read still has to be written before
+        // any DML, including the DML of the THEN body it can never run with.
+        (
+            "DO $$ BEGIN \
+                IF 1 > 0 THEN \
+                    UPDATE t2 SET e = f; \
+                ELSE \
+                    LET v = (SELECT 1); \
+                    UPDATE t2 SET e = v; \
                 END IF; \
             END $$",
             "LET and RETURN QUERY statements must precede all DML statements",

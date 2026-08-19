@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display};
-use std::iter::Enumerate;
+use std::iter::{Chain, Enumerate};
 use std::slice::{Iter, IterMut};
 
 use super::options::Timeout;
@@ -1420,17 +1420,21 @@ pub enum BlockStatement<T> {
         is_used: bool,
     },
 
-    /// Conditional block: execute `body` statements only when `cond` is true.
+    /// Conditional block: execute `body` statements when `cond` is true, and
+    /// `else_body` ones otherwise.
     ///
     /// `cond` must be a scalar boolean query (`SELECT <bool_expr>`).
-    /// NULL condition skips the body.
+    /// NULL condition takes the ELSE branch, as a false one does.
     ///
-    /// The body holds any statement legal at the top level -- DML, `RETURN
-    /// QUERY`, `LET` and `IF` alike -- and may be empty. A `LET` declared in it
-    /// goes out of scope at `END IF`; the parser enforces that.
+    /// Either body holds any statement legal at the top level -- DML, `RETURN
+    /// QUERY`, `LET` and `IF` alike -- and may be empty; `else_body` is empty
+    /// when the source has no `ELSE` at all, which runs the same. A `LET`
+    /// declared in a body goes out of scope at the end of *that* body, so the
+    /// two branches bind names independently; the parser enforces that.
     If {
         cond: T,
         body: Vec<BlockStatement<T>>,
+        else_body: Vec<BlockStatement<T>>,
     },
 }
 
@@ -1459,9 +1463,17 @@ impl<T> BlockStatement<T> {
                 query: f(query)?,
                 is_used,
             },
-            Self::If { cond, body } => BlockStatement::If {
+            Self::If {
+                cond,
+                body,
+                else_body,
+            } => BlockStatement::If {
                 cond: f(cond)?,
                 body: body
+                    .into_iter()
+                    .map(|stmt| stmt.try_map_impl(f))
+                    .collect::<Result<_, _>>()?,
+                else_body: else_body
                     .into_iter()
                     .map(|stmt| stmt.try_map_impl(f))
                     .collect::<Result<_, _>>()?,
@@ -1514,18 +1526,37 @@ impl Display for BlockEntryKind {
     }
 }
 
+/// Which branch of an IF a statement was written in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IfBranch {
+    Then,
+    Else,
+}
+
+/// One step of the route from a top-level statement down into a nested one:
+/// the IF branch it enters and the statement's 0-based position there.
+///
+/// Positions are counted across the whole IF -- the first ELSE statement
+/// continues where the THEN body stopped -- so statements of one IF are
+/// numbered in execution order, and the branch is what tells them apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IfBodyStep {
+    pub branch: IfBranch,
+    pub idx: usize,
+}
+
 /// Where a query subtree sits inside a transactional block, and what it does.
 /// Yielded by [`BlockEntries`] / [`BlockEntriesMut`] and used to build
 /// user-facing error messages that point at the offending statement.
 ///
 /// `stmt_idx` is the 0-based index of the enclosing *top-level* statement;
-/// `body_path` holds one 0-based index per IF body between there and here,
+/// `body_path` holds one [`IfBodyStep`] per IF body between there and here,
 /// outermost first, and is empty for a top-level statement. So two statements
 /// at the same depth of different bodies never read alike.
 #[derive(Debug, Clone, Hash)]
 pub struct StatementLocation {
     pub stmt_idx: usize,
-    pub body_path: Vec<usize>,
+    pub body_path: Vec<IfBodyStep>,
     pub kind: BlockEntryKind,
 }
 
@@ -1554,7 +1585,7 @@ impl StatementLocation {
     pub fn explain_path(&self) -> Vec<usize> {
         let mut path = Vec::with_capacity(self.body_path.len() + 2);
         path.push(self.stmt_idx + 1);
-        path.extend(self.body_path.iter().map(|idx| idx + 2));
+        path.extend(self.body_path.iter().map(|step| step.idx + 2));
         if self.kind == BlockEntryKind::IfCondition {
             path.push(1);
         }
@@ -1646,32 +1677,40 @@ impl Display for StatementLocation {
 /// yielding a [`BlockEntry`] per query in execution order.
 pub struct BlockEntries<'a, T> {
     stmts: Enumerate<Iter<'a, BlockStatement<T>>>,
-    if_body: Vec<IfBodyCursor<Iter<'a, BlockStatement<T>>>>,
+    if_stack: Vec<IfCursor<Iter<'a, BlockStatement<T>>>>,
 }
 
 /// Mutable variant of [`BlockEntries`].
 pub struct BlockEntriesMut<'a, T> {
     stmts: Enumerate<IterMut<'a, BlockStatement<T>>>,
-    if_body: Vec<IfBodyCursor<IterMut<'a, BlockStatement<T>>>>,
+    if_stack: Vec<IfCursor<IterMut<'a, BlockStatement<T>>>>,
 }
 
-/// One IF body being traversed. Cursors form a stack (innermost last), so a
-/// body statement that is itself an IF simply pushes another frame. `stmt_idx`
-/// is inherited from the enclosing frame and always names the *top-level*
-/// statement the body belongs to; `path_prefix` spells out the route from
-/// there down to this body.
-struct IfBodyCursor<I> {
+/// One IF being traversed: its THEN body followed by its ELSE one. Cursors
+/// form a stack, innermost last. `stmt_idx` names the *top-level* statement
+/// the IF belongs to, `path_prefix` the route from there down to it.
+struct IfCursor<I> {
     stmt_idx: usize,
-    path_prefix: Vec<usize>,
+    path_prefix: Vec<IfBodyStep>,
+    then_len: usize,
     body_idx: usize,
-    items: I,
+    items: Chain<I, I>,
 }
 
-impl<I> IfBodyCursor<I> {
-    /// Path to the next body item, advancing the body counter.
-    fn next_path(&mut self) -> Vec<usize> {
+impl<I> IfCursor<I> {
+    /// Path to the next body item, advancing the body counter. The counter
+    /// spans both branches, so an ELSE item never reads like a THEN one.
+    fn next_path(&mut self) -> Vec<IfBodyStep> {
+        let branch = if self.body_idx < self.then_len {
+            IfBranch::Then
+        } else {
+            IfBranch::Else
+        };
         let mut path = self.path_prefix.clone();
-        path.push(self.body_idx);
+        path.push(IfBodyStep {
+            branch,
+            idx: self.body_idx,
+        });
         self.body_idx += 1;
         path
     }
@@ -1681,7 +1720,7 @@ impl<'a, T> BlockEntries<'a, T> {
     pub fn new(stmts: &'a [BlockStatement<T>]) -> Self {
         Self {
             stmts: stmts.iter().enumerate(),
-            if_body: Vec::new(),
+            if_stack: Vec::new(),
         }
     }
 }
@@ -1690,100 +1729,67 @@ impl<'a, T> BlockEntriesMut<'a, T> {
     pub fn new(stmts: &'a mut [BlockStatement<T>]) -> Self {
         Self {
             stmts: stmts.iter_mut().enumerate(),
-            if_body: Vec::new(),
+            if_stack: Vec::new(),
         }
     }
 }
 
-impl<'a, T> Iterator for BlockEntries<'a, T> {
-    type Item = BlockEntry<'a, T>;
+/// The traversal, shared by the const and mut iterators: they differ only in
+/// how a body is iterated and what wrapper an entry gets.
+macro_rules! impl_block_entries {
+    ($entries:ident -> $entry:ident, $iter:ident) => {
+        impl<'a, T> Iterator for $entries<'a, T> {
+            type Item = $entry<'a, T>;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        // Drain the innermost IF body first, popping frames that ran out.
-        let (stmt_idx, stmt, body_path) = loop {
-            let Some(cursor) = self.if_body.last_mut() else {
-                let (stmt_idx, stmt) = self.stmts.next()?;
-                break (stmt_idx, stmt, Vec::new());
-            };
-            let stmt_idx = cursor.stmt_idx;
-            match cursor.items.next() {
-                Some(stmt) => break (stmt_idx, stmt, cursor.next_path()),
-                None => {
-                    self.if_body.pop();
-                }
-            }
-        };
+            fn next(&mut self) -> Option<Self::Item> {
+                // Drain the innermost IF first, popping cursors that ran out.
+                let (stmt_idx, stmt, body_path) = loop {
+                    let Some(cursor) = self.if_stack.last_mut() else {
+                        let (stmt_idx, stmt) = self.stmts.next()?;
+                        break (stmt_idx, stmt, Vec::new());
+                    };
+                    let Some(stmt) = cursor.items.next() else {
+                        self.if_stack.pop();
+                        continue;
+                    };
+                    break (cursor.stmt_idx, stmt, cursor.next_path());
+                };
 
-        let kind = stmt.entry_kind();
-        let query = match stmt {
-            BlockStatement::ReturnQuery(query)
-            | BlockStatement::Query(query)
-            | BlockStatement::Let { query, .. } => query,
-            BlockStatement::If { cond, body } => {
-                self.if_body.push(IfBodyCursor {
+                let kind = stmt.entry_kind();
+                let query = match stmt {
+                    BlockStatement::ReturnQuery(query)
+                    | BlockStatement::Query(query)
+                    | BlockStatement::Let { query, .. } => query,
+                    BlockStatement::If {
+                        cond,
+                        body,
+                        else_body,
+                    } => {
+                        self.if_stack.push(IfCursor {
+                            stmt_idx,
+                            path_prefix: body_path.clone(),
+                            then_len: body.len(),
+                            body_idx: 0,
+                            items: body.$iter().chain(else_body.$iter()),
+                        });
+                        cond
+                    }
+                };
+
+                let location = StatementLocation {
                     stmt_idx,
-                    path_prefix: body_path.clone(),
-                    body_idx: 0,
-                    items: body.iter(),
-                });
-                cond
+                    body_path,
+                    kind,
+                };
+
+                Some($entry { query, location })
             }
-        };
-
-        let location = StatementLocation {
-            stmt_idx,
-            body_path,
-            kind,
-        };
-
-        Some(BlockEntry { query, location })
-    }
+        }
+    };
 }
 
-impl<'a, T> Iterator for BlockEntriesMut<'a, T> {
-    type Item = BlockEntryMut<'a, T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // Drain the innermost IF body first, popping frames that ran out.
-        let (stmt_idx, stmt, body_path) = loop {
-            let Some(cursor) = self.if_body.last_mut() else {
-                let (stmt_idx, stmt) = self.stmts.next()?;
-                break (stmt_idx, stmt, Vec::new());
-            };
-            let stmt_idx = cursor.stmt_idx;
-            match cursor.items.next() {
-                Some(stmt) => break (stmt_idx, stmt, cursor.next_path()),
-                None => {
-                    self.if_body.pop();
-                }
-            }
-        };
-
-        let kind = stmt.entry_kind();
-        let query = match stmt {
-            BlockStatement::ReturnQuery(query)
-            | BlockStatement::Query(query)
-            | BlockStatement::Let { query, .. } => query,
-            BlockStatement::If { cond, body } => {
-                self.if_body.push(IfBodyCursor {
-                    stmt_idx,
-                    path_prefix: body_path.clone(),
-                    body_idx: 0,
-                    items: body.iter_mut(),
-                });
-                cond
-            }
-        };
-
-        let location = StatementLocation {
-            stmt_idx,
-            body_path,
-            kind,
-        };
-
-        Some(BlockEntryMut { query, location })
-    }
-}
+impl_block_entries!(BlockEntries -> BlockEntry, iter);
+impl_block_entries!(BlockEntriesMut -> BlockEntryMut, iter_mut);
 
 /// Node representing an anonymous block query.
 ///

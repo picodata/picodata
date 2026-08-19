@@ -2284,6 +2284,326 @@ END $$;
 -- ERROR:
 LET and RETURN QUERY statements must precede all DML statements
 
+-- TEST: else-init
+-- SQL:
+DROP TABLE IF EXISTS t7;
+CREATE TABLE t7 (pk INT PRIMARY KEY, a INT, b INT);
+INSERT INTO t7 VALUES (1, 0, 0);
+
+-- TEST: else-skipped-when-cond-is-true
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    UPDATE t7 SET a = 1 WHERE pk = 1;
+  ELSE
+    UPDATE t7 SET b = 1 WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+
+-- TEST: else-skipped-when-cond-is-true-check
+-- SQL:
+SELECT a, b FROM t7 WHERE pk = 1;
+-- EXPECTED:
+1, 0
+
+-- TEST: else-fires-when-cond-is-false
+-- SQL:
+DO $$
+BEGIN
+  IF false THEN
+    UPDATE t7 SET a = 100 WHERE pk = 1;
+  ELSE
+    UPDATE t7 SET b = 2 WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+
+-- TEST: else-fires-when-cond-is-false-check
+-- SQL:
+SELECT a, b FROM t7 WHERE pk = 1;
+-- EXPECTED:
+1, 2
+
+-- TEST: else-fires-when-cond-is-null
+-- SQL:
+DO $$
+BEGIN
+  IF NULL THEN
+    UPDATE t7 SET a = 100 WHERE pk = 1;
+  ELSE
+    UPDATE t7 SET b = 3 WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+
+-- TEST: else-fires-when-cond-is-null-check
+-- SQL:
+SELECT a, b FROM t7 WHERE pk = 1;
+-- EXPECTED:
+1, 3
+
+-- TEST: else-runs-every-statement-of-its-branch
+-- SQL:
+DO $$
+BEGIN
+  IF false THEN
+    UPDATE t7 SET a = 100 WHERE pk = 1;
+    UPDATE t7 SET b = 100 WHERE pk = 1;
+  ELSE
+    UPDATE t7 SET a = 4 WHERE pk = 1;
+    UPDATE t7 SET b = 5 WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+
+-- TEST: else-runs-every-statement-of-its-branch-check
+-- SQL:
+SELECT a, b FROM t7 WHERE pk = 1;
+-- EXPECTED:
+4, 5
+
+-- TEST: statements-after-an-if-else-run-either-way
+-- SQL:
+DO $$
+BEGIN
+  IF false THEN
+    UPDATE t7 SET a = 100 WHERE pk = 1;
+  ELSE
+    UPDATE t7 SET a = 6 WHERE pk = 1;
+  END IF;
+  UPDATE t7 SET b = b + 10 WHERE pk = 1;
+END $$;
+-- EXPECTED:
+
+-- TEST: statements-after-an-if-else-run-either-way-check
+-- SQL:
+SELECT a, b FROM t7 WHERE pk = 1;
+-- EXPECTED:
+6, 15
+
+-- TEST: else-branch-return-query
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t7 WHERE pk = 1);
+  IF v < 0 THEN
+    RETURN QUERY SELECT v;
+  ELSE
+    RETURN QUERY SELECT v * 10;
+  END IF;
+END $$;
+-- EXPECTED:
+60
+
+-- TEST: empty-else-branch-is-a-no-op
+-- SQL:
+DO $$ BEGIN IF false THEN UPDATE t7 SET a = 100 WHERE pk = 1; ELSE END IF; END $$;
+-- EXPECTED:
+
+-- TEST: empty-else-branch-is-a-no-op-check
+-- SQL:
+SELECT a, b FROM t7 WHERE pk = 1;
+-- EXPECTED:
+6, 15
+
+-- TEST: else-nests-an-if-of-its-own
+-- SQL:
+DO $$
+BEGIN
+  IF false THEN
+    UPDATE t7 SET a = 100 WHERE pk = 1;
+  ELSE
+    IF false THEN
+      UPDATE t7 SET a = 200 WHERE pk = 1;
+    ELSE
+      UPDATE t7 SET a = 7 WHERE pk = 1;
+    END IF;
+  END IF;
+END $$;
+-- EXPECTED:
+
+-- TEST: else-nests-an-if-of-its-own-check
+-- SQL:
+SELECT a, b FROM t7 WHERE pk = 1;
+-- EXPECTED:
+7, 15
+
+-- TEST: else-branch-let-feeds-its-own-dml
+-- SQL:
+DO $$
+BEGIN
+  IF false THEN
+    RETURN QUERY SELECT 0;
+  ELSE
+    LET v = (SELECT a FROM t7 WHERE pk = 1);
+    UPDATE t7 SET a = v * 3 WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+
+-- TEST: else-branch-let-feeds-its-own-dml-check
+-- SQL:
+SELECT a, b FROM t7 WHERE pk = 1;
+-- EXPECTED:
+21, 15
+
+-- TEST: else-branch-let-seeded-from-an-outer-one
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t7 WHERE pk = 1);
+  IF v < 0 THEN
+    RETURN QUERY SELECT v;
+  ELSE
+    LET w = (SELECT v + 1);
+    RETURN QUERY SELECT w;
+  END IF;
+END $$;
+-- EXPECTED:
+22
+
+-- TEST: branches-bind-the-name-independently
+-- SQL:
+DO $$
+BEGIN
+  IF false THEN
+    LET v = (SELECT 1);
+    RETURN QUERY SELECT v;
+  ELSE
+    LET v = (SELECT 2);
+    RETURN QUERY SELECT v;
+  END IF;
+END $$;
+-- EXPECTED:
+2
+
+-- TEST: branches-may-bind-unrelated-types
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    LET v = (SELECT 1);
+    RETURN QUERY SELECT v;
+  ELSE
+    LET v = (SELECT 'x');
+    RETURN QUERY SELECT 2;
+  END IF;
+END $$;
+-- EXPECTED:
+1
+
+-- TEST: else-branch-let-is-out-of-scope-after-end-if
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    RETURN QUERY SELECT 1;
+  ELSE
+    LET v = (SELECT 1);
+    RETURN QUERY SELECT v;
+  END IF;
+  RETURN QUERY SELECT v;
+END $$;
+-- ERROR:
+LET variable "v" is out of scope
+
+-- TEST: else-branch-let-cannot-shadow-an-outer-one
+-- SQL:
+DO $$
+BEGIN
+  LET v = (SELECT a FROM t7 WHERE pk = 1);
+  IF v > 0 THEN
+    RETURN QUERY SELECT v;
+  ELSE
+    LET v = (SELECT 1);
+    RETURN QUERY SELECT v;
+  END IF;
+END $$;
+-- ERROR:
+LET variable "v" is already declared outside IF body
+
+-- TEST: else-branch-let-cannot-see-the-then-branch-one
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    LET v = (SELECT 1);
+    RETURN QUERY SELECT v;
+  ELSE
+    LET w = (SELECT v + 1);
+    RETURN QUERY SELECT w;
+  END IF;
+END $$;
+-- ERROR:
+LET variable "v" is out of scope
+
+-- TEST: else-branch-read-after-a-then-branch-write
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    UPDATE t7 SET a = 1 WHERE pk = 1;
+  ELSE
+    LET v = (SELECT a FROM t7 WHERE pk = 1);
+    UPDATE t7 SET a = v WHERE pk = 1;
+  END IF;
+END $$;
+-- ERROR:
+LET and RETURN QUERY statements must precede all DML statements
+
+-- TEST: explain-else-body-stage-numbering
+-- SQL:
+EXPLAIN (raw)
+DO $$ BEGIN
+    IF true THEN
+        LET x = (SELECT 1);
+    ELSE
+        LET y = (SELECT 2);
+    END IF;
+END $$;
+-- EXPECTED:
+╭───────────────────────╮
+│ 1.1. If cond (ROUTER) │
+╰───────────────────────╯
+''
+SELECT CAST(true AS bool) as "cond"
+''
+plan:
+    [0] TRIVIAL
+''
+╭───────────────────────────────────────────╮
+│ 1.2. If body: **Unused** let "x" (ROUTER) │
+╰───────────────────────────────────────────╯
+''
+SELECT CAST(1 AS int) as "col_1"
+''
+plan:
+    [0] TRIVIAL
+''
+╭─────────────────────────────────────────────╮
+│ 1.3. Else body: **Unused** let "y" (ROUTER) │
+╰─────────────────────────────────────────────╯
+''
+SELECT CAST(2 AS int) as "col_1"
+''
+plan:
+    [0] TRIVIAL
+
+-- TEST: else-branch-return-query-type-mismatch
+-- SQL:
+DO $$
+BEGIN
+  IF true THEN
+    RETURN QUERY SELECT 1;
+  ELSE
+    RETURN QUERY SELECT 1, 2;
+  END IF;
+END $$;
+-- ERROR:
+RETURN QUERY types cannot be matched
+
 -- TEST: if-cross-sharded-tables
 -- SQL:
 DO $$

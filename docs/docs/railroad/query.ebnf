@@ -198,7 +198,7 @@ transaction_block ::= 'DO' ('LANGUAGE' 'SQL')? '$$' 'BEGIN'
 block_statement ::= let_statement | return_query | if_statement | block_dml
 let_statement ::= 'LET' name '=' '(' (with? select | values) ')' ';'
 return_query ::= 'RETURN' 'QUERY' (with? select | values) ';'
-if_statement ::= 'IF' expression 'THEN' block_statement* 'END' 'IF' ';'
+if_statement ::= 'IF' expression 'THEN' block_statement* ('ELSE' block_statement*)? 'END' 'IF' ';'
 block_dml   ::= (delete | insert | iocdu | update) ';'
 acl         ::= (alter_user | create_role | create_user | drop_role | drop_user | grant | revoke | audit_policy)
 revoke      ::= 'REVOKE' (

@@ -33,7 +33,7 @@ use crate::ir::explain::LogicalExplain;
 use crate::ir::node::block::{Block, BlockOwned};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    AnonymousBlock, BlockEntries, BlockEntryKind, BlockStatement, Insert, Motion, NodeId,
+    AnonymousBlock, BlockEntries, BlockEntryKind, BlockStatement, IfBranch, Insert, Motion, NodeId,
     StatementLocation,
 };
 use crate::ir::options::{Forward, OptionKind};
@@ -222,11 +222,18 @@ pub fn format_block_stage_number(location: &StatementLocation) -> String {
     number
 }
 
-/// Label of a block stage: what the statement is, behind one `If body: ` for
-/// every IF body it sits in. So `Let "x"` at the top level, `If body: Let "x"`
-/// one level in, `If body: If body: Let "x"` two levels in.
+/// Label of a block stage: what the statement is, behind one `If body: ` (or
+/// `Else body: `) for every IF body it sits in. So `Let "x"` at the top level,
+/// `If body: Let "x"` one level in, `If body: Else body: Let "x"` for one in
+/// the ELSE branch of an IF nested in another IF's body.
 pub fn format_block_stage_label(location: &StatementLocation) -> String {
-    let mut label = "If body: ".repeat(location.if_body_depth());
+    let mut label = String::new();
+    for step in &location.body_path {
+        label.push_str(match step.branch {
+            IfBranch::Then => "If body: ",
+            IfBranch::Else => "Else body: ",
+        });
+    }
     match &location.kind {
         BlockEntryKind::IfCondition => label.push_str("If cond"),
         BlockEntryKind::Query => label.push_str("Query"),

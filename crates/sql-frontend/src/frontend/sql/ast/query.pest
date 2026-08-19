@@ -18,10 +18,13 @@ AnonymousBlockCode = _{ ^"begin" ~ W ~ (WO ~ BlockStatement ~ WO)+ ~ WO ~ ^"end"
       BlockIfStatement = {
           ^"if" ~ W ~ BlockIfCondition ~ W ~ ^"then"
           ~ (WO ~ BlockIfBodyStatement ~ WO)*
+          ~ (WO ~ BlockElseBlock ~ WO)?
           ~ WO ~ ^"end" ~ W ~ ^"if" ~ WO ~ ";"
       }
         BlockIfCondition = { Expr }
         BlockIfBodyStatement = { BlockStatement }
+        BlockElseBlock = { BlockElseKeyword ~ (WO ~ BlockIfBodyStatement ~ WO)* }
+          BlockElseKeyword = { ^"else" }
 
 AnonymousBlockOptions = { DqlOption }
 
