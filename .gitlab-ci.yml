@@ -1,3 +1,10 @@
+spec:
+  inputs:
+    upload-test-artifacts:
+      description: "Upload cluster data directories of failed tests as job artifacts"
+      type: boolean
+      default: false
+---
 default:
   tags:
     - docker-picodata
@@ -365,6 +372,10 @@ make-py-cache:
         RELEASE_TARGET: &release-target "release"
         # if the cache policy is pull-push, then the cache is layered on the previous version of the cache, and it takes up more and more space
         CACHE_POLICY: push
+        # Variable defined in .test_rules is always prioritized over one defined in
+        # .test-py-linux_base. As a result, master jobs will always upload artifacts
+        # regardless of the value from input. See https://docs.gitlab.com/ci/yaml/#rulesvariables.
+        UPLOAD_TEST_ARTIFACTS: "true"
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
@@ -528,11 +539,14 @@ test-rs-linux:
   needs:
     - job: build-linux
       artifacts: true
+  variables:
+    UPLOAD_TEST_ARTIFACTS: "$[[ inputs.upload-test-artifacts ]]"
   artifacts:
     when: always
     paths:
       - junit_pytest.xml
       - core*
+      - test-artifacts/
     reports:
       junit: junit_pytest.xml
 

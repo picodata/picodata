@@ -4,7 +4,6 @@ import os
 import re
 import psycopg
 import shutil
-import stat
 import sys
 import time
 import threading
@@ -3384,6 +3383,9 @@ def cluster_factory(class_tmp_dir, cluster_names, port_distributor, cargo_build_
             pytest_timeout=pytest_timeout,
         )
         cluster.set_service_password("password")
+
+        _register_cluster_data_dir(request, cluster)
+
         return cluster
 
     yield cluster_factory_
@@ -3394,6 +3396,7 @@ def cluster(cluster_factory) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
     cluster = cluster_factory()
     yield cluster
+
     # XXX: We use terminate (SIGTERM) instead of kill (SIGKILL), because we rely
     # on the `atexit` callback to dump the coverage information collected during
     # the process's runtime.
@@ -3419,7 +3422,10 @@ def second_cluster(tmpdir, cluster_names, port_distributor, cargo_build_fixt, re
 
     cluster.set_service_password("password")
 
+    _register_cluster_data_dir(request, cluster)
+
     yield cluster
+
     # XXX: We use terminate (SIGTERM) instead of kill (SIGKILL), because we rely
     # on the `atexit` callback to dump the coverage information collected during
     # the process's runtime.
@@ -3672,24 +3678,28 @@ def postgres_with_custom_cert_paths(cluster: Cluster, pg_port: int):
     ).install()
 
 
-def copy_dir(src: Path, dst: Path, copy_socks: bool = False):
-    if os.path.exists(dst):
-        if any(os.scandir(dst)):
-            raise ValueError(f"{dst} is not empty, exiting...")
-    else:
-        os.makedirs(dst)
+def copy_dir(src: Path, dst: Path):
+    def ignore_socks_and_symlinks(directory, names):
+        ignored = set()
+        for name in names:
+            path = Path(directory) / name
+            try:
+                if path.is_symlink():
+                    # E.g. `default_1_1` -> `3308`, a human-readable alias for the
+                    # instance data directory. The real directory is copied anyway,
+                    # so following the link would only duplicate the data.
+                    ignored.add(name)
+                elif path.is_socket():
+                    # E.g. `admin.sock` of a still running instance.
+                    ignored.add(name)
+            except OSError:
+                pass
+        return ignored
 
-    for item in os.listdir(src):
-        source_item = os.path.join(src, item)
-        dest_item = os.path.join(dst, item)
+    if dst.exists() and any(dst.iterdir()):
+        raise ValueError(f"{dst} is not empty, exiting...")
 
-        if stat.S_ISSOCK(os.stat(source_item).st_mode) and not copy_socks:
-            continue
-
-        if os.path.isdir(source_item):
-            shutil.copytree(source_item, dest_item)
-        else:
-            shutil.copy2(source_item, dest_item)
+    shutil.copytree(src, dst, dirs_exist_ok=True, ignore=ignore_socks_and_symlinks)
 
 
 # expects the `mode` to be passed in request.param
@@ -3726,6 +3736,86 @@ PICODATA_GITLAB_PROJECT_ID = 58
 
 # Flaky test retries collected during the current test session.
 _flaky_test_retries: set[str] = set()
+
+# Test group nodeids together with the attempt numbers for which the cluster data
+# directories were already copied to CI artifacts (see `_copy_cluster_artifacts`).
+# The attempt is `None` for tests which are not rerun.
+_saved_attempts: set[tuple[str, int | None]] = set()
+
+# Cluster data directories by test group nodeid and attempt number.
+_cluster_data_dirs: dict[tuple[str, int | None], set[Path]] = {}
+
+
+def _test_group_nodeid(node: pytest.Item | pytest.Class) -> str:
+    """
+    Nodeid of the test group the node belongs to.
+
+    A test group is a test class with all tests collected in it, or a single standalone
+    (module-level) test. The group nodeid is the nodeid of the enclosing test class if
+    there is one (this covers both test items inside the class and the class itself,
+    which is the request node of a class-scoped fixture), or the node's own nodeid
+    otherwise (standalone tests and the request nodes of their function-scoped
+    fixtures).
+
+    Failure tracking (`_saved_attempts`) and cluster data directory registration
+    (`_cluster_data_dirs`) are both keyed by group nodeid. This way a cluster
+    registered from a fixture of any scope lands in the same group as the tests using
+    it, so its data directory is uploaded to CI artifacts if any of those tests fails.
+    """
+    cls = node.getparent(pytest.Class)
+    if cls is not None:
+        return cls.nodeid
+    return node.nodeid
+
+
+def _test_attempt(node: pytest.Item | pytest.Class) -> int | None:
+    return getattr(node, "execution_count", None)
+
+
+def _register_cluster_data_dir(request: pytest.FixtureRequest, cluster: Cluster):
+    key = (_test_group_nodeid(request.node), _test_attempt(request.node))
+    _cluster_data_dirs.setdefault(key, set()).add(Path(cluster.data_dir))
+
+
+def _artifact_dir_name(group: str, attempt: int | None, data_dir_name: str | None = None) -> str:
+    """
+    All artifact directories reside directly in
+    `test-artifacts/` and are named `<test file>-<test name>`, with an
+    `-attempt-<N>` suffix added for tests which are rerun (i.e. marked as flaky).
+    """
+    attempt_part = "" if attempt is None else f"-attempt-{attempt}"
+    name = group.rsplit("/", 1)[-1].replace("::", "-") + attempt_part
+    if data_dir_name is not None:
+        name += f"-{data_dir_name}"
+
+    return name
+
+
+def _copy_cluster_artifacts(group: str, attempt: int | None):
+    # Cluster artifacts are saved only when the UPLOAD_TEST_ARTIFACTS variable is "true".
+    if os.getenv("UPLOAD_TEST_ARTIFACTS") != "true":
+        return
+
+    data_dirs = sorted(_cluster_data_dirs.get((group, attempt), ()))
+    if not data_dirs:
+        return
+
+    _saved_attempts.add((group, attempt))
+
+    artifacts_root = project_root_path() / "test-artifacts"
+
+    suffixed = len(data_dirs) > 1
+    for data_dir in data_dirs:
+        dst = artifacts_root / _artifact_dir_name(group, attempt, data_dir.name if suffixed else None)
+        if dst.exists():
+            log.warning(f"cluster artifacts destination {dst} already exists, skipping")
+            continue
+        try:
+            log.info(f"saving cluster data directory {data_dir} to {dst}")
+            copy_dir(data_dir, dst)
+        except Exception:
+            shutil.rmtree(dst, ignore_errors=True)
+            log.exception(f"failed to save cluster data directory {data_dir} to {dst}")
 
 
 def _report_flaky_test_retries_to_gitlab(node_ids: set[str]):
@@ -3777,24 +3867,26 @@ def _report_flaky_test_retry_to_gitlab(project, node_id: str, job_url: str):
     )
 
 
-@pytest.hookimpl
+@pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
+    attempt = None
     if not hasattr(item, "execution_count"):  # mypy
         # reruns are not stamped for all tests blindly, only if global setting is passed or item has `flaky` mark
         # https://github.com/pytest-dev/pytest-rerunfailures/blob/d0ff1d4337993cb0f74a46e59f1e6bed0857a0a6/src/pytest_rerunfailures.py#L546
-        return
+        pass
+    else:
+        assert item.execution_count >= 1
+        attempt = item.execution_count
 
-    if item.execution_count == 1:
-        # No retries
-        return
+        if item.execution_count > 1 and item.get_closest_marker("flaky") is not None:
+            _flaky_test_retries.add(item.nodeid)
 
-    assert item.execution_count > 1
-
-    if item.get_closest_marker("flaky") is None:
-        # Not marked as flaky
-        return
-
-    _flaky_test_retries.add(item.nodeid)
+    outcome = yield
+    report: pytest.TestReport = outcome.get_result()
+    if report.failed or report.outcome == "rerun":
+        group = _test_group_nodeid(item)
+        if (group, attempt) not in _saved_attempts:
+            _copy_cluster_artifacts(group, attempt)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: pytest.ExitCode):
