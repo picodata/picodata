@@ -1466,7 +1466,7 @@ picodata run -c instance.vinyl.bloom_fpr=0.10
 
 <span class="supported">поддерживается с версии 24.4.1</span>
 
-Размер кэша *в байтах* для движка хранения `vinyl`.
+Размер кеша *в байтах* для движка хранения `vinyl`.
 
 Данные:
 

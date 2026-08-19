@@ -1240,7 +1240,7 @@ instance:
 router:
   auth:
     is_required: false      # Включить обязательную аутентификацию. По умолчанию false.
-    permissions_validity: 2s  # Интервал обновления кэша прав пользователя в рамках
+    permissions_validity: 2s  # Интервал обновления кеша прав пользователя в рамках
                               # активной сессии. По умолчанию 2s.
     is_cidr_authorizer_enabled: false  # Включить проверку ACCESS FROM CIDRS при входе
     network:

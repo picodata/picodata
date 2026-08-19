@@ -722,7 +722,7 @@ table.legend {
         </tr>
         <tr>
             <td><span class="instance">vinyl.cache</span></td>
-            <td>Размер кэша в байтах для движка хранения vinyl</td>
+            <td>Размер кеша в байтах для движка хранения vinyl</td>
             <td>134217728</td>
             <td>[picodata run -c instance.vinyl.cache=256M](cli.md#run_config_parameter)</td>
             <td>[instance_vinyl_cache](config.md#instance_vinyl_cache)</td>
@@ -1057,7 +1057,7 @@ table.legend {
         </tr>
         <tr>
             <td><span class="sql-cluster">[sql_storage_cache_count_max](db_config.md#sql_storage_cache_count_max){.link}</span></td>
-            <td>Максимальное количество prepared statement-ов для размещения в LRU-кэше на узлах хранения Vshard</td>
+            <td>Максимальное количество prepared statement-ов для размещения в LRU-кеше на узлах хранения Vshard</td>
             <td>50</td>
             <td>
             ```sql
@@ -1067,7 +1067,7 @@ table.legend {
         </tr>
         <tr>
             <td><span class="sql-cluster">[sql_storage_cache_size_max](db_config.md#sql_storage_cache_size_max){.link}</span></td>
-            <td>Динамический параметр Box API, регулирующий размер LRU-кэша в байтах</td>
+            <td>Динамический параметр Box API, регулирующий размер LRU-кеша в байтах</td>
             <td>5242880</td>
             <td>
             ```sql
