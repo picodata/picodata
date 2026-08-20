@@ -6,10 +6,23 @@ authors = ["Picodata"]
 license-file.workspace = true
 edition.workspace = true
 
-# No dependencies: the crate is an `include_str!` of the corpus plus the splitter
-# that cuts it into statements. Everything that *consumes* the corpus — the
-# round-trip test below, the `ast_fill` benchmarks — depends on this crate, not
-# the other way round.
+# By default the crate is an `include_str!` of the corpus plus the splitter that
+# cuts it into statements. Everything that *consumes* the corpus — the round-trip
+# test below, the `ast_fill` benchmarks — depends on this crate, not the other way
+# round.
+#
+# The `mock` feature additionally exposes `CorpusMock`, the `Metadata` catalog the
+# corpus queries bind against, so the planner optimize bench (and any other) can
+# reach it without redefining it. Its deps are `optional` and pulled in only by
+# `mock`, so a plain corpus consumer still builds with no dependencies.
+
+[dependencies]
+sql-executor = { path = "../sql-executor", optional = true }
+sql-ir = { path = "../sql-ir", optional = true }
+smol_str = { workspace = true, optional = true }
 
 [dev-dependencies]
 sql-ast-new-parser = { path = "../sql-ast-new-parser" }
+
+[features]
+mock = ["dep:sql-executor", "dep:sql-ir", "dep:smol_str"]

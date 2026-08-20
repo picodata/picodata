@@ -1,49 +1,51 @@
--- Corpus of anonymized real-world DQL queries (identifiers renamed to a, b, c, ...).
+-- Corpus of anonymized real-world DQL queries.
+-- Global: Tables a-.. | Columns a-z,aa-.. | Indexes ix_a,..
+-- Local per query: CTEs cte0,.. | Table aliases t0,t1,.. | Result columns c0,c1,..
 -- Consumed by corpus.rs; each `-- TEST:` comment names the following statement.
 -- TEST: q1
 SELECT
   CASE
-    WHEN a.b > 0 THEN TRUE
+    WHEN t1.c2 > 0 THEN TRUE
     ELSE FALSE
-  END AS c,
-  COALESCE(d.f * -1, 0.0)::decimal AS g
+  END AS c0,
+  COALESCE(t2.c3 * -1, 0.0)::decimal AS c1
 FROM
   (
     SELECT
-      COUNT(*) AS b
+      COUNT(*) AS c2
     FROM
-      h i
+      z t0
     WHERE
-      (i.j = 3023424)
-  ) a
+      (t0.cv = 3023424)
+  ) t1
   LEFT JOIN (
     SELECT
-      SUM(g) AS f
+      SUM(cp) AS c3
     FROM
-      k i
+      ac t0
     WHERE
-      (i.j = 3023424)
-      AND g > 0
-  ) d ON 1 = 1 option (
+      (t0.cv = 3023424)
+      AND cp > 0
+  ) t2 ON 1 = 1 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q2
 SELECT
-  TO_CHAR(a, '%Y-%m-%d') AS a,
-  SUM(b) AS c,
-  SUM(d) AS f,
-  SUM(g) AS h
+  TO_CHAR(a, '%Y-%m-%d') AS c0,
+  SUM(f) AS c1,
+  SUM(e) AS c2,
+  SUM(g) AS c3
 FROM
-  i
+  a
 WHERE
   (
-    j = 3023424
-    AND k = 0
-    AND l = 22
-    AND m = 2023
-    AND n = 7
+    cv = 3023424
+    AND aw = 0
+    AND cq = 22
+    AND bm = 2023
+    AND bk = 7
   )
 GROUP BY
   a option (
@@ -53,89 +55,89 @@ GROUP BY
 
 -- TEST: q3
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      TO_CHAR(COALESCE(b.c, b.d), '%Y-%m-%d') AS d,
+      TO_CHAR(COALESCE(t0.cs, t0.a), '%Y-%m-%d') AS c0,
       (
-        b.f * COALESCE(g.h, 0) * CASE
-          WHEN b.i IS NOT NULL THEN -1
+        t0.d * COALESCE(t3.cj, 0) * CASE
+          WHEN t0.h IS NOT NULL THEN -1
           ELSE 1
         END
-      ) AS j
+      ) AS c1
     FROM
-      k b
-      LEFT JOIN l m ON b.n = m.o
-      AND b.p = m.p
-      LEFT JOIN k q ON q.i = b.o
-      AND q.p = b.p
-      LEFT JOIN r g ON b.s = g.s
-      LEFT JOIN t u ON b.v = u.v
+      n t0
+      LEFT JOIN y t1 ON t0.au = t1.ag
+      AND t0.cv = t1.cv
+      LEFT JOIN n t2 ON t2.h = t0.ag
+      AND t2.cv = t0.cv
+      LEFT JOIN f t3 ON t0.cw = t3.cw
+      LEFT JOIN h t4 ON t0.cu = t4.cu
     WHERE
       (
-        b.p = 3023424
-        AND coalesce(m.w, b.x) = 0
-        AND CAST(TO_CHAR(COALESCE(b.c, b.d), '%Y') AS INTEGER) = 2023
-        AND CAST(TO_CHAR(COALESCE(b.c, b.d), '%m') AS INTEGER) = 7
-        AND coalesce(m.y, u.y) = 22
-        AND q.o IS NULL
+        t0.cv = 3023424
+        AND coalesce(t1.aw, t0.bf) = 0
+        AND CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%Y') AS integer) = 2023
+        AND CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%m') AS integer) = 7
+        AND coalesce(t1.cq, t4.cq) = 22
+        AND t2.ag IS NULL
         AND (
-          b.i IS NULL
-          OR b.i = -1
+          t0.h IS NULL
+          OR t0.h = -1
         )
       )
   )
 SELECT
-  d,
-  COALESCE(SUM(j), 0.0) AS j
+  c0,
+  COALESCE(SUM(c1), 0.0) AS c1
 FROM
-  a
+  cte0
 GROUP BY
-  d option (
+  c0 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q4
 SELECT DISTINCT
-  a.b,
-  a.c,
-  a.d,
-  f.g
+  t0.ay,
+  t0.bg,
+  t0.ah,
+  t1.cx
 FROM
-  h a INDEXED BY i
-  LEFT JOIN j f ON a.k = f.k
-  AND a.b = f.b
+  a t0 INDEXED BY ix_b
+  LEFT JOIN ad t1 ON t0.cv = t1.cv
+  AND t0.ay = t1.ay
 WHERE
   (
-    a.k = 3023424
-    AND a.l = 0
-    AND m = 2023
-    AND n = 7
-    AND a.o = 22
+    t0.cv = 3023424
+    AND t0.aw = 0
+    AND bm = 2023
+    AND bk = 7
+    AND t0.cq = 22
   )
 UNION
 SELECT DISTINCT
-  p.b AS b,
-  coalesce(q.c, p.c) AS c,
-  coalesce(q.d, p.d) AS d,
-  f.g AS g
+  t2.ay AS c0,
+  coalesce(t4.bg, t2.bg) AS c1,
+  coalesce(t4.ah, t2.ah) AS c2,
+  t1.cx AS c3
 FROM
-  r p
-  LEFT JOIN r s ON s.t = p.u
-  AND s.k = p.k
-  LEFT JOIN v q ON p.w = q.u
-  AND p.k = q.k
-  LEFT JOIN x y ON p.z = y.z
-  LEFT JOIN j f ON p.k = f.k
-  AND p.b = f.b
-  LEFT JOIN aa ab ON p.ac = ab.ac
+  n t2
+  LEFT JOIN n t3 ON t3.h = t2.ag
+  AND t3.cv = t2.cv
+  LEFT JOIN y t4 ON t2.au = t4.ag
+  AND t2.cv = t4.cv
+  LEFT JOIN f t5 ON t2.cw = t5.cw
+  LEFT JOIN ad t1 ON t2.cv = t1.cv
+  AND t2.ay = t1.ay
+  LEFT JOIN h t6 ON t2.cu = t6.cu
 WHERE
   (
-    p.k = 3023424
-    AND coalesce(q.l, p.ad) = 0
-    AND CAST(TO_CHAR(COALESCE(p.ae, p.af), '%Y') AS INTEGER) = 2023
-    AND CAST(TO_CHAR(COALESCE(p.ae, p.af), '%m') AS INTEGER) = 7
-    AND coalesce(q.o, ab.o) = 22
+    t2.cv = 3023424
+    AND coalesce(t4.aw, t2.bf) = 0
+    AND CAST(TO_CHAR(COALESCE(t2.cs, t2.a), '%Y') AS integer) = 2023
+    AND CAST(TO_CHAR(COALESCE(t2.cs, t2.a), '%m') AS integer) = 7
+    AND coalesce(t4.cq, t6.cq) = 22
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
@@ -143,102 +145,102 @@ WHERE
 
 -- TEST: q5
 SELECT
-  a AS a,
-  SUM(b) AS c,
-  SUM(d) AS f,
-  SUM(g) AS h
+  z AS c0,
+  SUM(f) AS c1,
+  SUM(e) AS c2,
+  SUM(g) AS c3
 FROM
-  i
+  a
 WHERE
   (
-    j = 3023424
-    AND k = 0
-    AND l = 22
-    AND m = '2023-07-28'
+    cv = 3023424
+    AND aw = 0
+    AND cq = 22
+    AND a = '2023-07-28'
   )
 GROUP BY
-  a option (
+  z option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q6
 SELECT
-  a.b AS b,
+  t2.z AS c0,
   COALESCE(
     SUM(
-      c.d * COALESCE(a.f, 0) * CASE
-        WHEN c.g IS NOT NULL THEN -1
+      t0.d * COALESCE(t2.cj, 0) * CASE
+        WHEN t0.h IS NOT NULL THEN -1
         ELSE 1
       END
     ),
     0.0
-  ) AS h
+  ) AS c1
 FROM
-  i c
-  LEFT JOIN j k ON c.l = k.m
-  AND c.n = k.n
-  LEFT JOIN o a ON c.p = a.p
-  LEFT JOIN q r ON c.s = r.s
-  LEFT JOIN i t ON t.g = c.m
-  AND t.n = c.n
+  n t0
+  LEFT JOIN y t1 ON t0.au = t1.ag
+  AND t0.cv = t1.cv
+  LEFT JOIN f t2 ON t0.cw = t2.cw
+  LEFT JOIN h t3 ON t0.cu = t3.cu
+  LEFT JOIN n t4 ON t4.h = t0.ag
+  AND t4.cv = t0.cv
 WHERE
   (
-    c.n = 3023424
-    AND coalesce(k.u, c.v) = 0
-    AND coalesce(k.w, r.w) = 22
-    AND COALESCE(c.x, c.y) = '2023-07-28'
-    AND t.m IS NULL
+    t0.cv = 3023424
+    AND coalesce(t1.aw, t0.bf) = 0
+    AND coalesce(t1.cq, t3.cq) = 22
+    AND COALESCE(t0.cs, t0.a) = '2023-07-28'
+    AND t4.ag IS NULL
     AND (
-      c.g IS NULL
-      OR c.g = -1
+      t0.h IS NULL
+      OR t0.h = -1
     )
   )
 GROUP BY
-  a.b option (
+  t2.z option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q7
 SELECT DISTINCT
-  a.b,
-  a.c,
-  a.d,
-  f.g
+  t0.ay,
+  t0.bg,
+  t0.ah,
+  t1.cx
 FROM
-  h a INDEXED BY i
-  LEFT JOIN j f ON a.k = f.k
-  AND a.b = f.b
+  a t0 INDEXED BY ix_c
+  LEFT JOIN ad t1 ON t0.cv = t1.cv
+  AND t0.ay = t1.ay
 WHERE
   (
-    a.k = 3023424
-    AND a.l = 0
-    AND a.m = '2023-07-28'
-    AND a.n = 22
+    t0.cv = 3023424
+    AND t0.aw = 0
+    AND t0.a = '2023-07-28'
+    AND t0.cq = 22
   )
 UNION
 SELECT DISTINCT
-  o.b AS b,
-  coalesce(p.c, o.c) AS c,
-  coalesce(p.d, o.d) AS d,
-  f.g AS g
+  t2.ay AS c0,
+  coalesce(t4.bg, t2.bg) AS c1,
+  coalesce(t4.ah, t2.ah) AS c2,
+  t1.cx AS c3
 FROM
-  q o
-  LEFT JOIN q r ON r.s = o.t
-  AND r.k = o.k
-  LEFT JOIN u p ON o.v = p.t
-  AND o.k = p.k
-  LEFT JOIN w x ON o.y = x.y
-  LEFT JOIN j f ON o.k = f.k
-  AND o.b = f.b
-  LEFT JOIN z aa ON o.ab = aa.ab
+  n t2
+  LEFT JOIN n t3 ON t3.h = t2.ag
+  AND t3.cv = t2.cv
+  LEFT JOIN y t4 ON t2.au = t4.ag
+  AND t2.cv = t4.cv
+  LEFT JOIN f t5 ON t2.cw = t5.cw
+  LEFT JOIN ad t1 ON t2.cv = t1.cv
+  AND t2.ay = t1.ay
+  LEFT JOIN h t6 ON t2.cu = t6.cu
 WHERE
   (
-    o.k = 3023424
-    AND coalesce(p.l, o.ac) = 0
-    AND COALESCE(o.ad, o.m) = '2023-07-28'
-    AND coalesce(p.n, aa.n) = 22
+    t2.cv = 3023424
+    AND coalesce(t4.aw, t2.bf) = 0
+    AND COALESCE(t2.cs, t2.a) = '2023-07-28'
+    AND coalesce(t4.cq, t6.cq) = 22
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
@@ -246,65 +248,65 @@ WHERE
 
 -- TEST: q8
 SELECT
-  a AS b,
-  c AS c,
+  ag AS c0,
+  cv AS c1,
   CASE
-    WHEN 0 > d THEN d
+    WHEN 0 > bx THEN bx
     ELSE 0.0
-  END AS f,
+  END AS c2,
   CASE
-    WHEN 0 > g THEN g
+    WHEN 0 > bz THEN bz
     ELSE 0.0
-  END AS h,
+  END AS c3,
   CASE
-    WHEN 0 > COALESCE(i, 0.0) + COALESCE(j, 0.0) THEN COALESCE(i, 0.0) + COALESCE(j, 0.0)
+    WHEN 0 > COALESCE(cd, 0.0) + COALESCE(cc, 0.0) THEN COALESCE(cd, 0.0) + COALESCE(cc, 0.0)
     ELSE 0.0
-  END AS k,
+  END AS c4,
   CASE
-    WHEN 0 > l THEN l
+    WHEN 0 > ca THEN ca
     ELSE 0.0
-  END AS m,
+  END AS c5,
   CASE
-    WHEN 0 > n THEN n
+    WHEN 0 > cg THEN cg
     ELSE 0.0
-  END AS o
+  END AS c6
 FROM
-  p q
+  s t0
 WHERE
-  (q.c = 3023424) option (
+  (t0.cv = 3023424) option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q9
 SELECT
-  coalesce(a.b, c.d) AS b,
-  coalesce(a.f, g.f) AS f,
-  COALESCE(c.h, c.i) AS j,
+  coalesce(t2.aw, t0.bf) AS c0,
+  coalesce(t2.cq, t4.cq) AS c1,
+  COALESCE(t0.cs, t0.a) AS c2,
   COALESCE(
     (
-      c.k * COALESCE(l.m, 0.0) * CASE
-        WHEN c.n IS NOT NULL THEN -1
+      t0.d * COALESCE(t3.cj, 0.0) * CASE
+        WHEN t0.h IS NOT NULL THEN -1
         ELSE 1
       END
     ),
     0.0
-  ) AS o
+  ) AS c3
 FROM
-  p c
-  LEFT JOIN p q ON q.n = c.r
-  AND q.s = c.s
-  LEFT JOIN t a ON c.u = a.r
-  AND c.s = a.s
-  LEFT JOIN v l ON c.w = l.w
-  LEFT JOIN x g ON c.y = g.y
+  n t0
+  LEFT JOIN n t1 ON t1.h = t0.ag
+  AND t1.cv = t0.cv
+  LEFT JOIN y t2 ON t0.au = t2.ag
+  AND t0.cv = t2.cv
+  LEFT JOIN f t3 ON t0.cw = t3.cw
+  LEFT JOIN h t4 ON t0.cu = t4.cu
 WHERE
   (
-    c.s = 3023424
-    AND q.r IS NULL
+    t0.cv = 3023424
+    AND t1.ag IS NULL
     AND (
-      c.n IS NULL
-      OR c.n = -1
+      t0.h IS NULL
+      OR t0.h = -1
     )
   ) option (
     SQL_VDBE_OPCODE_MAX = 45000,
@@ -313,13 +315,13 @@ WHERE
 
 -- TEST: q10
 SELECT
-  SUM(CAST(a * 100 AS INTEGER) / 100.0) AS b
+  SUM(CAST(p * 100 AS integer) / 100.0) AS c0
 FROM
-  c d
+  t t0
 WHERE
   (
-    d.f = 3023424
-    AND a < 0
+    t0.cv = 3023424
+    AND p < 0
   ) option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
@@ -327,173 +329,173 @@ WHERE
 
 -- TEST: q11
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 3023424
-          AND h >= ('2023-04-28')
-          AND h < ('2023-04-29')
-          AND COALESCE(i, 0) <> 1
+          cv = 3023424
+          AND cs >= ('2023-04-28')
+          AND cs < ('2023-04-29')
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 3023424
-          AND h IS NULL
-          AND j >= ('2023-04-28')
-          AND j < ('2023-04-29')
-          AND COALESCE(i, 0) <> 1
-      ) b
-      LEFT JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 3023424
+          AND cs IS NULL
+          AND a >= ('2023-04-28')
+          AND a < ('2023-04-29')
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      l.m IS NULL
+      t1.b IS NULL
     ORDER BY
-      b.c
+      t0.ag
   ),
-  n AS (
+  cte1 AS (
     SELECT
-      o.f AS f,
-      o.c AS m,
-      p.q AS q,
-      p.r AS r,
-      o.s AS s,
-      o.t AS t,
-      COALESCE(o.u, o.v, 0) AS w,
+      t6.cv AS cv,
+      t6.ag AS b,
+      t3.ay AS ay,
+      t3.bg AS bg,
+      t6.cu AS cu,
+      t6.cw AS cw,
+      COALESCE(t6.co, t6.cm, 0) AS ac,
       CASE
-        WHEN o.u IS NOT NULL
-        OR o.v IS NOT NULL THEN o.x
+        WHEN t6.co IS NOT NULL
+        OR t6.cm IS NOT NULL THEN t6.cn
         ELSE '0000'
-      END AS y,
-      TO_CHAR(o.z, '%Y-%m-%d') AS aa,
+      END AS ae,
+      TO_CHAR(t6.cl, '%Y-%m-%d') AS ab,
       CASE
-        WHEN o.u IS NOT NULL THEN 0
-        WHEN o.v IS NOT NULL THEN 1
+        WHEN t6.co IS NOT NULL THEN 0
+        WHEN t6.cm IS NOT NULL THEN 1
         ELSE 2
-      END AS ab,
-      ac.ad AS ad
+      END AS c9,
+      t5.d AS d
     FROM
-      a ae
-      JOIN af p INDEXED by ag ON p.c = ae.d
-      AND p.f = ae.f
-      JOIN ah e INDEXED by ai ON e.m = ae.c
-      AND e.f = p.f
-      AND e.aj < 0
-      JOIN ak ac INDEXED BY al ON ac.am = e.c
-      AND ac.f = e.f
-      AND ac.an IS NULL
-      AND ac.ao IS NULL
-      JOIN g o INDEXED by ap ON o.c = ac.aq
-      AND o.f = ac.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN k ar ON ar.m = o.c
-      AND ar.f = o.f
-      LEFT JOIN at au ON au.t = o.t
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED BY ix_g ON t5.x = t4.ag
+      AND t5.cv = t4.cv
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN x t7 ON t7.b = t6.ag
+      AND t7.cv = t6.cv
+      LEFT JOIN f t8 ON t8.cw = t6.cw
     WHERE
-      au.av = 7
+      t8.z = 7
       AND (
-        p.aw = 0
-        AND p.ax = 22
+        t3.aw = 0
+        AND t3.cq = 22
       )
   ),
-  ay AS (
+  cte2 AS (
     SELECT
-      az.f AS f,
-      az.c AS m,
-      az.q AS q,
-      coalesce(p.r, az.r) AS r,
-      coalesce(p.s, az.s) AS s,
-      az.t AS t,
-      COALESCE(az.u, az.v, 0) AS w,
-      az.x AS y,
-      TO_CHAR(az.z, '%Y-%m-%d') AS aa,
+      t9.cv AS cv,
+      t9.ag AS b,
+      t9.ay AS ay,
+      coalesce(t3.bg, t9.bg) AS bg,
+      coalesce(t3.cu, t9.cu) AS cu,
+      t9.cw AS cw,
+      COALESCE(t9.co, t9.cm, 0) AS ac,
+      t9.cn AS ae,
+      TO_CHAR(t9.cl, '%Y-%m-%d') AS ab,
       CASE
-        WHEN az.u IS NOT NULL THEN 0
+        WHEN t9.co IS NOT NULL THEN 0
         ELSE 1
-      END AS ab,
+      END AS c9,
       COALESCE(
         (
-          az.ad * COALESCE(au.ba, 0.0) * (
+          t9.d * COALESCE(t8.cj, 0.0) * (
             CASE
-              WHEN az.bb IS NOT NULL THEN -1
+              WHEN t9.h IS NOT NULL THEN -1
               ELSE 1
             END
           )
         ),
         0.0
-      ) AS ad
+      ) AS d
     FROM
-      bc az
-      LEFT JOIN af p INDEXED by ag ON az.d = p.c
-      AND p.f = az.f
-      LEFT JOIN at au ON az.t = au.t
-      LEFT JOIN bc bd INDEXED by be ON bd.bb = az.c
-      AND bd.f = p.f
-      LEFT JOIN bf bg ON az.s = bg.s
+      n t9
+      LEFT JOIN y t3 INDEXED by ix_i ON t9.au = t3.ag
+      AND t3.cv = t9.cv
+      LEFT JOIN f t8 ON t9.cw = t8.cw
+      LEFT JOIN n t10 INDEXED by ix_e ON t10.h = t9.ag
+      AND t10.cv = t3.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
     WHERE
-      az.f = 3023424
-      AND COALESCE(az.h, az.j) = ('2023-04-28')
-      AND au.av = 7
+      t9.cv = 3023424
+      AND COALESCE(t9.cs, t9.a) = ('2023-04-28')
+      AND t8.z = 7
       AND (
-        coalesce(p.aw, az.bh) = 0
-        AND coalesce(p.ax, bg.ax) = 22
+        coalesce(t3.aw, t9.bf) = 0
+        AND coalesce(t3.cq, t11.cq) = 22
       )
   ),
-  bi AS (
+  cte3 AS (
     SELECT
       *
     FROM
-      n
+      cte1
     UNION ALL
     SELECT
       *
     FROM
-      ay
+      cte2
   ),
-  bj AS (
+  cte4 AS (
     SELECT
-      bi.f,
-      bi.m,
-      bi.q,
-      bi.r,
-      bi.s,
-      bi.t,
-      bi.w,
-      bi.y,
-      bi.aa,
-      bi.ab,
-      bi.ad,
-      bk.bl,
+      cte3.cv,
+      cte3.b,
+      cte3.ay,
+      cte3.bg,
+      cte3.cu,
+      cte3.cw,
+      cte3.ac,
+      cte3.ae,
+      cte3.ab,
+      cte3.c9,
+      cte3.d,
+      t12.cx,
       ROW_NUMBER() OVER (
         ORDER BY
-          m DESC
-      ) AS bm
+          b DESC
+      ) AS c11
     FROM
-      bi
-      LEFT JOIN bn bk ON bk.f = bi.f
-      AND bk.q = bi.q
+      cte3
+      LEFT JOIN ad t12 ON t12.cv = cte3.cv
+      AND t12.ay = cte3.ay
   )
 SELECT
   *
 FROM
-  bj
+  cte4
 WHERE
-  bm > 0
+  c11 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 700000,
@@ -502,178 +504,178 @@ LIMIT
 
 -- TEST: q12
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 3023424
-          AND h >= ('2023-04-28')
-          AND h < ('2023-04-28')
-          AND COALESCE(i, 0) <> 1
+          cv = 3023424
+          AND cs >= ('2023-04-28')
+          AND cs < ('2023-04-28')
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 3023424
-          AND h IS NULL
-          AND j >= ('2023-04-28')
-          AND j < ('2023-04-28')
-          AND COALESCE(i, 0) <> 1
-      ) b
-      LEFT JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 3023424
+          AND cs IS NULL
+          AND a >= ('2023-04-28')
+          AND a < ('2023-04-28')
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      l.m IS NULL
+      t1.b IS NULL
   ),
-  n AS (
+  cte1 AS (
     SELECT DISTINCT
-      o.f AS f,
-      p.q AS q,
-      p.r AS r,
-      p.s AS s,
-      o.t AS t,
-      u.v AS v
+      t6.cv AS cv,
+      t3.ay AS ay,
+      t3.bg AS bg,
+      t3.ah AS ah,
+      t6.cu AS cu,
+      t8.cx AS cx
     FROM
-      a w
-      JOIN x p INDEXED by y ON p.c = w.d
-      AND p.f = w.f
-      JOIN z e INDEXED by aa ON e.m = w.c
-      AND e.f = p.f
-      AND e.ab < 0
-      JOIN ac ad INDEXED by ae ON ad.af = e.c
-      AND ad.ag IS NULL
-      AND ad.ah IS NULL
-      AND ad.f = e.f
-      JOIN g o INDEXED by ai ON o.c = ad.aj
-      AND o.f = ad.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN ak al ON al.am = o.am
-      LEFT JOIN an u ON u.f = p.f
-      AND u.q = p.q
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED by ix_g ON t5.x = t4.ag
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      AND t5.cv = t4.cv
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN f t7 ON t7.cw = t6.cw
+      LEFT JOIN ad t8 ON t8.cv = t3.cv
+      AND t8.ay = t3.ay
     WHERE
-      al.ao = 7
+      t7.z = 7
       AND (
-        p.ap = 0
-        AND p.aq = 22
+        t3.aw = 0
+        AND t3.cq = 22
       )
   ),
-  ar AS (
+  cte2 AS (
     SELECT DISTINCT
-      at.f AS f,
-      at.q AS q,
-      coalesce(p.r, at.r) AS r,
-      coalesce(p.s, at.s) AS s,
-      coalesce(p.t, at.t) AS t,
-      u.v AS v
+      t9.cv AS cv,
+      t9.ay AS ay,
+      coalesce(t3.bg, t9.bg) AS bg,
+      coalesce(t3.ah, t9.ah) AS ah,
+      coalesce(t3.cu, t9.cu) AS cu,
+      t8.cx AS cx
     FROM
-      au at
-      LEFT JOIN x p INDEXED by y ON at.d = p.c
-      AND at.f = p.f
-      LEFT JOIN ak al ON at.am = al.am
-      LEFT JOIN au av INDEXED by aw ON av.ax = at.c
-      AND av.f = at.f
-      LEFT JOIN ay az ON at.t = az.t
-      LEFT JOIN an u ON u.f = p.f
-      AND u.q = p.q
+      n t9
+      LEFT JOIN y t3 INDEXED by ix_i ON t9.au = t3.ag
+      AND t9.cv = t3.cv
+      LEFT JOIN f t7 ON t9.cw = t7.cw
+      LEFT JOIN n t10 INDEXED by ix_e ON t10.h = t9.ag
+      AND t10.cv = t9.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
+      LEFT JOIN ad t8 ON t8.cv = t3.cv
+      AND t8.ay = t3.ay
     WHERE
-      at.f = 3023424
-      AND COALESCE(at.h, at.j) = ('2023-04-28')
-      AND al.ao = 7
+      t9.cv = 3023424
+      AND COALESCE(t9.cs, t9.a) = ('2023-04-28')
+      AND t7.z = 7
       AND (
-        coalesce(p.ap, at.ba) = 0
-        AND coalesce(p.aq, az.aq) = 22
+        coalesce(t3.aw, t9.bf) = 0
+        AND coalesce(t3.cq, t11.cq) = 22
       )
   )
 SELECT
   *
 FROM
-  n
+  cte1
 UNION ALL
 SELECT
   *
 FROM
-  ar option (
+  cte2 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q13
 SELECT
-  a AS a,
-  b AS b,
-  c AS c,
-  d AS d,
-  SUM(f) AS g,
-  SUM(h) AS i
+  cq AS c0,
+  bk AS c1,
+  bl AS c2,
+  bm AS c3,
+  SUM(f) AS c4,
+  SUM(e) AS c5
 FROM
-  j
+  b
 WHERE
   (
-    k = 3023424
-    AND l = 0
-    AND d IN (2024, 2023, 2021, 2022, 2019, 2018)
+    cv = 3023424
+    AND aw = 0
+    AND bm IN (2024, 2023, 2021, 2022, 2019, 2018)
   )
 GROUP BY
-  a,
-  b,
-  c,
-  d option (
+  cq,
+  bk,
+  bl,
+  bm option (
     SQL_VDBE_OPCODE_MAX = 900000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q14
 SELECT
-  coalesce(a.b, c.b) AS b,
-  CAST(TO_CHAR(COALESCE(d.f, d.g), '%Y') AS INTEGER) AS h,
+  coalesce(t1.cq, t4.cq) AS c0,
+  CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%Y') AS integer) AS c1,
   CAST(
     (
-      CAST(TO_CHAR(COALESCE(d.f, d.g), '%m') AS INT) - 1
-    ) / 3 + 1 AS INT
-  ) AS i,
-  CAST(TO_CHAR(COALESCE(d.f, d.g), '%m') AS INTEGER) AS j,
-  TO_CHAR(COALESCE(d.f, d.g), '%Y-%m-%d') AS g,
+      CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%m') AS int) - 1
+    ) / 3 + 1 AS int
+  ) AS c2,
+  CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%m') AS integer) AS c3,
+  TO_CHAR(COALESCE(t0.cs, t0.a), '%Y-%m-%d') AS c4,
   COALESCE(
     (
-      d.k * COALESCE(l.m, 0.0) * CASE
-        WHEN d.n IS NOT NULL THEN -1
+      t0.d * COALESCE(t3.cj, 0.0) * CASE
+        WHEN t0.h IS NOT NULL THEN -1
         ELSE 1
       END
     ),
     0.0
-  ) AS o
+  ) AS c5
 FROM
-  p d
-  LEFT JOIN q a ON d.r = a.s
-  AND d.t = a.t
-  LEFT JOIN u v ON d.w = v.w
-  LEFT JOIN x l ON d.y = l.y
-  LEFT JOIN z c ON d.w = c.w
-  LEFT JOIN p aa ON aa.n = d.s
-  AND aa.t = d.t
+  n t0
+  LEFT JOIN y t1 ON t0.au = t1.ag
+  AND t0.cv = t1.cv
+  LEFT JOIN g t2 ON t0.cu = t2.cu
+  LEFT JOIN f t3 ON t0.cw = t3.cw
+  LEFT JOIN h t4 ON t0.cu = t4.cu
+  LEFT JOIN n t5 ON t5.h = t0.ag
+  AND t5.cv = t0.cv
 WHERE
   (
-    d.t = 3023424
-    AND coalesce(a.ab, d.ac) = 0
-    AND CAST(TO_CHAR(COALESCE(d.f, d.g), '%Y') AS INTEGER) IN (2024, 2023, 2021, 2022, 2019, 2018)
-    AND aa.s IS NULL
+    t0.cv = 3023424
+    AND coalesce(t1.aw, t0.bf) = 0
+    AND CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%Y') AS integer) IN (2024, 2023, 2021, 2022, 2019, 2018)
+    AND t5.ag IS NULL
     AND (
-      d.n IS NULL
-      OR d.n = -1
+      t0.h IS NULL
+      OR t0.h = -1
     )
   ) option (
     SQL_VDBE_OPCODE_MAX = 100000,
@@ -682,18 +684,18 @@ WHERE
 
 -- TEST: q15
 SELECT
-  a AS a,
-  b AS b,
-  c AS c,
-  d AS d,
-  SUM(f) AS g
+  cq AS c0,
+  bk AS c1,
+  bl AS c2,
+  bm AS c3,
+  SUM(g) AS c4
 FROM
-  h
+  e
 WHERE
   (
-    i = 3023424
-    AND f > 0
-    AND a IN (
+    cv = 3023424
+    AND g > 0
+    AND cq IN (
       1,
       97,
       3,
@@ -712,502 +714,502 @@ WHERE
       22,
       29
     )
-    AND d IN (2024, 2023, 2021, 2022, 2019, 2018)
+    AND bm IN (2024, 2023, 2021, 2022, 2019, 2018)
   )
 GROUP BY
-  a,
-  b,
-  c,
-  d option (
+  cq,
+  bk,
+  bl,
+  bm option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q16
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      a.b AS b,
-      a.c AS d,
-      a.f AS g,
-      a.h AS i,
-      TO_CHAR(a.j, '%Y-%m-%d') AS k,
-      a.l AS l,
-      a.m AS n
+      cte0.cv AS cv,
+      cte0.ag AS c1,
+      cte0.r AS c2,
+      cte0.s AS c3,
+      TO_CHAR(cte0.q, '%Y-%m-%d') AS c4,
+      cte0.bn AS bn,
+      cte0.m AS c6
     FROM
-      o a
+      o cte0
     WHERE
       (
-        a.b = 4797271
-        AND a.h IN (1, 2)
+        cte0.cv = 4797271
+        AND cte0.s IN (1, 2)
       )
   ),
-  p AS (
+  cte1 AS (
     SELECT
-      a.b AS b,
-      a.d AS d,
-      a.g AS g,
-      a.i AS i,
-      a.k AS k,
-      a.l AS l,
-      a.n AS n,
-      p.q AS q,
-      p.r AS s,
-      p.c AS t
+      cte0.cv AS cv,
+      cte0.c1 AS c1,
+      cte0.c2 AS c2,
+      cte0.c3 AS c3,
+      cte0.c4 AS c4,
+      cte0.bn AS bn,
+      cte0.c6 AS c6,
+      cte1.aw AS aw,
+      cte1.av AS cu,
+      cte1.ag AS c9
     FROM
-      a
-      JOIN u p ON a.d = p.v
-      AND a.b = p.b
+      cte0
+      JOIN p cte1 ON cte0.c1 = cte1.l
+      AND cte0.cv = cte1.cv
     WHERE
-      p.w <> 0
+      cte1.af <> 0
   ),
-  x AS (
+  cte2 AS (
     SELECT
-      p.b AS b,
-      p.d AS d,
-      p.g AS g,
-      p.i AS i,
-      p.k AS k,
-      p.l AS l,
-      p.n AS n,
-      p.q AS q,
-      p.s AS s,
-      x.c AS y
+      cte1.cv AS cv,
+      cte1.c1 AS c1,
+      cte1.c2 AS c2,
+      cte1.c3 AS c3,
+      cte1.c4 AS c4,
+      cte1.bn AS bn,
+      cte1.c6 AS c6,
+      cte1.aw AS aw,
+      cte1.cu AS cu,
+      cte2.ag AS c10
     FROM
-      p
-      JOIN z x ON p.t = x.aa
-      AND p.b = x.b
+      cte1
+      JOIN q cte2 ON cte1.c9 = cte2.j
+      AND cte1.cv = cte2.cv
   ),
-  ab AS (
+  cte3 AS (
     SELECT
-      x.b AS b,
-      x.d AS d,
-      x.g AS g,
-      x.i AS i,
-      x.k AS k,
-      x.l AS l,
-      x.n AS n,
-      x.q AS q,
-      x.s AS s,
-      ab.ac AS ac,
-      COALESCE(ab.ad, 0.0) AS ad,
-      TO_CHAR(ab.ae, '%Y-%m-%d') AS ae
+      cte2.cv AS cv,
+      cte2.c1 AS c1,
+      cte2.c2 AS c2,
+      cte2.c3 AS c3,
+      cte2.c4 AS c4,
+      cte2.bn AS bn,
+      cte2.c6 AS c6,
+      cte2.aw AS aw,
+      cte2.cu AS cu,
+      cte3.ci AS ci,
+      COALESCE(cte3.y, 0.0) AS y,
+      TO_CHAR(cte3.ch, '%Y-%m-%d') AS ch
     FROM
-      x
-      JOIN af ab ON x.y = ab.ag
-      AND x.b = ab.b
+      cte2
+      JOIN r cte3 ON cte2.c10 = cte3.k
+      AND cte2.cv = cte3.cv
     WHERE
-      ab.ah = to_date('3000-01-01', '%Y-%m-%d')
-      AND ab.ai = 0
+      cte3.o = to_date('3000-01-01', '%Y-%m-%d')
+      AND cte3.an = 0
   )
 SELECT
   *
 FROM
-  ab option (
+  cte3 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q17
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c AS d,
-      f.c AS g,
-      1 AS h,
-      i.j AS k,
-      b.l AS l,
-      b.m AS n,
-      coalesce(f.o, b.o) AS o,
-      coalesce(f.p, b.p) AS q,
-      b.r AS r,
-      s.t AS t,
-      coalesce(u.v, b.v) AS v,
-      f.w AS x,
-      coalesce(f.y, b.y) AS y,
-      b.z AS z,
-      coalesce(f.aa, f.ab, b.ac) AS ac,
+      t0.ag AS c0,
+      t5.ag AS c1,
+      1 AS ck,
+      t4.al AS c3,
+      t0.cv AS cv,
+      t0.w AS a,
+      coalesce(t5.ay, t0.ay) AS ay,
+      coalesce(t5.bg, t0.bg) AS bh,
+      t0.cw AS cw,
+      t1.z AS z,
+      coalesce(t6.bj, t0.bj) AS bj,
+      t5.bm AS c11,
+      coalesce(t5.cu, t0.cu) AS cu,
+      t0.aa AS aa,
+      coalesce(t5.co, t5.cm, t0.ac) AS ac,
       CASE
-        WHEN f.aa IS NOT NULL THEN 0
-        WHEN f.ab IS NOT NULL THEN 1
-        ELSE b.ad
+        WHEN t5.co IS NOT NULL THEN 0
+        WHEN t5.cm IS NOT NULL THEN 1
+        ELSE t0.ad
       END AS ad,
-      coalesce(f.ae, b.af) AS af,
+      coalesce(t5.cl, t0.ab) AS ab,
       CASE
-        WHEN f.aa IS NOT NULL
-        OR f.ab IS NOT NULL THEN f.ag
-        ELSE b.ah
-      END AS ah,
+        WHEN t5.co IS NOT NULL
+        OR t5.cm IS NOT NULL THEN t5.cn
+        ELSE t0.ae
+      END AS ae,
       CASE
-        WHEN b.ai IS NOT NULL THEN TRUE
+        WHEN t0.h IS NOT NULL THEN TRUE
         ELSE FALSE
-      END AS aj
+      END AS c18
     FROM
-      ak b
-      JOIN al s ON s.r = b.r
-      LEFT JOIN am an ON an.ao = b.c
-      AND an.l = 3023424
-      AND an.j = 0
-      AND b.ap = 0
-      AND an.l = b.l
-      LEFT JOIN am aq ON an.ar = aq.c
-      AND aq.l = 3023424
-      AND aq.l = b.l
-      LEFT JOIN am i ON aq.at = i.at
-      AND i.l = 3023424
-      AND i.j = 0
-      AND i.l = b.l
-      LEFT JOIN au f ON i.ao = f.c
-      AND f.l = 3023424
-      AND f.l = b.l
-      LEFT JOIN av u ON u.aw = f.aw
+      m t0
+      JOIN f t1 ON t1.cw = t0.cw
+      LEFT JOIN w t2 ON t2.bs = t0.ag
+      AND t2.cv = 3023424
+      AND t2.al = 0
+      AND t0.cr = 0
+      AND t2.cv = t0.cv
+      LEFT JOIN w t3 ON t2.bt = t3.ag
+      AND t3.cv = 3023424
+      AND t3.cv = t0.cv
+      LEFT JOIN w t4 ON t3.x = t4.x
+      AND t4.cv = 3023424
+      AND t4.al = 0
+      AND t4.cv = t0.cv
+      LEFT JOIN l t5 ON t4.bs = t5.ag
+      AND t5.cv = 3023424
+      AND t5.cv = t0.cv
+      LEFT JOIN k t6 ON t6.bi = t5.bi
     WHERE
       (
-        b.l = 3023424
-        AND b.ax = 1
-        AND b.m = '2024-02-28'
-        AND s.t = 11
-        AND b.ap = 0
-        AND b.ai IS NULL
-        AND s.ay > 0
+        t0.cv = 3023424
+        AND t0.aw = 1
+        AND t0.w = '2024-02-28'
+        AND t1.z = 11
+        AND t0.cr = 0
+        AND t0.h IS NULL
+        AND t1.cj > 0
       )
   ),
-  az AS (
+  cte1 AS (
     SELECT
-      b.c AS d,
-      f.c AS g,
-      1 AS h,
-      aq.j AS k,
-      b.l AS l,
-      b.m AS n,
-      coalesce(f.o, b.o) AS o,
-      coalesce(f.p, b.p) AS q,
-      b.r AS r,
-      s.t AS t,
-      coalesce(u.v, b.v) AS v,
-      f.w AS x,
-      coalesce(f.y, b.y) AS y,
-      b.z AS z,
-      coalesce(f.aa, f.ab, b.ac) AS ac,
+      t0.ag AS c0,
+      t5.ag AS c1,
+      1 AS ck,
+      t3.al AS c3,
+      t0.cv AS cv,
+      t0.w AS a,
+      coalesce(t5.ay, t0.ay) AS ay,
+      coalesce(t5.bg, t0.bg) AS bh,
+      t0.cw AS cw,
+      t1.z AS z,
+      coalesce(t6.bj, t0.bj) AS bj,
+      t5.bm AS c11,
+      coalesce(t5.cu, t0.cu) AS cu,
+      t0.aa AS aa,
+      coalesce(t5.co, t5.cm, t0.ac) AS ac,
       CASE
-        WHEN f.aa IS NOT NULL THEN 0
-        WHEN f.ab IS NOT NULL THEN 1
-        ELSE b.ad
+        WHEN t5.co IS NOT NULL THEN 0
+        WHEN t5.cm IS NOT NULL THEN 1
+        ELSE t0.ad
       END AS ad,
-      coalesce(f.ae, b.af) AS af,
+      coalesce(t5.cl, t0.ab) AS ab,
       CASE
-        WHEN f.aa IS NOT NULL
-        OR f.ab IS NOT NULL THEN f.ag
-        ELSE b.ah
-      END AS ah,
+        WHEN t5.co IS NOT NULL
+        OR t5.cm IS NOT NULL THEN t5.cn
+        ELSE t0.ae
+      END AS ae,
       CASE
-        WHEN b.ai IS NOT NULL THEN TRUE
+        WHEN t0.h IS NOT NULL THEN TRUE
         ELSE FALSE
-      END AS aj
+      END AS c18
     FROM
-      ak b
-      JOIN al s ON s.r = b.r
-      LEFT JOIN am an ON an.ao = b.c
-      AND an.l = 3023424
-      AND an.j = 0
-      AND b.ap = 0
-      AND an.l = b.l
-      LEFT JOIN am aq ON an.ar = aq.at
-      AND aq.l = 3023424
-      AND aq.j <> 0
-      AND aq.ba IS NULL
-      AND aq.bb IS NULL
-      AND aq.l = b.l
-      LEFT JOIN au f ON aq.ao = f.c
-      AND f.l = 3023424
-      AND f.l = b.l
-      LEFT JOIN av u ON u.aw = f.aw
+      m t0
+      JOIN f t1 ON t1.cw = t0.cw
+      LEFT JOIN w t2 ON t2.bs = t0.ag
+      AND t2.cv = 3023424
+      AND t2.al = 0
+      AND t0.cr = 0
+      AND t2.cv = t0.cv
+      LEFT JOIN w t3 ON t2.bt = t3.x
+      AND t3.cv = 3023424
+      AND t3.al <> 0
+      AND t3.db IS NULL
+      AND t3.da IS NULL
+      AND t3.cv = t0.cv
+      LEFT JOIN l t5 ON t3.bs = t5.ag
+      AND t5.cv = 3023424
+      AND t5.cv = t0.cv
+      LEFT JOIN k t6 ON t6.bi = t5.bi
     WHERE
       (
-        b.l = 3023424
-        AND b.ax = 1
-        AND b.m = '2024-02-28'
-        AND s.t = 11
-        AND b.ap = 0
-        AND b.ai IS NULL
-        AND s.ay < 0
+        t0.cv = 3023424
+        AND t0.aw = 1
+        AND t0.w = '2024-02-28'
+        AND t1.z = 11
+        AND t0.cr = 0
+        AND t0.h IS NULL
+        AND t1.cj < 0
       )
   ),
-  bc AS (
+  cte2 AS (
     SELECT
-      b.c AS d,
-      f.c AS g,
-      2 AS h,
-      an.j AS k,
-      b.l AS l,
-      b.m AS n,
-      coalesce(f.o, b.o) AS o,
-      coalesce(f.p, b.p) AS q,
-      b.r AS r,
-      s.t AS t,
-      coalesce(u.v, b.v) AS v,
-      f.w AS x,
-      coalesce(f.y, b.y) AS y,
-      b.z AS z,
-      coalesce(f.aa, f.ab, b.ac) AS ac,
+      t0.ag AS c0,
+      t5.ag AS c1,
+      2 AS ck,
+      t2.al AS c3,
+      t0.cv AS cv,
+      t0.w AS a,
+      coalesce(t5.ay, t0.ay) AS ay,
+      coalesce(t5.bg, t0.bg) AS bh,
+      t0.cw AS cw,
+      t1.z AS z,
+      coalesce(t6.bj, t0.bj) AS bj,
+      t5.bm AS c11,
+      coalesce(t5.cu, t0.cu) AS cu,
+      t0.aa AS aa,
+      coalesce(t5.co, t5.cm, t0.ac) AS ac,
       CASE
-        WHEN f.aa IS NOT NULL THEN 0
-        WHEN f.ab IS NOT NULL THEN 1
+        WHEN t5.co IS NOT NULL THEN 0
+        WHEN t5.cm IS NOT NULL THEN 1
         ELSE 2
       END AS ad,
-      f.ae AS af,
+      t5.cl AS ab,
       CASE
-        WHEN f.aa IS NOT NULL
-        OR f.ab IS NOT NULL THEN f.ag
-        ELSE b.ah
-      END AS ah,
+        WHEN t5.co IS NOT NULL
+        OR t5.cm IS NOT NULL THEN t5.cn
+        ELSE t0.ae
+      END AS ae,
       CASE
-        WHEN b.ai IS NOT NULL THEN TRUE
+        WHEN t0.h IS NOT NULL THEN TRUE
         ELSE FALSE
-      END AS aj
+      END AS c18
     FROM
-      ak b
-      JOIN al s ON s.r = b.r
-      LEFT JOIN am an ON an.bd = b.c
-      AND an.l = 3023424
-      AND b.ap = 1
-      AND an.l = b.l
-      LEFT JOIN au f ON f.c = an.ao
-      AND f.l = 3023424
-      AND f.l = b.l
-      LEFT JOIN av u ON u.aw = f.aw
+      m t0
+      JOIN f t1 ON t1.cw = t0.cw
+      LEFT JOIN w t2 ON t2.c = t0.ag
+      AND t2.cv = 3023424
+      AND t0.cr = 1
+      AND t2.cv = t0.cv
+      LEFT JOIN l t5 ON t5.ag = t2.bs
+      AND t5.cv = 3023424
+      AND t5.cv = t0.cv
+      LEFT JOIN k t6 ON t6.bi = t5.bi
     WHERE
       (
-        b.l = 3023424
-        AND b.ax = 1
-        AND b.m = '2024-02-28'
-        AND s.t = 11
-        AND b.ap = 1
-        AND b.ai IS NULL
-        AND s.ay < 0
+        t0.cv = 3023424
+        AND t0.aw = 1
+        AND t0.w = '2024-02-28'
+        AND t1.z = 11
+        AND t0.cr = 1
+        AND t0.h IS NULL
+        AND t1.cj < 0
       )
   )
 SELECT
   *
 FROM
-  a
+  cte0
 UNION
 SELECT
   *
 FROM
-  az
+  cte1
 UNION
 SELECT
   *
 FROM
-  bc option (
+  cte2 option (
     SQL_VDBE_OPCODE_MAX = 900000,
     SQL_MOTION_ROW_MAX = 10000
   );
 
 -- TEST: q18
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      coalesce(b.c, d.c) AS c,
-      f.g AS h,
-      coalesce(f.i, d.i) AS i,
+      coalesce(t6.bj, t0.bj) AS bj,
+      t5.bm AS c1,
+      coalesce(t5.cu, t0.cu) AS cu,
       CASE
-        WHEN f.j IS NOT NULL THEN 0
-        WHEN f.k IS NOT NULL THEN 1
-        ELSE d.l
-      END AS l,
-      coalesce(f.j, f.k, d.m) AS m
+        WHEN t5.co IS NOT NULL THEN 0
+        WHEN t5.cm IS NOT NULL THEN 1
+        ELSE t0.ad
+      END AS ad,
+      coalesce(t5.co, t5.cm, t0.ac) AS ac
     FROM
-      n d
-      JOIN o p ON p.q = d.q
-      LEFT JOIN r s ON s.t = d.u
-      AND s.v = 0
-      AND d.w = 0
-      AND s.x = d.x
-      LEFT JOIN r y ON s.z = y.u
-      AND y.x = s.x
-      LEFT JOIN r aa ON y.ab = aa.ab
-      AND aa.x = y.x
-      AND aa.v = 0
-      LEFT JOIN ac f ON aa.t = f.u
-      AND f.x = aa.x
-      LEFT JOIN ad b ON b.ae = f.ae
+      m t0
+      JOIN f t1 ON t1.cw = t0.cw
+      LEFT JOIN w t2 ON t2.bs = t0.ag
+      AND t2.al = 0
+      AND t0.cr = 0
+      AND t2.cv = t0.cv
+      LEFT JOIN w t3 ON t2.bt = t3.ag
+      AND t3.cv = t2.cv
+      LEFT JOIN w t4 ON t3.x = t4.x
+      AND t4.cv = t3.cv
+      AND t4.al = 0
+      LEFT JOIN l t5 ON t4.bs = t5.ag
+      AND t5.cv = t4.cv
+      LEFT JOIN k t6 ON t6.bi = t5.bi
     WHERE
       (
-        d.x = 3023424
-        AND d.af = 1
-        AND d.ag = '2024-02-28'
-        AND p.ah = 11
-        AND d.w = 0
-        AND NOT (d.ai IS NOT NULL)
-        AND p.aj > 0
+        t0.cv = 3023424
+        AND t0.aw = 1
+        AND t0.w = '2024-02-28'
+        AND t1.z = 11
+        AND t0.cr = 0
+        AND NOT (t0.h IS NOT NULL)
+        AND t1.cj > 0
       )
   ),
-  ak AS (
+  cte1 AS (
     SELECT
-      coalesce(b.c, d.c) AS c,
-      f.g AS h,
-      coalesce(f.i, d.i) AS i,
+      coalesce(t6.bj, t0.bj) AS bj,
+      t5.bm AS c1,
+      coalesce(t5.cu, t0.cu) AS cu,
       CASE
-        WHEN f.j IS NOT NULL THEN 0
-        WHEN f.k IS NOT NULL THEN 1
-        ELSE d.l
-      END AS l,
-      coalesce(f.j, f.k, d.m) AS m
+        WHEN t5.co IS NOT NULL THEN 0
+        WHEN t5.cm IS NOT NULL THEN 1
+        ELSE t0.ad
+      END AS ad,
+      coalesce(t5.co, t5.cm, t0.ac) AS ac
     FROM
-      n d
-      JOIN o p ON p.q = d.q
-      LEFT JOIN r s ON s.t = d.u
-      AND s.x = d.x
-      AND s.v = 0
-      AND d.w = 0
-      LEFT JOIN r y ON s.ab = y.ab
-      AND y.x = s.x
-      AND y.v <> 0
-      AND y.al IS NULL
-      AND y.am IS NULL
-      LEFT JOIN ac f ON y.t = f.u
-      AND f.x = y.x
-      LEFT JOIN ad b ON b.ae = f.ae
+      m t0
+      JOIN f t1 ON t1.cw = t0.cw
+      LEFT JOIN w t2 ON t2.bs = t0.ag
+      AND t2.cv = t0.cv
+      AND t2.al = 0
+      AND t0.cr = 0
+      LEFT JOIN w t3 ON t2.x = t3.x
+      AND t3.cv = t2.cv
+      AND t3.al <> 0
+      AND t3.db IS NULL
+      AND t3.da IS NULL
+      LEFT JOIN l t5 ON t3.bs = t5.ag
+      AND t5.cv = t3.cv
+      LEFT JOIN k t6 ON t6.bi = t5.bi
     WHERE
       (
-        d.x = 3023424
-        AND d.af = 1
-        AND d.ag = '2024-02-28'
-        AND p.ah = 11
-        AND d.w = 0
-        AND NOT (d.ai IS NOT NULL)
-        AND p.aj < 0
+        t0.cv = 3023424
+        AND t0.aw = 1
+        AND t0.w = '2024-02-28'
+        AND t1.z = 11
+        AND t0.cr = 0
+        AND NOT (t0.h IS NOT NULL)
+        AND t1.cj < 0
       )
   ),
-  an AS (
+  cte2 AS (
     SELECT
-      coalesce(b.c, d.c) AS c,
-      f.g AS h,
-      coalesce(f.i, d.i) AS i,
+      coalesce(t6.bj, t0.bj) AS bj,
+      t5.bm AS c1,
+      coalesce(t5.cu, t0.cu) AS cu,
       CASE
-        WHEN f.j IS NOT NULL THEN 0
-        WHEN f.k IS NOT NULL THEN 1
+        WHEN t5.co IS NOT NULL THEN 0
+        WHEN t5.cm IS NOT NULL THEN 1
         ELSE 2
-      END AS l,
-      coalesce(f.j, f.k, d.m) AS m
+      END AS ad,
+      coalesce(t5.co, t5.cm, t0.ac) AS ac
     FROM
-      n d
-      JOIN o p ON p.q = d.q
-      LEFT JOIN r s ON s.ao = d.u
-      AND s.x = d.x
-      AND d.w = 1
-      LEFT JOIN ac f ON f.u = s.t
-      AND f.x = s.x
-      LEFT JOIN ad b ON b.ae = f.ae
+      m t0
+      JOIN f t1 ON t1.cw = t0.cw
+      LEFT JOIN w t2 ON t2.c = t0.ag
+      AND t2.cv = t0.cv
+      AND t0.cr = 1
+      LEFT JOIN l t5 ON t5.ag = t2.bs
+      AND t5.cv = t2.cv
+      LEFT JOIN k t6 ON t6.bi = t5.bi
     WHERE
       (
-        d.x = 3023424
-        AND d.af = 1
-        AND d.ag = '2024-02-28'
-        AND p.ah = 11
-        AND d.w = 1
-        AND NOT (d.ai IS NOT NULL)
-        AND p.aj < 0
+        t0.cv = 3023424
+        AND t0.aw = 1
+        AND t0.w = '2024-02-28'
+        AND t1.z = 11
+        AND t0.cr = 1
+        AND NOT (t0.h IS NOT NULL)
+        AND t1.cj < 0
       )
   ),
-  ap AS (
+  cte3 AS (
     SELECT
       *
     FROM
-      a
+      cte0
     UNION
     SELECT
       *
     FROM
-      ak
+      cte1
     UNION
     SELECT
       *
     FROM
-      an
+      cte2
   )
 SELECT
   *
 FROM
-  ap option (
+  cte3 option (
     SQL_VDBE_OPCODE_MAX = 600000,
     SQL_MOTION_ROW_MAX = 10000
   );
 
 -- TEST: q19
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b,
-      c AS c,
+      aa,
+      z AS z,
       CASE
-        WHEN d IS NOT NULL THEN TRUE
+        WHEN h IS NOT NULL THEN TRUE
         ELSE FALSE
-      END AS f
+      END AS c1
     FROM
-      g h
+      m t0
     WHERE
       (
-        h.i = 3023424
-        AND h.j = '2024-02-28'
-        AND h.k = 1
-        AND h.b <> 0
+        t0.cv = 3023424
+        AND t0.w = '2024-02-28'
+        AND t0.aw = 1
+        AND t0.aa <> 0
       )
   )
 SELECT
   SUM(
     CASE
-      WHEN b > 0 THEN b
+      WHEN aa > 0 THEN aa
       ELSE 0
     END
-  ) AS l,
+  ) AS c2,
   SUM(
     CASE
-      WHEN b < 0 THEN b
+      WHEN aa < 0 THEN aa
       ELSE 0
     END
-  ) AS m,
-  NULL AS n,
-  h.c AS c,
-  f
+  ) AS c3,
+  NULL AS c4,
+  t0.z AS c0,
+  c1
 FROM
-  a h
+  cte0 t0
 GROUP BY
-  c,
-  f option (
+  z,
+  c1 option (
     SQL_VDBE_OPCODE_MAX = 500000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q20
 SELECT
-  a.b,
-  a.c,
-  a.d,
-  a.f,
-  a.g,
-  a.h,
-  a.i,
-  a.j,
-  a.k AS k,
-  a.l,
-  a.m,
-  a.n,
-  a.o
+  t0.ag,
+  t0.cv,
+  t0.v,
+  t0.bx,
+  t0.bz,
+  t0.ca,
+  t0.cc,
+  t0.cd,
+  t0.ar AS c0,
+  t0.cg,
+  t0.ce,
+  t0.i,
+  t0.cf
 FROM
-  p a
-  LEFT JOIN q r ON a.d = r.b
-  AND a.c = r.c
+  u t0
+  LEFT JOIN s t1 ON t0.v = t1.ag
+  AND t0.cv = t1.cv
 WHERE
   (
-    a.c = 3023424
-    AND a.k <= '2024-02-28'
-    AND NOT COALESCE(a.s, 'false')
+    t0.cv = 3023424
+    AND t0.ar <= '2024-02-28'
+    AND NOT COALESCE(t0.aq, 'false')
   )
 ORDER BY
-  k DESC
+  c0 DESC
 LIMIT
   2 option (
     SQL_VDBE_OPCODE_MAX = 100000,
@@ -1216,53 +1218,53 @@ LIMIT
 
 -- TEST: q21
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      CAST(TO_CHAR(b, '%Y-%m-%d') AS TEXT) AS c,
-      d
+      CAST(TO_CHAR(w, '%Y-%m-%d') AS text) AS c0,
+      aa
     FROM
-      f g
+      m t0
     WHERE
       (
-        g.h = 3023424
-        AND g.b BETWEEN ('2023-01-01'::datetime) AND ('2023-05-01'::datetime)
-        AND g.i = 1
-        AND g.d <> 0
+        t0.cv = 3023424
+        AND t0.w BETWEEN ('2023-01-01'::datetime) AND ('2023-05-01'::datetime)
+        AND t0.aw = 1
+        AND t0.aa <> 0
       )
   ),
-  j AS (
+  cte1 AS (
     SELECT
-      c,
+      c0,
       SUM(
         CASE
-          WHEN d > 0 THEN d
+          WHEN aa > 0 THEN aa
           ELSE 0
         END
-      ) AS k,
+      ) AS c1,
       SUM(
         CASE
-          WHEN d < 0 THEN d
+          WHEN aa < 0 THEN aa
           ELSE 0
         END
-      ) AS l,
-      0 AS m,
+      ) AS c2,
+      0 AS c3,
       ROW_NUMBER() OVER (
         ORDER BY
-          c DESC
-      ) AS n
+          c0 DESC
+      ) AS c4
     FROM
-      a
+      cte0
     GROUP BY
-      c
+      c0
     ORDER BY
-      c DESC
+      c0 DESC
   )
 SELECT
   *
 FROM
-  j
+  cte1
 WHERE
-  n > 0
+  c4 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 1400000,
@@ -1271,91 +1273,91 @@ LIMIT
 
 -- TEST: q22
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      CAST(TO_CHAR(b, '%Y-%m-%d') AS TEXT) AS c,
-      d
+      CAST(TO_CHAR(w, '%Y-%m-%d') AS text) AS c0,
+      aa
     FROM
-      f g
+      m t0
     WHERE
       (
-        g.h = 3023424
-        AND g.b BETWEEN ('2023-01-01'::datetime) AND ('2023-05-01'::datetime)
-        AND g.i = 1
-        AND g.d <> 0
+        t0.cv = 3023424
+        AND t0.w BETWEEN ('2023-01-01'::datetime) AND ('2023-05-01'::datetime)
+        AND t0.aw = 1
+        AND t0.aa <> 0
       )
   ),
-  j AS (
+  cte1 AS (
     SELECT
-      c,
+      c0,
       SUM(
         CASE
-          WHEN d > 0 THEN d
+          WHEN aa > 0 THEN aa
           ELSE 0
         END
-      ) AS k,
+      ) AS c1,
       SUM(
         CASE
-          WHEN d < 0 THEN d
+          WHEN aa < 0 THEN aa
           ELSE 0
         END
-      ) AS l,
-      0 AS m
+      ) AS c2,
+      0 AS c3
     FROM
-      a
+      cte0
     GROUP BY
-      c
+      c0
   )
 SELECT
-  COUNT(*) AS n
+  COUNT(*) AS c4
 FROM
-  j option (
+  cte1 option (
     SQL_VDBE_OPCODE_MAX = 1400000,
     SQL_MOTION_ROW_MAX = 51000
   );
 
 -- TEST: q23
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.*
+      t0.*
     FROM
-      c b
-      LEFT JOIN d f ON b.g = f.h
-      AND b.i = f.i
+      u t0
+      LEFT JOIN s t1 ON t0.v = t1.ag
+      AND t0.cv = t1.cv
     WHERE
       (
         (
-          b.i = 3023424
-          AND NOT COALESCE(b.j, 'false')
-          AND TO_CHAR(b.k, '%Y-%m-%d')::datetime > '2020-01-02'::datetime
+          t0.cv = 3023424
+          AND NOT COALESCE(t0.aq, 'false')
+          AND TO_CHAR(t0.ar, '%Y-%m-%d')::datetime > '2020-01-02'::datetime
         )
-        AND b.k < '2023-01-01'::datetime
+        AND t0.ar < '2023-01-01'::datetime
       )
     ORDER BY
-      k DESC
+      ar DESC
     LIMIT
       1
   )
 SELECT
   *
 FROM
-  a
+  cte0
 UNION
 SELECT
-  b.*
+  t0.*
 FROM
-  c b
-  LEFT JOIN d f ON b.g = f.h
-  AND b.i = f.i
+  u t0
+  LEFT JOIN s t1 ON t0.v = t1.ag
+  AND t0.cv = t1.cv
 WHERE
   (
     (
-      b.i = 3023424
-      AND NOT COALESCE(b.j, 'false')
-      AND TO_CHAR(b.k, '%Y-%m-%d')::datetime > '2020-01-02'::datetime
+      t0.cv = 3023424
+      AND NOT COALESCE(t0.aq, 'false')
+      AND TO_CHAR(t0.ar, '%Y-%m-%d')::datetime > '2020-01-02'::datetime
     )
-    AND b.k BETWEEN ('2023-01-01'::datetime) AND ('2023-05-01'::datetime)
+    AND t0.ar BETWEEN ('2023-01-01'::datetime) AND ('2023-05-01'::datetime)
   ) option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
@@ -1363,49 +1365,51 @@ WHERE
 
 -- TEST: q24
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c AS c,
-      b.d AS d,
-      CAST(TO_CHAR(COALESCE(b.f, b.g), '%Y-%m-%d') AS TEXT) AS g
+      t0.cu AS cu,
+      t0.d AS d,
+      CAST(
+        TO_CHAR(COALESCE(t0.cs, t0.a), '%Y-%m-%d') AS text
+      ) AS a
     FROM
-      h b
-      LEFT JOIN h i ON i.j = b.k
-      AND i.l = b.l
+      l t0
+      LEFT JOIN l t1 ON t1.h = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      i.k IS NULL
+      t1.ag IS NULL
       AND (
-        b.l = 4797271
-        AND b.m = 1415
-        AND COALESCE(b.f, b.g) BETWEEN ('2010-01-01') AND ('2025-10-20')
-        AND b.c = 1333
-        AND b.j IS NULL
-        AND COALESCE(b.n, 0) <> 1
+        t0.cv = 4797271
+        AND t0.cw = 1415
+        AND COALESCE(t0.cs, t0.a) BETWEEN ('2010-01-01') AND ('2025-10-20')
+        AND t0.cu = 1333
+        AND t0.h IS NULL
+        AND COALESCE(t0.bb, 0) <> 1
       )
   ),
-  o AS (
+  cte1 AS (
     SELECT
-      c,
-      g,
+      cu,
+      a,
       SUM(d) AS d,
       ROW_NUMBER() OVER (
         ORDER BY
-          g DESC
-      ) AS p
+          a DESC
+      ) AS c3
     FROM
-      a
+      cte0
     GROUP BY
-      c,
-      g
+      cu,
+      a
     ORDER BY
-      g DESC
+      a DESC
   )
 SELECT
   *
 FROM
-  o
+  cte1
 WHERE
-  p > 0
+  c3 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 53000,
@@ -1418,47 +1422,47 @@ SELECT
 FROM
   (
     SELECT
-      a.b AS c,
-      a.d AS d,
-      a.f AS f,
-      COALESCE(a.g, a.h, 0) AS i,
+      t0.ag AS b,
+      t0.cw AS cw,
+      t0.cu AS cu,
+      COALESCE(t0.co, t0.cm, 0) AS ac,
       CASE
-        WHEN a.g IS NOT NULL
-        OR a.h IS NOT NULL THEN a.j
+        WHEN t0.co IS NOT NULL
+        OR t0.cm IS NOT NULL THEN t0.cn
         ELSE '0000'
-      END AS k,
-      TO_CHAR(a.l, '%Y-%m-%d') AS m,
+      END AS ae,
+      TO_CHAR(t0.cl, '%Y-%m-%d') AS ab,
       CASE
-        WHEN a.g IS NOT NULL THEN 0
-        WHEN a.h IS NOT NULL THEN 1
+        WHEN t0.co IS NOT NULL THEN 0
+        WHEN t0.cm IS NOT NULL THEN 1
         ELSE 2
-      END AS n,
-      a.o AS o,
-      0 AS p,
+      END AS ad,
+      t0.d AS d,
+      0 AS c8,
       ROW_NUMBER() OVER (
         ORDER BY
-          a.b DESC
-      ) AS q
+          t0.ag DESC
+      ) AS c9
     FROM
-      r a
-      LEFT JOIN r s ON s.t = a.b
-      AND s.u = 8397725
-      AND s.u = a.u
+      l t0
+      LEFT JOIN l t1 ON t1.h = t0.ag
+      AND t1.cv = 8397725
+      AND t1.cv = t0.cv
     WHERE
-      s.b IS NULL
+      t1.ag IS NULL
       AND (
-        a.u = 8397725
-        AND a.d = 1415
-        AND COALESCE(a.v, a.w) = '2024-07-30'
-        AND a.f = 1333
-        AND a.t IS NULL
-        AND COALESCE(a.x, 0) <> 1
+        t0.cv = 8397725
+        AND t0.cw = 1415
+        AND COALESCE(t0.cs, t0.a) = '2024-07-30'
+        AND t0.cu = 1333
+        AND t0.h IS NULL
+        AND COALESCE(t0.bb, 0) <> 1
       )
     ORDER BY
-      c DESC
-  ) AS y
+      b DESC
+  ) AS t2
 WHERE
-  q > 0
+  c9 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 45000,
@@ -1467,8 +1471,8 @@ LIMIT
 
 -- TEST: q26
 SELECT
-  COUNT(*) AS a,
-  SUM(b) AS c
+  COUNT(*) AS c0,
+  SUM(d) AS c1
 FROM
   (
     SELECT
@@ -1476,67 +1480,67 @@ FROM
     FROM
       (
         SELECT
-          d.f AS g,
-          d.h AS h,
-          d.i AS i,
-          COALESCE(d.j, d.k, 0) AS l,
+          t0.ag AS b,
+          t0.cw AS cw,
+          t0.cu AS cu,
+          COALESCE(t0.co, t0.cm, 0) AS ac,
           CASE
-            WHEN d.j IS NOT NULL
-            OR d.k IS NOT NULL THEN d.m
+            WHEN t0.co IS NOT NULL
+            OR t0.cm IS NOT NULL THEN t0.cn
             ELSE '0000'
-          END AS n,
-          TO_CHAR(d.o, '%Y-%m-%d') AS p,
+          END AS ae,
+          TO_CHAR(t0.cl, '%Y-%m-%d') AS ab,
           CASE
-            WHEN d.j IS NOT NULL THEN 0
-            WHEN d.k IS NOT NULL THEN 1
+            WHEN t0.co IS NOT NULL THEN 0
+            WHEN t0.cm IS NOT NULL THEN 1
             ELSE 2
-          END AS q,
-          d.b AS b,
-          0 AS r,
+          END AS ad,
+          t0.d AS d,
+          0 AS c10,
           ROW_NUMBER() OVER (
             ORDER BY
-              d.f DESC
-          ) AS s
+              t0.ag DESC
+          ) AS c11
         FROM
-          t d
-          LEFT JOIN t u ON u.v = d.f
-          AND u.w = 8397725
-          AND u.w = d.w
+          l t0
+          LEFT JOIN l t1 ON t1.h = t0.ag
+          AND t1.cv = 8397725
+          AND t1.cv = t0.cv
         WHERE
-          u.f IS NULL
+          t1.ag IS NULL
           AND (
-            d.w = 8397725
-            AND d.h = 1415
-            AND COALESCE(d.x, d.y) = '2024-07-30'
-            AND d.i = 1333
-            AND d.v IS NULL
-            AND COALESCE(d.z, 0) <> 1
+            t0.cv = 8397725
+            AND t0.cw = 1415
+            AND COALESCE(t0.cs, t0.a) = '2024-07-30'
+            AND t0.cu = 1333
+            AND t0.h IS NULL
+            AND COALESCE(t0.bb, 0) <> 1
           )
         ORDER BY
-          g DESC
-      ) AS aa
-  ) AS ab option (
+          b DESC
+      ) AS t2
+  ) AS t3 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q27
 SELECT
-  a.b AS b,
-  a.c AS c,
-  TO_CHAR(COALESCE(a.d, a.f), '%Y-%m-%d') AS f
+  t0.d AS c0,
+  t0.cu AS c1,
+  TO_CHAR(COALESCE(t0.cs, t0.a), '%Y-%m-%d') AS c2
 FROM
-  g a
-  LEFT JOIN g h ON h.i = a.j
-  AND h.k = a.k
+  l t0
+  LEFT JOIN l t1 ON t1.h = t0.ag
+  AND t1.cv = t0.cv
 WHERE
-  h.j IS NULL
+  t1.ag IS NULL
   AND (
-    a.k = 8397725
-    AND a.l = 1415
-    AND COALESCE(a.d, a.f) BETWEEN ('2010-01-01') AND ('2025-11-04')
-    AND a.i IS NULL
-    AND COALESCE(a.m, 0) <> 1
+    t0.cv = 8397725
+    AND t0.cw = 1415
+    AND COALESCE(t0.cs, t0.a) BETWEEN ('2010-01-01') AND ('2025-11-04')
+    AND t0.h IS NULL
+    AND COALESCE(t0.bb, 0) <> 1
   ) option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
@@ -1544,212 +1548,212 @@ WHERE
 
 -- TEST: q28
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c AS c,
+      t0.v AS v,
       CASE
-        WHEN d > 0
-        AND f.g = 3 THEN d
+        WHEN bx > 0
+        AND t1.cw = 3 THEN bx
         ELSE 0
-      END AS h
+      END AS c1
     FROM
-      i b
-      LEFT JOIN j f ON b.k = f.k
+      y t0
+      LEFT JOIN g t1 ON t0.cu = t1.cu
     WHERE
-      (b.l = 3023424)
+      (t0.cv = 3023424)
   ),
-  m AS (
+  cte1 AS (
     SELECT
-      c,
-      SUM(h) AS n
+      v,
+      SUM(c1) AS c2
     FROM
-      a
+      cte0
     GROUP BY
-      c
+      v
   )
 SELECT
-  b.o AS o,
-  m.n AS n,
-  0 AS p,
-  0 AS q
+  t0.ce AS c3,
+  cte1.c2 AS c2,
+  0 AS c4,
+  0 AS c5
 FROM
-  r b
-  LEFT JOIN m ON m.c = b.s
+  s t0
+  LEFT JOIN cte1 ON cte1.v = t0.ag
 WHERE
-  (b.l = 3023424) option (
+  (t0.cv = 3023424) option (
     SQL_VDBE_OPCODE_MAX = 86000,
     SQL_MOTION_ROW_MAX = 5235
   );
 
 -- TEST: q29
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h >= ('2022-10-31'::datetime)
-          AND h < ('2022-11-01'::datetime)
-          AND COALESCE(i, 0) <> 1
+          cv = 4797271
+          AND cs >= ('2022-10-31'::datetime)
+          AND cs < ('2022-11-01'::datetime)
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h IS NULL
-          AND j >= ('2022-10-31'::datetime)
-          AND j < ('2022-11-01'::datetime)
-          AND COALESCE(i, 0) <> 1
-      ) b
-      LEFT JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 4797271
+          AND cs IS NULL
+          AND a >= ('2022-10-31'::datetime)
+          AND a < ('2022-11-01'::datetime)
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      l.m IS NULL
+      t1.b IS NULL
     ORDER BY
-      b.c
+      t0.ag
   ),
-  n AS (
+  cte1 AS (
     SELECT
-      o.f AS f,
-      o.c AS m,
-      p.q AS q,
-      p.r AS r,
-      o.s AS s,
-      o.t AS t,
-      COALESCE(o.u, o.v, 0) AS w,
+      t6.cv AS cv,
+      t6.ag AS b,
+      t3.ay AS ay,
+      t3.bg AS bg,
+      t6.cu AS cu,
+      t6.cw AS cw,
+      COALESCE(t6.co, t6.cm, 0) AS ac,
       CASE
-        WHEN o.u IS NOT NULL
-        OR o.v IS NOT NULL THEN o.x
+        WHEN t6.co IS NOT NULL
+        OR t6.cm IS NOT NULL THEN t6.cn
         ELSE '0000'
-      END AS y,
-      TO_CHAR(o.z, '%Y-%m-%d') AS aa,
+      END AS ae,
+      TO_CHAR(t6.cl, '%Y-%m-%d') AS ab,
       CASE
-        WHEN o.u IS NOT NULL THEN 0
-        WHEN o.v IS NOT NULL THEN 1
+        WHEN t6.co IS NOT NULL THEN 0
+        WHEN t6.cm IS NOT NULL THEN 1
         ELSE 2
-      END AS ab,
-      ac.ad AS ad
+      END AS c9,
+      t5.d AS d
     FROM
-      a ae
-      JOIN af p INDEXED by ag ON p.c = ae.d
-      AND p.f = ae.f
-      JOIN ah e INDEXED by ai ON e.m = ae.c
-      AND e.f = p.f
-      AND e.aj < 0
-      JOIN ak ac INDEXED BY al ON ac.am = e.c
-      AND ac.f = e.f
-      AND ac.an IS NULL
-      AND ac.ao IS NULL
-      JOIN g o INDEXED by ap ON o.c = ac.aq
-      AND o.f = ac.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN k ar ON ar.m = o.c
-      AND ar.f = o.f
-      LEFT JOIN at au ON au.t = o.t
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED BY ix_g ON t5.x = t4.ag
+      AND t5.cv = t4.cv
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN x t7 ON t7.b = t6.ag
+      AND t7.cv = t6.cv
+      LEFT JOIN f t8 ON t8.cw = t6.cw
     WHERE
-      au.av = 7
+      t8.z = 7
       AND (
-        p.aw = 11
-        AND p.ax = 6
+        t3.aw = 11
+        AND t3.cq = 6
       )
   ),
-  ay AS (
+  cte2 AS (
     SELECT
-      az.f AS f,
-      az.c AS m,
-      az.q AS q,
-      coalesce(p.r, az.r) AS r,
-      coalesce(p.s, az.s) AS s,
-      az.t AS t,
-      COALESCE(az.u, az.v, 0) AS w,
-      az.x AS y,
-      TO_CHAR(az.z, '%Y-%m-%d') AS aa,
+      t9.cv AS cv,
+      t9.ag AS b,
+      t9.ay AS ay,
+      coalesce(t3.bg, t9.bg) AS bg,
+      coalesce(t3.cu, t9.cu) AS cu,
+      t9.cw AS cw,
+      COALESCE(t9.co, t9.cm, 0) AS ac,
+      t9.cn AS ae,
+      TO_CHAR(t9.cl, '%Y-%m-%d') AS ab,
       CASE
-        WHEN az.u IS NOT NULL THEN 0
+        WHEN t9.co IS NOT NULL THEN 0
         ELSE 1
-      END AS ab,
+      END AS c9,
       COALESCE(
         (
-          az.ad * COALESCE(au.ba, 0.0) * (
+          t9.d * COALESCE(t8.cj, 0.0) * (
             CASE
-              WHEN az.bb IS NOT NULL THEN -1
+              WHEN t9.h IS NOT NULL THEN -1
               ELSE 1
             END
           )
         ),
         0.0
-      ) AS ad
+      ) AS d
     FROM
-      bc az
-      LEFT JOIN af p INDEXED by ag ON az.d = p.c
-      AND p.f = az.f
-      LEFT JOIN at au ON az.t = au.t
-      LEFT JOIN bc bd INDEXED by be ON bd.bb = az.c
-      AND bd.f = p.f
-      LEFT JOIN bf bg ON az.s = bg.s
+      n t9
+      LEFT JOIN y t3 INDEXED by ix_i ON t9.au = t3.ag
+      AND t3.cv = t9.cv
+      LEFT JOIN f t8 ON t9.cw = t8.cw
+      LEFT JOIN n t10 INDEXED by ix_e ON t10.h = t9.ag
+      AND t10.cv = t3.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
     WHERE
-      az.f = 4797271
-      AND COALESCE(az.h, az.j) = ('2022-10-31'::datetime)
-      AND au.av = 7
+      t9.cv = 4797271
+      AND COALESCE(t9.cs, t9.a) = ('2022-10-31'::datetime)
+      AND t8.z = 7
       AND (
-        coalesce(p.aw, az.bh) = 11
-        AND coalesce(p.ax, bg.ax) = 6
+        coalesce(t3.aw, t9.bf) = 11
+        AND coalesce(t3.cq, t11.cq) = 6
       )
   ),
-  bi AS (
+  cte3 AS (
     SELECT
       *
     FROM
-      n
+      cte1
     UNION ALL
     SELECT
       *
     FROM
-      ay
+      cte2
   ),
-  bj AS (
+  cte4 AS (
     SELECT
-      bi.f,
-      bi.m,
-      bi.q,
-      bi.r,
-      bi.s,
-      bi.t,
-      bi.w,
-      bi.y,
-      bi.aa,
-      bi.ab,
-      bi.ad,
-      bk.bl,
+      cte3.cv,
+      cte3.b,
+      cte3.ay,
+      cte3.bg,
+      cte3.cu,
+      cte3.cw,
+      cte3.ac,
+      cte3.ae,
+      cte3.ab,
+      cte3.c9,
+      cte3.d,
+      t12.cx,
       ROW_NUMBER() OVER (
         ORDER BY
-          m DESC
-      ) AS bm
+          b DESC
+      ) AS c11
     FROM
-      bi
-      LEFT JOIN bn bk ON bk.f = bi.f
-      AND bk.q = bi.q
+      cte3
+      LEFT JOIN ad t12 ON t12.cv = cte3.cv
+      AND t12.ay = cte3.ay
   )
 SELECT
   *
 FROM
-  bj
+  cte4
 WHERE
-  bm > 0
+  c11 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
@@ -1758,326 +1762,326 @@ LIMIT
 
 -- TEST: q30
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h >= ('2022-10-31'::datetime)
-          AND h < ('2022-11-01'::datetime)
-          AND COALESCE(i, 0) <> 1
+          cv = 4797271
+          AND cs >= ('2022-10-31'::datetime)
+          AND cs < ('2022-11-01'::datetime)
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h IS NULL
-          AND j >= ('2022-10-31'::datetime)
-          AND j < ('2022-11-01'::datetime)
-          AND COALESCE(i, 0) <> 1
-      ) b
-      LEFT JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 4797271
+          AND cs IS NULL
+          AND a >= ('2022-10-31'::datetime)
+          AND a < ('2022-11-01'::datetime)
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      l.m IS NULL
+      t1.b IS NULL
     ORDER BY
-      b.c
+      t0.ag
   ),
-  n AS (
+  cte1 AS (
     SELECT
-      o.p AS p
+      t5.d AS d
     FROM
-      a q
-      JOIN r s INDEXED by t ON s.c = q.d
-      AND s.f = q.f
-      JOIN u e INDEXED by v ON e.m = q.c
-      AND e.f = s.f
-      AND e.w < 0
-      JOIN x o INDEXED BY y ON o.z = e.c
-      AND o.f = e.f
-      AND o.aa IS NULL
-      AND o.ab IS NULL
-      JOIN g ac INDEXED by ad ON ac.c = o.ae
-      AND ac.f = o.f
-      AND COALESCE(ac.i, 0) <> 1
-      LEFT JOIN k af ON af.m = ac.c
-      AND af.f = ac.f
-      LEFT JOIN ag ah ON ah.ai = ac.ai
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED BY ix_g ON t5.x = t4.ag
+      AND t5.cv = t4.cv
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN x t7 ON t7.b = t6.ag
+      AND t7.cv = t6.cv
+      LEFT JOIN f t8 ON t8.cw = t6.cw
     WHERE
-      ah.aj = 7
+      t8.z = 7
       AND (
-        s.ak = 11
-        AND s.al = 6
+        t3.aw = 11
+        AND t3.cq = 6
       )
   ),
-  am AS (
+  cte2 AS (
     SELECT
       COALESCE(
         (
-          an.p * COALESCE(ah.ao, 0.0) * CASE
-            WHEN an.ap IS NOT NULL THEN -1
+          t9.d * COALESCE(t8.cj, 0.0) * CASE
+            WHEN t9.h IS NOT NULL THEN -1
             ELSE 1
           END
         ),
         0.0
-      ) AS p
+      ) AS d
     FROM
-      aq an
-      LEFT JOIN r s INDEXED by t ON an.d = s.c
-      AND s.f = an.f
-      LEFT JOIN ag ah ON an.ai = ah.ai
-      LEFT JOIN aq ar INDEXED by at ON ar.ap = an.c
-      AND ar.f = s.f
-      LEFT JOIN au av ON an.aw = av.aw
+      n t9
+      LEFT JOIN y t3 INDEXED by ix_i ON t9.au = t3.ag
+      AND t3.cv = t9.cv
+      LEFT JOIN f t8 ON t9.cw = t8.cw
+      LEFT JOIN n t10 INDEXED by ix_e ON t10.h = t9.ag
+      AND t10.cv = t3.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
     WHERE
-      an.f = 4797271
-      AND COALESCE(an.h, an.j) = ('2022-10-31'::datetime)
-      AND ah.aj = 7
+      t9.cv = 4797271
+      AND COALESCE(t9.cs, t9.a) = ('2022-10-31'::datetime)
+      AND t8.z = 7
       AND (
-        coalesce(s.ak, an.ax) = 11
-        AND coalesce(s.al, av.al) = 6
+        coalesce(t3.aw, t9.bf) = 11
+        AND coalesce(t3.cq, t11.cq) = 6
       )
   )
 SELECT
-  COUNT(*) AS ay,
-  SUM(p) AS az
+  COUNT(*) AS c1,
+  SUM(d) AS c2
 FROM
   (
     SELECT
       *
     FROM
-      n
+      cte1
     UNION ALL
     SELECT
       *
     FROM
-      am
-  ) ba option (
+      cte2
+  ) t12 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q31
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h >= ('2024-04-02')
-          AND h < ('2024-04-03')
-          AND COALESCE(i, 0) <> 1
+          cv = 4797271
+          AND cs >= ('2024-04-02')
+          AND cs < ('2024-04-03')
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h IS NULL
-          AND j >= ('2024-04-02')
-          AND j < ('2024-04-03')
-          AND COALESCE(i, 0) <> 1
-      ) b
-      LEFT JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 4797271
+          AND cs IS NULL
+          AND a >= ('2024-04-02')
+          AND a < ('2024-04-03')
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      l.m IS NULL
+      t1.b IS NULL
   ),
-  n AS (
+  cte1 AS (
     SELECT DISTINCT
-      o.f AS f,
-      p.q AS q,
-      p.r AS r,
-      p.s AS s,
-      o.t AS t,
-      u.v AS v
+      t6.cv AS cv,
+      t3.ay AS ay,
+      t3.bg AS bg,
+      t3.ah AS ah,
+      t6.cu AS cu,
+      t8.cx AS cx
     FROM
-      a w
-      JOIN x p INDEXED by y ON p.c = w.d
-      AND p.f = w.f
-      JOIN z e INDEXED by aa ON e.m = w.c
-      AND e.f = p.f
-      AND e.ab < 0
-      JOIN ac ad INDEXED by ae ON ad.af = e.c
-      AND ad.ag IS NULL
-      AND ad.ah IS NULL
-      AND ad.f = e.f
-      JOIN g o INDEXED by ai ON o.c = ad.aj
-      AND o.f = ad.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN ak al ON al.am = o.am
-      LEFT JOIN an u ON u.f = p.f
-      AND u.q = p.q
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED by ix_g ON t5.x = t4.ag
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      AND t5.cv = t4.cv
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN f t7 ON t7.cw = t6.cw
+      LEFT JOIN ad t8 ON t8.cv = t3.cv
+      AND t8.ay = t3.ay
     WHERE
-      al.ao = 7
+      t7.z = 7
       AND (
-        p.ap = 11
-        AND p.aq = 6
+        t3.aw = 11
+        AND t3.cq = 6
       )
   ),
-  ar AS (
+  cte2 AS (
     SELECT DISTINCT
-      at.f AS f,
-      at.q AS q,
-      coalesce(p.r, at.r) AS r,
-      coalesce(p.s, at.s) AS s,
-      coalesce(p.t, at.t) AS t,
-      u.v AS v
+      t9.cv AS cv,
+      t9.ay AS ay,
+      coalesce(t3.bg, t9.bg) AS bg,
+      coalesce(t3.ah, t9.ah) AS ah,
+      coalesce(t3.cu, t9.cu) AS cu,
+      t8.cx AS cx
     FROM
-      au at
-      LEFT JOIN x p INDEXED by y ON at.d = p.c
-      AND at.f = p.f
-      LEFT JOIN ak al ON at.am = al.am
-      LEFT JOIN au av INDEXED by aw ON av.ax = at.c
-      AND av.f = at.f
-      LEFT JOIN ay az ON at.t = az.t
-      LEFT JOIN an u ON u.f = p.f
-      AND u.q = p.q
+      n t9
+      LEFT JOIN y t3 INDEXED by ix_i ON t9.au = t3.ag
+      AND t9.cv = t3.cv
+      LEFT JOIN f t7 ON t9.cw = t7.cw
+      LEFT JOIN n t10 INDEXED by ix_e ON t10.h = t9.ag
+      AND t10.cv = t9.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
+      LEFT JOIN ad t8 ON t8.cv = t3.cv
+      AND t8.ay = t3.ay
     WHERE
-      at.f = 4797271
-      AND COALESCE(at.h, at.j) = ('2024-04-02')
-      AND al.ao = 7
+      t9.cv = 4797271
+      AND COALESCE(t9.cs, t9.a) = ('2024-04-02')
+      AND t7.z = 7
       AND (
-        coalesce(p.ap, at.ba) = 11
-        AND coalesce(p.aq, az.aq) = 6
+        coalesce(t3.aw, t9.bf) = 11
+        AND coalesce(t3.cq, t11.cq) = 6
       )
   )
 SELECT
   *
 FROM
-  n
+  cte1
 UNION ALL
 SELECT
   *
 FROM
-  ar option (
+  cte2 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q32
 SELECT
-  a AS a,
-  SUM(b) AS b,
-  SUM(c) AS c,
-  0 AS d
+  z AS c0,
+  SUM(f) AS c1,
+  SUM(e) AS c2,
+  0 AS c3
 FROM
-  f
+  a
 WHERE
   (
-    g = 3023424
-    AND h = 11
-    AND i = 6
-    AND j = '2022-10-12'
+    cv = 3023424
+    AND aw = 11
+    AND cq = 6
+    AND a = '2022-10-12'
   )
 GROUP BY
-  a
+  z
 UNION ALL
 SELECT
-  k.a AS a,
-  0 AS b,
-  0 AS c,
+  t3.z AS c0,
+  0 AS c1,
+  0 AS c2,
   COALESCE(
     SUM(
-      l.m * COALESCE(k.n, 0) * CASE
-        WHEN l.o IS NOT NULL THEN -1
+      t0.d * COALESCE(t3.cj, 0) * CASE
+        WHEN t0.h IS NOT NULL THEN -1
         ELSE 1
       END
     ),
     0.0
-  ) AS d
+  ) AS c3
 FROM
-  p l
-  LEFT JOIN p q ON q.o = l.r
-  AND q.g = l.g
-  LEFT JOIN s t ON l.u = t.r
-  AND l.g = t.g
-  LEFT JOIN v k ON l.w = k.w
-  LEFT JOIN x y ON l.z = y.z
+  n t0
+  LEFT JOIN n t1 ON t1.h = t0.ag
+  AND t1.cv = t0.cv
+  LEFT JOIN y t2 ON t0.au = t2.ag
+  AND t0.cv = t2.cv
+  LEFT JOIN f t3 ON t0.cw = t3.cw
+  LEFT JOIN h t4 ON t0.cu = t4.cu
 WHERE
   (
-    l.g = 3023424
-    AND coalesce(t.h, l.aa) = 11
-    AND coalesce(t.i, y.i) = 6
-    AND COALESCE(l.ab, l.j) = '2022-10-12'
-    AND q.r IS NULL
+    t0.cv = 3023424
+    AND coalesce(t2.aw, t0.bf) = 11
+    AND coalesce(t2.cq, t4.cq) = 6
+    AND COALESCE(t0.cs, t0.a) = '2022-10-12'
+    AND t1.ag IS NULL
     AND (
-      l.o IS NULL
-      OR l.o = -1
+      t0.h IS NULL
+      OR t0.h = -1
     )
   )
 GROUP BY
-  k.a option (
+  t3.z option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q33
 SELECT DISTINCT
-  a.b,
-  a.c,
-  a.d,
-  f.g
+  t0.ay,
+  t0.bg,
+  t0.ah,
+  t1.cx
 FROM
-  h a
-  LEFT JOIN i f ON a.j = f.j
-  AND a.b = f.b
+  a t0
+  LEFT JOIN ad t1 ON t0.cv = t1.cv
+  AND t0.ay = t1.ay
 WHERE
   (
-    a.j = 3023424
-    AND a.k = 11
-    AND a.l = '2022-10-12'
-    AND a.m = 6
+    t0.cv = 3023424
+    AND t0.aw = 11
+    AND t0.a = '2022-10-12'
+    AND t0.cq = 6
   )
 UNION
 SELECT DISTINCT
-  n.b AS b,
-  coalesce(o.c, n.c) AS c,
-  coalesce(o.d, n.d) AS d,
-  f.g AS g
+  t2.ay AS c0,
+  coalesce(t4.bg, t2.bg) AS c1,
+  coalesce(t4.ah, t2.ah) AS c2,
+  t1.cx AS c3
 FROM
-  p n
-  LEFT JOIN p q ON q.r = n.s
-  AND q.j = n.j
-  LEFT JOIN t o ON n.u = o.s
-  AND n.j = o.j
-  LEFT JOIN v w ON n.x = w.x
-  LEFT JOIN i f ON n.j = f.j
-  AND n.b = f.b
-  LEFT JOIN y z ON n.aa = z.aa
+  n t2
+  LEFT JOIN n t3 ON t3.h = t2.ag
+  AND t3.cv = t2.cv
+  LEFT JOIN y t4 ON t2.au = t4.ag
+  AND t2.cv = t4.cv
+  LEFT JOIN f t5 ON t2.cw = t5.cw
+  LEFT JOIN ad t1 ON t2.cv = t1.cv
+  AND t2.ay = t1.ay
+  LEFT JOIN h t6 ON t2.cu = t6.cu
 WHERE
   (
-    n.j = 3023424
-    AND coalesce(o.k, n.ab) = 11
-    AND COALESCE(n.ac, n.l) = '2022-10-12'
-    AND coalesce(o.m, z.m) = 6
+    t2.cv = 3023424
+    AND coalesce(t4.aw, t2.bf) = 11
+    AND COALESCE(t2.cs, t2.a) = '2022-10-12'
+    AND coalesce(t4.cq, t6.cq) = 6
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
@@ -2085,114 +2089,114 @@ WHERE
 
 -- TEST: q34
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      coalesce(b.c, d.c) AS c,
-      TO_CHAR(COALESCE(f.g, f.h), '%Y-%m-%d') AS h,
-      f.i,
-      COALESCE(j.k, 0) AS k,
-      f.l
+      coalesce(t2.cq, t4.cq) AS cq,
+      TO_CHAR(COALESCE(t0.cs, t0.a), '%Y-%m-%d') AS a,
+      t0.d,
+      COALESCE(t3.cj, 0) AS cj,
+      t0.h
     FROM
-      m f
-      LEFT JOIN m n ON n.l = f.o
-      AND n.p = f.p
-      LEFT JOIN q b ON f.r = b.o
-      AND f.p = b.p
-      LEFT JOIN s j ON f.t = j.t
-      LEFT JOIN u d ON f.v = d.v
+      n t0
+      LEFT JOIN n t1 ON t1.h = t0.ag
+      AND t1.cv = t0.cv
+      LEFT JOIN y t2 ON t0.au = t2.ag
+      AND t0.cv = t2.cv
+      LEFT JOIN f t3 ON t0.cw = t3.cw
+      LEFT JOIN h t4 ON t0.cu = t4.cu
     WHERE
       (
-        f.p = 3023424
-        AND coalesce(b.w, f.x) = 11
-        AND n.o IS NULL
+        t0.cv = 3023424
+        AND coalesce(t2.aw, t0.bf) = 11
+        AND t1.ag IS NULL
         AND (
-          f.l IS NULL
-          OR f.l = -1
+          t0.h IS NULL
+          OR t0.h = -1
         )
-        AND CAST(TO_CHAR(COALESCE(f.g, f.h), '%Y') AS INTEGER) IN (2024, 2023, 2022)
+        AND CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%Y') AS integer) IN (2024, 2023, 2022)
       )
   )
 SELECT
-  c AS c,
-  TO_CHAR(h, '%Y-%m-%d') AS h,
-  SUM(y) AS y,
-  SUM(z) AS z,
-  0.0 AS aa
+  cq AS c0,
+  TO_CHAR(a, '%Y-%m-%d') AS c1,
+  SUM(f) AS c3,
+  SUM(e) AS c4,
+  0.0 AS c5
 FROM
-  ab
+  a
 WHERE
   (
-    p = 3023424
-    AND w = 11
-    AND ac IN (2024, 2023, 2022)
+    cv = 3023424
+    AND aw = 11
+    AND bm IN (2024, 2023, 2022)
   )
 GROUP BY
-  h,
-  c
+  a,
+  cq
 UNION ALL
 SELECT
-  c,
-  h,
-  0 AS y,
-  0 AS z,
+  cq,
+  a,
+  0 AS c3,
+  0 AS c4,
   COALESCE(
     SUM(
-      i * k * (
+      d * cj * (
         CASE
-          WHEN l IS NOT NULL THEN -1
+          WHEN h IS NOT NULL THEN -1
           ELSE 1
         END
       )
     ),
     0.0
-  ) AS aa
+  ) AS c5
 FROM
-  a
+  cte0
 GROUP BY
-  c,
-  h option (
+  cq,
+  a option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q35
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c AS c,
-      b.d AS d,
-      b.f AS f,
-      b.g AS g,
-      b.h AS h,
-      i AS j,
-      b.k AS k,
-      b.l AS l,
-      b.m AS m,
-      b.n AS n,
-      0 AS o,
-      p AS p,
-      q.r AS r,
-      ROW_NUMBER() OVER () AS s
+      t0.z AS z,
+      t0.cw AS cw,
+      t0.ay AS ay,
+      t0.bg AS bg,
+      t0.cu AS cu,
+      aa AS d,
+      t0.ac AS ac,
+      t0.ad AS ad,
+      t0.ae AS ae,
+      t0.ab AS ab,
+      0 AS c10,
+      h AS h,
+      t1.cx AS cx,
+      ROW_NUMBER() OVER () AS c13
     FROM
-      t b
-      LEFT JOIN u q ON b.v = q.v
-      AND b.f = q.f
+      m t0
+      LEFT JOIN ad t1 ON t0.cv = t1.cv
+      AND t0.ay = t1.ay
     WHERE
       (
-        b.v = 3023424
-        AND COALESCE(b.w, 0) <> 1
-        AND b.x = '2024-02-28'
-        AND b.h = 3465
-        AND b.y IS NULL
-        AND b.c = 11
+        t0.cv = 3023424
+        AND COALESCE(t0.bb, 0) <> 1
+        AND t0.w = '2024-02-28'
+        AND t0.cu = 3465
+        AND t0.bj IS NULL
+        AND t0.z = 11
       )
   )
 SELECT
   *
 FROM
-  a
+  cte0
 WHERE
-  s > 0
+  c13 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
@@ -2201,18 +2205,18 @@ LIMIT
 
 -- TEST: q36
 SELECT
-  SUM(a) AS b,
-  COUNT(*) AS c
+  SUM(aa) AS c0,
+  COUNT(*) AS c1
 FROM
-  d f
+  m t0
 WHERE
   (
-    f.g = 3023424
-    AND COALESCE(f.h, 0) <> 1
-    AND f.i = '2024-02-28'
-    AND f.j = 3465
-    AND f.k IS NULL
-    AND f.l = 11
+    t0.cv = 3023424
+    AND COALESCE(t0.bb, 0) <> 1
+    AND t0.w = '2024-02-28'
+    AND t0.cu = 3465
+    AND t0.bj IS NULL
+    AND t0.z = 11
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
@@ -2220,24 +2224,24 @@ WHERE
 
 -- TEST: q37
 SELECT DISTINCT
-  a.b AS b,
-  a.c AS c,
-  a.d AS d,
-  a.f AS g,
-  a.h AS h,
-  i.j AS j
+  t0.bm AS c0,
+  t0.bg AS c1,
+  t0.cu AS c2,
+  t0.ah AS c3,
+  t0.ay AS c4,
+  t2.cx AS c5
 FROM
-  k a
-  LEFT JOIN l m ON a.d = m.d
-  LEFT JOIN n i ON a.o = i.o
-  AND a.h = i.h
+  m t0
+  LEFT JOIN g t1 ON t0.cu = t1.cu
+  LEFT JOIN ad t2 ON t0.cv = t2.cv
+  AND t0.ay = t2.ay
 WHERE
   (
-    a.o = 3023424
-    AND COALESCE(a.p, 0) <> 1
-    AND a.q = '2024-02-28'
-    AND a.d = 3465
-    AND a.r = 11
+    t0.cv = 3023424
+    AND COALESCE(t0.bb, 0) <> 1
+    AND t0.w = '2024-02-28'
+    AND t0.cu = 3465
+    AND t0.z = 11
   ) option (
     SQL_VDBE_OPCODE_MAX = 700000,
     SQL_MOTION_ROW_MAX = 5000
@@ -2245,72 +2249,72 @@ WHERE
 
 -- TEST: q38
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      TO_CHAR(b.c, '%Y-%m-%d') AS d,
-      b.f AS f,
-      b.g AS g,
-      b.h AS h,
+      TO_CHAR(t0.w, '%Y-%m-%d') AS a,
+      t0.z AS z,
+      t0.cu AS cu,
+      t0.bj AS bj,
       SUM(
         CASE
-          WHEN i > 0
-          AND NOT j THEN i
+          WHEN aa > 0
+          AND NOT ao THEN aa
           ELSE 0
         END
-      ) AS k,
+      ) AS c4,
       SUM(
         CASE
-          WHEN i < 0
-          AND NOT j THEN i
+          WHEN aa < 0
+          AND NOT ao THEN aa
           ELSE 0
         END
-      ) AS l,
+      ) AS f,
       SUM(
         CASE
-          WHEN i > 0
-          AND j THEN i
+          WHEN aa > 0
+          AND ao THEN aa
           ELSE 0
         END
-      ) AS m,
+      ) AS g,
       SUM(
         CASE
-          WHEN n = 2 THEN i
+          WHEN aw = 2 THEN aa
           ELSE 0
         END
-      ) AS o,
-      0 AS p,
+      ) AS c7,
+      0 AS c8,
       ROW_NUMBER() OVER (
         ORDER BY
-          c DESC,
-          (b.g IS NULL) ASC,
-          b.g ASC,
-          (b.h IS NULL) ASC,
-          b.h ASC,
-          (b.f IS NULL) ASC,
-          b.f ASC
-      ) AS q
+          w DESC,
+          (t0.cu IS NULL) ASC,
+          t0.cu ASC,
+          (t0.bj IS NULL) ASC,
+          t0.bj ASC,
+          (t0.z IS NULL) ASC,
+          t0.z ASC
+      ) AS c9
     FROM
-      r b
-      LEFT JOIN s t ON b.g = t.g
+      m t0
+      LEFT JOIN g t1 ON t0.cu = t1.cu
     WHERE
       (
-        b.u = 3023424
-        AND COALESCE(b.v, 0) <> 1
-        AND b.c BETWEEN ('2023-01-01'::datetime) AND ('2023-05-01'::datetime)
-        AND b.n <> 2
+        t0.cv = 3023424
+        AND COALESCE(t0.bb, 0) <> 1
+        AND t0.w BETWEEN ('2023-01-01'::datetime) AND ('2023-05-01'::datetime)
+        AND t0.aw <> 2
       )
     GROUP BY
-      b.c,
-      b.h,
-      b.g,
-      b.f
+      t0.w,
+      t0.bj,
+      t0.cu,
+      t0.z
   )
 SELECT
   *
 FROM
-  a
+  cte0
 WHERE
-  q > 0
+  c9 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 3000000,
@@ -2319,62 +2323,62 @@ LIMIT
 
 -- TEST: q39
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      TO_CHAR(b, '%Y-%m-%d') AS c,
-      d.f AS f,
-      d.g AS g,
-      d.h AS h
+      TO_CHAR(w, '%Y-%m-%d') AS a,
+      t0.bj AS bj,
+      t0.cu AS cu,
+      t0.z AS z
     FROM
-      i d
-      LEFT JOIN j k ON d.g = k.g
+      m t0
+      LEFT JOIN g t1 ON t0.cu = t1.cu
     WHERE
       (
-        d.l = 3023424
-        AND COALESCE(d.m, 0) <> 1
-        AND d.b BETWEEN ('2023-01-01'::datetime) AND ('2023-05-01'::datetime)
-        AND d.n <> 2
+        t0.cv = 3023424
+        AND COALESCE(t0.bb, 0) <> 1
+        AND t0.w BETWEEN ('2023-01-01'::datetime) AND ('2023-05-01'::datetime)
+        AND t0.aw <> 2
       )
   )
 SELECT
-  COUNT(*) AS o
+  COUNT(*) AS c4
 FROM
   (
     SELECT
-      COUNT(*) AS o,
-      c,
-      h
+      COUNT(*) AS c4,
+      a,
+      z
     FROM
-      a
+      cte0
     GROUP BY
-      c,
-      f,
-      g,
-      h
-  ) AS p option (
+      a,
+      bj,
+      cu,
+      z
+  ) AS t2 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q40
 SELECT DISTINCT
-  a.b AS b,
-  a.c AS c,
-  a.d AS d,
-  a.f AS g,
-  a.h AS h,
-  i.j AS j
+  t0.bm AS c0,
+  t0.bg AS c1,
+  t0.cu AS c2,
+  t0.ah AS c3,
+  t0.ay AS c4,
+  t2.cx AS c5
 FROM
-  k a
-  LEFT JOIN l m ON a.d = m.d
-  LEFT JOIN n i ON a.o = i.o
-  AND a.h = i.h
+  m t0
+  LEFT JOIN g t1 ON t0.cu = t1.cu
+  LEFT JOIN ad t2 ON t0.cv = t2.cv
+  AND t0.ay = t2.ay
 WHERE
   (
-    a.o = 3023424
-    AND COALESCE(a.p, 0) <> 1
-    AND a.q BETWEEN ('2010-01-01') AND ('2026-01-01')
-    AND a.r <> 2
+    t0.cv = 3023424
+    AND COALESCE(t0.bb, 0) <> 1
+    AND t0.w BETWEEN ('2010-01-01') AND ('2026-01-01')
+    AND t0.aw <> 2
   ) option (
     SQL_VDBE_OPCODE_MAX = 27000000,
     SQL_MOTION_ROW_MAX = 18000
@@ -2382,46 +2386,46 @@ WHERE
 
 -- TEST: q41
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.*
+      t0.*
     FROM
-      c b
-      LEFT JOIN d f ON b.g = f.h
-      AND b.i = f.i
+      u t0
+      LEFT JOIN s t1 ON t0.v = t1.ag
+      AND t0.cv = t1.cv
     WHERE
       (
         (
-          b.i = 3023424
-          AND NOT COALESCE(b.j, 'false')
-          AND TO_CHAR(b.k, '%Y-%m-%d')::datetime > '2020-01-02'
+          t0.cv = 3023424
+          AND NOT COALESCE(t0.aq, 'false')
+          AND TO_CHAR(t0.ar, '%Y-%m-%d')::datetime > '2020-01-02'
         )
-        AND b.k < '2010-01-01'
+        AND t0.ar < '2010-01-01'
       )
     ORDER BY
-      k DESC
+      ar DESC
     LIMIT
       1
   )
 SELECT
   *
 FROM
-  a
+  cte0
 UNION
 SELECT
-  b.*
+  t0.*
 FROM
-  c b
-  LEFT JOIN d f ON b.g = f.h
-  AND b.i = f.i
+  u t0
+  LEFT JOIN s t1 ON t0.v = t1.ag
+  AND t0.cv = t1.cv
 WHERE
   (
     (
-      b.i = 3023424
-      AND NOT COALESCE(b.j, 'false')
-      AND TO_CHAR(b.k, '%Y-%m-%d')::datetime > '2020-01-02'
+      t0.cv = 3023424
+      AND NOT COALESCE(t0.aq, 'false')
+      AND TO_CHAR(t0.ar, '%Y-%m-%d')::datetime > '2020-01-02'
     )
-    AND b.k BETWEEN ('2010-01-01'::datetime) AND ('2026-01-01'::datetime)
+    AND t0.ar BETWEEN ('2010-01-01'::datetime) AND ('2026-01-01'::datetime)
   ) option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
@@ -2432,23 +2436,23 @@ SELECT
   COALESCE(
     SUM(
       CASE
-        WHEN a IS NULL THEN 0.0
-        ELSE a
+        WHEN aa IS NULL THEN 0.0
+        ELSE aa
       END
     ),
     0.0
-  ) AS b
+  ) AS c0
 FROM
-  c d
-  LEFT JOIN f g ON d.h = g.h
+  m t0
+  LEFT JOIN g t1 ON t0.cu = t1.cu
 WHERE
   (
-    d.i = 3023424
-    AND COALESCE(d.j, 0) <> 1
-    AND d.k BETWEEN ('2010-01-01'::datetime) AND ('2026-01-01'::datetime)
+    t0.cv = 3023424
+    AND COALESCE(t0.bb, 0) <> 1
+    AND t0.w BETWEEN ('2010-01-01'::datetime) AND ('2026-01-01'::datetime)
   )
-  AND d.l = 2
-  AND COALESCE(d.j, 0) <> 1 option (
+  AND t0.aw = 2
+  AND COALESCE(t0.bb, 0) <> 1 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
@@ -2458,65 +2462,65 @@ SELECT
   COALESCE(
     SUM(
       CASE
-        WHEN a IS NULL THEN 0.0
-        ELSE a
+        WHEN aa IS NULL THEN 0.0
+        ELSE aa
       END
     ),
     0.0
-  ) AS b
+  ) AS c0
 FROM
-  c d
-  LEFT JOIN f g ON d.h = g.h
+  m t0
+  LEFT JOIN g t1 ON t0.cu = t1.cu
 WHERE
   (
-    d.i = 3023424
-    AND COALESCE(d.j, 0) <> 1
-    AND d.k BETWEEN ('2010-01-01'::datetime) AND ('2026-01-01'::datetime)
-    AND d.l <> 2
+    t0.cv = 3023424
+    AND COALESCE(t0.bb, 0) <> 1
+    AND t0.w BETWEEN ('2010-01-01'::datetime) AND ('2026-01-01'::datetime)
+    AND t0.aw <> 2
   )
-  AND d.l = 2
-  AND COALESCE(d.j, 0) <> 1 option (
+  AND t0.aw = 2
+  AND COALESCE(t0.bb, 0) <> 1 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q44
 SELECT DISTINCT
-  a.b AS b,
-  a.c AS c,
-  a.d AS f,
-  a.g AS g,
-  h.i AS i
+  t0.bm AS c0,
+  t0.bg AS c1,
+  t0.ah AS c2,
+  t0.ay AS c3,
+  t1.cx AS c4
 FROM
-  j a
-  LEFT JOIN k h ON a.l = h.l
-  AND a.g = h.g
+  c t0
+  LEFT JOIN ad t1 ON t0.cv = t1.cv
+  AND t0.ay = t1.ay
 WHERE
-  (a.l = 3023424) option (
+  (t0.cv = 3023424) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q45
 SELECT DISTINCT
-  CAST(TO_CHAR(COALESCE(a.b, a.c), '%Y') AS INTEGER) AS d,
-  a.f AS f,
-  a.g AS h,
-  a.i AS i,
-  j.k AS k
+  CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%Y') AS integer) AS c0,
+  t0.bg AS c1,
+  t0.ah AS c2,
+  t0.ay AS c3,
+  t2.cx AS c4
 FROM
-  l a
-  LEFT JOIN l m ON m.n = a.o
-  AND m.p = a.p
-  LEFT JOIN q j ON a.p = j.p
-  AND a.i = j.i
+  n t0
+  LEFT JOIN n t1 ON t1.h = t0.ag
+  AND t1.cv = t0.cv
+  LEFT JOIN ad t2 ON t0.cv = t2.cv
+  AND t0.ay = t2.ay
 WHERE
   (
-    a.p = 3023424
-    AND m.o IS NULL
+    t0.cv = 3023424
+    AND t1.ag IS NULL
     AND (
-      a.n IS NULL
-      OR a.n = -1
+      t0.h IS NULL
+      OR t0.h = -1
     )
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
@@ -2525,379 +2529,379 @@ WHERE
 
 -- TEST: q46
 SELECT
-  a.b AS b,
+  t1.cq AS c0,
   CASE
-    WHEN MIN(c.d) IS NOT NULL THEN TO_CHAR(MIN(c.d), '%Y-%m-%d')
+    WHEN MIN(t2.u) IS NOT NULL THEN TO_CHAR(MIN(t2.u), '%Y-%m-%d')
     ELSE NULL
-  END AS f,
-  SUM(g.h) AS i
+  END AS c1,
+  SUM(t0.az) AS c2
 FROM
-  j g
-  JOIN k a ON g.l = a.m
-  AND g.n = a.n
-  JOIN o c ON g.p = c.p
-  AND g.n = c.n
-  LEFT JOIN q r ON a.s = r.t
+  v t0
+  JOIN y t1 ON t0.au = t1.ag
+  AND t0.cv = t1.cv
+  JOIN x t2 ON t0.b = t2.b
+  AND t0.cv = t2.cv
+  LEFT JOIN i t3 ON t1.cu = t3.br
 WHERE
   (
-    g.n = 3023424
-    AND u IN (0, 3, 42, 45, 11)
-    AND NOT r.v
-    AND h > 0
+    t0.cv = 3023424
+    AND aw IN (0, 3, 42, 45, 11)
+    AND NOT t3.ap
+    AND az > 0
   )
 GROUP BY
-  a.b option (
+  t1.cq option (
     SQL_VDBE_OPCODE_MAX = 798000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q47
 SELECT
-  a.b AS b,
+  t0.aw AS c0,
   CASE
-    WHEN c.d = 3 THEN TRUE
+    WHEN t1.cw = 3 THEN TRUE
     ELSE FALSE
-  END AS f,
-  a.g AS g,
-  a.h AS h,
-  a.i AS i,
-  a.j AS j,
+  END AS c1,
+  t0.ay AS c2,
+  t0.cu AS c3,
+  t0.bg AS c4,
+  t0.ah AS c5,
   CASE
-    WHEN a.b = 0
+    WHEN t0.aw = 0
     AND (
-      c.d IS NULL
-      OR c.d <> 3
+      t1.cw IS NULL
+      OR t1.cw <> 3
     ) THEN CASE
-      WHEN k < 0 THEN k
+      WHEN bx < 0 THEN bx
       ELSE 0.0
     END
     ELSE 0.0
-  END AS l,
+  END AS c6,
   CASE
-    WHEN a.b = 3 THEN CASE
-      WHEN m < 0 THEN m
+    WHEN t0.aw = 3 THEN CASE
+      WHEN ca < 0 THEN ca
       ELSE 0.0
     END
     ELSE 0.0
-  END AS n,
+  END AS c7,
   CASE
-    WHEN a.b = 0
+    WHEN t0.aw = 0
     AND (
-      c.d IS NOT NULL
-      AND c.d = 3
+      t1.cw IS NOT NULL
+      AND t1.cw = 3
     ) THEN CASE
-      WHEN k < 0 THEN k
+      WHEN bx < 0 THEN bx
       ELSE 0.0
     END
     ELSE 0.0
-  END AS o,
+  END AS c8,
   CASE
-    WHEN a.b = 11 THEN CASE
-      WHEN p < 0 THEN p
+    WHEN t0.aw = 11 THEN CASE
+      WHEN cg < 0 THEN cg
       ELSE 0.0
     END
     ELSE 0.0
-  END AS q,
+  END AS c9,
   CASE
-    WHEN a.b IN (42, 45) THEN (
+    WHEN t0.aw IN (42, 45) THEN (
       CASE
-        WHEN r < 0 THEN r
+        WHEN cd < 0 THEN cd
         ELSE 0.0
       END
     ) + (
       CASE
-        WHEN s < 0 THEN s
+        WHEN cc < 0 THEN cc
         ELSE 0.0
       END
     )
     ELSE 0.0
-  END AS t,
+  END AS c10,
   CASE
-    WHEN a.b = 2 THEN CASE
-      WHEN u < 0 THEN u
+    WHEN t0.aw = 2 THEN CASE
+      WHEN bz < 0 THEN bz
       ELSE 0.0
     END
     ELSE 0.0
-  END AS v,
+  END AS c11,
   CASE
-    WHEN c.d = 3
-    AND k > 0 THEN k
+    WHEN t1.cw = 3
+    AND bx > 0 THEN bx
     ELSE 0.0
-  END AS w,
+  END AS c12,
   CASE
-    WHEN a.b = 1
-    AND k > 0 THEN k
+    WHEN t0.aw = 1
+    AND bx > 0 THEN bx
     ELSE 0.0
-  END AS x,
-  NULL AS y
+  END AS c13,
+  NULL AS c14
 FROM
-  z a
-  LEFT JOIN aa c ON a.h = c.h
+  y t0
+  LEFT JOIN g t1 ON t0.cu = t1.cu
 WHERE
-  (ab = 3023424) option (
+  (cv = 3023424) option (
     SQL_VDBE_OPCODE_MAX = 400000,
     SQL_MOTION_ROW_MAX = 5235
   );
 
 -- TEST: q48
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      coalesce(d.f, b.g) AS f,
-      b.h,
-      coalesce(d.i, b.i) AS i,
-      b.j,
-      b.k,
-      b.l,
-      b.m,
-      b.n,
-      b.o,
+      t0.ag,
+      coalesce(t1.aw, t0.bf) AS aw,
+      t0.ay,
+      coalesce(t1.cu, t0.cu) AS cu,
+      t0.bg,
+      t0.ah,
+      t0.cs,
+      t0.a,
+      t0.h,
+      t0.cv,
       COALESCE(
         (
-          b.p * COALESCE(q.r, 0.0) * CASE
-            WHEN b.n IS NOT NULL THEN -1
+          t0.d * COALESCE(t3.cj, 0.0) * CASE
+            WHEN t0.h IS NOT NULL THEN -1
             ELSE 1
           END
         ),
         0.0
-      ) AS s,
+      ) AS aa,
       CASE
         WHEN (
-          t.u IS NOT NULL
-          AND t.u = 3
+          t2.cw IS NOT NULL
+          AND t2.cw = 3
         ) THEN TRUE
         ELSE FALSE
-      END AS v
+      END AS ap
     FROM
-      w b
-      LEFT JOIN x d ON b.y = d.c
-      AND b.o = d.o
-      LEFT JOIN z t ON coalesce(d.i, b.i) = t.i
-      LEFT JOIN aa q ON b.u = q.u
-      LEFT JOIN w ab ON ab.n = b.c
-      AND ab.o = b.o
+      n t0
+      LEFT JOIN y t1 ON t0.au = t1.ag
+      AND t0.cv = t1.cv
+      LEFT JOIN g t2 ON coalesce(t1.cu, t0.cu) = t2.cu
+      LEFT JOIN f t3 ON t0.cw = t3.cw
+      LEFT JOIN n t4 ON t4.h = t0.ag
+      AND t4.cv = t0.cv
     WHERE
       (
-        b.o = 3023424
-        AND ab.c IS NULL
+        t0.cv = 3023424
+        AND t4.ag IS NULL
         AND (
-          b.n IS NULL
-          OR b.n = -1
+          t0.h IS NULL
+          OR t0.h = -1
         )
       )
   )
 SELECT
-  b.f AS f,
-  b.v AS v,
-  b.h AS h,
-  b.i AS i,
-  b.j AS j,
-  b.k AS k,
+  t0.aw AS c0,
+  t0.ap AS c3,
+  t0.ay AS c4,
+  t0.cu AS c1,
+  t0.bg AS c5,
+  t0.ah AS c6,
   CASE
-    WHEN b.f = 0
-    AND NOT v THEN b.s
+    WHEN t0.aw = 0
+    AND NOT ap THEN t0.aa
     ELSE 0.0
-  END AS ac,
+  END AS c7,
   CASE
-    WHEN b.f = 3 THEN b.s
+    WHEN t0.aw = 3 THEN t0.aa
     ELSE 0.0
-  END AS ad,
+  END AS c8,
   CASE
-    WHEN b.f = 0
-    AND v THEN b.s
+    WHEN t0.aw = 0
+    AND ap THEN t0.aa
     ELSE 0.0
-  END AS ae,
+  END AS c9,
   CASE
-    WHEN b.f = 11 THEN b.s
+    WHEN t0.aw = 11 THEN t0.aa
     ELSE 0.0
-  END AS af,
+  END AS c10,
   CASE
-    WHEN b.f IN (42, 45) THEN b.s
+    WHEN t0.aw IN (42, 45) THEN t0.aa
     ELSE 0.0
-  END AS ag,
+  END AS c11,
   CASE
-    WHEN b.f = 2 THEN b.s
+    WHEN t0.aw = 2 THEN t0.aa
     ELSE 0.0
-  END AS ah,
-  0 AS ai,
-  0 AS aj,
-  TO_CHAR(COALESCE(b.l, b.m), '%Y-%m-%d') AS m
+  END AS c12,
+  0 AS c13,
+  0 AS c14,
+  TO_CHAR(COALESCE(t0.cs, t0.a), '%Y-%m-%d') AS c15
 FROM
-  a b option (
+  cte0 t0 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q49
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h >= ('2023-02-17')
-          AND h < ('2023-02-18')
-          AND COALESCE(i, 0) <> 1
+          cv = 4797271
+          AND cs >= ('2023-02-17')
+          AND cs < ('2023-02-18')
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h IS NULL
-          AND j >= ('2023-02-17')
-          AND j < ('2023-02-18')
-          AND COALESCE(i, 0) <> 1
-      ) b
-      LEFT JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 4797271
+          AND cs IS NULL
+          AND a >= ('2023-02-17')
+          AND a < ('2023-02-18')
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      l.m IS NULL
+      t1.b IS NULL
     ORDER BY
-      b.c
+      t0.ag
   ),
-  n AS (
+  cte1 AS (
     SELECT
-      o.f AS f,
-      o.c AS m,
-      p.q AS q,
-      p.r AS r,
-      o.s AS s,
-      o.t AS t,
-      COALESCE(o.u, o.v, 0) AS w,
+      t6.cv AS cv,
+      t6.ag AS b,
+      t3.ay AS ay,
+      t3.bg AS bg,
+      t6.cu AS cu,
+      t6.cw AS cw,
+      COALESCE(t6.co, t6.cm, 0) AS ac,
       CASE
-        WHEN o.u IS NOT NULL
-        OR o.v IS NOT NULL THEN o.x
+        WHEN t6.co IS NOT NULL
+        OR t6.cm IS NOT NULL THEN t6.cn
         ELSE '0000'
-      END AS y,
-      TO_CHAR(o.z, '%Y-%m-%d') AS aa,
+      END AS ae,
+      TO_CHAR(t6.cl, '%Y-%m-%d') AS ab,
       CASE
-        WHEN o.u IS NOT NULL THEN 0
-        WHEN o.v IS NOT NULL THEN 1
+        WHEN t6.co IS NOT NULL THEN 0
+        WHEN t6.cm IS NOT NULL THEN 1
         ELSE 2
-      END AS ab,
-      ac.ad AS ad
+      END AS c9,
+      t5.d AS d
     FROM
-      a ae
-      JOIN af p INDEXED by ag ON p.c = ae.d
-      AND p.f = ae.f
-      JOIN ah e INDEXED by ai ON e.m = ae.c
-      AND e.f = p.f
-      AND e.aj < 0
-      JOIN ak ac INDEXED BY al ON ac.am = e.c
-      AND ac.f = e.f
-      AND ac.an IS NULL
-      AND ac.ao IS NULL
-      JOIN g o INDEXED by ap ON o.c = ac.aq
-      AND o.f = ac.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN k ar ON ar.m = o.c
-      AND ar.f = o.f
-      LEFT JOIN at au ON au.t = o.t
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED BY ix_g ON t5.x = t4.ag
+      AND t5.cv = t4.cv
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN x t7 ON t7.b = t6.ag
+      AND t7.cv = t6.cv
+      LEFT JOIN f t8 ON t8.cw = t6.cw
     WHERE
-      au.av = 4
+      t8.z = 4
       AND (
-        p.aw = 3
-        AND p.ax = 4
+        t3.aw = 3
+        AND t3.cq = 4
       )
   ),
-  ay AS (
+  cte2 AS (
     SELECT
-      az.f AS f,
-      az.c AS m,
-      az.q AS q,
-      coalesce(p.r, az.r) AS r,
-      coalesce(p.s, az.s) AS s,
-      az.t AS t,
-      COALESCE(az.u, az.v, 0) AS w,
-      az.x AS y,
-      TO_CHAR(az.z, '%Y-%m-%d') AS aa,
+      t9.cv AS cv,
+      t9.ag AS b,
+      t9.ay AS ay,
+      coalesce(t3.bg, t9.bg) AS bg,
+      coalesce(t3.cu, t9.cu) AS cu,
+      t9.cw AS cw,
+      COALESCE(t9.co, t9.cm, 0) AS ac,
+      t9.cn AS ae,
+      TO_CHAR(t9.cl, '%Y-%m-%d') AS ab,
       CASE
-        WHEN az.u IS NOT NULL THEN 0
+        WHEN t9.co IS NOT NULL THEN 0
         ELSE 1
-      END AS ab,
+      END AS c9,
       COALESCE(
         (
-          az.ad * COALESCE(au.ba, 0.0) * (
+          t9.d * COALESCE(t8.cj, 0.0) * (
             CASE
-              WHEN az.bb IS NOT NULL THEN -1
+              WHEN t9.h IS NOT NULL THEN -1
               ELSE 1
             END
           )
         ),
         0.0
-      ) AS ad
+      ) AS d
     FROM
-      bc az
-      LEFT JOIN af p INDEXED by ag ON az.d = p.c
-      AND p.f = az.f
-      LEFT JOIN at au ON az.t = au.t
-      LEFT JOIN bc bd INDEXED by be ON bd.bb = az.c
-      AND bd.f = p.f
-      LEFT JOIN bf bg ON az.s = bg.s
+      n t9
+      LEFT JOIN y t3 INDEXED by ix_i ON t9.au = t3.ag
+      AND t3.cv = t9.cv
+      LEFT JOIN f t8 ON t9.cw = t8.cw
+      LEFT JOIN n t10 INDEXED by ix_e ON t10.h = t9.ag
+      AND t10.cv = t3.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
     WHERE
-      az.f = 4797271
-      AND COALESCE(az.h, az.j) = ('2023-02-17')
-      AND au.av = 4
+      t9.cv = 4797271
+      AND COALESCE(t9.cs, t9.a) = ('2023-02-17')
+      AND t8.z = 4
       AND (
-        coalesce(p.aw, az.bh) = 3
-        AND coalesce(p.ax, bg.ax) = 4
+        coalesce(t3.aw, t9.bf) = 3
+        AND coalesce(t3.cq, t11.cq) = 4
       )
   ),
-  bi AS (
+  cte3 AS (
     SELECT
       *
     FROM
-      n
+      cte1
     UNION ALL
     SELECT
       *
     FROM
-      ay
+      cte2
   ),
-  bj AS (
+  cte4 AS (
     SELECT
-      bi.f,
-      bi.m,
-      bi.q,
-      bi.r,
-      bi.s,
-      bi.t,
-      bi.w,
-      bi.y,
-      bi.aa,
-      bi.ab,
-      bi.ad,
-      bk.bl,
+      cte3.cv,
+      cte3.b,
+      cte3.ay,
+      cte3.bg,
+      cte3.cu,
+      cte3.cw,
+      cte3.ac,
+      cte3.ae,
+      cte3.ab,
+      cte3.c9,
+      cte3.d,
+      t12.cx,
       ROW_NUMBER() OVER (
         ORDER BY
-          m DESC
-      ) AS bm
+          b DESC
+      ) AS c11
     FROM
-      bi
-      LEFT JOIN bn bk ON bk.f = bi.f
-      AND bk.q = bi.q
+      cte3
+      LEFT JOIN ad t12 ON t12.cv = cte3.cv
+      AND t12.ay = cte3.ay
   )
 SELECT
   *
 FROM
-  bj
+  cte4
 WHERE
-  bm > 0
+  c11 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 2200000,
@@ -2906,304 +2910,304 @@ LIMIT
 
 -- TEST: q50
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
-      g b
-      LEFT JOIN h i ON i.j = b.c
-      AND i.f = b.f
+      l t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      b.f = 4797271
-      AND COALESCE(b.k, b.l) = ('2023-02-13')
-      AND COALESCE(b.m, 0) <> 1
-      AND i.j IS NULL
+      t0.cv = 4797271
+      AND COALESCE(t0.cs, t0.a) = ('2023-02-13')
+      AND COALESCE(t0.bb, 0) <> 1
+      AND t1.b IS NULL
     ORDER BY
-      b.c
+      t0.ag
   ),
-  n AS (
+  cte1 AS (
     SELECT
-      o.p AS p
+      t5.d AS d
     FROM
-      a q
-      JOIN r s ON s.c = q.d
-      AND s.f = q.f
-      JOIN t e ON e.j = q.c
-      AND e.f = s.f
-      AND e.u < 0
-      JOIN v o INDEXED BY w ON o.x = e.c
-      AND o.f = e.f
-      AND o.y IS NULL
-      AND o.z IS NULL
-      JOIN g aa ON aa.c = o.ab
-      AND aa.f = o.f
-      AND COALESCE(aa.m, 0) <> 1
-      LEFT JOIN h ac ON ac.j = aa.c
-      AND ac.f = aa.f
-      LEFT JOIN ad ae ON ae.af = aa.af
+      cte0 t2
+      JOIN y t3 ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED BY ix_g ON t5.x = t4.ag
+      AND t5.cv = t4.cv
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      JOIN l t6 ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN x t7 ON t7.b = t6.ag
+      AND t7.cv = t6.cv
+      LEFT JOIN f t8 ON t8.cw = t6.cw
     WHERE
-      ae.ag = 4
+      t8.z = 4
       AND (
-        s.ah = 3
-        AND s.ai = 4
+        t3.aw = 3
+        AND t3.cq = 4
       )
   ),
-  aj AS (
+  cte2 AS (
     SELECT
       COALESCE(
         (
-          ak.p * COALESCE(ae.al, 0.0) * CASE
-            WHEN ak.am IS NOT NULL THEN -1
+          t9.d * COALESCE(t8.cj, 0.0) * CASE
+            WHEN t9.h IS NOT NULL THEN -1
             ELSE 1
           END
         ),
         0.0
-      ) AS p
+      ) AS d
     FROM
-      an ak
-      LEFT JOIN r s ON ak.d = s.c
-      AND s.f = ak.f
-      LEFT JOIN ad ae ON ak.af = ae.af
-      LEFT JOIN an ao ON ao.am = ak.c
-      AND ao.f = s.f
-      LEFT JOIN ap aq ON ak.ar = aq.ar
+      n t9
+      LEFT JOIN y t3 ON t9.au = t3.ag
+      AND t3.cv = t9.cv
+      LEFT JOIN f t8 ON t9.cw = t8.cw
+      LEFT JOIN n t10 ON t10.h = t9.ag
+      AND t10.cv = t3.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
     WHERE
-      ak.f = 4797271
-      AND COALESCE(ak.k, ak.l) = ('2024-12-28')
-      AND ae.ag = 4
+      t9.cv = 4797271
+      AND COALESCE(t9.cs, t9.a) = ('2024-12-28')
+      AND t8.z = 4
       AND (
-        coalesce(s.ah, ak.at) = 3
-        AND coalesce(s.ai, aq.ai) = 4
+        coalesce(t3.aw, t9.bf) = 3
+        AND coalesce(t3.cq, t11.cq) = 4
       )
   )
 SELECT
-  COUNT(*) AS au,
-  SUM(p) AS av
+  COUNT(*) AS c1,
+  SUM(d) AS c2
 FROM
   (
     SELECT
       *
     FROM
-      n
+      cte1
     UNION ALL
     SELECT
       *
     FROM
-      aj
-  ) aw option (
+      cte2
+  ) t12 option (
     SQL_VDBE_OPCODE_MAX = 80000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q51
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h >= ('2023-02-17')
-          AND h < ('2023-02-18')
-          AND COALESCE(i, 0) <> 1
+          cv = 4797271
+          AND cs >= ('2023-02-17')
+          AND cs < ('2023-02-18')
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h IS NULL
-          AND j >= ('2023-02-17')
-          AND j < ('2023-02-18')
-          AND COALESCE(i, 0) <> 1
-      ) b
-      LEFT JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 4797271
+          AND cs IS NULL
+          AND a >= ('2023-02-17')
+          AND a < ('2023-02-18')
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      l.m IS NULL
+      t1.b IS NULL
   ),
-  n AS (
+  cte1 AS (
     SELECT DISTINCT
-      o.f AS f,
-      p.q AS q,
-      p.r AS r,
-      p.s AS s,
-      o.t AS t,
-      u.v AS v
+      t6.cv AS cv,
+      t3.ay AS ay,
+      t3.bg AS bg,
+      t3.ah AS ah,
+      t6.cu AS cu,
+      t8.cx AS cx
     FROM
-      a w
-      JOIN x p INDEXED by y ON p.c = w.d
-      AND p.f = w.f
-      JOIN z e INDEXED by aa ON e.m = w.c
-      AND e.f = p.f
-      AND e.ab < 0
-      JOIN ac ad INDEXED by ae ON ad.af = e.c
-      AND ad.ag IS NULL
-      AND ad.ah IS NULL
-      AND ad.f = e.f
-      JOIN g o INDEXED by ai ON o.c = ad.aj
-      AND o.f = ad.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN ak al ON al.am = o.am
-      LEFT JOIN an u ON u.f = p.f
-      AND u.q = p.q
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED by ix_g ON t5.x = t4.ag
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      AND t5.cv = t4.cv
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN f t7 ON t7.cw = t6.cw
+      LEFT JOIN ad t8 ON t8.cv = t3.cv
+      AND t8.ay = t3.ay
     WHERE
-      al.ao = 4
+      t7.z = 4
       AND (
-        p.ap = 3
-        AND p.aq = 4
+        t3.aw = 3
+        AND t3.cq = 4
       )
   ),
-  ar AS (
+  cte2 AS (
     SELECT DISTINCT
-      at.f AS f,
-      at.q AS q,
-      coalesce(p.r, at.r) AS r,
-      coalesce(p.s, at.s) AS s,
-      coalesce(p.t, at.t) AS t,
-      u.v AS v
+      t9.cv AS cv,
+      t9.ay AS ay,
+      coalesce(t3.bg, t9.bg) AS bg,
+      coalesce(t3.ah, t9.ah) AS ah,
+      coalesce(t3.cu, t9.cu) AS cu,
+      t8.cx AS cx
     FROM
-      au at
-      LEFT JOIN x p INDEXED by y ON at.d = p.c
-      AND at.f = p.f
-      LEFT JOIN ak al ON at.am = al.am
-      LEFT JOIN au av INDEXED by aw ON av.ax = at.c
-      AND av.f = at.f
-      LEFT JOIN ay az ON at.t = az.t
-      LEFT JOIN an u ON u.f = p.f
-      AND u.q = p.q
+      n t9
+      LEFT JOIN y t3 INDEXED by ix_i ON t9.au = t3.ag
+      AND t9.cv = t3.cv
+      LEFT JOIN f t7 ON t9.cw = t7.cw
+      LEFT JOIN n t10 INDEXED by ix_e ON t10.h = t9.ag
+      AND t10.cv = t9.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
+      LEFT JOIN ad t8 ON t8.cv = t3.cv
+      AND t8.ay = t3.ay
     WHERE
-      at.f = 4797271
-      AND COALESCE(at.h, at.j) = ('2023-02-17')
-      AND al.ao = 4
+      t9.cv = 4797271
+      AND COALESCE(t9.cs, t9.a) = ('2023-02-17')
+      AND t7.z = 4
       AND (
-        coalesce(p.ap, at.ba) = 3
-        AND coalesce(p.aq, az.aq) = 4
+        coalesce(t3.aw, t9.bf) = 3
+        AND coalesce(t3.cq, t11.cq) = 4
       )
   )
 SELECT
   *
 FROM
-  n
+  cte1
 UNION ALL
 SELECT
   *
 FROM
-  ar option (
+  cte2 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q52
 SELECT
-  a AS a,
-  SUM(b) AS b,
-  SUM(c) AS c,
-  0 AS d
+  z AS c0,
+  SUM(f) AS c1,
+  SUM(e) AS c2,
+  0 AS c3
 FROM
-  f
+  a
 WHERE
   (
-    g = 4797271
-    AND h = 3
-    AND i = 4
-    AND j = '2023-02-17'
+    cv = 4797271
+    AND aw = 3
+    AND cq = 4
+    AND a = '2023-02-17'
   )
 GROUP BY
-  a
+  z
 UNION ALL
 SELECT
-  k.a AS a,
-  0 AS b,
-  0 AS c,
+  t3.z AS c0,
+  0 AS c1,
+  0 AS c2,
   COALESCE(
     SUM(
-      l.m * COALESCE(k.n, 0) * CASE
-        WHEN l.o IS NOT NULL THEN -1
+      t0.d * COALESCE(t3.cj, 0) * CASE
+        WHEN t0.h IS NOT NULL THEN -1
         ELSE 1
       END
     ),
     0.0
-  ) AS d
+  ) AS c3
 FROM
-  p l
-  LEFT JOIN p q ON q.o = l.r
-  AND q.g = l.g
-  LEFT JOIN s t ON l.u = t.r
-  AND l.g = t.g
-  LEFT JOIN v k ON l.w = k.w
-  LEFT JOIN x y ON l.z = y.z
+  n t0
+  LEFT JOIN n t1 ON t1.h = t0.ag
+  AND t1.cv = t0.cv
+  LEFT JOIN y t2 ON t0.au = t2.ag
+  AND t0.cv = t2.cv
+  LEFT JOIN f t3 ON t0.cw = t3.cw
+  LEFT JOIN h t4 ON t0.cu = t4.cu
 WHERE
   (
-    l.g = 4797271
-    AND coalesce(t.h, l.aa) = 3
-    AND coalesce(t.i, y.i) = 4
-    AND COALESCE(l.ab, l.j) = '2023-02-17'
-    AND q.r IS NULL
+    t0.cv = 4797271
+    AND coalesce(t2.aw, t0.bf) = 3
+    AND coalesce(t2.cq, t4.cq) = 4
+    AND COALESCE(t0.cs, t0.a) = '2023-02-17'
+    AND t1.ag IS NULL
     AND (
-      l.o IS NULL
-      OR l.o = -1
+      t0.h IS NULL
+      OR t0.h = -1
     )
   )
 GROUP BY
-  k.a option (
+  t3.z option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q53
 SELECT DISTINCT
-  a.b,
-  a.c,
-  a.d,
-  f.g
+  t0.ay,
+  t0.bg,
+  t0.ah,
+  t1.cx
 FROM
-  h a
-  LEFT JOIN i f ON a.j = f.j
-  AND a.b = f.b
+  a t0
+  LEFT JOIN ad t1 ON t0.cv = t1.cv
+  AND t0.ay = t1.ay
 WHERE
   (
-    a.j = 4797271
-    AND a.k = 3
-    AND a.l = '2023-02-17'
-    AND a.m = 4
+    t0.cv = 4797271
+    AND t0.aw = 3
+    AND t0.a = '2023-02-17'
+    AND t0.cq = 4
   )
 UNION
 SELECT DISTINCT
-  n.b AS b,
-  coalesce(o.c, n.c) AS c,
-  coalesce(o.d, n.d) AS d,
-  f.g AS g
+  t2.ay AS c0,
+  coalesce(t4.bg, t2.bg) AS c1,
+  coalesce(t4.ah, t2.ah) AS c2,
+  t1.cx AS c3
 FROM
-  p n
-  LEFT JOIN p q ON q.r = n.s
-  AND q.j = n.j
-  LEFT JOIN t o ON n.u = o.s
-  AND n.j = o.j
-  LEFT JOIN v w ON n.x = w.x
-  LEFT JOIN i f ON n.j = f.j
-  AND n.b = f.b
-  LEFT JOIN y z ON n.aa = z.aa
+  n t2
+  LEFT JOIN n t3 ON t3.h = t2.ag
+  AND t3.cv = t2.cv
+  LEFT JOIN y t4 ON t2.au = t4.ag
+  AND t2.cv = t4.cv
+  LEFT JOIN f t5 ON t2.cw = t5.cw
+  LEFT JOIN ad t1 ON t2.cv = t1.cv
+  AND t2.ay = t1.ay
+  LEFT JOIN h t6 ON t2.cu = t6.cu
 WHERE
   (
-    n.j = 4797271
-    AND coalesce(o.k, n.ab) = 3
-    AND COALESCE(n.ac, n.l) = '2023-02-17'
-    AND coalesce(o.m, z.m) = 4
+    t2.cv = 4797271
+    AND coalesce(t4.aw, t2.bf) = 3
+    AND COALESCE(t2.cs, t2.a) = '2023-02-17'
+    AND coalesce(t4.cq, t6.cq) = 4
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
@@ -3211,239 +3215,239 @@ WHERE
 
 -- TEST: q54
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      coalesce(b.c, d.c) AS c,
-      TO_CHAR(COALESCE(f.g, f.h), '%Y-%m-%d') AS h,
-      f.i,
-      COALESCE(j.k, 0) AS k,
-      f.l
+      coalesce(t2.cq, t4.cq) AS cq,
+      TO_CHAR(COALESCE(t0.cs, t0.a), '%Y-%m-%d') AS a,
+      t0.d,
+      COALESCE(t3.cj, 0) AS cj,
+      t0.h
     FROM
-      m f
-      LEFT JOIN m n ON n.l = f.o
-      AND n.p = f.p
-      LEFT JOIN q b ON f.r = b.o
-      AND f.p = b.p
-      LEFT JOIN s j ON f.t = j.t
-      LEFT JOIN u d ON f.v = d.v
+      n t0
+      LEFT JOIN n t1 ON t1.h = t0.ag
+      AND t1.cv = t0.cv
+      LEFT JOIN y t2 ON t0.au = t2.ag
+      AND t0.cv = t2.cv
+      LEFT JOIN f t3 ON t0.cw = t3.cw
+      LEFT JOIN h t4 ON t0.cu = t4.cu
     WHERE
       (
-        f.p = 4797271
-        AND coalesce(b.w, f.x) = 3
-        AND n.o IS NULL
+        t0.cv = 4797271
+        AND coalesce(t2.aw, t0.bf) = 3
+        AND t1.ag IS NULL
         AND (
-          f.l IS NULL
-          OR f.l = -1
+          t0.h IS NULL
+          OR t0.h = -1
         )
-        AND CAST(TO_CHAR(COALESCE(f.g, f.h), '%Y') AS INTEGER) IN (2025, 2024, 2023, 2022, 2021)
+        AND CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%Y') AS integer) IN (2025, 2024, 2023, 2022, 2021)
       )
   )
 SELECT
-  c AS c,
-  TO_CHAR(h, '%Y-%m-%d') AS h,
-  SUM(y) AS y,
-  SUM(z) AS z,
-  0.0 AS aa
+  cq AS c0,
+  TO_CHAR(a, '%Y-%m-%d') AS c1,
+  SUM(f) AS c3,
+  SUM(e) AS c4,
+  0.0 AS c5
 FROM
-  ab
+  a
 WHERE
   (
-    p = 4797271
-    AND w = 3
-    AND ac IN (2025, 2024, 2023, 2022, 2021)
+    cv = 4797271
+    AND aw = 3
+    AND bm IN (2025, 2024, 2023, 2022, 2021)
   )
 GROUP BY
-  h,
-  c
+  a,
+  cq
 UNION ALL
 SELECT
-  c,
-  h,
-  0 AS y,
-  0 AS z,
+  cq,
+  a,
+  0 AS c3,
+  0 AS c4,
   COALESCE(
     SUM(
-      i * k * (
+      d * cj * (
         CASE
-          WHEN l IS NOT NULL THEN -1
+          WHEN h IS NOT NULL THEN -1
           ELSE 1
         END
       )
     ),
     0.0
-  ) AS aa
+  ) AS c5
 FROM
-  a
+  cte0
 GROUP BY
-  c,
-  h option (
+  cq,
+  a option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q55
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 3023424
-          AND h >= ('2024-08-14')
-          AND h < ('2024-08-15')
-          AND COALESCE(i, 0) <> 1
+          cv = 3023424
+          AND cs >= ('2024-08-14')
+          AND cs < ('2024-08-15')
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 3023424
-          AND h IS NULL
-          AND j >= ('2024-08-14')
-          AND j < ('2024-08-15')
-          AND COALESCE(i, 0) <> 1
-      ) b
-      LEFT JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 3023424
+          AND cs IS NULL
+          AND a >= ('2024-08-14')
+          AND a < ('2024-08-15')
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      l.m IS NULL
+      t1.b IS NULL
     ORDER BY
-      b.c
+      t0.ag
   ),
-  n AS (
+  cte1 AS (
     SELECT
-      o.f AS f,
-      o.c AS m,
-      p.q AS q,
-      p.r AS r,
-      o.s AS s,
-      o.t AS t,
-      COALESCE(o.u, o.v, 0) AS w,
+      t6.cv AS cv,
+      t6.ag AS b,
+      t3.ay AS ay,
+      t3.bg AS bg,
+      t6.cu AS cu,
+      t6.cw AS cw,
+      COALESCE(t6.co, t6.cm, 0) AS ac,
       CASE
-        WHEN o.u IS NOT NULL
-        OR o.v IS NOT NULL THEN o.x
+        WHEN t6.co IS NOT NULL
+        OR t6.cm IS NOT NULL THEN t6.cn
         ELSE '0000'
-      END AS y,
-      TO_CHAR(o.z, '%Y-%m-%d') AS aa,
+      END AS ae,
+      TO_CHAR(t6.cl, '%Y-%m-%d') AS ab,
       CASE
-        WHEN o.u IS NOT NULL THEN 0
-        WHEN o.v IS NOT NULL THEN 1
+        WHEN t6.co IS NOT NULL THEN 0
+        WHEN t6.cm IS NOT NULL THEN 1
         ELSE 2
-      END AS ab,
-      ac.ad AS ad
+      END AS c9,
+      t5.d AS d
     FROM
-      a ae
-      JOIN af p INDEXED by ag ON p.c = ae.d
-      AND p.f = ae.f
-      JOIN ah e INDEXED by ai ON e.m = ae.c
-      AND e.f = p.f
-      AND e.aj < 0
-      JOIN ak ac INDEXED BY al ON ac.am = e.c
-      AND ac.f = e.f
-      AND ac.an IS NULL
-      AND ac.ao IS NULL
-      JOIN g o INDEXED by ap ON o.c = ac.aq
-      AND o.f = ac.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN k ar ON ar.m = o.c
-      AND ar.f = o.f
-      LEFT JOIN at au ON au.t = o.t
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED BY ix_g ON t5.x = t4.ag
+      AND t5.cv = t4.cv
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN x t7 ON t7.b = t6.ag
+      AND t7.cv = t6.cv
+      LEFT JOIN f t8 ON t8.cw = t6.cw
     WHERE
-      au.av = 8
-      AND (p.aw IN (42, 45))
+      t8.z = 8
+      AND (t3.aw IN (42, 45))
   ),
-  ax AS (
+  cte2 AS (
     SELECT
-      ay.f AS f,
-      ay.c AS m,
-      ay.q AS q,
-      coalesce(p.r, ay.r) AS r,
-      coalesce(p.s, ay.s) AS s,
-      ay.t AS t,
-      COALESCE(ay.u, ay.v, 0) AS w,
-      ay.x AS y,
-      TO_CHAR(ay.z, '%Y-%m-%d') AS aa,
+      t9.cv AS cv,
+      t9.ag AS b,
+      t9.ay AS ay,
+      coalesce(t3.bg, t9.bg) AS bg,
+      coalesce(t3.cu, t9.cu) AS cu,
+      t9.cw AS cw,
+      COALESCE(t9.co, t9.cm, 0) AS ac,
+      t9.cn AS ae,
+      TO_CHAR(t9.cl, '%Y-%m-%d') AS ab,
       CASE
-        WHEN ay.u IS NOT NULL THEN 0
+        WHEN t9.co IS NOT NULL THEN 0
         ELSE 1
-      END AS ab,
+      END AS c9,
       COALESCE(
         (
-          ay.ad * COALESCE(au.az, 0.0) * (
+          t9.d * COALESCE(t8.cj, 0.0) * (
             CASE
-              WHEN ay.ba IS NOT NULL THEN -1
+              WHEN t9.h IS NOT NULL THEN -1
               ELSE 1
             END
           )
         ),
         0.0
-      ) AS ad
+      ) AS d
     FROM
-      bb ay
-      LEFT JOIN af p INDEXED by ag ON ay.d = p.c
-      AND p.f = ay.f
-      LEFT JOIN at au ON ay.t = au.t
-      LEFT JOIN bb bc INDEXED by bd ON bc.ba = ay.c
-      AND bc.f = p.f
-      LEFT JOIN be bf ON ay.s = bf.s
+      n t9
+      LEFT JOIN y t3 INDEXED by ix_i ON t9.au = t3.ag
+      AND t3.cv = t9.cv
+      LEFT JOIN f t8 ON t9.cw = t8.cw
+      LEFT JOIN n t10 INDEXED by ix_e ON t10.h = t9.ag
+      AND t10.cv = t3.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
     WHERE
-      ay.f = 3023424
-      AND COALESCE(ay.h, ay.j) = ('2024-08-14')
-      AND au.av = 8
-      AND (coalesce(p.aw, ay.bg) IN (42, 45))
+      t9.cv = 3023424
+      AND COALESCE(t9.cs, t9.a) = ('2024-08-14')
+      AND t8.z = 8
+      AND (coalesce(t3.aw, t9.bf) IN (42, 45))
   ),
-  bh AS (
+  cte3 AS (
     SELECT
       *
     FROM
-      n
+      cte1
     UNION ALL
     SELECT
       *
     FROM
-      ax
+      cte2
   ),
-  bi AS (
+  cte4 AS (
     SELECT
-      bh.f,
-      bh.m,
-      bh.q,
-      bh.r,
-      bh.s,
-      bh.t,
-      bh.w,
-      bh.y,
-      bh.aa,
-      bh.ab,
-      bh.ad,
-      bj.bk,
+      cte3.cv,
+      cte3.b,
+      cte3.ay,
+      cte3.bg,
+      cte3.cu,
+      cte3.cw,
+      cte3.ac,
+      cte3.ae,
+      cte3.ab,
+      cte3.c9,
+      cte3.d,
+      t12.cx,
       ROW_NUMBER() OVER (
         ORDER BY
-          m DESC
-      ) AS bl
+          b DESC
+      ) AS c11
     FROM
-      bh
-      LEFT JOIN bm bj ON bj.f = bh.f
-      AND bj.q = bh.q
+      cte3
+      LEFT JOIN ad t12 ON t12.cv = cte3.cv
+      AND t12.ay = cte3.ay
   )
 SELECT
   *
 FROM
-  bi
+  cte4
 WHERE
-  bl > 0
+  c11 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 45000,
@@ -3452,325 +3456,325 @@ LIMIT
 
 -- TEST: q56
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h >= ('2024-08-14')
-          AND h < ('2024-08-15')
-          AND COALESCE(i, 0) <> 1
+          cv = 4797271
+          AND cs >= ('2024-08-14')
+          AND cs < ('2024-08-15')
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h IS NULL
-          AND j >= ('2024-08-14')
-          AND j < ('2024-08-15')
-          AND COALESCE(i, 0) <> 1
-      ) b
-      LEFT JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 4797271
+          AND cs IS NULL
+          AND a >= ('2024-08-14')
+          AND a < ('2024-08-15')
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      l.m IS NULL
+      t1.b IS NULL
     ORDER BY
-      b.c
+      t0.ag
   ),
-  n AS (
+  cte1 AS (
     SELECT
-      o.p AS p
+      t5.d AS d
     FROM
-      a q
-      JOIN r s INDEXED by t ON s.c = q.d
-      AND s.f = q.f
-      JOIN u e INDEXED by v ON e.m = q.c
-      AND e.f = s.f
-      AND e.w < 0
-      JOIN x o INDEXED BY y ON o.z = e.c
-      AND o.f = e.f
-      AND o.aa IS NULL
-      AND o.ab IS NULL
-      JOIN g ac INDEXED by ad ON ac.c = o.ae
-      AND ac.f = o.f
-      AND COALESCE(ac.i, 0) <> 1
-      LEFT JOIN k af ON af.m = ac.c
-      AND af.f = ac.f
-      LEFT JOIN ag ah ON ah.ai = ac.ai
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED BY ix_g ON t5.x = t4.ag
+      AND t5.cv = t4.cv
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN x t7 ON t7.b = t6.ag
+      AND t7.cv = t6.cv
+      LEFT JOIN f t8 ON t8.cw = t6.cw
     WHERE
-      ah.aj = 8
-      AND (s.ak IN (42, 45))
+      t8.z = 8
+      AND (t3.aw IN (42, 45))
   ),
-  al AS (
+  cte2 AS (
     SELECT
       COALESCE(
         (
-          am.p * COALESCE(ah.an, 0.0) * CASE
-            WHEN am.ao IS NOT NULL THEN -1
+          t9.d * COALESCE(t8.cj, 0.0) * CASE
+            WHEN t9.h IS NOT NULL THEN -1
             ELSE 1
           END
         ),
         0.0
-      ) AS p
+      ) AS d
     FROM
-      ap am
-      LEFT JOIN r s INDEXED by t ON am.d = s.c
-      AND s.f = am.f
-      LEFT JOIN ag ah ON am.ai = ah.ai
-      LEFT JOIN ap aq INDEXED by ar ON aq.ao = am.c
-      AND aq.f = s.f
-      LEFT JOIN at au ON am.av = au.av
+      n t9
+      LEFT JOIN y t3 INDEXED by ix_i ON t9.au = t3.ag
+      AND t3.cv = t9.cv
+      LEFT JOIN f t8 ON t9.cw = t8.cw
+      LEFT JOIN n t10 INDEXED by ix_e ON t10.h = t9.ag
+      AND t10.cv = t3.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
     WHERE
-      am.f = 4797271
-      AND COALESCE(am.h, am.j) = ('2024-08-14')
-      AND ah.aj = 8
-      AND (coalesce(s.ak, am.aw) IN (42, 45))
+      t9.cv = 4797271
+      AND COALESCE(t9.cs, t9.a) = ('2024-08-14')
+      AND t8.z = 8
+      AND (coalesce(t3.aw, t9.bf) IN (42, 45))
   )
 SELECT
-  COUNT(*) AS ax,
-  SUM(p) AS ay
+  COUNT(*) AS c1,
+  SUM(d) AS c2
 FROM
   (
     SELECT
       *
     FROM
-      n
+      cte1
     UNION ALL
     SELECT
       *
     FROM
-      al
-  ) az option (
+      cte2
+  ) t12 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q57
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h >= ('2024-08-14')
-          AND h < ('2024-08-15')
-          AND COALESCE(i, 0) <> 1
+          cv = 4797271
+          AND cs >= ('2024-08-14')
+          AND cs < ('2024-08-15')
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h IS NULL
-          AND j >= ('2024-08-14')
-          AND j < ('2024-08-15')
-          AND COALESCE(i, 0) <> 1
-      ) b
-      LEFT JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 4797271
+          AND cs IS NULL
+          AND a >= ('2024-08-14')
+          AND a < ('2024-08-15')
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      LEFT JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
     WHERE
-      l.m IS NULL
+      t1.b IS NULL
   ),
-  n AS (
+  cte1 AS (
     SELECT DISTINCT
-      o.f AS f,
-      p.q AS q,
-      p.r AS r,
-      p.s AS s,
-      o.t AS t,
-      u.v AS v
+      t6.cv AS cv,
+      t3.ay AS ay,
+      t3.bg AS bg,
+      t3.ah AS ah,
+      t6.cu AS cu,
+      t8.cx AS cx
     FROM
-      a w
-      JOIN x p INDEXED by y ON p.c = w.d
-      AND p.f = w.f
-      JOIN z e INDEXED by aa ON e.m = w.c
-      AND e.f = p.f
-      AND e.ab < 0
-      JOIN ac ad INDEXED by ae ON ad.af = e.c
-      AND ad.ag IS NULL
-      AND ad.ah IS NULL
-      AND ad.f = e.f
-      JOIN g o INDEXED by ai ON o.c = ad.aj
-      AND o.f = ad.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN ak al ON al.am = o.am
-      LEFT JOIN an u ON u.f = p.f
-      AND u.q = p.q
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai < 0
+      JOIN w t5 INDEXED by ix_g ON t5.x = t4.ag
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      AND t5.cv = t4.cv
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN f t7 ON t7.cw = t6.cw
+      LEFT JOIN ad t8 ON t8.cv = t3.cv
+      AND t8.ay = t3.ay
     WHERE
-      al.ao = 8
-      AND (p.ap IN (42, 45))
+      t7.z = 8
+      AND (t3.aw IN (42, 45))
   ),
-  aq AS (
+  cte2 AS (
     SELECT DISTINCT
-      ar.f AS f,
-      ar.q AS q,
-      coalesce(p.r, ar.r) AS r,
-      coalesce(p.s, ar.s) AS s,
-      coalesce(p.t, ar.t) AS t,
-      u.v AS v
+      t9.cv AS cv,
+      t9.ay AS ay,
+      coalesce(t3.bg, t9.bg) AS bg,
+      coalesce(t3.ah, t9.ah) AS ah,
+      coalesce(t3.cu, t9.cu) AS cu,
+      t8.cx AS cx
     FROM
-      at ar
-      LEFT JOIN x p INDEXED by y ON ar.d = p.c
-      AND ar.f = p.f
-      LEFT JOIN ak al ON ar.am = al.am
-      LEFT JOIN at au INDEXED by av ON au.aw = ar.c
-      AND au.f = ar.f
-      LEFT JOIN ax ay ON ar.t = ay.t
-      LEFT JOIN an u ON u.f = p.f
-      AND u.q = p.q
+      n t9
+      LEFT JOIN y t3 INDEXED by ix_i ON t9.au = t3.ag
+      AND t9.cv = t3.cv
+      LEFT JOIN f t7 ON t9.cw = t7.cw
+      LEFT JOIN n t10 INDEXED by ix_e ON t10.h = t9.ag
+      AND t10.cv = t9.cv
+      LEFT JOIN h t11 ON t9.cu = t11.cu
+      LEFT JOIN ad t8 ON t8.cv = t3.cv
+      AND t8.ay = t3.ay
     WHERE
-      ar.f = 4797271
-      AND COALESCE(ar.h, ar.j) = ('2024-08-14')
-      AND al.ao = 8
-      AND (coalesce(p.ap, ar.az) IN (42, 45))
+      t9.cv = 4797271
+      AND COALESCE(t9.cs, t9.a) = ('2024-08-14')
+      AND t7.z = 8
+      AND (coalesce(t3.aw, t9.bf) IN (42, 45))
   )
 SELECT
   *
 FROM
-  n
+  cte1
 UNION ALL
 SELECT
   *
 FROM
-  aq option (
+  cte2 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q58
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      TO_CHAR(COALESCE(b.c, b.d), '%Y-%m-%d') AS d,
-      b.f,
-      COALESCE(g.h, 0) AS h,
-      b.i
+      TO_CHAR(COALESCE(t0.cs, t0.a), '%Y-%m-%d') AS a,
+      t0.d,
+      COALESCE(t3.cj, 0) AS cj,
+      t0.h
     FROM
-      j b
-      LEFT JOIN j k ON k.i = b.l
-      AND k.m = b.m
-      LEFT JOIN n o ON b.p = o.l
-      AND b.m = o.m
-      LEFT JOIN q g ON b.r = g.r
+      n t0
+      LEFT JOIN n t1 ON t1.h = t0.ag
+      AND t1.cv = t0.cv
+      LEFT JOIN y t2 ON t0.au = t2.ag
+      AND t0.cv = t2.cv
+      LEFT JOIN f t3 ON t0.cw = t3.cw
     WHERE
       (
-        b.m = 4797271
-        AND coalesce(o.s, b.t) IN (42, 45)
-        AND k.l IS NULL
+        t0.cv = 4797271
+        AND coalesce(t2.aw, t0.bf) IN (42, 45)
+        AND t1.ag IS NULL
         AND (
-          b.i IS NULL
-          OR b.i = -1
+          t0.h IS NULL
+          OR t0.h = -1
         )
-        AND CAST(TO_CHAR(COALESCE(b.c, b.d), '%Y') AS INTEGER) = 2023
-        AND CAST(TO_CHAR(COALESCE(b.c, b.d), '%m') AS INTEGER) = 9
+        AND CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%Y') AS integer) = 2023
+        AND CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%m') AS integer) = 9
       )
   )
 SELECT
-  TO_CHAR(d, '%Y-%m-%d') AS d,
-  SUM(u) AS u,
-  SUM(v) AS v,
-  0 AS w
+  TO_CHAR(a, '%Y-%m-%d') AS c0,
+  SUM(f) AS c2,
+  SUM(e) AS c3,
+  0 AS c4
 FROM
-  x
+  a
 WHERE
   (
-    m = 4797271
-    AND s IN (42, 45)
-    AND y = 2023
-    AND z = 9
+    cv = 4797271
+    AND aw IN (42, 45)
+    AND bm = 2023
+    AND bk = 9
   )
 GROUP BY
-  d
+  a
 UNION ALL
 SELECT
-  d,
-  0 AS u,
-  0 AS v,
+  a,
+  0 AS c2,
+  0 AS c3,
   COALESCE(
     SUM(
-      f * h * (
+      d * cj * (
         CASE
-          WHEN i IS NOT NULL THEN -1
+          WHEN h IS NOT NULL THEN -1
           ELSE 1
         END
       )
     ),
     0.0
-  ) AS w
+  ) AS c4
 FROM
-  a
+  cte0
 GROUP BY
-  d option (
+  a option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q59
 SELECT DISTINCT
-  a.b,
-  a.c,
-  a.d,
-  f.g
+  t0.ay,
+  t0.bg,
+  t0.ah,
+  t1.cx
 FROM
-  h a INDEXED BY i
-  LEFT JOIN j f ON a.k = f.k
-  AND a.b = f.b
+  a t0 INDEXED BY ix_b
+  LEFT JOIN ad t1 ON t0.cv = t1.cv
+  AND t0.ay = t1.ay
 WHERE
   (
-    a.k = 4797271
-    AND a.l IN (42, 45)
-    AND m = 2023
-    AND n = 9
+    t0.cv = 4797271
+    AND t0.aw IN (42, 45)
+    AND bm = 2023
+    AND bk = 9
   )
 UNION
 SELECT DISTINCT
-  o.b AS b,
-  coalesce(p.c, o.c) AS c,
-  coalesce(p.d, o.d) AS d,
-  f.g AS g
+  t2.ay AS c0,
+  coalesce(t4.bg, t2.bg) AS c1,
+  coalesce(t4.ah, t2.ah) AS c2,
+  t1.cx AS c3
 FROM
-  q o
-  LEFT JOIN q r ON r.s = o.t
-  AND r.k = o.k
-  LEFT JOIN u p ON o.v = p.t
-  AND o.k = p.k
-  LEFT JOIN w x ON o.y = x.y
-  LEFT JOIN j f ON o.k = f.k
-  AND o.b = f.b
-  LEFT JOIN z aa ON o.ab = aa.ab
+  n t2
+  LEFT JOIN n t3 ON t3.h = t2.ag
+  AND t3.cv = t2.cv
+  LEFT JOIN y t4 ON t2.au = t4.ag
+  AND t2.cv = t4.cv
+  LEFT JOIN f t5 ON t2.cw = t5.cw
+  LEFT JOIN ad t1 ON t2.cv = t1.cv
+  AND t2.ay = t1.ay
+  LEFT JOIN h t6 ON t2.cu = t6.cu
 WHERE
   (
-    o.k = 4797271
-    AND coalesce(p.l, o.ac) IN (42, 45)
-    AND CAST(TO_CHAR(COALESCE(o.ad, o.ae), '%Y') AS INTEGER) = 2023
-    AND CAST(TO_CHAR(COALESCE(o.ad, o.ae), '%m') AS INTEGER) = 9
+    t2.cv = 4797271
+    AND coalesce(t4.aw, t2.bf) IN (42, 45)
+    AND CAST(TO_CHAR(COALESCE(t2.cs, t2.a), '%Y') AS integer) = 2023
+    AND CAST(TO_CHAR(COALESCE(t2.cs, t2.a), '%m') AS integer) = 9
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
@@ -3778,96 +3782,96 @@ WHERE
 
 -- TEST: q60
 SELECT
-  a AS a,
-  SUM(b) AS b,
-  SUM(c) AS c,
-  0 AS d
+  z AS c0,
+  SUM(f) AS c1,
+  SUM(e) AS c2,
+  0 AS c3
 FROM
-  f
+  a
 WHERE
   (
-    g = 4797271
-    AND h IN (42, 45)
-    AND i = '2023-09-25'
+    cv = 4797271
+    AND aw IN (42, 45)
+    AND a = '2023-09-25'
   )
 GROUP BY
-  a
+  z
 UNION ALL
 SELECT
-  j.a AS a,
-  0 AS b,
-  0 AS c,
+  t3.z AS c0,
+  0 AS c1,
+  0 AS c2,
   COALESCE(
     SUM(
-      k.l * COALESCE(j.m, 0) * CASE
-        WHEN k.n IS NOT NULL THEN -1
+      t0.d * COALESCE(t3.cj, 0) * CASE
+        WHEN t0.h IS NOT NULL THEN -1
         ELSE 1
       END
     ),
     0.0
-  ) AS d
+  ) AS c3
 FROM
-  o k
-  LEFT JOIN o p ON p.n = k.q
-  AND p.g = k.g
-  LEFT JOIN r s ON k.t = s.q
-  AND k.g = s.g
-  LEFT JOIN u j ON k.v = j.v
-  LEFT JOIN w x ON k.y = x.y
+  n t0
+  LEFT JOIN n t1 ON t1.h = t0.ag
+  AND t1.cv = t0.cv
+  LEFT JOIN y t2 ON t0.au = t2.ag
+  AND t0.cv = t2.cv
+  LEFT JOIN f t3 ON t0.cw = t3.cw
+  LEFT JOIN h t4 ON t0.cu = t4.cu
 WHERE
   (
-    k.g = 4797271
-    AND coalesce(s.h, k.z) IN (42, 45)
-    AND COALESCE(k.aa, k.i) = '2023-09-25'
-    AND p.q IS NULL
+    t0.cv = 4797271
+    AND coalesce(t2.aw, t0.bf) IN (42, 45)
+    AND COALESCE(t0.cs, t0.a) = '2023-09-25'
+    AND t1.ag IS NULL
     AND (
-      k.n IS NULL
-      OR k.n = -1
+      t0.h IS NULL
+      OR t0.h = -1
     )
   )
 GROUP BY
-  j.a option (
+  t3.z option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q61
 SELECT DISTINCT
-  a.b,
-  a.c,
-  a.d,
-  f.g
+  t0.ay,
+  t0.bg,
+  t0.ah,
+  t1.cx
 FROM
-  h a INDEXED BY i
-  LEFT JOIN j f ON a.k = f.k
-  AND a.b = f.b
+  a t0 INDEXED BY ix_a
+  LEFT JOIN ad t1 ON t0.cv = t1.cv
+  AND t0.ay = t1.ay
 WHERE
   (
-    a.k = 4797271
-    AND a.l IN (42, 45)
-    AND a.m = '2023-09-25'
+    t0.cv = 4797271
+    AND t0.aw IN (42, 45)
+    AND t0.a = '2023-09-25'
   )
 UNION
 SELECT DISTINCT
-  n.b AS b,
-  coalesce(o.c, n.c) AS c,
-  coalesce(o.d, n.d) AS d,
-  f.g AS g
+  t2.ay AS c0,
+  coalesce(t4.bg, t2.bg) AS c1,
+  coalesce(t4.ah, t2.ah) AS c2,
+  t1.cx AS c3
 FROM
-  p n
-  LEFT JOIN p q ON q.r = n.s
-  AND q.k = n.k
-  LEFT JOIN t o ON n.u = o.s
-  AND n.k = o.k
-  LEFT JOIN v w ON n.x = w.x
-  LEFT JOIN j f ON n.k = f.k
-  AND n.b = f.b
-  LEFT JOIN y z ON n.aa = z.aa
+  n t2
+  LEFT JOIN n t3 ON t3.h = t2.ag
+  AND t3.cv = t2.cv
+  LEFT JOIN y t4 ON t2.au = t4.ag
+  AND t2.cv = t4.cv
+  LEFT JOIN f t5 ON t2.cw = t5.cw
+  LEFT JOIN ad t1 ON t2.cv = t1.cv
+  AND t2.ay = t1.ay
+  LEFT JOIN h t6 ON t2.cu = t6.cu
 WHERE
   (
-    n.k = 4797271
-    AND coalesce(o.l, n.ab) IN (42, 45)
-    AND COALESCE(n.ac, n.m) = '2023-09-25'
+    t2.cv = 4797271
+    AND coalesce(t4.aw, t2.bf) IN (42, 45)
+    AND COALESCE(t2.cs, t2.a) = '2023-09-25'
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
@@ -3875,396 +3879,396 @@ WHERE
 
 -- TEST: q62
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b,
-      c,
-      d,
+      bm,
+      bl,
+      bk,
       SUM(f) AS f,
-      SUM(g) AS g,
-      0 AS h
+      SUM(e) AS e,
+      0 AS c2
     FROM
-      i
+      a
     WHERE
       (
-        j = 4797271
-        AND k IN (42, 45)
-        AND b IN (2025, 2024, 2023)
+        cv = 4797271
+        AND aw IN (42, 45)
+        AND bm IN (2025, 2024, 2023)
       )
     GROUP BY
-      b,
-      c,
-      d
+      bm,
+      bl,
+      bk
   ),
-  l AS (
+  cte1 AS (
     SELECT
-      CAST(TO_CHAR(COALESCE(m.n, m.o), '%Y') AS INTEGER) AS b,
+      CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%Y') AS integer) AS bm,
       CAST(
         (
-          CAST(TO_CHAR(COALESCE(m.n, m.o), '%m') AS INT) - 1
-        ) / 3 + 1 AS INT
-      ) AS c,
-      CAST(TO_CHAR(COALESCE(m.n, m.o), '%m') AS INTEGER) AS d,
+          CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%m') AS int) - 1
+        ) / 3 + 1 AS int
+      ) AS bl,
+      CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%m') AS integer) AS bk,
       COALESCE(
         (
-          m.p * COALESCE(q.r, 0.0) * CASE
-            WHEN m.s IS NOT NULL THEN -1
+          t0.d * COALESCE(t3.cj, 0.0) * CASE
+            WHEN t0.h IS NOT NULL THEN -1
             ELSE 1
           END
         ),
         0.0
-      ) AS t
+      ) AS c6
     FROM
-      u m
-      LEFT JOIN u v ON v.s = m.w
-      AND v.j = m.j
-      LEFT JOIN x y ON m.z = y.w
-      AND m.j = y.j
-      LEFT JOIN aa q ON m.ab = q.ab
-      LEFT JOIN ac ad ON m.ae = ad.ae
+      n t0
+      LEFT JOIN n t1 ON t1.h = t0.ag
+      AND t1.cv = t0.cv
+      LEFT JOIN y t2 ON t0.au = t2.ag
+      AND t0.cv = t2.cv
+      LEFT JOIN f t3 ON t0.cw = t3.cw
+      LEFT JOIN h t4 ON t0.cu = t4.cu
     WHERE
       (
-        m.j = 4797271
-        AND coalesce(y.k, m.af) IN (42, 45)
-        AND v.w IS NULL
+        t0.cv = 4797271
+        AND coalesce(t2.aw, t0.bf) IN (42, 45)
+        AND t1.ag IS NULL
         AND (
-          m.s IS NULL
-          OR m.s = -1
+          t0.h IS NULL
+          OR t0.h = -1
         )
-        AND CAST(TO_CHAR(COALESCE(m.n, m.o), '%Y') AS INTEGER) IN (2025, 2024, 2023)
+        AND CAST(TO_CHAR(COALESCE(t0.cs, t0.a), '%Y') AS integer) IN (2025, 2024, 2023)
       )
   ),
-  ag AS (
+  cte2 AS (
     SELECT
-      b,
-      c,
-      d,
+      bm,
+      bl,
+      bk,
       0 AS f,
-      0 AS g,
-      SUM(t) AS h
+      0 AS e,
+      SUM(c6) AS c2
     FROM
-      l
+      cte1
     GROUP BY
-      b,
-      c,
-      d
+      bm,
+      bl,
+      bk
   )
 SELECT
   *
 FROM
-  a
+  cte0
 UNION ALL
 SELECT
   *
 FROM
-  ag option (
+  cte2 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q63
 SELECT
-  a AS a,
-  b AS c,
-  d AS d,
-  f AS f,
+  cv AS c0,
+  ag AS c1,
+  cf AS c2,
+  ce AS c3,
   CASE
-    WHEN 0 > g THEN g
+    WHEN 0 > bx THEN bx
     ELSE 0.0
-  END AS g,
+  END AS c4,
   CASE
-    WHEN 0 > h THEN h
+    WHEN 0 > bz THEN bz
     ELSE 0.0
-  END AS h,
+  END AS c5,
   CASE
-    WHEN 0 > i THEN i
+    WHEN 0 > ca THEN ca
     ELSE 0.0
-  END AS i,
+  END AS c6,
   CASE
-    WHEN 0 > COALESCE(j, 0.0) + COALESCE(k, 0.0) THEN COALESCE(j, 0.0) + COALESCE(k, 0.0)
+    WHEN 0 > COALESCE(cd, 0.0) + COALESCE(cc, 0.0) THEN COALESCE(cd, 0.0) + COALESCE(cc, 0.0)
     ELSE 0.0
-  END AS l,
+  END AS c7,
   CASE
-    WHEN 0 > m THEN m
+    WHEN 0 > cg THEN cg
     ELSE 0.0
-  END AS m
+  END AS c8
 FROM
-  n o
+  s t0
 WHERE
-  (o.a = 3023424) option (
+  (t0.cv = 3023424) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q64
 SELECT
-  a.b AS b,
+  t1.cq AS c0,
   CASE
-    WHEN MIN(c.d) IS NOT NULL THEN TO_CHAR(MIN(c.d), '%Y-%m-%d')
+    WHEN MIN(t2.u) IS NOT NULL THEN TO_CHAR(MIN(t2.u), '%Y-%m-%d')
     ELSE NULL
-  END AS f,
-  SUM(g.h) AS i
+  END AS c1,
+  SUM(t0.az) AS c2
 FROM
-  j g
-  JOIN k a ON g.l = a.m
-  AND g.n = a.n
-  JOIN o c ON g.p = c.p
-  AND g.n = c.n
-  LEFT JOIN q r ON a.s = r.t
+  v t0
+  JOIN y t1 ON t0.au = t1.ag
+  AND t0.cv = t1.cv
+  JOIN x t2 ON t0.b = t2.b
+  AND t0.cv = t2.cv
+  LEFT JOIN i t3 ON t1.cu = t3.br
 WHERE
   (
-    g.n = 3023424
-    AND NOT r.u
-    AND h > 0
+    t0.cv = 3023424
+    AND NOT t3.ap
+    AND az > 0
   )
 GROUP BY
-  a.b option (
+  t1.cq option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q65
 SELECT
-  'KNO' AS a,
-  b.c AS c,
-  b.d AS d,
-  b.f AS f,
+  'KNO' AS c0,
+  t0.cu AS c1,
+  t0.ah AS c2,
+  t0.bg AS c3,
   (
     CASE
       WHEN (
-        g.h IS NOT NULL
-        AND g.h = 3
+        t1.cw IS NOT NULL
+        AND t1.cw = 3
       ) THEN 1
       ELSE 0
     END
-  ) AS i,
-  b.j AS j,
+  ) AS c4,
+  t0.ay AS c5,
   SUM(
     (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.k > 0
-        AND b.l <> 1 THEN 0.0
-        ELSE COALESCE(b.k, 0.0)
+        AND t0.bx > 0
+        AND t0.aw <> 1 THEN 0.0
+        ELSE COALESCE(t0.bx, 0.0)
       END
     )::decimal + (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.m > 0 THEN 0.0
-        ELSE COALESCE(b.m, 0.0)
+        AND t0.bz > 0 THEN 0.0
+        ELSE COALESCE(t0.bz, 0.0)
       END
     )::decimal + (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.n > 0 THEN 0.0
-        ELSE COALESCE(b.n, 0.0)
+        AND t0.ca > 0 THEN 0.0
+        ELSE COALESCE(t0.ca, 0.0)
       END
     )::decimal + (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.o > 0 THEN 0.0
-        ELSE COALESCE(b.o, 0.0)
+        AND t0.cd > 0 THEN 0.0
+        ELSE COALESCE(t0.cd, 0.0)
       END
     )::decimal + (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.p > 0 THEN 0.0
-        ELSE COALESCE(b.p, 0.0)
+        AND t0.cc > 0 THEN 0.0
+        ELSE COALESCE(t0.cc, 0.0)
       END
     )::decimal + (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.q > 0 THEN 0.0
-        ELSE COALESCE(b.q, 0.0)
+        AND t0.cg > 0 THEN 0.0
+        ELSE COALESCE(t0.cg, 0.0)
       END
     )::decimal
-  ) AS r,
+  ) AS c6,
   SUM(
     (
       CASE
-        WHEN b.l = 2 THEN COALESCE(b.m, 0.0)
+        WHEN t0.aw = 2 THEN COALESCE(t0.bz, 0.0)
         ELSE 0.0
       END
     )::decimal
-  ) AS s,
+  ) AS c7,
   SUM(
     (
       CASE
-        WHEN b.l = 3 THEN COALESCE(b.n, 0.0)
+        WHEN t0.aw = 3 THEN COALESCE(t0.ca, 0.0)
         ELSE 0.0
       END
     )::decimal
-  ) AS t,
+  ) AS c8,
   SUM(
     (
       CASE
-        WHEN b.l IN (42, 45) THEN COALESCE(b.m, 0.0)
+        WHEN t0.aw IN (42, 45) THEN COALESCE(t0.bz, 0.0)
         ELSE 0.0
       END
     )::decimal
-  ) AS u
+  ) AS c9
 FROM
-  v b
-  LEFT JOIN w g ON b.c = g.c
+  y t0
+  LEFT JOIN g t1 ON t0.cu = t1.cu
 WHERE
-  (x = 3023424)
+  (cv = 3023424)
 GROUP BY
-  b.c,
-  b.d,
-  b.f,
+  t0.cu,
+  t0.ah,
+  t0.bg,
   (
     CASE
       WHEN (
-        g.h IS NOT NULL
-        AND g.h = 3
+        t1.cw IS NOT NULL
+        AND t1.cw = 3
       ) THEN 1
       ELSE 0
     END
   ),
-  b.j option (
+  t0.ay option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q66
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c AS c,
-      b.d AS d,
-      b.f AS f,
-      b.g AS g,
+      t0.cu AS cu,
+      t0.ah AS ah,
+      t0.bg AS bg,
+      t0.ay AS ay,
       CASE
         WHEN (
-          h.i IS NOT NULL
-          AND h.i = 3
+          t2.cw IS NOT NULL
+          AND t2.cw = 3
         ) THEN 1
         ELSE 0
-      END AS j,
+      END AS c4,
       COALESCE(
         (
-          b.k * COALESCE(l.m, 0) * CASE
-            WHEN b.n IS NOT NULL THEN -1
+          t0.d * COALESCE(t3.cj, 0) * CASE
+            WHEN t0.h IS NOT NULL THEN -1
             ELSE 1
           END
         ),
         0.0
-      ) AS o,
-      p.q AS q
+      ) AS aa,
+      t4.aw AS aw
     FROM
-      r b
-      LEFT JOIN r s ON s.n = b.t
-      AND s.u = b.u
-      LEFT JOIN v h ON b.c = h.c
-      LEFT JOIN w l ON b.i = l.i
-      LEFT JOIN x p ON b.y = p.t
-      AND b.u = p.u
+      n t0
+      LEFT JOIN n t1 ON t1.h = t0.ag
+      AND t1.cv = t0.cv
+      LEFT JOIN g t2 ON t0.cu = t2.cu
+      LEFT JOIN f t3 ON t0.cw = t3.cw
+      LEFT JOIN y t4 ON t0.au = t4.ag
+      AND t0.cv = t4.cv
     WHERE
       (
-        b.u = 3023424
-        AND s.t IS NULL
+        t0.cv = 3023424
+        AND t1.ag IS NULL
         AND (
-          b.n IS NULL
-          OR b.n = -1
+          t0.h IS NULL
+          OR t0.h = -1
         )
       )
   )
 SELECT
-  'BUF' AS z,
-  c,
-  d,
-  f,
-  j,
-  g,
-  COALESCE(SUM(o), 0.0) AS aa,
+  'BUF' AS c7,
+  cu,
+  ah,
+  bg,
+  c4,
+  ay,
+  COALESCE(SUM(aa), 0.0) AS c8,
   COALESCE(
     SUM(
       CASE
-        WHEN q = 2 THEN o
+        WHEN aw = 2 THEN aa
         ELSE 0.0
       END
     ),
     0.0
-  ) AS ab,
+  ) AS c9,
   COALESCE(
     SUM(
       CASE
-        WHEN q = 3 THEN o
+        WHEN aw = 3 THEN aa
         ELSE 0.0
       END
     ),
     0.0
-  ) AS ac,
+  ) AS c10,
   COALESCE(
     SUM(
       CASE
-        WHEN q IN (42, 45) THEN o
+        WHEN aw IN (42, 45) THEN aa
         ELSE 0.0
       END
     ),
     0.0
-  ) AS ad
+  ) AS c11
 FROM
-  a
+  cte0
 GROUP BY
-  c,
-  d,
-  f,
-  j,
-  g option (
+  cu,
+  ah,
+  bg,
+  c4,
+  ay option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q67
 SELECT
-  a.b AS b,
-  TO_CHAR(COALESCE(c.d, c.f), '%Y-%m-%d') AS g,
+  t1.cq AS c0,
+  TO_CHAR(COALESCE(t0.cs, t0.a), '%Y-%m-%d') AS c1,
   COALESCE(
     (
-      c.h * COALESCE(i.j, 0.0) * CASE
-        WHEN c.k IS NOT NULL THEN -1
+      t0.d * COALESCE(t3.cj, 0.0) * CASE
+        WHEN t0.h IS NOT NULL THEN -1
         ELSE 1
       END
     ),
     0.0
-  ) AS l
+  ) AS c2
 FROM
-  m c
-  LEFT JOIN n a ON c.o = a.o
-  LEFT JOIN p q ON c.o = q.o
-  LEFT JOIN r i ON c.s = i.s
-  LEFT JOIN m t ON t.k = c.u
-  AND t.v = c.v
+  n t0
+  LEFT JOIN h t1 ON t0.cu = t1.cu
+  LEFT JOIN g t2 ON t0.cu = t2.cu
+  LEFT JOIN f t3 ON t0.cw = t3.cw
+  LEFT JOIN n t4 ON t4.h = t0.ag
+  AND t4.cv = t0.cv
 WHERE
   (
-    c.v = 3023424
-    AND t.u IS NULL
+    t0.cv = 3023424
+    AND t4.ag IS NULL
     AND (
-      c.k IS NULL
-      OR c.k = -1
+      t0.h IS NULL
+      OR t0.h = -1
     )
     AND (
-      q.s IS NULL
-      OR q.s <> 3
+      t2.cw IS NULL
+      OR t2.cw <> 3
     )
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
@@ -4273,45 +4277,45 @@ WHERE
 
 -- TEST: q68
 SELECT
-  a.b AS b,
-  a.c AS c,
-  a.d AS d,
-  a.f AS f,
+  t0.ay AS c0,
+  t0.cu AS c1,
+  t0.ah AS c2,
+  t0.bg AS c3,
   CASE
     WHEN (
-      g.h IS NOT NULL
-      AND g.h = 3
+      t2.cw IS NOT NULL
+      AND t2.cw = 3
     ) THEN 1
     ELSE 0
-  END AS i,
-  TO_CHAR(COALESCE(a.j, a.k), '%Y-%m-%d') AS l,
+  END AS c4,
+  TO_CHAR(COALESCE(t0.cs, t0.a), '%Y-%m-%d') AS c5,
   COALESCE(
     (
-      a.m * COALESCE(n.o, 0.0) * CASE
-        WHEN a.p IS NOT NULL THEN -1
+      t0.d * COALESCE(t3.cj, 0.0) * CASE
+        WHEN t0.h IS NOT NULL THEN -1
         ELSE 1
       END
     ),
     0.0
-  ) AS q
+  ) AS c6
 FROM
-  r a
-  LEFT JOIN s t ON a.c = t.c
-  LEFT JOIN u g ON a.c = g.c
-  LEFT JOIN v n ON a.h = n.h
-  LEFT JOIN r w ON w.p = a.x
-  AND w.y = a.y
+  n t0
+  LEFT JOIN h t1 ON t0.cu = t1.cu
+  LEFT JOIN g t2 ON t0.cu = t2.cu
+  LEFT JOIN f t3 ON t0.cw = t3.cw
+  LEFT JOIN n t4 ON t4.h = t0.ag
+  AND t4.cv = t0.cv
 WHERE
   (
-    a.y = 3023424
-    AND w.x IS NULL
+    t0.cv = 3023424
+    AND t4.ag IS NULL
     AND (
-      a.p IS NULL
-      OR a.p = -1
+      t0.h IS NULL
+      OR t0.h = -1
     )
     AND (
-      g.h IS NOT NULL
-      AND g.h = 3
+      t2.cw IS NOT NULL
+      AND t2.cw = 3
     )
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
@@ -4320,259 +4324,259 @@ WHERE
 
 -- TEST: q69
 SELECT
-  a AS a,
+  cq AS c0,
   SUM(
     (
       CASE
-        WHEN b < 0 THEN COALESCE(b, 0)
+        WHEN bx < 0 THEN COALESCE(bx, 0)
         ELSE 0
       END
     )::decimal
-  ) AS c,
+  ) AS c1,
   SUM(
     (
       CASE
-        WHEN b < 0
+        WHEN bx < 0
         AND (
-          d.f IS NOT NULL
-          AND d.f = 3
-        ) THEN COALESCE(b, 0)
+          t1.cw IS NOT NULL
+          AND t1.cw = 3
+        ) THEN COALESCE(bx, 0)
         ELSE 0
       END
     )::decimal
-  ) AS g,
+  ) AS c2,
   SUM(
     (
       CASE
-        WHEN b > 0
+        WHEN bx > 0
         AND (
-          d.f IS NOT NULL
-          AND d.f = 3
-        ) THEN COALESCE(b, 0)
+          t1.cw IS NOT NULL
+          AND t1.cw = 3
+        ) THEN COALESCE(bx, 0)
         ELSE 0
       END
     )::decimal
-  ) AS h
+  ) AS c3
 FROM
-  i j
-  LEFT JOIN k d ON j.l = d.l
+  y t0
+  LEFT JOIN g t1 ON t0.cu = t1.cu
 WHERE
   (
-    j.m = 3023424
-    AND j.b <> 0
+    t0.cv = 3023424
+    AND t0.bx <> 0
   )
 GROUP BY
-  a option (
+  cq option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q70
 SELECT
-  a.b AS b,
-  a.c AS c,
-  a.d AS d,
-  a.f AS f,
+  t0.cu AS c0,
+  t0.ah AS c1,
+  t0.bg AS c2,
+  t0.ay AS c3,
   SUM(
     (
       CASE
-        WHEN g < 0 THEN COALESCE(g, 0)
+        WHEN bx < 0 THEN COALESCE(bx, 0)
         ELSE 0
       END
     )::decimal
-  ) AS h,
+  ) AS c4,
   SUM(
     (
       CASE
-        WHEN g < 0
+        WHEN bx < 0
         AND (
-          i.j IS NOT NULL
-          AND i.j = 3
-        ) THEN COALESCE(g, 0)
+          t1.cw IS NOT NULL
+          AND t1.cw = 3
+        ) THEN COALESCE(bx, 0)
         ELSE 0
       END
     )::decimal
-  ) AS k,
+  ) AS c5,
   SUM(
     (
       CASE
-        WHEN g > 0
+        WHEN bx > 0
         AND (
-          i.j IS NOT NULL
-          AND i.j = 3
-        ) THEN COALESCE(g, 0)
+          t1.cw IS NOT NULL
+          AND t1.cw = 3
+        ) THEN COALESCE(bx, 0)
         ELSE 0
       END
     )::decimal
-  ) AS l
+  ) AS c6
 FROM
-  m a
-  LEFT JOIN n i ON a.b = i.b
+  y t0
+  LEFT JOIN g t1 ON t0.cu = t1.cu
 WHERE
-  (a.o = 3023424)
+  (t0.cv = 3023424)
 GROUP BY
-  a.b,
-  a.c,
-  a.d,
-  a.f option (
+  t0.cu,
+  t0.ah,
+  t0.bg,
+  t0.ay option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q71
 SELECT
-  a.b AS b,
+  t1.cq AS c0,
   CASE
-    WHEN MIN(c.d) IS NOT NULL THEN TO_CHAR(MIN(c.d), '%Y-%m-%d')
+    WHEN MIN(t2.u) IS NOT NULL THEN TO_CHAR(MIN(t2.u), '%Y-%m-%d')
     ELSE NULL
-  END AS f,
-  SUM(g.h) AS i
+  END AS c1,
+  SUM(t0.az) AS c2
 FROM
-  j g
-  JOIN k a ON g.l = a.m
-  AND g.n = a.n
-  JOIN o c ON g.p = c.p
-  AND g.n = c.n
-  LEFT JOIN q r ON a.s = r.t
+  v t0
+  JOIN y t1 ON t0.au = t1.ag
+  AND t0.cv = t1.cv
+  JOIN x t2 ON t0.b = t2.b
+  AND t0.cv = t2.cv
+  LEFT JOIN i t3 ON t1.cu = t3.br
 WHERE
   (
-    g.n = 3023424
-    AND NOT r.u
-    AND h > 0
+    t0.cv = 3023424
+    AND NOT t3.ap
+    AND az > 0
   )
 GROUP BY
-  a.b option (
+  t1.cq option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q72
 SELECT
-  a AS a,
-  SUM(b) AS c,
-  SUM(d) AS f
+  z AS c0,
+  SUM(f) AS c1,
+  SUM(e) AS c2
 FROM
-  g
+  d
 WHERE
   (
-    h = 4797271
-    AND i = 4
-    AND j = '2025-08-27'
+    cv = 4797271
+    AND cq = 4
+    AND a = '2025-08-27'
   )
 GROUP BY
-  a option (
+  z option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q73
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h >= ('2025-08-27'::datetime)
-          AND h < ('2025-08-28'::datetime)
-          AND COALESCE(i, 0) <> 1
+          cv = 4797271
+          AND cs >= ('2025-08-27'::datetime)
+          AND cs < ('2025-08-28'::datetime)
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h IS NULL
-          AND j >= ('2025-08-27'::datetime)
-          AND j < ('2025-08-28'::datetime)
-          AND COALESCE(i, 0) <> 1
-      ) b
-      JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 4797271
+          AND cs IS NULL
+          AND a >= ('2025-08-27'::datetime)
+          AND a < ('2025-08-28'::datetime)
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
   ),
-  n AS (
+  cte1 AS (
     SELECT
-      o.f AS f,
-      o.c AS m,
-      p.q AS q,
-      p.r AS r,
-      o.s AS s,
-      o.t AS t,
-      COALESCE(o.u, o.v, 0) AS w,
+      t6.cv AS cv,
+      t6.ag AS b,
+      t3.ay AS ay,
+      t3.bg AS bg,
+      t6.cu AS cu,
+      t6.cw AS cw,
+      COALESCE(t6.co, t6.cm, 0) AS ac,
       CASE
-        WHEN o.u IS NOT NULL
-        OR o.v IS NOT NULL THEN o.x
+        WHEN t6.co IS NOT NULL
+        OR t6.cm IS NOT NULL THEN t6.cn
         ELSE '0000'
-      END AS y,
-      o.z AS aa,
+      END AS ae,
+      t6.cl AS ab,
       CASE
-        WHEN o.u IS NOT NULL THEN 0
-        WHEN o.v IS NOT NULL THEN 1
+        WHEN t6.co IS NOT NULL THEN 0
+        WHEN t6.cm IS NOT NULL THEN 1
         ELSE 2
-      END AS ab,
-      ac.ad AS ad
+      END AS c9,
+      t5.d AS d
     FROM
-      a ae
-      JOIN af p INDEXED by ag ON p.c = ae.d
-      AND p.f = ae.f
-      JOIN ah e INDEXED by ai ON e.m = ae.c
-      AND e.f = p.f
-      AND e.aj > 0
-      JOIN ak ac INDEXED BY al ON ac.am = e.c
-      AND ac.f = e.f
-      AND ac.an IS NULL
-      AND ac.ao IS NULL
-      JOIN g o INDEXED by ap ON o.c = ac.aq
-      AND o.f = ac.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN k ar INDEXED by at ON ar.m = o.c
-      AND ar.f = o.f
-      LEFT JOIN au av ON av.t = o.t
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai > 0
+      JOIN w t5 INDEXED BY ix_g ON t5.x = t4.ag
+      AND t5.cv = t4.cv
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN x t7 INDEXED by ix_h ON t7.b = t6.ag
+      AND t7.cv = t6.cv
+      LEFT JOIN f t8 ON t8.cw = t6.cw
     WHERE
-      av.aw = 6
-      AND (p.ax = 4)
+      t8.z = 6
+      AND (t3.cq = 4)
   ),
-  ay AS (
+  cte2 AS (
     SELECT
-      n.f,
-      n.m,
-      n.q,
-      n.r,
-      n.s,
-      n.t,
-      n.w,
-      n.y,
-      n.aa,
-      n.ab,
-      n.ad,
+      cte1.cv,
+      cte1.b,
+      cte1.ay,
+      cte1.bg,
+      cte1.cu,
+      cte1.cw,
+      cte1.ac,
+      cte1.ae,
+      cte1.ab,
+      cte1.c9,
+      cte1.d,
       ROW_NUMBER() OVER (
         ORDER BY
-          n.m DESC
-      ) AS az,
-      ba.bb
+          cte1.b DESC
+      ) AS c11,
+      t9.cx
     FROM
-      n
-      LEFT JOIN bc ba ON ba.f = n.f
-      AND ba.q = n.q
+      cte1
+      LEFT JOIN ad t9 ON t9.cv = cte1.cv
+      AND t9.ay = cte1.ay
   )
 SELECT
   *
 FROM
-  ay
+  cte2
 WHERE
-  az > 0
+  c11 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
@@ -4581,213 +4585,213 @@ LIMIT
 
 -- TEST: q74
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h >= ('2025-08-27')
-          AND h < ('2025-08-28')
-          AND COALESCE(i, 0) <> 1
+          cv = 4797271
+          AND cs >= ('2025-08-27')
+          AND cs < ('2025-08-28')
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h IS NULL
-          AND j >= ('2025-08-27')
-          AND j < ('2025-08-28')
-          AND COALESCE(i, 0) <> 1
-      ) b
-      JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 4797271
+          AND cs IS NULL
+          AND a >= ('2025-08-27')
+          AND a < ('2025-08-28')
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
   ),
-  n AS (
+  cte1 AS (
     SELECT
-      o.p * q.r * CASE
-        WHEN o.s IS NULL THEN 1
+      t6.d * t8.cj * CASE
+        WHEN t6.h IS NULL THEN 1
         ELSE -1
-      END AS p
+      END AS d
     FROM
-      a t
-      JOIN u v INDEXED by w ON v.c = t.d
-      AND v.f = t.f
-      JOIN x e INDEXED by y ON e.m = t.c
-      AND e.f = v.f
-      AND e.z > 0
-      JOIN aa ab INDEXED BY ac ON ab.ad = e.c
-      AND ab.f = e.f
-      AND ab.ae IS NULL
-      AND ab.af IS NULL
-      JOIN g o INDEXED by ag ON o.c = ab.ah
-      AND o.f = ab.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN k ai INDEXED by aj ON ai.m = o.c
-      AND ai.f = o.f
-      LEFT JOIN ak q ON q.al = o.al
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t4.cv = t3.cv
+      AND t4.ai > 0
+      JOIN w t5 INDEXED BY ix_g ON t5.x = t4.ag
+      AND t5.cv = t4.cv
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN x t7 INDEXED by ix_h ON t7.b = t6.ag
+      AND t7.cv = t6.cv
+      LEFT JOIN f t8 ON t8.cw = t6.cw
     WHERE
-      q.am = 6
-      AND (v.an = 4)
+      t8.z = 6
+      AND (t3.cq = 4)
   )
 SELECT
-  COUNT(*) AS ao,
-  SUM(p) AS ap
+  COUNT(*) AS c1,
+  SUM(d) AS c2
 FROM
-  n option (
+  cte1 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q75
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c,
-      b.d,
-      b.f
+      t0.ag,
+      t0.au,
+      t0.cv
     FROM
       (
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h >= ('2025-08-27')
-          AND h < ('2025-08-28')
-          AND COALESCE(i, 0) <> 1
+          cv = 4797271
+          AND cs >= ('2025-08-27')
+          AND cs < ('2025-08-28')
+          AND COALESCE(bb, 0) <> 1
         UNION ALL
         SELECT
-          c,
-          d,
-          f
+          ag,
+          au,
+          cv
         FROM
-          g
+          l
         WHERE
-          f = 4797271
-          AND h IS NULL
-          AND j >= ('2025-08-27')
-          AND j < ('2025-08-28')
-          AND COALESCE(i, 0) <> 1
-      ) b
-      JOIN k l ON l.m = b.c
-      AND l.f = b.f
+          cv = 4797271
+          AND cs IS NULL
+          AND a >= ('2025-08-27')
+          AND a < ('2025-08-28')
+          AND COALESCE(bb, 0) <> 1
+      ) t0
+      JOIN x t1 ON t1.b = t0.ag
+      AND t1.cv = t0.cv
   ),
-  n AS (
+  cte1 AS (
     SELECT DISTINCT
-      o.f AS f,
-      p.q AS q,
-      p.r AS r,
-      p.s AS s,
-      o.t AS t,
-      u.v AS v
+      t6.cv AS cv,
+      t3.ay AS ay,
+      t3.bg AS bg,
+      t3.ah AS ah,
+      t6.cu AS cu,
+      t9.cx AS cx
     FROM
-      a w
-      JOIN x p INDEXED by y ON p.c = w.d
-      AND p.f = w.f
-      JOIN z e INDEXED by aa ON e.m = w.c
-      AND p.f = e.f
-      AND e.ab > 0
-      JOIN ac ad INDEXED by ae ON ad.af = e.c
-      AND ad.f = e.f
-      AND ad.ag IS NULL
-      AND ad.ah IS NULL
-      JOIN g o INDEXED by ai ON o.c = ad.aj
-      AND o.f = ad.f
-      AND COALESCE(o.i, 0) <> 1
-      LEFT JOIN k ak INDEXED by al ON ak.m = o.c
-      AND ak.f = o.f
-      LEFT JOIN am an ON an.ao = o.ao
-      LEFT JOIN ap u ON u.f = p.f
-      AND u.q = p.q
+      cte0 t2
+      JOIN y t3 INDEXED by ix_i ON t3.ag = t2.au
+      AND t3.cv = t2.cv
+      JOIN v t4 INDEXED by ix_f ON t4.b = t2.ag
+      AND t3.cv = t4.cv
+      AND t4.ai > 0
+      JOIN w t5 INDEXED by ix_g ON t5.x = t4.ag
+      AND t5.cv = t4.cv
+      AND t5.db IS NULL
+      AND t5.da IS NULL
+      JOIN l t6 INDEXED by ix_d ON t6.ag = t5.bs
+      AND t6.cv = t5.cv
+      AND COALESCE(t6.bb, 0) <> 1
+      LEFT JOIN x t7 INDEXED by ix_h ON t7.b = t6.ag
+      AND t7.cv = t6.cv
+      LEFT JOIN f t8 ON t8.cw = t6.cw
+      LEFT JOIN ad t9 ON t9.cv = t3.cv
+      AND t9.ay = t3.ay
     WHERE
-      an.aq = 6
-      AND (p.ar = 4)
+      t8.z = 6
+      AND (t3.cq = 4)
   )
 SELECT
-  n.f,
-  n.q,
-  n.r,
-  n.s,
-  n.t,
-  n.v
+  cte1.cv,
+  cte1.ay,
+  cte1.bg,
+  cte1.ah,
+  cte1.cu,
+  cte1.cx
 FROM
-  n option (
+  cte1 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q76
 SELECT
-  TO_CHAR(a, '%Y-%m-%d') AS a,
-  SUM(b) AS c,
-  SUM(d) AS f
+  TO_CHAR(a, '%Y-%m-%d') AS c0,
+  SUM(f) AS c1,
+  SUM(e) AS c2
 FROM
-  g
+  d
 WHERE
   (
-    h = 4797271
-    AND i = 4
-    AND j = 2025
-    AND k = 8
+    cv = 4797271
+    AND cq = 4
+    AND bm = 2025
+    AND bk = 8
   )
 GROUP BY
-  h,
+  cv,
   a
 ORDER BY
-  a DESC option (
+  c0 DESC option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q77
 SELECT
-  a AS a,
-  b AS b,
-  c AS c,
-  d AS d,
-  SUM(f) AS g,
-  SUM(h) AS i
+  bk AS c0,
+  bl AS c1,
+  bm AS c2,
+  cq AS c3,
+  SUM(f) AS c4,
+  SUM(e) AS c5
 FROM
-  j
+  e
 WHERE
-  (k = 4797271)
+  (cv = 4797271)
 GROUP BY
-  d,
-  a,
-  b,
-  c option (
+  cq,
+  bk,
+  bl,
+  bm option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q78
 SELECT
-  a,
-  b,
-  c
+  ag,
+  cf,
+  ce
 FROM
-  d f
+  s t0
 WHERE
-  (f.g = 3023424)
+  (t0.cv = 3023424)
 ORDER BY
-  a
+  ag
 LIMIT
   1 option (
     SQL_VDBE_OPCODE_MAX = 45000,
@@ -4796,281 +4800,281 @@ LIMIT
 
 -- TEST: q79
 SELECT
-  a.b AS b,
+  t1.cq AS c0,
   CASE
-    WHEN MIN(c.d) IS NOT NULL THEN TO_CHAR(MIN(c.d), '%Y-%m-%d')
+    WHEN MIN(t2.u) IS NOT NULL THEN TO_CHAR(MIN(t2.u), '%Y-%m-%d')
     ELSE NULL
-  END AS f,
-  SUM(g.h) AS i
+  END AS c1,
+  SUM(t0.az) AS c2
 FROM
-  j g
-  JOIN k a ON g.l = a.m
-  AND g.n = a.n
-  JOIN o c ON g.p = c.p
-  AND g.n = c.n
-  LEFT JOIN q r ON a.s = r.t
+  v t0
+  JOIN y t1 ON t0.au = t1.ag
+  AND t0.cv = t1.cv
+  JOIN x t2 ON t0.b = t2.b
+  AND t0.cv = t2.cv
+  LEFT JOIN i t3 ON t1.cu = t3.br
 WHERE
   (
-    g.n = 3023424
-    AND NOT r.u
-    AND h > 0
+    t0.cv = 3023424
+    AND NOT t3.ap
+    AND az > 0
   )
 GROUP BY
-  a.b option (
+  t1.cq option (
     SQL_VDBE_OPCODE_MAX = 798000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q80
 SELECT
-  'KNO' AS a,
-  b.c AS c,
-  b.d AS d,
-  b.f AS f,
+  'KNO' AS c0,
+  t0.cu AS c1,
+  t0.ah AS c2,
+  t0.bg AS c3,
   (
     CASE
       WHEN (
-        g.h IS NOT NULL
-        AND g.h = 3
+        t1.cw IS NOT NULL
+        AND t1.cw = 3
       ) THEN 1
       ELSE 0
     END
-  ) AS i,
-  b.j AS j,
+  ) AS c4,
+  t0.ay AS c5,
   SUM(
     (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.k > 0
-        AND b.l <> 1 THEN 0.0
-        ELSE COALESCE(b.k, 0.0)
+        AND t0.bx > 0
+        AND t0.aw <> 1 THEN 0.0
+        ELSE COALESCE(t0.bx, 0.0)
       END
     )::decimal + (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.m > 0 THEN 0.0
-        ELSE COALESCE(b.m, 0.0)
+        AND t0.bz > 0 THEN 0.0
+        ELSE COALESCE(t0.bz, 0.0)
       END
     )::decimal + (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.n > 0 THEN 0.0
-        ELSE COALESCE(b.n, 0.0)
+        AND t0.ca > 0 THEN 0.0
+        ELSE COALESCE(t0.ca, 0.0)
       END
     )::decimal + (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.o > 0 THEN 0.0
-        ELSE COALESCE(b.o, 0.0)
+        AND t0.cd > 0 THEN 0.0
+        ELSE COALESCE(t0.cd, 0.0)
       END
     )::decimal + (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.p > 0 THEN 0.0
-        ELSE COALESCE(b.p, 0.0)
+        AND t0.cc > 0 THEN 0.0
+        ELSE COALESCE(t0.cc, 0.0)
       END
     )::decimal + (
       CASE
         WHEN (
-          g.h IS NULL
-          OR g.h <> 3
+          t1.cw IS NULL
+          OR t1.cw <> 3
         )
-        AND b.q > 0 THEN 0.0
-        ELSE COALESCE(b.q, 0.0)
+        AND t0.cg > 0 THEN 0.0
+        ELSE COALESCE(t0.cg, 0.0)
       END
     )::decimal
-  ) AS r,
+  ) AS c6,
   SUM(
     (
       CASE
-        WHEN b.l = 2 THEN COALESCE(b.m, 0.0)
+        WHEN t0.aw = 2 THEN COALESCE(t0.bz, 0.0)
         ELSE 0.0
       END
     )::decimal
-  ) AS s,
+  ) AS c7,
   SUM(
     (
       CASE
-        WHEN b.l = 3 THEN COALESCE(b.n, 0.0)
+        WHEN t0.aw = 3 THEN COALESCE(t0.ca, 0.0)
         ELSE 0.0
       END
     )::decimal
-  ) AS t,
+  ) AS c8,
   SUM(
     (
       CASE
-        WHEN b.l IN (42, 45) THEN COALESCE(b.m, 0.0)
+        WHEN t0.aw IN (42, 45) THEN COALESCE(t0.bz, 0.0)
         ELSE 0.0
       END
     )::decimal
-  ) AS u
+  ) AS c9
 FROM
-  v b
-  LEFT JOIN w g ON b.c = g.c
+  y t0
+  LEFT JOIN g t1 ON t0.cu = t1.cu
 WHERE
-  (x = 3023424)
+  (cv = 3023424)
 GROUP BY
-  b.c,
-  b.d,
-  b.f,
+  t0.cu,
+  t0.ah,
+  t0.bg,
   (
     CASE
       WHEN (
-        g.h IS NOT NULL
-        AND g.h = 3
+        t1.cw IS NOT NULL
+        AND t1.cw = 3
       ) THEN 1
       ELSE 0
     END
   ),
-  b.j option (
+  t0.ay option (
     SQL_VDBE_OPCODE_MAX = 900000,
     SQL_MOTION_ROW_MAX = 5100
   );
 
 -- TEST: q81
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c AS c,
-      b.d AS d,
-      b.f AS f,
-      b.g AS g,
+      t0.cu AS cu,
+      t0.ah AS ah,
+      t0.bg AS bg,
+      t0.ay AS ay,
       CASE
         WHEN (
-          h.i IS NOT NULL
-          AND h.i = 3
+          t2.cw IS NOT NULL
+          AND t2.cw = 3
         ) THEN 1
         ELSE 0
-      END AS j,
+      END AS c4,
       COALESCE(
         (
-          b.k * COALESCE(l.m, 0) * CASE
-            WHEN b.n IS NOT NULL THEN -1
+          t0.d * COALESCE(t3.cj, 0) * CASE
+            WHEN t0.h IS NOT NULL THEN -1
             ELSE 1
           END
         ),
         0.0
-      ) AS o,
-      p.q AS q
+      ) AS aa,
+      t4.aw AS aw
     FROM
-      r b
-      LEFT JOIN r s ON s.n = b.t
-      AND s.u = b.u
-      LEFT JOIN v h ON b.c = h.c
-      LEFT JOIN w l ON b.i = l.i
-      LEFT JOIN x p ON b.y = p.t
-      AND b.u = p.u
+      n t0
+      LEFT JOIN n t1 ON t1.h = t0.ag
+      AND t1.cv = t0.cv
+      LEFT JOIN g t2 ON t0.cu = t2.cu
+      LEFT JOIN f t3 ON t0.cw = t3.cw
+      LEFT JOIN y t4 ON t0.au = t4.ag
+      AND t0.cv = t4.cv
     WHERE
       (
-        b.u = 3023424
-        AND s.t IS NULL
+        t0.cv = 3023424
+        AND t1.ag IS NULL
         AND (
-          b.n IS NULL
-          OR b.n = -1
+          t0.h IS NULL
+          OR t0.h = -1
         )
       )
   )
 SELECT
-  'BUF' AS z,
-  c,
-  c,
-  d,
-  f,
-  j,
-  g,
-  COALESCE(SUM(o), 0.0) AS aa,
+  'BUF' AS c7,
+  cu,
+  cu,
+  ah,
+  bg,
+  c4,
+  ay,
+  COALESCE(SUM(aa), 0.0) AS c8,
   COALESCE(
     SUM(
       CASE
-        WHEN q = 2 THEN o
+        WHEN aw = 2 THEN aa
         ELSE 0.0
       END
     ),
     0.0
-  ) AS ab,
+  ) AS c9,
   COALESCE(
     SUM(
       CASE
-        WHEN q = 3 THEN o
+        WHEN aw = 3 THEN aa
         ELSE 0.0
       END
     ),
     0.0
-  ) AS ac,
+  ) AS c10,
   COALESCE(
     SUM(
       CASE
-        WHEN q IN (42, 45) THEN o
+        WHEN aw IN (42, 45) THEN aa
         ELSE 0.0
       END
     ),
     0.0
-  ) AS ad
+  ) AS c11
 FROM
-  a
+  cte0
 GROUP BY
-  c,
-  d,
-  f,
-  j,
-  g option (
+  cu,
+  ah,
+  bg,
+  c4,
+  ay option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q82
 SELECT DISTINCT
-  a AS a
+  au AS c0
 FROM
-  b c
-  JOIN d f ON c.g = f.g
-  AND c.h = f.h
+  v t0
+  JOIN x t1 ON t0.b = t1.b
+  AND t0.cv = t1.cv
 WHERE
-  (c.h = 2466827)
-  AND c.i > 0 option (
+  (t0.cv = 2466827)
+  AND t0.az > 0 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 15000
   );
 
 -- TEST: q83
 SELECT
-  count(*) AS a
+  count(*) AS c0
 FROM
   (
     SELECT DISTINCT
-      b.c,
-      d.f,
-      d.g,
-      b.h,
-      b.i,
-      b.j,
-      b.k,
-      l.m
+      t0.cq,
+      t2.aj,
+      t2.am,
+      t0.aw,
+      t0.ay,
+      t0.cu,
+      t0.bg,
+      t1.cz
     FROM
-      n b
-      LEFT JOIN o l ON b.j = l.p
-      LEFT JOIN q d ON b.r = d.r
-      AND b.i = d.i
+      y t0
+      LEFT JOIN i t1 ON t0.cu = t1.br
+      LEFT JOIN ab t2 ON t0.cv = t2.cv
+      AND t0.ay = t2.ay
     WHERE
       (
-        b.r = 2466827
-        AND b.s IN (126412759, 126412766, 566228222)
-        AND b.c = 4
+        t0.cv = 2466827
+        AND t0.ag IN (126412759, 126412766, 566228222)
+        AND t0.cq = 4
       )
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
@@ -5079,55 +5083,55 @@ FROM
 
 -- TEST: q84
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c AS c,
-      b.d AS d,
-      b.f AS f,
-      b.g AS g,
-      b.h AS h,
-      i.j AS j,
-      k.l AS l,
-      k.m AS m,
-      COALESCE(SUM(n + o + p + q + r + s), 0.0) AS t
+      t0.cq AS cq,
+      t0.aw AS aw,
+      t0.ay AS ay,
+      t0.cu AS cu,
+      t0.bg AS bg,
+      t1.cz AS cz,
+      t2.aj AS aj,
+      t2.am AS am,
+      COALESCE(SUM(bx + bz + ca + cd + cc + cg), 0.0) AS bv
     FROM
-      u b
-      LEFT JOIN v i ON b.g = i.w
-      LEFT JOIN x k ON b.y = k.y
+      y t0
+      LEFT JOIN i t1 ON t0.cu = t1.br
+      LEFT JOIN ab t2 ON t0.cv = t2.cv
     WHERE
       (
-        b.y = 2466827
-        AND b.z IN (126412759, 126412766, 566228222)
-        AND b.c = 4
+        t0.cv = 2466827
+        AND t0.ag IN (126412759, 126412766, 566228222)
+        AND t0.cq = 4
       )
     GROUP BY
-      c,
-      l,
-      m,
-      d,
-      b.f,
-      g,
-      h,
-      i.j
+      cq,
+      aj,
+      am,
+      aw,
+      t0.ay,
+      cu,
+      bg,
+      t1.cz
   ),
-  aa AS (
+  cte1 AS (
     SELECT
-      a.*,
+      cte0.*,
       ROW_NUMBER() OVER (
         ORDER BY
-          t
-      ) AS ab
+          bv
+      ) AS c9
     FROM
-      a
+      cte0
     ORDER BY
-      t
+      bv
   )
 SELECT
   *
 FROM
-  aa
+  cte1
 WHERE
-  ab > 0
+  c9 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
@@ -5136,113 +5140,113 @@ LIMIT
 
 -- TEST: q85
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      a.b AS b,
-      a.c AS d,
-      a.f AS f,
-      a.g AS g,
-      a.h AS h,
-      a.i AS i,
-      COALESCE(a.j, 0.0) AS j
+      cte0.cv AS cv,
+      cte0.ag AS c1,
+      cte0.r AS r,
+      cte0.n AS n,
+      cte0.q AS q,
+      cte0.ak AS ak,
+      COALESCE(cte0.t, 0.0) AS t
     FROM
-      k a
+      o cte0
     WHERE
       (
-        a.b = 4797271
-        AND a.l = 2
-        AND a.g IN (1, 2)
+        cte0.cv = 4797271
+        AND cte0.s = 2
+        AND cte0.n IN (1, 2)
       )
   ),
-  m AS (
+  cte1 AS (
     SELECT
-      a.b AS b,
-      a.d AS d,
-      m.c AS n,
-      a.f AS f,
-      a.g AS g,
-      a.h AS h,
-      a.i AS o,
-      m.p AS p,
-      a.j AS j
+      cte0.cv AS cv,
+      cte0.c1 AS c1,
+      cte1.ag AS c7,
+      cte0.r AS r,
+      cte0.n AS n,
+      cte0.q AS q,
+      cte0.ak AS ah,
+      cte1.aw AS aw,
+      cte0.t AS t
     FROM
-      a
-      JOIN q m ON a.d = m.r
-      AND a.b = m.b
+      cte0
+      JOIN p cte1 ON cte0.c1 = cte1.l
+      AND cte0.cv = cte1.cv
   ),
-  s AS (
+  cte2 AS (
     SELECT
-      m.b AS b,
-      m.d AS d,
-      m.f AS f,
-      m.g AS g,
-      m.h AS h,
-      m.o AS o,
-      m.p AS p,
-      m.j AS j,
-      s.c AS t
+      cte1.cv AS cv,
+      cte1.c1 AS c1,
+      cte1.r AS r,
+      cte1.n AS n,
+      cte1.q AS q,
+      cte1.ah AS ah,
+      cte1.aw AS aw,
+      cte1.t AS t,
+      cte2.ag AS c10
     FROM
-      m
-      JOIN u s ON m.n = s.v
-      AND m.b = s.b
+      cte1
+      JOIN q cte2 ON cte1.c7 = cte2.j
+      AND cte1.cv = cte2.cv
   ),
-  w AS (
+  cte3 AS (
     SELECT
-      s.b AS b,
-      s.d AS d,
-      s.f AS f,
-      s.g AS g,
-      s.h AS h,
-      s.o AS o,
-      s.j + CASE
-        WHEN s.p IN (42, 45)
-        AND w.x IS NOT NULL THEN w.x
+      cte2.cv AS cv,
+      cte2.c1 AS c1,
+      cte2.r AS r,
+      cte2.n AS n,
+      cte2.q AS q,
+      cte2.ah AS ah,
+      cte2.t + CASE
+        WHEN cte2.aw IN (42, 45)
+        AND cte3.ci IS NOT NULL THEN cte3.ci
         ELSE 0
-      END AS y,
-      w.z AS z
+      END AS c11,
+      cte3.y AS y
     FROM
-      s
-      JOIN aa w ON s.t = w.ab
-      AND s.b = w.b
+      cte2
+      JOIN r cte3 ON cte2.c10 = cte3.k
+      AND cte2.cv = cte3.cv
   ),
-  ac AS (
+  cte4 AS (
     SELECT
-      d,
-      f,
+      c1,
+      r,
       CASE
-        WHEN g = 1 THEN 'installment'
-        WHEN g = 2 THEN 'deferral'
-        WHEN g = 4 THEN 'ink'
-        WHEN g = 5 THEN 'restructurisation'
+        WHEN n = 1 THEN 'installment'
+        WHEN n = 2 THEN 'deferral'
+        WHEN n = 4 THEN 'ink'
+        WHEN n = 5 THEN 'restructurisation'
         ELSE NULL
-      END AS ad,
-      TO_CHAR(h, '%Y-%m-%d') AS h,
-      o AS o,
-      SUM(y) AS ae,
-      SUM(z) AS af,
+      END AS c13,
+      TO_CHAR(q, '%Y-%m-%d') AS q,
+      ah AS ah,
+      SUM(c11) AS cp,
+      SUM(y) AS c15,
       ROW_NUMBER() OVER (
         ORDER BY
-          h,
-          d
-      ) AS ag
+          q,
+          c1
+      ) AS c16
     FROM
-      w
+      cte3
     GROUP BY
-      d,
-      f,
-      g,
-      h,
-      o
+      c1,
+      r,
+      n,
+      q,
+      ah
     ORDER BY
-      h,
-      d
+      q,
+      c1
   )
 SELECT
   *
 FROM
-  ac
+  cte4
 WHERE
-  ag > 0
+  c16 > 0
 LIMIT
   10 option (
     SQL_VDBE_OPCODE_MAX = 1000000,
@@ -5251,14 +5255,14 @@ LIMIT
 
 -- TEST: q86
 SELECT
-  count(a.b) AS c
+  count(t0.ag) AS c0
 FROM
-  d a
+  o t0
 WHERE
   (
-    a.f = 4797271
-    AND a.g = 2
-    AND a.h IN (1, 2)
+    t0.cv = 4797271
+    AND t0.s = 2
+    AND t0.n IN (1, 2)
   ) option (
     SQL_VDBE_OPCODE_MAX = 1000000,
     SQL_MOTION_ROW_MAX = 50000
@@ -5266,44 +5270,44 @@ WHERE
 
 -- TEST: q87
 SELECT
-  a.b AS c,
-  a.d AS f,
-  a.g AS h,
-  a.i AS i
+  t0.ax AS c0,
+  t0.bc AS c1,
+  t0.cy AS c2,
+  t0.ct AS c3
 FROM
-  j a
+  i t0
 WHERE
-  a.b = '18201061201010000510' option (
+  t0.ax = '18201061201010000510' option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q88
 SELECT
-  a.b AS c,
-  a.d AS f,
-  a.g AS h,
-  a.i AS i
+  t0.ax AS c0,
+  t0.bc AS c1,
+  t0.cy AS c2,
+  t0.ct AS c3
 FROM
-  j a option (
+  i t0 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
   );
 
 -- TEST: q89
 SELECT DISTINCT
-  a.b AS b,
-  c.d AS f
+  t0.ay AS c0,
+  t1.cx AS c1
 FROM
-  g a
-  JOIN h c ON a.i = c.i
-  AND a.b = c.b
+  y t0
+  JOIN ad t1 ON t0.cv = t1.cv
+  AND t0.ay = t1.ay
 WHERE
   (
-    a.i = 3023424
+    t0.cv = 3023424
     AND (
-      LOWER(a.b) LIKE '%013%'
-      OR LOWER(c.d) LIKE '%
+      LOWER(t0.ay) LIKE '%013%'
+      OR LOWER(t1.cx) LIKE '%
 013%'
     )
   )
@@ -5315,13 +5319,13 @@ LIMIT
 
 -- TEST: q90
 SELECT DISTINCT
-  a.b AS b,
-  c.d AS f
+  t0.bg AS c0,
+  t1.bc AS c1
 FROM
-  g a
-  JOIN h c ON a.b = c.b
+  y t0
+  JOIN j t1 ON t0.bg = t1.bg
 WHERE
-  (a.i = 3023424)
+  (t0.cv = 3023424)
 LIMIT
   20 option (
     SQL_VDBE_OPCODE_MAX = 127000,
@@ -5330,37 +5334,37 @@ LIMIT
 
 -- TEST: q91
 WITH
-  a AS (
+  cte0 AS (
     SELECT
-      b.c AS c,
-      b.d AS d,
-      f.g AS g,
-      b.h AS i,
-      b.j AS j,
-      b.k AS k,
-      b.l AS l,
-      b.m AS m,
-      b.n AS n,
-      b.o AS o,
-      ROW_NUMBER() OVER () AS p
+      t0.ba AS ba,
+      t0.cu AS cu,
+      t1.cq AS cq,
+      t0.bo AS ay,
+      t0.bp AS bp,
+      t0.bh AS bh,
+      t0.bq AS bq,
+      t0.bu AS bu,
+      t0.t AS t,
+      t0.az AS az,
+      ROW_NUMBER() OVER () AS c10
     FROM
-      q b
-      LEFT JOIN r f ON b.d = f.d
-      LEFT JOIN s t ON b.d = t.u
+      aa t0
+      LEFT JOIN h t1 ON t0.cu = t1.cu
+      LEFT JOIN i t2 ON t0.cu = t2.br
     WHERE
       (
-        b.v = 2337497
-        AND f.g = 4
+        t0.cv = 2337497
+        AND t1.cq = 4
       )
   )
 SELECT
   *
 FROM
-  a
+  cte0
 WHERE
-  p > 0
+  c10 > 0
 LIMIT
   20 option (
     SQL_VDBE_OPCODE_MAX = 45000,
     SQL_MOTION_ROW_MAX = 5000
-  );
+  )

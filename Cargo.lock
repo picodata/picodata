@@ -3814,7 +3814,10 @@ dependencies = [
 name = "sql-ast-new-corpus"
 version = "0.1.0"
 dependencies = [
+ "smol_str",
  "sql-ast-new-parser",
+ "sql-executor",
+ "sql-ir",
 ]
 
 [[package]]
@@ -3946,10 +3949,12 @@ dependencies = [
 name = "sql-planner"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "insta",
  "pretty_assertions",
  "rand 0.10.1",
  "smol_str",
+ "sql-ast-new-corpus",
  "sql-executor",
  "sql-frontend",
  "sql-ir",

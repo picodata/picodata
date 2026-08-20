@@ -24,9 +24,18 @@ tarantool = { workspace = true, features = ["standalone_decimal","extra_impls"] 
 # Self-referential dev-dependency: forces the `mock` feature on for the
 # whitebox test suite in tests/ without affecting downstream builds.
 sql-planner = { path = ".", features = ["mock"] }
+criterion = "0.5.1"
+# The real-world DQL corpus the bench runs the optimizer over; `mock` also pulls
+# in `CorpusMock`, the `Metadata` catalog those queries bind against.
+sql-ast-new-corpus = { path = "../sql-ast-new-corpus", features = ["mock"] }
 
 [lib]
 name = "sql"
 
 [features]
 mock = ["sql-ir/mock", "sql-executor/mock", "sql-frontend/mock"]
+
+[[bench]]
+name = "planning"
+harness = false
+test = false

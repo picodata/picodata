@@ -29,6 +29,14 @@
 //! Besides validation, the corpus feeds the `ast_fill` benchmarks and the
 //! `ast_fill_alloc` allocation profile through [`corpus_queries`].
 
+/// A `Metadata` catalog the corpus queries bind against, for the planner optimize
+/// benchmark. Behind the `mock` feature so a plain corpus consumer stays
+/// dependency-free.
+#[cfg(feature = "mock")]
+pub mod corpus_mock;
+#[cfg(feature = "mock")]
+pub use corpus_mock::CorpusMock;
+
 const CORPUS: &str = include_str!("queries.sql");
 
 pub struct CorpusQuery {
