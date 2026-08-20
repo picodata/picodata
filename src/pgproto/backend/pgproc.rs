@@ -89,18 +89,18 @@ pub fn proc_pg_describe_portal(id: ClientId, name: String) -> PgResult<PortalDes
 
 #[proc]
 pub fn proc_pg_execute(id: ClientId, name: String, max_rows: i64) -> PgResult<Tuple> {
-    let result = backend::execute(id, name, max_rows)?;
-    let bytes = match &result {
+    let mut result = backend::execute(id, name, max_rows)?;
+    let is_finished = matches!(result, ExecuteResult::FinishedDql { .. });
+    let row_count = match &result {
+        ExecuteResult::Dml { row_count, .. } => Some(*row_count),
+        _ => None,
+    };
+
+    let bytes = match &mut result {
         ExecuteResult::AclOrDdl { .. }
         | ExecuteResult::Dml { .. }
         | ExecuteResult::Tcl { .. }
         | ExecuteResult::Empty => {
-            let row_count = if let ExecuteResult::Dml { row_count, .. } = result {
-                Some(row_count)
-            } else {
-                None
-            };
-
             #[derive(Serialize)]
             struct ProcResult {
                 row_count: Option<usize>,
@@ -118,13 +118,7 @@ pub fn proc_pg_execute(id: ClientId, name: String, max_rows: i64) -> PgResult<Tu
                 is_finished: bool,
             }
 
-            let is_finished = matches!(result, ExecuteResult::FinishedDql { .. });
-            let rows = rows
-                .values()
-                .into_iter()
-                // Note: It's OK to unwrap here as this is testing code.
-                .map(|values| values.into_iter().map(|v| v.try_into().unwrap()).collect())
-                .collect();
+            let rows = rows.into_sbroad_values()?;
             let result = ProcResult { rows, is_finished };
 
             Ok(msgpack::encode(&vec![result]))

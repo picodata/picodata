@@ -397,6 +397,17 @@ impl PortC {
         PortCIterator::new(self)
     }
 
+    /// A cursor pointing at the first entry of the port.
+    ///
+    /// Unlike [`PortC::iter`], the returned cursor doesn't borrow the port,
+    /// so it can be stored next to the port it walks over. See [`PortCCursor`].
+    pub fn cursor(&self) -> PortCCursor {
+        PortCCursor {
+            entry: self.first,
+            port: self as *const PortC,
+        }
+    }
+
     /// Interpret `PortC` as a mutable raw pointer to `Port`.
     ///
     /// # Safety
@@ -421,6 +432,42 @@ impl PortC {
             return None;
         }
         let entry = unsafe { &*(self.last as *const PortCEntry) };
+        Some(unsafe { entry.data() })
+    }
+}
+
+/// A position in the entry list of a [`PortC`], which is not tied to the
+/// lifetime of the port.
+///
+/// Port entries are allocated on a mempool or on the heap (see `port_c_add_mp`),
+/// so their addresses stay valid as long as the port is alive, no matter how many
+/// entries are added afterwards. This makes it possible to keep a cursor in the
+/// same structure that owns the port, which can't be done with [`PortCIterator`]
+/// without making that structure self-referential.
+///
+/// The cursor doesn't keep the port alive on its own, hence the port has to be
+/// passed into every [`PortCCursor::next`] call. This also ties the lifetime of
+/// the yielded msgpack to the port, so it can't outlive it.
+#[derive(Clone, Copy, Debug)]
+pub struct PortCCursor {
+    entry: *const PortCEntry,
+    /// Only used to validate the safety contract of [`PortCCursor::next`].
+    port: *const PortC,
+}
+
+impl PortCCursor {
+    /// Read the msgpack the cursor points at and advance the cursor.
+    ///
+    /// # Safety
+    ///
+    /// `port` must be the very same port this cursor was created from with
+    /// [`PortC::cursor`], and no entries may have been added to that port since.
+    #[inline]
+    pub unsafe fn next<'port>(&mut self, port: &'port PortC) -> Option<&'port [u8]> {
+        debug_assert_eq!(self.port, port as *const PortC, "cursor of a foreign port");
+
+        let entry = unsafe { self.entry.as_ref() }?;
+        self.entry = entry.next;
         Some(unsafe { entry.data() })
     }
 }

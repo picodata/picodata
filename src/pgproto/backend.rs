@@ -28,6 +28,7 @@ mod pgproc;
 mod well_known_queries;
 
 pub mod describe;
+pub mod port_rows;
 pub mod result;
 pub mod storage;
 

@@ -3,13 +3,17 @@ use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use bytes::{BufMut, BytesMut};
 use pgwire::types::{format::FormatOptions, FromSqlText, ToSqlText};
 use postgres_types::{to_sql_checked, FromSql, IsNull, Kind, Oid, ToSql, Type};
+use rmpv::ValueRef;
+use serde::Deserialize;
 use smol_str::{format_smolstr, ToSmolStr};
 use sql::{
     frontend::sql::{try_parse_bool, try_parse_datetime},
     ir::value::Value as SbroadValue,
 };
 use std::{
+    borrow::Cow,
     fmt::{Debug, Write},
+    io::Cursor,
     str::{self, FromStr},
 };
 use time::macros::format_description;
@@ -284,30 +288,33 @@ impl ToSql for Timestamptz {
     postgres_types::to_sql_checked!();
 }
 
+/// A decoded postgres value.
 #[derive(Debug, Clone)]
-pub enum PgValue {
+pub enum PgValue<'mp> {
     Float(f64),
     Integer(i64),
     Boolean(Bool),
-    Text(String),
+    /// Note: a [`Cow`], because array parameters can't borrow - pgwire
+    /// unescapes their elements into a buffer of its own.
+    Text(Cow<'mp, str>),
     Timestamptz(Timestamptz),
     Json(Json),
     Uuid(Uuid),
     Numeric(Decimal),
     /// Homogeneous list of typed values.
-    Array(Vec<PgValue>),
+    Array(Vec<PgValue<'mp>>),
     Null,
 }
 
-impl TryFrom<PgValue> for SbroadValue {
+impl TryFrom<PgValue<'_>> for SbroadValue {
     type Error = PgError;
 
-    fn try_from(value: PgValue) -> Result<Self, Self::Error> {
+    fn try_from(value: PgValue<'_>) -> Result<Self, Self::Error> {
         match value {
             PgValue::Float(v) => Ok(SbroadValue::from(v)),
             PgValue::Boolean(v) => Ok(SbroadValue::from(v.0)),
             PgValue::Integer(v) => Ok(SbroadValue::from(v)),
-            PgValue::Text(v) => Ok(SbroadValue::from(v)),
+            PgValue::Text(v) => Ok(SbroadValue::from(v.into_owned())),
             PgValue::Numeric(v) => Ok(SbroadValue::from(v.0)),
             PgValue::Uuid(v) => Ok(SbroadValue::from(v.0)),
             PgValue::Timestamptz(v) => Ok(SbroadValue::from(v.0)),
@@ -328,10 +335,10 @@ impl TryFrom<PgValue> for SbroadValue {
 }
 
 /// Binary format decoder.
-impl<'a> FromSql<'a> for PgValue {
+impl<'a> FromSql<'a> for PgValue<'static> {
     fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<DynError>> {
         if matches!(ty.kind(), Kind::Array(_)) {
-            return Vec::<PgValue>::from_sql(ty, raw).map(PgValue::Array);
+            return Vec::<Self>::from_sql(ty, raw).map(PgValue::Array);
         }
         let value = match *ty {
             Type::INT8 => PgValue::Integer(i64::from_sql(ty, raw)?),
@@ -344,7 +351,7 @@ impl<'a> FromSql<'a> for PgValue {
             Type::UUID => PgValue::Uuid(Uuid::from_sql(ty, raw)?),
             Type::TIMESTAMPTZ => PgValue::Timestamptz(Timestamptz::from_sql(ty, raw)?),
             Type::JSON | Type::JSONB => PgValue::Json(Json::from_sql(ty, raw)?),
-            Type::TEXT | Type::VARCHAR => PgValue::Text(String::from_sql(ty, raw)?),
+            Type::TEXT | Type::VARCHAR => PgValue::Text(String::from_sql(ty, raw)?.into()),
             ref other => return Err(format!("unsupported type {other}").into()),
         };
         Ok(value)
@@ -361,7 +368,7 @@ impl<'a> FromSql<'a> for PgValue {
     }
 }
 
-impl ToSql for PgValue {
+impl ToSql for PgValue<'_> {
     fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
         match self {
             PgValue::Null => Ok(IsNull::Yes),
@@ -372,7 +379,7 @@ impl ToSql for PgValue {
             PgValue::Uuid(v) => v.to_sql(ty, out),
             PgValue::Timestamptz(v) => v.to_sql(ty, out),
             PgValue::Json(v) => v.to_sql(ty, out),
-            PgValue::Text(v) => v.to_sql(ty, out),
+            PgValue::Text(v) => v.as_ref().to_sql(ty, out),
             PgValue::Array(v) => v.as_slice().to_sql(ty, out),
         }
     }
@@ -385,7 +392,7 @@ impl ToSql for PgValue {
     to_sql_checked!();
 }
 
-impl ToSqlText for PgValue {
+impl ToSqlText for PgValue<'_> {
     fn to_sql_text(
         &self,
         ty: &Type,
@@ -401,13 +408,14 @@ impl ToSqlText for PgValue {
             PgValue::Uuid(v) => v.to_sql_text(ty, out, opts),
             PgValue::Timestamptz(v) => v.to_sql_text(ty, out, opts),
             PgValue::Json(v) => v.to_sql_text(ty, out, opts),
-            PgValue::Text(v) => v.to_sql_text(ty, out, opts),
+            PgValue::Text(v) => v.as_ref().to_sql_text(ty, out, opts),
             PgValue::Array(v) => v.as_slice().to_sql_text(ty, out, opts),
         }
     }
 }
 
-impl<'a> FromSqlText<'a> for PgValue {
+/// Text format decoder.
+impl<'a> FromSqlText<'a> for PgValue<'static> {
     fn from_sql_text(
         ty: &Type,
         input: &'a [u8],
@@ -420,7 +428,11 @@ impl<'a> FromSqlText<'a> for PgValue {
 /// These implementations should be kept in sync with types in
 /// [`crate::pgproto::backend::describe::Describe`].
 /// Further reading: function pg_type_from_sbroad.
-impl PgValue {
+impl PgValue<'static> {
+    /// Note: this always produces an owning value, which is what a json needs,
+    /// as it holds on to the [`rmpv::Value`] it's given - and rmpv can only
+    /// serialize that one, there is no `Serialize` for a borrowing `ValueRef`.
+    /// The other types that carry a payload borrow it, see [`try_from_rmpv_ref`].
     pub fn try_from_rmpv(value: rmpv::Value, ty: &Type) -> PgResult<Self> {
         use rmpv::Value;
 
@@ -478,7 +490,7 @@ impl PgValue {
                     .into_str()
                     .expect("Value is checked as string above")
                     .to_string();
-                Ok(PgValue::Text(s))
+                Ok(PgValue::Text(s.into()))
             }
             (Value::Ext(1, v), &Type::NUMERIC) => {
                 let decimal =
@@ -518,7 +530,9 @@ impl PgValue {
             ))),
         }
     }
+}
 
+impl<'mp> PgValue<'mp> {
     fn decode_text(bytes: &[u8], ty: Type) -> Result<Self, DecodingError> {
         // TODO: rewrite this once rust supports generic closures.
         fn do_parse<T: FromStr>(ty: &Type, s: &str) -> Result<T, DecodingError>
@@ -533,9 +547,12 @@ impl PgValue {
         let s = str::from_utf8(bytes).map_err(DecodingError::bad_utf8)?;
 
         if let Kind::Array(elem) = ty.kind() {
-            let items =
-                Vec::<Option<PgValue>>::from_sql_text(elem, bytes, &FormatOptions::default())
-                    .map_err(|_| DecodingError::bad_lit_of_type(s, &ty))?;
+            let items = Vec::<Option<PgValue<'static>>>::from_sql_text(
+                elem,
+                bytes,
+                &FormatOptions::default(),
+            )
+            .map_err(|_| DecodingError::bad_lit_of_type(s, &ty))?;
             return Ok(PgValue::Array(
                 items
                     .into_iter()
@@ -548,7 +565,7 @@ impl PgValue {
             Type::INT8 | Type::INT4 | Type::INT2 => PgValue::Integer(do_parse(&ty, s)?),
             Type::FLOAT8 | Type::FLOAT4 => PgValue::Float(do_parse(&ty, s)?),
             // Wire text format transmits TEXT verbatim, so decode it as-is.
-            Type::TEXT | Type::VARCHAR => PgValue::Text(s.to_owned()),
+            Type::TEXT | Type::VARCHAR => PgValue::Text(s.to_owned().into()),
             Type::BOOL => PgValue::Boolean(do_parse(&ty, s)?),
             Type::NUMERIC => PgValue::Numeric(do_parse(&ty, s)?),
             Type::UUID => PgValue::Uuid(do_parse(&ty, s)?),
@@ -576,6 +593,108 @@ impl PgValue {
         match format {
             FieldFormat::Binary => Self::decode_binary(bytes, ty),
             FieldFormat::Text => Self::decode_text(bytes, ty),
+        }
+    }
+
+    /// Decode a single value of type `ty` from the msgpack under the `cursor`,
+    /// advancing the cursor past it.
+    pub fn decode_mp(cursor: &mut Cursor<&'mp [u8]>, ty: &Type) -> PgResult<Self> {
+        // Peek at the marker: it tells nulls from values and, more importantly,
+        // integers from floats, which are interchangeable for some of our types.
+        let position = cursor.position();
+        let marker = rmp::decode::read_marker(cursor).map_err(|e| EncodingError::new(e.0))?;
+        if let rmp::Marker::Null = marker {
+            // Null is the marker itself, there is nothing else to consume.
+            return Ok(Self::Null);
+        }
+        // The typed readers below expect to see the marker themselves.
+        cursor.set_position(position);
+
+        if let Kind::Array(elem) = ty.kind() {
+            let len = rmp::decode::read_array_len(cursor).map_err(EncodingError::new)?;
+            return (0..len)
+                .map(|_| Self::decode_mp(cursor, elem))
+                .collect::<PgResult<Vec<_>>>()
+                .map(Self::Array);
+        }
+
+        let value = match *ty {
+            // Note: only INT8 is allowed here, see `PgValue::try_from_rmpv`.
+            Type::INT8 => Self::Integer(rmp::decode::read_int(cursor).map_err(EncodingError::new)?),
+            Type::BOOL => Self::Boolean(Bool(
+                rmp::decode::read_bool(cursor).map_err(EncodingError::new)?,
+            )),
+            Type::FLOAT8 => Self::Float(read_double(cursor, marker)?),
+            Type::TEXT | Type::VARCHAR => Self::Text(read_str(cursor)?.into()),
+            // A json holds the value it's given, so read an owning one at once.
+            Type::JSON | Type::JSONB => {
+                let value = rmpv::decode::read_value(cursor).map_err(EncodingError::new)?;
+                PgValue::try_from_rmpv(value, ty)?
+            }
+            _ => {
+                let value = rmpv::decode::read_value_ref(cursor).map_err(EncodingError::new)?;
+                try_from_rmpv_ref(value, ty)?
+            }
+        };
+
+        Ok(value)
+    }
+}
+
+/// Decode a value stored as a msgpack extension, reading its payload where it
+/// lies instead of copying it out of the buffer like [`rmpv::Value`] does.
+fn try_from_rmpv_ref(value: ValueRef<'_>, ty: &Type) -> PgResult<PgValue<'static>> {
+    // Note: the extension type ids are the ones tarantool encodes with.
+    match (value, ty) {
+        (value @ ValueRef::Ext(1, _), &Type::NUMERIC) => {
+            Ok(PgValue::Numeric(deserialize_ext(value)?))
+        }
+        (value @ ValueRef::Ext(2, _), &Type::UUID) => Ok(PgValue::Uuid(deserialize_ext(value)?)),
+        (value @ ValueRef::Ext(4, _), &Type::TIMESTAMPTZ) => {
+            Ok(PgValue::Timestamptz(deserialize_ext(value)?))
+        }
+        // Note: a decimal with no fractional part arrives as a plain number,
+        // which is what aggregates and window functions tend to produce.
+        (value, ty) => PgValue::try_from_rmpv(value.to_owned(), ty),
+    }
+}
+
+/// Read a msgpack string, borrowing it from the buffer.
+fn read_str<'mp>(cursor: &mut Cursor<&'mp [u8]>) -> PgResult<&'mp str> {
+    let value = rmpv::decode::read_value_ref(cursor).map_err(EncodingError::new)?;
+    let ValueRef::String(string) = value else {
+        return Err(EncodingError::new(format!("expected a string, got {value:?}")).into());
+    };
+
+    let text = string
+        .into_str()
+        .ok_or_else(|| EncodingError::new("couldn't encode a non-utf8 string"))?;
+    Ok(text)
+}
+
+/// Deserialize a value stored as a msgpack extension, reading its payload
+/// where it lies instead of copying it out of the buffer.
+fn deserialize_ext<'mp, T: Deserialize<'mp>>(value: ValueRef<'mp>) -> PgResult<T> {
+    Ok(rmpv::ext::deserialize_from(value).map_err(EncodingError::new)?)
+}
+
+/// Read a msgpack float. `NUMBER` values with no fractional part are stored as
+/// integers, so those are accepted as well.
+fn read_double(cursor: &mut Cursor<&[u8]>, marker: rmp::Marker) -> PgResult<f64> {
+    use rmp::Marker;
+
+    match marker {
+        Marker::F32 => Ok(rmp::decode::read_f32(cursor).map_err(EncodingError::new)? as f64),
+        Marker::F64 => Ok(rmp::decode::read_f64(cursor).map_err(EncodingError::new)?),
+        _ => {
+            let position = cursor.position();
+            if let Ok(v) = rmp::decode::read_int::<i64, _>(cursor) {
+                return Ok(v as f64);
+            }
+            // NOTE: u64::MAX can't be converted into i64.
+            cursor.set_position(position);
+            let v: u64 = rmp::decode::read_int(cursor).map_err(EncodingError::new)?;
+            Ok(v as f64)
         }
     }
 }
@@ -607,7 +726,7 @@ mod tests {
             .into_iter()
             .map(|e| match e {
                 PgValue::Null => None,
-                PgValue::Text(v) => Some(v),
+                PgValue::Text(v) => Some(v.into_owned()),
                 other => panic!("expected Text/Null, got {other:?}"),
             })
             .collect()
@@ -709,6 +828,30 @@ mod tests {
         // pgwire behaviour
         let pg = PgValue::decode_text(b"{\"NULL\",\"\",NULL}", Type::TEXT_ARRAY).unwrap();
         assert_eq!(as_text_array(pg), vec![None, None, None]);
+    }
+
+    fn decode_mp<'mp>(msgpack: &'mp [u8], ty: &Type) -> PgResult<PgValue<'mp>> {
+        let mut cursor = Cursor::new(msgpack);
+        let value = PgValue::decode_mp(&mut cursor, ty)?;
+
+        // The whole value must have been consumed, no more and no less.
+        assert_eq!(cursor.position() as usize, msgpack.len());
+        Ok(value)
+    }
+
+    #[test]
+    fn decode_mp_array_elements_are_borrowed_too() {
+        let mut mp = Vec::new();
+        rmp::encode::write_array_len(&mut mp, 1).unwrap();
+        rmp::encode::write_str(&mut mp, "hello").unwrap();
+
+        let PgValue::Array(items) = decode_mp(&mp, &Type::TEXT_ARRAY).unwrap() else {
+            panic!("expected PgValue::Array");
+        };
+        let [PgValue::Text(Cow::Borrowed(text))] = items.as_slice() else {
+            panic!("expected a single borrowed PgValue::Text, got {items:?}");
+        };
+        assert_eq!(*text, "hello");
     }
 
     #[test]

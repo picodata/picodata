@@ -1,26 +1,26 @@
 use super::{
     close_client_statements, deallocate_statement,
-    describe::{Describe, MetadataColumn, PortalDescribe, QueryType, StatementDescribe},
+    describe::{Describe, PortalDescribe, QueryType, StatementDescribe},
+    port_rows::{PinnedPort, RowSource},
     result::{ExecuteResult, Rows},
 };
 use crate::config::observer::AtomicObserver;
-use crate::sql::port::PicoPortOwned;
 use crate::sql::router::{get_table_version, RouterRuntime};
 use crate::{audit, schema::ADMIN_ID};
 use crate::{
     pgproto::{
         client::ClientId,
         error::{PedanticError, PgError, PgErrorCode, PgResult},
-        value::{FieldFormat, PgValue},
+        value::FieldFormat,
     },
     tlog,
     traft::node,
 };
+use pgwire::api::results::FieldInfo;
 use postgres_types::{Oid, Type as PgType};
 use prometheus::IntCounter;
 use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr};
-use sql::executor::Port;
 use sql::ir::types::{DerivedType, NestedType, UnrestrictedType as SbroadType};
 use sql_protocol::iterators::ExplainIter;
 use std::{
@@ -30,8 +30,7 @@ use std::{
     ops::Bound,
     os::raw::c_int,
     rc::{Rc, Weak},
-    sync::LazyLock,
-    vec::IntoIter,
+    sync::{Arc, LazyLock},
 };
 use tarantool::{
     proc::{Return, ReturnMsgpack},
@@ -497,37 +496,6 @@ pub fn build_prepared_statement_metadata(
     })
 }
 
-pub fn port_read_tuples<'bytes>(
-    port: impl Iterator<Item = &'bytes [u8]>,
-    tuples: usize,
-    metadata: &[MetadataColumn],
-) -> PgResult<Vec<Vec<PgValue>>> {
-    let mut rows = Vec::with_capacity(tuples);
-    for mp in port {
-        let mut cur = Cursor::new(mp);
-
-        // First check that we have an array value.
-        let len = rmp::decode::read_array_len(&mut cur).map_err(PgError::other)? as usize;
-        if len != metadata.len() {
-            return Err(PgError::other(format!(
-                "Expected {} columns, got {}",
-                metadata.len(),
-                len
-            )));
-        }
-
-        // Decode each column and convert it to postgres value.
-        let mut tuple = Vec::with_capacity(len);
-        for col in metadata.iter().take(len) {
-            let v = rmpv::decode::read_value(&mut cur).map_err(PgError::other)?;
-            let pg_value = PgValue::try_from_rmpv(v, &col.ty)?;
-            tuple.push(pg_value);
-        }
-        rows.push(tuple);
-    }
-    Ok(rows)
-}
-
 /// Get the number of changed rows from the port with DML result.
 fn port_read_changed<'bytes>(mut port: impl Iterator<Item = &'bytes [u8]>) -> PgResult<usize> {
     let first_mp = port.next().unwrap_or(b"\xcc\x00");
@@ -542,7 +510,7 @@ enum PortalState {
     /// from a mutable reference and we don't want to allocate a substitute.
     NotStarted(sql::BoundStatement),
     /// Portal has been executed and contains rows to be sent in batches.
-    StreamingRows(IntoIter<Vec<PgValue>>),
+    StreamingRows(RowSource),
     /// Portal has been executed and contains a result ready to be sent.
     ResultReady(ExecuteResult),
     /// Portal has been executed, and a result has been sent.
@@ -586,6 +554,7 @@ struct PortalInner {
     key: Key,
     statement: Statement,
     describe: PortalDescribe,
+    row_info: Arc<Vec<FieldInfo>>,
     state: RefCell<PortalState>,
 }
 
@@ -617,8 +586,10 @@ impl PortalInner {
             tlog!(Info, "sql-log: {query}");
         }
 
-        let mut port = PicoPortOwned::new();
-        crate::sql::dispatch_bound_statement(router, statement, None, None, &mut port)?;
+        let port = PinnedPort::fill(|port| {
+            crate::sql::dispatch_bound_statement(router, statement, None, None, port)?;
+            Ok(())
+        })?;
 
         let state = match self.describe.query_type() {
             QueryType::Acl | QueryType::Ddl => {
@@ -630,26 +601,14 @@ impl PortalInner {
                 PortalState::ResultReady(ExecuteResult::Tcl { tag })
             }
             QueryType::Dml => {
-                let row_count = port_read_changed(port.iter())?;
+                let row_count = port_read_changed(port.port_c().iter())?;
                 let tag = self.describe.command_tag();
                 PortalState::ResultReady(ExecuteResult::Dml { row_count, tag })
             }
-            QueryType::Dql => {
-                let rows = port_read_tuples(
-                    port.iter().skip(1),
-                    port.size() as usize,
-                    self.describe.metadata(),
-                )?;
-                PortalState::StreamingRows(rows.into_iter())
-            }
-            QueryType::Explain => {
-                let mut rows: Vec<Vec<PgValue>> = Vec::new();
-                for line in ExplainIter::new(port.iter()) {
-                    rows.push(vec![PgValue::Text(line)]);
-                }
-
-                PortalState::StreamingRows(rows.into_iter())
-            }
+            QueryType::Dql => PortalState::StreamingRows(RowSource::dql(port)),
+            QueryType::Explain => PortalState::StreamingRows(RowSource::explain(ExplainIter::new(
+                port.port_c().iter(),
+            ))),
             QueryType::Deallocate => {
                 let ir_plan = self.statement.prepared_statement().as_plan();
                 let top_id = ir_plan.get_top()?;
@@ -700,23 +659,24 @@ impl PortalInner {
                 }
                 PortalState::ResultReady(result) => Ok((Some(result), PortalState::Done)),
                 PortalState::StreamingRows(mut stored_rows) => {
-                    let taken: Vec<_> = (&mut stored_rows).take(max_rows).collect();
-                    let row_count = taken.len();
-                    let rows = Rows::new(taken, self.describe.row_info());
+                    let batch = stored_rows.split_off_front(max_rows);
+                    let row_count = batch.len();
+                    let rows = Rows::new(batch, Arc::clone(&self.row_info));
 
-                    Ok(match stored_rows.len() {
-                        0 => (
+                    Ok(if stored_rows.is_empty() {
+                        (
                             Some(ExecuteResult::FinishedDql {
                                 rows,
                                 row_count,
                                 tag: self.describe.command_tag(),
                             }),
                             PortalState::Done,
-                        ),
-                        _ => (
+                        )
+                    } else {
+                        (
                             Some(ExecuteResult::SuspendedDql { rows }),
                             PortalState::StreamingRows(stored_rows),
-                        ),
+                        )
                     })
                 }
                 _ => Err(PgError::other(format!(
@@ -743,11 +703,13 @@ impl Portal {
     ) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
+        let row_info = Arc::new(describe.row_info());
         let state = PortalState::NotStarted(bound_statement).into();
         let inner = PortalInner {
             key,
             statement,
             describe,
+            row_info,
             state,
         };
 

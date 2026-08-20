@@ -548,12 +548,19 @@ impl PortalDescribe {
         }
     }
 
+    /// Same as [`PortalDescribe::row_description`], but in the form the row
+    /// encoder wants. Rows are decoded against it as well, hence there's an
+    /// entry per column even when the output format is incomplete: the wire
+    /// protocol always provides a format per column (see
+    /// `prepare_encoding_format`), while `.proc_pg_bind` may leave it empty.
     pub fn row_info(&self) -> Vec<FieldInfo> {
         let metadata = &self.describe.metadata;
-        let output_format = &self.output_format;
-        zip(metadata, output_format)
+        let text = std::iter::repeat(FieldFormat::Text);
+        let formats = self.output_format.iter().copied().chain(text);
+
+        zip(metadata, formats)
             .map(|(col, format)| {
-                FieldInfo::new(col.name.clone(), None, None, col.ty.clone(), *format)
+                FieldInfo::new(col.name.clone(), None, None, col.ty.clone(), format)
             })
             .collect()
     }
