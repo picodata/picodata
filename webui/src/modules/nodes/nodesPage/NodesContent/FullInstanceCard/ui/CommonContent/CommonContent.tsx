@@ -13,6 +13,7 @@ import {
   Section,
   SectionField,
   SectionFieldsContent,
+  CopyField,
   Address,
 } from "../common";
 
@@ -67,28 +68,36 @@ export const CommonContent = ({
               name={<FolderName value={"instance_dir"} />}
               link={getConfigurationLink("#instance_instance_dir")}
             >
-              <Address value={fullInstance.instanceDir} />
+              <CopyField text={fullInstance.instanceDir}>
+                {fullInstance.instanceDir}
+              </CopyField>
             </SectionField>
             <SectionField
               title={fullInstance.backupDir}
               name={<FolderName value={"backup_dir"} />}
               link={getConfigurationLink("#instance_backup_dir")}
             >
-              <Address value={fullInstance.backupDir} />
+              <CopyField text={fullInstance.backupDir}>
+                {fullInstance.backupDir}
+              </CopyField>
             </SectionField>
             <SectionField
               title={fullInstance.adminSocket}
               name={<FolderName value={"admin_socket"} />}
               link={getConfigurationLink("#instance_admin_socket")}
             >
-              <Address value={fullInstance.adminSocket} />
+              <CopyField text={fullInstance.adminSocket}>
+                {fullInstance.adminSocket}
+              </CopyField>
             </SectionField>
             <SectionField
               title={fullInstance.shareDir}
               name={<FolderName value={"share_dir"} />}
               link={getConfigurationLink("#instance_share_dir")}
             >
-              <Address value={fullInstance.shareDir} />
+              <CopyField text={fullInstance.shareDir}>
+                {fullInstance.shareDir}
+              </CopyField>
             </SectionField>
           </SectionFieldsContent>
         </Section>
@@ -104,7 +113,9 @@ export const CommonContent = ({
               }
               link={getConfigurationLink("#instance_iproto_listen")}
             >
-              <Address value={instance.binaryAddress} />
+              <CopyField text={instance.binaryAddress}>
+                <Address>{instance.binaryAddress}</Address>
+              </CopyField>
             </SectionField>
             <SectionField
               title={instance.httpAddress}
@@ -113,7 +124,9 @@ export const CommonContent = ({
               }
               link={getConfigurationLink("#instance_http_listen")}
             >
-              <Address value={instance.httpAddress} />
+              <CopyField text={instance.httpAddress}>
+                <Address>{instance.httpAddress}</Address>
+              </CopyField>
             </SectionField>
             <SectionField
               title={instance.pgAddress}
@@ -122,7 +135,9 @@ export const CommonContent = ({
               }
               link={getConfigurationLink("#instance_pgproto_listen")}
             >
-              <Address value={instance.pgAddress} />
+              <CopyField text={instance.pgAddress}>
+                <Address>{instance.pgAddress}</Address>
+              </CopyField>
             </SectionField>
           </SectionFieldsContent>
         </Section>
@@ -169,7 +184,9 @@ export const CommonContent = ({
               name={"destination"}
               link={getConfigurationLink("#instance_log_destination")}
             >
-              <Address value={fullInstance.log?.destination} />
+              <CopyField text={fullInstance.log?.destination}>
+                {fullInstance.log?.destination}
+              </CopyField>
             </SectionField>
             <SectionField
               name={"format"}
@@ -187,7 +204,9 @@ export const CommonContent = ({
               title={fullInstance.picodataVersion}
               name={commontContentTranslation.picodataVersion}
             >
-              <Address value={fullInstance.picodataVersion} />
+              <CopyField text={fullInstance.picodataVersion}>
+                {fullInstance.picodataVersion}
+              </CopyField>
             </SectionField>
             <SectionField
               withTitle={false}
