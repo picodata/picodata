@@ -1,56 +1,29 @@
+import { PropsWithChildren } from "react";
 import { Box, styled } from "@mui/material";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
-import { HiddenBox } from "shared/ui/HiddenBox";
-import { useShowSnackBar } from "shared/ui/SnackBar/SnackBar";
-import { useTranslation } from "shared/intl";
-import { copyText } from "shared/utils/copyText";
-
-import { EllipsisBlock } from "../common";
-
-const StyledContentCopyIcon = styled(ContentCopyIcon)(({ theme }) => ({
-  width: 14,
-  height: 14,
-  color: theme.palette.primary.main,
-}));
+const addressRegExp = /^(.*):([^:]*)$/;
 
 const Root = styled(Box)({
-  display: "flex",
-  gap: 6,
-  alignItems: "center",
-  cursor: "pointer",
+  display: "grid",
+  gridTemplateColumns: "1fr min-content",
 });
+const Hidden = styled(Box)({
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+});
+type AddressProps = PropsWithChildren;
+export const Address = ({ children }: AddressProps) => {
+  if (!children || typeof children !== "string") {
+    return null;
+  }
 
-type AddressProps = {
-  value?: string | null;
-};
-export const Address = ({ value }: AddressProps) => {
-  const showSnackBar = useShowSnackBar();
-  const { translation } = useTranslation();
-  const copyTextTranslation = translation.common.messages.copyText;
-  const clickHandler = async () => {
-    const copied = await copyText(value || "");
-    showSnackBar({
-      title: copyTextTranslation.title,
-      description: copied
-        ? copyTextTranslation.successDescription
-        : copyTextTranslation.errorDescription,
-      type: copied ? "success" : "error",
-    });
-  };
+  const match = children.match(addressRegExp);
 
-  return (
-    <Root onClick={clickHandler}>
-      {value ? (
-        <>
-          <HiddenBox>
-            <EllipsisBlock>{value}</EllipsisBlock>
-          </HiddenBox>
-          <StyledContentCopyIcon />
-        </>
-      ) : (
-        "-"
-      )}
+  return match && match[1] && match[2] ? (
+    <Root>
+      <Hidden>{match[1]}</Hidden>
+      <Box>:{match[2]}</Box>
     </Root>
-  );
+  ) : null;
 };
