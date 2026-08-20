@@ -28,6 +28,10 @@ EXCLUDE = [
     "small/",
     # We don't respect Tarantool envs.
     "box-tap/gh-5602-environment-vars-cfg",
+    # Datetime parsing replaced with PostgreSQL-compatible.
+    "app-luatest/datetime_pg_incompatible_test",
+    "app-tap/datetime_pg_incompatible",
+    "sql-luatest/datetime_pg_incompatible_test",
 ]
 
 

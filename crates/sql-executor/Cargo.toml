@@ -29,7 +29,6 @@ sql-protocol = { workspace = true }
 sqlformat = { workspace = true }
 tarantool = { workspace = true, features = ["extra_impls"] }
 thiserror = { workspace = true }
-time = { workspace = true, features = ["parsing", "formatting", "macros"] }
 twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_64", "std"] }
 uuid = { version = "1.1", features = ["v4", "fast-rng", "macro-diagnostics"] }
 

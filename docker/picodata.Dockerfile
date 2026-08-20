@@ -25,6 +25,8 @@ FROM almalinux:8
 COPY --from=builder /build/picodata/target/release/picodata /usr/bin/picodata
 COPY --from=builder /build/picodata/docker/config.yaml /etc/picodata/config.yaml
 
+RUN dnf install -y tzdata && dnf clean all
+
 RUN chmod 755 /usr/bin/picodata \
     && mkdir -p /var/lib/picodata && mkdir -p /var/run/picodata \
     && mkdir -p /usr/share/picodata \

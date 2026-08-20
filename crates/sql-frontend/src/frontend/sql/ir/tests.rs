@@ -4080,6 +4080,14 @@ fn front_sql_current_date() {
 }
 
 #[test]
+fn front_sql_datetime_cast_constants() {
+    let input =
+        r#"explain (logical) SELECT '2026-04-29 00:00:00+03'::datetime, $1::text::datetime"#;
+    let plan = sql_to_optimized_ir(input, vec![Value::from("April 29, 2026")]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection ('2026-04-29 0:00:00.0 +03:00:00'::datetime -> col_1, '2026-04-29 0:00:00.0 +00:00:00'::datetime -> col_2)");
+}
+
+#[test]
 fn front_sql_current_user() {
     // `CURRENT_USER` gets transformed to the user name constant on bind
     let input = r#"explain (logical) SELECT current_user FROM (values (1))

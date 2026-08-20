@@ -2644,6 +2644,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "pgdatetime"
+version = "0.5.2"
+source = "git+https://git.picodata.io/core/pgdatetime?branch=picodata-master#eab00bc4dac26af3c90812cbf14d382f64d0a212"
+
+[[package]]
 name = "pgwire"
 version = "0.40.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3910,7 +3915,6 @@ dependencies = [
  "sqlformat",
  "tarantool",
  "thiserror 2.0.18",
- "time",
  "twox-hash",
  "uuid 1.23.1",
 ]
@@ -3962,7 +3966,6 @@ dependencies = [
  "sqlformat",
  "tarantool",
  "thiserror 2.0.18",
- "time",
 ]
 
 [[package]]
@@ -3974,6 +3977,7 @@ dependencies = [
  "chrono",
  "insta",
  "itertools 0.10.5",
+ "pgdatetime",
  "pretty_assertions",
  "rand 0.10.1",
  "rmp",

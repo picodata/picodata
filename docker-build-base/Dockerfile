@@ -48,6 +48,7 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
            postgresql \
            cpio \
            file \
+           tzdata \
     && npm install -g corepack \
     # use corepack to install and manage yarn version
     && corepack enable \

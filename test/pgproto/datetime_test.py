@@ -192,8 +192,8 @@ def test_invalid_dates(postgres: Postgres):
             types={"p": pg8000.TIMESTAMPTZ},
         )
 
-    # Test invalid date with time 24:00:00
-    dt_invalid_time = "2023-01-01 24:00:00+00"
+    # Test invalid time past 24:00:00, which PostgreSQL reads as midnight of the next day
+    dt_invalid_time = "2023-01-01 24:00:01+00"
     with pytest.raises(
         pg8000.native.DatabaseError,
         match="failed to bind parameter \\$1: decoding error: '.*' is not a valid.*",
@@ -205,7 +205,7 @@ def test_invalid_dates(postgres: Postgres):
         )
 
     # Test invalid date format
-    dt_invalid_format = "07-07-2023 12:00:00+00"
+    dt_invalid_format = "2023-07-07 12:00:00+00 garbage"
     with pytest.raises(
         pg8000.native.DatabaseError,
         match="failed to bind parameter \\$1: decoding error: '.*' is not a valid.*",

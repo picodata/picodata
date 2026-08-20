@@ -10,4 +10,5 @@ Homepage: https://picodata.io/
 Architecture: any
 Maintainer: Dmitry Kibirev <kdy@picodata.io>
 Description: In-memory database and Rust application server
+Depends: tzdata
 Recommends: postgresql-client | postgresql-client-15 | postgresql-client-11

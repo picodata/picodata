@@ -12,12 +12,13 @@ RUN curl -s ${REPO_URL}/tarantool-picodata/picodata.gpg.key | \
     echo "deb [arch=$(dpkg --print-architecture)] ${REPO_URL}/tarantool-picodata/debian/ trixie main" \
     > /etc/apt/sources.list.d/picodata.list && \
     apt-get update && \
-    apt-get install -y --no-install-recommends picodata${PICODATA_VERSION:+=${PICODATA_VERSION}}
+    apt-get install -y --no-install-recommends tzdata picodata${PICODATA_VERSION:+=${PICODATA_VERSION}}
 
 FROM docker-public.binary.picodata.io/distroless/cc-debian13
 
 COPY --from=installer /usr/bin/picodata /usr/bin/picodata
 COPY --from=installer /usr/share/picodata /usr/share/picodata
+COPY --from=installer /usr/share/zoneinfo /usr/share/zoneinfo
 COPY docker/config.yaml /etc/picodata/config.yaml
 
 WORKDIR /var/lib/picodata

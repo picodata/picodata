@@ -75,6 +75,7 @@ pub mod cbus;
 pub mod cli;
 mod compatibility;
 pub mod config;
+mod datetime;
 mod demangle;
 pub mod discovery;
 pub mod error_code;

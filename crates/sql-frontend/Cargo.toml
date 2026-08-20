@@ -22,7 +22,6 @@ sql-type-system = { path = "../sql-type-system" }
 sqlformat = { workspace = true }
 tarantool = { workspace = true, features = ["extra_impls"] }
 thiserror = { workspace = true }
-time = { workspace = true, features = ["parsing", "formatting", "macros"] }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

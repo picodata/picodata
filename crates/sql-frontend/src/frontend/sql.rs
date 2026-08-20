@@ -174,17 +174,6 @@ pub fn transform_to_regex_pattern(pat_text: &str, esc_text: &str) -> Result<Stri
 
 pub use crate::ir::value::{try_parse_bool, try_parse_datetime};
 
-/// Parse datetime values in text format.
-///
-/// It tries to support the same formats as in PostgreSQL.
-/// PostgreSQL can parse arbitrary datetime formats, as demonstrated in the following functions:
-/// * [timestamptz_in](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/backend/utils/adt/timestamp.c#L416)
-/// * [ParseDateTime](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/interfaces/ecpg/pgtypeslib/dt_common.c#L1598)
-/// * [DecodeDateTime](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/interfaces/ecpg/pgtypeslib/dt_common.c#L1780)
-///
-/// Since supporting all these formats is impractical, we will focus on parsing some
-/// known formats that enable interaction with PostgreSQL drivers.
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -199,5 +188,50 @@ mod tests {
     fn test_datetime_parse_yyyy_mm_dd() {
         let datetime = super::try_parse_datetime("2025-10-18").unwrap();
         assert_eq!(datetime.to_string(), "2025-10-18 0:00:00.0 +00:00:00");
+    }
+
+    #[test]
+    fn test_datetime_parse_rfc_2822() {
+        let datetime = super::try_parse_datetime("Sat, 18 Oct 2025 02:59:59 +0000").unwrap();
+        assert_eq!(datetime.to_string(), "2025-10-18 2:59:59.0 +00:00:00");
+    }
+
+    #[test]
+    fn test_datetime_parse_offset() {
+        for (input, expected) in [
+            ("2025-10-18 02:59:59+03", "2025-10-18 2:59:59.0 +03:00:00"),
+            (
+                "2025-10-18 02:59:59 -09:30",
+                "2025-10-18 2:59:59.0 -09:30:00",
+            ),
+            ("2025-10-18 02:59:59 EST", "2025-10-18 2:59:59.0 -05:00:00"),
+            ("2025-10-18 02:59:59+15", "2025-10-17 11:59:59.0 +00:00:00"),
+            (
+                "2025-10-18 02:59:59+03:00:30",
+                "2025-10-17 23:59:29.0 +00:00:00",
+            ),
+            (
+                "2025-10-18 02:59:59.1234567",
+                "2025-10-18 2:59:59.123457 +00:00:00",
+            ),
+            ("0044-03-15 BC", "-0043-03-15 0:00:00.0 +00:00:00"),
+        ] {
+            let datetime = super::try_parse_datetime(input).unwrap();
+            assert_eq!(datetime.to_string(), expected, "{input}");
+        }
+    }
+
+    #[test]
+    fn test_datetime_parse_no_value() {
+        for input in [
+            "infinity",
+            "-infinity",
+            "10000-01-01",
+            "9999-12-31 23:00-03",
+            "now",
+            "garbage",
+        ] {
+            assert!(super::try_parse_datetime(input).is_none(), "{input}");
+        }
     }
 }

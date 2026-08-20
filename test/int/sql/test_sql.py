@@ -1020,11 +1020,11 @@ def test_datetime(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    # check we can insert min/max date
+    # check we can insert the earliest and the latest date that can be parsed
     data = i1.sql(
         """
         insert into t2 select cast("COLUMN_1" as int), to_date("COLUMN_2", '') from (values
-            (1, '-9999-12-31T23:59:59Z'),
+            (1, '4714-11-24 00:00:00+00 BC'),
             (2, '9999-12-31T23:59:59Z')
         )
         """
@@ -1032,17 +1032,16 @@ def test_datetime(cluster: Cluster):
     assert data["row_count"] == 2
 
     # check we can't insert out of limits date
-    # FIXME: https://git.picodata.io/picodata/picodata/sbroad/-/issues/639
-    with pytest.raises(TarantoolError, match="Error decoding msgpack bytes"):
+    with pytest.raises(TarantoolError, match="could not parse"):
         i1.sql(
             """
             insert into t2 select cast("COLUMN_1" as int), to_date("COLUMN_2", '') from (values
-                (1, '-10000-01-01T00:00:00Z')
+                (1, '4714-11-23 23:59:59+00 BC')
             )
             """
         )
 
-    with pytest.raises(TarantoolError, match="Error decoding msgpack bytes"):
+    with pytest.raises(TarantoolError, match="could not parse"):
         i1.sql(
             """
             insert into t2 select cast("COLUMN_1" as int), to_date("COLUMN_2", '') from (values

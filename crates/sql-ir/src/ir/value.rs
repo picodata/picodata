@@ -1160,73 +1160,33 @@ pub fn try_parse_bool(s: &str) -> Option<bool> {
     }
 }
 
+/// Parse datetime values in text format, the way PostgreSQL's
+/// [timestamptz_in](https://github.com/postgres/postgres/blob/ba8f00eef6d/src/backend/utils/adt/timestamp.c#L416)
+/// does.
+///
+/// Unlike PostgreSQL, the value keeps the UTC offset within [-12:00, +14:00].
 pub fn try_parse_datetime(s: &str) -> Option<Datetime> {
-    use time::format_description::well_known::{Iso8601, Rfc2822, Rfc3339};
-    use time::macros::format_description;
+    use pgdatetime::{DateOrder, TimeZone, TimestampTz};
+    use time::{OffsetDateTime, UtcOffset};
 
-    fn try_from_date_without_time(s: &str) -> Option<time::OffsetDateTime> {
-        let format = format_description!("[year]-[month]-[day]");
+    /// Microseconds from the Unix epoch to PostgreSQL's one, 2000-01-01.
+    const POSTGRES_EPOCH_USECS: i128 = 946_684_800_000_000;
+    /// Minimum and maximum UTC offsets tarantool accepts, in seconds.
+    const MIN_TZOFFSET: i32 = -12 * 3600;
+    const MAX_TZOFFSET: i32 = 14 * 3600;
 
-        if let Ok(date) = time::Date::parse(s, format) {
-            let dt = date.with_hms(0, 0, 0).ok()?.assume_utc();
-            return Some(dt);
-        }
-
-        None
+    let (timestamp, offset) =
+        TimestampTz::try_from_str_with_offset(s, -1, DateOrder::MDY, &TimeZone::gmt()).ok()?;
+    if timestamp.is_infinite() {
+        return None;
     }
 
-    fn try_from_well_known_formats(s: &str) -> Option<time::OffsetDateTime> {
-        if let Ok(datetime) = time::OffsetDateTime::parse(s, &Iso8601::PARSING) {
-            return Some(datetime);
-        }
-        if let Ok(datetime) = time::OffsetDateTime::parse(s, &Rfc2822) {
-            return Some(datetime);
-        }
-        if let Ok(datetime) = time::OffsetDateTime::parse(s, &Rfc3339) {
-            return Some(datetime);
-        }
+    let usecs = i128::from(i64::from(timestamp)) + POSTGRES_EPOCH_USECS;
+    let datetime = OffsetDateTime::from_unix_timestamp_nanos(usecs * 1000).ok()?;
+    let offset = Some(offset)
+        .filter(|offset| offset % 60 == 0 && (MIN_TZOFFSET..=MAX_TZOFFSET).contains(offset))
+        .and_then(|offset| UtcOffset::from_whole_seconds(offset).ok())
+        .unwrap_or(UtcOffset::UTC);
 
-        None
-    }
-
-    fn try_from_custom_formats(s: &str) -> Option<time::OffsetDateTime> {
-        // Formats used for encoding timestamptz values.
-        // https://time-rs.github.io/book/api/format-description.html
-        let formats = [
-            format_description!(
-                "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]"
-            ),
-            format_description!(
-                "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]:[offset_minute]"
-            ),
-            format_description!(
-                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]"
-            ),
-            format_description!(
-                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]:[offset_minute]"
-            )
-        ];
-
-        for fmt in formats {
-            if let Ok(datetime) = time::OffsetDateTime::parse(s, &fmt) {
-                return Some(datetime);
-            }
-        }
-
-        None
-    }
-
-    if let Some(datetime) = try_from_well_known_formats(s) {
-        return Some(datetime.into());
-    }
-
-    if let Some(datetime) = try_from_custom_formats(s) {
-        return Some(datetime.into());
-    }
-
-    if let Some(datetime) = try_from_date_without_time(s) {
-        return Some(datetime.into());
-    }
-
-    None
+    datetime.checked_to_offset(offset).map(Datetime::from)
 }

@@ -93,7 +93,7 @@ subtle = "2.5"
 symbolic-demangle = { version = "13.2", default-features = false, features = ["rust", "cpp"] }
 tempfile = "3.8"
 thiserror = { workspace = true }
-time = { workspace = true, features = ["parsing", "formatting", "macros"] }
+time = { workspace = true, features = ["formatting", "macros"] }
 tokio = { version = "1.52.3", default-features = false, features = ["rt-multi-thread"] }
 url = "2.5.8"
 uuid = { version = "0.8", features = ["v4"] } # TODO: update to 1.0
@@ -151,6 +151,7 @@ git-version = "0.3"
 indenter = "0.3"
 insta = "1.42"
 openssl = "0.10"
+pgdatetime = { git = "https://git.picodata.io/core/pgdatetime", branch = "picodata-master" }
 picodata-plugin = { path = "crates/picodata-plugin" }
 postgres-types = { version = "0.2", features = [
     "array-impls",

@@ -92,6 +92,13 @@ BuildRequires: libzstd-devel
 BuildRequires: perl-FindBin
 %endif
 
+# Time zone names in datetime values are resolved with /usr/share/zoneinfo
+%if "%{?mandriva_os}" == "linux"
+Requires: timezone
+%else
+Requires: tzdata
+%endif
+
 %if 0%{?rhel} >= 8 || 0%{?redos} > 0 || 0%{?fedora} >= 33 || "%{?mandriva_os}" == "linux"
 Recommends:  postgresql
 %endif

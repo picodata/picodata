@@ -868,6 +868,167 @@ mod tests {
             other => panic!("expected SbroadValue::Tuple, got {other:?}"),
         }
     }
+
+    /// Decode a `TIMESTAMPTZ` the way a Bind message does.
+    fn decode_timestamptz_raw(s: &str) -> Option<time::OffsetDateTime> {
+        let pg = PgValue::decode_text(s.as_bytes(), Type::TIMESTAMPTZ).ok()?;
+        let PgValue::Timestamptz(v) = pg else {
+            panic!("expected PgValue::Timestamptz, got {pg:?}");
+        };
+        Some(v.0.into_inner())
+    }
+
+    /// Decode a `TIMESTAMPTZ` and return its Unix timestamp.
+    fn decode_timestamptz(s: &str) -> Option<i64> {
+        decode_timestamptz_raw(s).map(|dt| dt.unix_timestamp())
+    }
+
+    /// Decode a `TIMESTAMPTZ` and return its UTC offset in whole seconds.
+    fn decode_timestamptz_offset(s: &str) -> Option<i32> {
+        decode_timestamptz_raw(s).map(|dt| dt.offset().whole_seconds())
+    }
+
+    #[test]
+    fn decode_text_timestamptz_formats() {
+        // 2026-04-29T00:00:00Z and the same instant at +03:00.
+        let midnight = Some(1_777_420_800);
+        let msk = Some(1_777_410_000);
+
+        // ISO 8601, extended and basic.
+        assert_eq!(decode_timestamptz("2026-04-29"), midnight);
+        assert_eq!(decode_timestamptz("2026-04-29T00:00:00Z"), midnight);
+        assert_eq!(decode_timestamptz("2026-04-29 00:00:00Z"), midnight);
+        assert_eq!(decode_timestamptz("2026-04-29t00:00:00z"), midnight);
+        assert_eq!(decode_timestamptz("2026-04-29T00:00Z"), midnight);
+        assert_eq!(decode_timestamptz("20260429T000000Z"), midnight);
+
+        // Numeric offsets.
+        for s in [
+            "2026-04-29T00:00:00+03:00",
+            "2026-04-29T00:00:00+03",
+            "2026-04-29T00:00:00+0300",
+            "2026-04-29 00:00:00+03:00",
+            "2026-04-29 00:00:00+03",
+        ] {
+            assert_eq!(decode_timestamptz(s), msk, "{s}");
+        }
+
+        // Fractional seconds are rounded to microseconds, as in PostgreSQL.
+        assert_eq!(
+            decode_timestamptz("2026-04-29T00:00:00.123456789Z"),
+            midnight
+        );
+        assert_eq!(
+            decode_timestamptz_raw("2026-04-29T00:00:00.123456789Z").map(|dt| dt.nanosecond()),
+            Some(123_457_000)
+        );
+
+        // RFC 2822.
+        assert_eq!(
+            decode_timestamptz("Wed, 29 Apr 2026 00:00:00 +0000"),
+            midnight
+        );
+
+        // A time without a time zone is taken as UTC.
+        for s in [
+            "20260429",
+            "2026-119",
+            "2026-04-29T00:00:00",
+            "2026-04-29 00:00:00",
+            "2026-04-29t00:00:00",
+            "2026-04-29T00:00",
+            "20260429T000000",
+            "2026-04-28 24:00:00",
+            "2026-04-29T00:00:00.123456789",
+            "04/29/2026",
+            "April 29, 2026",
+            "2026-04-29T00:00:00 UTC",
+            "2026-04-29T00:00:00 GMT",
+        ] {
+            assert_eq!(decode_timestamptz(s), midnight, "{s}");
+        }
+
+        for s in [
+            "2026-04-29T00:00:00+3",
+            "2026-04-29T00:00:00+3:00",
+            "2026-04-29 00:00:00 +03:00",
+            "2026-04-29 00:00:00 +03:00:00",
+            "2026-04-29T00:00:00 MSK",
+            "2026-04-29T00:00:00MSK",
+            "2026-04-29T00:00:00 Europe/Moscow",
+        ] {
+            assert_eq!(decode_timestamptz(s), msk, "{s}");
+        }
+
+        // POSIX sign convention: GMT+3 is west of Greenwich.
+        assert_eq!(
+            decode_timestamptz("2026-04-29T00:00:00 GMT+3"),
+            Some(1_777_431_600)
+        );
+        assert_eq!(decode_timestamptz("epoch"), Some(0));
+
+        for s in [
+            "2026-04-29T00:00:00Z oops",
+            "2026-04-29 trailing garbage",
+            // PostgreSQL rejects these, although tarantool parses them.
+            "2026-W18-3",
+            "2026-04-29T12",
+            "2021-08-20 22:59:59 +180",
+            // Beyond PostgreSQL's limit of +-15:59:59.
+            "2026-04-29T00:00:00+16:00",
+            // Tarantool's datetime has no value for these.
+            "infinity",
+            "-infinity",
+            "10000-01-01",
+            // Not supported: they depend on the current time.
+            "now",
+            "today",
+        ] {
+            assert_eq!(decode_timestamptz(s), None, "{s}");
+        }
+    }
+
+    #[test]
+    fn decode_text_timestamptz_preserves_large_offsets() {
+        // 2026-04-29T00:00:00Z.
+        const MIDNIGHT_UTC: i64 = 1_777_420_800;
+
+        for (s, offset) in [
+            ("2026-04-29T00:00:00+09:06", 9 * 3600 + 6 * 60),
+            ("2026-04-29T00:00:00+09:30", 9 * 3600 + 30 * 60),
+            ("2026-04-29T00:00:00+10:00", 10 * 3600),
+            ("2026-04-29T00:00:00+12:00", 12 * 3600),
+            ("2026-04-29T00:00:00+12:45", 12 * 3600 + 45 * 60),
+            ("2026-04-29T00:00:00+14:00", 14 * 3600),
+            ("2026-04-29T00:00:00-09:30", -(9 * 3600 + 30 * 60)),
+            ("2026-04-29T00:00:00-10:00", -10 * 3600),
+            ("2026-04-29T00:00:00-12:00", -12 * 3600),
+            // Time zone names are resolved to their offset at that time.
+            ("2026-04-29T00:00:00 Pacific/Kiritimati", 14 * 3600),
+            ("2026-04-29T00:00:00 Pacific/Honolulu", -10 * 3600),
+        ] {
+            assert_eq!(decode_timestamptz_offset(s), Some(offset), "{s}");
+            assert_eq!(
+                decode_timestamptz(s),
+                Some(MIDNIGHT_UTC - i64::from(offset)),
+                "{s}"
+            );
+        }
+
+        // Tarantool only holds whole minutes within [-12:00, +14:00].
+        for (s, offset) in [
+            ("2026-04-29T00:00:00+15:00", 15 * 3600),
+            ("2026-04-29T00:00:00-12:30", -(12 * 3600 + 30 * 60)),
+            ("2026-04-29T00:00:00+03:00:30", 3 * 3600 + 30),
+        ] {
+            assert_eq!(decode_timestamptz_offset(s), Some(0), "{s}");
+            assert_eq!(
+                decode_timestamptz(s),
+                Some(MIDNIGHT_UTC - i64::from(offset)),
+                "{s}"
+            );
+        }
+    }
 }
 
 /// Rendering of msgpack extension values (decimal, uuid, datetime) inside a

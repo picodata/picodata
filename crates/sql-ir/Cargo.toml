@@ -11,6 +11,7 @@ ahash = { workspace = true }
 bitflags = { version = "2.9.1", features = ["serde"] }
 chrono = { workspace = true }
 itertools = "0.10"
+pgdatetime = { workspace = true }
 rand = { workspace = true }
 rmp = { workspace = true }
 rmp-serde = { workspace = true }
@@ -21,7 +22,7 @@ smol_str = { workspace = true }
 sql-protocol = { workspace = true }
 sql-type-system = { path = "../sql-type-system" }
 tarantool = { workspace = true, features = ["extra_impls"] }
-time = { workspace = true, features = ["parsing", "formatting", "macros"] }
+time = { workspace = true, features = ["macros"] }
 twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_64", "std"] }
 
 [dev-dependencies]

@@ -79,6 +79,7 @@ allow = [
     "MIT",
     "MPL-2.0",
     "OpenSSL",
+    "PostgreSQL",
     "Unicode-3.0",
     "Zlib",
 ]
@@ -147,6 +148,7 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # List of URLs for allowed Git repositories
 allow-git = [
     "https://git.picodata.io/core/file_shred",
+    "https://git.picodata.io/core/pgdatetime",
     "https://git.picodata.io/core/raft-rs",
 ]
 
