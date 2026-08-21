@@ -1315,14 +1315,14 @@ class Instance:
             timeout=timeout,
         )
 
-    def terminate(self, kill_after_seconds=10, on_shutdown_timeout: int | None = None) -> int | None:
+    def start_termination(self, on_shutdown_timeout: int | None = None):
         """Terminate the instance gracefully with SIGTERM"""
         if self.process is None:
             # Be idempotent
             return None
 
         log.info(
-            f"Instance.terminate({self}, kill_after_seconds={kill_after_seconds}, on_shutdown_timeout={on_shutdown_timeout}) termintating instance ..."
+            f"Instance.start_termination({self}, on_shutdown_timeout={on_shutdown_timeout}) termintating instance ..."
         )
 
         # Wake the process up in case it was suspended via SIGSTOP (happens in some tests)
@@ -1331,8 +1331,8 @@ class Instance:
 
         if on_shutdown_timeout:
             try:
-                self.eval("box.ctl.set_on_shutdown_timeout(...)", on_shutdown_timeout)
-            except ProcessDead:
+                self.eval("box.ctl.set_on_shutdown_timeout(...)", on_shutdown_timeout, timeout=on_shutdown_timeout)
+            except Exception:
                 # It's possible that the process was terminated before we called
                 # this function, e.g. if the instance was expelled with --force.
                 # In such cases `self.process` is not set to `None`, so the guard
@@ -1342,6 +1342,13 @@ class Instance:
 
         # Send SIGTERM to trigger graceful shutdown
         self.process.terminate()
+
+    def await_termination(self, kill_after_seconds=10) -> int | None:
+        if self.process is None:
+            # Idempotency
+            return None
+
+        log.info(f"Instance.await_termination({self}, kill_after_seconds={kill_after_seconds})")
 
         try:
             rc = self.process.wait(timeout=kill_after_seconds)
@@ -1357,6 +1364,10 @@ class Instance:
             # processes hanging around in the background
             self.kill()
             self.process = None
+
+    def terminate(self, kill_after_seconds=10, on_shutdown_timeout: int | None = None) -> int | None:
+        self.start_termination(on_shutdown_timeout=on_shutdown_timeout)
+        return self.await_termination(kill_after_seconds=kill_after_seconds)
 
     def name_or_port(self):
         return self.name or f":{self.port}"
@@ -2814,11 +2825,25 @@ class Cluster:
     def terminate(self, on_shutdown_timeout: int | None = None):
         log.info("Cluster.terminate()")
         errors = []
-        for instance in reversed(self.instances):
-            try:
-                instance.terminate(on_shutdown_timeout=on_shutdown_timeout)
-            except Exception as e:
-                errors.append(e)
+
+        try:
+            # Start graceful shutdown on all instances
+            for instance in reversed(self.instances):
+                try:
+                    instance.start_termination(on_shutdown_timeout=on_shutdown_timeout)
+                except Exception as e:
+                    errors.append(e)
+
+            # Await graceful shutdown of all instances, kill after 10 seconds
+            for instance in reversed(self.instances):
+                try:
+                    instance.await_termination(kill_after_seconds=10)
+                except Exception as e:
+                    errors.append(e)
+        except KeyboardInterrupt:
+            for instance in reversed(self.instances):
+                instance.kill()
+
         if errors:
             if len(errors) == 1:
                 raise errors[0] from errors[0]
