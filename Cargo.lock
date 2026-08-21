@@ -2609,7 +2609,7 @@ dependencies = [
 
 [[package]]
 name = "picodata"
-version = "26.2.1-rc1"
+version = "26.2.1-rc2"
 dependencies = [
  "abi_stable",
  "ahash 0.8.12",
@@ -2728,7 +2728,7 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin"
-version = "26.2.1-rc1"
+version = "26.2.1-rc2"
 dependencies = [
  "abi_stable",
  "log",
@@ -2748,7 +2748,7 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin-proc-macro"
-version = "26.2.1-rc1"
+version = "26.2.1-rc2"
 dependencies = [
  "quote",
  "syn 2.0.117",
@@ -3849,7 +3849,7 @@ dependencies = [
 
 [[package]]
 name = "sql-protocol"
-version = "26.2.1-rc1"
+version = "26.2.1-rc2"
 dependencies = [
  "rmp",
  "rmp-serde",

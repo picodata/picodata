@@ -5,6 +5,110 @@ per-MR fragments in `release_notes/unreleased/` at release
 time. See `doc/dev/generating-changelog.md` for the release
 flow.
 
+## [26.2.1-rc2] - 2026-08-21
+
+<!--
+Release-manager notes (remove before publishing):
+
+- concat-precedence.md:
+    The precedence change can silently alter results of unparenthesized
+    `||`-with-arithmetic expressions. Consider highlighting it prominently
+    in the release section.
+
+- sort-order.md:
+    During a rolling upgrade from the previous release, do not use `DESC` until
+    all instances have been upgraded. After creating a primary key or index with
+    `DESC`, downgrading instances to the previous release is not supported.
+-->
+
+### Features
+
+#### sql
+
+- The `WHERE bucket_id = <CONST>` filter now avoids `Motion(Full)` insertion and 
+  routes the query to a single storage. This optimization also helps execute 
+  transactions locally and queries with `OPTION(forward = off)`.
+
+- Columns in `PRIMARY KEY` and `CREATE INDEX` now accept an optional `ASC`
+  or `DESC` sort order modifier. For example, `PRIMARY KEY (a DESC, b ASC)`,
+  `id UNSIGNED PRIMARY KEY DESC`, and `CREATE INDEX ... (a ASC, b DESC)`.
+  The default order remains `ASC`. Explicit sort order is supported only
+  for `TREE` indexes.
+- The virtual `bucket_id` column can be the first part of a primary key with
+  its own sort order, for example `PRIMARY KEY (bucket_id DESC, id ASC)`.
+
+### Bug fixes
+
+#### sql
+
+- The `||` operator now has PostgreSQL-compatible precedence: a dedicated
+  tier below `+`/`-` instead of sharing the `*`/`/` tier. Unparenthesized
+  expressions mixing `||` with arithmetic may change meaning ([!3463](https://git.picodata.io/core/picodata/-/merge_requests/3463)).
+- `||` now accepts any scalar operand next to `text` (`int`, `numeric`,
+  `double`, `bool`, `datetime`, `uuid`). Each argument unconditionally
+  is converted with `CAST(... AS string)`, so its rendering follows
+  Tarantool (e.g. `TRUE`, ISO 8601 datetimes) rather than PostgreSQL.
+- Parameter types for `$1` used in `||` expressions are now reported
+  correctly over pgproto: an implicit cast no longer overwrites the
+  inferred parameter type.
+
+- Executing `SELECT` queries with `ARRAY` columns no longer produces decoding
+  errors on cluster with many replicasets.
+
+- Fixed the error `sub-query plan subtree with id XXXX not found`, which 
+  occurred in some `EXPLAIN` queries containing `DISTINCT`.
+
+- Scalar subqueries in `GROUP BY` expressions now match their twin in the select 
+  list and `HAVING`, e.g. `SELECT a + (SELECT 1) FROM t GROUP BY a + (SELECT 1)` 
+  no longer fails with `column "a" is not found in grouping expressions`.
+- A scalar subquery that appears both in `GROUP BY` and in the select list or 
+  `HAVING` is now planned and executed once instead of once per occurrence.
+
+- A join which pins constants on the sharding keys of both children no longer 
+  returns an empty result, e.g. `SELECT * FROM t1 JOIN t2 ON a = 1 AND b = 2` 
+  where `t1` is sharded by `a` and `t2` by `b`.
+
+- Queries with CTEs and window functions that previously returned an error 
+  `node XXXX is outside of the plan id subtree` now work correctly.
+
+- Executing certain queries with `UNION` and `EXCEPT` no longer returns
+  an error `Failed to compile SQL statement: Syntax error at line 1 near '('`,
+  e.g. `SELECT 1 UNION SELECT 0 EXCEPT SELECT 1 from t;`.
+
+- Scalar aggregate with empty buckets set now returns `0` instead of `NULL`, 
+  e.g. query `SELECT count(*) FROM t WHERE a = 1 AND a = 2`.
+
+- Queries using `UNION ALL`/`EXCEPT` that involve a sharded table and a global 
+  table now return the correct result.
+
+- Executing queries with CTEs that do not include projections no longer results
+  in the error `Temporary SQL table _tmp_* not found`.
+
+- Queries containing `UNION`/`UNION ALL`, where one of the parts contains a 
+  branch with a condition that is always false could return an incorrect (empty) 
+  result. Now such queries return the correct result, e.g.,
+  `SELECT 1 UNION ALL SELECT a FROM t WHERE false`,
+  `SELECT 1 UNION SELECT a FROM t WHERE a = 1 AND a = 2`.
+
+#### replication
+
+- Tiers with `replication_mode = sync` now run Tarantool elections in
+  `election_mode = "manual"`, and the election leader is the only instance
+  which accepts writes. The governor still designates the master in
+  `_pico_replicaset`, but a master which lost the majority is fenced by the
+  election itself and can no longer accept writes.
+- Fixed a bug where a lagging replica could be chosen for promotion during
+  failover. The elections now provide the "synchronize before promotion"
+  guarantee: a candidate only receives a vote from a peer whose vclock is
+  not ahead of its own.
+
+#### backup
+
+- Fixed backup and restore with custom storage directories. SQL `BACKUP` no
+  longer crashes when `memtx.dir` or `vinyl.dir` differs from `instance_dir`,
+  and `picodata restore` now restores data to the configured `wal_dir`,
+  `memtx.dir`, and `vinyl.dir`, including when these directories are nested.
+
 ## [26.2.1-rc1] - 2026-07-15
 
 ### Breaking changes

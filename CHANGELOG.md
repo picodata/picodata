@@ -8,6 +8,101 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [26.2.1-rc2] - 2026-08-21
+
+### Features
+* **(replication)** use election_mode="manual" for synchronous replication in [!3542](https://git.picodata.io/core/picodata/-/merge_requests/3542)
+* **(sql)** carry equality facts as partitions and fold them as a star in [!3447](https://git.picodata.io/core/picodata/-/merge_requests/3447)
+* **(sql)** support sort order in secondary indexes in [!3507](https://git.picodata.io/core/picodata/-/merge_requests/3507)
+* **(sql)** support sort order in primary keys in [!3507](https://git.picodata.io/core/picodata/-/merge_requests/3507)
+* **(sql)** avoid full scatter-gather for `WHERE bucket_id = <CONST>` in [!3537](https://git.picodata.io/core/picodata/-/merge_requests/3537)
+* **(sql/transactions)** allow RETURN QUERY, LET & IF in IF body in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(tarantool)** support sort order in index key definitions in [!3507](https://git.picodata.io/core/picodata/-/merge_requests/3507)
+
+### Bug fixes
+* **(backup)** support custom dirs in SQL `BACKUP` and `picodata restore` in [!3575](https://git.picodata.io/core/picodata/-/merge_requests/3575)
+* **(sql)** adjust `Value` enum to be properly decoded from msgpack in [!3434](https://git.picodata.io/core/picodata/-/merge_requests/3434)
+* **(sql)** skip create-table dry-run in clusters with sync tiers in [!3461](https://git.picodata.io/core/picodata/-/merge_requests/3461)
+* **(sql)** use subtree vtables to calculate `plan_id` in [!3464](https://git.picodata.io/core/picodata/-/merge_requests/3464)
+* **(sql)** deduplicate `Motion(Full)` for raw values under cte in [!3469](https://git.picodata.io/core/picodata/-/merge_requests/3469)
+* **(sql)** do not insert extra parentheses for `INTERSECT` in local SQL in [!3493](https://git.picodata.io/core/picodata/-/merge_requests/3493)
+* **(sql)** keep window nodes inside their own projection subtree in [!3493](https://git.picodata.io/core/picodata/-/merge_requests/3493)
+* **(sql)** collect `DISTINCT` scalar subqueries for the local GroupBy in [!3493](https://git.picodata.io/core/picodata/-/merge_requests/3493)
+* **(sql)** incorrect `UNION ALL`/`EXCEPT` of sharded and global tables result in [!3493](https://git.picodata.io/core/picodata/-/merge_requests/3493)
+* **(sql)** empty `UNION ALL` result with empty `BucketSet` branch in [!3522](https://git.picodata.io/core/picodata/-/merge_requests/3522)
+* **(sql)** empty result for join with constants on both sharding keys in [!3537](https://git.picodata.io/core/picodata/-/merge_requests/3537)
+* **(sql)** `memo` entry leak in `ShardColumnsMap` in [!3537](https://git.picodata.io/core/picodata/-/merge_requests/3537)
+* **(sql)** scalar aggregate with empty buckets set in [!3537](https://git.picodata.io/core/picodata/-/merge_requests/3537)
+* **(sql)** substitute params in index expressions in EXPLAIN(RAW) in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** type columns that depend on a parameter in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** relax index operation typecheck for ANY in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** lower `||` precedence below `+`/`-` to match PostgreSQL in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** use upper bound instead of exact buckets in explain output in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** allow more complex group by expressions in [!3568](https://git.picodata.io/core/picodata/-/merge_requests/3568)
+* **(sql/transactions)** validate LET variable names in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(tarantool)** check the return code of box_auth_data_prepare in [!3437](https://git.picodata.io/core/picodata/-/merge_requests/3437)
+* **(test)** stabilize bucket_id DDL catch-up rolling test in [!3507](https://git.picodata.io/core/picodata/-/merge_requests/3507)
+* **(test)** stop coercing EXPLAIN snapshot output to numeric types in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(test)** avoid xdist splitting classes that share a fixture file in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* fix crash on DROP TABLE when a tier has bucket_count=0 in [!3551](https://git.picodata.io/core/picodata/-/merge_requests/3551)
+
+### Refactor
+* **(sql)** include virtual bucket_id in primary key IR in [!3507](https://git.picodata.io/core/picodata/-/merge_requests/3507)
+* **(sql)** drop `Result` for buckets `conjunct`/`disjunct` in [!3522](https://git.picodata.io/core/picodata/-/merge_requests/3522)
+* **(sql)** calculate `plan_id` once using buckets dispatch info in [!3522](https://git.picodata.io/core/picodata/-/merge_requests/3522)
+* **(sql)** replace `buckets = unknown` with the `All` upper bound in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** remove ValuesRow node from the IR in [!3572](https://git.picodata.io/core/picodata/-/merge_requests/3572)
+
+### Documentation
+* **(sirin)** update plugin documentation for 1.4.0 release
+* **(sql)** document index sort order in [!3507](https://git.picodata.io/core/picodata/-/merge_requests/3507)
+* **(sql)** inline column types in table diagrams in [!3507](https://git.picodata.io/core/picodata/-/merge_requests/3507)
+* **(sql)** describe FORWARD option in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** document EXPLAIN statement in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** revise the EXPLAIN reference in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** minor edits to EXPLAIN in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** introduce a concept of stages in `explain (raw)` in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** improve docs for transactions in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** improve examples and readability in transaction docs in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** add syntax diagrams for transactional blocks in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql/transactions)** regenerate IF statement diagram in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* update Radix documentation for 1.0.5 and 1.0.6
+* fix typos in Radix
+* version bump and minor updates for Ouroboros
+* add name generator details
+* document replication mode (sync/async)
+* update Picopyn article
+* quick fix for picopyn article
+* add CREATE USER command example for Radix
+* add Migrate with ACL section
+* some edits and fixes for Radix
+
+### Performance
+* **(sql)** skip forward option enforcement for the default `forward = on` in [!3558](https://git.picodata.io/core/picodata/-/merge_requests/3558)
+
+### Testing
+* **(sql)** add known-defect tests for unsupported array operations in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** add missing EXPECTED clauses to test/int/sql/anonymous_block.sql in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* unify sql tests with common picodata tests in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* integrate nextest in sql-planner unit-tests in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* document GROUP BY alias typing defect in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* include known_defects in default pytest run in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* add tests for symbol demangler module in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+
+### Miscellaneous Tasks
+* **(bump)** bump tarantool-sys to include GCC LTO bug workaround in [!3436](https://git.picodata.io/core/picodata/-/merge_requests/3436)
+* **(sql)** refactor `BucketSet` enum in [!3522](https://git.picodata.io/core/picodata/-/merge_requests/3522)
+* **(sql)** add a few known defects of array impl in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* **(sql)** finally drop LevelNode in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* remove dead code in [!3434](https://git.picodata.io/core/picodata/-/merge_requests/3434)
+* support hex literals and opaque angle-bracket tokens in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* move first-party crates into crates/ in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* bump lru crate to 0.18.2 in [!3564](https://git.picodata.io/core/picodata/-/merge_requests/3564)
+
+### Build
+* bump rust toolchain to 1.97 in [!3549](https://git.picodata.io/core/picodata/-/merge_requests/3549)
+* enable schedule for audit job for supported release branches in [!3562](https://git.picodata.io/core/picodata/-/merge_requests/3562)
+
 ## [26.2.1-rc1] - 2026-07-15
 
 ### Breaking changes
