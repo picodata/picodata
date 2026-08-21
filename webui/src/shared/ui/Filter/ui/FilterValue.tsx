@@ -2,7 +2,8 @@ import { Box, styled } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 
 import { EditableFilterValue, EditableValueStatusEnum, Tag } from "../model";
-import { SEARCH_TEXT_KEY } from "../lib";
+import { formatFilterValue, SEARCH_TEXT_KEY } from "../lib";
+import { useTranslation } from "../../../intl";
 
 import { FilterValueContainer, RestFilterValuePart } from "./common";
 
@@ -35,6 +36,7 @@ export const ValueElement = ({
   onChange,
 }: FilterValueProps) => {
   const { id, tagKey, expression, value: itemValue } = value;
+  const { translation } = useTranslation();
 
   const tagClickHandler = () => {
     onChange({
@@ -95,9 +97,7 @@ export const ValueElement = ({
             onClick={valueClickHandler}
             sx={{ paddingRight: "10px" }}
           >
-            {Array.isArray(itemValue)
-              ? itemValue.join(" | ")
-              : String(itemValue)}
+            {formatFilterValue(itemValue, translation)}
           </RestFilterValuePart>
         </>
       )}
