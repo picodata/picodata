@@ -1024,7 +1024,7 @@ DO $$ BEGIN
     LET a2 = (SELECT b FROM t WHERE a = 42 and c = 'kek' ORDER BY 1 DESC LIMIT 1);
     RETURN QUERY SELECT a FROM g;
 
-    IF a2 THEN
+    IF a2 = a1 THEN
         UPDATE t SET b = 5.5 WHERE a = 42 AND c = 'kek';
     END IF;
     
@@ -1075,9 +1075,9 @@ projection (g.a::int -> a)
 │ 4.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(:a2 AS double) as "cond"
+SELECT CAST(:a2 AS double) = CAST(:a1 AS int) as "cond"
 ''
-projection (:a2::double -> cond)
+projection (:a2::double = :a1::int -> cond)
 ''
 ╭───────────────────────────────────────────────────╮
 │ 4.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
@@ -1143,7 +1143,7 @@ plan:
 │ 4.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(:a2 AS double) as "cond"
+SELECT CAST(:a2 AS double) = CAST(:a1 AS int) as "cond"
 ''
 plan:
     [0] TRIVIAL

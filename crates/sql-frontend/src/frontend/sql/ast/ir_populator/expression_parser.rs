@@ -16,10 +16,12 @@ use crate::ir::node::{
     TimeParameters, Timestamp, Window,
 };
 use crate::ir::operator::{Arithmetic, Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
-use crate::ir::types::{CastType, DerivedType, NestedType};
+use crate::ir::types::{CastType, DerivedType, NestedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::normalize_name_from_sql;
+use sql_type_system::error::Error as TypeSystemError;
+use sql_type_system::expr::Type;
 
 use super::{
     connect_escape_to_like_node, find_interim_between, parse_param, ExpressionWalker, LetVarLookup,
@@ -1420,6 +1422,39 @@ where
         plan,
         &worker.subquery_replaces,
     )?;
+
+    Ok(expr_id)
+}
+
+/// Parse a condition expression, i.e. an expression that must be of boolean type.
+/// `context` names the clause the condition belongs to (`WHERE`, `HAVING` and etc).
+#[allow(clippy::too_many_arguments)]
+pub(in crate::frontend::sql) fn parse_bool_expr<M>(
+    context: &'static str,
+    expression_pairs: Pairs<Rule>,
+    type_analyzer: &mut TypeAnalyzer,
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+    safe_for_volatile_function: bool,
+) -> Result<NodeId, SbroadError>
+where
+    M: Metadata,
+{
+    let expr_id = parse_scalar_expr(
+        expression_pairs,
+        type_analyzer,
+        DerivedType::new(UnrestrictedType::Boolean),
+        referred_relation_ids,
+        worker,
+        plan,
+        safe_for_volatile_function,
+    )?;
+
+    let ty = type_analyzer.get_report().get_type(&expr_id);
+    if ty != Type::Boolean {
+        return Err(TypeSystemError::UnexpectedBooleanArgumentType(context, ty).into());
+    }
 
     Ok(expr_id)
 }

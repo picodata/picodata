@@ -129,6 +129,15 @@ mod tests {
 
     fn case(when_exprs: Vec<Expr>, result_exprs: Vec<Expr>) -> Expr {
         expr(ExprKind::Case {
+            search_expr: None,
+            when_exprs,
+            result_exprs,
+        })
+    }
+
+    fn case_simple(search_expr: Expr, when_exprs: Vec<Expr>, result_exprs: Vec<Expr>) -> Expr {
+        expr(ExprKind::Case {
+            search_expr: Some(search_expr.into()),
             when_exprs,
             result_exprs,
         })
@@ -286,8 +295,9 @@ mod tests {
                 Double,
             ),
             (
-                case(
-                    vec![lit(Integer), lit(Numeric)],
+                case_simple(
+                    lit(Integer),
+                    vec![lit(Numeric)],
                     vec![lit(Double), param("$1")],
                 ),
                 None,

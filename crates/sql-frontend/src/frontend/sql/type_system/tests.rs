@@ -634,3 +634,44 @@ fn text_literal_coercion() {
         "failed to parse 'start' as a value of type int, consider using explicit type casts",
     );
 }
+
+#[test]
+fn conditions() {
+    assert_ok("SELECT * FROM t WHERE a = 1");
+    assert_ok("SELECT * FROM t WHERE NULL");
+    assert_ok("SELECT * FROM t WHERE $1");
+    assert_ok("SELECT * FROM t GROUP BY a HAVING count(b) > 1");
+    assert_ok("SELECT * FROM t JOIN t2 ON true");
+    assert_ok("SELECT count(*) FILTER (WHERE a = 1) OVER () FROM t");
+    assert_ok("SELECT CASE WHEN a = 1 THEN 1 END FROM t");
+    assert_ok("SELECT CASE a WHEN 1 THEN 1 END FROM t");
+
+    assert_fails_with_error(
+        "SELECT * FROM t WHERE a",
+        "argument of WHERE must be type boolean, not type int",
+    );
+    assert_fails_with_error(
+        "SELECT * FROM t WHERE (SELECT 1)",
+        "argument of WHERE must be type boolean, not type int",
+    );
+    assert_fails_with_error(
+        "SELECT * FROM t GROUP BY a HAVING count(b)",
+        "argument of HAVING must be type boolean, not type int",
+    );
+    assert_fails_with_error(
+        "SELECT * FROM t JOIN t2 ON 1",
+        "argument of JOIN/ON must be type boolean, not type int",
+    );
+    assert_fails_with_error(
+        "DELETE FROM t WHERE 1",
+        "argument of WHERE must be type boolean, not type int",
+    );
+    assert_fails_with_error(
+        "SELECT count(*) FILTER (WHERE 1) OVER () FROM t",
+        "argument of FILTER must be type boolean, not type int",
+    );
+    assert_fails_with_error(
+        "SELECT CASE WHEN 1 THEN 1 END",
+        "argument of CASE/WHEN must be type boolean, not type int",
+    );
+}

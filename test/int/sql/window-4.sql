@@ -13,14 +13,14 @@ INSERT INTO t1 VALUES(9, 10);
 -- SQL:
 SELECT * FROM t1 WHERE row_number() OVER (ORDER BY y);
 -- ERROR:
-filter expression is not a trivalent expression
+argument of WHERE must be type boolean, not type int
 
 -- TEST: window4-7.1.2
 -- SQL:
 SELECT count(*) FROM t1 GROUP BY y HAVING row_number()
 OVER (ORDER BY y);
 -- ERROR:
-filter expression is not a trivalent expression
+argument of HAVING must be type boolean, not type int
 
 -- TEST: window4-7.1.4
 -- SQL:

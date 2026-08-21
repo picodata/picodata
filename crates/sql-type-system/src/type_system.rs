@@ -330,6 +330,21 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         Some(report.clone())
     }
 
+    /// Analyze an expression used as a condition, e.g. an argument of `NOT`
+    /// or a `CASE ... WHEN` branch. `context` names the clause in the error message.
+    fn analyze_condition(
+        &mut self,
+        context: &'static str,
+        expr: &Expr<Id>,
+    ) -> Result<TypeReport<Id>, Error> {
+        let report = self.analyze(expr, Type::Boolean)?;
+        let ty = report.get_type(&expr.id);
+        if ty != Type::Boolean {
+            return Err(Error::UnexpectedBooleanArgumentType(context, ty));
+        }
+        Ok(report)
+    }
+
     fn analyze_expr(
         &mut self,
         expr: &Expr<Id>,
@@ -430,8 +445,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 report.extend(over_report);
 
                 if let Some(filter) = filter {
-                    // TODO: ensure filter expression has boolean type
-                    let filter_report = self.analyze(filter, Type::Boolean)?;
+                    let filter_report = self.analyze_condition("FILTER", filter)?;
                     report.extend(filter_report);
                 }
 
@@ -530,11 +544,28 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 Ok(report)
             }
             ExprKind::Case {
+                search_expr,
                 when_exprs,
                 result_exprs,
             } => {
-                let (_, when_report) =
-                    self.analyze_homogeneous_exprs("CASE/WHEN", when_exprs, Type::Boolean)?;
+                let when_report = match search_expr {
+                    // In the simple form when expressions are compared with the search one.
+                    Some(search) => {
+                        let mut exprs = Vec::with_capacity(when_exprs.len() + 1);
+                        exprs.push(search.as_ref());
+                        exprs.extend(when_exprs);
+                        let (_, report) =
+                            self.analyze_homogeneous_exprs("CASE/WHEN", &exprs, Type::Text)?;
+                        report
+                    }
+                    None => {
+                        let mut report = TypeReport::new();
+                        for when in when_exprs {
+                            report.extend(self.analyze_condition("CASE/WHEN", when)?);
+                        }
+                        report
+                    }
+                };
                 let (result_ty, mut result_report) =
                     self.analyze_homogeneous_exprs("CASE/THEN", result_exprs, desired_type)?;
                 result_report.extend(when_report);
@@ -549,15 +580,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             }
             ExprKind::Unary(op, child) => {
                 let mut report = match op {
-                    UnaryOperator::Not => {
-                        let report = self.analyze(child, Type::Boolean)?;
-                        if report.get_type(&child.id) != Type::Boolean {
-                            return Err(Error::UnexpectedNotArgumentType(
-                                report.get_type(&child.id),
-                            ));
-                        }
-                        report
-                    }
+                    UnaryOperator::Not => self.analyze_condition("NOT", child)?,
                     UnaryOperator::IsNull => self.analyze(child, Type::Text)?,
                     UnaryOperator::Exists => {
                         if let ExprKind::Subquery(_) = child.kind {

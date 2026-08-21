@@ -308,10 +308,9 @@ pub fn to_type_expr(
             let mut when_exprs = Vec::with_capacity(when_blocks.len());
             let mut result_exprs = Vec::with_capacity(when_blocks.len());
 
-            if let Some(search) = search_expr {
-                let search = to_type_expr(*search, plan, subquery_map)?;
-                when_exprs.push(search);
-            }
+            let search_expr = search_expr
+                .map(|search| to_type_expr(search, plan, subquery_map))
+                .transpose()?;
 
             for (when, result) in when_blocks {
                 let when = to_type_expr(*when, plan, subquery_map)?;
@@ -326,6 +325,7 @@ pub fn to_type_expr(
             }
 
             let kind = TypeExprKind::Case {
+                search_expr: search_expr.map(Box::new),
                 when_exprs,
                 result_exprs,
             };

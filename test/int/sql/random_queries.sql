@@ -613,3 +613,29 @@ NULL
 SELECT * FROM (VALUES(1)) WHERE version() IS NOT NULL;
 -- EXPECTED:
 1
+
+-- TEST: coalesce-filter-is-typed-1
+SELECT * FROM (SELECT 1) WHERE COALESCE(true, false);
+-- EXPECTED:
+1
+
+-- TEST: coalesce-filter-is-typed-2
+SELECT * FROM (SELECT 1) WHERE COALESCE(null, false, null);
+-- EXPECTED:
+1
+
+-- TEST: coalesce-filter-is-typed-3
+SELECT * FROM (SELECT 1) WHERE COALESCE($1, $2);
+-- PARAMS:
+true, false
+-- EXPECTED:
+1
+-- TEST: coalesce-filter-is-typed-4
+SELECT * FROM (SELECT 1) WHERE COALESCE(null, null);
+-- EXPECTED:
+1
+
+-- TEST: coalesce-filter-is-typed-5
+SELECT * FROM (SELECT COALESCE(null, false) as filter) WHERE filter;
+-- EXPECTED:
+true

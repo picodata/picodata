@@ -71,8 +71,8 @@ pub enum Error {
     #[error("subquery returns {0} columns, expected {1}")]
     SubqueryReturnsUnexpectedNumberOfColumns(usize, usize),
 
-    #[error("argument of NOT must be type boolean, not type {0}")]
-    UnexpectedNotArgumentType(Type),
+    #[error("argument of {0} must be type boolean, not type {1}")]
+    UnexpectedBooleanArgumentType(&'static str, Type),
 
     #[error("argument of {0} must have integer type, got {1}")]
     IncorrectFrameArgumentType(FrameKind, Type),

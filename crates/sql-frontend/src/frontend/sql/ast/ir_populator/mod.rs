@@ -17,7 +17,9 @@ pub(in crate::frontend::sql) use expression_ir::{
     connect_escape_to_like_node, find_interim_between, try_deconstruct_between_expr,
     ParseExpression, ParseExpressionInfixOperator,
 };
-pub(in crate::frontend::sql) use expression_parser::{parse_expr_no_type_check, parse_scalar_expr};
+pub(in crate::frontend::sql) use expression_parser::{
+    parse_bool_expr, parse_expr_no_type_check, parse_scalar_expr,
+};
 pub(in crate::frontend::sql) use expression_walker::{ExpressionWalker, LetVarLookup, LetVarScope};
 pub(in crate::frontend::sql) use helpers::{
     can_assign, dql_return_columns, parse_trimmed_unsigned_from_str, parse_unsigned, OrderNulls,

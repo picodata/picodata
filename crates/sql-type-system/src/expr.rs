@@ -235,12 +235,14 @@ pub enum ExprKind<Id> {
     /// Examples: `(select 1)`, `(1,2) = (values (1,2))`.
     Subquery(Vec<Type>),
     /// Case expression consist of when expressions and result expressions. Within each group
-    /// types must be the same. In case of a "simple" form, an expression following "CASE" keyword
-    /// must be included in when expressions group.
-    /// is considered as a condition.
+    /// types must be the same. In the "simple" form the expression following the "CASE" keyword
+    /// is compared with when expressions, otherwise they are conditions.
     /// Examples: `CASE WHEN a=1 THEN 'a = 1' ELSE 'a <> 1' END`,
     ///           `CASE a WHEN 1 THEN 'a = 1' ELSE 'a <> 1' END` (simple form)
     Case {
+        /// Presence of the search expression distinguishes the simple form, where when
+        /// expressions share its type, from the general one, where they are booleans.
+        search_expr: Option<Box<Expr<Id>>>,
         when_exprs: Vec<Expr<Id>>,
         result_exprs: Vec<Expr<Id>>,
     },

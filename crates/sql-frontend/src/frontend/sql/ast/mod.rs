@@ -49,8 +49,8 @@ use crate::ir::{ExplainOptions, Plan};
 use tarantool::auth::AuthMethod;
 
 use self::ir_populator::{
-    can_assign, dql_return_columns, parse_scalar_expr, parse_select, parse_values_rows,
-    ExpressionWalker,
+    can_assign, dql_return_columns, parse_bool_expr, parse_scalar_expr, parse_select,
+    parse_values_rows, ExpressionWalker,
 };
 
 // TODO: implement and use `AuthMethod::DEFAULT`
@@ -882,10 +882,10 @@ where
     }
 
     let expr_pair = pairs_map.remove_pair(*ast_expr_id);
-    parse_scalar_expr(
+    parse_bool_expr(
+        "JOIN/ON",
         Pairs::single(expr_pair),
         type_analyzer,
-        DerivedType::new(UnrestrictedType::Boolean),
         &[plan_left_id, plan_right_id],
         worker,
         plan,
@@ -916,11 +916,16 @@ where
         .children
         .get(1)
         .expect("Filter not found among Selection children");
+    let context = match &node.rule {
+        Rule::Selection => "WHERE",
+        Rule::Having => "HAVING",
+        _ => panic!("Expected to see Selection or Having."),
+    };
     let expr_pair = pairs_map.remove_pair(*ast_expr_id);
-    let expr_plan_node_id = parse_scalar_expr(
+    let expr_plan_node_id = parse_bool_expr(
+        context,
         Pairs::single(expr_pair),
         type_analyzer,
-        DerivedType::new(UnrestrictedType::Boolean),
         &[plan_rel_child_id],
         worker,
         plan,
@@ -1383,10 +1388,10 @@ where
         .get(1)
         .expect("Expr not found among DeleteFilter children");
     let expr_pair = pairs_map.remove_pair(*ast_expr_id);
-    let expr_plan_node_id = parse_scalar_expr(
+    let expr_plan_node_id = parse_bool_expr(
+        "WHERE",
         Pairs::single(expr_pair),
         type_analyzer,
-        DerivedType::new(UnrestrictedType::Boolean),
         &[plan_scan_id],
         worker,
         plan,
@@ -2016,10 +2021,10 @@ where
         .first()
         .expect("BlockIfCondition must have an Expr child");
     let expr_pair = pairs_map.remove_pair(*expr_ast_id);
-    let expr_plan_id = parse_scalar_expr(
+    let expr_plan_id = parse_bool_expr(
+        "IF",
         Pairs::single(expr_pair),
         type_analyzer,
-        DerivedType::new(UnrestrictedType::Boolean),
         &[],
         worker,
         plan,

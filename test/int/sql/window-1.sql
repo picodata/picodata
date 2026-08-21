@@ -88,7 +88,7 @@ AND UNBOUNDED FOLLOWING) FROM t1 ORDER BY a);
 -- SQL:
 SELECT * FROM t1 WHERE sum(b) OVER ();
 -- ERROR:
-filter expression is not a trivalent expression
+argument of WHERE must be type boolean, not type numeric
 
 -- TEST: window1-3.2
 -- SQL:
@@ -100,7 +100,7 @@ window function "sum" is not allowed in GROUP BY
 -- SQL:
 SELECT * FROM t1 GROUP BY a HAVING sum(b) OVER ();
 -- ERROR:
-filter expression is not a trivalent expression
+argument of HAVING must be type boolean, not type numeric
 
 -- TEST: window1-4.1
 -- SQL:
