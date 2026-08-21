@@ -48,6 +48,11 @@ export const FilterValueForm = ({
     return tagOptions.find(({ value: _value }) => _value === value) || null;
   }, [tagOptions, value, expression]);
 
+  const currentTagLabel = useMemo(
+    () => tags.find(({ key }) => key === tagKey)?.label || "",
+    [tags, tagKey]
+  );
+
   const tagChangeHandler = (_tag: Tag | null) => {
     if (_tag) {
       onChange({
@@ -152,7 +157,7 @@ export const FilterValueForm = ({
           onBlur={() => onDelete(id)}
         />
       ) : (
-        <RestFilterValuePart>{tagKey}</RestFilterValuePart>
+        <RestFilterValuePart>{currentTagLabel}</RestFilterValuePart>
       )}
       {expressionPart}
       {status === EditableValueStatusEnum.Value ? (

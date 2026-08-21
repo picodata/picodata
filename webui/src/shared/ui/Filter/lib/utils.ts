@@ -3,6 +3,7 @@ import {
   EditableValueStatusEnum,
   FilterValue,
   TagOption,
+  Value,
 } from "../model";
 import { TIntlContext } from "../../../intl";
 
@@ -21,11 +22,42 @@ export const getFilterValueByEditableFilterValue = (
     ({ status, ...editableFilterValue }) => editableFilterValue as FilterValue
   );
 };
+
+export const getYesNoLabel = (
+  value: boolean,
+  translation: TIntlContext["translation"]
+) => (value ? translation.common.yes : translation.common.no);
+
 export const getYesNoOptions = (
   translation: TIntlContext["translation"]
 ): TagOption[] => {
   return [
-    { value: true, label: translation.common.yes },
-    { value: false, label: translation.common.no },
+    { value: true, label: getYesNoLabel(true, translation) },
+    { value: false, label: getYesNoLabel(false, translation) },
   ];
+};
+
+export const formatFilterValue = (
+  value: Value | Value[] | undefined,
+  translation: TIntlContext["translation"]
+) => {
+  switch (true) {
+    case value === undefined: {
+      return "-";
+    }
+    case Array.isArray(value): {
+      return (value as Value[])
+        .map((valueItem) =>
+          typeof valueItem === "boolean"
+            ? getYesNoLabel(valueItem, translation)
+            : valueItem
+        )
+        .join(" | ");
+    }
+    case typeof value === "boolean": {
+      return getYesNoLabel(value as boolean, translation);
+    }
+    default:
+      return String(value);
+  }
 };
