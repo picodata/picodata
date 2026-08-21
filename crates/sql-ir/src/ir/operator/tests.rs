@@ -141,15 +141,6 @@ fn selection() {
 
     // Correct Selection operator
     plan.add_select(scan_id, gt_id).unwrap();
-
-    // Non-trivalent filter
-    assert_eq!(
-        SbroadError::Invalid(
-            Entity::Expression,
-            Some("filter expression is not a trivalent expression.".into())
-        ),
-        plan.add_select(scan_id, const_row).unwrap_err()
-    );
 }
 
 #[test]

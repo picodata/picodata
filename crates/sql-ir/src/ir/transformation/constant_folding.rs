@@ -7,6 +7,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{Bool, Unary};
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::types::UnrestrictedType;
 use crate::ir::value::{Trivalent, TrivalentOrdering, Value};
 use crate::ir::Plan;
 use smol_str::format_smolstr;
@@ -192,15 +193,17 @@ impl Plan {
                 Some(format_smolstr!("expected boolean value: {bool_val}")),
             ));
         };
-        let other_is_ref = matches!(self.get_expression_node(other)?, Expression::Reference(_));
+        let other_node = self.get_expression_node(other)?;
+        let other_is_ref = matches!(other_node, Expression::Reference(_));
+        let other_is_bool = other_node
+            .calculate_type(self)
+            .is_ok_and(|ty| matches!(ty.get(), Some(UnrestrictedType::Boolean)));
         let folded_to = match (op, *const_val) {
             // TODO: should fold `b = TRUE` -> `b` for bare references too,
             // once bucket_discovery learns to treat a bare boolean ref as
             // `ref = TRUE`. Without that, the fold breaks sharding-key
             // routing on bool columns.
-            (Bool::Eq, true) | (Bool::NotEq, false)
-                if self.is_trivalent(other)? && !other_is_ref =>
-            {
+            (Bool::Eq, true) | (Bool::NotEq, false) if other_is_bool && !other_is_ref => {
                 Some(other)
             }
             (Bool::And, true) => Some(other),

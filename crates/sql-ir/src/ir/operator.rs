@@ -966,7 +966,6 @@ impl Plan {
     /// Adds inner join node.
     ///
     /// # Errors
-    /// - condition is not a boolean expression
     /// - children nodes are not relational
     /// - children output tuples are invalid
     pub fn add_join(
@@ -976,13 +975,6 @@ impl Plan {
         condition: NodeId,
         kind: JoinKind,
     ) -> Result<NodeId, SbroadError> {
-        if !self.is_trivalent(condition)? {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some("Condition is not a trivalent expression".into()),
-            ));
-        }
-
         let output = self.add_row_for_join(left, right)?;
         let join = Join {
             left,
@@ -1542,20 +1534,12 @@ impl Plan {
     ///
     /// # Errors
     /// - children list is empty
-    /// - filter expression is not boolean
     /// - children nodes are not relational
     /// - first child output tuple is not valid
     ///
     /// # Panics
     /// - `children` is empty
     pub fn add_select(&mut self, child: NodeId, filter: NodeId) -> Result<NodeId, SbroadError> {
-        if !self.is_trivalent(filter)? {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some("filter expression is not a trivalent expression.".into()),
-            ));
-        }
-
         let output = self.add_row_for_output(child, &[], true, None)?;
         let select = Selection {
             child,
@@ -1571,17 +1555,9 @@ impl Plan {
     ///
     /// # Errors
     /// - children list is empty
-    /// - filter expression is not boolean
     /// - children nodes are not relational
     /// - first child output tuple is not valid
     pub fn add_having(&mut self, child: NodeId, filter: NodeId) -> Result<NodeId, SbroadError> {
-        if !self.is_trivalent(filter)? {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some("filter expression is not a trivalent expression.".into()),
-            ));
-        }
-
         let output = self.add_row_for_output(child, &[], true, None)?;
         let having = Having {
             child,

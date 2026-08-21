@@ -19,7 +19,7 @@ use smol_str::format_smolstr;
 use super::node::expression::Expression;
 use super::node::relational::{MutRelational, Relational};
 use super::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
-use crate::errors::{Entity, SbroadError};
+use crate::errors::SbroadError;
 use crate::ir::node::block::{Block, BlockOwned, MutBlock};
 use crate::ir::node::{
     AnonymousBlock, BlockEntriesMut, BoolExpr, Insert, Join, Motion, NodeId, Selection, Values,
@@ -91,63 +91,21 @@ pub type TransformFunctionNew<'func> =
     &'func dyn Fn(&mut Plan, ExprId) -> Result<ExprId, SbroadError>;
 
 impl Plan {
-    /// Concatenates trivalents (boolean or NULL expressions) to the AND node.
-    ///
-    /// # Errors
-    /// - If the left or right child is not a trivalent.
+    /// Concatenates boolean expressions to the AND node.
     pub fn concat_and(
         &mut self,
         left_expr_id: NodeId,
         right_expr_id: NodeId,
     ) -> Result<NodeId, SbroadError> {
-        if !self.is_trivalent(left_expr_id)? {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some(format_smolstr!(
-                    "Left expression is not a boolean expression or NULL: {:?}",
-                    self.get_expression_node(left_expr_id)?
-                )),
-            ));
-        }
-        if !self.is_trivalent(right_expr_id)? {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some(format_smolstr!(
-                    "Right expression is not a boolean expression or NULL: {:?}",
-                    self.get_expression_node(right_expr_id)?
-                )),
-            ));
-        }
         self.add_cond(left_expr_id, Bool::And, right_expr_id)
     }
 
-    /// Concatenates trivalents (boolean or NULL expressions) to the OR node.
-    ///
-    /// # Errors
-    /// - If the left or right child is not a trivalent.
+    /// Concatenates boolean expressions to the OR node.
     pub fn concat_or(
         &mut self,
         left_expr_id: NodeId,
         right_expr_id: NodeId,
     ) -> Result<NodeId, SbroadError> {
-        if !self.is_trivalent(left_expr_id)? {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some(format_smolstr!(
-                    "left expression is not a boolean expression or NULL: {:?}",
-                    self.get_expression_node(left_expr_id)?
-                )),
-            ));
-        }
-        if !self.is_trivalent(right_expr_id)? {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some(format_smolstr!(
-                    "right expression is not a boolean expression or NULL: {:?}",
-                    self.get_expression_node(right_expr_id)?
-                )),
-            ));
-        }
         self.add_cond(left_expr_id, Bool::Or, right_expr_id)
     }
 

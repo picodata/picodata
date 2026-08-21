@@ -20,11 +20,11 @@ use super::node::{
     Union, UnionAll, Values, Window,
 };
 use super::operator::OrderByEntity;
-use super::types::{CastType, DerivedType};
+use super::types::DerivedType;
 use super::{
     distribution, operator, Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat,
     Constant, Expression, MutExpression, Node, NodeId, Reference, Row, ScalarFunction, Trim,
-    UnaryExpr, Value,
+    UnaryExpr,
 };
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::relational::Relational;
@@ -32,7 +32,6 @@ use crate::ir::node::{
     IndexExpr, LetVarRef, Parameter, ReferenceAsteriskSource, SubQueryReference,
 };
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
-use crate::ir::types::UnrestrictedType;
 use crate::ir::{Nodes, Plan};
 use crate::utils::to_user;
 
@@ -2213,47 +2212,6 @@ impl Plan {
             _ => {}
         }
         Ok(())
-    }
-
-    /// The node is a trivalent (boolean or NULL).
-    pub fn is_trivalent(&self, expr_id: NodeId) -> Result<bool, SbroadError> {
-        let expr = self.get_expression_node(expr_id).map_err(|_| {
-            SbroadError::Invalid(
-                Entity::Node,
-                Some("Unsupported node to check `is_trivalent`".into()),
-            )
-        })?;
-        match expr {
-            Expression::Bool(_)
-            | Expression::Like { .. }
-            | Expression::Arithmetic(_)
-            | Expression::Unary(_)
-            | Expression::Cast(Cast {
-                to: CastType::Boolean,
-                ..
-            })
-            | Expression::Constant(Constant {
-                value: Value::Boolean(_) | Value::Null,
-                ..
-            }) => return Ok(true),
-            Expression::Row(Row { list, .. }) => {
-                if let (Some(inner_id), None) = (list.first(), list.get(1)) {
-                    return self.is_trivalent(*inner_id);
-                }
-            }
-            Expression::Reference(Reference { col_type, .. })
-            | Expression::SubQueryReference(SubQueryReference { col_type, .. }) => {
-                let col_type_inner = col_type.get();
-                return Ok(col_type_inner.is_none_or(|t| matches!(t, UnrestrictedType::Boolean)));
-            }
-            Expression::Parameter(_) => return Ok(true),
-            Expression::LetVarRef(LetVarRef { var_type, .. }) => {
-                let var_type_inner = var_type.get();
-                return Ok(var_type_inner.is_none_or(|t| matches!(t, UnrestrictedType::Boolean)));
-            }
-            _ => {}
-        }
-        Ok(false)
     }
 
     /// Changes reference targets in relational node fields (output and other fields except children)
