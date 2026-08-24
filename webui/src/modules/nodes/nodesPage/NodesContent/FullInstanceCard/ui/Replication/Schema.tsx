@@ -1,8 +1,10 @@
-import { Box, styled } from "@mui/material";
+import { Box, styled, Tooltip } from "@mui/material";
 import { grey } from "@mui/material/colors";
 
 import { InstanceReplication, InstanceType } from "shared/entity/instance";
 import { useTranslation } from "shared/intl";
+
+import { Leader } from "../../../../../../../shared/icons";
 
 import { Label } from "./Common";
 import { StreamArrow } from "./StreamArrow";
@@ -45,6 +47,24 @@ const SchemaInstanceHeader = styled(Box)<{ $isLocal?: boolean }>(
   })
 );
 
+export const StyledLeaderIcon = styled(Leader)({
+  width: 14,
+  height: 14,
+  "& > rect": {
+    fill: "green",
+  },
+});
+export const IconContainer = styled(Box)({
+  display: "flex",
+  alignItems: "center",
+});
+export const Name = styled(Box)({
+  fontWeight: "bold",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+});
+
 type SchemaInstanceProps = {
   replication: InstanceReplication | null;
   instances: InstanceType[];
@@ -58,6 +78,7 @@ export const SchemaInstance = ({
   const { translation } = useTranslation();
   const replicationContentTranslation =
     translation.pages.instances.list.fullInstanceCard.replicationContent;
+  const instanceTranslations = translation.pages.instances.list.instanceCard;
   const commonTranslation = translation.common;
 
   const instance = instances.find(({ uuid }) => uuid === replication?.uuid);
@@ -71,9 +92,16 @@ export const SchemaInstance = ({
         {replication ? `(id: ${replication.id})` : null}
       </SchemaInstanceHeader>
       <SchemaInstanceBody $isLocal={isLocal}>
-        <Box fontWeight={"bold"}>
+        <Name>
           {instance?.name || commonTranslation.noData}
-        </Box>
+          {instance?.isLeader ? (
+            <Tooltip title={instanceTranslations.leader.label}>
+              <IconContainer>
+                <StyledLeaderIcon />
+              </IconContainer>
+            </Tooltip>
+          ) : null}
+        </Name>
         <Box>
           <Label>LSN:</Label>{" "}
           {replication && typeof replication.lsn === "number"
