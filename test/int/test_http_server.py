@@ -834,7 +834,7 @@ def test_webui_https(cluster: Cluster):
     """
     cluster.set_config_file(yaml=cluster_cfg)
 
-    i1 = cluster.add_instance(wait_online=True, tier="red", enable_http=True)
+    i1 = cluster.add_instance(wait_online=True, tier="red")
 
     https_listen = i1.http_listen
 
@@ -972,7 +972,7 @@ cluster:
     )
 
     # Step 1: Deploy 2 instances - RF=3 so replicaset is not ready
-    i1, i2 = cluster.deploy(instance_count=2, tier="default", enable_http=True)
+    i1, i2 = cluster.deploy(instance_count=2, tier="default")
     http_listen = i1.http_listen
     base_url = f"http://{http_listen}/api/v1/health"
 
@@ -1060,7 +1060,7 @@ def test_healthcheck_status_api(cluster: Cluster):
     2. Degraded state when limbo_owner != 0
     3. Unhealthy state when instance is offline (includes degraded reasons)
     """
-    i1, i2, i3 = cluster.deploy(instance_count=3, enable_http=True)
+    i1, i2, i3 = cluster.deploy(instance_count=3)
     http_listen = i1.http_listen
     status_url = f"http://{http_listen}/api/v1/health/status"
 
@@ -1192,7 +1192,7 @@ instance:
 """
     )
 
-    i1 = cluster.add_instance(wait_online=True, tier="default", enable_http=True)
+    i1 = cluster.add_instance(wait_online=True, tier="default")
     http_listen = i1.http_listen
     base_url = f"http://{http_listen}/api/v1/health"
 
@@ -1286,7 +1286,7 @@ def test_instance_detail_api_rpc(cluster: Cluster):
 
     Queries i2's instance detail from i1's HTTP server.
     """
-    i1, i2 = cluster.deploy(instance_count=2, enable_http=True)
+    i1, i2 = cluster.deploy(instance_count=2)
     http_listen = i1.http_listen
 
     set_jwt_enabled(i1, False)

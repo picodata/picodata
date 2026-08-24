@@ -961,9 +961,9 @@ cluster:
 """
     )
 
-    router = cluster.add_instance(wait_online=True, tier="router", enable_http=True)
-    storage_1 = cluster.add_instance(wait_online=True, tier="storage", enable_http=True)
-    storage_2 = cluster.add_instance(wait_online=True, tier="storage", enable_http=True)
+    router = cluster.add_instance(wait_online=True, tier="router")
+    storage_1 = cluster.add_instance(wait_online=True, tier="storage")
+    storage_2 = cluster.add_instance(wait_online=True, tier="storage")
 
     # All metrics uninitialized on storage nodes.
     for instance in (storage_1, storage_2):
@@ -1050,8 +1050,8 @@ cluster:
 
 
 def test_local_sql_collisions_gl_2367(cluster: Cluster):
-    i1 = cluster.add_instance(name="i1", enable_http=True)
-    i2 = cluster.add_instance(name="i2", enable_http=True)
+    i1 = cluster.add_instance(name="i1")
+    i2 = cluster.add_instance(name="i2")
 
     # Create a postgres user to test metrics via pgproto
     i1.sql("CREATE USER postgres WITH PASSWORD 'Passw0rd'")
@@ -1286,7 +1286,7 @@ def test_all_buckets_local_dql_bypasses_iproto(instance: Instance):
 def test_replica_local_dql_bypasses_iproto(instance: Instance):
     leader = instance
     assert leader.cluster is not None
-    replica = leader.cluster.add_instance(wait_online=True, replicaset_name=leader.replicaset_name, enable_http=True)
+    replica = leader.cluster.add_instance(wait_online=True, replicaset_name=leader.replicaset_name)
     assert replica.replicaset_master_name() == leader.name
 
     leader.sql("""CREATE TABLE t (a INT NOT NULL, b INT, PRIMARY KEY (a)) DISTRIBUTED BY (a)""")
@@ -1377,7 +1377,7 @@ def test_filtered_local_dml_bypasses_iproto(instance: Instance):
 
 
 def test_filtered_local_block_bypasses_iproto(cluster: Cluster):
-    leader, *_ = cluster.deploy(instance_count=2, enable_http=True)
+    leader, *_ = cluster.deploy(instance_count=2)
     cluster.wait_until_buckets_balanced()
 
     leader.sql("CREATE USER postgres WITH PASSWORD 'Passw0rd'")

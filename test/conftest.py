@@ -881,7 +881,6 @@ class Instance:
     peers: list[str] = field(default_factory=list)
     host: str | None = None
     port: int | None = None
-    _http_listen: str | bool | None = None
 
     pg_host: str | None = None
     pg_port: int | None = None
@@ -2487,7 +2486,6 @@ class Cluster:
         service_password: str | None = None,
         audit: bool | str = True,
         wait_online: bool = True,
-        enable_http: bool = False,
         executable: Executable | None = None,
     ) -> list[Instance]:
         """Deploy a cluster of instances.
@@ -2512,7 +2510,6 @@ class Cluster:
                 tier=tier,
                 init_replication_factor=init_replication_factor,
                 audit=audit,
-                enable_http=enable_http,
                 executable=executable,
             )
 
@@ -2656,7 +2653,6 @@ class Cluster:
         init_replication_factor: int | None = None,
         tier: str | None = None,
         audit: bool | str = True,
-        enable_http: bool = False,
         pg_port: int | None = None,
         service_password: str | None = None,
         backup_dir: Path | None = None,

@@ -456,7 +456,7 @@ def test_sql_fiber_cancel_during_preemption(cluster: Cluster):
     Verifies the query aborts with fiber cancellation and the instance remains
     functional.
     """
-    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1, enable_http=True)
+    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1)
     cluster.wait_until_buckets_balanced()
 
     enable_preemption(i1, True, 0, 1)
@@ -527,7 +527,7 @@ def test_sql_fiber_cancel_during_preemption_cleans_temp_tables(cluster: Cluster)
     storage. Verifies the same cached query still succeeds afterwards and does
     not hit stale temp-table rows.
     """
-    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1, enable_http=True)
+    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1)
     cluster.wait_until_buckets_balanced()
 
     # Use opcode_max = 1 so every maybe_yield() is a real preemption yield.
@@ -661,7 +661,7 @@ def test_sql_cancelled_owner_cleans_retired_plan(cluster: Cluster):
     cleanup, and when the cancelled Q1 owner unwinds it must retire the old
     temp tables before releasing the plan lock.
     """
-    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1, enable_http=True)
+    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1)
     cluster.wait_until_buckets_balanced()
 
     enable_preemption(i1, True, 0, 1)
@@ -730,7 +730,7 @@ def test_sql_same_plan_waiter_resumes_after_owner_release(cluster: Cluster):
     continue successfully after the cancelled owner releases it and retires the
     old temp tables.
     """
-    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1, enable_http=True)
+    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1)
     cluster.wait_until_buckets_balanced()
 
     enable_preemption(i1, True, 0, 1)
@@ -887,7 +887,7 @@ def test_no_yields_in_transaction_blocks(cluster: Cluster):
     """
     Check that yields do not happen in transactional blocks.
     """
-    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1, enable_http=True)
+    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1)
     cluster.wait_until_buckets_balanced()
 
     # Set preemption settings to an extreme value. This will make sure attempts to yield are made every opcode.

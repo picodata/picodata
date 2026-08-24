@@ -311,11 +311,11 @@ def test_vinyl_tmp_table(cluster: Cluster):
 def do_test_global_dml_contention_load(
     cluster: Cluster, instance_count, worker_count, update_count, raft_wal_count_max
 ):
-    leader = cluster.add_instance(wait_online=False, enable_http=True)
+    leader = cluster.add_instance(wait_online=False)
 
     followers = []
     for _ in range(instance_count):
-        follower = cluster.add_instance(wait_online=False, enable_http=True)
+        follower = cluster.add_instance(wait_online=False)
         followers.append(follower)
 
     cluster.wait_online()
