@@ -914,7 +914,11 @@ def test_jwt_rejects_token_with_invalid_signature(instance: Instance):
     set_jwt_enabled(instance, True)
     token = get_auth_token(instance)
     header, payload, signature = token.split(".")
-    replacement = "A" if signature[-1] != "A" else "B"
+    # The replacement must be a *canonical* base64url final character. In the last
+    # char of a 43-char (unpadded, 32-byte HMAC-SHA256) signature only the top 4 bits
+    # carry data, so a canonical encoder can only emit chars whose alphabet index is
+    # a multiple of 4: A, E, I, M, Q, U, Y, c, g, k, o, s, w, 0, 4, 8.
+    replacement = "E" if signature[-1] != "E" else "A"
     token = f"{header}.{payload}.{signature[:-1]}{replacement}"
 
     with pytest.raises(HTTPError) as error:
