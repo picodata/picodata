@@ -83,13 +83,9 @@ fn handle_isnull(val: &Value) -> Result<Option<Value>, SbroadError> {
 
 fn collect_join_and_selection_nodes(plan: &Plan) -> Vec<NodeId> {
     plan.nodes
-        .iter64()
-        .enumerate()
+        .iter64_with_ids()
         .filter(|(_, n)| matches!(n, Node64::Selection(_) | Node64::Join(_)))
-        .map(|(i, _)| NodeId {
-            offset: i.try_into().unwrap(),
-            arena_type: ArenaType::Arena64,
-        })
+        .map(|(id, _)| id)
         .collect()
 }
 

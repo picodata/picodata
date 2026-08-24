@@ -477,6 +477,29 @@ impl Nodes {
         self.arena32.iter_mut()
     }
 
+    /// Pair every node of an arena with its id.
+    fn with_ids<T>(
+        nodes: impl Iterator<Item = T>,
+        arena_type: ArenaType,
+    ) -> impl Iterator<Item = (NodeId, T)> {
+        nodes.enumerate().map(move |(offset, node)| {
+            let offset = offset.try_into().expect("node offset must fit into u32");
+            (NodeId { offset, arena_type }, node)
+        })
+    }
+
+    pub fn iter32_with_ids(&self) -> impl Iterator<Item = (NodeId, &Node32)> {
+        Self::with_ids(self.arena32.iter(), ArenaType::Arena32)
+    }
+
+    pub fn iter64_with_ids(&self) -> impl Iterator<Item = (NodeId, &Node64)> {
+        Self::with_ids(self.arena64.iter(), ArenaType::Arena64)
+    }
+
+    pub fn iter96_with_ids(&self) -> impl Iterator<Item = (NodeId, &Node96)> {
+        Self::with_ids(self.arena96.iter(), ArenaType::Arena96)
+    }
+
     pub fn iter64(&self) -> Iter<'_, Node64> {
         self.arena64.iter()
     }

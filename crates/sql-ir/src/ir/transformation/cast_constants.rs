@@ -1,4 +1,4 @@
-use crate::ir::node::{ArenaType, Node32};
+use crate::ir::node::Node32;
 use crate::{
     errors::SbroadError,
     ir::{
@@ -35,14 +35,9 @@ fn find_cast_node_ids_for_cast_constants_opt(plan: &Plan) -> Vec<NodeId> {
     let mut found_const = false;
     let mut found_casts = vec![];
 
-    for (offset, node) in plan.nodes.iter32().enumerate() {
+    for (id, node) in plan.nodes.iter32_with_ids() {
         match node {
-            Node32::Cast(_) => {
-                let offset = offset.try_into().unwrap();
-                let arena_type = ArenaType::Arena32;
-                let cast_id = NodeId { offset, arena_type };
-                found_casts.push(cast_id);
-            }
+            Node32::Cast(_) => found_casts.push(id),
             Node32::Constant(_) => found_const = true,
             _ => (),
         }

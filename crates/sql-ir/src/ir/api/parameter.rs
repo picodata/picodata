@@ -6,7 +6,7 @@ use crate::ir::node::{Node32, TimeParameters};
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
-use crate::ir::{ArenaType, Node, Plan};
+use crate::ir::{Node, Plan};
 use smol_str::{format_smolstr, SmolStr};
 use tarantool::datetime::Datetime;
 use time::{OffsetDateTime, Time};
@@ -218,13 +218,9 @@ impl Plan {
         // Change new_names to store an owned SmolStr instead of a reference.
         let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
 
-        for (id, node) in self.nodes.arena96.iter().enumerate() {
+        for (node_id, node) in self.nodes.iter96_with_ids() {
             let Node96::ScalarFunction(_) = node else {
                 continue;
-            };
-            let node_id = NodeId {
-                offset: u32::try_from(id).unwrap(),
-                arena_type: ArenaType::Arena96,
             };
 
             if let Node::Expression(Expression::ScalarFunction(ScalarFunction {
@@ -284,13 +280,9 @@ impl Plan {
     fn check_parameter_types(mut self) -> Result<Self, SbroadError> {
         let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
 
-        for (id, node) in self.nodes.arena96.iter().enumerate() {
+        for (node_id, node) in self.nodes.iter96_with_ids() {
             let Node96::ScalarFunction(_) = node else {
                 continue;
-            };
-            let node_id = NodeId {
-                offset: u32::try_from(id).unwrap(),
-                arena_type: ArenaType::Arena96,
             };
 
             if let Node::Expression(Expression::ScalarFunction(ScalarFunction {

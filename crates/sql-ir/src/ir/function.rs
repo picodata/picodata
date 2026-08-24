@@ -1,8 +1,8 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::aggregates::AggregateKind;
 use crate::ir::node::expression::{ExprChildren, Expression};
-use crate::ir::node::{ArenaType, Node32, Node96};
 use crate::ir::node::{Cast, Concat, NodeId, ScalarFunction};
+use crate::ir::node::{Node32, Node96};
 use crate::ir::types::CastType;
 use crate::ir::Plan;
 use crate::utils::normalize_name_from_sql;
@@ -264,36 +264,23 @@ impl Plan {
     fn cast_scalar_fn_args(&mut self, type_report: &TypeReport<NodeId>) -> Result<(), SbroadError> {
         let scalar_fns = self
             .nodes
-            .iter96()
-            .enumerate()
-            .filter_map(|(offset, node)| {
+            .iter96_with_ids()
+            .filter_map(|(id, node)| {
                 if let Node96::ScalarFunction(scalar_fn) = node {
-                    Some((
-                        NodeId {
-                            offset: offset.try_into().unwrap(),
-                            arena_type: ArenaType::Arena96,
-                        },
-                        scalar_fn.children.clone(),
-                    ))
+                    Some((id, scalar_fn.children.clone()))
                 } else {
                     None
                 }
             })
             // TRIM and LIKE are not ScalarFunction nodes, but Tarantool resolves their overload
             // the same way, so their arguments need the same casts.
-            .chain(self.nodes.iter32().enumerate().filter_map(|(offset, node)| {
+            .chain(self.nodes.iter32_with_ids().filter_map(|(id, node)| {
                 let children = match node {
                     Node32::Trim(trim) => trim.expr_children(),
                     Node32::Like(like) => like.expr_children(),
                     _ => return None,
                 };
-                Some((
-                    NodeId {
-                        offset: offset.try_into().unwrap(),
-                        arena_type: ArenaType::Arena32,
-                    },
-                    children.to_vec(),
-                ))
+                Some((id, children.to_vec()))
             }))
             .collect::<Vec<(NodeId, Vec<NodeId>)>>();
 
@@ -347,17 +334,10 @@ impl Plan {
     fn cast_concat_operator_args(&mut self) -> Result<(), SbroadError> {
         let concat_nodes = self
             .nodes
-            .iter32()
-            .enumerate()
-            .filter_map(|(offset, node)| {
+            .iter32_with_ids()
+            .filter_map(|(id, node)| {
                 if let Node32::Concat(concat) = node {
-                    Some((
-                        NodeId {
-                            offset: offset.try_into().unwrap(),
-                            arena_type: ArenaType::Arena32,
-                        },
-                        concat.clone(),
-                    ))
+                    Some((id, concat.clone()))
                 } else {
                     None
                 }
