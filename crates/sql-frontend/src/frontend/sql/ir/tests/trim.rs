@@ -6,7 +6,7 @@ fn trim() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
-    projection (TRIM(test_space."FIRST_NAME"::string) -> col_1)
+    projection (TRIM(test_space."FIRST_NAME"::string::string) -> col_1)
       scan test_space
     "#);
 }
@@ -17,7 +17,7 @@ fn trim_leading_from() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
-    projection (TRIM(leading from test_space."FIRST_NAME"::string) -> col_1)
+    projection (TRIM(leading from test_space."FIRST_NAME"::string::string) -> col_1)
       scan test_space
     "#);
 }
@@ -28,7 +28,7 @@ fn trim_both_space_from() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(plan.explain_logical().unwrap(), @r#"
-    projection (TRIM(both ' '::string from test_space."FIRST_NAME"::string) -> col_1)
+    projection (TRIM(both ' '::string from test_space."FIRST_NAME"::string::string) -> col_1)
       scan test_space
     "#);
 }

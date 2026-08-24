@@ -250,7 +250,7 @@ impl Plan {
 
     /// Add explicit casts for some Expressions in IR plan.
     /// Exact expressions:
-    ///   - ScalarFunction
+    ///   - ScalarFunction, Trim, Like
     ///   - Concat
     pub fn explicit_cast_func_args(
         &mut self,
@@ -279,6 +279,22 @@ impl Plan {
                     None
                 }
             })
+            // TRIM and LIKE are not ScalarFunction nodes, but Tarantool resolves their overload
+            // the same way, so their arguments need the same casts.
+            .chain(self.nodes.iter32().enumerate().filter_map(|(offset, node)| {
+                let children = match node {
+                    Node32::Trim(trim) => trim.expr_children(),
+                    Node32::Like(like) => like.expr_children(),
+                    _ => return None,
+                };
+                Some((
+                    NodeId {
+                        offset: offset.try_into().unwrap(),
+                        arena_type: ArenaType::Arena32,
+                    },
+                    children.to_vec(),
+                ))
+            }))
             .collect::<Vec<(NodeId, Vec<NodeId>)>>();
 
         for (node_id, args) in scalar_fns.into_iter() {

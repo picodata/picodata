@@ -208,3 +208,33 @@ projection (max(1::double)::double::double -> col_1)
 ──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
+
+-- TEST: test-sqlfunc-casts-6.1
+-- SQL:
+SELECT trim(coalesce('  aabb  ', 'x'));
+-- EXPECTED:
+'aabb'
+
+-- TEST: test-sqlfunc-casts-6.2
+-- SQL:
+SELECT trim(coalesce('  aabb  ', 'x') from '  aabb  ');
+-- EXPECTED:
+''
+
+-- TEST: test-sqlfunc-casts-6.3
+-- SQL:
+SELECT 'a' like coalesce('a', 'b');
+-- EXPECTED:
+True
+
+-- TEST: test-sqlfunc-casts-6.4
+-- SQL:
+SELECT coalesce('a', 'b') like 'a';
+-- EXPECTED:
+True
+
+-- TEST: test-sqlfunc-casts-6.5
+-- SQL:
+SELECT 'A' ilike coalesce('a', 'b');
+-- EXPECTED:
+True

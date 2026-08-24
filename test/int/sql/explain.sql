@@ -789,7 +789,7 @@ EXPLAIN (RAW) SELECT * FROM testing_space_global WHERE (product_units > 10 AND n
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global" WHERE "testing_space_global"."product_units" > CAST(10 AS int) and "testing_space_global"."name" LIKE CAST('sosisky_' AS string) ESCAPE CAST('\' AS string) ) ORDER BY "product_units" DESC LIMIT 10
+SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global" WHERE "testing_space_global"."product_units" > CAST(10 AS int) and CAST ("testing_space_global"."name" as string) LIKE CAST('sosisky_' AS string) ESCAPE CAST('\' AS string) ) ORDER BY "product_units" DESC LIMIT 10
 ''
 plan:
     [0] SCAN TABLE testing_space_global (~917504 rows)

@@ -120,7 +120,7 @@ fn cast12_test() {
     let info = get_broadcast(r#"SELECT CAST(trim("a") as varchar(100)) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (TRIM (\"t1\".\"a\") as string) as \"col_1\" FROM \"t1\""
+      - "SELECT CAST (TRIM (CAST (\"t1\".\"a\" as string)) as string) as \"col_1\" FROM \"t1\""
       - []
     "#);
 }
