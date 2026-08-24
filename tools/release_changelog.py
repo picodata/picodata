@@ -33,7 +33,10 @@ elif __package__:
 else:
     import release_notes
 
-TAG_RE = re.compile(r"^\d+\.\d+\.\d+$")
+# Pre-release suffix (after the first dash) must be a dot-separated
+# sequence of alphanumeric identifiers per semver; no trailing
+# dots or dashes.
+TAG_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$")
 BRANCH_RE = re.compile(r"^\d+\.\d+$")
 
 
@@ -83,8 +86,12 @@ _UNRELEASED_PATTERNS = (
 )
 _NEXT_H2_RE = re.compile(r"^## \[", re.MULTILINE)
 _H1_RE = re.compile(r"^# .+$", re.MULTILINE)
+# Matches a released section header, e.g. `## [26.2.1] - 2026-08-21` or
+# `## [26.2.1-rc2] - 2026-08-21`. The optional suffix keeps pre-release
+# sections visible to both the duplicate check and the insertion point;
+# without it an rc-only file looks like it has no release sections at all.
 _TAG_HEADER_RE = re.compile(
-    r"^## \[(?P<tag>\d[\d.]*)\][^\n]* - \d{4}-\d{2}-\d{2}",
+    r"^## \[(?P<tag>\d[\d.]*(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?)\][^\n]* - \d{4}-\d{2}-\d{2}",
     re.MULTILINE,
 )
 
@@ -146,7 +153,9 @@ def main() -> int:
     args = p.parse_args()
 
     if not TAG_RE.match(args.tag):
-        _die(f"TAG must look like CalVer X.Y.Z (e.g., 26.2.2); got {args.tag!r}")
+        _die(
+            f"TAG must look like CalVer X.Y.Z, optionally with a pre-release suffix (e.g., 26.2.2, 26.2.2-rc1); got {args.tag!r}"
+        )
 
     root = Path(_git("rev-parse", "--show-toplevel").stdout.strip())
 

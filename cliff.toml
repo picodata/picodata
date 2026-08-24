@@ -117,7 +117,12 @@ commit_parsers = [
 filter_commits = false
 fail_on_unmatched_commit = false
 link_parsers = []
-use_branch_tags = false
+# Consider only tags reachable from the current branch. Without this,
+# git-cliff takes the repo-wide tag list sorted by date, so a tag cut on
+# another release branch (e.g. `25.5.10`, dated after `26.2.1-rc1`) becomes
+# the "latest tag" here. Nothing on this branch then counts as released and
+# `--unreleased` sweeps in every commit back to the branch point.
+use_branch_tags = true
 topo_order = false
 topo_order_commits = true
 sort_commits = "oldest"

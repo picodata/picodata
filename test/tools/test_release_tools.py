@@ -293,3 +293,105 @@ def test_release_changelog_calls_release_notes_renderer(monkeypatch: pytest.Monk
     ]
     assert "Generated changelog item." in (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "Generated release-note item." in (tmp_path / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "tag",
+    [
+        "26.2.2",
+        "0.0.0",
+        "99.99.99",
+        "26.2.2-rc1",
+        "26.2.2-alpha",
+        "26.2.2-beta.1",
+        "26.2.2-rc.1.2",
+        "26.2.2-0abc",
+    ],
+)
+def test_tag_re_accepts_valid_tags(tag: str) -> None:
+    assert release_changelog.TAG_RE.match(tag), f"TAG_RE should match {tag!r}"
+
+
+@pytest.mark.parametrize(
+    "tag",
+    [
+        "26.2.2-",  # trailing dash, no identifier
+        "26.2.2-rc1.",  # trailing dot
+        "26.2.2-rc1-",  # trailing dash after identifier
+        "26.2.2-rc1..2",  # double dot
+        "26.2.2.",  # trailing dot on version
+        "v26.2.2",  # v prefix
+        "26.2",  # missing patch
+        "26.2.2-rc.1.",  # trailing dot after dot-separated identifiers
+        "26.2.2-rc.1-",  # trailing dash after dot-separated identifiers
+    ],
+)
+def test_tag_re_rejects_invalid_tags(tag: str) -> None:
+    assert not release_changelog.TAG_RE.match(tag), f"TAG_RE should NOT match {tag!r}"
+
+
+def _make_changelog(*sections: str) -> str:
+    """Build a minimal CHANGELOG.md body from section blocks."""
+    return "# Changelog\n\n" + "\n".join(sections).rstrip() + "\n"
+
+
+def _section(tag: str, date: str = "2026-01-01") -> str:
+    return f"## [{tag}] - {date}\n\n### Features\n\n- Item from {tag}.\n"
+
+
+def test_splice_recognises_rc_tag_as_existing_section() -> None:
+    """Duplicate check works with pre-release tags."""
+    target = _make_changelog(
+        _section("26.2.1"),
+        _section("26.2.2-rc1"),
+    )
+    block = _section("26.2.2-rc1", "2026-05-22")
+    assert release_changelog._splice(target, block) == target
+
+
+def test_splice_recognises_stable_tag_when_rc_sections_present() -> None:
+    """Duplicate check for stable tag works even when only rc sections exist."""
+    target = _make_changelog(_section("26.2.2-rc1"))
+    block = _section("26.2.2-rc1", "2026-05-22")
+    assert release_changelog._splice(target, block) == target
+
+
+def test_splice_prepends_rc_before_older_stable() -> None:
+    """A pre-release for a newer version goes above the older stable."""
+    target = _make_changelog(_section("26.2.1"))
+    block = _section("26.2.2-rc1")
+    result = release_changelog._splice(target, block)
+    assert result.index("[26.2.2-rc1]") < result.index("[26.2.1]")
+
+
+def test_splice_prepends_stable_before_its_rc() -> None:
+    """When stable is added after its rc, it lands on top (newest first)."""
+    target = _make_changelog(
+        _section("26.2.2-rc1"),
+        _section("26.2.1"),
+    )
+    block = _section("26.2.2")
+    result = release_changelog._splice(target, block)
+    idx_stable = result.index("[26.2.2]")
+    idx_rc = result.index("[26.2.2-rc1]")
+    assert idx_stable < idx_rc
+
+
+def test_splice_rc_ordering_with_multiple_rcs() -> None:
+    """Multiple rc releases interleave correctly with stables from other minors."""
+    target = _make_changelog(
+        _section("26.2.2"),
+        _section("26.2.2-rc2"),
+        _section("26.2.2-rc1"),
+        _section("26.2.1"),
+    )
+    # Add a new rc for the next patch
+    block = _section("26.2.3-rc1")
+    result = release_changelog._splice(target, block)
+    lines = result.splitlines()
+    tag_lines = [line for line in lines if line.startswith("## [")]
+    assert tag_lines[0].startswith("## [26.2.3-rc1]")
+    # Existing order preserved below the new top entry
+    assert tag_lines[1].startswith("## [26.2.2]")
+    assert tag_lines[2].startswith("## [26.2.2-rc2]")
+    assert tag_lines[3].startswith("## [26.2.2-rc1]")
