@@ -13,7 +13,6 @@ from prometheus_client import Metric
 from prometheus_client.samples import Sample
 
 
-@pytest.mark.webui
 def test_metrics_ok(instance: Instance) -> None:
     http_listen = instance.http_listen
     response = requests.get(f"http://{http_listen}/metrics")
@@ -22,7 +21,6 @@ def test_metrics_ok(instance: Instance) -> None:
 
 # Verifies that all picodata metrics are present
 # and accessible on /metrics endpoint
-@pytest.mark.webui
 def test_picodata_metrics(cluster: Cluster) -> None:
     instance = cluster.add_instance(name="i1", init_replication_factor=2)
     i2 = cluster.add_instance(name="i2")
@@ -92,7 +90,6 @@ def test_picodata_metrics(cluster: Cluster) -> None:
         assert metric in metrics_output, f"Metric '{metric}' not found in /metrics output"
 
 
-@pytest.mark.webui
 def test_slab_system_metrics_after_startup(instance: Instance) -> None:
     """
     On a freshly started instance with no user data, the user memtx allocator
@@ -169,7 +166,6 @@ def actual_table_length(instance: Instance, table_name: str) -> int:
 
 
 # Report every memtx and vinyl data space, including system and temporary spaces.
-@pytest.mark.webui
 def test_table_metrics_classification(instance: Instance) -> None:
     # Create regular and low-level user spaces covering the supported cases.
     instance.sql("CREATE TABLE metrics_user (id INTEGER PRIMARY KEY, value TEXT)")
@@ -279,7 +275,6 @@ def test_table_metrics_classification(instance: Instance) -> None:
 
 
 # Refresh values and remove stale series after table renames and drops.
-@pytest.mark.webui
 def test_table_metrics_lifecycle(instance: Instance) -> None:
     # Create a persistent table and verify its initial exported values.
     instance.sql("CREATE TABLE metrics_lifecycle (id INTEGER PRIMARY KEY, value TEXT)")
@@ -356,7 +351,6 @@ def check_metric(
         assert real_value == value, "Labeled metric has unexpected value"
 
 
-@pytest.mark.webui
 def test_pgproto_metrics_collected(instance: Instance) -> None:
     check_metric(instance.get_metrics(), "pico_sql_query", None)
 
@@ -377,7 +371,6 @@ def test_pgproto_metrics_collected(instance: Instance) -> None:
     check_metric(instance.get_metrics(), "pico_sql_query", 2.0)
 
 
-@pytest.mark.webui
 def test_router_and_storage_cache_metrics(instance: Instance):
     metrics = instance.get_metrics()
     check_metric(metrics, "pico_router_cache_misses", 0)
@@ -549,7 +542,6 @@ def test_router_and_storage_cache_metrics(instance: Instance):
     instance.sql("SELECT * FROM t JOIN t t2 on t.a = t2.a")
 
 
-@pytest.mark.webui
 def test_storage_block_vdbe_cache_metrics(instance: Instance):
     instance.sql("CREATE TABLE bc (pk INT PRIMARY KEY, a INT)")
     instance.sql("INSERT INTO bc VALUES (1, 10)")
@@ -626,7 +618,6 @@ def test_storage_block_vdbe_cache_metrics(instance: Instance):
     assert metric_total(evicted) > base_evicted
 
 
-@pytest.mark.webui
 def test_storage_block_vdbe_cache_insert_do_update_invalidated_by_index_ddl(instance: Instance):
     instance.sql(
         """
@@ -850,7 +841,6 @@ def test_router_block_pattern_cache_insert_do_update_params_raw_explain(instance
     assert metric_total(added) == base_added
 
 
-@pytest.mark.webui
 def test_temp_table_lock_metrics(instance: Instance) -> None:
     instance.sql("CREATE TABLE temp_metrics (id INTEGER PRIMARY KEY, name TEXT)")
     instance.sql("INSERT INTO temp_metrics VALUES (1, 'one')")
@@ -956,7 +946,6 @@ def test_instance_state_metric(cluster: Cluster):
         all_but_first_report_online(cluster, i1.name)
 
 
-@pytest.mark.webui
 def test_storage_cache_mestrics(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
@@ -1060,7 +1049,6 @@ cluster:
         check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="2nd", miss_type="busy")
 
 
-@pytest.mark.webui
 def test_local_sql_collisions_gl_2367(cluster: Cluster):
     i1 = cluster.add_instance(name="i1", enable_http=True)
     i2 = cluster.add_instance(name="i2", enable_http=True)
@@ -1172,7 +1160,6 @@ def test_local_sql_collisions_gl_2367(cluster: Cluster):
     check_metric(metrics, "pico_storage_cache_misses", None, query_type="dql", rpc_type="local", miss_type="stale")
 
 
-@pytest.mark.webui
 def test_plan_id_sql_collisions(instance: Instance):
     def sum_samples(samples: list[Sample]) -> float:
         return sum(map(lambda s: s.value, samples))
@@ -1261,7 +1248,6 @@ def test_plan_id_sql_collisions(instance: Instance):
     check_metric(metrics, "pico_storage_cache_misses", 10, aggregate=sum_samples, query_type="dql", rpc_type="local")
 
 
-@pytest.mark.webui
 def test_filtered_local_dql_bypasses_iproto(instance: Instance):
     instance.sql("""CREATE TABLE t (a INT NOT NULL, b INT, PRIMARY KEY (a)) DISTRIBUTED BY (a)""")
     instance.sql("""INSERT INTO t VALUES (1, 2)""")
@@ -1280,7 +1266,6 @@ def test_filtered_local_dql_bypasses_iproto(instance: Instance):
     check_metric(metrics, "pico_sql_local_query", 2, query_type="dql", result="ok")
 
 
-@pytest.mark.webui
 def test_all_buckets_local_dql_bypasses_iproto(instance: Instance):
     instance.sql("""CREATE TABLE t (a INT NOT NULL, b INT, PRIMARY KEY (a)) DISTRIBUTED BY (a)""")
     instance.sql("""INSERT INTO t VALUES (1, 2), (2, 3)""")
@@ -1298,7 +1283,6 @@ def test_all_buckets_local_dql_bypasses_iproto(instance: Instance):
     check_metric(metrics, "pico_storage_2nd_requests", None, query_type="dql", result="ok")
 
 
-@pytest.mark.webui
 def test_replica_local_dql_bypasses_iproto(instance: Instance):
     leader = instance
     assert leader.cluster is not None
@@ -1370,7 +1354,6 @@ def test_replica_local_dql_bypasses_iproto(instance: Instance):
     )
 
 
-@pytest.mark.webui
 def test_filtered_local_dml_bypasses_iproto(instance: Instance):
     instance.sql("""CREATE TABLE t (a INT NOT NULL, b INT, PRIMARY KEY (a)) DISTRIBUTED BY (a)""")
 
@@ -1393,7 +1376,6 @@ def test_filtered_local_dml_bypasses_iproto(instance: Instance):
     assert instance.sql("""SELECT * FROM t WHERE a = 1""") == []
 
 
-@pytest.mark.webui
 def test_filtered_local_block_bypasses_iproto(cluster: Cluster):
     leader, *_ = cluster.deploy(instance_count=2, enable_http=True)
     cluster.wait_until_buckets_balanced()
@@ -1435,7 +1417,6 @@ def test_filtered_local_block_bypasses_iproto(cluster: Cluster):
     assert leader.sql(f"SELECT * FROM t WHERE pk = {local_pk}") == [[local_pk, 11]]
 
 
-@pytest.mark.webui
 def test_all_buckets_local_dml_bypasses_iproto(instance: Instance):
     instance.sql("""CREATE TABLE t (a INT NOT NULL, b INT, PRIMARY KEY (a)) DISTRIBUTED BY (a)""")
     instance.sql("""INSERT INTO t VALUES (1, 2), (2, 3)""")

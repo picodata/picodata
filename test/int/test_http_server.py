@@ -119,7 +119,6 @@ def get_voter_raft_ids(instance: Instance) -> set:
     return set(result if result else [])
 
 
-@pytest.mark.webui
 def test_http_routes(instance: Instance):
     instance.eval(
         """
@@ -226,7 +225,6 @@ def test_webui_basic(instance: Instance, auth_token: Optional[str]):
         assert http_address == "", "httpAddress should be empty when not in _pico_peer_address"
 
 
-@pytest.mark.webui
 def test_webui_memory_multiple_tiers_multiple_replicasets(cluster: Cluster):
     """Each tier aggregates only its own replicasets independently of other tiers."""
     cluster_cfg = """
@@ -776,7 +774,6 @@ def test_webui_can_vote_flag(cluster: Cluster):
         ]
 
 
-@pytest.mark.webui
 def test_webui_replicaset_state_field(cluster: Cluster):
     """Test that replicasetState in /api/v1/tiers reflects the actual replicaset state
     from _pico_replicaset, not to be confused with the existing `state` field which
@@ -849,7 +846,6 @@ def test_webui_https(cluster: Cluster):
         assert response.headers.get("content-type") == "text/html"
 
 
-@pytest.mark.webui
 def test_jwt_session_login_success(instance: Instance):
     response_data, status_code = authorize(instance, USERNAME, PASSWORD)
 
@@ -862,7 +858,6 @@ def test_jwt_session_login_success(instance: Instance):
     assert len(response_data["refresh"].split(".")) == 3
 
 
-@pytest.mark.webui
 def test_jwt_session_login_invalid_credentials(instance: Instance):
     response_data, status_code = authorize(instance, USERNAME, "wrongpass")
 
@@ -877,7 +872,6 @@ def test_jwt_session_login_invalid_credentials(instance: Instance):
     assert response_data["errorMessage"] == "invalid credentials"
 
 
-@pytest.mark.webui
 def test_jwt_session_refresh_success(instance: Instance):
     http_listen = instance.http_listen
 
@@ -898,7 +892,6 @@ def test_jwt_session_refresh_success(instance: Instance):
     assert len(new_tokens["refresh"].split(".")) == 3
 
 
-@pytest.mark.webui
 def test_jwt_rejects_missing_token(instance: Instance):
     set_jwt_enabled(instance, True)
 
@@ -909,7 +902,6 @@ def test_jwt_rejects_missing_token(instance: Instance):
     assert str(error.value.fp.read(), "utf-8") == '{"error":"authError","errorMessage":"invalid authorization header"}'
 
 
-@pytest.mark.webui
 def test_jwt_rejects_token_with_invalid_signature(instance: Instance):
     set_jwt_enabled(instance, True)
     token = get_auth_token(instance)
@@ -931,7 +923,6 @@ def test_jwt_rejects_token_with_invalid_signature(instance: Instance):
     )
 
 
-@pytest.mark.webui
 def test_jwt_rejects_expired_token(instance: Instance):
     secret = "test-jwt-secret"
     instance.sql(f"ALTER SYSTEM SET jwt_secret = '{secret}'")
@@ -947,7 +938,6 @@ def test_jwt_rejects_expired_token(instance: Instance):
     )
 
 
-@pytest.mark.webui
 @pytest.mark.parametrize("auth_token", ["authorized", "unauthorized"], indirect=True)
 def test_ui_config(instance: Instance, auth_token):
     http_listen = instance.http_listen
@@ -1215,7 +1205,6 @@ instance:
             assert e.code == 404, f"Expected 404 for {endpoint}, got {e.code}"
 
 
-@pytest.mark.webui
 @pytest.mark.parametrize("auth_token", ["authorized", "unauthorized"], indirect=True)
 def test_instance_detail_api(instance: Instance, auth_token: Optional[str]):
     """
@@ -1272,7 +1261,6 @@ def test_instance_detail_api(instance: Instance, auth_token: Optional[str]):
     assert isinstance(body["replication"], dict)
 
 
-@pytest.mark.webui
 def test_instance_detail_api_not_found(instance: Instance):
     """
     Test GET /api/v1/instance/:uuid returns 404 for an unknown UUID.
@@ -1292,7 +1280,6 @@ def test_instance_detail_api_not_found(instance: Instance):
         assert body["error"] == "notFound"
 
 
-@pytest.mark.webui
 def test_instance_detail_api_rpc(cluster: Cluster):
     """
     Test GET /api/v1/instance/:uuid fetches data from a remote instance via RPC.

@@ -430,7 +430,6 @@ cluster:
     Retriable().call(assert_version, cluster, VersionAlias.CURRENT, registry)
 
 
-@pytest.mark.webui
 @pytest.mark.xdist_group(name="rolling")
 @pytest.mark.required_rolling_versions(
     versions=[

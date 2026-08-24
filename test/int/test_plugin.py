@@ -2958,7 +2958,6 @@ def test_sdk_log(cluster: Cluster):
 
 
 # noinspection HttpUrlsUsage
-@pytest.mark.webui
 def test_sdk_metrics(instance: Instance):
     plugin = _PLUGIN_W_SDK
     [service] = _PLUGIN_W_SDK_SERVICES

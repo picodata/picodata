@@ -761,7 +761,6 @@ def test_proc_raft_info(instance: Instance):
     )
 
 
-@pytest.mark.webui
 def test_proc_runtime_info_v2(instance: Instance):
     info = instance.call(".proc_runtime_info_v2")
 
