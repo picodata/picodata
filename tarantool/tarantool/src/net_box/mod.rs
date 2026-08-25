@@ -233,7 +233,7 @@ mod tests {
 
     fn test_user_conn() -> Conn {
         Conn::new(
-            ("localhost", listen_port()),
+            ("127.0.0.1", listen_port()),
             ConnOptions {
                 user: "test_user".into(),
                 password: "password".into(),
@@ -259,7 +259,32 @@ mod tests {
         let e = conn
             .eval("return ...", &UnexpectedIOError, &Default::default())
             .unwrap_err();
-        assert_eq!(e.to_string(), "some io error");
+        let err_msg = e.to_string();
+
+        // This assertion was flaky in CI, especially on macOS runners
+        // (os error 61 "Connection refused"). When it fires, the panic
+        // below gathers diagnostic context for root-causing.
+        if err_msg != "some io error" {
+            let lua = crate::lua_state();
+            let box_listen: String = lua
+                .eval("return json.encode(box.info.listen)")
+                .unwrap_or_else(|e| format!("(eval failed: {e})"));
+            let box_pid: i64 = lua.eval("return box.info.pid").unwrap_or(-1);
+            let port = listen_port();
+            let pid = std::process::id();
+
+            panic!(
+                "dont_drop_worker_join_handles: unexpected eval error.\
+                 os pid={pid} box.info.pid={box_pid} port={port}\
+                 box.info.listen={listen}\
+                 error={err}",
+                pid = pid,
+                box_pid = box_pid,
+                port = port,
+                listen = box_listen,
+                err = err_msg,
+            );
+        }
 
         let e = conn
             .eval("return ...", &[1], &Default::default())
