@@ -1005,7 +1005,7 @@ impl Plan {
         for (expr_id, position) in grouping_exprs.iter().zip(positions) {
             let col_type = self.get_expression_node(*expr_id)?.calculate_type(self)?;
             if let Some(col_type) = col_type.get() {
-                if !col_type.is_scalar() {
+                if !col_type.is_comparable() {
                     // A value of type any, as an element of `_pico_table.format`,
                     // can be cast to its actual type.
                     let hint = match col_type {
@@ -1105,11 +1105,11 @@ impl Plan {
                     let position = alias_to_pos_map.get(local_alias)?;
                     let col_type = self.get_expression_node(expr_id)?.calculate_type(self)?;
                     if let Some(col_type) = col_type.get() {
-                        if !col_type.is_scalar() {
+                        if !col_type.is_comparable() {
                             return Err(SbroadError::Invalid(
                                 Entity::Type,
                                 Some(format_smolstr!(
-                                    "adjust_finals: expected scalar expression, found: {col_type}"
+                                    "adjust_finals: expected comparable expression, found: {col_type}"
                                 )),
                             ));
                         };

@@ -30,8 +30,10 @@ pub type VTableTuple = Vec<Value>;
 
 /// Row order for [`VirtualTable::remove_duplicates`]: `Value`'s own order,
 /// except that two json values compare the way SQL compares them on storage.
-/// Where storage's comparator is not linked (unit tests) json falls back to
-/// its byte order, which only tells identical documents to be equal.
+///
+/// FIXME: `Json` derives `Eq`/`Ord`/`Hash` from its bytes, so `42` and `42.0`
+/// differ there. Once those follow SQL equality (which needs a hash that
+/// agrees with storage's comparator), drop this and sort by `Value`'s order.
 fn dedup_cmp(a: &VTableTuple, b: &VTableTuple) -> Ordering {
     for (left, right) in a.iter().zip(b) {
         let ordering = match (left, right) {

@@ -483,6 +483,14 @@ impl UnrestrictedType {
         )
     }
 
+    /// Values of the type can be compared, so they can be grouped on: the
+    /// scalar types and json. Json has no hash that agrees with its
+    /// comparison, so unlike the scalars it cannot be a distribution key.
+    #[must_use]
+    pub fn is_comparable(&self) -> bool {
+        self.is_scalar() || *self == UnrestrictedType::Json
+    }
+
     /// Check if the type can be casted to another type.
     #[must_use]
     pub fn is_castable_to(&self, to: &UnrestrictedType) -> bool {

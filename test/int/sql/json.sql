@@ -439,23 +439,90 @@ SELECT arr[1], arr[2], arr[3], arr[0], arr[4] FROM t_mixed WHERE id = 1;
 -- EXPECTED:
 10, 20, 30, null, null
 
+-- TEST: init-grouping
+-- SQL:
+DROP TABLE IF EXISTS t_group;
+CREATE TABLE t_group (id INTEGER PRIMARY KEY, data JSON);
+INSERT INTO t_group VALUES
+  (1, '{"a":1}'::json),
+  (2, '{"a":2}'::json),
+  (3, '{"a":1}'::json),
+  (4, '[1,2]'::json),
+  (5, NULL);
+
+-- TEST: json-distinct
+-- SQL:
+SELECT DISTINCT data FROM t_group ORDER BY 1;
+-- EXPECTED:
+null,
+[1, 2],
+{"a": 1},
+{"a": 2}
+
+-- TEST: json-distinct-normalizes-key-order
+-- SQL:
+SELECT DISTINCT data FROM (
+  SELECT '{"bb":1,"a":2}'::json AS data FROM t_group
+  UNION ALL
+  SELECT '{"a":2,"bb":1}'::json AS data FROM t_group
+);
+-- EXPECTED:
+{"a": 2, "bb": 1}
+
+-- TEST: json-group-by
+-- SQL:
+SELECT data, count(*) FROM t_group GROUP BY data ORDER BY 1;
+-- EXPECTED:
+null, 1,
+[1, 2], 1,
+{"a": 1}, 2,
+{"a": 2}, 1
+
+-- TEST: json-group-by-having
+-- SQL:
+SELECT data, count(*) FROM t_group GROUP BY data HAVING count(*) > 1;
+-- EXPECTED:
+{"a": 1}, 2
+
+-- TEST: json-group-by-subscript
+-- SQL:
+SELECT data['a'], count(*) FROM t_group GROUP BY data['a'] ORDER BY 1;
+-- EXPECTED:
+null, 2,
+1, 2,
+2, 1
+
+-- TEST: init-number-spellings
+-- SQL:
+DROP TABLE IF EXISTS t_spell;
+CREATE TABLE t_spell (id INTEGER PRIMARY KEY, data JSON);
+INSERT INTO t_spell VALUES
+  (0, '42'::json),
+  (1, '42.0'::json),
+  (2, '42.00'::json),
+  (3, '42.000'::json),
+  (4, '42.0000'::json),
+  (5, '42.00000'::json),
+  (6, '43'::json);
+
+-- TEST: json-group-by-number-spellings
+-- SQL:
+SELECT count(*) FROM t_spell GROUP BY data ORDER BY 1;
+-- EXPECTED:
+1,
+6
+
+-- TEST: json-count-distinct-number-spellings
+-- SQL:
+SELECT count(DISTINCT data) FROM t_spell;
+-- EXPECTED:
+2
+
 -- TEST: init-reject
 -- SQL:
 DROP TABLE IF EXISTS t_reject;
 CREATE TABLE t_reject (id INTEGER PRIMARY KEY, data JSON);
 INSERT INTO t_reject VALUES (1, '{"a":1}'::json);
-
--- TEST: json-group-by-rejected
--- SQL:
-SELECT data FROM t_reject GROUP BY data;
--- ERROR:
-not scalar
-
--- TEST: json-distinct-rejected
--- SQL:
-SELECT DISTINCT data FROM t_reject;
--- ERROR:
-not scalar
 
 -- TEST: json-primary-key-rejected
 -- SQL:
