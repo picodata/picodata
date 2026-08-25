@@ -1,13 +1,4 @@
-from framework.sqltester import (
-    ClusterTwoInstances,
-    Cluster,
-    sql_test_file,
-)
-
-
-@sql_test_file("alter_table_logic.sql")
-class TestAlterTable(ClusterTwoInstances):
-    pass
+from conftest import Cluster
 
 
 def test_cache_is_not_stale_on_alter(cluster: Cluster):

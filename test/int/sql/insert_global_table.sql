@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: insert-global-table
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -11,7 +13,7 @@ INSERT INTO "t" VALUES (1, 2) ON CONFLICT DO REPLACE;
 -- TEST: insert-global-table-2
 -- SQL:
 SELECT * FROM "t";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 2
 
 -- TEST: insert-global-table-3
@@ -78,5 +80,5 @@ Duplicate key exists in unique index
 -- TEST: insert-global-table-unique-5
 -- SQL:
 SELECT * FROM "t";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 2

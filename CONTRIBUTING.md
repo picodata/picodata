@@ -185,6 +185,81 @@ pytest
 uv run pytest -k test_sql_acl
 ```
 
+### Running SQL tests
+
+The `.sql` files under `test/int/sql` and `test/known_defects/sql` are collected
+directly by `test/framework/sqltester.py`:
+
+```bash
+uv run pytest test/int/sql/window-7.sql
+```
+
+```
+test/int/sql/window-7.sql::pgproto-1rsX1 PASSED
+test/int/sql/window-7.sql::pgproto-2rsX1 PASSED
+test/int/sql/window-7.sql::iproto-2rsX1  PASSED
+```
+
+To add a test, drop a `.sql` file in the directory. Every file must open with a
+`-- TEST-MATRIX:` header naming the configs it runs on:
+
+```sql
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
+-- TEST: window7
+-- SQL:
+...
+```
+
+`--list-sql-test-matrix` prints every config the header can name:
+
+```bash
+uv run pytest --list-sql-test-matrix
+```
+
+`--update-sql-test-matrix` rewrites the `-- TEST-MATRIX:` header of every collected
+file to the full list of configs:
+
+```bash
+uv run pytest test/int/sql/window-7.sql --update-sql-test-matrix
+```
+
+Two more directives are optional, and apply to all of the file's items:
+
+```sql
+-- XFAIL: panic https://git.picodata.io/core/picodata/-/issues/2992
+-- SKIP: needs a feature we don't have yet
+```
+
+A single block can opt out of some of the file's configs with `-- SKIP_FOR:`,
+e.g. an `EXPLAIN` whose plan only renders as written on a two-instance cluster:
+
+```sql
+-- TEST: const-explain-raw
+-- SKIP_FOR: 1rsX1
+-- SQL:
+...
+```
+
+It takes a comma-separated list of a cluster topology (`1rsX1`, `2rsX1` — `NrsXM`
+is `N` replicasets of `M` instances each), a protocol
+(`pgproto`, `iproto`) or a full config name (`pgproto-1rsX1`).
+
+Use `-- UNORDERED:` rather than `-- EXPECTED:` unless the query pins the order
+with `ORDER BY`. Two replicasets merge their rows in a different order than one,
+so an exact sequence over an unordered result passes or fails by luck.
+
+All the `-- TEST:` blocks of a file run in order against the same cluster and
+share whatever state they create, so the run stops at the first failing block.
+The failure names the file, the line and the block:
+
+```
+FAILED test/int/sql/window-7.sql::iproto-2rsX1 - SqlTestFailure: window-7.sql:33: -- TEST: window7-4.3
+```
+
+The exception is `--update-sql-snapshots` (see below), which runs every block so
+that one pass refreshes every stale snapshot in the file.
+
 ### Running tests in parallel with pytest-xdist
 
 ```bash
@@ -230,7 +305,11 @@ When working with code, sometimes we need to change the output of certain tests.
 This may look something like this:
 
 ```
-FAILED test/int/sql/test_eliminate_motion.py::TestEliminateMotion::test_sql[group-by-1-explain-PgprotoRunner] - assert == failed. [pytest-clarity diff shown]
+FAILED test/int/sql/eliminate_motion.sql::pgproto-2rsX1 - SqlTestFailure: eliminate_motion.sql:12: -- TEST: group-by-1-explain
+
+    EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a;
+
+  assert == failed. [pytest-clarity diff shown]
 
   LHS vs RHS shown below
 

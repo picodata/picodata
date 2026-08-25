@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: test_orderby
 -- SQL:
 DROP TABLE IF EXISTS null_t;

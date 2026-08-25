@@ -1,14 +1,16 @@
 from abc import ABC, abstractmethod
-import inspect
+from dataclasses import dataclass
 import logging
+import os
+import textwrap
 from collections import Counter
 from pathlib import Path
-from typing import Type
 from typing import Any
 import pytest
+from _pytest.python import FunctionDefinition, Metafunc
 from decimal import Decimal
 import re
-from conftest import Cluster, TarantoolError
+from conftest import TIMEOUT_SCALE, Cluster, TarantoolError, get_pytest_timeout
 import psycopg
 import enum
 
@@ -16,8 +18,8 @@ import enum
 NOT_AN_ERROR = "-"
 
 
-def init_cluster(cluster: Cluster, instance_count: int) -> Cluster:
-    cluster.deploy(instance_count=instance_count)
+def init_cluster(cluster: Cluster, instance_count: int, replication_factor: int) -> Cluster:
+    cluster.deploy(instance_count=instance_count, init_replication_factor=replication_factor)
     for i in cluster.instances:
         i.wait_online()
     return cluster
@@ -117,13 +119,16 @@ def parse_queries(raw_queries: str):
 
 
 class AbstractRunner(ABC):
+    protocol: str
     run_query_error: type
+    replicaset_counts: tuple[int, ...]
+    replication_factors: tuple[int, ...]
 
     @abstractmethod
     def run_query(self, query: str, params: list[Any] | None = None) -> list:
         pass
 
-    def do_catchsql(self, sql: str, expected: str | list, params: list[Any] | None = None):
+    def do_catchsql(self, sql: str, expected: str | list | None, params: list[Any] | None = None):
         queries = parse_queries(sql)
         if params is not None:
             assert len(queries) == 1, "SQL tests with PARAMS must contain a single query"
@@ -169,7 +174,7 @@ class AbstractRunner(ABC):
         # TODO: replace None with smth to support `--update-sql-snapshots`
         return None, do_check
 
-    def do_explain_sql(self, query: str, expected: list, params: list[Any] | None = None):
+    def do_explain_sql(self, query: str, expected: list | None, params: list[Any] | None = None):
         result = self.run_query(query, params)
         output = [row[0] for row in result]
 
@@ -180,7 +185,10 @@ class AbstractRunner(ABC):
 
 
 class IprotoRunner(AbstractRunner):
+    protocol = "iproto"
     run_query_error = TarantoolError
+    replicaset_counts = (2,)
+    replication_factors = (1,)
 
     def __init__(self, cluster: Cluster):
         super().__init__()
@@ -203,7 +211,10 @@ class IprotoRunner(AbstractRunner):
 
 
 class PgprotoRunner(AbstractRunner):
+    protocol = "pgproto"
     run_query_error = psycopg.Error
+    replicaset_counts = (1, 2)
+    replication_factors = (1,)
 
     def __init__(self, cluster: Cluster):
         super().__init__()
@@ -304,12 +315,69 @@ def _parse_explain_body(body: str) -> list[str]:
     return result
 
 
-def parse_file(cls: Type, file_name: str) -> list:
-    test_file = Path(inspect.getfile(cls)).parent / file_name
+@dataclass(frozen=True)
+class SqlBlock:
+    """
+    A single `-- TEST:` block of a `.sql` test file.
+
+    Blocks of one file are steps of a single scenario: they run in order
+    against the same cluster and share whatever state they create.
+    """
+
+    file: Path
+    # Name and line only serve to point at the block in a failure report.
+    name: str
+    line: int
+    query: str
+    params: list[Any] | None
+    expected: list[Any] | None
+    is_exact: bool
+    error: list[str] | None
+    # Span used by `--update-sql-snapshots` to rewrite it in place.
+    span: tuple[int, int] | None
+    is_explain: bool
+    # Configs this block is skipped on, e.g. `1rsX1`, `pgproto` or `iproto-2rsX1`.
+    skipped_for: frozenset[str]
+
+
+@dataclass(frozen=True)
+class SqlHeader:
+    test_matrix: frozenset[str] | None
+    # `-- XFAIL: reason` / `-- SKIP: reason`.
+    marks: tuple
+
+
+_MARKS = {"XFAIL": pytest.mark.xfail, "SKIP": pytest.mark.skip}
+
+_DIRECTIVE_RE = re.compile(r"^-- (?P<key>TEST-MATRIX|XFAIL|SKIP): *(?P<value>.+?) *$", re.M)
+
+_TEST_MATRIX_LINE_RE = re.compile(r"^-- TEST-MATRIX:[^\n]*\n", re.M)
+
+
+def parse_header(content: str) -> SqlHeader:
+    first_block = content.find("-- TEST:")
+    preamble = content if first_block < 0 else content[:first_block]
+
+    test_matrix = None
+    marks = []
+    for match in _DIRECTIVE_RE.finditer(preamble):
+        key, value = match.group("key"), match.group("value")
+        if key == "TEST-MATRIX":
+            test_matrix = frozenset(name.strip() for name in value.split(","))
+        else:
+            marks.append(_MARKS[key](reason=value))
+
+    return SqlHeader(test_matrix=test_matrix, marks=tuple(marks))
+
+
+def parse_file(test_file: Path) -> tuple[SqlHeader, list[SqlBlock]]:
     content = test_file.read_text()
+    header = parse_header(content)
     test_pattern = (
         # Test name
         r"-- TEST: (?P<name>[^\n]*)\n"
+        # SKIP_FOR (optional): comma-separated configs to skip this block on.
+        r"(?:-- SKIP_FOR: *(?P<skip_for>[^\n]*)\n)?"
         # SQL query
         r"-- SQL:\n(?P<query>.*?)\n"
         # PARAMS (optional): bind parameters for a single SQL query.
@@ -326,7 +394,7 @@ def parse_file(cls: Type, file_name: str) -> list:
         # Next test or end of file
         r"(?=-- TEST:|\Z)"
     )
-    pytest_params = []
+    blocks: list[SqlBlock] = []
     matches = re.finditer(test_pattern, content, re.DOTALL)
     for match in matches:
         name = match.group("name").strip()
@@ -338,6 +406,8 @@ def parse_file(cls: Type, file_name: str) -> list:
         query = query.strip()
         assert query, "SQL query must be provided"
 
+        line = content.count("\n", 0, match.start("name")) + 1
+
         bind_params = None
         params_body = match.group("params")
         if params_body is not None:
@@ -345,7 +415,11 @@ def parse_file(cls: Type, file_name: str) -> list:
             assert len(queries) == 1, f"Test {name}: PARAMS are supported only for a single query"
             bind_params = _parse_line(params_body, None, ",")
 
+        skip_for_body = match.group("skip_for")
+        skipped_for = frozenset(tag.strip() for tag in skip_for_body.split(",")) if skip_for_body else frozenset()
+
         kind = match.group("kind")
+        is_explain = query.lower().startswith("explain")
 
         span = None
         error = None
@@ -357,36 +431,28 @@ def parse_file(cls: Type, file_name: str) -> list:
         elif kind == "EXPECTED" or kind == "UNORDERED":
             span = match.span("body")
             is_exact = kind == "EXPECTED"
-            if query.lower().startswith("explain"):
+            if is_explain:
                 expected = _parse_explain_body(match.group("body"))
             else:
                 expected = _parse_line(match.group("body"), None, ",")
 
-        pytest_params.append(pytest.param(query, bind_params, expected, is_exact, error, test_file, span, id=name))
+        blocks.append(
+            SqlBlock(
+                file=test_file,
+                name=name,
+                line=line,
+                query=query,
+                params=bind_params,
+                expected=expected,
+                is_exact=is_exact,
+                error=error,
+                span=span,
+                is_explain=is_explain,
+                skipped_for=skipped_for,
+            )
+        )
 
-    return pytest_params
-
-
-def sql_test_file(file_name: str):
-    def inner(cls):
-        cls = pytest.mark.xdist_group(name=file_name)(cls)
-        cls.params = parse_file(cls, file_name)
-        return cls
-
-    return inner
-
-
-TEST_SQL_ARGS = ["query", "params", "expected", "is_exact", "error", "file_name", "span"]
-
-
-# Pytest hook to generate tests from parameters. For details see test/framework/sqltester.py
-def pytest_generate_tests(metafunc):
-    if metafunc.function.__name__ == "test_sql":
-        assert "query" in metafunc.fixturenames
-        assert "params" in metafunc.fixturenames
-        assert "expected" in metafunc.fixturenames
-        assert "error" in metafunc.fixturenames
-        metafunc.parametrize(TEST_SQL_ARGS, metafunc.cls.params)
+    return header, blocks
 
 
 TEST_PATCHES: dict[str, dict[tuple[int, int], str]] = dict()
@@ -425,79 +491,309 @@ def patch_sql_snapshots(pytestconfig):
             f.write(content)
 
 
-class AbstractCluster(ABC):
-    instance_count: int
+class SqlTestFailure(AssertionError):
+    """A `-- TEST:` block failed. Carries the block's location in its message."""
 
-    @pytest.fixture(scope="class")
-    def runner(self, runner_cls, cluster_factory):
-        cluster = cluster_factory()
-        init_cluster(cluster, self.instance_count)
-        assert len(cluster.instances) == self.instance_count
-        cluster.wait_until_buckets_balanced()
 
-        yield runner_cls(cluster)
+def _record_snapshot_patch(block: SqlBlock, output: list):
+    """Queue the actual output to replace the block's expectation in the file."""
+    assert block.span is not None
 
-        # Speed up graceful shutdown so teardown doesn't hit the default 30s wait.
-        cluster.terminate(on_shutdown_timeout=1)
+    def fix_line(s):
+        if s == "":
+            return "''"
+        return str(s)
 
-    def test_sql(
-        self,
-        runner,
-        query: str,
-        params: list,
-        is_exact: bool,
-        expected: list,
-        error: str,
-        file_name: str,
-        span: tuple[int, int],
-    ):
-        """
-        See `TEST_SQL_ARGS` above!
-        """
+    file_name = str(block.file)
+    TEST_PATCHES.setdefault(file_name, {})[block.span] = "\n".join(fix_line(x) for x in output)
 
-        output = None
+
+def _run_block(runner: AbstractRunner, block: SqlBlock):
+    output = None
+    try:
+        if block.is_explain and not block.error:
+            output, do_check = runner.do_explain_sql(block.query, block.expected, block.params)
+        elif block.expected and not block.is_exact:
+            output, do_check = runner.do_execsql(block.query, block.expected, block.params)
+        elif block.expected and block.is_exact:
+            output, do_check = runner.do_execsql_exact(block.query, block.expected, block.params)
+        else:
+            output, do_check = runner.do_catchsql(block.query, block.error, block.params)
+
+        do_check()
+
+    except AssertionError:
+        # Only EXPLAIN blocks produce an output we know how to write back.
+        if output is not None and block.span is not None:
+            _record_snapshot_patch(block, output)
+
+        # XXX: don't forget to re-raise!
+        raise
+
+
+def _raise_block_failure(block: SqlBlock, exc: BaseException):
+    location = f"{block.file.name}:{block.line}: -- TEST: {block.name}"
+    query = textwrap.indent(block.query, "    ")
+
+    if isinstance(exc, (AssertionError, pytest.fail.Exception)):
+        raise SqlTestFailure(f"{location}\n\n{query}\n\n{exc}") from None
+
+    # Anything else is an unexpected error rather than a mismatch.
+    raise SqlTestFailure(f"{location}\n\n{query}\n\n{type(exc).__name__}: {exc}") from exc
+
+
+RUNNERS: tuple[type[AbstractRunner], ...] = (PgprotoRunner, IprotoRunner)
+
+SECONDS_PER_BLOCK = 1.0
+
+
+@dataclass(frozen=True)
+class SqlTestSpec:
+    """What one collected item runs: a protocol, a cluster topology and the blocks."""
+
+    runner_cls: type[AbstractRunner]
+    replicaset_count: int
+    replication_factor: int
+    blocks: list[SqlBlock]
+
+    @property
+    def name(self) -> str:
+        return f"{self.runner_cls.protocol}-{self.topology}"
+
+    @property
+    def topology(self) -> str:
+        return f"{self.replicaset_count}rsX{self.replication_factor}"
+
+    @property
+    def instance_count(self) -> int:
+        return self.replicaset_count * self.replication_factor
+
+    @property
+    def tags(self) -> frozenset[str]:
+        return frozenset({self.runner_cls.protocol, self.topology, self.name})
+
+
+def all_specs(blocks: list[SqlBlock]) -> list[SqlTestSpec]:
+    return [
+        SqlTestSpec(runner_cls, count, factor, blocks)
+        for runner_cls in RUNNERS
+        for count in runner_cls.replicaset_counts
+        for factor in runner_cls.replication_factors
+    ]
+
+
+def format_cluster_table(specs: list[SqlTestSpec]) -> str:
+    header = ("CONFIG", "PROTOCOL", "REPLICASETS", "REPLICATION FACTOR", "INSTANCES")
+    rows = [
+        (
+            spec.name,
+            spec.runner_cls.protocol,
+            str(spec.replicaset_count),
+            str(spec.replication_factor),
+            str(spec.instance_count),
+        )
+        for spec in specs
+    ]
+    widths = [max(len(cell) for cell in column) for column in zip(header, *rows)]
+
+    def format_row(cells: tuple[str, ...]) -> str:
+        cells = tuple(
+            cell.ljust(width) if i < 2 else cell.rjust(width) for i, (cell, width) in enumerate(zip(cells, widths))
+        )
+        return "  ".join(cells).rstrip()
+
+    separator = tuple("-" * width for width in widths)
+    return "\n".join(format_row(row) for row in (header, separator, *rows))
+
+
+@pytest.fixture
+def sql_runner(request, cluster_factory):
+    """Deploy the cluster an item's spec asks for and wrap it in its runner."""
+    spec: SqlTestSpec = request.node.sql_spec
+
+    cluster = cluster_factory()
+    init_cluster(cluster, spec.instance_count, spec.replication_factor)
+    assert len(cluster.instances) == spec.instance_count
+    cluster.wait_until_buckets_balanced()
+
+    yield spec.runner_cls(cluster)
+
+    # Speed up graceful shutdown so teardown doesn't hit the default 30s wait.
+    cluster.terminate(on_shutdown_timeout=1)
+
+
+def run_sql_file(sql_runner, request):
+    """
+    Run every `-- TEST:` block of a `.sql` file, in order.
+    """
+    spec: SqlTestSpec = request.node.sql_spec
+
+    # `--update-sql-snapshots` is meant to refresh every stale EXPLAIN in one
+    # pass, so under it we keep going and only report the first failure at the end.
+    update_snapshots = request.config.getoption("update_sql_snapshots")
+
+    failure: tuple[SqlBlock, BaseException] | None = None
+    for block in spec.blocks:
+        if block.skipped_for & spec.tags:
+            logging.info(f"{block.file.name}:{block.line}: -- TEST: {block.name} skipped on {spec.name}")
+            continue
+
         try:
-            if query.lower().startswith("explain") and not error:
-                output, do_check = runner.do_explain_sql(query, expected, params)
-            elif expected and not is_exact:
-                output, do_check = runner.do_execsql(query, expected, params)
-            elif expected and is_exact:
-                output, do_check = runner.do_execsql_exact(query, expected, params)
-            else:
-                output, do_check = runner.do_catchsql(query, error, params)
+            _run_block(sql_runner, block)
+        except (Exception, pytest.fail.Exception) as exc:
+            if failure is None:
+                failure = (block, exc)
+            if not (update_snapshots and isinstance(exc, AssertionError)):
+                break
 
-            do_check()
-
-        except AssertionError:
-            if output is not None:
-
-                def fix_line(s):
-                    if s == "":
-                        return "''"
-                    return str(s)
-
-                output = "\n".join(fix_line(x) for x in output)
-
-                # Now, register the test to be updated.
-                file_name = str(file_name)
-                global TEST_PATCHES
-                if file_name not in TEST_PATCHES:
-                    TEST_PATCHES[file_name] = {}
-                TEST_PATCHES[file_name][span] = output
-
-            # XXX: don't forget to re-raise!
-            raise
+    if failure is not None:
+        _raise_block_failure(*failure)
 
 
-@pytest.mark.parametrize("runner_cls", [PgprotoRunner, IprotoRunner], scope="class")
-class ClusterSingleInstance(AbstractCluster):
-    params: list = []
-    instance_count: int = 1
+class SqlFile(pytest.File):
+    """
+    Collector turning one `.sql` file into one test per protocol and cluster size.
+    """
+
+    def collect(self):
+        header, blocks = parse_file(self.path)
+        assert blocks, f"{self.path} defines no `-- TEST:` blocks"
+
+        specs = self._select_specs(header, blocks)
+        self._check_skip_for_tags(blocks, specs)
+        needs_one_worker = self._needs_one_worker()
+
+        for spec in specs:
+            for item in self._make_items(spec.name):
+                item.sql_spec = spec
+
+                if needs_one_worker:
+                    item.add_marker(pytest.mark.xdist_group(name=self.path.name))
+                self._add_timeout_marker(item, len(blocks))
+                for mark in header.marks:
+                    item.add_marker(mark)
+
+                yield item
+
+    def _make_items(self, name: str):
+        """
+        Build the item(s) for one spec, using `pytest_generate_tests`.
+        """
+        definition = FunctionDefinition.from_parent(self, name=name, callobj=run_sql_file)
+        fixtureinfo = definition._fixtureinfo
+        metafunc = Metafunc(
+            definition=definition,
+            fixtureinfo=fixtureinfo,
+            config=self.config,
+            cls=None,
+            module=None,
+            _ispytest=True,
+        )
+        self.ihook.pytest_generate_tests(metafunc=metafunc)
+
+        # No plugin asked for extra parametrization.
+        if not metafunc._calls:
+            yield pytest.Function.from_parent(self, name=name, fixtureinfo=fixtureinfo, callobj=run_sql_file)
+            return
+
+        fixtureinfo.prune_dependency_tree()
+        for callspec in metafunc._calls:
+            yield pytest.Function.from_parent(
+                self,
+                name=f"{name}[{callspec.id}]",
+                callspec=callspec,
+                fixtureinfo=fixtureinfo,
+                keywords={callspec.id: True},
+                originalname=name,
+                callobj=run_sql_file,
+            )
+
+    def _needs_one_worker(self) -> bool:
+        """
+        Whether this file's items must all land on the same xdist worker.
+        """
+        return bool(self.config.getoption("update_sql_snapshots"))
+
+    def _select_specs(self, header: SqlHeader, blocks: list[SqlBlock]) -> list[SqlTestSpec]:
+        """
+        The specs the file's mandatory `-- TEST-MATRIX:` header asks for.
+        """
+        specs = all_specs(blocks)
+        known = [spec.name for spec in specs]
+
+        if self.config.getoption("update_sql_test_matrix"):
+            self._write_test_matrix_header(specs)
+            return specs
+
+        if header.test_matrix is None:
+            raise ValueError(f"{self.path}: missing `-- TEST-MATRIX:` header, pick from {known}")
+
+        unknown = sorted(header.test_matrix - set(known))
+        if unknown:
+            raise ValueError(f"{self.path}: -- TEST-MATRIX: unknown config(s) {unknown}, known: {known}")
+
+        return [spec for spec in specs if spec.name in header.test_matrix]
+
+    def _write_test_matrix_header(self, specs: list[SqlTestSpec]):
+        """
+        Rewrite the file's `-- TEST-MATRIX:` header to `specs`, adding it if missing.
+        """
+        content = self.path.read_text()
+        line = f"-- TEST-MATRIX: {', '.join(spec.name for spec in specs)}\n"
+
+        first_block = content.find("-- TEST:")
+        preamble = content if first_block < 0 else content[:first_block]
+        match = _TEST_MATRIX_LINE_RE.search(preamble)
+        if match:
+            patched = content[: match.start()] + line + content[match.end() :]
+        else:
+            patched = line + "\n" + content
+
+        if patched == content:
+            return
+
+        logging.warning(f"updating test matrix header of {self.path}")
+
+        # Every xdist worker collects the file, so the write has to be atomic.
+        tmp = self.path.with_suffix(f".sql.{os.getpid()}.tmp")
+        tmp.write_text(patched)
+        tmp.replace(self.path)
+
+    def _check_skip_for_tags(self, blocks: list[SqlBlock], specs: list[SqlTestSpec]):
+        known = frozenset().union(*(spec.tags for spec in specs))
+        for block in blocks:
+            unknown = sorted(block.skipped_for - known)
+            if unknown:
+                raise ValueError(
+                    f"{self.path}:{block.line}: -- SKIP_FOR: unknown config(s) {unknown}, known: {sorted(known)}"
+                )
+
+    def _add_timeout_marker(self, item: pytest.Item, block_count: int):
+        # An explicit --timeout must keep winning over what we compute here.
+        if self.config.getoption("timeout") is not None:
+            return
+
+        base = get_pytest_timeout(self.config)
+        per_block = SECONDS_PER_BLOCK * block_count * TIMEOUT_SCALE
+        item.add_marker(pytest.mark.timeout(base + per_block))
 
 
-# TODO: Add instance_count parameter to the class above and remove this class.
-# Note that doing this before fixing vshard rebalancing will introduce more flaky tests.
-@pytest.mark.parametrize("runner_cls", [PgprotoRunner, IprotoRunner], scope="class")
-class ClusterTwoInstances(AbstractCluster):
-    params: list = []
-    instance_count: int = 2
+def pytest_cmdline_main(config):
+    """
+    `--list-sql-test-matrix` prints the configs and exits without running anything.
+    """
+    if not config.getoption("list_sql_test_matrix"):
+        return None
+
+    print(format_cluster_table(all_specs([])))
+    return 0
+
+
+def pytest_collect_file(file_path: Path, parent):
+    """
+    Collect a `.sql` file as a test, provided its directory registers one.
+    """
+    if file_path.suffix != ".sql" or file_path.parent.name != "sql":
+        return None
+
+    return SqlFile.from_parent(parent, path=file_path)

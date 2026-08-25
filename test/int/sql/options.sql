@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: test_option
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
@@ -19,7 +21,7 @@ INSERT INTO t VALUES (1);
 -- SQL:
 select * from "testing_space" option(sql_vdbe_opcode_max = 5);
 -- ERROR:
-Query 1 from EXPLAIN \(RAW\): Reached a limit on max executed vdbe opcodes. Limit: 5
+Reached a limit on max executed vdbe opcodes. Limit: 5
 
 -- TEST: test_basic-2
 -- SQL:
@@ -30,14 +32,14 @@ select * from "testing_space" order by 1;
 -- TEST: test_basic-3
 -- SQL:
 select * from "testing_space" option(sql_vdbe_opcode_max = 45);
--- EXPECTED:
+-- UNORDERED:
 1, '123', 1, 2, '1', 1, 3, '1', 1, 4, '2', 2, 5, '123', 2, 6, '2', 4
 
 -- TEST: test_dml-1
 -- SQL:
 insert into "testing_space" select "id" + 10, "name", "product_units" from "testing_space" option(sql_vdbe_opcode_max = 10);
 -- ERROR:
-Query 1 from EXPLAIN \(RAW\): Reached a limit on max executed vdbe opcodes. Limit: 10
+Reached a limit on max executed vdbe opcodes. Limit: 10
 
 -- TEST: test_dml-2
 -- SQL:
@@ -58,7 +60,7 @@ INSERT INTO "testing_space" ("id", "name", "product_units") VALUES
 -- SQL:
 select * from "testing_space" option(sql_vdbe_opcode_max = 10, sql_vdbe_opcode_max = 11);
 -- ERROR:
-Query 1 from EXPLAIN \(RAW\): Reached a limit on max executed vdbe opcodes. Limit: 11
+Reached a limit on max executed vdbe opcodes. Limit: 11
 
 -- TEST: test_invalid-2
 -- SQL:
@@ -82,7 +84,7 @@ expected VdbeOpcodeMax, MotionRowMax, ReadPreference, or Forward
 -- SQL:
 insert into "testing_space" select "id" + 10, "name", "product_units" from "testing_space" option(sql_motion_row_max = 1);
 -- ERROR:
-Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(1\) in virtual table: 6
+Exceeded maximum number of rows \(1\) in virtual table: \d+
 
 -- TEST: test_sql_motion_row_max_on_storage-2
 -- SQL:
@@ -114,20 +116,20 @@ Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(5\) in virtual t
 -- TEST: test_sql_motion_row_max_on_router-2
 -- SQL:
 select "id" from "testing_space" group by "id" option(sql_motion_row_max = 7);
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6
 
 -- TEST: test_sql_motion_row_max_on_router-3
 -- SQL:
 select "id" from "testing_space" group by "id" option(sql_motion_row_max = 6);
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6
 
 -- TEST: test-sql-vdbe-opcode-max-exceeded-select-first-query
 -- SQL:
 select * from t order by 1 limit 1000 option (sql_vdbe_opcode_max = 6);
 -- ERROR:
-Query 1 from EXPLAIN \(RAW\): Reached a limit on max executed vdbe opcodes. Limit: 6
+Reached a limit on max executed vdbe opcodes. Limit: 6
 
 -- TEST: test-sql-vdbe-opcode-max-exceeded-select-second-query
 -- SQL:

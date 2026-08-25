@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: explain-setup
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -221,6 +223,7 @@ buckets = any
 buckets <= [1-3000]
 
 -- TEST: buckets-raw-fmt-delete
+-- SKIP_FOR: 2rsX1
 -- SQL:
 explain (buckets, raw, fmt) delete from t where a = 5 and c = 'lol';
 -- EXPECTED:
@@ -253,6 +256,7 @@ buckets = [442]
 buckets = [442]
 
 -- TEST: buckets-raw-fmt-update
+-- SKIP_FOR: 2rsX1
 -- SQL:
 explain (buckets, raw, fmt) update t set b = b + 1 where a = 42 and c = 'kek';
 -- EXPECTED:
@@ -286,6 +290,7 @@ buckets = [2873]
 buckets = [2873]
 
 -- TEST: logical-buckets-raw-fmt-update
+-- SKIP_FOR: 2rsX1
 -- SQL:
 explain (buckets, logical, raw, fmt) update t set b = b + 1 where a = 42 and c = 'kek';
 -- EXPECTED:
@@ -338,6 +343,7 @@ buckets = [2873]
 buckets = [2873]
 
 -- TEST: logical-buckets-raw-fmt-delete
+-- SKIP_FOR: 2rsX1
 -- SQL:
 explain (buckets, logical, raw, fmt) delete from t where a = 5 and c = 'lol';
 -- EXPECTED:
@@ -820,6 +826,7 @@ forward analysis (on > ro_to_rw > off):
   forward = on
 
 -- TEST: raw-forward-select
+-- SKIP_FOR: 2rsX1
 -- SQL:
 explain (raw, forward) select a from t where a = 1 and c = '2' union select id::int from _pico_table;
 -- EXPECTED:
@@ -919,6 +926,7 @@ sql_vdbe_opcode_max = 45000
 sql_motion_row_max = 5000
 
 -- TEST: buckets-raw-block-delete-select
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (buckets, raw)
 DO $$ BEGIN
@@ -955,6 +963,7 @@ plan:
 buckets = [2426]
 
 -- TEST: logical-forward-block-let-if-insert-select
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (logical, forward)
 DO $$ BEGIN
@@ -1017,6 +1026,7 @@ forward analysis (on > ro_to_rw > off):
   forward = off
 
 -- TEST: raw-logical-forward-buckets-context-block-selects
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw, logical, forward, buckets, context)
 DO $$ BEGIN
@@ -1196,6 +1206,7 @@ sql_vdbe_opcode_max = 45000
 sql_motion_row_max = 5000
 
 -- TEST: raw-logical-forward-buckets-context-block-fmt-dml
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw, logical, forward, buckets, context, fmt)
 DO $$ BEGIN
@@ -1342,6 +1353,7 @@ sql_vdbe_opcode_max = 45000
 sql_motion_row_max = 5000
 
 -- TEST: raw-logical--block-unused-let
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw, logical)
 DO $$ BEGIN
@@ -1649,6 +1661,7 @@ buckets = any
 buckets <= [1-3000]
 
 -- TEST: raw-buckets-logical-select-subquery
+-- SKIP_FOR: 2rsX1
 -- SQL:
 explain (raw, buckets, logical) SELECT * FROM b WHERE b.id IN (SELECT val FROM c where id = 5);
 -- EXPECTED:
@@ -1701,6 +1714,7 @@ buckets <= [1-3000]
 buckets <= [1-3000]
 
 -- TEST: buckets-does-not-intersperse-with-raw-for-transactions
+-- SKIP_FOR: 2rsX1
 -- SQL:
 explain (raw, buckets)
 do $$ begin
@@ -1826,6 +1840,7 @@ buckets <= [1-3000]
 buckets <= [1-3000]
 
 -- TEST: raw-buckets-logical-select-dyn-filtered
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw, fmt, buckets, logical)
 SELECT * FROM tt WHERE d IN (SELECT a FROM t WHERE a = 5 AND c = 'lol');
@@ -1901,6 +1916,7 @@ buckets <= [1-3000]
 
 
 -- TEST: raw-buckets-logical-select-order-by-dyn-filtered
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw, fmt, buckets, logical)
 SELECT * FROM tt WHERE d IN (SELECT a FROM t WHERE a = 5 AND c = 'lol') ORDER BY 1;
@@ -2002,6 +2018,7 @@ buckets <= [1-3000]
 
 
 -- TEST: raw-buckets-cte
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (RAW, FMT, BUCKETS) WITH cte1 (a) AS (SELECT "d" FROM "tt" WHERE "d" = 1),
 cte2 (b) AS (SELECT * FROM cte1 UNION ALL SELECT "d" FROM "tt" WHERE "d" = 2)
@@ -2072,6 +2089,7 @@ buckets = any
 buckets = [1410,1934]
 
 -- TEST: raw-buckets-logical-simple-select-dyn-filtered-x/k
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw, fmt, buckets, logical)
 SELECT * FROM tt WHERE d IN (1, 2, 3) AND d = (SELECT MIN(d) FROM tt);
@@ -2292,6 +2310,7 @@ buckets = []
 buckets = []
 
 -- TEST: raw-buckets-delete
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (RAW, FMT, BUCKETS) DELETE FROM testing_space WHERE id IN (10, 15, 42);
 -- EXPECTED:
@@ -2327,6 +2346,7 @@ buckets = [626,1403,2426]
 buckets = [626,1403,2426]
 
 -- TEST: raw-buckets-update
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (RAW, FMT, BUCKETS) UPDATE testing_space SET product_units = product_units + 10 WHERE id IN (10, 15, 42);
 -- EXPECTED:

@@ -270,6 +270,7 @@ def assert_common_volatile_function_behavior(
             False,
             False,
             marks=pytest.mark.flaky(reruns=3),
+            id="pico_instance_uuid",
         ),
         pytest.param(
             "pico_raft_leader_uuid",
@@ -278,6 +279,7 @@ def assert_common_volatile_function_behavior(
             False,
             True,
             False,
+            id="pico_raft_leader_uuid",
         ),
         pytest.param(
             "pico_raft_leader_id",
@@ -286,6 +288,7 @@ def assert_common_volatile_function_behavior(
             False,
             True,
             False,
+            id="pico_raft_leader_id",
         ),
         pytest.param(
             "pico_instance_name",
@@ -295,6 +298,7 @@ def assert_common_volatile_function_behavior(
             False,
             True,
             marks=pytest.mark.flaky(reruns=3),
+            id="pico_instance_name",
         ),
         pytest.param(
             "pico_replicaset_name",
@@ -304,6 +308,7 @@ def assert_common_volatile_function_behavior(
             None,
             True,
             marks=pytest.mark.flaky(reruns=3),
+            id="pico_replicaset_name",
         ),
         pytest.param(
             "pico_tier_name",
@@ -313,6 +318,7 @@ def assert_common_volatile_function_behavior(
             None,
             True,
             marks=pytest.mark.flaky(reruns=3),
+            id="pico_tier_name",
         ),
         pytest.param(
             "pico_instance_dir",
@@ -322,6 +328,7 @@ def assert_common_volatile_function_behavior(
             None,
             True,
             marks=pytest.mark.flaky(reruns=3),
+            id="pico_instance_dir",
         ),
         pytest.param(
             "pico_config_file_path",
@@ -330,6 +337,7 @@ def assert_common_volatile_function_behavior(
             True,
             None,
             True,
+            id="pico_config_file_path",
         ),
     ],
 )

@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: api
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
@@ -55,6 +57,7 @@ SELECT * FROM "testing_space" where "id" = 5;
 
 
 -- TEST: test_simple_shard_key_query-2
+-- SKIP_FOR: 2rsX1
 -- SQL:
 SELECT *, "bucket_id" FROM "space_simple_shard_key" where "id" = 1.000;
 -- EXPECTED:
@@ -89,7 +92,7 @@ SELECT * FROM "testing_space"
 -- TEST: test_decimal_double
 -- SQL:
 SELECT *, "bucket_id" FROM "t";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('4.2'), 1934, 2, Decimal('6.66'), 1410
 
 -- TEST: test_bucket_id_in_join
@@ -122,7 +125,7 @@ union
 select "id" from "t"
 union
 select "id" from "t";
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: test_lower_upper-1

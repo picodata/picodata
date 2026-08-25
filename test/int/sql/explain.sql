@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: explain
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
@@ -379,6 +381,7 @@ plan:
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION)
 
 -- TEST: test_raw_explain-2
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1;
 -- EXPECTED:
@@ -392,6 +395,7 @@ plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
 
 -- TEST: test_raw_explain-3
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
@@ -405,6 +409,7 @@ plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
 
 -- TEST: test_raw_explain-4
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 GROUP BY 1, 2, 3 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
@@ -677,6 +682,7 @@ plan:
     [1] SCAN TABLE _tmp_3335876461265456219_2136 (~1048576 rows)
 
 -- TEST: test_raw_explain-15
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 42;
 -- EXPECTED:
@@ -690,6 +696,7 @@ plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
 
 -- TEST: test_raw_explain-16
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW, FMT) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 42;
 -- EXPECTED:
@@ -911,6 +918,7 @@ projection (
 buckets = [1934]
 
 -- TEST: test-explain-options-repetitions
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW, FMT, FMT, RAW, FMT) SELECT * FROM testing_space WHERE id = 1;
 -- EXPECTED:
@@ -938,6 +946,7 @@ INSERT INTO t VALUES (1,1,1), (2,2,2), (3,3,3), (4,4,4);
 
 
 -- TEST: explain-raw-return-query-1
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) DO $$
 BEGIN
@@ -1009,6 +1018,7 @@ plan:
 
 
 -- TEST: explain-raw-return-query-4
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) DO $$
 BEGIN
@@ -1046,6 +1056,7 @@ plan:
 
 
 -- TEST: explain-raw-updates-1
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) DO $$
 BEGIN
@@ -1083,6 +1094,7 @@ plan:
 
 
 -- TEST: explain-raw-updates-2
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) DO $$
 BEGIN
@@ -1119,6 +1131,7 @@ plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 
 -- TEST: explain-raw-updates-no-return-query
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) DO $$
 BEGIN

@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: initialization
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -279,13 +281,13 @@ true
 -- TEST: test-cte-union-caching-1
 -- SQL:
 with cte(escape) as (select '#') select escape from cte union all select escape from cte;
--- EXPECTED:
+-- UNORDERED:
 '#', '#'
 
 -- TEST: test-cte-union-caching-2
 -- SQL:
 with cte(escape) as (select '#') select escape from cte union all select escape from cte;
--- EXPECTED:
+-- UNORDERED:
 '#', '#'
 
 -- TEST: test-qualified-references-1
@@ -303,7 +305,7 @@ sbroad: table 'no_such_table' not found
 -- TEST: test-qualified-references-3
 -- SQL:
 SELECT "t1".* FROM t AS t1;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 1, 3, 2, 4, 3
 
 -- TEST: test-json-is-not-keyword-3
@@ -324,13 +326,13 @@ INSERT INTO int8 VALUES (8, 1, 'kek'), (10, 5, 'lol');
 -- TEST: test-filter-keyword-3
 -- SQL:
 SELECT uuid from int8;
--- EXPECTED:
+-- UNORDERED:
 'kek', 'lol'
 
 -- TEST: test-filter-keyword-4
 -- SQL:
 SELECT CAST(int as int) from int8;
--- EXPECTED:
+-- UNORDERED:
 8, 10
 
 -- TEST: test-filter-keyword-5
@@ -431,7 +433,7 @@ INSERT INTO t1 (a, b) VALUES(3, 1), (4, 2);
 
 -- TEST: test-order-by-nulls-8
 -- SQL:
-SELECT * FROM t ORDER BY b + (SELECT b FROM t1 ORDER BY b NULLS LAST LIMIT 1) NULLS FIRST;
+SELECT * FROM t ORDER BY b + (SELECT b FROM t1 ORDER BY b NULLS LAST LIMIT 1) NULLS FIRST, a;
 -- EXPECTED:
 1, nil, 2, nil, 3, 1, 4, 2
 
@@ -547,7 +549,7 @@ select distinct b from t order by b;
 -- TEST: select_distinct-1.1
 -- SQL:
 select distinct cast(avg(b) as int) from t group by a;
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: select_distinct-2.0
@@ -565,7 +567,7 @@ select distinct b from t order by b;
 -- TEST: select_distinct-2.1
 -- SQL:
 select distinct cast(avg(b) as int) from t group by a;
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: invalid-sharding-key

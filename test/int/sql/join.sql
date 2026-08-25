@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: test_join
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
@@ -68,7 +70,7 @@ SELECT * FROM t JOIN t AS t1 ON t1.a IN (t1.b, t1.a) ORDER BY 1;
 -- TEST: test_join4
 -- SQL:
 SELECT * FROM gt join gt as gt2 ON TRUE JOIN t ON TRUE;
--- EXPECTED:
+-- UNORDERED:
 1,	1,	1,	2,	3,
 1,	1,	4,	5,	6,
 1,	1,	7,	8,	9,
@@ -86,7 +88,7 @@ SELECT * FROM gt join gt as gt2 ON TRUE JOIN t ON TRUE;
 -- TEST: test_join5
 -- SQL:
 SELECT * FROM t JOIN gt ON true join gt as gt2 ON TRUE;
--- EXPECTED:
+-- UNORDERED:
 1,	2,	3,	1,	1,
 1,	2,	3,	1,	2,
 1,	2,	3,	2,	1,
@@ -115,7 +117,7 @@ could not resolve operator overload for or\(bool, int\)
 -- TEST: test-sq-in-join-condition
 -- SQL:
 with t(a) as (values (1), (2), (3)) select * from t t1 join t t2 on (select true) and t1.a = t2.a;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 2, 3, 3
 
 -- TEST: test-join-output-reduced-1.0
@@ -236,6 +238,7 @@ SELECT * FROM ct1 JOIN ct2 ON a = 1 AND b = 3;
 -- EXPECTED:
 
 -- TEST: explain-cross-table-constant-conditions-1
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN(RAW, BUCKETS) SELECT * FROM ct1 JOIN ct2 ON a = 1 AND b = 2;
 -- EXPECTED:
@@ -273,6 +276,7 @@ buckets = [1934]
 buckets <= [1-3000]
 
 -- TEST: explain-cross-table-constant-conditions-2
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN(RAW, BUCKETS) SELECT * FROM ct1 JOIN ct2 ON a IN (1, 3) AND b = 2;
 -- EXPECTED:
@@ -311,6 +315,7 @@ buckets = [1934,1958]
 buckets <= [1-3000]
 
 -- TEST: explain-cross-table-constant-conditions-3
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN(RAW, BUCKETS) SELECT * FROM ct2 JOIN ct1 ON a = 1 AND b = 2;
 -- EXPECTED:
@@ -348,6 +353,7 @@ buckets = [1410]
 buckets <= [1-3000]
 
 -- TEST: explain-cross-table-constant-conditions-4
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN(RAW, BUCKETS) SELECT * FROM ct1 JOIN ct2 ON a = 1 AND b = 3;
 -- EXPECTED:

@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: test_limit
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -7,7 +9,7 @@ VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
 
 -- TEST: limit1
 -- SQL:
-SELECT "a" FROM "t" LIMIT 2;
+SELECT "a" FROM "t" ORDER BY "a" LIMIT 2;
 -- EXPECTED:
 1, 2
 
@@ -44,7 +46,7 @@ WITH cte (b) AS (SELECT "a" FROM "t" ORDER BY "a" LIMIT 2)
 
 -- TEST: limit6
 -- SQL:
-SELECT "a" FROM (SELECT "a" FROM "t" LIMIT 1);
+SELECT "a" FROM (SELECT "a" FROM "t" ORDER BY "a" LIMIT 1);
 -- EXPECTED:
 1
 

@@ -1,9 +1,0 @@
-from framework.sqltester import (
-    ClusterSingleInstance,
-    sql_test_file,
-)
-
-
-@sql_test_file("explain_options.sql")
-class TestExplainOptions(ClusterSingleInstance):
-    pass

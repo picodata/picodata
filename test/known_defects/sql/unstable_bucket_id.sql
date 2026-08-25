@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: invalid-bucket-calculation-gl2640
 -- SQL:
 CREATE TABLE t (a INT, b DECIMAL, PRIMARY KEY (b));

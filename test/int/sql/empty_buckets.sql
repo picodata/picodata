@@ -1,3 +1,9 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
+-- Queries with an empty set of calculated buckets should be executed using
+-- `Buckets::Any`, e.g. `SELECT 1 UNION ALL SELECT a FROM t WHERE false` must
+-- return a single row.
+
 -- TEST: initialization
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -203,6 +209,7 @@ buckets = any
 buckets = any
 
 -- TEST: explain-raw-global-union-all-sharded
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW, BUCKETS) SELECT a FROM g UNION ALL SELECT a FROM t;
 -- EXPECTED:

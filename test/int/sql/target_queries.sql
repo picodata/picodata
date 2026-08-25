@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: target-queries-1
 -- SQL:
 DROP TABLE IF EXISTS col1_transactions_actual;
@@ -64,7 +66,7 @@ FROM
     FROM "col1_transactions_actual"
     WHERE "sys_from" <= 0) AS "t3"
 WHERE "col1" = 1;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 1, 1, 1, 1, 1, 3
 
 -- TEST: test_type_2
@@ -81,7 +83,7 @@ FROM
     WHERE "sys_from" <= 0) AS "t3"
 WHERE "col1" = 1
         AND "col2" = 2;
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 3
 
 -- TEST: test_type_3
@@ -115,7 +117,7 @@ FROM
     FROM "col1_transactions_actual"
     WHERE "sys_from" <= 0) AS "t3"
 WHERE "col1" = 1 OR "col1" = 3;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 1, 1, 1, 1, 1, 3, 3, 1, 3
 
 -- TEST: test_type_5
@@ -134,7 +136,7 @@ WHERE "col1" = 1
         AND "col2" = 2
         OR "col1" = 1
         AND "col2" = 1;
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 3, 1, 1, 1, 3
 
 -- TEST: test_type_6
@@ -152,7 +154,7 @@ FROM
 WHERE "col1" = 1
         OR ("col1" = 2
         OR "col1" = 3);
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 1, 1, 1, 1, 1, 3, 3, 1, 3
 
 -- TEST: test_type_7
@@ -172,7 +174,7 @@ WHERE ("col1" = 1
         OR "col1" = 3))
         AND ("col2" = 1
         OR "col2" = 2);
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 2, 1, 2, 1, 1, 1, 1, 1, 3, 1, 2, 1, 3
 
 -- TEST: test_type_8
@@ -193,7 +195,7 @@ WHERE ("col1" = 1
         AND (("col2" = 1
         OR "col2" = 2)
         AND "amount" > 2);
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 3, 1, 2, 1, 3
 
 -- TEST: test_type_9
@@ -219,7 +221,7 @@ WHERE "col1" IN
         FROM "cola_accounts_actual"
         WHERE "sys_from" <= 0) AS "t8"
     WHERE "cola" = 1);
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 1, 1, 1, 1, 1, 3
 
 -- TEST: test_type_10
@@ -245,7 +247,7 @@ WHERE "col1" IN
         WHERE "sys_from" <= 0) AS "t8"
         WHERE "cola" = 1)
   AND "amount" > 0;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 1, 1, 1, 1, 1, 3
 
 -- TEST: test_type_11
@@ -296,7 +298,7 @@ INNER JOIN
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."account_id" = "t8"."id"
 WHERE "t3"."col1" = 1 AND "t8"."cola" = 1;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 1, 1, 2,
 1, 1, 1, 1, 1, 3,
 1, 1, 2, 1, 1, 2,
@@ -327,7 +329,7 @@ INNER JOIN
     ON "t3"."account_id" = "t8"."id"
 WHERE "t3"."col1" = 1 AND ("t8"."cola" = 1
         AND "t3"."amount" > 2);
--- EXPECTED:
+-- UNORDERED:
 1, 1, 3, 1, 1, 2, 1, 1, 3, 1, 1, 3
 
 -- TEST: test_type_14
@@ -352,7 +354,7 @@ INNER JOIN
     ON "t3"."account_id" = "t8"."id"
 WHERE "t3"."col1" = 1 AND "t3"."col2" = 2
 AND ("t8"."cola" = 1 AND "t8"."colb" = 2);
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 1, 1, 1, 2, 1, 2, 1, 2, 1, 1, 2, 1, 2, 1, 3, 1, 1, 2
 
 -- TEST: test_type_15
@@ -377,7 +379,7 @@ INNER JOIN
     ON "t3"."account_id" = "t8"."id"
 WHERE "t3"."col1" = 1 AND "t3"."col2" = 2
 AND ("t8"."cola" = 1 AND ("t8"."colb" = 2 AND "t3"."amount" > 0));
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 1, 1, 1, 2, 1, 2, 1, 2, 1, 1, 2, 1, 2, 1, 3, 1, 1, 2
 
 -- TEST: test_type_17
@@ -401,7 +403,7 @@ INNER JOIN
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."account_id" = "t8"."id"
 WHERE "t3"."col1" = 1 AND "t8"."cola" = 2;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 1, 2, 3, 1, 1, 2, 1, 2, 3, 1, 1, 3, 1, 2, 3
 
 -- TEST: test_type_18
@@ -425,7 +427,7 @@ INNER JOIN
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."account_id" = "t8"."id"
 WHERE "t3"."col1" = 1 AND "t3"."col2" = 2 AND ("t8"."cola" = 1 AND "t8"."colb" = 2);
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 2, 1, 1, 2, 1, 2, 1, 3, 1, 1, 2
 
 -- TEST: test_type_19
@@ -473,7 +475,7 @@ INNER JOIN
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."col1" = "t8"."cola"
 WHERE "t3"."col1" = 1 AND "t3"."col2" = 1;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 3, 1, 1, 2, 1, 1, 1, 3, 1, 1, 3
 
 -- TEST: test_type_21
@@ -497,7 +499,7 @@ INNER JOIN
     WHERE "sys_from" <= 0) AS "t8"
     ON "t3"."col1" = "t8"."cola"
 WHERE "t3"."col1" = 1;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 1, 1, 2,
 1, 1, 1, 1, 1, 3,
 1, 1, 2, 1, 1, 2,
@@ -528,7 +530,7 @@ WHERE "account_id" IN
         WHERE "sys_from" <= 0) AS "t8"
         WHERE "cola" = 1)
     AND ("col1" = 1 AND "col2" = 2);
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 3
 
 -- TEST: test_type_23
@@ -554,5 +556,5 @@ WHERE "account_id" IN
         WHERE "sys_from" <= 0) AS "t8"
         WHERE "cola" = 1 AND "colb" = 2)
     AND ("col1" = 1 AND "col2" = 2);
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 3

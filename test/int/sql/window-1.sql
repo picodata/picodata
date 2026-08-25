@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: window1
 -- SQL:
 DROP TABLE IF EXISTS t1;
@@ -166,7 +168,7 @@ SELECT * FROM (
 	UNION ALL
 	SELECT 1
 ) WHERE id = 1;
--- EXPECTED:
+-- UNORDERED:
 1, 1
 
 -- TEST: window0-cte-compound-query-with-outer-cast-filter

@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: init
 -- SQL:
 CREATE TABLE t (a INT PRIMARY KEY, b INT);
@@ -59,6 +61,7 @@ projection (t.a::int -> a)
 buckets = [1934]
 
 -- TEST: const-explain-raw
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) SELECT a FROM t WHERE bucket_id = 1934;
 -- EXPECTED:
@@ -724,7 +727,7 @@ BEGIN
   RETURN QUERY SELECT a FROM t WHERE bucket_id = 1934;
   RETURN QUERY SELECT b FROM t WHERE bucket_id = 1934;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 1,
 2
 
@@ -735,7 +738,7 @@ BEGIN
   RETURN QUERY SELECT a FROM t WHERE bucket_id = 1934;
   RETURN QUERY SELECT b FROM t WHERE a = 1;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 1,
 2
 

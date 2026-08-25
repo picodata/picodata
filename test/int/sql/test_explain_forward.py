@@ -1,14 +1,5 @@
 import psycopg
 from conftest import Cluster
-from framework.sqltester import (
-    ClusterSingleInstance,
-    sql_test_file,
-)
-
-
-@sql_test_file("explain_forward.sql")
-class TestExplainForward(ClusterSingleInstance):
-    pass
 
 
 def test_forward_option(cluster: Cluster):

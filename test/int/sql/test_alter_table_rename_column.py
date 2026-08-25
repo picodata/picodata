@@ -1,13 +1,4 @@
-from framework.sqltester import (
-    Cluster,
-    ClusterTwoInstances,
-    sql_test_file,
-)
-
-
-@sql_test_file("alter_table_rename_column.sql")
-class TestRenameColumn(ClusterTwoInstances):
-    pass
+from conftest import Cluster
 
 
 # this test is implemented as an actual python test because sqltest struggles with parsing the nested list structure of `_pico_index.parts`

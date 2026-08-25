@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: datetime-1.1
 -- SQL:
 select '2026-01-13' = '2026-01-13'::datetime;

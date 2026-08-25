@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: selecting_works_after_rename_prepare
 -- SQL:
 DROP TABLE IF EXISTS test_table;

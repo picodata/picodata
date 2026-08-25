@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: indexed-by
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -16,7 +18,7 @@ INSERT INTO "s" VALUES
 -- TEST: indexed-by-1
 -- SQL:
 SELECT a FROM t INDEXED BY aaa WHERE true;
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: indexed-by-2
@@ -183,7 +185,7 @@ buckets <= [1-3000]
 -- TEST: indexed-by-12
 -- SQL:
 SELECT * FROM t INDEXED BY aaa;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 'aaa', 2, 2, 'bbb'
 
 -- TEST: indexed-by-12

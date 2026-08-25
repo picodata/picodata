@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: test_arithmetic_expr
 -- SQL:
 DROP TABLE IF EXISTS arithmetic_space;
@@ -33,13 +35,13 @@ VALUES (1, 1, 1, 1, 1, 1, 1, false, '123', 4.599999),
 -- TEST: test-arithmetic-modulo-1
 -- SQL:
 select "id" from "arithmetic_space" where "id" % 2 > 0;
--- EXPECTED:
+-- UNORDERED:
 1, 3, 5, 7, 9
 
 -- TEST: test-arithmetic-modulo-2
 -- SQL:
 select "id" % 2 from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 0, 1, 0, 1, 0, 1, 0, 1, 0
 
 -- TEST: test_arithmetic_invalid1-2
@@ -165,13 +167,13 @@ could not resolve operator overload for \+\(text, text\)
 -- TEST: test_arithmetic_valid-1
 -- SQL:
 select "id" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_arithmetic_valid-2
 -- SQL:
 select "id" from "arithmetic_space" where 2 + 2 = 4;
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_arithmetic_valid-3
@@ -182,7 +184,7 @@ where
     or ("id" * "id" > 0 and "id" * "id" * "id" > 0)
     or ("id" - "id" < 0 and "id" - "id" - "id" < 0)
     or ("id" / "id" > 0 and "id" / "id" / "id" > 0);
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_arithmetic_valid-4
@@ -193,13 +195,13 @@ where
     and "id" - "id" * "id" - "id" <= 0
     and "id" + "id" / "id" + "id" >= 0
     and "id" - "id" / "id" - "id" <= 0;
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_arithmetic_with_bool-1
 -- SQL:
 select "id" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_arithmetic_with_bool-2
@@ -235,7 +237,7 @@ where "id" + "a" >= "id"
     and "id" + "f" < "c"
     and "id" + "a" = "b"
     and "id" + "a" != "c";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_arithmetic_with_bool-5
@@ -259,56 +261,56 @@ where "c" >= "id" + "b"
     and "id" < "a" + "e"
     and "b" = "id" + "f"
     and "c" != "id" + "a";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_selection_simple_arithmetic-1
 -- SQL:
 select "id" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_selection_simple_arithmetic-2
 -- SQL:
 select "id" from "arithmetic_space" where "id" + 1 > 8;
--- EXPECTED:
+-- UNORDERED:
 8, 9, 10
 
 -- TEST: test_selection_simple_arithmetic-3
 -- SQL:
 select "id" from "arithmetic_space" where "id" between "id" - 1 and "id" * 4;
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_selection_simple_arithmetic-4
 -- SQL:
 select "id" from "arithmetic_space"
         where ("id" > "a" * 2 or "id" * 2 > 10) and "id" - 6 != 0;
--- EXPECTED:
+-- UNORDERED:
 7, 8, 9, 10
 
 -- TEST: test_associativity-1
 -- SQL:
 select "id" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_associativity-2
 -- SQL:
 select "id" from "arithmetic_space" where "a" + ("b" + "c") = ("a" + "b") + "c";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_associativity-3
 -- SQL:
 select "id" from "arithmetic_space" where "a" * ("b" * "c") = ("a" * "b") * "c";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_associativity-4
 -- SQL:
 select "id" from "arithmetic_space" where ("a" - "b") - "c" = "a" - "b" - "c";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_associativity-5
@@ -321,7 +323,7 @@ select "id" from "arithmetic_space" where "a" - ("b" - "c" ) = "a" - "b" - "c";
 select "id" from "arithmetic_space" where
     (cast("a" as decimal) / cast("b" as decimal)) / cast("c" as decimal) =
     cast("a" as decimal) / cast("b" as decimal) / cast("c" as decimal);
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_associativity-7
@@ -335,19 +337,19 @@ select "id" from "arithmetic_space" where
 -- TEST: test_commutativity-1
 -- SQL:
 select "id" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_commutativity-2
 -- SQL:
 select "id" from "arithmetic_space" where "a" + "b" = "b" + "a";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_commutativity-3
 -- SQL:
 select "id" from "arithmetic_space" where "a" * "b" = "b" * "a";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_commutativity-4
@@ -370,21 +372,21 @@ select "id" from "arithmetic_space"
 -- TEST: test_distributivity-1
 -- SQL:
 select "id" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_distributivity-2
 -- SQL:
 select "id" from "arithmetic_space" where
     "a"  * ("b" + "c") = "a" * "b" + "a" * "c";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_distributivity-3
 -- SQL:
 select "id" from "arithmetic_space" where
     ("a" + "b") * "c" = "a" * "c" + "b" * "c";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_distributivity-4
@@ -392,7 +394,7 @@ select "id" from "arithmetic_space" where
 select "id" from "arithmetic_space" where
     (cast("a" as decimal) + cast("b" as decimal)) / cast("c" as decimal) =
     cast("a" as decimal) / cast("c" as decimal) + cast("b" as decimal) / cast("c" as decimal);
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_distributivity-5
@@ -406,26 +408,26 @@ cast("a" as decimal) / cast("b" as decimal) + cast("a" as decimal) / cast("c" as
 -- TEST: test_arithmetic_in_parens-1
 -- SQL:
 select "c" from "arithmetic_space" where "a" + "b" > 1;
--- EXPECTED:
+-- UNORDERED:
 3, 6, 9, 12, 15, 18, 21, 24, 27, 30
 
 -- TEST: test_arithmetic_in_parens-2
 -- SQL:
 select "c" from "arithmetic_space" where ("a" + "b" > 1);
--- EXPECTED:
+-- UNORDERED:
 3, 6, 9, 12, 15, 18, 21, 24, 27, 30
 
 -- TEST: test_arithmetic_in_subquery-1
 -- SQL:
 select "id" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_arithmetic_in_subquery-2
 -- SQL:
 select "id" from "arithmetic_space"
 where exists (select (1 + 2) * 3 / 4 from "arithmetic_space" where (1 * 2) / (8 / 4) = "id");
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_arithmetic_in_subquery-3
@@ -501,7 +503,7 @@ INNER JOIN
         FROM "arithmetic_space2"
         WHERE "b" > 0) AS "t8"
 ON "t3"."id" + "t3"."a" * 2 = "t8"."id1" + "t8"."b";
--- EXPECTED:
+-- UNORDERED:
 2, 2, 3, 7, 4, 4, 6, 14, 6, 6, 9, 21
 
 -- TEST: test_projection_selection_join-2
@@ -524,7 +526,7 @@ INNER JOIN
         FROM "arithmetic_space2"
         WHERE "b" > 0) AS "t8"
 ON "t3"."id" + "t3"."a" * 2 = "t8"."id1" + "t8"."b";
--- EXPECTED:
+-- UNORDERED:
 2, 2, 3, 13, 4, 4, 6, 97, 6, 6, 9, 325
 
 -- TEST: test_arithmetic_in_parens-1
@@ -532,7 +534,7 @@ ON "t3"."id" + "t3"."a" * 2 = "t8"."id1" + "t8"."b";
 select t1.a1, t2.a2 from (select "a" as a1 from "arithmetic_space") as t1
 inner join (select "c" as a2 from "arithmetic_space2") as t2
 on t1.a1 = t2.a2 * 2;
--- EXPECTED:
+-- UNORDERED:
 2, 1, 4, 2, 6, 3, 8, 4, 10, 5
 
 -- TEST: test_arithmetic_in_parens-2
@@ -540,13 +542,13 @@ on t1.a1 = t2.a2 * 2;
 select t1.a1, t2.a2 from (select "a" as a1 from "arithmetic_space") as t1
 inner join (select "c" as a2 from "arithmetic_space2") as t2
 on (t1.a1 = t2.a2 * 2);
--- EXPECTED:
+-- UNORDERED:
 2, 1, 4, 2, 6, 3, 8, 4, 10, 5
 
 -- TEST: test_alias-1
 -- SQL:
 select "id", "id" + "a", "id" * "a" , "a" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 1, 2, 4, 4, 2, 3, 6, 9, 3, 4, 8, 16, 4,
 5, 10, 25, 5, 6, 12, 36, 6, 7, 14, 49, 7, 8, 16,
 64, 8, 9, 18, 81, 9, 10, 20, 100, 10
@@ -554,7 +556,7 @@ select "id", "id" + "a", "id" * "a" , "a" from "arithmetic_space";
 -- TEST: test_alias-2
 -- SQL:
 select "id", "id" + "a" as "sum", "id" * "a" as "mul", "a" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 1, 2, 4, 4, 2, 3, 6, 9, 3, 4, 8, 16, 4,
 5, 10, 25, 5, 6, 12, 36, 6, 7, 14, 49, 7, 8, 16,
 64, 8, 9, 18, 81, 9, 10, 20, 100, 10
@@ -562,33 +564,33 @@ select "id", "id" + "a" as "sum", "id" * "a" as "mul", "a" from "arithmetic_spac
 -- TEST: test_associativity-1
 -- SQL:
 select "id", "a" + ("b" + "c") from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 6, 2, 12, 3, 18, 4, 24, 5, 30, 6, 36, 7, 42, 8, 48, 9, 54, 10, 60
 
 -- TEST: test_associativity-2
 -- SQL:
 select "id", ("a" + "b") + "c" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 6, 2, 12, 3, 18, 4, 24, 5, 30, 6, 36, 7, 42, 8, 48, 9, 54, 10, 60
 
 -- TEST: test_associativity-3
 -- SQL:
 select "id", "a" * ("b" * "c") from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 6, 2, 48, 3, 162, 4, 384, 5, 750,
 6, 1296, 7, 2058, 8, 3072, 9, 4374, 10, 6000
 
 -- TEST: test_associativity-4
 -- SQL:
 select "id", ("a" * "b") * "c" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 6, 2, 48, 3, 162, 4, 384, 5, 750,
 6, 1296, 7, 2058, 8, 3072, 9, 4374, 10, 6000
 
 -- TEST: test_associativity-5
 -- SQL:
 select "id", "a" - "b" - "c" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, -4, 2, -8, 3, -12, 4, -16, 5, -20, 6,
 -24, 7, -28, 8, -32, 9, -36, 10, -40
 
@@ -596,20 +598,20 @@ select "id", "a" - "b" - "c" from "arithmetic_space";
 -- TEST: test_associativity-6
 -- SQL:
 select "id", ("a" - "b") - "c" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, -4, 2, -8, 3, -12, 4, -16, 5, -20, 6,
 -24, 7, -28, 8, -32, 9, -36, 10, -40
 
 -- TEST: test_associativity-7
 -- SQL:
 select "id", "a" - ("b" - "c" ) from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 4, 3, 6, 4, 8, 5, 10, 6, 12, 7, 14, 8, 16, 9, 18, 10, 20
 
 -- TEST: test_associativity-8
 -- SQL:
 select "id", cast("a" as decimal) / cast("b" as decimal) / cast("c" as decimal) from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('0.16666666666666666666666666666666666667'),
 2, Decimal('0.08333333333333333333333333333333333333'),
 3, Decimal('0.05555555555555555555555555555555555556'),
@@ -624,7 +626,7 @@ select "id", cast("a" as decimal) / cast("b" as decimal) / cast("c" as decimal) 
 -- TEST: test_associativity-9
 -- SQL:
 select "id", (cast("a" as decimal) / cast("b" as decimal)) / cast("c" as decimal) from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('0.16666666666666666666666666666666666667'),
 2, Decimal('0.08333333333333333333333333333333333333'),
 3, Decimal('0.05555555555555555555555555555555555556'),
@@ -639,7 +641,7 @@ select "id", (cast("a" as decimal) / cast("b" as decimal)) / cast("c" as decimal
 -- TEST: test_associativity-10
 -- SQL:
 select "id", cast("a" as decimal) / (cast("b" as decimal) / cast("c" as decimal)) from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('1.5'),
 2, Decimal('3.0'),
 3, Decimal('4.5'),
@@ -654,44 +656,44 @@ select "id", cast("a" as decimal) / (cast("b" as decimal) / cast("c" as decimal)
 -- TEST: test_commutativity-1
 -- SQL:
 select "id", "a" + "b" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 3, 2, 6, 3, 9, 4, 12, 5, 15, 6, 18, 7, 21, 8, 24, 9, 27, 10, 30
 
 -- TEST: test_commutativity-2
 -- SQL:
 select "id", "b" + "a" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 3, 2, 6, 3, 9, 4, 12, 5, 15, 6, 18, 7, 21, 8, 24, 9, 27, 10, 30
 
 -- TEST: test_commutativity-3
 -- SQL:
 select "id", "a" * "b" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 8, 3, 18, 4, 32, 5, 50, 6, 72, 7, 98, 8, 128, 9, 162, 10, 200
 
 -- TEST: test_commutativity-4
 -- SQL:
 select "id", "b" * "a" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 8, 3, 18, 4, 32, 5, 50, 6, 72, 7, 98, 8, 128, 9, 162, 10, 200
 
 -- TEST: test_commutativity-5
 -- SQL:
 select "id", "a" - "b" from "arithmetic_space" where "a" != "b";
--- EXPECTED:
+-- UNORDERED:
 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8, 9, -9, 10, -10
 
 -- TEST: test_commutativity-6
 -- SQL:
 select "id", "b" - "a" from "arithmetic_space" where "a" != "b";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10
 
 -- TEST: test_commutativity-7
 -- SQL:
 select "id", cast("b" as decimal) / cast("a" as decimal) from "arithmetic_space"
     where "a" != "b" or "a" != -1 * "b";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('2'),
 2, Decimal('2'),
 3, Decimal('2'),
@@ -707,7 +709,7 @@ select "id", cast("b" as decimal) / cast("a" as decimal) from "arithmetic_space"
 -- SQL:
 select "id", cast("a" as decimal) / cast("b" as decimal) from "arithmetic_space"
     where "a" != "b" or "a" != -1 * "b";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('0.5'),
 2, Decimal('0.5'),
 3, Decimal('0.5'),
@@ -722,19 +724,19 @@ select "id", cast("a" as decimal) / cast("b" as decimal) from "arithmetic_space"
 -- TEST: test_distributivity-1
 -- SQL:
 select "id", "a" * "b" + "a" * "c" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 5, 2, 20, 3, 45, 4, 80, 5, 125, 6, 180, 7, 245, 8, 320, 9, 405, 10, 500
 
 -- TEST: test_distributivity-2
 -- SQL:
 select "id", "a" * ("b" + "c") from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 5, 2, 20, 3, 45, 4, 80, 5, 125, 6, 180, 7, 245, 8, 320, 9, 405, 10, 500
 
 -- TEST: test_distributivity-3
 -- SQL:
 select "id", ("b" + "c") * "a" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 5, 2, 20, 3, 45, 4, 80, 5, 125, 6, 180, 7, 245, 8, 320, 9, 405, 10, 500
 
 -- TEST: test_distributivity-4
@@ -743,7 +745,7 @@ select
     "id",
     cast("a" as decimal) / cast("c" as decimal) + cast("b" as decimal) / cast("c" as decimal)
 from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('1.0'),
 2, Decimal('1.0'),
 3, Decimal('1.0'),
@@ -761,7 +763,7 @@ select
     "id",
     (cast("a" as decimal) + cast("b" as decimal)) / cast("c" as decimal)
 from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('1'),
 2, Decimal('1'),
 3, Decimal('1'),
@@ -779,7 +781,7 @@ select
     "id",
     cast("a" as decimal) / cast("b" as decimal) + cast("a" as decimal) / cast("c" as decimal)
 from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('0.83333333333333333333333333333333333333'),
 2, Decimal('0.83333333333333333333333333333333333333'),
 3, Decimal('0.83333333333333333333333333333333333333'),
@@ -797,7 +799,7 @@ select
     "id",
     cast("a" as decimal) / (cast("b" as decimal) + cast("c" as decimal))
 from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('0.2'),
 2, Decimal('0.2'),
 3, Decimal('0.2'),
@@ -812,13 +814,13 @@ from "arithmetic_space";
 -- TEST: test_arithmetic_in_parens-1
 -- SQL:
 select "a"+"b" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 3, 6, 9, 12, 15, 18, 21, 24, 27, 30
 
 -- TEST: test_arithmetic_in_parens-2
 -- SQL:
 select ("a"+"b") from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 3, 6, 9, 12, 15, 18, 21, 24, 27, 30
 
 -- TEST: modulo-precedence-1
@@ -1075,12 +1077,14 @@ nil
 NULL
 
 -- TEST: concat-precedence-20
+-- SKIP_FOR: 2rsX1
 -- SQL:
 SELECT bool_col || 'y' FROM arithmetic_space LIMIT 1;
 -- EXPECTED:
 'TRUEy'
 
 -- TEST: concat-precedence-21
+-- SKIP_FOR: 2rsX1
 -- SQL:
 SELECT 'y' || double_col FROM arithmetic_space LIMIT 1;
 -- EXPECTED:
@@ -1097,13 +1101,13 @@ SELECT int_col || 'x' as ax FROM arithmetic_space ORDER BY ax;
 SELECT int_col + $1, $1 || 'x' FROM arithmetic_space;
 -- PARAMS:
 2
--- EXPECTED:
+-- UNORDERED:
 3, '2x', 4, '2x', 5, '2x'
 
 -- TEST: concat-precedence-24
 -- SQL:
 SELECT int_col AS alias FROM arithmetic_space GROUP BY alias, alias || 'x';
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3
 
 -- TEST: concat-precedence-25

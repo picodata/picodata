@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: delete1
 -- SQL:
 CREATE TABLE t (id INT PRIMARY KEY, a INT);

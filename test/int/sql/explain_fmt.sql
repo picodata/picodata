@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: fmt-few-columns
 -- SQL:
 explain (fmt) select id, name from _pico_table;

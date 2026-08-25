@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: sq_as_expr
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
@@ -45,7 +47,7 @@ SELECT (VALUES ((VALUES (3)))) FROM "testing_space" WHERE "id" = 1;
 -- TEST: test_under_projection-4
 -- SQL:
 SELECT (SELECT "id" FROM "testing_space" WHERE "id" = 1) + "id" FROM "testing_space" WHERE "id" in (1, 2, 3);
--- EXPECTED:
+-- UNORDERED:
 2, 3, 4
 
 
@@ -64,7 +66,7 @@ SELECT "id" FROM "testing_space" WHERE "id" = (VALUES (1)) + (VALUES (3)) / (VAL
 -- TEST: test_under_group_by-1
 -- SQL:
 SELECT count(*) FROM "testing_space" GROUP BY "product_units" + (VALUES (1));
--- EXPECTED:
+-- UNORDERED:
 3, 2, 1
 
 -- TEST: test_under_group_by-2
@@ -78,7 +80,7 @@ HAVING sum("id") + (VALUES (1)) > 7;
 
 -- TEST: test_under_order_by-1
 -- SQL:
-SELECT "name", "id" FROM "testing_space" ORDER BY "name" || (VALUES ('a'));
+SELECT "name", "id" FROM "testing_space" ORDER BY "name" || (VALUES ('a')), "id";
 -- EXPECTED:
 '123', 1,
 '123', 5, 
@@ -91,14 +93,14 @@ SELECT "name", "id" FROM "testing_space" ORDER BY "name" || (VALUES ('a'));
 -- SQL:
 WITH "my_cte" ("first") AS (VALUES (cast(1 as string)), ((SELECT "name" FROM "testing_space" WHERE "id" = 1)))
 SELECT "first" FROM "my_cte";
--- EXPECTED:
+-- UNORDERED:
 '1', '123'
 
 -- TEST: test_under_join-1
 -- SQL:
 SELECT "id" FROM "testing_space" JOIN "null_t" ON
 (SELECT true FROM "null_t" WHERE "na" = 1) AND "product_units" = "na" AND "name" != (VALUES ('123'));
--- EXPECTED:
+-- UNORDERED:
 2, 3, 4, 6
 
 -- TEST: test_under_insert-1.1
@@ -118,7 +120,7 @@ INSERT INTO "testing_space"
 -- TEST: test_under_insert-1.2
 -- SQL:
 SELECT * FROM "testing_space";
--- EXPECTED:
+-- UNORDERED:
 1, '123', 1,
 2, '1', 1,
 3, '1', 1,
@@ -147,7 +149,7 @@ set "name" = (SELECT "name" FROM "testing_space" WHERE "product_units" = 4), "pr
 -- TEST: test_under_update-1.2
 -- SQL:
 SELECT * FROM "testing_space";
--- EXPECTED:
+-- UNORDERED:
 1, '2', 42,
 2, '2', 42,
 3, '2', 42,
@@ -169,7 +171,7 @@ INSERT INTO "testing_space" ("id", "name", "product_units") VALUES
 -- TEST: test-scalar-subquery-with-group-by
 -- SQL:
 SELECT (VALUES (1)) FROM testing_space GROUP BY product_units;
--- EXPECTED:
+-- UNORDERED:
 1,
 1,
 1
@@ -189,7 +191,7 @@ SELECT SUM((SELECT id FROM testing_space WHERE id = 1)) FROM testing_space;
 -- TEST: test-subquery-the-only-output-with-group-by
 -- SQL:
 SELECT (SELECT 1) FROM testing_space GROUP BY product_units;
--- EXPECTED:
+-- UNORDERED:
 1,
 1,
 1
@@ -211,7 +213,7 @@ SELECT (SELECT 1) FROM testing_space GROUP BY (SELECT 1);
 -- TEST: test-subquery-under-group-by-with-column
 -- SQL:
 SELECT (SELECT 1) FROM testing_space GROUP BY product_units, (SELECT 1);
--- EXPECTED:
+-- UNORDERED:
 1,
 1,
 1
@@ -285,7 +287,7 @@ SELECT (SELECT 1), SUM(DISTINCT (SELECT 2)), (SELECT 3) FROM testing_space;
 -- TEST: test-subquery-under-several-aggregates
 -- SQL:
 SELECT product_units, AVG((SELECT SUM(id) FROM testing_space)), product_units + 1, SUM((SELECT SUM(id) FROM testing_space)) FROM testing_space GROUP BY product_units;
--- EXPECTED:
+-- UNORDERED:
 1, 21, 2, 63,
 2, 21, 3, 42,
 4, 21, 5, 21
@@ -695,7 +697,7 @@ buckets <= [1-3000]
 -- TEST: test-scalar-subquery-under-group-by
 -- SQL:
 SELECT "id" + (SELECT 1) FROM testing_space GROUP BY "id" + (SELECT 1);
--- EXPECTED:
+-- UNORDERED:
 2,
 3,
 4,
@@ -718,7 +720,7 @@ invalid query: column "id" is not found in grouping expressions!
 -- TEST: test-scalar-subquery-under-group-by-as-subexpression
 -- SQL:
 SELECT "id" + (SELECT 2) + (SELECT 1) FROM testing_space GROUP BY "id" + (SELECT 2);
--- EXPECTED:
+-- UNORDERED:
 4,
 5,
 6,
@@ -735,7 +737,7 @@ invalid query: column "id" is not found in grouping expressions!
 -- TEST: test-scalar-subquery-under-group-by-duplicated
 -- SQL:
 SELECT "id" + (SELECT 1) FROM testing_space GROUP BY "id" + (SELECT 1), "id" + (SELECT 1);
--- EXPECTED:
+-- UNORDERED:
 2,
 3,
 4,
@@ -746,7 +748,7 @@ SELECT "id" + (SELECT 1) FROM testing_space GROUP BY "id" + (SELECT 1), "id" + (
 -- TEST: test-scalar-subquery-under-group-by-from-table
 -- SQL:
 SELECT "product_units" + (SELECT a FROM t1) FROM testing_space GROUP BY "product_units" + (SELECT a FROM t1);
--- EXPECTED:
+-- UNORDERED:
 2,
 3,
 5
@@ -796,7 +798,7 @@ INSERT INTO gt VALUES (1, 1), (2, 1), (3, 5);
 -- TEST: test-scalar-subquery-under-group-by-with-join
 -- SQL:
 SELECT "id" + (SELECT sum(x.a)::int FROM gt AS x JOIN gt AS y ON x.a = y.b) FROM testing_space GROUP BY "id" + (SELECT sum(x.a)::int FROM gt AS x JOIN gt AS y ON x.a = y.b);
--- EXPECTED:
+-- UNORDERED:
 3,
 4,
 5,
@@ -813,7 +815,7 @@ invalid query: column "id" is not found in grouping expressions!
 -- TEST: test-scalar-subquery-under-group-by-nested
 -- SQL:
 SELECT "id" + (SELECT (SELECT 1)) FROM testing_space GROUP BY "id" + (SELECT (SELECT 1));
--- EXPECTED:
+-- UNORDERED:
 2,
 3,
 4,
@@ -830,7 +832,7 @@ invalid query: column "id" is not found in grouping expressions!
 -- TEST: test-scalar-subquery-under-group-by-two-distinct
 -- SQL:
 SELECT "id" + (SELECT 1), (SELECT 2) FROM testing_space GROUP BY "id" + (SELECT 1), (SELECT 2);
--- EXPECTED:
+-- UNORDERED:
 2, 2,
 3, 2,
 4, 2,
@@ -841,7 +843,7 @@ SELECT "id" + (SELECT 1), (SELECT 2) FROM testing_space GROUP BY "id" + (SELECT 
 -- TEST: test-scalar-subquery-inside-aggregate-under-group-by
 -- SQL:
 SELECT "name", sum("id" + (SELECT 1))::int FROM testing_space GROUP BY "name";
--- EXPECTED:
+-- UNORDERED:
 '1', 7,
 '123', 8,
 '2', 12
@@ -1146,6 +1148,7 @@ buckets = any
 buckets <= [1-3000]
 
 -- TEST: test-explain-raw-scalar-subquery-under-group-by-single-bucket
+-- SKIP_FOR: 2rsX1
 -- SQL:
 explain (raw, buckets) SELECT "id" + (SELECT 1) FROM testing_space WHERE "id" = 1 GROUP BY "id" + (SELECT 1);
 -- EXPECTED:
@@ -1331,7 +1334,7 @@ invalid query: column "a" is not found in grouping expressions!
 -- TEST: test-groupby-sq-equal-distinct
 -- SQL:
 SELECT a + (SELECT DISTINCT b FROM qt) FROM qt GROUP BY a + (SELECT DISTINCT b FROM qt);
--- EXPECTED:
+-- UNORDERED:
 3,
 4,
 5
@@ -1347,7 +1350,7 @@ SELECT a + (SELECT b FROM qt ORDER BY b LIMIT 1) FROM qt GROUP BY a + (SELECT b 
 -- TEST: test-groupby-sq-equal-union-all
 -- SQL:
 SELECT a + (SELECT b FROM qt UNION ALL SELECT c FROM qt LIMIT 1) FROM qt GROUP BY a + (SELECT b FROM qt UNION ALL SELECT c FROM qt LIMIT 1);
--- EXPECTED:
+-- UNORDERED:
 3,
 4,
 5
@@ -1361,7 +1364,7 @@ null
 -- TEST: test-groupby-sq-equal-having
 -- SQL:
 SELECT a + (SELECT count(b) FROM qt GROUP BY b HAVING count(c) > 1 LIMIT 1) FROM qt GROUP BY a + (SELECT count(b) FROM qt GROUP BY b HAVING count(c) > 1 LIMIT 1);
--- EXPECTED:
+-- UNORDERED:
 4,
 5,
 6
@@ -1369,7 +1372,7 @@ SELECT a + (SELECT count(b) FROM qt GROUP BY b HAVING count(c) > 1 LIMIT 1) FROM
 -- TEST: test-groupby-sq-equal-cast
 -- SQL:
 SELECT a + (SELECT b::int FROM qt LIMIT 1) FROM qt GROUP BY a + (SELECT b::int FROM qt LIMIT 1);
--- EXPECTED:
+-- UNORDERED:
 3,
 4,
 5
@@ -1377,7 +1380,7 @@ SELECT a + (SELECT b::int FROM qt LIMIT 1) FROM qt GROUP BY a + (SELECT b::int F
 -- TEST: test-groupby-sq-equal-values
 -- SQL:
 SELECT a + (VALUES (1)) FROM qt GROUP BY a + (VALUES (1));
--- EXPECTED:
+-- UNORDERED:
 2,
 3,
 4
@@ -1385,7 +1388,7 @@ SELECT a + (VALUES (1)) FROM qt GROUP BY a + (VALUES (1));
 -- TEST: test-groupby-sq-equal-nested-subquery
 -- SQL:
 SELECT a + (SELECT count(*) FROM qt WHERE a IN (SELECT b FROM qt)) FROM qt GROUP BY a + (SELECT count(*) FROM qt WHERE a IN (SELECT b FROM qt));
--- EXPECTED:
+-- UNORDERED:
 2,
 3,
 4
@@ -1393,7 +1396,7 @@ SELECT a + (SELECT count(*) FROM qt WHERE a IN (SELECT b FROM qt)) FROM qt GROUP
 -- TEST: test-groupby-sq-equal-join
 -- SQL:
 SELECT a + (SELECT count(x.c) FROM qt AS x JOIN qt AS y ON x.a = y.b) FROM qt GROUP BY a + (SELECT count(x.c) FROM qt AS x JOIN qt AS y ON x.a = y.b);
--- EXPECTED:
+-- UNORDERED:
 4,
 5,
 6
@@ -1401,7 +1404,7 @@ SELECT a + (SELECT count(x.c) FROM qt AS x JOIN qt AS y ON x.a = y.b) FROM qt GR
 -- TEST: test-groupby-sq-equal-3-way-join
 -- SQL:
 SELECT a + (SELECT count(z.c) FROM qt AS x JOIN qt AS y ON x.a = y.b JOIN qt AS z ON y.a = z.b) FROM qt GROUP BY a + (SELECT count(z.c) FROM qt AS x JOIN qt AS y ON x.a = y.b JOIN qt AS z ON y.a = z.b);
--- EXPECTED:
+-- UNORDERED:
 4,
 5,
 6
@@ -1409,7 +1412,7 @@ SELECT a + (SELECT count(z.c) FROM qt AS x JOIN qt AS y ON x.a = y.b JOIN qt AS 
 -- TEST: test-groupby-sq-equal-join-condition-subquery
 -- SQL:
 SELECT a + (SELECT count(x.c) FROM qt AS x JOIN qt AS y ON x.a IN (SELECT b FROM qt)) FROM qt GROUP BY a + (SELECT count(x.c) FROM qt AS x JOIN qt AS y ON x.a IN (SELECT b FROM qt));
--- EXPECTED:
+-- UNORDERED:
 4,
 5,
 6
@@ -1417,7 +1420,7 @@ SELECT a + (SELECT count(x.c) FROM qt AS x JOIN qt AS y ON x.a IN (SELECT b FROM
 -- TEST: test-groupby-sq-equal-selection-under-join
 -- SQL:
 SELECT a + (SELECT count(x.c) FROM qt AS x JOIN qt AS y ON true WHERE x.a = y.b) FROM qt GROUP BY a + (SELECT count(x.c) FROM qt AS x JOIN qt AS y ON true WHERE x.a = y.b);
--- EXPECTED:
+-- UNORDERED:
 4,
 5,
 6
@@ -1449,7 +1452,7 @@ invalid query: column "d" is not found in grouping expressions!
 -- TEST: test-groupby-sq-equal-window
 -- SQL:
 SELECT a + (SELECT count(*) OVER () FROM qt LIMIT 1) FROM qt GROUP BY a + (SELECT count(*) OVER () FROM qt LIMIT 1);
--- EXPECTED:
+-- UNORDERED:
 4,
 5,
 6
@@ -1457,7 +1460,7 @@ SELECT a + (SELECT count(*) OVER () FROM qt LIMIT 1) FROM qt GROUP BY a + (SELEC
 -- TEST: test-groupby-sq-equal-window-partition
 -- SQL:
 SELECT a + (SELECT count(*) OVER (PARTITION BY b) FROM qt LIMIT 1) FROM qt GROUP BY a + (SELECT count(*) OVER (PARTITION BY b) FROM qt LIMIT 1);
--- EXPECTED:
+-- UNORDERED:
 4,
 5,
 6
@@ -1465,7 +1468,7 @@ SELECT a + (SELECT count(*) OVER (PARTITION BY b) FROM qt LIMIT 1) FROM qt GROUP
 -- TEST: test-groupby-equal-function-arity
 -- SQL:
 SELECT substr(cast(d as text), 1, 2) FROM qt GROUP BY substr(cast(d as text), 1, 2);
--- EXPECTED:
+-- UNORDERED:
 '1',
 '2',
 '3'
@@ -1473,7 +1476,7 @@ SELECT substr(cast(d as text), 1, 2) FROM qt GROUP BY substr(cast(d as text), 1,
 -- TEST: test-groupby-equal-case-arm-count
 -- SQL:
 SELECT case when d = 1 then 10 when d = 2 then 20 end FROM qt GROUP BY case when d = 1 then 10 when d = 2 then 20 end;
--- EXPECTED:
+-- UNORDERED:
 null,
 10,
 20,
@@ -1481,7 +1484,7 @@ null,
 -- TEST: test-groupby-sq-equal-unnamed-derived-table
 -- SQL:
 SELECT a + (SELECT b FROM (SELECT b FROM qt LIMIT 1)) FROM qt GROUP BY a + (SELECT b FROM (SELECT b FROM qt LIMIT 1));
--- EXPECTED:
+-- UNORDERED:
 3,
 4,
 5
@@ -1489,7 +1492,7 @@ SELECT a + (SELECT b FROM (SELECT b FROM qt LIMIT 1)) FROM qt GROUP BY a + (SELE
 -- TEST: test-groupby-sq-equal-differently-aliased-derived-table
 -- SQL:
 SELECT a + (SELECT b FROM (SELECT b FROM qt LIMIT 1) AS q1) FROM qt GROUP BY a + (SELECT b FROM (SELECT b FROM qt LIMIT 1) AS q2);
--- EXPECTED:
+-- UNORDERED:
 3,
 4,
 5
@@ -1497,7 +1500,7 @@ SELECT a + (SELECT b FROM (SELECT b FROM qt LIMIT 1) AS q1) FROM qt GROUP BY a +
 -- TEST: test-groupby-sq-equal-differently-aliased-scan
 -- SQL:
 SELECT a + (SELECT count(x.c) FROM qt AS x) FROM qt GROUP BY a + (SELECT count(y.c) FROM qt AS y);
--- EXPECTED:
+-- UNORDERED:
 4,
 5,
 6
@@ -1505,7 +1508,7 @@ SELECT a + (SELECT count(x.c) FROM qt AS x) FROM qt GROUP BY a + (SELECT count(y
 -- TEST: test-groupby-sq-equal-join-over-unnamed-derived-table
 -- SQL:
 SELECT a + (SELECT count(x.c) FROM qt AS x JOIN (SELECT b AS bb FROM qt) ON x.a = bb) FROM qt GROUP BY a + (SELECT count(x.c) FROM qt AS x JOIN (SELECT b AS bb FROM qt) ON x.a = bb);
--- EXPECTED:
+-- UNORDERED:
 4,
 5,
 6
@@ -1519,7 +1522,7 @@ invalid query: column "a" is not found in grouping expressions!
 -- TEST: test-groupby-sq-equal-left-join-over-global-table
 -- SQL:
 SELECT a + (SELECT sum(c) FROM qg LEFT JOIN qt ON g = a) FROM qt GROUP BY a + (SELECT sum(c) FROM qg LEFT JOIN qt ON g = a);
--- EXPECTED:
+-- UNORDERED:
 3,
 4,
 5

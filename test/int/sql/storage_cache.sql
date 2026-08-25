@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: simple-init
 -- SQL:
 CREATE TABLE s(a INT PRIMARY KEY, b INT);
@@ -8,7 +10,7 @@ INSERT INTO t VALUES (10, 1);
 -- TEST: simple-query-1
 -- SQL:
 SELECT * FROM s JOIN t ON s.b = t.a UNION SELECT * FROM t JOIN s ON t.b = s.a;
--- EXPECTED:
+-- UNORDERED:
 1, 10, 10, 1, 10, 1, 1, 10
 
 -- TEST: simple-drop
@@ -23,13 +25,13 @@ INSERT INTO t VALUES (10, 1);
 -- TEST: simple-query-2
 -- SQL:
 SELECT * FROM s JOIN t ON s.b = t.a UNION SELECT * FROM t JOIN s ON t.b = s.a;
--- EXPECTED:
+-- UNORDERED:
 1, 10, 10, 1, 10, 1, 1, 10
 
 -- TEST: simple-query-3
 -- SQL:
 SELECT * FROM s JOIN t ON s.b = t.a UNION SELECT * FROM t JOIN s ON t.b = s.a;
--- EXPECTED:
+-- UNORDERED:
 1, 10, 10, 1, 10, 1, 1, 10
 
 -- TEST: complex-init

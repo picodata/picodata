@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: init
 -- SQL:
 create table t2( a text primary key, b text);
@@ -24,12 +26,14 @@ SELECT STRING_AGG('str', ',') OVER ();
 str
 
 -- TEST: group_concat_with_scan_1
+-- SKIP_FOR: 2rsX1
 -- SQL:
 select group_concat(a, '.') from t2;
 -- EXPECTED:
 1.2.3
 
 -- TEST: group_concat_with_scan_2
+-- SKIP_FOR: 2rsX1
 -- SQL:
 select group_concat(b, '.') from t2;
 -- EXPECTED:

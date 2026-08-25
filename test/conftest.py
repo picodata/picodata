@@ -289,6 +289,18 @@ def pytest_addoption(parser: pytest.Parser):
         help="Update EXPECTED in sql tests (test/int/sql et al)",
     )
     parser.addoption(
+        "--update-sql-test-matrix",
+        action="store_true",
+        default=False,
+        help="Rewrite the `-- TEST-MATRIX:` header of sql (test/int/sql et al)) tests to every config",
+    )
+    parser.addoption(
+        "--list-sql-test-matrix",
+        action="store_true",
+        default=False,
+        help="Print the configs `-- TEST-MATRIX:` of sql (test/int/sql et al) tests accepts and exit",
+    )
+    parser.addoption(
         "--skip-asan",
         action="store_true",
         default=False,

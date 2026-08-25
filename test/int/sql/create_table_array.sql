@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: bracket-unsized
 -- SQL:
 CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY, b INT[]);

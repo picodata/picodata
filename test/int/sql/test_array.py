@@ -1,19 +1,4 @@
-from framework.sqltester import (
-    ClusterSingleInstance,
-    ClusterTwoInstances,
-    sql_test_file,
-)
 from conftest import Cluster
-
-
-@sql_test_file("array.sql")
-class TestArray(ClusterSingleInstance):
-    pass
-
-
-@sql_test_file("array.sql")
-class TestArray2(ClusterTwoInstances):
-    pass
 
 
 # https://git.picodata.io/core/picodata/-/issues/3029

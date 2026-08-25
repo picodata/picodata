@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: test_cte
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -9,7 +11,7 @@ VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
 -- SQL:
 WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" > 3)
         SELECT b FROM cte;
--- EXPECTED:
+-- UNORDERED:
 4, 5
 
 -- TEST: cte2
@@ -17,7 +19,7 @@ WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" > 3)
 WITH cte1 (b) AS (SELECT "a" FROM "t" WHERE "id" > 3),
              cte2 AS (SELECT b FROM cte1)
         SELECT * FROM cte2;
--- EXPECTED:
+-- UNORDERED:
 4, 5
 
 -- TEST: cte3
@@ -26,21 +28,21 @@ WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" > 3)
         SELECT b FROM cte
         UNION ALL
         SELECT b FROM cte;
--- EXPECTED:
+-- UNORDERED:
 4, 5, 4, 5
 
 -- TEST: cte4
 -- SQL:
 WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" = 1 OR "id" = 2)
     SELECT cte.b, "t"."a" FROM cte JOIN "t" ON cte.b = "t"."id";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 2
 
 -- TEST: cte5
 -- SQL:
 WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" = 1 OR "id" = 2)
         SELECT cte.b, "t"."a" FROM cte LEFT JOIN "t" ON cte.b = "t"."id";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 2
 
 -- TEST: cte6
@@ -48,7 +50,7 @@ WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" = 1 OR "id" = 2)
 WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" = 1 OR "id" = 2),
         r (a) as (SELECT cte.b FROM cte LEFT JOIN "t" ON cte.b = "t"."id")
         select b from cte where b in (select a from r);
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: cte7
@@ -62,14 +64,14 @@ WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" > 3)
 -- SQL:
 WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" IN (1, 2, 3))
         SELECT * FROM "t" WHERE "a" IN (SELECT b FROM cte);
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 2, 3, 3
 
 -- TEST: cte9
 -- SQL:
 WITH cte (b) AS (VALUES (1), (2), (3))
         SELECT b FROM cte;
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3
 
 -- TEST: cte10
@@ -77,7 +79,7 @@ WITH cte (b) AS (VALUES (1), (2), (3))
 WITH c1 (a) AS (VALUES (1), (2)),
         c2 AS (SELECT * FROM c1 UNION SELECT * FROM c1)
 SELECT a FROM c2;
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: cte11
@@ -85,7 +87,7 @@ SELECT a FROM c2;
 WITH cte1 (a) AS (SELECT "a" FROM "t" WHERE "id" = 1),
         cte2 (b) AS (SELECT * FROM cte1 UNION ALL SELECT "a" FROM "t" WHERE "id" = 2)
         SELECT b FROM cte2;
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: cte12
@@ -111,7 +113,7 @@ WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" > 3 ORDER BY "a" DESC)
 WITH cte (b) AS (SELECT "a" FROM "t" WHERE "id" > 3)
 SELECT t.c FROM (SELECT count(*) as c FROM cte c1 JOIN cte c2 ON true) t
 JOIN cte ON true;
--- EXPECTED:
+-- UNORDERED:
 4, 4
 
 -- TEST: cte15
@@ -149,7 +151,7 @@ cte2(a) as (
     SELECT * FROM cte1 a3
 )
 SELECT * FROM cte2;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1
 
 -- TEST: cte-values-no-rename-self-join
@@ -162,7 +164,7 @@ SELECT * FROM cte JOIN cte t2 ON cte."COLUMN_1" = t2."COLUMN_1";
 -- TEST: cte-values-no-rename-union-all
 -- SQL:
 WITH cte AS (VALUES (1)) SELECT * FROM cte UNION ALL SELECT * FROM cte;
--- EXPECTED:
+-- UNORDERED:
 1, 1
 
 -- TEST: cte-values-no-rename-three-refs
@@ -196,7 +198,7 @@ JOIN d  ON g.c = 2 JOIN d i ON i.a >= i.f;
 -- TEST: cte-direct-child-of-motion-is-not-removed-on-take-subtree-2
 -- SQL:
 WITH a AS (SELECT 1) SELECT 2 FROM a UNION SELECT 3 FROM a LEFT JOIN t1 ON TRUE;
--- EXPECTED:
+-- UNORDERED:
 2, 3
 
 -- TEST: init_2
@@ -215,7 +217,7 @@ WITH i(g) AS (
     (1)
 )
 SELECT i.g FROM i;
--- EXPECTED:
+-- UNORDERED:
 7, 1
 
 -- TEST: cte-with-values-correct-columns-names-2
@@ -237,7 +239,7 @@ WITH i(g) AS (
     )
 )
 SELECT i.g FROM i;
--- EXPECTED:
+-- UNORDERED:
 1, 7
 
 -- TEST: cte-with-values-correct-columns-names-4
@@ -247,7 +249,7 @@ WITH i(g) AS (
         (SELECT d.g FROM t1 JOIN (select (values (5)) as g) d ON true))
     )
 SELECT i.g FROM i;
--- EXPECTED:
+-- UNORDERED:
 1, 5
 
 -- TEST: cte-with-values-correct-columns-names-5
@@ -258,7 +260,7 @@ WITH i(g) AS (
         , (1)
     )
 SELECT i.g FROM i;
--- EXPECTED:
+-- UNORDERED:
 5, 1
 
 -- TEST: cte-with-values-correct-columns-names-6
@@ -270,7 +272,7 @@ WITH i(g, t) AS (
     (1, 5)
 )
 SELECT * FROM i;
--- EXPECTED:
+-- UNORDERED:
 7, 2, 1, 5
 
 -- TEST: cte-with-values-correct-columns-names-7
@@ -300,7 +302,7 @@ SELECT
     k.g
 FROM d
 JOIN i AS k ON TRUE;
--- EXPECTED:
+-- UNORDERED:
 1, 1
 
 -- TEST: cte-with-values-correct-columns-names-8
@@ -340,7 +342,7 @@ cte2 (b) AS (
 )
 SELECT b
 FROM cte2;
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: cte-with-values-correct-columns-names-10

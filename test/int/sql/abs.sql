@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: init
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -7,7 +9,7 @@ INSERT INTO t VALUES (10), (-10), (-1);
 -- TEST: abs-1
 -- SQL:
 SELECT ABS(a) from t;
--- EXPECTED:
+-- UNORDERED:
 10,
 1,
 10

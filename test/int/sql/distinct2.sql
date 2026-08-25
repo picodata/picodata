@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: init
 -- TBD: (CREATE TABLE AS + AUTO PRIMARY KEY)
 CREATE TABLE t1(x INTEGER PRIMARY KEY);

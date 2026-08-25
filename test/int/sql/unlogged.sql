@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: globally-distributed-unlogged-table
 -- SQL:
 create unlogged table t (a int primary key) distributed globally;

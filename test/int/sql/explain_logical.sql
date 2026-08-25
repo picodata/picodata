@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: explain-setup
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -155,6 +157,7 @@ update t (b = col_0)
         scan t
 
 -- TEST: block-let-elete-with-return-query
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (logical)
 DO $$ BEGIN
@@ -193,6 +196,7 @@ delete from tt
       scan tt
 
 -- TEST: block-if-let-delete-insert
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (logical)
 DO $$ BEGIN
@@ -249,6 +253,7 @@ delete from tt
       scan tt
 
 -- TEST: buckets-block-multiple-return-query
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (logical)
 DO $$ BEGIN
@@ -291,6 +296,7 @@ projection (g.a::int -> a)
   scan g
 
 -- TEST: block-unused-let
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (logical)
 DO $$ BEGIN
@@ -343,6 +349,7 @@ insert into tt on conflict: fail
     value ROW(2::int)
 
 -- TEST: block-unused-let-return
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (logical)
 DO $$ BEGIN

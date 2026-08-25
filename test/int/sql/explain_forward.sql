@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1
+
 -- TEST: setup
 -- SQL:
 DROP TABLE IF EXISTS t;

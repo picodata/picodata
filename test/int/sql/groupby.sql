@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: groupby
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
@@ -41,14 +43,14 @@ VALUES
 SELECT "name"
     FROM "testing_space"
     GROUP BY "name";
--- EXPECTED:
+-- UNORDERED:
 '1', '123', '2'
 
 -- TEST: test_grouping-2
 -- SQL:
 SELECT "name"
 FROM "testing_space";
--- EXPECTED:
+-- UNORDERED:
 '123', '1', '1', '2', '123', '2'
 
 -- TEST: expr_in_proj-1
@@ -56,7 +58,7 @@ FROM "testing_space";
 SELECT "name" || 'p' AS "name"
 FROM "testing_space"
 GROUP BY "name";
--- EXPECTED:
+-- UNORDERED:
 '1p', '123p', '2p'
 
 -- TEST: expr_in_proj-2
@@ -64,7 +66,7 @@ GROUP BY "name";
 SELECT "a" + "b" AS e1, "a" / "b" AS e2
 FROM "arithmetic_space"
 GROUP BY "a", "b";
--- EXPECTED:
+-- UNORDERED:
 2, 1, 3, 0, 5, 0
 
 -- TEST: different_column_types-1
@@ -72,7 +74,7 @@ GROUP BY "a", "b";
 SELECT *
 FROM (SELECT cast("number_col" AS decimal) AS col FROM "arithmetic_space")
 GROUP BY col;
--- EXPECTED:
+-- UNORDERED:
 Decimal('2'), Decimal('2.14'), Decimal('3.14')
 
 -- TEST: different_column_types-2
@@ -80,7 +82,7 @@ Decimal('2'), Decimal('2.14'), Decimal('3.14')
 SELECT "f", "boolean_col", "string_col"
 FROM "arithmetic_space"
 GROUP BY "f", "boolean_col", "string_col";
--- EXPECTED:
+-- UNORDERED:
 2, True, 'a', 2, True, 'c'
 
 -- TEST: different_column_types-3
@@ -90,7 +92,7 @@ FROM (
     SELECT CAST("number_col" AS DOUBLE) AS d, CAST("number_col" AS INTEGER) AS u FROM "arithmetic_space2"
 )
 GROUP BY d, u;
--- EXPECTED:
+-- UNORDERED:
 2.717, 2, 2.718, 2, 3.1415, 3
 
 -- TEST: invalid-1
@@ -142,7 +144,7 @@ invalid query: column "product_units" is not found in grouping expressions!
 SELECT "product_units", "name"
 FROM "testing_space"
 GROUP BY "product_units", "name";
--- EXPECTED:
+-- UNORDERED:
 1, '1', 1, '123', 2, '123', 2, '2', 4, '2'
 
 -- TEST: test_two_col-2
@@ -150,7 +152,7 @@ GROUP BY "product_units", "name";
 SELECT "product_units", "name"
 FROM "testing_space"
 GROUP BY "name", "product_units";
--- EXPECTED:
+-- UNORDERED:
 1, '1', 1, '123', 2, '123', 2, '2', 4, '2'
 
 -- TEST: test_with_selection
@@ -159,7 +161,7 @@ SELECT "product_units", "name"
 FROM "testing_space"
 WHERE "product_units" > 1
 GROUP BY "product_units", "name";
--- EXPECTED:
+-- UNORDERED:
 2, '123', 2, '2', 4, '2'
 
 -- TEST: test_with_join
@@ -170,7 +172,7 @@ INNER JOIN
     (SELECT "id" as "id2", "a" as "a2" from "arithmetic_space2") as t
 ON "arithmetic_space"."id" = t."a2"
 GROUP BY "id", "id2";
--- EXPECTED:
+-- UNORDERED:
 1, 3, 1, 4, 2, 1, 2, 2
 
 -- TEST: test_with_join2-1
@@ -191,7 +193,7 @@ FROM "arithmetic_space"
 INNER JOIN
     (SELECT "b" AS b1, "a" AS a1 FROM "arithmetic_space2") AS q
 ON "arithmetic_space"."c" = q.a1;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
 
 -- TEST: test_with_join3-1
@@ -202,7 +204,7 @@ INNER JOIN
     (SELECT "c", "b" FROM "arithmetic_space" GROUP BY "c", "b") AS q
 ON r."i" = q."b"
 GROUP BY r."i", q."b";
--- EXPECTED:
+-- UNORDERED:
 2, 2, 3, 3
 
 -- TEST: test_with_join3-2
@@ -212,7 +214,7 @@ FROM (SELECT "a" AS "i" FROM "arithmetic_space2") AS r
 INNER JOIN
     (SELECT "c", "b" FROM "arithmetic_space") AS q
 ON r."i" = q."b";
--- EXPECTED:
+-- UNORDERED:
 2, 2, 2, 2, 1, 1, 1, 1
 
 -- TEST: test_with_union-1
@@ -224,7 +226,7 @@ SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arith
 -- TEST: test_with_union-2
 -- SQL:
 SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arithmetic_space2" GROUP BY "a";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 2
 
 -- TEST: test_with_union-3
@@ -232,7 +234,7 @@ SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arith
 SELECT "a" FROM (
 SELECT "a" FROM "arithmetic_space" GROUP BY "a" UNION ALL SELECT "a" FROM "arithmetic_space2" GROUP BY "a"
 ) GROUP BY "a";
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: test_with_except-1
@@ -252,7 +254,7 @@ SELECT * FROM (
     EXCEPT
     SELECT "c", "d" FROM "arithmetic_space2" GROUP BY "c", "d")
 ) GROUP BY "a", "b";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 2, 2, 3
 
 -- TEST: test_with_except-3
@@ -270,7 +272,7 @@ SELECT * FROM (
     SELECT "a", "b" FROM "arithmetic_space2"
     GROUP BY "a", "b"
 );
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 1, 2, 2
 
 -- TEST: test_with_subquery_1-2
@@ -278,20 +280,20 @@ SELECT * FROM (
 SELECT * FROM (
     SELECT "a", "b" FROM "arithmetic_space2"
 );
--- EXPECTED:
+-- UNORDERED:
 2, 1, 2, 2, 1, 1, 1, 1
 
 -- TEST: test_with_subquery_2-1
 -- SQL:
 SELECT cast("number_col" AS integer) AS k FROM "arithmetic_space" "памагити" GROUP BY "number_col";
--- EXPECTED:
+-- UNORDERED:
 2, 2, 3
 
 -- TEST: test_with_subquery_2-2
 -- SQL:
 SELECT "f" FROM "arithmetic_space2"
 WHERE "id" in (SELECT cast("number_col" AS integer) FROM "arithmetic_space" GROUP BY "number_col");
--- EXPECTED:
+-- UNORDERED:
 2, 2
 
 -- TEST: test_with_subquery_2-3
@@ -306,14 +308,14 @@ GROUP BY "f";
 -- SQL:
 SELECT "c" FROM "arithmetic_space"
 GROUP BY "c", "d";
--- EXPECTED:
+-- UNORDERED:
 1, 1
 
 -- TEST: test_less_cols_in_proj
 -- SQL:
 SELECT "c" FROM "arithmetic_space"
 GROUP BY "c", "d";
--- EXPECTED:
+-- UNORDERED:
 1, 1
 
 -- TEST: test_with_subquery_3
@@ -325,7 +327,7 @@ INNER JOIN
 on t2."id" = t1."b"
 WHERE "b" in (SELECT "c" FROM "arithmetic_space" GROUP BY "c")
 GROUP BY "b", "string_col";
--- EXPECTED:
+-- UNORDERED:
 1, 'a', 1, 'b'
 
 -- TEST: test_complex_1
@@ -369,14 +371,14 @@ SELECT * FROM (
 -- TEST: test_count_works-1
 -- SQL:
 SELECT "d", "e" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 2, 2, 2, 1, 2
 
 -- TEST: test_count_works-2
 -- SQL:
 SELECT "d", count("e") from "arithmetic_space"
 group by "d";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 2
 
 -- TEST: test_count
@@ -400,7 +402,7 @@ invalid query
 -- SQL:
 SELECT ("a"*"b"*"c")*count("c")/(("a"*"b"*"c")*count("c")) as u from "arithmetic_space"
         group by ("a"*"b"*"c");
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1
 
 -- TEST: test_grouping_by_concat
@@ -409,7 +411,7 @@ SELECT "string_col2" || "string_col" as u from
 (select "id" as "i", "string_col" as "string_col2" from "arithmetic_space") as "t1"
 join "arithmetic_space2" on "t1"."i" = "arithmetic_space2"."id"
 group by "string_col2" || "string_col";
--- EXPECTED:
+-- UNORDERED:
 'aa', 'cb'
 
 -- TEST: test_groupby_bool_expr
@@ -425,7 +427,7 @@ true, true
 -- SQL:
 SELECT cast("number_col" as double) from "arithmetic_space"
 group by cast("number_col" as double);
--- EXPECTED:
+-- UNORDERED:
 2.0, 2.14, 3.14
 
 -- TEST: test_aggr_valid-1
@@ -437,38 +439,38 @@ SELECT sum("e" + "d") from "arithmetic_space";
 -- TEST: test_aggr_valid-2
 -- SQL:
 SELECT "d", count("e" + "d") from "arithmetic_space" group by "d";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 2
 
 -- TEST: test_aggr_valid-3
 -- SQL:
 SELECT "d", couNT ("e") from "arithmetic_space" group by "d";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 2
 
 -- TEST: test_aggr_valid-4
 -- SQL:
 SELECT "d", count("e" * 10 + "a") from "arithmetic_space2" group by "d";
--- EXPECTED:
+-- UNORDERED:
 1, 3, 3, 1
 
 -- TEST: test_aggr_valid-5
 -- SQL:
 SELECT "d", sum("e") = sum("b"), sum("e") != sum("a"), sum("e") > count("a"),
         (sum("e") > count("a")) or (sum("e") = sum("b")) from "arithmetic_space2" group by "d";
--- EXPECTED:
+-- UNORDERED:
 1, False, True, True, True, 3, True, False, True, True
 
 -- TEST: test_aggr_valid-6
 -- SQL:
 SELECT "d", sum(("d" + "c")) from "arithmetic_space2" group by "d";
--- EXPECTED:
+-- UNORDERED:
 1, 6, 3, 4
 
 -- TEST: test_aggr_valid-7
 -- SQL:
 SELECT "d", count(("d" < "id")) from "arithmetic_space" group by "d";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 2
 
 -- TEST: test_aggr_valid-8
@@ -524,7 +526,7 @@ GROUP BY "e";
 select o.a, o.b, i.c, i.d from (select sum("a") as a, count("b") as b from "arithmetic_space") as o
             inner join (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space") as i
             on o.a = i.d or o.b = i.c;
--- EXPECTED:
+-- UNORDERED:
 6, 4, 4, 5, 6, 4, 4, 6, 6, 4, 4, 6, 6, 4, 4, 5
 
 
@@ -534,7 +536,7 @@ select o.a, o.b, i.c, i.d from  (select "c" + 3 as c, "d" + 4 as d from "arithme
             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as o
             on o.a = i.d or o.b = i.c and i.c in (select "id" from "arithmetic_space")
             where o.a > 5;
--- EXPECTED:
+-- UNORDERED:
 6, 4, 4, 5, 6, 4, 4, 6, 6, 4, 4, 6, 6, 4, 4, 5
 
 -- TEST: test_join_single7
@@ -542,7 +544,7 @@ select o.a, o.b, i.c, i.d from  (select "c" + 3 as c, "d" + 4 as d from "arithme
 select i.a, o.d from  (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space") as o
             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as i
             on i.a = cast(o.d as integer);
--- EXPECTED:
+-- UNORDERED:
 6, 6, 6, 6
 
 -- TEST: test_join_single8
@@ -550,7 +552,7 @@ select i.a, o.d from  (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space"
 select i.a, o.d from  (select "c" + 3 as c, "d" + 4 as d from "arithmetic_space") as o
             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as i
             on i.a < 10;
--- EXPECTED:
+-- UNORDERED:
 Decimal('6'), 5, Decimal('6'), 6, Decimal('6'), 6, Decimal('6'), 5
 
 -- TEST: test_join_single9 https://git.picodata.io/core/picodata/-/issues/1332
@@ -566,14 +568,14 @@ Decimal('6'), 5, Decimal('6'), 6, Decimal('6'), 6, Decimal('6'), 5
 select i.a, o.d from  (select "c" as c, "d" as d from "arithmetic_space") as o
             inner join (select sum("a") as a, count("b") as b from "arithmetic_space") as i
             on i.a = o.d + 4 and i.b = o.c + 3;
--- EXPECTED:
+-- UNORDERED:
 6, 2, 6, 2
 
 -- TEST: test_aggr_distinct
 -- SQL:
 SELECT "d", count(distinct "e"), count(distinct "e"+"a"), count(distinct "e"+"a") + sum(distinct "d"),
            sum("d") from "arithmetic_space" group by "d";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 3, 2, 2, 1, 2, 4, 4
 
 -- TEST: test_aggr_distinct_without_groupby
@@ -587,13 +589,13 @@ SELECT sum(distinct "d"), count("e"+"a"),
 -- TEST: test_select_distinct-1
 -- SQL:
 SELECT distinct "a"*2 from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 2, 4
 
 -- TEST: test_select_distinct-2
 -- SQL:
 SELECT "a"*2 from "arithmetic_space" group by "a"*2;
--- EXPECTED:
+-- UNORDERED:
 2, 4
 
 -- TEST: test_select_distinct2
@@ -641,7 +643,7 @@ SELECT count(*) from "null_t";
 -- TEST: test_count_asterisk_with_groupby
 -- SQL:
 SELECT count(*), "nb" from "null_t" group by "nb";
--- EXPECTED:
+-- UNORDERED:
 4, null, 1, 1
 
 -- TEST: test_avg
@@ -654,7 +656,7 @@ SELECT avg("c"), avg(distinct "c"), avg("b"), avg(distinct "b") from "arithmetic
 -- SQL:
 SELECT "a", avg("b"), avg(distinct "b") FROM "arithmetic_space"
         GROUP BY "a";
--- EXPECTED:
+-- UNORDERED:
 1, 1.5, 1.5, 2, 3, 3
 
 -- TEST: test_group_concat
@@ -669,7 +671,7 @@ SELECT group_concat(cast("c" as string), ' '), group_concat(distinct cast("c" as
 SELECT "a", group_concat(cast("e" as string), '|'), group_concat(distinct cast("e" as string))
 FROM "arithmetic_space"
 GROUP BY "a";
--- EXPECTED:
+-- UNORDERED:
 1, '2|2', '2', 2, '2|2', '2'
 
 -- TEST: test_min
@@ -681,7 +683,7 @@ SELECT min("id"), min(distinct "d" / 2) from "arithmetic_space";
 -- TEST: test_min_with_groupby
 -- SQL:
 SELECT "a", min("b"), min(distinct "b") FROM "arithmetic_space" GROUP BY "a";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 2, 3, 3
 
 -- TEST: test_max
@@ -693,7 +695,7 @@ SELECT max("id"), max(distinct "d" / 2) from "arithmetic_space";
 -- TEST: test_max_with_groupby
 -- SQL:
 SELECT "a", max("b"), max(distinct "b") FROM "arithmetic_space" GROUP BY "a";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 2, 2, 3, 3
 
 -- TEST: test_total
@@ -715,7 +717,7 @@ SELECT DISTINCT * FROM first JOIN second ON TRUE;
 WITH first  AS (SELECT "id", "a" FROM "arithmetic_space"),
              second AS (SELECT "id", "a" FROM "arithmetic_space2")
         SELECT DISTINCT * FROM first JOIN second ON first."id" = second."id";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 2, 2, 1, 2, 2, 3, 2, 3, 1, 4, 2, 4, 1
 
 -- TEST: test_total_no_rows
@@ -758,14 +760,14 @@ null
 -- SQL:
 SELECT "a", total("b"), total(distinct "b") FROM "arithmetic_space"
         GROUP BY "a";
--- EXPECTED:
+-- UNORDERED:
 1, 3, 3, 2, 6, 3
 
 -- TEST: test_having_with_sq-1
 -- SQL:
 SELECT "a", sum(distinct "b") as "sum", count(distinct "b") as "count" from "arithmetic_space"
         group by "a";
--- EXPECTED:
+-- UNORDERED:
 1, 3, 2, 2, 3, 1
 
 -- TEST: test_having_with_sq-2
@@ -787,7 +789,7 @@ having sum("b") > 5;
 -- SQL:
 SELECT "a", sum("b") as "sum" from "arithmetic_space"
 group by "a";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('3'), 2, Decimal('6')
 
 -- TEST: test_having2
@@ -835,7 +837,7 @@ SELECT "string_col", count(distinct "string_col"), count("string_col")
         from "arithmetic_space"
         where "id" > 2 or "string_col" = 'a'
         group by "string_col";
--- EXPECTED:
+-- UNORDERED:
 'a', 1, 2, 'c', 1, 2
 
 -- TEST: test_having_join-1
@@ -860,7 +862,7 @@ from "arithmetic_space" as t1 inner join
 (select "b" as b, "string_col" as s from "arithmetic_space2") as t2
 on t1."a" = t2.b
 where t1."d" + t1."a" > 2;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 'a', 2, 1, 1, 'b', 2, 1, 1, 'b', 2, 2, 2, 'a', 2, 2, 2, 'a', 1
 
 -- TEST: test_having_full_query-2
@@ -894,7 +896,7 @@ union all
 select "b" from "arithmetic_space"
 group by "b"
 having count(distinct "d") > 1;
--- EXPECTED:
+-- UNORDERED:
 2, 3
 
 -- TEST: test_having_inside_union1
@@ -904,7 +906,7 @@ union all
 select "b" from "arithmetic_space"
 group by "b"
 having count(distinct "d") > 1;
--- EXPECTED:
+-- UNORDERED:
 2, 2, 2, 2, 3
 
 -- TEST: test_having_inside_except
@@ -924,7 +926,7 @@ group by "d"
 except
 select sum(distinct "c") from "arithmetic_space"
 having count(distinct "c") = 1;
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: test_alias_inside_groupby-1.0
@@ -936,7 +938,7 @@ insert into t values (1, 2), (2, 3), (3, 4);
 -- TEST: test_alias_inside_groupby-1.1
 -- SQL:
 select a as a_1, sum(t.b) from t group by a_1, a;
--- EXPECTED:
+-- UNORDERED:
 1, 2,
 2, 3,
 3, 4
@@ -944,7 +946,7 @@ select a as a_1, sum(t.b) from t group by a_1, a;
 -- TEST: test_alias_inside_groupby-1.2
 -- SQL:
 select (t.a + 5) as a_1, sum(t.b) from t group by a_1, a;
--- EXPECTED:
+-- UNORDERED:
 6, 2,
 7, 3,
 8, 4
@@ -952,7 +954,7 @@ select (t.a + 5) as a_1, sum(t.b) from t group by a_1, a;
 -- TEST: test_alias_inside_groupby-1.3
 -- SQL:
 select (t.a + 5) as a_1, sum(t.b) from t group by a_1 * 2, a;
--- EXPECTED:
+-- UNORDERED:
 6, 2,
 7, 3,
 8, 4
@@ -1007,7 +1009,7 @@ SELECT * FROM
 	(SELECT a AS a_1 FROM t GROUP BY a_1) as t1
 	JOIN (SELECT a AS a_2 FROM t GROUP BY a_2) as t2
 	ON t1.a_1 = t2.a_2;
--- EXPECTED:
+-- UNORDERED:
 1, 1,
 2, 2,
 3, 3
@@ -1035,7 +1037,7 @@ ORDER BY a_2;
 -- TEST: test_alias_inside_groupby-1.10
 -- SQL:
 select (select 1) as a from t group by a;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1
 
 -- TEST: test-groupby-with-function-1

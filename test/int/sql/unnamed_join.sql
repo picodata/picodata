@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: unnamed_join
 -- SQL:
 DROP TABLE IF EXISTS cd_corporate_account;
@@ -82,7 +84,7 @@ with r9 as (select 'clientMdmId' as mdm_id_first, client_id
                          left join r9 m_f on r9.mdm_id_first = m_f.mdm_id_first)
 select *
 from r9_mdm;
--- EXPECTED:
+-- UNORDERED:
 'clientMdmId', 'client_id_1', 'client_id_1', 'src_1', 'clientMdmId', 'client_id_1',
 'clientMdmId', 'client_id_1', 'client_id_1', 'src_1', 'clientMdmId', 'client_id_2',
 'clientMdmId', 'client_id_2', NULL, NULL, 'clientMdmId', 'client_id_1',

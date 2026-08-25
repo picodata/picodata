@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: init
 -- SQL:
 CREATE TABLE t1(pk INT PRIMARY KEY, a TEXT, b TEXT, c TEXT);

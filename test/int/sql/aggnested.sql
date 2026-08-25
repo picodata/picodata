@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: init
 -- SQL:
 CREATE TABLE t1 (a1 INT PRIMARY KEY);
@@ -299,13 +301,13 @@ INSERT INTO x2 VALUES (1, NULL), (2, NULL), (3, NULL);
 SELECT
         (SELECT total((SELECT b FROM x1)))
 FROM x2;
--- EXPECTED:
+-- UNORDERED:
 2.0, 2.0, 2.0
 
 -- TEST: aggnested-5.2
 -- SQL:
 SELECT ( SELECT total( (SELECT 2 FROM x1) ) ) FROM x2;
--- EXPECTED:
+-- UNORDERED:
 2.0, 2.0, 2.0
 
 -- TEST: aggnested-5.3

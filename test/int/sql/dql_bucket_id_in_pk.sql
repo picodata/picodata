@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: initialization_before_dql
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -43,7 +45,7 @@ SELECT a FROM t WHERE a = 1 GROUP BY 1;
 -- TEST: dql7
 -- SQL:
 SELECT a, COUNT(b) FROM t GROUP BY 1;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 101, 1
 
 -- TEST: dql8

@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: init
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -77,7 +79,7 @@ BEGIN
   RETURN QUERY SELECT a + 1 FROM t WHERE pk = 1;
   RETURN QUERY SELECT b + 2 FROM t WHERE pk = 1;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 2,
 3,
 
@@ -87,7 +89,7 @@ DO $$
 BEGIN
   RETURN QUERY SELECT 1,2 UNION ALL SELECT 1,2;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 1,2,
 1,2,
 
@@ -98,7 +100,7 @@ BEGIN
   RETURN QUERY VALUES (1,2), (2,3);
   RETURN QUERY SELECT 3,4;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 1,2,
 2,3,
 3,4,
@@ -111,7 +113,7 @@ BEGIN
   RETURN QUERY SELECT b + 2 FROM t WHERE pk = 1;
   RETURN QUERY SELECT 4;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 2,
 3,
 4,
@@ -477,6 +479,7 @@ SELECT * FROM iocdu WHERE pk = 17;
 17, 170, 170
 
 -- TEST: explain-insert-on-conflict-do-update
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw)
 DO $$
@@ -495,6 +498,7 @@ plan:
 
 
 -- TEST: explain-insert-on-conflict-do-update-with-param
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw)
 DO $$
@@ -1005,6 +1009,7 @@ SELECT * FROM t WHERE pk = 400;
 400, 99, 7
 
 -- TEST: explain-insert
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw)
 DO $$
@@ -1125,6 +1130,7 @@ SELECT * FROM t WHERE pk = 2;
 -- EXPECTED:
 
 -- TEST: explain-block-delete-with-return-query
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw)
 DO $$ BEGIN
@@ -1157,6 +1163,7 @@ SELECT * FROM t WHERE pk = 2;
 -- EXPECTED:
 
 -- TEST: explain-block-multistmt-with-constants
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw)
 DO $$ BEGIN
@@ -1183,6 +1190,7 @@ plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 
 -- TEST: explain-block-mixed-stmts-with-constants
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw)
 DO $$ BEGIN
@@ -1294,7 +1302,7 @@ BEGIN
   RETURN QUERY SELECT v;
   RETURN QUERY SELECT v + v;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 2,
 4,
 
@@ -1307,7 +1315,7 @@ BEGIN
   RETURN QUERY SELECT x;
   RETURN QUERY SELECT y;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 2,
 3,
 
@@ -1405,7 +1413,7 @@ BEGIN
   LET a = (SELECT 2);
   RETURN QUERY SELECT a;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 1,
 2
 
@@ -1595,7 +1603,7 @@ BEGIN
     UPDATE t2 SET b = b + v * 2 WHERE pk = 4;
   END IF;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 10, 20
 
 -- TEST: multiple-ifs-check
@@ -1696,7 +1704,7 @@ BEGIN
     RETURN QUERY SELECT v;
   END IF;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 25, 75
 
 -- TEST: sibling-if-bodies-may-bind-unrelated-types
@@ -1813,7 +1821,7 @@ BEGIN
     RETURN QUERY SELECT v * 10;
   END IF;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 11, 110
 
 -- TEST: read-only-if-may-precede-reads
@@ -1827,7 +1835,7 @@ BEGIN
   RETURN QUERY SELECT v * 100;
   UPDATE t4 SET a = a WHERE pk = 1;
 END $$;
--- EXPECTED:
+-- UNORDERED:
 11, 1100
 
 -- TEST: empty-if-body-is-a-no-op
@@ -2008,6 +2016,7 @@ projection (1::int -> col_1)
 buckets = any
 
 -- TEST: explain-nested-if-stage-numbering
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw)
 DO $$
@@ -2077,6 +2086,7 @@ plan:
     [0] SEARCH TABLE t4 USING PRIMARY KEY (pk=?) (~1 row)
 
 -- TEST: explain-if-body-return-query
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw)
 DO $$
@@ -2626,6 +2636,7 @@ ORDER BY 1;
 5678,
 
 -- TEST: explail-if-cross-sharded-tables
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (raw)
 DO $$

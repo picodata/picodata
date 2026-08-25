@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: test_arbitrary_expr
 -- SQL:
 DROP TABLE IF EXISTS arithmetic_space;
@@ -47,19 +49,19 @@ CASE/THEN types text and int cannot be matched
 -- TEST: test_arbitrary_valid-1
 -- SQL:
 select "id" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 -- TEST: test_arbitrary_valid-2
 -- SQL:
 select "id" - 9 > 0 from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 False, False, False, False, False, False, False, False, False, True
 
 -- TEST: test_arbitrary_valid-3
 -- SQL:
 select "id" + "b" > "id" + "b", "id" + "b" > "id" + "b" as "cmp" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 False, False, False, False, False, False, False,
 False, False, False, False, False, False, False,
 False, False, False, False, False, False,
@@ -67,7 +69,7 @@ False, False, False, False, False, False,
 -- TEST: test_arbitrary_valid-4
 -- SQL:
 select 0 = "id" + "f", 0 = "id" + "f" as "cmp" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 True, True, True, True, True, True,
 True, True, True, True, True, True,
 True, True, True, True, True, True,
@@ -76,7 +78,7 @@ True, True
 -- TEST: test_arbitrary_valid-5
 -- SQL:
 select 1 > 0, 1 > 0 as "cmp" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 True, True, True, True, True, True,
 True, True, True, True, True, True,
 True, True, True, True, True, True,
@@ -89,7 +91,7 @@ select
     "id" between "id" - 1 and "id" * 4 as "between"
 from
     "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 True, True, True, True, True, True,
 True, True, True, True, True, True,
 True, True, True, True, True, True,
@@ -102,7 +104,7 @@ select
     "id" between "id" - 1 and "id" * 4 as "between"
 from
     "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 True, True, True, True, True, True,
 True, True, True, True, True, True,
 True, True, True, True, True, True,
@@ -135,7 +137,7 @@ SELECT
         ELSE '42'
     END "case_result"
 FROM "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 'first', 'second', '42', '42', '42', '42', '42', '42', '42', '42'
 
 -- TEST: test_arbitrary_valid-13
@@ -147,7 +149,7 @@ SELECT
         WHEN "id" / 2 < 4 THEN 'second'
     END "case_result"
 FROM "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 'second',
 2, 'second',
 3, 'second',
@@ -175,19 +177,19 @@ SELECT
             END
     END
 FROM "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 1, 3, 0, 4, 2, 5, 2, 6, 2, 7, 2, 8, 3, 9, 4, 10, 0
 
 -- TEST: test_values-1
 -- SQL:
 VALUES (8, 8, null), (9, 9, 'hello');
--- EXPECTED:
+-- UNORDERED:
 8, 8, null, 9, 9, 'hello'
 
 -- TEST: test_values-2
 -- SQL:
 VALUES (9, 9, 'hello'), (8, 8, null);
--- EXPECTED:
+-- UNORDERED:
 9, 9, 'hello', 8, 8, null
 
 -- TEST: test_index_current_state_from_pico_instance
@@ -316,7 +318,7 @@ could not resolve operator overload for \+\(any, int\)
 
 -- TEST: test_text_key_is_missing_in_array
 -- SQL:
-SELECT current_state['lol'::text] FROM _pico_instance;
+SELECT current_state['lol'::text] FROM _pico_instance LIMIT 1;
 -- EXPECTED:
 null
 

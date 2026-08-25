@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: window12-init-1
 -- SQL:
 DROP TABLE IF EXISTS t6;
@@ -292,7 +294,7 @@ WINDOW w AS (ORDER BY a);
 -- SQL:
 SELECT 1 FROM t_win 
 WINDOW w AS (PARTITION BY (SELECT 1 FROM t_win WINDOW w AS ()));
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 1, 1
 
 -- TEST: window12-4.9
@@ -358,20 +360,20 @@ WINDOW user AS (ORDER BY a);
 -- SQL:
 SELECT max(1) over w FROM t_win
 WINDOW w AS (PARTITION BY (SELECT a from t_win limit 1));
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 1, 1
 
 -- TEST: window12-4.16
 -- SQL:
 WITH cte AS (SELECT max(1) OVER ()) SELECT max(a) OVER () FROM t_win;
--- EXPECTED:
+-- UNORDERED:
 5, 5, 5, 5, 5
 
 -- TEST: window12-4.17
 -- SQL:
 WITH cte AS (SELECT max(1) OVER () AS x)
 SELECT max(a) OVER () FROM t_win JOIN cte ON cte.x = 1;
--- EXPECTED:
+-- UNORDERED:
 5, 5, 5, 5, 5
 
 -- TEST: window12-4.18

@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: operators
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
@@ -33,7 +35,7 @@ insert into "testing_space" ("id", "name", "product_units") values (2, '123', 2)
 -- TEST: test_not_eq-2
 -- SQL:
 SELECT * FROM "testing_space" where "id" <> 1;
--- EXPECTED:
+-- UNORDERED:
 2, '123', 2, 3, '123', 3
 
 -- TEST: test_not_eq-3
@@ -57,7 +59,7 @@ insert into "t" ("id", "a") values (3, 0.0), (4, 0.0);
 SELECT "id", u FROM "t" join
                     (select "id" as u from "t") as q
                     on "t"."id" <> q.u;
--- EXPECTED:
+-- UNORDERED:
 1, 2, 1, 3, 1, 4, 2, 1, 2, 3, 2, 4, 3, 1, 3, 2, 3, 4, 4, 1, 4, 2, 4, 3
 
 -- TEST: test_not_eq2-3
@@ -84,7 +86,7 @@ SELECT * FROM (
             SELECT "id", "name", "product_units" FROM "testing_space_hist" WHERE "product_units" > 3
         ) as "t1"
         WHERE "id" = 1 and "name" = '123';
--- EXPECTED:
+-- UNORDERED:
 1, '123', 1, 1, '123', 5
 
 -- TEST: test_compare
@@ -102,7 +104,7 @@ insert into "t" ("id", "a") values (3, 777), (1000001, 6.66), (1000002, 6.66);
 SELECT "a" FROM "t" where "id" <= 3
         EXCEPT
         SELECT "a" FROM "t" where "id" > 3;
--- EXPECTED:
+-- UNORDERED:
 Decimal('4.2'), Decimal('777')
 
 -- TEST: test_except-3
@@ -143,7 +145,7 @@ WHERE "id" NOT IN (SELECT cast("COLUMN_1" as int) FROM (VALUES (1), (3)));
 -- TEST: test_exists_subquery_select_from_values
 -- SQL:
 SELECT "id" FROM "t" WHERE EXISTS (SELECT 0 FROM (VALUES (1)));
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: test_not_exists_subquery_select_from_values
@@ -173,13 +175,13 @@ SELECT * FROM "testing_space" WHERE EXISTS
 -- TEST: test_exists_partitioned_in_selection_condition-1
 -- SQL:
 SELECT * FROM "t";
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('4.2'), 2, Decimal('6.66')
 
 -- TEST: test_exists_partitioned_in_selection_condition-2
 -- SQL:
 SELECT * FROM "t" WHERE EXISTS (SELECT * FROM "testing_space");
--- EXPECTED:
+-- UNORDERED:
 1, Decimal('4.2'), 2, Decimal('6.66')
 
 -- TEST: test_exists_partitioned_in_join_filter-1
@@ -189,7 +191,7 @@ SELECT * FROM
         INNER JOIN
             (SELECT "id" as "sid" FROM "space_simple_shard_key") as "s"
         ON true;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 10, 2, 1, 2, 10
 
 -- TEST: test_exists_partitioned_in_join_filter-2
@@ -199,7 +201,7 @@ SELECT * FROM
 INNER JOIN
         (SELECT "id" as "sid" FROM "space_simple_shard_key") as "s"
 ON EXISTS (SELECT * FROM "testing_space");
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 10, 2, 1, 2, 10
 
 -- TEST: test_not_with_true_gives_false
@@ -270,7 +272,7 @@ true
 -- SQL:
 SELECT "id" FROM "space_simple_shard_key" WHERE
         (SELECT "id" FROM "space_simple_shard_key_hist" WHERE "id" = 2) BETWEEN 1 AND 2;
--- EXPECTED:
+-- UNORDERED:
 1, 10
 
 -- TEST: test_between2

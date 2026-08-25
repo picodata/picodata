@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: motion
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
@@ -35,7 +37,7 @@ SELECT * FROM (
             SELECT "id", "name" FROM "testing_space_hist" WHERE "product_units" > 3
         ) as "t2"
         WHERE "id" = 1.00 and "name" = '123');
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 1, 'ok_hist'
 
 -- TEST: test_join_motion_query
@@ -59,7 +61,7 @@ SELECT "t3"."id", "t3"."name", "t8"."product_units"
         WHERE "product_units" > 0) AS "t8"
         ON "t3"."id" = "t8"."id1"
     WHERE "t3"."id" = 1;
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 5, 1, 'ok_hist', 5
 
 -- TEST: test_empty_motion_result-1
@@ -100,7 +102,7 @@ SELECT * FROM
 INNER JOIN
         (SELECT "id" as "sid" FROM "space_simple_shard_key")
 ON true;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 10
 
 -- TEST: test_subquery_under_motion_with_alias
@@ -110,7 +112,7 @@ SELECT * FROM
 INNER JOIN
         (SELECT "id" as "sid" FROM "space_simple_shard_key") as "smth"
 ON true;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 10
 
 -- TEST: test_nested_joins_with_motions

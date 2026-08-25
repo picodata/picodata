@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: cast-array-of-int-to-array-of-text
 -- SQL:
 select array[1]::text[];

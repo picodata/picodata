@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: unnamed_subquery
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -10,14 +12,14 @@ INSERT INTO gt ("a") VALUES (1), (2);
 -- TEST: unnamed_subquery-same-columns-1
 -- SQL:
 select * from t join (select * from gt) on true;
--- EXPECTED:
+-- UNORDERED:
 1, 1,
 1, 2,
 
 -- TEST: unnamed_subquery-same-columns-2
 -- SQL:
 select * from t join (select * from gt join gt as gt2 on true) on true;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1,
 1, 1, 2,
 1, 2, 1,
@@ -26,7 +28,7 @@ select * from t join (select * from gt join gt as gt2 on true) on true;
 -- TEST: unnamed_subquery-same-columns-3
 -- SQL:
 select * from (select * from gt join gt as gt2 on true) join t on true;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1,
 1, 2, 1,
 2, 1, 1,

@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: initialization
 -- SQL:
 CREATE TABLE t ("id" INT PRIMARY KEY, "a" INT);
@@ -52,7 +54,7 @@ SELECT b FROM cte3;
 -- SQL:
 WITH cte1 (a) AS (SELECT "a" FROM "t" WHERE "id" = 1)
 SELECT * FROM cte1 UNION ALL SELECT * FROM cte1;
--- EXPECTED:
+-- UNORDERED:
 1, 1
 
 -- TEST: cte-union-with-expression

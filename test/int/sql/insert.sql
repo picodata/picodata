@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: insert
 -- SQL:
 DROP TABLE IF EXISTS space_simple_shard_key;
@@ -22,7 +24,7 @@ INSERT INTO "space_simple_shard_key" SELECT * FROM "space_simple_shard_key_hist"
 -- TEST: test_insert_1-2
 -- SQL:
 SELECT *, "bucket_id" FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 1, 1934, 2, 'ok_hist_2', 1, 1410, 10, None, 0, 626
 
 -- TEST: test_insert_1-3
@@ -37,7 +39,7 @@ INSERT INTO "space_simple_shard_key" ("name", "sysOp", "id") SELECT 'four', 5, 3
 -- TEST: test_insert_2-2
 -- SQL:
 SELECT *, "bucket_id" FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 1, 1934, 3, 'four', 5, 1958, 10, null, 0, 626
 
 -- TEST: test_insert_2-3
@@ -51,7 +53,7 @@ INSERT INTO "space_simple_shard_key" ("sysOp", "id") VALUES (5, 4), (6, 5);
 -- TEST: test_insert_3-2
 -- SQL:
 SELECT *, "bucket_id" FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 4, null, 5, 2752, 5, null, 6, 219
 
 -- TEST: test_insert_3-3
@@ -65,7 +67,7 @@ INSERT INTO "space_simple_shard_key" ("sysOp", "id", "name") VALUES (5, 4, 'ки
 -- TEST: test_insert_4-2
 -- SQL:
 SELECT *, "bucket_id" FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 4, 'кириллица', 5, 2752, 5, 'КИРИЛЛИЦА', 6, 219
 
 -- TEST: test_insert_4-3
@@ -89,13 +91,13 @@ DELETE FROM "space_simple_shard_key";
 -- TEST: test_insert_7-1
 -- SQL:
 VALUES (8, 8, null), (9, 9, 'hello');
--- EXPECTED:
+-- UNORDERED:
 8, 8, null, 9, 9, 'hello'
 
 -- TEST: test_insert_7-2
 -- SQL:
 VALUES (9, 9, 'hello'), (8, 8, null);
--- EXPECTED:
+-- UNORDERED:
 9, 9, 'hello', 8, 8, null
 
 -- TEST: test_insert_7-3-1
@@ -106,7 +108,7 @@ INSERT INTO "space_simple_shard_key" ("sysOp", "id", "name") VALUES (8, 8, '');
 -- TEST: test_insert_7-3-2
 -- SQL:
 SELECT *, "bucket_id" FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 1, 1934, 8, '', 8, 2564, 10, null, 0, 626
 
 -- TEST: test_insert_7-3-3
@@ -123,7 +125,7 @@ INSERT INTO "space_simple_shard_key" ("sysOp", "id", "name") VALUES (23, 23, nul
 -- TEST: test_insert_8-1-2
 -- SQL:
 SELECT * FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 8, null, 8, 9, 'hello', 9, 20, null, 20, 21, 'hello', 21, 22, null, 22, 23, null, 23
 
 
@@ -143,7 +145,7 @@ VALUES  (1, 1, 1, 1, 1, 2, 2, true, 'a', 3.14),
 -- TEST: test_insert_8-2-2
 -- SQL:
 SELECT * FROM "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 1, 1, 2, 2, True, 'a', 3.14, 2, 1, 2, 1, 2, 2, 2, True, 'a', 3.0, 3, 2, 3, 1, 2, 2, 2, True, 'c', 3.14, 4, 2, 3, 1, 1, 2, 2, True, 'c', 3.1475
 
 -- TEST: test_insert_8-2-3
@@ -157,7 +159,7 @@ INSERT INTO "space_simple_shard_key" ("id", "name", "sysOp") VALUES (1, 'ok', 1)
 -- TEST: test_insert_9-2
 -- SQL:
 SELECT * FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 1, 10, None, 0
 
 -- TEST: test_insert_9-3
@@ -167,7 +169,7 @@ INSERT INTO "space_simple_shard_key" SELECT * FROM "space_simple_shard_key_hist"
 -- TEST: test_insert_9-4
 -- SQL:
 SELECT * FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 1, 10, None, 0
 
 -- TEST: test_insert_9-5
@@ -181,7 +183,7 @@ INSERT INTO "space_simple_shard_key" ("id", "name", "sysOp") VALUES (1, 'ok', 1)
 -- TEST: test_insert_on_conflict_do_nothing-2
 -- SQL:
 SELECT * FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 1, 10, None, 0
 
 -- TEST: test_insert_on_conflict_do_nothing-3
@@ -191,7 +193,7 @@ INSERT INTO "space_simple_shard_key" VALUES (1, '1', 1) ON CONFLICT DO NOTHING;
 -- TEST: test_insert_on_conflict_do_nothing-4
 -- SQL:
 SELECT * FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 1, 10, None, 0
 
 -- TEST: test_insert_on_conflict_do_nothing-5
@@ -205,7 +207,7 @@ INSERT INTO "space_simple_shard_key" ("id", "name", "sysOp") VALUES (1, 'ok', 1)
 -- TEST: test_insert_on_conflict_do_replace-2
 -- SQL:
 SELECT * FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 1, 10, None, 0
 
 -- TEST: test_insert_on_conflict_do_replace-3
@@ -215,7 +217,7 @@ INSERT INTO "space_simple_shard_key" ("id", "name", "sysOp") VALUES (1, '1', 1) 
 -- TEST: test_insert_on_conflict_do_replace-4
 -- SQL:
 SELECT * FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, '1', 1, 10, null, 0
 
 -- TEST: test_insert_on_conflict_do_replace-5
@@ -229,7 +231,7 @@ INSERT INTO "space_simple_shard_key" ("id", "name", "sysOp") VALUES (1, 'ok', 1)
 -- TEST: test_insert_select_on_conflict_do_replace-2
 -- SQL:
 SELECT * FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, 'ok', 1, 10, None, 0
 
 -- TEST: test_insert_select_on_conflict_do_replace-3
@@ -242,7 +244,7 @@ ON CONFLICT DO REPLACE;
 -- TEST: test_insert_select_on_conflict_do_replace-4
 -- SQL:
 SELECT * FROM "space_simple_shard_key";
--- EXPECTED:
+-- UNORDERED:
 1, 'ok1', 5, 10, null, 4
 
 -- TEST: test_insert_select_on_conflict_do_replace-5

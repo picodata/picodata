@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: initialization
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -69,6 +71,7 @@ SELECT sum(t.a) FROM t GROUP BY (SELECT true) HAVING (SELECT true);
 6
 
 -- TEST: explain-raw-huge
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN(RAW) WITH d AS (SELECT t.b  FROM t2 e JOIN t ON t.b = e.a ),
 f AS (SELECT t2.b , e.a FROM t e JOIN t ON e.a = t.b JOIN t2 ON true GROUP BY a, b)
@@ -162,6 +165,7 @@ plan:
     [1] COMPOUND SUBQUERIES 2 AND 3 USING TEMP B-TREE (EXCEPT)
 
 -- TEST: explain-raw-intersect-without-braces
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (RAW) SELECT 1 from t UNION SELECT 0 EXCEPT SELECT 1 from t;
 -- EXPECTED:
@@ -208,6 +212,7 @@ plan:
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (EXCEPT)
 
 -- TEST: explain-raw-scalar-union-except
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (RAW) SELECT 1 from t UNION SELECT 0 EXCEPT SELECT 1 from t;
 -- EXPECTED:

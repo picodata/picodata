@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: init-1
 -- SQL:
 CREATE table t1 (a INT PRIMARY KEY, b INT);
@@ -132,7 +134,7 @@ buckets = [1934]
 -- TEST: group-by-4
 -- SQL:
 SELECT count(*) FROM t1 WHERE a = 1 OR a = 2 GROUP BY a;
--- EXPECTED:
+-- UNORDERED:
 1, 1
 
 -- TEST: group-by-4-explain
@@ -862,10 +864,11 @@ INSERT INTO t0 VALUES (1, 2, 3), (3, 2, 1), (4, 4, 5), (6, 1, 7), (10, 1, 1), (1
 -- TEST: distinct-3
 -- SQL:
 SELECT DISTINCT b FROM t0 WHERE a = 1;
--- EXPECTED:
+-- UNORDERED:
 7, 1
 
 -- TEST: distinct-3-explain
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) SELECT DISTINCT b FROM t0 WHERE a = 1;
 -- EXPECTED:

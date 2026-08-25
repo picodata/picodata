@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: trim1
 -- SQL:
 DROP TABLE IF EXISTS t;
@@ -92,7 +94,7 @@ select c2 from t1 where c1 like '';
 -- TEST: test_like-1.2
 -- SQL:
 SELECT (t1.c1 LIKE t1.c1) FROM t1;
--- EXPECTED:
+-- UNORDERED:
 true, true
 
 -- TEST: test_like-1.3

@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: init
 -- SQL:
 CREATE TABLE g (id INT PRIMARY KEY) DISTRIBUTED GLOBALLY;

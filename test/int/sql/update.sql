@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: update
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
@@ -44,7 +46,7 @@ update "testing_space" set "name" = 'It works!';
 -- TEST: test_basic-2
 -- SQL:
 SELECT * FROM "testing_space";
--- EXPECTED:
+-- UNORDERED:
 1, 'It works!', 1,
 2, 'It works!', 1,
 3, 'It works!', 1,
@@ -126,7 +128,7 @@ update "testing_space"
 -- TEST: test_where-2
 -- SQL:
 SELECT * FROM "testing_space";
--- EXPECTED:
+-- UNORDERED:
 1, 'It works!', 1,
 2, 'It works!', 1,
 3, 'It works!', 1,
@@ -155,7 +157,7 @@ where "id" = "i";
 -- TEST: test_join-2
 -- SQL:
 SELECT * FROM "testing_space";
--- EXPECTED:
+-- UNORDERED:
 1, 'a', 1,
 2, 'a', 1,
 3, 'c', 1,
@@ -184,7 +186,7 @@ where "id" = 1 and "string_col" = 'a';
 -- TEST: test_join_with_multiple_pk_rows-2
 -- SQL:
 SELECT * FROM "testing_space";
--- EXPECTED:
+-- UNORDERED:
 1, 'a', 1,
 2, '1', 1,
 3, '1', 1,
@@ -214,7 +216,7 @@ where "id" = "i" and "id" = 1;
 -- TEST: test_inverse_column_order-2
 -- SQL:
 SELECT * FROM "testing_space";
--- EXPECTED:
+-- UNORDERED:
 1, 'ahello', 1,
 2, '1', 1,
 3, '1', 1,
@@ -243,7 +245,7 @@ where "id" = 1;
 -- TEST: test_shard_column_updated-2
 -- SQL:
 SELECT * FROM "testing_space";
--- EXPECTED:
+-- UNORDERED:
 1, 'some string', 1000,
 2, '1', 1,
 3, '1', 1,
@@ -270,7 +272,7 @@ update "arithmetic_space" set
 -- TEST: test_local_update-2
 -- SQL:
 SELECT "boolean_col" FROM "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 False, False, False, False
 
 -- TEST: test_local_update-3
@@ -290,9 +292,10 @@ update "arithmetic_space" set
 from (select "boolean_col" as "boo" from "arithmetic_space2");
 
 -- TEST: test_local_update_ambiguous_join-2
+-- SKIP_FOR: 2rsX1
 -- SQL:
 SELECT "boolean_col" FROM "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 true, true, true, true
 
 -- TEST: test_local_update_ambiguous_join-3
@@ -314,7 +317,7 @@ where "id" in (select avg("c") from "arithmetic_space2");
 -- TEST: test_subquery_in_selection-2
 -- SQL:
 SELECT "c" FROM "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1000, 1, 1, 1
 
 -- TEST: test_subquery_in_selection-3
@@ -336,7 +339,7 @@ update "double_t" set
 -- TEST: test_type_conversion-2
 -- SQL:
 SELECT * FROM "double_t";
--- EXPECTED:
+-- UNORDERED:
 1, 3.14, Decimal('2.7'), 2, 3.14, Decimal('2.7')
 
 -- TEST: test_type_conversion-3
@@ -354,7 +357,7 @@ set "name" = '2';
 -- TEST: test_bucket_id_in_the_middle-2
 -- SQL:
 SELECT "name" FROM "testing_space_bucket_in_the_middle";
--- EXPECTED:
+-- UNORDERED:
 '2', '2', '2'
 
 -- TEST: test_bucket_id_in_the_middle-3
@@ -365,7 +368,7 @@ set "product_units" = 42;
 -- TEST: test_bucket_id_in_the_middle-4
 -- SQL:
 SELECT "product_units" FROM "testing_space_bucket_in_the_middle";
--- EXPECTED:
+-- UNORDERED:
 42, 42, 42
 
 -- TEST: test_type_conversion-5

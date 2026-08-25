@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: init
 -- SQL:
 CREATE TABLE t1(pk INT PRIMARY KEY, a INT ,b INT ,c INT);
@@ -17,7 +19,7 @@ SELECT count(distinct a),
 -- TEST: distinctagg-1.2
 -- SQL:
 SELECT b, count(distinct c) FROM t1 GROUP BY b;
--- EXPECTED:
+-- UNORDERED:
 2, 1, 3, 2
 
 -- TEST: init

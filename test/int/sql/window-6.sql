@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: window6
 -- SQL:
     DROP TABLE IF EXISTS t1;
@@ -23,7 +25,7 @@ SELECT c, sum(d) OVER (PARTITION BY b ORDER BY c) FROM t1;
 -- TEST: window6-1.2
 -- SQL:
 SELECT sum(d) OVER () FROM t1;
--- EXPECTED:
+-- UNORDERED:
 21, 21, 21, 21, 21, 21
 
 -- TEST: window6-1.3

@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: union1
 -- SQL:
 DROP TABLE IF EXISTS testing_space;
@@ -51,7 +53,7 @@ select id, a from arithmetic_space;
 -- TEST: test_union_under_insert1-2
 -- SQL:
 SELECT * FROM t;
--- EXPECTED:
+-- UNORDERED:
 1, 1, 2, 1, 3, 2, 4, 2
 
 -- TEST: test_union_under_insert1-3
@@ -68,7 +70,7 @@ select * from (values (100, 200), (200, 100));
 -- TEST: test_union_under_insert2-2
 -- SQL:
 SELECT * FROM t;
--- EXPECTED:
+-- UNORDERED:
 100, 200, 200, 100
 
 -- TEST: test_union_under_insert2-3
@@ -81,7 +83,7 @@ select "name"
 from "testing_space"
 union all
 select null from "testing_space" where false;
--- EXPECTED:
+-- UNORDERED:
 '123', '1', '1', '2', '123', '2'
 
 -- TEST: test_union_removes_duplicates-2
@@ -90,7 +92,7 @@ select "name"
 from "testing_space"
 union
 select null from "testing_space" where false;
--- EXPECTED:
+-- UNORDERED:
 '1', '123', '2'
 
 -- TEST: test_union_seg_vs_single
@@ -99,7 +101,7 @@ select "a"
 from "arithmetic_space"
 union
 select sum("a") / 3 from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2
 
 -- TEST: test_union_seg_vs_any
@@ -108,7 +110,7 @@ select "a", "b"
 from "arithmetic_space"
 union
 select "a" + 1 - 1, "b" from "arithmetic_space";
--- EXPECTED:
+-- UNORDERED:
 1, 1, 1, 2, 2, 3
 
 -- TEST: test_multi_union
@@ -120,7 +122,7 @@ select * from (
     select "a" from "arithmetic_space"
 ) union
 select "product_units" from "testing_space";
--- EXPECTED:
+-- UNORDERED:
 1, 2, 4
 
 -- TEST: test_union_diff_types
@@ -225,6 +227,7 @@ union all
 buckets <= [1-3000]
 
 -- TEST: explain-union-global-sharded-1
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (RAW, BUCKETS)
 SELECT * FROM t UNION ALL SELECT * FROM g;
@@ -253,6 +256,7 @@ buckets <= [1-3000]
 buckets <= [1-3000]
 
 -- TEST: explain-union-global-sharded-2
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (RAW, BUCKETS)
 SELECT * FROM t WHERE a = 1 UNION ALL SELECT * FROM g;
@@ -309,6 +313,7 @@ buckets = any
 buckets = any
 
 -- TEST: explain-union-global-sharded-4
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (RAW, BUCKETS)
 SELECT * FROM t WHERE a in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10) UNION ALL SELECT * FROM g;
@@ -338,6 +343,7 @@ buckets = [219,626,799,1410,1860,1934,1958,2564,2752,2852]
 buckets = [219,626,799,1410,1860,1934,1958,2564,2752,2852]
 
 -- TEST: explain-union-global-sharded-5
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (RAW, BUCKETS)
 SELECT * FROM t WHERE a IN (SELECT MIN(a) FROM t) UNION ALL SELECT * FROM g;
@@ -390,6 +396,7 @@ buckets <= [1-3000]
 buckets <= [1-3000]
 
 -- TEST: explain-union-global-sharded-6
+-- SKIP_FOR: 2rsX1
 -- SQL:
 EXPLAIN (RAW, BUCKETS)
 SELECT * FROM t WHERE a = 5 and a IN (SELECT MIN(a) FROM t) UNION ALL SELECT * FROM g;

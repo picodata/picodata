@@ -1,3 +1,5 @@
+-- TEST-MATRIX: pgproto-1rsX1, pgproto-2rsX1, iproto-2rsX1
+
 -- TEST: test_left_outer_join
 -- SQL:
 DROP TABLE IF EXISTS arithmetic_space;
@@ -88,7 +90,7 @@ VALUES (4, 4, 'a', 'a', 'a', 4, 4.0, 'a', 4, 'a', 4.0, 4.0, 4.0, 4, 4, 4),
 SELECT * from (select "a" as a from "arithmetic_space") as t1
         left join (select sum("f") as b from "arithmetic_space2") as t2
         on t1.a = t2.b;
--- EXPECTED:
+-- UNORDERED:
 1, null, 1, null, 2, null, 2, null
 
 -- TEST: test_left_join_local_execution-1
@@ -96,7 +98,7 @@ SELECT * from (select "a" as a from "arithmetic_space") as t1
 select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left outer join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B";
--- EXPECTED:
+-- UNORDERED:
 1, 1,
 2, 2,
 3, 3,
@@ -132,7 +134,7 @@ buckets <= [1-3000]
 select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" = "T2"."B";
--- EXPECTED:
+-- UNORDERED:
 1, 1,
 1, 1,
 2, 2,
@@ -171,7 +173,7 @@ buckets <= [1-3000]
 select * from (select "id" as "A" from "arithmetic_space") as "T1"
 left join (select "a" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" < "T2"."B";
--- EXPECTED:
+-- UNORDERED:
 1, 2,
 1, 2,
 2, null,
@@ -217,7 +219,7 @@ on t1.a = t2.b;
 select * from (select sum("a") / 3 as a from "arithmetic_space") as t1
 left join (select "id" as b from "arithmetic_space2") as t2
 on t1.a < t2.b;
--- EXPECTED:
+-- UNORDERED:
 2, 3, 2, 4
 
 -- TEST: test_single_dist_both
@@ -225,7 +227,7 @@ on t1.a < t2.b;
 select * from (select "id" as a from "arithmetic_space") as t1
 left join (select "id" as b from "arithmetic_space2") as t2
 on t1.a in (select "f" from "arithmetic_space2") or t1.a = 1 and t2.b = 4;
--- EXPECTED:
+-- UNORDERED:
 1, 4, 2, 1, 2, 2, 2, 3, 2, 4, 3, None, 4, None
 
 -- TEST: test_sq_with_full_motion-1
@@ -233,7 +235,7 @@ on t1.a in (select "f" from "arithmetic_space2") or t1.a = 1 and t2.b = 4;
 select * from (select "a" as "A" from "arithmetic_space") as "T1"
 left join (select "id" as "B" from "arithmetic_space2") as "T2"
 on "T1"."A" in (select "a" + 1 from "arithmetic_space");
--- EXPECTED:
+-- UNORDERED:
 1, null,
 1, null,
 2, 1,
@@ -281,7 +283,7 @@ buckets <= [1-3000]
 select * from (select "id" as "A" from "arithmetic_space") as t1
 left join (select "id" as "B" from "arithmetic_space2") as t2
 on t1."A" in (select "c" from "arithmetic_space");
--- EXPECTED:
+-- UNORDERED:
 1, 1,
 1, 2,
 1, 3,
@@ -326,7 +328,7 @@ buckets <= [1-3000]
 select * from (select "nb" as a from "null_t") as t1
 left join (select "nc" as b from "null_t") as t2
 on t1.a = t2.b;
--- EXPECTED:
+-- UNORDERED:
 null, null,
 null, null,
 null, null,
@@ -339,7 +341,7 @@ null, null,
 select * from (select "nb" as a from "null_t") as t1
 left join (select "nc" as b from "null_t") as t2
 on t1.a is not null;
--- EXPECTED:
+-- UNORDERED:
 None, None,
 None, None,
 None, None,
@@ -363,7 +365,7 @@ on true;
 select * from (select "nb" as a from "null_t") as t1
 left join (select "nc" as b from "null_t" where false) as t2
 on true;
--- EXPECTED:
+-- UNORDERED:
 None, None, None, None, None, None, 1, None, None, None
 
 -- TEST: test_groupby_after_join
@@ -372,7 +374,7 @@ select a, count(b) from (select "nb" as a from "null_t") as t1
 left join (select "nc" as b from "null_t" where false) as t2
 on true
 group by a;
--- EXPECTED:
+-- UNORDERED:
 null, 0, 1, 0
 
 -- TEST: test_groupby_under_outer_child
@@ -380,7 +382,7 @@ null, 0, 1, 0
 select * from (select "nb" as a from "null_t" group by "nb") as t1
 left join (select "nc" as b from "null_t") as t2
 on t1.a = t2.b;
--- EXPECTED:
+-- UNORDERED:
 null, null,
 1, 1,
 1, 1
@@ -419,7 +421,7 @@ FROM
     FROM
       "SPACE2" AS sp2_1
   ) AS sp2 ON sp1."a_to" = sp2."sp2_a" AND sp1."b_to" = sp2."sp2_b" AND sp1."yearquarter" = sp2."sp2_yearquarter";
--- EXPECTED:
+-- UNORDERED:
 1, 'a', 'a', null, null, null,
 2, 'a', 'a', null, null, null,
 3, 'a', 'a', null, null, null,
@@ -436,7 +438,7 @@ AND "SPACE1"."yearquarter" = "SPACE2"."yearquarter"
 LEFT JOIN "SPACE2" as space3
 ON "SPACE1"."a_to" = space3."a" AND "SPACE1"."b_to" = space3."b"
 WHERE "SPACE2"."yearquarter" = 4;
--- EXPECTED:
+-- UNORDERED:
 4, 'a',
 4, 'a',
 4, 'a',
