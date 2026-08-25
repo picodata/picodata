@@ -3831,7 +3831,13 @@ def test_plugin_vinyl_tx_access_denial_crash_gl_2914(cluster: Cluster):
     # create the plugin and enable it
     i1.sql(f"CREATE PLUGIN {plugin} {version}")
     i1.sql(f"ALTER PLUGIN {plugin} {version} ADD SERVICE {service} TO TIER default")
-    i1.sql(f"ALTER PLUGIN {plugin} {version} ENABLE")
+    # `on_start` of this service calls `authenticate("my_user", ...)`. It runs
+    # inside the `.proc_enable_service` RPC handler, so `authenticate` resets the
+    # credentials of the session bound to that connection. That connection belongs
+    # to the connection pool, which normally authenticates as `pico_service`.
+    # Hence WAIT APPLIED LOCALLY: waiting globally would call `.proc_wait_index`
+    # over that same connection, and `my_user` has no execute access to it.
+    i1.sql(f"ALTER PLUGIN {plugin} {version} ENABLE WAIT APPLIED LOCALLY")
 
     # if the fix doesn't work, the instance should crash
     i1.wait_online()
@@ -4302,3 +4308,185 @@ def test_plugin_on_cluster_leader_change_not_present(cluster: Cluster):
         assert i3.eval("return _G['on_stop_no_on_cluster_leader_change']") == "was set"
 
     Retriable().call(check_on_stop)
+
+
+def test_plugin_wait_applied_options(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+    service = _PLUGIN_SERVICES[0]
+
+    # WAIT APPLIED options shouldn't affect operations in stable networks.
+    i1.sql(
+        f"""
+        CREATE PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}
+        ADD SERVICE {service} TO TIER {_DEFAULT_TIER}
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} ENABLE
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET {service}.bar = '102'
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}
+        REMOVE SERVICE {service} FROM TIER {_DEFAULT_TIER}
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} DISABLE
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        DROP PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+
+    # Simulate unstable network by injecting an error blocking wait index RPC
+    # that is called by the client to get acknowledgements from other
+    # instances that the plugin operation is applied.
+    i2.call("pico._inject_error", "BLOCK_PROC_WAIT_INDEX", True)
+
+    error = "plugin operation committed, but failed to receive acknowledgements from all instances"
+
+    # i2 doesn't acknowledge operation commitment, so WAIT APPLIED GLOBALLY
+    # results in an error.
+    with pytest.raises(TarantoolError, match=error):
+        i1.sql(
+            f"""
+            CREATE PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}
+            WAIT APPLIED GLOBALLY
+            OPTION (TIMEOUT = 1)
+            """
+        )
+
+    # Verify that the plugin was created despite the error.
+    i1.sql(
+        f"""
+        CREATE PLUGIN IF NOT EXISTS {_PLUGIN} {_PLUGIN_VERSION_1}
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+
+    # Default behavior (no explicit WAIT APPLIED) should also be globally.
+    with pytest.raises(TarantoolError, match=error):
+        i1.sql(
+            f"""
+            ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}
+            ADD SERVICE {service} TO TIER {_DEFAULT_TIER}
+            OPTION (TIMEOUT = 1)
+            """
+        )
+
+    # WAIT APPLIED LOCALLY doesn't require acknowledgements from other
+    # instances, so the operations should be performed with no errors.
+    i1.sql(
+        f"""
+        ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} ENABLE
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} SET {service}.bar = '102'
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}
+        REMOVE SERVICE {service} FROM TIER {_DEFAULT_TIER}
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} DISABLE
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        DROP PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+
+    # Disable injection.
+    i2.call("pico._inject_error", "BLOCK_PROC_WAIT_INDEX", False)
+
+    # After disabling injection, WAIT APPLIED GLOBALLY should work again.
+    i1.sql(
+        f"""
+        CREATE PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+    i1.sql(
+        f"""
+        DROP PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10)
+        """
+    )
+
+
+def test_plugin_migration_wait_applied_options(cluster: Cluster):
+    i1, _ = cluster.deploy(instance_count=2)
+    plugin = _PLUGIN_WITH_MIGRATION
+
+    # `MIGRATE TO` and `DROP PLUGIN WITH DATA` run the plugin migrations, which
+    # are ordinary DDL queries with their own WAIT APPLIED semantics, so here we
+    # only check that the plugin-level option is accepted and doesn't break the
+    # operations.
+    i1.sql(f"CREATE PLUGIN {plugin} 0.1.0 WAIT APPLIED GLOBALLY OPTION (TIMEOUT = 10)")
+    i1.sql(
+        f"""
+        ALTER PLUGIN {plugin} MIGRATE TO 0.1.0
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 10, ROLLBACK_TIMEOUT = 10)
+        """
+    )
+    i1.sql(f"DROP PLUGIN {plugin} 0.1.0 WITH DATA WAIT APPLIED GLOBALLY OPTION (TIMEOUT = 10)")
+
+    i1.sql(f"CREATE PLUGIN {plugin} 0.1.0 WAIT APPLIED LOCALLY OPTION (TIMEOUT = 10)")
+    i1.sql(
+        f"""
+        ALTER PLUGIN {plugin} MIGRATE TO 0.1.0
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 10, ROLLBACK_TIMEOUT = 10)
+        """
+    )
+    i1.sql(f"DROP PLUGIN {plugin} 0.1.0 WITH DATA WAIT APPLIED LOCALLY OPTION (TIMEOUT = 10)")

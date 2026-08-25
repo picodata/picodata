@@ -42,6 +42,7 @@ pub struct CreatePlugin {
     pub name: SmolStr,
     pub version: SmolStr,
     pub if_not_exists: bool,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -55,6 +56,7 @@ impl From<CreatePlugin> for NodeAligned {
 pub struct EnablePlugin {
     pub name: SmolStr,
     pub version: SmolStr,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -68,6 +70,7 @@ impl From<EnablePlugin> for NodeAligned {
 pub struct DisablePlugin {
     pub name: SmolStr,
     pub version: SmolStr,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -83,6 +86,7 @@ pub struct DropPlugin {
     pub version: SmolStr,
     pub if_exists: bool,
     pub with_data: bool,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -96,6 +100,7 @@ impl From<DropPlugin> for NodeAligned {
 pub struct MigrateTo {
     pub name: SmolStr,
     pub version: SmolStr,
+    pub wait_applied_globally: bool,
     pub opts: MigrateToOpts,
 }
 
@@ -111,6 +116,7 @@ pub struct AppendServiceToTier {
     pub version: SmolStr,
     pub service_name: SmolStr,
     pub tier: SmolStr,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -126,6 +132,7 @@ pub struct RemoveServiceFromTier {
     pub version: SmolStr,
     pub service_name: SmolStr,
     pub tier: SmolStr,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -140,6 +147,7 @@ pub struct ChangeConfig {
     pub plugin_name: SmolStr,
     pub version: SmolStr,
     pub key_value_grouped: Vec<ServiceSettings>,
+    pub wait_applied_globally: bool,
     pub timeout: Timeout,
 }
 
@@ -199,6 +207,37 @@ pub enum Plugin<'a> {
 }
 
 impl Plugin<'_> {
+    /// Timeout of the plugin operation.
+    #[must_use]
+    pub fn timeout(&self) -> &Timeout {
+        match self {
+            Plugin::Create(n) => &n.timeout,
+            Plugin::Enable(n) => &n.timeout,
+            Plugin::Disable(n) => &n.timeout,
+            Plugin::Drop(n) => &n.timeout,
+            Plugin::MigrateTo(n) => &n.opts.timeout,
+            Plugin::AppendServiceToTier(n) => &n.timeout,
+            Plugin::RemoveServiceFromTier(n) => &n.timeout,
+            Plugin::ChangeConfig(n) => &n.timeout,
+        }
+    }
+
+    /// Whether the operation must be applied on all instances of the cluster
+    /// before the control is returned to the user.
+    #[must_use]
+    pub fn wait_applied_globally(&self) -> bool {
+        match self {
+            Plugin::Create(n) => n.wait_applied_globally,
+            Plugin::Enable(n) => n.wait_applied_globally,
+            Plugin::Disable(n) => n.wait_applied_globally,
+            Plugin::Drop(n) => n.wait_applied_globally,
+            Plugin::MigrateTo(n) => n.wait_applied_globally,
+            Plugin::AppendServiceToTier(n) => n.wait_applied_globally,
+            Plugin::RemoveServiceFromTier(n) => n.wait_applied_globally,
+            Plugin::ChangeConfig(n) => n.wait_applied_globally,
+        }
+    }
+
     #[must_use]
     pub fn get_plugin_owned(&self) -> PluginOwned {
         match self {

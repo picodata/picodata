@@ -406,8 +406,10 @@ drop_user      ::= 'DROP' 'USER' ('IF' 'EXISTS')? user
                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                    ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 create_plugin  ::= 'CREATE' 'PLUGIN' ('IF' 'NOT' 'EXISTS')? plugin version
+                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                     ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 drop_plugin    ::= 'DROP' 'PLUGIN' ('IF' 'EXISTS')? plugin version ('WITH' 'DATA')?
+                    ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                     ('OPTION' '(' ('TIMEOUT' '=' double)')')?
 alter_plugin  ::= 'ALTER' 'PLUGIN' plugin (
                         (version (
@@ -416,8 +418,10 @@ alter_plugin  ::= 'ALTER' 'PLUGIN' plugin (
                             | ('REMOVE' 'SERVICE' service 'FROM' 'TIER' tier)
                             | ('SET' ((service'.'key '=' text) (',' service'.'key '=' text)*))
                         ))
+                        ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                         ('OPTION' '(' ('TIMEOUT' '=' double)')')?
                         | ('MIGRATE' 'TO' version)
+                          ('WAIT' 'APPLIED' ('GLOBALLY' | 'LOCALLY'))?
                           ( 'OPTION' '('
                             (('TIMEOUT' | 'ROLLBACK_TIMEOUT') '=' double)
                             (',' (('TIMEOUT' | 'ROLLBACK_TIMEOUT') '=' double))*')'

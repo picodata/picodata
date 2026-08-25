@@ -1312,30 +1312,40 @@ pub(in crate::frontend::sql) fn parse_create_plugin(
     node: &ParseNode,
 ) -> Result<CreatePlugin, SbroadError> {
     let mut if_not_exists = false;
-    let first_node_idx = node.first_child();
-    let plugin_name_child_idx = if let Rule::IfNotExists = ast.nodes.get_node(first_node_idx)?.rule
-    {
-        if_not_exists = true;
-        1
-    } else {
-        0
-    };
-
-    let plugin_name_idx = node.child_n(plugin_name_child_idx);
-    let name = parse_identifier(ast, plugin_name_idx)?;
-
-    let version_idx = node.child_n(plugin_name_child_idx + 1);
-    let version = parse_identifier(ast, version_idx)?;
-
+    let mut name = None;
+    let mut version = None;
+    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
     let mut timeout = plugin::get_default_timeout();
-    if let Some(timeout_child_id) = node.children.get(plugin_name_child_idx + 2) {
-        timeout = get_timeout(ast, *timeout_child_id)?;
+    for child_id in &node.children {
+        let child = ast.nodes.get_node(*child_id)?;
+        match child.rule {
+            Rule::IfNotExists => if_not_exists = true,
+            Rule::Identifier => name = Some(parse_identifier(ast, *child_id)?),
+            Rule::PluginVersion => version = Some(parse_identifier(ast, *child_id)?),
+            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+            Rule::WaitAppliedLocally => wait_applied_globally = false,
+            Rule::Timeout => timeout = get_timeout(ast, *child_id)?,
+            _ => {
+                return Err(SbroadError::Invalid(
+                    Entity::AST,
+                    Some(format_smolstr!(
+                        "Unexpected AST node in CREATE PLUGIN: {:?}",
+                        child.rule
+                    )),
+                ))
+            }
+        }
     }
 
     Ok(CreatePlugin {
-        name,
-        version,
+        name: name.ok_or_else(|| {
+            SbroadError::Invalid(Entity::AST, Some("Plugin name is not set.".into()))
+        })?,
+        version: version.ok_or_else(|| {
+            SbroadError::Invalid(Entity::AST, Some("Plugin version is not set.".into()))
+        })?,
         if_not_exists,
+        wait_applied_globally,
         timeout,
     })
 }
@@ -1348,6 +1358,7 @@ pub(in crate::frontend::sql) fn parse_drop_plugin(
     let mut with_data = false;
     let mut name = None;
     let mut version = None;
+    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
     let mut timeout = plugin::get_default_timeout();
     for child_id in &node.children {
         let child = ast.nodes.get_node(*child_id)?;
@@ -1374,6 +1385,8 @@ pub(in crate::frontend::sql) fn parse_drop_plugin(
                     Some("Plugin version is already set.".into()),
                 ));
             }
+            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+            Rule::WaitAppliedLocally => wait_applied_globally = false,
             Rule::Timeout => timeout = get_timeout(ast, *child_id)?,
             _ => {
                 return Err(SbroadError::Invalid(
@@ -1396,8 +1409,40 @@ pub(in crate::frontend::sql) fn parse_drop_plugin(
         })?,
         if_exists,
         with_data,
+        wait_applied_globally,
         timeout,
     })
+}
+
+/// Parse the trailing options of a plugin statement: `WAIT APPLIED
+/// (GLOBALLY | LOCALLY)` and `OPTION (TIMEOUT = ...)`. Both are optional,
+/// `start_from` is the index of the first child which may hold them.
+fn parse_plugin_wait_applied_and_timeout(
+    ast: &AstCore,
+    node: &ParseNode,
+    start_from: usize,
+) -> Result<(bool, Timeout), SbroadError> {
+    let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
+    let mut timeout = plugin::get_default_timeout();
+    for &child_id in node.children.get(start_from..).unwrap_or_default() {
+        let child = ast.nodes.get_node(child_id)?;
+        match child.rule {
+            Rule::WaitAppliedGlobally => wait_applied_globally = true,
+            Rule::WaitAppliedLocally => wait_applied_globally = false,
+            Rule::Timeout => timeout = get_timeout(ast, child_id)?,
+            _ => {
+                return Err(SbroadError::Invalid(
+                    Entity::AST,
+                    Some(format_smolstr!(
+                        "Unexpected AST node in ALTER PLUGIN: {:?}",
+                        child.rule
+                    )),
+                ))
+            }
+        }
+    }
+
+    Ok((wait_applied_globally, timeout))
 }
 
 pub(in crate::frontend::sql) fn parse_alter_plugin(
@@ -1415,16 +1460,15 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
             let version_idx = node.first_child();
             let version = parse_identifier(ast, version_idx)?;
 
-            let mut timeout = plugin::get_default_timeout();
-            if let Some(timeout_child_id) = node.children.get(1) {
-                timeout = get_timeout(ast, *timeout_child_id)?;
-            }
+            let (wait_applied_globally, timeout) =
+                parse_plugin_wait_applied_and_timeout(ast, node, 1)?;
 
             Some(
                 plan.nodes.push(
                     EnablePlugin {
                         name: plugin_name,
                         version,
+                        wait_applied_globally,
                         timeout,
                     }
                     .into(),
@@ -1435,16 +1479,15 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
             let version_idx = node.first_child();
             let version = parse_identifier(ast, version_idx)?;
 
-            let mut timeout = plugin::get_default_timeout();
-            if let Some(timeout_child_id) = node.children.get(1) {
-                timeout = get_timeout(ast, *timeout_child_id)?;
-            }
+            let (wait_applied_globally, timeout) =
+                parse_plugin_wait_applied_and_timeout(ast, node, 1)?;
 
             Some(
                 plan.nodes.push(
                     DisablePlugin {
                         name: plugin_name,
                         version,
+                        wait_applied_globally,
                         timeout,
                     }
                     .into(),
@@ -1454,6 +1497,7 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
         Rule::MigrateTo => {
             let version_idx = node.first_child();
             let version = parse_identifier(ast, version_idx)?;
+            let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
             let opts = parse_plugin_opts::<MigrateToOpts>(ast, node, 1, |opts, node, idx| {
                 match node.rule {
                     Rule::Timeout => {
@@ -1462,6 +1506,8 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
                     Rule::RollbackTimeout => {
                         opts.rollback_timeout = get_timeout(ast, idx)?;
                     }
+                    Rule::WaitAppliedGlobally => wait_applied_globally = true,
+                    Rule::WaitAppliedLocally => wait_applied_globally = false,
                     _ => {}
                 };
                 Ok(())
@@ -1472,6 +1518,7 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
                     MigrateTo {
                         name: plugin_name,
                         version,
+                        wait_applied_globally,
                         opts,
                     }
                     .into(),
@@ -1486,10 +1533,8 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
             let tier_idx = node.child_n(2);
             let tier = parse_identifier(ast, tier_idx)?;
 
-            let mut timeout = plugin::get_default_timeout();
-            if let Some(timeout_child_id) = node.children.get(3) {
-                timeout = get_timeout(ast, *timeout_child_id)?;
-            }
+            let (wait_applied_globally, timeout) =
+                parse_plugin_wait_applied_and_timeout(ast, node, 3)?;
 
             Some(
                 plan.nodes.push(
@@ -1498,6 +1543,7 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
                         version,
                         service_name,
                         tier,
+                        wait_applied_globally,
                         timeout,
                     }
                     .into(),
@@ -1512,10 +1558,8 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
             let tier_idx = node.child_n(2);
             let tier = parse_identifier(ast, tier_idx)?;
 
-            let mut timeout = plugin::get_default_timeout();
-            if let Some(timeout_child_id) = node.children.get(3) {
-                timeout = get_timeout(ast, *timeout_child_id)?;
-            }
+            let (wait_applied_globally, timeout) =
+                parse_plugin_wait_applied_and_timeout(ast, node, 3)?;
 
             Some(
                 plan.nodes.push(
@@ -1524,6 +1568,7 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
                         version,
                         service_name,
                         tier,
+                        wait_applied_globally,
                         timeout,
                     }
                     .into(),
@@ -1535,22 +1580,34 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
             let version = parse_identifier(ast, version_idx)?;
 
             let mut key_value_grouped: HashMap<SmolStr, Vec<SettingsPair>> = HashMap::new();
+            let mut wait_applied_globally = DEFAULT_WAIT_APPLIED_GLOBALLY;
             let mut timeout = plugin::get_default_timeout();
 
             for &i in &node.children[1..] {
                 let next_node = ast.nodes.get_node(i)?;
-                if next_node.rule == Rule::ConfigKV {
-                    let svc_idx = next_node.child_n(0);
-                    let svc = parse_identifier(ast, svc_idx)?;
-                    let key_idx = next_node.child_n(1);
-                    let key = parse_identifier(ast, key_idx)?;
-                    let value_idx = next_node.child_n(2);
-                    let value = retrieve_string_literal(ast, value_idx)?;
-                    let entry = key_value_grouped.entry(svc).or_default();
-                    entry.push(SettingsPair { key, value });
-                } else {
-                    timeout = get_timeout(ast, i)?;
-                    break;
+                match next_node.rule {
+                    Rule::ConfigKV => {
+                        let svc_idx = next_node.child_n(0);
+                        let svc = parse_identifier(ast, svc_idx)?;
+                        let key_idx = next_node.child_n(1);
+                        let key = parse_identifier(ast, key_idx)?;
+                        let value_idx = next_node.child_n(2);
+                        let value = retrieve_string_literal(ast, value_idx)?;
+                        let entry = key_value_grouped.entry(svc).or_default();
+                        entry.push(SettingsPair { key, value });
+                    }
+                    Rule::WaitAppliedGlobally => wait_applied_globally = true,
+                    Rule::WaitAppliedLocally => wait_applied_globally = false,
+                    Rule::Timeout => timeout = get_timeout(ast, i)?,
+                    _ => {
+                        return Err(SbroadError::Invalid(
+                            Entity::AST,
+                            Some(format_smolstr!(
+                                "Unexpected AST node in ALTER PLUGIN SET: {:?}",
+                                next_node.rule
+                            )),
+                        ))
+                    }
                 }
             }
 
@@ -1566,6 +1623,7 @@ pub(in crate::frontend::sql) fn parse_alter_plugin(
                                 pairs: settings,
                             })
                             .collect::<Vec<_>>(),
+                        wait_applied_globally,
                         timeout,
                     }
                     .into(),

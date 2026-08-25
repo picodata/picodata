@@ -404,6 +404,11 @@ fn dispatch_bound_statement_impl<'p>(
             timeout
         };
 
+        // Plugin operations wait for their changes to be applied on all
+        // instances of the cluster unless `WAIT APPLIED LOCALLY` is specified.
+        let wait_applied_globally = plugin.wait_applied_globally();
+        let deadline = Instant::now_fiber().saturating_add(clamp_timeout(plugin.timeout()));
+
         // NOTE: this is different from how access checks are done for DDL, because:
         // 1) We do not plan on allowing non-superusers to do plugin operations in the near future.
         // 2) Preparing a plugin operation involves accessing a number of
@@ -418,6 +423,7 @@ fn dispatch_bound_statement_impl<'p>(
                 name,
                 version,
                 if_not_exists,
+                wait_applied_globally: _,
                 timeout,
             }) => plugin::create_plugin(
                 PluginIdentifier::new(name.clone(), version.clone()),
@@ -432,6 +438,7 @@ fn dispatch_bound_statement_impl<'p>(
             Plugin::Enable(EnablePlugin {
                 name,
                 version,
+                wait_applied_globally: _,
                 timeout,
             }) => plugin::enable_plugin(
                 &PluginIdentifier::new(name.clone(), version.clone()),
@@ -442,6 +449,7 @@ fn dispatch_bound_statement_impl<'p>(
             Plugin::Disable(DisablePlugin {
                 name,
                 version,
+                wait_applied_globally: _,
                 timeout,
             }) => plugin::disable_plugin(
                 &PluginIdentifier::new(name.clone(), version.clone()),
@@ -452,6 +460,7 @@ fn dispatch_bound_statement_impl<'p>(
                 version,
                 if_exists,
                 with_data,
+                wait_applied_globally: _,
                 timeout,
             }) => plugin::drop_plugin(
                 &PluginIdentifier::new(name.clone(), version.clone()),
@@ -462,6 +471,7 @@ fn dispatch_bound_statement_impl<'p>(
             Plugin::MigrateTo(MigrateTo {
                 name,
                 version,
+                wait_applied_globally: _,
                 opts,
             }) => plugin::migration_up(
                 &PluginIdentifier::new(name.clone(), version.clone()),
@@ -473,6 +483,7 @@ fn dispatch_bound_statement_impl<'p>(
                 plugin_name,
                 version,
                 tier,
+                wait_applied_globally: _,
                 timeout,
             }) => plugin::update_service_tiers(
                 &PluginIdentifier::new(plugin_name.clone(), version.clone()),
@@ -486,6 +497,7 @@ fn dispatch_bound_statement_impl<'p>(
                 plugin_name,
                 version,
                 tier,
+                wait_applied_globally: _,
                 timeout,
             }) => plugin::update_service_tiers(
                 &PluginIdentifier::new(plugin_name.clone(), version.clone()),
@@ -498,6 +510,7 @@ fn dispatch_bound_statement_impl<'p>(
                 plugin_name,
                 version,
                 key_value_grouped: key_value,
+                wait_applied_globally: _,
                 timeout,
             }) => {
                 let config = key_value
@@ -521,6 +534,24 @@ fn dispatch_bound_statement_impl<'p>(
                 )?
             }
         };
+
+        if wait_applied_globally {
+            let node = node::global()?;
+            let index = node.get_index();
+            let res = wait_for_index_globally(
+                &node.topology_cache,
+                Rc::clone(&node.pool),
+                index,
+                deadline,
+            );
+            res.map_err(|_| {
+                Error::Other(
+                    "plugin operation committed, but failed to receive \
+                     acknowledgements from all instances"
+                        .into(),
+                )
+            })?;
+        }
 
         port_write_dml_response(port, 1);
         Ok(())

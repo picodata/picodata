@@ -26,6 +26,7 @@ fn test_plugin_parsing() {
                 name: SmolStr::from("abc"),
                 version: SmolStr::from("0.1.1"),
                 if_not_exists: false,
+                wait_applied_globally: true,
                 timeout: get_default_timeout(),
             }),
         },
@@ -36,6 +37,7 @@ fn test_plugin_parsing() {
                 name: SmolStr::from("test_plugin"),
                 version: SmolStr::from("0.0.1"),
                 if_not_exists: false,
+                wait_applied_globally: true,
                 timeout: get_default_timeout(),
             }),
         },
@@ -46,6 +48,7 @@ fn test_plugin_parsing() {
                 name: SmolStr::from("abc"),
                 version: SmolStr::from("0.1.1"),
                 if_not_exists: true,
+                wait_applied_globally: true,
                 timeout: get_default_timeout(),
             }),
         },
@@ -56,6 +59,7 @@ fn test_plugin_parsing() {
                 name: SmolStr::from("abcde"),
                 version: SmolStr::from("0.1.2"),
                 if_not_exists: true,
+                wait_applied_globally: true,
                 timeout: Timeout::from_secs(1),
             }),
         },
@@ -65,6 +69,7 @@ fn test_plugin_parsing() {
             expected: PluginOwned::Enable(EnablePlugin {
                 name: SmolStr::from("abc"),
                 version: SmolStr::from("1.1.1"),
+                wait_applied_globally: true,
                 timeout: get_default_timeout(),
             }),
         },
@@ -74,6 +79,7 @@ fn test_plugin_parsing() {
             expected: PluginOwned::Enable(EnablePlugin {
                 name: SmolStr::from("abc"),
                 version: SmolStr::from("1.1.1"),
+                wait_applied_globally: true,
                 timeout: Timeout::from_secs(1),
             }),
         },
@@ -83,6 +89,7 @@ fn test_plugin_parsing() {
             expected: PluginOwned::Disable(DisablePlugin {
                 name: SmolStr::from("abc"),
                 version: SmolStr::from("1.1.1"),
+                wait_applied_globally: true,
                 timeout: Timeout::from_secs(1),
             }),
         },
@@ -94,6 +101,7 @@ fn test_plugin_parsing() {
                 version: SmolStr::from("1.1.1"),
                 if_exists: false,
                 with_data: false,
+                wait_applied_globally: true,
                 timeout: get_default_timeout(),
             }),
         },
@@ -105,6 +113,7 @@ fn test_plugin_parsing() {
                 version: SmolStr::from("1.1.1"),
                 if_exists: false,
                 with_data: false,
+                wait_applied_globally: true,
                 timeout: Timeout::from_secs(1),
             }),
         },
@@ -116,6 +125,7 @@ fn test_plugin_parsing() {
                 version: SmolStr::from("1.1.1"),
                 if_exists: true,
                 with_data: true,
+                wait_applied_globally: true,
                 timeout: Timeout::from_secs(11),
             }),
         },
@@ -127,6 +137,7 @@ fn test_plugin_parsing() {
                 version: SmolStr::from("1.1.1"),
                 if_exists: true,
                 with_data: true,
+                wait_applied_globally: true,
                 timeout: get_default_timeout(),
             }),
         },
@@ -136,6 +147,7 @@ fn test_plugin_parsing() {
             expected: PluginOwned::MigrateTo(MigrateTo {
                 name: SmolStr::from("abc"),
                 version: SmolStr::from("0.1.0"),
+                wait_applied_globally: true,
                 opts: MigrateToOpts {
                     timeout: get_default_timeout(),
                     rollback_timeout: get_default_timeout(),
@@ -148,6 +160,7 @@ fn test_plugin_parsing() {
             expected: PluginOwned::MigrateTo(MigrateTo {
                 name: SmolStr::from("abc"),
                 version: SmolStr::from("0.1.0"),
+                wait_applied_globally: true,
                 opts: MigrateToOpts {
                     timeout: Timeout::from_secs(11),
                     rollback_timeout: Timeout::from_secs(12),
@@ -162,6 +175,7 @@ fn test_plugin_parsing() {
                 plugin_name: SmolStr::from("abc"),
                 version: SmolStr::from("0.1.0"),
                 tier: SmolStr::from("tier1"),
+                wait_applied_globally: true,
                 timeout: Timeout::from_secs(1),
             }),
         },
@@ -173,6 +187,7 @@ fn test_plugin_parsing() {
                 plugin_name: SmolStr::from("abc"),
                 version: SmolStr::from("0.1.0"),
                 tier: SmolStr::from("tier1"),
+                wait_applied_globally: true,
                 timeout: Timeout::from_secs(11),
             }),
         },
@@ -189,6 +204,7 @@ fn test_plugin_parsing() {
                         value: SmolStr::from("{\"a\": 1, \"b\": 2}"),
                     }],
                 }],
+                wait_applied_globally: true,
                 timeout: Timeout::from_secs(12),
             }),
         },
@@ -221,6 +237,7 @@ fn test_plugin_parsing() {
                         }],
                     },
                 ],
+                wait_applied_globally: true,
                 timeout: Timeout::from_secs(11),
             }),
         },
@@ -243,7 +260,125 @@ fn test_plugin_parsing() {
                         },
                     ],
                 }],
+                wait_applied_globally: true,
                 timeout: get_default_timeout(),
+            }),
+        },
+        TestCase {
+            sql: r#"CREATE PLUGIN "abc" 0.1.1 WAIT APPLIED LOCALLY"#,
+            arena_type: ArenaType::Arena96,
+            expected: PluginOwned::Create(CreatePlugin {
+                name: SmolStr::from("abc"),
+                version: SmolStr::from("0.1.1"),
+                if_not_exists: false,
+                wait_applied_globally: false,
+                timeout: get_default_timeout(),
+            }),
+        },
+        TestCase {
+            sql: r#"CREATE PLUGIN IF NOT EXISTS "abc" 0.1.1 WAIT APPLIED GLOBALLY option(timeout=1)"#,
+            arena_type: ArenaType::Arena96,
+            expected: PluginOwned::Create(CreatePlugin {
+                name: SmolStr::from("abc"),
+                version: SmolStr::from("0.1.1"),
+                if_not_exists: true,
+                wait_applied_globally: true,
+                timeout: Timeout::from_secs(1),
+            }),
+        },
+        TestCase {
+            sql: r#"ALTER PLUGIN "abc" 1.1.1 ENABLE WAIT APPLIED LOCALLY option(timeout=1)"#,
+            arena_type: ArenaType::Arena96,
+            expected: PluginOwned::Enable(EnablePlugin {
+                name: SmolStr::from("abc"),
+                version: SmolStr::from("1.1.1"),
+                wait_applied_globally: false,
+                timeout: Timeout::from_secs(1),
+            }),
+        },
+        TestCase {
+            sql: r#"ALTER PLUGIN "abc" 1.1.1 DISABLE WAIT APPLIED LOCALLY"#,
+            arena_type: ArenaType::Arena96,
+            expected: PluginOwned::Disable(DisablePlugin {
+                name: SmolStr::from("abc"),
+                version: SmolStr::from("1.1.1"),
+                wait_applied_globally: false,
+                timeout: get_default_timeout(),
+            }),
+        },
+        TestCase {
+            sql: r#"DROP PLUGIN IF EXISTS "abcde" 1.1.1 WITH DATA WAIT APPLIED LOCALLY option(timeout=11)"#,
+            arena_type: ArenaType::Arena96,
+            expected: PluginOwned::Drop(DropPlugin {
+                name: SmolStr::from("abcde"),
+                version: SmolStr::from("1.1.1"),
+                if_exists: true,
+                with_data: true,
+                wait_applied_globally: false,
+                timeout: Timeout::from_secs(11),
+            }),
+        },
+        TestCase {
+            sql: r#"ALTER PLUGIN "abc" MIGRATE TO 0.1.0 WAIT APPLIED LOCALLY option(timeout=11, rollback_timeout=12)"#,
+            arena_type: ArenaType::Arena136,
+            expected: PluginOwned::MigrateTo(MigrateTo {
+                name: SmolStr::from("abc"),
+                version: SmolStr::from("0.1.0"),
+                wait_applied_globally: false,
+                opts: MigrateToOpts {
+                    timeout: Timeout::from_secs(11),
+                    rollback_timeout: Timeout::from_secs(12),
+                },
+            }),
+        },
+        TestCase {
+            sql: r#"ALTER PLUGIN "abc" 0.1.0 ADD SERVICE "svc1" TO TIER "tier1" WAIT APPLIED LOCALLY"#,
+            arena_type: ArenaType::Arena232,
+            expected: PluginOwned::AppendServiceToTier(AppendServiceToTier {
+                service_name: SmolStr::from("svc1"),
+                plugin_name: SmolStr::from("abc"),
+                version: SmolStr::from("0.1.0"),
+                tier: SmolStr::from("tier1"),
+                wait_applied_globally: false,
+                timeout: get_default_timeout(),
+            }),
+        },
+        TestCase {
+            sql: r#"ALTER PLUGIN "abc" 0.1.0 REMOVE SERVICE "svc1" FROM TIER "tier1" WAIT APPLIED LOCALLY option(timeout=11)"#,
+            arena_type: ArenaType::Arena232,
+            expected: PluginOwned::RemoveServiceFromTier(RemoveServiceFromTier {
+                service_name: SmolStr::from("svc1"),
+                plugin_name: SmolStr::from("abc"),
+                version: SmolStr::from("0.1.0"),
+                tier: SmolStr::from("tier1"),
+                wait_applied_globally: false,
+                timeout: Timeout::from_secs(11),
+            }),
+        },
+        TestCase {
+            sql: r#"ALTER PLUGIN "abc" 0.1.0 SET "svc1"."key1" = 'a', "svc2"."key2" = 'b' WAIT APPLIED LOCALLY option(timeout=12)"#,
+            arena_type: ArenaType::Arena136,
+            expected: PluginOwned::ChangeConfig(ChangeConfig {
+                plugin_name: SmolStr::from("abc"),
+                version: SmolStr::from("0.1.0"),
+                key_value_grouped: vec![
+                    ServiceSettings {
+                        name: SmolStr::from("svc1"),
+                        pairs: vec![SettingsPair {
+                            key: SmolStr::from("key1"),
+                            value: SmolStr::from("a"),
+                        }],
+                    },
+                    ServiceSettings {
+                        name: SmolStr::from("svc2"),
+                        pairs: vec![SettingsPair {
+                            key: SmolStr::from("key2"),
+                            value: SmolStr::from("b"),
+                        }],
+                    },
+                ],
+                wait_applied_globally: false,
+                timeout: Timeout::from_secs(12),
             }),
         },
     ];
@@ -262,6 +397,7 @@ fn test_plugin_parsing() {
             plugin_name,
             version,
             mut key_value_grouped,
+            wait_applied_globally,
             timeout,
         }) = node
         {
@@ -270,6 +406,7 @@ fn test_plugin_parsing() {
                 plugin_name,
                 version,
                 key_value_grouped,
+                wait_applied_globally,
                 timeout,
             })
         } else {

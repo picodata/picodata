@@ -46,22 +46,22 @@ IfExists = @{ ^"if" ~ W ~ ^"exists" }
 IfNotExists = @{ ^"if" ~ W ~ ^"not" ~ W ~ ^"exists" }
 
 Plugin = _{ CreatePlugin | DropPlugin | AlterPlugin }
-    CreatePlugin = ${ ^"create" ~ W ~ ^"plugin" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~ PluginVersion ~ (W ~ TimeoutOption)? }
+    CreatePlugin = ${ ^"create" ~ W ~ ^"plugin" ~ W ~ (IfNotExists ~ W)? ~ Identifier ~ W ~ PluginVersion ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
         PluginVersion = @{ Unsigned ~ "." ~ Unsigned ~ "." ~ Unsigned }
-    DropPlugin = ${ ^"drop" ~ W ~ ^"plugin" ~ W ~ (IfExists ~ W)? ~ Identifier ~ W ~ PluginVersion ~ (W ~ WithData)? ~ (W ~ TimeoutOption)? }
+    DropPlugin = ${ ^"drop" ~ W ~ ^"plugin" ~ W ~ (IfExists ~ W)? ~ Identifier ~ W ~ PluginVersion ~ (W ~ WithData)? ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
         WithData = @{ ^"with" ~ W ~ ^"data" }
     AlterPlugin = ${ ^"alter" ~ W ~ ^"plugin" ~ W ~ Identifier ~ W ~ AlterVariant }
         AlterVariant = _{ EnablePlugin | DisablePlugin | MigrateTo | AddServiceToTier | RemoveServiceFromTier | ChangeConfig }
-        EnablePlugin = ${ PluginVersion ~ W ~ ^"enable" ~ (W ~ TimeoutOption)? }
-        DisablePlugin = ${ PluginVersion ~ W ~ ^"disable" ~ (W ~ TimeoutOption)? }
-        MigrateTo = ${ ^"migrate" ~ W ~ ^"to" ~ W ~ PluginVersion ~ (W ~ MigrateUpOption)? }
+        EnablePlugin = ${ PluginVersion ~ W ~ ^"enable" ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+        DisablePlugin = ${ PluginVersion ~ W ~ ^"disable" ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+        MigrateTo = ${ ^"migrate" ~ W ~ ^"to" ~ W ~ PluginVersion ~ (W ~ WaitApplied)? ~ (W ~ MigrateUpOption)? }
             RollbackTimeout = !{ ^"rollback_timeout" ~ "=" ~ Duration }
             MigrateUpOptionParam = _{ Timeout | RollbackTimeout }
             MigrateUpOption = _{ ^"option" ~ WO ~ "(" ~ WO ~ MigrateUpOptionParams ~ WO ~ ")" }
                 MigrateUpOptionParams = _{ MigrateUpOptionParam ~ (WO ~ "," ~ WO ~ MigrateUpOptionParam)* }
-        AddServiceToTier = ${ PluginVersion ~ W ~ ^"add" ~ W ~ ^"service" ~ W ~ Identifier ~ W ~ ^"to" ~ W ~ ^"tier" ~ W ~ Identifier ~ (W ~ TimeoutOption)? }
-        RemoveServiceFromTier = ${ PluginVersion ~ W ~ ^"remove" ~ W ~ ^"service" ~ W ~ Identifier ~ W ~ ^"from" ~ W ~ ^"tier" ~ W ~ Identifier ~ (W ~ TimeoutOption)? }
-        ChangeConfig = ${ PluginVersion ~ W ~ ^"set" ~ W ~ ConfigKVs ~ (W ~ TimeoutOption)? }
+        AddServiceToTier = ${ PluginVersion ~ W ~ ^"add" ~ W ~ ^"service" ~ W ~ Identifier ~ W ~ ^"to" ~ W ~ ^"tier" ~ W ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+        RemoveServiceFromTier = ${ PluginVersion ~ W ~ ^"remove" ~ W ~ ^"service" ~ W ~ Identifier ~ W ~ ^"from" ~ W ~ ^"tier" ~ W ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
+        ChangeConfig = ${ PluginVersion ~ W ~ ^"set" ~ W ~ ConfigKVs ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
             ConfigKVs = _{ ConfigKV ~ (WO ~ "," ~ WO ~ ConfigKV)* }
             ConfigKV = { Identifier ~ ^"." ~ Identifier ~ WO ~ "=" ~ WO ~ SingleQuotedString }
 
