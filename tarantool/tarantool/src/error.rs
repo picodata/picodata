@@ -418,8 +418,11 @@ impl BoxError {
     /// Return the system `errno` value of the cause of this error,
     /// if it's available.
     ///
-    /// You can use [`std::io::Error::from_raw_os_error`] to get more details
-    /// for the returned error code.
+    /// You can use [`std::io::Error::from_raw_os_error`][from_raw_os_error] to
+    /// get more details for the returned error code.
+    ///
+    // https://github.com/rust-lang/rust/pull/155625
+    /// [from_raw_os_error]: https://doc.rust-lang.org/std/io/struct.Error.html#method.from_raw_os_error
     #[inline(always)]
     pub fn errno(&self) -> Option<u32> {
         self.errno

@@ -314,6 +314,7 @@ fn generate_vdbe_bindings(box_flags: Vec<String>) {
         .default_macro_constant_type(bindgen::MacroTypeVariation::Signed)
         .default_enum_style(bindgen::EnumVariation::Consts)
         .header("src/vdbe/wrapper.h")
+        .blocklist_function("memcpy|memmove|memset|memcmp|bcmp|strlen")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .parse_callbacks(Box::new(DoxygenCallback))
         .generate()

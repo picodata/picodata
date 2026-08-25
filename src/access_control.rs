@@ -1940,9 +1940,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!(
-                    "box error: RoleLoop: Granting role Parent to role Child would create a loop"
-                ),
+                "box error: RoleLoop: Granting role Parent to role Child would create a loop"
             );
         }
     }

@@ -1779,7 +1779,6 @@ mod tests {
 
     use crate::catalog::pico_table::PicoTable;
     use crate::schema::{Distribution, IndexDef, IndexOption, TableDef, ADMIN_ID};
-    use crate::storage::SystemTable as _;
     use crate::storage::{Catalog, Properties, PropertyName};
     use crate::traft::op::DdlBuilder;
 
