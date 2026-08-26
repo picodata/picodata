@@ -135,9 +135,8 @@ use crate::ir::types::DerivedType;
 use crate::ir::value::{Trivalent, Value};
 use crate::ir::Plan;
 use ahash::{AHashMap, AHashSet, RandomState};
-use itertools::Itertools;
+use smallvec::{smallvec, SmallVec};
 use smol_str::ToSmolStr;
-use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::hash::Hash;
@@ -271,9 +270,16 @@ where
         }
     }
 
-    pub fn groups_number(&mut self) -> usize {
-        self.inner_flatten();
-        self.parents.iter().unique().count()
+    pub fn groups_number(&self) -> usize {
+        self.parents
+            .iter()
+            .enumerate()
+            .filter(|(index, parent)| index == *parent)
+            .count()
+    }
+
+    pub fn len(&self) -> usize {
+        self.parents.len()
     }
 
     pub fn into_groups(mut self) -> impl Iterator<Item = (T, UnionFindGroup)> {
@@ -863,7 +869,7 @@ impl EqualityFactsBuilder {
         }
     }
 
-    fn freeze(mut self) -> EqualityFacts {
+    fn freeze(self) -> EqualityFacts {
         let groups = self.members.groups_number();
 
         let mut root_to_class: AHashMap<UnionFindGroup, ClassId> =
@@ -1468,13 +1474,8 @@ impl<'p> EqualityAnalysis<'p> {
 
         // The whole per-node filter is one AND-region: every clause is a
         // conjunct.
-        let clauses: Vec<NodeId> = restr.clauses().iter().map(|c| c.clause()).collect();
-        let Facts(partition) = self.derive_conjuncts(
-            &clauses,
-            &AHashSet::with_hasher(equality_facts_hash_state()),
-            domain,
-        )?
-        else {
+        let clauses: Conjuncts = restr.clauses().iter().map(|c| c.clause()).collect();
+        let Facts(partition) = self.derive_conjuncts(&clauses, &[], domain)? else {
             return Ok(());
         };
         for group in partition {
@@ -1495,12 +1496,7 @@ impl<'p> EqualityAnalysis<'p> {
         domain: DomainId,
         join_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let Facts(partition) = self.derive(
-            expr_id,
-            &AHashSet::with_hasher(equality_facts_hash_state()),
-            domain,
-        )?
-        else {
+        let Facts(partition) = self.derive(expr_id, &[], domain)? else {
             return Ok(());
         };
         let scoped = self.builder.scoped_entry(join_id);
@@ -1543,7 +1539,7 @@ impl<'p> EqualityAnalysis<'p> {
     fn derive(
         &self,
         node: NodeId,
-        nulls_in: &AHashSet<SlotKey>,
+        nulls_in: &[SlotKey],
         domain: DomainId,
     ) -> Result<DeriveOutcome, SbroadError> {
         if let Expression::Bool(BoolExpr {
@@ -1559,8 +1555,34 @@ impl<'p> EqualityAnalysis<'p> {
             let right = self.derive(*right, nulls_in, domain)?;
             return Ok(DeriveOutcome::or(left, right));
         }
-        let conjuncts = self.plan.nodes.and_conjuncts(node);
+        let mut conjuncts = Conjuncts::new();
+        self.collect_and_conjuncts(node, &mut conjuncts)?;
         self.derive_conjuncts(&conjuncts, nulls_in, domain)
+    }
+
+    /// Flatten this analysis' top-level `AND` spine without paying the shared
+    /// traversal helper's 64-element `Vec` reservation. Most predicates fit in
+    /// the inline conjunct buffer.
+    fn collect_and_conjuncts(
+        &self,
+        node: NodeId,
+        conjuncts: &mut Conjuncts,
+    ) -> Result<(), SbroadError> {
+        match self.plan.get_expression_node(node)? {
+            Expression::Bool(BoolExpr {
+                op: Bool::And,
+                left,
+                right,
+                ..
+            }) => {
+                self.collect_and_conjuncts(*left, conjuncts)?;
+                self.collect_and_conjuncts(*right, conjuncts)
+            }
+            _ => {
+                conjuncts.push(node);
+                Ok(())
+            }
+        }
     }
 
     /// Processes one maximal `AND`-region: a flat list of conjuncts, each of which
@@ -1569,7 +1591,7 @@ impl<'p> EqualityAnalysis<'p> {
     fn derive_conjuncts(
         &self,
         conjuncts: &[NodeId],
-        nulls_in: &AHashSet<SlotKey>,
+        nulls_in: &[SlotKey],
         domain: DomainId,
     ) -> Result<DeriveOutcome, SbroadError> {
         // Pass 1 collects slots that are known NULL via `IS NULL` (plus any
@@ -1577,7 +1599,7 @@ impl<'p> EqualityAnalysis<'p> {
         // region if any `=` predicate touches such a slot, because
         // `NULL = <anything>` is UNKNOWN — never TRUE. Splitting the scans lets
         // `IS NULL` and `=` appear in any order.
-        let mut null_slots: Cow<AHashSet<SlotKey>> = Cow::Borrowed(nulls_in);
+        let mut null_slots: NullSlots = nulls_in.iter().cloned().collect();
         for node_id in conjuncts {
             let child = match self.plan.get_expression_node(*node_id)? {
                 Expression::Unary(UnaryExpr {
@@ -1599,10 +1621,13 @@ impl<'p> EqualityAnalysis<'p> {
                 ..
             }) = self.plan.get_expression_node(*child)?
             {
-                null_slots.to_mut().insert(SlotKey {
+                let slot = SlotKey {
                     rel_id: *rel_id,
                     output_idx: *position,
-                });
+                };
+                if !null_slots.contains(&slot) {
+                    null_slots.push(slot);
+                }
             }
         }
 
@@ -1649,8 +1674,7 @@ impl<'p> EqualityAnalysis<'p> {
                 // in scope) and fold them back into the region's union-find. A
                 // dead OR makes the whole region unsatisfiable.
                 Expression::Bool(BoolExpr { op: Bool::Or, .. }) => {
-                    let Facts(partition) = self.derive(*node_id, null_slots.as_ref(), domain)?
-                    else {
+                    let Facts(partition) = self.derive(*node_id, &null_slots, domain)? else {
                         return Ok(DeriveOutcome::Dead);
                     };
                     // Fold each class the OR implies into the region's union-find
@@ -1670,7 +1694,7 @@ impl<'p> EqualityAnalysis<'p> {
         &self,
         expr_id: NodeId,
         domain_id: DomainId,
-    ) -> Result<Option<Vec<FactTerm>>, SbroadError> {
+    ) -> Result<Option<FactTerms>, SbroadError> {
         let expr = self.plan.get_expression_node(expr_id)?;
         // TODO: nested rows are not flattened — `((a, b), (c, d)) = ((1, 2), (3, 4))`
         // ends up with one top-level Row on each side whose children are
@@ -1680,7 +1704,7 @@ impl<'p> EqualityAnalysis<'p> {
         // same, or at least handle one extra level explicitly.
         match expr {
             Expression::Row(Row { list, .. }) => {
-                let mut terms = Vec::with_capacity(list.len());
+                let mut terms = FactTerms::with_capacity(list.len());
                 for child_id in list {
                     let term = self.extract_scalar_equality_term(*child_id, domain_id)?;
                     if term.is_none() {
@@ -1695,7 +1719,7 @@ impl<'p> EqualityAnalysis<'p> {
                 if term.is_none() {
                     return Ok(None);
                 }
-                Ok(Some(vec![term.expect("checked above")]))
+                Ok(Some(smallvec![term.expect("checked above")]))
             }
         }
     }
@@ -1791,6 +1815,18 @@ struct FactTerm {
     atom: FactAtom,
     ty: DerivedType,
 }
+
+/// Equality is scalar in the common case. Keep that one term inline and only
+/// allocate for row equality.
+type FactTerms = SmallVec<[FactTerm; 1]>;
+
+/// Equality predicates are usually shallow conjunctions. Keeping their node
+/// ids inline avoids a heap allocation for every call to `derive`.
+type Conjuncts = SmallVec<[NodeId; 8]>;
+
+/// A conjunction rarely marks more than a handful of slots as NULL. Linear
+/// lookup over the inline buffer is cheaper than allocating a hash table.
+type NullSlots = SmallVec<[SlotKey; 4]>;
 
 /// One equivalence class derived from a satisfiable region: the group of
 /// [`FactAtom`]s (slots, the pinned constant, params) that must all be equal.
@@ -1892,20 +1928,23 @@ impl LocalFacts {
     /// atoms per equivalence class, keeping only non-trivial classes (>= 2
     /// atoms). A class holding two distinct constants (`a = 1 AND a = 2`) makes
     /// the whole `AND`-region unsatisfiable, so we return [`DeriveOutcome::Dead`].
-    fn into_partition(mut self) -> DeriveOutcome {
+    fn into_partition(self) -> DeriveOutcome {
         let n = self.members.groups_number();
-        let mut root_to_group: AHashMap<UnionFindGroup, usize> =
-            AHashMap::with_capacity_and_hasher(n, equality_facts_hash_state());
+        let mut root_to_group = vec![usize::MAX; self.members.len()];
         let mut groups: Vec<FactGroup> = Vec::with_capacity(n);
         let mut const_by_root: Vec<Option<Value>> = Vec::with_capacity(n);
 
         for (atom, root) in self.members.into_groups() {
-            let i = *root_to_group.entry(root).or_insert_with(|| {
+            let root = root.index();
+            let i = if root_to_group[root] == usize::MAX {
                 let id = groups.len();
                 groups.push(Vec::new());
                 const_by_root.push(None);
+                root_to_group[root] = id;
                 id
-            });
+            } else {
+                root_to_group[root]
+            };
             if let FactAtom::Const { value, .. } = &atom {
                 match &const_by_root[i] {
                     None => const_by_root[i] = Some(value.clone()),
