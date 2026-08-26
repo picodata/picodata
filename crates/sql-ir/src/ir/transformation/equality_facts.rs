@@ -134,13 +134,25 @@ use crate::ir::transformation::equality_facts::DeriveOutcome::Facts;
 use crate::ir::types::DerivedType;
 use crate::ir::value::{Trivalent, Value};
 use crate::ir::Plan;
+use ahash::{AHashMap, AHashSet, RandomState};
 use itertools::Itertools;
 use smol_str::ToSmolStr;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+
+thread_local! {
+    /// Random-key state shared by the short-lived hash tables in this analysis.
+    /// The thread-local initializer runs lazily, and cloning the state avoids
+    /// calling [`RandomState::new`] for every table.
+    static EQUALITY_FACTS_HASH_STATE: RandomState = RandomState::new();
+}
+
+#[inline]
+fn equality_facts_hash_state() -> RandomState {
+    EQUALITY_FACTS_HASH_STATE.with(RandomState::clone)
+}
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 struct UnionFindGroup(usize);
@@ -152,7 +164,7 @@ impl UnionFindGroup {
 }
 
 struct UnionFind<T> {
-    elems: HashMap<T, usize>,
+    elems: AHashMap<T, usize>,
     parents: Vec<usize>,
     sizes: Vec<usize>,
 }
@@ -163,7 +175,7 @@ where
 {
     pub fn with_capacity(cap: usize) -> Self {
         Self {
-            elems: HashMap::with_capacity(cap),
+            elems: AHashMap::with_capacity_and_hasher(cap, equality_facts_hash_state()),
             parents: Vec::with_capacity(cap),
             sizes: Vec::with_capacity(cap),
         }
@@ -412,10 +424,10 @@ impl Ord for Slot {
 // `crates/sql-planner/tests/planner_tests`; not part of the planner API.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EqualityFacts {
-    slot_classes: HashMap<NodeId, Box<[Option<ClassId>]>>,
+    slot_classes: AHashMap<NodeId, Box<[Option<ClassId>]>>,
     /// Materialized equivalence classes indexed by [`ClassId`].
     pub classes: Box<[EquivalenceClass]>,
-    domains: HashMap<NodeId, DomainId>,
+    domains: AHashMap<NodeId, DomainId>,
     /// Per-`LEFT JOIN` scope, resolved once at freeze time from the raw
     /// cross-side ON equalities.
     ///
@@ -423,7 +435,7 @@ pub struct EqualityFacts {
     /// into the global classes because they don't hold for null-extended
     /// rows, but they're correct *inside* the join's local scope (matched
     /// rows) and let motion planning detect co-located outer joins.
-    pub scopes: HashMap<NodeId, ResolvedScope>,
+    pub scopes: AHashMap<NodeId, ResolvedScope>,
 }
 
 /// Raw cross-side equalities collected for a LEFT JOIN during `analyze`.
@@ -442,16 +454,25 @@ struct ScopedFacts {
 ///
 /// The type and its fields are public for the whitebox tests in
 /// `crates/sql-planner/tests/planner_tests`; not part of the planner API.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedScope {
     /// `class -> representative class of its scope-group`.  Classes that
     /// the scope's cross-side equalities never touched are absent
     /// (implicit singleton groups — those collapse to "not scope-merged").
-    pub class_alias: HashMap<ClassId, usize>,
+    pub class_alias: AHashMap<ClassId, usize>,
     /// `representative -> info about the group it represents`.  The
     /// representative is the smallest [`ClassId`] in the group, picked for
     /// deterministic iteration.
     pub repr_info: Vec<ReprInfo>,
+}
+
+impl Default for ResolvedScope {
+    fn default() -> Self {
+        Self {
+            class_alias: AHashMap::with_hasher(equality_facts_hash_state()),
+            repr_info: Vec::new(),
+        }
+    }
 }
 
 /// Per-group payload inside a [`ResolvedScope`].
@@ -480,7 +501,7 @@ impl ResolvedScope {
     /// dropped — they don't merge anything.
     fn from_raw(
         scoped: ScopedFacts,
-        slot_classes: &HashMap<NodeId, Vec<Option<ClassId>>>,
+        slot_classes: &AHashMap<NodeId, Vec<Option<ClassId>>>,
         classes: &[EquivalenceClass],
     ) -> Self {
         let class_of_slot = |rel_id: NodeId, pos: usize| -> Option<ClassId> {
@@ -508,8 +529,10 @@ impl ResolvedScope {
             uf.union_groups(nc, nv);
         }
 
-        let mut root_to_classes: HashMap<usize, Vec<ClassId>> = HashMap::new();
-        let mut root_to_const: HashMap<usize, Value> = HashMap::new();
+        let mut root_to_classes: AHashMap<usize, Vec<ClassId>> =
+            AHashMap::with_hasher(equality_facts_hash_state());
+        let mut root_to_const: AHashMap<usize, Value> =
+            AHashMap::with_hasher(equality_facts_hash_state());
         for (node, root) in uf.into_groups() {
             let root_idx = root.index();
             match node {
@@ -527,7 +550,8 @@ impl ResolvedScope {
         }
 
         let total_members: usize = root_to_classes.values().map(Vec::len).sum();
-        let mut class_alias: HashMap<ClassId, usize> = HashMap::with_capacity(total_members);
+        let mut class_alias: AHashMap<ClassId, usize> =
+            AHashMap::with_capacity_and_hasher(total_members, equality_facts_hash_state());
         let mut repr_info: Vec<ReprInfo> = Vec::with_capacity(root_to_classes.len());
 
         for (root, mut group_classes) in root_to_classes {
@@ -754,16 +778,16 @@ enum ScopedNode {
 
 struct EqualityFactsBuilder {
     members: UnionFind<EqualityFactAtom>,
-    domains: HashMap<NodeId, DomainId>,
-    scoped: HashMap<NodeId, ScopedFacts>,
+    domains: AHashMap<NodeId, DomainId>,
+    scoped: AHashMap<NodeId, ScopedFacts>,
 }
 
 impl EqualityFactsBuilder {
     fn new() -> Self {
         Self {
             members: UnionFind::with_capacity(0),
-            domains: HashMap::new(),
-            scoped: HashMap::new(),
+            domains: AHashMap::with_hasher(equality_facts_hash_state()),
+            scoped: AHashMap::with_hasher(equality_facts_hash_state()),
         }
     }
 
@@ -825,7 +849,8 @@ impl EqualityFactsBuilder {
     fn freeze(mut self) -> EqualityFacts {
         let groups = self.members.groups_number();
 
-        let mut root_to_class: HashMap<UnionFindGroup, ClassId> = HashMap::with_capacity(groups);
+        let mut root_to_class: AHashMap<UnionFindGroup, ClassId> =
+            AHashMap::with_capacity_and_hasher(groups, equality_facts_hash_state());
         // Parallel arrays indexed by ClassId.0 — grown lazily as new groups
         // are encountered.  Final EquivalenceClass objects are built once
         // the walk is complete.
@@ -833,8 +858,8 @@ impl EqualityFactsBuilder {
         let mut const_conflict: Vec<bool> = Vec::with_capacity(groups);
         let mut class_params: Vec<Vec<u16>> = Vec::with_capacity(groups);
         let mut class_members: Vec<Vec<Slot>> = Vec::with_capacity(groups);
-        let mut slot_classes: HashMap<NodeId, Vec<Option<ClassId>>> =
-            HashMap::with_capacity(self.domains.len());
+        let mut slot_classes: AHashMap<NodeId, Vec<Option<ClassId>>> =
+            AHashMap::with_capacity_and_hasher(self.domains.len(), equality_facts_hash_state());
 
         for (atom, group) in self.members.into_groups() {
             let class_id = *root_to_class.entry(group).or_insert_with(|| {
@@ -918,20 +943,23 @@ impl EqualityFactsBuilder {
         // class index.  After this point `ScopedFacts` is discarded —
         // adapter queries only see [`ResolvedScope`].  Empty scopes are
         // filtered out: see [`ResolvedScope::is_empty`].
-        let scopes: HashMap<NodeId, ResolvedScope> = self
-            .scoped
-            .into_iter()
-            .filter_map(|(join_id, raw)| {
-                let resolved = ResolvedScope::from_raw(raw, &slot_classes, &classes);
-                (!resolved.is_empty()).then_some((join_id, resolved))
-            })
-            .collect();
+        let mut scopes: AHashMap<NodeId, ResolvedScope> =
+            AHashMap::with_capacity_and_hasher(self.scoped.len(), equality_facts_hash_state());
+        for (join_id, raw) in self.scoped {
+            let resolved = ResolvedScope::from_raw(raw, &slot_classes, &classes);
+            if !resolved.is_empty() {
+                scopes.insert(join_id, resolved);
+            }
+        }
+
+        let mut frozen_slot_classes =
+            AHashMap::with_capacity_and_hasher(slot_classes.len(), equality_facts_hash_state());
+        for (rel_id, slots) in slot_classes {
+            frozen_slot_classes.insert(rel_id, slots.into_boxed_slice());
+        }
 
         EqualityFacts {
-            slot_classes: slot_classes
-                .into_iter()
-                .map(|(rel_id, v)| (rel_id, v.into_boxed_slice()))
-                .collect(),
+            slot_classes: frozen_slot_classes,
             classes,
             domains: self.domains,
             scopes,
@@ -950,7 +978,7 @@ pub struct EqualityAnalysis<'p> {
     // once to uphold the one-NodeId-one-domain contract. If cross-boundary
     // fact propagation is ever added, clone the body per call-site instead
     // of weakening the contract here.
-    visited_shared_bodies: HashSet<NodeId>,
+    visited_shared_bodies: AHashSet<NodeId>,
 }
 
 impl<'p> EqualityAnalysis<'p> {
@@ -962,7 +990,7 @@ impl<'p> EqualityAnalysis<'p> {
             plan,
             builder: EqualityFactsBuilder::new(),
             next_domain_id: DomainId(0),
-            visited_shared_bodies: HashSet::new(),
+            visited_shared_bodies: AHashSet::with_hasher(equality_facts_hash_state()),
         };
 
         let top_domain = analyzer.fresh_domain();
@@ -1378,7 +1406,12 @@ impl<'p> EqualityAnalysis<'p> {
         // The whole per-node filter is one AND-region: every clause is a
         // conjunct.
         let clauses: Vec<NodeId> = restr.clauses().iter().map(|c| c.clause()).collect();
-        let Facts(partition) = self.derive_conjuncts(&clauses, &HashSet::new(), domain)? else {
+        let Facts(partition) = self.derive_conjuncts(
+            &clauses,
+            &AHashSet::with_hasher(equality_facts_hash_state()),
+            domain,
+        )?
+        else {
             return Ok(());
         };
         for group in partition {
@@ -1399,7 +1432,12 @@ impl<'p> EqualityAnalysis<'p> {
         domain: DomainId,
         join_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let Facts(partition) = self.derive(expr_id, &HashSet::new(), domain)? else {
+        let Facts(partition) = self.derive(
+            expr_id,
+            &AHashSet::with_hasher(equality_facts_hash_state()),
+            domain,
+        )?
+        else {
             return Ok(());
         };
         let scoped = self.builder.scoped_entry(join_id);
@@ -1442,7 +1480,7 @@ impl<'p> EqualityAnalysis<'p> {
     fn derive(
         &self,
         node: NodeId,
-        nulls_in: &HashSet<SlotKey>,
+        nulls_in: &AHashSet<SlotKey>,
         domain: DomainId,
     ) -> Result<DeriveOutcome, SbroadError> {
         if let Expression::Bool(BoolExpr {
@@ -1468,7 +1506,7 @@ impl<'p> EqualityAnalysis<'p> {
     fn derive_conjuncts(
         &self,
         conjuncts: &[NodeId],
-        nulls_in: &HashSet<SlotKey>,
+        nulls_in: &AHashSet<SlotKey>,
         domain: DomainId,
     ) -> Result<DeriveOutcome, SbroadError> {
         // Pass 1 collects slots that are known NULL via `IS NULL` (plus any
@@ -1476,7 +1514,7 @@ impl<'p> EqualityAnalysis<'p> {
         // region if any `=` predicate touches such a slot, because
         // `NULL = <anything>` is UNKNOWN — never TRUE. Splitting the scans lets
         // `IS NULL` and `=` appear in any order.
-        let mut null_slots: Cow<HashSet<SlotKey>> = Cow::Borrowed(nulls_in);
+        let mut null_slots: Cow<AHashSet<SlotKey>> = Cow::Borrowed(nulls_in);
         for node_id in conjuncts {
             let child = match self.plan.get_expression_node(*node_id)? {
                 Expression::Unary(UnaryExpr {
@@ -1735,8 +1773,8 @@ impl DeriveOutcome {
 }
 
 /// Map every atom of a partition to the index of the class it belongs to.
-fn atom_to_class(mut partition: Partition) -> HashMap<FactAtom, usize> {
-    let mut map = HashMap::new();
+fn atom_to_class(mut partition: Partition) -> AHashMap<FactAtom, usize> {
+    let mut map = AHashMap::with_hasher(equality_facts_hash_state());
     for (class, group) in partition.drain(..).enumerate() {
         for atom in group {
             map.insert(atom, class);
@@ -1753,7 +1791,8 @@ fn atom_to_class(mut partition: Partition) -> HashMap<FactAtom, usize> {
 fn intersect_partitions(a: Partition, b: Partition) -> Partition {
     let a_class = atom_to_class(a);
     let mut b_class = atom_to_class(b);
-    let mut by_label: HashMap<(usize, usize), FactGroup> = HashMap::new();
+    let mut by_label: AHashMap<(usize, usize), FactGroup> =
+        AHashMap::with_hasher(equality_facts_hash_state());
     for (atom, a_id) in a_class {
         if let Some(b_id) = b_class.remove(&atom) {
             by_label.entry((a_id, b_id)).or_default().push(atom);
@@ -1793,7 +1832,8 @@ impl LocalFacts {
     /// the whole `AND`-region unsatisfiable, so we return [`DeriveOutcome::Dead`].
     fn into_partition(mut self) -> DeriveOutcome {
         let n = self.members.groups_number();
-        let mut root_to_group: HashMap<UnionFindGroup, usize> = HashMap::with_capacity(n);
+        let mut root_to_group: AHashMap<UnionFindGroup, usize> =
+            AHashMap::with_capacity_and_hasher(n, equality_facts_hash_state());
         let mut groups: Vec<FactGroup> = Vec::with_capacity(n);
         let mut const_by_root: Vec<Option<Value>> = Vec::with_capacity(n);
 
