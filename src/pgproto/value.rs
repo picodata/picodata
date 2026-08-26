@@ -155,7 +155,7 @@ impl ToSqlText for Decimal {
 impl ToSql for Decimal {
     #[inline(always)]
     fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
-        let string = self.0.to_string();
+        let string = self.0.to_smolstr();
         let decimal = rust_decimal::Decimal::from_str_exact(&string)?;
         decimal.to_sql(ty, out)
     }
