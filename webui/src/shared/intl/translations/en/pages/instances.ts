@@ -172,6 +172,7 @@ export const instances = {
         currentInstance: "Current instance",
         downStreamDescription: "Output connection",
         upStreamDescription: "Input connection",
+        connectionInfoUnavailable: "Connection information is unavailable",
       },
     },
   },

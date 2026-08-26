@@ -23,6 +23,7 @@ const Root = styled(Box)<{ $direction?: "column" | "row" }>(
     gap: 6,
     flexDirection: $direction,
     alignItems: "center",
+    justifyContent: "center",
   })
 );
 
@@ -40,6 +41,29 @@ export const StreamStatus = ({
       <Box fontSize={12} color={grey[700]}>
         {status}
       </Box>
+    </Root>
+  );
+};
+
+const InactiveStatusCircle = styled(Box)({
+  width: 10,
+  height: 10,
+  border: `1px solid ${grey[500]}`,
+  borderRadius: "50%",
+});
+
+const InactiveStatusText = styled(Box)({
+  color: grey[600],
+  fontSize: 12,
+  textAlign: "center",
+  whiteSpace: "nowrap",
+});
+
+export const InactiveStreamStatus = ({ label }: { label: string }) => {
+  return (
+    <Root>
+      <InactiveStatusCircle />
+      <InactiveStatusText>{label}</InactiveStatusText>
     </Root>
   );
 };

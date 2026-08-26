@@ -8,7 +8,7 @@ import { Leader } from "../../../../../../../shared/icons";
 
 import { Label } from "./Common";
 import { StreamArrow } from "./StreamArrow";
-import { StreamStatus } from "./Status";
+import { InactiveStreamStatus, StreamStatus } from "./Status";
 
 const ArrowContainer = styled(Box)({
   display: "flex",
@@ -134,6 +134,9 @@ export const Schema = ({
   remoteInstance,
   instances,
 }: SchemaProps) => {
+  const { translation } = useTranslation();
+  const commonTranslation = translation.common;
+
   return (
     <Root>
       <SchemaInstanceContainer alignItems={"flex-end"}>
@@ -149,13 +152,23 @@ export const Schema = ({
             <StreamStatus status={remoteInstance.downstream.status} />
             <StreamArrow />
           </>
-        ) : null}
+        ) : (
+          <>
+            <InactiveStreamStatus label={commonTranslation.noData} />
+            <StreamArrow inactive />
+          </>
+        )}
         {remoteInstance.upstream ? (
           <>
             <StreamArrow direction={"up"} />
             <StreamStatus status={remoteInstance.upstream.status} />
           </>
-        ) : null}
+        ) : (
+          <>
+            <StreamArrow direction={"up"} inactive />
+            <InactiveStreamStatus label={commonTranslation.noData} />
+          </>
+        )}
       </ArrowContainer>
       <SchemaInstanceContainer alignItems={"flex-start"}>
         <SchemaInstance replication={remoteInstance} instances={instances} />
