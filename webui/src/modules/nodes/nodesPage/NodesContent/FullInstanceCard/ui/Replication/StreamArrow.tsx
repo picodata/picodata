@@ -2,8 +2,12 @@ import { grey } from "@mui/material/colors";
 
 type StreamArrowProps = {
   direction?: "up" | "down";
+  inactive?: boolean;
 };
-export const StreamArrow = ({ direction = "down" }: StreamArrowProps) => {
+export const StreamArrow = ({
+  direction = "down",
+  inactive = false,
+}: StreamArrowProps) => {
   return (
     <svg
       style={{
@@ -23,6 +27,7 @@ export const StreamArrow = ({ direction = "down" }: StreamArrowProps) => {
         stroke={grey[500]}
         strokeWidth="2"
         strokeLinecap="round"
+        strokeDasharray={inactive ? "5 5" : undefined}
       />
       <path
         d="M6 82 L12 94 L18 82"

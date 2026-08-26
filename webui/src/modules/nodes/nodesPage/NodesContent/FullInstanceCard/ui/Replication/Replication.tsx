@@ -13,6 +13,7 @@ import { Schema } from "./Schema";
 import { Label, Value } from "./Common";
 import { CommonStream } from "./CommonStream";
 import { VClock } from "./VClock";
+import { EmptyStreamState } from "./EmptyStreamState";
 
 const Stream = styled(HiddenBox)({
   width: "100%",
@@ -86,6 +87,7 @@ const Area = styled(Box)({
   border: `1px solid ${grey[400]}`,
   borderRadius: 10,
 });
+
 type ReplicationProps = {
   replications: Record<number, InstanceReplication>;
   currentInstanceId: string;
@@ -142,8 +144,8 @@ export const Replication = ({
           remoteInstance={selectedInstance}
         />
       </Box>
-      {selectedInstance?.downstream ? (
-        <Area gridArea={"downstream"}>
+      <Area gridArea={"downstream"}>
+        {selectedInstance?.downstream ? (
           <Stream>
             <CommonStream stream={selectedInstance.downstream} type={"down"} />
             {selectedInstance.downstream.vclock ? (
@@ -153,10 +155,12 @@ export const Replication = ({
               </Box>
             ) : null}
           </Stream>
-        </Area>
-      ) : null}
-      {selectedInstance?.upstream ? (
-        <Area gridArea={"upstream"}>
+        ) : (
+          <EmptyStreamState streamType={"downstream"} />
+        )}
+      </Area>
+      <Area gridArea={"upstream"}>
+        {selectedInstance?.upstream ? (
           <Stream>
             <CommonStream stream={selectedInstance.upstream} type={"up"} />
             <Box>
@@ -164,8 +168,10 @@ export const Replication = ({
               <Value>{selectedInstance.upstream.peer}</Value>
             </Box>
           </Stream>
-        </Area>
-      ) : null}
+        ) : (
+          <EmptyStreamState streamType={"upstream"} />
+        )}
+      </Area>
     </Root>
   );
 };

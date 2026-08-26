@@ -174,6 +174,7 @@ export const instances: TPages["instances"] = {
         currentInstance: "Текущий инстанс",
         downStreamDescription: "Исходящее соединение",
         upStreamDescription: "Входящее соединение",
+        connectionInfoUnavailable: "Информация о соединении недоступна",
       },
     },
   },
