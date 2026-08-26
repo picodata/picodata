@@ -780,6 +780,7 @@ enum ScopedNode {
 struct EqualityFactsBuilder {
     members: UnionFind<EqualityFactAtom>,
     domains: AHashMap<NodeId, DomainId>,
+    origins: AHashMap<NodeId, Vec<SlotKey>>,
     scoped: AHashMap<NodeId, ScopedFacts>,
 }
 
@@ -788,6 +789,7 @@ impl EqualityFactsBuilder {
         Self {
             members: UnionFind::with_capacity(capacity),
             domains: AHashMap::with_hasher(equality_facts_hash_state()),
+            origins: AHashMap::with_hasher(equality_facts_hash_state()),
             scoped: AHashMap::with_hasher(equality_facts_hash_state()),
         }
     }
@@ -800,34 +802,39 @@ impl EqualityFactsBuilder {
     /// The assert catches ANY re-entry (not just a different domain): with
     /// `SlotKey` untagged, a node analyzed twice would silently merge its slots.
     /// A trip means a shared subtree slipped past `visited_shared_bodies`.
-    fn record_domain(&mut self, rel_id: NodeId, domain: DomainId) {
+    fn record_domain(&mut self, rel_id: NodeId, domain: DomainId, output_len: usize) {
         let prev = self.domains.insert(rel_id, domain);
         debug_assert!(prev.is_none(), "rel_id analyzed twice (shared subtree?)");
+        let origins = (0..output_len)
+            .map(|output_idx| SlotKey { rel_id, output_idx })
+            .collect();
+        let prev = self.origins.insert(rel_id, origins);
+        debug_assert!(prev.is_none(), "rel_id origins recorded twice");
     }
 
-    fn add_slot(&mut self, key: SlotKey) -> UnionFindGroup {
-        // The rel's domain is recorded by `record_domain` in `analyze` before
-        // any of its slots are added, so the pin already exists here.
-        debug_assert!(
-            self.domains.contains_key(&key.rel_id),
-            "slot added before its rel's domain was recorded"
-        );
-        self.members.add(EqualityFactAtom::Slot(key))
+    fn origin(&self, key: &SlotKey) -> SlotKey {
+        self.origins
+            .get(&key.rel_id)
+            .and_then(|origins| origins.get(key.output_idx))
+            .cloned()
+            .expect("slot origin should be recorded before use")
     }
 
-    fn union_slot_and_slot(&mut self, l: SlotKey, r: SlotKey) {
-        let left = self.add_slot(l);
-        let right = self.add_slot(r);
-
-        self.members.union_groups(left, right);
+    fn alias_slot(&mut self, alias: SlotKey, source: SlotKey) {
+        let source = self.origin(&source);
+        let origins = self
+            .origins
+            .get_mut(&alias.rel_id)
+            .expect("alias rel origin should be recorded before use");
+        origins[alias.output_idx] = source;
     }
 
-    /// Convert a partition atom to its interned form. Pure: slots keep their
-    /// `(rel_id, output_idx)` key — the rel's domain is pinned by `record_domain`
-    /// in `analyze` — while constants and params carry their domain tag.
-    fn intern_atom(atom: FactAtom) -> EqualityFactAtom {
+    /// Convert a partition atom to its interned form. Pass-through slots are
+    /// collapsed to their canonical source, while constants and params retain
+    /// their domain tag.
+    fn intern_atom(&self, atom: FactAtom) -> EqualityFactAtom {
         match atom {
-            FactAtom::Slot(key) => EqualityFactAtom::Slot(key),
+            FactAtom::Slot(key) => EqualityFactAtom::Slot(self.origin(&key)),
             FactAtom::Const { domain_id, value } => EqualityFactAtom::Constant(domain_id, value),
             FactAtom::Param {
                 domain_id,
@@ -843,8 +850,17 @@ impl EqualityFactsBuilder {
     /// surviving an `OR`) uniformly — the class emerges from the union-find, no
     /// pairwise facts are materialized.
     fn union_atoms(&mut self, group: FactGroup) {
-        self.members
-            .union_atoms(group.into_iter().map(Self::intern_atom));
+        let mut iter = group.into_iter();
+        let Some(rep) = iter.next() else {
+            return;
+        };
+        let rep = self.intern_atom(rep);
+        let rep = self.members.add(rep);
+        for atom in iter {
+            let atom = self.intern_atom(atom);
+            let atom = self.members.add(atom);
+            self.members.union_groups(rep, atom);
+        }
     }
 
     fn freeze(mut self) -> EqualityFacts {
@@ -859,7 +875,7 @@ impl EqualityFactsBuilder {
         let mut const_conflict: Vec<bool> = Vec::with_capacity(groups);
         let mut class_params: Vec<Vec<u16>> = Vec::with_capacity(groups);
         let mut class_members: Vec<Vec<Slot>> = Vec::with_capacity(groups);
-        let mut slot_classes: AHashMap<NodeId, Vec<Option<ClassId>>> =
+        let mut canonical_slot_classes: AHashMap<NodeId, Vec<Option<ClassId>>> =
             AHashMap::with_capacity_and_hasher(self.domains.len(), equality_facts_hash_state());
 
         for (atom, group) in self.members.into_groups() {
@@ -911,7 +927,7 @@ impl EqualityFactsBuilder {
                     }
                 }
                 EqualityFactAtom::Slot(SlotKey { rel_id, output_idx }) => {
-                    let classes = slot_classes.entry(rel_id).or_default();
+                    let classes = canonical_slot_classes.entry(rel_id).or_default();
                     if classes.len() <= output_idx {
                         classes.resize(output_idx + 1, None);
                     }
@@ -919,6 +935,55 @@ impl EqualityFactsBuilder {
                     class_members[class_id.0 as usize].push(Slot::new(rel_id, output_idx));
                 }
             }
+        }
+
+        // Preserve the public invariant that every visited output slot has a
+        // class, even when no predicate mentions it. Create those singleton
+        // classes directly instead of interning the slots in the union-find.
+        for origins in self.origins.values() {
+            for origin in origins {
+                let existing = canonical_slot_classes
+                    .get(&origin.rel_id)
+                    .and_then(|classes| classes.get(origin.output_idx))
+                    .and_then(|class_id| *class_id);
+                if existing.is_some() {
+                    continue;
+                }
+
+                let class_id = ClassId(class_const.len() as u32);
+                class_const.push(None);
+                const_conflict.push(false);
+                class_params.push(Vec::new());
+                class_members.push(vec![Slot::new(origin.rel_id, origin.output_idx)]);
+
+                let classes = canonical_slot_classes.entry(origin.rel_id).or_default();
+                if classes.len() <= origin.output_idx {
+                    classes.resize(origin.output_idx + 1, None);
+                }
+                classes[origin.output_idx] = Some(class_id);
+            }
+        }
+
+        // Expand each canonical slot class back through the pass-through
+        // aliases. Slots that never participate in a fact remain outside the
+        // union-find but retain their singleton classes.
+        let mut slot_classes: AHashMap<NodeId, Vec<Option<ClassId>>> =
+            AHashMap::with_capacity_and_hasher(self.origins.len(), equality_facts_hash_state());
+        for (rel_id, origins) in self.origins {
+            let mut classes = Vec::with_capacity(origins.len());
+            for (output_idx, origin) in origins.into_iter().enumerate() {
+                let class_id = canonical_slot_classes
+                    .get(&origin.rel_id)
+                    .and_then(|origin_classes| origin_classes.get(origin.output_idx))
+                    .and_then(|class_id| *class_id);
+                classes.push(class_id);
+                if let Some(class_id) = class_id {
+                    if rel_id != origin.rel_id || output_idx != origin.output_idx {
+                        class_members[class_id.0 as usize].push(Slot::new(rel_id, output_idx));
+                    }
+                }
+            }
+            slot_classes.insert(rel_id, classes);
         }
 
         // Materialize the class objects.  Members are sorted by
@@ -1000,7 +1065,7 @@ impl<'p> EqualityAnalysis<'p> {
         Ok(analyzer.builder.freeze())
     }
 
-    fn union_passthrough_output(
+    fn alias_passthrough_output(
         &mut self,
         rel_id: NodeId,
         child_id: NodeId,
@@ -1010,7 +1075,7 @@ impl<'p> EqualityAnalysis<'p> {
             .get_row_list(self.plan.get_relational_output(rel_id)?)?
             .len();
         for output_idx in 0..output_len {
-            self.builder.union_slot_and_slot(
+            self.builder.alias_slot(
                 SlotKey { rel_id, output_idx },
                 SlotKey {
                     rel_id: child_id,
@@ -1021,7 +1086,7 @@ impl<'p> EqualityAnalysis<'p> {
         Ok(())
     }
 
-    fn union_projection_output(
+    fn alias_projection_output(
         &mut self,
         rel_id: NodeId,
         child_id: NodeId,
@@ -1050,7 +1115,7 @@ impl<'p> EqualityAnalysis<'p> {
             if *target_rel != child_id {
                 continue;
             }
-            self.builder.union_slot_and_slot(
+            self.builder.alias_slot(
                 SlotKey {
                     rel_id,
                     output_idx: pos,
@@ -1064,7 +1129,7 @@ impl<'p> EqualityAnalysis<'p> {
         Ok(())
     }
 
-    fn union_join_output(
+    fn alias_join_output(
         &mut self,
         rel_id: NodeId,
         left_id: NodeId,
@@ -1080,7 +1145,7 @@ impl<'p> EqualityAnalysis<'p> {
             .get_row_list(self.plan.get_relational_output(right_id)?)?
             .len();
         for pos in 0..left_len {
-            self.builder.union_slot_and_slot(
+            self.builder.alias_slot(
                 SlotKey {
                     rel_id,
                     output_idx: pos,
@@ -1093,7 +1158,7 @@ impl<'p> EqualityAnalysis<'p> {
         }
         if include_right {
             for pos in 0..right_len {
-                self.builder.union_slot_and_slot(
+                self.builder.alias_slot(
                     SlotKey {
                         rel_id,
                         output_idx: left_len + pos,
@@ -1120,11 +1185,8 @@ impl<'p> EqualityAnalysis<'p> {
         }
 
         if rel.has_output() {
-            self.builder.record_domain(rel_id, domain_id);
             let output = self.plan.get_row_list(rel.output())?;
-            for (output_idx, _) in output.iter().enumerate() {
-                self.builder.add_slot(SlotKey { rel_id, output_idx });
-            }
+            self.builder.record_domain(rel_id, domain_id, output.len());
         }
 
         match rel {
@@ -1141,7 +1203,7 @@ impl<'p> EqualityAnalysis<'p> {
                         unreachable!("Projection must have a child");
                     };
                     self.analyze(*child_id, domain_id)?;
-                    self.union_projection_output(rel_id, *child_id)?;
+                    self.alias_projection_output(rel_id, *child_id)?;
                 } else {
                     let inner_domain = self.fresh_domain();
                     if let Some(having_id) = having {
@@ -1155,7 +1217,7 @@ impl<'p> EqualityAnalysis<'p> {
             }
             Relational::Selection(Selection { child, .. }) => {
                 self.analyze(*child, domain_id)?;
-                self.union_passthrough_output(rel_id, *child)?;
+                self.alias_passthrough_output(rel_id, *child)?;
                 self.apply_expr_facts(rel_id, domain_id)?;
             }
 
@@ -1188,14 +1250,14 @@ impl<'p> EqualityAnalysis<'p> {
                 JoinKind::Inner => {
                     self.analyze(*left, domain_id)?;
                     self.analyze(*right, domain_id)?;
-                    self.union_join_output(rel_id, *left, *right, true)?;
+                    self.alias_join_output(rel_id, *left, *right, true)?;
                     self.apply_expr_facts(rel_id, domain_id)?;
                 }
                 JoinKind::LeftOuter => {
                     self.analyze(*left, domain_id)?;
                     let right_domain = self.fresh_domain();
                     self.analyze(*right, right_domain)?;
-                    self.union_join_output(rel_id, *left, *right, false)?;
+                    self.alias_join_output(rel_id, *left, *right, false)?;
                     // The ON condition is unsafe to apply globally because
                     // unmatched rows null-extend the right side.  Inside the
                     // join's local scope it is safe, however, and motion
@@ -1239,7 +1301,7 @@ impl<'p> EqualityAnalysis<'p> {
             Relational::ScanSubQuery(ScanSubQuery { child, .. }) => {
                 if self.is_safe_subtree(*child)? {
                     self.analyze(*child, domain_id)?;
-                    self.union_passthrough_output(rel_id, *child)?;
+                    self.alias_passthrough_output(rel_id, *child)?;
                 } else {
                     let child_domain = self.fresh_domain();
                     self.analyze(*child, child_domain)?;
@@ -1352,7 +1414,7 @@ impl<'p> EqualityAnalysis<'p> {
     /// `Alias → Reference(child_id, pos)` with no intervening expression.
     ///
     /// This is the precondition for treating a Projection as safe in
-    /// `is_safe_subtree`.  `union_projection_output` builds a slot-to-slot
+    /// `is_safe_subtree`.  `alias_projection_output` builds a slot-to-slot
     /// mapping by walking exactly this `Alias → Reference` structure: if any
     /// output column is a computed expression (`a + 1`, `COALESCE(...)`, etc.)
     /// that method silently skips it, leaving the corresponding output slot
@@ -1361,7 +1423,7 @@ impl<'p> EqualityAnalysis<'p> {
     /// but some slots would have no connection at all.
     ///
     /// By checking up front that every column is a direct reference, we
-    /// guarantee that `union_projection_output` will cover the full output
+    /// guarantee that `alias_projection_output` will cover the full output
     /// before we allow facts to flow through the projection.
     fn projection_is_direct_ref(
         &self,
