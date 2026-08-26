@@ -301,7 +301,7 @@ impl DomainId {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone)]
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
 struct SlotKey {
     rel_id: NodeId,
     output_idx: usize,
@@ -448,8 +448,13 @@ pub struct EqualityFacts {
 /// which is domain-agnostic for external callers.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct ScopedFacts {
-    extra_slot_eq: Vec<((NodeId, usize), (NodeId, usize))>,
-    extra_slot_const: Vec<((NodeId, usize), Value)>,
+    facts: Vec<ScopedFact>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ScopedFact {
+    Eq(SlotKey, SlotKey),
+    Const(SlotKey, Value),
 }
 
 /// Frozen per-LEFT-JOIN scope.
@@ -513,27 +518,30 @@ impl ResolvedScope {
                 .and_then(|c| *c)
         };
 
-        let capacity = scoped
-            .extra_slot_eq
-            .len()
-            .saturating_add(scoped.extra_slot_const.len())
-            .saturating_mul(2);
+        let capacity = scoped.facts.len().saturating_mul(2);
         let mut uf: UnionFind<ScopedNode> = UnionFind::with_capacity(capacity);
-        for ((r1, p1), (r2, p2)) in &scoped.extra_slot_eq {
-            let (Some(c1), Some(c2)) = (class_of_slot(*r1, *p1), class_of_slot(*r2, *p2)) else {
-                continue;
-            };
-            let n1 = uf.add(ScopedNode::Class(c1));
-            let n2 = uf.add(ScopedNode::Class(c2));
-            uf.union_groups(n1, n2);
-        }
-        for ((r, p), v) in &scoped.extra_slot_const {
-            let Some(c) = class_of_slot(*r, *p) else {
-                continue;
-            };
-            let nc = uf.add(ScopedNode::Class(c));
-            let nv = uf.add(ScopedNode::Const(v.clone()));
-            uf.union_groups(nc, nv);
+        for fact in scoped.facts {
+            match fact {
+                ScopedFact::Eq(left, right) => {
+                    let (Some(c1), Some(c2)) = (
+                        class_of_slot(left.rel_id, left.output_idx),
+                        class_of_slot(right.rel_id, right.output_idx),
+                    ) else {
+                        continue;
+                    };
+                    let n1 = uf.add(ScopedNode::Class(c1));
+                    let n2 = uf.add(ScopedNode::Class(c2));
+                    uf.union_groups(n1, n2);
+                }
+                ScopedFact::Const(slot, value) => {
+                    let Some(c) = class_of_slot(slot.rel_id, slot.output_idx) else {
+                        continue;
+                    };
+                    let nc = uf.add(ScopedNode::Class(c));
+                    let nv = uf.add(ScopedNode::Const(value));
+                    uf.union_groups(nc, nv);
+                }
+            }
         }
 
         let mut root_to_classes: AHashMap<usize, Vec<ClassId>> =
@@ -800,8 +808,9 @@ impl EqualityFactsBuilder {
         }
     }
 
-    fn scoped_entry(&mut self, join_id: NodeId) -> &mut ScopedFacts {
-        self.scoped.entry(join_id).or_default()
+    fn insert_scoped(&mut self, join_id: NodeId, scoped: ScopedFacts) {
+        let previous = self.scoped.insert(join_id, scoped);
+        debug_assert!(previous.is_none(), "LEFT JOIN scope collected twice");
     }
 
     /// Pin `rel_id` to `domain`, once per node in `analyze` before its slots.
@@ -1499,32 +1508,47 @@ impl<'p> EqualityAnalysis<'p> {
         let Facts(partition) = self.derive(expr_id, &[], domain)? else {
             return Ok(());
         };
-        let scoped = self.builder.scoped_entry(join_id);
-        for mut group in partition {
+        let capacity = partition
+            .iter()
+            .map(|group| {
+                let mut slots: usize = 0;
+                let mut has_constant = false;
+                for atom in group {
+                    match atom {
+                        FactAtom::Slot(_) => slots += 1,
+                        FactAtom::Const { .. } => has_constant = true,
+                        FactAtom::Param { .. } | FactAtom::Other => {}
+                    }
+                }
+                slots.saturating_sub(1) + usize::from(slots > 0 && has_constant)
+            })
+            .sum();
+        let mut facts = Vec::with_capacity(capacity);
+        for group in partition {
             // Star over the class's slots plus its pinned constant. Params (and
             // the slotless const=param gate) are not surfaced in `LEFT JOIN`
             // scoped facts yet; they only feed the global pins for enrichment.
-            let mut slots = group.iter().filter_map(|atom| match atom {
-                FactAtom::Slot(slot) => Some(slot),
-                _ => None,
-            });
-            let Some(rep) = slots.next() else {
-                continue;
-            };
-            let rep = rep.clone();
-            for slot in slots {
-                scoped
-                    .extra_slot_eq
-                    .push(((rep.rel_id, rep.output_idx), (slot.rel_id, slot.output_idx)));
+            let mut rep: Option<SlotKey> = None;
+            let mut constant = None;
+            for atom in group {
+                match atom {
+                    FactAtom::Slot(slot) => {
+                        if let Some(rep) = &rep {
+                            facts.push(ScopedFact::Eq(rep.clone(), slot));
+                        } else {
+                            rep = Some(slot);
+                        }
+                    }
+                    FactAtom::Const { value, .. } => constant = Some(value),
+                    FactAtom::Param { .. } | FactAtom::Other => {}
+                }
             }
-            if let Some(value) = group.drain(..).find_map(|atom| match atom {
-                FactAtom::Const { value, .. } => Some(value),
-                _ => None,
-            }) {
-                scoped
-                    .extra_slot_const
-                    .push(((rep.rel_id, rep.output_idx), value));
+            if let (Some(rep), Some(value)) = (rep, constant) {
+                facts.push(ScopedFact::Const(rep, value));
             }
+        }
+        if !facts.is_empty() {
+            self.builder.insert_scoped(join_id, ScopedFacts { facts });
         }
         Ok(())
     }
