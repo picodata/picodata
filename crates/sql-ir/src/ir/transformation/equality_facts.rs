@@ -181,10 +181,6 @@ where
         }
     }
 
-    pub fn new() -> Self {
-        Self::with_capacity(0)
-    }
-
     pub fn add(&mut self, elem: T) -> UnionFindGroup {
         match self.elems.entry(elem) {
             Entry::Occupied(e) => UnionFindGroup(*e.get()),
@@ -511,7 +507,12 @@ impl ResolvedScope {
                 .and_then(|c| *c)
         };
 
-        let mut uf: UnionFind<ScopedNode> = UnionFind::new();
+        let capacity = scoped
+            .extra_slot_eq
+            .len()
+            .saturating_add(scoped.extra_slot_const.len())
+            .saturating_mul(2);
+        let mut uf: UnionFind<ScopedNode> = UnionFind::with_capacity(capacity);
         for ((r1, p1), (r2, p2)) in &scoped.extra_slot_eq {
             let (Some(c1), Some(c2)) = (class_of_slot(*r1, *p1), class_of_slot(*r2, *p2)) else {
                 continue;
@@ -783,9 +784,9 @@ struct EqualityFactsBuilder {
 }
 
 impl EqualityFactsBuilder {
-    fn new() -> Self {
+    fn new(capacity: usize) -> Self {
         Self {
-            members: UnionFind::with_capacity(0),
+            members: UnionFind::with_capacity(capacity),
             domains: AHashMap::with_hasher(equality_facts_hash_state()),
             scoped: AHashMap::with_hasher(equality_facts_hash_state()),
         }
@@ -988,7 +989,7 @@ impl<'p> EqualityAnalysis<'p> {
     ) -> Result<EqualityFacts, SbroadError> {
         let mut analyzer = Self {
             plan,
-            builder: EqualityFactsBuilder::new(),
+            builder: EqualityFactsBuilder::new(plan.nodes.len()),
             next_domain_id: DomainId(0),
             visited_shared_bodies: AHashSet::with_hasher(equality_facts_hash_state()),
         };
@@ -1543,7 +1544,8 @@ impl<'p> EqualityAnalysis<'p> {
             }
         }
 
-        let mut local = LocalFacts::default();
+        let capacity = conjuncts.len().saturating_mul(2);
+        let mut local = LocalFacts::with_capacity(capacity);
         for node_id in conjuncts {
             match self.plan.get_expression_node(*node_id)? {
                 Expression::Bool(BoolExpr {
@@ -1807,15 +1809,13 @@ struct LocalFacts {
     members: UnionFind<FactAtom>,
 }
 
-impl Default for LocalFacts {
-    fn default() -> Self {
+impl LocalFacts {
+    fn with_capacity(capacity: usize) -> Self {
         Self {
-            members: UnionFind::new(),
+            members: UnionFind::with_capacity(capacity),
         }
     }
-}
 
-impl LocalFacts {
     fn union(&mut self, left: FactAtom, right: FactAtom) {
         let left = self.members.add(left);
         let right = self.members.add(right);
