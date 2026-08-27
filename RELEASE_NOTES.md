@@ -5,6 +5,29 @@ per-MR fragments in `release_notes/unreleased/` at release
 time. See `doc/dev/generating-changelog.md` for the release
 flow.
 
+## [26.2.1-rc3] - 2026-08-27
+
+### Bug fixes
+
+#### webui
+
+- Improve instance address display by truncating long FQDNs while keeping 
+  the port always visible for easier node identification
+
+- make copypaste button work on non https origins
+
+- Improved filter tag display in search-building mode by replacing
+  technical keys with user-friendly names
+
+- Updated  translation for the Raft leader role: raft leader was replaced with governor
+  to use the correct role terminology
+
+- Added an indicator showing that the instance is the leader in the Replication section
+  of the instance pop-up card
+
+- Added an informative empty state for unavailable upstream and downstream
+  connections in the Replication section of the instance pop-up card
+
 ## [26.2.1-rc2] - 2026-08-21
 
 <!--

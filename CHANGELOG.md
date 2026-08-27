@@ -8,6 +8,27 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [26.2.1-rc3] - 2026-08-27
+
+### Bug fixes
+* **(domain/webui)** yes no filter in [!3582](https://git.picodata.io/core/picodata/-/merge_requests/3582)
+* **(domain/webui)** fix clipboard copy on insecure HTTP connections in [!3582](https://git.picodata.io/core/picodata/-/merge_requests/3582)
+* **(domain/webui)** raft leader translation in [!3582](https://git.picodata.io/core/picodata/-/merge_requests/3582)
+* **(domain/webui)** port visibility in [!3582](https://git.picodata.io/core/picodata/-/merge_requests/3582)
+* **(webui)** make copypaste button work on non https origins in [!3582](https://git.picodata.io/core/picodata/-/merge_requests/3582)
+* **(webui)** display leader in replication modal in [!3582](https://git.picodata.io/core/picodata/-/merge_requests/3582)
+* **(webui)** filter tag translation in [!3582](https://git.picodata.io/core/picodata/-/merge_requests/3582)
+* **(webui)** add empty state for replication connections in [!3596](https://git.picodata.io/core/picodata/-/merge_requests/3596)
+
+### Documentation
+* **(sql)** polish FORWARD option documentation in [!3590](https://git.picodata.io/core/picodata/-/merge_requests/3590)
+
+### Miscellaneous Tasks
+* support pre-release tags in changelog generation
+
+### Build
+* Deployment of rc-releases has been moved to the nightly build repositories in [!3595](https://git.picodata.io/core/picodata/-/merge_requests/3595)
+
 ## [26.2.1-rc2] - 2026-08-21
 
 ### Features
