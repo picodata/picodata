@@ -1117,6 +1117,10 @@ impl NodeImpl {
                 }
             };
 
+            if !dmls.is_empty() {
+                crate::error_injection!(block "BLOCK_BEFORE_APPLYING_DYNAMIC_CONFIG");
+            }
+
             let current_tier = self.topology_cache.my_tier_name();
             // currently only parameters from _pico_db_config processed outside of transaction (here)
             for AppliedDml { table, new_tuple } in dmls {

@@ -2564,6 +2564,31 @@ fn ensure_ddl_allowed_in_cluster(node: &TraftNode, ir_node: &NodeOwned) -> traft
     Ok(())
 }
 
+/// Append a no-op entry and wait until it is applied locally.
+///
+/// This is used as a barrier for operations whose non-persistent effects are
+/// applied after their raft entry's applied index is published.
+fn append_nop_barrier_and_wait(
+    node: &TraftNode,
+    current_user: UserId,
+    deadline: Instant,
+) -> traft::Result<traft::RaftIndex> {
+    loop {
+        if Instant::now_fiber() > deadline {
+            return Err(Error::timeout());
+        }
+
+        let index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
+        let predicate = Predicate::new(index, []);
+        let request = cas::Request::new(Op::Nop, predicate, current_user)?;
+
+        match cas::compare_and_swap_and_wait(&request, deadline)? {
+            cas::CasResult::Ok((index, _, _)) => return Ok(index),
+            cas::CasResult::RetriableError(_) => continue,
+        }
+    }
+}
+
 pub(crate) fn reenterable_schema_change_request(
     node: &TraftNode,
     ir_node: NodeOwned,
@@ -2624,6 +2649,7 @@ pub(crate) fn reenterable_schema_change_request(
         let schema_version = storage.properties.next_schema_version()?;
 
         let wait_applied_globally;
+        let is_alter_system = matches!(&ir_node, NodeOwned::Ddl(DdlOwned::AlterSystem(_)));
         let op_or_result = match &ir_node {
             NodeOwned::Acl(acl) => {
                 wait_applied_globally = acl.wait_applied_globally();
@@ -2655,10 +2681,21 @@ pub(crate) fn reenterable_schema_change_request(
         let predicate = cas::Predicate::new(index, cas::schema_change_ranges());
         let req = crate::cas::Request::new(op.clone(), predicate, current_user)?;
         let res = cas::compare_and_swap_and_wait(&req, deadline)?;
-        let index = match res {
+        let mut index = match res {
             cas::CasResult::Ok((index, _, _)) => index,
             cas::CasResult::RetriableError(_) => continue,
         };
+
+        if is_alter_system {
+            // Applying an ALTER SYSTEM raft entry first persists the new value
+            // and publishes its applied index in transaction, and only then
+            // updates the non-persistent runtime configuration. This
+            // non-atomic behaviour occurs even with WAIT APPLIED GLOBALLY
+            // semantic. Fix the behaviour by waiting for a subsequent
+            // no-op raft entry. This guarantees that runtime application has
+            // completed.
+            index = append_nop_barrier_and_wait(node, current_user, deadline)?;
+        }
 
         if let Op::DdlPrepare { ref ddl, .. } = op {
             if governor_op_id.is_some() {

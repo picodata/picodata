@@ -958,7 +958,10 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
 
     # This is needed to check that raft log compaction respects plugin op finalizers
     i1.sql(""" ALTER SYSTEM SET raft_wal_count_max = 1 """)
-    assert i1.call("box.space._raft_log:len") == 0
+    # The ALTER SYSTEM entry triggers compaction.
+    # ALTER SYSTEM results in the parameter entry and Nop raft entry.
+    # So Nop remains as the only log entry because the threshold is not exceeded.
+    assert i1.call("box.space._raft_log:len") == 1
     index_before = i1.raft_get_index()
 
     # assert that plugin not loaded and on_stop called on both instances

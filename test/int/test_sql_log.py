@@ -13,12 +13,6 @@ from conftest import (
     [("pgproto"), ("iproto")],
 )
 def test_sql_log(instance: Instance, protocol_type: str):
-    def set_sql_log(val: bool, fn):
-        # Run ALTER SYSTEM twice to wait for parameter application.
-        # See https://git.picodata.io/core/picodata/-/issues/2667
-        fn(f"ALTER SYSTEM SET sql_log = {val};")
-        fn(f"ALTER SYSTEM SET sql_log = {val};")
-
     instance.start()
 
     if protocol_type == "pgproto":
@@ -39,7 +33,7 @@ def test_sql_log(instance: Instance, protocol_type: str):
         user = "pico_service"
         execute_func = instance.sql
 
-    set_sql_log(True, execute_func)
+    execute_func("ALTER SYSTEM SET sql_log = true;")
 
     sql_list = [
         "CREATE TABLE test (id UNSIGNED NOT NULL PRIMARY KEY, value TEXT)",
@@ -62,12 +56,12 @@ def test_sql_log(instance: Instance, protocol_type: str):
     # execute the statement, then re-enable sql_log and wait for a known
     # log entry. If the earlier statement didn't produce a log line by the
     # time the later one does, it never will.
-    set_sql_log(False, execute_func)
+    execute_func("ALTER SYSTEM SET sql_log = false;")
     sql = "INSERT INTO test VALUES (43, 'my_value')"
     lc_must_not_appear = log_crawler(instance, f"sql-log: {sql}")
     execute_func(sql)
 
-    set_sql_log(True, execute_func)
+    execute_func("ALTER SYSTEM SET sql_log = true;")
     # Execute a statement that WILL be logged, as a barrier.
     barrier_sql = "SELECT 'sql_log_disabled_barrier'"
     lc_barrier = log_crawler(instance, f"sql-log: {barrier_sql}")

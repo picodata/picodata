@@ -81,8 +81,11 @@ def test_raft_log_auto_compaction_basics(cluster: Cluster):
     i1.sql(f"ALTER SYSTEM SET raft_wal_size_max = {max_size}")
 
     count, size = get_raft_log_count_and_size(i1)
-    assert count == 0
-    assert size == 0
+    # Applying the ALTER SYSTEM entry triggers compaction.
+    # ALTER SYSTEM results in the parameter entry and Nop raft entry.
+    # Nop is appended afterwards and remains as the only log entry.
+    assert count == 1
+    assert size > 0
 
     # Create a global table which will help us generate raft log entries
     i1.sql("CREATE TABLE trash (id INT PRIMARY KEY, name STRING) DISTRIBUTED GLOBALLY")
@@ -133,19 +136,19 @@ def test_raft_log_auto_compaction_basics(cluster: Cluster):
     assert id > 1
 
     # Set the maximum raft log entry count.
-    max_count = 2
+    max_count = 3
     i1.sql(f"ALTER SYSTEM SET raft_wal_count_max = {max_count}")
 
-    # Alter system statement results in one raft log entry
+    # ALTER SYSTEM results in the parameter entry and Nop raft entry.
     count, size = get_raft_log_count_and_size(i1)
-    assert count == 1 and count < max_count
+    assert count == 2 and count < max_count
     assert size > 0 and size < max_size
 
     # Another raft log entry, no compaction yet
     i1.sql("INSERT INTO trash VALUES (?, ?)", id, "no compaction just yet")
     id += 1
     count, size = get_raft_log_count_and_size(i1)
-    assert count == 2 and count == max_count
+    assert count == 3 and count == max_count
     assert size > 0
 
     # This entry triggers compaction
@@ -160,7 +163,7 @@ def test_raft_log_auto_compaction_basics(cluster: Cluster):
     i1.sql(f"ALTER SYSTEM SET raft_wal_count_max = {max_count}")
 
     count, size = get_raft_log_count_and_size(i1)
-    assert count == 1
+    assert count == 2
     assert size > 0 and size < max_size
 
     # Insert more entries without triggering compaction
@@ -200,7 +203,10 @@ def test_raft_log_auto_compaction_preserves_finalizers(cluster: Cluster):
     # DdlCommit entry is added to the log
     i1.sql("ALTER SYSTEM SET raft_wal_count_max = 1")
 
-    assert i1.call("box.space._raft_log:len") == 0
+    # The ALTER SYSTEM entry triggers compaction.
+    # ALTER SYSTEM results in the parameter entry and Nop raft entry.
+    # So Nop remains as the only log entry because the threshold is not exceeded.
+    assert i1.call("box.space._raft_log:len") == 1
 
     index_before = i1.raft_get_index()
 

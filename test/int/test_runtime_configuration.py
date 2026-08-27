@@ -1,5 +1,49 @@
+import threading
+
 import pytest
-from conftest import Cluster, TarantoolError
+from conftest import Cluster, TarantoolError, log_crawler
+
+
+def test_alter_system_appends_application_barrier(cluster: Cluster):
+    instance = cluster.add_instance()
+    index_before = instance.raft_get_index()
+    injection = "BLOCK_BEFORE_APPLYING_DYNAMIC_CONFIG"
+    instance.call("pico._inject_error", injection, True)
+    blocked = log_crawler(instance, f"ERROR INJECTION '{injection}': BLOCKING")
+
+    result = None
+
+    def alter_system():
+        nonlocal result
+        try:
+            result = instance.sql(
+                "ALTER SYSTEM SET sql_motion_row_max = 1 WAIT APPLIED LOCALLY",
+                timeout=30,
+            )
+        except Exception as error:
+            result = error
+
+    thread = threading.Thread(target=alter_system, daemon=True)
+    try:
+        thread.start()
+        blocked.wait_matched()
+
+        # The parameter entry has published its applied index, but its runtime
+        # effect is deliberately blocked. ALTER SYSTEM must still be waiting.
+        assert instance.raft_get_index() == index_before + 1
+        thread.join(timeout=1)
+        assert thread.is_alive()
+    finally:
+        instance.call("pico._inject_error", injection, False)
+        thread.join(timeout=30)
+
+    assert not thread.is_alive()
+    if isinstance(result, Exception):
+        raise result
+    assert result == {"row_count": 1}
+
+    # The following no-op is the application barrier returned to the client.
+    assert instance.raft_get_index() == index_before + 2
 
 
 def test_set_via_alter_system(cluster: Cluster):

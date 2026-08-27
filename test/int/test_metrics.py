@@ -934,7 +934,10 @@ def test_instance_state_metric(cluster: Cluster):
 
     # resest raft_wal_count_max to trigger snapshot transfer
     i3.sql("ALTER SYSTEM SET raft_wal_count_max = 1")
-    assert i3.call("box.space._raft_log:len") == 0
+    # The ALTER SYSTEM entry triggers compaction.
+    # ALTER SYSTEM results in the parameter entry and Nop raft entry.
+    # So Nop remains as the only log entry because the threshold is not exceeded.
+    assert i3.call("box.space._raft_log:len") == 1
 
     # add new instance to trigger snapshot transfer, to check that metrics are updated with snapshot
     i4 = cluster.add_instance(peers=[i2.iproto_listen])
