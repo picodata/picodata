@@ -421,23 +421,23 @@ fn http_api_cluster() -> traft::Result<ClusterInfo> {
 
     let cluster_version = storage.properties.cluster_version()?;
 
-    let mut instances = 0;
     let mut instances_online = 0;
+    let mut instances_offline = 0;
     let mut replicasets_count = 0;
     let mut mem_info = MemoryInfo { usable: 0, used: 0 };
 
     for replicaset in replicasets {
         replicasets_count += 1;
-        instances += replicaset.instance_count;
         mem_info.usable += replicaset.memory.usable;
         mem_info.used += replicaset.memory.used;
-        replicaset.instances.iter().for_each(|i| {
-            instances_online += if i.current_state == StateVariant::Online {
-                1
-            } else {
-                0
-            }
-        });
+        replicaset
+            .instances
+            .iter()
+            .for_each(|i| match i.current_state {
+                StateVariant::Online => instances_online += 1,
+                StateVariant::Offline => instances_offline += 1,
+                StateVariant::Expelled => {}
+            });
     }
 
     let cluster_name = node::global()?.topology_cache.cluster_name;
@@ -448,7 +448,7 @@ fn http_api_cluster() -> traft::Result<ClusterInfo> {
         cluster_version,
         current_instance_version: version,
         replicasets_count,
-        instances_current_state_offline: (instances - instances_online),
+        instances_current_state_offline: instances_offline,
         memory: mem_info,
         instances_current_state_online: instances_online,
         plugins,
