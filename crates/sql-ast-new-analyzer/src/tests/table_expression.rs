@@ -32,7 +32,7 @@ use super::{analyze_error, analyzed};
 #[test]
 fn reference_to_nonexisting_relation() {
     let query = "WITH t1 AS (SELECT 1 AS x) SELECT x FROM nonexisting_relation";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: relation "nonexisting_relation" does not exist"#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: relation "nonexisting_relation" does not exist"#);
 }
 
 #[test]
@@ -70,19 +70,19 @@ fn left_join_simple() {
 #[test]
 fn join_multiple_definition_same_tbl_factor() {
     let query = "select t1.a from t1 INNER JOIN (SELECT c AS a, d AS b FROM t2) t1 USING (a);";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: table "t1" specified more than once"#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: table "t1" specified more than once"#);
 }
 
 #[test]
 fn left_join_multiple_definition_same_tbl_factor() {
     let query = "select t1.a from t1 LEFT JOIN (SELECT c AS a, d AS b FROM t2) t1 USING (a);";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: table "t1" specified more than once"#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: table "t1" specified more than once"#);
 }
 
 #[test]
 fn join_invalid_condition_expr_data_type() {
     let query = "SELECT * FROM t3 INNER JOIN t5 ON t3.a";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: argument of JOIN/ON must be type boolean, not type int");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: argument of JOIN/ON must be type boolean, not type int");
 }
 
 // ------------- USING -------------
@@ -90,7 +90,7 @@ fn join_invalid_condition_expr_data_type() {
 #[test]
 fn join_using_duplicate() {
     let query = "SELECT * FROM (SELECT a, b FROM t1) t1 INNER JOIN (SELECT c a, d b FROM t2) t2 USING (a, a)";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: column name "a" appears more than once in USING clause"#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: column name "a" appears more than once in USING clause"#);
 }
 
 #[test]
@@ -149,7 +149,7 @@ fn join_chain_using_reduction_resolves_to_the_leftmost() {
 #[test]
 fn join_using_column_ambigious_in_the_left_input() {
     let query = "SELECT * FROM t6 x INNER JOIN t6 y USING (k1) INNER JOIN t6 z USING (k2)";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: column reference 'k2' is ambigious");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'k2' is ambigious");
 }
 
 #[test]
@@ -240,7 +240,7 @@ fn join_using_merged_type_grouped_does_not_group_its_input() {
         "SELECT a, x.a FROM (SELECT 1 a) x INNER JOIN (SELECT 1.5 a) y USING (a) GROUP BY a";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @r#"failed to analyze AST: column "x.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "x.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -252,7 +252,7 @@ fn left_join_using_merged_type_grouped_does_not_group_its_input() {
         "SELECT sum(a), x.a FROM (SELECT 1 a) x LEFT JOIN (SELECT 1.5 a) y USING (a) GROUP BY a";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @r#"failed to analyze AST: column "x.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "x.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -297,7 +297,7 @@ fn join_using_merged_type_asterisk_still_checks_other_columns() {
         "SELECT * FROM (SELECT 1 a, 2 b) x INNER JOIN (SELECT 1.5 a) y USING (a) GROUP BY a";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @r#"failed to analyze AST: column "x.b" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "x.b" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -354,11 +354,11 @@ fn join_on_condition_nested_from_stack() {
 fn join_subquery_in_join_condition_does_not_see_entries_to_its_right() {
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 INNER JOIN t3 ON (SELECT t5.c) > 0 INNER JOIN t5 ON true", &[]),
-        @"failed to analyze AST: cannot resolve column reference 't5.c'"
+        @"semantic error: cannot resolve column reference 't5.c'"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 INNER JOIN t3 ON t5.c > 0 INNER JOIN t5 ON true", &[]),
-        @"failed to analyze AST: cannot resolve column reference 't5.c'"
+        @"semantic error: cannot resolve column reference 't5.c'"
     );
 }
 
@@ -375,7 +375,7 @@ fn group_by_simple() {
 fn group_by_aggr_under_alias() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a) a1 FROM t1 GROUP BY a1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -383,7 +383,7 @@ fn group_by_aggr_under_alias() {
 fn group_by_aggr_under_ordinal() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a) a1 FROM t1 GROUP BY 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -391,7 +391,7 @@ fn group_by_aggr_under_ordinal() {
 fn group_by_aggr_under_ordinal_aterisk() {
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT * FROM (SELECT 1 + sum(t2.a))) FROM t1 t2 GROUP BY 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -407,7 +407,7 @@ fn group_by_alias() {
 fn group_by_alias_ambigious() {
     insta::assert_snapshot!(
         analyze_error("select a a1, b a1 from t1 GROUP BY a1;", &[]),
-        @r#"failed to analyze AST: GROUP BY "a1" is ambiguous"#
+        @r#"semantic error: GROUP BY "a1" is ambiguous"#
     );
 }
 
@@ -445,7 +445,7 @@ fn group_by_alias_key_covers_later_projections() {
     // The key covers only its own expression.
     insta::assert_snapshot!(
         analyze_error("SELECT abs(a) AS x, sum(abs(a)), abs(a) + b FROM t1 GROUP BY x", &[]),
-        @r#"failed to analyze AST: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -459,7 +459,7 @@ fn group_by_alias_key_after_an_asterisk() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT *, abs(a) AS x, abs(a) + 1 FROM t3 GROUP BY x", &[]),
-        @r#"failed to analyze AST: column "t3.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t3.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -483,21 +483,21 @@ fn group_by_output_name_inherited_from_the_expression() {
     // Only the ELSE branch names a CASE.
     insta::assert_snapshot!(
         analyze_error("SELECT CASE WHEN a > 1 THEN lower(e) ELSE 'x' END FROM t1 GROUP BY lower", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'lower'"
+        @"semantic error: cannot resolve column reference 'lower'"
     );
     // An inherited name is held to the same rules as an alias.
     insta::assert_snapshot!(
         analyze_error("SELECT count(*) FROM t1 GROUP BY count", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT lower(e), upper(e) AS lower FROM t1 GROUP BY lower", &[]),
-        @r#"failed to analyze AST: GROUP BY "lower" is ambiguous"#
+        @r#"semantic error: GROUP BY "lower" is ambiguous"#
     );
     // A local FROM column of that name still wins.
     insta::assert_snapshot!(
         analyze_error("SELECT lower(e) AS a FROM t1 GROUP BY a", &[]),
-        @r#"failed to analyze AST: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -506,11 +506,11 @@ fn group_by_output_name_inherited_from_the_expression() {
 fn group_by_ambigious_from_name_does_not_fall_back_to_an_alias() {
     insta::assert_snapshot!(
         analyze_error("SELECT 1 AS b FROM t3 JOIN t4 ON t3.a = t4.a GROUP BY b", &[]),
-        @"failed to analyze AST: column reference 'b' is ambigious"
+        @"semantic error: column reference 'b' is ambigious"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t3.b AS a FROM t3 JOIN t4 ON t3.a = t4.a GROUP BY a", &[]),
-        @"failed to analyze AST: column reference 'a' is ambigious"
+        @"semantic error: column reference 'a' is ambigious"
     );
     // A name no relation exposes still reaches the aliases.
     insta::assert_snapshot!(
@@ -549,7 +549,7 @@ fn group_by_signed_position() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a) FROM t1 GROUP BY - -1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyzed("SELECT sum(a) FROM t1 GROUP BY +1", &[]),
@@ -557,7 +557,7 @@ fn group_by_signed_position() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 GROUP BY +1", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -581,15 +581,15 @@ fn group_by_exprs_diff_cast() {
 fn group_by_converting_cast_does_not_group_its_operand() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 GROUP BY a::text", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT e FROM t1 GROUP BY e::int", &[]),
-        @r#"failed to analyze AST: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT count(*) FROM t1 GROUP BY a::text HAVING a = 1", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -625,11 +625,11 @@ fn group_by_no_op_cast_keeps_the_functional_dependency() {
 fn group_by_converting_cast_drops_the_functional_dependency() {
     insta::assert_snapshot!(
         analyze_error("SELECT v FROM t6 GROUP BY k1::text, k2::text", &[]),
-        @r#"failed to analyze AST: column "t6.v" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t6.v" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 GROUP BY b::text", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -637,7 +637,7 @@ fn group_by_converting_cast_drops_the_functional_dependency() {
 fn group_by_no_op_cast_over_partial_key_is_not_a_dependency() {
     insta::assert_snapshot!(
         analyze_error("SELECT v FROM t6 GROUP BY k1::int", &[]),
-        @r#"failed to analyze AST: column "t6.v" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t6.v" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -657,7 +657,7 @@ fn group_by_constant_expression_is_not_a_position() {
 fn group_by_ordinal_out_of_range() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a) FROM t1 GROUP BY 2", &[]),
-        @"failed to analyze AST: GROUP BY position 2 is not in select list"
+        @"semantic error: GROUP BY position 2 is not in select list"
     );
 }
 
@@ -669,7 +669,7 @@ fn group_by_ordinal_counts_asterisk_expansion() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT * FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8", &[]),
-        @"failed to analyze AST: GROUP BY position 8 is not in select list"
+        @"semantic error: GROUP BY position 8 is not in select list"
     );
 }
 
@@ -681,11 +681,11 @@ fn group_by_ordinal_after_asterisk_reaches_the_aggregate() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT *, sum(a) FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t1.*, sum(a) FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -699,7 +699,7 @@ fn group_by_ordinal_before_asterisk() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a), * FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -711,7 +711,7 @@ fn group_by_ordinal_counts_join_asterisk() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT *, sum(t3.a) FROM t3 INNER JOIN t5 ON t3.a = t5.c GROUP BY 1, 2, 3, 4, 5", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyzed("SELECT *, sum(t3.a) FROM t3 INNER JOIN t4 USING (a) GROUP BY 1, 2, 3", &[]),
@@ -719,7 +719,7 @@ fn group_by_ordinal_counts_join_asterisk() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT *, sum(t3.a) FROM t3 INNER JOIN t4 USING (a) GROUP BY 1, 2, 3, 4", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -729,15 +729,15 @@ fn group_by_ordinal_counts_join_asterisk() {
 fn group_by_ordinal_reaches_an_aggregate_at_any_depth() {
     insta::assert_snapshot!(
         analyze_error("SELECT 1 + sum(a) FROM t1 GROUP BY 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT abs(sum(a)) FROM t1 GROUP BY 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT CASE WHEN b > 0 THEN sum(a) ELSE 0 END AS x FROM t1 GROUP BY x", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -749,7 +749,7 @@ fn group_by_gates_only_the_projections_it_names() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT b, sum(a) FROM t1 GROUP BY 2", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyzed("SELECT sum(a), b FROM t1 GROUP BY 2", &[]),
@@ -765,15 +765,15 @@ fn group_by_gates_only_the_projections_it_names() {
 fn group_by_ordinal_rejects_every_aggregate_spelling() {
     insta::assert_snapshot!(
         analyze_error("SELECT count(*) FROM t1 GROUP BY 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT count(DISTINCT a) AS x FROM t1 GROUP BY x", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT DISTINCT sum(a) FROM t1 GROUP BY 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -795,7 +795,7 @@ fn group_by_alias_yields_to_a_local_from_column() {
 fn group_by_alias_beats_an_outer_column() {
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(t5.c) AS a FROM t5 GROUP BY a) FROM t1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyzed("SELECT (SELECT sum(t5.c) AS d FROM t5 GROUP BY d) FROM t1", &[]),
@@ -808,7 +808,7 @@ fn group_by_alias_yields_to_a_derived_table_column() {
     // The local FROM is whatever the clause exposes, not only base tables.
     insta::assert_snapshot!(
         analyze_error("SELECT sum(s.a) AS z FROM (SELECT a FROM t1) s GROUP BY z", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyzed("SELECT sum(s.a) AS a FROM (SELECT a FROM t1) s GROUP BY a", &[]),
@@ -837,7 +837,7 @@ fn group_by_ordinal_counts_the_hoisted_merged_column() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT * FROM t3 t1 INNER JOIN t3 t2 USING (a) INNER JOIN t3 t3 USING (a) GROUP BY 1, 2, 3, 4, 5", &[]),
-        @"failed to analyze AST: GROUP BY position 5 is not in select list"
+        @"semantic error: GROUP BY position 5 is not in select list"
     );
 }
 
@@ -852,11 +852,11 @@ fn group_by_merged_column_and_hidden_copy_are_distinct_keys() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t3 INNER JOIN t4 USING (a) GROUP BY t4.a", &[]),
-        @r#"failed to analyze AST: column "t3.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t3.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t4.a FROM t3 INNER JOIN t4 USING (a) GROUP BY a", &[]),
-        @r#"failed to analyze AST: column "t4.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t4.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -872,7 +872,7 @@ fn group_by_alias_yields_to_a_using_reduced_column() {
 fn group_by_alias_is_a_projection_alias_not_a_from_alias() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a) AS x FROM t1 AS x GROUP BY x", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -880,15 +880,15 @@ fn group_by_alias_is_a_projection_alias_not_a_from_alias() {
 fn group_by_alias_is_looked_up_only_as_a_bare_name() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a) AS x FROM t1 GROUP BY t1.x", &[]),
-        @"failed to analyze AST: cannot resolve column reference 't1.x'"
+        @"semantic error: cannot resolve column reference 't1.x'"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a) AS x FROM t1 GROUP BY x + 0", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'x'"
+        @"semantic error: cannot resolve column reference 'x'"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT b AS x FROM t1 GROUP BY x, t1.x", &[]),
-        @"failed to analyze AST: cannot resolve column reference 't1.x'"
+        @"semantic error: cannot resolve column reference 't1.x'"
     );
     insta::assert_snapshot!(
         analyzed("SELECT b AS x FROM t1 GROUP BY x, t1.b", &[]),
@@ -900,7 +900,7 @@ fn group_by_alias_is_looked_up_only_as_a_bare_name() {
 fn group_by_alias_does_not_chain_through_the_select_list() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a) AS x, x AS y FROM t1 GROUP BY y", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'x'"
+        @"semantic error: cannot resolve column reference 'x'"
     );
 }
 
@@ -908,11 +908,11 @@ fn group_by_alias_does_not_chain_through_the_select_list() {
 fn group_by_alias_matched_by_its_normalized_spelling() {
     insta::assert_snapshot!(
         analyze_error(r#"SELECT sum(a) AS x FROM t1 GROUP BY "x""#, &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyze_error(r#"SELECT count(*) AS "X" FROM t1 GROUP BY "X""#, &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -942,11 +942,11 @@ fn group_by_over_a_subquery_aggregate_of_its_own_level() {
 fn group_by_over_a_correlated_subquery_aggregate() {
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(t1.a) FROM t2) FROM t1 GROUP BY 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(t1.a) FROM t2) AS x FROM t1 GROUP BY x", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -958,7 +958,7 @@ fn group_by_of_an_inner_query_is_read_against_that_query() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(t2.c) AS q FROM t2 GROUP BY q) AS x FROM t1 GROUP BY x", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -966,11 +966,11 @@ fn group_by_of_an_inner_query_is_read_against_that_query() {
 fn group_by_aggregate_rejected_inside_a_cte_or_derived_table() {
     insta::assert_snapshot!(
         analyze_error("WITH cte AS (SELECT sum(a) x FROM t1 GROUP BY x) SELECT * FROM cte", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT * FROM (SELECT sum(a) x FROM t1 GROUP BY 1) s", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -978,11 +978,11 @@ fn group_by_aggregate_rejected_inside_a_cte_or_derived_table() {
 fn group_by_aggregate_rejected_in_a_set_operation_branch() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a) x FROM t1 GROUP BY x UNION SELECT 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT 1 UNION SELECT sum(a) x FROM t1 GROUP BY 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -990,7 +990,7 @@ fn group_by_aggregate_rejected_in_a_set_operation_branch() {
 fn group_by_reference_aggr_check_before_resolution() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a) AS s FROM t1 GROUP BY w, s", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'w'"
+        @"semantic error: cannot resolve column reference 'w'"
     );
 }
 
@@ -1014,7 +1014,7 @@ fn group_by_different_spelling() {
 fn group_by_aggr_same_as_sel_list_elem() {
     insta::assert_snapshot!(
         analyze_error("select sum(b) from t1 group by sum(b);", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -1022,7 +1022,7 @@ fn group_by_aggr_same_as_sel_list_elem() {
 fn group_by_aggr_same_as_sel_list_elem_compound() {
     insta::assert_snapshot!(
         analyze_error("select a + sum(b) from t1 group by a + sum(b);", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in GROUP BY"
+        @"semantic error: aggregate functions are not allowed in GROUP BY"
     );
 }
 
@@ -1049,23 +1049,23 @@ fn group_by_subquery_key_uncovered() {
     // The key excuses the projection matching it, not a column written beside it.
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT max(t2.c) FROM t2 WHERE t2.c = t1.a), t1.a FROM t1 GROUP BY (SELECT max(t2.c) FROM t2 WHERE t2.c = t1.a)", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The correlated column differs.
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT max(t2.c) FROM t2 WHERE t2.c = t1.a) FROM t1 GROUP BY (SELECT max(t2.c) FROM t2 WHERE t2.c = t1.b)", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The relation behind the corresponding column differs - `t3` and `t4` are
     // shaped alike, so nothing but the relation itself tells the two keys apart.
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a) FROM t1 GROUP BY (SELECT max(t4.a) FROM t4 WHERE t4.a = t1.a)", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // Matching is structural, so a FROM alias is part of the key.
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT max(x.c) FROM t2 x WHERE x.c = t1.a) FROM t1 GROUP BY (SELECT max(y.c) FROM t2 y WHERE y.c = t1.a)", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1090,7 +1090,7 @@ fn group_by_same_exists_subquery() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT EXISTS (SELECT 1 FROM t2 WHERE t2.c = t1.a) FROM t1 GROUP BY NOT EXISTS (SELECT 1 FROM t2 WHERE t2.c = t1.a)", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1111,7 +1111,7 @@ fn having_same_expr_subquery() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY (SELECT max(t2.c) FROM t2 WHERE t2.c = t1.a) HAVING (SELECT max(t2.c) FROM t2 WHERE t2.c = t1.b) > 0", &[]),
-        @r#"failed to analyze AST: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1119,20 +1119,20 @@ fn having_same_expr_subquery() {
 fn group_by_expr_subtree_inner_sq_level_uncovered() {
     insta::assert_snapshot!(
         analyze_error("select (select sum(t2.a + t1.a + t1.b) from t1 t2) from t1 group by t1.a + t1.b", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // Matching is structural, so operand order is part of the key.
     insta::assert_snapshot!(
         analyze_error("select (select sum(t1.a + t1.b + t2.a) from t1 t2) from t1 group by t1.b + t1.a", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("select (select sum(t1.a + t1.b + t2.a) from t1 t2), t1.a from t1 group by t1.a + t1.b", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("select t1.a, (select sum(t1.a + t1.b + t2.a) from t1 t2) from t1 group by t1.a + t1.b", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1145,7 +1145,7 @@ fn having_same_expr_subtree_inner_sq_level() {
     );
     insta::assert_snapshot!(
         analyze_error("select 1 from t1 group by t1.a + t1.b having (select sum(t1.a + t1.c + t2.a) from t1 t2) > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1161,7 +1161,7 @@ fn group_by_same_expr_subtree() {
 fn group_by_fails_on_unary_plused_integer() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 GROUP BY +1;", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1193,15 +1193,15 @@ fn group_by_flatten_row_value() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 GROUP BY (a, 99);", &[]),
-        @"failed to analyze AST: GROUP BY position 99 is not in select list"
+        @"semantic error: GROUP BY position 99 is not in select list"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT a, b FROM t1 GROUP BY (a, b) + 1;", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT a, b FROM t1 GROUP BY ROW(a, b);", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1210,7 +1210,7 @@ fn group_by_pin_unsupported() {
     // Do not neglate user casts in matching grouping keys.
     insta::assert_snapshot!(
         analyze_error("SELECT a + 1 FROM t1 GROUP BY (a + 1)::int", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // Each expression referenced by ordinal assumed unique expression. SELECT list binding is left-to-right.
     insta::assert_snapshot!(
@@ -1219,7 +1219,7 @@ fn group_by_pin_unsupported() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT abs(a), abs(a) FROM t1 GROUP BY 2", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1245,7 +1245,7 @@ fn having_with_aggr_simple() {
 fn having_with_non_aggr_target_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 GROUP BY a HAVING a > 1 AND b > 1", &[]),
-        @r#"failed to analyze AST: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1270,17 +1270,17 @@ fn having_alone_groups_the_level() {
     // ... which is why the clause's own column now has nowhere to sit.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 HAVING t1.a > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The select list is held to it too.
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a FROM t1 HAVING count(*) > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // An asterisk is no exception - it expands to columns like any other.
     insta::assert_snapshot!(
         analyze_error("SELECT * FROM t1 HAVING count(*) > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1309,7 +1309,7 @@ fn without_having_the_level_stays_ungrouped() {
 fn aggregate_alone_groups_the_level() {
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a, count(*) FROM t1", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // A GROUP BY over the primary key rescues the same select list.
     insta::assert_snapshot!(
@@ -1330,12 +1330,12 @@ fn having_column_covered_by_the_grouped_primary_key() {
     // Grouping by a non-key column determines nothing.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a HAVING t1.b > 0", &[]),
-        @r#"failed to analyze AST: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The exemption is per FROM entry: one alias' key says nothing about the other's.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 x INNER JOIN t1 y ON TRUE GROUP BY x.b HAVING y.a > 0", &[]),
-        @r#"failed to analyze AST: column "y.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "y.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyzed("SELECT 1 FROM t1 x INNER JOIN t1 y ON TRUE GROUP BY x.b, y.b HAVING y.a > 0", &[]),
@@ -1345,7 +1345,7 @@ fn having_column_covered_by_the_grouped_primary_key() {
     // grouping over the same columns is rejected once it goes through one.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM (SELECT a, b FROM t1) s GROUP BY s.b HAVING s.a > 0", &[]),
-        @r#"failed to analyze AST: column "s.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "s.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1367,11 +1367,11 @@ fn having_column_covered_only_by_the_whole_primary_key() {
     // Half a key is not a key, whichever half.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t6 GROUP BY t6.k1 HAVING t6.v > 0", &[]),
-        @r#"failed to analyze AST: column "t6.v" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t6.v" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t6 GROUP BY t6.k2 HAVING t6.v > 0", &[]),
-        @r#"failed to analyze AST: column "t6.v" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t6.v" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The same, read from the select list, with HAVING only doing the grouping.
     insta::assert_snapshot!(
@@ -1380,7 +1380,7 @@ fn having_column_covered_only_by_the_whole_primary_key() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t6.v FROM t6 GROUP BY t6.k1 HAVING count(*) > 0", &[]),
-        @r#"failed to analyze AST: column "t6.v" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t6.v" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1400,11 +1400,11 @@ fn primary_key_grouped_through_a_position_or_alias() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t3.b, t3.a FROM t3 GROUP BY 1", &[]),
-        @r#"failed to analyze AST: column "t3.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t3.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t3.b AS x, t3.a FROM t3 GROUP BY x", &[]),
-        @r#"failed to analyze AST: column "t3.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t3.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1424,11 +1424,11 @@ fn having_aggregate_lifts_its_arguments() {
     // Only the aggregate's own arguments are lifted, not the rest of the clause.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a HAVING t1.a > 0 AND t1.c > 0", &[]),
-        @r#"failed to analyze AST: column "t1.c" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.c" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a HAVING sum(sum(t1.b)) > 0", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
     // A conditional is not a barrier either way.
     insta::assert_snapshot!(
@@ -1436,7 +1436,7 @@ fn having_aggregate_lifts_its_arguments() {
             "SELECT 1 FROM t1 GROUP BY t1.a HAVING CASE WHEN t1.c > 0 THEN true ELSE false END",
             &[]
         ),
-        @r#"failed to analyze AST: column "t1.c" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.c" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1452,7 +1452,7 @@ fn having_groups_one_level_only() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT * FROM (SELECT t1.a FROM t1 HAVING sum(t1.b) > 0) s", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // An inner HAVING leaves the enclosing level ungrouped.
     insta::assert_snapshot!(
@@ -1489,7 +1489,7 @@ fn having_subquery_reads_the_outer_grouping() {
             "SELECT t1.a FROM t1 GROUP BY t1.a HAVING (SELECT count(*) FROM t2 WHERE t2.c = t1.b) > 0",
             &[]
         ),
-        @r#"failed to analyze AST: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // Also through IN and EXISTS, and beside a conjunct that is itself fine.
     insta::assert_snapshot!(
@@ -1498,7 +1498,7 @@ fn having_subquery_reads_the_outer_grouping() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a HAVING t1.c IN (SELECT t2.c FROM t2)", &[]),
-        @r#"failed to analyze AST: column "t1.c" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.c" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyzed(
@@ -1512,13 +1512,13 @@ fn having_subquery_reads_the_outer_grouping() {
             "SELECT t1.a FROM t1 GROUP BY t1.a HAVING t1.a > 0 AND (SELECT t2.c FROM t2 WHERE t2.d = t1.e) > 0",
             &[]
         ),
-        @r#"failed to analyze AST: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // A HAVING-grouped level with no GROUP BY at all still binds its
     // correlated references to that grouping.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 HAVING (SELECT count(*) FROM t2 WHERE t2.c = t1.a) > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1532,11 +1532,11 @@ fn having_in_a_set_operation_branch() {
     // The grouping HAVING imposes is checked in whichever branch carries it.
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a FROM t1 HAVING count(*) > 1 UNION SELECT 1", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT 1 UNION SELECT t1.a FROM t1 HAVING count(*) > 1", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1556,7 +1556,7 @@ fn having_over_a_join() {
             "SELECT t3.a FROM t3 INNER JOIN t4 ON t3.a = t4.a GROUP BY t3.a HAVING t4.b > 'x'",
             &[]
         ),
-        @r#"failed to analyze AST: column "t4.b" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t4.b" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // A USING-reduced column is one column, so grouping by it covers the HAVING
     // reference to it.
@@ -1595,7 +1595,7 @@ fn having_with_a_distinct_select_list() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT DISTINCT t1.a FROM t1 HAVING count(*) > 1", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1673,26 +1673,26 @@ fn having_expression_key_is_matched_verbatim() {
     // A part of the key is not the key.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a + t1.c HAVING t1.a > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // No commutativity.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a + t1.c HAVING t1.c + t1.a > 0", &[]),
-        @r#"failed to analyze AST: column "t1.c" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.c" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The same operands under a different operator are a different key.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a + t1.c HAVING t1.a - t1.c > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a > 0 HAVING t1.a < 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // A different column, in the shape of the key.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY abs(t1.a) HAVING abs(t1.b) > 0", &[]),
-        @r#"failed to analyze AST: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // Columns are matched by what they resolve to, not by the name written, so
     // two aliases of one table are two different keys.
@@ -1701,24 +1701,24 @@ fn having_expression_key_is_matched_verbatim() {
             "SELECT 1 FROM t1 x INNER JOIN t1 y ON TRUE GROUP BY x.a + y.a HAVING y.a + x.a > 0",
             &[],
         ),
-        @r#"failed to analyze AST: column "y.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "y.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The key covers only its own occurrences. Here one operand of the
     // multiplication is the key and the other is a bare ungrouped column ...
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a + t1.c HAVING (t1.a + t1.c) * t1.a > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // ... and here the offender is bound *before* the key that also reads it,
     // which is the order the covered columns are rewound in.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a + t1.c HAVING t1.a > 0 AND t1.a + t1.c > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // Grouping by an expression groups nothing in the select list either.
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a FROM t1 GROUP BY t1.a + t1.c HAVING t1.a + t1.c > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1845,16 +1845,16 @@ fn select_list_expression_key_is_matched_verbatim() {
     // A part of the key is not the key.
     insta::assert_snapshot!(
         analyze_error("SELECT t1.e FROM t1 GROUP BY lower(t1.e)", &[]),
-        @r#"failed to analyze AST: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The same operands under a different operator.
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a + t1.c FROM t1 GROUP BY t1.a * t1.c", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT a IS NULL FROM t1 GROUP BY a IS NOT NULL", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1865,7 +1865,7 @@ fn select_list_expression_key_is_matched_verbatim() {
 fn composite_key_does_not_cover_its_subtrees() {
     insta::assert_snapshot!(
         analyze_error("SELECT abs(t1.a + t1.c), t1.a + t1.c FROM t1 GROUP BY abs(t1.a + t1.c)", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -1879,7 +1879,7 @@ fn select_list_key_match_reads_resolved_columns_not_names() {
             "SELECT x.a + y.a FROM t3 x INNER JOIN t3 y ON x.a = y.a GROUP BY y.a + x.a",
             &[],
         ),
-        @r#"failed to analyze AST: column "x.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "x.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The shape and the table agree; the alias does not.
     insta::assert_snapshot!(
@@ -1887,7 +1887,7 @@ fn select_list_key_match_reads_resolved_columns_not_names() {
             "SELECT y.a + y.a FROM t3 x INNER JOIN t3 y ON x.a = y.a GROUP BY x.a + x.a",
             &[],
         ),
-        @r#"failed to analyze AST: column "y.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "y.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyzed(
@@ -1905,7 +1905,7 @@ fn select_list_key_match_reads_resolved_columns_not_names() {
 fn select_list_key_covers_only_its_own_occurrences() {
     insta::assert_snapshot!(
         analyze_error("SELECT (t1.a + t1.c) + t1.a FROM t1 GROUP BY t1.a + t1.c", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyzed("SELECT (t1.a + t1.c) + t1.a FROM t1 GROUP BY t1.a + t1.c, t1.a", &[]),
@@ -1915,7 +1915,7 @@ fn select_list_key_covers_only_its_own_occurrences() {
     // the order the covered columns are rewound in.
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a + (t1.a + t1.c) FROM t1 GROUP BY t1.a + t1.c", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyzed("SELECT t1.a + (t1.a + t1.c) FROM t1 GROUP BY t1.a + t1.c, t1.a", &[]),
@@ -1931,7 +1931,7 @@ fn select_list_key_covers_only_its_own_occurrences() {
 fn select_list_key_occurrences_follow_the_parse_tree() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(c) + a + b FROM t1 GROUP BY a + b", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyzed("SELECT sum(c) + (a + b) FROM t1 GROUP BY a + b", &[]),
@@ -1939,7 +1939,7 @@ fn select_list_key_occurrences_follow_the_parse_tree() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a + b) + a + b FROM t1 GROUP BY a + b", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // Key first, aggregate second: no parentheses needed, the key is the
     // comparison's own left subtree.
@@ -1977,7 +1977,7 @@ fn grouping_keys_reach_into_a_select_list_subquery() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT t1.a FROM t2) FROM t1 GROUP BY t1.e", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyzed(
@@ -2005,7 +2005,7 @@ fn correlated_aggregate_satisfies_the_level_it_belongs_to() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(t1.a + t2.c) FROM t2) FROM t1 GROUP BY t1.e", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyzed("SELECT (SELECT sum(t1.a + t2.c) FROM t2) FROM t1 GROUP BY t1.a", &[]),
@@ -2025,7 +2025,7 @@ fn subquery_key_grants_only_its_own_projection() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT c FROM t5), t1.a FROM t1 GROUP BY (SELECT c FROM t5)", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -2061,7 +2061,7 @@ fn distinct_select_list_is_held_to_the_expression_keys() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT DISTINCT t1.a FROM t1 GROUP BY t1.a + t1.c", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -2073,15 +2073,15 @@ fn select_list_expression_grouping_key_gap() {
     // Two spellings of one constant, in HAVING and in the select list.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a + 1 HAVING t1.a + 01 > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a + 1 FROM t1 GROUP BY t1.a + 01", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The cast the projection gets implicitly, spelled out in the key.
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a + t1.d FROM t1 GROUP BY t1.a::decimal + t1.d", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }

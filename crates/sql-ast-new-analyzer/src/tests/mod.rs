@@ -24,6 +24,7 @@
 //! | [`expr`] | column references, expression types |
 //! | [`aggregate`] | where an aggregate may sit, nesting, its semantic level |
 //! | [`asterisk`] | `*` and `t.*` expansion |
+//! | [`window`] | window functions, the named `WINDOW` clause, frames |
 //!
 //! A query exercises more than one of them at once, so the module is chosen by
 //! what the case *pins*, not by what it mentions: `SELECT t.* FROM cte` is an
@@ -40,6 +41,7 @@ mod expr;
 mod multiset;
 mod select;
 mod table_expression;
+mod window;
 
 use sql_ast_new_corpus::MockCatalog;
 

@@ -30,7 +30,7 @@ use smol_str::format_smolstr;
 use crate::multiset::parse_multiset;
 use crate::window::parse_window_function;
 use crate::ParseCtx;
-use crate::{invalid_expression_error, parse_invariant_error, AstResult};
+use crate::{parser_err, syntax_err, AstResult};
 use sql_ast_new_grammar::Rule;
 use sql_ast_new_nodes::expr::{
     ArithmeticOp, BinaryOp, BooleanOp, Case, CastSyntax, CmpOp, Expr, ExprInner, FunctionCallArgs,
@@ -38,7 +38,6 @@ use sql_ast_new_nodes::expr::{
     TrimKind, UnaryOp, ValuesRow,
 };
 use sql_ast_new_nodes::{Ident, Raw};
-use sql_ir::errors::{Entity, SbroadError};
 use sql_ir::ir::aggregates::AggregateKind;
 use sql_ir::ir::types::{CastType, NestedType};
 
@@ -164,13 +163,13 @@ fn parse_binary_op(pair: Pair<'_, Rule>) -> AstResult<BinaryOp> {
         Rule::Or => BinaryOp::Boolean(BooleanOp::Or),
         Rule::ConcatInfixOp => BinaryOp::Concat,
         Rule::Like | Rule::Similar | Rule::Escape | Rule::Between | Rule::In => {
-            return Err(parse_invariant_error(format_smolstr!(
+            return Err(parser_err(format_smolstr!(
                 "{:?} must be handled in `map_infix` directly",
                 pair.as_rule()
             )))
         }
         rule => {
-            return Err(parse_invariant_error(format_smolstr!(
+            return Err(parser_err(format_smolstr!(
                 "expected a `Rule` for `BinaryOp`, got {rule:?}"
             )))
         }
@@ -210,7 +209,7 @@ pub(super) fn parse_expr<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<
                 Rule::Expr => parse_expr(primary, ctx),
                 Rule::ExpressionInParentheses => {
                     let expr_pair = primary.into_inner().next().ok_or_else(|| {
-                        parse_invariant_error(format_smolstr!(
+                        parser_err(format_smolstr!(
                             "`ExpressionInParentheses` must contain `Expr`"
                         ))
                     })?;
@@ -251,7 +250,7 @@ pub(super) fn parse_expr<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<
                 | Rule::CurrentTimestamp
                 | Rule::LocalTime
                 | Rule::LocalTimestamp => parse_time_function(primary),
-                _ => Err(parse_invariant_error(format_smolstr!(
+                _ => Err(parser_err(format_smolstr!(
                     "expected expression primary, got {:?}",
                     primary.as_rule()
                 ))),
@@ -265,7 +264,7 @@ pub(super) fn parse_expr<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<
             Rule::UnaryNot => Ok(Operand::new(Expr::unary(UnaryOp::Not, operand?.expr))),
             Rule::UnaryMinus => Ok(Operand::new(Expr::unary(UnaryOp::Minus, operand?.expr))),
             Rule::UnaryPlus => Ok(Operand::new(Expr::unary(UnaryOp::Plus, operand?.expr))),
-            rule => Err(parse_invariant_error(format_smolstr!(
+            rule => Err(parser_err(format_smolstr!(
                 "expected a `Rule` for expression prefix, got {rule:?}"
             ))),
         })
@@ -275,21 +274,19 @@ pub(super) fn parse_expr<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<
                 Rule::IsPostfix => parse_is_postfix(operand, op),
                 Rule::CastPostfix => {
                     let target_pair = op.into_inner().next().ok_or_else(|| {
-                        parse_invariant_error(format_smolstr!(
-                            "`CastPostfix` must contain `CastTarget`"
-                        ))
+                        parser_err(format_smolstr!("`CastPostfix` must contain `CastTarget`"))
                     })?;
                     let ty = parse_cast_target(target_pair)?;
                     Ok(Expr::cast(operand, ty, CastSyntax::Postfix))
                 }
                 Rule::IndexPostfix => {
                     let which_pair = op.into_inner().next().ok_or_else(|| {
-                        parse_invariant_error(format_smolstr!("`IndexPostfix` must contain `Expr`"))
+                        parser_err(format_smolstr!("`IndexPostfix` must contain `Expr`"))
                     })?;
                     let which = parse_expr(which_pair, ctx)?;
                     Ok(Expr::index(operand, which))
                 }
-                rule => Err(parse_invariant_error(format_smolstr!(
+                rule => Err(parser_err(format_smolstr!(
                     "expected `Rule` for expression postfix, got {rule:?}"
                 ))),
             }?;
@@ -309,7 +306,7 @@ pub(super) fn parse_expr<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<
                         NonAssocTier::Comparison => "comparison operators",
                         NonAssocTier::Matching => "BETWEEN/IN/LIKE/ILIKE/SIMILAR operators",
                     };
-                    return Err(invalid_expression_error(format_smolstr!(
+                    return Err(syntax_err(format_smolstr!(
                         "{tier_ops} are non-associative; use parentheses to group operands"
                     )));
                 }
@@ -340,13 +337,11 @@ pub(super) fn parse_expr<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<
                     // the token's `BExpr`.
                     let mut op_pairs = op.into_inner();
                     let first_pair = op_pairs.next().ok_or_else(|| {
-                        parse_invariant_error(format_smolstr!(
-                            "`Between` must contain a middle operand"
-                        ))
+                        parser_err(format_smolstr!("`Between` must contain a middle operand"))
                     })?;
                     let (is_not, middle_pair) = if matches!(first_pair.as_rule(), Rule::NotFlag) {
                         let middle_pair = op_pairs.next().ok_or_else(|| {
-                            parse_invariant_error(format_smolstr!(
+                            parser_err(format_smolstr!(
                                 "`Between` must contain a middle operand after NOT"
                             ))
                         })?;
@@ -384,20 +379,18 @@ fn connect_escape<'q>(left: Operand<'q>, right: RawExpr<'q>) -> AstResult<RawExp
             if !left.parenthesized =>
         {
             if escape.is_some() {
-                return Err(invalid_expression_error(format_smolstr!(
+                return Err(syntax_err(format_smolstr!(
                     "escape specified twice: expr1 LIKE/SIMILAR expr2 ESCAPE expr3 ESCAPE expr4"
                 )));
             }
             *escape = Some(Box::new(right));
             Ok(left_expr)
         }
-        ExprInner::Like(_) | ExprInner::Similar(_) => {
-            Err(invalid_expression_error(format_smolstr!(
-                "ESCAPE must directly follow a LIKE/ILIKE/SIMILAR pattern; \
+        ExprInner::Like(_) | ExprInner::Similar(_) => Err(syntax_err(format_smolstr!(
+            "ESCAPE must directly follow a LIKE/ILIKE/SIMILAR pattern; \
                  a parenthesized expression cannot take an ESCAPE clause"
-            )))
-        }
-        _ => Err(invalid_expression_error(format_smolstr!(
+        ))),
+        _ => Err(syntax_err(format_smolstr!(
             "ESCAPE can go only after LIKE or SIMILAR expressions, got: {}",
             left_expr.inner_ref().kind_name()
         ))),
@@ -407,7 +400,7 @@ fn connect_escape<'q>(left: Operand<'q>, right: RawExpr<'q>) -> AstResult<RawExp
 fn parse_literal<'q>(pair: Pair<'q, Rule>) -> AstResult<RawExpr<'q>> {
     let pair = if matches!(pair.as_rule(), Rule::Literal) {
         pair.into_inner().next().ok_or_else(|| {
-            parse_invariant_error(format_smolstr!("`Literal` must contain a concrete literal"))
+            parser_err(format_smolstr!("`Literal` must contain a concrete literal"))
         })?
     } else {
         pair
@@ -424,7 +417,7 @@ fn parse_literal<'q>(pair: Pair<'q, Rule>) -> AstResult<RawExpr<'q>> {
                 .strip_prefix('\'')
                 .and_then(|s| s.strip_suffix('\''))
                 .ok_or_else(|| {
-                    parse_invariant_error(format_smolstr!(
+                    parser_err(format_smolstr!(
                         "`SingleQuotedString` must be wrapped in single quotes"
                     ))
                 })?;
@@ -438,19 +431,15 @@ fn parse_literal<'q>(pair: Pair<'q, Rule>) -> AstResult<RawExpr<'q>> {
                 Rule::Decimal => LiteralKind::Numeric,
                 Rule::Unsigned | Rule::Integer => {
                     if pair.as_str().parse::<i64>().is_err() {
-                        return Err(SbroadError::Invalid(
-                            Entity::Query,
-                            Some(format_smolstr!(
-                                "value doesn't fit into integer range: {}",
-                                pair.as_str()
-                            )),
-                        )
-                        .into());
+                        return Err(syntax_err(format_smolstr!(
+                            "value doesn't fit into integer range: {}",
+                            pair.as_str()
+                        )));
                     }
                     LiteralKind::Integer
                 }
                 _ => {
-                    return Err(parse_invariant_error(format_smolstr!(
+                    return Err(parser_err(format_smolstr!(
                         "expected a concrete literal, got {rule:?}"
                     )))
                 }
@@ -468,7 +457,7 @@ fn parse_identifier<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawEx
     let mut inner_pairs = pair.into_inner();
 
     let ident_pair = inner_pairs.next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!(
+        parser_err(format_smolstr!(
             "`IdentifierWithOptionalContinuation` must be non-empty"
         ))
     })?;
@@ -480,7 +469,7 @@ fn parse_identifier<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawEx
                     let table_name = ident_pair.as_str();
                     // In order to skip "." in `ReferenceContinuation` (".<column_name>")
                     let column_name = pair.as_str().strip_prefix('.').ok_or_else(|| {
-                        parse_invariant_error(format_smolstr!(
+                        parser_err(format_smolstr!(
                             "`ReferenceContinuation` must start with '.'"
                         ))
                     })?;
@@ -492,7 +481,7 @@ fn parse_identifier<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawEx
                 Rule::FunctionInvocationContinuation => {
                     parse_function_invocation(ident_pair.as_str(), pair, ctx)
                 }
-                rule => Err(parse_invariant_error(format_smolstr!(
+                rule => Err(parser_err(format_smolstr!(
                     "unexpected continuation in `IdentifierWithOptionalContinuation`: {rule:?}"
                 ))),
             }
@@ -518,14 +507,10 @@ fn parse_function_invocation<'q>(
         Some(args_pair) => match args_pair.as_rule() {
             Rule::CountAsterisk => {
                 if name.as_str() != AggregateKind::COUNT.to_string() {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!(
-                            "\"*\" is allowed only inside \"{}\" aggregate function. Got: {name}",
-                            AggregateKind::COUNT
-                        )),
-                    )
-                    .into());
+                    return Err(syntax_err(format_smolstr!(
+                        "\"*\" is allowed only inside \"{}\" aggregate function. Got: {name}",
+                        AggregateKind::COUNT
+                    )));
                 }
                 FunctionCallArgs::CountAsterisk
             }
@@ -537,23 +522,21 @@ fn parse_function_invocation<'q>(
                         Rule::Distinct => distinct = true,
                         Rule::Expr => exprs.push(parse_expr(arg_pair, ctx)?),
                         rule => {
-                            return Err(parse_invariant_error(format_smolstr!(
+                            return Err(parser_err(format_smolstr!(
                                 "expected `Distinct` or `Expr` under `FunctionArgs`, got {rule:?}"
                             )))
                         }
                     }
                 }
                 if distinct && !is_aggregate_function(&name) {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some("DISTINCT modifier is allowed only for aggregate functions".into()),
-                    )
-                    .into());
+                    return Err(syntax_err(format_smolstr!(
+                        "DISTINCT modifier is allowed only for aggregate functions"
+                    )));
                 }
                 FunctionCallArgs::Exprs { distinct, exprs }
             }
             rule => {
-                return Err(parse_invariant_error(format_smolstr!(
+                return Err(parser_err(format_smolstr!(
                     "expected `CountAsterisk` or `FunctionArgs`, got {rule:?}"
                 )))
             }
@@ -564,12 +547,9 @@ fn parse_function_invocation<'q>(
 }
 
 /// The (already normalized) name denotes a built-in aggregate.
-/// `AggregateKind::from_name` matches case-insensitively, which would re-admit
-/// case-preserved quoted spellings like `"SUM"`; a normalized aggregate name
-/// is always lowercase, so require fold-invariance first.
+/// [`AggregateKind::from_norm_name`] matches case-sensitively.
 fn is_aggregate_function(name: &Ident) -> bool {
-    let name = name.as_str();
-    name == name.to_lowercase() && AggregateKind::from_name(name).is_some()
+    AggregateKind::from_norm_name(name.as_str()).is_some()
 }
 
 /// Build the parameter node, assigning the index: `?` takes the position of
@@ -581,7 +561,7 @@ fn parameter_from_pair(pair: Pair<'_, Rule>, ctx: &ParseCtx) -> AstResult<Parame
         Rule::TntParameter => {
             let offset = pair.as_span().start();
             let index = ctx.tnt_param_index(offset).ok_or_else(|| {
-                parse_invariant_error(format_smolstr!(
+                parser_err(format_smolstr!(
                     "`?` at offset {offset} was not seen while building the parse context"
                 ))
             })?;
@@ -589,21 +569,19 @@ fn parameter_from_pair(pair: Pair<'_, Rule>, ctx: &ParseCtx) -> AstResult<Parame
         }
         Rule::PgParameter => {
             let index_pair = pair.into_inner().next().ok_or_else(|| {
-                parse_invariant_error(format_smolstr!("`PgParameter` must contain `Unsigned`"))
+                parser_err(format_smolstr!("`PgParameter` must contain `Unsigned`"))
             })?;
             let index = index_pair.as_str().parse::<u16>().map_err(|_| {
-                invalid_expression_error(format_smolstr!(
+                syntax_err(format_smolstr!(
                     "parameter index must be between 1 and 65536"
                 ))
             })?;
             if index == 0 {
-                return Err(invalid_expression_error(format_smolstr!(
-                    "parameter index must be >=1"
-                )));
+                return Err(syntax_err(format_smolstr!("parameter index must be >=1")));
             }
             Ok(Parameter(index))
         }
-        rule => Err(parse_invariant_error(format_smolstr!(
+        rule => Err(parser_err(format_smolstr!(
             "expected `TntParameter` or `PgParameter`, got {rule:?}"
         ))),
     }
@@ -619,7 +597,7 @@ pub(super) fn parse_parameter(pair: Pair<'_, Rule>, ctx: &ParseCtx) -> AstResult
     let inner_pair = pair
         .into_inner()
         .next()
-        .ok_or_else(|| parse_invariant_error(format_smolstr!("`Parameter` must be non-empty")))?;
+        .ok_or_else(|| parser_err(format_smolstr!("`Parameter` must be non-empty")))?;
 
     parameter_from_pair(inner_pair, ctx)
 }
@@ -638,17 +616,18 @@ fn parse_cast_target(pair: Pair<'_, Rule>) -> AstResult<CastType> {
     debug_assert_eq!(pair.as_rule(), Rule::CastTarget);
 
     let mut inner_pairs = pair.into_inner();
-    let type_pair = inner_pairs.next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("`CastTarget` must contain `Type`"))
-    })?;
+    let type_pair = inner_pairs
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("`CastTarget` must contain `Type`")))?;
     if inner_pairs.next().is_none() {
         return parse_cast_type(type_pair);
     }
     // An array suffix follows (`[]` / `ARRAY` / `ARRAY[N]`; a sized bound is
     // accepted and ignored, like the old pipeline does).
-    let concrete_type_pair = type_pair.into_inner().next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("concrete type expected under `Type`"))
-    })?;
+    let concrete_type_pair = type_pair
+        .into_inner()
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("concrete type expected under `Type`")))?;
     let elem = match concrete_type_pair.as_rule() {
         Rule::TypeBool => NestedType::Boolean,
         Rule::TypeDatetime => NestedType::Datetime,
@@ -660,21 +639,19 @@ fn parse_cast_target(pair: Pair<'_, Rule>) -> AstResult<CastType> {
         Rule::TypeVarchar => {
             if let Some(length_pair) = concrete_type_pair.into_inner().next() {
                 length_pair.as_str().parse::<usize>().map_err(|e| {
-                    SbroadError::ParsingError(
-                        Entity::Value,
-                        format_smolstr!("failed to parse varchar length: {e:?}."),
-                    )
+                    syntax_err(format_smolstr!(
+                        "invalid varchar length {}: {e}",
+                        length_pair.as_str()
+                    ))
                 })?;
             }
             NestedType::Text
         }
         Rule::TypeUuid => NestedType::Uuid,
         rule => {
-            return Err(SbroadError::Unsupported(
-                Entity::Type,
-                Some(format_smolstr!("{rule:?} as an array element type")),
-            )
-            .into())
+            return Err(parser_err(format_smolstr!(
+                "expected a concrete type under `Type`, got {rule:?}"
+            )))
         }
     };
     Ok(CastType::Array(elem))
@@ -683,9 +660,10 @@ fn parse_cast_target(pair: Pair<'_, Rule>) -> AstResult<CastType> {
 fn parse_cast_type(pair: Pair<'_, Rule>) -> AstResult<CastType> {
     debug_assert_eq!(pair.as_rule(), Rule::Type);
 
-    let concrete_type_pair = pair.into_inner().next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("concrete type expected under `Type`"))
-    })?;
+    let concrete_type_pair = pair
+        .into_inner()
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("concrete type expected under `Type`")))?;
     // Note: `CastType: TryFrom<&Rule>` exists only for the old grammar's
     // `Rule` type, so the new grammar rules are mapped manually here.
     let ty = match concrete_type_pair.as_rule() {
@@ -702,18 +680,21 @@ fn parse_cast_type(pair: Pair<'_, Rule>) -> AstResult<CastType> {
             // integer.
             if let Some(length_pair) = concrete_type_pair.into_inner().next() {
                 length_pair.as_str().parse::<usize>().map_err(|e| {
-                    SbroadError::ParsingError(
-                        Entity::Value,
-                        format_smolstr!("failed to parse varchar length: {e:?}."),
-                    )
+                    syntax_err(format_smolstr!(
+                        "invalid varchar length {}: {e}",
+                        length_pair.as_str()
+                    ))
                 })?;
             }
             CastType::String
         }
+        // `json[]` is a target (see `parse_cast_target`), a bare `json` is not,
+        // as in the old pipeline.
+        Rule::TypeJSON => return Err(syntax_err(format_smolstr!("cannot cast to json"))),
         rule => {
-            return Err(
-                SbroadError::Unsupported(Entity::Type, Some(format_smolstr!("{rule:?}"))).into(),
-            )
+            return Err(parser_err(format_smolstr!(
+                "expected a concrete type under `Type`, got {rule:?}"
+            )))
         }
     };
     Ok(ty)
@@ -725,11 +706,11 @@ fn parse_cast_op<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExpr<
     let mut inner_pairs = pair.into_inner();
     let expr_pair = inner_pairs
         .next()
-        .ok_or_else(|| parse_invariant_error(format_smolstr!("`CastOp` must contain `Expr`")))?;
+        .ok_or_else(|| parser_err(format_smolstr!("`CastOp` must contain `Expr`")))?;
     let child = parse_expr(expr_pair, ctx)?;
-    let target_pair = inner_pairs.next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("`CastOp` must contain `CastTarget`"))
-    })?;
+    let target_pair = inner_pairs
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("`CastOp` must contain `CastTarget`")))?;
     let ty = parse_cast_target(target_pair)?;
 
     Ok(Expr::cast(child, ty, CastSyntax::Call))
@@ -740,12 +721,12 @@ fn parse_typed_literal<'q>(pair: Pair<'q, Rule>) -> AstResult<RawExpr<'q>> {
     debug_assert_eq!(pair.as_rule(), Rule::TypedLiteral);
 
     let mut inner_pairs = pair.into_inner();
-    let type_pair = inner_pairs.next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("`TypedLiteral` must contain `Type`"))
-    })?;
+    let type_pair = inner_pairs
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("`TypedLiteral` must contain `Type`")))?;
     let ty = parse_cast_type(type_pair)?;
     let literal_pair = inner_pairs.next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!(
+        parser_err(format_smolstr!(
             "`TypedLiteral` must contain `SingleQuotedString`"
         ))
     })?;
@@ -760,10 +741,10 @@ fn parse_is_postfix<'q>(operand: RawExpr<'q>, op: Pair<'q, Rule>) -> AstResult<R
     let mut inner_pairs = op.into_inner();
     let first_pair = inner_pairs
         .next()
-        .ok_or_else(|| parse_invariant_error(format_smolstr!("`IsPostfix` must be non-empty")))?;
+        .ok_or_else(|| parser_err(format_smolstr!("`IsPostfix` must be non-empty")))?;
     let (is_not, value_pair) = if matches!(first_pair.as_rule(), Rule::NotFlag) {
         let value_pair = inner_pairs.next().ok_or_else(|| {
-            parse_invariant_error(format_smolstr!(
+            parser_err(format_smolstr!(
                 "`IsPostfix` must contain a value after NOT"
             ))
         })?;
@@ -778,7 +759,7 @@ fn parse_is_postfix<'q>(operand: RawExpr<'q>, op: Pair<'q, Rule>) -> AstResult<R
         Rule::Null => IsValue::Null,
         Rule::Unknown => IsValue::Unknown,
         rule => {
-            return Err(parse_invariant_error(format_smolstr!(
+            return Err(parser_err(format_smolstr!(
                 "`IsPostfix` value must be TRUE, FALSE, NULL or UNKNOWN, got {rule:?}"
             )))
         }
@@ -798,16 +779,14 @@ fn parse_trim<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExpr<'q>
         match pair.as_rule() {
             Rule::TrimKind => {
                 let kind_pair = pair.into_inner().next().ok_or_else(|| {
-                    parse_invariant_error(format_smolstr!(
-                        "`TrimKind` must contain a concrete kind"
-                    ))
+                    parser_err(format_smolstr!("`TrimKind` must contain a concrete kind"))
                 })?;
                 kind = Some(match kind_pair.as_rule() {
                     Rule::TrimKindLeading => TrimKind::Leading,
                     Rule::TrimKindTrailing => TrimKind::Trailing,
                     Rule::TrimKindBoth => TrimKind::Both,
                     rule => {
-                        return Err(parse_invariant_error(format_smolstr!(
+                        return Err(parser_err(format_smolstr!(
                             "expected LEADING, TRAILING or BOTH, got {rule:?}"
                         )))
                     }
@@ -815,36 +794,36 @@ fn parse_trim<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExpr<'q>
             }
             Rule::TrimPattern => {
                 let expr_pair = pair.into_inner().next().ok_or_else(|| {
-                    parse_invariant_error(format_smolstr!("`TrimPattern` must contain `Expr`"))
+                    parser_err(format_smolstr!("`TrimPattern` must contain `Expr`"))
                 })?;
                 pattern = Some(Box::new(parse_expr(expr_pair, ctx)?));
             }
             Rule::TrimTarget => {
                 let expr_pair = pair.into_inner().next().ok_or_else(|| {
-                    parse_invariant_error(format_smolstr!("`TrimTarget` must contain `Expr`"))
+                    parser_err(format_smolstr!("`TrimTarget` must contain `Expr`"))
                 })?;
                 target = Some(parse_expr(expr_pair, ctx)?);
             }
             rule => {
-                return Err(parse_invariant_error(format_smolstr!(
+                return Err(parser_err(format_smolstr!(
                     "expected `Trim` components, got {rule:?}"
                 )))
             }
         }
     }
 
-    let target = target.ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("`Trim` must contain `TrimTarget`"))
-    })?;
+    let target =
+        target.ok_or_else(|| parser_err(format_smolstr!("`Trim` must contain `TrimTarget`")))?;
     Ok(Expr::trim(kind, pattern, target))
 }
 
 fn parse_substring<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExpr<'q>> {
     debug_assert_eq!(pair.as_rule(), Rule::Substring);
 
-    let variant_pair = pair.into_inner().next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("`Substring` must contain a variant"))
-    })?;
+    let variant_pair = pair
+        .into_inner()
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("`Substring` must contain a variant")))?;
     let variant_rule = variant_pair.as_rule();
 
     let exprs = variant_pair
@@ -854,7 +833,7 @@ fn parse_substring<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExp
     let mut exprs = exprs.into_iter();
     let mut take_expr = || -> AstResult<Box<RawExpr<'q>>> {
         Ok(Box::new(exprs.next().ok_or_else(|| {
-            parse_invariant_error(format_smolstr!(
+            parser_err(format_smolstr!(
                 "substring variant must contain enough expressions"
             ))
         })?))
@@ -867,7 +846,7 @@ fn parse_substring<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExp
         Rule::SubstringFrom => Substring::From(take_expr()?, take_expr()?),
         Rule::SubstringSimilar => Substring::Similar(take_expr()?),
         _ => {
-            return Err(parse_invariant_error(format_smolstr!(
+            return Err(parser_err(format_smolstr!(
                 "expected `Substring` variant, got {variant_rule:?}"
             )))
         }
@@ -890,12 +869,10 @@ fn parse_case<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExpr<'q>
             Rule::CaseWhenBlock => {
                 let mut inner_pairs = pair.into_inner();
                 let condition_pair = inner_pairs.next().ok_or_else(|| {
-                    parse_invariant_error(format_smolstr!(
-                        "`CaseWhenBlock` must contain a condition"
-                    ))
+                    parser_err(format_smolstr!("`CaseWhenBlock` must contain a condition"))
                 })?;
                 let result_pair = inner_pairs.next().ok_or_else(|| {
-                    parse_invariant_error(format_smolstr!("`CaseWhenBlock` must contain a result"))
+                    parser_err(format_smolstr!("`CaseWhenBlock` must contain a result"))
                 })?;
                 when_blocks.push((
                     parse_expr(condition_pair, ctx)?,
@@ -904,12 +881,12 @@ fn parse_case<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExpr<'q>
             }
             Rule::CaseElseBlock => {
                 let expr_pair = pair.into_inner().next().ok_or_else(|| {
-                    parse_invariant_error(format_smolstr!("`CaseElseBlock` must contain `Expr`"))
+                    parser_err(format_smolstr!("`CaseElseBlock` must contain `Expr`"))
                 })?;
                 else_expr = Some(Box::new(parse_expr(expr_pair, ctx)?));
             }
             rule => {
-                return Err(parse_invariant_error(format_smolstr!(
+                return Err(parser_err(format_smolstr!(
                     "expected `Case` components, got {rule:?}"
                 )))
             }
@@ -930,10 +907,10 @@ fn parse_exists<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExpr<'
     let mut inner_pairs = pair.into_inner();
     let first_pair = inner_pairs
         .next()
-        .ok_or_else(|| parse_invariant_error(format_smolstr!("`Exists` must be non-empty")))?;
+        .ok_or_else(|| parser_err(format_smolstr!("`Exists` must be non-empty")))?;
     let (is_not, subquery_pair) = if matches!(first_pair.as_rule(), Rule::NotFlag) {
         let subquery_pair = inner_pairs.next().ok_or_else(|| {
-            parse_invariant_error(format_smolstr!(
+            parser_err(format_smolstr!(
                 "`Exists` must contain a subquery after NOT"
             ))
         })?;
@@ -956,7 +933,7 @@ fn parse_time_function<'q>(pair: Pair<'q, Rule>) -> AstResult<RawExpr<'q>> {
         .next()
         .map(|precision_pair| {
             precision_pair.as_str().parse::<u32>().map_err(|_| {
-                invalid_expression_error(format_smolstr!(
+                syntax_err(format_smolstr!(
                     "time function precision must be an unsigned integer"
                 ))
             })
@@ -970,7 +947,7 @@ fn parse_time_function<'q>(pair: Pair<'q, Rule>) -> AstResult<RawExpr<'q>> {
         Rule::LocalTime => TimeFunction::LocalTime(precision),
         Rule::LocalTimestamp => TimeFunction::LocalTimestamp(precision),
         _ => {
-            return Err(parse_invariant_error(format_smolstr!(
+            return Err(parser_err(format_smolstr!(
                 "expected time function, got {rule:?}"
             )))
         }

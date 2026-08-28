@@ -17,7 +17,7 @@ use sql_ir::ir::types::{DerivedType, UnrestrictedType};
 use sql_ir::ir::value::parse_str_as;
 use sql_type_system::expr::Type;
 
-use crate::analyze_error;
+use crate::semantic_err;
 
 /// Whether `CAST(<from> AS <to>)` has a conversion path.
 ///
@@ -89,7 +89,7 @@ pub(crate) fn coerce_text_literal(expr: &mut Expr<'_, Analyzed>, to: Type) -> As
     // The parser strips only the outer quotes, so an embedded quote is still doubled in the slice.
     let unescaped = unescape(literal.value);
     let Some(value) = parse_str_as(&unescaped, target) else {
-        return Err(analyze_error(format_smolstr!(
+        return Err(semantic_err(format_smolstr!(
             "invalid input syntax for type {target}: \"{unescaped}\""
         )));
     };

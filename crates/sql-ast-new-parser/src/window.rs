@@ -5,9 +5,9 @@ use smol_str::format_smolstr;
 use sql_ir::ir::aggregates::AggregateKind;
 
 use crate::expr::parse_expr;
-use crate::invalid_expression_error;
-use crate::multiset::{parse_order_by_element, OrderByLiterals};
-use crate::parse_invariant_error;
+use crate::multiset::{parse_order_by, OrderByLiterals};
+use crate::parser_err;
+use crate::syntax_err;
 use crate::ParseCtx;
 use sql_ast_new_grammar::Rule;
 use sql_ast_new_nodes::error::AstResult;
@@ -16,7 +16,6 @@ use sql_ast_new_nodes::window::{
     WindowFunctionArgs, WindowRef, WindowSpec,
 };
 use sql_ast_new_nodes::{Ident, Raw};
-use sql_ir::errors::{Entity, SbroadError};
 
 pub(super) fn parse_named_window<'q>(
     pair: Pair<'q, Rule>,
@@ -28,18 +27,18 @@ pub(super) fn parse_named_window<'q>(
 
     let name_pair = pairs
         .next()
-        .ok_or_else(|| parse_invariant_error(format_smolstr!("`WindowDef` must contain a name")))?;
+        .ok_or_else(|| parser_err(format_smolstr!("`WindowDef` must contain a name")))?;
     debug_assert_eq!(name_pair.as_rule(), Rule::Identifier);
 
-    let body_pair = pairs.next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("`WindowDef` must contain `WindowBody`"))
-    })?;
+    let body_pair = pairs
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("`WindowDef` must contain `WindowBody`")))?;
     let spec = parse_window_spec(body_pair, ctx)?;
 
-    Ok(NamedWindow {
-        name: Ident::from_sql(name_pair.as_str()),
+    Ok(NamedWindow::from_parts(
+        Ident::from_sql(name_pair.as_str()),
         spec,
-    })
+    ))
 }
 
 pub(super) fn parse_window_function<'q>(
@@ -51,16 +50,16 @@ pub(super) fn parse_window_function<'q>(
     let mut pairs = pair.into_inner();
 
     let name = {
-        let pair = pairs.next().ok_or_else(|| {
-            parse_invariant_error(format_smolstr!("`Over` must contain a function name"))
-        })?;
+        let pair = pairs
+            .next()
+            .ok_or_else(|| parser_err(format_smolstr!("`Over` must contain a function name")))?;
         debug_assert_eq!(pair.as_rule(), Rule::Identifier);
         Ident::from_sql(pair.as_str())
     };
 
     let args = {
         let args_pair = pairs.next().ok_or_else(|| {
-            parse_invariant_error(format_smolstr!("`Over` must contain `WindowFunctionArgs`"))
+            parser_err(format_smolstr!("`Over` must contain `WindowFunctionArgs`"))
         })?;
         parse_window_function_args(args_pair, ctx)?
     };
@@ -68,27 +67,27 @@ pub(super) fn parse_window_function<'q>(
     if matches!(args, WindowFunctionArgs::Asterisk)
         && name.as_str() != AggregateKind::COUNT.to_string()
     {
-        return Err(invalid_expression_error(format_smolstr!(
+        return Err(syntax_err(format_smolstr!(
             "function {}(*) does not exist",
             name.as_str()
         )));
     }
 
     let (filter, window_pair) = {
-        let pair = pairs.next().ok_or_else(|| {
-            parse_invariant_error(format_smolstr!("`Over` must contain a window"))
-        })?;
+        let pair = pairs
+            .next()
+            .ok_or_else(|| parser_err(format_smolstr!("`Over` must contain a window")))?;
         if matches!(pair.as_rule(), Rule::WindowFunctionFilter) {
             let filter_expr_pair = pair.into_inner().next().ok_or_else(|| {
-                parse_invariant_error(format_smolstr!(
+                parser_err(format_smolstr!(
                     "`WindowFunctionFilter` must contain `Expr`"
                 ))
             })?;
             (
                 Some(parse_expr(filter_expr_pair, ctx)?),
-                pairs.next().ok_or_else(|| {
-                    parse_invariant_error(format_smolstr!("`Over` must contain a window"))
-                })?,
+                pairs
+                    .next()
+                    .ok_or_else(|| parser_err(format_smolstr!("`Over` must contain a window")))?,
             )
         } else {
             (None, pair)
@@ -99,7 +98,7 @@ pub(super) fn parse_window_function<'q>(
         Rule::Identifier => WindowRef::Name(Ident::from_sql(window_pair.as_str())),
         Rule::WindowBody => WindowRef::Spec(parse_window_spec(window_pair, ctx)?),
         rule => {
-            return Err(parse_invariant_error(format_smolstr!(
+            return Err(parser_err(format_smolstr!(
                 "expected `Identifier` or `WindowBody`, got {rule:?}"
             )))
         }
@@ -125,15 +124,27 @@ fn parse_window_function_args<'q>(
 
     match pair.as_rule() {
         Rule::CountAsterisk => Ok(WindowFunctionArgs::Asterisk),
-        Rule::WindowFunctionArgsInner => {
+        Rule::FunctionArgs => {
             let mut exprs = Vec::new();
-            for expr_pair in pair.into_inner() {
-                exprs.push(parse_expr(expr_pair, ctx)?);
+            for arg_pair in pair.into_inner() {
+                match arg_pair.as_rule() {
+                    Rule::Distinct => {
+                        return Err(syntax_err(format_smolstr!(
+                            "DISTINCT is not implemented for window functions"
+                        )))
+                    }
+                    Rule::Expr => exprs.push(parse_expr(arg_pair, ctx)?),
+                    rule => {
+                        return Err(parser_err(format_smolstr!(
+                            "expected `Distinct` or `Expr` under `FunctionArgs`, got {rule:?}"
+                        )))
+                    }
+                }
             }
             Ok(WindowFunctionArgs::List(exprs))
         }
-        rule => Err(parse_invariant_error(format_smolstr!(
-            "expected `Asterisk` or `WindowFunctionArgsInner`, got {rule:?}"
+        rule => Err(parser_err(format_smolstr!(
+            "expected `CountAsterisk` or `FunctionArgs`, got {rule:?}"
         ))),
     }
 }
@@ -151,36 +162,16 @@ fn parse_window_spec<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Wind
                     spec.partition_by.push(parse_expr(expr_pair, ctx)?);
                 }
             }
-            Rule::WindowOrderBy => {
-                // A window's ORDER BY literals are constants, never select-list ordinals.
-                for elem_pair in pair.into_inner() {
-                    spec.order_by.push(parse_order_by_element(
-                        elem_pair,
-                        ctx,
-                        OrderByLiterals::KeepConstants,
-                    )?);
-                }
+            // A window's ORDER BY literals are constants, never select-list ordinals.
+            Rule::OrderBy => {
+                spec.order_by = Some(parse_order_by(pair, ctx, OrderByLiterals::KeepConstants)?)
             }
             Rule::WindowFrame => spec.frame = Some(parse_window_frame(pair, ctx)?),
             rule => {
-                return Err(parse_invariant_error(format_smolstr!(
+                return Err(parser_err(format_smolstr!(
                     "expected `WindowBody` components, got {rule:?}"
                 )))
             }
-        }
-    }
-
-    // PostgreSQL semantics: a window that inherits from a base window copies the
-    // partitioning of the base and cannot define its own.
-    if let Some(base) = spec.base.as_ref().map(Ident::as_str) {
-        if !spec.partition_by.is_empty() {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some(format_smolstr!(
-                    "cannot override PARTITION BY clause of base window {base}"
-                )),
-            )
-            .into());
         }
     }
 
@@ -192,38 +183,38 @@ fn parse_window_frame<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Win
 
     let mut pairs = pair.into_inner();
 
-    let ty_pair = pairs.next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("`WindowFrame` must contain frame type"))
-    })?;
+    let ty_pair = pairs
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("`WindowFrame` must contain frame type")))?;
     let ty = match ty_pair.as_rule() {
         Rule::WindowFrameTypeRows => FrameType::Rows,
         Rule::WindowFrameTypeRange => FrameType::Range,
         rule => {
-            return Err(parse_invariant_error(format_smolstr!(
+            return Err(parser_err(format_smolstr!(
                 "expected frame type, got {rule:?}"
             )))
         }
     };
 
-    let bounds_pair = pairs.next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("`WindowFrame` must contain bounds"))
-    })?;
+    let bounds_pair = pairs
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("`WindowFrame` must contain bounds")))?;
     let bounds = match bounds_pair.as_rule() {
         Rule::WindowFrameSingle => {
             let bound_pair = bounds_pair.into_inner().next().ok_or_else(|| {
-                parse_invariant_error(format_smolstr!("`WindowFrameSingle` must contain a bound"))
+                parser_err(format_smolstr!("`WindowFrameSingle` must contain a bound"))
             })?;
             FrameBounds::Single(parse_frame_bound(bound_pair, ctx)?)
         }
         Rule::WindowFrameBetween => {
             let mut bound_pairs = bounds_pair.into_inner();
             let from_pair = bound_pairs.next().ok_or_else(|| {
-                parse_invariant_error(format_smolstr!(
+                parser_err(format_smolstr!(
                     "`WindowFrameBetween` must contain an opening bound"
                 ))
             })?;
             let to_pair = bound_pairs.next().ok_or_else(|| {
-                parse_invariant_error(format_smolstr!(
+                parser_err(format_smolstr!(
                     "`WindowFrameBetween` must contain a closing bound"
                 ))
             })?;
@@ -233,7 +224,7 @@ fn parse_window_frame<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Win
             )
         }
         rule => {
-            return Err(parse_invariant_error(format_smolstr!(
+            return Err(parser_err(format_smolstr!(
                 "expected `WindowFrameSingle` or `WindowFrameBetween`, got {rule:?}"
             )))
         }
@@ -249,9 +240,10 @@ fn parse_window_frame<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Win
 
 fn parse_frame_bound<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<FrameBound<'q, Raw>> {
     let offset_expr = |pair: Pair<'q, Rule>| {
-        let expr_pair = pair.into_inner().next().ok_or_else(|| {
-            parse_invariant_error(format_smolstr!("offset bound must contain `Expr`"))
-        })?;
+        let expr_pair = pair
+            .into_inner()
+            .next()
+            .ok_or_else(|| parser_err(format_smolstr!("offset bound must contain `Expr`")))?;
         parse_expr(expr_pair, ctx)
     };
 
@@ -261,7 +253,7 @@ fn parse_frame_bound<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Fram
         Rule::CurrentRow => Ok(FrameBound::CurrentRow),
         Rule::FollowingOffset => Ok(FrameBound::Following(offset_expr(pair)?)),
         Rule::FollowingUnbounded => Ok(FrameBound::UnboundedFollowing),
-        rule => Err(parse_invariant_error(format_smolstr!(
+        rule => Err(parser_err(format_smolstr!(
             "expected frame bound, got {rule:?}"
         ))),
     }
@@ -417,14 +409,37 @@ mod tests {
         );
     }
 
+    /// Window ORDER BY literals stay constant expressions.
     #[test]
-    fn base_window_cannot_override_partition() {
-        let err = parse_window_func("sum(a) OVER (w PARTITION BY b)")
+    fn window_order_by_literal_is_a_constant() {
+        insta::assert_snapshot!(
+            render_window_func("sum(a) OVER (ORDER BY 2)"),
+            @"sum(a) OVER (ORDER BY 2 ASC)"
+        );
+        insta::assert_snapshot!(
+            render_window_func("sum(a) OVER (ORDER BY 'x' DESC)"),
+            @"sum(a) OVER (ORDER BY 'x' DESC)"
+        );
+    }
+
+    /// Overriding a base window's PARTITION BY is well-formed syntax: the
+    /// analyzer rejects it once it knows whether the base window exists.
+    #[test]
+    fn base_window_with_partition_by() {
+        insta::assert_snapshot!(
+            render_window_func("sum(a) OVER (w PARTITION BY b)"),
+            @"sum(a) OVER (w PARTITION BY b)"
+        );
+    }
+
+    #[test]
+    fn distinct_in_window_function_error() {
+        let err = parse_window_func("count(DISTINCT a) OVER ()")
             .err()
             .expect("expected failed parsing");
         insta::assert_snapshot!(
             err.to_string(),
-            @"invalid expression: cannot override PARTITION BY clause of base window w"
+            @"syntax error: DISTINCT is not implemented for window functions"
         );
     }
 }

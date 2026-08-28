@@ -74,8 +74,17 @@ pub enum Error {
     #[error("argument of {0} must be type boolean, not type {1}")]
     UnexpectedBooleanArgumentType(&'static str, Type),
 
-    #[error("argument of {0} must have integer type, got {1}")]
+    #[error("argument of {0} must be type int, not type {1}")]
     IncorrectFrameArgumentType(FrameKind, Type),
+
+    #[error("RANGE with offset PRECEDING/FOLLOWING is not supported for column type {0}")]
+    RangeFrameUnsupportedColumnType(Type),
+
+    #[error(
+        "RANGE with offset PRECEDING/FOLLOWING is not supported \
+        for column type {0} and offset type {1}"
+    )]
+    RangeFrameUnsupportedOffsetType(Type, Type),
 
     #[error("{0} lists must all be the same length")]
     ListsMustAllBeTheSameLentgh(&'static str),

@@ -35,7 +35,7 @@ use sql_ir::ir::types::UnrestrictedType;
 use crate::expr::bind_var;
 use crate::multiset::analyze_subquery;
 use crate::{
-    analyze_error, analyze_invariant_error, duplicated_name, texpr_from_derived_type, AnalyzerCtx,
+    analyze_err, duplicated_name, semantic_err, texpr_from_derived_type, AnalyzerCtx,
     AstTypeReport, Binder, Discoverer, ExprTypeDeriver, Stage, Stmt,
 };
 
@@ -48,7 +48,7 @@ impl<'q> Binder<'q> for From<'q, Raw> {
 
         // Detect duplicating FROM entry name if any.
         if let Some(name) = duplicated_name(&from_entries) {
-            return Err(analyze_error(format_smolstr!(
+            return Err(semantic_err(format_smolstr!(
                 r#"table "{name}" specified more than once"#
             )));
         }
@@ -92,7 +92,7 @@ impl ExprTypeDeriver for FromEntry<'_, Analyzed> {
                     .get()
                     .is_some_and(|ty| matches!(ty, UnrestrictedType::Boolean))
                 {
-                    return Err(analyze_error(format_smolstr!(
+                    return Err(semantic_err(format_smolstr!(
                         "argument of JOIN/ON must be type boolean, not type {}",
                         expr.data_type(),
                     )));
@@ -135,7 +135,7 @@ impl<'q> Binder<'q> for TableFactor<'q, Raw> {
                 } else if let Ok(table) = meta.table(name.as_str()) {
                     TableFactorInner::CteOrTable(AnalyzedCteOrTable::Table(table))
                 } else {
-                    return Err(analyze_error(format_smolstr!(
+                    return Err(semantic_err(format_smolstr!(
                         r#"relation "{}" does not exist"#,
                         name.as_str()
                     )));
@@ -157,7 +157,7 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
         let (tbl, kind, condition, using_cols) = self.into_parts();
 
         if let Some(duplicated_name) = duplicated_name(&using_cols) {
-            return Err(analyze_error(format_smolstr!(
+            return Err(semantic_err(format_smolstr!(
                 r#"column name "{duplicated_name}" appears more than once in USING clause"#
             )));
         }
@@ -197,7 +197,7 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
                     ))?
                     .from;
 
-                meta.type_system.ctx.filters.push(t_expr);
+                meta.type_system.add_filter(t_expr);
 
                 Some(bound_expr)
             }
@@ -211,7 +211,7 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
         // We expect to find inner analyzed table factor of joined table.
         let inner_tbl_factor = match meta.binder.curr_from.pop_entry()? {
             FromEntry::TableFactor(tbl_factor) => Ok(tbl_factor),
-            FromEntry::JoinedTable(_) => Err(analyze_invariant_error(format_smolstr!(
+            FromEntry::JoinedTable(_) => Err(analyze_err(format_smolstr!(
                 "expected to find only table factor, not joined table"
             ))),
         }?;
@@ -273,12 +273,11 @@ impl<'q> Binder<'q> for JoinUsingColumn {
         // Resolve against only joined table entry.
         let second_resolved_column = resolve_var(&self.0, meta)?.1;
 
-        let left_id = meta.type_system.next_expr_id;
-        let joined_id = left_id + 1;
-        meta.type_system.next_expr_id += 2;
-
-        let left_t_expr = texpr_from_derived_type(left_type, left_id);
-        let joined_t_expr = texpr_from_derived_type(second_resolved_column.data_type(), joined_id);
+        let left_t_expr = texpr_from_derived_type(left_type, meta.type_system.inc_expr_id());
+        let joined_t_expr = texpr_from_derived_type(
+            second_resolved_column.data_type(),
+            meta.type_system.inc_expr_id(),
+        );
         let merged_type = meta.type_system.analyzer.analyze_homogeneous_exprs(
             "JOIN/USING",
             &[left_t_expr, joined_t_expr],
@@ -334,7 +333,7 @@ impl<'q, M: Metadata> Discoverer<'q, M> for GroupBy<'q, Raw> {
                         let local_miss = var.table_name().is_none()
                             && match meta.binder.top_frame_ref()?.from.column_route(var) {
                                 ColumnRoute::Ambigious => {
-                                    return Err(analyze_error(format_smolstr!(
+                                    return Err(semantic_err(format_smolstr!(
                                         "column reference '{var}' is ambigious"
                                     )))
                                 }
@@ -344,7 +343,7 @@ impl<'q, M: Metadata> Discoverer<'q, M> for GroupBy<'q, Raw> {
 
                         if local_miss {
                             let col_name = var.name().ok_or_else(|| {
-                                analyze_invariant_error(format_smolstr!("expected column name"))
+                                analyze_err(format_smolstr!("expected column name"))
                             })?;
 
                             // It can be an output name referencing select list.
@@ -357,7 +356,7 @@ impl<'q, M: Metadata> Discoverer<'q, M> for GroupBy<'q, Raw> {
                                 // The name belongs to more than one distinct
                                 // projection, so it cannot be resolved at all.
                                 Some(None) => {
-                                    return Err(analyze_error(format_smolstr!(
+                                    return Err(semantic_err(format_smolstr!(
                                         r#"GROUP BY "{}" is ambiguous"#,
                                         col_name
                                     )))
@@ -381,7 +380,7 @@ impl<'q, M: Metadata> Discoverer<'q, M> for GroupBy<'q, Raw> {
                         raw_elems.push(OrdrByGrpByElem::Ordinal(pos));
                     } else {
                         let (bound, t_expr) = expr.bind(meta)?;
-                        meta.type_system.ctx.rest.push(t_expr);
+                        meta.type_system.add_rest(t_expr);
 
                         raw_elems.push(OrdrByGrpByElem::Expr(Expr::default()));
                         bound_elems.push(OrdrByGrpByElem::Expr(bound));
@@ -418,7 +417,7 @@ impl<'q> Binder<'q> for GroupBy<'q, Raw> {
             match gr_by_elem {
                 OrdrByGrpByElem::Ordinal(pos) => {
                     if pos >= select_list.len() {
-                        return Err(analyze_error(format_smolstr!(
+                        return Err(semantic_err(format_smolstr!(
                             "GROUP BY position {} is not in select list",
                             pos + 1
                         )));
@@ -436,19 +435,19 @@ impl<'q> Binder<'q> for GroupBy<'q, Raw> {
                             .grby_ctx
                             .raw_to_expanded
                             .get(*raw_pos)
-                            .ok_or_else(|| analyze_invariant_error(format_smolstr!(
+                            .ok_or_else(|| analyze_err(format_smolstr!(
                                 "expected to find mapping of GROUP BY raw position into final ordinal position"
                             )))?;
                         bound_elems.push(OrdrByGrpByElem::Ordinal(pos));
                     } else {
-                        let bound = interim_bound_elems.pop().ok_or_else(|| analyze_invariant_error(format_smolstr!(
+                        let bound = interim_bound_elems.pop().ok_or_else(|| analyze_err(format_smolstr!(
                             "expected to bind all expressions in GROUP BY elements before SELECT binding"
                         )))?;
                         bound_elems.push(bound);
                     }
                 }
                 OrdrByGrpByElem::Expr(_) => {
-                    let bound = interim_bound_elems.pop().ok_or_else(|| analyze_invariant_error(format_smolstr!(
+                    let bound = interim_bound_elems.pop().ok_or_else(|| analyze_err(format_smolstr!(
                         "expected to bind all expressions in GROUP BY elements before SELECT binding"
                     )))?;
                     bound_elems.push(bound);

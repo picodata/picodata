@@ -254,8 +254,8 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (WO ~ In ~ WO ~ ((Va
                 ~ (WO ~ WindowFunctionFilter)?
                 ~ WO ~ ^"over" ~ ((WO ~ WindowBody) | (W ~ Identifier))
             }
-                WindowFunctionArgs = { "(" ~ WO ~ (CountAsterisk | WindowFunctionArgsInner)? ~ WO ~ ")" }
-                    WindowFunctionArgsInner = !{  (Expr ~ ("," ~ Expr)*) }
+                // DISTINCT is accepted only to be rejected with a clear message.
+                WindowFunctionArgs = { "(" ~ WO ~ (CountAsterisk | FunctionArgs)? ~ WO ~ ")" }
                 WindowFunctionFilter = ${ ^"filter" ~ WO ~ "(" ~ WO ~ ^"where" ~ W ~ Expr ~ WO ~ ")" }
                     WindowBody = ${ "(" ~ WO ~ WindowBodyInner? ~ WO ~ ")" }
                         // Ordered alternatives enforce BaseWindowName < PARTITION BY < ORDER BY < frame
@@ -265,13 +265,12 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (WO ~ In ~ WO ~ ((Va
                         // (PEG: a succeeded alternative is never backtracked into).
                         WindowBodyInner = _{
                               WindowFrame
-                            | (WindowOrderBy ~ (W ~ WindowFrame)?)
-                            | (WindowPartition ~ (W ~ WindowOrderBy)? ~ (W ~ WindowFrame)?)
-                            | (BaseWindowName ~ (W ~ WindowPartition)? ~ (W ~ WindowOrderBy)? ~ (W ~ WindowFrame)?)
+                            | (OrderBy ~ (W ~ WindowFrame)?)
+                            | (WindowPartition ~ (W ~ OrderBy)? ~ (W ~ WindowFrame)?)
+                            | (BaseWindowName ~ (W ~ WindowPartition)? ~ (W ~ OrderBy)? ~ (W ~ WindowFrame)?)
                         }
                             BaseWindowName = @{ Identifier }
                             WindowPartition = ${ ^"partition" ~ W ~ ^"by" ~ W ~ Expr ~ (WO ~ "," ~ WO ~ Expr)* }
-                            WindowOrderBy = ${ ^"order" ~ W ~ ^"by" ~ W ~ OrderByElement ~ (WO ~ "," ~ WO ~ OrderByElement)* }
                             WindowFrame = ${ WindowFrameType ~ W ~ (WindowFrameSingle | WindowFrameBetween) }
                                 WindowFrameType = _{ WindowFrameTypeRange | WindowFrameTypeRows }
                                     WindowFrameTypeRange = { ^"range" }

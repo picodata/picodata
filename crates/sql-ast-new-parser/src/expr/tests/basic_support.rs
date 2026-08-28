@@ -189,11 +189,11 @@ fn unary_minus_plus_double() {
 fn literal_integer_out_of_range_fails() {
     insta::assert_snapshot!(
         expr_err("9223372036854775808"),
-        @"invalid query: value doesn't fit into integer range: 9223372036854775808"
+        @"syntax error: value doesn't fit into integer range: 9223372036854775808"
     );
     insta::assert_snapshot!(
         expr_err("-9223372036854775809"),
-        @"invalid query: value doesn't fit into integer range: -9223372036854775809"
+        @"syntax error: value doesn't fit into integer range: -9223372036854775809"
     );
     // With a space the sign is the unary operator over a bare literal, and
     // the bare magnitude overflows. Documented divergence: PG parses
@@ -201,7 +201,7 @@ fn literal_integer_out_of_range_fails() {
     // works there via its constant-negation fold.
     insta::assert_snapshot!(
         expr_err("- 9223372036854775808"),
-        @"invalid query: value doesn't fit into integer range: 9223372036854775808"
+        @"syntax error: value doesn't fit into integer range: 9223372036854775808"
     );
 }
 
@@ -291,7 +291,7 @@ fn over_count_with_asterisk() {
 fn over_sum_with_asterisk_error() {
     insta::assert_snapshot!(
         expr_err("sum(*) OVER ()"),
-        @"invalid expression: function sum(*) does not exist"
+        @"syntax error: function sum(*) does not exist"
     );
 }
 
@@ -316,7 +316,7 @@ fn string_agg_distinct() {
 fn distinct_outside_aggregate_fails() {
     insta::assert_snapshot!(
         expr_err("lower(DISTINCT a)"),
-        @"invalid query: DISTINCT modifier is allowed only for aggregate functions"
+        @"syntax error: DISTINCT modifier is allowed only for aggregate functions"
     );
 }
 
@@ -350,7 +350,7 @@ fn function_nested_calls() {
 fn asterisk_outside_count_fails() {
     insta::assert_snapshot!(
         expr_err("sum(*)"),
-        @r#"invalid query: "*" is allowed only inside "count" aggregate function. Got: sum"#
+        @r#"syntax error: "*" is allowed only inside "count" aggregate function. Got: sum"#
     );
 }
 
@@ -363,7 +363,7 @@ fn count_asterisk_uses_normalized_name() {
     // A quoted uppercase spelling names a different identifier, reported in its SQL spelling.
     insta::assert_snapshot!(
         expr_err(r#""COUNT"(*)"#),
-        @r#"invalid query: "*" is allowed only inside "count" aggregate function. Got: "COUNT""#
+        @r#"syntax error: "*" is allowed only inside "count" aggregate function. Got: "COUNT""#
     );
 }
 
@@ -374,23 +374,23 @@ fn distinct_aggregate_check_uses_normalized_name() {
     insta::assert_snapshot!(render_expr(r#""sum"(DISTINCT a)"#), @"sum(DISTINCT a)");
     insta::assert_snapshot!(
         expr_err(r#""MyAgg"(DISTINCT a)"#),
-        @"invalid query: DISTINCT modifier is allowed only for aggregate functions"
+        @"syntax error: DISTINCT modifier is allowed only for aggregate functions"
     );
     // Case-preserved `"SUM"` names a different, non-aggregate identifier.
     insta::assert_snapshot!(
         expr_err(r#""SUM"(DISTINCT a)"#),
-        @"invalid query: DISTINCT modifier is allowed only for aggregate functions"
+        @"syntax error: DISTINCT modifier is allowed only for aggregate functions"
     );
 }
 
 #[test]
 fn parameters() {
-    insta::assert_snapshot!(expr_err("$1 + ?"), @"invalid parameters usage. Got $n and ? parameters in one query!");
+    insta::assert_snapshot!(expr_err("$1 + ?"), @"syntax error: $n and ? parameters cannot be mixed in one query");
 }
 
 #[test]
 fn parameter_0_index() {
-    insta::assert_snapshot!(expr_err("$0"), @"invalid expression: parameter index must be >=1");
+    insta::assert_snapshot!(expr_err("$0"), @"syntax error: parameter index must be >=1");
 }
 
 /// `?` indexes come from the source position, not from the order the parser
@@ -419,7 +419,7 @@ fn parameter_between_indexes() {
 fn pg_parameter_index_out_of_u16_range_is_rejected() {
     insta::assert_snapshot!(
         expr_err("$70000"),
-        @"invalid expression: parameter index must be between 1 and 65536"
+        @"syntax error: parameter index must be between 1 and 65536"
     );
 }
 
@@ -442,12 +442,12 @@ fn cast_postfix_varchar_with_length() {
 
 #[test]
 fn varchar_len_error() {
-    insta::assert_snapshot!(expr_err("a::varchar(99999999999999999999999)"), @"value parsing error: failed to parse varchar length: ParseIntError { kind: PosOverflow }.");
+    insta::assert_snapshot!(expr_err("a::varchar(99999999999999999999999)"), @"syntax error: invalid varchar length 99999999999999999999999: number too large to fit in target type");
 }
 
 #[test]
 fn varchar_len_error_in_array() {
-    insta::assert_snapshot!(expr_err("a::varchar(99999999999999999999999)[]"), @"value parsing error: failed to parse varchar length: ParseIntError { kind: PosOverflow }.");
+    insta::assert_snapshot!(expr_err("a::varchar(99999999999999999999999)[]"), @"syntax error: invalid varchar length 99999999999999999999999: number too large to fit in target type");
 }
 
 #[test]
@@ -461,6 +461,7 @@ fn cast_postfix_json_array() {
     // `json[]` is a legal cast target even though bare `::json` is not;
     // rendering must not emit `map[]` (see `CastTypeSql`).
     insta::assert_snapshot!(render_expr("a::json[]"), @"a::json[]");
+    insta::assert_snapshot!(expr_err("a::json"), @"syntax error: cannot cast to json");
 }
 
 #[test]
@@ -590,7 +591,7 @@ fn like_with_escape() {
 fn escape_without_like_fails() {
     insta::assert_snapshot!(
         expr_err("'a' ESCAPE 'b'"),
-        @"invalid expression: ESCAPE can go only after LIKE or SIMILAR expressions, got: Literal"
+        @"syntax error: ESCAPE can go only after LIKE or SIMILAR expressions, got: Literal"
     );
 }
 
@@ -598,7 +599,7 @@ fn escape_without_like_fails() {
 fn like_escape_specified_twice_is_rejected() {
     insta::assert_snapshot!(
         expr_err("a LIKE b ESCAPE 'x' ESCAPE 'y'"),
-        @"invalid expression: escape specified twice: expr1 LIKE/SIMILAR expr2 ESCAPE expr3 ESCAPE expr4"
+        @"syntax error: escape specified twice: expr1 LIKE/SIMILAR expr2 ESCAPE expr3 ESCAPE expr4"
     );
 }
 
@@ -881,7 +882,7 @@ fn not_in_subquery() {
 fn in_non_row_fails() {
     insta::assert_snapshot!(
         expr_err("a IN b"),
-        @"In expression must have query or a list of values as right child"
+        @"IN expression must have query or a list of values as right child"
     );
 }
 

@@ -307,14 +307,19 @@ impl<'q, State: AstState<'q>> Display for Operation<'q, State> {
     }
 }
 
-impl Display for OperationKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        let op = match self {
+impl OperationKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
             OperationKind::Union => "UNION",
             OperationKind::Except => "EXCEPT",
             OperationKind::Intersect => "INTERSECT",
-        };
-        write!(f, "{op}")
+        }
+    }
+}
+
+impl Display for OperationKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "{}", self.as_str())
     }
 }
 

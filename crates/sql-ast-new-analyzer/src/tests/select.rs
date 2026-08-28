@@ -34,7 +34,7 @@ fn where_inconsistent_condition_result_type_error() {
     let query = "SELECT a FROM t1 WHERE a";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @"failed to analyze AST: argument of WHERE must be type boolean, not type int"
+        @"semantic error: argument of WHERE must be type boolean, not type int"
     );
 }
 
@@ -45,7 +45,7 @@ fn where_inconsistent_condition_result_type_literal_error() {
     let query = "SELECT a FROM t1 WHERE 'a'";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @r#"failed to analyze AST: invalid input syntax for type bool: "a""#
+        @r#"semantic error: invalid input syntax for type bool: "a""#
     );
 }
 
@@ -65,7 +65,7 @@ fn where_inconsistent_condition_result_type_mixed() {
     let query = "SELECT a FROM t1 WHERE 'x' OR g;";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @r#"failed to analyze AST: invalid input syntax for type bool: "x""#
+        @r#"semantic error: invalid input syntax for type bool: "x""#
     );
 }
 
@@ -77,7 +77,7 @@ fn where_does_not_see_select_list_alias() {
     let query = "SELECT a AS xx FROM t1 WHERE xx > 1";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @"failed to analyze AST: cannot resolve column reference 'xx'"
+        @"semantic error: cannot resolve column reference 'xx'"
     );
 }
 
@@ -86,7 +86,7 @@ fn where_ambigious_column_across_join() {
     let query = "SELECT 1 FROM t3 INNER JOIN t4 ON TRUE WHERE a = 1";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @"failed to analyze AST: column reference 'a' is ambigious"
+        @"semantic error: column reference 'a' is ambigious"
     );
 }
 
@@ -170,7 +170,7 @@ fn where_in_joined_subquery_cannot_reference_the_join() {
     let query = "SELECT 1 FROM t1 INNER JOIN (SELECT * FROM t3 WHERE t1.a = 1) s ON TRUE";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @"failed to analyze AST: cannot resolve column reference 't1.a'"
+        @"semantic error: cannot resolve column reference 't1.a'"
     );
 }
 
@@ -281,17 +281,17 @@ fn having_resolves_against_the_from_not_the_select_list() {
     // An alias naming no FROM column resolves to nothing at all.
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a AS x FROM t1 GROUP BY t1.a HAVING x > 0", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'x'"
+        @"semantic error: cannot resolve column reference 'x'"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t1.c AS zz FROM t1 GROUP BY t1.c HAVING zz > 0", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'zz'"
+        @"semantic error: cannot resolve column reference 'zz'"
     );
     // An alias that shadows a FROM column loses to it: `a` here is `t1.a`, not
     // the projected `t1.c`, so grouping by `t1.c` alone does not cover it.
     insta::assert_snapshot!(
         analyze_error("SELECT t1.c AS a FROM t1 GROUP BY t1.c HAVING a > 0", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The same query with `t1.a` grouped: the rendering shows which column the
     // reference bound to.
@@ -308,7 +308,7 @@ fn having_resolves_against_the_from_not_the_select_list() {
 fn having_does_not_inherit_the_group_by_alias() {
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a AS x FROM t1 GROUP BY x HAVING x > 0", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'x'"
+        @"semantic error: cannot resolve column reference 'x'"
     );
     // Spelling the underlying column instead is accepted, and the GROUP BY
     // alias is still reduced to the ordinal it names.
@@ -328,18 +328,18 @@ fn having_condition_result_type() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a HAVING t1.a", &[]),
-        @"failed to analyze AST: argument of HAVING must be type boolean, not type int"
+        @"semantic error: argument of HAVING must be type boolean, not type int"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 HAVING sum(t1.a)", &[]),
-        @"failed to analyze AST: argument of HAVING must be type boolean, not type decimal"
+        @"semantic error: argument of HAVING must be type boolean, not type decimal"
     );
     // Grouping is checked while binding and typing afterwards, so an
     // expression that fails both is reported as the grouping error. Postgres
     // reports the type error here instead; both reject.
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 GROUP BY t1.a HAVING t1.e", &[]),
-        @r#"failed to analyze AST: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -353,6 +353,6 @@ fn having_parameter() {
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t1.a FROM t1 HAVING sum(t1.b) > $1", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }

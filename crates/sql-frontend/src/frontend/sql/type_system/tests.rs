@@ -469,7 +469,7 @@ fn windows() {
     assert_fails_with_error(
         "WITH t AS (SELECT 'a' as a) \
         SELECT count(*) over(ROWS BETWEEN 1 PRECEDING AND 1 + 0.5 FOLLOWING) from t;",
-        "argument of ROWS must have integer type, got numeric",
+        "argument of ROWS must be type int, not type numeric",
     );
 
     assert_fails_with_error(

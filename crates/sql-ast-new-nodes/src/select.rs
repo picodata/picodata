@@ -19,6 +19,7 @@ use crate::expr::{Expr, ExprInner};
 use crate::table_expression::{
     AttributeView, BoundVar, From, GroupBy, TableExpression, UniqueColumnRoute,
 };
+use crate::window::NamedWindows;
 use crate::{Analyzed, AnalyzedExprMeta, AstNodeId, AstState, Ident, NamedEntity, Raw};
 use sql_ir::ir::types::DerivedType;
 
@@ -97,6 +98,12 @@ impl<'q> SelectStmt<'q, Analyzed> {
     pub fn set_grby(&mut self, grby: GroupBy<'q, Analyzed>) {
         if let Some(tbl_expr) = self.table_expression.as_mut() {
             tbl_expr.set_grby(grby);
+        }
+    }
+
+    pub fn set_windows(&mut self, windows: NamedWindows<'q, Analyzed>) {
+        if let Some(tbl_expr) = self.table_expression.as_mut() {
+            tbl_expr.set_windows(windows);
         }
     }
 

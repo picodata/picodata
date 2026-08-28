@@ -187,7 +187,7 @@ impl Display for ComparisonOperator {
 
 /// ExprKind represents expressions that define types.
 /// There are no parenthesis or aliases, as they do not influence typing.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExprKind<Id> {
     /// NULL literal.
     /// Examples: `NULL`.
@@ -304,21 +304,34 @@ impl Display for FrameKind {
     }
 }
 
-// TODO: Support more precise representation, so we can catch more errors.
-//  - RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column
-//  - something else?
-#[derive(Debug)]
+/// How the types of a frame's offset expressions are checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameOffsetRule {
+    /// An offset must have type `int` exactly (untyped literals and parameters
+    /// are still nudged towards it). The rule of the legacy IR pipeline.
+    IntOnly,
+    /// A ROWS offset takes anything assignment-castable to
+    /// `int` — `numeric` and `double` get a cast. A RANGE offset is checked
+    /// against the type of the window's single effective ORDER BY column,
+    /// which the caller must place in the same [`ExprKind::Window`]'s `order_by`
+    /// — a copy of the base window's ORDER BY when it is inherited.
+    Castable,
+}
+
+#[derive(Debug, Clone)]
 pub struct WindowFrame<Id> {
     /// ROWS or RANGE
     pub kind: FrameKind,
     /// Specific offset expression of preceding or following bound (PRECEDING 2).
     pub bound_offsets: Vec<Expr<Id>>,
+    /// How `bound_offsets` types are checked.
+    pub rule: FrameOffsetRule,
 }
 
 /// Type expression consists of expression kind and id.
 /// ExprKind is used for type analysis.
 /// Id is used to report information about types and coercions in `TypeReport`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Expr<Id> {
     /// Unique expression identifier.
     pub(crate) id: Id,

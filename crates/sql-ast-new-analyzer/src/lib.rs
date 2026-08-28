@@ -24,6 +24,7 @@
 //! | [`table_expression`] | FROM clause, table factors, joins, GROUP BY |
 //! | [`expr`] | expressions, and the type-system mirror built alongside |
 //! | [`asterisk`] | `*` and `t.*` expansion |
+//! | [`window`] | window functions, and the named `WINDOW` clause |
 //!
 //! The one node analyzed here is the root [`Node`], whose whole job is to
 //! dispatch.
@@ -65,8 +66,7 @@
 //! The analyzer covers a much smaller subset than the parser. Anything it
 //! does not handle is rejected with an "... is not supported yet" error —
 //! never silently dropped. Broken internal invariants go through
-//! [`analyze_invariant_error`] instead, like the parser's
-//! `parse_invariant_error`.
+//! [`analyze_err`] instead, like the parser's `parser_err`.
 //!
 //!
 //! # Relation to the parser
@@ -84,7 +84,7 @@
 //! # Panics
 //! This crate must never panic: the frontend falls back to the old pipeline on
 //! [`Err`], but a panic aborts the whole query. Broken invariants return
-//! [`analyze_invariant_error`].
+//! [`analyze_err`].
 
 #![cfg_attr(
     not(test),
@@ -112,12 +112,13 @@ mod frame;
 mod multiset;
 mod select;
 mod table_expression;
+mod window;
 
 use std::collections::HashSet;
 
 use smol_str::{format_smolstr, SmolStr};
 
-use sql_ast_new_nodes::error::{AstErr, AstResult, REPORT_TO_SUFFIX};
+use sql_ast_new_nodes::error::{ast_err, ast_invariant_err, AstErr, AstResult};
 use sql_ast_new_nodes::expr::Expr;
 use sql_ast_new_nodes::multiset::MultisetInner;
 use sql_ast_new_nodes::table_expression::{AttributeView, BoundVar, From};
@@ -127,7 +128,6 @@ use sql_ast_new_nodes::{
 
 use frame::{GroupingKeyMark, Stage, Stmt};
 
-use sql_ir::errors::{Action, Entity, SbroadError};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::relation::Table;
 use sql_ir::ir::types::DerivedType;
@@ -145,23 +145,14 @@ pub(crate) type AstTypeExprKind = sql_type_system::expr::ExprKind<AstNodeId>;
 pub type AstTypeAnalyzer = sql_type_system::type_system::TypeAnalyzer<'static, AstNodeId>;
 pub(crate) type AstTypeReport = sql_type_system::TypeReport<AstNodeId>;
 
-/// Analyze-stage error - user mistake.
-pub(crate) fn analyze_error(msg: SmolStr) -> AstErr {
-    SbroadError::FailedTo(Action::Analyze, Some(Entity::AST), msg).into()
-}
-
-fn upper_first(s: &SmolStr) -> SmolStr {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => s.clone(),
-        Some(c) => c.to_uppercase().chain(chars).collect(),
-    }
+/// Analyze-stage rejection of the query (a user mistake, not an analyzer bug).
+pub(crate) fn semantic_err(msg: SmolStr) -> AstErr {
+    ast_err(format_smolstr!("semantic error: {msg}"))
 }
 
 /// Analyze-stage internal-invariant violation (a bug in the analyzer, not a user mistake).
-pub(crate) fn analyze_invariant_error(msg: SmolStr) -> AstErr {
-    let msg = upper_first(&msg);
-    analyze_error(format_smolstr!("{msg}. {REPORT_TO_SUFFIX}"))
+pub(crate) fn analyze_err(msg: SmolStr) -> AstErr {
+    ast_invariant_err(msg)
 }
 
 /// Entry point: resolve names against `metadata` and infer expression types,
@@ -188,16 +179,6 @@ pub(crate) struct AnalyzerCtx<'q, M> {
     pub(crate) binder: BinderCtx<'q>,
 }
 
-pub(crate) struct TypeSystem {
-    /// Type analyzer.
-    pub(crate) analyzer: AstTypeAnalyzer,
-    /// Monotonic id minted for every expression node analyzed in this statement. Must be unique
-    /// across all expressions (the type analyzer caches/reports by id), so it is never reset.
-    pub(crate) next_expr_id: AstNodeId,
-    /// Type system context.
-    pub(crate) ctx: TypeSystemCtx,
-}
-
 impl<'q, M: Metadata> AnalyzerCtx<'q, M> {
     /// Initializer analyzer context.
     fn new(metadata: &'q M, type_analyzer: AstTypeAnalyzer) -> Self {
@@ -211,7 +192,7 @@ impl<'q, M: Metadata> AnalyzerCtx<'q, M> {
                     curr_proj: Vec::new(),
                     filters: Vec::new(),
                     rest: Vec::new(),
-                    post_t_derivation: false,
+                    postderive: false,
                 },
             },
             binder: BinderCtx::default(),
@@ -221,6 +202,115 @@ impl<'q, M: Metadata> AnalyzerCtx<'q, M> {
     pub(crate) fn table(&self, name: &str) -> AstResult<Table> {
         self.metadata.table(name).map_err(AstErr::from)
     }
+}
+
+pub(crate) struct TypeSystem {
+    /// Type analyzer.
+    pub(crate) analyzer: AstTypeAnalyzer,
+    /// Monotonic id minted for every expression node analyzed in this statement. Must be unique
+    /// across all expressions (the type analyzer caches/reports by id), so it is never reset.
+    next_expr_id: AstNodeId,
+    /// Type system context.
+    ctx: TypeSystemCtx,
+}
+
+impl TypeSystem {
+    pub(crate) fn inc_expr_id(&mut self) -> AstNodeId {
+        let curr_id = self.next_expr_id;
+        self.next_expr_id += 1;
+        curr_id
+    }
+
+    pub(crate) fn add_proj_elem(&mut self, t_expr: AstTypeExpr) {
+        self.ctx.curr_proj.push(t_expr);
+    }
+
+    pub(crate) fn take_proj(&mut self) -> Vec<AstTypeExpr> {
+        std::mem::take(&mut self.ctx.curr_proj)
+    }
+
+    pub(crate) fn add_proj(&mut self, proj: Vec<AstTypeExpr>) {
+        self.ctx.proj.push(proj);
+    }
+
+    pub(crate) fn take_transposed_projs(&mut self) -> Vec<Vec<AstTypeExpr>> {
+        transpose(std::mem::take(&mut self.ctx.proj))
+    }
+
+    pub(crate) fn add_filter(&mut self, t_expr: AstTypeExpr) {
+        self.ctx.filters.push(t_expr);
+    }
+
+    pub(crate) fn take_filters(&mut self) -> Vec<AstTypeExpr> {
+        std::mem::take(&mut self.ctx.filters)
+    }
+
+    pub(crate) fn add_rest(&mut self, t_expr: AstTypeExpr) {
+        self.ctx.rest.push(t_expr);
+    }
+
+    pub(crate) fn take_rest(&mut self) -> Vec<AstTypeExpr> {
+        std::mem::take(&mut self.ctx.rest)
+    }
+
+    pub(crate) fn set_postderive(&mut self, postderive: bool) -> bool {
+        std::mem::replace(&mut self.ctx.postderive, postderive)
+    }
+}
+
+fn transpose<T>(matrix: Vec<Vec<T>>) -> Vec<Vec<T>> {
+    if matrix.is_empty() {
+        return vec![];
+    }
+
+    let cols = matrix[0].len();
+    let mut result: Vec<Vec<T>> = (0..cols)
+        .map(|_| Vec::with_capacity(matrix.len()))
+        .collect();
+
+    for row in matrix {
+        for (col, value) in row.into_iter().enumerate() {
+            result[col].push(value);
+        }
+    }
+
+    result
+}
+
+/// Collection of type expressions to run type analysis on.
+/// The main purpose is postponing type analysis for set operations (e.g. `UNION`).
+/// For example, in pseudoquery `SELECT <e1> UNION (SELECT <e2> WHERE <e3>)`
+/// `e1`, `e2` and `e3` roots are opaque type expressions to run analysis on.
+/// Furthermore, `e1` and `e2` should be analyzed
+/// as homogeneous expressions with intention to coerce their types.
+#[derive(Default)]
+pub(crate) struct TypeSystemCtx {
+    /// Output types for each query frame in set operation tree
+    /// or result types of values row in values statement.
+    pub(crate) proj: Vec<Vec<AstTypeExpr>>,
+    pub(crate) curr_proj: Vec<AstTypeExpr>,
+    /// Accumulate expressions of `JOIN/ON`, `WHERE`, `HAVING`.
+    pub(crate) filters: Vec<AstTypeExpr>,
+    /// Accumulate expressions of `GROUP BY`, `ORDER BY`, etc.
+    pub(crate) rest: Vec<AstTypeExpr>,
+    /// Whether to postpone type derivation in statement.
+    ///
+    /// We derive types once per [`multiset statement`](sql_ast_new_nodes::multiset::MultisetStmt).
+    /// When we are traversing set operation tree we should postpone type derivation until it is traversed.
+    pub(crate) postderive: bool,
+}
+
+/// Type system mirror node for a source attribute.
+pub(crate) fn texpr_from_attribute(attr: AttributeView, id: AstNodeId) -> AstTypeExpr {
+    texpr_from_derived_type(attr.data_type(), id)
+}
+
+/// Type system mirror node for an already-derived type — see [`texpr_from_attribute`].
+pub(crate) fn texpr_from_derived_type(d_type: DerivedType, id: AstNodeId) -> AstTypeExpr {
+    let kind = d_type.get().map_or(AstTypeExprKind::Null, |ty| {
+        AstTypeExprKind::Reference(TypeSystemType::from(ty))
+    });
+    AstTypeExpr::new(id, kind)
 }
 
 /// Scope stacks carried through the walk. Each nested statement pushes its
@@ -259,12 +349,12 @@ impl<'q> BinderCtx<'q> {
     pub(crate) fn top_frame_ref(&self) -> AstResult<&Stmt<'q>> {
         self.frames
             .last()
-            .ok_or_else(|| analyze_invariant_error(format_smolstr!("{EMPTY_FRAME_STACK_ERR}")))
+            .ok_or_else(|| analyze_err(format_smolstr!("{EMPTY_FRAME_STACK_ERR}")))
     }
 
     pub(crate) fn get_frame_mut(&mut self, idx: usize) -> AstResult<&mut Stmt<'q>> {
         self.frames.get_mut(idx).ok_or_else(|| {
-            analyze_invariant_error(format_smolstr!(
+            analyze_err(format_smolstr!(
                 "expected to find statement frame with index '{idx}'"
             ))
         })
@@ -273,7 +363,7 @@ impl<'q> BinderCtx<'q> {
     pub(crate) fn top_frame_mut(&mut self) -> AstResult<&mut Stmt<'q>> {
         self.frames
             .last_mut()
-            .ok_or_else(|| analyze_invariant_error(format_smolstr!("{EMPTY_FRAME_STACK_ERR}")))
+            .ok_or_else(|| analyze_err(format_smolstr!("{EMPTY_FRAME_STACK_ERR}")))
     }
 
     pub(crate) fn push_frame(&mut self, frame: Stmt<'q>) {
@@ -281,14 +371,14 @@ impl<'q> BinderCtx<'q> {
     }
 
     pub(crate) fn pop_frame(&mut self, msg: Option<&'static str>) -> AstResult<Stmt<'q>> {
-        self.frames.pop().ok_or_else(|| {
-            analyze_invariant_error(format_smolstr!("{}", msg.unwrap_or(EMPTY_FRAME_STACK_ERR)))
-        })
+        self.frames
+            .pop()
+            .ok_or_else(|| analyze_err(format_smolstr!("{}", msg.unwrap_or(EMPTY_FRAME_STACK_ERR))))
     }
 
     pub(crate) fn depth(&self) -> AstResult<usize> {
         self.frames.len().checked_sub(1).ok_or_else(|| {
-            analyze_invariant_error(format_smolstr!("aggregate call outside of any query level"))
+            analyze_err(format_smolstr!("aggregate call outside of any query level"))
         })
     }
 
@@ -337,7 +427,7 @@ impl<'q> BinderCtx<'q> {
     /// and enrich [`target column references of frame`](`Stmt::target_vars`).
     pub(crate) fn finalize_aggr(&mut self) -> AstResult<()> {
         let aggr = self.aggrs.pop().ok_or_else(|| {
-            analyze_invariant_error(format_smolstr!(
+            analyze_err(format_smolstr!(
                 "expected to find context for current aggregate function"
             ))
         })?;
@@ -348,8 +438,8 @@ impl<'q> BinderCtx<'q> {
         let frame = self.get_frame_mut(sem_lvl)?;
 
         // Check that aggregate function usage is allowed in current scope.
-        if let Some(clause) = frame.stage.forbid_aggr_clause() {
-            return Err(analyze_error(format_smolstr!(
+        if let Some(clause) = frame.stage.forbid_aggr() {
+            return Err(semantic_err(format_smolstr!(
                 "aggregate functions are not allowed in {clause}"
             )));
         }
@@ -409,8 +499,21 @@ impl<'q> BinderCtx<'q> {
     ///    returns error "aggregate functions are not allowed in WHERE" while valid
     ///    `SELECT (SELECT t2.a FROM t1 t2 WHERE sum(t1.a) > 1) FROM t1` is OK.
     /// 2. Accounting aggregated and target column references.
+    /// 3. Rejecting a frame offset that reads a column of its own level.
     pub(crate) fn reg_var(&mut self, lvl: usize, var: BoundVar<'q>) -> AstResult<()> {
         self.update_col_sem_lvl(lvl);
+
+        // Whatever becomes of the column below, aggregated or plain, a frame
+        // offset of its level reads a variable: reject it right away, while
+        // the offset is still binding (see `bind_frame_offset` for how this
+        // order differs from Postgres).
+        if let Some(frame) = self.frames.get(lvl) {
+            if let Stage::WindowFrameOffset(ty) = frame.stage {
+                return Err(semantic_err(format_smolstr!(
+                    "argument of {ty} must not contain variables"
+                )));
+            }
+        }
 
         if let Some(aggr) = self.aggrs.last_mut() {
             if lvl > aggr.depth {
@@ -506,12 +609,12 @@ impl<'q> BinderCtx<'q> {
     pub(crate) fn stmt_body_mut(&mut self) -> AstResult<&mut MultisetInner<'q, Analyzed>> {
         self.stmt_body
             .as_mut()
-            .ok_or_else(|| analyze_invariant_error(format_smolstr!("{MISSING_STMT_BODY_ERR}")))
+            .ok_or_else(|| analyze_err(format_smolstr!("{MISSING_STMT_BODY_ERR}")))
     }
 
     pub(crate) fn take_stmt_body(&mut self) -> AstResult<MultisetInner<'q, Analyzed>> {
         std::mem::take(&mut self.stmt_body)
-            .ok_or_else(|| analyze_invariant_error(format_smolstr!("{MISSING_STMT_BODY_ERR}")))
+            .ok_or_else(|| analyze_err(format_smolstr!("{MISSING_STMT_BODY_ERR}")))
     }
 }
 
@@ -569,7 +672,7 @@ impl<'q> AggrCtx<'q> {
     /// A tie counts as nested, which is the plain `sum(max(a))` case.
     pub(crate) fn validate_nested_aggrs(&self) -> AstResult<()> {
         if self.aggr_sem_lvl == Some(self.sem_lvl()) {
-            return Err(analyze_error(format_smolstr!(
+            return Err(semantic_err(format_smolstr!(
                 "aggregate function calls cannot be nested"
             )));
         }
@@ -587,7 +690,7 @@ impl<'q> AggrCtx<'q> {
     /// `max` belongs to the `t1` level, but `cte` is defined in the subquery.
     pub(crate) fn validate_nested_ctes(&self) -> AstResult<()> {
         if self.cte_lvl.is_some_and(|lvl| lvl > self.sem_lvl()) {
-            return Err(analyze_error(format_smolstr!(
+            return Err(semantic_err(format_smolstr!(
                 "outer-level aggregate cannot use a nested CTE"
             )));
         }
@@ -623,42 +726,6 @@ impl<'q> AggrCtx<'q> {
             }
         }
     }
-}
-
-/// Collection of type expressions to run type analysis on.
-/// The main purpose is postponing type analysis for set operations (e.g. `UNION`).
-/// For example, in pseudoquery `SELECT <e1> UNION (SELECT <e2> WHERE <e3>)`
-/// `e1`, `e2` and `e3` roots are opaque type expressions to run analysis on.
-/// Furthermore, `e1` and `e2` should be analyzed
-/// as homogeneous expressions with intention to coerce their types.
-#[derive(Default)]
-pub(crate) struct TypeSystemCtx {
-    /// Output types for each query frame in set operation tree
-    /// or result types of values row in values statement.
-    pub(crate) proj: Vec<Vec<AstTypeExpr>>,
-    pub(crate) curr_proj: Vec<AstTypeExpr>,
-    /// Accumulate expressions of `JOIN/ON`, `WHERE`, `HAVING`.
-    pub(crate) filters: Vec<AstTypeExpr>,
-    /// Accumulate expressions of `GROUP BY`, `ORDER BY`, etc.
-    pub(crate) rest: Vec<AstTypeExpr>,
-    /// Whether to postpone type derivation in statement.
-    ///
-    /// We derive types once per [`multiset statement`](sql_ast_new_nodes::multiset::MultisetStmt).
-    /// When we are traversing set operation tree we should postpone type derivation until it is traversed.
-    pub(crate) post_t_derivation: bool,
-}
-
-/// Type system mirror node for a source attribute.
-pub(crate) fn texpr_from_attribute(attr: AttributeView, id: AstNodeId) -> AstTypeExpr {
-    texpr_from_derived_type(attr.data_type(), id)
-}
-
-/// Type system mirror node for an already-derived type — see [`texpr_from_attribute`].
-pub(crate) fn texpr_from_derived_type(d_type: DerivedType, id: AstNodeId) -> AstTypeExpr {
-    let kind = d_type.get().map_or(AstTypeExprKind::Null, |ty| {
-        AstTypeExprKind::Reference(TypeSystemType::from(ty))
-    });
-    AstTypeExpr::new(id, kind)
 }
 
 /// `Raw` → `Analyzed` conversion of one node kind. By value: analysis is a
@@ -730,7 +797,7 @@ impl<'q> Analyzer<'q> for Node<'q, Raw> {
 
     fn analyze<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::Node> {
         match self {
-            Node::Empty => Err(analyze_error(format_smolstr!("expected non-empty tree"))),
+            Node::Empty => Err(semantic_err(format_smolstr!("expected non-empty tree"))),
             Node::DqlStmt(dql_stmt) => {
                 let (stmt, option) = dql_stmt.into_parts();
                 let stmt = stmt.analyze(meta)?;

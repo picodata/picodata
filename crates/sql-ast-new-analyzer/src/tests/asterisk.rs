@@ -45,7 +45,7 @@ fn asterisk_no_table_expr_query() {
     let err_str = err.to_string();
     insta::assert_snapshot!(
         err_str,
-        @"invalid query: cannot use asterisk '*' in select list without table expression"
+        @"syntax error: cannot use asterisk '*' in select list without table expression"
     );
 }
 
@@ -68,50 +68,50 @@ fn incosistent_table_qualifier_asterisk() {
     let query = "SELECT t.* FROM t1";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @r#"failed to analyze AST: missing FROM-clause entry for table "t""#
+        @r#"semantic error: missing FROM-clause entry for table "t""#
     );
 }
 
 #[test]
 fn qualified_asterisk_matches_nothing() {
     let query = "SELECT y.* FROM t1";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: missing FROM-clause entry for table "y""#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: missing FROM-clause entry for table "y""#);
 }
 
 #[test]
 fn qualified_asterisk_matches_nothing_aliased_target() {
     let query = "SELECT y.* FROM t1 AS x";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: missing FROM-clause entry for table "y""#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: missing FROM-clause entry for table "y""#);
 }
 
 #[test]
 fn mixed_qualified_asterisk_matches_nothing() {
     let query = "SELECT a, y.* FROM t1";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: missing FROM-clause entry for table "y""#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: missing FROM-clause entry for table "y""#);
 }
 
 #[test]
 fn mixed_qualified_asterisk_matches_nothing_aliased_target() {
     let query = "SELECT a, y.* FROM t1 AS x";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: missing FROM-clause entry for table "y""#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: missing FROM-clause entry for table "y""#);
 }
 
 #[test]
 fn mixed_qualified_asterisk_matches_nothing_due_to_alias() {
     let query = "SELECT a, t1.* FROM t1 AS x";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: missing FROM-clause entry for table "t1""#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: missing FROM-clause entry for table "t1""#);
 }
 
 #[test]
 fn qualified_asterisk_wrong_name_on_subquery() {
     let query = "SELECT y.* FROM (SELECT 1 AS a) AS s";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: missing FROM-clause entry for table "y""#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: missing FROM-clause entry for table "y""#);
 }
 
 #[test]
 fn asterisk_qualifier_reference_to_nonexisting_table() {
     let query = "SELECT bogus.* FROM (SELECT 1 AS a)";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: missing FROM-clause entry for table "bogus""#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: missing FROM-clause entry for table "bogus""#);
 }
 
 // ------------- Over a CTE -------------
@@ -166,12 +166,12 @@ fn correlated_subquery_qualified_asterisk() {
 fn correlated_subquery_qualified_asterisk_is_checked_against_the_outer_grouping() {
     insta::assert_snapshot!(
         analyze_error("SELECT count(*), (SELECT t.* FROM t2) FROM (SELECT 1 AS a) t", &[]),
-        @r#"failed to analyze AST: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The same query spelled with the column, for the verdict to line up with.
     insta::assert_snapshot!(
         analyze_error("SELECT count(*), (SELECT t.a FROM t2) FROM (SELECT 1 AS a) t", &[]),
-        @r#"failed to analyze AST: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyzed("SELECT count(*), (SELECT t.* FROM t2) FROM (SELECT 1 AS a) t GROUP BY t.a", &[]),
@@ -195,11 +195,11 @@ fn correlated_subquery_qualified_asterisk_matches_only_the_outer_expression_keys
     );
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT t.* FROM t2 GROUP BY t2.d) FROM (SELECT 1 AS a) t GROUP BY t.a + 1", &[]),
-        @r#"failed to analyze AST: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error("SELECT b, EXISTS (SELECT t.* FROM t2) FROM (SELECT 1 AS a, 2 AS b) t GROUP BY 1", &[]),
-        @r#"failed to analyze AST: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyzed("SELECT b, EXISTS (SELECT t.* FROM t2) FROM (SELECT 1 AS a, 2 AS b) t GROUP BY 1, a", &[]),

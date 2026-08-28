@@ -6,7 +6,7 @@ use smol_str::format_smolstr;
 use crate::expr::parse_expr;
 use crate::multiset::parse_multiset;
 use crate::window::parse_named_window;
-use crate::{failed_parsing_error, invalid_expression_error, parse_invariant_error, AstResult};
+use crate::{parser_err, syntax_err, AstResult};
 use crate::{unexpected_rule_error, ExpectedRules, ParseCtx};
 use sql_ast_new_grammar::Rule;
 use sql_ast_new_nodes::expr::{Expr, ExprInner, Literal, LiteralKind, RawVar, UnaryOp};
@@ -14,9 +14,8 @@ use sql_ast_new_nodes::table_expression::{
     From, FromEntry, GroupBy, JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem,
     TableExpression, TableFactor, TableFactorInner,
 };
-use sql_ast_new_nodes::window::NamedWindow;
+use sql_ast_new_nodes::window::NamedWindows;
 use sql_ast_new_nodes::{Ident, Raw};
-use sql_ir::errors::{Entity, SbroadError};
 
 pub(super) fn parse_table_expression<'q>(
     pair: Pair<'q, Rule>,
@@ -28,7 +27,7 @@ pub(super) fn parse_table_expression<'q>(
     let mut selection = None;
     let mut group_by = GroupBy::empty();
     let mut having = None;
-    let mut windows = Vec::<NamedWindow<'q, Raw>>::new();
+    let mut windows = NamedWindows::<'q, Raw>::empty();
 
     for pair in pair.into_inner() {
         match pair.as_rule() {
@@ -37,10 +36,11 @@ pub(super) fn parse_table_expression<'q>(
             Rule::GroupBy => group_by = parse_group_by(pair, ctx)?,
             Rule::Having => having = Some(parse_having(pair, ctx)?),
             Rule::NamedWindows => {
-                windows = pair
-                    .into_inner()
-                    .map(|pair| parse_named_window(pair, ctx))
-                    .collect::<Result<Vec<_>, _>>()?;
+                windows = NamedWindows(
+                    pair.into_inner()
+                        .map(|pair| parse_named_window(pair, ctx))
+                        .collect::<Result<Vec<_>, _>>()?,
+                )
             }
             _ => {
                 return Err(unexpected_rule_error(
@@ -59,7 +59,7 @@ pub(super) fn parse_table_expression<'q>(
 
     Ok(TableExpression::<'q, Raw>::from_parts(
         from.ok_or_else(|| {
-            parse_invariant_error(format_smolstr!(
+            parser_err(format_smolstr!(
                 "grammar guarantees a FROM clause in a table expression"
             ))
         })?,
@@ -106,14 +106,14 @@ fn parse_table_factor<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Tab
         match pair.as_rule() {
             Rule::IndexedByExpr => {
                 if indexed_by.is_some() {
-                    return Err(failed_parsing_error(format_smolstr!(
+                    return Err(syntax_err(format_smolstr!(
                         "cannot have multiple indexed by exprs"
                     )));
                 }
                 let inner_pairs = pair.into_inner();
-                let idx_name_pair = inner_pairs.peek().ok_or_else(|| {
-                    parse_invariant_error(format_smolstr!("expected to find index name"))
-                })?;
+                let idx_name_pair = inner_pairs
+                    .peek()
+                    .ok_or_else(|| parser_err(format_smolstr!("expected to find index name")))?;
                 debug_assert_eq!(idx_name_pair.as_rule(), Rule::Identifier);
 
                 indexed_by = Some(Ident::from_sql(idx_name_pair.as_str()));
@@ -130,7 +130,7 @@ fn parse_table_factor<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Tab
             }
             Rule::Identifier => {
                 if indexed_by.is_some() {
-                    return Err(failed_parsing_error(format_smolstr!(
+                    return Err(syntax_err(format_smolstr!(
                         "cannot have indexed by clause before alias"
                     )));
                 }
@@ -152,7 +152,7 @@ fn parse_table_factor<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Tab
 
     Ok(TableFactor {
         inner: inner.ok_or_else(|| {
-            parse_invariant_error(format_smolstr!("grammar guarantees a table factor source"))
+            parser_err(format_smolstr!("grammar guarantees a table factor source"))
         })?,
         alias,
         indexed_by,
@@ -178,25 +178,17 @@ fn parse_joined_table<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Joi
             Rule::TableFactor => table = Some(parse_table_factor(pair, ctx)?),
             Rule::Expr => {
                 if matches!(kind, JoinKind::Cross) {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!(
-                            "cannot use join condition with `CROSS JOIN`"
-                        )),
-                    )
-                    .into());
+                    return Err(syntax_err(format_smolstr!(
+                        "cannot use join condition with `CROSS JOIN`"
+                    )));
                 }
                 condition = Some(parse_expr(pair, ctx)?);
             }
             Rule::Identifier => {
                 if matches!(kind, JoinKind::Cross) {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!(
-                            "cannot use join using condition with `CROSS JOIN`"
-                        )),
-                    )
-                    .into());
+                    return Err(syntax_err(format_smolstr!(
+                        "cannot use join using condition with `CROSS JOIN`"
+                    )));
                 }
                 let var = RawVar::new(None, Ident::from_sql(pair.as_str()));
                 using_cols.push(JoinUsingColumn(var));
@@ -217,26 +209,19 @@ fn parse_joined_table<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Joi
         }
     }
 
-    let table = table.ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("grammar guarantees a joined table factor"))
-    })?;
+    let table = table
+        .ok_or_else(|| parser_err(format_smolstr!("grammar guarantees a joined table factor")))?;
 
     if matches!(kind, JoinKind::Cross) {
-        return Err(SbroadError::Invalid(
-            Entity::Query,
-            Some(format_smolstr!("CROSS JOIN is not supported yet")),
-        )
-        .into());
+        return Err(syntax_err(format_smolstr!(
+            "CROSS JOIN is not supported yet"
+        )));
     }
 
     if condition.is_none() && using_cols.is_empty() {
-        return Err(SbroadError::Invalid(
-            Entity::Query,
-            Some(format_smolstr!(
-                "cannot use `INNER/LEFT OUTER JOIN` without `ON <condition>` and `USING (<column_list>)`"
-            )),
-        )
-        .into());
+        return Err(syntax_err(format_smolstr!(
+            "cannot use `INNER/LEFT OUTER JOIN` without `ON <condition>` and `USING (<column_list>)`"
+        )));
     }
 
     Ok(JoinedTable {
@@ -250,9 +235,10 @@ fn parse_joined_table<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Joi
 fn parse_selection<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Expr<'q, Raw>> {
     debug_assert_eq!(pair.as_rule(), Rule::Selection);
 
-    let pair = pair.into_inner().next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("single `Expr` expected inside `Selection`"))
-    })?;
+    let pair = pair
+        .into_inner()
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("single `Expr` expected inside `Selection`")))?;
     match pair.as_rule() {
         Rule::Expr => parse_expr(pair, ctx),
         _ => Err(unexpected_rule_error(ExpectedRules(&[Rule::Expr]), &pair)),
@@ -293,9 +279,7 @@ fn parse_group_by_elem<'q>(
 ) -> AstResult<()> {
     if matches!(expr.inner_ref(), ExprInner::Row(_)) {
         let ExprInner::Row(row) = expr.into() else {
-            return Err(parse_invariant_error(format_smolstr!(
-                "`Row` expression expected"
-            )));
+            return Err(parser_err(format_smolstr!("`Row` expression expected")));
         };
         for value in row.into_parts() {
             parse_group_by_elem(value, elems)?;
@@ -315,7 +299,7 @@ pub(crate) fn parse_ordrby_grpby_elem<'q>(
 ) -> AstResult<OrdrByGrpByElem<'q, Raw>> {
     // Non-int constant in GROUP BY / ORDER BY element error.
     let non_integer_constant =
-        || invalid_expression_error(format_smolstr!("non-integer constant in {}", clause.name()));
+        || syntax_err(format_smolstr!("non-integer constant in {}", clause.name()));
 
     // Whether an element is a position.
     let mut negations = 0usize;
@@ -358,7 +342,7 @@ pub(crate) fn parse_ordrby_grpby_elem<'q>(
             pos
         };
         if pos <= 0 {
-            return Err(invalid_expression_error(format_smolstr!(
+            return Err(syntax_err(format_smolstr!(
                 "{} position {pos} is not in select list",
                 clause.name()
             )));
@@ -390,9 +374,10 @@ fn parse_group_by<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<GroupBy
 fn parse_having<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Expr<'q, Raw>> {
     debug_assert_eq!(pair.as_rule(), Rule::Having);
 
-    let pair = pair.into_inner().next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("single `Expr` expected inside `Having`"))
-    })?;
+    let pair = pair
+        .into_inner()
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("single `Expr` expected inside `Having`")))?;
     match pair.as_rule() {
         Rule::Expr => parse_expr(pair, ctx),
         _ => Err(unexpected_rule_error(ExpectedRules(&[Rule::Expr]), &pair)),
@@ -472,7 +457,7 @@ mod tests {
             .expect("expected failed parsing");
         insta::assert_snapshot!(
             err.to_string(),
-            @"invalid query: cannot use join condition with `CROSS JOIN`"
+            @"syntax error: cannot use join condition with `CROSS JOIN`"
         );
     }
 
@@ -484,7 +469,7 @@ mod tests {
             .expect("expected failed parsing");
         insta::assert_snapshot!(
             err.to_string(),
-            @"invalid query: cannot use join using condition with `CROSS JOIN`"
+            @"syntax error: cannot use join using condition with `CROSS JOIN`"
         );
     }
 
@@ -496,7 +481,7 @@ mod tests {
             .expect("expected failed parsing");
         insta::assert_snapshot!(
             err.to_string(),
-            @"invalid query: cannot use `INNER/LEFT OUTER JOIN` without `ON <condition>` and `USING (<column_list>)`"
+            @"syntax error: cannot use `INNER/LEFT OUTER JOIN` without `ON <condition>` and `USING (<column_list>)`"
         );
     }
 
@@ -560,7 +545,7 @@ mod tests {
             .expect("expected failed parsing");
         insta::assert_snapshot!(
             err.to_string(),
-            @"invalid expression: non-integer constant in GROUP BY"
+            @"syntax error: non-integer constant in GROUP BY"
         );
     }
 
@@ -573,14 +558,14 @@ mod tests {
             .expect("expected failed parsing");
         insta::assert_snapshot!(
             err.to_string(),
-            @"invalid expression: GROUP BY position 0 is not in select list"
+            @"syntax error: GROUP BY position 0 is not in select list"
         );
         let err = parse_table_expr(r#"FROM t1 GROUP BY -1"#)
             .err()
             .expect("expected failed parsing");
         insta::assert_snapshot!(
             err.to_string(),
-            @"invalid expression: GROUP BY position -1 is not in select list"
+            @"syntax error: GROUP BY position -1 is not in select list"
         );
     }
 
@@ -607,7 +592,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("`{query}` must be rejected"));
             assert_eq!(
                 err.to_string(),
-                "invalid expression: non-integer constant in GROUP BY",
+                "syntax error: non-integer constant in GROUP BY",
                 "`{query}`"
             );
         }
@@ -633,7 +618,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("`{query}` must be rejected"));
             assert_eq!(
                 err.to_string(),
-                "invalid expression: GROUP BY position -1 is not in select list",
+                "syntax error: GROUP BY position -1 is not in select list",
                 "`{query}`"
             );
         }
@@ -646,7 +631,7 @@ mod tests {
             .expect("expected failed parsing");
         insta::assert_snapshot!(
             err.to_string(),
-            @"invalid expression: non-integer constant in GROUP BY"
+            @"syntax error: non-integer constant in GROUP BY"
         );
     }
 
@@ -701,7 +686,7 @@ mod tests {
             .expect("expected failed parsing");
         insta::assert_snapshot!(
             err.to_string(),
-            @"invalid expression: non-integer constant in GROUP BY"
+            @"syntax error: non-integer constant in GROUP BY"
         );
     }
 

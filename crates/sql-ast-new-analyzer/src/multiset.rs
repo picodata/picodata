@@ -5,9 +5,9 @@
 //! operation types its branches *together* — one output column takes a single
 //! type across every operand — so the whole tree is bound first and types are
 //! derived once, at its root. The walk flips
-//! [`post_t_derivation`](crate::TypeSystemCtx::post_t_derivation) on the way in
-//! to hold derivation back until the tree is complete; a statement that is not
-//! an operation derives its types right away.
+//! [`postderive`](crate::TypeSystemCtx::postderive) on the way in to
+//! hold derivation back until the tree is complete; a statement that is not an
+//! operation derives its types right away.
 //!
 //! CTEs are analyzed here too. Each one joins the enclosing
 //! [`ctes`](Stmt::ctes) frame as soon as it is analyzed, so the
@@ -23,6 +23,7 @@ use sql_ast_new_nodes::multiset::{
     Cte, Ctes, MultisetInner, MultisetStmt, Operation, OrderBy, OrderByElement, ValuesStmt,
 };
 use sql_ast_new_nodes::table_expression::{From, OrdrByGrpByElem};
+use sql_ast_new_nodes::window::NamedWindows;
 use sql_ast_new_nodes::{Analyzed, NamedEntity, Raw};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::relation::{Column, ColumnRole};
@@ -30,8 +31,8 @@ use sql_ir::ir::types::DerivedType;
 use sql_type_system::expr::Type as TypeSystemType;
 
 use crate::{
-    analyze_error, analyze_invariant_error, duplicated_name, frame::Stage, frame::Stmt, Analyzer,
-    AnalyzerCtx, AstTypeReport, Binder, ExprTypeDeriver, TypeDeriver, TypeSystem,
+    analyze_err, duplicated_name, frame::Stage, frame::Stmt, semantic_err, Analyzer, AnalyzerCtx,
+    AstTypeReport, Binder, ExprTypeDeriver, TypeDeriver, TypeSystem,
 };
 
 impl<'q> Analyzer<'q> for MultisetStmt<'q, Raw> {
@@ -39,21 +40,20 @@ impl<'q> Analyzer<'q> for MultisetStmt<'q, Raw> {
 
     fn analyze<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::Node> {
         // Decide whether we should postpone type derivation until set operation tree root.
-        let parent_post_t_derivation = std::mem::replace(
-            &mut meta.type_system.ctx.post_t_derivation,
-            matches!(self.inner, MultisetInner::Operation(_)),
-        );
+        let postderive = meta
+            .type_system
+            .set_postderive(matches!(self.inner, MultisetInner::Operation(_)));
 
         // Bind statement.
         let mut bound_stmt = self.bind(meta)?;
 
         // If we are allowed to run type derivation do it.
-        if !parent_post_t_derivation {
+        if !postderive {
             bound_stmt.derive_types(&mut meta.type_system)?;
         }
 
         // Restore type derivation postpone mode for outer statement.
-        meta.type_system.ctx.post_t_derivation = parent_post_t_derivation;
+        meta.type_system.set_postderive(postderive);
 
         Ok(bound_stmt)
     }
@@ -98,6 +98,15 @@ impl<'q> Binder<'q> for MultisetStmt<'q, Raw> {
 
             // Put back FROM clause into SELECT statement.
             stmt.set_from(std::mem::take(&mut frame.from));
+
+            // Put back named windows, parked on the frame until the query ORDER BY has bound.
+            stmt.set_windows(NamedWindows(
+                frame
+                    .take_windows()
+                    .into_iter()
+                    .map(|window| window.def)
+                    .collect(),
+            ));
 
             // If GROUP BY is present put it back into SELECT statement.
             if let Ok(grby) = frame.take_bound_grby() {
@@ -159,19 +168,19 @@ impl<'q> Binder<'q> for ValuesStmt<'q, Raw> {
             match width {
                 None => width = Some(bound_exprs.len()),
                 Some(width) if width != bound_exprs.len() => {
-                    return Err(analyze_error(format_smolstr!(
+                    return Err(semantic_err(format_smolstr!(
                         "VALUES lists must all be the same length"
                     )))
                 }
                 Some(_) => {}
             }
 
-            meta.type_system.ctx.proj.push(t_exprs);
+            meta.type_system.add_proj(t_exprs);
             bound_rows.push(ValuesRow::from_parts(bound_exprs));
         }
 
         let width = width.ok_or_else(|| {
-            analyze_invariant_error(format_smolstr!(
+            analyze_err(format_smolstr!(
                 "parsing guarantees at least one VALUES row"
             ))
         })?;
@@ -213,39 +222,20 @@ impl ExprTypeDeriver for ValuesStmt<'_, Analyzed> {
     }
 }
 
-fn transpose<T>(matrix: Vec<Vec<T>>) -> Vec<Vec<T>> {
-    if matrix.is_empty() {
-        return vec![];
-    }
-
-    let cols = matrix[0].len();
-    let mut result: Vec<Vec<T>> = (0..cols)
-        .map(|_| Vec::with_capacity(matrix.len()))
-        .collect();
-
-    for row in matrix {
-        for (col, value) in row.into_iter().enumerate() {
-            result[col].push(value);
-        }
-    }
-
-    result
-}
-
 impl TypeDeriver for MultisetStmt<'_, Analyzed> {
     /// Derive types in left to right manner.
     fn derive_types(&mut self, type_system: &mut TypeSystem) -> AstResult<()> {
         let inner = self.inner_mut();
 
         // Derive types for the filtering expressions (`JOIN/ON`, `WHERE`, `HAVING`)
-        for expr in std::mem::take(&mut type_system.ctx.filters).into_iter() {
+        for expr in type_system.take_filters().into_iter() {
             type_system
                 .analyzer
                 .analyze(&expr, Some(TypeSystemType::Boolean))?;
         }
 
         // Derive types for the filtering expressions (`GROUP BY`, `ORDER BY`, etc.)
-        for expr in std::mem::take(&mut type_system.ctx.rest).into_iter() {
+        for expr in type_system.take_rest().into_iter() {
             type_system.analyzer.analyze(&expr, None)?;
         }
 
@@ -259,7 +249,7 @@ impl TypeDeriver for MultisetStmt<'_, Analyzed> {
         // we transform them into `[[1, '1'], [2, '2']]`
         // A VALUES statement lands here the same way, one frame per row,
         // so its rows unify column by column under the same rule.
-        let proj = transpose(std::mem::take(&mut type_system.ctx.proj));
+        let proj = type_system.take_transposed_projs();
 
         // How the failed unification names its clause. A set operation over
         // VALUES flattens the rows into the branch groups, so a mismatch
@@ -267,7 +257,8 @@ impl TypeDeriver for MultisetStmt<'_, Analyzed> {
         // — a divergence from PostgreSQL, which unifies each VALUES first.
         let homogeneous_ctx = match inner {
             MultisetInner::Values(_) => "VALUES",
-            _ => "UNION/EXCEPT/INTERSECT",
+            MultisetInner::Select(_) => "SELECT",
+            MultisetInner::Operation(oper) => oper.op.as_str(),
         };
 
         for attrs in proj {
@@ -304,7 +295,7 @@ impl<'q> Analyzer<'q> for Ctes<'q, Raw> {
 
         // Detect duplicating CTE name definition if any.
         if let Some(name) = duplicated_name(&raw_ctes) {
-            return Err(analyze_error(format_smolstr!(
+            return Err(semantic_err(format_smolstr!(
                 r#"WITH query name "{name}" specified more than once"#
             )));
         }
@@ -336,7 +327,7 @@ impl<'q> Analyzer<'q> for Cte<'q, Raw> {
         let actual_col_cnt = analyzed_body.result_columns_cnt()?;
         let cte_def_col_cnt = columns.len();
         if !columns.is_empty() && cte_def_col_cnt != actual_col_cnt {
-            return Err(analyze_error(format_smolstr!(
+            return Err(semantic_err(format_smolstr!(
                 r#"WITH query "{}" has {actual_col_cnt} columns available but {cte_def_col_cnt} columns specified"#,
                 name.as_str()
             )));
@@ -355,7 +346,7 @@ impl<'q> Binder<'q> for Operation<'q, Raw> {
         let right_bound = right.bind(meta)?;
 
         if left_bound.result_columns_cnt()? != right_bound.result_columns_cnt()? {
-            return Err(analyze_error(format_smolstr!(
+            return Err(semantic_err(format_smolstr!(
                 "operands of {op} operation have different number of columns"
             )));
         }
@@ -420,7 +411,7 @@ impl<'q> Binder<'q> for OrderBy<'q, Raw> {
             let bound_elem = match elem.expr {
                 OrdrByGrpByElem::Ordinal(pos) => {
                     if pos >= out_cnt {
-                        return Err(analyze_error(format_smolstr!(
+                        return Err(semantic_err(format_smolstr!(
                             "ORDER BY position {} is not in select list",
                             pos + 1
                         )));
@@ -432,7 +423,7 @@ impl<'q> Binder<'q> for OrderBy<'q, Raw> {
                     let name_pos = match expr.inner_ref() {
                         ExprInner::Var(var) if var.table_name().is_none() => {
                             let name = var.name().ok_or_else(|| {
-                                analyze_invariant_error(format_smolstr!("expected column name"))
+                                analyze_err(format_smolstr!("expected column name"))
                             })?;
                             let found = match body_names.as_ref() {
                                 Some(names) => output_name_pos(names, name),
@@ -446,7 +437,7 @@ impl<'q> Binder<'q> for OrderBy<'q, Raw> {
                                 // The name reaches more than one output column, and
                                 // they are not the same expression.
                                 Some(None) => {
-                                    return Err(analyze_error(format_smolstr!(
+                                    return Err(semantic_err(format_smolstr!(
                                         r#"ORDER BY "{name}" is ambiguous"#
                                     )))
                                 }
@@ -461,7 +452,7 @@ impl<'q> Binder<'q> for OrderBy<'q, Raw> {
                         Some(pos) => OrdrByGrpByElem::Ordinal(pos),
                         // Set operation has no input scope.
                         None if body_names.is_some() && !is_values => {
-                            return Err(analyze_error(format_smolstr!(
+                            return Err(semantic_err(format_smolstr!(
                                 "invalid UNION/INTERSECT/EXCEPT ORDER BY clause"
                             )))
                         }
@@ -470,14 +461,14 @@ impl<'q> Binder<'q> for OrderBy<'q, Raw> {
                         // other expression would have to resolve against the
                         // VALUES columns, which are not exposed as a scope yet.
                         None if is_values && !matches!(expr.inner_ref(), ExprInner::Var(_)) => {
-                            return Err(analyze_error(format_smolstr!(
+                            return Err(semantic_err(format_smolstr!(
                                 "ORDER BY expressions over VALUES are not supported yet"
                             )))
                         }
                         None => {
                             let (bound_expr, t_expr) = expr.bind(meta)?;
 
-                            meta.type_system.ctx.rest.push(t_expr);
+                            meta.type_system.add_rest(t_expr);
 
                             OrdrByGrpByElem::Expr(bound_expr)
                         }
@@ -501,7 +492,7 @@ impl<'q> Binder<'q> for OrderBy<'q, Raw> {
                     OrdrByGrpByElem::Expr(expr) => !sel_lst.projects(expr),
                 })
             {
-                return Err(analyze_error(format_smolstr!(
+                return Err(semantic_err(format_smolstr!(
                     "for SELECT DISTINCT, ORDER BY expressions must appear in select list"
                 )));
             }

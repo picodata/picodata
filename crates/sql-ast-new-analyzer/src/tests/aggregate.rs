@@ -28,7 +28,7 @@ fn aggregate_in_select_list_subquery() {
 fn aggregate_in_where_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 WHERE sum(a) > 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in WHERE"
+        @"semantic error: aggregate functions are not allowed in WHERE"
     );
 }
 
@@ -36,7 +36,7 @@ fn aggregate_in_where_error() {
 fn aggregate_in_where_no_args_defaults_to_curr_level() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 WHERE sum(1) > 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in WHERE"
+        @"semantic error: aggregate functions are not allowed in WHERE"
     );
 }
 
@@ -44,7 +44,7 @@ fn aggregate_in_where_no_args_defaults_to_curr_level() {
 fn aggregate_in_where_reference_outer_from_frame_under_analysis() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 WHERE (SELECT sum(t1.a) FROM t2) > 1;", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in WHERE"
+        @"semantic error: aggregate functions are not allowed in WHERE"
     );
 }
 
@@ -52,7 +52,7 @@ fn aggregate_in_where_reference_outer_from_frame_under_analysis() {
 fn aggregate_in_where_subquery_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 WHERE (SELECT sum(a) > 1)", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in WHERE"
+        @"semantic error: aggregate functions are not allowed in WHERE"
     );
 }
 
@@ -68,7 +68,7 @@ fn aggregate_in_where_subquery_with_from() {
 fn aggregate_in_where_subquery_with_from_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 WHERE (SELECT sum(t1.a) FROM t2) > 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in WHERE"
+        @"semantic error: aggregate functions are not allowed in WHERE"
     );
 }
 
@@ -94,7 +94,7 @@ fn aggregate_in_where_subquery_projection_is_allowed() {
 fn aggregate_in_join_on_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t3 INNER JOIN t4 ON count(*) = 1", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in JOIN conditions"
+        @"semantic error: aggregate functions are not allowed in JOIN conditions"
     );
 }
 
@@ -128,12 +128,12 @@ fn aggregate_over_subquery_aggregate_is_allowed() {
 fn nested_aggregate_at_same_query_level_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(max(a)) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
     // DISTINCT does not open a new level either.
     insta::assert_snapshot!(
         analyze_error("SELECT count(DISTINCT max(a)) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -142,7 +142,7 @@ fn nested_aggregate_through_scalar_call_error() {
     // A scalar call is not a level boundary, so the check reaches through it.
     insta::assert_snapshot!(
         analyze_error("SELECT sum(abs(count(a))) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -152,7 +152,7 @@ fn nested_aggregate_count_asterisk_error() {
     // here the same level as the enclosing `sum`.
     insta::assert_snapshot!(
         analyze_error("SELECT sum(count(*)) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -172,7 +172,7 @@ fn aggregate_over_subquery_correlated_aggregate_error() {
     // to `sum`'s level.
     insta::assert_snapshot!(
         analyze_error("SELECT sum((SELECT max(t1.a) FROM t2)) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -200,13 +200,13 @@ fn nested_aggregate_sharing_the_subquery_level_error() {
     // subquery's level: `sum`'s level is the minimum of the two.
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(t1.a + max(t2.c)) FROM t2) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
     // Mirror image: `max` reads both levels, so its own minimum drags it down to
     // meet `sum` rather than the other way round.
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(t2.c + max(t1.a + t2.c)) FROM t2) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -226,11 +226,11 @@ fn nested_aggregate_verdict_is_argument_order_independent() {
     // validating per argument would make these two disagree.
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(t1.a + abs(count(t2.c))) FROM t2) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(abs(count(t2.c)) + t1.a) FROM t2) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -243,7 +243,7 @@ fn nested_aggregate_across_from_subquery_frame_error() {
             "SELECT sum((SELECT s.y FROM (SELECT max(t1.a) AS y FROM t2) s)) FROM t1",
             &[]
         ),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -255,7 +255,7 @@ fn nested_aggregate_across_cte_frame_error() {
             "SELECT sum((WITH cte AS (SELECT max(t1.a) AS z FROM t2) SELECT cte.z FROM cte)) FROM t1",
             &[]
         ),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -264,7 +264,7 @@ fn nested_aggregate_two_subquery_hops() {
     // Two hops down, still correlated all the way up to `sum`'s relation.
     insta::assert_snapshot!(
         analyze_error("SELECT sum((SELECT (SELECT max(t1.a) FROM t3) FROM t2)) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
     // Two hops down and correlated to only one of them: `max` stops one level
     // short of `sum`.
@@ -280,7 +280,7 @@ fn nested_aggregate_checked_against_every_sibling() {
     // not stop the scan before the second one is examined.
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(max(t1.a) + min(t2.c)) FROM t2) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
     // Both siblings above `sum`, which its own local column pins to the subquery.
     insta::assert_snapshot!(
@@ -295,7 +295,7 @@ fn nested_aggregate_propagated_through_intermediate_aggregate_error() {
     // the `min` it carries belongs to `sum`'s level and must still be reported.
     insta::assert_snapshot!(
         analyze_error("SELECT sum((SELECT max(t2.c + min(t1.a)) FROM t2)) FROM t1", &[]),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
     // Two hops down: `min` reads `t2.c` and so belongs to the middle subquery,
     // and `max`, that subquery's own call, is dragged to the same level twice
@@ -307,7 +307,7 @@ fn nested_aggregate_propagated_through_intermediate_aggregate_error() {
             "SELECT sum((SELECT max((SELECT min(t2.c) FROM t3)) FROM t2)) FROM t1",
             &[]
         ),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -330,7 +330,7 @@ fn aggregate_reads_columns_inside_a_discarded_nested_aggregate() {
             "SELECT (SELECT sum((SELECT max(t3.a) FROM t3) + count(t1.a)) FROM t2) FROM t1",
             &[]
         ),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -348,7 +348,7 @@ fn discarded_nested_aggregate_is_read_through_in_either_operand_order() {
             "SELECT (SELECT sum(min(t1.a) + (SELECT max(t3.a) FROM t3)) FROM t2) FROM t1",
             &[]
         ),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
 }
 
@@ -364,14 +364,14 @@ fn nested_aggregate_through_asterisk_expanding_to_a_grouping_key_error() {
             "SELECT sum((SELECT sum((SELECT s.* FROM t2)) FROM t2)) FROM (SELECT a FROM t1) s GROUP BY a::int",
             &[]
         ),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
     insta::assert_snapshot!(
         analyze_error(
             "SELECT sum((SELECT sum((SELECT s.a FROM t2)) FROM t2)) FROM (SELECT a FROM t1) s GROUP BY a::int",
             &[]
         ),
-        @"failed to analyze AST: aggregate function calls cannot be nested"
+        @"semantic error: aggregate function calls cannot be nested"
     );
     // Without the outer call there is nothing to nest, key or no key.
     insta::assert_snapshot!(
@@ -396,14 +396,14 @@ fn nested_aggregate_column_below_the_enclosing_call_is_still_checked() {
             "SELECT sum((SELECT (SELECT max(t2.c + t3.a) FROM t1 t3) FROM t2 HAVING true)) FROM t1",
             &[]
         ),
-        @r#"failed to analyze AST: column "t2.c" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t2.c" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     insta::assert_snapshot!(
         analyze_error(
             "SELECT sum((SELECT (SELECT max(t2.c + t3.a) FROM t1 t3) FROM t2 GROUP BY t2.d)) FROM t1",
             &[]
         ),
-        @r#"failed to analyze AST: column "t2.c" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t2.c" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
     // The same read without the enclosing call, for the verdict to line up with.
     insta::assert_snapshot!(
@@ -411,7 +411,7 @@ fn nested_aggregate_column_below_the_enclosing_call_is_still_checked() {
             "SELECT (SELECT max(t2.c + t3.a) FROM t1 t3) FROM t2 GROUP BY t2.d",
             &[]
         ),
-        @r#"failed to analyze AST: column "t2.c" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t2.c" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -457,7 +457,7 @@ fn aggregate_cannot_use_a_cte_below_its_level() {
             "SELECT a, (WITH cte AS (SELECT 1) SELECT max((SELECT t1.a FROM cte))) b FROM t1 GROUP BY a",
             &[]
         ),
-        @"failed to analyze AST: outer-level aggregate cannot use a nested CTE"
+        @"semantic error: outer-level aggregate cannot use a nested CTE"
     );
     // Reading the CTE's own column alongside does not raise the level.
     insta::assert_snapshot!(
@@ -465,7 +465,7 @@ fn aggregate_cannot_use_a_cte_below_its_level() {
             "SELECT a, (WITH cte AS (SELECT 1 AS x) SELECT max((SELECT t1.a + cte.x FROM cte))) b FROM t1 GROUP BY a",
             &[]
         ),
-        @"failed to analyze AST: outer-level aggregate cannot use a nested CTE"
+        @"semantic error: outer-level aggregate cannot use a nested CTE"
     );
     // The CTE beside another relation, or one more subquery hop down.
     insta::assert_snapshot!(
@@ -473,14 +473,14 @@ fn aggregate_cannot_use_a_cte_below_its_level() {
             "SELECT a, (WITH cte AS (SELECT 1) SELECT max((SELECT t1.a FROM t2 JOIN cte ON true))) b FROM t1 GROUP BY a",
             &[]
         ),
-        @"failed to analyze AST: outer-level aggregate cannot use a nested CTE"
+        @"semantic error: outer-level aggregate cannot use a nested CTE"
     );
     insta::assert_snapshot!(
         analyze_error(
             "SELECT a, (WITH cte AS (SELECT 1) SELECT (SELECT max((SELECT t1.a FROM cte)))) b FROM t1 GROUP BY a",
             &[]
         ),
-        @"failed to analyze AST: outer-level aggregate cannot use a nested CTE"
+        @"semantic error: outer-level aggregate cannot use a nested CTE"
     );
     // The inner call is finished, and rejected, before the outer one is.
     insta::assert_snapshot!(
@@ -488,7 +488,7 @@ fn aggregate_cannot_use_a_cte_below_its_level() {
             "SELECT a, (WITH cte AS (SELECT 1) SELECT sum(max((SELECT t1.a FROM cte)))) b FROM t1 GROUP BY a",
             &[]
         ),
-        @"failed to analyze AST: outer-level aggregate cannot use a nested CTE"
+        @"semantic error: outer-level aggregate cannot use a nested CTE"
     );
 }
 

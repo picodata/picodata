@@ -104,7 +104,7 @@ use self::expr::{Expr, ExprInner, Parameter, RawVar};
 use self::multiset::{Cte, MultisetStmt};
 use self::select::{ProjectionExpr, SelectListElem};
 use self::table_expression::{AnalyzedCteOrTable, BoundVar, FromEntry, TableFactor};
-use self::window::WindowFunction;
+use self::window::{NamedWindow, WindowFunction};
 
 /// A normalized SQL identifier — the single identifier representation used
 /// throughout `ast_new` (table, column, alias, CTE and window names).
@@ -257,6 +257,13 @@ pub trait AstState<'q>: Sized {
         scope: &mut Self::EqScope,
     ) -> bool;
 
+    /// State-specific comparison of two `WINDOW` clause entries.
+    fn named_window_eq(
+        left: &NamedWindow<'q, Self>,
+        right: &NamedWindow<'q, Self>,
+        scope: &mut Self::EqScope,
+    ) -> bool;
+
     /// The derived output columns of a `VALUES` statement: nothing in [`Raw`],
     /// the `column1..columnN` name/type pairs the analyzer derives in [`Analyzed`].
     type ValuesColumnsT: Default;
@@ -300,6 +307,14 @@ impl<'q> AstState<'q> for Raw {
     fn window_fn_eq(
         left: &WindowFunction<'q, Self>,
         right: &WindowFunction<'q, Self>,
+        scope: &mut Self::EqScope,
+    ) -> bool {
+        left.eq_with(right, scope)
+    }
+
+    fn named_window_eq(
+        left: &NamedWindow<'q, Self>,
+        right: &NamedWindow<'q, Self>,
         scope: &mut Self::EqScope,
     ) -> bool {
         left.eq_with(right, scope)
@@ -375,6 +390,16 @@ impl<'q> AstState<'q> for Analyzed {
     fn window_fn_eq(
         _left: &WindowFunction<'q, Self>,
         _right: &WindowFunction<'q, Self>,
+        _scope: &mut Self::EqScope,
+    ) -> bool {
+        false
+    }
+
+    /// A statement with a `WINDOW` clause is never equal, for the same reason
+    /// as [`window_fn_eq`](AstState::window_fn_eq).
+    fn named_window_eq(
+        _left: &NamedWindow<'q, Self>,
+        _right: &NamedWindow<'q, Self>,
         _scope: &mut Self::EqScope,
     ) -> bool {
         false

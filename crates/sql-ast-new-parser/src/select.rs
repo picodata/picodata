@@ -6,7 +6,7 @@ use smol_str::format_smolstr;
 use crate::expr::parse_expr;
 use crate::pairs_traversal::Tree;
 use crate::table_expression::parse_table_expression;
-use crate::{failed_parsing_error, parse_invariant_error};
+use crate::{parser_err, syntax_err};
 use crate::{unexpected_rule_error, ExpectedRules, ParseCtx};
 use sql_ast_new_grammar::Rule;
 use sql_ast_new_nodes::error::AstResult;
@@ -15,7 +15,6 @@ use sql_ast_new_nodes::select::{
 };
 use sql_ast_new_nodes::table_expression::TableExpression;
 use sql_ast_new_nodes::{Ident, Raw};
-use sql_ir::errors::{Entity, SbroadError};
 
 pub(super) fn parse_select_stmt<'q>(
     pair: Pair<'q, Rule>,
@@ -43,19 +42,15 @@ pub(super) fn parse_select_stmt<'q>(
         }
     }
 
-    let select_list = select_list
-        .ok_or_else(|| parse_invariant_error(format_smolstr!("expected non empty select list")))?;
+    let select_list =
+        select_list.ok_or_else(|| parser_err(format_smolstr!("expected non empty select list")))?;
 
     let select = SelectStmt::from_parts(select_list, table_expression);
 
     if select.has_asterisk() && !select.has_table_expression() {
-        return Err(SbroadError::Invalid(
-            Entity::Query,
-            Some(format_smolstr!(
-                "cannot use asterisk '*' in select list without table expression"
-            )),
-        )
-        .into());
+        return Err(syntax_err(format_smolstr!(
+            "cannot use asterisk '*' in select list without table expression"
+        )));
     }
 
     Ok(select)
@@ -101,14 +96,14 @@ fn parse_select_list<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Sele
             }
             Rule::Identifier => {
                 let Some(SelectListElem::Expr(last_expr)) = elements.0.last_mut() else {
-                    return Err(failed_parsing_error(format_smolstr!(
+                    return Err(syntax_err(format_smolstr!(
                         "expected `SelectListElem::Expr` for setting alias"
                     )));
                 };
                 last_expr.alias = Some(Ident::from_sql(pair.as_str()));
             }
             _ => {
-                return Err(failed_parsing_error(
+                return Err(syntax_err(
                     format_smolstr!(
                         "expected `Rule`s: `SelectList`/`Distinct`/`Asterisk`/`Expr`/`Identifier`, got: {:?}",
                         pair.as_rule()

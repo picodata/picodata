@@ -28,14 +28,14 @@ fn incosistent_table_qualifier() {
     let query = "SELECT t.a FROM t1";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @"failed to analyze AST: cannot resolve column reference 't.a'"
+        @"semantic error: cannot resolve column reference 't.a'"
     );
 }
 
 #[test]
 fn qualifier_reference_to_nonexisting_table() {
     let query = "SELECT bogus.a FROM (SELECT 1 AS a)";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: cannot resolve column reference 'bogus.a'");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: cannot resolve column reference 'bogus.a'");
 }
 
 #[test]
@@ -47,13 +47,13 @@ fn qualified_column_resolution_multiple_satisfy() {
 #[test]
 fn ambigious_column_reference_subquery() {
     let query = "SELECT a FROM (SELECT 1 AS a, 2 AS a)";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: column reference 'a' is ambigious");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'a' is ambigious");
 }
 
 #[test]
 fn ambigious_qualified_column_reference_subquery() {
     let query = "SELECT x.a FROM (SELECT 1 AS a, 2 AS a) AS x";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: column reference 'x.a' is ambigious");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'x.a' is ambigious");
 }
 
 // ------------- Scopes a subquery sees -------------
@@ -116,7 +116,7 @@ fn correlated_subqueries_mixed_multiple_satisfy_qualified() {
     // The inner `x` projects `a` alone and shadows the outer one, so the
     // qualified reference must not reach t2.c.
     let query = "SELECT (SELECT x.c FROM (SELECT a FROM t1) AS x) FROM t2 AS x;";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: cannot resolve column reference 'x.c'");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: cannot resolve column reference 'x.c'");
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn correlated_subqueries_qualified_shadowing() {
     // qualified reference and shadows the outer one, so resolution must fail
     // rather than reach t1.a.
     let query = "SELECT (SELECT x.a FROM (SELECT b FROM t2) AS x) FROM t1 AS x;";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: cannot resolve column reference 'x.a'");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: cannot resolve column reference 'x.a'");
 }
 
 // ------------- Type derivation -------------
@@ -203,7 +203,7 @@ fn cast_without_a_conversion_path_error() {
     ] {
         assert_eq!(
             analyze_error(query, &[]),
-            format!("failed to analyze AST: cannot cast type {expected}"),
+            format!("semantic error: cannot cast type {expected}"),
             "for `{query}`"
         );
     }
@@ -262,7 +262,7 @@ fn text_literal_that_is_not_valid_input_error() {
     ] {
         assert_eq!(
             analyze_error(query, &[]),
-            format!("failed to analyze AST: invalid input syntax for type {expected}"),
+            format!("semantic error: invalid input syntax for type {expected}"),
             "for `{query}`"
         );
     }
@@ -307,13 +307,13 @@ fn subquery_expr() {
 #[test]
 fn subquery_expr_multiple_columns() {
     let query = "SELECT (SELECT 1, 2, 3) AS a";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: subquery must return only one column");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: subquery must return only one column");
 }
 
 #[test]
 fn scalar_subquery_arity_error() {
     let query = "SELECT (SELECT 1,2) = (SELECT 1)";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: subquery must return only one column");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: subquery must return only one column");
 }
 
 #[test]
@@ -888,7 +888,7 @@ fn in_subquery_coerced_pins_rhs_cast() {
 fn in_subquery_multi_column_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT 1 IN (SELECT a, b FROM t3)", &[]),
-        @"failed to analyze AST: subquery must return only one column"
+        @"semantic error: subquery must return only one column"
     );
 }
 
@@ -1121,7 +1121,7 @@ fn substring_similar_type() {
 fn substring_similar_missing_escape_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT SUBSTRING(e SIMILAR 'a') FROM t1", &[]),
-        @"failed to analyze AST: missing escape symbol for SIMILAR substring operator"
+        @"semantic error: missing escape symbol for SIMILAR substring operator"
     );
 }
 
@@ -1129,7 +1129,7 @@ fn substring_similar_missing_escape_error() {
 fn substring_single_arg_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT SUBSTRING(e) FROM t1", &[]),
-        @"failed to analyze AST: incorrect SUBSTRING parameters. There is no such overload that takes only 1 argument"
+        @"semantic error: incorrect SUBSTRING parameters. There is no such overload that takes only 1 argument"
     );
 }
 
@@ -1172,7 +1172,7 @@ fn current_time_not_implemented() {
     // Old-pipeline parity: picodata has no time-of-day type.
     insta::assert_snapshot!(
         analyze_error("SELECT CURRENT_TIME", &[]),
-        @"SQL function `CURRENT_TIME` not implemented"
+        @"semantic error: CURRENT_TIME is not supported yet"
     );
 }
 
@@ -1180,7 +1180,7 @@ fn current_time_not_implemented() {
 fn localtime_not_implemented() {
     insta::assert_snapshot!(
         analyze_error("SELECT LOCALTIME", &[]),
-        @"SQL function `LOCALTIME` not implemented"
+        @"semantic error: LOCALTIME is not supported yet"
     );
 }
 

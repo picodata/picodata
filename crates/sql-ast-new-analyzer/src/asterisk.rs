@@ -15,7 +15,7 @@ use std::rc::Rc;
 use smol_str::format_smolstr;
 
 use crate::expr::using_merged_expr;
-use crate::{analyze_error, texpr_from_attribute, texpr_from_derived_type};
+use crate::{semantic_err, texpr_from_attribute, texpr_from_derived_type};
 use sql_ast_new_nodes::error::{AstErr, AstResult};
 use sql_ast_new_nodes::expr::{Expr, ExprInner};
 use sql_ast_new_nodes::multiset::{Cte, MultisetStmt};
@@ -29,7 +29,7 @@ use sql_ir::ir::relation::{ColumnRole, Table};
 use super::TypeSystem;
 
 pub(crate) fn missing_from_entry_error(t_name: &str) -> AstErr {
-    analyze_error(format_smolstr!(
+    semantic_err(format_smolstr!(
         r#"missing FROM-clause entry for table "{t_name}""#
     ))
 }
@@ -131,9 +131,7 @@ fn resolve_unqualified_asterisk<'q>(
         let (left, joined) = using.parts_ref();
         reduced_columns.insert(joined);
         if reduced_columns.insert(left) {
-            let id = type_system.next_expr_id;
-            type_system.next_expr_id += 1;
-
+            let id = type_system.inc_expr_id();
             // The merged column an unqualified `*` emits is the same
             // expression an unqualified reference to it analyzes to - the left
             // input's column read at the merged type.
@@ -150,7 +148,7 @@ fn resolve_unqualified_asterisk<'q>(
                     )
                 }
             };
-            type_system.ctx.curr_proj.push(t_expr);
+            type_system.add_proj_elem(t_expr);
             total_proj.push(ProjectionExpr::from_parts(expr, None));
         }
     }
@@ -247,12 +245,9 @@ fn proj_expr<'q>(
     attr: AttributeView<'q, '_>,
     var: BoundVar<'q>,
 ) -> ProjectionExpr<'q, Analyzed> {
-    let curr_id = ts.next_expr_id;
-    ts.next_expr_id += 1;
-
-    let t_expr = texpr_from_attribute(attr, curr_id);
+    let t_expr = texpr_from_attribute(attr, ts.inc_expr_id());
     let proj_expr = ProjectionExpr::from_bound_var(var, t_expr.id());
-    ts.ctx.curr_proj.push(t_expr);
+    ts.add_proj_elem(t_expr);
     proj_expr
 }
 
@@ -289,7 +284,7 @@ impl<'q, 'ast> AsteriskResolver<'q, 'ast> {
                 continue;
             }
             let attr = cte.attribute(column_pos).ok_or_else(|| {
-                analyze_error(format_smolstr!(
+                semantic_err(format_smolstr!(
                     "cannot get attribute from '{}' CTE result",
                     cte.name.as_str()
                 ))
@@ -335,7 +330,7 @@ impl<'q, 'ast> AsteriskResolver<'q, 'ast> {
                 continue;
             }
             let attr = stmt.attribute(column_pos).ok_or_else(|| {
-                analyze_error(format_smolstr!(
+                semantic_err(format_smolstr!(
                     "cannot get attribute from subquery '({})' result",
                     stmt.to_string()
                         .chars()

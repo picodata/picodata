@@ -12,7 +12,7 @@ use crate::expr::{parse_expr, parse_values_row};
 use crate::pairs_traversal::Tree;
 use crate::select::parse_select_stmt;
 use crate::table_expression::{parse_ordrby_grpby_elem, OrdinalClause};
-use crate::{failed_parsing_error, parse_invariant_error, AstResult};
+use crate::{parser_err, syntax_err, AstResult};
 use crate::{unexpected_rule_error, ExpectedRules, ParseCtx};
 use sql_ast_new_grammar::Rule;
 use sql_ast_new_nodes::multiset::{
@@ -23,7 +23,6 @@ use sql_ast_new_nodes::multiset::{
 use sql_ast_new_nodes::multiset::{MultisetInner, Operation};
 use sql_ast_new_nodes::table_expression::OrdrByGrpByElem;
 use sql_ast_new_nodes::{Ident, Raw};
-use sql_ir::errors::{Entity, SbroadError};
 
 lazy_static::lazy_static! {
     static ref MULTISET_PRATT_PARSER: PrattParser<Rule> = {
@@ -55,7 +54,7 @@ pub(super) fn parse_multiset<'q>(
     }
 
     let pair = pairs.next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!(
+        parser_err(format_smolstr!(
             "expected `MultisetInner` in `MultisetStmt`"
         ))
     })?;
@@ -64,11 +63,7 @@ pub(super) fn parse_multiset<'q>(
         Rule::MultisetInner => {
             let mut parsed = parse_multiset_pratt(pair, ctx)?;
             if !parsed.ctes.is_empty() && !ctes.is_empty() {
-                return Err(SbroadError::Invalid(
-                    Entity::Cte,
-                    Some(format_smolstr!("cannot use multiple WITH")),
-                )
-                .into());
+                return Err(syntax_err(format_smolstr!("cannot use multiple WITH")));
             } else if ctes.is_empty() {
                 std::mem::swap(&mut ctes, &mut parsed.ctes);
             }
@@ -88,7 +83,7 @@ pub(super) fn parse_multiset<'q>(
         match pair.as_rule() {
             Rule::OrderBy => {
                 if inner.order_by.is_some() {
-                    return Err(failed_parsing_error(format_smolstr!(
+                    return Err(syntax_err(format_smolstr!(
                         "multiple ORDER BY clauses not allowed"
                     )));
                 }
@@ -96,7 +91,7 @@ pub(super) fn parse_multiset<'q>(
             }
             Rule::Limit => {
                 if inner.limit.is_some() {
-                    return Err(failed_parsing_error(format_smolstr!(
+                    return Err(syntax_err(format_smolstr!(
                         "multiple LIMIT clauses not allowed"
                     )));
                 }
@@ -122,18 +117,18 @@ pub(super) fn parse_multiset<'q>(
 fn parse_limit(pair: Pair<'_, Rule>) -> AstResult<Limit> {
     debug_assert_eq!(pair.as_rule(), Rule::Limit);
 
-    let pair = pair.into_inner().next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!("expected limit <value> or limit all"))
-    })?;
+    let pair = pair
+        .into_inner()
+        .next()
+        .ok_or_else(|| parser_err(format_smolstr!("expected limit <value> or limit all")))?;
     match pair.as_rule() {
-        Rule::Unsigned => Ok(Limit::Value(pair.as_str().parse::<usize>().map_err(
-            |_| {
-                SbroadError::Invalid(
-                    Entity::Query,
-                    Some(format_smolstr!("limit must be unsigned integer")),
-                )
-            },
-        )?)),
+        Rule::Unsigned => {
+            let limit = pair
+                .as_str()
+                .parse::<usize>()
+                .map_err(|_| syntax_err(format_smolstr!("limit must be unsigned integer")))?;
+            Ok(Limit::Value(limit))
+        }
         Rule::LimitAll => Ok(Limit::All),
         _ => Err(unexpected_rule_error(
             ExpectedRules(&[Rule::Unsigned, Rule::LimitAll]),
@@ -233,10 +228,10 @@ fn parse_cte<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Cte<'q, Raw>
         }
     }
 
-    let cte_name = cte_name
-        .ok_or_else(|| parse_invariant_error(format_smolstr!("grammar guarantees a CTE name")))?;
-    let cte_body = cte_body
-        .ok_or_else(|| parse_invariant_error(format_smolstr!("grammar guarantees a CTE body")))?;
+    let cte_name =
+        cte_name.ok_or_else(|| parser_err(format_smolstr!("grammar guarantees a CTE name")))?;
+    let cte_body =
+        cte_body.ok_or_else(|| parser_err(format_smolstr!("grammar guarantees a CTE body")))?;
     Ok(Cte::new(cte_name, cte_columns, cte_body))
 }
 
@@ -279,7 +274,7 @@ pub(crate) fn parse_order_by<'q>(
     Ok(order_by)
 }
 
-pub(super) fn parse_order_by_element<'q>(
+fn parse_order_by_element<'q>(
     pair: Pair<'q, Rule>,
     ctx: &ParseCtx,
     literals: OrderByLiterals,
@@ -321,7 +316,7 @@ pub(super) fn parse_order_by_element<'q>(
 
     Ok(OrderByElement {
         expr: expr.ok_or_else(|| {
-            parse_invariant_error(format_smolstr!("grammar guarantees an ORDER BY expression"))
+            parser_err(format_smolstr!("grammar guarantees an ORDER BY expression"))
         })?,
         direction,
         nulls,
@@ -536,7 +531,7 @@ mod tests {
         let parse_err = stmt.err().expect("expected parsing to fail");
         insta::assert_snapshot!(
             parse_err.to_string(),
-            @"invalid CTE: cannot use multiple WITH"
+            @"syntax error: cannot use multiple WITH"
         );
     }
 
@@ -587,7 +582,7 @@ mod tests {
         let parse_err = stmt.err().expect("expected parsing to fail");
         insta::assert_snapshot!(
             parse_err.to_string(),
-            @"invalid CTE: cannot use multiple WITH"
+            @"syntax error: cannot use multiple WITH"
         );
     }
 
@@ -674,7 +669,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("`{query}` must be rejected"));
             assert_eq!(
                 err.to_string(),
-                "invalid expression: non-integer constant in ORDER BY",
+                "syntax error: non-integer constant in ORDER BY",
                 "`{query}`"
             );
         }
@@ -692,7 +687,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("`{query}` must be rejected"));
             assert_eq!(
                 err.to_string(),
-                format!("invalid expression: ORDER BY position {pos} is not in select list"),
+                format!("syntax error: ORDER BY position {pos} is not in select list"),
                 "`{query}`"
             );
         }
@@ -705,7 +700,7 @@ mod tests {
             .err()
             .expect("expected failed AST building")
             .to_string();
-        insta::assert_snapshot!(err_str, @"failed to parse query: multiple ORDER BY clauses not allowed");
+        insta::assert_snapshot!(err_str, @"syntax error: multiple ORDER BY clauses not allowed");
     }
 
     #[test]
@@ -724,7 +719,7 @@ mod tests {
             .err()
             .expect("expected failed AST building")
             .to_string();
-        insta::assert_snapshot!(err_str, @"failed to parse query: multiple LIMIT clauses not allowed");
+        insta::assert_snapshot!(err_str, @"syntax error: multiple LIMIT clauses not allowed");
     }
 
     #[test]
@@ -743,7 +738,7 @@ mod tests {
             .err()
             .expect("expected failed AST building")
             .to_string();
-        insta::assert_snapshot!(err_str, @"invalid query: limit must be unsigned integer");
+        insta::assert_snapshot!(err_str, @"syntax error: limit must be unsigned integer");
     }
 
     #[test]

@@ -3,16 +3,16 @@
 //!
 //! # Clause order
 //! [`SelectStmt`] is bound clause by clause in a *semantic* order rather than
-//! the written one — FROM, WHERE, select list, GROUP BY, HAVING —
+//! the written one — FROM, WHERE, WINDOW, select list, GROUP BY, HAVING —
 //! because GROUP BY may reference a select-list alias and so has to run after
 //! the list it reads. That is also why the table expression is not opaque here:
 //! its clauses are interleaved with the select list instead of being handed to
 //! one [`Binder`] impl of their own.
 //!
-//! WHERE and HAVING therefore live in this module even though they are
-//! [`table_expression`](sql_ast_new_nodes::table_expression)
+//! WHERE, HAVING and the WINDOW clause wiring therefore live in this module
+//! even though they are [`table_expression`](sql_ast_new_nodes::table_expression)
 //! nodes; what the FROM clause itself expands into is in
-//! [`crate::table_expression`].
+//! [`crate::table_expression`], and how a window binds is in [`crate::window`].
 
 use smol_str::format_smolstr;
 
@@ -21,14 +21,15 @@ use sql_ast_new_nodes::select::{
     ProjectionExpr, SelectList, SelectListElem, SelectListExprs, SelectStmt,
 };
 use sql_ast_new_nodes::table_expression::{From, GroupBy, OrdrByGrpByElem, TableExpression};
+use sql_ast_new_nodes::window::NamedWindows;
 use sql_ast_new_nodes::{Analyzed, Ident, Raw};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::types::UnrestrictedType;
 
 use crate::asterisk::{missing_from_entry_error, ResolveFromAsterisk};
 use crate::{
-    analyze_error, analyze_invariant_error, AnalyzerCtx, AstTypeReport, Binder, Discoverer,
-    ExprTypeDeriver, Stage, Stmt,
+    analyze_err, semantic_err, AnalyzerCtx, AstTypeReport, Binder, Discoverer, ExprTypeDeriver,
+    Stage, Stmt,
 };
 
 /// Bind SELECT statement.
@@ -37,16 +38,17 @@ use crate::{
 /// 1. FROM
 /// 2. WHERE
 /// 3. GROUP BY discovery
-/// 4. SELECT list expressions
-/// 5. GROUP BY
-/// 6. HAVING
+/// 4. WINDOWS
+/// 5. SELECT list expressions
+/// 6. GROUP BY
+/// 7. HAVING
 ///
 /// Using select list aliases in GROUP BY is the main reason why [table expression](`TableExpression`)
 /// is not opaque component of [SELECT statement](`SelectStmt`).
 ///
-/// GROUP BY discovery runs before the select list because
-/// it may repeat an expression grouping key, and discovery is what binds the
-/// keys it is matched against.
+/// GROUP BY discovery runs before the WINDOW clause and the select list because
+/// both may repeat an expression grouping key, and discovery is what binds the
+/// keys they are matched against.
 ///
 /// The order also decides what HAVING can be checked against. GROUP BY is bound after the select
 /// list because it may name an alias, and HAVING after GROUP BY because an expression grouping key
@@ -68,12 +70,6 @@ impl<'q> Binder<'q> for SelectStmt<'q, Raw> {
 
         let (from, selection, group_by, having, named_windows) = table_expr.into_parts();
 
-        if !named_windows.is_empty() {
-            return Err(analyze_error(format_smolstr!(
-                "WINDOW clause is not supported yet"
-            )));
-        }
-
         // 1. FROM
         let from = from.bind(meta)?;
 
@@ -89,50 +85,55 @@ impl<'q> Binder<'q> for SelectStmt<'q, Raw> {
 
                 let (expr, t_expr) = selection.bind(meta)?;
 
-                meta.type_system.ctx.filters.push(t_expr);
+                meta.type_system.add_filter(t_expr);
 
                 Some(expr)
             }
         };
 
         // 3. GROUP BY discovery: resolves ordinal elements and potential
-        // aliases, and binds expression grouping keys — which the
-        // select list is matched against.
+        // aliases, and binds expression grouping keys — which the WINDOW
+        // clause and the select list are matched against.
         meta.binder.top_frame_mut()?.set_raw_sel_lst(select_list);
         let group_by = group_by.discover(meta)?;
 
-        // 4. SELECT list expressions
+        // 4. WINDOWS. Bound definitions are parked on the frame — the select
+        // list and the query ORDER BY resolve `OVER w` against it — and put
+        // back by the multiset statement once ORDER BY has bound.
+        named_windows.bind(meta)?;
+
+        // 5. SELECT list expressions
         meta.binder.top_frame_mut()?.set_stage(Stage::Projection);
         meta.binder
             .top_frame_mut()?
             .take_raw_sel_lst()?
             .bind(meta)?;
 
-        // 5. GROUP BY
+        // 6. GROUP BY
         meta.binder.top_frame_mut()?.set_stage(Stage::GroupBy);
         group_by.bind(meta)?;
 
-        // 6. HAVING
+        // 7. HAVING
         meta.binder.top_frame_mut()?.set_stage(Stage::Having);
         let having = match having {
             None => None,
             Some(having) => {
                 let (expr, t_expr) = having.bind(meta)?;
 
-                meta.type_system.ctx.filters.push(t_expr);
+                meta.type_system.add_filter(t_expr);
 
                 Some(expr)
             }
         };
 
         let t_expr = TableExpression::from_parts(
-            // Keep FROM clause and GROUP BY clause in the statement frame until
+            // Keep FROM clause, GROUP BY clause, named windows in the statement frame until
             // ORDER BY is bound
             From::default(),
             selection,
             GroupBy::default(),
             having,
-            Vec::new(),
+            NamedWindows::default(),
         );
 
         Ok(Self::BoundNode::from_parts(
@@ -149,7 +150,7 @@ impl ExprTypeDeriver for SelectStmt<'_, Analyzed> {
         select_list.derive_types(type_report)?;
 
         if let Some(tbl_expr) = tbl_expr {
-            let (from, selection, group_by, having, _named_windows) = tbl_expr.parts_mut();
+            let (from, selection, group_by, having, named_windows) = tbl_expr.parts_mut();
             for entry in from.entries_mut() {
                 entry.derive_types(type_report)?;
             }
@@ -162,7 +163,7 @@ impl ExprTypeDeriver for SelectStmt<'_, Analyzed> {
                     .get()
                     .is_some_and(|ty| matches!(ty, UnrestrictedType::Boolean))
                 {
-                    return Err(analyze_error(format_smolstr!(
+                    return Err(semantic_err(format_smolstr!(
                         "argument of WHERE must be type boolean, not type {}",
                         expr.data_type(),
                     )));
@@ -179,11 +180,15 @@ impl ExprTypeDeriver for SelectStmt<'_, Analyzed> {
                     .get()
                     .is_some_and(|ty| matches!(ty, UnrestrictedType::Boolean))
                 {
-                    return Err(analyze_error(format_smolstr!(
+                    return Err(semantic_err(format_smolstr!(
                         "argument of HAVING must be type boolean, not type {}",
                         expr.data_type(),
                     )));
                 }
+            }
+
+            for named_window in named_windows.0.iter_mut() {
+                named_window.derive_types(type_report)?;
             }
         }
         Ok(())
@@ -248,7 +253,7 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
                                 // This should never happen.
                                 // Unqualified asterisk should always be resolved into list of expressions.
                                 || {
-                                    analyze_invariant_error(format_smolstr!(
+                                    analyze_err(format_smolstr!(
                                         "expected to resolve unqualified asterisk into list of expressions"
                                     ))
                                 },
@@ -326,7 +331,7 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
                         meta.binder.top_frame_mut()?.set_stage(Stage::Projection);
                     }
 
-                    meta.type_system.ctx.curr_proj.push(t_expr);
+                    meta.type_system.add_proj_elem(t_expr);
 
                     let bound_proj_expr = ProjectionExpr::new(bound_expr, alias);
 
@@ -354,10 +359,8 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
         }
 
         // Push all projection expressions onto stack.
-        meta.type_system
-            .ctx
-            .proj
-            .push(std::mem::take(&mut meta.type_system.ctx.curr_proj));
+        let curr_proj = meta.type_system.take_proj();
+        meta.type_system.add_proj(curr_proj);
 
         Ok(())
     }

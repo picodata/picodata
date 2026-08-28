@@ -49,7 +49,7 @@ mod structural_eq;
 
 use smol_str::format_smolstr;
 
-use crate::error::{ast_arbitrary_err, AstResult};
+use crate::error::{ast_err, AstResult};
 use crate::multiset::MultisetStmt;
 use crate::table_expression::BoundVar;
 use crate::window::WindowFunction;
@@ -118,6 +118,7 @@ impl<'q, State: AstState<'q>> NamedEntity for Expr<'q, State> {
             ExprInner::Var(var) => var.name(),
             // A call is named by the function.
             ExprInner::FunctionCall(call) => Some(call.name()),
+            ExprInner::WindowFunction(call) => Some(call.name()),
             // A cast defers to its operand and falls back to the target type.
             ExprInner::Cast(cast) => cast.child_ref().name(),
             // CASE takes the name of its ELSE branch, if that branch has one.
@@ -584,8 +585,8 @@ impl<'q> RawExpr<'q> {
     /// establishing the invariant here spares every consumer the check.
     pub fn in_expr(is_not: bool, left: Self, rhs: Self) -> AstResult<Self> {
         if !matches!(rhs.inner_ref(), ExprInner::Row(_) | ExprInner::SubQuery(_)) {
-            return Err(ast_arbitrary_err(format_smolstr!(
-                "In expression must have query or a list of values as right child"
+            return Err(ast_err(format_smolstr!(
+                "IN expression must have query or a list of values as right child"
             )));
         }
         Ok(Self::new(ExprInner::In(InExpr {

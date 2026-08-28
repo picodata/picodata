@@ -64,10 +64,19 @@ impl From<TypeSystemError> for AstErr {
 /// parser/analyzer drift (a bug), not a user mistake.
 pub const REPORT_TO_SUFFIX: &str = "Report to git.picodata.io/core/picodata/-/issues.";
 
-pub(super) fn ast_arbitrary_err(msg: SmolStr) -> AstErr {
+pub fn ast_err(msg: SmolStr) -> AstErr {
     SbroadError::Other(msg).into()
 }
 
-pub(super) fn ast_invariant_err(msg: SmolStr) -> AstErr {
-    SbroadError::Other(format_smolstr!("{msg}. {REPORT_TO_SUFFIX}")).into()
+fn upper_first(s: &SmolStr) -> SmolStr {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => s.clone(),
+        Some(c) => c.to_uppercase().chain(chars).collect(),
+    }
+}
+
+pub fn ast_invariant_err(msg: SmolStr) -> AstErr {
+    let msg = upper_first(&msg);
+    ast_err(format_smolstr!("{msg}. {REPORT_TO_SUFFIX}"))
 }

@@ -25,13 +25,13 @@ use super::{analyze_error, analyzed};
 #[test]
 fn duplicating_cte() {
     let query = "WITH a AS (SELECT 1), a AS (SELECT 2) SELECT * FROM a";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: WITH query name "a" specified more than once"#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: WITH query name "a" specified more than once"#);
 }
 
 #[test]
 fn cte_inconsistent_columns_count() {
     let query = "WITH cte (a1, a2) AS (SELECT 1 AS a) SELECT a1 FROM cte";
-    insta::assert_snapshot!(analyze_error(query, &[]), @r#"failed to analyze AST: WITH query "cte" has 1 columns available but 2 columns specified"#);
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: WITH query "cte" has 1 columns available but 2 columns specified"#);
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn resolve_column_from_cte_with_column_list_nonexisting() {
     let query = "WITH cte (a, b) AS (SELECT 1, 2) SELECT c FROM cte";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @"failed to analyze AST: cannot resolve column reference 'c'"
+        @"semantic error: cannot resolve column reference 'c'"
     );
 }
 
@@ -97,7 +97,7 @@ fn qualified_column_reference_to_unnamed_cte_result_column() {
 #[test]
 fn ambigious_column_reference_cte() {
     let query = "WITH cte (a, a) AS (SELECT 1, 2) SELECT a FROM cte;";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: column reference 'a' is ambigious");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'a' is ambigious");
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn qualified_cte_column_reference_in_correlated_subquery() {
 #[test]
 fn qualified_cte_missing_column_reference_in_correlated_subquery() {
     let query = "SELECT (WITH t1 (a) AS (SELECT 1) SELECT t1.b FROM t1) FROM t1;";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"failed to analyze AST: cannot resolve column reference 't1.b'");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: cannot resolve column reference 't1.b'");
 }
 
 #[test]
@@ -140,7 +140,7 @@ fn set_operation_uncastable_columns() {
     let query = "SELECT * FROM (SELECT 1 a) UNION (SELECT '1.5' a)";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @r#"failed to analyze AST: invalid input syntax for type int: "1.5""#
+        @r#"semantic error: invalid input syntax for type int: "1.5""#
     );
 }
 
@@ -203,7 +203,7 @@ fn order_by_bind_alias_first() {
 fn order_by_ungrouped_column_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT sum(b) FROM t1 ORDER BY a;", &[]),
-        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -219,7 +219,7 @@ fn subquery_with_order_by_referencing_table_column() {
 fn order_by_ungrouped_column_of_grouped_query_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 GROUP BY a ORDER BY b", &[]),
-        @r#"failed to analyze AST: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @r#"semantic error: column "t1.b" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 
@@ -235,7 +235,7 @@ fn order_by_aggregate_alias_of_grouped_query() {
 fn order_by_invalid_coercion() {
     insta::assert_snapshot!(
         analyze_error("SELECT 1 FROM t1 ORDER BY a + 'xyz'", &[]),
-        @r#"failed to analyze AST: invalid input syntax for type int: "xyz""#
+        @r#"semantic error: invalid input syntax for type int: "xyz""#
     );
 }
 
@@ -247,7 +247,7 @@ fn order_by_invalid_coercion() {
 fn order_by_position_out_of_range_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 ORDER BY 2", &[]),
-        @"failed to analyze AST: ORDER BY position 2 is not in select list"
+        @"semantic error: ORDER BY position 2 is not in select list"
     );
 }
 
@@ -255,7 +255,7 @@ fn order_by_position_out_of_range_error() {
 fn order_by_position_out_of_range_in_grouped_query_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a, count(*) FROM t1 GROUP BY 1 ORDER BY 3", &[]),
-        @"failed to analyze AST: ORDER BY position 3 is not in select list"
+        @"semantic error: ORDER BY position 3 is not in select list"
     );
 }
 
@@ -265,7 +265,7 @@ fn order_by_position_out_of_range_in_grouped_query_error() {
 fn order_by_position_out_of_range_in_from_subquery_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM (SELECT a FROM t1 ORDER BY 2) s", &[]),
-        @"failed to analyze AST: ORDER BY position 2 is not in select list"
+        @"semantic error: ORDER BY position 2 is not in select list"
     );
 }
 
@@ -273,7 +273,7 @@ fn order_by_position_out_of_range_in_from_subquery_error() {
 fn order_by_position_out_of_range_in_cte_error() {
     insta::assert_snapshot!(
         analyze_error("WITH q AS (SELECT a FROM t1) SELECT a FROM q ORDER BY 2", &[]),
-        @"failed to analyze AST: ORDER BY position 2 is not in select list"
+        @"semantic error: ORDER BY position 2 is not in select list"
     );
 }
 
@@ -281,7 +281,7 @@ fn order_by_position_out_of_range_in_cte_error() {
 fn order_by_position_out_of_range_in_set_operation_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 UNION SELECT c FROM t5 ORDER BY 2", &[]),
-        @"failed to analyze AST: ORDER BY position 2 is not in select list"
+        @"semantic error: ORDER BY position 2 is not in select list"
     );
 }
 
@@ -313,7 +313,7 @@ fn order_by_implicit_output_name_through_cast() {
 fn order_by_ambiguous_between_alias_and_implicit_name_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT b AS a, a FROM t1 ORDER BY a", &[]),
-        @r#"failed to analyze AST: ORDER BY "a" is ambiguous"#
+        @r#"semantic error: ORDER BY "a" is ambiguous"#
     );
 }
 
@@ -331,7 +331,7 @@ fn order_by_duplicate_name_of_equal_expressions() {
 fn order_by_duplicate_name_of_different_expressions_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a AS z, b AS z FROM t1 ORDER BY z", &[]),
-        @r#"failed to analyze AST: ORDER BY "z" is ambiguous"#
+        @r#"semantic error: ORDER BY "z" is ambiguous"#
     );
 }
 
@@ -360,7 +360,7 @@ fn order_by_row_expression_is_not_flattened() {
             "SELECT a, b FROM t1 UNION SELECT a, b FROM t1 ORDER BY (1, 2)",
             &[]
         ),
-        @"failed to analyze AST: invalid UNION/INTERSECT/EXCEPT ORDER BY clause"
+        @"semantic error: invalid UNION/INTERSECT/EXCEPT ORDER BY clause"
     );
 }
 
@@ -389,7 +389,7 @@ fn order_by_distinct_projected_expression() {
 fn order_by_distinct_unprojected_column_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT DISTINCT a FROM t1 ORDER BY b", &[]),
-        @"failed to analyze AST: for SELECT DISTINCT, ORDER BY expressions must appear in select list"
+        @"semantic error: for SELECT DISTINCT, ORDER BY expressions must appear in select list"
     );
 }
 
@@ -397,7 +397,7 @@ fn order_by_distinct_unprojected_column_error() {
 fn order_by_distinct_unprojected_expression_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT DISTINCT a FROM t1 ORDER BY a + 1", &[]),
-        @"failed to analyze AST: for SELECT DISTINCT, ORDER BY expressions must appear in select list"
+        @"semantic error: for SELECT DISTINCT, ORDER BY expressions must appear in select list"
     );
 }
 
@@ -435,14 +435,14 @@ fn order_by_set_operation_duplicate_output_name_error() {
             "SELECT a AS x, b AS x FROM t1 UNION SELECT a, b FROM t1 ORDER BY x",
             &[]
         ),
-        @r#"failed to analyze AST: ORDER BY "x" is ambiguous"#
+        @r#"semantic error: ORDER BY "x" is ambiguous"#
     );
     insta::assert_snapshot!(
         analyze_error(
             "SELECT a AS x, a AS x FROM t1 UNION SELECT a, b FROM t1 ORDER BY x",
             &[]
         ),
-        @r#"failed to analyze AST: ORDER BY "x" is ambiguous"#
+        @r#"semantic error: ORDER BY "x" is ambiguous"#
     );
 }
 
@@ -469,7 +469,7 @@ fn order_by_set_operation_duplicate_name_across_branches_or_by_position() {
 fn order_by_set_operation_expression_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 UNION SELECT c FROM t5 ORDER BY a + 1", &[]),
-        @"failed to analyze AST: invalid UNION/INTERSECT/EXCEPT ORDER BY clause"
+        @"semantic error: invalid UNION/INTERSECT/EXCEPT ORDER BY clause"
     );
 }
 
@@ -477,7 +477,7 @@ fn order_by_set_operation_expression_error() {
 fn order_by_set_operation_aggregate_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT a FROM t1 UNION SELECT c FROM t5 ORDER BY count(*)", &[]),
-        @"failed to analyze AST: invalid UNION/INTERSECT/EXCEPT ORDER BY clause"
+        @"semantic error: invalid UNION/INTERSECT/EXCEPT ORDER BY clause"
     );
 }
 
@@ -542,7 +542,7 @@ fn values_of_untyped_nulls() {
 fn values_row_length_mismatch() {
     insta::assert_snapshot!(
         analyze_error("VALUES (1), (2, 3)", &[]),
-        @"failed to analyze AST: VALUES lists must all be the same length"
+        @"semantic error: VALUES lists must all be the same length"
     );
 }
 
@@ -550,7 +550,7 @@ fn values_row_length_mismatch() {
 fn values_expression_error_beats_length_mismatch() {
     insta::assert_snapshot!(
         analyze_error("VALUES (1), (x, 2)", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'x'"
+        @"semantic error: cannot resolve column reference 'x'"
     );
 }
 
@@ -558,7 +558,7 @@ fn values_expression_error_beats_length_mismatch() {
 fn values_aggregate_is_rejected() {
     insta::assert_snapshot!(
         analyze_error("VALUES (max(1))", &[]),
-        @"failed to analyze AST: aggregate functions are not allowed in VALUES"
+        @"semantic error: aggregate functions are not allowed in VALUES"
     );
 }
 
@@ -566,7 +566,7 @@ fn values_aggregate_is_rejected() {
 fn values_column_reference_is_rejected() {
     insta::assert_snapshot!(
         analyze_error("VALUES (a)", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'a'"
+        @"semantic error: cannot resolve column reference 'a'"
     );
 }
 
@@ -600,7 +600,7 @@ fn values_order_by_output_name() {
 fn values_order_by_position_out_of_range() {
     insta::assert_snapshot!(
         analyze_error("VALUES (1) ORDER BY 2", &[]),
-        @"failed to analyze AST: ORDER BY position 2 is not in select list"
+        @"semantic error: ORDER BY position 2 is not in select list"
     );
 }
 
@@ -608,7 +608,7 @@ fn values_order_by_position_out_of_range() {
 fn values_order_by_unknown_name() {
     insta::assert_snapshot!(
         analyze_error("VALUES (1) ORDER BY x", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'x'"
+        @"semantic error: cannot resolve column reference 'x'"
     );
 }
 
@@ -616,7 +616,7 @@ fn values_order_by_unknown_name() {
 fn values_order_by_expression_is_rejected() {
     insta::assert_snapshot!(
         analyze_error("VALUES (1) ORDER BY column1 + 1", &[]),
-        @"failed to analyze AST: ORDER BY expressions over VALUES are not supported yet"
+        @"semantic error: ORDER BY expressions over VALUES are not supported yet"
     );
 }
 
@@ -658,7 +658,7 @@ fn values_in_from_aliased() {
 fn values_in_from_unknown_column() {
     insta::assert_snapshot!(
         analyze_error("SELECT x FROM (VALUES (1))", &[]),
-        @"failed to analyze AST: cannot resolve column reference 'x'"
+        @"semantic error: cannot resolve column reference 'x'"
     );
 }
 
@@ -686,7 +686,7 @@ fn values_cte_renamed() {
 fn values_cte_column_count_mismatch() {
     insta::assert_snapshot!(
         analyze_error("WITH w(x, y) AS (VALUES (1)) SELECT x FROM w", &[]),
-        @r#"failed to analyze AST: WITH query "w" has 1 columns available but 2 columns specified"#
+        @r#"semantic error: WITH query "w" has 1 columns available but 2 columns specified"#
     );
 }
 
@@ -712,7 +712,7 @@ fn values_union_order_by_name() {
 fn values_union_column_count_mismatch() {
     insta::assert_snapshot!(
         analyze_error("VALUES (1) UNION SELECT 1, 2", &[]),
-        @"failed to analyze AST: operands of UNION operation have different number of columns"
+        @"semantic error: operands of UNION operation have different number of columns"
     );
 }
 
@@ -730,7 +730,7 @@ fn values_scalar_subquery() {
 fn values_scalar_subquery_two_columns() {
     insta::assert_snapshot!(
         analyze_error("SELECT (VALUES (1, 2))", &[]),
-        @"failed to analyze AST: subquery must return only one column"
+        @"semantic error: subquery must return only one column"
     );
 }
 
@@ -755,23 +755,5 @@ fn values_in_predicate() {
     insta::assert_snapshot!(
         analyzed("SELECT a FROM t1 WHERE a IN (VALUES (1), (2))", &[]),
         @"SELECT t1.a::int FROM t1 WHERE (t1.a::int IN (VALUES (1::int), (2::int))::int)::bool"
-    );
-}
-
-// ------------- Unsupported clauses -------------
-
-#[test]
-fn window_clause_is_rejected() {
-    insta::assert_snapshot!(
-        analyze_error("SELECT a FROM t1 WINDOW w AS ()", &[]),
-        @"failed to analyze AST: WINDOW clause is not supported yet"
-    );
-}
-
-#[test]
-fn window_function_is_rejected() {
-    insta::assert_snapshot!(
-        analyze_error("SELECT sum(a) OVER () FROM t1", &[]),
-        @"failed to analyze AST: window functions are not supported yet"
     );
 }

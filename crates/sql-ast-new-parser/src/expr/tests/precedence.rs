@@ -259,14 +259,14 @@ fn in_binds_looser_than_additive() {
 // non-associative tier.
 #[test]
 fn in_is_non_associative() {
-    insta::assert_snapshot!(expr_err("a IN (1, 2) IN (3, 4)"), @"invalid expression: BETWEEN/IN/LIKE/ILIKE/SIMILAR operators are non-associative; use parentheses to group operands");
+    insta::assert_snapshot!(expr_err("a IN (1, 2) IN (3, 4)"), @"syntax error: BETWEEN/IN/LIKE/ILIKE/SIMILAR operators are non-associative; use parentheses to group operands");
 }
 
 // The IN list is a closed construct; a trailing tighter operator
 // is an error.
 #[test]
 fn in_rhs_is_closed() {
-    insta::assert_snapshot!(expr_err("a IN (1, 2) + b"), @"In expression must have query or a list of values as right child");
+    insta::assert_snapshot!(expr_err("a IN (1, 2) + b"), @"IN expression must have query or a list of values as right child");
 }
 
 // The matching tier (BETWEEN/IN/LIKE/ILIKE/SIMILAR) binds tighter
@@ -303,13 +303,13 @@ fn between_binds_tighter_than_comparison_on_lhs() {
 // The matching tier is non-associative.
 #[test]
 fn like_is_non_associative() {
-    insta::assert_snapshot!(expr_err("a LIKE b LIKE c"), @"invalid expression: BETWEEN/IN/LIKE/ILIKE/SIMILAR operators are non-associative; use parentheses to group operands");
+    insta::assert_snapshot!(expr_err("a LIKE b LIKE c"), @"syntax error: BETWEEN/IN/LIKE/ILIKE/SIMILAR operators are non-associative; use parentheses to group operands");
 }
 
 // See `like_is_non_associative`.
 #[test]
 fn between_is_non_associative() {
-    insta::assert_snapshot!(expr_err("a BETWEEN 1 AND 2 BETWEEN 3 AND 4"), @"invalid expression: BETWEEN/IN/LIKE/ILIKE/SIMILAR operators are non-associative; use parentheses to group operands");
+    insta::assert_snapshot!(expr_err("a BETWEEN 1 AND 2 BETWEEN 3 AND 4"), @"syntax error: BETWEEN/IN/LIKE/ILIKE/SIMILAR operators are non-associative; use parentheses to group operands");
 }
 
 // A parenthesized operand resets the tier,
@@ -325,14 +325,14 @@ fn matching_nonassoc_renders_parenthesized() {
 // follow it.
 #[test]
 fn escape_requires_adjacent_like() {
-    insta::assert_snapshot!(expr_err("(a LIKE b) ESCAPE 'x'"), @"invalid expression: ESCAPE must directly follow a LIKE/ILIKE/SIMILAR pattern; a parenthesized expression cannot take an ESCAPE clause");
+    insta::assert_snapshot!(expr_err("(a LIKE b) ESCAPE 'x'"), @"syntax error: ESCAPE must directly follow a LIKE/ILIKE/SIMILAR pattern; a parenthesized expression cannot take an ESCAPE clause");
 }
 
 // An ESCAPE-carrying LIKE is a completed matching-tier
 // construct; chaining another LIKE onto it is non-associative.
 #[test]
 fn like_escape_then_like_is_rejected() {
-    insta::assert_snapshot!(expr_err("a LIKE b ESCAPE c LIKE d"), @"invalid expression: BETWEEN/IN/LIKE/ILIKE/SIMILAR operators are non-associative; use parentheses to group operands");
+    insta::assert_snapshot!(expr_err("a LIKE b ESCAPE c LIKE d"), @"syntax error: BETWEEN/IN/LIKE/ILIKE/SIMILAR operators are non-associative; use parentheses to group operands");
 }
 
 // The BETWEEN middle operand (`b_expr`) excludes IN.
@@ -397,8 +397,8 @@ fn comparison_binds_tighter_than_is() {
 // Comparisons are non-associative.
 #[test]
 fn comparison_is_non_associative() {
-    insta::assert_snapshot!(expr_err("a = b = c"), @"invalid expression: comparison operators are non-associative; use parentheses to group operands");
-    insta::assert_snapshot!(expr_err("a < b < c"), @"invalid expression: comparison operators are non-associative; use parentheses to group operands");
+    insta::assert_snapshot!(expr_err("a = b = c"), @"syntax error: comparison operators are non-associative; use parentheses to group operands");
+    insta::assert_snapshot!(expr_err("a < b < c"), @"syntax error: comparison operators are non-associative; use parentheses to group operands");
 }
 
 // See `matching_nonassoc_renders_parenthesized`.

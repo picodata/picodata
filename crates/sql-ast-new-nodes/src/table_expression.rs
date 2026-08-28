@@ -28,7 +28,7 @@ use crate::error::{ast_invariant_err, AstResult};
 use crate::expr::{Expr, ExprInner, RawVar};
 use crate::multiset::{Cte, MultisetStmt};
 use crate::select::{ProjectionExpr, SelectList, SelectListExprs};
-use crate::window::NamedWindow;
+use crate::window::NamedWindows;
 use crate::{write_sql_ident, Analyzed, AstState, Ident, NamedEntity, Raw, NONAME_COLUMN};
 use smol_str::format_smolstr;
 use sql_ir::ir::relation::{Column, ColumnRole, Table};
@@ -51,7 +51,7 @@ pub struct TableExpression<'q, State: AstState<'q>> {
     /// I.e. present but empty GROUP BY clause. E.g. `SELECT SUM(a) FROM t GROUP BY ()`.
     group_by: GroupBy<'q, State>,
     having: Option<Expr<'q, State>>,
-    windows: Vec<NamedWindow<'q, State>>,
+    windows: NamedWindows<'q, State>,
 }
 
 impl<'q, State: AstState<'q>> TableExpression<'q, State> {
@@ -63,7 +63,7 @@ impl<'q, State: AstState<'q>> TableExpression<'q, State> {
         Option<Expr<'q, State>>,
         GroupBy<'q, State>,
         Option<Expr<'q, State>>,
-        Vec<NamedWindow<'q, State>>,
+        NamedWindows<'q, State>,
     ) {
         (
             self.from,
@@ -79,7 +79,7 @@ impl<'q, State: AstState<'q>> TableExpression<'q, State> {
         selection: Option<Expr<'q, State>>,
         group_by: GroupBy<'q, State>,
         having: Option<Expr<'q, State>>,
-        windows: Vec<NamedWindow<'q, State>>,
+        windows: NamedWindows<'q, State>,
     ) -> Self {
         Self {
             from,
@@ -100,7 +100,7 @@ impl<'q> TableExpression<'q, Analyzed> {
         Option<&mut Expr<'q, Analyzed>>,
         &mut GroupBy<'q, Analyzed>,
         Option<&mut Expr<'q, Analyzed>>,
-        &mut Vec<NamedWindow<'q, Analyzed>>,
+        &mut NamedWindows<'q, Analyzed>,
     ) {
         (
             &mut self.from,
@@ -138,6 +138,10 @@ impl<'q> TableExpression<'q, Analyzed> {
     pub fn set_grby(&mut self, grby: GroupBy<'q, Analyzed>) {
         self.group_by = grby;
     }
+
+    pub fn set_windows(&mut self, windows: NamedWindows<'q, Analyzed>) {
+        self.windows = windows;
+    }
 }
 
 impl<'q, State: AstState<'q>> Display for TableExpression<'q, State> {
@@ -153,13 +157,7 @@ impl<'q, State: AstState<'q>> Display for TableExpression<'q, State> {
             .as_ref()
             .map_or(Ok(()), |having_expr| write!(f, " HAVING {having_expr}"))?;
 
-        if let Some((first_window, other_windows)) = self.windows.split_first() {
-            write!(f, " WINDOW {first_window}")?;
-            for window in other_windows {
-                write!(f, ", {window}")?;
-            }
-        }
-        Ok(())
+        write!(f, "{}", self.windows)
     }
 }
 
@@ -413,15 +411,28 @@ impl<'q> TableFactor<'q, Analyzed> {
         column_name: &str,
         exclude_positions: Option<&[usize]>,
     ) -> UniqueColumnRoute<usize> {
-        self.inner.column_route(column_name, exclude_positions)
+        match &self.inner {
+            TableFactorInner::CteOrTable(cte_or_table) => {
+                cte_or_table.column_route(column_name, exclude_positions)
+            }
+            // An unaliased FROM-subquery can never satisfy a qualifier because
+            // qualification goes through the alias, handled by the factor.
+            TableFactorInner::SubQuery(stmt) => stmt.column_route(column_name, exclude_positions),
+        }
     }
 
     pub fn attribute(&'_ self, column_pos: usize) -> Option<AttributeView<'q, '_>> {
-        self.inner.attribute(column_pos)
+        match &self.inner {
+            TableFactorInner::CteOrTable(cte_or_table) => cte_or_table.attribute(column_pos),
+            TableFactorInner::SubQuery(stmt) => stmt.attribute(column_pos),
+        }
     }
 
     pub fn table(&self) -> Option<&Table> {
-        self.inner.table()
+        match &self.inner {
+            TableFactorInner::CteOrTable(cte_or_tbl) => cte_or_tbl.table(),
+            TableFactorInner::SubQuery(_) => None,
+        }
     }
 }
 
@@ -448,37 +459,6 @@ impl<'q, State: AstState<'q>> NamedEntity for TableFactorInner<'q, State> {
     fn name(&self) -> Option<&str> {
         match self {
             Self::CteOrTable(cte_or_table) => cte_or_table.name(),
-            Self::SubQuery(_) => None,
-        }
-    }
-}
-
-impl<'q> TableFactorInner<'q, Analyzed> {
-    pub(crate) fn column_route(
-        &self,
-        column_name: &str,
-        exclude_positions: Option<&[usize]>,
-    ) -> UniqueColumnRoute<usize> {
-        match self {
-            Self::CteOrTable(cte_or_table) => {
-                cte_or_table.column_route(column_name, exclude_positions)
-            }
-            // An unaliased FROM-subquery can never satisfy a qualifier because
-            // qualification goes through the alias, handled by the factor.
-            Self::SubQuery(stmt) => stmt.column_route(column_name, exclude_positions),
-        }
-    }
-
-    fn attribute(&'_ self, column_pos: usize) -> Option<AttributeView<'q, '_>> {
-        match self {
-            Self::CteOrTable(cte_or_table) => cte_or_table.attribute(column_pos),
-            Self::SubQuery(stmt) => stmt.attribute(column_pos),
-        }
-    }
-
-    pub fn table(&self) -> Option<&Table> {
-        match self {
-            Self::CteOrTable(cte_or_tbl) => cte_or_tbl.table(),
             Self::SubQuery(_) => None,
         }
     }

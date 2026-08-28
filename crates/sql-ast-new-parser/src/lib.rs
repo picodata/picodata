@@ -17,7 +17,7 @@
 //! # Panics
 //! This crate must never panic: the frontend falls back to the old pipeline on
 //! [`Err`], but a panic aborts the whole query. Internal invariants return
-//! [`parse_invariant_error`].
+//! [`parser_err`].
 
 #![cfg_attr(
     not(test),
@@ -58,31 +58,25 @@ use pest::Parser;
 use smol_str::{format_smolstr, SmolStr};
 
 use sql_ast_new_grammar::{PairParser, Rule};
-use sql_ast_new_nodes::error::REPORT_TO_SUFFIX;
-use sql_ast_new_nodes::error::{AstErr, AstResult};
+use sql_ast_new_nodes::error::{ast_err, ast_invariant_err, AstErr, AstResult};
 use sql_ast_new_nodes::{
     AbstractSyntaxTree, DqlStmt, Forward, Node, Raw, RawAst, ReadPreference, SqlOption,
     SqlOptionParameter, SqlOptionValue,
 };
-use sql_ir::errors::{Action, Entity, SbroadError};
+use sql_ir::errors::{Entity, SbroadError};
 
 use self::expr::parse_parameter;
 use self::multiset::parse_multiset;
 use self::pairs_traversal::Tree;
 
-fn failed_parsing_error(msg: SmolStr) -> AstErr {
-    SbroadError::FailedTo(Action::Parse, Some(Entity::Query), msg).into()
+/// Parse-stage rejection of the query (a user mistake, not a parser bug).
+pub(crate) fn syntax_err(msg: SmolStr) -> AstErr {
+    ast_err(format_smolstr!("syntax error: {msg}"))
 }
 
-/// Parse-stage internal-invariant violation (a broken "grammar guarantees ..." contract).
-fn parse_invariant_error(msg: SmolStr) -> AstErr {
-    failed_parsing_error(format_smolstr!("{msg}. {REPORT_TO_SUFFIX}"))
-}
-
-/// User-facing rejection of an expression the grammar accepts but the
-/// language does not (a mistake in the query, not a parser invariant).
-fn invalid_expression_error(msg: SmolStr) -> AstErr {
-    SbroadError::Invalid(Entity::Expression, Some(msg)).into()
+/// Parse-stage internal-invariant violation.
+fn parser_err(msg: SmolStr) -> AstErr {
+    ast_invariant_err(msg)
 }
 
 /// Parse `query` into a raw AST.
@@ -92,10 +86,13 @@ pub fn parse(query: &str) -> AstResult<RawAst<'_>> {
     // stack overflow is possible.
     let pair = match PairParser::parse(Rule::Command, query) {
         Ok(mut p) => p.next().ok_or_else(|| {
-            parse_invariant_error(format_smolstr!(
+            parser_err(format_smolstr!(
                 "query expected as a first parsing tree child"
             ))
         })?,
+        // The one user error that is not a `parse_err`: the server recognizes a
+        // syntax error by this variant — pgproto then tries its well-known
+        // PostgreSQL queries, the Lua console reformats the multi-line message.
         Err(e) => {
             return Err(SbroadError::ParsingError(Entity::Rule, format_smolstr!("{e}")).into());
         }
@@ -107,7 +104,7 @@ pub fn parse(query: &str) -> AstResult<RawAst<'_>> {
         Rule::EmptyQuery => Node::Empty,
         Rule::DqlStmt => parse_dql(pair, &ctx)?,
         _ => {
-            return Err(failed_parsing_error(format_smolstr!(
+            return Err(syntax_err(format_smolstr!(
                 "cannot yet parse queries other than DQL"
             )));
         }
@@ -131,7 +128,7 @@ impl Display for ExpectedRules<'_> {
 }
 
 fn unexpected_rule_error(expected: ExpectedRules, pair: &Pair<'_, Rule>) -> AstErr {
-    parse_invariant_error(format_smolstr!(
+    parser_err(format_smolstr!(
         "expected {} `Rule`s, got: {:?}",
         expected,
         pair.as_rule()
@@ -171,11 +168,13 @@ impl ParseCtx {
                 _ => continue,
             }
             if !tnt_params.is_empty() && has_pg {
-                return Err(SbroadError::UseOfBothParamsStyles.into());
+                return Err(syntax_err(format_smolstr!(
+                    "$n and ? parameters cannot be mixed in one query"
+                )));
             }
         }
         if tnt_params.len() > MAX_PARAMETER_INDEX {
-            return Err(invalid_expression_error(format_smolstr!(
+            return Err(syntax_err(format_smolstr!(
                 "parameter index {} is too big (max: {MAX_PARAMETER_INDEX})",
                 tnt_params.len()
             )));
@@ -213,7 +212,7 @@ fn parse_dql<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Node<'q, Raw
 
     let dql_stmt = DqlStmt {
         stmt: Box::new(stmt.ok_or_else(|| {
-            parse_invariant_error(format_smolstr!(
+            parser_err(format_smolstr!(
                 "grammar guarantees a MultisetStmt in a DQL statement"
             ))
         })?),
@@ -228,7 +227,7 @@ fn parse_sql_option(pair: Pair<'_, Rule>, ctx: &ParseCtx) -> AstResult<SqlOption
 
     let mut params = pair.into_inner();
     let first = params.next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!(
+        parser_err(format_smolstr!(
             "grammar guarantees at least one parameter in an OPTION clause"
         ))
     })?;
@@ -281,13 +280,10 @@ fn parse_unsigned_sql_option_value(
     match value_pair.as_rule() {
         Rule::Unsigned => Ok(SqlOptionValue::Literal(
             value_pair.as_str().parse::<u64>().map_err(|_| {
-                AstErr::from(SbroadError::Invalid(
-                    Entity::Option,
-                    Some(format_smolstr!(
-                        "{} value doesn't fit into integer range: {}",
-                        sql_option_name(option_rule),
-                        value_pair.as_str()
-                    )),
+                syntax_err(format_smolstr!(
+                    "{} value doesn't fit into integer range: {}",
+                    sql_option_name(option_rule),
+                    value_pair.as_str()
                 ))
             })?,
         )),
@@ -344,7 +340,7 @@ fn parse_forward_sql_option_value(
 
 fn get_sql_option_value_pair<'q>(pair: Pair<'q, Rule>) -> AstResult<Pair<'q, Rule>> {
     pair.into_inner().next().ok_or_else(|| {
-        parse_invariant_error(format_smolstr!(
+        parser_err(format_smolstr!(
             "`SqlOption` parameter must contain a value"
         ))
     })
@@ -560,7 +556,10 @@ mod tests {
         let err = build("SELECT ?, $1 FROM t")
             .err()
             .expect("expected mixed parameter styles to be rejected");
-        assert!(matches!(err, SbroadError::UseOfBothParamsStyles));
+        insta::assert_snapshot!(
+            err,
+            @"syntax error: $n and ? parameters cannot be mixed in one query"
+        );
 
         // A single style anywhere in the query is accepted.
         assert!(build("SELECT ?, ? FROM t").is_ok());

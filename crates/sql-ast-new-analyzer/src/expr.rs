@@ -20,8 +20,9 @@ use smol_str::format_smolstr;
 
 use crate::cast::{can_cast, coerce_text_literal};
 use crate::multiset::analyze_subquery;
+use crate::window::{bind_win_fn, derive_window_function_types};
 use crate::{
-    analyze_error, analyze_invariant_error, texpr_from_attribute, texpr_from_derived_type, Binder,
+    analyze_err, semantic_err, texpr_from_attribute, texpr_from_derived_type, Binder,
     ExprTypeDeriver, Stmt,
 };
 use sql_ast_new_nodes::error::{AstErr, AstResult};
@@ -33,7 +34,6 @@ use sql_ast_new_nodes::expr::{
 };
 use sql_ast_new_nodes::table_expression::{BoundJoinUsingVar, BoundVar, ColumnRoute};
 use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, AstNodeId, Raw};
-use sql_ir::errors::{Entity, SbroadError};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::types::{CastType, DerivedType, UnrestrictedType};
 
@@ -129,7 +129,7 @@ fn cast_to_type_expr(
 }
 
 fn cannot_resolve_err(var: &RawVar) -> AstErr {
-    analyze_error(format_smolstr!("cannot resolve column reference '{var}'",))
+    semantic_err(format_smolstr!("cannot resolve column reference '{var}'",))
 }
 
 /// Resolve column reference.
@@ -161,14 +161,14 @@ pub(crate) fn bind_var<'q, M: Metadata>(
     {
         let (tbl_factor, col_pos) = match column_route {
             ColumnRoute::NoMatch => {
-                return Err(analyze_invariant_error(format_smolstr!(
+                return Err(analyze_err(format_smolstr!(
                     "incorrect handling of no match for column reference"
                 )))
             }
             ColumnRoute::ColumnMissing => return Err(cannot_resolve_err(var)),
             ColumnRoute::Resolved(resolved) => resolved,
             ColumnRoute::Ambigious => {
-                return Err(analyze_error(format_smolstr!(
+                return Err(semantic_err(format_smolstr!(
                     "column reference '{var}' is ambigious"
                 )))
             }
@@ -194,9 +194,7 @@ pub(crate) fn using_merged_expr<'q>(
     id: AstNodeId,
 ) -> Option<(Expr<'q, Analyzed>, AstTypeExpr)> {
     let cast_type = CastType::try_from(common_type.get().as_ref()?).ok()?;
-    let child_id = type_system.next_expr_id;
-    type_system.next_expr_id += 1;
-
+    let child_id = type_system.inc_expr_id();
     let child_t_expr = texpr_from_bound_var(var, child_id)?;
     let child = Expr::from_parts(
         ExprInner::Var(var.clone()),
@@ -235,8 +233,7 @@ fn analyze_like_operands<'q, M: Metadata>(
             (Some(Box::new(escape)), escape_t_expr)
         }
         None => {
-            let synthetic_id = meta.type_system.next_expr_id;
-            meta.type_system.next_expr_id += 1;
+            let synthetic_id = meta.type_system.inc_expr_id();
             (
                 None,
                 AstTypeExpr::new(synthetic_id, AstTypeExprKind::Literal(Type::Text)),
@@ -309,8 +306,7 @@ fn analyze_substring<'q, M: Metadata>(
         Substring::For(s, len) => {
             let (s, s_t_expr) = (*s).bind(meta)?;
             let (len, len_t_expr) = (*len).bind(meta)?;
-            let synthetic_id = meta.type_system.next_expr_id;
-            meta.type_system.next_expr_id += 1;
+            let synthetic_id = meta.type_system.inc_expr_id();
             let one_t_expr =
                 AstTypeExpr::new(synthetic_id, AstTypeExprKind::Literal(Type::Integer));
             (
@@ -327,7 +323,7 @@ fn analyze_substring<'q, M: Metadata>(
                 let escape = match (is_not, escape) {
                     (false, Some(escape)) => escape,
                     (false, None) => {
-                        return Err(analyze_error(format_smolstr!(
+                        return Err(semantic_err(format_smolstr!(
                             "missing escape symbol for SIMILAR substring operator"
                         )))
                     }
@@ -366,7 +362,7 @@ fn derive_index_chain_types(
     if matches!(expr.inner_ref(), ExprInner::Index(_)) {
         let (inner, _) = expr.parts_mut();
         let ExprInner::Index(index) = inner else {
-            return Err(analyze_invariant_error(format_smolstr!(
+            return Err(analyze_err(format_smolstr!(
                 "index chain node changed kind mid-walk"
             )));
         };
@@ -379,7 +375,7 @@ fn derive_index_chain_types(
 }
 
 fn substring_single_argument_error() -> AstErr {
-    analyze_error(format_smolstr!(
+    semantic_err(format_smolstr!(
         "incorrect SUBSTRING parameters. There is no such overload that takes only 1 argument"
     ))
 }
@@ -392,8 +388,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
     /// for reading types and implicit casts back after root-level analysis.
     /// Unsupported expression kinds fail here: rejected, never dropped.
     fn bind<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::BoundNode> {
-        let curr_id = meta.type_system.next_expr_id;
-        meta.type_system.next_expr_id += 1;
+        let curr_id = meta.type_system.inc_expr_id();
 
         // Taken before the subtree is bound, so that if this node turns out to be
         // one of the expression grouping keys the columns it registered can be rewound.
@@ -402,7 +397,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
 
         let (inner, type_expr) = match self.into() {
             ExprInner::Nil => {
-                return Err(analyze_invariant_error(format_smolstr!(
+                return Err(analyze_err(format_smolstr!(
                     "empty expression placeholder reached analysis"
                 )))
             }
@@ -493,7 +488,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                 let analyzed_subquery = analyze_subquery(*subquery, meta)?;
 
                 if analyzed_subquery.result_columns_cnt()? != 1 {
-                    return Err(analyze_error(format_smolstr!(
+                    return Err(semantic_err(format_smolstr!(
                         "subquery must return only one column"
                     )));
                 }
@@ -503,7 +498,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                     .into_iter()
                     .map(|derived_type| {
                         derived_type.get().map_or(
-                            Err(analyze_error(format_smolstr!(
+                            Err(semantic_err(format_smolstr!(
                                 "cannot get result data type for scalar subquery"
                             ))),
                             |ty| Ok(Type::from(ty)),
@@ -545,15 +540,26 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                     array_to_type_expr(curr_id, elem_type_exprs),
                 )
             }
-            ExprInner::WindowFunction(_) => {
-                return Err(analyze_error(format_smolstr!(
-                    "window functions are not supported yet"
-                )))
+            ExprInner::WindowFunction(window_function) => {
+                bind_win_fn(*window_function, curr_id, meta)?
             }
             ExprInner::FunctionCall(call) => {
                 let (name, args) = call.into_parts();
 
-                let is_aggr_func = AggregateKind::from_name(name.as_str()).is_some();
+                let is_aggr_func = AggregateKind::from_norm_name(name.as_str()).is_some();
+
+                // A window-only function without OVER.
+                if !is_aggr_func
+                    && meta
+                        .type_system
+                        .analyzer
+                        .is_window_only_function(name.as_str())
+                {
+                    return Err(semantic_err(format_smolstr!(
+                        "window function {} requires an OVER clause",
+                        name.as_str()
+                    )));
+                }
 
                 if is_aggr_func {
                     meta.binder.init_aggr()?;
@@ -565,8 +571,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                         // It means no column references. Implicit binding to the nearest scope.
                         // The literal exists only in the mirror (fresh id, never stored in the AST).
                         // TODO: support qualified asterisk argument.
-                        let synthetic_id = meta.type_system.next_expr_id;
-                        meta.type_system.next_expr_id += 1;
+                        let synthetic_id = meta.type_system.inc_expr_id();
                         let one_t_expr =
                             AstTypeExpr::new(synthetic_id, AstTypeExprKind::Literal(Type::Integer));
                         (
@@ -618,7 +623,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                 // The SQL spelling numbers parameters from one (`$1`, and `?` counted positionally).
                 // The type system indexes its parameter vector from zero.
                 let param_idx = parameter.0.checked_sub(1).ok_or_else(|| {
-                    analyze_error(format_smolstr!("$n parameters are indexed from 1"))
+                    semantic_err(format_smolstr!("$n parameters are indexed from 1"))
                 })?;
                 let param_t_expr = AstTypeExpr::new(curr_id, AstTypeExprKind::Parameter(param_idx));
                 (ExprInner::Parameter(parameter), param_t_expr)
@@ -720,7 +725,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                 let mut keys_raw = vec![which];
                 while matches!(source.inner_ref(), ExprInner::Index(_)) {
                     let ExprInner::Index(inner_index) = (*source).into() else {
-                        return Err(analyze_invariant_error(format_smolstr!(
+                        return Err(analyze_err(format_smolstr!(
                             "index chain node changed kind mid-walk"
                         )));
                     };
@@ -751,7 +756,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                     );
                 }
                 let ExprInner::Index(outer_index) = chain.into_inner() else {
-                    return Err(analyze_invariant_error(format_smolstr!(
+                    return Err(analyze_err(format_smolstr!(
                         "rebuilt index chain has no outermost bracket"
                     )));
                 };
@@ -851,8 +856,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                 // not queried — `result_types()` fails for set-operation
                 // bodies, and EXISTS over a UNION must work. No single-column
                 // restriction. `NOT` does not affect typing.
-                let synthetic_id = meta.type_system.next_expr_id;
-                meta.type_system.next_expr_id += 1;
+                let synthetic_id = meta.type_system.inc_expr_id();
                 let subquery_t_expr =
                     AstTypeExpr::new(synthetic_id, AstTypeExprKind::Subquery(Vec::new()));
                 (
@@ -866,18 +870,14 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
             ExprInner::TimeFunction(time_function) => {
                 match &time_function {
                     TimeFunction::CurrentTime(_) => {
-                        return Err(SbroadError::NotImplemented(
-                            Entity::SQLFunction,
-                            format_smolstr!("`CURRENT_TIME`"),
-                        )
-                        .into())
+                        return Err(semantic_err(format_smolstr!(
+                            "CURRENT_TIME is not supported yet"
+                        )))
                     }
                     TimeFunction::LocalTime(_) => {
-                        return Err(SbroadError::NotImplemented(
-                            Entity::SQLFunction,
-                            format_smolstr!("`LOCALTIME`"),
-                        )
-                        .into())
+                        return Err(semantic_err(format_smolstr!(
+                            "LOCALTIME is not supported yet"
+                        )))
                     }
                     // Picodata has no date or time-of-day types: CURRENT_DATE
                     // is a midnight datetime and CURRENT_TIMESTAMP equals
@@ -965,6 +965,9 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
                     }
                 }
             },
+            ExprInner::WindowFunction(window_function) => {
+                derive_window_function_types(window_function, type_report)?;
+            }
             ExprInner::Case(case) => {
                 if let Some(search) = &mut case.search {
                     search.derive_types(type_report)?;
@@ -1010,7 +1013,7 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
                     // not a predicate); recurse the SIMILAR children directly.
                     let (wrapper_inner, _) = wrapper.parts_mut();
                     let ExprInner::Similar(similar) = wrapper_inner else {
-                        return Err(analyze_invariant_error(format_smolstr!(
+                        return Err(analyze_err(format_smolstr!(
                             "SUBSTRING SIMILAR wrapper is not a SIMILAR expression"
                         )));
                     };
@@ -1047,7 +1050,7 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
                         }
                     }
                     _ => {
-                        return Err(analyze_invariant_error(format_smolstr!(
+                        return Err(analyze_err(format_smolstr!(
                             "IN right-hand side is neither a row nor a subquery"
                         )))
                     }
@@ -1069,7 +1072,7 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
                 // nothing to rule on; everything else must have a cast path.
                 if let Some(from) = child.data_type().get() {
                     if !can_cast(*from, cast_ty) {
-                        return Err(analyze_error(format_smolstr!(
+                        return Err(semantic_err(format_smolstr!(
                             "cannot cast type {from} to {cast_ty}"
                         )));
                     }
@@ -1087,7 +1090,7 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
             // `Expr::analyze` and this whitelist must accept the same
             // expression kinds. Hitting this arm means they drifted apart.
             _ => {
-                return Err(analyze_invariant_error(format_smolstr!(
+                return Err(analyze_err(format_smolstr!(
                     "no type derivation for an expression kind produced by the analyzer"
                 )))
             }
@@ -1110,7 +1113,7 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
                 // only its elements and the comparison enclosing it are reported.
                 ExprInner::SubQuery(_) | ExprInner::Row(_) => DerivedType::unknown(),
                 _ => {
-                    return Err(analyze_error(format_smolstr!(
+                    return Err(semantic_err(format_smolstr!(
                         "cannot derive type for expression `{}`",
                         inner.kind_name()
                     )))
@@ -1129,9 +1132,7 @@ fn add_cast(expr: &mut Expr<'_, Analyzed>, d_type: Type) -> AstResult<()> {
     let cast_type = DerivedType::from(d_type)
         .get()
         .as_ref()
-        .ok_or_else(|| {
-            analyze_invariant_error(format_smolstr!("implicit cast target type is unknown"))
-        })?
+        .ok_or_else(|| analyze_err(format_smolstr!("implicit cast target type is unknown")))?
         .try_into()?;
 
     let original_inner = std::mem::replace(
