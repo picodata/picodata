@@ -87,7 +87,7 @@ where
             let top_id = exec_plan.get_ir_plan().get_top()?;
             let block = exec_plan.get_ir_plan().get_owned_block_node(top_id)?;
             let BlockOwned::Anonymous(block) = block else {
-                unreachable!("plan.is_block() returned true, but top is {block:?}")
+                unreachable!("exec_query.is_block() returned true, but top is {block:?}")
             };
 
             let logical_explains = self.get_block_logical(&block)?;

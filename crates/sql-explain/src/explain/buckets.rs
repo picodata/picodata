@@ -1,12 +1,11 @@
 use ahash::AHashSet;
-use sql_ir::ir::bucket::BucketSet;
-use std::fmt::Display;
-
+use serde::{Deserialize, Serialize};
 use sql_executor::executor::{
     engine::{Router, Vshard},
     ExecutingQuery,
 };
 use sql_ir::errors::SbroadError;
+use sql_ir::ir::bucket::BucketSet;
 use sql_ir::ir::{
     bucket::Buckets,
     node::{block::BlockOwned, relational::Relational, Motion, Node, NodeId},
@@ -14,13 +13,17 @@ use sql_ir::ir::{
     tree::traversal::{PostOrder, REL_CAPACITY},
     Plan,
 };
+use std::fmt::Display;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BoundedBuckets {
     /// Estimated buckets on which whole plan will be executed.
     pub buckets: Buckets,
     /// Total number of buckets in cluster
     pub bucket_count: u64,
+    /// Whether `buckets` is only an upper bound estimate rather than the exact
+    /// execution set.
+    pub is_upper_bound: bool,
 }
 
 impl Display for BoundedBuckets {
@@ -28,7 +31,22 @@ impl Display for BoundedBuckets {
         let repr = buckets_repr(&self.buckets, self.bucket_count);
         match self.buckets {
             Buckets::All => write!(f, "buckets <= {repr}"),
-            Buckets::Any | Buckets::Filtered(_) => write!(f, "buckets = {repr}"),
+            Buckets::Any => write!(f, "buckets = {repr}"),
+            // Possible only in EXPLAIN (RAW): the query is not really
+            // executed there, so the Segment motion's temporary table is
+            // empty and bucket discovery yields an empty set. An empty
+            // set with the upper-bound flag means buckets are calculated
+            // during actual execution and are unknown yet, so show the
+            // maximal possible range instead of `buckets <= []`.
+            Buckets::Filtered(BucketSet::Exact(ref set))
+                if set.is_empty() && self.is_upper_bound =>
+            {
+                write!(f, "buckets <= [1-{}]", self.bucket_count)
+            }
+            Buckets::Filtered(_) => {
+                let sym = if self.is_upper_bound { "<=" } else { "=" };
+                write!(f, "buckets {sym} {repr}")
+            }
         }
     }
 }
@@ -38,14 +56,12 @@ impl BoundedBuckets {
         BoundedBuckets {
             buckets,
             bucket_count,
+            is_upper_bound: false,
         }
     }
 }
 
 /// Estimate on which buckets query will be executed.
-/// If query consists only of single subtree we
-/// can predict buckets precisely. Otherwise the
-/// upper bound is returned.
 ///
 /// We gather all subtrees from plan that don't have
 /// non-local motions and call `bucket_discovery` for

@@ -19,6 +19,8 @@ sqlformat = { workspace = true }
 sql-executor = { path = "../sql-executor" }
 sql-ir = { path = "../sql-ir" }
 tarantool = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

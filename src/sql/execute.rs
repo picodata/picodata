@@ -32,7 +32,7 @@ use sql::executor::vtable::{
 };
 use sql::executor::{Port, PortType};
 use sql::explain::buckets::BoundedBuckets;
-use sql::explain::executor::MotionInfo;
+use sql::explain::executor::{MotionInfo, QueryEntry};
 use sql::ir::bucket::Buckets;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
@@ -734,14 +734,13 @@ impl Drop for TempTablesCleanupGuard {
     }
 }
 
-pub fn explain_execute<'p>(
+pub fn explain_execute(
     runtime: &StorageRuntime,
     miss_info: impl ExpandedPlanInfo,
     params: &[Value],
     buckets: &Buckets,
     motion_info: MotionInfo,
-    port: &mut impl Port<'p>,
-) -> Result<(), SbroadError> {
+) -> Result<QueryEntry, SbroadError> {
     let _plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
     let metadata = miss_info.vtable_metadata();
     let mut tables = TempTablesCleanupGuard::with_capacity(metadata.len());
@@ -753,9 +752,11 @@ pub fn explain_execute<'p>(
     }
 
     let bucket_count = runtime.bucket_count();
+    let is_upper_bound = motion_info.has_segment_motion;
     let buckets_info = BoundedBuckets {
         buckets: buckets.clone(),
         bucket_count,
+        is_upper_bound,
     };
 
     let explain_query = ExplainQuery::new(miss_info.sql());
@@ -764,7 +765,6 @@ pub fn explain_execute<'p>(
         &buckets_info,
         motion_info,
         std::iter::empty::<&str>(),
-        port,
     )
 }
 

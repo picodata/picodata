@@ -1,12 +1,11 @@
 use smol_str::SmolStr;
 use sql_ir::ir::node::{BlockEntryKind, IfBranch, StatementLocation};
-use sql_ir::ir::value::Value;
 use std::fmt;
 use std::fmt::Write as _;
 
 use crate::explain::executor::LINE_WIDTH;
 
-pub fn format_sql(explain: &str, params: &[Value], should_fmt: bool) -> String {
+pub fn format_sql(explain: &str, params: &[impl ToString], should_fmt: bool) -> String {
     let sql = explain
         .strip_prefix("EXPLAIN QUERY PLAN ")
         .unwrap_or(explain);
@@ -111,14 +110,6 @@ pub fn indent_with_prefix(
         }
 
         Ok(())
-    }
-}
-
-pub fn format_let_entry(is_unused: bool, var_name: &str) -> String {
-    if is_unused {
-        format!("**Unused** let \"{var_name}\"")
-    } else {
-        format!("Let \"{var_name}\"")
     }
 }
 

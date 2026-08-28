@@ -7,8 +7,10 @@ use sql::executor::engine::{BlockExecData, BlockQuery, BlockRuntimeHook};
 use sql::executor::vdbe::{SqlError, SqlStmt};
 use sql::executor::ExecutingQuery;
 use sql::executor::Port;
-use sql::explain::buckets::{buckets_repr, BoundedBuckets};
-use sql::explain::executor::{ExplainQueryLocation, MotionInfo};
+use sql::explain::buckets::BoundedBuckets;
+use sql::explain::executor::{
+    decode_vdbe_plan, ExplainQueryLocation, MotionInfo, QueryEntry, RawExplainEntry,
+};
 use sql::explain::ExplainExecutingQuery;
 use sql::ir::bucket::{BucketSet, Buckets};
 use sql::ir::node::BlockEntries;
@@ -138,74 +140,6 @@ pub fn explain_query(query: ExecutingQuery<'_, RouterRuntime>) -> Result<String,
     Ok(final_explain)
 }
 
-fn repack_raw_explain<'p>(dst_port: &mut impl Port<'p>, src_port: &impl Port<'p>) {
-    // We have to save the port size as it will further be used to iterate over port contents.
-    let num_serialized = encode(&[src_port.size()]);
-    dst_port.add_mp(&num_serialized);
-
-    for mp in src_port.iter() {
-        dst_port.add_mp(mp);
-    }
-}
-
-/// Generate buckets representation for EXPLAIN. "<=" in generated string
-/// indicates that this is an upper bound.
-fn format_explain_buckets(
-    bucket_info: &BoundedBuckets,
-    motion_info: &MotionInfo,
-) -> Result<String, SbroadError> {
-    let buckets = &bucket_info.buckets;
-    let bucket_count = bucket_info.bucket_count;
-    let is_dyn_filtered = motion_info.has_segment_motion;
-
-    if let Some(as_empty) = motion_info.has_serialize_as_empty_opcode {
-        let repr = match buckets {
-            Buckets::All => {
-                format!("buckets <= [1-{bucket_count}]")
-            }
-            Buckets::Any => {
-                let repr = buckets_repr(buckets, bucket_count);
-                format!("buckets = {repr}")
-            }
-            Buckets::Filtered(_) if !as_empty => {
-                let replicasets = replicasets_by_buckets(buckets)?;
-                if replicasets.len() > 1 {
-                    format!("buckets <= [1-{bucket_count}]")
-                } else {
-                    let sym = if is_dyn_filtered { "<=" } else { "=" };
-                    let repr = buckets_repr(buckets, bucket_count);
-                    format!("buckets {sym} {repr}")
-                }
-            }
-            _ => {
-                let repr = buckets_repr(buckets, bucket_count);
-                format!("buckets <= {repr}")
-            }
-        };
-
-        return Ok(repr);
-    }
-
-    let repr = buckets_repr(buckets, bucket_count);
-    let formatted_buckets = match buckets {
-        Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() && is_dyn_filtered => {
-            let repr = buckets_repr(&Buckets::All, bucket_count);
-            format!("buckets <= {repr}")
-        }
-        Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() => {
-            format!("buckets = {repr}")
-        }
-        Buckets::Filtered(_) => {
-            let sym = if is_dyn_filtered { "<=" } else { "=" };
-            format!("buckets {sym} {repr}")
-        }
-        Buckets::All => format!("buckets <= {repr}"),
-        Buckets::Any => format!("buckets = {repr}"),
-    };
-
-    Ok(formatted_buckets)
-}
-
 pub(crate) fn block_compile_error(error: SqlError) -> SbroadError {
     match error {
         SqlError::OutdatedStorageSchema => SbroadError::OutdatedStorageSchema,
@@ -237,21 +171,16 @@ pub fn explain_execute_block<'p>(
     let bucket_info = BoundedBuckets {
         buckets: buckets.clone(),
         bucket_count,
+        is_upper_bound: false,
     };
     let motion_info = MotionInfo::new_for_transaction();
 
-    let mut explain_one = |explain_query: ExplainQuery,
-                           query: &BlockQuery,
-                           params: &[Value]|
-     -> Result<(), SbroadError> {
+    let explain_one = |explain_query: ExplainQuery,
+                       query: &BlockQuery,
+                       params: &[Value]|
+     -> Result<QueryEntry, SbroadError> {
         let raw_plan_hook_details = explain_block_hook_rows(query);
-        explain_query.execute_guarded(
-            params,
-            &bucket_info,
-            motion_info,
-            raw_plan_hook_details,
-            port,
-        )
+        explain_query.execute_guarded(params, &bucket_info, motion_info, raw_plan_hook_details)
     };
 
     let next_params = |params: &mut IntoIter<_>| params.next().expect("not enough params");
@@ -260,18 +189,30 @@ pub fn explain_execute_block<'p>(
     for entry in BlockEntries::new(&statements) {
         let query = entry.query;
         let explain_query = ExplainQuery::new(&query.pattern);
-        explain_one(explain_query, query, &next_params(params))?;
+        let entry = explain_one(explain_query, query, &next_params(params))?;
+        append_query_entry_to_port(RawExplainEntry::Single(entry), port)?;
     }
 
     Ok(())
 }
 
+pub fn append_query_entry_to_port<'p>(
+    entry: RawExplainEntry,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError> {
+    let query_entry_json = serde_json::to_string(&entry).map_err(|err| {
+        SbroadError::Other(format_smolstr!(
+            "unable to serialize QueryEntry to JSON: {err}"
+        ))
+    })?;
+
+    let mp_json = encode(&[query_entry_json]);
+    port.add_mp(&mp_json);
+
+    Ok(())
+}
+
 /// Contains the SQL query that is executed in VDBE.
-///
-/// A transactional block sends one of these per statement, but the storage
-/// cannot name them: only the router knows the block's shape. It labels them
-/// itself when rendering, so the `kind` shipped here is used solely by
-/// ordinary, non-block queries.
 pub struct ExplainQuery<'a> {
     sql: &'a str,
 }
@@ -281,9 +222,7 @@ impl<'a> ExplainQuery<'a> {
     pub fn new(sql: &'a str) -> Self {
         Self { sql }
     }
-}
 
-impl<'p> ExplainQuery<'_> {
     /// Execute explain query in VDBE and append result to port.
     ///
     /// # Preconditions
@@ -296,25 +235,9 @@ impl<'p> ExplainQuery<'_> {
         bucket_info: &BoundedBuckets,
         motion_info: MotionInfo,
         raw_plan_hook_details: impl IntoIterator<Item: AsRef<str>>,
-        port: &mut impl Port<'p>,
-    ) -> Result<(), SbroadError> {
-        let mp_header = encode(&["Query"]);
-        port.add_mp(&mp_header);
-
+    ) -> Result<QueryEntry, SbroadError> {
         let location = build_explain_query_location(&bucket_info.buckets, &motion_info);
-        let mp_location = encode(&[location.to_string()]);
-        port.add_mp(&mp_location);
-
-        let buckets_repr = format_explain_buckets(bucket_info, &motion_info)?;
-        let mp_buckets_repr = encode(&[buckets_repr]);
-        port.add_mp(&mp_buckets_repr);
-
-        let sql_query = &self.sql;
-        let mp_query = encode(&[sql_query]);
-        port.add_mp(&mp_query);
-
-        let mp_params = encode(&params.to_vec());
-        port.add_mp(&mp_params);
+        let sql_query = self.sql;
 
         let raw_explain_hook_err = |e: String| {
             SbroadError::FailedTo(
@@ -340,25 +263,27 @@ impl<'p> ExplainQuery<'_> {
             None => SqlStmt::compile(sql_query),
         };
 
-        match compile_result {
+        let tuples = match compile_result {
             Ok(mut stmt) => {
                 let mut tmp_port = PicoPortOwned::new();
                 // `0` is passed since it should always be possible to execute
                 // EXPLAIN(RAW).
                 tmp_port.process_stmt(&mut stmt, params, 0)?;
 
-                // At this point we have to save the port size as it will further be used to iterate over port contents.
-                repack_raw_explain(port, &tmp_port);
+                let tuples = decode_vdbe_plan(&tmp_port)?;
+                Ok(tuples)
             }
-            Err(err) => {
-                let num_serialized = encode(&[1]);
-                port.add_mp(&num_serialized);
+            Err(err) => Err(err.to_string()),
+        };
 
-                let err_serialized = encode(&[err.to_string()]);
-                port.add_mp(&err_serialized);
-            }
-        }
+        let query_entry = QueryEntry::new(
+            sql_query.to_string(),
+            location,
+            bucket_info.clone(),
+            params.iter().map(ToString::to_string).collect(),
+            tuples,
+        );
 
-        Ok(())
+        Ok(query_entry)
     }
 }

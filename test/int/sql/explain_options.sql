@@ -2416,3 +2416,32 @@ ORDER BY
 plan:
     [0] SCAN TABLE _tmp_4687572473339657096_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
+
+
+-- TEST: raw-select-double-inf
+-- SQL:
+EXPLAIN (raw)
+SELECT 'inf'::double;
+-- EXPECTED:
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT CAST(inf AS double) as "col_1"
+''
+plan:
+    [0] TRIVIAL
+
+-- TEST: raw-select-double-nan
+-- SQL:
+EXPLAIN (raw)
+SELECT 'nan'::double;
+-- EXPECTED:
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT CAST(NaN AS double) as "col_1"
+''
+plan:
+    [0] TRIVIAL

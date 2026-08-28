@@ -1,9 +1,6 @@
 use std::collections::HashSet;
 use std::fmt::Display;
 
-use smallvec::SmallVec;
-use smol_str::{format_smolstr, SmolStr};
-
 use crate::errors::{Entity, SbroadError};
 use crate::ir::distribution::Distribution;
 use crate::ir::helpers::RepeatableState;
@@ -13,6 +10,9 @@ use crate::ir::node::{
 use crate::ir::operator::Bool;
 use crate::ir::value::{value_to_decimal_or_error, Value};
 use crate::ir::{Plan, Positions};
+use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
+use smol_str::{format_smolstr, SmolStr};
 
 /// Memoizes `bucket_id` position lookups within a single expression.
 type ShardPositionsCache = SmallVec<[(NodeId, Option<Positions>); 4]>;
@@ -26,7 +26,7 @@ pub fn value_to_bucket_id(value: &Value) -> Option<u64> {
 }
 
 /// We can apply some conservative optimizations during planning.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum BucketSet {
     /// The actual `bucket_id`, which we can only determine at runtime.
     ///
@@ -118,7 +118,7 @@ impl BucketSet {
 }
 
 /// Buckets are used to determine which nodes to send the query to.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum Buckets {
     // We don't want to keep thousands of buckets in memory
     // so we use a special enum to represent all the buckets

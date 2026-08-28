@@ -20,6 +20,7 @@ use sql::executor::ir::{ExecutionPlan, LocalSqlParams};
 use sql::executor::lru::{Cache, EvictFn, LRUCache};
 use sql::executor::protocol::SchemaInfo;
 use sql::executor::{Port, PortType};
+use sql::explain::executor::RawExplainEntry;
 use sql::ir::bucket::Buckets;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
@@ -51,7 +52,7 @@ use crate::sql::execute::{
     acquire_cached_stmt_or_retry, dml_execute, dql_execute, drop_temp_tables, explain_execute,
     sql_execute, stmt_execute, LazyVirtualTableEncoder, LendingTupleIterator,
 };
-use crate::sql::explain::block_compile_error;
+use crate::sql::explain::{append_query_entry_to_port, block_compile_error};
 use crate::sql::lock::{
     new_temp_table_lock, try_lock_temp_table, TempTableLockRef, TempTableLockWeak,
 };
@@ -654,51 +655,31 @@ impl Vshard for StorageRuntime {
 
         if plan.is_raw_explain() {
             let plan_id = ex_plan.get_plan_id()?;
+
+            let explain_once = |sql: String,
+                                params: LocalSqlParams,
+                                vtables: &HashMap<SmolStr, Rc<VirtualTable>>,
+                                buckets: &Buckets,
+                                motion_info: MotionInfo| {
+                let schema_info = SchemaInfo::new(
+                    plan.table_version_map.clone(),
+                    plan.index_version_map.clone(),
+                );
+                let miss_info = ExpandedLocalExecutionInfo {
+                    schema_info,
+                    plan_id,
+                    vtables,
+                    sql,
+                };
+
+                explain_execute(self, miss_info, params.params(), buckets, motion_info)
+            };
             let has_segment_motion = ex_plan.has_segment_motion(top_id);
             if ex_plan.has_serialize_as_empty_motion(top_id) {
-                // If motion has serialize_as_empty opcode and it's executed on
-                // multiple replicasets, Picodata will generate two different
-                // SQL queries for its subtree. We have to include each of them
-                // in EXPLAIN (RAW). Here we append the number of queries to
-                // port to successfully decode it later.
-                //
-                // `Buckets::Any` is a single node by definition, so it never
-                // needs the second query.
                 let multiple_replicasets =
                     !matches!(buckets, Buckets::Any) && replicasets_by_buckets(buckets)?.len() > 1;
-                if multiple_replicasets {
-                    let mp_num = tarantool::msgpack::encode(&[2]);
-                    port.add_mp(&mp_num);
-                }
 
                 // Disabling `serialize_as_empty` changes the effective subtree.
-                let mut explain_once =
-                    |sql: String,
-                     params: LocalSqlParams,
-                     vtables: &HashMap<SmolStr, Rc<VirtualTable>>,
-                     buckets: &Buckets,
-                     motion_info: MotionInfo| {
-                        let schema_info = SchemaInfo::new(
-                            plan.table_version_map.clone(),
-                            plan.index_version_map.clone(),
-                        );
-                        let miss_info = ExpandedLocalExecutionInfo {
-                            schema_info,
-                            plan_id,
-                            vtables,
-                            sql,
-                        };
-
-                        explain_execute(
-                            self,
-                            miss_info,
-                            params.params(),
-                            buckets,
-                            motion_info,
-                            port,
-                        )
-                    };
-
                 let mut sub_plan = ex_plan.clone();
 
                 // The presence of `serialize_as_empty` opcode often leads to
@@ -722,18 +703,28 @@ impl Vshard for StorageRuntime {
                 disable_serialize_as_empty_for_subtree(&mut sub_plan, top_id)?;
                 let sql_params = sub_plan.local_sql_params(top_id, Snapshot::Oldest)?;
                 let ids = sql_params.constant_ids();
-                let local_sql = generate_local_dql_sql(&sub_plan, top_id, plan_id, ids)?;
+                let sql = generate_local_dql_sql(&sub_plan, top_id, plan_id, ids)?;
                 let sub_vtables = sub_plan.subtree_vtables(top_id, plan_id)?;
                 let motion_info = MotionInfo::new_for_query(has_segment_motion, Some(false));
-                explain_once(local_sql, sql_params, &sub_vtables, buckets, motion_info)?;
 
                 if multiple_replicasets {
+                    let buckets = Buckets::All;
+                    let entry = explain_once(sql, sql_params, &sub_vtables, &buckets, motion_info)?;
+
                     let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
                     let ids = sql_params.constant_ids();
-                    let local_sql = generate_local_dql_sql(ex_plan, top_id, plan_id, ids)?;
+                    let sql = generate_local_dql_sql(ex_plan, top_id, plan_id, ids)?;
                     let vtables = ex_plan.subtree_vtables(top_id, plan_id)?;
                     let motion_info = MotionInfo::new_for_query(has_segment_motion, Some(true));
-                    explain_once(local_sql, sql_params, &vtables, &Buckets::All, motion_info)?;
+                    let second_entry =
+                        explain_once(sql, sql_params, &vtables, &buckets, motion_info)?;
+                    append_query_entry_to_port(
+                        RawExplainEntry::Multiple(vec![entry, second_entry]),
+                        port,
+                    )?;
+                } else {
+                    let entry = explain_once(sql, sql_params, &sub_vtables, buckets, motion_info)?;
+                    append_query_entry_to_port(RawExplainEntry::Single(entry), port)?;
                 }
             } else {
                 let sql_params = ex_plan.local_sql_params(top_id, Snapshot::Oldest)?;
@@ -752,14 +743,9 @@ impl Vshard for StorageRuntime {
                 };
 
                 let motion_info = MotionInfo::new_for_query(has_segment_motion, None);
-                explain_execute(
-                    self,
-                    miss_info,
-                    sql_params.params(),
-                    buckets,
-                    motion_info,
-                    port,
-                )?;
+                let entry =
+                    explain_execute(self, miss_info, sql_params.params(), buckets, motion_info)?;
+                append_query_entry_to_port(RawExplainEntry::Single(entry), port)?;
             }
 
             return Ok(());

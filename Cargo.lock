@@ -3926,6 +3926,8 @@ dependencies = [
  "itertools 0.15.0",
  "pretty_assertions",
  "rmp",
+ "serde",
+ "serde_json",
  "smallvec",
  "smol_str",
  "sql-executor",

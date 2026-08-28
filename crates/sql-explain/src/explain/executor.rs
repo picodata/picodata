@@ -2,15 +2,16 @@ use bitflags::bitflags;
 use smol_str::format_smolstr;
 use sql_ir::errors::SbroadError;
 use sql_ir::ir::node::{AnonymousBlock, BlockEntries};
-use sql_ir::ir::value::Value;
 use std::fmt;
-use std::iter::Peekable;
 use tarantool::msgpack;
 
 use std::fmt::Write as _;
 
 use sql_executor::executor::Port;
 
+use serde::{Deserialize, Serialize};
+
+use crate::explain::buckets::BoundedBuckets;
 use crate::explain::utils::format_block_stage_label;
 use crate::explain::utils::format_block_stage_number;
 
@@ -59,7 +60,7 @@ impl MotionInfo {
 }
 
 /// Helper struct which holds the query execution location.
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum ExplainQueryLocation {
     /// Query is executed exactly on N replicasets.
     ConstFiltered { fraction: (usize, usize) },
@@ -91,107 +92,103 @@ impl std::fmt::Display for ExplainQueryLocation {
 
 pub const LINE_WIDTH: usize = 80;
 
-#[derive(Debug, Clone, msgpack::Encode, msgpack::Decode)]
-struct RawExplainTuple {
+#[derive(Serialize, Deserialize, Debug, Clone, msgpack::Encode, msgpack::Decode)]
+pub struct RawExplainTuple {
     selectid: i64,
     order: i64,
     from: i64,
     detail: String,
 }
 
-impl RawExplainTuple {
-    fn try_decode_from_mp(mp: &[u8]) -> Result<Self, String> {
-        if let Ok(tuple) = msgpack::decode::<RawExplainTuple>(mp) {
-            return Ok(tuple);
-        }
-
-        match msgpack::decode::<Vec<String>>(mp) {
-            Ok(mut err) => Err(err.pop().unwrap()),
-            Err(err) => Err(format!("BUG: failed to decode error: {err}")),
-        }
-    }
-}
-
-#[derive(Debug)]
-enum RawExplainEntry {
+#[derive(Serialize, Deserialize, Debug)]
+pub enum RawExplainEntry {
     Multiple(Vec<QueryEntry>),
     Single(QueryEntry),
 }
 
-#[derive(Debug)]
-struct QueryEntry {
-    query: String,
-    location: String,
-    buckets: String,
+impl RawExplainEntry {
+    fn decode_entry(mp: &[u8]) -> Result<RawExplainEntry, SbroadError> {
+        let json_wrapped: Vec<String> = msgpack::decode(mp)
+            .map_err(|err| SbroadError::Other(format_smolstr!("unable to decode JSON: {err}")))?;
+        let json = json_wrapped[0].clone();
+
+        let mut query_entry: RawExplainEntry = serde_json::de::from_str(&json).map_err(|err| {
+            SbroadError::Other(format_smolstr!(
+                "unable to decode RawExplainEntry from JSON: {err}"
+            ))
+        })?;
+
+        // Provide a fallback for empty raw plans.
+        match &mut query_entry {
+            RawExplainEntry::Single(entry) => {
+                if entry.tuples.as_ref().is_ok_and(Vec::is_empty) {
+                    add_trivial_fallback(entry);
+                }
+            }
+            RawExplainEntry::Multiple(entries) => {
+                for entry in entries {
+                    if entry.tuples.as_ref().is_ok_and(Vec::is_empty) {
+                        add_trivial_fallback(entry);
+                    }
+                }
+            }
+        }
+
+        Ok(query_entry)
+    }
+}
+
+fn add_trivial_fallback(entry: &mut QueryEntry) {
+    if let Ok(items) = &mut entry.tuples {
+        items.push(RawExplainTuple {
+            selectid: 0,
+            order: 0,
+            from: 0,
+            detail: "TRIVIAL".into(),
+        });
+    }
+}
+
+pub fn decode_vdbe_plan<'p>(port: &impl Port<'p>) -> Result<Vec<RawExplainTuple>, SbroadError> {
+    let mut tuples = Vec::with_capacity(port.size() as usize);
+
+    for mp in port.iter() {
+        let tuple = msgpack::decode::<RawExplainTuple>(mp).map_err(|err| {
+            SbroadError::Other(format_smolstr!(
+                "unable to decode RawExplainTuple from port: {err}"
+            ))
+        })?;
+
+        tuples.push(tuple);
+    }
+
+    Ok(tuples)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct QueryEntry {
     sql: String,
-    params: Vec<Value>,
+    location: ExplainQueryLocation,
+    buckets: BoundedBuckets,
+    params: Vec<String>,
     tuples: Result<Vec<RawExplainTuple>, String>,
 }
 
 impl QueryEntry {
-    fn decode_entry<'p>(
-        port_iter: &mut Peekable<impl Iterator<Item = &'p [u8]>>,
-    ) -> Result<QueryEntry, SbroadError> {
-        let query_mp = port_iter.next().expect("query must be in port");
-        let query_wrapped: Vec<String> = msgpack::decode(query_mp)
-            .map_err(|err| SbroadError::Other(format_smolstr!("unable to decode query: {err}")))?;
-        let query = query_wrapped[0].clone();
-
-        let location_mp = port_iter.next().expect("location must be in port");
-        let location_wrapped: Vec<String> = msgpack::decode(location_mp).map_err(|err| {
-            SbroadError::Other(format_smolstr!("unable to decode location: {err}"))
-        })?;
-        let location = location_wrapped[0].clone();
-
-        let buckets_mp = port_iter.next().expect("buckets must be in port");
-        let buckets_wrapped: Vec<String> = msgpack::decode(buckets_mp).map_err(|err| {
-            SbroadError::Other(format_smolstr!("unable to decode buckets: {err}"))
-        })?;
-        let buckets = buckets_wrapped[0].clone();
-
-        let sql_mp = port_iter.next().expect("sql query must be in port");
-        let sql_wrapped: Vec<String> = msgpack::decode(sql_mp).map_err(|err| {
-            SbroadError::Other(format_smolstr!("unable to decode sql query: {err}"))
-        })?;
-        let sql = sql_wrapped[0].clone();
-
-        let params_mp = port_iter.next().expect("params must be in port");
-        let params: Vec<Value> = msgpack::decode(params_mp)
-            .map_err(|err| SbroadError::Other(format_smolstr!("unable to decode params: {err}")))?;
-
-        let num_mp = port_iter.next().expect("num must be in port");
-        let num_wrapped: Vec<usize> = msgpack::decode(num_mp).map_err(|err| {
-            SbroadError::Other(format_smolstr!(
-                "unable to decode the number of rows: {err}"
-            ))
-        })?;
-        let num = num_wrapped[0];
-
-        let mut tuples: Result<Vec<RawExplainTuple>, String> = port_iter
-            .take(num)
-            .map(RawExplainTuple::try_decode_from_mp)
-            .collect();
-
-        // Provide a fallback for empty raw plans.
-        if let Ok(items) = &mut tuples {
-            if items.is_empty() {
-                items.push(RawExplainTuple {
-                    selectid: 0,
-                    order: 0,
-                    from: 0,
-                    detail: "TRIVIAL".into(),
-                });
-            }
-        }
-
-        Ok(QueryEntry {
-            query,
+    pub fn new(
+        sql: String,
+        location: ExplainQueryLocation,
+        buckets: BoundedBuckets,
+        params: Vec<String>,
+        tuples: Result<Vec<RawExplainTuple>, String>,
+    ) -> QueryEntry {
+        QueryEntry {
+            sql,
             location,
             buckets,
-            sql,
             params,
             tuples,
-        })
+        }
     }
 }
 
@@ -283,8 +280,7 @@ fn write_raw_explain_entry(
             write_explain_header2!(f, "{number} {label} ({source})")?;
         }
         None => {
-            let kind = &entry.query;
-            write_explain_header2!(f, "{idx} {kind} ({source})")?;
+            write_explain_header2!(f, "{idx} Query ({source})")?;
         }
     }
     write!(f, "\n{sql}\n\n")?;
@@ -369,27 +365,10 @@ impl RawExplain {
         format_options: RawExplainOptions,
         stages: Vec<BlockStageHeader>,
     ) -> Result<RawExplain, SbroadError> {
-        let mut port_iter = port.iter().peekable();
         let mut explain_entries = Vec::new();
-        while let Some(mp) = port_iter.peek() {
-            if let Ok(num_of_entries_wrapped) = msgpack::decode::<Vec<usize>>(mp)
-                .map_err(|err| SbroadError::Other(format_smolstr!("unable to decode query: {err}")))
-            {
-                // Skip the value since it's been already handled.
-                let _ = port_iter.next().expect("peek() returned true");
-
-                let num_of_entries = num_of_entries_wrapped[0];
-                let mut entries = Vec::new();
-                for _ in 0..num_of_entries {
-                    let entry = QueryEntry::decode_entry(&mut port_iter)?;
-                    entries.push(entry);
-                }
-
-                explain_entries.push(RawExplainEntry::Multiple(entries));
-            } else {
-                let entry = QueryEntry::decode_entry(&mut port_iter)?;
-                explain_entries.push(RawExplainEntry::Single(entry));
-            }
+        for mp in port.iter() {
+            let entry = RawExplainEntry::decode_entry(mp)?;
+            explain_entries.push(entry);
         }
 
         Ok(Self {
