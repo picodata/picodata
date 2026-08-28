@@ -514,6 +514,31 @@ def test_webui_replicaset_state(cluster: Cluster):
 
 
 @pytest.mark.webui
+def test_webui_cluster_offline_count_excludes_expelled(cluster: Cluster):
+    # instancesCurrentStateOffline must count only instances that are
+    # genuinely Offline. Previously it was computed as instances -
+    # instances_online, which also counted Expelled instances (they remain
+    # visible in _pico_instance) as if they were offline.
+    i1, _, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
+
+    # i3 stays visible in _pico_instance with current_state == "Expelled",
+    # while i1 and i2 remain online.
+    cluster.expel(i3, force=True)
+    cluster.wait_has_states(i3, "Expelled", "Expelled")
+
+    create_user(i1)
+    auth_token = get_auth_token(i1)
+
+    http_listen = i1.http_listen
+    with get_url(f"http://{http_listen}/api/v1/cluster", auth_token) as response:
+        assert response.headers.get("content-type") == "application/json"
+        body = json.load(response)
+        # i3 is expelled, not offline: it must not be counted as offline.
+        assert body["instancesCurrentStateOnline"] == 2
+        assert body["instancesCurrentStateOffline"] == 0
+
+
+@pytest.mark.webui
 def test_webui_can_vote_flag(cluster: Cluster):
     cluster_cfg = """
     cluster:
