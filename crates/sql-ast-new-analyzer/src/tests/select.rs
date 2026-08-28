@@ -1,4 +1,4 @@
-//! The clauses that filter what FROM produced: WHERE.
+//! The clauses that filter what FROM produced: WHERE and HAVING.
 //!
 //! # Cases
 //! These clauses read the FROM frame without being part of it, which is the
@@ -154,8 +154,8 @@ fn where_correlates_through_a_nested_from() {
 
 #[test]
 fn where_inside_a_join_condition_subquery() {
-    // The innermost WHERE sits three scopes down: `b` binds to the subquery's
-    // own t1, `x.a` reaches the enclosing join's left side.
+    // The WHERE resolves through two scopes: `b` binds to the subquery's own
+    // t1, `x.a` reaches the enclosing join's left side.
     let query = "SELECT 1 FROM t1 x INNER JOIN t5 z ON (SELECT g FROM t1 WHERE b = x.a)";
     insta::assert_snapshot!(
         analyzed(query, &[]),
@@ -267,5 +267,92 @@ fn where_client_typed_parameter_conflicts_with_column() {
     insta::assert_snapshot!(
         analyze_error(query, &param_types),
         @"could not resolve operator overload for =(int, text)"
+    );
+}
+
+// ------------- HAVING -------------
+
+/// HAVING resolves against the FROM clause, not against the select list beside
+/// it — the same rule as WHERE, and the same as Postgres. The grouping cases
+/// live in [`super::table_expression`]; what these pin is which column the name
+/// lands on.
+#[test]
+fn having_resolves_against_the_from_not_the_select_list() {
+    // An alias naming no FROM column resolves to nothing at all.
+    insta::assert_snapshot!(
+        analyze_error("SELECT t1.a AS x FROM t1 GROUP BY t1.a HAVING x > 0", &[]),
+        @"failed to analyze AST: cannot resolve column reference 'x'"
+    );
+    insta::assert_snapshot!(
+        analyze_error("SELECT t1.c AS zz FROM t1 GROUP BY t1.c HAVING zz > 0", &[]),
+        @"failed to analyze AST: cannot resolve column reference 'zz'"
+    );
+    // An alias that shadows a FROM column loses to it: `a` here is `t1.a`, not
+    // the projected `t1.c`, so grouping by `t1.c` alone does not cover it.
+    insta::assert_snapshot!(
+        analyze_error("SELECT t1.c AS a FROM t1 GROUP BY t1.c HAVING a > 0", &[]),
+        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+    );
+    // The same query with `t1.a` grouped: the rendering shows which column the
+    // reference bound to.
+    insta::assert_snapshot!(
+        analyzed("SELECT t1.c AS a FROM t1 GROUP BY t1.c, t1.a HAVING a > 0", &[]),
+        @"SELECT t1.c::double AS a FROM t1 GROUP BY t1.c::double, t1.a::int HAVING (t1.a::int > 0::int)::bool"
+    );
+}
+
+/// GROUP BY may name a select-list alias; HAVING may not. The pair pins that
+/// the alias visibility GROUP BY has is GROUP BY's alone and does not carry
+/// over into the clause bound right after it.
+#[test]
+fn having_does_not_inherit_the_group_by_alias() {
+    insta::assert_snapshot!(
+        analyze_error("SELECT t1.a AS x FROM t1 GROUP BY x HAVING x > 0", &[]),
+        @"failed to analyze AST: cannot resolve column reference 'x'"
+    );
+    // Spelling the underlying column instead is accepted, and the GROUP BY
+    // alias is still reduced to the ordinal it names.
+    insta::assert_snapshot!(
+        analyzed("SELECT t1.a AS x FROM t1 GROUP BY x HAVING t1.a > 0", &[]),
+        @"SELECT t1.a::int AS x FROM t1 GROUP BY 1 HAVING (t1.a::int > 0::int)::bool"
+    );
+}
+
+/// The clause is a condition, so it has to be boolean — the HAVING counterpart
+/// of [`where_inconsistent_condition_result_type_error`].
+#[test]
+fn having_condition_result_type() {
+    insta::assert_snapshot!(
+        analyzed("SELECT 1 FROM t1 GROUP BY t1.g HAVING t1.g", &[]),
+        @"SELECT 1::int FROM t1 GROUP BY t1.g::bool HAVING t1.g::bool"
+    );
+    insta::assert_snapshot!(
+        analyze_error("SELECT 1 FROM t1 GROUP BY t1.a HAVING t1.a", &[]),
+        @"failed to analyze AST: argument of HAVING must be type boolean, not type int"
+    );
+    insta::assert_snapshot!(
+        analyze_error("SELECT 1 FROM t1 HAVING sum(t1.a)", &[]),
+        @"failed to analyze AST: argument of HAVING must be type boolean, not type decimal"
+    );
+    // Grouping is checked while binding and typing afterwards, so an
+    // expression that fails both is reported as the grouping error. Postgres
+    // reports the type error here instead; both reject.
+    insta::assert_snapshot!(
+        analyze_error("SELECT 1 FROM t1 GROUP BY t1.a HAVING t1.e", &[]),
+        @r#"failed to analyze AST: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#
+    );
+}
+
+/// A parameter in HAVING is typed from the column it is compared against, and
+/// the grouping check runs regardless of the parameter being untyped.
+#[test]
+fn having_parameter() {
+    insta::assert_snapshot!(
+        analyzed("SELECT t1.a FROM t1 GROUP BY t1.a HAVING t1.a > $1", &[]),
+        @"SELECT t1.a::int FROM t1 GROUP BY t1.a::int HAVING (t1.a::int > $1::int)::bool"
+    );
+    insta::assert_snapshot!(
+        analyze_error("SELECT t1.a FROM t1 HAVING sum(t1.b) > $1", &[]),
+        @r#"failed to analyze AST: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }

@@ -199,11 +199,11 @@ impl<'q, State: AstState<'q>> Display for NamedWindow<'q, State> {
 
 /// Structural comparison, one impl per node for both states.
 ///
-/// The two entries from the rest of the walk go through
-/// [`AstState::window_fn_eq`] and [`AstState::named_window_eq`], which is
-/// where [`Analyzed`](crate::Analyzed)'s windows-never-equal rule lives; the
-/// impls below are the [`Raw`](crate::Raw) side of those hooks and the shared
-/// recursion under them.
+/// The entry from the rest of the walk goes through
+/// [`AstState::window_fn_eq`], which is where
+/// [`Analyzed`](crate::Analyzed)'s windows-never-equal rule lives; the impls
+/// below are the [`Raw`](crate::Raw) side of that hook and the shared
+/// recursion under it.
 mod structural_eq {
     use super::*;
     use crate::structural_eq::StructuralEq;

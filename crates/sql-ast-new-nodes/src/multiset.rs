@@ -68,7 +68,7 @@ use std::rc::Rc;
 use crate::error::AstResult;
 use crate::expr::{Expr, ValuesRow};
 use crate::select::SelectStmt;
-use crate::table_expression::{AttributeView, UniqueColumnRoute};
+use crate::table_expression::{AttributeView, OrdrByGrpByElem, UniqueColumnRoute};
 use crate::{Analyzed, AstState, Ident, NamedEntity, Raw};
 use sql_ir::ir::relation::Column;
 use sql_ir::ir::types::DerivedType;
@@ -156,6 +156,17 @@ impl<'q> MultisetStmt<'q, Analyzed> {
             MultisetInner::Select(stmt) => Ok(stmt.result_columns_cnt()),
             MultisetInner::Values(values) => Ok(values.result_columns_cnt()),
             MultisetInner::Operation(operation) => operation.left.result_columns_cnt(),
+        }
+    }
+
+    /// The names this statement's result columns expose, in order.
+    pub fn output_names(&self) -> AstResult<Vec<Option<&str>>> {
+        match &self.inner {
+            MultisetInner::Select(stmt) => {
+                Ok(stmt.select_list().output_names().into_iter().collect())
+            }
+            MultisetInner::Values(values) => Ok(values.output_names()),
+            MultisetInner::Operation(operation) => operation.left.output_names(),
         }
     }
 
@@ -327,18 +338,38 @@ impl<'q, State: AstState<'q>> Display for OrderBy<'q, State> {
 }
 
 impl<'q> OrderBy<'q, Raw> {
-    pub fn add_elem(&mut self, elem: OrderByElement<'q, Raw>) {
+    pub fn push_element(&mut self, elem: OrderByElement<'q, Raw>) {
         self.elems.push(elem);
     }
 
     pub fn is_empty(&self) -> bool {
         self.elems.is_empty()
     }
+
+    pub fn len(&self) -> usize {
+        self.elems.len()
+    }
+
+    pub fn into_elements(self) -> Vec<OrderByElement<'q, Raw>> {
+        self.elems
+    }
+}
+
+impl<'q> From<Vec<OrderByElement<'q, Analyzed>>> for OrderBy<'q, Analyzed> {
+    fn from(elems: Vec<OrderByElement<'q, Analyzed>>) -> Self {
+        Self { elems }
+    }
+}
+
+impl<'q> OrderBy<'q, Analyzed> {
+    pub fn elements_mut(&mut self) -> &mut Vec<OrderByElement<'q, Analyzed>> {
+        &mut self.elems
+    }
 }
 
 // Public for reuse in window ORDER BY
 pub struct OrderByElement<'q, State: AstState<'q>> {
-    pub expr: Expr<'q, State>,
+    pub expr: OrdrByGrpByElem<'q, State>,
     pub direction: OrderByDirection,
     pub nulls: OrderByNulls,
 }
@@ -350,6 +381,37 @@ impl<'q, State: AstState<'q>> Display for OrderByElement<'q, State> {
             write!(f, " {}", self.nulls)?;
         }
         Ok(())
+    }
+}
+
+impl<'q> OrderByElement<'q, Raw> {
+    pub fn into_parts(self) -> (OrdrByGrpByElem<'q, Raw>, OrderByDirection, OrderByNulls) {
+        (self.expr, self.direction, self.nulls)
+    }
+}
+
+impl<'q> OrderByElement<'q, Analyzed> {
+    pub fn elem_ref(&self) -> &OrdrByGrpByElem<'q, Analyzed> {
+        &self.expr
+    }
+
+    pub fn expr_mut(&mut self) -> Option<&mut Expr<'q, Analyzed>> {
+        match &mut self.expr {
+            OrdrByGrpByElem::Ordinal(_) => None,
+            OrdrByGrpByElem::Expr(expr) => Some(expr),
+        }
+    }
+
+    pub fn from_parts(
+        expr: OrdrByGrpByElem<'q, Analyzed>,
+        direction: OrderByDirection,
+        nulls: OrderByNulls,
+    ) -> Self {
+        Self {
+            expr,
+            direction,
+            nulls,
+        }
     }
 }
 

@@ -11,6 +11,7 @@ use smol_str::format_smolstr;
 use crate::expr::{parse_expr, parse_values_row};
 use crate::pairs_traversal::Tree;
 use crate::select::parse_select_stmt;
+use crate::table_expression::{parse_ordrby_grpby_elem, OrdinalClause};
 use crate::{failed_parsing_error, parse_invariant_error, AstResult};
 use crate::{unexpected_rule_error, ExpectedRules, ParseCtx};
 use sql_ast_new_grammar::Rule;
@@ -20,6 +21,7 @@ use sql_ast_new_nodes::multiset::{
 };
 #[cfg(test)]
 use sql_ast_new_nodes::multiset::{MultisetInner, Operation};
+use sql_ast_new_nodes::table_expression::OrdrByGrpByElem;
 use sql_ast_new_nodes::{Ident, Raw};
 use sql_ir::errors::{Entity, SbroadError};
 
@@ -90,7 +92,7 @@ pub(super) fn parse_multiset<'q>(
                         "multiple ORDER BY clauses not allowed"
                     )));
                 }
-                order_by = Some(parse_order_by(pair, ctx)?);
+                order_by = Some(parse_order_by(pair, ctx, OrderByLiterals::FoldOrdinals)?);
             }
             Rule::Limit => {
                 if inner.limit.is_some() {
@@ -251,13 +253,26 @@ fn parse_values<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<ValuesStm
     Ok(values_stmt)
 }
 
-fn parse_order_by<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<OrderBy<'q, Raw>> {
+/// How ORDER BY literals read. The query-level clause folds an integer literal
+/// into a select-list ordinal (shared with GROUP BY).
+/// A window's ORDER BY has no ordinals.
+#[derive(Clone, Copy)]
+pub(crate) enum OrderByLiterals {
+    FoldOrdinals,
+    KeepConstants,
+}
+
+pub(crate) fn parse_order_by<'q>(
+    pair: Pair<'q, Rule>,
+    ctx: &ParseCtx,
+    literals: OrderByLiterals,
+) -> AstResult<OrderBy<'q, Raw>> {
     debug_assert_eq!(pair.as_rule(), Rule::OrderBy);
 
     let mut order_by = OrderBy::default();
 
     for pair in pair.into_inner() {
-        order_by.add_elem(parse_order_by_element(pair, ctx)?);
+        order_by.push_element(parse_order_by_element(pair, ctx, literals)?);
     }
 
     debug_assert!(!order_by.is_empty());
@@ -267,6 +282,7 @@ fn parse_order_by<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<OrderBy
 pub(super) fn parse_order_by_element<'q>(
     pair: Pair<'q, Rule>,
     ctx: &ParseCtx,
+    literals: OrderByLiterals,
 ) -> AstResult<OrderByElement<'q, Raw>> {
     debug_assert_eq!(pair.as_rule(), Rule::OrderByElement);
 
@@ -276,7 +292,14 @@ pub(super) fn parse_order_by_element<'q>(
 
     for pair in pair.into_inner() {
         match pair.as_rule() {
-            Rule::Expr => expr = Some(parse_expr(pair, ctx)?),
+            Rule::Expr => {
+                expr = Some(match literals {
+                    OrderByLiterals::FoldOrdinals => {
+                        parse_ordrby_grpby_elem(parse_expr(pair, ctx)?, OrdinalClause::OrderBy)?
+                    }
+                    OrderByLiterals::KeepConstants => OrdrByGrpByElem::Expr(parse_expr(pair, ctx)?),
+                })
+            }
             Rule::Asc => direction = OrderByDirection::Asc,
             Rule::Desc => direction = OrderByDirection::Desc,
             Rule::NullsFirst => nulls = OrderByNulls::First,
@@ -609,6 +632,70 @@ mod tests {
             render_multiset(query),
             @"SELECT a, b, c FROM t ORDER BY a DESC NULLS LAST, b * 2 + 1 ASC NULLS FIRST"
         );
+    }
+
+    #[test]
+    fn order_by_ordinal() {
+        // An integer literal is a select-list position, exactly as in GROUP BY;
+        // redundant parentheses and a folded minus do not change that.
+        let query = r#"SELECT a, b FROM t ORDER BY 1 DESC, ((2)), - -1"#;
+        insta::assert_snapshot!(
+            render_multiset(query),
+            @"SELECT a, b FROM t ORDER BY 1 DESC, 2 ASC, 1 ASC"
+        );
+    }
+
+    #[test]
+    fn order_by_row_is_kept_whole() {
+        // Unlike GROUP BY, ORDER BY does not flatten a row into its fields:
+        // `(1, b)` is a row value the query sorts by, and its first field is
+        // the constant `1`, not the first output column. So the row stays one
+        // element, and a NULL or a string constant inside it is not a rejected
+        // non-integer position either.
+        let query = r#"SELECT a, b FROM t ORDER BY (1, b), (NULL, b) DESC, ('x', b)"#;
+        insta::assert_snapshot!(
+            render_multiset(query),
+            @"SELECT a, b FROM t ORDER BY (1, b) ASC, (NULL, b) DESC, ('x', b) ASC"
+        );
+    }
+
+    #[test]
+    fn order_by_bare_constant_is_rejected() {
+        // The same rule as GROUP BY's, named after the clause it fired in.
+        for query in [
+            r#"SELECT a FROM t ORDER BY NULL"#,
+            r#"SELECT a FROM t ORDER BY 'x'"#,
+            r#"SELECT a FROM t ORDER BY 1.0"#,
+            r#"SELECT a FROM t ORDER BY (('x'))"#,
+            r#"SELECT a FROM t ORDER BY a, 'x'"#,
+        ] {
+            let err = parse_multiset(query)
+                .err()
+                .unwrap_or_else(|| panic!("`{query}` must be rejected"));
+            assert_eq!(
+                err.to_string(),
+                "invalid expression: non-integer constant in ORDER BY",
+                "`{query}`"
+            );
+        }
+    }
+
+    #[test]
+    fn order_by_position_below_one_is_rejected() {
+        for (query, pos) in [
+            (r#"SELECT a FROM t ORDER BY 0"#, 0),
+            (r#"SELECT a FROM t ORDER BY -1"#, -1),
+            (r#"SELECT a FROM t ORDER BY - (1)"#, -1),
+        ] {
+            let err = parse_multiset(query)
+                .err()
+                .unwrap_or_else(|| panic!("`{query}` must be rejected"));
+            assert_eq!(
+                err.to_string(),
+                format!("invalid expression: ORDER BY position {pos} is not in select list"),
+                "`{query}`"
+            );
+        }
     }
 
     #[test]

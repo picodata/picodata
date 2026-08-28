@@ -53,7 +53,7 @@ use crate::error::{ast_arbitrary_err, AstResult};
 use crate::multiset::MultisetStmt;
 use crate::table_expression::BoundVar;
 use crate::window::WindowFunction;
-use crate::{AstNodeId, AstState, Ident, Raw};
+use crate::{AstNodeId, AstState, Ident, NamedEntity, Raw};
 use sql_ir::ir::types::{CastType, UnrestrictedType};
 
 pub type RawExpr<'q> = Expr<'q, Raw>;
@@ -92,10 +92,36 @@ impl<'q, State: AstState<'q>> Expr<'q, State> {
 }
 
 impl<'q> Expr<'q, Analyzed> {
+    /// The column this expression *is*.
     pub fn var_ref(&self) -> Option<&BoundVar<'q>> {
         match self.inner {
             ExprInner::Var(ref var) => Some(var),
             ExprInner::Cast(ref cast) => cast.identity_child().and_then(Expr::var_ref),
+            _ => None,
+        }
+    }
+
+    /// The column this expression *reads*, through any casts.
+    pub fn transient_var_ref(&self) -> Option<&BoundVar<'q>> {
+        match self.inner {
+            ExprInner::Var(ref var) => Some(var),
+            ExprInner::Cast(ref cast) => cast.child_ref().transient_var_ref(),
+            _ => None,
+        }
+    }
+}
+
+impl<'q, State: AstState<'q>> NamedEntity for Expr<'q, State> {
+    fn name(&self) -> Option<&str> {
+        match self.inner_ref() {
+            // A column reference is named by its own last field.
+            ExprInner::Var(var) => var.name(),
+            // A call is named by the function.
+            ExprInner::FunctionCall(call) => Some(call.name()),
+            // A cast defers to its operand and falls back to the target type.
+            ExprInner::Cast(cast) => cast.child_ref().name(),
+            // CASE takes the name of its ELSE branch, if that branch has one.
+            ExprInner::Case(case) => case.else_expr.as_deref().and_then(NamedEntity::name),
             _ => None,
         }
     }
@@ -221,6 +247,12 @@ pub struct RawVar {
     column_name: Ident,
 }
 
+impl NamedEntity for RawVar {
+    fn name(&self) -> Option<&str> {
+        Some(self.column_name.as_str())
+    }
+}
+
 pub struct Literal<'q> {
     pub value: &'q str,
     pub quotes: QuotesType,
@@ -320,11 +352,13 @@ pub struct Cast<'q, State: AstState<'q>> {
     syntax: CastSyntax,
 }
 
-impl<'q> Cast<'q, Analyzed> {
-    pub fn child_ref(&self) -> &Expr<'q, Analyzed> {
+impl<'q, State: AstState<'q>> Cast<'q, State> {
+    pub fn child_ref(&self) -> &Expr<'q, State> {
         &self.child
     }
+}
 
+impl<'q> Cast<'q, Analyzed> {
     /// The operand when this cast is a no-op, [`None`] otherwise.
     pub fn identity_child(&self) -> Option<&Expr<'q, Analyzed>> {
         let var = self.child.var_ref()?;
@@ -676,14 +710,6 @@ impl RawVar {
 
     pub fn table_name(&self) -> Option<&str> {
         self.table_name.as_ref().map(Ident::as_str)
-    }
-
-    pub fn column_name(&self) -> &str {
-        self.column_name.as_str()
-    }
-
-    pub fn column_name_ident(&self) -> Ident {
-        self.column_name.clone()
     }
 }
 

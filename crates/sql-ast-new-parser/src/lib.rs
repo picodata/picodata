@@ -567,6 +567,20 @@ mod tests {
         assert!(build("SELECT $1, $2 FROM t").is_ok());
     }
 
+    /// WHERE, GROUP BY and HAVING hang off the FROM clause in the grammar, so
+    /// none of them can appear without one. Postgres accepts all three (HAVING
+    /// with no FROM groups the one implicit row), and the analyzer carries a
+    /// TODO to follow; until it does, the rejection is a parse error rather
+    /// than an analysis one, and these are the queries that have to start
+    /// parsing when that changes.
+    #[test]
+    fn dql_clauses_without_from_are_rejected_by_grammar() {
+        assert!(build("SELECT 1 HAVING true").is_err());
+        assert!(build("SELECT 1 HAVING sum(1) > 0").is_err());
+        assert!(build("SELECT 1 WHERE true").is_err());
+        assert!(build("SELECT 1 GROUP BY 1").is_err());
+    }
+
     #[test]
     fn dql_window_clause_order_is_enforced_by_grammar() {
         let query = r#"SELECT sum(a) OVER (ORDER BY a PARTITION BY b) FROM t"#;

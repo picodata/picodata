@@ -70,6 +70,22 @@ impl AggregateKind {
         Some(kind)
     }
 
+    /// Returns None in case passed function name is not aggregate.
+    #[must_use]
+    pub fn from_name_unnorm(func_name: &str) -> Option<AggregateKind> {
+        let kind = match func_name {
+            "count" => AggregateKind::COUNT,
+            "sum" => AggregateKind::SUM,
+            "avg" => AggregateKind::AVG,
+            "total" => AggregateKind::TOTAL,
+            "min" => AggregateKind::MIN,
+            "max" => AggregateKind::MAX,
+            "group_concat" | "string_agg" => AggregateKind::GRCONCAT,
+            _ => return None,
+        };
+        Some(kind)
+    }
+
     /// Get type of the corresponding aggregate function.
     pub fn get_type(self, plan: &Plan, args: &[NodeId]) -> Result<DerivedType, SbroadError> {
         let ty = match self {

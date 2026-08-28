@@ -18,18 +18,20 @@ use std::rc::Rc;
 use smol_str::format_smolstr;
 
 use sql_ast_new_nodes::error::AstResult;
-use sql_ast_new_nodes::expr::ValuesRow;
-use sql_ast_new_nodes::multiset::{Cte, Ctes, MultisetInner, MultisetStmt, Operation, ValuesStmt};
-use sql_ast_new_nodes::table_expression::From;
-use sql_ast_new_nodes::{Analyzed, Raw};
+use sql_ast_new_nodes::expr::{ExprInner, ValuesRow};
+use sql_ast_new_nodes::multiset::{
+    Cte, Ctes, MultisetInner, MultisetStmt, Operation, OrderBy, OrderByElement, ValuesStmt,
+};
+use sql_ast_new_nodes::table_expression::{From, OrdrByGrpByElem};
+use sql_ast_new_nodes::{Analyzed, NamedEntity, Raw};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::relation::{Column, ColumnRole};
 use sql_ir::ir::types::DerivedType;
 use sql_type_system::expr::Type as TypeSystemType;
 
 use crate::{
-    analyze_error, analyze_invariant_error, duplicated_name, frame::Stmt, Analyzer, AnalyzerCtx,
-    AstTypeReport, Binder, ExprTypeDeriver, TypeDeriver, TypeSystem,
+    analyze_error, analyze_invariant_error, duplicated_name, frame::Stage, frame::Stmt, Analyzer,
+    AnalyzerCtx, AstTypeReport, Binder, ExprTypeDeriver, TypeDeriver, TypeSystem,
 };
 
 impl<'q> Analyzer<'q> for MultisetStmt<'q, Raw> {
@@ -63,35 +65,54 @@ impl<'q> Binder<'q> for MultisetStmt<'q, Raw> {
     fn bind<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::BoundNode> {
         let (ctes, inner, order_by, limit) = self.into_parts();
 
-        if order_by.is_some() {
-            return Err(analyze_error(format_smolstr!(
-                "ORDER BY is not supported yet"
-            )));
-        }
-
         // Push new statement frame into context stack.
-        meta.binder.push_frame(Stmt::new(From::empty()));
+        meta.binder
+            .push_frame(Stmt::new(From::empty(), Stage::Projection));
 
         // WITH clause is opaque boundary for analysis (binding + type derivation).
         let ctes = ctes.analyze(meta)?;
 
-        let mut inner = match inner {
-            MultisetInner::Select(stmt) => MultisetInner::Select(stmt.bind(meta)?),
-            MultisetInner::Values(values) => MultisetInner::Values(values.bind(meta)?),
-            MultisetInner::Operation(operation) => MultisetInner::Operation(operation.bind(meta)?),
+        meta.binder.stmt_body = match inner {
+            MultisetInner::Select(stmt) => Some(MultisetInner::Select(stmt.bind(meta)?)),
+            MultisetInner::Values(values) => Some(MultisetInner::Values(values.bind(meta)?)),
+            MultisetInner::Operation(operation) => {
+                Some(MultisetInner::Operation(operation.bind(meta)?))
+            }
+        };
+
+        let order_by = if let Some(order_by) = order_by {
+            Some(order_by.bind(meta)?)
+        } else {
+            None
         };
 
         // Pop bound statement frame from context stack.
         let mut frame = meta.binder.pop_frame(None)?;
 
-        // A SELECT parks its bound select list and FROM clause on the frame;
-        // put both back into the statement.
-        if let MultisetInner::Select(stmt) = &mut inner {
+        // If inner statement is SELECT do the following:
+        // 1. Validate grouping expressions
+        // 2. Push back FROM clause out of frame context
+        if let MultisetInner::Select(stmt) = meta.binder.stmt_body_mut()? {
+            // Put back select list into SELECT statement.
             stmt.set_sel_lst(frame.take_bound_sel_lst()?);
+
+            // Put back FROM clause into SELECT statement.
             stmt.set_from(std::mem::take(&mut frame.from));
+
+            // If GROUP BY is present put it back into SELECT statement.
+            if let Ok(grby) = frame.take_bound_grby() {
+                stmt.set_grby(grby);
+            }
+
+            frame.check_grouping(stmt)?;
         }
 
-        Ok(Self::BoundNode::from_parts(ctes, inner, None, limit))
+        Ok(Self::BoundNode::from_parts(
+            ctes,
+            meta.binder.take_stmt_body()?,
+            order_by,
+            limit,
+        ))
     }
 }
 
@@ -100,6 +121,9 @@ impl<'q> Binder<'q> for MultisetStmt<'q, Raw> {
 /// Row expressions are bound against the enclosing scopes only — a `VALUES`
 /// has no FROM of its own, so plain references fail,
 /// while outer references (a correlated `(VALUES (t1.a))` subquery) resolve as usual.
+/// The frame stage names the clause for the aggregate rejection: an aggregate call
+/// *belonging* to the `VALUES` level is `aggregate functions are not allowed in VALUES`,
+/// but one whose columns anchor it to an enclosing query stays legal there.
 ///
 /// Every row lands in [`TypeSystemCtx::proj`](crate::TypeSystemCtx::proj) as
 /// one projection frame, so the statement-root derivation unifies the rows
@@ -116,6 +140,8 @@ impl<'q> Binder<'q> for ValuesStmt<'q, Raw> {
 
     fn bind<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::BoundNode> {
         let rows = self.into_parts();
+
+        meta.binder.top_frame_mut()?.set_stage(Stage::Values);
 
         let mut width: Option<usize> = None;
         let mut bound_rows = Vec::with_capacity(rows.len());
@@ -218,8 +244,13 @@ impl TypeDeriver for MultisetStmt<'_, Analyzed> {
                 .analyze(&expr, Some(TypeSystemType::Boolean))?;
         }
 
-        // We derive types of filters before projections
-        // because usually former ones represent more complex type requirements.
+        // Derive types for the filtering expressions (`GROUP BY`, `ORDER BY`, etc.)
+        for expr in std::mem::take(&mut type_system.ctx.rest).into_iter() {
+            type_system.analyzer.analyze(&expr, None)?;
+        }
+
+        // We derive types of filters, grouping, ordering expressions before projections
+        // because usually former ones represont more complex type requirements.
 
         // Transpose statements projection elements in order to
         // derive them as homogeneous expressions.
@@ -255,6 +286,10 @@ impl TypeDeriver for MultisetStmt<'_, Analyzed> {
                 operation.left.derive_types(type_system)?;
                 operation.right.derive_types(type_system)?;
             }
+        }
+
+        if let Some(order_by) = &mut self.order_by {
+            order_by.derive_types(type_system.analyzer.get_report())?;
         }
 
         Ok(())
@@ -332,6 +367,177 @@ impl<'q> Binder<'q> for Operation<'q, Raw> {
             Box::new(right_bound),
         ))
     }
+}
+
+/// Bind ORDER BY against the body it sorts.
+///
+/// Resolves an ORDER BY element in three steps
+///
+/// 1. a bare, unqualified name is matched against the *output column names* -
+///    an element's explicit alias, or the name its expression exposes on its own.
+///    Several matches are an error only when they are not the same expression.
+/// 2. an integer constant is a 1-based position over those same output
+///    columns, and out of range is an error;
+/// 3. anything else is an ordinary expression over the input scope, and sorting
+///    by it adds a hidden output column.
+///
+/// Which of the three a body admits differs. A set operation has output columns
+/// but no input scope of its own, so only steps 1 and 2 apply there and step 3
+/// is the `invalid UNION/INTERSECT/EXCEPT ORDER BY clause` rejection. And under
+/// `SELECT DISTINCT` step 3 is rejected as well: the sort runs on the distinct
+/// groups, so a sort key that is not itself projected is not well defined.
+///
+/// A `VALUES` body sorts by its derived output columns: steps 1 and 2 match
+/// names and ordinals against `column1..columnN`. In step 3 a column reference
+/// still binds normally — an outer reference of a correlated subquery resolves
+/// there, an unknown name fails like anywhere else — but any other expression
+/// would have to resolve against the VALUES columns, which are not exposed as
+/// a scope yet, so it is rejected as unsupported (PostgreSQL accepts it).
+impl<'q> Binder<'q> for OrderBy<'q, Raw> {
+    type BoundNode = OrderBy<'q, Analyzed>;
+
+    fn bind<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::BoundNode> {
+        meta.binder.top_frame_mut()?.set_stage(Stage::OrderBy);
+
+        let body = meta.binder.take_stmt_body()?;
+
+        // The bodies exposing output names of their own rather than a select
+        // list; what each admits past those names differs below.
+        let body_names = match &body {
+            MultisetInner::Operation(operation) => Some(operation.left.output_names()?),
+            MultisetInner::Values(values) => Some(values.output_names()),
+            MultisetInner::Select(_) => None,
+        };
+        let is_values = matches!(&body, MultisetInner::Values(_));
+
+        let out_cnt = match body_names.as_ref() {
+            Some(names) => names.len(),
+            None => meta.binder.top_frame_ref()?.bound_sel_lst_ref()?.len(),
+        };
+
+        let mut bound_elems = Vec::<OrderByElement<'q, Analyzed>>::with_capacity(self.len());
+        for elem in self.into_elements() {
+            let bound_elem = match elem.expr {
+                OrdrByGrpByElem::Ordinal(pos) => {
+                    if pos >= out_cnt {
+                        return Err(analyze_error(format_smolstr!(
+                            "ORDER BY position {} is not in select list",
+                            pos + 1
+                        )));
+                    }
+                    OrdrByGrpByElem::Ordinal(pos)
+                }
+                OrdrByGrpByElem::Expr(expr) => {
+                    // A bare name naming an output column.
+                    let name_pos = match expr.inner_ref() {
+                        ExprInner::Var(var) if var.table_name().is_none() => {
+                            let name = var.name().ok_or_else(|| {
+                                analyze_invariant_error(format_smolstr!("expected column name"))
+                            })?;
+                            let found = match body_names.as_ref() {
+                                Some(names) => output_name_pos(names, name),
+                                None => meta
+                                    .binder
+                                    .top_frame_ref()?
+                                    .bound_sel_lst_ref()?
+                                    .output_name_pos(name),
+                            };
+                            match found {
+                                // The name reaches more than one output column, and
+                                // they are not the same expression.
+                                Some(None) => {
+                                    return Err(analyze_error(format_smolstr!(
+                                        r#"ORDER BY "{name}" is ambiguous"#
+                                    )))
+                                }
+                                Some(Some(pos)) => Some(pos),
+                                None => None,
+                            }
+                        }
+                        _ => None,
+                    };
+
+                    match name_pos {
+                        Some(pos) => OrdrByGrpByElem::Ordinal(pos),
+                        // Set operation has no input scope.
+                        None if body_names.is_some() && !is_values => {
+                            return Err(analyze_error(format_smolstr!(
+                                "invalid UNION/INTERSECT/EXCEPT ORDER BY clause"
+                            )))
+                        }
+                        // A column reference still binds below (an outer
+                        // reference resolves, an unknown name fails), but any
+                        // other expression would have to resolve against the
+                        // VALUES columns, which are not exposed as a scope yet.
+                        None if is_values && !matches!(expr.inner_ref(), ExprInner::Var(_)) => {
+                            return Err(analyze_error(format_smolstr!(
+                                "ORDER BY expressions over VALUES are not supported yet"
+                            )))
+                        }
+                        None => {
+                            let (bound_expr, t_expr) = expr.bind(meta)?;
+
+                            meta.type_system.ctx.rest.push(t_expr);
+
+                            OrdrByGrpByElem::Expr(bound_expr)
+                        }
+                    }
+                }
+            };
+            bound_elems.push(OrderByElement::<'q, Analyzed>::from_parts(
+                bound_elem,
+                elem.direction,
+                elem.nulls,
+            ));
+        }
+
+        // Under DISTINCT every sort key has to be one of the projected expressions.
+        if body_names.is_none() {
+            let sel_lst = meta.binder.top_frame_ref()?.bound_sel_lst_ref()?;
+            if sel_lst.is_distinct()
+                && bound_elems.iter().any(|elem| match elem.elem_ref() {
+                    // An ordinal already names an output column.
+                    OrdrByGrpByElem::Ordinal(_) => false,
+                    OrdrByGrpByElem::Expr(expr) => !sel_lst.projects(expr),
+                })
+            {
+                return Err(analyze_error(format_smolstr!(
+                    "for SELECT DISTINCT, ORDER BY expressions must appear in select list"
+                )));
+            }
+        }
+
+        meta.binder.set_stmt_body(body);
+
+        Ok(OrderBy::from(bound_elems))
+    }
+}
+
+impl ExprTypeDeriver for OrderBy<'_, Analyzed> {
+    fn derive_types(&mut self, type_report: &AstTypeReport) -> AstResult<()> {
+        for elem in self.elements_mut() {
+            if let Some(expr) = elem.expr_mut() {
+                expr.derive_types(type_report)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Position of the output column named `name` among a body's output names:
+/// [`None`] when nothing is called that, `Some(None)` when more than one
+/// column is.
+///
+/// Unlike [`SelectList::output_name_pos`](sql_ast_new_nodes::select::SelectList::output_name_pos),
+/// this has no "same expression" exemption.
+fn output_name_pos(names: &[Option<&str>], name: &str) -> Option<Option<usize>> {
+    let mut matches = names
+        .iter()
+        .enumerate()
+        .filter(|(_, out)| out.as_deref() == Some(name))
+        .map(|(pos, _)| pos);
+    let first = matches.next()?;
+    Some(matches.next().is_none().then_some(first))
 }
 
 /// Analyze a subquery: a nested statement, and therefore a boundary for

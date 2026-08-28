@@ -6,13 +6,13 @@ use smol_str::format_smolstr;
 use crate::expr::parse_expr;
 use crate::multiset::parse_multiset;
 use crate::window::parse_named_window;
-use crate::{failed_parsing_error, parse_invariant_error, AstResult};
+use crate::{failed_parsing_error, invalid_expression_error, parse_invariant_error, AstResult};
 use crate::{unexpected_rule_error, ExpectedRules, ParseCtx};
 use sql_ast_new_grammar::Rule;
-use sql_ast_new_nodes::expr::{Expr, RawVar};
+use sql_ast_new_nodes::expr::{Expr, ExprInner, Literal, LiteralKind, RawVar, UnaryOp};
 use sql_ast_new_nodes::table_expression::{
-    From, FromEntry, JoinKind, JoinUsingColumn, JoinedTable, TableExpression, TableFactor,
-    TableFactorInner,
+    From, FromEntry, GroupBy, JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem,
+    TableExpression, TableFactor, TableFactorInner,
 };
 use sql_ast_new_nodes::window::NamedWindow;
 use sql_ast_new_nodes::{Ident, Raw};
@@ -26,7 +26,7 @@ pub(super) fn parse_table_expression<'q>(
 
     let mut from = None;
     let mut selection = None;
-    let mut group_by = Vec::new();
+    let mut group_by = GroupBy::empty();
     let mut having = None;
     let mut windows = Vec::<NamedWindow<'q, Raw>>::new();
 
@@ -259,20 +259,132 @@ fn parse_selection<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Expr<'
     }
 }
 
-fn parse_group_by<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Vec<Expr<'q, Raw>>> {
+/// Which clause an element with select-list ordinals is parsed for. It names
+/// the clause in the rejections. The two clauses also differ in what a
+/// parenthesized list is, but that is settled before an element gets here -
+/// see [`parse_group_by_elem`].
+#[derive(Clone, Copy)]
+pub(crate) enum OrdinalClause {
+    GroupBy,
+    OrderBy,
+}
+
+impl OrdinalClause {
+    fn name(self) -> &'static str {
+        match self {
+            Self::GroupBy => "GROUP BY",
+            Self::OrderBy => "ORDER BY",
+        }
+    }
+}
+
+/// One GROUP BY element. `(a, b)` is a grouping *set* here. It groups by `a`
+/// and by `b`, so the row is flattened into its fields and each one is read as
+/// its own element, ordinals included. Only the implicit-row form is.
+/// An explicit `ROW(a, b)` parses as a call and stays a single expression.
+///
+/// ORDER BY does not flatten. There `(1, b)` is a row value the query sorts
+/// by - rows are compared field by field, the constant `1` first - and folding
+/// its fields into `ORDER BY 1, b` would sort by the first output column
+/// instead. So an ORDER BY element goes straight to [`parse_ordrby_grpby_elem`].
+fn parse_group_by_elem<'q>(
+    expr: Expr<'q, Raw>,
+    elems: &mut Vec<OrdrByGrpByElem<'q, Raw>>,
+) -> AstResult<()> {
+    if matches!(expr.inner_ref(), ExprInner::Row(_)) {
+        let ExprInner::Row(row) = expr.into() else {
+            return Err(parse_invariant_error(format_smolstr!(
+                "`Row` expression expected"
+            )));
+        };
+        for value in row.into_parts() {
+            parse_group_by_elem(value, elems)?;
+        }
+        return Ok(());
+    }
+    elems.push(parse_ordrby_grpby_elem(expr, OrdinalClause::GroupBy)?);
+    Ok(())
+}
+
+/// One GROUP BY / ORDER BY element. A bare integer constant is a 1-based
+/// select-list position, any other bare constant is rejected, and everything
+/// else is an ordinary expression.
+pub(crate) fn parse_ordrby_grpby_elem<'q>(
+    expr: Expr<'q, Raw>,
+    clause: OrdinalClause,
+) -> AstResult<OrdrByGrpByElem<'q, Raw>> {
+    // Non-int constant in GROUP BY / ORDER BY element error.
+    let non_integer_constant =
+        || invalid_expression_error(format_smolstr!("non-integer constant in {}", clause.name()));
+
+    // Whether an element is a position.
+    let mut negations = 0usize;
+    let mut operand = expr.inner_ref();
+    while let ExprInner::UnaryOperation(unary_operation) = operand {
+        let (inner, operator) = unary_operation.parts_ref();
+        if !matches!(operator, UnaryOp::Minus) {
+            break;
+        }
+        negations += 1;
+        operand = inner.inner_ref();
+    }
+    // Only a numeric constant is folded: `- 'a'` and `- true` stay operators, and
+    // so are ordinary expressions rather than a rejected non-integer position.
+    let folded = match operand {
+        ExprInner::Literal(literal @ Literal { kind, value, .. })
+            if !value.starts_with('+')
+                && (negations == 0
+                    || matches!(
+                        kind,
+                        LiteralKind::Integer | LiteralKind::Numeric | LiteralKind::Double
+                    )) =>
+        {
+            Some(literal)
+        }
+        _ => None,
+    };
+
+    let elem = if let Some(Literal { value, kind, .. }) = folded {
+        // Deny non-integer constant.
+        if !matches!(kind, LiteralKind::Integer) {
+            return Err(non_integer_constant());
+        }
+
+        // Verify it is valid integer number.
+        let pos = value.parse::<i32>().map_err(|_| non_integer_constant())?;
+        let pos = if negations % 2 == 1 {
+            pos.checked_neg().ok_or_else(non_integer_constant)?
+        } else {
+            pos
+        };
+        if pos <= 0 {
+            return Err(invalid_expression_error(format_smolstr!(
+                "{} position {pos} is not in select list",
+                clause.name()
+            )));
+        }
+        OrdrByGrpByElem::Ordinal((pos - 1) as usize)
+    } else {
+        // Everything the fold did not reduce to a bare numeric constant: a real
+        // expression, a plus-signed literal, or a minus over a non-numeric one.
+        OrdrByGrpByElem::Expr(expr)
+    };
+
+    Ok(elem)
+}
+
+fn parse_group_by<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<GroupBy<'q, Raw>> {
     debug_assert_eq!(pair.as_rule(), Rule::GroupBy);
 
-    let mut group_by = Vec::<Expr<'q, Raw>>::new();
+    let mut elems = Vec::<OrdrByGrpByElem<'q, Raw>>::new();
     for pair in pair.into_inner() {
         match pair.as_rule() {
-            Rule::Expr => {
-                group_by.push(parse_expr(pair, ctx)?);
-            }
+            Rule::Expr => parse_group_by_elem(parse_expr(pair, ctx)?, &mut elems)?,
             _ => return Err(unexpected_rule_error(ExpectedRules(&[Rule::Expr]), &pair)),
         }
     }
 
-    Ok(group_by)
+    Ok(GroupBy(elems))
 }
 
 fn parse_having<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Expr<'q, Raw>> {
@@ -419,6 +531,178 @@ mod tests {
     fn group_by_simple() {
         let query = r#"FROM t1 GROUP BY t1.a / 10, a % 10"#;
         insta::assert_snapshot!(render_table_expr(query), @"FROM t1 GROUP BY t1.a / 10, a % 10");
+    }
+
+    #[test]
+    fn group_by_ordinal() {
+        // An integer literal is a select-list position rather than an
+        // expression that happens to be constant, and the two are different
+        // nodes from here on. Redundant parentheses and leading zeros do not
+        // change which one it is.
+        let query = r#"FROM t1 GROUP BY 1, ((2)), 03"#;
+        insta::assert_snapshot!(render_table_expr(query), @"FROM t1 GROUP BY 1, 2, 3");
+    }
+
+    #[test]
+    fn group_by_row_is_flattened_into_its_fields() {
+        // `(a, b)` is a grouping set: it groups by `a` and by `b`, so the row
+        // is read field by field - and a field that is an integer constant is
+        // a position like any other element. Only the implicit-row form is
+        // flattened; an explicit `ROW(...)` is a call and stays one element.
+        let query = r#"FROM t1 GROUP BY (a, b), (1, c % 2), ((d, 2)), ROW(e, f)"#;
+        insta::assert_snapshot!(
+            render_table_expr(query),
+            @"FROM t1 GROUP BY a, b, 1, c % 2, d, 2, row(e, f)"
+        );
+        // And a field is held to the same rule as a bare element.
+        let err = parse_table_expr(r#"FROM t1 GROUP BY (a, 'x')"#)
+            .err()
+            .expect("expected failed parsing");
+        insta::assert_snapshot!(
+            err.to_string(),
+            @"invalid expression: non-integer constant in GROUP BY"
+        );
+    }
+
+    #[test]
+    fn group_by_position_below_one_is_rejected() {
+        // The upper bound needs a select list and is left to the analyzer; the
+        // lower one is decided here, where a position is recognised.
+        let err = parse_table_expr(r#"FROM t1 GROUP BY 0"#)
+            .err()
+            .expect("expected failed parsing");
+        insta::assert_snapshot!(
+            err.to_string(),
+            @"invalid expression: GROUP BY position 0 is not in select list"
+        );
+        let err = parse_table_expr(r#"FROM t1 GROUP BY -1"#)
+            .err()
+            .expect("expected failed parsing");
+        insta::assert_snapshot!(
+            err.to_string(),
+            @"invalid expression: GROUP BY position -1 is not in select list"
+        );
+    }
+
+    #[test]
+    fn group_by_non_integer_constant_is_rejected() {
+        // Only an integer constant means something in GROUP BY - a position.
+        // Every other bare constant is rejected here rather than grouped by,
+        // because it is almost always a mistyped ordinal or a column name in
+        // the wrong quotes. Redundant parentheses do not make it an expression.
+        for query in [
+            r#"FROM t1 GROUP BY 'x'"#,
+            r#"FROM t1 GROUP BY true"#,
+            r#"FROM t1 GROUP BY false"#,
+            r#"FROM t1 GROUP BY NULL"#,
+            r#"FROM t1 GROUP BY 1.0"#,
+            r#"FROM t1 GROUP BY 1e1"#,
+            r#"FROM t1 GROUP BY -1.0"#,
+            r#"FROM t1 GROUP BY (('x'))"#,
+            // Rejected wherever it stands in the list, not just first.
+            r#"FROM t1 GROUP BY a, 'x'"#,
+        ] {
+            let err = parse_table_expr(query)
+                .err()
+                .unwrap_or_else(|| panic!("`{query}` must be rejected"));
+            assert_eq!(
+                err.to_string(),
+                "invalid expression: non-integer constant in GROUP BY",
+                "`{query}`"
+            );
+        }
+    }
+
+    #[test]
+    fn group_by_folds_a_leading_minus_into_the_position() {
+        // A minus in front of a numeric constant belongs to the constant, so
+        // the element is still a position. PostgreSQL folds it in the grammar
+        // rather than the lexer, which is why nothing between the two matters -
+        // whitespace, parentheses, or a second minus. `-1` alone is already one
+        // token to this grammar; the rest reach here as unary operations.
+        for query in [
+            r#"FROM t1 GROUP BY - 1"#,
+            r#"FROM t1 GROUP BY -  1"#,
+            r#"FROM t1 GROUP BY -(1)"#,
+            r#"FROM t1 GROUP BY - (1)"#,
+            r#"FROM t1 GROUP BY (- 1)"#,
+            r#"FROM t1 GROUP BY ((- 1))"#,
+        ] {
+            let err = parse_table_expr(query)
+                .err()
+                .unwrap_or_else(|| panic!("`{query}` must be rejected"));
+            assert_eq!(
+                err.to_string(),
+                "invalid expression: GROUP BY position -1 is not in select list",
+                "`{query}`"
+            );
+        }
+        // The fold repeats, so a doubled minus lands back on a valid position.
+        let query = r#"FROM t1 GROUP BY - -1, - - 1"#;
+        insta::assert_snapshot!(render_table_expr(query), @"FROM t1 GROUP BY 1, 1");
+        // And it reaches the non-integer rejection as readily as an integer one.
+        let err = parse_table_expr(r#"FROM t1 GROUP BY - 1.0"#)
+            .err()
+            .expect("expected failed parsing");
+        insta::assert_snapshot!(
+            err.to_string(),
+            @"invalid expression: non-integer constant in GROUP BY"
+        );
+    }
+
+    #[test]
+    fn group_by_never_folds_a_leading_plus() {
+        // Unary plus is not folded - it stays an operator, so the element it
+        // heads is an ordinary expression. That is what makes `+1` differ from
+        // `-1`, and it is also why `+1.0` is not a *rejected* non-integer
+        // position: it is not a position at all. This grammar's `Integer` token
+        // absorbs an adjacent sign, so `+1` arrives here as a signed literal
+        // rather than an operation - the leading `+` in its text stands in for
+        // the operator, and a minus over such a literal inherits it.
+        let query = r#"FROM t1 GROUP BY +1, + 1, +1.0, +1e0, - +1, + -1"#;
+        insta::assert_snapshot!(
+            render_table_expr(query),
+            @"FROM t1 GROUP BY +1, + 1, +1.0, +1e0, - +1, + -1"
+        );
+    }
+
+    #[test]
+    fn group_by_folds_only_numeric_constants() {
+        // A minus over a non-numeric constant is an ordinary operator: it never
+        // makes its operand a position, so it never reaches the rejection above
+        // either. Type checking of the operation itself is the analyzer's.
+        let query = r#"FROM t1 GROUP BY - 'x', - true, - NULL"#;
+        insta::assert_snapshot!(
+            render_table_expr(query),
+            @"FROM t1 GROUP BY - 'x', - true, - NULL"
+        );
+    }
+
+    #[test]
+    fn group_by_constant_operands_stay_expressions() {
+        // The rejection above is about a constant that *is* the whole element.
+        // A constant inside one is an ordinary operand, and the element is an
+        // ordinary expression - including when the expression is itself
+        // constant.
+        let query = r#"FROM t1 GROUP BY 1 + 1, 'x' || 'y', CAST('x' AS text), $1"#;
+        insta::assert_snapshot!(
+            render_table_expr(query),
+            @"FROM t1 GROUP BY 1 + 1, 'x' || 'y', CAST('x' AS string), $1"
+        );
+    }
+
+    #[test]
+    fn group_by_position_wider_than_a_position_is_rejected() {
+        // A literal too wide to be a position is not silently demoted to an
+        // ordinary expression - it is the same rejection PostgreSQL gives a
+        // constant it cannot read as one.
+        let err = parse_table_expr(r#"FROM t1 GROUP BY 99999999999999"#)
+            .err()
+            .expect("expected failed parsing");
+        insta::assert_snapshot!(
+            err.to_string(),
+            @"invalid expression: non-integer constant in GROUP BY"
+        );
     }
 
     #[test]

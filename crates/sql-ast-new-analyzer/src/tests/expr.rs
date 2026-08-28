@@ -229,7 +229,10 @@ fn cast_with_a_conversion_path() {
     }
 }
 
-/// Picodata can cast `bool` into `int`.
+/// Picodata casts `bool` to `int` and back. Postgres has the pair for
+/// `integer` only, not for `bigint`, which picodata's single `int` width also
+/// stands for - the int-width divergence declared with the cast matrix in
+/// `cast.rs`.
 #[test]
 fn cast_bool_to_int_is_a_declared_int_width_divergence() {
     insta::assert_snapshot!(analyzed("SELECT g::int FROM t1", &[]), @"SELECT t1.g::int FROM t1");
@@ -652,8 +655,9 @@ fn unary_minus_operand_coercion() {
 }
 
 // An untyped operand (text literal, un-annotated parameter) resolves to the
-// first arity-1 overload, int. Documented divergence: PG prefers `double
-// precision` for an unknown operand of `-`.
+// first arity-1 overload, int. Documented divergence: Postgres finds no best
+// candidate among its seven `-` overloads and fails with "operator is not
+// unique: - unknown".
 #[test]
 fn unary_minus_untyped_operand_resolves_to_int() {
     insta::assert_snapshot!(analyzed("SELECT - '1'", &[]), @"SELECT (- 1::int)::int");
@@ -750,7 +754,7 @@ fn null_is_null() {
 
 #[test]
 fn is_unknown_non_bool_arg_error() {
-    // The untyped NULL operand follows the text-defaulting rule.
+    // An int operand is rejected.
     insta::assert_snapshot!(
         analyze_error("select 1 is unknown;", &[]),
         @"argument of IS UNKNOWN must be type boolean, not type int"
@@ -873,7 +877,7 @@ fn in_subquery() {
 }
 
 #[test]
-fn in_subquery_coerced_pins_no_rhs_cast() {
+fn in_subquery_coerced_pins_rhs_cast() {
     insta::assert_snapshot!(
         analyzed("SELECT c IN (SELECT b FROM t1) FROM t1", &[]),
         @"SELECT (t1.c::double IN CAST((SELECT t1.b::int FROM t1) AS double))::bool FROM t1"
@@ -954,6 +958,14 @@ fn exists_over_set_operation() {
     insta::assert_snapshot!(
         analyzed("SELECT EXISTS (SELECT a FROM t3 UNION SELECT a FROM t4)", &[]),
         @"SELECT EXISTS ((SELECT t3.a::int FROM t3) UNION (SELECT t4.a::int FROM t4))::bool"
+    );
+}
+
+#[test]
+fn exists_is_subquery_boundary() {
+    insta::assert_snapshot!(
+        analyzed("SELECT a FROM t1 GROUP BY a HAVING EXISTS (SELECT t2.a, t2.d FROM t2);", &[]),
+        @"SELECT t1.a::int FROM t1 GROUP BY t1.a::int HAVING EXISTS (SELECT t2.a::double, t2.d::string FROM t2)::bool"
     );
 }
 
@@ -1089,7 +1101,8 @@ fn substring_for_type() {
 
 #[test]
 fn substring_regex_positions() {
-    // The (text, text, text) overload is the POSIX-regex form, as in Postgres.
+    // The (text, text, text) overload is the SQL-regex form - pattern plus
+    // escape, the same as `SUBSTRING(... SIMILAR ... ESCAPE ...)` below.
     insta::assert_snapshot!(
         analyzed("SELECT SUBSTRING(e, 'a', 'b') FROM t1", &[]),
         @"SELECT SUBSTRING(t1.e::string, 'a'::string, 'b'::string)::string FROM t1"

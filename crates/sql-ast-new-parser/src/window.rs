@@ -6,7 +6,7 @@ use sql_ir::ir::aggregates::AggregateKind;
 
 use crate::expr::parse_expr;
 use crate::invalid_expression_error;
-use crate::multiset::parse_order_by_element;
+use crate::multiset::{parse_order_by_element, OrderByLiterals};
 use crate::parse_invariant_error;
 use crate::ParseCtx;
 use sql_ast_new_grammar::Rule;
@@ -152,8 +152,13 @@ fn parse_window_spec<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Wind
                 }
             }
             Rule::WindowOrderBy => {
+                // A window's ORDER BY literals are constants, never select-list ordinals.
                 for elem_pair in pair.into_inner() {
-                    spec.order_by.push(parse_order_by_element(elem_pair, ctx)?);
+                    spec.order_by.push(parse_order_by_element(
+                        elem_pair,
+                        ctx,
+                        OrderByLiterals::KeepConstants,
+                    )?);
                 }
             }
             Rule::WindowFrame => spec.frame = Some(parse_window_frame(pair, ctx)?),

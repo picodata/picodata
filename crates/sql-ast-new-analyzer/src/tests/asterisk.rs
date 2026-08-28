@@ -137,8 +137,9 @@ fn asterisk_from_cte_with_anon_columns() {
 #[test]
 fn asterisk_from_cte_with_column_list_over_table_columns() {
     // The CTE body projects real table columns (asterisk over `t1`), and the
-    // CTE has an explicit column list, so attribute resolution keeps the
-    // underlying column attribute (the rename only applies to expr attributes).
+    // CTE has an explicit column list: the columns keep their underlying
+    // column attribute and take the list's names, the same rename a projection
+    // gets.
     let query = "WITH cte (c1, c2, c3, c4, c5, c6, c7) AS (SELECT * FROM t1) SELECT * FROM cte";
     insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte (c1, c2, c3, c4, c5, c6, c7) AS (SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool FROM t1) SELECT cte.c1::int, cte.c2::int, cte.c3::double, cte.c4::decimal, cte.c5::string, cte.c6::string, cte.c7::bool FROM cte");
 }
@@ -155,6 +156,55 @@ fn ambigious_column_reference_asterisk_cte() {
 fn correlated_subquery_qualified_asterisk() {
     let query = "SELECT (SELECT t.* FROM t1) FROM (SELECT 1 a) t";
     insta::assert_snapshot!(analyzed(query, &[]), @"SELECT (SELECT t.a::int FROM t1)::int FROM (SELECT 1::int AS a) AS t");
+}
+
+/// A qualified asterisk naming an enclosing query's relation expands into
+/// references of *that* level, so they answer to its grouping exactly as the
+/// written `t.a` does. Booking them on the inner level - which is not grouped -
+/// would hide them from the check.
+#[test]
+fn correlated_subquery_qualified_asterisk_is_checked_against_the_outer_grouping() {
+    insta::assert_snapshot!(
+        analyze_error("SELECT count(*), (SELECT t.* FROM t2) FROM (SELECT 1 AS a) t", &[]),
+        @r#"failed to analyze AST: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+    );
+    // The same query spelled with the column, for the verdict to line up with.
+    insta::assert_snapshot!(
+        analyze_error("SELECT count(*), (SELECT t.a FROM t2) FROM (SELECT 1 AS a) t", &[]),
+        @r#"failed to analyze AST: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+    );
+    insta::assert_snapshot!(
+        analyzed("SELECT count(*), (SELECT t.* FROM t2) FROM (SELECT 1 AS a) t GROUP BY t.a", &[]),
+        @"SELECT count(*)::int, (SELECT t.a::int FROM t2)::int FROM (SELECT 1::int AS a) AS t GROUP BY t.a::int"
+    );
+}
+
+/// Which GROUP BY the expansion is matched against, and how. An expression
+/// key is matched at the level the columns belong to, so the outer `t.a` covers
+/// them and the inner GROUP BY has no say over them. An ordinal key, though,
+/// names a position in its own select list, and the expansion's positions in
+/// the *inner* list mean nothing to the outer ordinals: in the third query the
+/// inner `t.*` puts `t.a` at position 1, and the outer `GROUP BY 1` - which
+/// groups by `b` - must not be read as covering it. The last query shows what
+/// does cover it: the explicit `a` key.
+#[test]
+fn correlated_subquery_qualified_asterisk_matches_only_the_outer_expression_keys() {
+    insta::assert_snapshot!(
+        analyzed("SELECT (SELECT t.* FROM t2 GROUP BY t2.d) FROM (SELECT 1 AS a) t GROUP BY t.a", &[]),
+        @"SELECT (SELECT t.a::int FROM t2 GROUP BY t2.d::string)::int FROM (SELECT 1::int AS a) AS t GROUP BY t.a::int"
+    );
+    insta::assert_snapshot!(
+        analyze_error("SELECT (SELECT t.* FROM t2 GROUP BY t2.d) FROM (SELECT 1 AS a) t GROUP BY t.a + 1", &[]),
+        @r#"failed to analyze AST: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+    );
+    insta::assert_snapshot!(
+        analyze_error("SELECT b, EXISTS (SELECT t.* FROM t2) FROM (SELECT 1 AS a, 2 AS b) t GROUP BY 1", &[]),
+        @r#"failed to analyze AST: column "t.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+    );
+    insta::assert_snapshot!(
+        analyzed("SELECT b, EXISTS (SELECT t.* FROM t2) FROM (SELECT 1 AS a, 2 AS b) t GROUP BY 1, a", &[]),
+        @"SELECT t.b::int, EXISTS (SELECT t.a::int, t.b::int FROM t2)::bool FROM (SELECT 1::int AS a, 2::int AS b) AS t GROUP BY 1, t.a::int"
+    );
 }
 
 #[test]
@@ -187,8 +237,8 @@ fn join_asterisk_qualified() {
 
 #[test]
 fn left_join_asterisk_qualified() {
-    let query = "SELECT t1.*, t2.*, t3.* FROM (SELECT a, b FROM t1) t1 INNER JOIN (SELECT c, d FROM t2) t2 ON t1.a = t2.c INNER JOIN (SELECT c a, d b FROM t2) t3 USING (a)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t2.c::int, t2.d::string, t3.a::int, t3.b::string FROM (SELECT t1.a::int, t1.b::int FROM t1) AS t1 INNER JOIN (SELECT t2.c::int, t2.d::string FROM t2) AS t2 ON (t1.a::int = t2.c::int)::bool INNER JOIN (SELECT t2.c::int AS a, t2.d::string AS b FROM t2) AS t3 USING (a)");
+    let query = "SELECT t1.*, t2.*, t3.* FROM (SELECT a, b FROM t1) t1 LEFT JOIN (SELECT c, d FROM t2) t2 ON t1.a = t2.c LEFT JOIN (SELECT c a, d b FROM t2) t3 USING (a)";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t2.c::int, t2.d::string, t3.a::int, t3.b::string FROM (SELECT t1.a::int, t1.b::int FROM t1) AS t1 LEFT OUTER JOIN (SELECT t2.c::int, t2.d::string FROM t2) AS t2 ON (t1.a::int = t2.c::int)::bool LEFT OUTER JOIN (SELECT t2.c::int AS a, t2.d::string AS b FROM t2) AS t3 USING (a)");
 }
 
 // ------------- JOIN/USING -------------

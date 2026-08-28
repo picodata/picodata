@@ -13,6 +13,7 @@
 //! in `sql-ast-new-nodes`, so an inherent `impl` on them here would be `E0116`.
 //! The analyzer declares a local trait and implements it for the node instead.
 
+use sql_ir::ir::aggregates::AggregateKind;
 use sql_type_system::expr::{ComparisonOperator, Type, UnaryOperator};
 
 use smol_str::format_smolstr;
@@ -133,8 +134,9 @@ fn cannot_resolve_err(var: &RawVar) -> AstErr {
 
 /// Resolve column reference.
 ///
-/// The level returned is the index of the frame the reference resolved against;
-/// scanning is innermost-outward.
+/// The level returned is the index of the frame the reference resolved against:
+/// scanning is innermost-outward, but an index means the same thing to every
+/// query level, which is what `AggrCtx` needs to compare levels across nesting.
 pub(crate) fn bind_var<'q, M: Metadata>(
     var: &RawVar,
     meta: &AnalyzerCtx<'q, M>,
@@ -393,6 +395,11 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
         let curr_id = meta.type_system.next_expr_id;
         meta.type_system.next_expr_id += 1;
 
+        // Taken before the subtree is bound, so that if this node turns out to be
+        // one of the expression grouping keys the columns it registered can be rewound.
+        // Not `None` only for SELECT list element and HAVING with expression key to match (compound expr in GROUP BY).
+        let grouping_marks = meta.binder.grouping_key_marks();
+
         let (inner, type_expr) = match self.into() {
             ExprInner::Nil => {
                 return Err(analyze_invariant_error(format_smolstr!(
@@ -446,6 +453,9 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
             ExprInner::Var(var) => {
                 // Bind column reference to tuple source (FROM clause entry, outer-query, etc.).
                 let (lvl, bound_var) = bind_var(&var, meta, false)?;
+
+                // Register column reference usage.
+                meta.binder.reg_var(lvl, bound_var.clone())?;
 
                 if let Some(d_type) = var
                     .table_name()
@@ -543,7 +553,13 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
             ExprInner::FunctionCall(call) => {
                 let (name, args) = call.into_parts();
 
-                match args {
+                let is_aggr_func = AggregateKind::from_name_unnorm(name.as_str()).is_some();
+
+                if is_aggr_func {
+                    meta.binder.init_aggr()?;
+                }
+
+                let (inner, t_expr) = match args {
                     FunctionCallArgs::CountAsterisk => {
                         // count(*) types as count(1).
                         // It means no column references. Implicit binding to the nearest scope.
@@ -590,7 +606,13 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                             AstTypeExpr::new(curr_id, t_expr_kind),
                         )
                     }
+                };
+
+                if is_aggr_func {
+                    meta.binder.finalize_aggr()?;
                 }
+
+                (inner, t_expr)
             }
             ExprInner::Parameter(parameter) => {
                 // The SQL spelling numbers parameters from one (`$1`, and `?` counted positionally).
@@ -874,6 +896,10 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
         };
 
         let bound = Expr::from_parts(inner, AnalyzedExprMeta::new_with_id(type_expr.id()));
+
+        // Clean all added variables in current tree if its expression
+        // equals to some expression in GROUP BY.
+        meta.binder.drop_grouping_key_vars(&grouping_marks, &bound);
 
         Ok((bound, type_expr))
     }

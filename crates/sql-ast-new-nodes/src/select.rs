@@ -12,11 +12,14 @@
 //! * the bare `*`, or a qualified `t.*`,
 //! * [`ProjectionExpr`], an expression with an optional alias.
 
+use std::collections::HashSet;
 use std::fmt::{Display, Error, Formatter};
 
 use crate::expr::{Expr, ExprInner};
-use crate::table_expression::{AttributeView, BoundVar, From, TableExpression, UniqueColumnRoute};
-use crate::{Analyzed, AnalyzedExprMeta, AstNodeId, AstState, Ident, Raw};
+use crate::table_expression::{
+    AttributeView, BoundVar, From, GroupBy, TableExpression, UniqueColumnRoute,
+};
+use crate::{Analyzed, AnalyzedExprMeta, AstNodeId, AstState, Ident, NamedEntity, Raw};
 use sql_ir::ir::types::DerivedType;
 
 pub struct SelectStmt<'q, State: AstState<'q>> {
@@ -91,6 +94,12 @@ impl<'q> SelectStmt<'q, Analyzed> {
         }
     }
 
+    pub fn set_grby(&mut self, grby: GroupBy<'q, Analyzed>) {
+        if let Some(tbl_expr) = self.table_expression.as_mut() {
+            tbl_expr.set_grby(grby);
+        }
+    }
+
     /// Position of the output column visible as `column_name`.
     /// `column_name` if an explicit alias or inherited name,
     /// see [`ProjectionExpr::output_name`].
@@ -139,6 +148,31 @@ impl<'q> SelectStmt<'q, Analyzed> {
     ) {
         (&mut self.select_list, self.table_expression.as_mut())
     }
+
+    pub fn has_group_by(&self) -> bool {
+        self.table_expression
+            .as_ref()
+            .is_some_and(|tbl_expr| tbl_expr.has_group_by())
+    }
+
+    pub fn has_having(&self) -> bool {
+        self.table_expression
+            .as_ref()
+            .is_some_and(|tbl_expr| tbl_expr.has_having())
+    }
+
+    pub fn grouping_vars(
+        &self,
+        select_list: &SelectListExprs<'q, Analyzed>,
+    ) -> HashSet<(usize, usize)> {
+        self.table_expression
+            .as_ref()
+            .map_or_else(HashSet::new, |tbl_expr| tbl_expr.grouping_vars(select_list))
+    }
+
+    pub fn select_list(&self) -> &SelectListExprs<'q, Analyzed> {
+        &self.select_list.elements
+    }
 }
 
 impl<'q, State: AstState<'q>> Display for SelectStmt<'q, State> {
@@ -169,9 +203,92 @@ impl<'q, State: AstState<'q>> SelectList<'q, State> {
     }
 }
 
+impl SelectList<'_, Raw> {
+    /// Position of the output column named `name` in the list as written -
+    /// before any asterisk is expanded, so an asterisk counts as one element
+    /// and never matches. [`None`] when no element carries the name and
+    /// `Some(None)` when it is ambiguous.
+    ///
+    /// The raw twin of [`SelectList::<Analyzed>::output_name_pos`], for the
+    /// one lookup that runs before the list is bound: a bare GROUP BY name
+    /// that no local relation exposes. It matches the same output names -
+    /// the explicit alias or, without one, the name the expression suggests
+    /// on its own (see [`ProjectionExpr::output_name`]) - and calls several
+    /// matches ambiguous only when they are not the same expression, so
+    /// `SELECT a AS x, a AS x ... GROUP BY x` resolves while
+    /// `SELECT a AS x, b AS x ... GROUP BY x` is ambiguous.
+    pub fn output_name_pos(&self, name: &str) -> Option<Option<usize>> {
+        let mut matches = self
+            .elements
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, elem)| match elem {
+                SelectListElem::Expr(proj_expr) => Some((idx, proj_expr)),
+                SelectListElem::Asterisk(_) => None,
+            })
+            .filter(|(_, proj_expr)| proj_expr.output_name().is_some_and(|out| out == name));
+
+        let (first_pos, first) = matches.next()?;
+        for (_, other) in matches {
+            if first.expr_ref() != other.expr_ref() {
+                return Some(None);
+            }
+        }
+        Some(Some(first_pos))
+    }
+}
+
 impl<'q> SelectList<'q, Analyzed> {
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.elements.0.len()
+    }
+
     pub fn exprs_mut(&mut self) -> &mut SelectListExprs<'q, Analyzed> {
         &mut self.elements
+    }
+
+    /// The expression projected at `pos`, counting from 0 - the numbering
+    /// `GroupByElem::Ordinal` uses, which is over the *expanded* list, after any asterisk.
+    pub fn expr_at(&self, pos: usize) -> Option<&Expr<'q, Analyzed>> {
+        self.elements.0.get(pos).map(ProjectionExpr::expr_ref)
+    }
+
+    /// Position of the output column named `name`, [`None`] when no output
+    /// column carries it and `Some(None)` when the name is ambiguous.
+    ///
+    /// The name is matched against every element's
+    /// *output name* - its explicit alias when it has one, otherwise the name
+    /// the expression exposes on its own - and several matches are an error
+    /// only when they are not the same expression, so
+    /// `SELECT a AS x, a AS x ... ORDER BY x` resolves while
+    /// `SELECT a AS x, b AS x ... ORDER BY x` is ambiguous.
+    pub fn output_name_pos(&self, name: &str) -> Option<Option<usize>> {
+        let mut matches = self
+            .elements
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, proj_expr)| proj_expr.output_name().is_some_and(|out| out == name));
+
+        let (first_pos, first) = matches.next()?;
+        for (_, other) in matches {
+            if !first.expr_ref().structural_eq(other.expr_ref()) {
+                return Some(None);
+            }
+        }
+        Some(Some(first_pos))
+    }
+
+    pub fn is_distinct(&self) -> bool {
+        self.is_distinct
+    }
+
+    /// Whether `expr` is one of the projected expressions, by the same
+    /// comparison a grouping key uses.
+    pub fn projects(&self, expr: &Expr<'q, Analyzed>) -> bool {
+        self.elements.projects(expr)
     }
 }
 
@@ -194,9 +311,25 @@ impl<'q> SelectListExprs<'q, Analyzed> {
         Self(elems)
     }
 
+    /// Var behind the `pos`-th select list projection, counting from 1 -
+    /// the numbering GROUP BY positions use.
+    pub(crate) fn var_ref(&self, pos: usize) -> Option<&BoundVar<'q>> {
+        self.0.get(pos).and_then(ProjectionExpr::var_ref)
+    }
+
+    /// Whether `expr` is one of the projected expressions, by the same comparison a grouping key uses.
+    pub fn projects(&self, expr: &Expr<'q, Analyzed>) -> bool {
+        self.0
+            .iter()
+            .any(|proj_expr| proj_expr.expr_ref().structural_eq(expr))
+    }
+
     /// The name every projection exposes, in order. See [`ProjectionExpr::output_name`].
     pub fn output_names(&self) -> Vec<Option<&str>> {
-        self.0.iter().map(ProjectionExpr::output_name).collect()
+        self.0
+            .iter()
+            .map(ProjectionExpr::<Analyzed>::output_name)
+            .collect()
     }
 }
 
@@ -259,6 +392,13 @@ impl<'q, State: AstState<'q>> ProjectionExpr<'q, State> {
     pub fn expr_ref(&self) -> &Expr<'q, State> {
         &self.expr
     }
+
+    pub fn output_name(&self) -> Option<&str> {
+        match self.alias.as_ref() {
+            Some(alias) => Some(alias.as_str()),
+            None => self.expr.name(),
+        }
+    }
 }
 
 impl<'q> ProjectionExpr<'q, Raw> {
@@ -282,37 +422,27 @@ impl<'q> ProjectionExpr<'q, Analyzed> {
         )
     }
 
-    /// Output column name: the explicit alias or, for a bare column
-    /// reference, the name of the referenced column.
-    /// The name this projection exposes: its explicit alias, or the name the
-    /// expression itself suggests.
-    pub fn output_name(&self) -> Option<&str> {
-        match self.alias.as_ref() {
-            Some(alias) => Some(alias.as_str()),
-            None => Self::figure_colname(&self.expr),
-        }
-    }
-
-    fn figure_colname<'e>(expr: &'e Expr<'q, Analyzed>) -> Option<&'e str> {
-        match expr.inner_ref() {
-            // A column reference is named by its own last field.
-            ExprInner::Var(var) => var.column_name(),
-            // A call is named by the function.
-            ExprInner::FunctionCall(call) => Some(call.name()),
-            // A cast defers to its operand and falls back to the target type.
-            ExprInner::Cast(cast) => Self::figure_colname(cast.child_ref()),
-            // CASE takes the name of its ELSE branch, if that branch has one.
-            ExprInner::Case(case) => case.else_expr.as_deref().and_then(Self::figure_colname),
-            _ => None,
-        }
-    }
-
     pub(crate) fn data_type(&self) -> DerivedType {
         self.expr.data_type()
     }
 
     pub fn expr_mut(&mut self) -> &mut Expr<'q, Analyzed> {
         &mut self.expr
+    }
+
+    pub fn var_ref(&self) -> Option<&BoundVar<'q>> {
+        self.expr_ref().var_ref()
+    }
+
+    /// See [`Expr::transient_var_ref`].
+    pub fn transient_var_ref(&self) -> Option<&BoundVar<'q>> {
+        self.expr_ref().transient_var_ref()
+    }
+}
+
+impl NamedEntity for ProjectionExpr<'_, Analyzed> {
+    fn name(&self) -> Option<&str> {
+        self.alias.as_ref().map(|ident| ident.as_str())
     }
 }
 

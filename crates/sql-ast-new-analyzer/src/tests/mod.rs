@@ -18,10 +18,11 @@
 //!
 //! | module | covers |
 //! |---|---|
-//! | [`multiset`] | WITH clause, and the `UNION`/`EXCEPT`/`INTERSECT` tree |
-//! | [`select`] | WHERE |
-//! | [`table_expression`] | FROM clause, table factors, joins |
+//! | [`multiset`] | WITH clause, the `UNION`/`EXCEPT`/`INTERSECT` tree, ORDER BY, LIMIT, VALUES |
+//! | [`select`] | WHERE, how HAVING resolves and types |
+//! | [`table_expression`] | FROM clause, table factors, joins, GROUP BY, the grouping HAVING imposes |
 //! | [`expr`] | column references, expression types |
+//! | [`aggregate`] | where an aggregate may sit, nesting, its semantic level |
 //! | [`asterisk`] | `*` and `t.*` expansion |
 //!
 //! A query exercises more than one of them at once, so the module is chosen by
@@ -33,6 +34,7 @@
 //! descendant module, so the submodules reach them through `use super::…` and
 //! nothing else in the crate can.
 
+mod aggregate;
 mod asterisk;
 mod expr;
 mod multiset;
@@ -44,8 +46,6 @@ use sql_ast_new_corpus::MockCatalog;
 use sql_ast_new_nodes::rendering::normalize_whitespace;
 use sql_ast_new_nodes::AbstractSyntaxTree;
 use sql_frontend::frontend::sql::Ast;
-use sql_ir::ir::metadata::Metadata;
-use sql_ir::ir::relation::{ColumnRole, SpaceEngine};
 use sql_ir::ir::types::{DerivedType, UnrestrictedType};
 
 /// The catalog these tests analyze against.
@@ -126,55 +126,11 @@ fn catalog() -> MockCatalog {
     catalog
 }
 
-/// Render one mocked table as the CREATE TABLE statement it stands in for
-/// (user columns only; types in their `::type`-suffix spelling).
-fn table_ddl(catalog: &MockCatalog, name: &str) -> String {
-    let table = catalog.table(name).expect("mocked table must exist");
-    let key_columns = |positions: &[usize]| {
-        positions
-            .iter()
-            .map(|&pos| format!("\"{}\"", table.columns[pos].name))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-
-    let mut ddl = format!("CREATE TABLE \"{}\" (\n", table.name);
-    for column in &table.columns {
-        if *column.get_role() != ColumnRole::User {
-            continue;
-        }
-        let ty = column.r#type.get().as_ref().expect("mocked type is known");
-        let nullability = if column.is_nullable {
-            "NULL"
-        } else {
-            "NOT NULL"
-        };
-        ddl.push_str(&format!("    \"{}\" {ty} {nullability},\n", column.name));
-    }
-    ddl.push_str(&format!(
-        "    PRIMARY KEY ({})\n",
-        key_columns(&table.primary_key.positions)
-    ));
-    let engine = match table.engine() {
-        SpaceEngine::Memtx => "MEMTX",
-        SpaceEngine::Vinyl => "VINYL",
-    };
-    let sharding_key = key_columns(table.get_sk().expect("mocked table is sharded"));
-    ddl.push_str(&format!(
-        ") USING {engine} DISTRIBUTED BY ({sharding_key});"
-    ));
-    ddl
-}
-
 /// The mocked tables used throughout these tests, rendered from the catalog
 /// itself so this reference cannot go stale.
 #[test]
 fn mocked_tables_reference() {
-    let catalog = catalog();
-    let ddl = ["t1", "t2", "t3", "t4", "t5", "t6"]
-        .map(|name| table_ddl(&catalog, name))
-        .join("\n\n");
-    insta::assert_snapshot!(ddl, @r#"
+    insta::assert_snapshot!(catalog().ddl(), @r#"
     CREATE TABLE "t1" (
         "a" int NULL,
         "b" int NOT NULL,

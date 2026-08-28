@@ -20,13 +20,14 @@
 //! Joins nest to the left, so a chain of them is a list hanging off one factor
 //! rather than a tree of pairs.
 
+use std::collections::HashSet;
 use std::fmt::{Display, Error, Formatter};
 use std::rc::Rc;
 
 use crate::error::{ast_invariant_err, AstResult};
-use crate::expr::{Expr, RawVar};
+use crate::expr::{Expr, ExprInner, RawVar};
 use crate::multiset::{Cte, MultisetStmt};
-use crate::select::ProjectionExpr;
+use crate::select::{ProjectionExpr, SelectList, SelectListExprs};
 use crate::window::NamedWindow;
 use crate::{write_sql_ident, Analyzed, AstState, Ident, NamedEntity, Raw, NONAME_COLUMN};
 use smol_str::format_smolstr;
@@ -46,7 +47,9 @@ pub(crate) type RelationPairs = Vec<(BoundTblKey, BoundTblKey)>;
 pub struct TableExpression<'q, State: AstState<'q>> {
     from: From<'q, State>,
     selection: Option<Expr<'q, State>>,
-    group_by: Vec<Expr<'q, State>>,
+    /// TODO: support instruction for  aggregating the entire set.
+    /// I.e. present but empty GROUP BY clause. E.g. `SELECT SUM(a) FROM t GROUP BY ()`.
+    group_by: GroupBy<'q, State>,
     having: Option<Expr<'q, State>>,
     windows: Vec<NamedWindow<'q, State>>,
 }
@@ -58,7 +61,7 @@ impl<'q, State: AstState<'q>> TableExpression<'q, State> {
     ) -> (
         From<'q, State>,
         Option<Expr<'q, State>>,
-        Vec<Expr<'q, State>>,
+        GroupBy<'q, State>,
         Option<Expr<'q, State>>,
         Vec<NamedWindow<'q, State>>,
     ) {
@@ -74,7 +77,7 @@ impl<'q, State: AstState<'q>> TableExpression<'q, State> {
     pub fn from_parts(
         from: From<'q, State>,
         selection: Option<Expr<'q, State>>,
-        group_by: Vec<Expr<'q, State>>,
+        group_by: GroupBy<'q, State>,
         having: Option<Expr<'q, State>>,
         windows: Vec<NamedWindow<'q, State>>,
     ) -> Self {
@@ -95,7 +98,7 @@ impl<'q> TableExpression<'q, Analyzed> {
     ) -> (
         &mut From<'q, Analyzed>,
         Option<&mut Expr<'q, Analyzed>>,
-        &mut Vec<Expr<'q, Analyzed>>,
+        &mut GroupBy<'q, Analyzed>,
         Option<&mut Expr<'q, Analyzed>>,
         &mut Vec<NamedWindow<'q, Analyzed>>,
     ) {
@@ -108,8 +111,32 @@ impl<'q> TableExpression<'q, Analyzed> {
         )
     }
 
+    pub(crate) fn has_group_by(&self) -> bool {
+        !self.group_by.0.is_empty()
+    }
+
+    pub(crate) fn has_having(&self) -> bool {
+        self.having.is_some()
+    }
+
+    pub fn grouping_vars(
+        &self,
+        select_list: &SelectListExprs<'q, Analyzed>,
+    ) -> HashSet<(BoundTblKey, usize)> {
+        self.group_by
+            .0
+            .iter()
+            .filter_map(|elem| elem.var_ref(select_list))
+            .map(BoundVar::key)
+            .collect()
+    }
+
     pub(crate) fn set_from(&mut self, from: From<'q, Analyzed>) {
         self.from = from;
+    }
+
+    pub fn set_grby(&mut self, grby: GroupBy<'q, Analyzed>) {
+        self.group_by = grby;
     }
 }
 
@@ -120,12 +147,7 @@ impl<'q, State: AstState<'q>> Display for TableExpression<'q, State> {
             .as_ref()
             .map_or(Ok(()), |selection| write!(f, " WHERE {selection}"))?;
 
-        if let Some((first_gb_expr, other_gb_exprs)) = self.group_by.split_first() {
-            write!(f, " GROUP BY {first_gb_expr}")?;
-            for expr in other_gb_exprs {
-                write!(f, ", {expr}")?;
-            }
-        }
+        write!(f, "{}", self.group_by)?;
 
         self.having
             .as_ref()
@@ -166,10 +188,6 @@ impl<'q> From<'q, Analyzed> {
 
     pub fn is_empty(&self) -> bool {
         self.tbl_factors.is_empty()
-    }
-
-    pub fn have_joined_tbls(&self) -> bool {
-        self.tbl_factors.len() > 1
     }
 
     pub fn add_entry(&mut self, entry: FromEntry<'q, Analyzed>) {
@@ -300,8 +318,11 @@ impl<'q> FromEntry<'q, Analyzed> {
     /// A qualified reference names the joined table itself rather than the join
     /// output, so it still sees the hidden copy.
     pub(crate) fn column_route(&self, var: &RawVar) -> UniqueColumnRoute<usize> {
+        let Some(col_name) = var.name() else {
+            return UniqueColumnRoute::ColumnMissing;
+        };
         match self {
-            Self::TableFactor(tbl_factor) => tbl_factor.column_route(var.column_name(), None),
+            Self::TableFactor(tbl_factor) => tbl_factor.column_route(col_name, None),
             Self::JoinedTable(joined_tbl) => {
                 let merged_away = var.table_name().is_none().then(|| {
                     joined_tbl
@@ -312,7 +333,7 @@ impl<'q> FromEntry<'q, Analyzed> {
                 });
                 joined_tbl
                     .table
-                    .column_route(var.column_name(), merged_away.as_deref())
+                    .column_route(col_name, merged_away.as_deref())
             }
         }
     }
@@ -398,6 +419,10 @@ impl<'q> TableFactor<'q, Analyzed> {
     pub fn attribute(&'_ self, column_pos: usize) -> Option<AttributeView<'q, '_>> {
         self.inner.attribute(column_pos)
     }
+
+    pub fn table(&self) -> Option<&Table> {
+        self.inner.table()
+    }
 }
 
 impl<'q, State: AstState<'q>> Display for TableFactor<'q, State> {
@@ -448,6 +473,13 @@ impl<'q> TableFactorInner<'q, Analyzed> {
         match self {
             Self::CteOrTable(cte_or_table) => cte_or_table.attribute(column_pos),
             Self::SubQuery(stmt) => stmt.attribute(column_pos),
+        }
+    }
+
+    pub fn table(&self) -> Option<&Table> {
+        match self {
+            Self::CteOrTable(cte_or_tbl) => cte_or_tbl.table(),
+            Self::SubQuery(_) => None,
         }
     }
 }
@@ -534,6 +566,88 @@ pub enum JoinKind {
     Cross,
 }
 
+pub struct GroupBy<'q, State: AstState<'q>>(pub Vec<OrdrByGrpByElem<'q, State>>);
+
+impl GroupBy<'_, Analyzed> {
+    pub fn contains_pos(&self, pos: usize) -> bool {
+        self.0
+            .iter()
+            .any(|elem| elem.ordinal().is_some_and(|elem_pos| elem_pos == pos))
+    }
+}
+
+impl GroupBy<'_, Raw> {
+    pub fn empty() -> Self {
+        Self(vec![])
+    }
+}
+
+impl Default for GroupBy<'_, Analyzed> {
+    fn default() -> Self {
+        Self(vec![])
+    }
+}
+
+impl<'q, State: AstState<'q>> Display for GroupBy<'q, State> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        if let Some((first_gb_expr, other_gb_exprs)) = self.0.split_first() {
+            write!(f, " GROUP BY {first_gb_expr}")?;
+            for expr in other_gb_exprs {
+                write!(f, ", {expr}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Elementary expresion common for [`GroupBy`] and `OrderBy`.
+pub enum OrdrByGrpByElem<'q, State: AstState<'q>> {
+    /// `0`-based
+    Ordinal(usize),
+    Expr(Expr<'q, State>),
+}
+
+impl<'q> OrdrByGrpByElem<'q, Analyzed> {
+    pub fn var_ref<'ast>(
+        &'ast self,
+        select_list: &'ast SelectListExprs<'q, Analyzed>,
+    ) -> Option<&'ast BoundVar<'q>> {
+        match self {
+            Self::Ordinal(pos) => select_list.var_ref(*pos),
+            Self::Expr(expr) => expr.var_ref(),
+        }
+    }
+
+    /// The expression a bound GROUP BY element groups by, or [`None`] for the bare
+    /// column references and for an ordinal naming that `grouping_vars` already covers.
+    pub fn grouping_key_expr<'ast>(
+        &'ast self,
+        select_list: Option<&'ast SelectList<'q, Analyzed>>,
+    ) -> Option<&'ast Expr<'q, Analyzed>> {
+        let key = match self {
+            Self::Expr(expr) => expr,
+            Self::Ordinal(pos) => select_list?.expr_at(*pos)?,
+        };
+        (!matches!(key.inner_ref(), ExprInner::Var(_))).then_some(key)
+    }
+
+    fn ordinal(&self) -> Option<usize> {
+        match self {
+            Self::Ordinal(pos) => Some(*pos),
+            Self::Expr(_) => None,
+        }
+    }
+}
+
+impl<'q, State: AstState<'q>> Display for OrdrByGrpByElem<'q, State> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            Self::Ordinal(pos) => write!(f, "{}", pos + 1),
+            Self::Expr(expr) => write!(f, "{expr}"),
+        }
+    }
+}
+
 /// What a FROM-clause name resolved to. The CTE arm shares the `Rc` owned by
 /// the WITH scope, so every use of a CTE points at the one analyzed body.
 pub enum AnalyzedCteOrTable<'q> {
@@ -613,6 +727,13 @@ impl<'q> AnalyzedCteOrTable<'q> {
                 .map(|col| AttributeView::Column(col, None)),
         }
     }
+
+    pub fn table(&self) -> Option<&Table> {
+        match self {
+            Self::Cte(_) => None,
+            Self::Table(tbl) => Some(tbl),
+        }
+    }
 }
 
 impl NamedEntity for AnalyzedCteOrTable<'_> {
@@ -655,21 +776,23 @@ impl<'q> BoundVar<'q> {
             .map_or(DerivedType::unknown(), |attr| attr.data_type())
     }
 
-    pub(crate) fn column_name(&self) -> Option<&str> {
-        self.source
-            .attribute(self.column_pos)
-            .and_then(|attr| match attr {
-                AttributeView::Column(col, rename) => rename.or(Some(col.name.as_str())),
-                AttributeView::Expr(_, name) => name,
-            })
-    }
-
     pub fn key(&self) -> (BoundTblKey, usize) {
         (self.src_key(), self.column_pos)
     }
 
     pub fn src_key(&self) -> BoundTblKey {
         Rc::as_ptr(&self.source) as *const () as BoundTblKey
+    }
+}
+
+impl NamedEntity for BoundVar<'_> {
+    fn name(&self) -> Option<&str> {
+        self.source
+            .attribute(self.column_pos)
+            .and_then(|attr| match attr {
+                AttributeView::Column(col, rename) => rename.or(Some(col.name.as_str())),
+                AttributeView::Expr(_, name) => name,
+            })
     }
 }
 
@@ -690,7 +813,7 @@ impl Hash for BoundVar<'_> {
 
 impl Display for BoundVar<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        match self.column_name() {
+        match self.name() {
             Some(column_name) => {
                 if let Some(source_name) = self.source.name() {
                     write_sql_ident(f, source_name)?;
@@ -714,7 +837,7 @@ impl Display for JoinUsingColumn {
 
 impl NamedEntity for JoinUsingColumn {
     fn name(&self) -> Option<&str> {
-        Some(self.0.column_name())
+        self.0.name()
     }
 }
 
@@ -758,7 +881,7 @@ impl<'q> BoundJoinUsingVar<'q> {
 
 impl Display for BoundJoinUsingVar<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write_sql_ident(f, self.left.column_name().unwrap_or(NONAME_COLUMN))
+        write_sql_ident(f, self.left.name().unwrap_or(NONAME_COLUMN))
     }
 }
 
@@ -890,6 +1013,22 @@ mod structural_eq {
                 && self.table.eq_with(&other.table, scope)
                 && self.condition.eq_with(&other.condition, scope)
                 && self.using_cols.eq_with(&other.using_cols, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for GroupBy<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.0.eq_with(&other.0, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for OrdrByGrpByElem<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            match (self, other) {
+                (Self::Ordinal(x), Self::Ordinal(y)) => x == y,
+                (Self::Expr(x), Self::Expr(y)) => x.eq_with(y, scope),
+                _mismatched_shapes => false,
+            }
         }
     }
 
