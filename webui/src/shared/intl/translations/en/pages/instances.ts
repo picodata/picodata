@@ -70,6 +70,7 @@ export const instances = {
       },
       services: {
         label: "Services",
+        noServices: "No services",
       },
       replicasets: {
         label: "Replicasets",

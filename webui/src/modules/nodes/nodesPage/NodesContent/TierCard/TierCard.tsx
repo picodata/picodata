@@ -75,7 +75,7 @@ export const TierCardAlt = memo(
                   </Tooltip>
                 ))
               ) : (
-                <InfoNoData text={translation.components.infoNoData.label} />
+                <InfoNoData text={tierTranslations.services.noServices} />
               )}
             </ServicesList>
           </TierContentFlexCenteredCell>
