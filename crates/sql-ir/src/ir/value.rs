@@ -793,17 +793,17 @@ impl Value {
             UnrestrictedType::Boolean => match self {
                 Value::Boolean(_) => Ok(self),
                 Value::Null => Ok(Value::Null),
-                Value::String(ref s) => try_parse_bool(s)
-                    .ok_or_else(|| cast_error(&self, column_type))
-                    .map(Value::Boolean),
+                Value::String(ref s) => {
+                    parse_str_as(s, column_type).ok_or_else(|| cast_error(&self, column_type))
+                }
                 _ => Err(cast_error(&self, column_type)),
             },
             UnrestrictedType::Datetime => match self {
                 Value::Null => Ok(Value::Null),
                 Value::Datetime(_) => Ok(self),
-                Value::String(ref s) => try_parse_datetime(s)
-                    .ok_or_else(|| cast_error(&self, column_type))
-                    .map(Value::Datetime),
+                Value::String(ref s) => {
+                    parse_str_as(s, column_type).ok_or_else(|| cast_error(&self, column_type))
+                }
                 _ => Err(cast_error(&self, column_type)),
             },
             UnrestrictedType::Decimal => match self {
@@ -814,11 +814,9 @@ impl Value {
                         .into(),
                 )),
                 Value::Integer(v) => Ok(Value::Decimal(Decimal::from(v).into())),
-                Value::String(ref v) => Ok(Value::Decimal(
-                    Decimal::from_str(v)
-                        .map_err(|_| cast_error(&self, column_type))?
-                        .into(),
-                )),
+                Value::String(ref v) => {
+                    parse_str_as(v, column_type).ok_or_else(|| cast_error(&self, column_type))
+                }
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -826,7 +824,9 @@ impl Value {
                 Value::Double(_) => Ok(self),
                 Value::Decimal(v) => Ok(Value::Double(Double::from_str(&format!("{v}"))?)),
                 Value::Integer(v) => Ok(Value::Double(Double::from(v))),
-                Value::String(v) => Ok(Value::Double(Double::from_str(&v)?)),
+                Value::String(ref v) => {
+                    parse_str_as(v, column_type).ok_or_else(|| cast_error(&self, column_type))
+                }
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -846,10 +846,9 @@ impl Value {
                     .parse::<i64>()
                     .map(Value::Integer)
                     .map_err(|_| cast_error(&self, column_type)),
-                Value::String(ref v) => v
-                    .parse::<i64>()
-                    .map(Value::Integer)
-                    .map_err(|_| cast_error(&self, column_type)),
+                Value::String(ref v) => {
+                    parse_str_as(v, column_type).ok_or_else(|| cast_error(&self, column_type))
+                }
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -860,9 +859,9 @@ impl Value {
             },
             UnrestrictedType::Uuid => match self {
                 Value::Uuid(_) => Ok(self),
-                Value::String(ref v) => Ok(Value::Uuid(
-                    Uuid::parse_str(v).map_err(|_| cast_error(&self, column_type))?,
-                )),
+                Value::String(ref v) => {
+                    parse_str_as(v, column_type).ok_or_else(|| cast_error(&self, column_type))
+                }
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -1126,6 +1125,30 @@ impl Encode for MsgPackValue<'_> {
 pub mod double;
 #[cfg(test)]
 mod tests;
+
+/// Parse `s` as a value of type `ty`, the way `CAST(<text> AS ty)` does.
+///
+/// Returns `None` when the text is not a valid input for `ty`.
+///
+/// This is the single place that knows how a string becomes a typed value:
+/// [`Value::cast`] routes all of its `Value::String` arms here, and the new AST
+/// analyzer calls it directly to fold a text literal during type derivation
+/// without having to build a `Value::String` first.
+#[must_use]
+pub fn parse_str_as(s: &str, ty: UnrestrictedType) -> Option<Value> {
+    match ty {
+        UnrestrictedType::Boolean => try_parse_bool(s).map(Value::Boolean),
+        UnrestrictedType::Datetime => try_parse_datetime(s).map(Value::Datetime),
+        UnrestrictedType::Decimal => Decimal::from_str(s).ok().map(Value::from),
+        UnrestrictedType::Double => Double::from_str(s).ok().map(Value::Double),
+        UnrestrictedType::Integer => s.parse::<i64>().ok().map(Value::Integer),
+        // A string is already a string, and `any` imposes no restriction.
+        UnrestrictedType::String | UnrestrictedType::Any => Some(Value::String(s.to_string())),
+        UnrestrictedType::Uuid => Uuid::parse_str(s).ok().map(Value::Uuid),
+        // There is no text input syntax for these in this dialect.
+        UnrestrictedType::Array(_) | UnrestrictedType::Map => None,
+    }
+}
 
 /// Parse boolean values in text format.
 /// It supports the same formats as PostgreSQL (grep `parse_bool_with_len`).

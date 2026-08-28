@@ -865,8 +865,8 @@ fn is_not_true() {
 }
 
 #[test]
-fn is_unknown_renders_as_null() {
-    insta::assert_snapshot!(render_expr("a IS UNKNOWN"), @"a IS NULL");
+fn is_unknown_keeps_its_keyword() {
+    insta::assert_snapshot!(render_expr("a IS UNKNOWN"), @"a IS UNKNOWN");
 }
 
 #[test]

@@ -434,7 +434,7 @@ impl<'q, State: AstState<'q>> Display for InExpr<'q, State> {
             f,
             " {}IN {}",
             if self.is_not { "NOT " } else { "" },
-            self.rhs.inner_ref()
+            self.rhs
         )
     }
 }
@@ -446,12 +446,19 @@ impl<'q, State: AstState<'q>> Display for IsExpr<'q, State> {
             f,
             " IS {}{}",
             if self.is_not { "NOT " } else { "" },
-            match self.value {
-                Some(true) => "TRUE",
-                Some(false) => "FALSE",
-                None => "NULL",
-            }
+            self.value
         )
+    }
+}
+
+impl Display for IsValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            IsValue::Bool(true) => write!(f, "TRUE"),
+            IsValue::Bool(false) => write!(f, "FALSE"),
+            IsValue::Null => write!(f, "NULL"),
+            IsValue::Unknown => write!(f, "UNKNOWN"),
+        }
     }
 }
 

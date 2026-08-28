@@ -85,6 +85,7 @@ use pest::Parser;
 use smol_str::SmolStr;
 
 use sql_ast_new_grammar::{PairParser, Rule};
+use sql_ir::ir::relation::Column;
 use sql_ir::ir::types::{DerivedType, NestedType, UnrestrictedType};
 
 /// Identifies an expression node to the type system, which keys its report by a
@@ -112,7 +113,7 @@ use self::window::{NamedWindow, WindowFunction};
 /// reads identifiers through [`Ident::from_sql`], [`Ident::as_str`], `Display`
 /// and the `PartialEq` impls — never the inner field — so the representation
 /// (currently [`SmolStr`]) can be swapped.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident(SmolStr);
 
 impl Ident {
@@ -136,6 +137,18 @@ impl Ident {
 impl NamedEntity for Ident {
     fn name(&self) -> Option<&str> {
         Some(self.as_str())
+    }
+}
+
+impl PartialEq<str> for Ident {
+    fn eq(&self, other: &str) -> bool {
+        self.0.as_str() == other
+    }
+}
+
+impl std::borrow::Borrow<str> for Ident {
+    fn borrow(&self) -> &str {
+        self.0.as_str()
     }
 }
 
@@ -251,6 +264,10 @@ pub trait AstState<'q>: Sized {
         scope: &mut Self::EqScope,
     ) -> bool;
 
+    /// The derived output columns of a `VALUES` statement: nothing in [`Raw`],
+    /// the `column1..columnN` name/type pairs the analyzer derives in [`Analyzed`].
+    type ValuesColumnsT: Default;
+
     /// State-specific expression rendering:
     /// * [`Raw`] renders the bare expression.
     /// * [`Analyzed`] decorates it with the inferred type.
@@ -280,6 +297,8 @@ impl<'q> AstState<'q> for Raw {
 
     type ExprMeta = RawExprMeta;
     type VarType = RawVar;
+
+    type ValuesColumnsT = ();
 
     type EqScope = ();
 
@@ -326,14 +345,15 @@ impl<'q> AstState<'q> for Analyzed {
     type CteT = Rc<Cte<'q, Analyzed>>;
 
     type SelectListElemT = ProjectionExpr<'q, Analyzed>;
-    /// Original From clause is shared by resolved column references.
-    /// See [`BoundVar`].
+    /// Original From clause is shared by resolved column references. See [`BoundVar`].
     type TableFactorT = Rc<TableFactor<'q, Analyzed>>;
     type JoinUsingColumnT = BoundJoinUsingVar<'q>;
     type CteOrTableT = AnalyzedCteOrTable<'q>;
 
     type ExprMeta = AnalyzedExprMeta;
     type VarType = BoundVar<'q>;
+
+    type ValuesColumnsT = Vec<Column>;
 
     /// Pairs of FROM factors, keyed the way [`BoundVar::src_key`] keys their
     /// [`Rc`]s, pushed as the comparison walks corresponding FROM clauses.
@@ -594,12 +614,13 @@ impl Display for Forward {
     }
 }
 
-const NONAME_COLUMN: &str = "<noname_column>";
+const NONAME_COLUMN: &str = "?column?";
 
 #[derive(Default)]
 pub struct AnalyzedExprMeta {
     pub data_type: DerivedType,
-    pub expr_id: Option<AstNodeId>,
+    /// This is needed only for type analysis and type derivation.
+    id: AstNodeId,
 }
 
 impl ExprMetaT for AnalyzedExprMeta {
@@ -610,16 +631,17 @@ impl ExprMetaT for AnalyzedExprMeta {
 
 impl AnalyzedExprMeta {
     pub fn new(data_type: DerivedType, id: AstNodeId) -> Self {
-        Self {
-            data_type,
-            expr_id: Some(id),
-        }
+        Self { data_type, id }
     }
 
     pub fn new_with_id(id: AstNodeId) -> Self {
         Self {
             data_type: DerivedType::unknown(),
-            expr_id: Some(id),
+            id,
         }
+    }
+
+    pub fn id(&self) -> AstNodeId {
+        self.id
     }
 }

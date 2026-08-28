@@ -15,8 +15,8 @@
 use std::fmt::{Display, Error, Formatter};
 
 use crate::expr::{Expr, ExprInner};
-use crate::table_expression::{AttributeView, TableExpression, UniqueColumnRoute};
-use crate::{Analyzed, AstState, Ident, Raw};
+use crate::table_expression::{AttributeView, BoundVar, From, TableExpression, UniqueColumnRoute};
+use crate::{Analyzed, AnalyzedExprMeta, AstNodeId, AstState, Ident, Raw};
 use sql_ir::ir::types::DerivedType;
 
 pub struct SelectStmt<'q, State: AstState<'q>> {
@@ -81,13 +81,23 @@ impl<'q> SelectStmt<'q, Analyzed> {
             .map(|proj_expr| AttributeView::Expr(proj_expr, proj_expr.output_name()))
     }
 
+    pub fn set_sel_lst(&mut self, lst: SelectList<'q, Analyzed>) {
+        self.select_list = lst;
+    }
+
+    pub fn set_from(&mut self, from: From<'q, Analyzed>) {
+        if let Some(tbl_expr) = self.table_expression.as_mut() {
+            tbl_expr.set_from(from);
+        }
+    }
+
     /// Position of the output column visible as `column_name`.
     /// `column_name` if an explicit alias or inherited name,
     /// see [`ProjectionExpr::output_name`].
     pub(crate) fn column_route(
         &self,
         column_name: &str,
-        exclude_positions: Option<Vec<usize>>,
+        exclude_positions: Option<&[usize]>,
     ) -> UniqueColumnRoute<usize> {
         let routes = self
             .select_list
@@ -120,6 +130,15 @@ impl<'q> SelectStmt<'q, Analyzed> {
                 .unwrap_or(UniqueColumnRoute::ColumnMissing)
         }
     }
+
+    pub fn parts_mut(
+        &mut self,
+    ) -> (
+        &mut SelectList<'q, Analyzed>,
+        Option<&mut TableExpression<'q, Analyzed>>,
+    ) {
+        (&mut self.select_list, self.table_expression.as_mut())
+    }
 }
 
 impl<'q, State: AstState<'q>> Display for SelectStmt<'q, State> {
@@ -131,6 +150,7 @@ impl<'q, State: AstState<'q>> Display for SelectStmt<'q, State> {
     }
 }
 
+#[derive(Default)]
 pub struct SelectList<'q, State: AstState<'q>> {
     elements: SelectListExprs<'q, State>,
     is_distinct: bool,
@@ -149,6 +169,12 @@ impl<'q, State: AstState<'q>> SelectList<'q, State> {
     }
 }
 
+impl<'q> SelectList<'q, Analyzed> {
+    pub fn exprs_mut(&mut self) -> &mut SelectListExprs<'q, Analyzed> {
+        &mut self.elements
+    }
+}
+
 impl<'q, State: AstState<'q>> Display for SelectList<'q, State> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         if self.is_distinct {
@@ -161,18 +187,22 @@ impl<'q, State: AstState<'q>> Display for SelectList<'q, State> {
     }
 }
 
-#[derive(Default)]
 pub struct SelectListExprs<'q, State: AstState<'q>>(pub Vec<State::SelectListElemT>);
-
-impl<'q> SelectListExprs<'q, Raw> {
-    pub fn into(self) -> Vec<SelectListElem<'q>> {
-        self.0
-    }
-}
 
 impl<'q> SelectListExprs<'q, Analyzed> {
     pub fn from(elems: Vec<ProjectionExpr<'q, Analyzed>>) -> Self {
         Self(elems)
+    }
+
+    /// The name every projection exposes, in order. See [`ProjectionExpr::output_name`].
+    pub fn output_names(&self) -> Vec<Option<&str>> {
+        self.0.iter().map(ProjectionExpr::output_name).collect()
+    }
+}
+
+impl<'q, State: AstState<'q>> Default for SelectListExprs<'q, State> {
+    fn default() -> Self {
+        Self(vec![])
     }
 }
 
@@ -225,6 +255,10 @@ impl<'q, State: AstState<'q>> ProjectionExpr<'q, State> {
     pub fn new(expr: Expr<'q, State>, alias: Option<Ident>) -> Self {
         Self { expr, alias }
     }
+
+    pub fn expr_ref(&self) -> &Expr<'q, State> {
+        &self.expr
+    }
 }
 
 impl<'q> ProjectionExpr<'q, Raw> {
@@ -238,26 +272,47 @@ impl<'q> ProjectionExpr<'q, Analyzed> {
         Self { expr, alias }
     }
 
-    /// Output column name: the explicit alias or, for a bare column
-    /// reference, the name of the referenced column (as PostgreSQL derives it).
-    pub(crate) fn output_name(&self) -> Option<&str> {
-        self.alias.as_ref().map_or_else(
-            || match self.expr.inner_ref() {
-                ExprInner::Var(var) => var.column_name(),
-                _ => None,
-            },
-            |alias| Some(alias.as_str()),
+    pub fn from_bound_var(var: BoundVar<'q>, expr_id: AstNodeId) -> Self {
+        ProjectionExpr::from_parts(
+            Expr::from_parts(
+                ExprInner::<'q, Analyzed>::Var(var),
+                AnalyzedExprMeta::new(DerivedType::unknown(), expr_id),
+            ),
+            None,
         )
+    }
+
+    /// Output column name: the explicit alias or, for a bare column
+    /// reference, the name of the referenced column.
+    /// The name this projection exposes: its explicit alias, or the name the
+    /// expression itself suggests.
+    pub fn output_name(&self) -> Option<&str> {
+        match self.alias.as_ref() {
+            Some(alias) => Some(alias.as_str()),
+            None => Self::figure_colname(&self.expr),
+        }
+    }
+
+    fn figure_colname<'e>(expr: &'e Expr<'q, Analyzed>) -> Option<&'e str> {
+        match expr.inner_ref() {
+            // A column reference is named by its own last field.
+            ExprInner::Var(var) => var.column_name(),
+            // A call is named by the function.
+            ExprInner::FunctionCall(call) => Some(call.name()),
+            // A cast defers to its operand and falls back to the target type.
+            ExprInner::Cast(cast) => Self::figure_colname(cast.child_ref()),
+            // CASE takes the name of its ELSE branch, if that branch has one.
+            ExprInner::Case(case) => case.else_expr.as_deref().and_then(Self::figure_colname),
+            _ => None,
+        }
     }
 
     pub(crate) fn data_type(&self) -> DerivedType {
         self.expr.data_type()
     }
-}
 
-impl<'q> ProjectionExpr<'q, Analyzed> {
-    pub(crate) fn expr_ref(&self) -> &Expr<'q, Analyzed> {
-        &self.expr
+    pub fn expr_mut(&mut self) -> &mut Expr<'q, Analyzed> {
+        &mut self.expr
     }
 }
 

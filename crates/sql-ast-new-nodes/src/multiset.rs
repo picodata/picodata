@@ -36,7 +36,8 @@
 //! │   │   ├── select_list: SelectList
 //! │   │   └── table_expression: Option<TableExpression>
 //! │   ├── Values(ValuesStmt)
-//! │   │   └── rows: Vec<ValuesRow>
+//! │   │   ├── rows: Vec<ValuesRow>
+//! │   │   └── columns  (derived `column1..columnN`, `Analyzed` only)
 //! │   └── Operation(Operation)
 //! │       ├── left: MultisetStmt
 //! │       ├── op: OperationKind  (UNION | EXCEPT | INTERSECT)
@@ -62,14 +63,14 @@
 //! same technique [`expr`](super::expr) uses for operators.
 
 use std::fmt::{Display, Error, Formatter};
+use std::rc::Rc;
 
-use smol_str::format_smolstr;
-
-use crate::error::{ast_arbitrary_err, AstResult};
+use crate::error::AstResult;
 use crate::expr::{Expr, ValuesRow};
 use crate::select::SelectStmt;
 use crate::table_expression::{AttributeView, UniqueColumnRoute};
 use crate::{Analyzed, AstState, Ident, NamedEntity, Raw};
+use sql_ir::ir::relation::Column;
 use sql_ir::ir::types::DerivedType;
 
 pub struct MultisetStmt<'q, State: AstState<'q>> {
@@ -80,17 +81,6 @@ pub struct MultisetStmt<'q, State: AstState<'q>> {
 }
 
 impl<'q, State: AstState<'q>> MultisetStmt<'q, State> {
-    pub fn into_parts(
-        self,
-    ) -> (
-        Ctes<'q, State>,
-        MultisetInner<'q, State>,
-        Option<OrderBy<'q, State>>,
-        Option<Limit>,
-    ) {
-        (self.ctes, self.inner, self.order_by, self.limit)
-    }
-
     pub fn from_parts(
         ctes: Ctes<'q, State>,
         inner: MultisetInner<'q, State>,
@@ -107,6 +97,17 @@ impl<'q, State: AstState<'q>> MultisetStmt<'q, State> {
 }
 
 impl<'q> MultisetStmt<'q, Raw> {
+    pub fn into_parts(
+        self,
+    ) -> (
+        Ctes<'q, Raw>,
+        MultisetInner<'q, Raw>,
+        Option<OrderBy<'q, Raw>>,
+        Option<Limit>,
+    ) {
+        (self.ctes, self.inner, self.order_by, self.limit)
+    }
+
     pub(crate) fn new(inner: MultisetInner<'q, Raw>) -> Self {
         Self {
             ctes: Ctes::<'q, Raw>::default(),
@@ -145,49 +146,62 @@ impl<'q> MultisetStmt<'q, Analyzed> {
     pub fn result_types(&self) -> AstResult<Vec<DerivedType>> {
         match &self.inner {
             MultisetInner::Select(stmt) => Ok(stmt.result_types()),
-            MultisetInner::Values(_) => Err(ast_arbitrary_err(format_smolstr!(
-                "result types of VALUES are not supported yet"
-            ))),
-            MultisetInner::Operation(_) => Err(ast_arbitrary_err(format_smolstr!(
-                "result types of set operations are not supported yet"
-            ))),
+            MultisetInner::Values(values) => Ok(values.result_types()),
+            MultisetInner::Operation(operation) => Ok(operation.left.result_types()?),
         }
     }
 
     pub fn result_columns_cnt(&self) -> AstResult<usize> {
         match &self.inner {
             MultisetInner::Select(stmt) => Ok(stmt.result_columns_cnt()),
-            MultisetInner::Values(_) => Err(ast_arbitrary_err(format_smolstr!(
-                "result columns of VALUES are not supported yet"
-            ))),
-            MultisetInner::Operation(_) => Err(ast_arbitrary_err(format_smolstr!(
-                "result columns of set operations are not supported yet"
-            ))),
+            MultisetInner::Values(values) => Ok(values.result_columns_cnt()),
+            MultisetInner::Operation(operation) => operation.left.result_columns_cnt(),
         }
     }
 
     /// Get offset (>= 0) in column list exposed by `MultisetStmt`.
     /// If no column with `column_name` found returns `None`.
-    /// The `Values`/`Operation` arms below are not supported yet
-    /// and return `None` instead of failing.
     pub(crate) fn column_route(
         &self,
         column_name: &str,
-        exclude_positions: Option<Vec<usize>>,
+        exclude_positions: Option<&[usize]>,
     ) -> UniqueColumnRoute<usize> {
         match &self.inner {
             MultisetInner::Select(stmt) => stmt.column_route(column_name, exclude_positions),
-            MultisetInner::Values(_) | MultisetInner::Operation(_) => {
-                UniqueColumnRoute::ColumnMissing
+            MultisetInner::Operation(operation) => {
+                operation.left.column_route(column_name, exclude_positions)
             }
+            MultisetInner::Values(values) => values.column_route(column_name, exclude_positions),
         }
     }
 
     pub fn attribute(&self, pos: usize) -> Option<AttributeView<'q, '_>> {
         match &self.inner {
             MultisetInner::Select(stmt) => stmt.attribute(pos),
-            MultisetInner::Values(_) | MultisetInner::Operation(_) => None,
+            MultisetInner::Operation(operation) => operation.left.attribute(pos),
+            MultisetInner::Values(values) => values.attribute(pos),
         }
+    }
+
+    pub fn inner_mut(&mut self) -> &mut MultisetInner<'q, Analyzed> {
+        &mut self.inner
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn parts_ref(
+        &self,
+    ) -> (
+        &Ctes<'q, Analyzed>,
+        &MultisetInner<'q, Analyzed>,
+        Option<&OrderBy<'q, Analyzed>>,
+        Option<&Limit>,
+    ) {
+        (
+            &self.ctes,
+            &self.inner,
+            self.order_by.as_ref(),
+            self.limit.as_ref(),
+        )
     }
 }
 
@@ -241,6 +255,35 @@ pub struct Operation<'q, State: AstState<'q>> {
     pub op: OperationKind,
     pub dup_elimination: OpDupElimination,
     pub right: Box<MultisetStmt<'q, State>>,
+}
+
+impl<'q> Operation<'q, Raw> {
+    pub fn into_parts(
+        self,
+    ) -> (
+        Box<MultisetStmt<'q, Raw>>,
+        OperationKind,
+        OpDupElimination,
+        Box<MultisetStmt<'q, Raw>>,
+    ) {
+        (self.left, self.op, self.dup_elimination, self.right)
+    }
+}
+
+impl<'q> Operation<'q, Analyzed> {
+    pub fn from_parts(
+        left: Box<MultisetStmt<'q, Analyzed>>,
+        op: OperationKind,
+        dup_elimination: OpDupElimination,
+        right: Box<MultisetStmt<'q, Analyzed>>,
+    ) -> Self {
+        Self {
+            left,
+            op,
+            dup_elimination,
+            right,
+        }
+    }
 }
 
 impl<'q, State: AstState<'q>> Display for Operation<'q, State> {
@@ -376,9 +419,13 @@ impl<'q> Ctes<'q, Raw> {
     }
 }
 
-impl Ctes<'_, Analyzed> {
+impl<'q> Ctes<'q, Analyzed> {
     pub fn exists(&self, name: &str) -> bool {
         self.ctes.iter().any(|cte| cte.name.as_str() == name)
+    }
+
+    pub fn into_mut(&mut self) -> &mut Vec<Rc<Cte<'q, Analyzed>>> {
+        &mut self.ctes
     }
 }
 
@@ -455,11 +502,10 @@ impl<'q> Cte<'q, Analyzed> {
             if self.columns.is_empty() {
                 return attr;
             }
-            if let AttributeView::Expr(proj_expr, _) = attr {
-                let name = self.columns.get(column_pos).map(Ident::as_str);
-                AttributeView::Expr(proj_expr, name)
-            } else {
-                attr
+            let name = self.columns.get(column_pos).map(Ident::as_str);
+            match attr {
+                AttributeView::Expr(proj_expr, _) => AttributeView::Expr(proj_expr, name),
+                AttributeView::Column(col, _) => AttributeView::Column(col, name),
             }
         })
     }
@@ -499,6 +545,11 @@ impl<'q> Cte<'q, Raw> {
 pub struct ValuesStmt<'q, State: AstState<'q>> {
     // This is [`Vec<Vec<Expr>>`] and this is bad (but how bad?), some day improve it
     rows: Vec<ValuesRow<'q, State>>,
+    /// The output columns the statement derives, PostgreSQL-style: the `k`-th
+    /// column is named `column{k}` (1-based) and typed with the common type of
+    /// every row's `k`-th expression. Names are filled at binding. Types stay
+    /// unknown until type derivation. Nothing in the [`Raw`] state.
+    columns: State::ValuesColumnsT,
 }
 
 impl<'q, State: AstState<'q>> Display for ValuesStmt<'q, State> {
@@ -523,6 +574,67 @@ impl<'q> ValuesStmt<'q, Raw> {
 
     pub fn add_row(&mut self, row: ValuesRow<'q, Raw>) {
         self.rows.push(row)
+    }
+
+    pub fn into_parts(self) -> Vec<ValuesRow<'q, Raw>> {
+        self.rows
+    }
+}
+
+impl<'q> ValuesStmt<'q, Analyzed> {
+    pub fn from_parts(rows: Vec<ValuesRow<'q, Analyzed>>, columns: Vec<Column>) -> Self {
+        Self { rows, columns }
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn parts_mut(&mut self) -> (&mut Vec<ValuesRow<'q, Analyzed>>, &mut Vec<Column>) {
+        (&mut self.rows, &mut self.columns)
+    }
+
+    /// Output column types, one per derived column.
+    /// Unknown until type derivation runs.
+    pub(crate) fn result_types(&self) -> Vec<DerivedType> {
+        self.columns.iter().map(|col| col.r#type).collect()
+    }
+
+    pub(crate) fn result_columns_cnt(&self) -> usize {
+        self.columns.len()
+    }
+
+    /// The `column1..columnN` names every column exposes, in order.
+    pub fn output_names(&self) -> Vec<Option<&str>> {
+        self.columns
+            .iter()
+            .map(|col| Some(col.name.as_str()))
+            .collect()
+    }
+
+    /// Position of the output column visible as `column_name`. The derived
+    /// names are unique by construction, so a match is never ambiguous
+    /// and so we use [`UniqueColumnRoute`].
+    pub(crate) fn column_route(
+        &self,
+        column_name: &str,
+        exclude_positions: Option<&[usize]>,
+    ) -> UniqueColumnRoute<usize> {
+        self.columns
+            .iter()
+            .enumerate()
+            .find(|(pos, col)| {
+                !exclude_positions
+                    .as_ref()
+                    .is_some_and(|positions| positions.contains(pos))
+                    && col.name == column_name
+            })
+            .map_or(UniqueColumnRoute::ColumnMissing, |(pos, _)| {
+                UniqueColumnRoute::Resolved(pos)
+            })
+    }
+
+    pub(crate) fn attribute(&self, column_pos: usize) -> Option<AttributeView<'q, '_>> {
+        self.columns
+            .get(column_pos)
+            .map(|col| AttributeView::Column(col, None))
     }
 }
 

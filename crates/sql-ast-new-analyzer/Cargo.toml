@@ -1,0 +1,33 @@
+[package]
+name = "sql-ast-new-analyzer"
+version = "0.1.0"
+rust-version.workspace = true
+authors = ["Picodata"]
+license-file.workspace = true
+edition.workspace = true
+
+[dependencies]
+smol_str = { workspace = true }
+sql-ast-new-nodes = { path = "../sql-ast-new-nodes" }
+sql-ir = { path = "../sql-ir" }
+sql-type-system = { path = "../sql-type-system" }
+
+[dev-dependencies]
+insta = { workspace = true, features = ["yaml"] }
+pretty_assertions = { workspace = true }
+# Folding a text literal into a `decimal` calls `Decimal::from_str`, which is a
+# tarantool C symbol the test binary does not link. `standalone_decimal` swaps in
+# the pure-Rust implementation.
+tarantool = { workspace = true, features = ["standalone_decimal", "extra_impls"] }
+# A test needs a raw tree to analyze and a `TypeSystem` to analyze it against.
+# Both come from the frontend: it owns the shared `TYPE_SYSTEM` registry, and
+# its `Ast` trait is the parse-then-analyze entry point the tests drive. So the
+# suite goes through `sql-frontend` rather than calling the parser directly.
+#
+# This closes a cycle (`sql-frontend` depends on this crate), which cargo permits
+# because it crosses a dev-dependency — the same allowance `sql-frontend` itself
+# relies on for `sql-executor`.
+sql-frontend = { path = "../sql-frontend" }
+# `MockCatalog` — the catalog builder the corpus crate registers its own schema
+# on — is the `Metadata` implementation the snapshots are written against.
+sql-ast-new-corpus = { path = "../sql-ast-new-corpus", features = ["mock"] }

@@ -83,6 +83,7 @@ test-rust *ARGS:
 		--exclude sql-frontend \
 		--exclude sql-ast-new-nodes \
 		--exclude sql-ast-new-parser \
+		--exclude sql-ast-new-analyzer \
 		--exclude sql-ast-new-corpus \
 		--exclude tarantool \
 		--exclude tlua \
@@ -97,6 +98,7 @@ test-rust *ARGS:
 		--exclude sql-frontend \
 		--exclude sql-ast-new-nodes \
 		--exclude sql-ast-new-parser \
+		--exclude sql-ast-new-analyzer \
 		--exclude sql-ast-new-corpus \
 		--exclude tarantool \
 		--exclude tlua \
@@ -136,6 +138,7 @@ lint-rust *ARGS:
 		--exclude sql-frontend \
 		--exclude sql-ast-new-nodes \
 		--exclude sql-ast-new-parser \
+		--exclude sql-ast-new-analyzer \
 		--exclude sql-ast-new-corpus \
 		--benches --tests
 	cargo clippy --version

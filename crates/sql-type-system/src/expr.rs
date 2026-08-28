@@ -158,6 +158,11 @@ impl ComparisonOperator {
 pub enum UnaryOperator {
     Not,
     IsNull,
+    IsUnknown,
+    /// `IS TRUE` / `IS NOT TRUE`: requires a boolean argument, like in Postgres.
+    IsTrue,
+    /// `IS FALSE` / `IS NOT FALSE`: requires a boolean argument, like in Postgres.
+    IsFalse,
     Exists,
 }
 
@@ -166,6 +171,9 @@ impl UnaryOperator {
         match self {
             Self::Not => "not",
             Self::IsNull => "is null",
+            Self::IsUnknown => "is unknown",
+            Self::IsTrue => "is true",
+            Self::IsFalse => "is false",
             Self::Exists => "exists",
         }
     }
@@ -321,5 +329,11 @@ pub struct Expr<Id> {
 impl<Id> Expr<Id> {
     pub const fn new(id: Id, kind: ExprKind<Id>) -> Self {
         Self { id, kind }
+    }
+}
+
+impl<Id: Copy> Expr<Id> {
+    pub fn id(&self) -> Id {
+        self.id
     }
 }

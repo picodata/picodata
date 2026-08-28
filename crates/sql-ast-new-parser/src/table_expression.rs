@@ -221,7 +221,15 @@ fn parse_joined_table<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Joi
         parse_invariant_error(format_smolstr!("grammar guarantees a joined table factor"))
     })?;
 
-    if !matches!(kind, JoinKind::Cross) && condition.is_none() && using_cols.is_empty() {
+    if matches!(kind, JoinKind::Cross) {
+        return Err(SbroadError::Invalid(
+            Entity::Query,
+            Some(format_smolstr!("CROSS JOIN is not supported yet")),
+        )
+        .into());
+    }
+
+    if condition.is_none() && using_cols.is_empty() {
         return Err(SbroadError::Invalid(
             Entity::Query,
             Some(format_smolstr!(
@@ -342,12 +350,6 @@ mod tests {
             render_table_expr(query),
             @"FROM t1 LEFT OUTER JOIN t2 USING (a, b, c)"
         );
-    }
-
-    #[test]
-    fn join_cross() {
-        let query = r#"FROM t1 CROSS JOIN t2"#;
-        insta::assert_snapshot!(render_table_expr(query), @"FROM t1 CROSS JOIN t2");
     }
 
     #[test]

@@ -31,6 +31,12 @@ pub type WindowFrame = GenericWindowFrame<NodeId>;
 pub type TypeAnalyzer = GenericTypeAnalyzer<'static, NodeId>;
 pub type TypeReport = GenericTypeReport<NodeId>;
 
+// The new AST analyzer keys type analysis by a simple monotonic `u32` minted while walking the
+// expression tree (the new AST has no arena node ids like the IR `Plan`). The
+// alias is declared alongside that analyzer; only the constructor below, which
+// needs the `TYPE_SYSTEM` registry shared with the old pipeline, lives here.
+pub(super) use sql_ast_new_analyzer::AstTypeAnalyzer;
+
 pub fn get_parameter_derived_types(analyzer: &TypeAnalyzer) -> Vec<DerivedType> {
     analyzer
         .get_parameter_types()
@@ -398,6 +404,14 @@ fn default_type_system() -> TypeSystem {
         Function::new_operator("-", [Numeric, Numeric], Numeric),
         Function::new_operator("/", [Numeric, Numeric], Numeric),
         Function::new_operator("*", [Numeric, Numeric], Numeric),
+        // Unary sign operators (overload lookup filters by arg count,
+        // so these coexist with the binary forms above).
+        Function::new_operator("-", [Integer], Integer),
+        Function::new_operator("-", [Double], Double),
+        Function::new_operator("-", [Numeric], Numeric),
+        Function::new_operator("+", [Integer], Integer),
+        Function::new_operator("+", [Double], Double),
+        Function::new_operator("+", [Numeric], Numeric),
         // Logical operations.
         Function::new_operator("or", [Boolean, Boolean], Boolean),
         Function::new_operator("and", [Boolean, Boolean], Boolean),
@@ -582,6 +596,17 @@ pub fn new_analyzer(param_types: &[DerivedType]) -> TypeAnalyzer {
         .map(|t| t.get().map(|t| t.into()))
         .collect();
     TypeAnalyzer::new(&TYPE_SYSTEM).with_parameters(param_types)
+}
+
+/// Build a type analyzer keyed by the new AST's `u32` node ids
+/// (see [`AstNodeId`](sql_ast_new_nodes::AstNodeId)).
+/// Mirrors [`new_analyzer`] and reuses the same static `TYPE_SYSTEM`.
+pub fn new_ast_analyzer(param_types: &[DerivedType]) -> AstTypeAnalyzer {
+    let param_types = param_types
+        .iter()
+        .map(|t| t.get().map(|t| t.into()))
+        .collect();
+    AstTypeAnalyzer::new(&TYPE_SYSTEM).with_parameters(param_types)
 }
 
 /// Analyze expression types and apply type coercions.

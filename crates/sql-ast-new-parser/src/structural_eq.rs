@@ -42,7 +42,6 @@ fn reparse_gives_an_equal_tree() {
         "SELECT a FROM t1 UNION ALL SELECT b FROM t2 EXCEPT SELECT c FROM t3",
         "SELECT a FROM t1 INTERSECT SELECT b FROM t2",
         "SELECT DISTINCT a, b AS x FROM t1 ORDER BY a DESC NULLS LAST, 2 LIMIT 5",
-        "SELECT a FROM t1 INNER JOIN t2 ON t1.a = t2.a CROSS JOIN t3",
         "SELECT a FROM t1 LEFT JOIN t2 USING (a, b)",
         "SELECT a FROM (SELECT a FROM t) AS s INDEXED BY idx",
         "SELECT a FROM t1 WHERE a > 1 GROUP BY a, 2 HAVING count(*) > 0",

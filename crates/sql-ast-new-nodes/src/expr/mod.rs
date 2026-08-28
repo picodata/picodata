@@ -53,7 +53,7 @@ use crate::error::{ast_arbitrary_err, AstResult};
 use crate::multiset::MultisetStmt;
 use crate::table_expression::BoundVar;
 use crate::window::WindowFunction;
-use crate::{AstState, Ident, Raw};
+use crate::{AstNodeId, AstState, Ident, Raw};
 use sql_ir::ir::types::{CastType, UnrestrictedType};
 
 pub type RawExpr<'q> = Expr<'q, Raw>;
@@ -232,12 +232,6 @@ pub struct ValuesRow<'q, State: AstState<'q>> {
     values: Vec<Expr<'q, State>>,
 }
 
-impl<'q, State: AstState<'q>> ValuesRow<'q, State> {
-    pub fn values_ref(&self) -> &[Expr<'q, State>] {
-        &self.values
-    }
-}
-
 /// `ARRAY[a, b, c]` literal; the element list may be empty (`ARRAY[]`).
 pub struct ArrayLiteral<'q, State: AstState<'q>> {
     elems: Vec<Expr<'q, State>>,
@@ -371,11 +365,22 @@ pub struct InExpr<'q, State: AstState<'q>> {
     rhs: Box<Expr<'q, State>>,
 }
 
+/// The right-hand side of a postfix `IS [NOT] ...` test.
+///
+/// `NULL` and `UNKNOWN` mean the same thing here, but they are kept apart so
+/// rendering echoes back the keyword the query actually used.
+#[derive(Clone, Copy, PartialEq)]
+pub enum IsValue {
+    /// `TRUE` or `FALSE`.
+    Bool(bool),
+    Null,
+    Unknown,
+}
+
 pub struct IsExpr<'q, State: AstState<'q>> {
     is_not: bool,
     child: Box<Expr<'q, State>>,
-    /// `Some(true)` for TRUE, `Some(false)` for FALSE, `None` for NULL and UNKNOWN (synonyms).
-    value: Option<bool>,
+    value: IsValue,
 }
 
 pub struct IndexExpr<'q, State: AstState<'q>> {
@@ -555,7 +560,7 @@ impl<'q> RawExpr<'q> {
         })))
     }
 
-    pub fn is(child: Self, is_not: bool, value: Option<bool>) -> Self {
+    pub fn is(child: Self, is_not: bool, value: IsValue) -> Self {
         Self::new(ExprInner::Is(IsExpr {
             is_not,
             child: Box::new(child),
@@ -602,7 +607,7 @@ impl<'q> RawExpr<'q> {
 // its `Analyzed` counterpart through these. They are inherent impls, so they
 // belong with the declarations rather than with the analyzer that calls them.
 
-use crate::{Analyzed, AnalyzedExprMeta, ExprMetaT};
+use crate::{Analyzed, AnalyzedExprMeta};
 use sql_ir::ir::types::DerivedType;
 
 impl<'q> Expr<'q, Analyzed> {
@@ -614,8 +619,20 @@ impl<'q> Expr<'q, Analyzed> {
         (&mut self.inner, &mut self.meta)
     }
 
+    pub fn inner_mut(&mut self) -> &mut ExprInner<'q, Analyzed> {
+        &mut self.inner
+    }
+
+    pub fn meta_mut(&mut self) -> &mut AnalyzedExprMeta {
+        &mut self.meta
+    }
+
     pub fn data_type(&self) -> DerivedType {
-        self.meta.data_type()
+        self.meta.data_type
+    }
+
+    pub fn id(&self) -> AstNodeId {
+        self.meta.id
     }
 }
 
@@ -636,6 +653,10 @@ impl<'q, State: AstState<'q>> BinaryOperation<'q, State> {
 }
 
 impl<'q> BinaryOperation<'q, Analyzed> {
+    pub fn parts_ref(&self) -> (&Expr<'q, Analyzed>, &Expr<'q, Analyzed>, &BinaryOp) {
+        (&self.left, &self.right, &self.op)
+    }
+
     pub fn from_parts(
         left: Box<Expr<'q, Analyzed>>,
         right: Box<Expr<'q, Analyzed>>,
@@ -653,12 +674,16 @@ impl RawVar {
         }
     }
 
-    pub(crate) fn table_name(&self) -> Option<&str> {
+    pub fn table_name(&self) -> Option<&str> {
         self.table_name.as_ref().map(Ident::as_str)
     }
 
-    pub(crate) fn column_name(&self) -> &str {
+    pub fn column_name(&self) -> &str {
         self.column_name.as_str()
+    }
+
+    pub fn column_name_ident(&self) -> Ident {
+        self.column_name.clone()
     }
 }
 
@@ -679,7 +704,7 @@ impl<'q> ArrayLiteral<'q, Analyzed> {
 }
 
 impl<'q> Cast<'q, Raw> {
-    pub fn into_parts(self) -> (Box<Expr<'q, Raw>>, CastType, CastSyntax) {
+    pub fn into_parts(self) -> (Box<RawExpr<'q>>, CastType, CastSyntax) {
         (self.child, self.ty, self.syntax)
     }
 }
@@ -691,5 +716,299 @@ impl<'q> Cast<'q, Analyzed> {
 
     pub fn parts_mut(&mut self) -> (&mut Box<Expr<'q, Analyzed>>, &mut CastType, &mut CastSyntax) {
         (&mut self.child, &mut self.ty, &mut self.syntax)
+    }
+}
+
+impl<'q, State: AstState<'q>> ValuesRow<'q, State> {
+    pub fn into_parts(self) -> Vec<Expr<'q, State>> {
+        self.values
+    }
+
+    pub fn parts_mut(&mut self) -> &mut Vec<Expr<'q, State>> {
+        &mut self.values
+    }
+
+    pub fn values_ref(&self) -> &[Expr<'q, State>] {
+        &self.values
+    }
+}
+
+impl<'q> ValuesRow<'q, Analyzed> {
+    pub fn from_parts(values: Vec<Expr<'q, Analyzed>>) -> Self {
+        Self { values }
+    }
+}
+
+impl<'q, State: AstState<'q>> UnaryOperation<'q, State> {
+    pub fn into_parts(self) -> (Box<Expr<'q, State>>, UnaryOp) {
+        (self.operand, self.operator)
+    }
+
+    pub fn parts_ref(&self) -> (&Expr<'q, State>, &UnaryOp) {
+        (&self.operand, &self.operator)
+    }
+
+    pub fn parts_mut(&mut self) -> (&mut Box<Expr<'q, State>>, &mut UnaryOp) {
+        (&mut self.operand, &mut self.operator)
+    }
+}
+
+impl<'q> UnaryOperation<'q, Analyzed> {
+    pub fn from_parts(operand: Box<Expr<'q, Analyzed>>, operator: UnaryOp) -> Self {
+        Self { operand, operator }
+    }
+}
+
+impl<'q, State: AstState<'q>> FunctionCall<'q, State> {
+    pub fn into_parts(self) -> (Ident, FunctionCallArgs<'q, State>) {
+        (self.name, self.args)
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub fn parts_mut(&mut self) -> (&Ident, &mut FunctionCallArgs<'q, State>) {
+        (&self.name, &mut self.args)
+    }
+}
+
+impl<'q> FunctionCall<'q, Analyzed> {
+    pub fn from_parts(name: Ident, args: FunctionCallArgs<'q, Analyzed>) -> Self {
+        Self { name, args }
+    }
+}
+
+impl<'q, State: AstState<'q>> Like<'q, State> {
+    #[allow(clippy::type_complexity)]
+    pub fn into_parts(
+        self,
+    ) -> (
+        bool,
+        Box<Expr<'q, State>>,
+        Box<Expr<'q, State>>,
+        Option<Box<Expr<'q, State>>>,
+        bool,
+    ) {
+        (
+            self.is_not,
+            self.left,
+            self.right,
+            self.escape,
+            self.is_ilike,
+        )
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn parts_mut(
+        &mut self,
+    ) -> (
+        &mut Box<Expr<'q, State>>,
+        &mut Box<Expr<'q, State>>,
+        Option<&mut Box<Expr<'q, State>>>,
+    ) {
+        (&mut self.left, &mut self.right, self.escape.as_mut())
+    }
+}
+
+impl<'q> Like<'q, Analyzed> {
+    pub fn from_parts(
+        is_not: bool,
+        left: Box<Expr<'q, Analyzed>>,
+        right: Box<Expr<'q, Analyzed>>,
+        escape: Option<Box<Expr<'q, Analyzed>>>,
+        is_ilike: bool,
+    ) -> Self {
+        Self {
+            is_not,
+            left,
+            right,
+            escape,
+            is_ilike,
+        }
+    }
+}
+
+impl<'q, State: AstState<'q>> Similar<'q, State> {
+    #[allow(clippy::type_complexity)]
+    pub fn into_parts(
+        self,
+    ) -> (
+        bool,
+        Box<Expr<'q, State>>,
+        Box<Expr<'q, State>>,
+        Option<Box<Expr<'q, State>>>,
+    ) {
+        (self.is_not, self.left, self.right, self.escape)
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn parts_mut(
+        &mut self,
+    ) -> (
+        &mut Box<Expr<'q, State>>,
+        &mut Box<Expr<'q, State>>,
+        Option<&mut Box<Expr<'q, State>>>,
+    ) {
+        (&mut self.left, &mut self.right, self.escape.as_mut())
+    }
+}
+
+impl<'q> Similar<'q, Analyzed> {
+    pub fn from_parts(
+        is_not: bool,
+        left: Box<Expr<'q, Analyzed>>,
+        right: Box<Expr<'q, Analyzed>>,
+        escape: Option<Box<Expr<'q, Analyzed>>>,
+    ) -> Self {
+        Self {
+            is_not,
+            left,
+            right,
+            escape,
+        }
+    }
+}
+
+impl<'q, State: AstState<'q>> Between<'q, State> {
+    #[allow(clippy::type_complexity)]
+    pub fn into_parts(
+        self,
+    ) -> (
+        bool,
+        Box<Expr<'q, State>>,
+        Box<Expr<'q, State>>,
+        Box<Expr<'q, State>>,
+    ) {
+        (self.is_not, self.left, self.center, self.right)
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn parts_mut(
+        &mut self,
+    ) -> (
+        &mut Box<Expr<'q, State>>,
+        &mut Box<Expr<'q, State>>,
+        &mut Box<Expr<'q, State>>,
+    ) {
+        (&mut self.left, &mut self.center, &mut self.right)
+    }
+}
+
+impl<'q> Between<'q, Analyzed> {
+    pub fn from_parts(
+        is_not: bool,
+        left: Box<Expr<'q, Analyzed>>,
+        center: Box<Expr<'q, Analyzed>>,
+        right: Box<Expr<'q, Analyzed>>,
+    ) -> Self {
+        Self {
+            is_not,
+            left,
+            center,
+            right,
+        }
+    }
+}
+
+impl<'q, State: AstState<'q>> InExpr<'q, State> {
+    pub fn into_parts(self) -> (bool, Box<Expr<'q, State>>, Box<Expr<'q, State>>) {
+        (self.is_not, self.left, self.rhs)
+    }
+
+    pub fn parts_mut(&mut self) -> (&mut Box<Expr<'q, State>>, &mut Box<Expr<'q, State>>) {
+        (&mut self.left, &mut self.rhs)
+    }
+}
+
+impl<'q> InExpr<'q, Analyzed> {
+    /// The Raw-side invariant (rhs is a `Row` or a `SubQuery`) is upheld by the
+    /// analyzer rebuilding the node from an already-validated Raw one.
+    pub fn from_parts(
+        is_not: bool,
+        left: Box<Expr<'q, Analyzed>>,
+        rhs: Box<Expr<'q, Analyzed>>,
+    ) -> Self {
+        Self { is_not, left, rhs }
+    }
+}
+
+impl<'q, State: AstState<'q>> IsExpr<'q, State> {
+    pub fn into_parts(self) -> (bool, Box<Expr<'q, State>>, IsValue) {
+        (self.is_not, self.child, self.value)
+    }
+
+    pub fn parts_mut(&mut self) -> (&mut bool, &mut Box<Expr<'q, State>>, &mut IsValue) {
+        (&mut self.is_not, &mut self.child, &mut self.value)
+    }
+}
+
+impl<'q> IsExpr<'q, Analyzed> {
+    pub fn from_parts(is_not: bool, child: Box<Expr<'q, Analyzed>>, value: IsValue) -> Self {
+        Self {
+            is_not,
+            child,
+            value,
+        }
+    }
+}
+
+impl<'q, State: AstState<'q>> IndexExpr<'q, State> {
+    pub fn into_parts(self) -> (Box<Expr<'q, State>>, Box<Expr<'q, State>>) {
+        (self.child, self.which)
+    }
+
+    pub fn parts_mut(&mut self) -> (&mut Box<Expr<'q, State>>, &mut Box<Expr<'q, State>>) {
+        (&mut self.child, &mut self.which)
+    }
+}
+
+impl<'q> IndexExpr<'q, Analyzed> {
+    pub fn from_parts(child: Box<Expr<'q, Analyzed>>, which: Box<Expr<'q, Analyzed>>) -> Self {
+        Self { child, which }
+    }
+}
+
+impl<'q, State: AstState<'q>> Trim<'q, State> {
+    #[allow(clippy::type_complexity)]
+    pub fn into_parts(
+        self,
+    ) -> (
+        Option<TrimKind>,
+        Option<Box<Expr<'q, State>>>,
+        Box<Expr<'q, State>>,
+    ) {
+        (self.kind, self.pattern, self.target)
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn parts_mut(&mut self) -> (Option<&mut Box<Expr<'q, State>>>, &mut Box<Expr<'q, State>>) {
+        (self.pattern.as_mut(), &mut self.target)
+    }
+}
+
+impl<'q> Trim<'q, Analyzed> {
+    pub fn from_parts(
+        kind: Option<TrimKind>,
+        pattern: Option<Box<Expr<'q, Analyzed>>>,
+        target: Box<Expr<'q, Analyzed>>,
+    ) -> Self {
+        Self {
+            kind,
+            pattern,
+            target,
+        }
+    }
+}
+
+impl<'q, State: AstState<'q>> Exists<'q, State> {
+    pub fn into_parts(self) -> (bool, Box<MultisetStmt<'q, State>>) {
+        (self.is_not, self.subquery)
+    }
+}
+
+impl<'q> Exists<'q, Analyzed> {
+    pub fn from_parts(is_not: bool, subquery: Box<MultisetStmt<'q, Analyzed>>) -> Self {
+        Self { is_not, subquery }
     }
 }

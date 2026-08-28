@@ -136,6 +136,11 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
         self.types[id]
     }
 
+    /// Try to get expression type.
+    pub fn try_get_type(&self, id: &Id) -> Option<Type> {
+        self.types.get(id).copied()
+    }
+
     /// Merge 2 reports.
     pub fn extend(&mut self, other: Self) {
         self.types.extend(other.types);
@@ -581,7 +586,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             ExprKind::Unary(op, child) => {
                 let mut report = match op {
                     UnaryOperator::Not => self.analyze_condition("NOT", child)?,
+                    // Postgres-style strictness: `1 IS TRUE` is a type error.
+                    UnaryOperator::IsTrue => self.analyze_condition("IS TRUE", child)?,
+                    UnaryOperator::IsFalse => self.analyze_condition("IS FALSE", child)?,
                     UnaryOperator::IsNull => self.analyze(child, Type::Text)?,
+                    UnaryOperator::IsUnknown => self.analyze_condition("IS UNKNOWN", child)?,
                     UnaryOperator::Exists => {
                         if let ExprKind::Subquery(_) = child.kind {
                             // TODO: analyze subquery
@@ -1195,17 +1204,17 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzer<'a, Id> {
         Ok(())
     }
 
-    /// Analyze expressions and coerce them to a common type.
+    /// Analyze expressions and coerce them to a common type, returning that type.
     pub fn analyze_homogeneous_exprs(
         &mut self,
         ctx: &'static str,
         args: &[impl Borrow<Expr<Id>>],
         desired_type: Option<Type>,
-    ) -> Result<(), Error> {
+    ) -> Result<Type, Error> {
         let desired = desired_type.unwrap_or(Type::Text);
-        let (_, report) = self.core.analyze_homogeneous_exprs(ctx, args, desired)?;
+        let (common_type, report) = self.core.analyze_homogeneous_exprs(ctx, args, desired)?;
         self.core.update_parameters(&report)?;
         self.report.extend(report);
-        Ok(())
+        Ok(common_type)
     }
 }

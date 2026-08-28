@@ -34,8 +34,8 @@ use crate::{invalid_expression_error, parse_invariant_error, AstResult};
 use sql_ast_new_grammar::Rule;
 use sql_ast_new_nodes::expr::{
     ArithmeticOp, BinaryOp, BooleanOp, Case, CastSyntax, CmpOp, Expr, ExprInner, FunctionCallArgs,
-    Like, LiteralKind, Parameter, QuotesType, RawExpr, Similar, Substring, TimeFunction, TrimKind,
-    UnaryOp, ValuesRow,
+    IsValue, Like, LiteralKind, Parameter, QuotesType, RawExpr, Similar, Substring, TimeFunction,
+    TrimKind, UnaryOp, ValuesRow,
 };
 use sql_ast_new_nodes::{Ident, Raw};
 use sql_ir::errors::{Entity, SbroadError};
@@ -753,9 +753,10 @@ fn parse_is_postfix<'q>(operand: RawExpr<'q>, op: Pair<'q, Rule>) -> AstResult<R
     };
 
     let value = match value_pair.as_rule() {
-        Rule::True => Some(true),
-        Rule::False => Some(false),
-        Rule::Null | Rule::Unknown => None,
+        Rule::True => IsValue::Bool(true),
+        Rule::False => IsValue::Bool(false),
+        Rule::Null => IsValue::Null,
+        Rule::Unknown => IsValue::Unknown,
         rule => {
             return Err(parse_invariant_error(format_smolstr!(
                 "`IsPostfix` value must be TRUE, FALSE, NULL or UNKNOWN, got {rule:?}"

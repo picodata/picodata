@@ -88,6 +88,31 @@ impl<'q, State: AstState<'q>> TableExpression<'q, State> {
     }
 }
 
+impl<'q> TableExpression<'q, Analyzed> {
+    #[allow(clippy::type_complexity)]
+    pub fn parts_mut(
+        &mut self,
+    ) -> (
+        &mut From<'q, Analyzed>,
+        Option<&mut Expr<'q, Analyzed>>,
+        &mut Vec<Expr<'q, Analyzed>>,
+        Option<&mut Expr<'q, Analyzed>>,
+        &mut Vec<NamedWindow<'q, Analyzed>>,
+    ) {
+        (
+            &mut self.from,
+            self.selection.as_mut(),
+            &mut self.group_by,
+            self.having.as_mut(),
+            &mut self.windows,
+        )
+    }
+
+    pub(crate) fn set_from(&mut self, from: From<'q, Analyzed>) {
+        self.from = from;
+    }
+}
+
 impl<'q, State: AstState<'q>> Display for TableExpression<'q, State> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "FROM {}", self.from)?;
@@ -135,6 +160,10 @@ impl<'q> From<'q, Raw> {
 }
 
 impl<'q> From<'q, Analyzed> {
+    pub fn empty() -> Self {
+        Self::from_tbl_factors(vec![])
+    }
+
     pub fn is_empty(&self) -> bool {
         self.tbl_factors.is_empty()
     }
@@ -151,16 +180,29 @@ impl<'q> From<'q, Analyzed> {
         &self.tbl_factors
     }
 
+    pub fn entries_mut(&mut self) -> &mut [FromEntry<'q, Analyzed>] {
+        &mut self.tbl_factors
+    }
+
     pub fn pop_entry(&mut self) -> AstResult<FromEntry<'q, Analyzed>> {
         self.tbl_factors
             .pop()
             .ok_or_else(|| ast_invariant_err(format_smolstr!("expected to find entry in FROM")))
     }
 
-    /// Route a raw reference to `(relation position, column position)` within this FROM.
-    /// Positions rather than pointers: the analyzed FROM sits behind an `Rc`
-    /// shared by every reference into it, so a route stays valid without self-referential borrows.
-    /// Joined tables are not routed yet, hence the hardcoded relation `0`.
+    /// Find corresponding `JOIN/USING` clause for bound variable.
+    /// [`None`] if no `JOIN/USING` for this column.
+    /// In case of multiple `JOIN/USING` for this column in FROM clause returns last one.
+    pub fn join_using_var(&self, var: &BoundVar<'q>) -> Option<&BoundJoinUsingVar<'q>> {
+        self.entries().iter().rev().find_map(|entry| {
+            entry
+                .joined()?
+                .using_cols
+                .iter()
+                .find(|using| &using.left == var)
+        })
+    }
+
     pub fn column_route(
         &self,
         var: &RawVar,
@@ -203,7 +245,7 @@ impl<'q> From<'q, Analyzed> {
                     .find(|entry| entry.name().is_some_and(|name| name == t_name))
                     .map_or(
                         ColumnRoute::NoMatch,
-                        // This path should not return `ColumnRoute::NoMatch`.
+                        // This path should not return `FromColumnRoute::NoMatch`.
                         |entry| {
                             entry
                                 .column_route(var)
@@ -250,23 +292,27 @@ impl<'q, State: AstState<'q>> NamedEntity for FromEntry<'q, State> {
 }
 
 impl<'q> FromEntry<'q, Analyzed> {
+    /// Route a column reference into this entry.
+    ///
+    /// A `USING` merge collapses the two joined columns into one, and that one
+    /// belongs to the *left* input.
+    ///
+    /// A qualified reference names the joined table itself rather than the join
+    /// output, so it still sees the hidden copy.
     pub(crate) fn column_route(&self, var: &RawVar) -> UniqueColumnRoute<usize> {
         match self {
             Self::TableFactor(tbl_factor) => tbl_factor.column_route(var.column_name(), None),
             Self::JoinedTable(joined_tbl) => {
-                let exclude_positions = match var.table_name() {
-                    None => Some(
-                        joined_tbl
-                            .using_cols
-                            .iter()
-                            .map(|resolved_using_col| resolved_using_col.joined_tbl_column_pos())
-                            .collect::<Vec<_>>(),
-                    ),
-                    Some(_) => None,
-                };
+                let merged_away = var.table_name().is_none().then(|| {
+                    joined_tbl
+                        .using_cols
+                        .iter()
+                        .map(BoundJoinUsingVar::joined_tbl_column_pos)
+                        .collect::<Vec<_>>()
+                });
                 joined_tbl
                     .table
-                    .column_route(var.column_name(), exclude_positions)
+                    .column_route(var.column_name(), merged_away.as_deref())
             }
         }
     }
@@ -282,6 +328,13 @@ impl<'q> FromEntry<'q, Analyzed> {
         match self {
             Self::TableFactor(tbl_factor) => tbl_factor,
             Self::JoinedTable(joined_tbl) => &joined_tbl.table,
+        }
+    }
+
+    pub fn joined(&self) -> Option<&JoinedTable<'q, Analyzed>> {
+        match self {
+            Self::TableFactor(_) => None,
+            Self::JoinedTable(joined_tbl) => Some(joined_tbl),
         }
     }
 }
@@ -337,7 +390,7 @@ impl<'q> TableFactor<'q, Analyzed> {
     pub(crate) fn column_route(
         &self,
         column_name: &str,
-        exclude_positions: Option<Vec<usize>>,
+        exclude_positions: Option<&[usize]>,
     ) -> UniqueColumnRoute<usize> {
         self.inner.column_route(column_name, exclude_positions)
     }
@@ -379,7 +432,7 @@ impl<'q> TableFactorInner<'q, Analyzed> {
     pub(crate) fn column_route(
         &self,
         column_name: &str,
-        exclude_positions: Option<Vec<usize>>,
+        exclude_positions: Option<&[usize]>,
     ) -> UniqueColumnRoute<usize> {
         match self {
             Self::CteOrTable(cte_or_table) => {
@@ -496,9 +549,9 @@ impl<'q> AnalyzedCteOrTable<'q> {
     pub(crate) fn column_route(
         &self,
         column_name: &str,
-        exclude_positions: Option<Vec<usize>>,
+        exclude_positions: Option<&[usize]>,
     ) -> UniqueColumnRoute<usize> {
-        let lookup_cte = |cte: &Cte<'q, Analyzed>, exclude_positions: Option<Vec<usize>>| {
+        let lookup_cte = |cte: &Cte<'q, Analyzed>, exclude_positions: Option<&[usize]>| {
             let cte_columns_def = cte.columns_ref();
             if cte_columns_def.is_empty() {
                 cte.body_ref().column_route(column_name, exclude_positions)
@@ -527,7 +580,7 @@ impl<'q> AnalyzedCteOrTable<'q> {
             }
         };
 
-        let lookup_table = |table: &Table, exclude_positions: Option<Vec<usize>>| {
+        let lookup_table = |table: &Table, exclude_positions: Option<&[usize]>| {
             table
                 .columns
                 .iter()
@@ -554,7 +607,10 @@ impl<'q> AnalyzedCteOrTable<'q> {
     fn attribute(&'_ self, column_pos: usize) -> Option<AttributeView<'q, '_>> {
         match self {
             Self::Cte(cte) => cte.attribute(column_pos),
-            Self::Table(tbl) => tbl.columns.get(column_pos).map(AttributeView::Column),
+            Self::Table(tbl) => tbl
+                .columns
+                .get(column_pos)
+                .map(|col| AttributeView::Column(col, None)),
         }
     }
 }
@@ -585,6 +641,10 @@ pub struct BoundVar<'q> {
 }
 
 impl<'q> BoundVar<'q> {
+    pub fn attribute<'ast>(&'ast self) -> Option<AttributeView<'q, 'ast>> {
+        self.source.attribute(self.column_pos)
+    }
+
     pub fn from_parts(source: Rc<TableFactor<'q, Analyzed>>, column_pos: usize) -> Self {
         Self { source, column_pos }
     }
@@ -599,7 +659,7 @@ impl<'q> BoundVar<'q> {
         self.source
             .attribute(self.column_pos)
             .and_then(|attr| match attr {
-                AttributeView::Column(col) => Some(col.name.as_str()),
+                AttributeView::Column(col, rename) => rename.or(Some(col.name.as_str())),
                 AttributeView::Expr(_, name) => name,
             })
     }
@@ -630,14 +690,14 @@ impl Hash for BoundVar<'_> {
 
 impl Display for BoundVar<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        if let Some(source_name) = self.source.name() {
-            write_sql_ident(f, source_name)?;
-            write!(f, ".")?;
-        }
-        // The anonymous-column placeholder is a sentinel, not an identifier —
-        // quoting it would only disguise it as one.
         match self.column_name() {
-            Some(column_name) => write_sql_ident(f, column_name),
+            Some(column_name) => {
+                if let Some(source_name) = self.source.name() {
+                    write_sql_ident(f, source_name)?;
+                    write!(f, ".")?;
+                }
+                write_sql_ident(f, column_name)
+            }
             None => write!(f, "{NONAME_COLUMN}"),
         }
     }
@@ -662,23 +722,43 @@ impl NamedEntity for JoinUsingColumn {
 /// The left input's column first, then the joined table's own.
 ///
 /// The two are merged into a single output column. Picodata joins are inner or
-/// left, and for both SQL says the merged column *is* the left one.
-pub struct BoundJoinUsingVar<'q>(BoundVar<'q>, BoundVar<'q>);
+/// left, and for both SQL says the merged column *is* the left one — but its
+/// *type* is the common type of the two inputs, derived exactly like one output
+/// column of a set operation. A bare (unqualified) reference to the column
+/// reads that type; a qualified reference keeps the original column's own.
+pub struct BoundJoinUsingVar<'q> {
+    left: BoundVar<'q>,
+    joined: BoundVar<'q>,
+    data_type: DerivedType,
+}
 
 impl<'q> BoundJoinUsingVar<'q> {
-    pub fn new(left: BoundVar<'q>, joined: BoundVar<'q>) -> Self {
-        Self(left, joined)
+    pub fn new(left: BoundVar<'q>, joined: BoundVar<'q>, data_type: DerivedType) -> Self {
+        Self {
+            left,
+            joined,
+            data_type,
+        }
     }
 
     /// Position, within the joined table.
     pub fn joined_tbl_column_pos(&self) -> usize {
-        self.1.column_pos
+        self.joined.column_pos
+    }
+
+    pub fn parts_ref(&self) -> (&BoundVar<'q>, &BoundVar<'q>) {
+        (&self.left, &self.joined)
+    }
+
+    /// The merged output column's type: the common type of the two inputs.
+    pub fn data_type(&self) -> DerivedType {
+        self.data_type
     }
 }
 
 impl Display for BoundJoinUsingVar<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write_sql_ident(f, self.0.column_name().unwrap_or(NONAME_COLUMN))
+        write_sql_ident(f, self.left.column_name().unwrap_or(NONAME_COLUMN))
     }
 }
 
@@ -687,14 +767,18 @@ impl Display for BoundJoinUsingVar<'_> {
 /// so resolution and asterisk expansion treat every source kind uniformly.
 pub enum AttributeView<'q, 'ast> {
     Expr(&'ast ProjectionExpr<'q, Analyzed>, Option<&'ast str>),
-    Column(&'ast Column),
+    /// A real column, with an optional visible-name override: a CTE's explicit
+    /// column list renames the columns of a column-shaped body (a `VALUES`
+    /// body derives its own `column1..columnN` columns) the same way it
+    /// renames a projection.
+    Column(&'ast Column, Option<&'ast str>),
 }
 
 impl AttributeView<'_, '_> {
     pub fn data_type(&self) -> DerivedType {
         match self {
             Self::Expr(proj_expr, _) => proj_expr.data_type(),
-            Self::Column(col) => col.r#type,
+            Self::Column(col, _) => col.r#type,
         }
     }
 }
@@ -833,10 +917,11 @@ mod structural_eq {
         }
     }
 
-    /// One `USING` column: both resolved halves must match.
+    /// One `USING` column: both resolved halves must match. The merged type is
+    /// derived from them, so it carries no structural information of its own.
     impl StructuralEq<RelationPairs> for BoundJoinUsingVar<'_> {
         fn eq_with(&self, other: &Self, scope: &mut RelationPairs) -> bool {
-            self.0.eq_with(&other.0, scope) && self.1.eq_with(&other.1, scope)
+            self.left.eq_with(&other.left, scope) && self.joined.eq_with(&other.joined, scope)
         }
     }
 

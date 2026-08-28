@@ -3811,6 +3811,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sql-ast-new-analyzer"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "pretty_assertions",
+ "smol_str",
+ "sql-ast-new-corpus",
+ "sql-ast-new-nodes",
+ "sql-frontend",
+ "sql-ir",
+ "sql-type-system",
+ "tarantool",
+]
+
+[[package]]
 name = "sql-ast-new-corpus"
 version = "0.1.0"
 dependencies = [
@@ -3902,6 +3917,7 @@ dependencies = [
  "pest_derive",
  "pretty_assertions",
  "smol_str",
+ "sql-ast-new-analyzer",
  "sql-ast-new-nodes",
  "sql-ast-new-parser",
  "sql-executor",

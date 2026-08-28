@@ -1,6 +1,6 @@
 //! Frontend entry point for the new typed AST.
 //!
-//! The AST itself lives in crates under `crates/`; this module is only the
+//! The AST itself lives in five crates under `crates/`; this module is only the
 //! seam that plugs them into the frontend:
 //!
 //! ```text
@@ -8,27 +8,32 @@
 //!        ^             ^
 //!        |             |
 //!   sql-ast-new-nodes  |       the tree, its rendering, the shared AstErr
-//!        ^             |
-//!        |             |
-//!     sql-ast-new-parser       &str -> AbstractSyntaxTree<Raw>
+//!        ^        ^    |
+//!        |        |    |
+//!        |     sql-ast-new-parser        &str -> AbstractSyntaxTree<Raw>
+//!        |
+//!   sql-ast-new-analyzer                 AbstractSyntaxTree<Raw> -> <Analyzed>
 //!
-//!   sql-ast-new-corpus         real-world DQL, for tests and benches
+//!   sql-ast-new-corpus                   real-world DQL, for tests and benches
 //! ```
 //!
-//! The analysis stage becomes a crate of its own next, hanging off the node
-//! declarations rather than off the parser — the two never reference each
-//! other. Because an inherent `impl` on a foreign type is illegal across
-//! crates, neither stage hangs inherent methods off a node type: each declares
-//! a local trait and implements it for the node instead. Node fields are `pub`
-//! for the same reason.
+//! The parser and the analyzer never reference each other; they are independent
+//! consumers of the node declarations. Because an inherent `impl` on a foreign
+//! type is illegal across crates, neither hangs inherent methods off a node
+//! type — each declares a local trait and implements it for the node instead.
+//! Node fields are `pub` for the same reason.
 //!
 //! What is left here is the [`Ast`] implementation that ties parse to analyze.
 //! It is legal for the same orphan rule: [`Ast`] is local to this crate, so
-//! implementing it for the foreign [`AbstractSyntaxTree`] is allowed.
+//! implementing it for the foreign [`AbstractSyntaxTree`] is allowed. The two
+//! halves are joined here rather than in either AST crate because this is where
+//! the shared `TypeSystem` registry lives — the analyzer is handed a ready
+//! `AstTypeAnalyzer` rather than building one.
 
 use smol_str::format_smolstr;
 
 use crate::errors::{Action, Entity, SbroadError};
+use crate::frontend::sql::type_system;
 use crate::frontend::sql::Ast;
 use crate::ir::metadata::Metadata;
 use crate::ir::types::DerivedType;
@@ -47,16 +52,13 @@ impl<'q> Ast<'q> for AbstractSyntaxTree<'q, Raw> {
     /// Consume the raw tree and produce the analyzed one: names resolved
     /// against `metadata`, expression types inferred. By value — analysis is
     /// a conversion between two tree types, not in-place mutation.
-    ///
-    /// The analyzer crate lands next; until then this half of the trait is the
-    /// same off switch [`transform_into_plan`](super::transform_into_plan)
-    /// already uses.
     fn analyze(
         self,
         metadata: &'q impl Metadata,
         param_types: &'q [DerivedType],
     ) -> Result<AnalyzedAst<'q>, SbroadError> {
-        analyze_stub(self, metadata, param_types)
+        let type_analyzer = type_system::new_ast_analyzer(param_types);
+        sql_ast_new_analyzer::analyze(self, metadata, type_analyzer).map_err(SbroadError::from)
     }
 }
 

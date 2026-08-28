@@ -355,7 +355,7 @@ const SYNTAX_KEYWORDS: &[SyntaxKeyword] = &[
     SyntaxKeyword {
         covers: &["cross"],
         used: "SELECT a FROM t CROSS JOIN u",
-        renders: Parses::As("SELECT a FROM t CROSS JOIN u"),
+        renders: Parses::Not,
         glued: "SELECT a FROM t CROSSx JOIN u",
         glued_reads_as: Parses::Not,
     },
@@ -624,7 +624,7 @@ const SYNTAX_KEYWORDS: &[SyntaxKeyword] = &[
     SyntaxKeyword {
         covers: &["unknown"],
         used: "SELECT a FROM t WHERE a IS UNKNOWN",
-        renders: Parses::As("SELECT a FROM t WHERE a IS NULL"),
+        renders: Parses::As("SELECT a FROM t WHERE a IS UNKNOWN"),
         glued: "SELECT a FROM t WHERE a IS UNKNOWNx",
         glued_reads_as: Parses::Not,
     },
