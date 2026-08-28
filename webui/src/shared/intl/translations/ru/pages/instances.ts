@@ -72,6 +72,7 @@ export const instances: TPages["instances"] = {
       },
       services: {
         label: "Сервисы",
+        noServices: "Нет сервисов",
       },
       replicasets: {
         label: "Репликасеты",
