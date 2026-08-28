@@ -40,7 +40,7 @@ impl<'q, State: AstState<'q>> Expr<'q, State> {
             },
             ExprInner::Index(_) => Precedence::Postfix,
             ExprInner::Nil
-            | ExprInner::ColumnRef(_)
+            | ExprInner::Var(_)
             | ExprInner::Literal(_)
             | ExprInner::SubQuery(_)
             | ExprInner::Row(_)
@@ -79,7 +79,7 @@ impl<'q, State: AstState<'q>> Display for ExprInner<'q, State> {
                 };
                 write_operand(f, operand, tier, OperandPos::Left)
             }
-            ExprInner::ColumnRef(col_ref) => write!(f, "{col_ref}"),
+            ExprInner::Var(var) => write!(f, "{var}"),
             ExprInner::Literal(Literal { value, quotes, .. }) => {
                 let quote = quotes.quote();
                 write!(f, "{quote}{value}{quote}")
@@ -228,7 +228,7 @@ impl<'q, State: AstState<'q>> Display for BinaryOperation<'q, State> {
 /// [`Display`] cluster, this leaf impl is used in production: the analyzer's
 /// column-resolution errors print the offending reference through it. It
 /// reaches no other node's [`Display`].
-impl Display for RawColumnRef {
+impl Display for RawVar {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         if let Some(table_name) = self.table_name.as_ref() {
             write!(f, "{table_name}.{}", self.column_name)

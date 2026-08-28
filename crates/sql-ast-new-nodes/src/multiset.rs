@@ -68,7 +68,7 @@ use smol_str::format_smolstr;
 use crate::error::{ast_arbitrary_err, AstResult};
 use crate::expr::{Expr, ValuesRow};
 use crate::select::SelectStmt;
-use crate::table_expression::{AttributeView, SingleEntryColumnRoute};
+use crate::table_expression::{AttributeView, UniqueColumnRoute};
 use crate::{Analyzed, AstState, Ident, NamedEntity, Raw};
 use sql_ir::ir::types::DerivedType;
 
@@ -174,11 +174,11 @@ impl<'q> MultisetStmt<'q, Analyzed> {
         &self,
         column_name: &str,
         exclude_positions: Option<Vec<usize>>,
-    ) -> SingleEntryColumnRoute<usize> {
+    ) -> UniqueColumnRoute<usize> {
         match &self.inner {
             MultisetInner::Select(stmt) => stmt.column_route(column_name, exclude_positions),
             MultisetInner::Values(_) | MultisetInner::Operation(_) => {
-                SingleEntryColumnRoute::ColumnMissing
+                UniqueColumnRoute::ColumnMissing
             }
         }
     }
@@ -310,7 +310,7 @@ impl<'q, State: AstState<'q>> Display for OrderByElement<'q, State> {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum OrderByDirection {
     #[default]
     Asc,
@@ -326,7 +326,7 @@ impl Display for OrderByDirection {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum OrderByNulls {
     #[default]
     Default,
@@ -350,7 +350,7 @@ impl OrderByNulls {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, PartialEq, Eq)]
 pub enum Limit {
     #[default]
     All,
@@ -523,5 +523,93 @@ impl<'q> ValuesStmt<'q, Raw> {
 
     pub fn add_row(&mut self, row: ValuesRow<'q, Raw>) {
         self.rows.push(row)
+    }
+}
+
+/// Structural comparison, one impl per node for both states, plus the
+/// [`PartialEq`] sugar over whole raw statements.
+mod structural_eq {
+    use super::*;
+    use crate::structural_eq::StructuralEq;
+    use crate::table_expression::RelationPairs;
+
+    /// Structural comparison for raw statements.
+    impl PartialEq for MultisetStmt<'_, Raw> {
+        fn eq(&self, other: &Self) -> bool {
+            self.eq_with(other, &mut ())
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for MultisetStmt<'q, S> {
+        /// The body goes before ORDER BY: it is what pairs this statement's
+        /// relations into the scope, and ORDER BY reads them.
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.ctes.eq_with(&other.ctes, scope)
+                && self.inner.eq_with(&other.inner, scope)
+                && self.order_by.eq_with(&other.order_by, scope)
+                && self.limit == other.limit
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for MultisetInner<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            match (self, other) {
+                (Self::Values(x), Self::Values(y)) => x.eq_with(y, scope),
+                (Self::Select(x), Self::Select(y)) => x.eq_with(y, scope),
+                (Self::Operation(x), Self::Operation(y)) => x.eq_with(y, scope),
+                _mismatched_shapes => false,
+            }
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for Operation<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.op == other.op
+                && self.dup_elimination == other.dup_elimination
+                && self.left.eq_with(&other.left, scope)
+                && self.right.eq_with(&other.right, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for OrderBy<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.elems.eq_with(&other.elems, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for OrderByElement<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.direction == other.direction
+                && self.nulls == other.nulls
+                && self.expr.eq_with(&other.expr, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for Ctes<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.ctes.eq_with(&other.ctes, scope)
+        }
+    }
+
+    impl StructuralEq<()> for Cte<'_, Raw> {
+        fn eq_with(&self, other: &Self, scope: &mut ()) -> bool {
+            self.name == other.name
+                && self.columns == other.columns
+                && self.body.eq_with(&other.body, scope)
+        }
+    }
+
+    /// A statement declaring its own CTEs holds bodies no other statement shares,
+    /// so it is never equal to another.
+    impl StructuralEq<RelationPairs> for Cte<'_, Analyzed> {
+        fn eq_with(&self, _other: &Self, _scope: &mut RelationPairs) -> bool {
+            false
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for ValuesStmt<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.rows.eq_with(&other.rows, scope)
+        }
     }
 }

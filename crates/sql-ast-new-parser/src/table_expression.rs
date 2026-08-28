@@ -9,7 +9,7 @@ use crate::window::parse_named_window;
 use crate::{failed_parsing_error, parse_invariant_error, AstResult};
 use crate::{unexpected_rule_error, ExpectedRules, ParseCtx};
 use sql_ast_new_grammar::Rule;
-use sql_ast_new_nodes::expr::{Expr, RawColumnRef};
+use sql_ast_new_nodes::expr::{Expr, RawVar};
 use sql_ast_new_nodes::table_expression::{
     From, FromEntry, JoinKind, JoinUsingColumn, JoinedTable, TableExpression, TableFactor,
     TableFactorInner,
@@ -198,8 +198,8 @@ fn parse_joined_table<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Joi
                     )
                     .into());
                 }
-                let col_ref = RawColumnRef::new(None, Ident::from_sql(pair.as_str()));
-                using_cols.push(JoinUsingColumn(col_ref));
+                let var = RawVar::new(None, Ident::from_sql(pair.as_str()));
+                using_cols.push(JoinUsingColumn(var));
             }
             _ => {
                 return Err(unexpected_rule_error(

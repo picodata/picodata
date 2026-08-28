@@ -44,6 +44,8 @@ mod keywords;
 mod multiset;
 mod pairs_traversal;
 mod select;
+#[cfg(test)]
+mod structural_eq;
 mod table_expression;
 #[cfg(test)]
 mod test_support;

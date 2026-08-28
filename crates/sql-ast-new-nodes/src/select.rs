@@ -15,7 +15,7 @@
 use std::fmt::{Display, Error, Formatter};
 
 use crate::expr::{Expr, ExprInner};
-use crate::table_expression::{AttributeView, SingleEntryColumnRoute, TableExpression};
+use crate::table_expression::{AttributeView, TableExpression, UniqueColumnRoute};
 use crate::{Analyzed, AstState, Ident, Raw};
 use sql_ir::ir::types::DerivedType;
 
@@ -88,7 +88,7 @@ impl<'q> SelectStmt<'q, Analyzed> {
         &self,
         column_name: &str,
         exclude_positions: Option<Vec<usize>>,
-    ) -> SingleEntryColumnRoute<usize> {
+    ) -> UniqueColumnRoute<usize> {
         let routes = self
             .select_list
             .elements
@@ -104,7 +104,7 @@ impl<'q> SelectStmt<'q, Analyzed> {
                 proj_expr
                     .output_name()
                     .filter(|name| *name == column_name)
-                    .map(|_| SingleEntryColumnRoute::Resolved(pos))
+                    .map(|_| UniqueColumnRoute::Resolved(pos))
             })
             .collect::<Vec<_>>();
 
@@ -112,12 +112,12 @@ impl<'q> SelectStmt<'q, Analyzed> {
             // More than 1 entity match.
             // For example, `SELECT a FROM (SELECT 1 a, 2 b)`.
             // Column reference a is ambigious.
-            SingleEntryColumnRoute::Ambigious
+            UniqueColumnRoute::Ambigious
         } else {
             routes
                 .into_iter()
                 .next()
-                .unwrap_or(SingleEntryColumnRoute::ColumnMissing)
+                .unwrap_or(UniqueColumnRoute::ColumnMissing)
         }
     }
 }
@@ -243,7 +243,7 @@ impl<'q> ProjectionExpr<'q, Analyzed> {
     pub(crate) fn output_name(&self) -> Option<&str> {
         self.alias.as_ref().map_or_else(
             || match self.expr.inner_ref() {
-                ExprInner::ColumnRef(col_ref) => col_ref.column_name(),
+                ExprInner::Var(var) => var.column_name(),
                 _ => None,
             },
             |alias| Some(alias.as_str()),
@@ -258,5 +258,50 @@ impl<'q> ProjectionExpr<'q, Analyzed> {
 impl<'q> ProjectionExpr<'q, Analyzed> {
     pub(crate) fn expr_ref(&self) -> &Expr<'q, Analyzed> {
         &self.expr
+    }
+}
+
+/// Structural comparison, one impl per node for both states.
+mod structural_eq {
+    use super::*;
+    use crate::structural_eq::StructuralEq;
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for SelectStmt<'q, S> {
+        /// The table expression goes first. It is what pairs this statement's
+        /// relations into the scope, and the select list reads them.
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.table_expression
+                .eq_with(&other.table_expression, scope)
+                && self.select_list.eq_with(&other.select_list, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for SelectList<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.is_distinct == other.is_distinct && self.elements.eq_with(&other.elements, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for SelectListExprs<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.0.eq_with(&other.0, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for ProjectionExpr<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.alias == other.alias && self.expr.eq_with(&other.expr, scope)
+        }
+    }
+
+    /// The raw select-list element.
+    impl StructuralEq<()> for SelectListElem<'_> {
+        fn eq_with(&self, other: &Self, scope: &mut ()) -> bool {
+            match (self, other) {
+                (Self::Asterisk(x), Self::Asterisk(y)) => x == y,
+                (Self::Expr(x), Self::Expr(y)) => x.eq_with(y, scope),
+                _mismatched_shapes => false,
+            }
+        }
     }
 }

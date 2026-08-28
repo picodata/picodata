@@ -136,6 +136,7 @@ impl<'q, State: AstState<'q>> Display for WindowFrame<'q, State> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FrameType {
     Rows,
     Range,
@@ -193,5 +194,92 @@ pub struct NamedWindow<'q, State: AstState<'q>> {
 impl<'q, State: AstState<'q>> Display for NamedWindow<'q, State> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "{} AS ({})", self.name, self.spec)
+    }
+}
+
+/// Structural comparison, one impl per node for both states.
+///
+/// The two entries from the rest of the walk go through
+/// [`AstState::window_fn_eq`] and [`AstState::named_window_eq`], which is
+/// where [`Analyzed`](crate::Analyzed)'s windows-never-equal rule lives; the
+/// impls below are the [`Raw`](crate::Raw) side of those hooks and the shared
+/// recursion under them.
+mod structural_eq {
+    use super::*;
+    use crate::structural_eq::StructuralEq;
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for WindowFunction<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.name == other.name
+                && self.args.eq_with(&other.args, scope)
+                && self.filter.eq_with(&other.filter, scope)
+                && self.window.eq_with(&other.window, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for WindowFunctionArgs<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            match (self, other) {
+                (Self::Asterisk, Self::Asterisk) => true,
+                (Self::List(x), Self::List(y)) => x.eq_with(y, scope),
+                _mismatched_shapes => false,
+            }
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for WindowRef<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            match (self, other) {
+                (Self::Name(x), Self::Name(y)) => x == y,
+                (Self::Spec(x), Self::Spec(y)) => x.eq_with(y, scope),
+                _mismatched_shapes => false,
+            }
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for WindowSpec<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.base == other.base
+                && self.partition_by.eq_with(&other.partition_by, scope)
+                && self.order_by.eq_with(&other.order_by, scope)
+                && self.frame.eq_with(&other.frame, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for WindowFrame<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.ty == other.ty && self.bounds.eq_with(&other.bounds, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for FrameBounds<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            match (self, other) {
+                (Self::Single(x), Self::Single(y)) => x.eq_with(y, scope),
+                (Self::Between(x_from, x_to), Self::Between(y_from, y_to)) => {
+                    x_from.eq_with(y_from, scope) && x_to.eq_with(y_to, scope)
+                }
+                _mismatched_shapes => false,
+            }
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for FrameBound<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            match (self, other) {
+                (Self::UnboundedPreceding, Self::UnboundedPreceding)
+                | (Self::CurrentRow, Self::CurrentRow)
+                | (Self::UnboundedFollowing, Self::UnboundedFollowing) => true,
+                (Self::Preceding(x), Self::Preceding(y))
+                | (Self::Following(x), Self::Following(y)) => x.eq_with(y, scope),
+                _mismatched_shapes => false,
+            }
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for NamedWindow<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.name == other.name && self.spec.eq_with(&other.spec, scope)
+        }
     }
 }

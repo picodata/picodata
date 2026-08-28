@@ -51,9 +51,10 @@ use smol_str::format_smolstr;
 
 use crate::error::{ast_arbitrary_err, AstResult};
 use crate::multiset::MultisetStmt;
+use crate::table_expression::BoundVar;
 use crate::window::WindowFunction;
 use crate::{AstState, Ident, Raw};
-use sql_ir::ir::types::CastType;
+use sql_ir::ir::types::{CastType, UnrestrictedType};
 
 pub type RawExpr<'q> = Expr<'q, Raw>;
 
@@ -78,20 +79,24 @@ impl<'q, State: AstState<'q>> Expr<'q, State> {
         &self.inner
     }
 
-    pub fn meta_ref(&self) -> &State::ExprMeta {
-        &self.meta
-    }
-
     pub(crate) fn is_cast(&self) -> bool {
         matches!(self.inner, ExprInner::Cast(_))
     }
-}
 
-impl<'q, State: AstState<'q>> Expr<'q, State> {
     pub(crate) fn new(inner: ExprInner<'q, State>) -> Self {
         Self {
             inner,
             meta: State::ExprMeta::default(),
+        }
+    }
+}
+
+impl<'q> Expr<'q, Analyzed> {
+    pub fn var_ref(&self) -> Option<&BoundVar<'q>> {
+        match self.inner {
+            ExprInner::Var(ref var) => Some(var),
+            ExprInner::Cast(ref cast) => cast.identity_child().and_then(Expr::var_ref),
+            _ => None,
         }
     }
 }
@@ -104,7 +109,7 @@ pub enum ExprInner<'q, State: AstState<'q>> {
     Nil,
     BinaryOperation(BinaryOperation<'q, State>),
     UnaryOperation(UnaryOperation<'q, State>),
-    ColumnRef(State::ColumnRefT),
+    Var(State::VarType),
     Literal(Literal<'q>),
     SubQuery(Box<MultisetStmt<'q, State>>),
     Row(ValuesRow<'q, State>),
@@ -135,7 +140,7 @@ impl<'q, State: AstState<'q>> ExprInner<'q, State> {
             ExprInner::Nil => "Nil",
             ExprInner::BinaryOperation(_) => "BinaryOperation",
             ExprInner::UnaryOperation(_) => "UnaryOperation",
-            ExprInner::ColumnRef(_) => "ColumnRef",
+            ExprInner::Var(_) => "Var",
             ExprInner::Literal(_) => "Literal",
             ExprInner::SubQuery(_) => "SubQuery",
             ExprInner::Row(_) => "Row",
@@ -211,7 +216,7 @@ pub struct UnaryOperation<'q, State: AstState<'q>> {
 }
 
 #[derive(PartialEq)]
-pub struct RawColumnRef {
+pub struct RawVar {
     table_name: Option<Ident>,
     column_name: Ident,
 }
@@ -225,6 +230,12 @@ pub struct Literal<'q> {
 #[derive(Default)]
 pub struct ValuesRow<'q, State: AstState<'q>> {
     values: Vec<Expr<'q, State>>,
+}
+
+impl<'q, State: AstState<'q>> ValuesRow<'q, State> {
+    pub fn values_ref(&self) -> &[Expr<'q, State>] {
+        &self.values
+    }
 }
 
 /// `ARRAY[a, b, c]` literal; the element list may be empty (`ARRAY[]`).
@@ -313,6 +324,19 @@ pub struct Cast<'q, State: AstState<'q>> {
     /// Read by the analyzer to build the type-system mirror node.
     pub ty: CastType,
     syntax: CastSyntax,
+}
+
+impl<'q> Cast<'q, Analyzed> {
+    pub fn child_ref(&self) -> &Expr<'q, Analyzed> {
+        &self.child
+    }
+
+    /// The operand when this cast is a no-op, [`None`] otherwise.
+    pub fn identity_child(&self) -> Option<&Expr<'q, Analyzed>> {
+        let var = self.child.var_ref()?;
+        let target = UnrestrictedType::from(self.ty);
+        (var.data_type().get() == &Some(target)).then_some(self.child.as_ref())
+    }
 }
 
 pub struct Like<'q, State: AstState<'q>> {
@@ -436,11 +460,8 @@ impl<'q> RawExpr<'q> {
         }))
     }
 
-    pub fn column_ref(column_name: Ident, table_name: Option<Ident>) -> Self {
-        Self::new(ExprInner::ColumnRef(RawColumnRef::new(
-            table_name,
-            column_name,
-        )))
+    pub fn var(column_name: Ident, table_name: Option<Ident>) -> Self {
+        Self::new(ExprInner::Var(RawVar::new(table_name, column_name)))
     }
 
     pub fn unary(operator: UnaryOp, operand: Self) -> Self {
@@ -624,7 +645,7 @@ impl<'q> BinaryOperation<'q, Analyzed> {
     }
 }
 
-impl RawColumnRef {
+impl RawVar {
     pub fn new(table_name: Option<Ident>, column_name: Ident) -> Self {
         Self {
             table_name,

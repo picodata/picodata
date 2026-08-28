@@ -24,7 +24,7 @@ use std::fmt::{Display, Error, Formatter};
 use std::rc::Rc;
 
 use crate::error::{ast_invariant_err, AstResult};
-use crate::expr::{Expr, RawColumnRef};
+use crate::expr::{Expr, RawVar};
 use crate::multiset::{Cte, MultisetStmt};
 use crate::select::ProjectionExpr;
 use crate::window::NamedWindow;
@@ -32,6 +32,16 @@ use crate::{write_sql_ident, Analyzed, AstState, Ident, NamedEntity, Raw, NONAME
 use smol_str::format_smolstr;
 use sql_ir::ir::relation::{Column, ColumnRole, Table};
 use sql_ir::ir::types::DerivedType;
+use std::hash::{Hash, Hasher};
+
+/// Key of a bound table factor. In a nutshell it is just the address the shared
+/// pointer points to.
+pub(crate) type BoundTblKey = usize;
+
+/// [`Analyzed`]'s scope for structural comparison ([`AstState::EqScope`]): the
+/// FROM factors the two compared subtrees introduce, paired in FROM order and
+/// keyed by [`Rc`] pointer identity like [`BoundVar::src_key`].
+pub(crate) type RelationPairs = Vec<(BoundTblKey, BoundTblKey)>;
 
 pub struct TableExpression<'q, State: AstState<'q>> {
     from: From<'q, State>,
@@ -153,9 +163,9 @@ impl<'q> From<'q, Analyzed> {
     /// Joined tables are not routed yet, hence the hardcoded relation `0`.
     pub fn column_route(
         &self,
-        col_ref: &RawColumnRef,
-    ) -> FromColumnRoute<(Rc<TableFactor<'q, Analyzed>>, usize)> {
-        let tbl_qualifier = col_ref.table_name();
+        var: &RawVar,
+    ) -> ColumnRoute<(Rc<TableFactor<'q, Analyzed>>, usize)> {
+        let tbl_qualifier = var.table_name();
 
         tbl_qualifier.map_or_else(
             || {
@@ -164,27 +174,27 @@ impl<'q> From<'q, Analyzed> {
                     .iter()
                     .map(|entry| {
                         entry
-                            .column_route(col_ref)
+                            .column_route(var)
                             .map(|col_pos| (Rc::clone(entry.tbl_factor()), col_pos))
                     })
-                    .filter(|route| !matches!(route, FromColumnRoute::ColumnMissing))
+                    .filter(|route| !matches!(route, ColumnRoute::ColumnMissing))
                     .collect::<Vec<_>>();
 
                 if column_routes.len() > 1 {
                     // Resolved into more than 1 entity
-                    FromColumnRoute::Ambigious
+                    ColumnRoute::Ambigious
                 } else if column_routes
                     .iter()
-                    .any(|route| matches!(route, FromColumnRoute::Ambigious))
+                    .any(|route| matches!(route, ColumnRoute::Ambigious))
                 {
                     // Any FROM entry has ambigious resolution
                     // For example, query `SELECT a FROM (SELECT 1 AS a, 2 AS a)` has ambigious `a` column.
-                    FromColumnRoute::Ambigious
+                    ColumnRoute::Ambigious
                 } else {
                     column_routes
                         .into_iter()
-                        .find(|route| matches!(route, FromColumnRoute::Resolved(_)))
-                        .unwrap_or(FromColumnRoute::NoMatch)
+                        .find(|route| matches!(route, ColumnRoute::Resolved(_)))
+                        .unwrap_or(ColumnRoute::NoMatch)
                 }
             },
             |t_name| {
@@ -192,11 +202,11 @@ impl<'q> From<'q, Analyzed> {
                     .iter()
                     .find(|entry| entry.name().is_some_and(|name| name == t_name))
                     .map_or(
-                        FromColumnRoute::NoMatch,
-                        // This path should not return `FromColumnRoute::NoMatch`.
+                        ColumnRoute::NoMatch,
+                        // This path should not return `ColumnRoute::NoMatch`.
                         |entry| {
                             entry
-                                .column_route(col_ref)
+                                .column_route(var)
                                 .map(|col_pos| (Rc::clone(entry.tbl_factor()), col_pos))
                         },
                     )
@@ -240,11 +250,11 @@ impl<'q, State: AstState<'q>> NamedEntity for FromEntry<'q, State> {
 }
 
 impl<'q> FromEntry<'q, Analyzed> {
-    pub(crate) fn column_route(&self, col_ref: &RawColumnRef) -> SingleEntryColumnRoute<usize> {
+    pub(crate) fn column_route(&self, var: &RawVar) -> UniqueColumnRoute<usize> {
         match self {
-            Self::TableFactor(tbl_factor) => tbl_factor.column_route(col_ref.column_name(), None),
+            Self::TableFactor(tbl_factor) => tbl_factor.column_route(var.column_name(), None),
             Self::JoinedTable(joined_tbl) => {
-                let exclude_positions = match col_ref.table_name() {
+                let exclude_positions = match var.table_name() {
                     None => Some(
                         joined_tbl
                             .using_cols
@@ -256,7 +266,7 @@ impl<'q> FromEntry<'q, Analyzed> {
                 };
                 joined_tbl
                     .table
-                    .column_route(col_ref.column_name(), exclude_positions)
+                    .column_route(var.column_name(), exclude_positions)
             }
         }
     }
@@ -328,7 +338,7 @@ impl<'q> TableFactor<'q, Analyzed> {
         &self,
         column_name: &str,
         exclude_positions: Option<Vec<usize>>,
-    ) -> SingleEntryColumnRoute<usize> {
+    ) -> UniqueColumnRoute<usize> {
         self.inner.column_route(column_name, exclude_positions)
     }
 
@@ -370,7 +380,7 @@ impl<'q> TableFactorInner<'q, Analyzed> {
         &self,
         column_name: &str,
         exclude_positions: Option<Vec<usize>>,
-    ) -> SingleEntryColumnRoute<usize> {
+    ) -> UniqueColumnRoute<usize> {
         match self {
             Self::CteOrTable(cte_or_table) => {
                 cte_or_table.column_route(column_name, exclude_positions)
@@ -427,7 +437,7 @@ impl<'q> JoinedTable<'q, Analyzed> {
         table: Rc<TableFactor<'q, Analyzed>>,
         kind: JoinKind,
         condition: Option<Expr<'q, Analyzed>>,
-        using_cols: Vec<ResolvedJoinUsingColumn<'q>>,
+        using_cols: Vec<BoundJoinUsingVar<'q>>,
     ) -> Self {
         Self {
             table,
@@ -464,6 +474,7 @@ impl<'q, State: AstState<'q>> Display for JoinedTable<'q, State> {
     }
 }
 
+#[derive(PartialEq, Eq)]
 pub enum JoinKind {
     Inner,
     Left,
@@ -486,7 +497,7 @@ impl<'q> AnalyzedCteOrTable<'q> {
         &self,
         column_name: &str,
         exclude_positions: Option<Vec<usize>>,
-    ) -> SingleEntryColumnRoute<usize> {
+    ) -> UniqueColumnRoute<usize> {
         let lookup_cte = |cte: &Cte<'q, Analyzed>, exclude_positions: Option<Vec<usize>>| {
             let cte_columns_def = cte.columns_ref();
             if cte_columns_def.is_empty() {
@@ -498,7 +509,7 @@ impl<'q> AnalyzedCteOrTable<'q> {
                     .count()
                     > 1
                 {
-                    SingleEntryColumnRoute::Ambigious
+                    UniqueColumnRoute::Ambigious
                 } else {
                     cte_columns_def
                         .iter()
@@ -509,8 +520,8 @@ impl<'q> AnalyzedCteOrTable<'q> {
                                 .is_some_and(|positions| positions.contains(pos))
                                 && name.as_str() == column_name
                         })
-                        .map_or(SingleEntryColumnRoute::ColumnMissing, |(pos, _)| {
-                            SingleEntryColumnRoute::Resolved(pos)
+                        .map_or(UniqueColumnRoute::ColumnMissing, |(pos, _)| {
+                            UniqueColumnRoute::Resolved(pos)
                         })
                 }
             }
@@ -534,8 +545,8 @@ impl<'q> AnalyzedCteOrTable<'q> {
         match self {
             Self::Cte(cte) => lookup_cte(cte, exclude_positions),
             Self::Table(table) => lookup_table(table, exclude_positions).map_or(
-                SingleEntryColumnRoute::ColumnMissing,
-                SingleEntryColumnRoute::Resolved,
+                UniqueColumnRoute::ColumnMissing,
+                UniqueColumnRoute::Resolved,
             ),
         }
     }
@@ -566,14 +577,14 @@ impl Display for AnalyzedCteOrTable<'_> {
     }
 }
 
-/// A resolved column reference: the `Rc`-shared analyzed FROM it points into
-/// plus (relation, column) positions.
-pub struct ResolvedColumnRef<'q> {
+/// A resolved column reference.
+#[derive(Clone)]
+pub struct BoundVar<'q> {
     pub source: Rc<TableFactor<'q, Analyzed>>,
     pub column_pos: usize,
 }
 
-impl<'q> ResolvedColumnRef<'q> {
+impl<'q> BoundVar<'q> {
     pub fn from_parts(source: Rc<TableFactor<'q, Analyzed>>, column_pos: usize) -> Self {
         Self { source, column_pos }
     }
@@ -592,9 +603,32 @@ impl<'q> ResolvedColumnRef<'q> {
                 AttributeView::Expr(_, name) => name,
             })
     }
+
+    pub fn key(&self) -> (BoundTblKey, usize) {
+        (self.src_key(), self.column_pos)
+    }
+
+    pub fn src_key(&self) -> BoundTblKey {
+        Rc::as_ptr(&self.source) as *const () as BoundTblKey
+    }
 }
 
-impl Display for ResolvedColumnRef<'_> {
+impl PartialEq for BoundVar<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.source, &other.source) && self.column_pos == other.column_pos
+    }
+}
+
+impl Eq for BoundVar<'_> {}
+
+impl Hash for BoundVar<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.src_key().hash(state);
+        self.column_pos.hash(state);
+    }
+}
+
+impl Display for BoundVar<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         if let Some(source_name) = self.source.name() {
             write_sql_ident(f, source_name)?;
@@ -609,7 +643,8 @@ impl Display for ResolvedColumnRef<'_> {
     }
 }
 
-pub struct JoinUsingColumn(pub RawColumnRef);
+#[derive(PartialEq)]
+pub struct JoinUsingColumn(pub RawVar);
 
 impl Display for JoinUsingColumn {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
@@ -623,20 +658,25 @@ impl NamedEntity for JoinUsingColumn {
     }
 }
 
-#[allow(unused)]
-pub struct ResolvedJoinUsingColumn<'q>(ResolvedColumnRef<'q>, ResolvedColumnRef<'q>);
+/// One `USING` column, resolved against both sides of the join.
+/// The left input's column first, then the joined table's own.
+///
+/// The two are merged into a single output column. Picodata joins are inner or
+/// left, and for both SQL says the merged column *is* the left one.
+pub struct BoundJoinUsingVar<'q>(BoundVar<'q>, BoundVar<'q>);
 
-impl<'q> ResolvedJoinUsingColumn<'q> {
-    pub fn new(first: ResolvedColumnRef<'q>, second: ResolvedColumnRef<'q>) -> Self {
-        Self(first, second)
+impl<'q> BoundJoinUsingVar<'q> {
+    pub fn new(left: BoundVar<'q>, joined: BoundVar<'q>) -> Self {
+        Self(left, joined)
     }
 
+    /// Position, within the joined table.
     pub fn joined_tbl_column_pos(&self) -> usize {
         self.1.column_pos
     }
 }
 
-impl Display for ResolvedJoinUsingColumn<'_> {
+impl Display for BoundJoinUsingVar<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write_sql_ident(f, self.0.column_name().unwrap_or(NONAME_COLUMN))
     }
@@ -666,7 +706,7 @@ impl AttributeView<'_, '_> {
 /// relation matching the qualifier, so when that relation lacks the column
 /// the lookup fails right there — it must not continue into enclosing
 /// scopes where another same-named relation could satisfy it.
-pub enum FromColumnRoute<P> {
+pub enum ColumnRoute<P> {
     /// The qualifier (if any) and the column both matched.
     Resolved(P),
     /// A relation matching the qualifier is here, but it has no such
@@ -683,18 +723,130 @@ pub enum FromColumnRoute<P> {
 ///
 /// Resolution against one FROM entry is proceeded only in case
 /// its name is equal to qualifier or there is no qualifier on column reference.
-pub enum SingleEntryColumnRoute<P> {
+pub enum UniqueColumnRoute<P> {
     Resolved(P),
     ColumnMissing,
     Ambigious,
 }
 
-impl<P> SingleEntryColumnRoute<P> {
-    pub(crate) fn map<U>(self, f: impl FnOnce(P) -> U) -> FromColumnRoute<U> {
+impl<P> UniqueColumnRoute<P> {
+    pub(crate) fn map<U>(self, f: impl FnOnce(P) -> U) -> ColumnRoute<U> {
         match self {
-            Self::Resolved(route) => FromColumnRoute::Resolved(f(route)),
-            Self::ColumnMissing => FromColumnRoute::ColumnMissing,
-            Self::Ambigious => FromColumnRoute::Ambigious,
+            Self::Resolved(route) => ColumnRoute::Resolved(f(route)),
+            Self::ColumnMissing => ColumnRoute::ColumnMissing,
+            Self::Ambigious => ColumnRoute::Ambigious,
+        }
+    }
+}
+
+/// Structural comparison, one impl per node for both states.
+mod structural_eq {
+    use std::iter::zip;
+
+    use super::*;
+    use crate::structural_eq::StructuralEq;
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for TableExpression<'q, S> {
+        /// FROM goes first. It is what pairs this level's relations into the
+        /// scope, and the other clauses read them.
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.from.eq_with(&other.from, scope)
+                && self.selection.eq_with(&other.selection, scope)
+                && self.group_by.eq_with(&other.group_by, scope)
+                && self.having.eq_with(&other.having, scope)
+                && self.windows.eq_with(&other.windows, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for From<'q, S> {
+        /// Every entry is paired before any of them is compared: a join condition reads
+        /// both sides of its join, so a half-built pairing would fail to match it.
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            if self.tbl_factors.len() != other.tbl_factors.len() {
+                return false;
+            }
+            for (entry, other_entry) in zip(&self.tbl_factors, &other.tbl_factors) {
+                S::pair_relations(entry, other_entry, scope);
+            }
+            self.tbl_factors.eq_with(&other.tbl_factors, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for FromEntry<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            match (self, other) {
+                (Self::TableFactor(x), Self::TableFactor(y)) => x.eq_with(y, scope),
+                (Self::JoinedTable(x), Self::JoinedTable(y)) => x.eq_with(y, scope),
+                _mismatched_shapes => false,
+            }
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for TableFactor<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.alias == other.alias
+                && self.indexed_by == other.indexed_by
+                && self.inner.eq_with(&other.inner, scope)
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for TableFactorInner<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            match (self, other) {
+                (Self::CteOrTable(x), Self::CteOrTable(y)) => x.eq_with(y, scope),
+                (Self::SubQuery(x), Self::SubQuery(y)) => x.eq_with(y, scope),
+                _mismatched_shapes => false,
+            }
+        }
+    }
+
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for JoinedTable<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
+            self.kind == other.kind
+                && self.table.eq_with(&other.table, scope)
+                && self.condition.eq_with(&other.condition, scope)
+                && self.using_cols.eq_with(&other.using_cols, scope)
+        }
+    }
+
+    impl StructuralEq<()> for JoinUsingColumn {
+        fn eq_with(&self, other: &Self, _scope: &mut ()) -> bool {
+            self == other
+        }
+    }
+
+    /// A resolved column reference: the same ordinal of the same relation - or
+    /// of the two relations the scope pairs - regardless of the name it was
+    /// written with.
+    impl StructuralEq<RelationPairs> for BoundVar<'_> {
+        fn eq_with(&self, other: &Self, scope: &mut RelationPairs) -> bool {
+            if self.column_pos != other.column_pos {
+                return false;
+            }
+            match scope
+                .iter()
+                .find(|(left, right)| *left == self.src_key() || *right == other.src_key())
+            {
+                Some(&(left, right)) => left == self.src_key() && right == other.src_key(),
+                None => self.src_key() == other.src_key(),
+            }
+        }
+    }
+
+    /// One `USING` column: both resolved halves must match.
+    impl StructuralEq<RelationPairs> for BoundJoinUsingVar<'_> {
+        fn eq_with(&self, other: &Self, scope: &mut RelationPairs) -> bool {
+            self.0.eq_with(&other.0, scope) && self.1.eq_with(&other.1, scope)
+        }
+    }
+
+    impl StructuralEq<RelationPairs> for AnalyzedCteOrTable<'_> {
+        fn eq_with(&self, other: &Self, _scope: &mut RelationPairs) -> bool {
+            match (self, other) {
+                (Self::Cte(x), Self::Cte(y)) => Rc::ptr_eq(x, y),
+                (Self::Table(x), Self::Table(y)) => x.name == y.name,
+                _mismatched_shapes => false,
+            }
         }
     }
 }

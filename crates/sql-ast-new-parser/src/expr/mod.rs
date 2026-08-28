@@ -483,7 +483,7 @@ fn parse_identifier<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawEx
                             "`ReferenceContinuation` must start with '.'"
                         ))
                     })?;
-                    Ok(Expr::column_ref(
+                    Ok(Expr::var(
                         Ident::from_sql(column_name),
                         Some(Ident::from_sql(table_name)),
                     ))
@@ -496,7 +496,7 @@ fn parse_identifier<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawEx
                 ))),
             }
         }
-        None => Ok(Expr::column_ref(Ident::from_sql(ident_pair.as_str()), None)),
+        None => Ok(Expr::var(Ident::from_sql(ident_pair.as_str()), None)),
     }
 }
 

@@ -32,13 +32,14 @@
 //! rather than the mere fact that a query was accepted. That is what every
 //! stage's snapshot tests assert through. Two leaves have production readers as
 //! well — [`write_sql_ident`] (with [`Ident`]'s [`Display`]) and
-//! `Display for RawColumnRef` — because the analyzer's column-resolution errors
+//! `Display for RawVar` — because the analyzer's column-resolution errors
 //! print the offending reference.
 //!
-//! Alongside it, the structural [`PartialEq`] over raw expressions answers what
-//! rendering cannot: do two different spellings produce the same tree?
-//! Statement sub-trees (subquery bodies, window functions) have no structural
-//! comparison yet and fall back to their [`Display`].
+//! Alongside it, structural comparison answers what rendering cannot: do two
+//! different spellings produce the same tree? It is one walk for both states
+//! ([`StructuralEq`], with [`PartialEq`] sugar over raw nodes), covering
+//! everything reachable from a statement — each node module holds the impls
+//! for its own types, and the few per-state arms are hooks on [`AstState`].
 //!
 //! Both are ordinary crate code rather than `#[cfg(test)]`: that gate does not
 //! cross a crate boundary, and the parser's and analyzer's tests are in other
@@ -73,6 +74,7 @@ pub mod expr;
 pub mod multiset;
 pub mod rendering;
 pub mod select;
+mod structural_eq;
 pub mod table_expression;
 pub mod window;
 
@@ -92,13 +94,16 @@ use sql_ir::ir::types::{DerivedType, NestedType, UnrestrictedType};
 /// `nodes` that stores it, in [`AnalyzedExprMeta`].
 pub type AstNodeId = u32;
 
-use crate::table_expression::{JoinUsingColumn, ResolvedJoinUsingColumn};
+use crate::table_expression::{BoundJoinUsingVar, JoinUsingColumn, RelationPairs};
+
+pub use crate::structural_eq::StructuralEq;
 
 use self::expr::render::Precedence;
-use self::expr::{Expr, Parameter, RawColumnRef};
+use self::expr::{Expr, ExprInner, Parameter, RawVar};
 use self::multiset::{Cte, MultisetStmt};
 use self::select::{ProjectionExpr, SelectListElem};
-use self::table_expression::{AnalyzedCteOrTable, ResolvedColumnRef, TableFactor};
+use self::table_expression::{AnalyzedCteOrTable, BoundVar, FromEntry, TableFactor};
+use self::window::{NamedWindow, WindowFunction};
 
 /// A normalized SQL identifier — the single identifier representation used
 /// throughout `ast_new` (table, column, alias, CTE and window names).
@@ -140,7 +145,7 @@ impl NamedEntity for Ident {
 ///
 /// Unlike most of the [`Display`] cluster, this leaf has a production reader: the
 /// analyzer's column-resolution errors print the offending reference through it
-/// (see `Display for RawColumnRef`).
+/// (see `Display for RawVar`).
 fn write_sql_ident(f: &mut Formatter<'_>, name: &str) -> fmt::Result {
     let renders_bare = name == name.to_lowercase()
         && PairParser::parse(Rule::RegularIdentifier, name)
@@ -182,25 +187,69 @@ impl<T: NamedEntity + ?Sized> NamedEntity for Rc<T> {
 ///
 /// One set of node structs serves both states.
 /// The associated types swap the per-state payloads.
-/// For example, a column reference is a bare name in [`Raw`] and a resolved pointer in [`Analyzed`]).
+/// For example, a column reference is a bare name in [`Raw`] and a resolved pointer in [`Analyzed`].
 /// Therefore, tree cannot carry data its stage has no right to hold.
 ///
 /// See [Trees That Grow](https://arxiv.org/abs/1610.04799) for theoretical explanation.
 ///
 /// Every payload renders, so each associated type carries a [`Display`] bound.
 pub trait AstState<'q>: Sized {
-    type CteT: Display;
+    type CteT: Display + StructuralEq<Self::EqScope>;
 
-    type SelectListElemT: Display;
+    type SelectListElemT: Display + StructuralEq<Self::EqScope>;
 
-    type TableFactorT: NamedEntity + Display;
-    type JoinUsingColumnT: Display;
+    type TableFactorT: NamedEntity + Display + StructuralEq<Self::EqScope>;
+    type JoinUsingColumnT: Display + StructuralEq<Self::EqScope>;
 
-    type CteOrTableT: NamedEntity + Display;
+    type CteOrTableT: NamedEntity + Display + StructuralEq<Self::EqScope>;
 
     type ExprMeta: ExprMetaT;
 
-    type ColumnRefT: Display;
+    type VarType: Display + StructuralEq<Self::EqScope>;
+
+    /// The correspondence between the relations two compared subtrees
+    /// introduce, threaded through [`StructuralEq::eq_with`]. [`Raw`] resolves
+    /// nothing and carries none (`()`); [`Analyzed`] records pairs of FROM
+    /// factors, so the same subquery written twice compares equal even though
+    /// binding minted each copy its own relations. See [`crate::structural_eq`].
+    type EqScope: Default;
+
+    /// Whether the written form of a cast (`CAST(x AS t)` vs `x::t`) tells two
+    /// casts apart when their type and operand agree. It does in [`Raw`], where
+    /// the comparison answers "what did the query say"; analysis reads both
+    /// spellings into the same conversion, so [`Analyzed`] ignores it.
+    const ACCOUNT_CAST_SYNTAX: bool;
+
+    /// The node structural comparison actually looks at. [`Analyzed`] sees
+    /// through the identity casts analysis wraps around resolved columns, so a
+    /// bare column and its no-op cast are the same grouping key.
+    fn eq_subject<'e>(expr: &'e Expr<'q, Self>) -> &'e Expr<'q, Self> {
+        expr
+    }
+
+    /// Record into `scope` that `left` and `right` occupy the same position of
+    /// corresponding FROM clauses. A no-op for [`Raw`], which compares column
+    /// references by their written name instead.
+    fn pair_relations(
+        _left: &FromEntry<'q, Self>,
+        _right: &FromEntry<'q, Self>,
+        _scope: &mut Self::EqScope,
+    ) {
+    }
+
+    /// State-specific comparison of two window functions.
+    fn window_fn_eq(
+        left: &WindowFunction<'q, Self>,
+        right: &WindowFunction<'q, Self>,
+        scope: &mut Self::EqScope,
+    ) -> bool;
+
+    /// State-specific comparison of two `WINDOW` clause entries.
+    fn named_window_eq(
+        left: &NamedWindow<'q, Self>,
+        right: &NamedWindow<'q, Self>,
+        scope: &mut Self::EqScope,
+    ) -> bool;
 
     /// State-specific expression rendering:
     /// * [`Raw`] renders the bare expression.
@@ -230,7 +279,27 @@ impl<'q> AstState<'q> for Raw {
     type CteOrTableT = Ident;
 
     type ExprMeta = RawExprMeta;
-    type ColumnRefT = RawColumnRef;
+    type VarType = RawVar;
+
+    type EqScope = ();
+
+    const ACCOUNT_CAST_SYNTAX: bool = true;
+
+    fn window_fn_eq(
+        left: &WindowFunction<'q, Self>,
+        right: &WindowFunction<'q, Self>,
+        scope: &mut Self::EqScope,
+    ) -> bool {
+        left.eq_with(right, scope)
+    }
+
+    fn named_window_eq(
+        left: &NamedWindow<'q, Self>,
+        right: &NamedWindow<'q, Self>,
+        scope: &mut Self::EqScope,
+    ) -> bool {
+        left.eq_with(right, scope)
+    }
 
     fn fmt_expr(expr: &Expr<'q, Self>, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", expr.inner_ref())
@@ -258,13 +327,64 @@ impl<'q> AstState<'q> for Analyzed {
 
     type SelectListElemT = ProjectionExpr<'q, Analyzed>;
     /// Original From clause is shared by resolved column references.
-    /// See [`ResolvedColumnRef`].
+    /// See [`BoundVar`].
     type TableFactorT = Rc<TableFactor<'q, Analyzed>>;
-    type JoinUsingColumnT = ResolvedJoinUsingColumn<'q>;
+    type JoinUsingColumnT = BoundJoinUsingVar<'q>;
     type CteOrTableT = AnalyzedCteOrTable<'q>;
 
     type ExprMeta = AnalyzedExprMeta;
-    type ColumnRefT = ResolvedColumnRef<'q>;
+    type VarType = BoundVar<'q>;
+
+    /// Pairs of FROM factors, keyed the way [`BoundVar::src_key`] keys their
+    /// [`Rc`]s, pushed as the comparison walks corresponding FROM clauses.
+    type EqScope = RelationPairs;
+
+    /// Analysis erases the spelling: `CAST(a AS int)` and `a::int` are the
+    /// same conversion.
+    const ACCOUNT_CAST_SYNTAX: bool = false;
+
+    /// See through the identity casts analysis wraps around resolved columns.
+    fn eq_subject<'e>(mut expr: &'e Expr<'q, Self>) -> &'e Expr<'q, Self> {
+        while let ExprInner::Cast(cast) = expr.inner_ref() {
+            match cast.identity_child() {
+                Some(child) => expr = child,
+                None => break,
+            }
+        }
+        expr
+    }
+
+    fn pair_relations(
+        left: &FromEntry<'q, Self>,
+        right: &FromEntry<'q, Self>,
+        scope: &mut Self::EqScope,
+    ) {
+        let key =
+            |entry: &FromEntry<'q, Self>| Rc::as_ptr(entry.tbl_factor()) as *const () as usize;
+        scope.push((key(left), key(right)));
+    }
+
+    /// A window function is conservatively never equal to another: it cannot
+    /// be a grouping key, and the only cost of the `false` is a
+    /// Postgres-style "must appear in GROUP BY" rejection.
+    fn window_fn_eq(
+        _left: &WindowFunction<'q, Self>,
+        _right: &WindowFunction<'q, Self>,
+        _scope: &mut Self::EqScope,
+    ) -> bool {
+        false
+    }
+
+    /// A statement with a `WINDOW` clause is never equal, for the same reason
+    /// as [`window_fn_eq`](AstState::window_fn_eq).
+    fn named_window_eq(
+        _left: &NamedWindow<'q, Self>,
+        _right: &NamedWindow<'q, Self>,
+        _scope: &mut Self::EqScope,
+    ) -> bool {
+        false
+    }
+
     /// Render the expression followed by its inferred type as a `::type` suffix (when known).
     /// `::type` is postfix-cast syntax, so compound expressions are wrapped in parentheses exactly
     /// like an explicit postfix cast (`(1 + 2)::int`). A cast root is left as-is to avoid a
