@@ -4863,6 +4863,25 @@ fn front_create_table_with_tier_syntax() {
 }
 
 #[test]
+fn front_create_table_rejects_array_primary_key() {
+    // Without this gate the statement reaches DDL and fails there with a raw
+    // tarantool message: "field type 'array' is not supported".
+    let metadata = &RouterConfigurationMock::new();
+    for query in [
+        r#"CREATE TABLE bad (a INT[] PRIMARY KEY, b INT) DISTRIBUTED BY (b)"#,
+        r#"CREATE TABLE bad (a INT[], b INT, PRIMARY KEY (a)) DISTRIBUTED BY (b)"#,
+    ] {
+        let err = transform_into_plan(query, &[], metadata)
+            .expect_err("array primary key must be rejected at planning");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("ARRAY columns are not indexable"),
+            "unexpected error: {msg}"
+        );
+    }
+}
+
+#[test]
 fn front_alter_system_cluster_check_parses_ok() {
     let queries_to_check_ok = vec![
         r#"alter system set param_name = 1"#,

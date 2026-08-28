@@ -19,9 +19,3 @@ Tuple field 1 \(_COLUMN_0\) type does not match one required by operation: expec
 create table t (id int primary key, val int[]) distributed by (val);
 -- ERROR:
 invalid column: Sharding key column val is not of scalar type.
-
--- TEST: array-primary-key
--- SQL:
-create table t (id int, val int[] primary key) distributed by (id);
--- ERROR:
-field type 'array' is not supported

@@ -3620,6 +3620,21 @@ pub(in crate::frontend::sql) fn parse_create_table(
             Some(format_smolstr!("Primary key must be declared.")),
         ));
     }
+
+    for (pk_key, _) in &pk_keys {
+        if let Some(column) = columns.iter().find(|c| c.name == *pk_key) {
+            // Without this the statement reaches DDL and fails there with a
+            // raw tarantool message about an unsupported field type.
+            if matches!(column.data_type.as_domain_type(), DomainType::Array(_)) {
+                return Err(SbroadError::Invalid(
+                    Entity::Column,
+                    Some(format_smolstr!(
+                        "ARRAY columns are not indexable: column {pk_key} cannot be part of a primary key"
+                    )),
+                ));
+            }
+        }
+    }
     if !is_global {
         let has_bucket_id_for_sharded = columns
             .iter()

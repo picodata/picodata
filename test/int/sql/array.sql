@@ -4,11 +4,11 @@
 -- SQL:
 CREATE TABLE t1 (a INT PRIMARY KEY, b INT ARRAY);
 
--- TEST: invalid-sharding-key
+-- TEST: invalid-primary-key
 -- SQL:
 CREATE TABLE t (a INT ARRAY PRIMARY KEY);
 -- ERROR:
-Sharding key column a is not of scalar type.
+ARRAY columns are not indexable
 
 -- TEST: insert-base
 -- SQL:

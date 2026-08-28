@@ -95,3 +95,15 @@ ALTER TABLE t ADD COLUMN c4 INT ARRAY[3];
 ALTER TABLE t ADD COLUMN c5 INT ARRAY[2][3];
 -- ERROR:
 rule parsing error
+
+-- TEST: array-primary-key-rejected
+-- SQL:
+CREATE TABLE bad_arr_pk (a INT[] PRIMARY KEY, b INT) DISTRIBUTED BY (b);
+-- ERROR:
+ARRAY columns are not indexable
+
+-- TEST: array-composite-primary-key-rejected
+-- SQL:
+CREATE TABLE bad_arr_pk2 (a INT[], b INT, PRIMARY KEY (a)) DISTRIBUTED BY (b);
+-- ERROR:
+ARRAY columns are not indexable
