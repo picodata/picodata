@@ -24,7 +24,7 @@ const Root = styled(Box)({
 
 const modalSx: SxProps<Theme> = (theme) => ({
   width: "90vw",
-  height: 670,
+  height: 700,
   [theme.breakpoints.up("md")]: {
     width: 800,
   },

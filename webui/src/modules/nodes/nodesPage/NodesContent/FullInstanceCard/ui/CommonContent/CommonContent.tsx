@@ -57,6 +57,14 @@ export const CommonContent = ({
             <SectionField name={commontContentTranslation.replicaset}>
               {fullInstance.replicasetName}
             </SectionField>
+            <SectionField
+              title={fullInstance.picodataVersion}
+              name={commontContentTranslation.picodataVersion}
+            >
+              <CopyField text={fullInstance.picodataVersion}>
+                {fullInstance.picodataVersion}
+              </CopyField>
+            </SectionField>
           </SectionFieldsContent>
         </Section>
       </Box>
@@ -200,14 +208,6 @@ export const CommonContent = ({
       <Box padding={"17px"} borderBottom={border}>
         <Section title={commontContentTranslation.state}>
           <SectionFieldsContent>
-            <SectionField
-              title={fullInstance.picodataVersion}
-              name={commontContentTranslation.picodataVersion}
-            >
-              <CopyField text={fullInstance.picodataVersion}>
-                {fullInstance.picodataVersion}
-              </CopyField>
-            </SectionField>
             <SectionField
               withTitle={false}
               name={commontContentTranslation.currentState}
