@@ -1,3 +1,4 @@
+import socket
 import os
 import pytest
 import signal
@@ -1046,3 +1047,68 @@ def test_cold_restart_6(cluster: Cluster):
         instance.start()
 
     cluster.wait_online()
+
+
+def test_iproto_connection_is_closed_by_rebootstrap(cluster: Cluster):
+    """A connection opened before the bootstrap self-exec must be torn down by it.
+
+    Bootstrap runs each entrypoint in a fresh process image, moving between them
+    with execvp. Sockets which are not FD_CLOEXEC survive that call and land in
+    the new image with nobody owning them: the peer gets neither a reply nor a
+    FIN, so it blocks until its own timeout expires instead of noticing the
+    connection is gone.
+
+    A raw socket is used on purpose. The tarantool connector reconnects
+    transparently on the first failure -- `_opt_reconnect` calls connect_basic()
+    before it consults reconnect_max_attempts -- and the re-exec'd image binds
+    the same port, so a connector-level probe silently lands on the new image
+    and observes nothing.
+    """
+    injection = "BLOCK_BEFORE_REBOOTSTRAP"
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env[f"PICODATA_ERROR_INJECTION_{injection}"] = "1"
+    blocked = log_crawler(i1, f"ERROR INJECTION '{injection}': BLOCKING")
+    i1.start()
+
+    # The instance is now sitting in front of the exec with iproto listening.
+    blocked.wait_matched()
+
+    # Long enough that "the exec closed our socket" and "we gave up waiting"
+    # cannot be confused, short enough that a regression fails on its own rather
+    # than being cut off by the per-test timeout.
+    socket_timeout = 30
+
+    sock = socket.create_connection((i1.host, i1.port), timeout=socket_timeout)
+    try:
+        # Tarantool greets every accepted connection with 128 bytes, so getting
+        # them proves the instance accepted us and iproto is serving.
+        greeting = sock.recv(128)
+        assert greeting.startswith(b"Tarantool"), greeting
+
+        # Let it proceed into execvp. "read entrypoint" is logged by the *new*
+        # process image, so waiting for it means the exec has already happened --
+        # unlike "restarting process", which is logged before the old image
+        # tears tarantool down and would let the probe race a live instance.
+        reexeced = log_crawler(i1, "read entrypoint StartBoot")
+        i1.call("pico._inject_error", injection, False)
+        reexeced.wait_matched()
+
+        # The exec must have closed our socket, so this returns at once: either
+        # b"" for a FIN or ECONNRESET. Without FD_CLOEXEC the fd is inherited by
+        # an image which never reads it, and this blocks for socket_timeout.
+        try:
+            assert sock.recv(1) == b"", "instance kept serving the old connection"
+        except ConnectionResetError:
+            pass
+        except TimeoutError:
+            pytest.fail(
+                f"connection was not closed by the re-exec: recv blocked for the "
+                f"whole {socket_timeout}s socket timeout, which means execvp "
+                f"handed the socket to the new process image instead of closing it"
+            )
+    finally:
+        sock.close()
+
+    # And the instance still finishes bootstrapping afterwards.
+    i1.wait_online()

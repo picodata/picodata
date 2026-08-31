@@ -89,6 +89,11 @@ pub fn main(mut args: args::Run) -> ! {
             let pipe = write_entrypoint_to_pipe(next_entrypoint)?;
             let _ = output_entrypoint_pipe.insert(pipe);
 
+            // Blocks with iproto already listening and the re-exec still
+            // pending, so a test can open a connection, lift the injection and
+            // watch what the exec does to that connection.
+            crate::error_injection!(block "BLOCK_BEFORE_REBOOTSTRAP");
+
             #[rustfmt::skip]
             tlog!(Info, "restarting process to proceed with next entrypoint {next_entrypoint:?}");
 
