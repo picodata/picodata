@@ -1,5 +1,5 @@
 use build_rs_helpers::{
-    cargo,
+    cargo, clang,
     cmake::{self, CmakeVariables},
     pkg_config, rustc, rustflags, CommandExt,
 };
@@ -122,6 +122,16 @@ impl TarantoolBuildRoot {
             .arg(&http_prefix)
             .arg(format!("-DTARANTOOL_DIR={}", tarantool_prefix.display()));
 
+        // Otherwise `http/http/lib.c` won't show up in the coverage report.
+        if rustflags::have_code_coverage() {
+            configure_cmd.envs(clang::TOOLCHAIN_ENV);
+            let flags = clang::coverage_flags().join(" ");
+            configure_cmd.args([
+                format!("-DCMAKE_C_FLAGS={flags}"),
+                format!("-DCMAKE_CXX_FLAGS={flags}"),
+            ]);
+        }
+
         if let Ok(name) = std::env::var("COMPILER_LAUNCHER") {
             configure_cmd.args([
                 format!("-DCMAKE_C_COMPILER_LAUNCHER={}", name),
@@ -168,26 +178,10 @@ impl TarantoolBuildRoot {
                 "-DBUILD_DOC=FALSE".to_string(),
             ];
 
-            let clang_toolchain_env = [("CC", "clang"), ("CXX", "clang++")];
-
             if rustflags::have_code_coverage() {
                 cargo::warning!("Code coverage has been enabled");
-                configure_cmd.envs(clang_toolchain_env);
-
-                let mut flags = vec![
-                    "-fprofile-instr-generate".to_owned(),
-                    "-fcoverage-mapping".to_owned(),
-                ];
-                // TODO: for some reason, it doesn't work properly yet.
-                if let Some((from, to)) = rustflags::have_remap_path_prefix() {
-                    flags.push(format!(
-                        "-fcoverage-prefix-map={from}={to}",
-                        from = from.display(),
-                        to = to.display(),
-                    ));
-                }
-                let flags = flags.join(" ");
-
+                configure_cmd.envs(clang::TOOLCHAIN_ENV);
+                let flags = clang::coverage_flags().join(" ");
                 common_args.extend([
                     format!("-DCMAKE_C_FLAGS={flags}"),
                     format!("-DCMAKE_CXX_FLAGS={flags}"),
@@ -197,7 +191,7 @@ impl TarantoolBuildRoot {
             // Tarantool won't let us use gcc for an asan build.
             if rustflags::have_asan() {
                 cargo::warning!("ASan has been enabled, this may affect the performance");
-                configure_cmd.envs(clang_toolchain_env);
+                configure_cmd.envs(clang::TOOLCHAIN_ENV);
                 common_args.push("-DENABLE_ASAN=ON".to_string());
             }
 
