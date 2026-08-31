@@ -4,6 +4,13 @@ default:
     pull_policy: always
   tags:
     - docker-k8s
+  retry:
+    max: 1
+    when:
+      - scheduler_failure
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - api_failure
 
 variables:
   BASE_IMAGE_DOCS: ${CI_REGISTRY_IMAGE}/docs
