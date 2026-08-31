@@ -5,6 +5,13 @@ default:
     pull_policy: [if-not-present]
   tags:
     - docker-k8s
+  retry:
+    max: 1
+    when:
+      - scheduler_failure
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - api_failure
   # for our "monorepo"
   # if your job has own before_script section - this code will not be executed
   # and you need to include this command in your job
