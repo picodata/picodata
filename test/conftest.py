@@ -979,9 +979,10 @@ class Instance:
         self,
         instance: "Instance | None" = None,
         error_log_level: int = logging.ERROR,
+        timeout: int | float | None = None,
     ) -> tuple[tuple[str, int], tuple[str, int]]:
         """Returns a pairs (current_state, target_state). State is pair (variant, incarnation)"""
-        info = self.instance_info(instance, error_log_level=error_log_level)
+        info = self.instance_info(instance, timeout=timeout, error_log_level=error_log_level)
         current = info["current_state"]
         target = info["target_state"]
         return (current["variant"], current["incarnation"]), (target["variant"], target["incarnation"])
@@ -1125,7 +1126,7 @@ class Instance:
         *args,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = DEFAULT_RPC_TIMEOUT,
+        timeout: int | float | None = None,
         error_log_level: int = logging.ERROR,
     ):
         if fn == "pico._inject_error":
@@ -1134,6 +1135,8 @@ class Instance:
             # failing with "Procedure 'pico._inject_error' is not defined".
             self.assert_error_injection_supported(str(args[0]))
 
+        if timeout is None:
+            timeout = self.default_rpc_timeout
         log.info(f"{self.name or self.port} RPC CALL {fn}{clamp_for_logs(args)}", stacklevel=2)
         try:
             with self.connect(timeout=timeout, user=user, password=password) as conn:
@@ -1152,9 +1155,11 @@ class Instance:
         *args,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = DEFAULT_RPC_TIMEOUT,
+        timeout: int | float | None = None,
         error_log_level: int = logging.ERROR,
     ):
+        if timeout is None:
+            timeout = self.default_rpc_timeout
         # NOTE: Not using short_expr at first intentionally
         log.info(f"{self.name or self.port} RPC EVAL `{expr}` {clamp_for_logs(args)}", stacklevel=2)
         short_expr = shorten_expr_for_log(expr)
@@ -1305,7 +1310,7 @@ class Instance:
         with_auth: str | None = None,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = DEFAULT_RPC_TIMEOUT,
+        timeout: int | float | None = None,
     ):
         sql = f"CREATE USER \"{with_name}\" WITH PASSWORD '{with_password}' " + (
             ("USING " + with_auth) if with_auth else ""
@@ -1852,7 +1857,7 @@ class Instance:
     def instance_info(
         self,
         target: "Instance | None" = None,
-        timeout: int | float = DEFAULT_RPC_TIMEOUT,
+        timeout: int | float | None = None,
         error_log_level: int = logging.ERROR,
     ) -> dict[str, Any]:
         """Call .proc_instance_info on the instance
@@ -1945,7 +1950,16 @@ class Instance:
             state, target_state = (None, None)
             try:
                 # Fetch state
-                (state, incarnation), (target_state, _) = self.states(error_log_level=logging.WARNING)
+                # Cap one attempt at DEFAULT_RPC_TIMEOUT. The loop's deadline
+                # stays the overall budget. An instance can accept a connection
+                # and then never answer it -- parked in box.cfg, held by an
+                # error injection, or SIGSTOPped by the test itself -- and no
+                # FIN arrives to cut the wait short. Unbounded, one such attempt
+                # spends default_rpc_timeout, which is the entire per-test
+                # budget, and the test dies instead of retrying.
+                (state, incarnation), (target_state, _) = self.states(
+                    error_log_level=logging.WARNING, timeout=DEFAULT_RPC_TIMEOUT
+                )
                 if (state, incarnation) != last_state:
                     last_state = (state, incarnation)
                     deadline = time.monotonic() + timeout
@@ -1953,7 +1967,7 @@ class Instance:
                 # Check if instance is intentionally Offline due to replication issues
                 # This can happen during master switchover with DDL conflicts (issue #2701)
                 if state == "Offline" and target_state == "Offline":
-                    target_state_reason = self._get_target_state_reason()
+                    target_state_reason = self._get_target_state_reason(timeout=DEFAULT_RPC_TIMEOUT)
                     if target_state_reason and "Replication broken" in target_state_reason:
                         raise ReplicationBroken(f"Instance '{self.name}' has replication broken: {target_state_reason}")
 
@@ -1990,7 +2004,7 @@ class Instance:
 
         log.info(f"{self} is online")
 
-    def _get_target_state_reason(self) -> str | None:
+    def _get_target_state_reason(self, timeout: int | float | None = None) -> str | None:
         """Fetch target_state_reason for this instance from _pico_instance.
 
         Uses direct space query instead of SQL to avoid incrementing
@@ -2001,7 +2015,7 @@ class Instance:
         if not self.cluster:
             return None
 
-        leader = self.cluster.leader()
+        leader = self.cluster.leader(timeout=timeout)
         return leader.eval(
             """
             local name = ...
@@ -2012,6 +2026,7 @@ class Instance:
             return nil
             """,
             self.name,
+            timeout=timeout,
         )
 
     def _wait_online_failure_message(self, current_state: str, target_state: str) -> str:
@@ -2019,10 +2034,15 @@ class Instance:
         governor_status = None
         leader = None
 
+        # We don't use default_rpc_timeout here because nothing depends on
+        # these RPCs except the text of the exception below. wait_online() has
+        # already spent its deadline by the time we get here, so running them
+        # for the whole per-test budget on top of that lets pytest-timeout
+        # kill the test while this message is still being built.
         try:
             if self.cluster:
-                leader = self.cluster.leader()
-                leader_runtime_info = leader.call(".proc_runtime_info_v2")
+                leader = self.cluster.leader(timeout=DEFAULT_RPC_TIMEOUT)
+                leader_runtime_info = leader.call(".proc_runtime_info_v2", timeout=DEFAULT_RPC_TIMEOUT)
                 last_error = leader_runtime_info["internal"].get("governor_loop_last_error")
                 governor_status = leader_runtime_info["internal"].get("governor_loop_status")
                 del leader_runtime_info
@@ -2034,7 +2054,7 @@ class Instance:
 
         state_repr = current_state if current_state == target_state else f"{current_state} -> {target_state}"
         try:
-            target_state_reason = self._get_target_state_reason()
+            target_state_reason = self._get_target_state_reason(timeout=DEFAULT_RPC_TIMEOUT)
         except Exception as e:
             target_state_reason = f"ERROR: failed getting target_state_reason: {e}"
 
@@ -2934,25 +2954,25 @@ class Cluster:
 
         return instance.call("pico.batch_cas", dict(ops=ops), predicate, user=user, password=password)
 
-    def leader(self, peer: Instance | None = None) -> Instance:
+    def leader(self, peer: Instance | None = None, timeout: int | float | None = None) -> Instance:
         raft_info = None
         if peer:
             try:
-                raft_info = peer.call(".proc_raft_info")
+                raft_info = peer.call(".proc_raft_info", timeout=timeout)
                 self.peer = peer
             except (ProcessDead, ConnectionRefusedError):
                 pass
 
         if not raft_info and self.peer:
             try:
-                raft_info = self.peer.call(".proc_raft_info")
+                raft_info = self.peer.call(".proc_raft_info", timeout=timeout)
             except (ProcessDead, ConnectionRefusedError):
                 self.peer = None
 
         if not raft_info:
             for instance in self.instances:
                 try:
-                    raft_info = instance.call(".proc_raft_info")
+                    raft_info = instance.call(".proc_raft_info", timeout=timeout)
                     self.peer = instance
                     break
                 except (ProcessDead, ConnectionRefusedError):
@@ -2975,6 +2995,7 @@ class Cluster:
             "SELECT address FROM _pico_peer_address WHERE raft_id = ? and connection_type = ?",
             leader_id,
             connection_type,
+            timeout=timeout,
         )
         self.peer = self.get_instance_by_address(leader_address)
         return self.peer
