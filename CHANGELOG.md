@@ -8,6 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [26.2.1] - 2026-08-31
+
+### Bug fixes
+* **(webui)** update empty services message in [!3598](https://git.picodata.io/core/picodata/-/merge_requests/3598)
+* **(webui)** count only offline instances in instancesCurrentStateOffline in [!3605](https://git.picodata.io/core/picodata/-/merge_requests/3605)
+
 ## [26.2.1-rc3] - 2026-08-27
 
 ### Bug fixes

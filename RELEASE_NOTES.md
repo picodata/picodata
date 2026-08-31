@@ -5,6 +5,19 @@ per-MR fragments in `release_notes/unreleased/` at release
 time. See `doc/dev/generating-changelog.md` for the release
 flow.
 
+## [26.2.1] - 2026-08-31
+
+### Bug fixes
+
+#### webui
+
+- Fixed `instancesCurrentStateOffline` in `/api/v1/cluster` counting
+  expelled instances as offline; it now counts only instances whose
+  current state is actually `Offline`
+
+- Changed the empty state for tier services from "No data" to the more descriptive
+  "No services"
+
 ## [26.2.1-rc3] - 2026-08-27
 
 ### Bug fixes
