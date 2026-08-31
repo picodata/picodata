@@ -846,10 +846,17 @@ def check_file_shredding_common(i1: Instance):
     def verify_files_were_shredded(snapshot):
         for file in snapshot:
             old_contents = snapshot[file]
-            assert file.exists(), (
-                "Snapshot file does not exist. Was `KEEP_FILES_AFTER_SHREDDING` error injected successfully?"
+            # Shredding renames a file to `.inprogress` before overwriting it,
+            # a suffix recovery ignores, so that a pass interrupted halfway
+            # through leaves no garbage anything would try to read back as data.
+            # `KEEP_FILES_AFTER_SHREDDING` skips the final unlink, so the
+            # overwritten file is left behind under that name.
+            shredded = file.with_name(f"{file.name}.inprogress")
+            assert shredded.exists(), (
+                "Shredded file does not exist. Was `KEEP_FILES_AFTER_SHREDDING` error injected successfully?"
             )
-            with open(file, "rb") as f:
+            assert not file.exists(), "shredding left garbage under a name recovery picks up"
+            with open(shredded, "rb") as f:
                 new_contents = f.read(100)
 
             assert len(old_contents) == len(new_contents)

@@ -112,6 +112,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn rm_tarantool_files_never_touches_the_backup_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+
+        // A regular LSM directory, `<vinyl_dir>/<space_id>/<index_id>`.
+        let lsm_dir = root.join("1").join("1");
+        std::fs::create_dir_all(&lsm_dir).unwrap();
+        for name in ["1.run", "2.index", "3.run.inprogress", "keep.txt"] {
+            std::fs::write(lsm_dir.join(name), b"").unwrap();
+        }
+
+        // A backup dir that looks exactly like one, so that nothing but the
+        // explicit check keeps the walk out of it.
+        let backup_dir = root.join("7").join("7");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+        std::fs::write(backup_dir.join("1.run"), b"").unwrap();
+
+        rm_tarantool_files(root, &backup_dir).unwrap();
+
+        assert!(!lsm_dir.join("1.run").exists());
+        assert!(!lsm_dir.join("2.index").exists());
+        assert!(!lsm_dir.join("3.run.inprogress").exists());
+        // Files we don't own stay, and so does the directory holding them.
+        assert!(lsm_dir.join("keep.txt").exists());
+
+        assert!(backup_dir.join("1.run").exists());
+    }
+
+    #[test]
+    fn rm_tarantool_files_keeps_nested_engine_dirs() {
+        // `wal_dir`, `memtx.dir` and `vinyl.dir` may live inside `instance_dir`
+        // and are each cleaned in their own right, so emptying one must not
+        // take the directory with it.
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+
+        let wal_dir = root.join("wal");
+        std::fs::create_dir_all(&wal_dir).unwrap();
+        std::fs::write(wal_dir.join("1.xlog"), b"").unwrap();
+
+        rm_tarantool_files(&wal_dir, root.join("backup")).unwrap();
+        assert!(!wal_dir.join("1.xlog").exists());
+
+        // Cleaning the enclosing `instance_dir` afterwards finds it empty.
+        rm_tarantool_files(root, root.join("backup")).unwrap();
+        assert!(wal_dir.exists(), "the wal directory was removed");
+    }
+
+    #[test]
     fn runtime_election_mode_depends_on_replication_mode() {
         assert_eq!(
             runtime_election_mode(ReplicationMode::Sync),
@@ -973,10 +1022,27 @@ extern "C" fn xlog_shredding_remove_cb(
         return 0;
     }
 
+    // Rename the file to .inprogress before shredding so that if
+    // shredding is interrupted (e.g. by a restart for backup
+    // restore), the original filename is already freed and the
+    // .inprogress garbage is ignored by tarantool on recovery.
+    let keep = crate::error_injection::is_enabled("KEEP_FILES_AFTER_SHREDDING");
+    let inprogress_path = std::path::PathBuf::from(format!("{}.inprogress", path.display()));
+
+    if inprogress_path.exists() {
+        // Stale .inprogress from a previous crash — clean it up.
+        let _ = std::fs::remove_file(&inprogress_path);
+    }
+
+    if let Err(e) = std::fs::rename(path, &inprogress_path) {
+        crate::tlog!(Error, "shredding rename to .inprogress failed: {e}");
+        return -1;
+    }
+
     let config = ShredConfig::<std::path::PathBuf>::non_interactive(
-        vec![std::path::PathBuf::from(path)],
+        vec![inprogress_path],
         Verbosity::Debug,
-        crate::error_injection::is_enabled("KEEP_FILES_AFTER_SHREDDING"),
+        keep,
         OVERWRITE_COUNT,
         RENAME_COUNT,
     );
@@ -1006,21 +1072,99 @@ extern "C" fn xlog_shredding_remove_cb(
     };
 }
 
+/// Suffix tarantool gives a file while it is still being written, before
+/// renaming it into place (`inprogress_suffix` in `src/box/xlog.h`).
+const INPROGRESS_SUFFIX: &str = ".inprogress";
+
+/// Extensions of the tarantool data files stored directly in a data directory.
+const TARANTOOL_FILE_EXTENSIONS: &[&str] = &["xlog", "snap", "vylog"];
+
+/// Extensions of the vinyl data files stored in the per-LSM subdirectories of
+/// `vinyl_dir` (see `vy_run_snprint_filename` in `src/box/vy_run.h`).
+const VINYL_FILE_EXTENSIONS: &[&str] = &["run", "index"];
+
+/// Checks whether `path` is one of the tarantool data files named by
+/// `extensions`.
+///
+/// A trailing [`INPROGRESS_SUFFIX`] is stripped before the extension is
+/// matched, so that files left over from an interrupted write are recognized
+/// too. Note that [`xlog_shredding_remove_cb`] parks a file under the same
+/// suffix while shredding it, so this also catches shredding leftovers.
+fn is_tarantool_file(path: &std::path::Path, extensions: &[&str]) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let name = name.strip_suffix(INPROGRESS_SUFFIX).unwrap_or(name);
+
+    std::path::Path::new(name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| extensions.contains(&ext))
+}
+
+/// Removes every tarantool data file from `data_dir`.
+///
+/// Vinyl keeps its runs and indexes in `<vinyl_dir>/<space_id>/<index_id>/`
+/// rather than in the data directory itself, so those two levels are walked
+/// too.
+///
+/// Only files are removed. Emptied directories are left in place: `wal_dir`,
+/// `memtx.dir` and `vinyl.dir` may be nested inside `instance_dir`, and each is
+/// cleaned in its own right, so deleting one for being empty would pull an
+/// engine's directory out from under it.
+///
+/// `backup_dir` is never descended into. `instance_dir`, `wal_dir`, `memtx.dir`
+/// and `vinyl.dir` all default to the same directory, and `backup_dir` defaults
+/// to a subdirectory of it (`<instance_dir>/backup`), so the backup normally
+/// sits right in the path of this walk -- and deleting from the backup we are
+/// about to restore from would be fatal.
 pub fn rm_tarantool_files(
     data_dir: impl AsRef<std::path::Path>,
+    backup_dir: impl AsRef<std::path::Path>,
 ) -> Result<(), tarantool::error::Error> {
-    for entry in std::fs::read_dir(data_dir)? {
-        let entry = entry?;
-        let path = entry.path();
+    // `backup_dir` is absolute while the data directories may be relative, and
+    // either may lead through a symlink, so compare the paths only once
+    // resolved. `Path`'s equality is a component-wise comparison of the whole
+    // path -- it sees through `.` and repeated separators but not through `..`
+    // or symlinks, which is precisely what `canonicalize` takes care of. A
+    // `backup_dir` that cannot be resolved does not exist yet, and a directory
+    // that does not exist cannot be walked into.
+    let backup_dir = std::fs::canonicalize(backup_dir.as_ref()).ok();
+    let is_backup_dir = |dir: &std::path::Path| {
+        let Some(backup_dir) = &backup_dir else {
+            return false;
+        };
+        std::fs::canonicalize(dir).is_ok_and(|dir| &dir == backup_dir)
+    };
 
-        if !path.is_file() {
+    let data_dir = data_dir.as_ref();
+    rm_files_with_extensions(data_dir, TARANTOOL_FILE_EXTENSIONS)?;
+
+    for space_dir in subdirs(data_dir)? {
+        if is_backup_dir(&space_dir) {
             continue;
         }
 
-        let Some(ext) = path.extension() else {
-            continue;
-        };
-        if ext != "xlog" && ext != "snap" && ext != "vylog" {
+        for lsm_dir in subdirs(&space_dir)? {
+            if is_backup_dir(&lsm_dir) {
+                continue;
+            }
+
+            rm_files_with_extensions(&lsm_dir, VINYL_FILE_EXTENSIONS)?;
+        }
+    }
+    Ok(())
+}
+
+/// Removes every file of `dir` whose name matches one of `extensions`.
+fn rm_files_with_extensions(
+    dir: &std::path::Path,
+    extensions: &[&str],
+) -> Result<(), tarantool::error::Error> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+
+        if !path.is_file() || !is_tarantool_file(&path, extensions) {
             continue;
         }
 
@@ -1028,6 +1172,18 @@ pub fn rm_tarantool_files(
         std::fs::remove_file(path)?;
     }
     Ok(())
+}
+
+/// Returns the subdirectories of `dir`.
+fn subdirs(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>, tarantool::error::Error> {
+    let mut subdirs = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            subdirs.push(path);
+        }
+    }
+    Ok(subdirs)
 }
 
 pub fn box_schema_version() -> u64 {

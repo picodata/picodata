@@ -27,7 +27,7 @@ use crate::storage::schema::copy_file_async;
 use crate::storage::schema::ddl_meta_space_update_operable;
 use crate::storage::PropertyName;
 use crate::sync_replication::synchro_election_watcher;
-use crate::tarantool::{rm_tarantool_files, ListenConfig};
+use crate::tarantool::ListenConfig;
 use crate::traft::error::Error;
 use crate::traft::op;
 use crate::traft::Result;
@@ -1105,11 +1105,14 @@ pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<E
     Ok(next_entrypoint)
 }
 
-/// Removes stale WAL/snapshot files left behind by a previous dropped `box.cfg`
-/// invocation. `instance_dir`, `wal_dir`, `memtx_dir` and `vinyl_dir` can each
-/// be configured to point to a different directory, so all of them must be
-/// cleaned up individually, unlike before when they were all guaranteed to be
-/// the same directory.
+/// Removes the tarantool data files from every data directory, be they left
+/// behind by a previous dropped `box.cfg` invocation or superseded by the
+/// backup that is about to be restored.
+///
+/// `instance_dir`, `wal_dir`, `memtx_dir` and `vinyl_dir` can each be
+/// configured to point to a different directory, so all of them must be cleaned
+/// up individually, unlike before when they were all guaranteed to be the same
+/// directory.
 fn cleanup_stale_tarantool_files(config: &PicodataConfig) -> Result<()> {
     for dir in [
         config.instance.instance_dir(),
@@ -1117,7 +1120,7 @@ fn cleanup_stale_tarantool_files(config: &PicodataConfig) -> Result<()> {
         config.instance.memtx_dir(),
         config.instance.vinyl_dir(),
     ] {
-        tarantool::rm_tarantool_files(dir)?;
+        tarantool::rm_tarantool_files(dir, config.instance.backup_dir())?;
     }
     Ok(())
 }
@@ -1714,14 +1717,13 @@ fn restore_from_backup(config: &PicodataConfig, backup_path: &PathBuf) -> Result
     // later LSNs. Tarantool would recover these newer files together with the
     // backup and advance past the requested point, so remove them before
     // copying the backup.
-    for dir in [
-        instance_dir,
-        config.instance.memtx_dir(),
-        config.instance.vinyl_dir(),
-        config.instance.wal_dir(),
-    ] {
-        rm_tarantool_files(dir)?;
-    }
+    //
+    // Vinyl runs matter as much as the snapshots and WALs here: runs the
+    // restored vylog knows nothing about would never be collected (vinyl's GC
+    // is driven by the vylog), and vinyl restarts handing out run ids from the
+    // restored vylog's maximum, so it would eventually try to create a run
+    // whose file is already there and fail the next dump.
+    cleanup_stale_tarantool_files(config)?;
 
     // Move data from backup dir to instance data dir.
     for entry in fs::read_dir(backup_path)? {

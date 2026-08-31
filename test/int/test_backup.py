@@ -884,6 +884,164 @@ def test_backup_works_with_vinyl(cluster: Cluster):
         assert [data] in dql
 
 
+def test_backup_restore_with_shredding_and_vinyl(cluster: Cluster):
+    """A shredded file must never be readable under a name still considered live.
+
+    Shredding overwrites a file in place before unlinking it, and
+    `KEEP_FILES_AFTER_SHREDDING` stops after overwrite passes but before unlinking.
+    This way we simulate interrupted shredding pass: files keep their namesbut contain garbage.
+    Without the `.inprogress` rename it keeps its original name while in that
+    state, so anything that reads the data directory by name picks the garbage
+    up as valid data causing recovery errors indicating xlog corruption.
+
+    The rename fixes this by utilizing suffix tarantool already reserves for
+    half-written files which are ignored and removed during recovery, so half shredded data files
+    left by an interrupted pass cant be treated as valid data files.
+    """
+    shared_dir = create_share_dir_in_tmp(cluster)
+    cluster.deploy(instance_count=2, wait_online=False)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=2, share_dir_path=shared_dir)
+
+    # `Instance.start()` snapshots `env`, so shredding has to be enabled before
+    # the instance comes up -- setting it afterwards has no effect whatsoever.
+    cluster.instances[0].env["PICODATA_SHREDDING"] = "true"
+
+    i1, _ = cluster.wait_online()
+    cluster.wait_until_buckets_balanced()
+
+    i1.call("pico._inject_error", "KEEP_FILES_AFTER_SHREDDING", True)
+
+    table_name = "t"
+    i1.sql(f"create table {table_name}(a int primary key) using vinyl")
+    for v in [1, 2, 3]:
+        i1.sql(f"insert into {table_name} values ({v})")
+
+    i1.eval("box.cfg{ checkpoint_count = 1 }")
+    i1.eval("box.snapshot(); box.snapshot()")
+
+    ddl = i1.sql("BACKUP", timeout=35)
+    new_backup_folder_name = ddl[0][0]
+
+    # Without .inprogress: garbage at real path, recovery fails.
+    # With    .inprogress: garbage at .inprogress path, ignored.
+    cluster.restore(new_backup_folder_name, 1)
+
+    assert i1.sql(f"select * from {table_name}") == [[1], [2], [3]]
+
+
+def vinyl_run_ids(vinyl_dir: Path) -> dict[str, set[str]]:
+    """Map `<space_id>/<index_id>` -> set of run ids present on disk."""
+    runs: dict[str, set[str]] = {}
+    for run in vinyl_dir.glob("*/*/*.run"):
+        lsm = str(run.parent.relative_to(vinyl_dir))
+        runs.setdefault(lsm, set()).add(run.name[: -len(".run")])
+    return runs
+
+
+def dump_vinyl(i: Instance, table_name: str, values: range):
+    """Insert a batch and force a vinyl dump, creating a fresh run per index."""
+    for v in values:
+        i.sql(f"INSERT INTO {table_name} VALUES ({v})")
+    i.call("box.snapshot")
+
+
+# `picodata restore` must leave behind no vinyl run that the restored vylog
+# knows nothing about.
+#
+# The backup's vinyl subdirectories are merged into the existing ones without
+# replacing them, so runs created after the backup would otherwise outlive
+# a restore that rewinds the vylog past them. Nothing would ever collect them
+# because vinyl's GC is driven by the vylog. Since vinyl resumes handing out run
+# ids from the restored vylog's maximum, it re-allocates their ids and aborts
+# the next dump in `xlog_create()` with EEXIST.
+#
+# The files an interrupted shredding pass leaves on disk need to be removed for the same
+# reason: `xlog_shredding_remove_cb` renames a run to `<id>.run.inprogress` before
+# overwriting it, and that is the exact name tarantool opens every new run under
+# (with `O_EXCL`), so a file left by shredding can collide with the new run the same way.
+def test_restore_removes_stale_vinyl_runs(cluster: Cluster):
+    instance_dir = Path(cluster.data_dir, "i1")
+    vinyl_dir = Path(cluster.data_dir, "vinyl")
+    cluster.set_config_file(
+        yaml=f"""
+cluster:
+    name: test
+    tier:
+        default:
+            replication_factor: 1
+            can_vote: true
+instance:
+    instance_dir: {instance_dir}
+    wal_dir: {instance_dir}
+    memtx:
+        dir: {instance_dir}
+    vinyl:
+        dir: {vinyl_dir}
+"""
+    )
+    cluster.set_service_password("password")
+    i1 = cluster.add_instance(name="i1")
+
+    table_name = "t"
+    i1.sql(f"CREATE TABLE {table_name} (id INT PRIMARY KEY) USING VINYL")
+    dump_vinyl(i1, table_name, range(1, 6))
+
+    backup_name = i1.sql("BACKUP", timeout=40)[0][0]
+    backed_up = vinyl_run_ids(Path(i1.backup_dir, backup_name))
+    assert backed_up, "backup must contain vinyl runs"
+
+    # Create runs the backup does not know about. Two dump cycles are enough
+    # for vinyl to allocate ids past the ones recorded in the backup's vylog.
+    dump_vinyl(i1, table_name, range(6, 12))
+    dump_vinyl(i1, table_name, range(12, 18))
+
+    stale = {lsm: ids - backed_up.get(lsm, set()) for lsm, ids in vinyl_run_ids(vinyl_dir).items()}
+    assert any(stale.values()), "test setup must produce runs newer than the backup"
+
+    # Emulate a GC pass interrupted partway through shredding those runs. It
+    # works through a run's files in the order `.index`, `.run` (see
+    # `vy_run_remove_files_f`) and renames each aside before overwriting it, so
+    # an interruption leaves the stale runs in a mix of states rather than all
+    # in the same one -- some not reached at all, some only half way through.
+    def rename_aside(path: Path):
+        path.rename(path.parent / f"{path.name}.inprogress")
+
+    for n, (lsm, run_id) in enumerate(sorted((lsm, rid) for lsm, ids in stale.items() for rid in ids)):
+        index = vinyl_dir / lsm / f"{run_id}.index"
+        run = vinyl_dir / lsm / f"{run_id}.run"
+        if n % 3 == 0:
+            pass  # not reached yet: both files still under their own names
+        elif n % 3 == 1:
+            rename_aside(index)  # interrupted while shredding the index
+        else:
+            index.unlink()  # index already gone, interrupted on the run
+            rename_aside(run)
+
+    assert list(vinyl_dir.glob("*/*/*.inprogress")), "setup must leave shredding leftovers"
+    assert vinyl_run_ids(vinyl_dir), "setup must leave runs under their original names too"
+
+    cluster.restore(backup_name)
+
+    # Nothing that predates the restore and is absent from the backup may
+    # remain: neither the stale runs themselves nor the shredding leftovers.
+    survivors = {lsm: ids & stale.get(lsm, set()) for lsm, ids in vinyl_run_ids(vinyl_dir).items()}
+    assert not any(survivors.values()), f"restore left stale vinyl runs: {survivors}"
+    assert not list(vinyl_dir.glob("*/*/*.inprogress")), "restore left shredding leftovers behind"
+
+    # `backup_dir` defaults to `<instance_dir>/backup`, so the cleanup of
+    # `instance_dir` walks right past the backup it is restoring from. It must
+    # not descend into it.
+    assert vinyl_run_ids(Path(i1.backup_dir, backup_name)) == backed_up, "restore damaged the backup it read from"
+
+    assert i1.sql(f"SELECT * FROM {table_name}") == [[1], [2], [3], [4], [5]]
+
+    # The run ids reclaimed after the rewind must be usable again, so vinyl
+    # checkpointing has to keep working.
+    dump_vinyl(i1, table_name, range(100, 110))
+    dump_vinyl(i1, table_name, range(110, 120))
+
+
 def test_backup_raises_schema_version(cluster: Cluster):
     shared_dir = create_share_dir_in_tmp(cluster)
     cluster.deploy(instance_count=2, wait_online=False)
