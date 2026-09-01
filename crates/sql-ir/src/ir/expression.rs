@@ -1798,9 +1798,16 @@ impl Plan {
             };
 
             for index in indices {
-                let col_id = *child_node_row_list
-                    .get(index)
-                    .expect("Column id not found under relational child output");
+                let Some(col_id) = child_node_row_list.get(index).copied() else {
+                    return Err(SbroadError::Invalid(
+                        Entity::Expression,
+                        Some(format_smolstr!(
+                            "column at position {index} is not among the {} columns of the \
+                             relational child output",
+                            child_node_row_list.len()
+                        )),
+                    ));
+                };
 
                 let is_system = is_system_column(col_id)?;
                 if !need_sharding_column && is_system {
