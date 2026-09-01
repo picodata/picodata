@@ -20,15 +20,15 @@ import socket
 import subprocess
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from textwrap import dedent
-from typing import Any, Dict, Iterable, Iterator, List, Optional
+from typing import Any
 
 
-def fmt_args(args):
+def fmt_args(args: Iterable[Any]) -> str:
     limit = 80
     res = " ".join(str(x) for x in args)
     if len(res) > limit:
@@ -36,14 +36,26 @@ def fmt_args(args):
     return res
 
 
-def check_call(cmd, **kwargs):
+def check_call(cmd: list[Any], **kwargs: Any) -> int:
     print("\t", "$", fmt_args(cmd))
     return subprocess.check_call(cmd, **kwargs)
 
 
-def check_output(cmd, **kwargs):
+def check_output(cmd: list[Any], **kwargs: Any) -> Any:
     print("\t", "$", fmt_args(cmd))
     return subprocess.check_output(cmd, **kwargs)
+
+
+def xdg_open(path: Path) -> None:
+    tool = dict(linux="xdg-open", darwin="open").get(sys.platform)
+    if not tool:
+        raise Exception(f"Unknown platform {sys.platform}")
+
+    check_call(
+        [tool, path],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def file_mtime_or_zero(path: Path) -> int:
@@ -66,27 +78,18 @@ def intersperse(sep: Any, iterable: Iterable[Any]) -> Iterator[Any]:
         yield item
 
 
-def find_demangler(demangler: Optional[Path] = None) -> Path:
+def find_demangler(demangler: Path | None = None) -> Path:
     known_tools = ["llvm-cxxfilt", "rustfilt", "c++filt"]
 
-    if demangler:
-        # Explicit argument has precedence over `known_tools`
-        demanglers = [demangler]
-    else:
-        demanglers = [Path(x) for x in known_tools]
+    # Explicit argument has precedence over `known_tools`
+    demanglers = [demangler] if demangler else [Path(x) for x in known_tools]
 
     for exe in demanglers:
         if shutil.which(exe):
             return exe
 
     raise Exception(
-        " ".join(
-            [
-                "Failed to find symbol demangler.",
-                "Please install it or provide another tool",
-                f"(e.g. {', '.join(known_tools)})",
-            ]
-        )
+        f"Failed to find symbol demangler. Please install it or provide another tool (e.g. {', '.join(known_tools)})"
     )
 
 
@@ -146,13 +149,13 @@ class Cargo:
             cmd.append("--no-deps")
         return json.loads(subprocess.check_output(cmd, cwd=self.cwd))
 
-    def crate_sources(self, crate_names: List[str]) -> List[str]:
+    def crate_sources(self, crate_names: list[str]) -> list[str]:
         """
         Resolve crate names to their source directories via cargo metadata.
         """
 
         name_set = set(crate_names)
-        sources = []
+        sources: list[str] = []
         meta = self.metadata()
         for pkg in meta.get("packages", []):
             if pkg["name"] in name_set:
@@ -161,14 +164,14 @@ class Cargo:
                     sources.append(str(src_dir))
         return sources
 
-    def binaries(self, profile: str) -> List[str]:
+    def binaries(self, profile: str) -> list[str]:
         return [
             *self.test_binaries(profile),
             *self.regular_binaries(profile),
         ]
 
-    def test_binaries(self, profile: str) -> List[str]:
-        executables = []
+    def test_binaries(self, profile: str) -> list[str]:
+        executables: list[str] = []
 
         # This will emit json messages containing names of the test binaries
         cmd = [
@@ -188,8 +191,8 @@ class Cargo:
 
         return executables
 
-    def regular_binaries(self, profile: str) -> List[str]:
-        executables = []
+    def regular_binaries(self, profile: str) -> list[str]:
+        executables: list[str] = []
 
         # Metadata contains crate names, which can be used
         # to recover names of the executables
@@ -216,14 +219,10 @@ class LLVM:
         if not shutil.which(name):
             # Show a user-friendly warning
             raise Exception(
-                " ".join(
-                    [
-                        f"It appears that you don't have `{name}` installed.",
-                        "Please execute `rustup component add llvm-tools`,",
-                        "or install it via your package manager of choice.",
-                        "LLVM tools should be the same version as LLVM in `rustc --version --verbose`.",
-                    ]
-                )
+                f"It appears that you don't have `{name}` installed. "
+                "Please execute `rustup component add llvm-tools`, "
+                "or install it via your package manager of choice. "
+                "LLVM tools should be the same version as LLVM in `rustc --version --verbose`."
             )
 
         return name
@@ -247,13 +246,13 @@ class LLVM:
 
     def _cov(
         self,
-        *args,
+        *args: str,
         subcommand: str,
         profdata: Path,
-        objects: List[str],
-        sources: List[str],
-        demangler: Optional[Path] = None,
-        output_file: Optional[Path] = None,
+        objects: list[str],
+        sources: list[str],
+        demangler: Path | None = None,
+        output_file: Path | None = None,
     ) -> None:
         cwd = self.cargo.cwd
         objects = list(intersperse("-object", objects))
@@ -278,20 +277,19 @@ class LLVM:
             *sources,
         ]
         if output_file is not None:
+            # Unlike `-output-dir`, llvm-cov won't create it for us
+            output_file.parent.mkdir(parents=True, exist_ok=True)
             with output_file.open("w") as outfile:
                 check_call(cmd, cwd=cwd, stdout=outfile)
         else:
             check_call(cmd, cwd=cwd)
 
-    def cov_report(self, **kwargs) -> None:
-        self._cov(subcommand="report", **kwargs)
-
     def cov_export(
         self,
-        *args,
+        *args: str,
         kind: str,
-        output_file: Optional[Path],
-        **kwargs,
+        output_file: Path | None,
+        **kwargs: Any,
     ) -> None:
         self._cov(
             *args,
@@ -305,19 +303,18 @@ class LLVM:
         self,
         *,
         kind: str,
-        output_dir: Optional[Path] = None,
-        show_instantiations: bool = False,
-        **kwargs,
+        output_dir: Path | None = None,
+        **kwargs: Any,
     ) -> None:
         extras = [
             f"-format={kind}",
-            f"-show-instantiations={str(show_instantiations).lower()}",
+            "-show-instantiations=false",
             "-show-branch-summary=false",  # currently not supported by rustc
         ]
         if output_dir:
             extras.append(f"-output-dir={output_dir}")
 
-        self._cov(subcommand="show", *extras, **kwargs)
+        self._cov(*extras, subcommand="show", **kwargs)
 
 
 @dataclass
@@ -329,7 +326,7 @@ class ProfDir:
         self.cwd.mkdir(parents=True, exist_ok=True)
 
     @property
-    def files(self) -> List[Path]:
+    def files(self) -> list[Path]:
         return [f for f in self.cwd.iterdir() if f.suffix in (".profraw", ".profdata")]
 
     @property
@@ -360,10 +357,10 @@ class ProfDir:
         for file in self.cwd.iterdir():
             os.remove(file)
 
-    def __truediv__(self, other):
+    def __truediv__(self, other: str) -> Path:
         return self.cwd / other
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.cwd)
 
 
@@ -376,113 +373,131 @@ class ReportData:
     llvm: LLVM
     demangler: Path
     profdata: Path
-    objects: List[str]
-    sources: List[str]
+    objects: list[str]
+    sources: list[str]
 
 
 class Report(ABC, ReportData):
-    def _common_kwargs(self) -> Dict[str, Any]:
-        return dict(
+    def _common_kwargs(self, **overrides: Any) -> dict[str, Any]:
+        """Common properties of a report; `overrides` take precedence."""
+
+        kwargs = dict(
             profdata=self.profdata,
             objects=self.objects,
             sources=self.sources,
             demangler=self.demangler,
         )
+        return {**kwargs, **overrides}
 
     @abstractmethod
-    def generate(self) -> None:
-        pass
+    def entry_point(self, path: Path) -> Path:
+        """The report's main file within the directory `path`"""
 
-    def open(self) -> None:
-        # Do nothing by default
-        pass
+    @abstractmethod
+    def generate(self, path: Path) -> None:
+        """Render the report into the directory `path`"""
 
-
-class SummaryReport(Report):
-    def generate(self) -> None:
-        self.llvm.cov_report(**self._common_kwargs())
-
-
-class TextReport(Report):
-    def generate(self) -> None:
-        self.llvm.cov_show(kind="text", **self._common_kwargs())
+    def open(self, path: Path) -> None:
+        """Open the report at `path`. Does nothing by default."""
 
 
 @dataclass
 class JsonReport(Report):
-    output_file: Path
+    def entry_point(self, path: Path) -> Path:
+        return path / "report.json"
 
-    def generate(self) -> None:
+    def generate(self, path: Path) -> None:
+        output_file = self.entry_point(path)
         self.llvm.cov_export(
             "-summary-only",
             kind="text",
-            output_file=self.output_file,
+            output_file=output_file,
             **self._common_kwargs(),
         )
+        self._postprocess(output_file)
 
+    @staticmethod
+    def _filter_summary(summary: dict[str, Any]) -> dict[str, Any]:
+        # Metrics we care about; everything else llvm-cov
+        # reports (`branches`, `instantiations`, `mcdc`) is dropped.
+        kept = ("functions", "lines", "regions")
+        return {k: summary[k] for k in kept if k in summary}
 
-@dataclass
-class LcovReport(Report):
-    output_file: Path
+    def _postprocess(self, path: Path) -> None:
+        with path.open() as stream:
+            report = json.load(stream)
 
-    def generate(self) -> None:
-        self.llvm.cov_export(
-            kind="lcov",
-            output_file=self.output_file,
-            **self._common_kwargs(),
-        )
+        for export in report.get("data", []):
+            for file in export.get("files", []):
+                file["summary"] = self._filter_summary(file.get("summary", {}))
+            if "totals" in export:
+                export["totals"] = self._filter_summary(export["totals"])
+
+        with path.open("w") as stream:
+            json.dump(report, stream, indent=2)
+            stream.write("\n")
 
 
 @dataclass
 class HtmlReport(Report):
-    output_dir: Path
+    def entry_point(self, path: Path) -> Path:
+        return path / "index.html"
 
-    def generate(self) -> None:
+    def generate(self, path: Path) -> None:
         self.llvm.cov_show(
             kind="html",
-            output_dir=self.output_dir,
+            output_dir=path,
             **self._common_kwargs(),
         )
-        print(f"HTML report is located at `{self.output_dir}`")
 
-    def open(self) -> None:
-        tool = dict(linux="xdg-open", darwin="open").get(sys.platform)
-        if not tool:
-            raise Exception(f"Unknown platform {sys.platform}")
-
-        check_call(
-            [tool, self.output_dir / "index.html"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+    def open(self, path: Path) -> None:
+        xdg_open(self.entry_point(path))
 
 
 @dataclass
-class GithubPagesReport(HtmlReport):
-    output_dir: Path
+class MultiReport(Report):
+    """
+    Renders several reports at once (local & all sources, plus a json
+    summary) and ties them together with a handwritten index page.
+    """
+
     commit_url: str = "https://local/deadbeef"
 
-    def generate(self) -> None:
-        def index_path(path):
-            return path / "index.html"
+    def entry_point(self, path: Path) -> Path:
+        return path / "index.html"
 
-        common = self._common_kwargs()
+    def generate(self, path: Path) -> None:
         # Provide default sources if there's none
-        common.setdefault("sources", ["."])
+        sources = self.sources or ["."]
 
-        self.llvm.cov_show(kind="html", output_dir=self.output_dir, **common)
-        shutil.copy(index_path(self.output_dir), self.output_dir / "local.html")
+        local = HtmlReport(llvm=self.llvm, **self._common_kwargs(sources=sources))
+        local.generate(path)
+        shutil.copy(local.entry_point(path), path / "local.html")
 
-        with TemporaryDirectory() as tmp:
-            output_dir = Path(tmp)
-            args = dict(common, sources=[])
-            self.llvm.cov_show(kind="html", output_dir=output_dir, **args)
-            shutil.copy(index_path(output_dir), self.output_dir / "all.html")
+        # The `all sources` variant is a superset of the previous one, so we
+        # just render it over the same directory & save the index page again.
+        everything = HtmlReport(llvm=self.llvm, **self._common_kwargs(sources=[]))
+        everything.generate(path)
+        shutil.copy(everything.entry_point(path), path / "all.html")
 
-        with open(index_path(self.output_dir), "w") as index:
+        summary = JsonReport(llvm=self.llvm, **self._common_kwargs(sources=sources))
+        summary.generate(path)
+
+        with open(self.entry_point(path), "w") as index:
             commit_sha = self.commit_url.rsplit("/", maxsplit=1)[-1][:10]
 
-            html = f"""
+            def link(url: str, text: str) -> str:
+                return dedent(f"""
+                    <a href="{url}">{text}</a>
+                """)
+
+            def bold(text: str) -> str:
+                return f"<b>{text}</b>"
+
+            def par(url: str, text: str) -> str:
+                return f"<p>{link(url, text)}</p>"
+
+            html = dedent(f"""
                 <!DOCTYPE html>
                 <html>
                     <head>
@@ -491,36 +506,28 @@ class GithubPagesReport(HtmlReport):
                     <body>
                         <h1>
                             Coverage report for commit
-                                <a href="{self.commit_url}">
-                                    {commit_sha}
-                                </a>
+                                {link(self.commit_url, commit_sha)}
                         </h1>
 
-                        <p>
-                            <a href="./local.html">
-                                <b>Show only local sources</b>
-                            </a>
-                        </p>
-
-                        <p>
-                            <a href="./all.html">
-                                Show all sources (including dependencies)
-                            </a>
-                        </p>
+                        {par("./local.html", bold("Own sources"))}
+                        {par("./all.html", "All sources (including dependencies)")}
+                        {par(f"./{summary.entry_point(path).name}", "Raw summary data (json)")}
                     </body>
                 </html>
-            """
-            index.write(dedent(html))
+            """)
 
-        print(f"HTML report is located at `{self.output_dir}`")
+            index.write(html)
+
+    def open(self, path: Path) -> None:
+        xdg_open(self.entry_point(path))
 
 
 class State:
     def __init__(
         self,
         cwd: Path,
-        top_dir: Optional[Path],
-        profraw_prefix: Optional[str],
+        top_dir: Path | None,
+        profraw_prefix: str | None,
     ) -> None:
         # Use hostname by default
         self.profraw_prefix = profraw_prefix or socket.gethostname()
@@ -600,17 +607,17 @@ class State:
         print(f"* Merging profdata files into {self.final_profdata.name}")
         return self.profdata_dir.merge(self.final_profdata, failure_mode)
 
-    def do_run(self, args) -> None:
+    def do_run(self, args: argparse.Namespace) -> None:
         check_call([*args.command, *args.args])
 
-    def do_merge(self, args) -> None:
+    def do_merge(self, args: argparse.Namespace) -> None:
         match args.kind:
             case "profraw":
                 self._merge_profraw(args.failure_mode)
             case "profdata":
                 self._merge_profdata(args.failure_mode)
 
-    def do_report(self, args) -> None:
+    def do_report(self, args: argparse.Namespace) -> None:
         if args.all and args.sources:
             raise Exception("--all should not be used with sources")
 
@@ -618,12 +625,13 @@ class State:
             raise Exception("--format=github should be used with --commit-url")
 
         # see man for `llvm-cov show [sources]`
+        sources: list[str]
         if args.all:
             sources = []
         elif not args.sources and not args.crates:
             sources = ["."]
         else:
-            sources = list(args.sources or [])
+            sources = [str(x) for x in args.sources]
 
         if args.crates:
             print(f"* Resolving crate sources: {', '.join(args.crates)}")
@@ -632,29 +640,30 @@ class State:
         if not self._merge_profdata(args.failure_mode):
             raise Exception(f"No coverage data files found at {self.top_dir}")
 
-        objects = []
+        objects: list[str] = []
         if args.input_objects:
             print("* Collecting object files using --input-objects")
             with open(args.input_objects) as f:
                 objects.extend(f.read().splitlines(keepends=False))
 
+        collect: Callable[[str], list[str]] | None
         match args.cargo_objects:
             case "all":
-                print("* Collecting all executables using cargo")
-                objects.extend(self.cargo.binaries(args.profile))
+                collect = self.cargo.binaries
             case "tests":
-                print("* Collecting test executables using cargo")
-                objects.extend(self.cargo.test_binaries(args.profile))
+                collect = self.cargo.test_binaries
             case "bins":
-                print("* Collecting regular executables using cargo")
-                objects.extend(self.cargo.regular_binaries(args.profile))
+                collect = self.cargo.regular_binaries
             case "auto" if not args.input_objects:
-                print("* Collecting all executables using cargo")
-                objects.extend(self.cargo.regular_binaries(args.profile))
+                collect = self.cargo.regular_binaries
             case _:
-                pass  # do nothing
+                collect = None
 
-        params: Dict[str, Any] = dict(
+        if collect is not None:
+            print(f"* Collecting executables using cargo ({args.cargo_objects})")
+            objects.extend(collect(args.profile))
+
+        params: dict[str, Any] = dict(
             llvm=self.llvm,
             demangler=find_demangler(args.demangler),
             profdata=self.final_profdata,
@@ -662,50 +671,33 @@ class State:
             sources=sources,
         )
 
-        report = None
+        report: Report
         match args.format:
             case "html":
-                report = HtmlReport(
-                    **params,
-                    output_dir=self.report_dir,
-                )
+                report = HtmlReport(**params)
             case "json":
-                report = JsonReport(
-                    **params,
-                    output_file=self.report_dir / "report.json",
-                )
-            case "lcov":
-                report = LcovReport(
-                    **params,
-                    output_file=self.report_dir / "lcov.info",
-                )
+                report = JsonReport(**params)
             case "github":
-                report = GithubPagesReport(
-                    **params,
-                    output_dir=self.report_dir,
-                    commit_url=args.commit_url,
-                )
-            case "text":
-                report = TextReport(**params)
-            case "summary":
-                report = SummaryReport(**params)
+                report = MultiReport(**params, commit_url=args.commit_url)
             case _:
                 raise Exception("unknown report format")
 
+        path = self.report_dir
         print(f"* Rendering coverage report ({args.format})")
-        report.generate()
+        report.generate(path)
+        print(f"* Report is located at `{report.entry_point(path)}`")
 
         if args.open:
             print("* Opening the report")
-            report.open()
+            report.open(path)
 
-    def do_list(self, args) -> None:
+    def do_list(self, args: argparse.Namespace) -> None:
         for f in self.profraw_dir.files:
             print(f)
         for f in self.profdata_dir.files:
             print(f)
 
-    def do_clean(self, args: Any) -> None:
+    def do_clean(self, args: argparse.Namespace) -> None:
         # Wipe everything if no filters have been provided
         if not (args.report or args.prof):
             shutil.rmtree(self.top_dir, ignore_errors=True)
@@ -779,7 +771,7 @@ self-contained example:
     p_report.add_argument(
         "--format",
         default="html",
-        choices=("html", "text", "json", "summary", "lcov", "github"),
+        choices=("html", "json", "github"),
         help="report format",
     )
     p_report.add_argument(
