@@ -199,7 +199,8 @@ instance:
     i1.start()
     i1.wait_online()
 
-    assert all(lc.matched for lc in lcs)
+    for lc in lcs:
+        lc.wait_matched()
 
 
 @pytest.mark.parametrize("set", COMMON_TLS_SETS)
@@ -227,7 +228,8 @@ instance:
     i1.start()
     i1.wait_online()
 
-    assert all(lc.matched for lc in lcs)
+    for lc in lcs:
+        lc.wait_matched()
 
 
 @pytest.mark.parametrize("set", COMMON_TLS_SETS)
@@ -255,7 +257,8 @@ instance:
     i1.start()
     i1.wait_online()
 
-    assert all(lc.matched for lc in lcs)
+    for lc in lcs:
+        lc.wait_matched()
 
 
 @pytest.mark.parametrize("set", COMMON_TLS_SETS)
@@ -307,4 +310,5 @@ instance:
 
     i1.call("pico.enable_plugin", "testplug_listener", "0.1.0", timeout=10)
 
-    assert all(lc.matched for lc in lcs)
+    for lc in lcs:
+        lc.wait_matched()

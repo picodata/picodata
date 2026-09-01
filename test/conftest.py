@@ -3513,6 +3513,8 @@ def pgrep_tree(pid):
         return [pid]
 
 
+# BEWARE! Using `assert log_crawler.matched` in a test might make your test flaky:
+#  https://git.picodata.io/core/picodata/-/work_items/3154
 class log_crawler:
     def __init__(self, instance: Instance, search_str: str, use_regex: bool = False) -> None:
         self.instance = instance
@@ -3566,7 +3568,7 @@ class log_crawler:
                 return
 
         #
-        # Look trough the search window
+        # Look through the search window
         #
         if not self.current_window[0].endswith(self.expected_lines[0]):
             return

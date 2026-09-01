@@ -58,7 +58,7 @@ def test_slow_ddl_apply_does_not_backoff(cluster: Cluster):
     lc = log_crawler(i1, BACKOFF_LOG_LINE)
     block_apply_on_i2_for(10)
     assert i1.sql("CREATE TABLE t2 (id INT PRIMARY KEY)", timeout=60)["row_count"] == 1
-    assert not lc.matched
+    assert not lc.matched  # FIXME: don't rely on log matching, expose a metric instead
 
 
 def test_ddl_rpc_timeout_does_not_delay_offline_detection(cluster: Cluster):

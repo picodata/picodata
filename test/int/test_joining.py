@@ -432,7 +432,7 @@ def test_pico_service_invalid_existing_password(cluster: Cluster):
     i2.set_service_password("wrongpassword")
     lc.matched = False
     i2.fail_to_start()
-    assert lc.matched
+    lc.wait_matched()
 
 
 def test_pico_service_invalid_requirements_password(cluster: Cluster):

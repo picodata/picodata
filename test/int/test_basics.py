@@ -922,7 +922,7 @@ def test_pico_service_password_security_warning(cluster: Cluster):
     lc = log_crawler(i1, message)
     i1.start()
     i1.wait_online()
-    assert lc.matched
+    lc.wait_matched()
 
     i1.terminate()
 
