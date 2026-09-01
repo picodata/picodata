@@ -1189,20 +1189,27 @@ impl Plan {
             plan: &mut Plan,
             leaf_refs: &[NodeId],
             col_pos_transforms: &HashMap<usize, usize>,
-        ) {
-            leaf_refs
-                .iter()
-                .for_each(|ref_id| match plan.get_mut_expression_node(*ref_id) {
+        ) -> Result<(), SbroadError> {
+            for ref_id in leaf_refs {
+                match plan.get_mut_expression_node(*ref_id) {
                     Ok(
                         MutExpression::Reference(Reference { position, .. })
                         | MutExpression::SubQueryReference(SubQueryReference { position, .. }),
                     ) => {
-                        *position = *col_pos_transforms
-                            .get(position)
-                            .expect("all of leaf references must be mapped");
+                        *position = *col_pos_transforms.get(position).ok_or_else(|| {
+                            SbroadError::Invalid(
+                                Entity::Expression,
+                                Some(format_smolstr!(
+                                    "reference at position {position} is not among the columns \
+                                     the projection keeps"
+                                )),
+                            )
+                        })?;
                     }
                     _ => unreachable!("expected to find only Reference or SubqueryReference"),
-                });
+                }
+            }
+            Ok(())
         }
 
         let (output, col_pos_transforms) = match self.get_relation_node(parent_rel_id)? {
@@ -1218,7 +1225,7 @@ impl Plan {
                     .map(|(idx, &value)| (value, idx))
                     .collect();
 
-                transform_reference_positions(self, &leaf_refs, &col_pos_transforms);
+                transform_reference_positions(self, &leaf_refs, &col_pos_transforms)?;
 
                 (
                     self.add_row_by_indices(
