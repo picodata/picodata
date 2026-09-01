@@ -9,7 +9,7 @@
 </div>
 
 <div align="center">
-<h2>Distributed, PostgreSQL-Compatible In-Memory Database</h2>
+<h2>Distributed, PostgreSQL-compatible Database with plugins in Rust</h2>
 </div>
 
 <div align="center">
