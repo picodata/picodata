@@ -28,6 +28,9 @@ from textwrap import dedent
 from typing import Any
 
 
+SYNTAX_HIGHLIGHTER = Path(__file__).parent / "coverage-syntax-highlight.py"
+
+
 def fmt_args(args: Iterable[Any]) -> str:
     limit = 80
     res = " ".join(str(x) for x in args)
@@ -449,6 +452,7 @@ class HtmlReport(Report):
             output_dir=path,
             **self._common_kwargs(),
         )
+        check_call([sys.executable, SYNTAX_HIGHLIGHTER, path])
 
     def open(self, path: Path) -> None:
         xdg_open(self.entry_point(path))
