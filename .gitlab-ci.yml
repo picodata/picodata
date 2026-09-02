@@ -1020,7 +1020,8 @@ check-pycopin:
   variables:
     PICODATA_IMAGE: ${REGISTRY}/picodata:${CI_COMMIT_TAG}
   inherit:
-    variables: false
+    variables:
+     - REGISTRY
   trigger:
     project: "core/drivers/picopyn"
 
