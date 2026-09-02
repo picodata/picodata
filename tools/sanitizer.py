@@ -83,7 +83,7 @@ class State:
         self,
         cwd: Path,
         output_dir: Optional[Path],
-        fail_fast: bool,
+        no_halt_on_error: bool,
         timeout_scale_factor: float = DEFAULT_TIMEOUT_SCALE_FACTOR,
     ):
         # Warn about impactful environment variables
@@ -94,7 +94,7 @@ class State:
 
         self.cwd = cwd
         self.output_dir = output_dir or (cwd / "target" / "sanitizer")
-        self.fail_fast = fail_fast
+        self.no_halt_on_error = no_halt_on_error
         self.timeout_scale_factor = timeout_scale_factor
         self.log_dir = self.output_dir / "logs"
         self.host_target = get_host_target()
@@ -143,8 +143,8 @@ class State:
 
         # Build ASan options (user's ASAN_OPTIONS appended last to allow overrides)
         opts = AsanOptions(
-            log_path=self.log_dir,
-            halt_on_error=self.fail_fast,
+            log_path=self.log_dir if self.no_halt_on_error else None,
+            halt_on_error=not self.no_halt_on_error,
             user_overrides=os.environ.get("ASAN_OPTIONS", ""),
         )
         env["ASAN_OPTIONS"] = opts.to_asan_options()
@@ -249,8 +249,8 @@ Examples:
     # CI mode: fail if issues found
     %(prog)s report --fail-if-issues
 
-    # Fail-fast mode for debugging
-    %(prog)s --fail-fast run cargo test
+    # Don't stop on first detected error. Useful for rust unit tests, which all run in the same process
+    %(prog)s --no-halt-on-error run cargo test
 """,
     )
 
@@ -258,9 +258,9 @@ Examples:
 
     # FIXME: --no-halt-on-error and --timeout-scale-factor should only be accepted by the `run` subcommand
     parser.add_argument(
-        "--fail-fast",
+        "--no-halt-on-error",
         action="store_true",
-        help="Stop on first ASan error",
+        help="Do not stop on first ASAN error",
     )
     parser.add_argument(
         "--timeout-scale-factor",
@@ -292,7 +292,7 @@ Examples:
     state = State(
         cwd=Path.cwd(),
         output_dir=args.dir,
-        fail_fast=args.fail_fast,
+        no_halt_on_error=args.no_halt_on_error,
         timeout_scale_factor=args.timeout_scale_factor,
     )
 
