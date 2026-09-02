@@ -57,10 +57,14 @@ class AsanOptions:
     log_path: Optional[Path] = None
     halt_on_error: bool = False
     user_overrides: str = ""
+    exitcode: int = 1
 
     def to_asan_options(self) -> str:
         opts = {
             "halt_on_error": "1" if self.halt_on_error else "0",
+            # Make ASAN exit with a custom exit code, so that test harness can determine that the non-successful exit
+            # is _likely_ due to an ASAN failure.
+            "exitcode": 97,  # ord('a'), for 'asan'
             "detect_leaks": "0",
             "detect_stack_use_after_return": "1",
             "check_initialization_order": "1",

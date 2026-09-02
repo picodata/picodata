@@ -58,6 +58,7 @@ from framework.util.git import project_git_version
 from framework.util.path import project_root_path
 from framework.util.version import ExecutableVersion
 from framework.util.version import parse_version_exc
+from framework.util.asan import get_configured_asan_exit_code
 from framework.util import BASE_HOST
 from framework.util import ExpectedError
 
@@ -1784,6 +1785,13 @@ class Instance:
             pass
         else:
             message = f"process exited unexpectedly, {exit_code=} (instance {self.name_or_port()})"
+
+            # `tools/sanitizer.py` sets `exitcode` in `ASAN_OPTIONS`. Parse it so we can mark exits with this exit
+            # code as ASAN failures.
+            asan_exitcode = get_configured_asan_exit_code()
+            if asan_exitcode is not None and exit_code == asan_exitcode:
+                message += ". This is likely an ASAN failure, see process stderr"
+
             pid = self.process.pid
             bt = os.path.join(self.cwd, f"picodata-{pid}.backtrace")
             if os.path.exists(bt):
