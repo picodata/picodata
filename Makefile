@@ -217,7 +217,12 @@ asan-build-dev:
 .PHONY: asan-test-rs
 asan-test-rs: export CARGO_TARGET_DIR = $(TARGET_DIR_ASAN)
 asan-test-rs:
-	tools/sanitizer.py run $(MAKE) test-rs-picodata CARGO_TEST_FLAGS="-p picodata"
+	tools/sanitizer.py clean
+	# Since multiple unit tests are ran in the same process, instruct sanitizer.py to pass the halt_on_error=0 option.
+	# This prevents one issue from masking others.
+	tools/sanitizer.py run --no-halt-on-error $(MAKE) test-rs-picodata CARGO_TEST_FLAGS="-p picodata"
+	# Report all found issues
+	tools/sanitizer.py report --fail-if-issues
 
 .PHONY: asan-test-py
 asan-test-py: export CARGO_TARGET_DIR = $(TARGET_DIR_ASAN)

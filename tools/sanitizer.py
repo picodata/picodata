@@ -76,110 +76,6 @@ class AsanOptions:
         return result
 
 
-@dataclass
-class AsanFinding:
-    """A single ASan finding (error)."""
-
-    error_type: str  # e.g., "heap-buffer-overflow", "use-after-free"
-    summary: str  # First line of error
-    stack_frames: List[str]  # List of "function at file:line" strings
-    raw_text: str  # Full original text
-
-
-class LogParser:
-    """Parse ASan log files."""
-
-    # ASAN error pattern: ==PID==ERROR: AddressSanitizer: <type>
-    ASAN_ERROR_RE = re.compile(r"==\d+==ERROR: AddressSanitizer: (\S+)")
-    # Stack frame pattern: #N 0x... in function /path/file:line
-    FRAME_RE = re.compile(r"#\d+\s+0x[0-9a-f]+\s+in\s+(\S+)\s+(\S+:\d+)")
-
-    def parse_file(self, path: Path) -> List[AsanFinding]:
-        """Parse a single log file."""
-        if not path.exists():
-            return []
-        content = path.read_text(errors="replace")
-        return self._parse_asan(content)
-
-    def _parse_asan(self, content: str) -> List[AsanFinding]:
-        findings = []
-        parts = re.split(r"(?===\d+==ERROR:)", content)
-
-        for part in parts:
-            match = self.ASAN_ERROR_RE.search(part)
-            if match:
-                error_type = match.group(1)
-                frames = self._extract_frames(part)
-                findings.append(
-                    AsanFinding(
-                        error_type=error_type,
-                        summary=part.split("\n")[0][:200],
-                        stack_frames=frames,
-                        raw_text=part[:2000],
-                    )
-                )
-
-        return findings
-
-    def _extract_frames(self, text: str) -> List[str]:
-        frames = []
-        for match in self.FRAME_RE.finditer(text):
-            func, location = match.groups()
-            frames.append(f"{func} at {location}")
-        return frames
-
-
-@dataclass
-class Report:
-    """Aggregated ASan findings report."""
-
-    findings: List[AsanFinding]
-
-    def summary_text(self) -> str:
-        if not self.findings:
-            return "No ASan issues found."
-
-        by_type: Dict[str, List[AsanFinding]] = {}
-        for f in self.findings:
-            by_type.setdefault(f.error_type, []).append(f)
-
-        lines = [f"Found {len(self.findings)} issues", ""]
-        for error_type, findings in sorted(by_type.items()):
-            lines.append(f"  - {error_type}: {len(findings)}")
-
-        return "\n".join(lines)
-
-    def to_json(self) -> str:
-        return json.dumps(
-            {
-                "total_issues": len(self.findings),
-                "findings": [
-                    {
-                        "error_type": f.error_type,
-                        "summary": f.summary,
-                        "stack_frames": f.stack_frames[:10],
-                    }
-                    for f in self.findings
-                ],
-            },
-            indent=2,
-        )
-
-    def details_text(self) -> str:
-        lines = []
-        for i, f in enumerate(self.findings, 1):
-            lines.append("=" * 60)
-            lines.append(f"Issue {i}: {f.error_type}")
-            lines.append("=" * 60)
-            lines.append(f"Summary: {f.summary}")
-            if f.stack_frames:
-                lines.append("Stack trace:")
-                for frame in f.stack_frames[:15]:
-                    lines.append(f"  {frame}")
-            lines.append("")
-        return "\n".join(lines)
-
-
 class State:
     """Manages ASan run state and directories."""
 
@@ -201,13 +97,11 @@ class State:
         self.fail_fast = fail_fast
         self.timeout_scale_factor = timeout_scale_factor
         self.log_dir = self.output_dir / "logs"
-        self.report_dir = self.output_dir / "report"
         self.host_target = get_host_target()
 
     def setup_dirs(self) -> None:
         """Create output directories."""
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.report_dir.mkdir(parents=True, exist_ok=True)
 
     def build_env(self) -> Dict[str, str]:
         """Build environment variables for ASan run."""
@@ -310,53 +204,28 @@ class State:
 
     def do_report(self, args) -> int:
         """Generate ASan findings report."""
-        parser = LogParser()
-        all_findings: List[AsanFinding] = []
+        log_files_found = False
 
         # Collect ASAN logs
         for log_file in self.log_dir.glob("asan.*"):
-            all_findings.extend(parser.parse_file(log_file))
+            log_files_found = True
+            with open(log_file) as f:
+                contents = f.read()
 
-        report = Report(findings=all_findings)
+            print(f"======================== {log_file.name}")
+            print(contents)
 
-        # Output based on format
-        if args.format == "json":
-            print(report.to_json())
-        elif args.format == "text":
-            print(report.summary_text())
-            print()
-            print(report.details_text())
-        else:  # summary
-            print(report.summary_text())
+        if not log_files_found:
+            print(f"No ASAN failure logs found in {self.log_dir}.")
 
-        # Write detailed report to file
-        self.report_dir.mkdir(parents=True, exist_ok=True)
-
-        details_path = self.report_dir / "findings.txt"
-        details_path.write_text(report.summary_text() + "\n\n" + report.details_text())
-
-        json_path = self.report_dir / "findings.json"
-        json_path.write_text(report.to_json())
-
-        print(f"\nDetailed report: {details_path}")
-        print(f"JSON report: {json_path}")
-
-        if args.fail_if_issues and all_findings:
+        if args.fail_if_issues and log_files_found:
             return 1
         return 0
 
     def do_clean(self, args) -> None:
         """Clean ASan artifacts."""
-        if not (args.logs or args.report):
-            shutil.rmtree(self.output_dir, ignore_errors=True)
-            print(f"Removed {self.output_dir}")
-        else:
-            if args.logs:
-                shutil.rmtree(self.log_dir, ignore_errors=True)
-                print("Removed log directory")
-            if args.report:
-                shutil.rmtree(self.report_dir, ignore_errors=True)
-                print("Removed report directory")
+        shutil.rmtree(self.output_dir, ignore_errors=True)
+        print(f"Removed {self.output_dir}")
 
 
 def main() -> int:
@@ -378,7 +247,7 @@ Examples:
     %(prog)s report
 
     # CI mode: fail if issues found
-    %(prog)s report --format=json --fail-if-issues
+    %(prog)s report --fail-if-issues
 
     # Fail-fast mode for debugging
     %(prog)s --fail-fast run cargo test
@@ -386,6 +255,8 @@ Examples:
     )
 
     parser.add_argument("--dir", type=Path, help="Output directory (default: target/sanitizer)")
+
+    # FIXME: --no-halt-on-error and --timeout-scale-factor should only be accepted by the `run` subcommand
     parser.add_argument(
         "--fail-fast",
         action="store_true",
@@ -408,12 +279,6 @@ Examples:
     # report
     p_report = subparsers.add_parser("report", help="Generate findings report")
     p_report.add_argument(
-        "--format",
-        choices=["summary", "text", "json"],
-        default="summary",
-        help="Output format (default: summary)",
-    )
-    p_report.add_argument(
         "--fail-if-issues",
         action="store_true",
         help="Exit with code 1 if issues were found",
@@ -421,8 +286,6 @@ Examples:
 
     # clean
     p_clean = subparsers.add_parser("clean", help="Remove ASan artifacts")
-    p_clean.add_argument("--logs", action="store_true", help="Remove only log files")
-    p_clean.add_argument("--report", action="store_true", help="Remove only report")
 
     args = parser.parse_args()
 
