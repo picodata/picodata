@@ -301,6 +301,7 @@ class State:
         print(f"Log dir: {self.log_dir}", flush=True)
         print(f"RUSTFLAGS: {env.get('RUSTFLAGS', '')}", flush=True)
         print(f"RUSTDOCFLAGS: {env.get('RUSTDOCFLAGS', '')}", flush=True)
+        print(f"ASAN_OPTIONS: {env.get('ASAN_OPTIONS', '')}", flush=True)
         print(flush=True)
 
         print("$", fmt_args(command), flush=True)
