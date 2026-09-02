@@ -118,3 +118,13 @@ fn not_nothing_to_push_down() {
         @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a" <> CAST($1 AS int) and "t"."b" <> CAST($2 AS int) or "t"."a" <> CAST($3 AS int)) and "t"."c" <> CAST($4 AS int)"#
     );
 }
+
+#[test]
+fn not_subquery() {
+    // The row wrapping the subquery reference has to survive the push down: the SQL backend
+    // reaches a subquery through its row.
+    let input = r#"SELECT * FROM (values (1)) where not (select true from (values (1)))"#;
+    let actual = check_transformation(input, vec![], &push_down_not);
+
+    insta::assert_snapshot!(actual.pattern, @r#"SELECT * FROM (VALUES (CAST($1 AS int))) as "unnamed_subquery" WHERE not (SELECT CAST($2 AS bool) as "col_1" FROM (VALUES (CAST($3 AS int))) as "unnamed_subquery_1")"#);
+}

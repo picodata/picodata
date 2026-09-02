@@ -1532,3 +1532,32 @@ SELECT a + (SELECT sum(c) FROM qg LEFT JOIN qt ON g = a) FROM qt GROUP BY a + (S
 SELECT a + (SELECT sum(c) FROM qg LEFT JOIN qt ON g = a) FROM qt GROUP BY a + (SELECT sum(c) FROM qg LEFT JOIN qt ON g = b);
 -- ERROR:
 invalid query: column "a" is not found in grouping expressions!
+
+-- TEST: test-not-over-subquery-without-tables
+-- SQL:
+SELECT * FROM (VALUES (1)) WHERE NOT (SELECT false);
+-- EXPECTED:
+1
+
+-- TEST: test-not-over-subquery
+-- SQL:
+SELECT a FROM t1 WHERE NOT (SELECT b > 100 FROM t1);
+-- EXPECTED:
+1
+
+-- TEST: test-not-over-subquery-false
+-- SQL:
+SELECT a FROM t1 WHERE NOT (SELECT b = 1 FROM t1);
+-- EXPECTED:
+
+-- TEST: test-not-over-subquery-double
+-- SQL:
+SELECT a FROM t1 WHERE NOT NOT (SELECT b = 1 FROM t1);
+-- EXPECTED:
+1
+
+-- TEST: test-not-over-subquery-in-join-condition
+-- SQL:
+SELECT t1.a FROM t1 INNER JOIN null_t ON NOT (SELECT b > 100 FROM t1) WHERE "na" = 1;
+-- EXPECTED:
+1

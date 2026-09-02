@@ -256,11 +256,23 @@ impl Plan {
                         ))
                     })?;
 
-                    let new_child = self.push_down_not_for_expression(child_id, not_state, map)?;
-                    if child_id != new_child {
-                        map.insert(child_id, new_child);
+                    if matches!(
+                        self.get_expression_node(child_id)?,
+                        Expression::SubQueryReference(_)
+                    ) {
+                        // NOT Row[sq] -> NOT Row[sq]. The SQL backend splices a subquery only
+                        // where the reference is the row's immediate child, so the NOT stays out.
+                        self.cover_with_not(expr_id, &not_state)?
+                    } else {
+                        // NOT Row[x] -> Row[NOT x]. A row of one element and that element are
+                        // interchangeable, so the negation moves inside and may be absorbed there.
+                        let new_child =
+                            self.push_down_not_for_expression(child_id, not_state, map)?;
+                        if child_id != new_child {
+                            map.insert(child_id, new_child);
+                        }
+                        expr_id
                     }
-                    expr_id
                 } else {
                     self.cover_with_not(expr_id, &not_state)?
                 }
