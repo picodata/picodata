@@ -132,6 +132,7 @@ class State:
         rustflags_parts = [
             existing_rustflags,
             "-Zsanitizer=address",
+            "-Zsanitizer-recover=address",
             "--cfg asan",
         ]
         env["RUSTFLAGS"] = " ".join(filter(None, rustflags_parts))
@@ -141,6 +142,7 @@ class State:
         rustdocflags_parts = [
             existing_rustdocflags,
             "-Zsanitizer=address",
+            "-Zsanitizer-recover=address",
             "--cfg asan",
         ]
         env["RUSTDOCFLAGS"] = " ".join(filter(None, rustdocflags_parts))
