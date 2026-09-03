@@ -30,7 +30,7 @@ from textwrap import dedent
 from typing import Any
 
 
-SYNTAX_HIGHLIGHTER = Path(__file__).parent / "coverage-syntax-highlight.py"
+SYNTAX_HIGHLIGHTER = Path(__file__).parent / "coverage-report-beautify.py"
 
 DEFAULT_COMMIT_URL = "https://local/deadbeef"
 
