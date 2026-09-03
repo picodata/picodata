@@ -26,6 +26,7 @@
 //! the governor about the need for promotion.
 //! See <https://git.picodata.io/core/picodata/-/work_items/3100>.
 
+use crate::config::PicodataConfig;
 use crate::mailbox::Mailbox;
 use crate::replicaset::has_synchro_quorum;
 use crate::rpc::replication::handle_election_leader_change;
@@ -98,8 +99,12 @@ thread_local! {
 }
 
 /// Register the non-yielding election observer and start its worker.
-pub(crate) fn start_synchro_election_watcher() -> traft::Result<()> {
+pub(crate) fn start_synchro_election_watcher(config: &PicodataConfig) -> traft::Result<()> {
     if WATCHER_STARTED.get() {
+        return Ok(());
+    }
+    let (replication_mode, _) = super::get_tier_replication_mode_and_factor(config)?;
+    if !replication_mode.is_sync() {
         return Ok(());
     }
 

@@ -26,6 +26,7 @@ use crate::storage::schema::copy_dir_async;
 use crate::storage::schema::copy_file_async;
 use crate::storage::schema::ddl_meta_space_update_operable;
 use crate::storage::PropertyName;
+use crate::sync_replication::synchro_election_watcher;
 use crate::tarantool::{rm_tarantool_files, ListenConfig};
 use crate::traft::error::Error;
 use crate::traft::op;
@@ -111,7 +112,6 @@ pub mod sql;
 pub mod storage;
 pub mod sync;
 mod sync_replication;
-mod synchro_election_watcher;
 pub mod tarantool;
 pub mod tier;
 pub mod tlog;
@@ -2233,10 +2233,7 @@ fn postjoin(
 
     node.sentinel_loop.on_self_activate();
 
-    let (replication_mode, _) = rpc::replication::get_tier_replication_mode_and_factor(config)?;
-    if replication_mode.is_sync() {
-        synchro_election_watcher::start_synchro_election_watcher()?;
-    }
+    synchro_election_watcher::start_synchro_election_watcher(config)?;
 
     Ok(())
 }

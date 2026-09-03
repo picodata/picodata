@@ -33,7 +33,7 @@
 //! itself or wait for the tarantool replication.
 //!
 use crate::catalog::pico_table::PicoTable;
-use crate::config::{PicodataConfig, ReplicationMode, DEFAULT_REPLICATION_MODE};
+use crate::config::PicodataConfig;
 use crate::error_code::ErrorCode;
 #[allow(unused_imports)]
 use crate::governor;
@@ -44,6 +44,7 @@ use crate::luamod::lua_function;
 #[allow(unused_imports)]
 use crate::rpc;
 use crate::sync::wait_vclock;
+use crate::sync_replication::get_this_tier_replication_mode_and_factor;
 use crate::tarantool::{box_promote, box_ro_reason, set_cfg_field, ListenConfig};
 use crate::tlog;
 use crate::traft::error::Error;
@@ -402,43 +403,6 @@ pub(crate) fn handle_election_leader_change(is_leader: bool) -> Result<()> {
     LAST_HANDLED_IS_LEADER.set(is_leader);
 
     Ok(())
-}
-
-/// Get replication mode and factor for current instance's tier.
-///
-/// We do not use wait_index in [`proc_replication`] (see header of this file),
-/// so cannot get values from topology_cache reliably.
-/// That's why we get values from config.
-fn get_this_tier_replication_mode_and_factor() -> Result<(ReplicationMode, u8)> {
-    get_tier_replication_mode_and_factor(PicodataConfig::get())
-}
-
-/// Same as [`get_this_tier_replication_mode_and_factor`], but reads from the provided
-/// config instead of the global one.
-pub(crate) fn get_tier_replication_mode_and_factor(
-    config: &PicodataConfig,
-) -> Result<(ReplicationMode, u8)> {
-    let my_tier_name = config.effective_instance_tier();
-    let Some(tiers) = &config.cluster.tier else {
-        return Ok((
-            DEFAULT_REPLICATION_MODE,
-            config.cluster.default_replication_factor(),
-        ));
-    };
-    let (_, tier) = tiers
-        .iter()
-        .find(|(tier_name, _)| my_tier_name == tier_name)
-        .ok_or_else(|| {
-            Error::other(format!(
-                "failed to get tier info from config: tier name = {my_tier_name}"
-            ))
-        })?;
-
-    Ok((
-        tier.replication_mode,
-        tier.replication_factor
-            .unwrap_or_else(|| config.cluster.default_replication_factor()),
-    ))
 }
 
 crate::define_rpc_request! {

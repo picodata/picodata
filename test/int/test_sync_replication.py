@@ -1588,7 +1588,10 @@ cluster:
     # DDL is timeouted. Replicaset is not ready, no quorum to
     # confirm sync transaction to `_space` space.
     with pytest.raises(TimeoutError):
-        master.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"', timeout=1)
+        master.sql(
+            'CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"',
+            timeout=1,
+        )
 
     replica = cluster.add_instance(tier="sync_tier")
     cluster.wait_governor_status("idle")
