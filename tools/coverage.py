@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -23,12 +24,58 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import cached_property
+from html import escape
 from pathlib import Path
 from textwrap import dedent
 from typing import Any
 
 
 SYNTAX_HIGHLIGHTER = Path(__file__).parent / "coverage-syntax-highlight.py"
+
+DEFAULT_COMMIT_URL = "https://local/deadbeef"
+
+
+def cargo_home_regex(cwd: Path) -> str:
+    """
+    Build a regex matching sources of deps which live inside the project dir.
+
+    Usually `CARGO_HOME` points somewhere outside (e.g. `$HOME/.cargo`), but
+    our CI sets it to `$CI_PROJECT_DIR/.cargo`. Once `rustc` has cut the $PWD
+    prefix off the paths (see `--remap-path-prefix`), those sources become
+    indistinguishable from our own, so we have to filter them out by hand.
+
+    Note that `llvm-cov` matches this against paths which have already been
+    mangled by `-path-equivalence`, hence the absolute prefix.
+    """
+
+    return f"^{re.escape(str(cwd.resolve()))}/\\.cargo/"
+
+
+def git(*args: str) -> str | None:
+    """Query the local git repo (if there's any)."""
+
+    try:
+        cmd = ["git", *args]
+        return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def git_commit_url() -> str:
+    """Build a url for the commit currently checked out."""
+
+    commit = git("rev-parse", "HEAD")
+    if not commit:
+        return DEFAULT_COMMIT_URL
+
+    # e.g. `git@host:group/project.git` or `https://host/group/project`
+    remote = git("remote", "get-url", "origin") or ""
+    match = re.fullmatch(r"(?:\w+://)?(?:git@)?([^:/]+)[:/](.+?)(?:\.git)?", remote)
+    if not match:
+        return f"https://local/{commit}"
+
+    host, project = match.groups()
+    return f"https://{host}/{project}/-/commit/{commit}"
 
 
 def fmt_args(args: Iterable[Any]) -> str:
@@ -254,6 +301,7 @@ class LLVM:
         profdata: Path,
         objects: list[str],
         sources: list[str],
+        ignore_regex: str | None = None,
         demangler: Path | None = None,
         output_file: Path | None = None,
     ) -> None:
@@ -266,6 +314,10 @@ class LLVM:
         # see: https://github.com/rust-lang/rust/issues/34701#issuecomment-739809584
         if sources:
             extras.append(f"-path-equivalence=.,{cwd.resolve()}")
+            # Unscoped reports (see `--all`) are meant to show deps, so we only
+            # skip them when the report has been scoped to a set of sources.
+            if ignore_regex:
+                extras.append(f"-ignore-filename-regex={ignore_regex}")
 
         if demangler:
             extras.append(f"-Xdemangler={demangler}")
@@ -304,12 +356,13 @@ class LLVM:
 
     def cov_show(
         self,
-        *,
+        *args: str,
         kind: str,
         output_dir: Path | None = None,
         **kwargs: Any,
     ) -> None:
         extras = [
+            *args,
             f"-format={kind}",
             "-show-instantiations=false",
             "-show-branch-summary=false",  # currently not supported by rustc
@@ -378,6 +431,7 @@ class ReportData:
     profdata: Path
     objects: list[str]
     sources: list[str]
+    ignore_regex: str | None = None
 
 
 class Report(ABC, ReportData):
@@ -388,6 +442,7 @@ class Report(ABC, ReportData):
             profdata=self.profdata,
             objects=self.objects,
             sources=self.sources,
+            ignore_regex=self.ignore_regex,
             demangler=self.demangler,
         )
         return {**kwargs, **overrides}
@@ -443,16 +498,24 @@ class JsonReport(Report):
 
 @dataclass
 class HtmlReport(Report):
+    tree: bool = False
+    """Group the files by directory instead of listing them all at once"""
+
     def entry_point(self, path: Path) -> Path:
         return path / "index.html"
 
     def generate(self, path: Path) -> None:
         self.llvm.cov_show(
+            *(["-show-directory-coverage"] if self.tree else []),
             kind="html",
             output_dir=path,
             **self._common_kwargs(),
         )
-        check_call([sys.executable, SYNTAX_HIGHLIGHTER, path])
+        # Highlighting is a nice-to-have, so we don't let it fail the report.
+        try:
+            check_call([sys.executable, SYNTAX_HIGHLIGHTER, path])
+        except (OSError, subprocess.CalledProcessError) as e:
+            print(f"warning: {SYNTAX_HIGHLIGHTER.name} failed: {e}", file=sys.stderr)
 
     def open(self, path: Path) -> None:
         xdg_open(self.entry_point(path))
@@ -465,24 +528,61 @@ class MultiReport(Report):
     summary) and ties them together with a handwritten index page.
     """
 
-    commit_url: str = "https://local/deadbeef"
+    commit_url: str = DEFAULT_COMMIT_URL
 
     def entry_point(self, path: Path) -> Path:
         return path / "index.html"
 
+    def _commit_message(self, commit: str) -> str:
+        """Show the commit message the way gitlab does (subject + body)"""
+
+        subject = git("log", "-1", "--format=%s", commit)
+        if not subject:
+            return ""
+
+        body = git("log", "-1", "--format=%b", commit) or ""
+        body = f'<div class="commit-body">{escape(body.strip())}</div>' if body.strip() else ""
+
+        return dedent(f"""
+            <div class="commit">
+                <div class="commit-subject">{escape(subject)}</div>
+                {body}
+            </div>
+        """)
+
+    def _render(self, path: Path, name: str, sources: list[str], tree: bool = False) -> str:
+        """
+        Render one html variant over `path` & save its index page as `name`.
+        Returns a link to that page, relative to the report's root.
+        """
+
+        report = HtmlReport(
+            llvm=self.llvm,
+            tree=tree,
+            **self._common_kwargs(sources=sources),
+        )
+        report.generate(path)
+        index = report.entry_point(path)
+        entry = Path(f"{name}.html")
+
+        # The index of a tree report is merely a redirect to the top of the tree,
+        # whose location depends on the sources we've been given. Note that there's
+        # no redirect at all if all the files happen to live in the same directory.
+        redirect = re.search(r"url='([^']+)'", index.read_text()) if tree else None
+        if redirect:
+            top = Path(redirect.group(1))
+            index, entry = path / top, top.with_name(entry.name)
+
+        # Our copy goes right next to the original, so that its links keep working.
+        shutil.copy(index, path / entry)
+        return f"./{entry}"
+
     def generate(self, path: Path) -> None:
-        # Provide default sources if there's none
         sources = self.sources or ["."]
 
-        local = HtmlReport(llvm=self.llvm, **self._common_kwargs(sources=sources))
-        local.generate(path)
-        shutil.copy(local.entry_point(path), path / "local.html")
-
-        # The `all sources` variant is a superset of the previous one, so we
-        # just render it over the same directory & save the index page again.
-        everything = HtmlReport(llvm=self.llvm, **self._common_kwargs(sources=[]))
-        everything.generate(path)
-        shutil.copy(everything.entry_point(path), path / "all.html")
+        own_tree = self._render(path, "local-tree", sources, tree=True)
+        own_flat = self._render(path, "local", sources)
+        all_flat = self._render(path, "all", [])
 
         summary = JsonReport(llvm=self.llvm, **self._common_kwargs(sources=sources))
         summary.generate(path)
@@ -491,31 +591,85 @@ class MultiReport(Report):
             commit_sha = self.commit_url.rsplit("/", maxsplit=1)[-1][:10]
 
             def link(url: str, text: str) -> str:
+                return f'<a href="{url}">{text}</a>'
+
+            def h2(text: str) -> str:
+                return f"<h2>{text}</h2>"
+
+            def row(text: str, header: bool = False) -> str:
+                # Both classes come from `llvm-cov`'s own stylesheet
+                cls = "light-row-bold" if header else "light-row"
+                return f'<tr class="{cls}"><td><pre>{text}</pre></td></tr>'
+
+            def table(title: str, *links: str) -> str:
+                rows = "".join(row(text) for text in links)
                 return dedent(f"""
-                    <a href="{url}">{text}</a>
+                    <div class="centered">
+                        <table>{row(title, header=True)}{rows}</table>
+                    </div>
                 """)
 
-            def bold(text: str) -> str:
-                return f"<b>{text}</b>"
-
-            def par(url: str, text: str) -> str:
-                return f"<p>{link(url, text)}</p>"
-
+            summary_url = f"./{summary.entry_point(path).name}"
+            tree_table = table("Tree", link(own_tree, "Own sources"))
+            flat_table = table(
+                "Flat",
+                link(own_flat, "Own sources"),
+                link(all_flat, "All sources (including dependencies)"),
+            )
+            data_table = table("Raw data", link(summary_url, "Summary (json)"))
+            commit = link(self.commit_url, commit_sha)
             html = dedent(f"""
                 <!DOCTYPE html>
                 <html>
                     <head>
+                        <meta name="viewport" content="width=device-width,initial-scale=1">
+                        <meta charset="UTF-8">
+                        <link rel="stylesheet" type="text/css" href="./style.css">
+                        <style>
+                            a, a:visited {{ color: #0645ad; }}
+                            .report {{
+                                width: fit-content;
+                                min-width: 36rem;
+                                max-width: 60rem;
+                            }}
+                            .commit, .centered {{
+                                box-sizing: border-box;
+                                width: 100%;
+                            }}
+                            .centered {{
+                                display: block;
+                                margin-bottom: 1em;
+                            }}
+                            .centered table {{ width: 100%; }}
+                            .commit {{
+                                font-family: monospace;
+                                margin: 1em 0;
+                                padding: 0.75em 1em;
+                                border: 1px solid #8888;
+                                border-radius: 3px;
+                                background-color: #8882;
+                            }}
+                            .commit-subject {{ font-weight: 600; }}
+                            .commit-body {{
+                                margin-top: 0.75em;
+                                white-space: pre-wrap;
+                                opacity: 0.75;
+                            }}
+                            @media (prefers-color-scheme: dark) {{
+                                a, a:visited {{ color: #8ab4f8; }}
+                            }}
+                        </style>
                         <title>Coverage ({commit_sha})</title>
                     </head>
                     <body>
-                        <h1>
-                            Coverage report for commit
-                                {link(self.commit_url, commit_sha)}
-                        </h1>
+                        {h2(f"Coverage report for commit {commit}")}
 
-                        {par("./local.html", bold("Own sources"))}
-                        {par("./all.html", "All sources (including dependencies)")}
-                        {par(f"./{summary.entry_point(path).name}", "Raw summary data (json)")}
+                        <div class="report">
+                            {self._commit_message(commit_sha)}
+                            {tree_table}
+                            {flat_table}
+                            {data_table}
+                        </div>
                     </body>
                 </html>
             """)
@@ -625,17 +779,16 @@ class State:
         if args.all and args.sources:
             raise Exception("--all should not be used with sources")
 
-        if args.format == "github" and not args.commit_url:
-            raise Exception("--format=github should be used with --commit-url")
-
         # see man for `llvm-cov show [sources]`
         sources: list[str]
+        ignore_regex: str | None = cargo_home_regex(self.cwd)
         if args.all:
             sources = []
         elif not args.sources and not args.crates:
             sources = ["."]
         else:
             sources = [str(x) for x in args.sources]
+            ignore_regex = None
 
         if args.crates:
             print(f"* Resolving crate sources: {', '.join(args.crates)}")
@@ -673,6 +826,7 @@ class State:
             profdata=self.final_profdata,
             objects=objects,
             sources=sources,
+            ignore_regex=ignore_regex,
         )
 
         report: Report
@@ -681,8 +835,8 @@ class State:
                 report = HtmlReport(**params)
             case "json":
                 report = JsonReport(**params)
-            case "github":
-                report = MultiReport(**params, commit_url=args.commit_url)
+            case "multi":
+                report = MultiReport(**params, commit_url=args.commit_url or git_commit_url())
             case _:
                 raise Exception("unknown report format")
 
@@ -774,8 +928,8 @@ self-contained example:
     )
     p_report.add_argument(
         "--format",
-        default="html",
-        choices=("html", "json", "github"),
+        default="multi",
+        choices=("multi", "html", "json"),
         help="report format",
     )
     p_report.add_argument(
@@ -794,7 +948,7 @@ self-contained example:
         "--commit-url",
         metavar="URL",
         type=str,
-        help="required for --format=github",
+        help="link to the commit under test (default: local HEAD)",
     )
     p_report.add_argument(
         "--demangler",
