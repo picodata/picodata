@@ -17,6 +17,7 @@ use crate::catalog::pico_bucket::BucketIdRange;
 use crate::traft::op::Dml;
 use crate::vshard::VshardBucketRecord;
 use crate::vshard::VshardBucketState;
+use std::time::Duration;
 
 ////////////////////////////////////////////////////////////////////////////////
 // ReshardingAction
@@ -24,6 +25,14 @@ use crate::vshard::VshardBucketState;
 
 // See module-level doc-comments.
 crate::define_ReshardingAction! {
+    pub struct GoIdle {
+        pub did_something: bool,
+    }
+
+    pub struct WaitUntilMaster {
+        pub timeout: Duration,
+    }
+
     pub struct ActualizeShardedState {
         pub from_state: Option<VshardBucketState>,
         pub to_state: VshardBucketState,
@@ -33,6 +42,14 @@ crate::define_ReshardingAction! {
 
     pub struct ActualizeBucketStateVersion {
         pub version_bump: Vec<Dml>,
+    }
+}
+
+impl Default for ReshardingAction {
+    fn default() -> Self {
+        Self::GoIdle(GoIdle {
+            did_something: false,
+        })
     }
 }
 
@@ -84,7 +101,6 @@ macro_rules! define_ReshardingAction {
                 $(#[$struct_meta])*
                 $action ( $action ),
             )+
-            GoIdle,
         }
 
         impl ReshardingAction {
@@ -93,19 +109,16 @@ macro_rules! define_ReshardingAction {
                     $(
                         Self::$action { .. } => ReshardingActionKind::$action,
                     )+
-                    Self::GoIdle => ReshardingActionKind::GoIdle,
                 }
             }
         }
 
-        #[derive(Default, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+        #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
         pub enum ReshardingActionKind {
             $(
                 $(#[$struct_meta])*
                 $action,
             )+
-            #[default]
-            GoIdle,
         }
 
         impl ::std::fmt::Display for ReshardingActionKind {

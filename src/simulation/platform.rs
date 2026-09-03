@@ -7,6 +7,7 @@
 
 use crate::config::AlterSystemParametersRef;
 use crate::resharding_loop;
+use crate::resharding_loop::ReshardingStatus;
 use crate::topology_cache::TopologyCache;
 use crate::traft::node;
 use crate::traft::op::Dml;
@@ -14,6 +15,7 @@ use crate::traft::RaftIndex;
 use crate::vshard;
 use crate::vshard::VshardBucketRecord;
 use crate::Result;
+use ::tarantool::fiber::r#async::watch;
 use std::time::Duration;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -37,6 +39,14 @@ pub trait Platform {
     ///
     /// Real implementation redirects to [`node::Node::alter_system_parameters`].
     fn alter_system_parameters(&self) -> &AlterSystemParametersRef;
+
+    //
+    // requested status
+    //
+    async fn wait_action_requested(
+        &self,
+        requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
+    ) -> Result<()>;
 
     //
     // raft / CAS
@@ -106,6 +116,14 @@ impl Platform for PlatformActual {
 
     fn alter_system_parameters(&self) -> &AlterSystemParametersRef {
         &self.node.alter_system_parameters
+    }
+
+    async fn wait_action_requested(
+        &self,
+        requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
+    ) -> Result<()> {
+        _ = requested_status.changed().await;
+        Ok(())
     }
 
     fn applied_index(&self) -> RaftIndex {

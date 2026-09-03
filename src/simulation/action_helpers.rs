@@ -180,7 +180,7 @@ pub fn run_until_last_action(
     let instance = cluster.instance(instance_name);
     run_until(
         cluster,
-        || instance.loop_state.borrow().last_action == target,
+        || instance.loop_state.borrow().last_action == Some(target),
         &format!("simulation converged before instance {instance_name} reach action {target:?}"),
     );
 }

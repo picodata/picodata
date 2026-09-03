@@ -73,6 +73,7 @@ pub struct ReshardingLoop {
 /// [`resharding_loop`] sleeps for this many seconds when it encounters an
 /// unhandled error before going on another loop iteration.
 const RESHARDING_LOOP_SHORT_RETRY: Duration = Duration::from_millis(300);
+const RESHARDING_LOOP_LONG_SLEEP: Duration = Duration::from_secs(10);
 
 impl ReshardingLoop {
     pub fn start() -> Self {
@@ -230,6 +231,9 @@ pub enum ReshardingStatus {
     /// Initial bucket distribution should be or is being created on this
     /// replicaset.
     Initialize,
+    /// Buckets should be rebalanced between this and some other
+    /// replicasets, but the action cannot be performed yet.
+    ReshardingEnqueued,
     /// Buckets should be or are being rebalanced between this and some other
     /// replicasets.
     Resharding,
@@ -246,7 +250,7 @@ impl ReshardingStatus {
 
 #[derive(Default, Debug)]
 pub struct ReshardingLoopState {
-    pub last_action: ReshardingActionKind,
+    pub last_action: Option<ReshardingActionKind>,
 
     /// If resharding_loop's iteration resulted in an error, it's value is
     /// stored here.
@@ -274,34 +278,15 @@ pub(crate) async fn resharding_loop(
     requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
     actual_status: &mut watch::Sender<(ReshardingStatus, u64)>,
 ) -> Result<()> {
-    let (_curr_status, curr_version) = actual_status.get();
+    let (_curr_status, _curr_version) = actual_status.get();
     // Is updated in `ReshardingLoop::do_resharding`
     let (want_status, next_version) = requested_status.get();
+    // This is needed so the next requested_status.changed().await call is only
+    // awaken by changes happnening after this point
+    requested_status.mark_seen();
     tlog!(Debug, "requested status: {want_status:?} {next_version}");
 
-    if want_status == ReshardingStatus::Idle || next_version == curr_version {
-        // Sleep until a resharding action is requested
-        _ = requested_status.changed().await;
-        return Ok(());
-    }
-
     let topology_cache = platform.topology_cache();
-    let my_instance_name = topology_cache.my_instance_name();
-    let i_am_replicaset_master = topology_cache.with(|topology_ref| {
-        topology_ref
-            .this_replicaset()
-            .effective_master_name()
-            .map(|n| &**n)
-            == Some(my_instance_name)
-    });
-
-    // Only master has the right to do resharding
-    if !i_am_replicaset_master {
-        tlog!(Debug, "not replicaset master, going to sleep");
-
-        _ = platform.wait_until_master(Duration::from_secs(10));
-        return Ok(());
-    }
 
     // XXX Maybe let's have a sepparate parameter for resharding timeouts?
     // But than again maybe let's not...
@@ -312,9 +297,13 @@ pub(crate) async fn resharding_loop(
 
     let applied = platform.applied_index();
 
+    //
+    // Plan an action
+    //
+
     let action = plan_resharding_action(platform, state, want_status)?;
     let action_kind = action.kind();
-    state.borrow_mut().last_action = action_kind;
+    state.borrow_mut().last_action = Some(action_kind);
 
     //
     // Execute action
@@ -322,6 +311,16 @@ pub(crate) async fn resharding_loop(
 
     type Action = ReshardingAction;
     match action {
+        Action::WaitUntilMaster(WaitUntilMaster { timeout }) => {
+            actual_status.send_modify(|(status, _)| *status = ReshardingStatus::ReshardingEnqueued);
+            tlog!(
+                Debug,
+                "resharding_loop_status = '{action_kind}' ({timeout:?})"
+            );
+
+            _ = platform.wait_until_master(timeout);
+        }
+
         Action::ActualizeShardedState(ActualizeShardedState {
             from_state,
             to_state,
@@ -354,13 +353,18 @@ pub(crate) async fn resharding_loop(
             platform.do_cas(applied, version_bump.into_iter().collect(), cas_timeout)?;
         }
 
-        Action::GoIdle => {
+        Action::GoIdle(GoIdle { did_something }) => {
             tlog!(Debug, "resharding_loop_status = '{action_kind}'");
 
-            inspect_space_bucket(platform)?; // TODO(resharding): remove from final implementation
-            assert_all_buckets_rw(platform)?; // TODO(resharding): remove from final implementation
+            if did_something {
+                inspect_space_bucket(platform)?; // TODO(resharding): remove from final implementation
+                assert_all_buckets_rw(platform)?; // TODO(resharding): remove from final implementation
+            }
 
             _ = actual_status.send((ReshardingStatus::Idle, next_version));
+
+            // Sleep until a resharding action is requested
+            platform.wait_action_requested(requested_status).await?;
         }
     }
 
@@ -380,8 +384,33 @@ fn plan_resharding_action(
 ) -> Result<ReshardingAction> {
     let _guard = tarantool::fiber::NoYieldsGuard::with_message("no yields allowed here!");
 
-    let topology_ref = platform.topology_cache().get();
+    // resharding_loop is idle until governor wakes it up via RPC
+    if want_status == ReshardingStatus::Idle {
+        return Ok(GoIdle {
+            did_something: false,
+        }
+        .into());
+    }
+
+    let topology_cache = platform.topology_cache();
+    let my_instance_name = topology_cache.my_instance_name();
+    let topology_ref = topology_cache.get();
     let this_replicaset = topology_ref.this_replicaset();
+    let i_am_replicaset_master = topology_cache.with(|topology_ref| {
+        topology_ref
+            .this_replicaset()
+            .effective_master_name()
+            .map(|n| &**n)
+            == Some(my_instance_name)
+    });
+
+    // resharding_loop is only running on replicaset master
+    if !i_am_replicaset_master {
+        return Ok(WaitUntilMaster {
+            timeout: RESHARDING_LOOP_LONG_SLEEP,
+        }
+        .into());
+    }
 
     ////////////////////////////////////////////////////////////////////////////
     //
@@ -391,7 +420,10 @@ fn plan_resharding_action(
         // Version is already actualized which means no action is needed
         tlog!(Debug, "replicaset distribution version is actualized");
 
-        return Ok(ReshardingAction::GoIdle);
+        return Ok(GoIdle {
+            did_something: true,
+        }
+        .into());
     }
 
     //
@@ -408,7 +440,10 @@ fn plan_resharding_action(
     }
 
     tlog!(Warning, "resharding not yet implemented");
-    return Ok(ReshardingAction::GoIdle);
+    return Ok(GoIdle {
+        did_something: true,
+    }
+    .into());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

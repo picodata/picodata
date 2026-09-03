@@ -52,15 +52,6 @@ pub fn spawn_resharding_loop_fiber(instance: &Rc<PretendInstance>) {
                     break;
                 }
 
-                let (want_status, next_version) = requested_status_rx.get();
-                let (_curr_status, curr_version) = actual_status_tx.get();
-                if want_status == ReshardingStatus::Idle || next_version == curr_version {
-                    if fiber.park(FiberState::WaitIdle) == WaitOutcome::Cancelled {
-                        break;
-                    }
-                    continue;
-                }
-
                 let res = resharding_loop(
                     &*instance,
                     &instance.loop_state,

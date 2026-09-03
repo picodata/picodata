@@ -355,6 +355,19 @@ impl Platform for PretendInstance {
         &self.parameters
     }
 
+    async fn wait_action_requested(
+        &self,
+        _requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
+    ) -> Result<()> {
+        let fiber = self.current_fiber()?;
+        let wait_outcome = fiber.park(FiberState::WaitIdle);
+        assert!(
+            !wait_outcome.is_timeout(),
+            "simulation: WaitIdle cannot timeout"
+        );
+        wait_outcome.to_result()
+    }
+
     fn applied_index(&self) -> RaftIndex {
         self.applied_index.get()
     }
