@@ -3257,11 +3257,9 @@ impl ShardColumnsMap {
         }
 
         let output_id = node.output();
-        let output_len = plan.get_row_list(output_id)?.len();
+        let output = plan.get_row_list(output_id)?;
         let mut new_positions = [None, None];
-        for pos in 0..output_len {
-            let output = plan.get_row_list(output_id)?;
-            let alias_id = output.get(pos).expect("can't fail");
+        for (pos, alias_id) in output.iter().enumerate() {
             let ref_id = plan.get_child_under_alias(*alias_id)?;
             // If there is a parameter under alias
             // and we haven't bound parameters yet,
