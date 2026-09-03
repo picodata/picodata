@@ -1497,10 +1497,12 @@ Using configuration file '{args_path}'.");
     /// Uses effective name of the instance's tier, which means that
     /// if the instance's tier name is not set, default one is used.
     pub fn this_instance_tier_config(&self) -> Option<&TierConfig> {
-        let this_tier_name = Some(self.effective_instance_tier());
-        let all_tier_defs = self.cluster.tier.as_ref()?;
-        let mut all_tier_cfgs = all_tier_defs.iter().map(|(_, tier_cfg)| tier_cfg);
-        all_tier_cfgs.find(|tier_cfg| tier_cfg.name.as_deref() == this_tier_name)
+        let this_tier_name = self.effective_instance_tier();
+        self.cluster
+            .tier
+            .as_ref()?
+            .iter()
+            .find_map(|(name, config)| (name == this_tier_name).then_some(config))
     }
 
     /// WAL mode of the current instance.
@@ -3896,6 +3898,21 @@ cluster:
 
         // Backwards compat: stored "none" still parses.
         assert_eq!(WalMode::from_str("none").unwrap(), WalMode::None);
+    }
+
+    #[test]
+    fn instance_wal_mode_is_read_from_tier() {
+        let yaml = r###"
+cluster:
+    default_replication_factor: 1
+    default_bucket_count: 3000
+    tier:
+        default:
+            wal_mode: fsync
+"###;
+        let config = PicodataConfig::read_yaml_contents(yaml.trim()).unwrap();
+
+        assert_eq!(config.this_instance_wal_mode(), WalMode::Fsync);
     }
 
     #[test]
