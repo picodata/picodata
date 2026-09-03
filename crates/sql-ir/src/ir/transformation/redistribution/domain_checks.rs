@@ -237,7 +237,7 @@ impl Plan {
         let mut added = Vec::with_capacity(3);
         let from = if needs_subquery {
             let name = aliases.subquery_alias(self);
-            let sq = self.add_sub_query(input, Some(&name))?;
+            let sq = self.add_sub_query(input, Some(name))?;
             added.push(sq);
             sq
         } else {

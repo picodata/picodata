@@ -167,7 +167,7 @@ fn parse_window_spec<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Wind
             Rule::OrderBy => {
                 spec.order_by = Some(parse_order_by(pair, ctx, OrderByLiterals::KeepConstants)?)
             }
-            Rule::WindowFrame => spec.frame = Some(parse_window_frame(pair, ctx)?),
+            Rule::WindowFrame => spec.frame = Some(Box::new(parse_window_frame(pair, ctx)?)),
             rule => {
                 return Err(parser_err(format_smolstr!(
                     "expected `WindowBody` components, got {rule:?}"

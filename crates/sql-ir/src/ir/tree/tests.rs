@@ -74,7 +74,7 @@ fn relational_post() {
     )
     .unwrap();
     plan.add_rel(t1);
-    let scan_t1_id = plan.add_scan("t1", None).unwrap();
+    let scan_t1_id = plan.add_scan("t1".into(), None, None).unwrap();
 
     let t2 = Table::new_sharded(
         random(),
@@ -89,7 +89,7 @@ fn relational_post() {
     )
     .unwrap();
     plan.add_rel(t2);
-    let scan_t2_id = plan.add_scan("t2", None).unwrap();
+    let scan_t2_id = plan.add_scan("t2".into(), None, None).unwrap();
 
     let a = plan.add_row_from_child(scan_t2_id, &["a"]).unwrap();
     let const1 = plan.add_const(Value::from(1_i64));
@@ -146,7 +146,7 @@ fn selection_subquery_dfs_post() {
     )
     .unwrap();
     plan.add_rel(t1);
-    let scan_t1_id = plan.add_scan("t1", None).unwrap();
+    let scan_t1_id = plan.add_scan("t1".into(), None, None).unwrap();
     let a = plan.add_row_from_child(scan_t1_id, &["a"]).unwrap();
 
     let t2 = Table::new_sharded(
@@ -162,7 +162,7 @@ fn selection_subquery_dfs_post() {
     )
     .unwrap();
     plan.add_rel(t2);
-    let scan_t2_id = plan.add_scan("t2", None).unwrap();
+    let scan_t2_id = plan.add_scan("t2".into(), None, None).unwrap();
 
     let b = plan.add_row_from_child(scan_t2_id, &["b"]).unwrap();
     let const1 = plan.add_const(Value::from(1));
@@ -244,7 +244,7 @@ fn subtree_dfs_post() {
     )
     .unwrap();
     plan.add_rel(t1);
-    let scan_t1_id = plan.add_scan("t1", None).unwrap();
+    let scan_t1_id = plan.add_scan("t1".into(), None, None).unwrap();
     let a_ref = plan.nodes.next_id(ArenaType::Arena96);
     let a = plan.add_row_from_child(scan_t1_id, &["a"]).unwrap();
     let const1 = plan.add_const(Value::from(1_i64));
@@ -323,7 +323,7 @@ fn add_table_t(plan: &mut Plan) {
 /// relational nodes and `4 * 2^levels - 3` paths to them.
 fn reused_cte_chain(plan: &mut Plan, levels: usize) -> NodeId {
     add_table_t(plan);
-    let mut body = plan.add_scan("t", None).unwrap();
+    let mut body = plan.add_scan("t".into(), None, None).unwrap();
     for _ in 0..levels {
         let left = plan.add_cte_scan(body, SmolStr::from("c")).unwrap();
         let right = plan.add_cte_scan(body, SmolStr::from("c")).unwrap();
@@ -381,8 +381,8 @@ fn post_order_of_a_tree_is_not_changed() {
     let mut plan = Plan::default();
     // Without a reused CTE and subqueries each node has one path.
     add_table_t(&mut plan);
-    let left = plan.add_scan("t", None).unwrap();
-    let right = plan.add_scan("t", None).unwrap();
+    let left = plan.add_scan("t".into(), None, None).unwrap();
+    let right = plan.add_scan("t".into(), None, None).unwrap();
     let top = plan.add_union(left, right, false).unwrap();
 
     let new: Vec<_> = PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), top)
@@ -402,7 +402,7 @@ fn post_order_of_a_tree_is_not_changed() {
 fn post_order_checks_shares_children() {
     let mut plan = Plan::default();
     add_table_t(&mut plan);
-    let scan = plan.add_scan("t", None).unwrap();
+    let scan = plan.add_scan("t".into(), None, None).unwrap();
     let top = plan.add_union(scan, scan, false).unwrap();
 
     let _ = PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top).count();

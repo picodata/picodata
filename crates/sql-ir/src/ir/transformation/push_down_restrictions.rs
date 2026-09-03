@@ -528,7 +528,7 @@ mod tests {
         let alias = plan.nodes.add_alias("a", aggregate).unwrap();
         let volatile_alias = plan.nodes.add_alias("b", volatile).unwrap();
         let body = plan
-            .add_select_without_scan(&[alias, volatile_alias])
+            .add_select_without_scan(vec![alias, volatile_alias])
             .unwrap();
         let subquery = plan.nodes.add_sq_ref(RelColumn::new(body, 0), ty);
         let reference = plan
@@ -568,7 +568,7 @@ mod tests {
         let value = plan.add_const(Value::Integer(1));
         let a = plan.nodes.add_alias("a", value).unwrap();
         let b = plan.nodes.add_alias("b", value).unwrap();
-        let source = plan.add_select_without_scan(&[a, b]).unwrap();
+        let source = plan.add_select_without_scan(vec![a, b]).unwrap();
         let destination = plan
             .add_proj(source, vec![], &["b", "a"], false, false)
             .unwrap();

@@ -116,7 +116,7 @@ impl Display for Bool {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Hash, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum Arithmetic {
     /// `%`
@@ -912,12 +912,17 @@ impl Plan {
     ///
     /// # Errors
     /// - relation is invalid
-    pub fn add_scan(&mut self, table: &str, alias: Option<&str>) -> Result<NodeId, SbroadError> {
-        if self.relations.get(table).is_some() {
+    pub fn add_scan(
+        &mut self,
+        table: SmolStr,
+        alias: Option<SmolStr>,
+        indexed_by: Option<SmolStr>,
+    ) -> Result<NodeId, SbroadError> {
+        if self.relations.get(&table).is_some() {
             let scan = ScanRelation {
-                relation: SmolStr::from(table),
-                alias: alias.map(SmolStr::from),
-                indexed_by: None,
+                relation: table,
+                alias,
+                indexed_by,
                 distribution: None,
             };
 
@@ -1095,6 +1100,40 @@ impl Plan {
         Ok(motion_id)
     }
 
+    pub fn add_projection(
+        &mut self,
+        child: NodeId,
+        output: NodeId,
+        subqueries: Vec<NodeId>,
+        windows: Vec<NodeId>,
+        is_distinct: bool,
+    ) -> Result<NodeId, SbroadError> {
+        let (child, having_id, group_by_id) = match self.get_relation_node(child)? {
+            Relational::GroupBy(_) => (None, None, Some(child)),
+            Relational::Having(_) => {
+                let gb_id = self.get_first_rel_child(child)?;
+                match self.get_relation_node(gb_id)? {
+                    Relational::GroupBy(_) => (None, Some(child), Some(gb_id)),
+                    _ => (None, Some(child), None),
+                }
+            }
+            _ => (Some(child), None, None),
+        };
+
+        let proj = Projection {
+            child,
+            subqueries,
+            windows,
+            output,
+            is_distinct,
+            group_by: group_by_id,
+            having: having_id,
+            distribution: None,
+        };
+
+        self.add_relational(proj.into())
+    }
+
     // TODO: we need a more flexible projection constructor (constants, etc)
 
     /// Adds projection node.
@@ -1112,31 +1151,7 @@ impl Plan {
         needs_shard_col: bool,
     ) -> Result<NodeId, SbroadError> {
         let output = self.add_row_for_output(child, col_names, needs_shard_col, None)?;
-
-        let (child_id, having_id, group_by_id) = match self.get_relation_node(child)? {
-            Relational::GroupBy(_) => (None, None, Some(child)),
-            Relational::Having(_) => {
-                let gb_id = self.get_first_rel_child(child)?;
-                match self.get_relation_node(gb_id)? {
-                    Relational::GroupBy(_) => (None, Some(child), Some(gb_id)),
-                    _ => (None, Some(child), None),
-                }
-            }
-            _ => (Some(child), None, None),
-        };
-
-        let proj = Projection {
-            child: child_id,
-            subqueries: vec![],
-            windows,
-            output,
-            is_distinct,
-            group_by: group_by_id,
-            having: having_id,
-            distribution: None,
-        };
-
-        self.add_relational(proj.into())
+        self.add_projection(child, output, vec![], windows, is_distinct)
     }
 
     /// Add a projection with the default planner settings.
@@ -1280,30 +1295,8 @@ impl Plan {
             }
         };
 
-        let (child_id, having_id, group_by_id) = match self.get_relation_node(child_rel_id)? {
-            Relational::GroupBy(_) => (None, None, Some(child_rel_id)),
-            Relational::Having(_) => {
-                let gb_id = self.get_first_rel_child(child_rel_id)?;
-                match self.get_relation_node(gb_id)? {
-                    Relational::GroupBy(_) => (None, Some(child_rel_id), Some(gb_id)),
-                    _ => (None, Some(child_rel_id), None),
-                }
-            }
-            _ => (Some(child_rel_id), None, None),
-        };
-
-        let proj = Projection {
-            child: child_id,
-            subqueries: vec![],
-            windows: vec![],
-            output,
-            is_distinct,
-            group_by: group_by_id,
-            having: having_id,
-            distribution: None,
-        };
-
-        Ok((self.add_relational(proj.into())?, col_pos_transforms))
+        let proj_id = self.add_projection(child_rel_id, output, vec![], vec![], is_distinct)?;
+        Ok((proj_id, col_pos_transforms))
     }
 
     /// Adds projection node (use a list of expressions instead of alias names).
@@ -1320,31 +1313,7 @@ impl Plan {
         windows: Vec<NodeId>,
     ) -> Result<NodeId, SbroadError> {
         let output = self.nodes.add_row(columns.to_vec());
-
-        let (child_id, having_id, group_by_id) = match self.get_relation_node(child)? {
-            Relational::GroupBy(_) => (None, None, Some(child)),
-            Relational::Having(_) => {
-                let gb_id = self.get_first_rel_child(child)?;
-                match self.get_relation_node(gb_id)? {
-                    Relational::GroupBy(_) => (None, Some(child), Some(gb_id)),
-                    _ => (None, Some(child), None),
-                }
-            }
-            _ => (Some(child), None, None),
-        };
-
-        let proj = Projection {
-            child: child_id,
-            subqueries: vec![],
-            windows,
-            output,
-            is_distinct,
-            group_by: group_by_id,
-            having: having_id,
-            distribution: None,
-        };
-
-        self.add_relational(proj.into())
+        self.add_projection(child, output, vec![], windows, is_distinct)
     }
 
     /// Adds projection node (use a list of expressions instead of alias names).
@@ -1353,8 +1322,8 @@ impl Plan {
     /// - child node is not relational
     /// - child output tuple is invalid
     /// - columns are not aliases or have duplicate names
-    pub fn add_select_without_scan(&mut self, columns: &[NodeId]) -> Result<NodeId, SbroadError> {
-        let output = self.nodes.add_row(columns.to_vec());
+    pub fn add_select_without_scan(&mut self, columns: Vec<NodeId>) -> Result<NodeId, SbroadError> {
+        let output = self.nodes.add_row(columns);
         let sel = SelectWithoutScan {
             subqueries: vec![],
             output,
@@ -1680,13 +1649,11 @@ impl Plan {
     pub fn add_sub_query(
         &mut self,
         child: NodeId,
-        alias: Option<&str>,
+        alias: Option<SmolStr>,
     ) -> Result<NodeId, SbroadError> {
-        let name: Option<SmolStr> = alias.map(SmolStr::from);
-
         self.get_relation_node(child)?;
         let sq = ScanSubQuery {
-            alias: name,
+            alias,
             child,
             distribution: None,
         };
@@ -1760,7 +1727,7 @@ impl Plan {
             *output
         } else {
             let sq_id = self
-                .add_sub_query(child_id, Some(&alias))
+                .add_sub_query(child_id, Some(alias))
                 .expect("add subquery in cte");
             child_id = self
                 .add_proj(sq_id, vec![], &[], false, false)

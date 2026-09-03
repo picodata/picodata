@@ -364,6 +364,44 @@ fn table_function_errors() {
     "#);
 }
 
+// ------------- bucket_id -------------
+
+/// The system column `bucket_id` resolves by name, as in the old pipeline,
+/// while `*` still hides it.
+#[test]
+fn bucket_id_resolves_by_name() {
+    insta::assert_snapshot!(
+        analyzed("SELECT *, bucket_id FROM t1 WHERE t1.bucket_id = 1", &[]),
+        @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool, t1.bucket_id::int FROM t1 WHERE (t1.bucket_id::int = 1::int)::bool"
+    );
+}
+
+#[test]
+fn bucket_id_ambiguous_in_join() {
+    insta::assert_snapshot!(
+        analyze_error("SELECT bucket_id FROM t1 JOIN t2 ON true", &[]),
+        @"semantic error: column reference 'bucket_id' is ambiguous"
+    );
+}
+
+/// USING merges user columns only: neither side may be `bucket_id`.
+#[test]
+fn join_using_bucket_id() {
+    let errors: Vec<_> = [
+        "SELECT * FROM t1 JOIN t2 USING (bucket_id)",
+        "SELECT * FROM t1 JOIN (SELECT bucket_id FROM t2) q USING (bucket_id)",
+        "SELECT * FROM (SELECT bucket_id FROM t1) q JOIN t2 USING (bucket_id)",
+    ]
+    .into_iter()
+    .map(|query| analyze_error(query, &[]))
+    .collect();
+    insta::assert_snapshot!(errors.join("\n"), @"
+    semantic error: cannot resolve column reference 'bucket_id'
+    semantic error: cannot resolve column reference 'bucket_id'
+    semantic error: cannot resolve column reference 'bucket_id'
+    ");
+}
+
 // ------------- USING -------------
 
 #[test]

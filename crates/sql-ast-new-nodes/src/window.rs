@@ -161,7 +161,7 @@ pub struct WindowSpec<'q, State: AstState<'q>> {
     pub base: Option<Ident>,
     pub partition_by: Vec<Expr<'q, State>>,
     pub order_by: Option<OrderBy<'q, State>>,
-    pub frame: Option<WindowFrame<'q, State>>,
+    pub frame: Option<Box<WindowFrame<'q, State>>>,
 }
 
 impl<'q, State: AstState<'q>> Render<'q, State> for WindowSpec<'q, State> {

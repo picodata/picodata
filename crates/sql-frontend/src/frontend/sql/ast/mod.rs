@@ -862,7 +862,7 @@ fn build_scan_table_ir(
         .children
         .first()
         .expect("could not find first child id in scan table node");
-    let scan_id = plan.add_scan(parse_identifier(ast, *ast_table_id)?.as_str(), None)?;
+    let scan_id = plan.add_scan(parse_identifier(ast, *ast_table_id)?, None, None)?;
     map.add(node_id, scan_id);
     Ok(())
 }
@@ -2331,7 +2331,7 @@ where
         false,
     )?;
     let alias_id = plan.nodes.add_alias("cond", expr_plan_id)?;
-    let projection_id = plan.add_select_without_scan(&[alias_id])?;
+    let projection_id = plan.add_select_without_scan(vec![alias_id])?;
     plan.fix_subquery_rows(worker, projection_id)?;
     map.add(node_id, projection_id);
 

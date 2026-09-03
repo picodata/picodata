@@ -3929,6 +3929,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sql-ast-new-to-ir"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "pretty_assertions",
+ "regex",
+ "smol_str",
+ "sql-ast-new-corpus",
+ "sql-ast-new-nodes",
+ "sql-frontend",
+ "sql-ir",
+]
+
+[[package]]
 name = "sql-executor"
 version = "0.1.0"
 dependencies = [
@@ -4002,6 +4016,7 @@ dependencies = [
  "sql-ast-new-analyzer",
  "sql-ast-new-nodes",
  "sql-ast-new-parser",
+ "sql-ast-new-to-ir",
  "sql-executor",
  "sql-explain",
  "sql-frontend",

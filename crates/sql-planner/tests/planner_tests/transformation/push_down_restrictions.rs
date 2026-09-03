@@ -7,7 +7,7 @@ use sql::ir::expression::VolatilityType;
 use sql::ir::node::expression::{Expression, MutExpression};
 use sql::ir::node::relational::Relational;
 use sql::ir::node::{
-    Join, Node, NodeId, Projection, ScalarFunction, ScanRelation, Selection, SubQueryReference,
+    Join, NodeId, Projection, ScalarFunction, ScanRelation, Selection, SubQueryReference,
 };
 use sql::ir::transformation::{PlanningState, Stage};
 use sql::ir::tree::traversal::{NodeIter, PostOrder};

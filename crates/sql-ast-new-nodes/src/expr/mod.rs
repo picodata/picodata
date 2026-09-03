@@ -47,12 +47,16 @@
 pub(super) mod render;
 mod structural_eq;
 
+use std::borrow::Cow;
+
 use smol_str::format_smolstr;
 use sql_ir::ir::aggregates::AggregateKind;
 use sql_ir::ir::function::Function;
+use sql_ir::ir::operator::Arithmetic;
 use sql_ir::ir::table_function::TableFunction;
+use sql_ir::ir::value::{parse_str_as, Value};
 
-use crate::error::{ast_err, AstResult};
+use crate::error::{ast_err, ast_invariant_err, AstErr, AstResult};
 use crate::multiset::MultisetStmt;
 use crate::table_expression::BoundVar;
 use crate::window::WindowFunction;
@@ -162,7 +166,7 @@ pub enum ExprInner<'q, State: AstState<'q>> {
     Row(ValuesRow<'q, State>),
     Array(ArrayLiteral<'q, State>),
     WindowFunction(Box<WindowFunction<'q, State>>),
-    FunctionCall(FunctionCall<'q, State>),
+    FunctionCall(Box<FunctionCall<'q, State>>),
     Parameter(Parameter),
     Cast(Cast<'q, State>),
     Like(Like<'q, State>),
@@ -213,19 +217,10 @@ impl<'q, State: AstState<'q>> ExprInner<'q, State> {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum BinaryOp {
-    Arithmetic(ArithmeticOp),
+    Arithmetic(Arithmetic),
     Comparison(CmpOp),
     Boolean(BooleanOp),
     Concat,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum ArithmeticOp {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Modulo,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -278,6 +273,44 @@ pub struct Literal<'q> {
     pub value: &'q str,
     pub quotes: QuotesType,
     pub kind: LiteralKind,
+}
+
+impl Literal<'_> {
+    /// The type this literal's kind denotes. `None` for an untyped NULL.
+    fn value_type(&self) -> Option<UnrestrictedType> {
+        match self.kind {
+            LiteralKind::Integer => Some(UnrestrictedType::Integer),
+            LiteralKind::Numeric => Some(UnrestrictedType::Decimal),
+            LiteralKind::Double => Some(UnrestrictedType::Double),
+            LiteralKind::Boolean => Some(UnrestrictedType::Boolean),
+            LiteralKind::Text => Some(UnrestrictedType::String),
+            LiteralKind::Null => None,
+        }
+    }
+}
+
+impl TryFrom<Literal<'_>> for Value {
+    type Error = AstErr;
+
+    fn try_from(literal: Literal<'_>) -> AstResult<Value> {
+        let Some(ty) = literal.value_type() else {
+            return Ok(Value::Null);
+        };
+        // The parser strips the outer quotes only, so an embedded quote is
+        // still doubled in the slice.
+        let text = match literal.quotes {
+            QuotesType::Single if literal.value.contains("''") => {
+                Cow::Owned(literal.value.replace("''", "'"))
+            }
+            _ => Cow::Borrowed(literal.value),
+        };
+        parse_str_as(&text, ty).ok_or_else(|| {
+            ast_invariant_err(format_smolstr!(
+                "literal {} does not parse as {ty}",
+                literal.value
+            ))
+        })
+    }
 }
 
 #[derive(Default)]
@@ -569,11 +602,11 @@ impl<'q> RawExpr<'q> {
     }
 
     pub fn function_call(name: Ident, args: FunctionCallArgs<'q, Raw>) -> Self {
-        Self::new(ExprInner::FunctionCall(FunctionCall {
+        Self::new(ExprInner::FunctionCall(Box::new(FunctionCall {
             name,
             args,
             resolved_fn: (),
-        }))
+        })))
     }
 
     pub fn parameter(parameter: Parameter) -> Self {
@@ -706,6 +739,10 @@ impl<'q> Expr<'q, Analyzed> {
     pub fn id(&self) -> AstNodeId {
         self.meta.id
     }
+
+    pub fn into_parts(self) -> (ExprInner<'q, Analyzed>, AnalyzedExprMeta) {
+        (self.inner, self.meta)
+    }
 }
 
 impl<'q, State: AstState<'q>> BinaryOperation<'q, State> {
@@ -725,10 +762,6 @@ impl<'q, State: AstState<'q>> BinaryOperation<'q, State> {
 }
 
 impl<'q> BinaryOperation<'q, Analyzed> {
-    pub fn parts_ref(&self) -> (&Expr<'q, Analyzed>, &Expr<'q, Analyzed>, &BinaryOp) {
-        (&self.left, &self.right, &self.op)
-    }
-
     pub fn from_parts(
         left: Box<Expr<'q, Analyzed>>,
         right: Box<Expr<'q, Analyzed>>,

@@ -117,6 +117,8 @@ impl<'q> Binder<'q> for NamedWindows<'q, Raw> {
 /// The checks run in Postgres' order: placement first — a call in WHERE is
 /// rejected before anything in it binds — then nesting, then the call's own
 /// shape, then its pieces left to right, the window reference last.
+// Out of line: inlined into recursive `Expr::bind`, its slots grow every level's frame.
+#[inline(never)]
 pub(crate) fn bind_win_fn<'q, M: Metadata>(
     window_function: WindowFunction<'q, Raw>,
     curr_id: AstNodeId,
@@ -376,7 +378,7 @@ fn bind_window_spec<'q, M: Metadata>(
     let (bound_frame, frame_t) = match frame {
         None => (None, None),
         Some(frame) => {
-            let (bound_frame, frame_t) = bind_window_frame(frame, order_t_expr.as_ref(), meta)?;
+            let (bound_frame, frame_t) = bind_window_frame(*frame, order_t_expr.as_ref(), meta)?;
             (Some(bound_frame), frame_t)
         }
     };
@@ -478,12 +480,13 @@ fn is_offset_bound(bound: &FrameBound<'_, Raw>) -> bool {
 }
 
 /// The type mirror is `None` for a frame without offsets: it has nothing to type.
+#[allow(clippy::type_complexity)]
 fn bind_window_frame<'q, M: Metadata>(
     frame: WindowFrame<'q, Raw>,
     order_t_expr: Option<&AstTypeExpr>,
     meta: &mut AnalyzerCtx<'q, M>,
 ) -> AstResult<(
-    WindowFrame<'q, Analyzed>,
+    Box<WindowFrame<'q, Analyzed>>,
     Option<TypeWindowFrame<AstNodeId>>,
 )> {
     let WindowFrame { ty, bounds } = frame;
@@ -500,7 +503,7 @@ fn bind_window_frame<'q, M: Metadata>(
     };
 
     if bound_offsets.is_empty() {
-        return Ok((WindowFrame { ty, bounds }, None));
+        return Ok((Box::new(WindowFrame { ty, bounds }), None));
     }
     let frame_t = match ty {
         FrameType::Rows => TypeWindowFrame::Rows(bound_offsets),
@@ -519,7 +522,7 @@ fn bind_window_frame<'q, M: Metadata>(
         }
     };
 
-    Ok((WindowFrame { ty, bounds }, Some(frame_t)))
+    Ok((Box::new(WindowFrame { ty, bounds }), Some(frame_t)))
 }
 
 fn bind_frame_bound<'q, M: Metadata>(

@@ -146,6 +146,10 @@ impl Ident {
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
+
+    pub fn take(self) -> SmolStr {
+        self.0
+    }
 }
 
 impl NamedEntity for Ident {

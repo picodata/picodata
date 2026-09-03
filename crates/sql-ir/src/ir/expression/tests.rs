@@ -38,7 +38,7 @@ fn rel_nodes_from_reference_in_scan() {
     )
     .unwrap();
     plan.add_rel(t);
-    let scan_id = plan.add_scan("t", None).unwrap();
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
 
     // A scan is a column source: its columns come from the table, not from
     // another relational node.
@@ -65,7 +65,7 @@ fn rel_nodes_from_reference_in_proj() {
     )
     .unwrap();
     plan.add_rel(t);
-    let scan_id = plan.add_scan("t", None).unwrap();
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
     let proj_id = plan
         .add_proj(scan_id, vec![], &["a"], false, false)
         .unwrap();
@@ -106,7 +106,7 @@ fn derive_expr_type() {
     )
     .unwrap();
     plan.add_rel(t);
-    let scan_id = plan.add_scan("t", None).unwrap();
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
     let a_id = plan.add_row_from_child(scan_id, &["a"]).unwrap();
     let b_id = plan.add_row_from_child(scan_id, &["b"]).unwrap();
     let c_id = plan.add_row_from_child(scan_id, &["c"]).unwrap();
@@ -189,7 +189,7 @@ fn set_target_in_subtree_rejects_leaf_reference() {
     )
     .unwrap();
     plan.add_rel(t);
-    let scan_id = plan.add_scan("t", None).unwrap();
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
 
     // A GROUP BY alias placeholder: a reference without a target relation.
     let leaf_id = plan.nodes.add_ref(

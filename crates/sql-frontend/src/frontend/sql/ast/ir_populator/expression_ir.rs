@@ -485,7 +485,7 @@ impl ParseExpression {
         let op_plan_id = match op {
             ParseExpressionInfixOperator::Concat => plan.add_concat(left_plan_id, right_plan_id),
             ParseExpressionInfixOperator::InfixArithmetic(arith) => {
-                plan.add_arithmetic_to_plan(left_plan_id, arith.clone(), right_plan_id)?
+                plan.add_arithmetic_to_plan(left_plan_id, *arith, right_plan_id)?
             }
             ParseExpressionInfixOperator::InfixBool(bool) => {
                 plan.add_cond(left_plan_id, *bool, right_plan_id)?

@@ -228,11 +228,9 @@ impl BinaryOp {
             BinaryOp::Boolean(BooleanOp::Or) => Precedence::Or,
             BinaryOp::Boolean(BooleanOp::And) => Precedence::And,
             BinaryOp::Comparison(_) => Precedence::Comparison,
-            BinaryOp::Arithmetic(ArithmeticOp::Add | ArithmeticOp::Subtract) => {
-                Precedence::Additive
-            }
+            BinaryOp::Arithmetic(Arithmetic::Add | Arithmetic::Subtract) => Precedence::Additive,
             BinaryOp::Arithmetic(
-                ArithmeticOp::Multiply | ArithmeticOp::Divide | ArithmeticOp::Modulo,
+                Arithmetic::Multiply | Arithmetic::Divide | Arithmetic::Modulo,
             ) => Precedence::Multiplicative,
             BinaryOp::Concat => Precedence::Infix,
         }
@@ -781,19 +779,6 @@ impl Display for BinaryOp {
             BinaryOp::Boolean(op) => write!(f, "{op}"),
             BinaryOp::Concat => write!(f, "||"),
         }
-    }
-}
-
-impl Display for ArithmeticOp {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        let op = match self {
-            ArithmeticOp::Add => "+",
-            ArithmeticOp::Subtract => "-",
-            ArithmeticOp::Multiply => "*",
-            ArithmeticOp::Divide => "/",
-            ArithmeticOp::Modulo => "%",
-        };
-        write!(f, "{op}")
     }
 }
 

@@ -84,6 +84,17 @@ pub struct MultisetStmt<'q, State: AstState<'q>> {
 }
 
 impl<'q, State: AstState<'q>> MultisetStmt<'q, State> {
+    pub fn into_parts(
+        self,
+    ) -> (
+        Ctes<'q, State>,
+        MultisetInner<'q, State>,
+        Option<OrderBy<'q, State>>,
+        Option<Limit>,
+    ) {
+        (self.ctes, self.inner, self.order_by, self.limit)
+    }
+
     pub fn from_parts(
         ctes: Ctes<'q, State>,
         inner: MultisetInner<'q, State>,
@@ -100,17 +111,6 @@ impl<'q, State: AstState<'q>> MultisetStmt<'q, State> {
 }
 
 impl<'q> MultisetStmt<'q, Raw> {
-    pub fn into_parts(
-        self,
-    ) -> (
-        Ctes<'q, Raw>,
-        MultisetInner<'q, Raw>,
-        Option<OrderBy<'q, Raw>>,
-        Option<Limit>,
-    ) {
-        (self.ctes, self.inner, self.order_by, self.limit)
-    }
-
     pub(crate) fn new(inner: MultisetInner<'q, Raw>) -> Self {
         Self {
             ctes: Ctes::<'q, Raw>::default(),
@@ -215,23 +215,6 @@ impl<'q> MultisetStmt<'q, Analyzed> {
             ctes: &self.ctes,
             from: self.from_ref(),
         }
-    }
-
-    #[allow(clippy::type_complexity)]
-    pub fn parts_ref(
-        &self,
-    ) -> (
-        &Ctes<'q, Analyzed>,
-        &MultisetInner<'q, Analyzed>,
-        Option<&OrderBy<'q, Analyzed>>,
-        Option<&Limit>,
-    ) {
-        (
-            &self.ctes,
-            &self.inner,
-            self.order_by.as_ref(),
-            self.limit.as_ref(),
-        )
     }
 }
 
@@ -563,15 +546,13 @@ pub struct Ctes<'q, State: AstState<'q>> {
     ctes: Vec<Cte<'q, State>>,
 }
 
-impl<'q> Ctes<'q, Raw> {
-    pub fn into(self) -> Vec<Cte<'q, Raw>> {
-        self.ctes
-    }
-}
-
 impl<'q, State: AstState<'q>> Ctes<'q, State> {
     pub fn add(&mut self, cte: Cte<'q, State>) {
         self.ctes.push(cte);
+    }
+
+    pub fn into(self) -> Vec<Cte<'q, State>> {
+        self.ctes
     }
 
     pub fn ctes_ref(&self) -> &Vec<Cte<'q, State>> {
@@ -621,13 +602,11 @@ pub struct Cte<'q, State: AstState<'q>> {
     body: MultisetStmt<'q, State>,
 }
 
-impl<'q> Cte<'q, Raw> {
-    pub fn into_parts(self) -> (Ident, Vec<Ident>, MultisetStmt<'q, Raw>) {
+impl<'q, State: AstState<'q>> Cte<'q, State> {
+    pub fn into_parts(self) -> (Ident, Vec<Ident>, MultisetStmt<'q, State>) {
         (self.name, self.columns, self.body)
     }
-}
 
-impl<'q, State: AstState<'q>> Cte<'q, State> {
     pub(crate) fn columns_ref(&self) -> &Vec<Ident> {
         &self.columns
     }

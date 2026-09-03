@@ -19,7 +19,8 @@ use std::hash::BuildHasher;
 use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::{
-    ArithmeticExpr, LetVarRef, Like, Limit, Over, Parameter, ScalarFunction, Timestamp, Window,
+    ArithmeticExpr, Cast, LetVarRef, Like, Limit, Over, Parameter, ScalarFunction, Timestamp,
+    Window,
 };
 
 /// Helper macros to build a hash map or set
@@ -295,7 +296,7 @@ impl Plan {
                     }
                 }
                 Expression::Index(_) => writeln!(buf, "Index")?,
-                Expression::Cast(_) => writeln!(buf, "Cast")?,
+                Expression::Cast(Cast { to, .. }) => writeln!(buf, "Cast [to = {to}]")?,
                 Expression::Trim(Trim {
                     kind,
                     pattern,
@@ -323,8 +324,17 @@ impl Plan {
                     writeln_with_tabulation(buf, tabulation_number + 1, "Escape")?;
                     self.formatted_arena_node(buf, tabulation_number + 1, *escape)?;
                 }
-                Expression::ScalarFunction(ScalarFunction { children, .. }) => {
-                    writeln!(buf, "ScalarFunction")?;
+                Expression::ScalarFunction(ScalarFunction {
+                    name,
+                    children,
+                    feature,
+                    func_type,
+                    ..
+                }) => {
+                    writeln!(
+                        buf,
+                        "ScalarFunction [name = {name}, type = {func_type}, feature = {feature:?}]"
+                    )?;
                     writeln_with_tabulation(buf, tabulation_number + 1, "Arguments:")?;
                     for arg in children {
                         self.formatted_arena_node(buf, tabulation_number + 1, *arg)?;

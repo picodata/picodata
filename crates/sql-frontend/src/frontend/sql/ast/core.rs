@@ -1032,7 +1032,7 @@ impl AstCore {
             }
         }
 
-        let projection_id = plan.add_select_without_scan(&proj_columns)?;
+        let projection_id = plan.add_select_without_scan(proj_columns)?;
         plan.fix_subquery_rows(worker, projection_id)?;
         map.add(node_id, projection_id);
 
@@ -4133,7 +4133,7 @@ where
     match table {
         Ok(table) => {
             plan.add_rel(table);
-            let scan_id = plan.add_scan(scan_name.as_str(), None)?;
+            let scan_id = plan.add_scan(scan_name, None, None)?;
             map.add(node_id, scan_id);
 
             Ok(())

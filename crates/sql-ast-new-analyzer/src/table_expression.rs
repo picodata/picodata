@@ -27,11 +27,11 @@ use smol_str::{format_smolstr, SmolStr};
 
 use sql_ast_new_nodes::error::AstResult;
 use sql_ast_new_nodes::expr::{Expr, ExprInner, FunctionCallArgs};
-use sql_ast_new_nodes::scope::CteRef;
+use sql_ast_new_nodes::scope::{CteRef, Scope};
 use sql_ast_new_nodes::table_expression::{
-    route_column, AnalyzedCteOrTable, BoundJoinUsingVar, ColumnRoute, From, FromEntry, GroupBy,
-    IndexedBy, JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem, TableFactor,
-    TableFactorInner, TableFunction,
+    route_column, AnalyzedCteOrTable, AttributeView, BoundJoinUsingVar, BoundVar, ColumnRoute,
+    From, FromEntry, GroupBy, IndexedBy, JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem,
+    TableFactor, TableFactorInner, TableFunction,
 };
 use sql_ast_new_nodes::{Analyzed, Ident, NamedEntity, Raw};
 use sql_ir::errors::{Entity, SbroadError};
@@ -43,7 +43,7 @@ use sql_type_system::error::Error as TypeSystemError;
 use sql_type_system::expr::Type as TypeSystemType;
 use sql_type_system::type_system::FunctionKind;
 
-use crate::expr::var_from_route;
+use crate::expr::{cannot_resolve_err, var_from_route};
 use crate::multiset::analyze_subquery;
 use crate::{
     analyze_err, duplicated_name, semantic_err, texpr_from_derived_type, AnalyzerCtx,
@@ -55,7 +55,7 @@ impl<'q> Binder<'q> for From<'q, Raw> {
     type BoundNode = From<'q, Analyzed>;
 
     fn bind<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::BoundNode> {
-        let from_entries = self.into_tbl_factors();
+        let from_entries = self.into_entries();
 
         // Detect duplicating FROM entry name if any.
         if let Some(name) = duplicated_name(&from_entries) {
@@ -66,7 +66,7 @@ impl<'q> Binder<'q> for From<'q, Raw> {
 
         debug_assert!(meta.binder.curr_from.is_empty());
 
-        meta.binder.curr_from = From::from_tbl_factors(Vec::with_capacity(from_entries.len()));
+        meta.binder.curr_from = From::from_entries(Vec::with_capacity(from_entries.len()));
 
         for from_entry in from_entries.into_iter() {
             let analyzed_entry = from_entry.bind(meta)?;
@@ -146,7 +146,7 @@ impl<'q> Binder<'q> for TableFactor<'q, Raw> {
                     meta.binder.update_cte_lvl(cte.depth);
                     TableFactorInner::CteOrTable(AnalyzedCteOrTable::Cte { name, cte })
                 } else if let Ok(table) = meta.table(name.as_str()) {
-                    TableFactorInner::CteOrTable(AnalyzedCteOrTable::Table(table))
+                    TableFactorInner::CteOrTable(AnalyzedCteOrTable::Table(Box::new(table)))
                 } else {
                     return Err(semantic_err(format_smolstr!(
                         r#"relation "{}" does not exist"#,
@@ -159,7 +159,7 @@ impl<'q> Binder<'q> for TableFactor<'q, Raw> {
                 TableFactorInner::<'q, Analyzed>::SubQuery(Box::new(analyzed_stmt))
             }
             TableFactorInner::Function(func) => {
-                TableFactorInner::Function(bind_table_function(func, meta)?)
+                TableFactorInner::Function(Box::new(bind_table_function(*func, meta)?))
             }
         };
         let indexed_by = match (indexed_by, &inner) {
@@ -408,6 +408,18 @@ impl<'q> Binder<'q> for JoinUsingColumn {
             &self.0,
             scope,
         )?;
+
+        // USING merges user columns only, so `*` over the join never shows
+        // the system `bucket_id` (PostgreSQL rejects its system columns too).
+        let is_system = |var: BoundVar| {
+            matches!(
+                scope.attribute(var),
+                Some(AttributeView::Column(col, _)) if col.role == ColumnRole::Sharding
+            )
+        };
+        if is_system(first_resolved_column) || is_system(second_resolved_column) {
+            return Err(cannot_resolve_err(&self.0));
+        }
 
         let left_t_expr = texpr_from_derived_type(left_type, meta.type_system.inc_expr_id());
         let joined_t_expr = texpr_from_derived_type(

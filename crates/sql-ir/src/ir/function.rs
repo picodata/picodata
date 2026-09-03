@@ -269,43 +269,65 @@ impl Plan {
             .collect::<Vec<ArgsToCast>>();
 
         for (node_id, args, cast_target) in func_args.into_iter() {
-            for (idx, arg_id) in args.iter().enumerate() {
-                let arg_id = *arg_id;
-                let arg_expr = self.get_expression_node(arg_id)?;
+            let targets = args
+                .iter()
+                .map(
+                    |arg_id| match (cast_target, self.get_expression_node(*arg_id)?) {
+                        (_, Expression::CountAsterisk(_)) => Ok(None),
+                        (CastTarget::Fixed(cast_type), _) => Ok(Some(cast_type)),
+                        // `GROUP BY` aliases can still appear here as placeholders. Type analysis
+                        // records the type for the aliased child expression, not for the alias node.
+                        (CastTarget::FromReport, _) => DerivedType::from(
+                            type_report.get_type(&self.get_child_under_alias(*arg_id)?),
+                        )
+                        .get()
+                        .filter(|ty| ty.is_scalar())
+                        .map_or(Ok(None), |ty| CastType::try_from(&ty).map(Some)),
+                    },
+                )
+                .collect::<Result<Vec<_>, SbroadError>>()?;
+            self.cast_fn_args(node_id, &targets)?;
+        }
 
-                let get_cast_type = || match cast_target {
-                    CastTarget::Fixed(cast_type) => Ok(Some(cast_type)),
-                    /*
-                        `GROUP BY` aliases can still appear here as placeholders. Type analysis
-                        records the type for the aliased child expression, not for the alias node.
-                    */
-                    CastTarget::FromReport => DerivedType::from(
-                        type_report.get_type(&self.get_child_under_alias(arg_id)?),
+        Ok(())
+    }
+
+    /// Wrap each argument of `node_id` in a cast to its `targets` entry, skipping `count(*)`
+    /// and arguments already cast to that type.
+    pub fn cast_fn_args(
+        &mut self,
+        node_id: NodeId,
+        targets: &[Option<CastType>],
+    ) -> Result<(), SbroadError> {
+        for (idx, cast_type) in targets.iter().enumerate() {
+            let Some(cast_type) = *cast_type else {
+                continue;
+            };
+            let arg_id = *self
+                .get_expression_node(node_id)?
+                .expr_children()
+                .get(idx)
+                .ok_or_else(|| {
+                    SbroadError::Invalid(
+                        Entity::Expression,
+                        Some(format_smolstr!("function has no argument {idx}")),
                     )
-                    .get()
-                    .filter(|ty| ty.is_scalar())
-                    .map_or(Ok(None), |ty| CastType::try_from(&ty).map(Some)),
-                };
-
-                let cast_type = match arg_expr {
-                    Expression::CountAsterisk(_) => continue,
-                    Expression::Cast(Cast { to, .. }) => get_cast_type()?.filter(|ty| *to != *ty),
-                    _ => get_cast_type()?,
-                };
-                let Some(cast_type) = cast_type else {
-                    continue;
-                };
-
-                let cast_id = self.add_cast(arg_id, cast_type)?;
-                let mut func_node_mut = self.get_mut_expression_node(node_id)?;
-                let child_mut = func_node_mut
-                    .expr_children_mut()
-                    .into_iter()
-                    .nth(idx)
-                    .expect("`idx` is in bounds of children array");
-
-                *child_mut = cast_id;
+                })?;
+            match self.get_expression_node(arg_id)? {
+                Expression::CountAsterisk(_) => continue,
+                Expression::Cast(Cast { to, .. }) if *to == cast_type => continue,
+                _ => {}
             }
+
+            let cast_id = self.add_cast(arg_id, cast_type)?;
+            let mut func_node_mut = self.get_mut_expression_node(node_id)?;
+            let child_mut = func_node_mut
+                .expr_children_mut()
+                .into_iter()
+                .nth(idx)
+                .expect("`idx` is in bounds of children array");
+
+            *child_mut = cast_id;
         }
 
         Ok(())

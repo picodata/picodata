@@ -95,7 +95,7 @@ fn subtree_external_links() {
     let b_value_id = plan.add_const(Value::Integer(100));
     let a_id = plan.nodes.add_alias("a", a_value_id).unwrap();
     let b_id = plan.nodes.add_alias("b", b_value_id).unwrap();
-    let scan = plan.add_select_without_scan(&[a_id, b_id]).unwrap();
+    let scan = plan.add_select_without_scan(vec![a_id, b_id]).unwrap();
     let proj = plan.add_proj(scan, vec![], &["a"], false, false).unwrap();
     plan.set_top(proj).unwrap();
 

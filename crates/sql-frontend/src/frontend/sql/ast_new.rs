@@ -77,16 +77,3 @@ pub(super) fn new_stub(_query: &str) -> Result<RawAst<'_>, SbroadError> {
         format_smolstr!("new AST is just a stub for now"),
     ))
 }
-
-/// The [`analyze`](Ast::analyze) half of the off switch.
-pub(super) fn analyze_stub<'q>(
-    _ast: RawAst<'q>,
-    _metadata: &'q impl Metadata,
-    _param_types: &'q [DerivedType],
-) -> Result<AnalyzedAst<'q>, SbroadError> {
-    Err(SbroadError::FailedTo(
-        Action::Analyze,
-        Some(Entity::AST),
-        format_smolstr!("new AST analyzer is just a stub for now"),
-    ))
-}

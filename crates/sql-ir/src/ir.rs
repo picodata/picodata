@@ -1720,6 +1720,11 @@ impl Plan {
         Ok(())
     }
 
+    /// Reset top node of plan
+    pub fn reset_top(&mut self) -> Option<NodeId> {
+        std::mem::take(&mut self.top)
+    }
+
     /// Get relation type node
     ///
     /// # Errors

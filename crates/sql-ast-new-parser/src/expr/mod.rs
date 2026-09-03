@@ -26,6 +26,7 @@ mod tests;
 use pest::iterators::Pair;
 use pest::pratt_parser::PrattParser;
 use smol_str::format_smolstr;
+use sql_ir::ir::operator::Arithmetic;
 
 use crate::multiset::parse_multiset;
 use crate::window::parse_window_function;
@@ -33,9 +34,9 @@ use crate::ParseCtx;
 use crate::{parser_err, syntax_err, AstResult};
 use sql_ast_new_grammar::Rule;
 use sql_ast_new_nodes::expr::{
-    ArithmeticOp, BinaryOp, BooleanOp, Case, CastSyntax, CmpOp, Expr, ExprInner, FunctionCallArgs,
-    IsValue, Like, LiteralKind, Parameter, QuotesType, RawExpr, Similar, Substring, TimeFunction,
-    TrimKind, UnaryOp, ValuesRow,
+    BinaryOp, BooleanOp, Case, CastSyntax, CmpOp, Expr, ExprInner, FunctionCallArgs, IsValue, Like,
+    LiteralKind, Parameter, QuotesType, RawExpr, Similar, Substring, TimeFunction, TrimKind,
+    UnaryOp, ValuesRow,
 };
 use sql_ast_new_nodes::{Ident, Raw};
 use sql_ir::ir::aggregates::AggregateKind;
@@ -148,11 +149,11 @@ fn node_nonassoc_tier(expr: &RawExpr<'_>) -> Option<NonAssocTier> {
 
 fn parse_binary_op(pair: Pair<'_, Rule>) -> AstResult<BinaryOp> {
     Ok(match pair.as_rule() {
-        Rule::Add => BinaryOp::Arithmetic(ArithmeticOp::Add),
-        Rule::Subtract => BinaryOp::Arithmetic(ArithmeticOp::Subtract),
-        Rule::Multiply => BinaryOp::Arithmetic(ArithmeticOp::Multiply),
-        Rule::Divide => BinaryOp::Arithmetic(ArithmeticOp::Divide),
-        Rule::Modulo => BinaryOp::Arithmetic(ArithmeticOp::Modulo),
+        Rule::Add => BinaryOp::Arithmetic(Arithmetic::Add),
+        Rule::Subtract => BinaryOp::Arithmetic(Arithmetic::Subtract),
+        Rule::Multiply => BinaryOp::Arithmetic(Arithmetic::Multiply),
+        Rule::Divide => BinaryOp::Arithmetic(Arithmetic::Divide),
+        Rule::Modulo => BinaryOp::Arithmetic(Arithmetic::Modulo),
         Rule::Eq => BinaryOp::Comparison(CmpOp::Eq),
         Rule::NotEq => BinaryOp::Comparison(CmpOp::Neq),
         Rule::Lt => BinaryOp::Comparison(CmpOp::Lt),

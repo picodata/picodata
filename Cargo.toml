@@ -222,6 +222,7 @@ members = [
     "crates/sql-ast-new-grammar",
     "crates/sql-ast-new-nodes",
     "crates/sql-ast-new-parser",
+    "crates/sql-ast-new-to-ir",
     "crates/sql-executor",
     "crates/sql-explain",
     "crates/sql-frontend",

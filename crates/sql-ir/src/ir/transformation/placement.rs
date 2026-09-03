@@ -204,7 +204,7 @@ impl Plan {
                 // SELECT * preserves duplicate output names without ambiguous
                 // column references. Keep the shard column for routing.
                 let new_proj = self.add_proj_star(new_sel, true)?;
-                let sub_query = self.add_sub_query(new_proj, alias.as_deref())?;
+                let sub_query = self.add_sub_query(new_proj, alias)?;
                 self.splice_over(parent, child, sub_query, state)?;
                 passthroughs.push((child, smallvec![new_sel, new_proj, sub_query]));
                 new_sel

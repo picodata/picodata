@@ -92,7 +92,7 @@ fn parse_from<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<From<'q, Ra
         }
     }
 
-    Ok(From::from_tbl_factors(tbl_factors))
+    Ok(From::from_entries(tbl_factors))
 }
 
 fn parse_table_factor<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<TableFactor<'q, Raw>> {
@@ -132,7 +132,9 @@ fn parse_table_factor<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Tab
                 )?)));
             }
             Rule::TableFunction => {
-                inner = Some(TableFactorInner::Function(parse_table_function(pair, ctx)?));
+                inner = Some(TableFactorInner::Function(Box::new(parse_table_function(
+                    pair, ctx,
+                )?)));
             }
             Rule::Identifier => {
                 if indexed_by.is_some() {

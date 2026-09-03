@@ -32,7 +32,7 @@ use crate::select::{ProjectionExpr, SelectList, SelectListExprs};
 use crate::window::NamedWindows;
 use crate::{write_sql_ident, Analyzed, AstState, Ident, NamedEntity, Raw, NONAME_COLUMN};
 use smol_str::format_smolstr;
-use sql_ir::ir::relation::{Column, ColumnRole, Table};
+use sql_ir::ir::relation::{Column, Table};
 use sql_ir::ir::types::DerivedType;
 use std::hash::{Hash, Hasher};
 
@@ -173,20 +173,18 @@ pub struct From<'q, State: AstState<'q>> {
 }
 
 impl<'q, State: AstState<'q>> From<'q, State> {
-    pub fn from_tbl_factors(tbl_factors: Vec<FromEntry<'q, State>>) -> Self {
-        Self { tbl_factors }
-    }
-}
-
-impl<'q> From<'q, Raw> {
-    pub fn into_tbl_factors(self) -> Vec<FromEntry<'q, Raw>> {
+    pub fn into_entries(self) -> Vec<FromEntry<'q, State>> {
         self.tbl_factors
+    }
+
+    pub fn from_entries(tbl_factors: Vec<FromEntry<'q, State>>) -> Self {
+        Self { tbl_factors }
     }
 }
 
 impl<'q> From<'q, Analyzed> {
     pub fn empty() -> Self {
-        Self::from_tbl_factors(vec![])
+        Self::from_entries(vec![])
     }
 
     pub fn is_empty(&self) -> bool {
@@ -528,7 +526,7 @@ pub enum TableFactorInner<'q, State: AstState<'q>> {
     /// Table name or analyzed entity
     CteOrTable(State::CteOrTableT),
     SubQuery(Box<MultisetStmt<'q, State>>),
-    Function(TableFunction<'q, State>),
+    Function(Box<TableFunction<'q, State>>),
 }
 
 impl<'q, State: AstState<'q>> NamedEntity for TableFactorInner<'q, State> {
@@ -787,14 +785,14 @@ impl<'q, State: AstState<'q>> Render<'q, State> for OrdrByGrpByElem<'q, State> {
 /// [`Scope`].
 pub enum AnalyzedCteOrTable {
     Cte { name: Ident, cte: CteRef },
-    Table(Table),
+    Table(Box<Table>),
 }
 
 impl AnalyzedCteOrTable {
     /// Position of `column_name` in this source, honoring the qualifier.
     /// CTE lookup goes through the explicit column list when present (it
-    /// overrides the body's output names). Table lookup sees user columns
-    /// only, keeping other columns invisible to SQL name resolution.
+    /// overrides the body's output names). Table lookup sees every column,
+    /// the system `bucket_id` included.
     ///
     /// A CTE the scope cannot supply is an analyzer invariant violation;
     /// routing has no error channel, so it reads as a missing column.
@@ -865,8 +863,8 @@ impl AnalyzedCteOrTable {
     }
 }
 
-/// Position of the user column `column_name` among `columns`. Other columns
-/// are invisible to SQL name resolution.
+/// Position of the column `column_name` among `columns`. A system column
+/// (`bucket_id`) resolves by name as in the old pipeline; only `*` hides it.
 fn columns_route(
     columns: &[Column],
     column_name: &str,
@@ -877,7 +875,6 @@ fn columns_route(
         .enumerate()
         .find(|(pos, col)| {
             !exclude_positions.is_some_and(|positions| positions.contains(pos))
-                && matches!(col.role, ColumnRole::User)
                 && col.name == column_name
         })
         .map_or(UniqueColumnRoute::ColumnMissing, |(pos, _)| {

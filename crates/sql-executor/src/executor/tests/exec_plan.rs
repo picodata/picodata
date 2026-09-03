@@ -1801,7 +1801,7 @@ fn syntax_plan_projection_windows_stay_in_original_plan() {
     let a = plan.nodes.add_alias("a", a_value).unwrap();
     let b_value = plan.nodes.add_const(2.into());
     let b = plan.nodes.add_alias("b", b_value).unwrap();
-    let scan_relation = plan.add_select_without_scan(&[a, b]).unwrap();
+    let scan_relation = plan.add_select_without_scan(vec![a, b]).unwrap();
     let window = {
         let ordering = [0, 1]
             .iter()

@@ -34,7 +34,7 @@ fn scan_rel() {
 
     let scan_node = NodeId::new96(0);
 
-    let scan_id = plan.add_scan("t", None).unwrap();
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
     assert_eq!(scan_node, scan_id);
     plan.top = Some(scan_node);
 
@@ -67,7 +67,7 @@ fn projection() {
     .unwrap();
     plan.add_rel(t);
 
-    let scan_id = plan.add_scan("t", None).unwrap();
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
 
     // Invalid alias names in the output
     assert_eq!(
@@ -121,7 +121,7 @@ fn selection() {
     .unwrap();
     plan.add_rel(t);
 
-    let scan_id = plan.add_scan("t", None).unwrap();
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
 
     let ref_row = plan.add_row_from_child(scan_id, &["a", "b"]).unwrap();
     let const_1 = plan.nodes.add_const(Value::from(1));
@@ -151,7 +151,7 @@ fn except() {
     .unwrap();
     let t1_copy = t1.clone();
     valid_plan.add_rel(t1);
-    let scan_t1_id = valid_plan.add_scan("t1", None).unwrap();
+    let scan_t1_id = valid_plan.add_scan("t1".into(), None, None).unwrap();
 
     let t2 = Table::new_sharded(
         random(),
@@ -166,7 +166,7 @@ fn except() {
     )
     .unwrap();
     valid_plan.add_rel(t2);
-    let scan_t2_id = valid_plan.add_scan("t2", None).unwrap();
+    let scan_t2_id = valid_plan.add_scan("t2".into(), None, None).unwrap();
 
     // Correct Except operator
     valid_plan.add_except(scan_t1_id, scan_t2_id).unwrap();
@@ -174,7 +174,7 @@ fn except() {
     let mut invalid_plan = Plan::default();
 
     invalid_plan.add_rel(t1_copy);
-    let scan_t1_id = invalid_plan.add_scan("t1", None).unwrap();
+    let scan_t1_id = invalid_plan.add_scan("t1".into(), None, None).unwrap();
 
     let t3 = Table::new_sharded(
         random(),
@@ -189,7 +189,7 @@ fn except() {
     )
     .unwrap();
     invalid_plan.add_rel(t3);
-    let scan_t3_id = invalid_plan.add_scan("t3", None).unwrap();
+    let scan_t3_id = invalid_plan.add_scan("t3".into(), None, None).unwrap();
 
     assert_eq!(
         SbroadError::UnexpectedNumberOfValues(
@@ -218,7 +218,7 @@ fn insert() {
     .unwrap();
 
     plan.add_rel(t1);
-    let scan_t1_id = plan.add_scan("t1", None).unwrap();
+    let scan_t1_id = plan.add_scan("t1".into(), None, None).unwrap();
 
     let t2 = Table::new_sharded(
         random(),
@@ -295,7 +295,7 @@ fn union_all() {
     )
     .unwrap();
     plan.add_rel(t1);
-    let scan_t1_id = plan.add_scan("t1", None).unwrap();
+    let scan_t1_id = plan.add_scan("t1".into(), None, None).unwrap();
 
     let t2 = Table::new_sharded(
         random(),
@@ -310,7 +310,7 @@ fn union_all() {
     )
     .unwrap();
     plan.add_rel(t2);
-    let scan_t2_id = plan.add_scan("t2", None).unwrap();
+    let scan_t2_id = plan.add_scan("t2".into(), None, None).unwrap();
 
     plan.add_union(scan_t2_id, scan_t1_id, false).unwrap();
 }
@@ -333,7 +333,7 @@ fn union_all_col_amount_mismatch() {
     .unwrap();
     plan.add_rel(t1);
 
-    let scan_t1_id = plan.add_scan("t1", None).unwrap();
+    let scan_t1_id = plan.add_scan("t1".into(), None, None).unwrap();
 
     // Check errors for children with different amount of column
     let t2 = Table::new_sharded(
@@ -350,7 +350,7 @@ fn union_all_col_amount_mismatch() {
     .unwrap();
     plan.add_rel(t2);
 
-    let scan_t2_id = plan.add_scan("t2", None).unwrap();
+    let scan_t2_id = plan.add_scan("t2".into(), None, None).unwrap();
     assert_eq!(
         SbroadError::UnexpectedNumberOfValues(
             "children tuples have mismatching amount of columns in union all node: left 1, right 2"
@@ -378,8 +378,9 @@ fn sub_query() {
     .unwrap();
     plan.add_rel(t);
 
-    let scan_id = plan.add_scan("t", None).unwrap();
-    plan.add_sub_query(scan_id, Some("sq")).unwrap();
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
+    plan.add_sub_query(scan_id, Some(SmolStr::new("sq")))
+        .unwrap();
 
     // Non-relational child node
     let const_node = plan.add_const(Value::from(1_i64));
@@ -391,7 +392,8 @@ fn sub_query() {
                 plan.get_node(const_node).unwrap()
             ))
         ),
-        plan.add_sub_query(const_node, Some("sq")).unwrap_err()
+        plan.add_sub_query(const_node, Some(SmolStr::new("sq")))
+            .unwrap_err()
     );
 }
 
@@ -418,7 +420,7 @@ fn join() {
     )
     .unwrap();
     plan.add_rel(t1);
-    let scan_t1 = plan.add_scan("t1", None).unwrap();
+    let scan_t1 = plan.add_scan("t1".into(), None, None).unwrap();
 
     let t2 = Table::new_sharded(
         random(),
@@ -434,7 +436,7 @@ fn join() {
     )
     .unwrap();
     plan.add_rel(t2);
-    let scan_t2 = plan.add_scan("t2", None).unwrap();
+    let scan_t2 = plan.add_scan("t2".into(), None, None).unwrap();
 
     let a_ref = plan
         .add_ref_from_left_branch(scan_t1, scan_t2, ColumnWithScan::new("a", None))
@@ -469,7 +471,7 @@ fn join_duplicate_columns() {
     )
     .unwrap();
     plan.add_rel(t1);
-    let scan_t1 = plan.add_scan("t1", None).unwrap();
+    let scan_t1 = plan.add_scan("t1".into(), None, None).unwrap();
 
     let t2 = Table::new_sharded(
         random(),
@@ -485,7 +487,7 @@ fn join_duplicate_columns() {
     )
     .unwrap();
     plan.add_rel(t2);
-    let scan_t2 = plan.add_scan("t2", None).unwrap();
+    let scan_t2 = plan.add_scan("t2".into(), None, None).unwrap();
 
     let a_ref = plan
         .add_ref_from_left_branch(scan_t1, scan_t2, ColumnWithScan::new("a", None))

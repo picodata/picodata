@@ -26,11 +26,12 @@ use crate::{
 };
 use sql_ast_new_nodes::error::{AstErr, AstResult};
 use sql_ast_new_nodes::expr::{
-    ArithmeticOp, ArrayLiteral, Between, BinaryOp, BinaryOperation, BooleanOp, Case, Cast,
-    CastSyntax, CmpOp, Exists, Expr, ExprInner, FunctionCall, FunctionCallArgs, InExpr, IndexExpr,
-    IsExpr, IsValue, Like, Literal, LiteralKind, RawVar, ResolvedFn, Similar, Substring,
-    TimeFunction, Trim, UnaryOp, UnaryOperation, ValuesRow,
+    ArrayLiteral, Between, BinaryOp, BinaryOperation, BooleanOp, Case, Cast, CastSyntax, CmpOp,
+    Exists, Expr, ExprInner, FunctionCall, FunctionCallArgs, InExpr, IndexExpr, IsExpr, IsValue,
+    Like, Literal, LiteralKind, Parameter, RawVar, ResolvedFn, Similar, Substring, TimeFunction,
+    Trim, UnaryOp, UnaryOperation, ValuesRow,
 };
+use sql_ast_new_nodes::multiset::MultisetStmt;
 use sql_ast_new_nodes::scope::{Depth, Scope};
 use sql_ast_new_nodes::table_expression::{BoundJoinUsingVar, BoundVar, ColumnRoute};
 use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, AstNodeId, Raw};
@@ -73,17 +74,6 @@ fn cmp_op_to_type_system(op: CmpOp) -> ComparisonOperator {
     }
 }
 
-/// Operator name as registered in the type system (see `default_type_system`).
-fn arithmetic_op_str(op: ArithmeticOp) -> &'static str {
-    match op {
-        ArithmeticOp::Add => "+",
-        ArithmeticOp::Subtract => "-",
-        ArithmeticOp::Multiply => "*",
-        ArithmeticOp::Divide => "/",
-        ArithmeticOp::Modulo => "%",
-    }
-}
-
 fn boolean_op_str(op: BooleanOp) -> &'static str {
     match op {
         BooleanOp::And => "and",
@@ -105,7 +95,7 @@ fn binary_op_to_type_expr(
             AstTypeExprKind::Comparison(cmp_op_to_type_system(cmp), Box::new(left), Box::new(right))
         }
         BinaryOp::Arithmetic(arith) => {
-            AstTypeExprKind::Operator(arithmetic_op_str(arith).to_string(), vec![left, right])
+            AstTypeExprKind::Operator(arith.as_str().to_string(), vec![left, right])
         }
         BinaryOp::Boolean(bool_op) => {
             AstTypeExprKind::Operator(boolean_op_str(bool_op).to_string(), vec![left, right])
@@ -130,7 +120,7 @@ fn cast_to_type_expr(
     )
 }
 
-fn cannot_resolve_err(var: &RawVar) -> AstErr {
+pub(crate) fn cannot_resolve_err(var: &RawVar) -> AstErr {
     semantic_err(format_smolstr!("cannot resolve column reference '{var}'",))
 }
 
@@ -269,59 +259,48 @@ fn analyze_like_operands<'q, M: Metadata>(
 ///   it really is a SIMILAR with an escape (the old pipeline rejects at IR
 ///   build) and types it `substring(s, pat, esc)`. The rebuilt wrapper
 ///   carries no id/type on purpose: it is not a predicate, just syntax.
+// Out of line: inlined into recursive `Expr::bind`, its slots grow every level's frame.
+#[inline(never)]
 fn analyze_substring<'q, M: Metadata>(
     substring: Substring<'q, Raw>,
     meta: &mut AnalyzerCtx<'q, M>,
     curr_id: AstNodeId,
 ) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
-    let three_args = |name: &str, args: Vec<AstTypeExpr>| {
-        AstTypeExpr::new(curr_id, AstTypeExprKind::Function(name.to_string(), args))
-    };
-    Ok(match substring {
-        Substring::FromFor(s, from, len) => {
-            let (s, s_t_expr) = (*s).bind(meta)?;
-            let (from, from_t_expr) = (*from).bind(meta)?;
-            let (len, len_t_expr) = (*len).bind(meta)?;
-            (
-                ExprInner::Substring(Substring::FromFor(
-                    Box::new(s),
-                    Box::new(from),
-                    Box::new(len),
-                )),
-                three_args("substring", vec![s_t_expr, from_t_expr, len_t_expr]),
-            )
-        }
-        Substring::Regular(s, from, len) => {
-            let (s, s_t_expr) = (*s).bind(meta)?;
-            let (from, from_t_expr) = (*from).bind(meta)?;
-            let (len, len_t_expr) = (*len).bind(meta)?;
-            (
-                ExprInner::Substring(Substring::Regular(
-                    Box::new(s),
-                    Box::new(from),
-                    Box::new(len),
-                )),
-                three_args("substring", vec![s_t_expr, from_t_expr, len_t_expr]),
-            )
-        }
-        Substring::From(s, from) => {
-            let (s, s_t_expr) = (*s).bind(meta)?;
-            let (from, from_t_expr) = (*from).bind(meta)?;
-            (
-                ExprInner::Substring(Substring::From(Box::new(s), Box::new(from))),
-                three_args("substring", vec![s_t_expr, from_t_expr]),
-            )
-        }
+    let mut args = Vec::with_capacity(3);
+    let (inner, name) = match substring {
+        Substring::FromFor(s, from, len) => (
+            Substring::FromFor(
+                bind_arg(*s, meta, &mut args)?,
+                bind_arg(*from, meta, &mut args)?,
+                bind_arg(*len, meta, &mut args)?,
+            ),
+            "substring",
+        ),
+        Substring::Regular(s, from, len) => (
+            Substring::Regular(
+                bind_arg(*s, meta, &mut args)?,
+                bind_arg(*from, meta, &mut args)?,
+                bind_arg(*len, meta, &mut args)?,
+            ),
+            "substring",
+        ),
+        Substring::From(s, from) => (
+            Substring::From(
+                bind_arg(*s, meta, &mut args)?,
+                bind_arg(*from, meta, &mut args)?,
+            ),
+            "substring",
+        ),
         Substring::For(s, len) => {
-            let (s, s_t_expr) = (*s).bind(meta)?;
-            let (len, len_t_expr) = (*len).bind(meta)?;
+            let inner = Substring::For(
+                bind_arg(*s, meta, &mut args)?,
+                bind_arg(*len, meta, &mut args)?,
+            );
             let synthetic_id = meta.type_system.inc_expr_id();
             let one_t_expr =
                 AstTypeExpr::new(synthetic_id, AstTypeExprKind::Literal(Type::Integer));
-            (
-                ExprInner::Substring(Substring::For(Box::new(s), Box::new(len))),
-                three_args("substr", vec![s_t_expr, one_t_expr, len_t_expr]),
-            )
+            args.insert(1, one_t_expr);
+            (inner, "substr")
         }
         Substring::Similar(inner) => match (*inner).into() {
             ExprInner::Similar(similar) => {
@@ -338,26 +317,38 @@ fn analyze_substring<'q, M: Metadata>(
                     }
                     (true, _) => return Err(substring_single_argument_error()),
                 };
-                let (left, left_t_expr) = (*left).bind(meta)?;
-                let (right, right_t_expr) = (*right).bind(meta)?;
-                let (escape, escape_t_expr) = (*escape).bind(meta)?;
                 let similar = Similar::from_parts(
                     false,
-                    Box::new(left),
-                    Box::new(right),
-                    Some(Box::new(escape)),
+                    bind_arg(*left, meta, &mut args)?,
+                    bind_arg(*right, meta, &mut args)?,
+                    Some(bind_arg(*escape, meta, &mut args)?),
                 );
                 (
-                    ExprInner::Substring(Substring::Similar(Box::new(Expr::from_parts(
+                    Substring::Similar(Box::new(Expr::from_parts(
                         ExprInner::Similar(similar),
                         AnalyzedExprMeta::default(),
-                    )))),
-                    three_args("substring", vec![left_t_expr, right_t_expr, escape_t_expr]),
+                    ))),
+                    "substring",
                 )
             }
             _ => return Err(substring_single_argument_error()),
         },
-    })
+    };
+    let t_expr = AstTypeExpr::new(curr_id, AstTypeExprKind::Function(name.to_string(), args));
+    Ok((ExprInner::Substring(inner), t_expr))
+}
+
+/// Bind a SUBSTRING argument, box it, and push its type mirror to `args`.
+/// The small return value keeps the debug frame of `analyze_substring` small:
+/// each `(*e).bind(meta)?` there used to leave ~1 KB of stack slots.
+fn bind_arg<'q, M: Metadata>(
+    expr: Expr<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    args: &mut Vec<AstTypeExpr>,
+) -> AstResult<Box<Expr<'q, Analyzed>>> {
+    let (expr, t_expr) = expr.bind(meta)?;
+    args.push(t_expr);
+    Ok(Box::new(expr))
 }
 
 /// Walk an index chain's intermediate wrappers (which deliberately carry no
@@ -389,6 +380,675 @@ fn substring_single_argument_error() -> AstErr {
     ))
 }
 
+// The `Expr::bind` arms, kept out of line: every stack slot of an inlined arm
+// is part of the one frame each level of expression recursion pays.
+#[inline(never)]
+fn bind_binary_operation<'q, M: Metadata>(
+    operation: BinaryOperation<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (left, right, op) = operation.into_parts();
+
+    let (left, left_t_expr) = left.bind(meta)?;
+    let (right, right_t_expr) = right.bind(meta)?;
+
+    let inner = BinaryOperation::from_parts(
+        Box::new(Expr::from_parts(
+            left.into_inner(),
+            AnalyzedExprMeta::new_with_id(left_t_expr.id()),
+        )),
+        Box::new(Expr::from_parts(
+            right.into_inner(),
+            AnalyzedExprMeta::new_with_id(right_t_expr.id()),
+        )),
+        op,
+    );
+    Ok((
+        ExprInner::BinaryOperation(inner),
+        binary_op_to_type_expr(curr_id, left_t_expr, right_t_expr, op),
+    ))
+}
+
+#[inline(never)]
+fn bind_unary_operation<'q, M: Metadata>(
+    operation: UnaryOperation<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (operand, operator) = operation.into_parts();
+    let (operand, operand_t_expr) = (*operand).bind(meta)?;
+    let t_expr_kind = match operator {
+        UnaryOp::Not => AstTypeExprKind::Unary(UnaryOperator::Not, Box::new(operand_t_expr)),
+        UnaryOp::Minus => AstTypeExprKind::Operator("-".to_string(), vec![operand_t_expr]),
+        UnaryOp::Plus => AstTypeExprKind::Operator("+".to_string(), vec![operand_t_expr]),
+    };
+    Ok((
+        ExprInner::UnaryOperation(UnaryOperation::from_parts(Box::new(operand), operator)),
+        AstTypeExpr::new(curr_id, t_expr_kind),
+    ))
+}
+
+#[inline(never)]
+fn bind_column_ref<'q, M: Metadata>(
+    var: RawVar,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    // Bind column reference to tuple source (FROM clause entry, outer-query, etc.).
+    let (lvl, bound_var) = bind_var(&var, meta)?;
+
+    // Register column reference usage.
+    meta.binder.reg_var(lvl, bound_var)?;
+
+    let result = if let Some(d_type) = var
+        .table_name()
+        .is_none()
+        .then_some(
+            meta.binder
+                .frames
+                .get(lvl)
+                .and_then(|frame| frame.from.join_using_var(bound_var))
+                .map(BoundJoinUsingVar::data_type),
+        )
+        .flatten()
+    {
+        // Some `JOIN/USING` corresponds to this bound var.
+        // Column should be converted to the JOIN/USING common type..
+        match using_merged_expr(&mut meta.type_system, bound_var, d_type, curr_id) {
+            Some((expr, t_expr)) => (expr.into_inner(), t_expr),
+            None => (
+                ExprInner::<'q, Analyzed>::Var(bound_var),
+                texpr_from_derived_type(d_type, curr_id),
+            ),
+        }
+    } else {
+        (
+            ExprInner::<'q, Analyzed>::Var(bound_var),
+            texpr_from_bound_var(bound_var, curr_id),
+        )
+    };
+    Ok(result)
+}
+
+// Takes the Box: unboxing at the call would put the statement into the frame of
+// the dispatcher `Expr::bind`, which every expression level pays for.
+#[allow(clippy::boxed_local)]
+#[inline(never)]
+fn bind_subquery<'q, M: Metadata>(
+    subquery: Box<MultisetStmt<'q, Raw>>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let analyzed_subquery = analyze_subquery(*subquery, meta)?;
+
+    if analyzed_subquery.result_columns_cnt()? != 1 {
+        return Err(semantic_err(format_smolstr!(
+            "subquery must return only one column"
+        )));
+    }
+
+    let types = analyzed_subquery
+        .result_types()?
+        .into_iter()
+        .map(|derived_type| {
+            derived_type.get().map(Type::from).ok_or_else(|| {
+                semantic_err(format_smolstr!(
+                    "cannot get result data type for scalar subquery"
+                ))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((
+        ExprInner::SubQuery(Box::new(analyzed_subquery)),
+        AstTypeExpr::new(curr_id, AstTypeExprKind::Subquery(types)),
+    ))
+}
+
+#[inline(never)]
+fn bind_row<'q, M: Metadata>(
+    row: ValuesRow<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let elems = row.into_parts();
+    let mut analyzed_elems = Vec::with_capacity(elems.len());
+    let mut elem_type_exprs = Vec::with_capacity(elems.len());
+    for elem in elems {
+        let (analyzed_elem, elem_type_expr) = elem.bind(meta)?;
+        analyzed_elems.push(analyzed_elem);
+        elem_type_exprs.push(elem_type_expr);
+    }
+    // A row has no type of its own; the type system only accepts
+    // it as a comparison operand and reports its elements.
+    Ok((
+        ExprInner::Row(ValuesRow::from_parts(analyzed_elems)),
+        AstTypeExpr::new(curr_id, AstTypeExprKind::Row(elem_type_exprs)),
+    ))
+}
+
+#[inline(never)]
+fn bind_array<'q, M: Metadata>(
+    array: ArrayLiteral<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let elems = array.into_parts();
+    let mut analyzed_elems = Vec::with_capacity(elems.len());
+    let mut elem_type_exprs = Vec::with_capacity(elems.len());
+    for elem in elems {
+        let (analyzed_elem, elem_type_expr) = elem.bind(meta)?;
+        analyzed_elems.push(analyzed_elem);
+        elem_type_exprs.push(elem_type_expr);
+    }
+    Ok((
+        ExprInner::Array(ArrayLiteral::from_parts(analyzed_elems)),
+        array_to_type_expr(curr_id, elem_type_exprs),
+    ))
+}
+
+#[inline(never)]
+fn bind_function_call<'q, M: Metadata>(
+    call: FunctionCall<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (name, args, ()) = call.into_parts();
+
+    // A table function gives rows, so it is a source in FROM
+    // only. Its binding supplies the registry entry; calls in
+    // expressions, including table function arguments, are errors.
+    let from_fn = meta.binder.binding_table_function.take();
+    let table_fn = from_fn.or_else(|| find_table_function(name.as_str()));
+    if from_fn.is_none() && table_fn.is_some() {
+        return Err(semantic_err(format_smolstr!(
+            r#"table function "{}" can only be used in FROM"#,
+            name.as_str()
+        )));
+    }
+
+    let aggr_kind = AggregateKind::from_name(name.as_str());
+    let is_aggr_func = aggr_kind.is_some();
+
+    // A window-only function without OVER.
+    if !is_aggr_func
+        && meta
+            .type_system
+            .analyzer
+            .is_window_only_function(name.as_str())
+    {
+        return Err(semantic_err(format_smolstr!(
+            "window function {} requires an OVER clause",
+            name.as_str()
+        )));
+    }
+
+    // Defer lookup errors until after binding the arguments.
+    let resolved_fn = match aggr_kind {
+        Some(kind) => Ok(ResolvedFn::Aggregate(kind)),
+        None => match table_fn {
+            Some(table_fn) => Ok(ResolvedFn::Table(table_fn)),
+            None => meta.function(&name).map(ResolvedFn::Scalar),
+        },
+    };
+
+    // Every instance computes the same rows of a table function, so
+    // its arguments cannot call a volatile function, not even in a
+    // subquery: a subquery without tables is computed on every instance.
+    let in_function_in_from = meta
+        .binder
+        .frames
+        .iter()
+        .any(|frame| matches!(frame.stage, Stage::FunctionInFrom));
+    if matches!(&resolved_fn, Ok(ResolvedFn::Scalar(function)) if function.is_volatile()) {
+        if in_function_in_from {
+            return Err(semantic_err(format_smolstr!(
+                "volatile functions are not allowed in functions in FROM"
+            )));
+        }
+        if !meta.binder.top_frame_ref()?.volatile_allowed {
+            return Err(semantic_err(format_smolstr!(
+                "volatile functions are not allowed in this expression"
+            )));
+        }
+    }
+
+    if is_aggr_func {
+        meta.binder.init_aggr()?;
+    }
+
+    let (inner, t_expr) = match args {
+        FunctionCallArgs::CountAsterisk => {
+            // count(*) types as count(1).
+            // It means no column references. Implicit binding to the nearest scope.
+            // The literal exists only in the mirror (fresh id, never stored in the AST).
+            // TODO: support qualified asterisk argument.
+            let synthetic_id = meta.type_system.inc_expr_id();
+            let one_t_expr =
+                AstTypeExpr::new(synthetic_id, AstTypeExprKind::Literal(Type::Integer));
+            (
+                ExprInner::FunctionCall(Box::new(FunctionCall::from_parts(
+                    name,
+                    FunctionCallArgs::CountAsterisk,
+                    ResolvedFn::Aggregate(AggregateKind::COUNT),
+                ))),
+                AstTypeExpr::new(
+                    curr_id,
+                    AstTypeExprKind::Function("count".to_string(), vec![one_t_expr]),
+                ),
+            )
+        }
+        FunctionCallArgs::Exprs { distinct, exprs } => {
+            let (bound_args, arg_t_exprs) = exprs
+                .into_iter()
+                .map(|expr| expr.bind(meta))
+                .collect::<AstResult<(Vec<_>, Vec<_>)>>()?;
+
+            // Keep the old pipeline's delimiter restrictions before implicit casts.
+            if aggr_kind == Some(AggregateKind::GRCONCAT) {
+                match bound_args.get(1) {
+                    Some(_) if distinct => {
+                        return Err(SbroadError::Invalid(
+                            Entity::Query,
+                            Some(format_smolstr!(
+                                "distinct GROUP_CONCAT aggregate function has only one argument. Got: {} arguments",
+                                bound_args.len()
+                            )),
+                        )
+                        .into());
+                    }
+                    Some(arg) if !matches!(arg.inner, ExprInner::Literal(_)) => {
+                        return Err(SbroadError::Invalid(
+                            Entity::Query,
+                            Some("GROUP_CONCAT aggregate function second argument must be a string literal.".into()),
+                        )
+                        .into());
+                    }
+                    _ => {}
+                }
+            }
+
+            let resolved_fn = resolved_fn?;
+
+            // A scalar is typed under its catalog name: the
+            // names picodata exposes for its procedures
+            // (`version`, `pico_*`) are registered under the
+            // procedures' own (old-pipeline parity).
+            let typed_name = match &resolved_fn {
+                ResolvedFn::Scalar(function) => function.name.as_str(),
+                ResolvedFn::Aggregate(_) | ResolvedFn::Table(_) => name.as_str(),
+            };
+            // Catalog resolution applies to COALESCE and JSON_EXTRACT_PATH;
+            // they and UNNEST use dedicated kinds in the type-system mirror.
+            // DISTINCT does not affect typing and stays in the node.
+            let t_expr_kind = match name.as_str() {
+                "coalesce" => AstTypeExprKind::Coalesce(arg_t_exprs),
+                "json_extract_path" => AstTypeExprKind::JsonExtractPath(arg_t_exprs),
+                "unnest" => AstTypeExprKind::Unnest(arg_t_exprs),
+                _ => AstTypeExprKind::Function(typed_name.to_string(), arg_t_exprs),
+            };
+            (
+                ExprInner::FunctionCall(Box::new(FunctionCall::from_parts(
+                    name,
+                    FunctionCallArgs::Exprs {
+                        distinct,
+                        exprs: bound_args,
+                    },
+                    resolved_fn,
+                ))),
+                AstTypeExpr::new(curr_id, t_expr_kind),
+            )
+        }
+    };
+
+    if is_aggr_func {
+        meta.binder.finalize_aggr()?;
+    }
+
+    Ok((inner, t_expr))
+}
+
+#[inline(never)]
+fn bind_parameter<'q>(
+    parameter: Parameter,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    // The SQL spelling numbers parameters from one (`$1`, and `?` counted positionally).
+    // The type system indexes its parameter vector from zero.
+    let param_idx = parameter
+        .0
+        .checked_sub(1)
+        .ok_or_else(|| semantic_err(format_smolstr!("$n parameters are indexed from 1")))?;
+    let param_t_expr = AstTypeExpr::new(curr_id, AstTypeExprKind::Parameter(param_idx));
+    Ok((ExprInner::Parameter(parameter), param_t_expr))
+}
+
+#[inline(never)]
+fn bind_cast<'q, M: Metadata>(
+    cast: Cast<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (child, cast_type, syntax) = cast.into_parts();
+    let (child, child_type_expr) = child.bind(meta)?;
+    let cast = Cast::from_parts(Box::new(child), cast_type, syntax);
+    let type_expr = cast_to_type_expr(&cast, curr_id, child_type_expr);
+    Ok((ExprInner::Cast(cast), type_expr))
+}
+
+#[inline(never)]
+fn bind_like<'q, M: Metadata>(
+    like: Like<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (is_not, left, right, escape, is_ilike) = like.into_parts();
+    let (left, right, escape, arg_t_exprs) = analyze_like_operands(meta, *left, *right, escape)?;
+    Ok((
+        ExprInner::Like(Like::from_parts(is_not, left, right, escape, is_ilike)),
+        AstTypeExpr::new(
+            curr_id,
+            AstTypeExprKind::Function("like".into(), arg_t_exprs),
+        ),
+    ))
+}
+
+#[inline(never)]
+fn bind_similar<'q, M: Metadata>(
+    similar: Similar<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (is_not, left, right, escape) = similar.into_parts();
+    let (left, right, escape, arg_t_exprs) = analyze_like_operands(meta, *left, *right, escape)?;
+    // Old-pipeline parity: SIMILAR types through the same `like`
+    // overload, so type errors name `like`.
+    Ok((
+        ExprInner::Similar(Similar::from_parts(is_not, left, right, escape)),
+        AstTypeExpr::new(
+            curr_id,
+            AstTypeExprKind::Function("like".into(), arg_t_exprs),
+        ),
+    ))
+}
+
+#[inline(never)]
+fn bind_between<'q, M: Metadata>(
+    between: Between<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (is_not, left, center, right) = between.into_parts();
+    let (left, left_t_expr) = left.bind(meta)?;
+    let (center, center_t_expr) = center.bind(meta)?;
+    let (right, right_t_expr) = right.bind(meta)?;
+    // `NOT` does not affect typing: the result is boolean either way.
+    Ok((
+        ExprInner::Between(Between::from_parts(
+            is_not,
+            Box::new(left),
+            Box::new(center),
+            Box::new(right),
+        )),
+        AstTypeExpr::new(
+            curr_id,
+            AstTypeExprKind::Between(vec![left_t_expr, center_t_expr, right_t_expr]),
+        ),
+    ))
+}
+
+#[inline(never)]
+fn bind_in<'q, M: Metadata>(
+    in_expr: InExpr<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (is_not, left, rhs) = in_expr.into_parts();
+    let (left, left_t_expr) = left.bind(meta)?;
+    // The rhs is a `Row` or a `SubQuery` by construction; either
+    // analyzes through its own arm. `NOT` does not affect typing.
+    let (rhs, rhs_t_expr) = rhs.bind(meta)?;
+    Ok((
+        ExprInner::In(InExpr::from_parts(is_not, Box::new(left), Box::new(rhs))),
+        AstTypeExpr::new(
+            curr_id,
+            AstTypeExprKind::Comparison(
+                ComparisonOperator::In,
+                Box::new(left_t_expr),
+                Box::new(rhs_t_expr),
+            ),
+        ),
+    ))
+}
+
+#[inline(never)]
+fn bind_is<'q, M: Metadata>(
+    is_expr: IsExpr<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (is_not, child, value) = is_expr.into_parts();
+    let (child, child_t_expr) = child.bind(meta)?;
+    // Postgres-strict: IS TRUE/FALSE require a boolean argument,
+    // IS NULL (and its synonym IS UNKNOWN) accepts any type.
+    // `NOT` does not affect typing.
+    let op = match value {
+        IsValue::Null => UnaryOperator::IsNull,
+        IsValue::Unknown => UnaryOperator::IsUnknown,
+        IsValue::Bool(true) => UnaryOperator::IsTrue,
+        IsValue::Bool(false) => UnaryOperator::IsFalse,
+    };
+    Ok((
+        ExprInner::Is(IsExpr::from_parts(is_not, Box::new(child), value)),
+        AstTypeExpr::new(curr_id, AstTypeExprKind::Unary(op, Box::new(child_t_expr))),
+    ))
+}
+
+#[inline(never)]
+fn bind_index<'q, M: Metadata>(
+    index: IndexExpr<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    // The parser nests one `IndexExpr` per bracket; the type
+    // system wants the whole bracket run as a single
+    // `IndexChain { source, keys }` (an intermediate `a[1]` over
+    // a mixed-type container would type as `any`, which cannot
+    // be indexed again). Flatten outermost-in.
+    let (mut source, which) = index.into_parts();
+    let mut keys_raw = vec![which];
+    while matches!(source.inner_ref(), ExprInner::Index(_)) {
+        let ExprInner::Index(inner_index) = (*source).into() else {
+            return Err(analyze_err(format_smolstr!(
+                "index chain node changed kind mid-walk"
+            )));
+        };
+        let (child, which) = inner_index.into_parts();
+        keys_raw.push(which);
+        source = child;
+    }
+    // Source order: innermost bracket first.
+    keys_raw.reverse();
+
+    let (source, source_t_expr) = (*source).bind(meta)?;
+    let mut analyzed_keys = Vec::with_capacity(keys_raw.len());
+    let mut key_t_exprs = Vec::with_capacity(keys_raw.len());
+    for key in keys_raw {
+        let (key, key_t_expr) = (*key).bind(meta)?;
+        analyzed_keys.push(key);
+        key_t_exprs.push(key_t_expr);
+    }
+
+    // Rebuild the nested chain; only the outermost node gets the
+    // id (attached by the generic tail below) — intermediate
+    // wrappers carry no id/type and render bare.
+    let mut chain = source;
+    for key in analyzed_keys {
+        chain = Expr::from_parts(
+            ExprInner::Index(IndexExpr::from_parts(Box::new(chain), Box::new(key))),
+            AnalyzedExprMeta::default(),
+        );
+    }
+    let ExprInner::Index(outer_index) = chain.into_inner() else {
+        return Err(analyze_err(format_smolstr!(
+            "rebuilt index chain has no outermost bracket"
+        )));
+    };
+    Ok((
+        ExprInner::Index(outer_index),
+        AstTypeExpr::new(
+            curr_id,
+            AstTypeExprKind::IndexChain {
+                source: Box::new(source_t_expr),
+                keys: key_t_exprs,
+            },
+        ),
+    ))
+}
+
+#[inline(never)]
+fn bind_trim<'q, M: Metadata>(
+    trim: Trim<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (kind, pattern, target) = trim.into_parts();
+    // Pattern-first argument order, matching the registered
+    // `trim(text[, text])` overloads. LEADING/TRAILING/BOTH does
+    // not affect typing.
+    let mut arg_t_exprs = Vec::with_capacity(2);
+    let pattern = match pattern {
+        Some(pattern) => {
+            let (pattern, pattern_t_expr) = (*pattern).bind(meta)?;
+            arg_t_exprs.push(pattern_t_expr);
+            Some(Box::new(pattern))
+        }
+        None => None,
+    };
+    let (target, target_t_expr) = (*target).bind(meta)?;
+    arg_t_exprs.push(target_t_expr);
+    Ok((
+        ExprInner::Trim(Trim::from_parts(kind, pattern, Box::new(target))),
+        AstTypeExpr::new(
+            curr_id,
+            AstTypeExprKind::Function("trim".to_string(), arg_t_exprs),
+        ),
+    ))
+}
+
+#[inline(never)]
+fn bind_case<'q, M: Metadata>(
+    case: Case<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let Case {
+        search,
+        when_blocks,
+        else_expr,
+    } = case;
+    // Old-pipeline mapping: the simple-form search expression is
+    // handed to the type system separately, so it can unify WHEN
+    // expressions with it instead of requiring them to be
+    // conditions. THEN results and ELSE form the result group
+    // whose unified type is the CASE type.
+    let mut when_t_exprs = Vec::with_capacity(when_blocks.len());
+    let mut result_t_exprs = Vec::with_capacity(when_blocks.len() + 1);
+    let (search, search_t_expr) = match search {
+        Some(search) => {
+            let (search, search_t_expr) = (*search).bind(meta)?;
+            (Some(Box::new(search)), Some(Box::new(search_t_expr)))
+        }
+        None => (None, None),
+    };
+    let mut analyzed_when_blocks = Vec::with_capacity(when_blocks.len());
+    for (condition, result) in when_blocks {
+        let (condition, condition_t_expr) = condition.bind_with_volatility(meta, false)?;
+        let (result, result_t_expr) = result.bind(meta)?;
+        when_t_exprs.push(condition_t_expr);
+        result_t_exprs.push(result_t_expr);
+        analyzed_when_blocks.push((condition, result));
+    }
+    let else_expr = match else_expr {
+        Some(else_expr) => {
+            let (else_expr, else_t_expr) = (*else_expr).bind(meta)?;
+            result_t_exprs.push(else_t_expr);
+            Some(Box::new(else_expr))
+        }
+        None => None,
+    };
+    Ok((
+        ExprInner::Case(Case {
+            search,
+            when_blocks: analyzed_when_blocks,
+            else_expr,
+        }),
+        AstTypeExpr::new(
+            curr_id,
+            AstTypeExprKind::Case {
+                search_expr: search_t_expr,
+                when_exprs: when_t_exprs,
+                result_exprs: result_t_exprs,
+            },
+        ),
+    ))
+}
+
+#[inline(never)]
+fn bind_exists<'q, M: Metadata>(
+    exists: Exists<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (is_not, subquery) = exists.into_parts();
+    let analyzed_subquery = analyze_subquery(*subquery, meta)?;
+    // The engine's EXISTS only checks that its child is a
+    // subquery and reports boolean; result types are deliberately
+    // not queried — `result_types()` fails for set-operation
+    // bodies, and EXISTS over a UNION must work. No single-column
+    // restriction. `NOT` does not affect typing.
+    let synthetic_id = meta.type_system.inc_expr_id();
+    let subquery_t_expr = AstTypeExpr::new(synthetic_id, AstTypeExprKind::Subquery(Vec::new()));
+    Ok((
+        ExprInner::Exists(Exists::from_parts(is_not, Box::new(analyzed_subquery))),
+        AstTypeExpr::new(
+            curr_id,
+            AstTypeExprKind::Unary(UnaryOperator::Exists, Box::new(subquery_t_expr)),
+        ),
+    ))
+}
+
+#[inline(never)]
+fn bind_time_function<'q>(
+    time_function: TimeFunction,
+    curr_id: AstNodeId,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    match &time_function {
+        TimeFunction::CurrentTime(_) => {
+            return Err(semantic_err(format_smolstr!(
+                "CURRENT_TIME is not supported yet"
+            )))
+        }
+        TimeFunction::LocalTime(_) => {
+            return Err(semantic_err(format_smolstr!(
+                "LOCALTIME is not supported yet"
+            )))
+        }
+        // Picodata has no date or time-of-day types: CURRENT_DATE
+        // is a midnight datetime and CURRENT_TIMESTAMP equals
+        // LOCALTIMESTAMP (no timezone-less timestamp type). The
+        // precision stays rendering-faithful; the ≤6 clamp is IR
+        // lowering's concern.
+        TimeFunction::CurrentDate
+        | TimeFunction::CurrentTimestamp(_)
+        | TimeFunction::LocalTimestamp(_) => {}
+    }
+    Ok((
+        ExprInner::TimeFunction(time_function),
+        AstTypeExpr::new(curr_id, AstTypeExprKind::Literal(Type::Datetime)),
+    ))
+}
+
 impl<'q> Binder<'q> for Expr<'q, Raw> {
     type BoundNode = (Expr<'q, Analyzed>, AstTypeExpr);
 
@@ -405,584 +1065,39 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
         let grouping_marks = meta.binder.grouping_key_marks();
 
         let (inner, type_expr) = match self.into() {
-            ExprInner::Nil => {
-                return Err(analyze_err(format_smolstr!(
-                    "empty expression placeholder reached analysis"
-                )))
-            }
+            ExprInner::Nil => Err(analyze_err(format_smolstr!(
+                "empty expression placeholder reached analysis"
+            ))),
             ExprInner::BinaryOperation(operation) => {
-                let (left, right, op) = operation.into_parts();
-
-                let (left, left_t_expr) = left.bind(meta)?;
-                let (right, right_t_expr) = right.bind(meta)?;
-
-                let inner = BinaryOperation::from_parts(
-                    Box::new(Expr::from_parts(
-                        left.into_inner(),
-                        AnalyzedExprMeta::new_with_id(left_t_expr.id()),
-                    )),
-                    Box::new(Expr::from_parts(
-                        right.into_inner(),
-                        AnalyzedExprMeta::new_with_id(right_t_expr.id()),
-                    )),
-                    op,
-                );
-                (
-                    ExprInner::BinaryOperation(inner),
-                    binary_op_to_type_expr(curr_id, left_t_expr, right_t_expr, op),
-                )
+                bind_binary_operation(operation, meta, curr_id)
             }
-            ExprInner::UnaryOperation(operation) => {
-                let (operand, operator) = operation.into_parts();
-                let (operand, operand_t_expr) = (*operand).bind(meta)?;
-                let t_expr_kind = match operator {
-                    UnaryOp::Not => {
-                        AstTypeExprKind::Unary(UnaryOperator::Not, Box::new(operand_t_expr))
-                    }
-                    UnaryOp::Minus => {
-                        AstTypeExprKind::Operator("-".to_string(), vec![operand_t_expr])
-                    }
-                    UnaryOp::Plus => {
-                        AstTypeExprKind::Operator("+".to_string(), vec![operand_t_expr])
-                    }
-                };
-                (
-                    ExprInner::UnaryOperation(UnaryOperation::from_parts(
-                        Box::new(operand),
-                        operator,
-                    )),
-                    AstTypeExpr::new(curr_id, t_expr_kind),
-                )
-            }
-            ExprInner::Var(var) => {
-                // Bind column reference to tuple source (FROM clause entry, outer-query, etc.).
-                let (lvl, bound_var) = bind_var(&var, meta)?;
-
-                // Register column reference usage.
-                meta.binder.reg_var(lvl, bound_var)?;
-
-                if let Some(d_type) = var
-                    .table_name()
-                    .is_none()
-                    .then_some(
-                        meta.binder
-                            .frames
-                            .get(lvl)
-                            .and_then(|frame| frame.from.join_using_var(bound_var))
-                            .map(BoundJoinUsingVar::data_type),
-                    )
-                    .flatten()
-                {
-                    // Some `JOIN/USING` corresponds to this bound var.
-                    // Column should be converted to the JOIN/USING common type..
-                    match using_merged_expr(&mut meta.type_system, bound_var, d_type, curr_id) {
-                        Some((expr, t_expr)) => (expr.into_inner(), t_expr),
-                        None => (
-                            ExprInner::<'q, Analyzed>::Var(bound_var),
-                            texpr_from_derived_type(d_type, curr_id),
-                        ),
-                    }
-                } else {
-                    (
-                        ExprInner::<'q, Analyzed>::Var(bound_var),
-                        texpr_from_bound_var(bound_var, curr_id),
-                    )
-                }
-            }
+            ExprInner::UnaryOperation(operation) => bind_unary_operation(operation, meta, curr_id),
+            ExprInner::Var(var) => bind_column_ref(var, meta, curr_id),
             ExprInner::Literal(lit) => {
                 let t_expr = literal_to_type_expr(&lit, curr_id);
-                (ExprInner::Literal(lit), t_expr)
+                Ok((ExprInner::Literal(lit), t_expr))
             }
-            ExprInner::SubQuery(subquery) => {
-                let analyzed_subquery = analyze_subquery(*subquery, meta)?;
-
-                if analyzed_subquery.result_columns_cnt()? != 1 {
-                    return Err(semantic_err(format_smolstr!(
-                        "subquery must return only one column"
-                    )));
-                }
-
-                let types = analyzed_subquery
-                    .result_types()?
-                    .into_iter()
-                    .map(|derived_type| {
-                        derived_type.get().map(Type::from).ok_or_else(|| {
-                            semantic_err(format_smolstr!(
-                                "cannot get result data type for scalar subquery"
-                            ))
-                        })
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                (
-                    ExprInner::SubQuery(Box::new(analyzed_subquery)),
-                    AstTypeExpr::new(curr_id, AstTypeExprKind::Subquery(types)),
-                )
-            }
-            ExprInner::Row(row) => {
-                let elems = row.into_parts();
-                let mut analyzed_elems = Vec::with_capacity(elems.len());
-                let mut elem_type_exprs = Vec::with_capacity(elems.len());
-                for elem in elems {
-                    let (analyzed_elem, elem_type_expr) = elem.bind(meta)?;
-                    analyzed_elems.push(analyzed_elem);
-                    elem_type_exprs.push(elem_type_expr);
-                }
-                // A row has no type of its own; the type system only accepts
-                // it as a comparison operand and reports its elements.
-                (
-                    ExprInner::Row(ValuesRow::from_parts(analyzed_elems)),
-                    AstTypeExpr::new(curr_id, AstTypeExprKind::Row(elem_type_exprs)),
-                )
-            }
-            ExprInner::Array(array) => {
-                let elems = array.into_parts();
-                let mut analyzed_elems = Vec::with_capacity(elems.len());
-                let mut elem_type_exprs = Vec::with_capacity(elems.len());
-                for elem in elems {
-                    let (analyzed_elem, elem_type_expr) = elem.bind(meta)?;
-                    analyzed_elems.push(analyzed_elem);
-                    elem_type_exprs.push(elem_type_expr);
-                }
-                (
-                    ExprInner::Array(ArrayLiteral::from_parts(analyzed_elems)),
-                    array_to_type_expr(curr_id, elem_type_exprs),
-                )
-            }
+            ExprInner::SubQuery(subquery) => bind_subquery(subquery, meta, curr_id),
+            ExprInner::Row(row) => bind_row(row, meta, curr_id),
+            ExprInner::Array(array) => bind_array(array, meta, curr_id),
             ExprInner::WindowFunction(window_function) => {
-                bind_win_fn(*window_function, curr_id, meta)?
+                bind_win_fn(*window_function, curr_id, meta)
             }
-            ExprInner::FunctionCall(call) => {
-                let (name, args, ()) = call.into_parts();
-
-                // A table function gives rows, so it is a source in FROM
-                // only. Its binding supplies the registry entry; calls in
-                // expressions, including table function arguments, are errors.
-                let from_fn = meta.binder.binding_table_function.take();
-                let table_fn = from_fn.or_else(|| find_table_function(name.as_str()));
-                if from_fn.is_none() && table_fn.is_some() {
-                    return Err(semantic_err(format_smolstr!(
-                        r#"table function "{}" can only be used in FROM"#,
-                        name.as_str()
-                    )));
-                }
-
-                let aggr_kind = AggregateKind::from_name(name.as_str());
-                let is_aggr_func = aggr_kind.is_some();
-
-                // A window-only function without OVER.
-                if !is_aggr_func
-                    && meta
-                        .type_system
-                        .analyzer
-                        .is_window_only_function(name.as_str())
-                {
-                    return Err(semantic_err(format_smolstr!(
-                        "window function {} requires an OVER clause",
-                        name.as_str()
-                    )));
-                }
-
-                // Defer lookup errors until after binding the arguments.
-                let resolved_fn = match aggr_kind {
-                    Some(kind) => Ok(ResolvedFn::Aggregate(kind)),
-                    None => match table_fn {
-                        Some(table_fn) => Ok(ResolvedFn::Table(table_fn)),
-                        None => meta.function(&name).map(ResolvedFn::Scalar),
-                    },
-                };
-
-                // Every instance computes the same rows of a table function, so
-                // its arguments cannot call a volatile function, not even in a
-                // subquery: a subquery without tables is computed on every instance.
-                let in_function_in_from = meta
-                    .binder
-                    .frames
-                    .iter()
-                    .any(|frame| matches!(frame.stage, Stage::FunctionInFrom));
-                if matches!(&resolved_fn, Ok(ResolvedFn::Scalar(function)) if function.is_volatile())
-                {
-                    if in_function_in_from {
-                        return Err(semantic_err(format_smolstr!(
-                            "volatile functions are not allowed in functions in FROM"
-                        )));
-                    }
-                    if !meta.binder.top_frame_ref()?.volatile_allowed {
-                        return Err(semantic_err(format_smolstr!(
-                            "volatile functions are not allowed in this expression"
-                        )));
-                    }
-                }
-
-                if is_aggr_func {
-                    meta.binder.init_aggr()?;
-                }
-
-                let (inner, t_expr) = match args {
-                    FunctionCallArgs::CountAsterisk => {
-                        // count(*) types as count(1).
-                        // It means no column references. Implicit binding to the nearest scope.
-                        // The literal exists only in the mirror (fresh id, never stored in the AST).
-                        // TODO: support qualified asterisk argument.
-                        let synthetic_id = meta.type_system.inc_expr_id();
-                        let one_t_expr =
-                            AstTypeExpr::new(synthetic_id, AstTypeExprKind::Literal(Type::Integer));
-                        (
-                            ExprInner::FunctionCall(FunctionCall::from_parts(
-                                name,
-                                FunctionCallArgs::CountAsterisk,
-                                ResolvedFn::Aggregate(AggregateKind::COUNT),
-                            )),
-                            AstTypeExpr::new(
-                                curr_id,
-                                AstTypeExprKind::Function("count".to_string(), vec![one_t_expr]),
-                            ),
-                        )
-                    }
-                    FunctionCallArgs::Exprs { distinct, exprs } => {
-                        let (bound_args, arg_t_exprs) = exprs
-                            .into_iter()
-                            .map(|expr| expr.bind(meta))
-                            .collect::<AstResult<(Vec<_>, Vec<_>)>>()?;
-
-                        // Keep the old pipeline's delimiter restrictions before implicit casts.
-                        if aggr_kind == Some(AggregateKind::GRCONCAT) {
-                            match bound_args.get(1) {
-                                Some(_) if distinct => {
-                                    return Err(SbroadError::Invalid(
-                                        Entity::Query,
-                                        Some(format_smolstr!(
-                                            "distinct GROUP_CONCAT aggregate function has only one argument. Got: {} arguments",
-                                            bound_args.len()
-                                        )),
-                                    )
-                                    .into());
-                                }
-                                Some(arg) if !matches!(arg.inner, ExprInner::Literal(_)) => {
-                                    return Err(SbroadError::Invalid(
-                                        Entity::Query,
-                                        Some("GROUP_CONCAT aggregate function second argument must be a string literal.".into()),
-                                    )
-                                    .into());
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        let resolved_fn = resolved_fn?;
-
-                        // A scalar is typed under its catalog name: the
-                        // names picodata exposes for its procedures
-                        // (`version`, `pico_*`) are registered under the
-                        // procedures' own (old-pipeline parity).
-                        let typed_name = match &resolved_fn {
-                            ResolvedFn::Scalar(function) => function.name.as_str(),
-                            ResolvedFn::Aggregate(_) | ResolvedFn::Table(_) => name.as_str(),
-                        };
-                        // Catalog resolution applies to COALESCE and JSON_EXTRACT_PATH;
-                        // they and UNNEST use dedicated kinds in the type-system mirror.
-                        // DISTINCT does not affect typing and stays in the node.
-                        let t_expr_kind = match name.as_str() {
-                            "coalesce" => AstTypeExprKind::Coalesce(arg_t_exprs),
-                            "json_extract_path" => AstTypeExprKind::JsonExtractPath(arg_t_exprs),
-                            "unnest" => AstTypeExprKind::Unnest(arg_t_exprs),
-                            _ => AstTypeExprKind::Function(typed_name.to_string(), arg_t_exprs),
-                        };
-                        (
-                            ExprInner::FunctionCall(FunctionCall::from_parts(
-                                name,
-                                FunctionCallArgs::Exprs {
-                                    distinct,
-                                    exprs: bound_args,
-                                },
-                                resolved_fn,
-                            )),
-                            AstTypeExpr::new(curr_id, t_expr_kind),
-                        )
-                    }
-                };
-
-                if is_aggr_func {
-                    meta.binder.finalize_aggr()?;
-                }
-
-                (inner, t_expr)
-            }
-            ExprInner::Parameter(parameter) => {
-                // The SQL spelling numbers parameters from one (`$1`, and `?` counted positionally).
-                // The type system indexes its parameter vector from zero.
-                let param_idx = parameter.0.checked_sub(1).ok_or_else(|| {
-                    semantic_err(format_smolstr!("$n parameters are indexed from 1"))
-                })?;
-                let param_t_expr = AstTypeExpr::new(curr_id, AstTypeExprKind::Parameter(param_idx));
-                (ExprInner::Parameter(parameter), param_t_expr)
-            }
-            ExprInner::Cast(cast) => {
-                let (child, cast_type, syntax) = cast.into_parts();
-                let (child, child_type_expr) = child.bind(meta)?;
-                let cast = Cast::from_parts(Box::new(child), cast_type, syntax);
-                let type_expr = cast_to_type_expr(&cast, curr_id, child_type_expr);
-                (ExprInner::Cast(cast), type_expr)
-            }
-            ExprInner::Like(like) => {
-                let (is_not, left, right, escape, is_ilike) = like.into_parts();
-                let (left, right, escape, arg_t_exprs) =
-                    analyze_like_operands(meta, *left, *right, escape)?;
-                (
-                    ExprInner::Like(Like::from_parts(is_not, left, right, escape, is_ilike)),
-                    AstTypeExpr::new(
-                        curr_id,
-                        AstTypeExprKind::Function("like".into(), arg_t_exprs),
-                    ),
-                )
-            }
-            ExprInner::Similar(similar) => {
-                let (is_not, left, right, escape) = similar.into_parts();
-                let (left, right, escape, arg_t_exprs) =
-                    analyze_like_operands(meta, *left, *right, escape)?;
-                // Old-pipeline parity: SIMILAR types through the same `like`
-                // overload, so type errors name `like`.
-                (
-                    ExprInner::Similar(Similar::from_parts(is_not, left, right, escape)),
-                    AstTypeExpr::new(
-                        curr_id,
-                        AstTypeExprKind::Function("like".into(), arg_t_exprs),
-                    ),
-                )
-            }
-            ExprInner::Between(between) => {
-                let (is_not, left, center, right) = between.into_parts();
-                let (left, left_t_expr) = left.bind(meta)?;
-                let (center, center_t_expr) = center.bind(meta)?;
-                let (right, right_t_expr) = right.bind(meta)?;
-                // `NOT` does not affect typing: the result is boolean either way.
-                (
-                    ExprInner::Between(Between::from_parts(
-                        is_not,
-                        Box::new(left),
-                        Box::new(center),
-                        Box::new(right),
-                    )),
-                    AstTypeExpr::new(
-                        curr_id,
-                        AstTypeExprKind::Between(vec![left_t_expr, center_t_expr, right_t_expr]),
-                    ),
-                )
-            }
-            ExprInner::In(in_expr) => {
-                let (is_not, left, rhs) = in_expr.into_parts();
-                let (left, left_t_expr) = left.bind(meta)?;
-                // The rhs is a `Row` or a `SubQuery` by construction; either
-                // analyzes through its own arm. `NOT` does not affect typing.
-                let (rhs, rhs_t_expr) = rhs.bind(meta)?;
-                (
-                    ExprInner::In(InExpr::from_parts(is_not, Box::new(left), Box::new(rhs))),
-                    AstTypeExpr::new(
-                        curr_id,
-                        AstTypeExprKind::Comparison(
-                            ComparisonOperator::In,
-                            Box::new(left_t_expr),
-                            Box::new(rhs_t_expr),
-                        ),
-                    ),
-                )
-            }
-            ExprInner::Is(is_expr) => {
-                let (is_not, child, value) = is_expr.into_parts();
-                let (child, child_t_expr) = child.bind(meta)?;
-                // Postgres-strict: IS TRUE/FALSE require a boolean argument,
-                // IS NULL (and its synonym IS UNKNOWN) accepts any type.
-                // `NOT` does not affect typing.
-                let op = match value {
-                    IsValue::Null => UnaryOperator::IsNull,
-                    IsValue::Unknown => UnaryOperator::IsUnknown,
-                    IsValue::Bool(true) => UnaryOperator::IsTrue,
-                    IsValue::Bool(false) => UnaryOperator::IsFalse,
-                };
-                (
-                    ExprInner::Is(IsExpr::from_parts(is_not, Box::new(child), value)),
-                    AstTypeExpr::new(curr_id, AstTypeExprKind::Unary(op, Box::new(child_t_expr))),
-                )
-            }
-            ExprInner::Index(index) => {
-                // The parser nests one `IndexExpr` per bracket; the type
-                // system wants the whole bracket run as a single
-                // `IndexChain { source, keys }` (an intermediate `a[1]` over
-                // a mixed-type container would type as `any`, which cannot
-                // be indexed again). Flatten outermost-in.
-                let (mut source, which) = index.into_parts();
-                let mut keys_raw = vec![which];
-                while matches!(source.inner_ref(), ExprInner::Index(_)) {
-                    let ExprInner::Index(inner_index) = (*source).into() else {
-                        return Err(analyze_err(format_smolstr!(
-                            "index chain node changed kind mid-walk"
-                        )));
-                    };
-                    let (child, which) = inner_index.into_parts();
-                    keys_raw.push(which);
-                    source = child;
-                }
-                // Source order: innermost bracket first.
-                keys_raw.reverse();
-
-                let (source, source_t_expr) = (*source).bind(meta)?;
-                let mut analyzed_keys = Vec::with_capacity(keys_raw.len());
-                let mut key_t_exprs = Vec::with_capacity(keys_raw.len());
-                for key in keys_raw {
-                    let (key, key_t_expr) = (*key).bind(meta)?;
-                    analyzed_keys.push(key);
-                    key_t_exprs.push(key_t_expr);
-                }
-
-                // Rebuild the nested chain; only the outermost node gets the
-                // id (attached by the generic tail below) — intermediate
-                // wrappers carry no id/type and render bare.
-                let mut chain = source;
-                for key in analyzed_keys {
-                    chain = Expr::from_parts(
-                        ExprInner::Index(IndexExpr::from_parts(Box::new(chain), Box::new(key))),
-                        AnalyzedExprMeta::default(),
-                    );
-                }
-                let ExprInner::Index(outer_index) = chain.into_inner() else {
-                    return Err(analyze_err(format_smolstr!(
-                        "rebuilt index chain has no outermost bracket"
-                    )));
-                };
-                (
-                    ExprInner::Index(outer_index),
-                    AstTypeExpr::new(
-                        curr_id,
-                        AstTypeExprKind::IndexChain {
-                            source: Box::new(source_t_expr),
-                            keys: key_t_exprs,
-                        },
-                    ),
-                )
-            }
-            ExprInner::Trim(trim) => {
-                let (kind, pattern, target) = trim.into_parts();
-                // Pattern-first argument order, matching the registered
-                // `trim(text[, text])` overloads. LEADING/TRAILING/BOTH does
-                // not affect typing.
-                let mut arg_t_exprs = Vec::with_capacity(2);
-                let pattern = match pattern {
-                    Some(pattern) => {
-                        let (pattern, pattern_t_expr) = (*pattern).bind(meta)?;
-                        arg_t_exprs.push(pattern_t_expr);
-                        Some(Box::new(pattern))
-                    }
-                    None => None,
-                };
-                let (target, target_t_expr) = (*target).bind(meta)?;
-                arg_t_exprs.push(target_t_expr);
-                (
-                    ExprInner::Trim(Trim::from_parts(kind, pattern, Box::new(target))),
-                    AstTypeExpr::new(
-                        curr_id,
-                        AstTypeExprKind::Function("trim".to_string(), arg_t_exprs),
-                    ),
-                )
-            }
-            ExprInner::Substring(substring) => analyze_substring(substring, meta, curr_id)?,
-            ExprInner::Case(case) => {
-                let Case {
-                    search,
-                    when_blocks,
-                    else_expr,
-                } = case;
-                // Old-pipeline mapping: the simple-form search expression is
-                // handed to the type system separately, so it can unify WHEN
-                // expressions with it instead of requiring them to be
-                // conditions. THEN results and ELSE form the result group
-                // whose unified type is the CASE type.
-                let mut when_t_exprs = Vec::with_capacity(when_blocks.len());
-                let mut result_t_exprs = Vec::with_capacity(when_blocks.len() + 1);
-                let (search, search_t_expr) = match search {
-                    Some(search) => {
-                        let (search, search_t_expr) = (*search).bind(meta)?;
-                        (Some(Box::new(search)), Some(Box::new(search_t_expr)))
-                    }
-                    None => (None, None),
-                };
-                let mut analyzed_when_blocks = Vec::with_capacity(when_blocks.len());
-                for (condition, result) in when_blocks {
-                    let (condition, condition_t_expr) =
-                        condition.bind_with_volatility(meta, false)?;
-                    let (result, result_t_expr) = result.bind(meta)?;
-                    when_t_exprs.push(condition_t_expr);
-                    result_t_exprs.push(result_t_expr);
-                    analyzed_when_blocks.push((condition, result));
-                }
-                let else_expr = match else_expr {
-                    Some(else_expr) => {
-                        let (else_expr, else_t_expr) = (*else_expr).bind(meta)?;
-                        result_t_exprs.push(else_t_expr);
-                        Some(Box::new(else_expr))
-                    }
-                    None => None,
-                };
-                (
-                    ExprInner::Case(Case {
-                        search,
-                        when_blocks: analyzed_when_blocks,
-                        else_expr,
-                    }),
-                    AstTypeExpr::new(
-                        curr_id,
-                        AstTypeExprKind::Case {
-                            search_expr: search_t_expr,
-                            when_exprs: when_t_exprs,
-                            result_exprs: result_t_exprs,
-                        },
-                    ),
-                )
-            }
-            ExprInner::Exists(exists) => {
-                let (is_not, subquery) = exists.into_parts();
-                let analyzed_subquery = analyze_subquery(*subquery, meta)?;
-                // The engine's EXISTS only checks that its child is a
-                // subquery and reports boolean; result types are deliberately
-                // not queried — `result_types()` fails for set-operation
-                // bodies, and EXISTS over a UNION must work. No single-column
-                // restriction. `NOT` does not affect typing.
-                let synthetic_id = meta.type_system.inc_expr_id();
-                let subquery_t_expr =
-                    AstTypeExpr::new(synthetic_id, AstTypeExprKind::Subquery(Vec::new()));
-                (
-                    ExprInner::Exists(Exists::from_parts(is_not, Box::new(analyzed_subquery))),
-                    AstTypeExpr::new(
-                        curr_id,
-                        AstTypeExprKind::Unary(UnaryOperator::Exists, Box::new(subquery_t_expr)),
-                    ),
-                )
-            }
-            ExprInner::TimeFunction(time_function) => {
-                match &time_function {
-                    TimeFunction::CurrentTime(_) => {
-                        return Err(semantic_err(format_smolstr!(
-                            "CURRENT_TIME is not supported yet"
-                        )))
-                    }
-                    TimeFunction::LocalTime(_) => {
-                        return Err(semantic_err(format_smolstr!(
-                            "LOCALTIME is not supported yet"
-                        )))
-                    }
-                    // Picodata has no date or time-of-day types: CURRENT_DATE
-                    // is a midnight datetime and CURRENT_TIMESTAMP equals
-                    // LOCALTIMESTAMP (no timezone-less timestamp type). The
-                    // precision stays rendering-faithful; the ≤6 clamp is IR
-                    // lowering's concern.
-                    TimeFunction::CurrentDate
-                    | TimeFunction::CurrentTimestamp(_)
-                    | TimeFunction::LocalTimestamp(_) => {}
-                }
-                (
-                    ExprInner::TimeFunction(time_function),
-                    AstTypeExpr::new(curr_id, AstTypeExprKind::Literal(Type::Datetime)),
-                )
-            }
-        };
+            ExprInner::FunctionCall(call) => bind_function_call(*call, meta, curr_id),
+            ExprInner::Parameter(parameter) => bind_parameter(parameter, curr_id),
+            ExprInner::Cast(cast) => bind_cast(cast, meta, curr_id),
+            ExprInner::Like(like) => bind_like(like, meta, curr_id),
+            ExprInner::Similar(similar) => bind_similar(similar, meta, curr_id),
+            ExprInner::Between(between) => bind_between(between, meta, curr_id),
+            ExprInner::In(in_expr) => bind_in(in_expr, meta, curr_id),
+            ExprInner::Is(is_expr) => bind_is(is_expr, meta, curr_id),
+            ExprInner::Index(index) => bind_index(index, meta, curr_id),
+            ExprInner::Trim(trim) => bind_trim(trim, meta, curr_id),
+            ExprInner::Substring(substring) => analyze_substring(substring, meta, curr_id),
+            ExprInner::Case(case) => bind_case(case, meta, curr_id),
+            ExprInner::Exists(exists) => bind_exists(exists, meta, curr_id),
+            ExprInner::TimeFunction(time_function) => bind_time_function(time_function, curr_id),
+        }?;
 
         let bound = Expr::from_parts(inner, AnalyzedExprMeta::new_with_id(type_expr.id()));
 

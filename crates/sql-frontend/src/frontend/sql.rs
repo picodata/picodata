@@ -8,12 +8,11 @@ use crate::ir::metadata::Metadata;
 use crate::ir::types::DerivedType;
 use crate::ir::Plan;
 
-use crate::frontend::sql::planner::Planner;
+use sql_ast_new_to_ir::AstTranslator;
 
 pub mod ast_new;
 mod error;
 mod insert_conflict;
-mod planner;
 
 pub mod ast;
 pub mod ir;
@@ -40,10 +39,8 @@ pub fn transform_into_plan(
     metadata: &impl Metadata,
 ) -> Result<Plan, SbroadError> {
     if let Ok(ast) = crate::frontend::sql::ast_new::new_stub(query) {
-        if let Ok(analyzed) =
-            crate::frontend::sql::ast_new::analyze_stub(ast, metadata, param_types)
-        {
-            if let Ok(plan) = Planner::new().plan(analyzed) {
+        if let Ok(analyzed) = ast.analyze(metadata, param_types) {
+            if let Ok(plan) = analyzed.translate() {
                 return Ok(plan);
             }
         }

@@ -26,12 +26,13 @@ use sql_ir::ir::types::DerivedType;
 
 pub struct SelectStmt<'q, State: AstState<'q>> {
     select_list: SelectList<'q, State>,
-    table_expression: Option<TableExpression<'q, State>>,
+    // Boxed: inline, it made every multiset node ~300 B, a big share of the debug stack frames.
+    table_expression: Option<Box<TableExpression<'q, State>>>,
 }
 
 impl<'q, State: AstState<'q>> SelectStmt<'q, State> {
     pub fn into_parts(self) -> (SelectList<'q, State>, Option<TableExpression<'q, State>>) {
-        (self.select_list, self.table_expression)
+        (self.select_list, self.table_expression.map(|t| *t))
     }
 
     pub fn from_parts(
@@ -40,7 +41,7 @@ impl<'q, State: AstState<'q>> SelectStmt<'q, State> {
     ) -> Self {
         Self {
             select_list,
-            table_expression,
+            table_expression: table_expression.map(Box::new),
         }
     }
 }
@@ -154,7 +155,7 @@ impl<'q> SelectStmt<'q, Analyzed> {
         &mut SelectList<'q, Analyzed>,
         Option<&mut TableExpression<'q, Analyzed>>,
     ) {
-        (&mut self.select_list, self.table_expression.as_mut())
+        (&mut self.select_list, self.table_expression.as_deref_mut())
     }
 
     pub fn has_group_by(&self) -> bool {
@@ -182,7 +183,7 @@ impl<'q> SelectStmt<'q, Analyzed> {
     /// The `FROM` clause, if the statement has a table expression.
     pub fn from_ref(&self) -> Option<&From<'q, Analyzed>> {
         self.table_expression
-            .as_ref()
+            .as_deref()
             .map(TableExpression::from_ref)
     }
 }
@@ -443,16 +444,16 @@ impl<'q, State: AstState<'q>> ProjectionExpr<'q, State> {
         }
     }
 
+    pub fn into_parts(self) -> (Expr<'q, State>, Option<Ident>) {
+        (self.expr, self.alias)
+    }
+
     pub fn expr_ref(&self) -> &Expr<'q, State> {
         &self.expr
     }
 }
 
-impl<'q> ProjectionExpr<'q, Raw> {
-    pub fn into_parts(self) -> (Expr<'q, Raw>, Option<Ident>) {
-        (self.expr, self.alias)
-    }
-
+impl ProjectionExpr<'_, Raw> {
     /// The name this projection exposes: its explicit alias, or the name the
     /// expression suggests on its own (see [`NamedEntity`] for [`Expr`]).
     pub fn output_name(&self) -> Option<&str> {

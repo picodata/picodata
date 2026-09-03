@@ -490,10 +490,10 @@ fn test_slices_3() {
 
     plan.add_rel(Table::new_global(random(), "t", vec![Column::default()], &[""]).unwrap());
 
-    let s1_id = plan.add_scan("t", None).unwrap();
+    let s1_id = plan.add_scan("t".into(), None, None).unwrap();
     let m1_id = add_motion(&mut plan, s1_id);
 
-    let s2_id = plan.add_scan("t", None).unwrap();
+    let s2_id = plan.add_scan("t".into(), None, None).unwrap();
     let m2_id = add_motion(&mut plan, s2_id);
 
     let first_scan_id = plan.add_cte_scan(m1_id, "c".into()).unwrap();
@@ -560,10 +560,10 @@ fn test_slices_of_a_motion_with_two_parents() {
 
     plan.add_rel(Table::new_global(random(), "t", vec![Column::default()], &[""]).unwrap());
 
-    let s1_id = plan.add_scan("t", None).unwrap();
+    let s1_id = plan.add_scan("t".into(), None, None).unwrap();
     let m1_id = add_motion(&mut plan, s1_id);
 
-    let s2_id = plan.add_scan("t", None).unwrap();
+    let s2_id = plan.add_scan("t".into(), None, None).unwrap();
     let m2_id = add_motion(&mut plan, s2_id);
 
     let m3_id = add_sq_and_motion(&mut plan, m1_id);

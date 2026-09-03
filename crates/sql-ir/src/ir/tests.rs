@@ -24,7 +24,7 @@ fn get_node() {
     .unwrap();
     plan.add_rel(t);
 
-    let scan_id = plan.add_scan("t", None).unwrap();
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
 
     if let Node::Relational(Relational::ScanRelation(ScanRelation { relation, .. })) =
         plan.get_node(scan_id).unwrap()

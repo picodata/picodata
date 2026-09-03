@@ -15,6 +15,7 @@ pest = "2.0"
 pest_derive = "2.0"
 smol_str = { workspace = true }
 sql-ast-new-analyzer = { path = "../sql-ast-new-analyzer" }
+sql-ast-new-to-ir = { path = "../sql-ast-new-to-ir" }
 sql-ast-new-nodes = { path = "../sql-ast-new-nodes" }
 sql-ast-new-parser = { path = "../sql-ast-new-parser" }
 sql-ir = { path = "../sql-ir" }

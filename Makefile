@@ -126,6 +126,7 @@ SQL_CRATE_NAMES := \
 	sql-ast-new-corpus \
 	sql-ast-new-nodes \
 	sql-ast-new-parser \
+	sql-ast-new-to-ir \
 	sql-executor \
 	sql-explain \
 	sql-frontend \
