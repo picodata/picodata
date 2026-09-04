@@ -1133,17 +1133,21 @@ deploy-coverage:
        --user "$GITCACHE_FS_CRED" "https://picofs.picodata.int/gitlab_cache/target-testrs-dev-${CI_PIPELINE_ID}.tar.gz" | tar xzf -
     - make coverage-report
     - ZIP_FILENAME=picodata_${CI_COMMIT_REF_SLUG}_${CI_COMMIT_SHORT_SHA}
-    - cd target/cov/coverage/report
-    - zip -r --quiet ../$ZIP_FILENAME .
+    - REPORT_URL=https://fs.picodata.io/reportfiler/$ZIP_FILENAME/
+    - |
+      # A summary of the changes in coverage; if we can't build one
+      # (e.g. there's no report for the main branch yet), just link the report.
+      tools/coverage-comment.py "$REPORT_URL" > coverage-comment.md ||
+        echo "Oh boy! [**Here's your code coverage report**](${REPORT_URL})." > coverage-comment.md
+    - (cd target/cov/coverage/report && zip -r --quiet ../$ZIP_FILENAME .)
     - |
       curl --fail --show-error --retry 3  --max-time 300 -s -H "Authorization: ApiKey ${REPORTFILER_UPLOAD_TOKEN}" \
-        -F "zipfile=@../${ZIP_FILENAME}.zip" https://fs.picodata.io/reportfiler/reportupload
-    - REPORT_URL=https://fs.picodata.io/reportfiler/$ZIP_FILENAME/
+        -F "zipfile=@target/cov/coverage/${ZIP_FILENAME}.zip" https://fs.picodata.io/reportfiler/reportupload
     - |
       curl --verbose --fail --show-error --retry 3 --max-time 60 \
         --request POST \
         --header "PRIVATE-TOKEN: $CODECOVERAGE_BOT_TOKEN" \
-        --form "note=Code coverage report: <${REPORT_URL}>" \
+        --form "note=<coverage-comment.md" \
         --url "$CI_API_V4_URL/projects/$CI_PROJECT_ID/repository/commits/$CI_COMMIT_SHA/comments"
 
 validate-commit-headers:
