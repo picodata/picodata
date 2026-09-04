@@ -1,6 +1,5 @@
-from conftest import Cluster
+from conftest import Cluster, log_crawler
 from conftest import Instance
-from conftest import log_crawler
 from conftest import Retriable
 from framework.registry import get_or_make_registry
 from framework.registry import Registry
@@ -8,13 +7,13 @@ from framework.util.version import base_version
 from framework.util.version import ExecutableVersion
 from framework.util.version import parse_version_exc
 from framework.util.version import VersionAlias
-from framework.util import ExpectedError
 from packaging.version import Version
 from urllib.request import urlopen
 import json
 import pytest
 import os
 import signal
+import subprocess
 
 
 def assert_version(
@@ -172,23 +171,21 @@ def test_node_by_node_leaping_upgrade_failure(cluster: Cluster, registry: Regist
     # upgraded in this loop can reach a peer which rejects the leap
     # upgrade with a version mismatch. Each rejected current-version
     # process exits and leaves one fewer live peer in the cluster.
-    mismatch_pattern = "mismatches the leader's version"
-    version_mismatch = ExpectedError(log_pattern=mismatch_pattern)
+    mismatch_error = "mismatches the leader's version"
     for instance in cluster.instances[:-1]:
-        # `Instance.fail_to_start` accepts any quick non-zero process exit
-        # without checking its `ExpectedError` log pattern, so verify the
-        # actual reason for the rejection with a dedicated crawler.
-        mismatch_crawler = log_crawler(instance, mismatch_pattern)
-        instance.change_executable(current, version_mismatch)
-        mismatch_crawler.wait_matched()
+        instance.change_executable(current, mismatch_error)
 
     # Only one old-version instance remains alive. Once it is stopped for the
     # upgrade, there is no peer left to reject it with a version mismatch.
     # The restarted process instead keeps trying to activate through dead
-    # peers; `Instance.fail_to_start` records the connection error, waits
-    # for its startup timeout, and then kills the process.
-    no_live_peers = ExpectedError(log_pattern="failed to activate myself: failed to connect")
-    cluster.instances[-1].change_executable(current, no_live_peers)
+    # peers; `Instance.fail_to_start` reaches timeout while waiting for
+    # process to die and then kills it, while the log_crawler records
+    # the logged error.
+    no_live_peers_error = "failed to activate myself: failed to connect"
+    no_live_peers_lc = log_crawler(cluster.instances[-1], no_live_peers_error)
+    with pytest.raises(subprocess.TimeoutExpired):
+        cluster.instances[-1].change_executable(current, no_live_peers_error)
+    no_live_peers_lc.wait_matched()
 
     # All current-version processes either exited after the version
     # rejection or were killed after failing to reach a live peer.
@@ -299,7 +296,7 @@ def test_reject_older_node_joining_newer_cluster(cluster: Cluster, registry: Reg
 
     executable = registry.get_or_skip(VersionAlias.PREVIOUS_MINOR)
 
-    error = ExpectedError(log_pattern="mismatches the leader's version")
+    error = "mismatches the leader's version"
     shutdown_instance = cluster.pick_random_instance()
     shutdown_instance.change_executable(executable, error)
 
@@ -347,7 +344,7 @@ def test_successful_upgrade_then_failed_downgrade(cluster: Cluster, registry: Re
 
     executable = registry.get_or_skip(VersionAlias.PREVIOUS_MINOR)
 
-    error = ExpectedError(log_pattern="mismatches the leader's version")
+    error = "mismatches the leader's version"
     shutdown_instance = cluster.pick_random_instance()
     shutdown_instance.change_executable(executable, error)
 

@@ -1,6 +1,5 @@
 from conftest import Cluster
 from conftest import Instance
-from framework.util import ExpectedError
 
 
 def set_picodata_version(instance: Instance, version: str):
@@ -106,15 +105,15 @@ def test_reject_third_minor_version_on_join_and_restart(cluster: Cluster):
     set_picodata_version(i3, "25.5.8")
     i3.start_and_wait()
 
-    error = ExpectedError(log_pattern="more than two Picodata minor versions")
+    error = "more than two Picodata minor versions"
 
     joining = cluster.add_instance(wait_online=False)
     set_picodata_version(joining, "26.1.0")
-    joining.fail_to_start(error=error)
+    joining.fail_to_start(expected_log=error)
 
     i3.terminate()
     set_picodata_version(i3, "26.1.0")
-    i3.fail_to_start(error=error)
+    i3.fail_to_start(expected_log=error)
 
 
 def test_patch_upgrade_ok(unstarted_instance: Instance):

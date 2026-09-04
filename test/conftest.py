@@ -1466,13 +1466,13 @@ class Instance:
                 daemon=True,
             ).start()
 
-    def fail_to_start(self, timeout: int = 10, error: ExpectedError | None = None):
+    def fail_to_start(self, timeout: int = 10, expected_log: str | None = None):
         assert self.process is None, "process is already running"
 
-        if error is not None and error.expects_log:
-            pattern = error.log_pattern
-            assert pattern is not None
-            lc = log_crawler(self, pattern)
+        if expected_log is not None:
+            lc = log_crawler(self, expected_log)
+        else:
+            lc = None
 
         self.start()
         assert self.process
@@ -1489,13 +1489,12 @@ class Instance:
         except Exception as e:
             self.kill()
 
-            if error is None:
-                raise e from e
+            raise e from e
 
-            if error.expects_log:
-                lc.wait_matched()
-            else:
-                assert error.matches_exception(e)
+        if lc is not None:
+            # The process is already dead and stdout/stderr threads have finished processing everything,
+            # so using lc.matched here is not flaky.
+            assert lc.matched
 
     def wait_process_stopped(self, timeout: int = 10):
         if self.process is None:
@@ -2257,15 +2256,17 @@ Last governor error is:
     def change_executable(
         self,
         to: Executable,
-        error: ExpectedError | None = None,
+        expected_log: str | None = None,
     ) -> None:
-        log.info(f"Instance.change_executable({self.name}, from={self.executable.version}, to={to}, error={error})")
+        log.info(
+            f"Instance.change_executable({self.name}, from={self.executable.version}, to={to}, expected_log={expected_log})"
+        )
 
         (_, incarnation), _ = self.states()
         self.terminate(kill_after_seconds=_DEFAULT_TIMEOUT)
         self.executable = to
-        if error is not None:
-            self.fail_to_start(error=error)
+        if expected_log is not None:
+            self.fail_to_start(expected_log=expected_log)
             return
 
         self.start()
@@ -3214,7 +3215,7 @@ class Cluster:
     def change_executable(
         self,
         to: Executable,
-        error: ExpectedError | None = None,
+        error: str | None = None,
     ):
         for instance in self.instances:
             instance.change_executable(to, error)
