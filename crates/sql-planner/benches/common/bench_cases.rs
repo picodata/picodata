@@ -1,19 +1,16 @@
-//! Shared benchmark/profiling cases for `ast_new`.
+//! Shared benchmark/profiling cases for the SQL frontend.
 //!
-//! Pure `String`-building, no criterion dependency: the same file is compiled
-//! into the criterion bench (`ast_fill.rs`) and, via a `#[path]` include, into
-//! the dhat example (`examples/ast_fill_alloc.rs`), so timings and allocation
-//! counts are always measured over identical inputs.
+//! Pure `String`-building, no criterion dependency.
 //!
 //! Two case sets, deliberately opposite in character:
-//!   * [`synthetic_benchmark_cases`] — generated, pathologically large ASTs
+//!   * [`synthetic`] — generated, pathologically large ASTs
 //!     (a 14000-column projection, an IN list of 100000 values, deep subquery
 //!     nesting, ...). Each case stresses one node kind at a scale real queries
 //!     never reach, so a per-node cost regression is amplified past noise and
 //!     named by the case that catches it.
-//!   * [`corpus_benchmark_cases`] — the anonymized real-world DQL statements
-//!     from `sql-ast-new-corpus`, giving the realistic mix the synthetic set
-//!     abstracts away.
+//!   * [`corpus`] — the anonymized real-world DQL statements
+//!     from [`sql-ast-new-corpus`](`sql_ast_new_corpus`), giving the realistic
+//!     mix the synthetic set abstracts away.
 use sql_ast_new_corpus::{corpus_queries, CorpusQuery};
 use sql_executor::executor::engine::mock::{
     VEHICLE_ACTUAL_TABLE as VEHICLE_TABLE, VEHICLE_COLUMNS, VEHICLE_HISTORY_TABLE,
@@ -387,11 +384,11 @@ fn cte_chain(cte_count: usize) -> String {
 }
 
 /// Generated, pathologically large ASTs that stress AST-fill throughput.
-pub fn synthetic_benchmark_cases() -> Vec<BenchmarkCase> {
+pub fn synthetic() -> Vec<BenchmarkCase> {
     vec![
         BenchmarkCase::new(
-            "long_arithmetic_expr_chain_1000_operands",
-            long_arithmetic_expr(1000),
+            "long_arithmetic_expr_chain_100_operands",
+            long_arithmetic_expr(100),
         ),
         BenchmarkCase::new("wide_projection_14000_exprs", wide_projection(14000)),
         BenchmarkCase::new(
@@ -409,13 +406,13 @@ pub fn synthetic_benchmark_cases() -> Vec<BenchmarkCase> {
             nested_subquery(120, 280),
         ),
         BenchmarkCase::new("case_expr_20000_branches", case_expr(20000)),
-        BenchmarkCase::new("in_list_100000_values", in_list(100000)),
+        BenchmarkCase::new("in_list_10000_values", in_list(10000)),
         BenchmarkCase::new("aggregate_having_13500_terms", aggregate_having(9000, 4500)),
         BenchmarkCase::new("cte_chain_8000_steps", cte_chain(8000)),
     ]
 }
 
-pub fn corpus_benchmark_cases() -> Vec<BenchmarkCase> {
+pub fn corpus() -> Vec<BenchmarkCase> {
     corpus_queries()
         .into_iter()
         .map(BenchmarkCase::from)

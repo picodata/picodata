@@ -1,41 +1,16 @@
-//! Corpus-based DQL parse validation.
+//! Corpus-based DQL.
 //!
 //! # `queries.sql`
-//! Anonymized real-world DQL statements (identifiers renamed to `a`, `b`,
-//! `c`, ...). The unit tests pin constructs one at a time; the corpus
-//! complements them with the combinations and sizes production actually
-//! sends, so a regression that only shows up when features interact still has
-//! a test to fail.
+//! Anonymized real-world DQL statements. The unit tests pin constructs one at a time.
 //!
-//! A `-- TEST: <name>` comment names the statements after it — the name a
-//! test failure or a criterion benchmark id reports. The file is kept
-//! `sql-formatter`-formatted (`make fmt` rewrites it, `make lint-sql`
-//! enforces it — see `README.md` for the version pinning).
-//!
-//! The corpus is a crate of its own so that it never reaches production builds
-//! and so that every stage's tests and benchmarks can reach it without a
-//! dependency on the frontend. It has no dependencies at all: consumers depend
-//! on it, not the other way round.
-//!
-//!
-//! # The round-trip invariant
-//! Every statement must parse into a raw AST, the rendering must re-parse,
-//! and the second rendering must be byte-identical to the first. Rendering
-//! back the exact input text is not a goal (the corpus is formatter-styled),
-//! so render-idempotence is the fixed point that *is* checkable — and because
-//! rendering re-derives grouping from the same precedence ladder the parser
-//! used, a tree grouped the wrong way fails the re-render comparison.
-//!
-//! Besides validation, the corpus feeds the `ast_fill` benchmarks and the
-//! `ast_fill_alloc` allocation profile through [`corpus_queries`].
+//! A `-- TEST: <name>` comment names the statements after it - the name a
+//! test failure or a criterion benchmark id reports.
+//! The file is kept formatted see `README.md` for details.
 
-/// A `Metadata` catalog the corpus queries bind against, for the planner optimize
-/// benchmark. Behind the `mock` feature so a plain corpus consumer stays
-/// dependency-free.
-#[cfg(feature = "mock")]
 pub mod corpus_mock;
-#[cfg(feature = "mock")]
-pub use corpus_mock::CorpusMock;
+pub mod mock_catalog;
+pub use corpus_mock::corpus_catalog;
+pub use mock_catalog::{ColumnSpec, MockCatalog};
 
 const CORPUS: &str = include_str!("queries.sql");
 
@@ -50,9 +25,8 @@ impl CorpusQuery {
     }
 }
 
-/// Splits the corpus into statements: full-line `--` comments are skipped (a
-/// `-- TEST: <name>` comment names the statements that follow it), `;` terminates a
-/// statement unless inside a single-quoted string.
+/// Splits the corpus into statements. Full-line `--` comments are skipped,
+/// `;` terminates a statement unless inside a single-quoted string.
 pub fn corpus_queries() -> Vec<CorpusQuery> {
     split_statements(CORPUS)
         .into_iter()
@@ -62,8 +36,7 @@ pub fn corpus_queries() -> Vec<CorpusQuery> {
 
 /// The splitter proper, over an arbitrary corpus text so it can be unit-tested.
 ///
-/// Names borrow from `corpus`; `corpus_queries` instantiates it with the `'static`
-/// `include_str!`ed corpus.
+/// Names borrow from `corpus`.
 ///
 /// A `--` outside a single-quoted string comments out the rest of the line — both
 /// when it starts the line and when it trails code. Getting the latter wrong is not

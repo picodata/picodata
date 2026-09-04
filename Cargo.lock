@@ -3815,6 +3815,7 @@ name = "sql-ast-new-corpus"
 version = "0.1.0"
 dependencies = [
  "smol_str",
+ "sql-ast-new-corpus",
  "sql-ast-new-parser",
  "sql-executor",
  "sql-ir",
@@ -3894,8 +3895,6 @@ version = "0.1.0"
 dependencies = [
  "ahash 0.8.12",
  "chrono",
- "criterion",
- "dhat",
  "insta",
  "itertools 0.10.5",
  "lazy_static",
@@ -3903,7 +3902,6 @@ dependencies = [
  "pest_derive",
  "pretty_assertions",
  "smol_str",
- "sql-ast-new-corpus",
  "sql-ast-new-nodes",
  "sql-ast-new-parser",
  "sql-executor",
@@ -3950,6 +3948,7 @@ name = "sql-planner"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "dhat",
  "insta",
  "pretty_assertions",
  "rand 0.10.1",

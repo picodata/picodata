@@ -61,6 +61,29 @@ pub fn transform_into_plan_old(
     ast.build_ir(metadata, param_types)
 }
 
+/// The IR-building stage on its own: everything [`transform_into_plan_old`] does
+/// once the AST is filled.
+///
+/// A dev-target shim, because [`AbstractSyntaxTree::build_ir`] is `pub(super)` —
+/// the stage boundary is an implementation detail of this module, not crate API,
+/// but `benches/build_ir.rs` and `examples/build_ir_alloc.rs` measure exactly that
+/// stage and call it from outside the crate. It is gated on `mock`, which the
+/// self-referential dev-dependency turns on for this crate's own dev targets and
+/// for nothing else.
+///
+/// Takes the AST by value like the method it forwards to: building the IR consumes
+/// the tree, so a caller timing it in a loop needs a fresh one per iteration.
+///
+/// [`AbstractSyntaxTree::build_ir`]: ast::AbstractSyntaxTree
+#[cfg(feature = "mock")]
+pub fn build_ir(
+    ast: ast::AbstractSyntaxTree<'_>,
+    param_types: &[DerivedType],
+    metadata: &impl Metadata,
+) -> Result<Plan, SbroadError> {
+    ast.build_ir(metadata, param_types)
+}
+
 pub use crate::ir::function::{
     get_real_function_name, FunctionNameMapping, FUNCTION_NAME_MAPPINGS,
 };

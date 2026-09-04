@@ -5,6 +5,9 @@ rust-version.workspace = true
 authors = ["Picodata"]
 license-file.workspace = true
 edition.workspace = true
+# Benches and examples have shared routine files without main func.
+autobenches = false
+autoexamples = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -24,18 +27,39 @@ tarantool = { workspace = true, features = ["standalone_decimal","extra_impls"] 
 # Self-referential dev-dependency: forces the `mock` feature on for the
 # whitebox test suite in tests/ without affecting downstream builds.
 sql-planner = { path = ".", features = ["mock"] }
-criterion = "0.5.1"
-# The real-world DQL corpus the bench runs the optimizer over; `mock` also pulls
-# in `CorpusMock`, the `Metadata` catalog those queries bind against.
-sql-ast-new-corpus = { path = "../sql-ast-new-corpus", features = ["mock"] }
+criterion = { workspace = true }
+dhat = "0.3"
+# The real-world DQL corpus the bench runs the optimizer over
+sql-ast-new-corpus = { path = "../sql-ast-new-corpus" }
+sql-executor = { path = "../sql-executor", features = ["mock"] }
 
 [lib]
 name = "sql"
 
 [features]
 mock = ["sql-ir/mock", "sql-executor/mock", "sql-frontend/mock"]
+__bench_ast_new = ["sql-frontend/__bench_ast_new"]
 
 [[bench]]
-name = "planning"
+name = "ast_fill"
 harness = false
 test = false
+
+[[bench]]
+name = "build_ir"
+harness = false
+test = false
+
+[[bench]]
+name = "optimize"
+harness = false
+test = false
+
+[[example]]
+name = "ast_fill_alloc"
+
+[[example]]
+name = "build_ir_alloc"
+
+[[example]]
+name = "optimize_alloc"
