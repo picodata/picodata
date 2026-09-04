@@ -684,3 +684,93 @@ fn test_bool_folding28() {
               value ROW(1::int)
     "#);
 }
+
+#[test]
+fn test_bool_folding29() {
+    use sql::ir::node::relational::Relational;
+    use sql::ir::node::Node;
+    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+
+    // `NOT` makes the not push down pass store a pre-transformation
+    // snapshot of the filter in the undo log, `<=` shields the filter root
+    // from folding (so that snapshot stays reachable), and
+    // `EXISTS (sq) OR true` folds to a constant, detaching the subquery.
+    // EXPLAIN renders the snapshot, which must not reference the detached
+    // subquery.
+    let query = r#"explain (logical) SELECT * from t
+        WHERE NOT (a > 0) <= (EXISTS (SELECT 1) OR true)"#;
+
+    let coordinator = RouterRuntimeMock::new();
+    let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
+      selection ((t.a::int > 0::int) > true::bool)
+        scan t
+    ");
+    let top = plan.get_top().unwrap();
+
+    let dfs = PostOrderWithFilter::new(
+        |x| plan.nodes.rel_iter(x),
+        |node| {
+            matches!(
+                plan.get_node(node),
+                Ok(Node::Relational(Relational::Selection(_)))
+            )
+        },
+        REL_CAPACITY,
+    );
+    let sel_id = dfs.traverse_into_iter(top).next().expect("selection node");
+    let Relational::Selection(sel) = plan.get_relation_node(sel_id).unwrap() else {
+        unreachable!()
+    };
+    assert!(
+        sel.subqueries.is_empty(),
+        "expected orphan subquery to be detached, got {:?}",
+        sel.subqueries
+    );
+}
+
+#[test]
+fn test_bool_folding30() {
+    use sql::ir::node::relational::Relational;
+    use sql::ir::node::Node;
+    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+
+    // Same desync as in `test_bool_folding29`, reached the other way: the
+    // IN list holds no subquery, so it is expanded into a chain of
+    // equalities, and it is the `=` over that chain that both keeps the
+    // filter root unfolded and gets its `NOT` rewritten into `<>`.
+    let query = r#"explain (logical) SELECT * from t
+        WHERE NOT (a IN (1, 2)) = (EXISTS (SELECT 1) OR true)"#;
+
+    let coordinator = RouterRuntimeMock::new();
+    let query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+    insta::assert_snapshot!(plan.explain_logical().unwrap(), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
+      selection ((t.a::int = 1::int or t.a::int = 2::int) <> true::bool)
+        scan t
+    ");
+    let top = plan.get_top().unwrap();
+
+    let dfs = PostOrderWithFilter::new(
+        |x| plan.nodes.rel_iter(x),
+        |node| {
+            matches!(
+                plan.get_node(node),
+                Ok(Node::Relational(Relational::Selection(_)))
+            )
+        },
+        REL_CAPACITY,
+    );
+    let sel_id = dfs.traverse_into_iter(top).next().expect("selection node");
+    let Relational::Selection(sel) = plan.get_relation_node(sel_id).unwrap() else {
+        unreachable!()
+    };
+    assert!(
+        sel.subqueries.is_empty(),
+        "expected orphan subquery to be detached, got {:?}",
+        sel.subqueries
+    );
+}

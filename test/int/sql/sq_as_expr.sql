@@ -1561,3 +1561,33 @@ SELECT a FROM t1 WHERE NOT NOT (SELECT b = 1 FROM t1);
 SELECT t1.a FROM t1 INNER JOIN null_t ON NOT (SELECT b > 100 FROM t1) WHERE "na" = 1;
 -- EXPECTED:
 1
+
+-- TEST: test-explain-not-over-folded-subquery-branch
+-- SQL:
+EXPLAIN (LOGICAL)
+SELECT a FROM t1 WHERE NOT (a > 0) <= (EXISTS (SELECT 1) OR true);
+-- EXPECTED:
+projection (t1.a::int -> a)
+  selection ((t1.a::int > 0::int) > true::bool)
+    scan t1
+
+-- TEST: test-not-over-folded-subquery-branch
+-- SQL:
+SELECT a FROM t1 WHERE NOT (a > 0) <= (EXISTS (SELECT 1) OR true);
+-- EXPECTED:
+
+-- TEST: test-explain-not-between-over-folded-subquery-branch
+-- SQL:
+EXPLAIN (LOGICAL)
+SELECT a FROM t1 WHERE
+(1 NOT BETWEEN 0 AND COALESCE(NULL, NULL)) BETWEEN 0 = 0 AND (EXISTS (SELECT 1) OR TRUE);
+-- EXPECTED:
+projection (t1.a::int -> a)
+  selection (((1::int > coalesce(NULL::unknown, NULL::unknown)::any) >= true::bool and (1::int > coalesce(NULL::unknown, NULL::unknown)::any) <= true::bool))
+    scan t1
+
+-- TEST: test-not-between-over-folded-subquery-branch
+-- SQL:
+SELECT a FROM t1 WHERE
+(1 NOT BETWEEN 0 AND COALESCE(NULL, NULL)) BETWEEN 0 = 0 AND (EXISTS (SELECT 1) OR TRUE);
+-- EXPECTED:

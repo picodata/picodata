@@ -212,6 +212,30 @@ impl Plan {
         Ok(folded_to)
     }
 
+    /// Collects relational ids of the subqueries referenced by the
+    /// expression subtree under `top_id`.
+    fn collect_subquery_refs(&self, top_id: NodeId) -> Result<HashSet<NodeId>, SbroadError> {
+        let mut referenced: HashSet<NodeId> = HashSet::new();
+        let sq_dfs = PostOrderWithFilter::new(
+            |node| self.nodes.expr_iter(node, false),
+            |node| {
+                matches!(
+                    self.get_node(node),
+                    Ok(Node::Expression(Expression::SubQueryReference(_)))
+                )
+            },
+            EXPR_CAPACITY,
+        );
+        for expr_id in sq_dfs.traverse_into_vec(top_id) {
+            if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) =
+                self.get_expression_node(expr_id)?
+            {
+                referenced.insert(*rel_id);
+            }
+        }
+        Ok(referenced)
+    }
+
     pub fn fold_boolean_tree(mut self) -> Result<Self, SbroadError> {
         let node_ids = collect_join_and_selection_nodes(&self);
 
@@ -352,24 +376,24 @@ impl Plan {
                     _ => unreachable!("expected Selection or Join node"),
                 };
                 if has_subqueries {
-                    let mut referenced: HashSet<NodeId> = HashSet::new();
-                    let sq_dfs = PostOrderWithFilter::new(
-                        |node| self.nodes.expr_iter(node, false),
-                        |node| {
-                            matches!(
-                                self.get_node(node),
-                                Ok(Node::Expression(Expression::SubQueryReference(_)))
-                            )
-                        },
-                        EXPR_CAPACITY,
-                    );
-                    for expr_id in sq_dfs.traverse_into_vec(current_filter) {
-                        if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) =
-                            self.get_expression_node(expr_id)?
-                        {
-                            referenced.insert(*rel_id);
-                        }
+                    let referenced = self.collect_subquery_refs(current_filter)?;
+
+                    // The undo log keeps a pre-transformation snapshot of the
+                    // filter, which EXPLAIN renders instead of the current one.
+                    // If that snapshot references a subquery we are about to
+                    // detach, it can't be rendered anymore (and other consumers
+                    // of the log would walk into a detached subtree), so we drop
+                    // the link and let them see the folded filter.
+                    let oldest = *self.undo.get_oldest(&current_filter);
+                    if oldest != current_filter
+                        && self
+                            .collect_subquery_refs(oldest)?
+                            .iter()
+                            .any(|sq_id| !referenced.contains(sq_id))
+                    {
+                        self.undo.cut(&current_filter);
                     }
+
                     match self.get_mut_relation_node(id)? {
                         MutRelational::Join(Join { subqueries, .. })
                         | MutRelational::Selection(Selection { subqueries, .. }) => {

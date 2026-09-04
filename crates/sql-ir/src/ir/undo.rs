@@ -33,6 +33,14 @@ impl TransformationLog {
         self.log.entry(new_id).or_insert(old_id_new);
     }
 
+    /// Drops the link from `new_id` to its previous version, making
+    /// `get_oldest` return `new_id` itself. Used when the old version
+    /// becomes unusable, i.e. it references plan nodes no longer attached
+    /// to the relational node owning the expression.
+    pub fn cut(&mut self, new_id: &NodeId) {
+        self.log.remove(new_id);
+    }
+
     #[must_use]
     pub fn get_oldest<'log, 'new: 'log>(&'log self, new_id: &'new NodeId) -> &'log NodeId {
         if self.log.contains_key(new_id) {
