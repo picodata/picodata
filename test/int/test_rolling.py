@@ -271,6 +271,9 @@ def test_successful_rollback_on_partial_upgrade_failure(cluster: Cluster, regist
         VersionAlias.CURRENT,
     ]
 )
+@pytest.mark.xfail(
+    reason="picodata 26.2.1 panics when reading 26.3 catalogue. https://git.picodata.io/core/picodata/-/work_items/3163"
+)
 def test_reject_older_node_joining_newer_cluster(cluster: Cluster, registry: Registry):
     """
     Ensure an older node cannot rejoin a newer cluster.
@@ -311,6 +314,9 @@ def test_reject_older_node_joining_newer_cluster(cluster: Cluster, registry: Reg
         VersionAlias.PREVIOUS_MINOR,
         VersionAlias.CURRENT,
     ]
+)
+@pytest.mark.xfail(
+    reason="picodata 26.2.1 panics when reading 26.3 catalogue. https://git.picodata.io/core/picodata/-/work_items/3163"
 )
 def test_successful_upgrade_then_failed_downgrade(cluster: Cluster, registry: Registry):
     """
