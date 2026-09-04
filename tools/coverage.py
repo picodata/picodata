@@ -34,21 +34,40 @@ SYNTAX_HIGHLIGHTER = Path(__file__).parent / "coverage-report-beautify.py"
 
 DEFAULT_COMMIT_URL = "https://local/deadbeef"
 
+SOURCE_SUFFIXES = (".rs", ".c", ".h", ".cc", ".cpp", ".hpp")
 
-def cargo_home_regex(cwd: Path) -> str:
+
+def collect_sources(cwd: Path, sources: list[str]) -> list[str]:
     """
-    Build a regex matching sources of deps which live inside the project dir.
+    Expand source dirs into a sorted list of the files they contain.
 
-    Usually `CARGO_HOME` points somewhere outside (e.g. `$HOME/.cargo`), but
-    our CI sets it to `$CI_PROJECT_DIR/.cargo`. Once `rustc` has cut the $PWD
-    prefix off the paths (see `--remap-path-prefix`), those sources become
-    indistinguishable from our own, so we have to filter them out by hand.
-
-    Note that `llvm-cov` matches this against paths which have already been
-    mangled by `-path-equivalence`, hence the absolute prefix.
+    `llvm-cov` is perfectly capable of doing this on its own, but it lists
+    the files in the order of `readdir`, which makes the report's index page
+    look like a mess.
     """
 
-    return f"^{re.escape(str(cwd.resolve()))}/\\.cargo/"
+    cargo_home = Path(os.environ.get("CARGO_HOME") or Path.home() / ".cargo").resolve()
+
+    files: set[str] = set()
+    for source in sources:
+        # Anything but a dir (e.g. a single file) is passed through as is
+        root = cwd / source
+        if not root.is_dir():
+            files.add(source)
+            continue
+
+        for parent, subdirs, names in os.walk(root):
+            subdirs[:] = [x for x in subdirs if not x.startswith(".") and Path(parent, x) != cargo_home]
+
+            # Keep the shape of the original path (relative stays relative),
+            # otherwise we'd mess up the layout of the resulting report.
+            prefix = Path(parent).relative_to(root)
+            files.update(str(Path(source, prefix, x)) for x in names if x.endswith(SOURCE_SUFFIXES))
+
+    if not files:
+        raise Exception(f"No source files found in {fmt_args(sources)}")
+
+    return sorted(files)
 
 
 def git(*args: str) -> str | None:
@@ -301,7 +320,6 @@ class LLVM:
         profdata: Path,
         objects: list[str],
         sources: list[str],
-        ignore_regex: str | None = None,
         demangler: Path | None = None,
         output_file: Path | None = None,
     ) -> None:
@@ -314,10 +332,12 @@ class LLVM:
         # see: https://github.com/rust-lang/rust/issues/34701#issuecomment-739809584
         if sources:
             extras.append(f"-path-equivalence=.,{cwd.resolve()}")
-            # Unscoped reports (see `--all`) are meant to show deps, so we only
-            # skip them when the report has been scoped to a set of sources.
-            if ignore_regex:
-                extras.append(f"-ignore-filename-regex={ignore_regex}")
+
+            # Expand the dirs ourselves to get a sorted file list (see
+            # `collect_sources`) & feed it to `llvm-cov` via a response file.
+            sources_list = profdata.with_name("sources.list")
+            sources_list.write_text("".join(f"{x}\n" for x in collect_sources(cwd, sources)))
+            sources = [f"@{sources_list}"]
 
         if demangler:
             extras.append(f"-Xdemangler={demangler}")
@@ -431,7 +451,6 @@ class ReportData:
     profdata: Path
     objects: list[str]
     sources: list[str]
-    ignore_regex: str | None = None
 
 
 class Report(ABC, ReportData):
@@ -442,7 +461,6 @@ class Report(ABC, ReportData):
             profdata=self.profdata,
             objects=self.objects,
             sources=self.sources,
-            ignore_regex=self.ignore_regex,
             demangler=self.demangler,
         )
         return {**kwargs, **overrides}
@@ -781,14 +799,12 @@ class State:
 
         # see man for `llvm-cov show [sources]`
         sources: list[str]
-        ignore_regex: str | None = cargo_home_regex(self.cwd)
         if args.all:
             sources = []
         elif not args.sources and not args.crates:
             sources = ["."]
         else:
             sources = [str(x) for x in args.sources]
-            ignore_regex = None
 
         if args.crates:
             print(f"* Resolving crate sources: {', '.join(args.crates)}")
@@ -826,7 +842,6 @@ class State:
             profdata=self.final_profdata,
             objects=objects,
             sources=sources,
-            ignore_regex=ignore_regex,
         )
 
         report: Report
