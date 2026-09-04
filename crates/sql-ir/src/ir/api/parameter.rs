@@ -85,7 +85,7 @@ impl Plan {
     pub fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
         let ref_nodes = {
             let tree = PostOrderWithFilter::new(
-                |node| self.parameter_iter(node, true),
+                |node| self.parameter_iter(node),
                 |node| {
                     matches!(
                         self.get_node(node),

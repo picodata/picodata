@@ -264,11 +264,10 @@ impl From<Like> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
 pub enum ReferenceTarget {
+    /// The reference points at nothing (a placeholder).
     Leaf,
+    /// The relational node the referenced column belongs to.
     Single(NodeId),
-    Union(NodeId, NodeId),
-    /// Rows (`Expression::Row`) of the `Values` node the reference belongs to.
-    Values(Vec<NodeId>),
 }
 
 pub struct ReferenceIterator<'a> {
@@ -289,16 +288,6 @@ impl<'a> Iterator for ReferenceIterator<'a> {
                     None
                 }
             }
-            ReferenceTarget::Union(left, right) => {
-                if self.counter == 0 {
-                    Some(left)
-                } else if self.counter == 1 {
-                    Some(right)
-                } else {
-                    None
-                }
-            }
-            ReferenceTarget::Values(nodes) => nodes.get(self.counter),
         };
 
         if node.is_some() {
@@ -313,8 +302,6 @@ impl ReferenceTarget {
         match self {
             ReferenceTarget::Leaf => None,
             ReferenceTarget::Single(id) => Some(id),
-            ReferenceTarget::Union(id, _) => Some(id),
-            ReferenceTarget::Values(nodes) => nodes.first(),
         }
     }
 
@@ -322,8 +309,6 @@ impl ReferenceTarget {
         match self {
             ReferenceTarget::Leaf => 0,
             ReferenceTarget::Single(_) => 1,
-            ReferenceTarget::Union(_, _) => 2,
-            ReferenceTarget::Values(nodes) => nodes.len(),
         }
     }
 
@@ -398,9 +383,6 @@ impl From<SubQueryReference> for NodeAligned {
 pub struct Row {
     /// A list of the alias expression node indexes in the plan node arena.
     pub list: Vec<NodeId>,
-    /// Resulting data distribution of the tuple. Should be filled as a part
-    /// of the last "add Motion" transformation.
-    pub distribution: Option<Distribution>,
 }
 
 impl From<Row> for NodeAligned {
@@ -579,8 +561,8 @@ pub struct ScanCte {
     /// CTE's name.
     pub alias: SmolStr,
     pub child: NodeId,
-    /// An output tuple with aliases.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<ScanCte> for NodeAligned {
@@ -595,8 +577,8 @@ pub struct Except {
     pub left: NodeId,
     /// Right child id
     pub right: NodeId,
-    /// Outputs tuple node index in the plan node arena.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<Except> for NodeAligned {
@@ -612,8 +594,8 @@ pub struct Delete {
     /// Contains child id in plan node arena or
     /// None if child was substituted with virtual table.
     pub child: Option<NodeId>,
-    /// The output tuple (reserved for `delete returning`).
-    pub output: Option<NodeId>,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<Delete> for NodeAligned {
@@ -630,8 +612,8 @@ pub struct Insert {
     /// the child's tuple.
     pub columns: Vec<usize>,
     pub child: NodeId,
-    /// The output tuple (reserved for `insert returning`).
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
     /// What to do in case there is a conflict during insert on storage
     pub conflict_strategy: ConflictStrategy,
 }
@@ -646,8 +628,8 @@ impl From<Insert> for NodeAligned {
 pub struct Intersect {
     pub left: NodeId,
     pub right: NodeId,
-    // id of the output tuple
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<Intersect> for NodeAligned {
@@ -673,8 +655,8 @@ pub struct Update {
     /// Positions of primary columns in `Projection`
     /// below `Update`.
     pub pk_positions: Vec<ColumnPosition>,
-    /// Output id.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<Update> for NodeAligned {
@@ -693,22 +675,22 @@ pub struct Join {
     /// Left and right tuple comparison condition.
     /// In fact it is an expression tree top index from the plan node arena.
     pub condition: NodeId,
-    /// Outputs tuple node index from the plan node arena.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
     /// inner or left
     pub kind: JoinKind,
 }
 
 impl From<Join> for NodeAligned {
     fn from(value: Join) -> Self {
-        Self::Node64(Node64::Join(value))
+        Self::Node96(Node96::Join(value))
     }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Limit {
-    /// Output tuple.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
     // The limit value constant that comes after LIMIT keyword.
     pub limit: u64,
     /// Select statement that is being limited.
@@ -735,7 +717,14 @@ pub struct Motion {
     /// A sequence of opcodes that transform the data.
     pub program: Program,
     /// Outputs tuple node index in the plan node arena.
+    ///
+    /// Unlike the other pass-through nodes, a motion keeps its output tuple
+    /// explicitly: once its subtree is materialized into a virtual table the
+    /// child is hidden from the executor (or replaced with a stub), and the
+    /// motion must still answer for its columns.
     pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<Motion> for NodeAligned {
@@ -753,6 +742,8 @@ pub struct Projection {
     pub windows: Vec<NodeId>,
     /// Outputs tuple node index in the plan node arena.
     pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
     /// Whether the select was marked with `distinct` keyword
     pub is_distinct: bool,
 
@@ -772,6 +763,8 @@ pub struct SelectWithoutScan {
     pub subqueries: Vec<NodeId>,
     /// Outputs tuple node index in the plan node arena.
     pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<SelectWithoutScan> for NodeAligned {
@@ -784,8 +777,8 @@ impl From<SelectWithoutScan> for NodeAligned {
 pub struct ScanRelation {
     // Scan name.
     pub alias: Option<SmolStr>,
-    /// Outputs tuple node index in the plan node arena.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
     /// Relation name.
     pub relation: SmolStr,
     /// Index name.
@@ -803,8 +796,8 @@ pub struct ScanSubQuery {
     /// SubQuery name.
     pub alias: Option<SmolStr>,
     pub child: NodeId,
-    /// Outputs tuple node index in the plan node arena.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<ScanSubQuery> for NodeAligned {
@@ -821,8 +814,8 @@ pub struct Selection {
     pub subqueries: Vec<NodeId>,
     /// Filters expression node index in the plan node arena.
     pub filter: NodeId,
-    /// Outputs tuple node index in the plan node arena.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<Selection> for NodeAligned {
@@ -840,12 +833,13 @@ pub struct GroupBy {
     /// Subqueries, which are dependencies
     pub subqueries: Vec<NodeId>,
     pub gr_exprs: Vec<NodeId>,
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<GroupBy> for NodeAligned {
     fn from(value: GroupBy) -> Self {
-        Self::Node64(Node64::GroupBy(value))
+        Self::Node96(Node96::GroupBy(value))
     }
 }
 
@@ -853,7 +847,8 @@ impl From<GroupBy> for NodeAligned {
 pub struct Having {
     pub child: NodeId,
     pub subqueries: Vec<NodeId>,
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
     pub filter: NodeId,
 }
 
@@ -867,13 +862,14 @@ impl From<Having> for NodeAligned {
 pub struct OrderBy {
     pub child: NodeId,
     pub subqueries: Vec<NodeId>,
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
     pub order_by_elements: Vec<OrderByElement>,
 }
 
 impl From<OrderBy> for NodeAligned {
     fn from(value: OrderBy) -> Self {
-        Self::Node64(Node64::OrderBy(value))
+        Self::Node96(Node96::OrderBy(value))
     }
 }
 
@@ -883,8 +879,8 @@ pub struct UnionAll {
     pub left: NodeId,
     /// Right child id
     pub right: NodeId,
-    /// Outputs tuple node index in the plan node arena.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<UnionAll> for NodeAligned {
@@ -895,8 +891,8 @@ impl From<UnionAll> for NodeAligned {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Values {
-    /// Output tuple.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
     /// Non-empty list of value rows (`Expression::Row`).
     pub rows: Vec<NodeId>,
     /// A list of subqueries is required for the rows containing
@@ -1825,8 +1821,8 @@ pub struct Union {
     pub left: NodeId,
     /// Right child id
     pub right: NodeId,
-    /// Outputs tuple node index in the plan node arena.
-    pub output: NodeId,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
 }
 
 impl From<Union> for NodeAligned {
@@ -1922,9 +1918,7 @@ pub enum Node64 {
     Selection(Selection),
     Having(Having),
     Values(Values),
-    OrderBy(OrderBy),
     CallProcedure(CallProcedure),
-    Join(Join),
     Row(Row),
     Delete(Delete),
     ScanSubQuery(ScanSubQuery),
@@ -1933,7 +1927,6 @@ pub enum Node64 {
     CreateRole(CreateRole),
     DropTable(DropTable),
     DropIndex(DropIndex),
-    GroupBy(GroupBy),
     SetParam(SetParam),
     SetTransaction(SetTransaction),
     Invalid(Invalid),
@@ -1959,10 +1952,7 @@ impl Node64 {
                 NodeOwned::Ddl(DdlOwned::TruncateTable(truncate_table))
             }
             Node64::DropUser(drop_user) => NodeOwned::Acl(AclOwned::DropUser(drop_user)),
-            Node64::GroupBy(group_by) => NodeOwned::Relational(RelOwned::GroupBy(group_by)),
             Node64::Having(having) => NodeOwned::Relational(RelOwned::Having(having)),
-            Node64::Join(join) => NodeOwned::Relational(RelOwned::Join(join)),
-            Node64::OrderBy(order_by) => NodeOwned::Relational(RelOwned::OrderBy(order_by)),
             Node64::Row(row) => NodeOwned::Expression(ExprOwned::Row(row)),
             Node64::CallProcedure(proc) => NodeOwned::Block(BlockOwned::CallProcedure(proc)),
             Node64::ScanCte(scan_cte) => NodeOwned::Relational(RelOwned::ScanCte(scan_cte)),
@@ -1984,6 +1974,9 @@ impl Node64 {
 pub enum Node96 {
     AnonymousBlock(AnonymousBlock),
     Projection(Projection),
+    Join(Join),
+    GroupBy(GroupBy),
+    OrderBy(OrderBy),
     Reference(Reference),
     Invalid(Invalid),
     ScalarFunction(ScalarFunction),
@@ -2004,6 +1997,9 @@ impl Node96 {
         match self {
             Node96::AnonymousBlock(block) => NodeOwned::Block(BlockOwned::Anonymous(block)),
             Node96::Projection(reference) => NodeOwned::Relational(RelOwned::Projection(reference)),
+            Node96::Join(join) => NodeOwned::Relational(RelOwned::Join(join)),
+            Node96::GroupBy(group_by) => NodeOwned::Relational(RelOwned::GroupBy(group_by)),
+            Node96::OrderBy(order_by) => NodeOwned::Relational(RelOwned::OrderBy(order_by)),
             Node96::Reference(reference) => NodeOwned::Expression(ExprOwned::Reference(reference)),
             Node96::DropProc(drop_proc) => NodeOwned::Ddl(DdlOwned::DropProc(drop_proc)),
             Node96::Insert(insert) => NodeOwned::Relational(RelOwned::Insert(insert)),
@@ -2028,7 +2024,14 @@ impl Node96 {
     }
 }
 
-const _: () = assert!(std::mem::size_of::<Node136>() < 136);
+// Every arena tier has a fixed memory budget (see `node/tests.rs::test_node_size`
+// for the exact values). Moving a node to a bigger tier is a deliberate decision:
+// if one of these assertions fails, re-tier the grown node instead of bumping the budget.
+const _: () = assert!(std::mem::size_of::<Node32>() <= 40);
+const _: () = assert!(std::mem::size_of::<Node64>() <= 64);
+const _: () = assert!(std::mem::size_of::<Node96>() <= 96);
+const _: () = assert!(std::mem::size_of::<Node136>() <= 112);
+const _: () = assert!(std::mem::size_of::<Node232>() <= 208);
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]

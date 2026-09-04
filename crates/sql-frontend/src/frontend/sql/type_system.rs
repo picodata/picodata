@@ -213,11 +213,8 @@ pub fn to_type_expr(
             for (subquery_id, row_id) in subquery_map {
                 if *row_id == node_id {
                     let mut types = Vec::with_capacity(list.len());
-                    let output_id = plan.get_relation_node(*subquery_id)?.output();
-                    let columns = plan.get_row_list(output_id)?;
-                    for col_id in columns {
-                        let column = plan.get_expression_node(*col_id)?;
-                        if let Some(ty) = column.calculate_type(plan)?.get() {
+                    for column in plan.columns_of(*subquery_id)? {
+                        if let Some(ty) = column?.r#type.get() {
                             types.push(Type::from(*ty));
                         } else {
                             // Strictly speaking, NULL should have unknown type, but the type
@@ -641,7 +638,7 @@ fn coerce_scalar_expr(
         };
 
         let post_order = PostOrderWithFilter::new(
-            |node| plan.subtree_iter(node, false),
+            |node| plan.subtree_iter(node),
             filter_string_to_be_coerced,
             0,
         );
@@ -700,7 +697,7 @@ fn annotate_composite_types(
         )
     };
 
-    let post_order = PostOrderWithFilter::new(|node| plan.subtree_iter(node, false), is_target, 0);
+    let post_order = PostOrderWithFilter::new(|node| plan.subtree_iter(node), is_target, 0);
     let targets: Vec<_> = post_order.traverse_into_vec(expr_id);
 
     for id in targets {

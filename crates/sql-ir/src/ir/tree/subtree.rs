@@ -4,15 +4,17 @@ use super::{PlanTreeIterator, Snapshot, TreeIterator};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    ArrayLiteral, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, NodeId,
-    OrderBy, Projection, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, SubQueryReference, Union, UnionAll, Update, Values,
+    ArrayLiteral, GroupBy, Having, Join, Motion, NodeId, OrderBy, Projection, Row, ScalarFunction,
+    SelectWithoutScan, Selection, SubQueryReference, Values,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::{Node, Nodes, Plan};
 
 trait SubtreePlanIterator<'plan>: PlanTreeIterator<'plan> {
-    fn need_output(&self) -> bool;
+    /// Whether to yield the output tuple of a `Motion`. The rows of
+    /// `Projection` and `SelectWithoutScan` are always yielded; a motion row
+    /// only copies the child's columns, so most traversals skip it.
+    fn need_motion_output(&self) -> bool;
     fn need_motion_subtree(&self) -> bool;
     fn output_first(&self) -> bool;
     fn need_subquery(&self) -> bool;
@@ -25,7 +27,7 @@ pub struct SubtreeIterator<'plan> {
     current: NodeId,
     child: RefCell<usize>,
     plan: &'plan Plan,
-    need_output: bool,
+    motion_output: bool,
     output_first: bool,
     traverse_subquery: bool,
 }
@@ -51,10 +53,9 @@ impl<'plan> PlanTreeIterator<'plan> for SubtreeIterator<'plan> {
 }
 
 impl<'plan> SubtreePlanIterator<'plan> for SubtreeIterator<'plan> {
-    fn need_output(&self) -> bool {
-        self.need_output
+    fn need_motion_output(&self) -> bool {
+        self.motion_output
     }
-
     fn need_motion_subtree(&self) -> bool {
         true
     }
@@ -75,43 +76,41 @@ impl Iterator for SubtreeIterator<'_> {
 }
 
 impl<'plan> Plan {
+    /// Whole subtree, motion output tuples excluded (the syntax planner
+    /// must not see them: a motion renders as its virtual table).
     #[must_use]
-    pub fn subtree_iter(&'plan self, current: NodeId, need_output: bool) -> SubtreeIterator<'plan> {
+    pub fn subtree_iter(&'plan self, current: NodeId) -> SubtreeIterator<'plan> {
         SubtreeIterator {
             current,
             child: RefCell::new(0),
             plan: self,
-            need_output,
+            motion_output: false,
             output_first: true,
             traverse_subquery: true,
         }
     }
 
-    pub fn parameter_iter(
-        &'plan self,
-        current: NodeId,
-        need_output: bool,
-    ) -> SubtreeIterator<'plan> {
+    /// Whole subtree, motion output tuples included (their references are
+    /// part of the plan).
+    pub fn parameter_iter(&'plan self, current: NodeId) -> SubtreeIterator<'plan> {
         SubtreeIterator {
             current,
             child: RefCell::new(0),
             plan: self,
-            need_output,
+            motion_output: true,
             output_first: false,
             traverse_subquery: true,
         }
     }
 
-    pub fn subtree_iter_except_subquery(
-        &'plan self,
-        current: NodeId,
-        need_output: bool,
-    ) -> SubtreeIterator<'plan> {
+    /// Everything a subtree owns, motion output tuples included, but not the
+    /// shared subqueries: the traversal of the subtree cloner.
+    pub fn subtree_iter_except_subquery(&'plan self, current: NodeId) -> SubtreeIterator<'plan> {
         SubtreeIterator {
             current,
             child: RefCell::new(0),
             plan: self,
-            need_output,
+            motion_output: true,
             output_first: false,
             traverse_subquery: false,
         }
@@ -150,7 +149,7 @@ impl<'plan> PlanTreeIterator<'plan> for FlashbackSubtreeIterator<'plan> {
 }
 
 impl<'plan> SubtreePlanIterator<'plan> for FlashbackSubtreeIterator<'plan> {
-    fn need_output(&self) -> bool {
+    fn need_motion_output(&self) -> bool {
         false
     }
 
@@ -217,7 +216,7 @@ impl<'plan> PlanTreeIterator<'plan> for ExecPlanSubtreeIterator<'plan> {
 }
 
 impl<'plan> SubtreePlanIterator<'plan> for ExecPlanSubtreeIterator<'plan> {
-    fn need_output(&self) -> bool {
+    fn need_motion_output(&self) -> bool {
         true
     }
 
@@ -335,7 +334,6 @@ fn subtree_next<'plan>(
                     left,
                     right,
                     condition,
-                    output,
                     ..
                 }) => {
                     let step = *iter.get_child().borrow();
@@ -350,20 +348,19 @@ fn subtree_next<'plan>(
                                 return Some(*iter.get_plan().undo.get_oldest(condition));
                             }
                         },
-                        _ => {
-                            if step == 3 && iter.need_output() {
-                                return Some(*output);
-                            }
-                            None
-                        }
+                        _ => None,
                     }
                 }
-                Relational::Except(Except { output, .. })
-                | Relational::Insert(Insert { output, .. })
-                | Relational::Intersect(Intersect { output, .. })
-                | Relational::ScanSubQuery(ScanSubQuery { output, .. })
-                | Relational::Union(Union { output, .. })
-                | Relational::UnionAll(UnionAll { output, .. }) => {
+                Relational::Except(_)
+                | Relational::Insert(_)
+                | Relational::Intersect(_)
+                | Relational::ScanSubQuery(_)
+                | Relational::Union(_)
+                | Relational::UnionAll(_)
+                | Relational::Delete(_)
+                | Relational::ScanCte(_)
+                | Relational::Limit(_)
+                | Relational::Update(_) => {
                     let step = *iter.get_child().borrow();
                     *iter.get_child().borrow_mut() += 1;
                     let children = r.children();
@@ -372,47 +369,10 @@ fn subtree_next<'plan>(
                     }
                     let step = step - children.len();
                     let subqueries = r.subqueries();
-                    if step < subqueries.len() {
-                        return subqueries.get(step).copied();
-                    }
-                    if iter.need_output() && step == subqueries.len() {
-                        return Some(*output);
-                    }
-                    None
-                }
-                Relational::Delete(Delete { output, .. }) => {
-                    let step = *iter.get_child().borrow();
-                    let children = r.children();
-                    if step < children.len() {
-                        *iter.get_child().borrow_mut() += 1;
-                        return children.get(step).copied();
-                    }
-                    if let Some(output) = output {
-                        if iter.need_output() && step == children.len() {
-                            *iter.get_child().borrow_mut() += 1;
-                            return Some(*output);
-                        }
-                    }
-                    None
-                }
-                Relational::ScanCte(ScanCte { child, output, .. })
-                | Relational::Limit(Limit { child, output, .. }) => {
-                    let step = *iter.get_child().borrow();
-                    if step == 0 {
-                        *iter.get_child().borrow_mut() += 1;
-                        return Some(*child);
-                    }
-                    if iter.need_output() && step == 1 {
-                        *iter.get_child().borrow_mut() += 1;
-                        return Some(*output);
-                    }
-                    None
+                    subqueries.get(step).copied()
                 }
                 Relational::GroupBy(GroupBy {
-                    child,
-                    output,
-                    gr_exprs,
-                    ..
+                    child, gr_exprs, ..
                 }) => {
                     let step = *iter.get_child().borrow();
                     if step == 0 {
@@ -424,15 +384,10 @@ fn subtree_next<'plan>(
                         *iter.get_child().borrow_mut() += 1;
                         return gr_exprs.get(col_idx).copied();
                     }
-                    if iter.need_output() && col_idx == gr_exprs.len() {
-                        *iter.get_child().borrow_mut() += 1;
-                        return Some(*output);
-                    }
                     None
                 }
                 Relational::OrderBy(OrderBy {
                     child,
-                    output,
                     order_by_elements,
                     ..
                 }) => {
@@ -456,10 +411,6 @@ fn subtree_next<'plan>(
                         }
                         col_idx += 1;
                     }
-                    if iter.need_output() && col_idx == order_by_elements.len() {
-                        *iter.get_child().borrow_mut() += 1;
-                        return Some(*output);
-                    }
                     None
                 }
                 Relational::Motion(Motion {
@@ -475,31 +426,25 @@ fn subtree_next<'plan>(
                             *iter.get_child().borrow_mut() += 1;
                             return *child;
                         }
-                        if iter.need_output() && step == len {
+                        if iter.need_motion_output() && step == len {
                             *iter.get_child().borrow_mut() += 1;
                             return Some(*output);
                         }
                     } else {
+                        // A non-local motion whose subtree is not wanted is
+                        // represented by its output tuple alone.
                         let step = *iter.get_child().borrow();
-                        if iter.need_output() && step == 0 {
+                        if iter.need_motion_output() && step == 0 {
                             *iter.get_child().borrow_mut() += 1;
                             return Some(*output);
                         }
                     }
                     None
                 }
-                Relational::Values(Values { output, rows, .. }) => {
+                Relational::Values(Values { rows, .. }) => {
                     let step = *iter.get_child().borrow();
                     *iter.get_child().borrow_mut() += 1;
-
-                    let once_output = std::iter::once(*output);
-                    let rows_iter = rows.iter().copied();
-
-                    if iter.output_first() {
-                        once_output.chain(rows_iter).nth(step)
-                    } else {
-                        rows_iter.chain(once_output).nth(step)
-                    }
+                    rows.get(step).copied()
                 }
                 Relational::SelectWithoutScan(SelectWithoutScan {
                     output, subqueries, ..
@@ -561,75 +506,23 @@ fn subtree_next<'plan>(
 
                     None
                 }
-                Relational::Update(Update { output, child, .. }) => {
-                    let step = *iter.get_child().borrow();
-                    *iter.get_child().borrow_mut() += 1;
-
-                    if iter.output_first() {
-                        if step == 0 {
-                            return Some(*output);
-                        }
-
-                        if step <= 1 {
-                            return Some(*child);
-                        }
-                    } else {
-                        if step == 0 {
-                            return Some(*child);
-                        }
-
-                        if step <= 1 {
-                            return Some(*output);
-                        }
-                    }
-
-                    None
-                }
-                Relational::Selection(Selection {
-                    child,
-                    subqueries: _,
-                    filter,
-                    output,
-                    ..
-                })
-                | Relational::Having(Having {
-                    child,
-                    subqueries: _,
-                    filter,
-                    output,
-                }) => {
+                Relational::Selection(Selection { child, filter, .. })
+                | Relational::Having(Having { child, filter, .. }) => {
                     let step = *iter.get_child().borrow();
 
                     *iter.get_child().borrow_mut() += 1;
                     match step {
-                        0 => {
-                            return Some(*child);
-                        }
+                        0 => Some(*child),
                         1 => match snapshot {
                             Snapshot::Latest => Some(*filter),
                             Snapshot::Oldest => {
                                 return Some(*iter.get_plan().undo.get_oldest(filter));
                             }
                         },
-                        _ => {
-                            if step == 2 && iter.need_output() {
-                                return Some(*output);
-                            }
-                            None
-                        }
+                        _ => None,
                     }
                 }
-                Relational::ScanRelation(ScanRelation { output, .. }) => {
-                    if iter.need_output() {
-                        let step = *iter.get_child().borrow();
-
-                        *iter.get_child().borrow_mut() += 1;
-                        if step == 0 {
-                            return Some(*output);
-                        }
-                    }
-                    None
-                }
+                Relational::ScanRelation(_) => None,
             },
         };
     }

@@ -25,16 +25,18 @@ use self::transformation::redistribution::MotionPolicy;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::utils::to_user;
 
+use crate::ir::columns::RelColumn;
 use crate::ir::expression::{Comparator, VolatilityType};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::index::Indexes;
 use crate::ir::node::plugin::{MutPlugin, Plugin};
 use crate::ir::node::tcl::Tcl;
 use crate::ir::node::{
-    Alias, ArenaType, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat, Constant,
-    GroupBy, Having, IndexExpr, Insert, Limit, Motion, MutNode, Node, Node136, Node232, Node32,
-    Node64, Node96, NodeId, NodeOwned, OrderBy, Projection, Reference, ReferenceTarget, Row,
-    ScalarFunction, ScanRelation, Selection, SubQueryReference, Trim, UnaryExpr,
+    Alias, ArenaType, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat, Constant, Delete,
+    Except, GroupBy, Having, IndexExpr, Insert, Intersect, Join, Limit, Motion, MutNode, Node,
+    Node136, Node232, Node32, Node64, Node96, NodeId, NodeOwned, OrderBy, Projection, Reference,
+    ReferenceTarget, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
+    Selection, SubQueryReference, Trim, UnaryExpr, Union, UnionAll, Update,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity};
 use crate::ir::relation::Column;
@@ -53,6 +55,7 @@ pub mod acl;
 pub mod aggregates;
 pub mod block;
 pub mod bucket;
+pub mod columns;
 pub mod ddl;
 pub mod distribution;
 pub mod expression;
@@ -79,6 +82,45 @@ pub const DEFAULT_MAX_NUMBER_OF_CASTS: usize = 10;
 /// Map of table id -> version.
 pub type VersionMap = HashMap<u32, u64, RepeatableState>;
 
+/// Memoized results of [`Plan::columns_len`].
+///
+/// A node's column count is derived from its children, so on a join spine
+/// answering it costs a walk of the whole subtree, and the walk is repeated
+/// for every column reference resolved against that spine.
+///
+/// The count changes whenever an existing node is mutated, so the memo lives
+/// in [`Nodes`] rather than in `Plan`: the arenas are private, every in-place
+/// mutation therefore goes through a `&mut self` method of `Nodes`, and each
+/// of those drops the memo. Pushing a node needs no invalidation, since the
+/// arena is append-only and a fresh id cannot be memoized yet.
+///
+/// The memo is derived state: it is skipped by serialization and ignored by
+/// equality.
+#[derive(Clone, Debug, Default)]
+pub struct ColumnsLenMemo(RefCell<AHashMap<NodeId, usize>>);
+
+impl ColumnsLenMemo {
+    fn get(&self, id: NodeId) -> Option<usize> {
+        self.0.borrow().get(&id).copied()
+    }
+
+    fn insert(&self, id: NodeId, len: usize) {
+        self.0.borrow_mut().insert(id, len);
+    }
+
+    fn clear(&mut self) {
+        self.0.get_mut().clear();
+    }
+}
+
+impl PartialEq for ColumnsLenMemo {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for ColumnsLenMemo {}
+
 /// Plan nodes storage.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Nodes {
@@ -89,9 +131,18 @@ pub struct Nodes {
     arena96: Vec<Node96>,
     arena136: Vec<Node136>,
     arena224: Vec<Node232>,
+    /// Derived cache of relational column counts, dropped on any mutation.
+    /// Do not make it public. It must be private.
+    #[serde(skip)]
+    columns_len_memo: ColumnsLenMemo,
 }
 
 impl Nodes {
+    /// Memoized column counts of the relational nodes.
+    pub(crate) fn columns_len_memo(&self) -> &ColumnsLenMemo {
+        &self.columns_len_memo
+    }
+
     pub(crate) fn get(&self, id: NodeId) -> Option<Node<'_>> {
         match id.arena_type {
             ArenaType::Arena32 => self.arena32.get(id.offset as usize).map(|node| match node {
@@ -148,10 +199,7 @@ impl Nodes {
                 }
                 Node64::Row(row) => Node::Expression(Expression::Row(row)),
                 Node64::DropUser(drop_user) => Node::Acl(Acl::DropUser(drop_user)),
-                Node64::GroupBy(group_by) => Node::Relational(Relational::GroupBy(group_by)),
                 Node64::Having(having) => Node::Relational(Relational::Having(having)),
-                Node64::Join(join) => Node::Relational(Relational::Join(join)),
-                Node64::OrderBy(order_by) => Node::Relational(Relational::OrderBy(order_by)),
                 Node64::CallProcedure(proc) => Node::Block(Block::CallProcedure(proc)),
                 Node64::ScanCte(scan_cte) => Node::Relational(Relational::ScanCte(scan_cte)),
                 Node64::ScanSubQuery(scan_squery) => {
@@ -165,6 +213,9 @@ impl Nodes {
             ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
                 Node96::AnonymousBlock(block) => Node::Block(Block::Anonymous(block)),
                 Node96::Projection(proj) => Node::Relational(Relational::Projection(proj)),
+                Node96::Join(join) => Node::Relational(Relational::Join(join)),
+                Node96::GroupBy(group_by) => Node::Relational(Relational::GroupBy(group_by)),
+                Node96::OrderBy(order_by) => Node::Relational(Relational::OrderBy(order_by)),
                 Node96::Reference(reference) => Node::Expression(Expression::Reference(reference)),
                 Node96::DropProc(drop_proc) => Node::Ddl(Ddl::DropProc(drop_proc)),
                 Node96::Insert(insert) => Node::Relational(Relational::Insert(insert)),
@@ -228,6 +279,7 @@ impl Nodes {
 
     #[allow(clippy::too_many_lines)]
     pub(crate) fn get_mut(&mut self, id: NodeId) -> Option<MutNode<'_>> {
+        self.columns_len_memo.clear();
         match id.arena_type {
             ArenaType::Arena32 => self
                 .arena32
@@ -305,14 +357,7 @@ impl Nodes {
                         MutNode::Ddl(MutDdl::TruncateTable(truncate_table))
                     }
                     Node64::DropUser(drop_user) => MutNode::Acl(MutAcl::DropUser(drop_user)),
-                    Node64::GroupBy(group_by) => {
-                        MutNode::Relational(MutRelational::GroupBy(group_by))
-                    }
                     Node64::Having(having) => MutNode::Relational(MutRelational::Having(having)),
-                    Node64::Join(join) => MutNode::Relational(MutRelational::Join(join)),
-                    Node64::OrderBy(order_by) => {
-                        MutNode::Relational(MutRelational::OrderBy(order_by))
-                    }
                     Node64::CallProcedure(proc) => MutNode::Block(MutBlock::CallProcedure(proc)),
                     Node64::ScanCte(scan_cte) => {
                         MutNode::Relational(MutRelational::ScanCte(scan_cte))
@@ -334,6 +379,13 @@ impl Nodes {
                     Node96::AnonymousBlock(block) => MutNode::Block(MutBlock::Anonymous(block)),
                     Node96::Projection(proj) => {
                         MutNode::Relational(MutRelational::Projection(proj))
+                    }
+                    Node96::Join(join) => MutNode::Relational(MutRelational::Join(join)),
+                    Node96::GroupBy(group_by) => {
+                        MutNode::Relational(MutRelational::GroupBy(group_by))
+                    }
+                    Node96::OrderBy(order_by) => {
+                        MutNode::Relational(MutRelational::OrderBy(order_by))
                     }
                     Node96::Reference(reference) => {
                         MutNode::Expression(MutExpression::Reference(reference))
@@ -474,6 +526,7 @@ impl Nodes {
         self.arena32.iter()
     }
     pub fn iter32_mut(&mut self) -> IterMut<'_, Node32> {
+        self.columns_len_memo.clear();
         self.arena32.iter_mut()
     }
 
@@ -603,6 +656,7 @@ impl Nodes {
             }
         };
 
+        self.columns_len_memo.clear();
         let old_node = std::mem::replace(&mut self.arena32[offset], node);
         Ok(old_node)
     }
@@ -923,6 +977,7 @@ impl Plan {
     /// # Panics
     #[must_use]
     pub fn replace_with_stub(&mut self, dst_id: NodeId) -> NodeOwned {
+        self.nodes.columns_len_memo.clear();
         match dst_id.arena_type {
             ArenaType::Arena32 => {
                 let node32 = self
@@ -992,6 +1047,7 @@ impl Plan {
                 arena96: Vec::new(),
                 arena136: Vec::new(),
                 arena224: Vec::new(),
+                columns_len_memo: ColumnsLenMemo::default(),
             },
             relations: Relations::new(),
             indexes: Indexes::new(),
@@ -1141,33 +1197,39 @@ impl Plan {
         let Expression::Reference(Reference { position, .. }) = ref_node else {
             panic!("Expected reference")
         };
-        let ref_parent_node_id = self.get_relational_from_reference_node(ref_id)?;
-        let ref_source_node = self.get_relation_node(ref_parent_node_id)?;
-        match ref_source_node {
-            Relational::Delete { .. } | Relational::Insert { .. } | Relational::Update { .. } => {
-                panic!("Reference source search shouldn't reach DML node.")
+        let mut rel_id = self.get_relational_from_reference_node(ref_id)?;
+        let mut position = *position;
+        loop {
+            match self.get_relation_node(rel_id)? {
+                Relational::Delete { .. }
+                | Relational::Insert { .. }
+                | Relational::Update { .. } => {
+                    panic!("Reference source search shouldn't reach DML node.")
+                }
+                Relational::Selection { .. }
+                | Relational::Having { .. }
+                | Relational::OrderBy { .. }
+                | Relational::GroupBy { .. }
+                | Relational::Limit { .. } => {
+                    let source = self
+                        .column_source(RelColumn::new(rel_id, position))?
+                        .expect("column of a pass-through relational node must be a reference");
+                    rel_id = source.rel_id;
+                    position = source.position;
+                }
+                Relational::ScanRelation { .. }
+                | Relational::Projection { .. }
+                | Relational::SelectWithoutScan { .. }
+                | Relational::ScanCte { .. }
+                | Relational::Motion { .. }
+                | Relational::ScanSubQuery { .. }
+                | Relational::Join { .. }
+                | Relational::Except { .. }
+                | Relational::Intersect { .. }
+                | Relational::UnionAll { .. }
+                | Relational::Union { .. }
+                | Relational::Values { .. } => return Ok(rel_id),
             }
-            Relational::Selection(Selection { output, .. })
-            | Relational::Having(Having { output, .. })
-            | Relational::OrderBy(OrderBy { output, .. })
-            | Relational::GroupBy(GroupBy { output, .. })
-            | Relational::Limit(Limit { output, .. }) => {
-                let source_output_list = self.get_row_list(*output)?;
-                let source_ref_id = source_output_list[*position];
-                self.get_reference_source_relation(source_ref_id)
-            }
-            Relational::ScanRelation { .. }
-            | Relational::Projection { .. }
-            | Relational::SelectWithoutScan { .. }
-            | Relational::ScanCte { .. }
-            | Relational::Motion { .. }
-            | Relational::ScanSubQuery { .. }
-            | Relational::Join { .. }
-            | Relational::Except { .. }
-            | Relational::Intersect { .. }
-            | Relational::UnionAll { .. }
-            | Relational::Union { .. }
-            | Relational::Values { .. } => Ok(ref_parent_node_id),
         }
     }
 
@@ -1291,38 +1353,13 @@ impl Plan {
         })
     }
 
-    /// Get relational node and produce a new row without aliases from its output (row with aliases).
+    /// Produce a new row of references (without aliases) to all the columns
+    /// of the relational node.
     ///
-    /// # Panics
     /// # Errors
     /// - node is not relational
-    /// - node's output is not a row of aliases
     pub fn get_row_from_rel_node(&mut self, node: NodeId) -> Result<NodeId, SbroadError> {
-        let n = self.get_node(node)?;
-        if let Node::Relational(ref rel) = n {
-            if let Node::Expression(Expression::Row(Row { list, .. })) =
-                self.get_node(rel.output())?
-            {
-                let mut cols: Vec<NodeId> = Vec::with_capacity(list.len());
-                for alias in list {
-                    if let Node::Expression(Expression::Alias(Alias { child, .. })) =
-                        self.get_node(*alias)?
-                    {
-                        cols.push(*child);
-                    } else {
-                        return Err(SbroadError::Invalid(
-                            Entity::Node,
-                            Some("node's output is not a row of aliases".into()),
-                        ));
-                    }
-                }
-                return Ok(self.nodes.add_row(cols, None));
-            }
-        }
-        Err(SbroadError::Invalid(
-            Entity::Node,
-            Some(format_smolstr!("node is not Relational type: {n:?}")),
-        ))
+        self.add_row_from_child(node, &[])
     }
 
     /// Add condition node to the plan.
@@ -2021,12 +2058,8 @@ impl Plan {
     ///
     /// # Panics
     /// - Plan is in invalid state
-    pub fn get_alias_from_reference_node(&self, node: &Expression) -> Result<&str, SbroadError> {
+    pub fn get_alias_from_reference_node(&self, node: &Expression) -> Result<SmolStr, SbroadError> {
         let (ref_node_target_child, position) = match node {
-            Expression::Reference(Reference {
-                target: ReferenceTarget::Values(_),
-                ..
-            }) => unreachable!("get_alias_from_reference_node: value rows have no named columns"),
             Expression::Reference(Reference {
                 target, position, ..
             }) => (
@@ -2041,15 +2074,9 @@ impl Plan {
             _ => unreachable!("get_alias_from_reference_node: Node is not of a reference type"),
         };
 
-        let column_rel_node = self.get_relation_node(*ref_node_target_child)?;
-        let column_expr_node = self.get_expression_node(column_rel_node.output())?;
-
-        let col_alias_id = column_expr_node
-            .get_row_list()?
-            .get(*position)
-            .unwrap_or_else(|| panic!("Column not found at position {position} in row list"));
-
-        self.get_alias_name(*col_alias_id)
+        Ok(self
+            .column_at(RelColumn::new(*ref_node_target_child, *position))?
+            .name_owned())
     }
 
     /// Gets alias node name.
@@ -2751,7 +2778,7 @@ impl Plan {
         target_sq_id: NodeId,
     ) -> Result<Vec<OrderByElement>, SbroadError> {
         let final_proj_output_list = {
-            let final_proj_output = self.get_relation_node(final_proj_id)?.output();
+            let final_proj_output = self.get_relational_output(final_proj_id)?;
             self.get_row_list(final_proj_output)?
         };
 
@@ -2912,7 +2939,7 @@ impl Plan {
             }
         };
 
-        let final_proj_output = self.get_relation_node(final_proj_id)?.output();
+        let final_proj_output = self.get_relational_output(final_proj_id)?;
         let final_proj_output_list = self.get_row_list(final_proj_output)?;
 
         for order_by_elem in order_by_elements {
@@ -2998,7 +3025,7 @@ impl Plan {
             match self.get_relation_node(curr_node)? {
                 Relational::Projection(Projection {
                     windows,
-                    group_by,
+                    group_by: _,
                     having,
                     output,
                     ..
@@ -3007,16 +3034,11 @@ impl Plan {
                         break;
                     }
                     met_aggregates |= self.contains_aggregates(*output, false)?;
-                    if let Some(group_by) = group_by {
-                        met_aggregates |= self
-                            .contains_aggregates(self.get_relational_output(*group_by)?, false)?;
-                    }
                     if let Some(having) = having {
-                        if let Relational::Having(Having { filter, output, .. }) =
+                        if let Relational::Having(Having { filter, .. }) =
                             self.get_relation_node(*having)?
                         {
                             met_aggregates |= self.contains_aggregates(*filter, true)?;
-                            met_aggregates |= self.contains_aggregates(*output, false)?;
                         }
                     }
                     final_proj_id = Some(curr_node);
@@ -3054,12 +3076,11 @@ impl Plan {
                     //     ) FROM sales LIMIT 1
                     // ) AS TEXT) || emp FROM sales
                     // ORDER BY emp;
-                    let child_dist =
-                        if let Ok(dist) = self.get_rel_distribution(upper_local_node_id) {
-                            dist.clone()
-                        } else {
-                            break;
-                        };
+                    let child_dist = if let Ok(dist) = self.rel_distr_ref(upper_local_node_id) {
+                        dist.clone()
+                    } else {
+                        break;
+                    };
 
                     let new_limit_node_child = if let Some(order_by_id) = order_by_id {
                         // If `OrderBy::order_by_elements` contains no subqueries,
@@ -3077,11 +3098,8 @@ impl Plan {
                         // This is consistent with the two-stage aggregation algorithm.
                         let (new_order_by, new_proj) =
                             self.create_local_order_by(order_by_id, target_rel_id, final_proj_id)?;
-                        self.set_dist(
-                            self.get_relational_output(new_order_by)?,
-                            child_dist.clone(),
-                        )?;
-                        self.set_dist(self.get_relational_output(new_proj)?, child_dist.clone())?;
+                        self.set_rel_distr(new_order_by, child_dist.clone())?;
+                        self.set_rel_distr(new_proj, child_dist.clone())?;
 
                         new_proj
                     } else {
@@ -3089,11 +3107,10 @@ impl Plan {
                     };
 
                     let local_limit_id = self.add_limit(new_limit_node_child, limit)?;
-                    self.set_dist(
-                        self.get_relational_output(local_limit_id)?,
-                        child_dist.clone(),
-                    )?;
+                    self.set_rel_distr(local_limit_id, child_dist.clone())?;
 
+                    // The motion output references the old local stage root:
+                    // re-point it at the new one.
                     let motion_output = self.get_relational_output(curr_node)?;
                     self.set_target_in_subtree(motion_output, local_limit_id)?;
 
@@ -3256,54 +3273,105 @@ impl ShardColumnsMap {
             return Ok(());
         }
 
-        let output_id = node.output();
-        let output = plan.get_row_list(output_id)?;
+        // Track a position in the node's output that carries a sharding
+        // column of a child. Returns `false` once two positions are tracked:
+        // the node may have more, but we assume that's a really rare case
+        // and just don't want to allocate more memory to track them.
+        fn track(positions: &mut Positions, pos: usize) -> bool {
+            if positions[0].is_none() || positions[0] == Some(pos) {
+                positions[0] = Some(pos);
+                true
+            } else if positions[1].is_none() || positions[1] == Some(pos) {
+                positions[1] = Some(pos);
+                true
+            } else {
+                false
+            }
+        }
+        let refers_to_shard_col = |child: &NodeId, position: usize| -> bool {
+            self.memo
+                .get(child)
+                .is_some_and(|positions| positions.contains(&Some(position)))
+        };
+
         let mut new_positions = [None, None];
-        for (pos, alias_id) in output.iter().enumerate() {
-            let ref_id = plan.get_child_under_alias(*alias_id)?;
-            // If there is a parameter under alias
-            // and we haven't bound parameters yet,
-            // we will get an error.
-            let Ok(Expression::Reference(Reference {
-                target, position, ..
-            })) = plan.get_expression_node(ref_id)
-            else {
-                continue;
-            };
-
-            if target.is_leaf() {
-                continue;
-            }
-
-            // For node with multiple targets (Union, Except, Intersect)
-            // we need that ALL targets would refer to the shard column.
-            let mut refers_to_shard_col = true;
-            for target in target.iter() {
-                let Some(positions) = self.memo.get(target) else {
-                    refers_to_shard_col = false;
-                    break;
-                };
-                if positions[0] != Some(*position) && positions[1] != Some(*position) {
-                    refers_to_shard_col = false;
-                    break;
+        match node {
+            Relational::Projection(Projection { output, .. })
+            | Relational::SelectWithoutScan(SelectWithoutScan { output, .. }) => {
+                for (pos, alias_id) in plan.get_row_list(*output)?.iter().enumerate() {
+                    let ref_id = plan.get_child_under_alias(*alias_id)?;
+                    // If there is a parameter under alias
+                    // and we haven't bound parameters yet,
+                    // we will get an error.
+                    let Ok(Expression::Reference(Reference {
+                        target, position, ..
+                    })) = plan.get_expression_node(ref_id)
+                    else {
+                        continue;
+                    };
+                    if target.is_leaf() {
+                        continue;
+                    }
+                    // For a reference with multiple targets we need that ALL
+                    // targets would refer to the shard column.
+                    let refers = target
+                        .iter()
+                        .all(|target| refers_to_shard_col(target, *position));
+                    if refers && !track(&mut new_positions, pos) {
+                        break;
+                    }
                 }
             }
-
-            if refers_to_shard_col {
-                if new_positions[0].is_none() {
-                    new_positions[0] = Some(pos);
-                } else if new_positions[0] == Some(pos) {
-                    // Do nothing, we already have this position.
-                } else {
-                    new_positions[1] = Some(pos);
-
-                    // We already tracked two positions,
-                    // the node may have more, but we assume
-                    // that's really rare case and just don't
-                    // want to allocate more memory to track them.
-                    break;
+            Relational::Join(Join { left, right, .. }) => {
+                let left_len = plan.columns_len(*left)?;
+                'children: for (child, offset) in [(left, 0), (right, left_len)] {
+                    let Some(positions) = self.memo.get(child) else {
+                        continue;
+                    };
+                    for pos in positions.iter().flatten() {
+                        if !track(&mut new_positions, pos + offset) {
+                            break 'children;
+                        }
+                    }
                 }
             }
+            Relational::Union(Union { left, right, .. })
+            | Relational::UnionAll(UnionAll { left, right, .. })
+            | Relational::Except(Except { left, right, .. }) => {
+                // Both children must carry the sharding column at the position.
+                if let Some(positions) = self.memo.get(left) {
+                    for pos in positions.iter().flatten() {
+                        if refers_to_shard_col(right, *pos) && !track(&mut new_positions, *pos) {
+                            break;
+                        }
+                    }
+                }
+            }
+            Relational::Intersect(Intersect { right: child, .. })
+            | Relational::Selection(Selection { child, .. })
+            | Relational::Having(Having { child, .. })
+            | Relational::GroupBy(GroupBy { child, .. })
+            | Relational::OrderBy(OrderBy { child, .. })
+            | Relational::Limit(Limit { child, .. })
+            | Relational::ScanSubQuery(ScanSubQuery { child, .. })
+            | Relational::ScanCte(ScanCte { child, .. })
+            | Relational::Update(Update { child, .. })
+            | Relational::Motion(Motion {
+                child: Some(child), ..
+            })
+            | Relational::Delete(Delete {
+                child: Some(child), ..
+            }) => {
+                // The node passes the columns of its child through.
+                if let Some(positions) = self.memo.get(child) {
+                    new_positions = *positions;
+                }
+            }
+            Relational::Insert(_)
+            | Relational::Values(_)
+            | Relational::ScanRelation(_)
+            | Relational::Motion(Motion { child: None, .. })
+            | Relational::Delete(Delete { child: None, .. }) => {}
         }
         if new_positions[0].is_some() {
             self.memo.insert(node_id, new_positions);

@@ -10,11 +10,12 @@ use std::mem::swap;
 
 use crate::frontend::sql::type_system;
 
+use crate::ir::columns::RelColumn;
 use crate::ir::node::deallocate::Deallocate;
 use crate::ir::node::{
-    Alias, AlterColumn, AlterTable, AlterTableOp, AnonymousBlock, Backup, BlockEntries,
-    BlockEntryKind, BlockStatement, Bound, BoundType, Frame, FrameType, Reference,
-    ReferenceAsteriskSource, RenameIndex, Row, SubQueryReference, TruncateTable, Values, Window,
+    AlterColumn, AlterTable, AlterTableOp, AnonymousBlock, Backup, BlockEntries, BlockEntryKind,
+    BlockStatement, Bound, BoundType, Frame, FrameType, Reference, ReferenceAsteriskSource,
+    RenameIndex, Row, SubQueryReference, TruncateTable, Values, Window,
 };
 use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use ::core::panic;
@@ -745,8 +746,13 @@ impl AstCore {
                     let plan_asterisk_id = if let Some(table_name_id) = table_name_id {
                         let table_name = parse_normalized_identifier(self, *table_name_id)?;
 
-                        let col_name_pos_map = ColumnPositionMap::new(plan, plan_rel_child_id)?;
-                        let filtered_col_ids = col_name_pos_map.get_by_scan_name(&table_name)?;
+                        // The position map borrows the plan's column names,
+                        // so it is gone before the new row is added.
+                        let filtered_col_ids = {
+                            let col_name_pos_map =
+                                ColumnPositionMap::new(&*plan, plan_rel_child_id)?;
+                            col_name_pos_map.get_by_scan_name(&table_name)?
+                        };
                         plan.add_row_by_indices(
                             plan_rel_child_id,
                             filtered_col_ids,
@@ -922,9 +928,6 @@ impl AstCore {
         pairs_map: &mut ParsingPairsMap,
         worker: &mut ExpressionWalker<M>,
     ) -> Result<Vec<OrderByElement>, SbroadError> {
-        let rel_node = plan.get_relation_node(referred_rel_id)?;
-        let output_id = rel_node.output();
-
         let mut order_by_elements: Vec<OrderByElement> = Vec::new();
         for node_child_index in node_ids {
             let order_by_element_node = self.nodes.get_node(*node_child_index)?;
@@ -973,22 +976,21 @@ impl AstCore {
                             )
                         })?;
 
-                        let output = plan.get_row_list(output_id)?;
-                        let output_len = output.len();
+                        let output_len = plan.columns_len(referred_rel_id)?;
                         let output_idx = index_usize.checked_sub(1).ok_or(SbroadError::Invalid(
                                 Entity::Expression,
                                 Some(format_smolstr!("ORDER BY position 0 is not in select list"))
                             ))?;
-                        if let Some(alias_node_id) = output.get(output_idx) {
-                            let alias_node = plan.get_expression_node(*alias_node_id)?;
-                            if let Expression::Alias(Alias { child, .. }) = alias_node {
-                                if let Expression::Reference(Reference { col_type, .. }) = plan.get_expression_node(*child)? {
-                                    if matches!(col_type.get(), Some(UnrestrictedType::Array(_))) {
-                                        return Err(SbroadError::Invalid(
-                                            Entity::Expression,
-                                            Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
-                                        ));
-                                    }
+                        if output_idx < output_len {
+                            // Only a column that is a plain reference is checked for the array type.
+                            let ordered_col = RelColumn::new(referred_rel_id, output_idx);
+                            if plan.column_source(ordered_col)?.is_some() {
+                                let col_type = plan.column_at(ordered_col)?.r#type;
+                                if matches!(col_type.get(), Some(UnrestrictedType::Array(_))) {
+                                    return Err(SbroadError::Invalid(
+                                        Entity::Expression,
+                                        Some(format_smolstr!("Array is not supported as a sort type for ORDER BY"))
+                                    ));
                                 }
                             }
                         } else {

@@ -1,14 +1,14 @@
 use ahash::AHashMap;
-use smol_str::{format_smolstr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::aggregates::Aggregate;
 use crate::ir::distribution::Distribution;
-use crate::ir::expression::{ColumnPositionMap, Comparator, EXPR_HASH_DEPTH};
+use crate::ir::expression::{ColumnPositionMap, Comparator, Position, EXPR_HASH_DEPTH};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    ArenaType, GroupBy, Having, NodeId, Projection, Reference, ReferenceTarget, SubQueryReference,
+    GroupBy, Having, NodeId, Projection, Reference, ReferenceTarget, SubQueryReference,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
@@ -179,7 +179,7 @@ impl<'plan> ExpressionMapper<'plan> {
                 let ref_node: Expression<'_> = self.plan.get_expression_node(current)?;
                 self.plan
                     .get_alias_from_reference_node(&ref_node)
-                    .unwrap_or("'failed to get column name'")
+                    .unwrap_or_else(|_| SmolStr::from("'failed to get column name'"))
             };
             return Err(SbroadError::Invalid(
                 Entity::Query,
@@ -272,12 +272,11 @@ impl Plan {
         child_id: NodeId,
         grouping_exprs: &[NodeId],
     ) -> Result<NodeId, SbroadError> {
-        let final_output = self.add_row_for_output(child_id, &[], true, None)?;
         let groupby = GroupBy {
             child: child_id,
             subqueries: vec![],
             gr_exprs: grouping_exprs.to_vec(),
-            output: final_output,
+            distribution: None,
         };
 
         self.add_relational(groupby.into())
@@ -423,32 +422,22 @@ impl Plan {
     /// of that node references anymore.
     fn prune_unreferenced_subqueries(&mut self, rel_id: NodeId) -> Result<(), SbroadError> {
         let rel_node = self.get_relation_node(rel_id)?;
-        let subqueries = rel_node.subqueries().to_vec();
+        let subqueries = rel_node.subqueries();
         if subqueries.is_empty() {
             return Ok(());
         }
 
-        // Expressions that may hold a subquery reference for this node kind.
-        let expr_roots = match rel_node {
+        // Expressions that may hold a subquery reference for this node kind:
+        // an optional standalone root plus a slice of roots.
+        let (single_root, root_list): (Option<NodeId>, &[NodeId]) = match rel_node {
             Relational::Projection(Projection {
                 output, windows, ..
-            }) => {
-                let mut roots = Vec::with_capacity(windows.len() + 1);
-                roots.push(*output);
-                roots.extend(windows.iter().copied());
-                roots
-            }
-            Relational::Having(Having { filter, output, .. }) => vec![*filter, *output],
-            Relational::GroupBy(GroupBy {
-                gr_exprs, output, ..
-            }) => {
-                let mut roots = Vec::with_capacity(gr_exprs.len() + 1);
-                roots.push(*output);
-                roots.extend(gr_exprs.iter().copied());
-                roots
-            }
+            }) => (Some(*output), windows),
+            Relational::Having(Having { filter, .. }) => (Some(*filter), &[]),
+            Relational::GroupBy(GroupBy { gr_exprs, .. }) => (None, gr_exprs),
             _ => unreachable!("unexpected node to prune subqueries of: {rel_node:?}"),
         };
+        let expr_roots = single_root.into_iter().chain(root_list.iter().copied());
 
         let mut referenced = HashSet::with_capacity(subqueries.len());
         for root in expr_roots {
@@ -464,7 +453,8 @@ impl Plan {
         }
 
         let kept = subqueries
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|sq_id| referenced.contains(sq_id))
             .collect();
         self.get_mut_relation_node(rel_id)?.set_subqueries(kept);
@@ -860,7 +850,7 @@ impl Plan {
         scalar_sqs: &OrderedSet<NodeId, RepeatableState>,
     ) -> Result<NodeId, SbroadError> {
         let proj_output_cols = self.create_columns_for_local_proj(aggrs, groupby_info)?;
-        let proj_output: NodeId = self.nodes.add_row(proj_output_cols, None);
+        let proj_output: NodeId = self.nodes.add_row(proj_output_cols);
 
         let (child_id, having_id, group_by_id) = match self.get_relation_node(child)? {
             Relational::GroupBy(_) => (None, None, Some(child)),
@@ -880,6 +870,7 @@ impl Plan {
 
         let proj = Projection {
             output: proj_output,
+            distribution: None,
             child: child_id,
             // Handle scalar subqueries which we have to move
             // from final Projection to this local one.
@@ -914,18 +905,27 @@ impl Plan {
         let local_aliases_map = &groupby_info.reduce_info.local_aliases_map;
 
         let mut gr_exprs: Vec<NodeId> = Vec::with_capacity(grouping_exprs.len());
-        let child_map: ColumnPositionMap = ColumnPositionMap::new(self, upper_local_proj)?;
+        // The position map borrows the plan's column names, so every local
+        // alias is resolved before the new references are pushed into the plan.
+        let positions = {
+            let child_map = ColumnPositionMap::new(&*self, upper_local_proj)?;
+            grouping_exprs
+                .iter()
+                .map(|expr_id| {
+                    let Some(local_alias) = local_aliases_map.get(expr_id) else {
+                        return Err(SbroadError::Invalid(
+                            Entity::Plan,
+                            Some(format_smolstr!(
+                                "could not find local alias for GroupBy expr ({expr_id:?})"
+                            )),
+                        ));
+                    };
+                    child_map.get(local_alias)
+                })
+                .collect::<Result<Vec<Position>, SbroadError>>()?
+        };
         let mut nodes = Vec::with_capacity(grouping_exprs.len());
-        for expr_id in grouping_exprs {
-            let Some(local_alias) = local_aliases_map.get(expr_id) else {
-                return Err(SbroadError::Invalid(
-                    Entity::Plan,
-                    Some(format_smolstr!(
-                        "could not find local alias for GroupBy expr ({expr_id:?})"
-                    )),
-                ));
-            };
-            let position = child_map.get(local_alias)?;
+        for (expr_id, position) in grouping_exprs.iter().zip(positions) {
             let col_type = self.get_expression_node(*expr_id)?.calculate_type(self)?;
             if let Some(col_type) = col_type.get() {
                 if !col_type.is_scalar() {
@@ -950,17 +950,13 @@ impl Plan {
             let new_col_id = self.nodes.push(node.into());
             gr_exprs.push(new_col_id);
         }
-        let output = self.add_row_for_output(upper_local_proj, &[], true, None)?;
-
-        // Because GroupBy node lies in the Arena64.
-        let final_id = self.nodes.next_id(ArenaType::Arena64);
         let final_groupby = GroupBy {
             gr_exprs,
             child: upper_local_proj,
             subqueries: vec![],
-            output,
+            distribution: None,
         };
-        self.add_relational(final_groupby.into())?;
+        let final_id = self.add_relational(final_groupby.into())?;
 
         Ok(final_id)
     }
@@ -1009,38 +1005,43 @@ impl Plan {
         for (rel_id, group) in map {
             // E.g. GroupBy under final Projection.
             let child_id = self.get_first_rel_child(rel_id)?;
-            let alias_to_pos_map = ColumnPositionMap::new(self, child_id)?;
-            let mut nodes = Vec::with_capacity(group.len());
-            for (gr_expr_id, expr_id, parent_expr_id) in group {
-                let Some(local_alias) = local_aliases_map.get(&gr_expr_id) else {
-                    return Err(SbroadError::Invalid(
-                        Entity::Plan,
-                        Some(format_smolstr!(
-                            "failed to find local alias for groupby expression {gr_expr_id:?}"
-                        )),
-                    ));
-                };
-                let position = alias_to_pos_map.get(local_alias)?;
-                let col_type = self.get_expression_node(expr_id)?.calculate_type(self)?;
-                if let Some(col_type) = col_type.get() {
-                    if !col_type.is_scalar() {
+            // The position map borrows the plan's column names, so it has to
+            // be gone by the time the new references are pushed into the plan.
+            let nodes = {
+                let alias_to_pos_map = ColumnPositionMap::new(&*self, child_id)?;
+                let mut nodes = Vec::with_capacity(group.len());
+                for (gr_expr_id, expr_id, parent_expr_id) in group {
+                    let Some(local_alias) = local_aliases_map.get(&gr_expr_id) else {
                         return Err(SbroadError::Invalid(
-                            Entity::Type,
+                            Entity::Plan,
                             Some(format_smolstr!(
-                                "adjust_finals: expected scalar expression, found: {col_type}"
+                                "failed to find local alias for groupby expression {gr_expr_id:?}"
                             )),
                         ));
                     };
+                    let position = alias_to_pos_map.get(local_alias)?;
+                    let col_type = self.get_expression_node(expr_id)?.calculate_type(self)?;
+                    if let Some(col_type) = col_type.get() {
+                        if !col_type.is_scalar() {
+                            return Err(SbroadError::Invalid(
+                                Entity::Type,
+                                Some(format_smolstr!(
+                                    "adjust_finals: expected scalar expression, found: {col_type}"
+                                )),
+                            ));
+                        };
+                    }
+                    let new_ref = Reference {
+                        target: ReferenceTarget::Single(child_id),
+                        position,
+                        col_type,
+                        asterisk_source: None,
+                        is_system: false,
+                    };
+                    nodes.push((parent_expr_id, expr_id, new_ref));
                 }
-                let new_ref = Reference {
-                    target: ReferenceTarget::Single(child_id),
-                    position,
-                    col_type,
-                    asterisk_source: None,
-                    is_system: false,
-                };
-                nodes.push((parent_expr_id, expr_id, new_ref));
-            }
+                nodes
+            };
             for (parent_expr_id, expr_id, node) in nodes {
                 let ref_id = self.nodes.push(node.into());
                 if let Some(parent_expr_id) = parent_expr_id {
@@ -1106,26 +1107,12 @@ impl Plan {
                 self.set_relation_child(having, 0, upper_local_proj)?;
             }
             (Some(having), Some(group_by)) => {
-                let output = self.add_row_for_output(group_by, &[], true, None)?;
-                *self.get_mut_relation_node(having)?.mut_output() = output;
-
                 self.set_relation_child(having, 0, group_by)?;
                 self.set_relation_child(group_by, 0, upper_local_proj)?;
             }
             (None, Some(group_by)) => {
                 self.set_relation_child(group_by, 0, upper_local_proj)?;
             }
-        }
-
-        // After we added a Map (local) stage, we need to
-        // update output of Having in Reduce (final) stage.
-        if let Some(having) = having {
-            let Relational::Having(_) = self.get_relation_node(having)? else {
-                unreachable!("expected Having IR node");
-            };
-            let child_id = self.get_first_rel_child(having)?;
-            let output = self.add_row_for_output(child_id, &[], true, None)?;
-            *self.get_mut_relation_node(having)?.mut_output() = output;
         }
 
         if let Some(groupby_info) = groupby_info {
@@ -1146,10 +1133,17 @@ impl Plan {
             // We construct mapping { AggrKind -> Pos in the output }
             // out of maps
             // { AggrKind -> LocalAlias } and { LocalAlias -> Pos in the output }.
-            let alias_to_pos_map: ColumnPositionMap = ColumnPositionMap::new(self, child_id)?;
-            for aggr in aggrs {
-                // Position in the output with aggregate kind.
-                let pos_kinds = aggr.get_position_kinds(&alias_to_pos_map)?;
+            //
+            // The position map borrows the plan's column names, so every local
+            // alias is resolved before the first expression is replaced.
+            let pos_kinds = {
+                let alias_to_pos_map = ColumnPositionMap::new(&*self, child_id)?;
+                aggrs
+                    .iter()
+                    .map(|aggr| aggr.get_position_kinds(&alias_to_pos_map))
+                    .collect::<Result<Vec<_>, SbroadError>>()?
+            };
+            for (aggr, pos_kinds) in aggrs.iter().zip(pos_kinds) {
                 let final_expr = aggr.create_final_aggregate_expr(self, pos_kinds)?;
                 self.replace_expression(aggr.parent_expr, aggr.fun_id, final_expr)?;
             }
@@ -1200,15 +1194,12 @@ impl Plan {
         strategy.upsert_child(upper_local_proj, MotionPolicy::Full, Program::default());
         self.insert_motion_nodes(strategy)?;
 
-        self.set_dist(
-            self.get_relational_output(final_proj)?,
-            Distribution::Single,
-        )?;
+        self.set_rel_distr(final_proj, Distribution::Single)?;
         if let Some(id) = final_group_by {
-            self.set_dist(self.get_relational_output(id)?, Distribution::Single)?;
+            self.set_rel_distr(id, Distribution::Single)?;
         }
         if let Some(id) = final_having {
-            self.set_dist(self.get_relational_output(id)?, Distribution::Single)?;
+            self.set_rel_distr(id, Distribution::Single)?;
         }
 
         Ok(())
@@ -1224,15 +1215,15 @@ impl Plan {
     /// # Returns:
     /// - nothing if succeed
     fn adjust_sqs_under_having(&mut self, having: NodeId) -> Result<(), SbroadError> {
-        if let Relational::Having(Having { filter, output, .. }) = self.get_relation_node(having)? {
-            let (filter, output) = (*filter, *output);
+        if let Relational::Having(Having { filter, .. }) = self.get_relation_node(having)? {
+            let filter = *filter;
             let strategy = self.resolve_sq_conflicts(having, filter)?;
 
             let correct_rel_ids = strategy.get_rel_ids();
             self.insert_motion_nodes(strategy)?;
             self.adjust_sqs_of_rel_node(having, &correct_rel_ids)?;
 
-            self.try_dist_from_subqueries(having, output)?;
+            self.try_dist_from_subqueries(having)?;
         } else {
             unreachable!("Expected Having IR node");
         }

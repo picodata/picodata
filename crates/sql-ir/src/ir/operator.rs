@@ -3,11 +3,12 @@
 //! Contains operator nodes that transform the tuples in IR tree.
 
 use crate::ir::api::children::Children;
+use crate::ir::columns::RelColumn;
 use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
     Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, LetVarRef, Motion, MutNode,
-    NodeId, OrderBy, Projection, Reference, ReferenceTarget, Row, ScanCte, ScanRelation,
-    ScanSubQuery, Selection, SubQueryReference, Union, UnionAll, Update, Values,
+    NodeId, OrderBy, Projection, Reference, ReferenceTarget, ScanCte, ScanRelation, ScanSubQuery,
+    Selection, SubQueryReference, Union, UnionAll, Update, Values,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
@@ -531,16 +532,13 @@ impl Plan {
         table: SmolStr,
         child_id: Option<NodeId>,
     ) -> Result<NodeId, SbroadError> {
-        let (output, child) = if let Some(child_id) = child_id {
-            let output = self.add_row_for_output(child_id, &[], true, None)?;
-            (Some(output), Some(child_id))
-        } else {
-            (None, None)
-        };
+        if let Some(child_id) = child_id {
+            self.get_relation_node(child_id)?;
+        }
         let delete = Delete {
             relation: table,
-            child,
-            output,
+            child: child_id,
+            distribution: None,
         };
 
         self.add_relational(delete.into())
@@ -553,13 +551,8 @@ impl Plan {
     /// - children tuples are invalid
     /// - children tuples have mismatching structure
     pub fn add_except(&mut self, left: NodeId, right: NodeId) -> Result<NodeId, SbroadError> {
-        let child_row_len = |child: NodeId, plan: &Plan| -> Result<usize, SbroadError> {
-            let child_output = plan.get_relation_node(child)?.output();
-            Ok(plan
-                .get_expression_node(child_output)?
-                .get_row_list()?
-                .len())
-        };
+        let child_row_len =
+            |child: NodeId, plan: &Plan| -> Result<usize, SbroadError> { plan.columns_len(child) };
 
         let left_row_len = child_row_len(left, self)?;
         let right_row_len = child_row_len(right, self)?;
@@ -569,11 +562,10 @@ impl Plan {
             )));
         }
 
-        let output = self.add_row_for_union_except(left, right)?;
         let except = Except {
             left,
             right,
-            output,
+            distribution: None,
         };
 
         self.add_relational(except.into())
@@ -805,7 +797,7 @@ impl Plan {
             );
             *expr_id = alias_id;
         }
-        let proj_output = self.nodes.add_row(projection_cols, None);
+        let proj_output = self.nodes.add_row(projection_cols);
         let proj_node = Projection {
             child: Some(rel_child_id),
             subqueries: vec![],
@@ -814,16 +806,16 @@ impl Plan {
             is_distinct: false,
             group_by: None,
             having: None,
+            distribution: None,
         };
         let proj_id = self.add_relational(proj_node.into())?;
-        let upd_output = self.add_row_for_output(proj_id, &[], false, None)?;
         let update_node = Update {
             relation: relation.to_smolstr(),
             pk_positions: primary_key_positions,
             child: proj_id,
             update_columns_map,
-            output: upd_output,
             strategy: update_kind,
+            distribution: None,
         };
         let update_id = self.add_relational(update_node.into())?;
 
@@ -878,16 +870,7 @@ impl Plan {
             }
             cols
         };
-        let child_rel = self.get_relation_node(child)?;
-        let child_output = self.get_expression_node(child_rel.output())?;
-        let child_output_list_len = if let Expression::Row(Row { list, .. }) = child_output {
-            list.len()
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some("child output is not a Row.".into()),
-            ));
-        };
+        let child_output_list_len = self.columns_len(child)?;
         if child_output_list_len != columns.len() {
             return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
                 "invalid number of values: {}. Table {} expects {} column(s).",
@@ -897,14 +880,6 @@ impl Plan {
             )));
         }
 
-        let mut refs: Vec<NodeId> = Vec::with_capacity(rel.columns.len());
-        for (pos, col) in rel.columns.iter().enumerate() {
-            let r_id = self
-                .nodes
-                .add_ref(ReferenceTarget::Leaf, pos, col.r#type, None, false);
-            let col_alias_id = self.nodes.add_alias(&col.name, r_id)?;
-            refs.push(col_alias_id);
-        }
         let dist = if rel.is_global() {
             Distribution::Global
         } else {
@@ -914,13 +889,12 @@ impl Plan {
                 keys: KeySet::from(keys),
             }
         };
-        let output = self.nodes.add_row(refs, Some(dist));
         let insert = Insert {
             relation: relation.into(),
             columns,
             child,
-            output,
             conflict_strategy,
+            distribution: Some(Box::new(dist)),
         };
         let insert_id = self.nodes.push(insert.into());
         Ok(insert_id)
@@ -931,28 +905,12 @@ impl Plan {
     /// # Errors
     /// - relation is invalid
     pub fn add_scan(&mut self, table: &str, alias: Option<&str>) -> Result<NodeId, SbroadError> {
-        let nodes = &mut self.nodes;
-
-        if let Some(rel) = self.relations.get(table) {
-            let mut refs: Vec<NodeId> = Vec::with_capacity(rel.columns.len());
-            for (pos, col) in rel.columns.iter().enumerate() {
-                let r_id = nodes.add_ref(
-                    ReferenceTarget::Leaf,
-                    pos,
-                    col.r#type,
-                    None,
-                    col.role == ColumnRole::Sharding,
-                );
-                let col_alias_id = nodes.add_alias(&col.name, r_id)?;
-                refs.push(col_alias_id);
-            }
-
-            let output_id = nodes.add_row(refs, None);
+        if self.relations.get(table).is_some() {
             let scan = ScanRelation {
-                output: output_id,
                 relation: SmolStr::from(table),
                 alias: alias.map(SmolStr::from),
                 indexed_by: None,
+                distribution: None,
             };
 
             return self.add_relational(scan.into());
@@ -975,14 +933,15 @@ impl Plan {
         condition: NodeId,
         kind: JoinKind,
     ) -> Result<NodeId, SbroadError> {
-        let output = self.add_row_for_join(left, right)?;
+        self.get_relation_node(left)?;
+        self.get_relation_node(right)?;
         let join = Join {
             left,
             right,
             subqueries: Vec::new(),
             condition,
-            output,
             kind,
+            distribution: None,
         };
 
         self.add_relational(join.into())
@@ -1041,8 +1000,12 @@ impl Plan {
             child_id
         };
 
+        // The motion copies every column of its (possibly wrapped) child,
+        // the sharding column included, so the motion key positions are the
+        // child positions.
         let output = self.add_row_for_output(child_id, &[], true, None)?;
-        match policy {
+
+        let dist = match policy {
             MotionPolicy::None => {
                 panic!(
                     "None policy is not expected for `add_motion` method for child_id: {child_id}."
@@ -1050,18 +1013,14 @@ impl Plan {
             }
             MotionPolicy::Segment(key) | MotionPolicy::LocalSegment(key) => {
                 if let Ok(keyset) = KeySet::try_from(key) {
-                    self.set_dist(output, Distribution::Segment { keys: keyset })?;
+                    Distribution::Segment { keys: keyset }
                 } else {
-                    self.set_dist(output, Distribution::Any)?;
+                    Distribution::Any
                 }
             }
-            MotionPolicy::Full => {
-                self.set_dist(output, Distribution::Global)?;
-            }
-            MotionPolicy::Local => {
-                self.set_dist(output, Distribution::Any)?;
-            }
-        }
+            MotionPolicy::Full => Distribution::Global,
+            MotionPolicy::Local => Distribution::Any,
+        };
 
         let motion = Motion {
             alias,
@@ -1069,6 +1028,7 @@ impl Plan {
             policy: policy.clone(),
             program,
             output,
+            distribution: Some(Box::new(dist)),
         };
         let motion_id = self.add_relational(motion.into())?;
         let mut context = self.context_mut();
@@ -1117,6 +1077,7 @@ impl Plan {
             is_distinct,
             group_by: group_by_id,
             having: having_id,
+            distribution: None,
         };
 
         self.add_relational(proj.into())
@@ -1270,6 +1231,7 @@ impl Plan {
             is_distinct,
             group_by: group_by_id,
             having: having_id,
+            distribution: None,
         };
 
         Ok((self.add_relational(proj.into())?, col_pos_transforms))
@@ -1288,7 +1250,7 @@ impl Plan {
         is_distinct: bool,
         windows: Vec<NodeId>,
     ) -> Result<NodeId, SbroadError> {
-        let output = self.nodes.add_row(columns.to_vec(), None);
+        let output = self.nodes.add_row(columns.to_vec());
 
         let (child_id, having_id, group_by_id) = match self.get_relation_node(child)? {
             Relational::GroupBy(_) => (None, None, Some(child)),
@@ -1310,6 +1272,7 @@ impl Plan {
             is_distinct,
             group_by: group_by_id,
             having: having_id,
+            distribution: None,
         };
 
         self.add_relational(proj.into())
@@ -1322,10 +1285,11 @@ impl Plan {
     /// - child output tuple is invalid
     /// - columns are not aliases or have duplicate names
     pub fn add_select_without_scan(&mut self, columns: &[NodeId]) -> Result<NodeId, SbroadError> {
-        let output = self.nodes.add_row(columns.to_vec(), None);
+        let output = self.nodes.add_row(columns.to_vec());
         let sel = SelectWithoutScan {
             subqueries: vec![],
             output,
+            distribution: None,
         };
 
         let sel_id = self.add_relational(sel.into())?;
@@ -1341,7 +1305,7 @@ impl Plan {
     pub fn fix_groupby_aliases(&mut self) -> Result<(), SbroadError> {
         let top = self.get_top()?;
         let dft = PostOrderWithFilter::new(
-            |node| self.subtree_iter(node, false),
+            |node| self.subtree_iter(node),
             |node| {
                 matches!(
                     self.get_node(node),
@@ -1547,12 +1511,12 @@ impl Plan {
     /// # Panics
     /// - `children` is empty
     pub fn add_select(&mut self, child: NodeId, filter: NodeId) -> Result<NodeId, SbroadError> {
-        let output = self.add_row_for_output(child, &[], true, None)?;
+        self.get_relation_node(child)?;
         let select = Selection {
             child,
             subqueries: Vec::new(),
             filter,
-            output,
+            distribution: None,
         };
 
         self.add_relational(select.into())
@@ -1565,12 +1529,12 @@ impl Plan {
     /// - children nodes are not relational
     /// - first child output tuple is not valid
     pub fn add_having(&mut self, child: NodeId, filter: NodeId) -> Result<NodeId, SbroadError> {
-        let output = self.add_row_for_output(child, &[], true, None)?;
+        self.get_relation_node(child)?;
         let having = Having {
             child,
             subqueries: Vec::new(),
             filter,
-            output,
+            distribution: None,
         };
 
         self.add_relational(having.into())
@@ -1593,12 +1557,12 @@ impl Plan {
         child: NodeId,
         order_by_elements: Vec<OrderByElement>,
     ) -> Result<(NodeId, NodeId), SbroadError> {
-        let output = self.add_row_for_output(child, &[], true, None)?;
+        self.get_relation_node(child)?;
         let order_by = OrderBy {
             child,
             subqueries: vec![],
-            output,
             order_by_elements,
+            distribution: None,
         };
 
         let plan_order_by_id = self.add_relational(order_by.into())?;
@@ -1618,11 +1582,11 @@ impl Plan {
     ) -> Result<NodeId, SbroadError> {
         let name: Option<SmolStr> = alias.map(SmolStr::from);
 
-        let output = self.add_row_for_output(child, &[], true, None)?;
+        self.get_relation_node(child)?;
         let sq = ScanSubQuery {
             alias: name,
             child,
-            output,
+            distribution: None,
         };
 
         self.add_relational(sq.into())
@@ -1656,21 +1620,22 @@ impl Plan {
             .expect("CTE child node is not a relational node");
         let mut child_id = child;
 
-        let mut child_output_id = child_node.output();
         // Child must be a projection, but sometimes we need to get our hand dirty to maintain
         // this invariant. For instance, child can be VALUES, LIMIT or UNION. In such cases
         // we wrap the child with a subquery and change names in the subquery's projection.
-        if !matches!(child_node, Relational::Projection { .. }) {
+        let child_output_id = if let Relational::Projection(Projection { output, .. }) = child_node
+        {
+            *output
+        } else {
             let sq_id = self
                 .add_sub_query(child_id, Some(&alias))
                 .expect("add subquery in cte");
             child_id = self
                 .add_proj(sq_id, vec![], &[], false, false)
                 .expect("add projection in cte");
-            child_output_id = self
-                .get_relational_output(child_id)
-                .expect("projection has an output tuple");
-        }
+            self.get_relational_output(child_id)
+                .expect("projection has an output tuple")
+        };
 
         // If CTE has explicit column names, let's rename the columns in the child projection.
         let child_columns = self
@@ -1700,11 +1665,11 @@ impl Plan {
 
     /// Appends a new ScanCTE node to the plan arena.
     pub fn add_cte_scan(&mut self, child: NodeId, alias: SmolStr) -> Result<NodeId, SbroadError> {
-        let output = self.add_row_for_output(child, &[], true, None)?;
+        self.get_relation_node(child)?;
         let cte = ScanCte {
             alias,
             child,
-            output,
+            distribution: None,
         };
         let cte_id = self.add_relational(cte.into())?;
         Ok(cte_id)
@@ -1722,13 +1687,8 @@ impl Plan {
         right: NodeId,
         remove_duplicates: bool,
     ) -> Result<NodeId, SbroadError> {
-        let child_row_len = |child: NodeId, plan: &Plan| -> Result<usize, SbroadError> {
-            let child_output = plan.get_relation_node(child)?.output();
-            Ok(plan
-                .get_expression_node(child_output)?
-                .get_row_list()?
-                .len())
-        };
+        let child_row_len =
+            |child: NodeId, plan: &Plan| -> Result<usize, SbroadError> { plan.columns_len(child) };
 
         let left_row_len = child_row_len(left, self)?;
         let right_row_len = child_row_len(right, self)?;
@@ -1738,19 +1698,18 @@ impl Plan {
             )));
         }
 
-        let output = self.add_row_for_union_except(left, right)?;
         let union_all: NodeAligned = if remove_duplicates {
             Union {
                 left,
                 right,
-                output,
+                distribution: None,
             }
             .into()
         } else {
             UnionAll {
                 left,
                 right,
-                output,
+                distribution: None,
             }
             .into()
         };
@@ -1763,11 +1722,11 @@ impl Plan {
     /// # Errors
     /// - Row node is not of a row type
     pub fn add_limit(&mut self, select: NodeId, limit: u64) -> Result<NodeId, SbroadError> {
-        let output = self.add_row_for_output(select, &[], true, None)?;
+        self.get_relation_node(select)?;
         let limit = Limit {
-            output,
             limit,
             child: select,
+            distribution: None,
         };
 
         self.add_relational(limit.into())
@@ -1807,41 +1766,35 @@ impl Plan {
                 .collect();
             types.push(tuple_types?.into_iter())
         }
+        // Check that the column types of the rows can be unified (the columns
+        // themselves are derived on demand, see `Plan::columns_of`).
         // TODO: Change `types` type to iterator to avoid allocations.
-        let unified_types = calculate_unified_types(types.into_iter())?;
-
-        // Generate a row of aliases referencing all the rows.
-        let mut aliases: Vec<NodeId> = Vec::with_capacity(unified_types.len());
-        for (pos, unified_type) in unified_types.iter().enumerate() {
-            let ref_id = self.nodes.add_ref(
-                ReferenceTarget::Values(rows.clone()),
-                pos,
-                unified_type.1,
-                None,
-                false,
-            );
-            // The column names are generated according to tarantool naming of anonymous columns.
-            let name = format_smolstr!("COLUMN_{}", pos + 1);
-            let alias_id = self.nodes.add_alias(&name, ref_id)?;
-            aliases.push(alias_id);
-        }
-        let output = self.nodes.add_row(aliases, None);
+        calculate_unified_types(types.into_iter())?;
 
         let values = Values {
-            output,
             rows,
             subqueries: Vec::new(),
+            distribution: None,
         };
         self.add_relational(values.into())
     }
 
-    /// Gets an output tuple from relational node id
+    /// Gets the explicit output tuple of a relational node.
     ///
     /// # Errors
     /// - node is not relational
+    /// - node has no explicit output (its columns are derived, see `Plan::columns_of`)
     pub fn get_relational_output(&self, rel_id: NodeId) -> Result<NodeId, SbroadError> {
         let rel_node = self.get_relation_node(rel_id)?;
-        Ok(rel_node.output())
+        rel_node.explicit_output().ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Relational,
+                Some(format_smolstr!(
+                    "node {rel_id} ({}) has no explicit output tuple",
+                    rel_node.name()
+                )),
+            )
+        })
     }
 
     /// Gets list of aliases in output tuple of `rel_id`.
@@ -1851,23 +1804,9 @@ impl Plan {
     /// - output is not `Expression::Row`
     /// - any node in the output tuple is not `Expression::Alias`
     pub fn get_relational_aliases(&self, rel_id: NodeId) -> Result<Vec<SmolStr>, SbroadError> {
-        let output = self.get_relational_output(rel_id)?;
-        if let Expression::Row(Row { list, .. }) = self.get_expression_node(output)? {
-            return list
-                .iter()
-                .map(|alias_id| {
-                    self.get_expression_node(*alias_id)?
-                        .get_alias_name()
-                        .map(smol_str::ToSmolStr::to_smolstr)
-                })
-                .collect::<Result<Vec<SmolStr>, SbroadError>>();
-        }
-        Err(SbroadError::Invalid(
-            Entity::Node,
-            Some(format_smolstr!(
-                "expected output of Relational node {rel_id:?} to be Row"
-            )),
-        ))
+        self.columns_of(rel_id)?
+            .map(|column| Ok(column?.name_owned()))
+            .collect()
     }
 
     /// Gets children from relational node.
@@ -2127,17 +2066,13 @@ impl Plan {
         }
     }
 
-    /// Get relational Scan name that given `output_alias_position` (`Expression::Alias`)
+    /// Get relational Scan name that the given output column (`Expression::Alias`)
     /// references to.
     ///
     /// # Errors
     /// - plan tree is invalid (failed to retrieve child nodes)
-    pub fn scan_name(
-        &self,
-        id: NodeId,
-        output_alias_position: usize,
-    ) -> Result<Option<&str>, SbroadError> {
-        let node = self.get_relation_node(id)?;
+    pub fn scan_name(&self, rel_col: RelColumn) -> Result<Option<&str>, SbroadError> {
+        let node = self.get_relation_node(rel_col.rel_id)?;
         match node {
             Relational::Insert(Insert { relation, .. })
             | Relational::Delete(Delete { relation, .. }) => Ok(Some(relation.as_str())),
@@ -2153,36 +2088,16 @@ impl Plan {
             | Relational::Selection { .. }
             | Relational::Update { .. }
             | Relational::Join { .. } => {
-                let output_row = self.get_expression_node(node.output())?;
-                let list = output_row.get_row_list()?;
-                let col_id = *list.get(output_alias_position).ok_or_else(|| {
-                    SbroadError::NotFound(
-                        Entity::Column,
-                        format_smolstr!(
-                            "at position {output_alias_position} of Row, {self:?}, {output_row:?}"
-                        ),
-                    )
-                })?;
-                let col_node = self.get_expression_node(col_id)?;
-                if let Expression::Alias(Alias { child, .. }) = col_node {
-                    let child_node = self.get_expression_node(*child)?;
-                    if let Expression::Reference(Reference { position: pos, .. }) = child_node {
-                        let rel_id = self.get_relational_from_reference_node(*child)?;
-                        let rel_node = self.get_relation_node(rel_id)?;
-                        if rel_node == node {
-                            return Err(SbroadError::DuplicatedValue(format_smolstr!(
-                                "Reference to the same node {rel_node:?} at position {output_alias_position}"
-                            )));
-                        }
-                        return self.scan_name(rel_id, *pos);
-                    }
-                } else {
-                    return Err(SbroadError::Invalid(
-                        Entity::Expression,
-                        Some("expected an alias in the output row".into()),
-                    ));
+                let Some(source) = self.column_source(rel_col)? else {
+                    return Ok(None);
+                };
+                if source.rel_id == rel_col.rel_id {
+                    return Err(SbroadError::DuplicatedValue(format_smolstr!(
+                        "Reference to the same node {node:?} at position {}",
+                        rel_col.position
+                    )));
                 }
-                Ok(None)
+                self.scan_name(source)
             }
             Relational::ScanCte(ScanCte { alias, .. }) => Ok(Some(alias)),
             Relational::ScanSubQuery(ScanSubQuery { alias, .. })

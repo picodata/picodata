@@ -1,3 +1,4 @@
+use crate::ir::columns::RelColumn;
 use crate::ir::operator::Arithmetic;
 use crate::ir::test_fixtures::{column_integer_user_non_null, sharding_column};
 use pretty_assertions::assert_eq;
@@ -17,7 +18,7 @@ fn row_duplicate_column_names() {
     let c1_alias_a = plan.nodes.add_alias("a", c1).unwrap();
     let c2 = plan.nodes.add_const(Value::from(2));
     let c2_alias_a = plan.nodes.add_alias("a", c2).unwrap();
-    plan.nodes.add_row(vec![c1_alias_a, c2_alias_a], None);
+    plan.nodes.add_row(vec![c1_alias_a, c2_alias_a]);
 }
 
 #[test]
@@ -37,10 +38,14 @@ fn rel_nodes_from_reference_in_scan() {
     .unwrap();
     plan.add_rel(t);
     let scan_id = plan.add_scan("t", None).unwrap();
-    let output = plan.get_relational_output(scan_id).unwrap();
 
-    let rel_set = plan.get_relational_nodes_from_row(output).unwrap();
-    assert_eq!(true, rel_set.is_empty());
+    // A scan is a column source: its columns come from the table, not from
+    // another relational node.
+    assert_eq!(plan.columns_len(scan_id).unwrap(), 1);
+    assert_eq!(
+        plan.column_source(RelColumn::new(scan_id, 0)).unwrap(),
+        None
+    );
 }
 
 #[test]

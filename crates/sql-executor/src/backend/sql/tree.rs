@@ -1,5 +1,6 @@
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::ir::{DqlSubtree, ExecutionPlan, SerializeAsEmptyState, SqlExecutionView};
+use crate::ir::columns::RelColumn;
 use crate::ir::expression::{FunctionFeature, TrimKind};
 use crate::ir::helpers::{formatted_tabulate, writeln_with_tabulation};
 use crate::ir::node::expression::Expression;
@@ -8,9 +9,9 @@ use crate::ir::node::Delete;
 use crate::ir::node::{
     Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except,
     FrameType, GroupBy, Having, IndexExpr, Intersect, Join, Like, Limit, Motion, Node, NodeId,
-    OrderBy, Over, Parameter, Projection, Reference, ReferenceAsteriskSource, ReferenceTarget, Row,
-    ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
-    SubQueryReference, Trim, UnaryExpr, Union, UnionAll, Values, Window,
+    OrderBy, Over, Parameter, Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction,
+    ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, SubQueryReference, Trim,
+    UnaryExpr, Union, UnionAll, Values, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::MotionPolicy;
@@ -1319,10 +1320,7 @@ impl<'p> SyntaxPlan<'p> {
     fn add_motion(&mut self, id: NodeId) {
         let (plan, motion) = self.prologue_rel(id);
         let Relational::Motion(Motion {
-            policy,
-            program,
-            output,
-            ..
+            policy, program, ..
         }) = motion
         else {
             panic!("Expected MOTION node");
@@ -1353,37 +1351,22 @@ impl<'p> SyntaxPlan<'p> {
         let empty_table_state = self.plan.effective_serialize_as_empty_state(id, program);
         if empty_table_state != SerializeAsEmptyState::Absent {
             if empty_table_state.is_enabled() {
-                let output_cols = plan.get_row_list(*output).expect("row aliases");
+                let columns = plan.columns_of(id).expect("motion columns");
                 // We need to preserve types when doing `select null`,
                 // otherwise tarantool will cast it to `scalar`.
                 // We also need to preserve column names via aliases.
-                let mut select_columns = Vec::with_capacity(output_cols.len());
-                for col in output_cols {
-                    let alias_name = if let Expression::Alias(Alias { name, .. }) =
-                        plan.get_expression_node(*col).expect("alias node")
-                    {
-                        Some(name)
-                    } else {
-                        None
-                    };
-                    let ref_id = plan
-                        .get_child_under_alias(*col)
-                        .expect("motion output must be a row of aliases!");
-                    let ref_expr = plan.get_expression_node(ref_id).expect("reference node");
-                    let Expression::Reference(Reference { col_type, .. }) = ref_expr else {
-                        panic!("expected Reference under Alias in Motion output");
-                    };
-                    let null_expr = if let Some(col_type) = col_type.get() {
+                let mut select_columns = Vec::with_capacity(columns.len());
+                for column in columns {
+                    let column = column.expect("motion column");
+                    let null_expr = if let Some(col_type) = column.r#type.get() {
                         format_smolstr!("cast(null as {col_type})")
                     } else {
                         SmolStr::from("null")
                     };
-                    let casted_null_str = if let Some(name) = alias_name {
-                        format_smolstr!("{null_expr} as \"{name}\"")
-                    } else {
-                        null_expr
-                    };
-                    select_columns.push(casted_null_str);
+                    select_columns.push(format_smolstr!(
+                        "{null_expr} as \"{name}\"",
+                        name = column.name
+                    ));
                 }
                 let empty_select =
                     format_smolstr!("select {} where false", select_columns.join(","));
@@ -1646,10 +1629,9 @@ impl<'p> SyntaxPlan<'p> {
 
     fn add_values(&mut self, id: NodeId) {
         let (_, values) = self.prologue_rel(id);
-        let Relational::Values(Values { rows, output, .. }) = values else {
+        let Relational::Values(Values { rows, .. }) = values else {
             panic!("Expected VALUES node");
         };
-        let output_plan_id = *output;
         // The syntax nodes on the stack are in the reverse order.
         let plan_rows = rows.iter().rev().copied().collect::<Vec<_>>();
         let mut syntax_children = Vec::with_capacity(plan_rows.len());
@@ -1657,9 +1639,6 @@ impl<'p> SyntaxPlan<'p> {
         for row_id in &plan_rows {
             syntax_children.push(self.pop_from_stack(*row_id, id));
         }
-
-        // Consume the output from the stack.
-        let _ = self.pop_from_stack(output_plan_id, id);
 
         let mut nodes = Vec::with_capacity(syntax_children.len() * 2 - 1);
 
@@ -1737,15 +1716,12 @@ impl<'p> SyntaxPlan<'p> {
         let child_expr = plan
             .get_expression_node(child)
             .expect("alias child expression");
-        if let Expression::Reference(Reference { target, .. }) = child_expr {
-            // Value rows have no named columns to compare the alias with.
-            if !matches!(target, ReferenceTarget::Values(_)) {
-                let alias = self.plan.reference_alias(&child_expr).expect("alias name");
-                if alias == name {
-                    let sn = SyntaxNode::new_pointer(id, None, vec![child_sn_id]);
-                    self.nodes.push_sn_plan(sn);
-                    return;
-                }
+        if let Expression::Reference(_) = child_expr {
+            let alias = self.plan.reference_alias(&child_expr).expect("alias name");
+            if alias == name {
+                let sn = SyntaxNode::new_pointer(id, None, vec![child_sn_id]);
+                self.nodes.push_sn_plan(sn);
+                return;
             }
         }
         let alias_sn_id = self.nodes.push_sn_non_plan(SyntaxNode::new_alias(name));
@@ -2338,7 +2314,7 @@ impl<'p> SyntaxPlan<'p> {
         let leave_as_sequence = self.should_leave_as_sequence(ref_source_node_id, asterisk_handler);
 
         if leave_as_sequence {
-            let source_name = ir_plan.scan_name(ref_source_node_id, position);
+            let source_name = ir_plan.scan_name(RelColumn::new(ref_source_node_id, position));
             let Ok(name) = source_name else {
                 // TODO[2081]: don't hide an error
                 return self.handle_non_asterisk_reference(sn_id, need_comma, asterisk_handler);
@@ -2356,7 +2332,10 @@ impl<'p> SyntaxPlan<'p> {
 
         // Special case for a single shard query when a Motion node is removed.
         if relation_name.is_some()
-            && !matches!(ir_plan.scan_name(ref_source_node_id, position), Ok(Some(_)))
+            && !matches!(
+                ir_plan.scan_name(RelColumn::new(ref_source_node_id, position)),
+                Ok(Some(_))
+            )
         {
             return self.handle_non_asterisk_reference(sn_id, need_comma, asterisk_handler);
         }
@@ -2393,51 +2372,24 @@ impl<'p> SyntaxPlan<'p> {
             .entry(ref_source_node_id)
             .or_insert_with(|| {
                 let ir_plan = self.plan.get_ir_plan();
-                let Ok(output) = ir_plan.get_relational_output(ref_source_node_id) else {
-                    // TODO[2081]: don't hide an error
-                    return false;
-                };
-
-                let Ok(row_list) = ir_plan.get_row_list(output) else {
+                let Ok(columns) = ir_plan.columns_of(ref_source_node_id) else {
                     // TODO[2081]: don't hide an error
                     return false;
                 };
 
                 let mut distribution = HashMap::new();
-                row_list.iter().enumerate().for_each(|(i, node)| {
+                for (i, column) in columns.enumerate() {
                     let key = ir_plan
-                        .scan_name(ref_source_node_id, i)
+                        .scan_name(RelColumn::new(ref_source_node_id, i))
                         .unwrap()
                         .map(|s| s.to_smolstr());
-                    let Ok(node) = ir_plan.get_child_under_alias(*node) else {
-                        // TODO[2081]: don't hide an error
-                        distribution
-                            .entry(key)
-                            .and_modify(|v| *v |= false)
-                            .or_insert(false);
-                        return;
-                    };
-                    let Ok(node) = ir_plan.get_expression_node(node) else {
-                        // TODO[2081]: don't hide an error
-                        distribution
-                            .entry(key)
-                            .and_modify(|v| *v |= false)
-                            .or_insert(false);
-                        return;
-                    };
-
-                    let value = matches!(
-                        node,
-                        Expression::Reference(Reference {
-                            is_system: true,
-                            ..
-                        })
-                    );
+                    // TODO[2081]: don't hide an error
+                    let value = column.map(|column| column.is_system).unwrap_or(false);
                     distribution
                         .entry(key)
                         .and_modify(|v| *v |= value)
                         .or_insert(value);
-                });
+                }
 
                 let has_system = distribution.values().any(|v| *v);
                 if has_system {
@@ -2757,10 +2709,10 @@ impl<'p> SyntaxPlan<'p> {
             Snapshot::Latest => {
                 let dft_post = PostOrder::new(
                     |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
-                        if plan.effective_motion_leaf_output(node).is_some() {
+                        if plan.is_effective_motion_leaf(node) {
                             Box::new(std::iter::empty())
                         } else {
-                            Box::new(ir_plan.subtree_iter(node, false))
+                            Box::new(ir_plan.subtree_iter(node))
                         }
                     },
                     capacity,
@@ -2781,7 +2733,7 @@ impl<'p> SyntaxPlan<'p> {
             Snapshot::Oldest => {
                 let dft_post = PostOrder::new(
                     |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
-                        if plan.effective_motion_leaf_output(node).is_some() {
+                        if plan.is_effective_motion_leaf(node) {
                             Box::new(std::iter::empty())
                         } else {
                             Box::new(ir_plan.flashback_subtree_iter(node))
@@ -2807,12 +2759,10 @@ impl<'p> SyntaxPlan<'p> {
             Snapshot::Latest => {
                 let dft_post = PostOrder::new(
                     |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
-                        if plan.effective_motion_leaf_output(node).is_some()
-                            || empty_motion_ids.contains(&node)
-                        {
+                        if plan.is_effective_motion_leaf(node) || empty_motion_ids.contains(&node) {
                             Box::new(std::iter::empty())
                         } else {
-                            Box::new(ir_plan.subtree_iter(node, false))
+                            Box::new(ir_plan.subtree_iter(node))
                         }
                     },
                     capacity,
@@ -2829,9 +2779,7 @@ impl<'p> SyntaxPlan<'p> {
             Snapshot::Oldest => {
                 let dft_post = PostOrder::new(
                     |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
-                        if plan.effective_motion_leaf_output(node).is_some()
-                            || empty_motion_ids.contains(&node)
-                        {
+                        if plan.is_effective_motion_leaf(node) || empty_motion_ids.contains(&node) {
                             Box::new(std::iter::empty())
                         } else {
                             Box::new(ir_plan.flashback_subtree_iter(node))

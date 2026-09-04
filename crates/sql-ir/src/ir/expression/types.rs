@@ -2,6 +2,7 @@ use smol_str::{format_smolstr, ToSmolStr};
 
 use crate::{
     errors::{Entity, SbroadError},
+    ir::columns::RelColumn,
     ir::types::calculate_unified_types,
     ir::{
         node::{IndexExpr, LetVarRef, Over, Parameter, SubQueryReference},
@@ -237,20 +238,9 @@ impl Expression<'_> {
         let mut types = Vec::new();
 
         for target_id in target.iter() {
-            // `Values` targets are the value rows themselves, all other targets
-            // are relational nodes we take the columns from.
-            let columns = match target {
-                ReferenceTarget::Values(_) => plan.get_row_list(*target_id)?,
-                _ => {
-                    let target_rel = plan.get_relation_node(*target_id)?;
-                    plan.get_row_list(target_rel.output())?
-                }
-            };
-            let column_id = *columns.get(*position).unwrap_or_else(|| {
-                panic!("reference expression has no target column at position {position}")
-            });
-            let col_expr = plan.get_expression_node(column_id)?;
-            let ty: DerivedType = col_expr.calculate_type(plan)?;
+            let ty: DerivedType = plan
+                .column_at(RelColumn::new(*target_id, *position))?
+                .r#type;
             types.push(std::iter::once(ty))
         }
 

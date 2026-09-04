@@ -25,13 +25,13 @@ fn test_clone_dag() {
     let const_id = plan.add_const(value.clone());
     let foo_id = plan.nodes.add_alias("foo", const_id).unwrap();
     let bar_id = plan.nodes.add_alias("bar", const_id).unwrap();
-    let row_id = plan.nodes.add_row(vec![foo_id, bar_id], None);
+    let row_id = plan.nodes.add_row(vec![foo_id, bar_id]);
 
     let mut cloner = SubtreeCloner::new(0);
     let new_row_id = cloner.clone(&mut plan, row_id, 0).unwrap();
 
     let new_ids: Vec<NodeId> = {
-        let dfs = PostOrder::new(|x| plan.subtree_iter(x, true), 0);
+        let dfs = PostOrder::new(|x| plan.subtree_iter(x), 0);
         dfs.traverse_into_iter(new_row_id).collect()
     };
 
@@ -80,7 +80,6 @@ fn test_clone_dag() {
     assert_eq!(
         Expression::Row(&Row {
             list: vec![new_ids[1], new_ids[3]],
-            distribution: None
         }),
         get_node(4, const_id)
     );
@@ -107,7 +106,7 @@ fn subtree_external_links() {
     let new_output = cloner.clone(&mut plan, output, 0).unwrap();
 
     let new_ids: Vec<NodeId> = {
-        let dfs = PostOrder::new(|x| plan.subtree_iter(x, true), 0);
+        let dfs = PostOrder::new(|x| plan.subtree_iter(x), 0);
         dfs.traverse_into_iter(new_output).collect()
     };
 

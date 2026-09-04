@@ -7,7 +7,6 @@ use sql::helpers::sql_to_optimized_ir;
 use sql::ir::distribution::*;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::relational::Relational;
-use sql::ir::node::NodeId;
 use sql::ir::relation::{SpaceEngine, Table};
 use sql::ir::tree::traversal::{PostOrder, REL_CAPACITY};
 use sql::ir::types::UnrestrictedType as Type;
@@ -41,26 +40,20 @@ fn proj_preserve_dist_key() {
 
     plan.set_top(proj_id).unwrap();
 
-    let rel_node = plan.get_relation_node(scan_id).unwrap();
-    let scan_output = rel_node.output();
-
     plan.set_rel_output_distribution(scan_id).unwrap();
 
     let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
     assert_eq!(
-        Distribution::Segment { keys: keys.into() },
-        plan.get_distribution(scan_output).unwrap()
+        plan.rel_distr_ref(scan_id).unwrap(),
+        &Distribution::Segment { keys: keys.into() }
     );
-
-    let rel_node = plan.get_relation_node(proj_id).unwrap();
-    let proj_output: NodeId = rel_node.output();
 
     plan.set_rel_output_distribution(proj_id).unwrap();
 
     let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
     assert_eq!(
-        Distribution::Segment { keys: keys.into() },
-        plan.get_distribution(proj_output).unwrap()
+        plan.rel_distr_ref(proj_id).unwrap(),
+        &Distribution::Segment { keys: keys.into() }
     );
 }
 
@@ -91,9 +84,8 @@ fn projection_any_dist_for_expr() {
             .unwrap()
     };
     assert_eq!(
-        Distribution::Any,
-        plan.get_distribution(plan.get_relational_output(local_proj_id).unwrap())
-            .unwrap()
+        plan.rel_distr_ref(local_proj_id).unwrap(),
+        &Distribution::Any
     );
 }
 //TODO: add other distribution variants to the test cases.

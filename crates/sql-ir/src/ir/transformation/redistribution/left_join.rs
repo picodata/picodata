@@ -23,11 +23,11 @@ impl Plan {
     ) -> Result<Option<Strategy>, SbroadError> {
         let is_left_join = matches!(join_kind, JoinKind::LeftOuter);
         let is_outer_global = matches!(
-            self.get_rel_distribution(self.get_rel_child(join_id, 0)?)?,
+            self.rel_distr_ref(self.get_rel_child(join_id, 0)?)?,
             Distribution::Global
         );
         let is_inner_non_local = matches!(
-            self.get_rel_distribution(self.get_rel_child(join_id, 1)?)?,
+            self.rel_distr_ref(self.get_rel_child(join_id, 1)?)?,
             Distribution::Segment { .. } | Distribution::Any
         );
         if !(is_left_join && is_outer_global && is_inner_non_local) {

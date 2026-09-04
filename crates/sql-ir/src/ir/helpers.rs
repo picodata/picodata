@@ -3,9 +3,10 @@
 use smol_str::ToSmolStr;
 
 use crate::errors::{Action, Entity, SbroadError};
+use crate::ir::columns::RelColumn;
 use crate::ir::node::{
-    Alias, ArrayLiteral, BoolExpr, Case, Constant, Delete, GroupBy, Having, Join, Motion, NodeId,
-    OrderBy, Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, SubQueryReference,
+    Alias, ArrayLiteral, BoolExpr, Case, Constant, GroupBy, Having, Join, Motion, NodeId, OrderBy,
+    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, SubQueryReference,
     TimeParameters, Trim, UnaryExpr, Update, Values,
 };
 use crate::ir::operator::OrderByEntity;
@@ -199,7 +200,9 @@ impl Plan {
                     if let Ok(rel_id) = rel_id {
                         let rel_node = self.get_relation_node(rel_id);
                         if rel_node.is_ok() {
-                            if let Ok(Some(name)) = self.scan_name(rel_id, *position) {
+                            if let Ok(Some(name)) =
+                                self.scan_name(RelColumn::new(rel_id, *position))
+                            {
                                 writeln_with_tabulation(
                                     buf,
                                     tabulation_number + 1,
@@ -249,7 +252,7 @@ impl Plan {
                     // See explain logic for Reference node
                     let rel_node = self.get_relation_node(*rel_id);
                     if rel_node.is_ok() {
-                        if let Ok(Some(name)) = self.scan_name(*rel_id, *position) {
+                        if let Ok(Some(name)) = self.scan_name(RelColumn::new(*rel_id, *position)) {
                             writeln_with_tabulation(
                                 buf,
                                 tabulation_number + 1,
@@ -277,13 +280,8 @@ impl Plan {
                         format!("Column type: {col_type_str}").as_str(),
                     )?;
                 }
-                Expression::Row(Row { list, distribution }) => {
-                    write!(buf, "Row")?;
-                    if let Some(distribution) = distribution {
-                        writeln!(buf, " [distribution = {distribution:?}]")?;
-                    } else {
-                        writeln!(buf)?;
-                    }
+                Expression::Row(Row { list }) => {
+                    writeln!(buf, "Row")?;
                     writeln_with_tabulation(buf, tabulation_number + 1, "List:")?;
                     for value in list {
                         self.formatted_arena_node(buf, tabulation_number + 1, *value)?;
@@ -446,7 +444,7 @@ impl Plan {
                         child: _,
                         subqueries: _,
                         filter,
-                        output: _,
+                        distribution: _,
                     }) => {
                         writeln!(buf, "Selection")?;
                         writeln_with_tabulation(buf, tabulation_number + 1, "Filter")?;
@@ -520,6 +518,13 @@ impl Plan {
                     Relational::Except(_) => writeln!(buf, "Except")?,
                     Relational::Limit(Limit { limit, .. }) => writeln!(buf, "Limit {limit}")?,
                 }
+                if let Some(distribution) = relation.distribution() {
+                    writeln_with_tabulation(
+                        buf,
+                        tabulation_number + 1,
+                        format!("Distribution: {distribution:?}").as_str(),
+                    )?;
+                }
                 // Print children.
                 match relation {
                     Relational::Join(_)
@@ -574,12 +579,24 @@ impl Plan {
                     }
                 }
                 // Print output.
-                if let Relational::Delete(Delete { output: None, .. }) = relation {
-                    writeln_with_tabulation(buf, tabulation_number + 1, "Output: NONE")?;
-                } else {
-                    let output = relation.output();
+                if let Some(output) = relation.explicit_output() {
                     write_with_tabulation(buf, tabulation_number + 1, "Output:")?;
                     self.formatted_arena_node(buf, tabulation_number + 1, output)?;
+                } else if let Ok(columns) = self.columns_of(node_id) {
+                    let columns = columns
+                        .map(|column| {
+                            let column = column.map_err(|_| std::fmt::Error)?;
+                            let system = if column.is_system { " (system)" } else { "" };
+                            Ok(format!("{}: {}{system}", column.name, column.r#type))
+                        })
+                        .collect::<Result<Vec<String>, std::fmt::Error>>()?;
+                    writeln_with_tabulation(
+                        buf,
+                        tabulation_number + 1,
+                        &format!("Columns: [{}]", columns.join(", ")),
+                    )?;
+                } else {
+                    writeln_with_tabulation(buf, tabulation_number + 1, "Output: NONE")?;
                 }
                 writeln!(buf, "---------------------------------------------")?;
             }

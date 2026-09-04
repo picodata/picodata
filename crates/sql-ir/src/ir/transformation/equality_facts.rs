@@ -1085,10 +1085,7 @@ impl<'p> EqualityAnalysis<'p> {
         rel_id: NodeId,
         child_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let output_len = self
-            .plan
-            .get_row_list(self.plan.get_relational_output(rel_id)?)?
-            .len();
+        let output_len = self.plan.columns_len(rel_id)?;
         for output_idx in 0..output_len {
             self.builder.alias_slot(
                 SlotKey { rel_id, output_idx },
@@ -1151,14 +1148,8 @@ impl<'p> EqualityAnalysis<'p> {
         right_id: NodeId,
         include_right: bool,
     ) -> Result<(), SbroadError> {
-        let left_len = self
-            .plan
-            .get_row_list(self.plan.get_relational_output(left_id)?)?
-            .len();
-        let right_len = self
-            .plan
-            .get_row_list(self.plan.get_relational_output(right_id)?)?
-            .len();
+        let left_len = self.plan.columns_len(left_id)?;
+        let right_len = self.plan.columns_len(right_id)?;
         for pos in 0..left_len {
             self.builder.alias_slot(
                 SlotKey {
@@ -1199,9 +1190,9 @@ impl<'p> EqualityAnalysis<'p> {
             self.analyze(*subquery, sub_domain)?;
         }
 
-        if rel.has_output() {
-            let output = self.plan.get_row_list(rel.output())?;
-            self.builder.record_domain(rel_id, domain_id, output.len());
+        if !matches!(rel, Relational::Delete(Delete { child: None, .. })) {
+            let output_len = self.plan.columns_len(rel_id)?;
+            self.builder.record_domain(rel_id, domain_id, output_len);
         }
 
         match rel {

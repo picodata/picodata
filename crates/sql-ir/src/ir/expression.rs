@@ -7,12 +7,12 @@
 //! - distribution of the data in the tuple
 
 use ahash::RandomState;
-use distribution::Distribution;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr};
+use std::borrow::{Borrow, Cow};
 use std::collections::{BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::ops::Bound::Included;
 
 use super::node::{
     Bound, BoundType, Except, GroupBy, Having, Intersect, Join, Like, Limit, Motion, OrderBy, Over,
@@ -22,11 +22,11 @@ use super::node::{
 use super::operator::OrderByEntity;
 use super::types::DerivedType;
 use super::{
-    distribution, operator, Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat,
-    Constant, Expression, MutExpression, Node, NodeId, Reference, Row, ScalarFunction, Trim,
-    UnaryExpr,
+    operator, Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat, Constant,
+    Expression, MutExpression, Node, NodeId, Reference, Row, ScalarFunction, Trim, UnaryExpr,
 };
 use crate::errors::{Entity, SbroadError};
+use crate::ir::columns::{ColumnMeta, RelColumn};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     IndexExpr, LetVarRef, Parameter, ReferenceAsteriskSource, SubQueryReference,
@@ -174,18 +174,18 @@ impl Nodes {
     }
 
     /// Adds subquery reference node.
-    pub fn add_sq_ref(&mut self, rel_id: NodeId, position: usize, col_type: DerivedType) -> NodeId {
+    pub fn add_sq_ref(&mut self, rel_col: RelColumn, col_type: DerivedType) -> NodeId {
         let r = SubQueryReference {
-            rel_id,
-            position,
+            rel_id: rel_col.rel_id,
+            position: rel_col.position,
             col_type,
         };
         self.push(r.into())
     }
 
     /// Adds row node.
-    pub fn add_row(&mut self, list: Vec<NodeId>, distribution: Option<Distribution>) -> NodeId {
-        self.push(Row { list, distribution }.into())
+    pub fn add_row(&mut self, list: Vec<NodeId>) -> NodeId {
+        self.push(Row { list }.into())
     }
 
     /// Actual `col_type` will be filled during type system analysis.
@@ -828,12 +828,19 @@ impl<'plan> Comparator<'plan> {
             }
         };
 
-        // Output row and the number of attached subqueries are common to every node kind.
-        let (l_output, r_output) = (l.output(), r.output());
-        if l.subqueries().len() != r.subqueries().len()
-            || !self.are_subtrees_equal(l_output, r_output)?
-        {
+        // The number of attached subqueries is common to every node kind, and so
+        // is the explicit output row where the node kind has one.
+        if l.subqueries().len() != r.subqueries().len() {
             return Ok(false);
+        }
+        match (l.explicit_output(), r.explicit_output()) {
+            (Some(l_output), Some(r_output)) => {
+                if !self.are_subtrees_equal(l_output, r_output)? {
+                    return Ok(false);
+                }
+            }
+            (None, None) => {}
+            _ => return Ok(false),
         }
 
         match l {
@@ -841,7 +848,7 @@ impl<'plan> Comparator<'plan> {
                 relation: l_relation,
                 indexed_by: l_indexed_by,
                 alias: _,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::ScanRelation(ScanRelation {
                     relation: r_relation,
@@ -855,7 +862,7 @@ impl<'plan> Comparator<'plan> {
             Relational::ScanSubQuery(ScanSubQuery {
                 child: l_child,
                 alias: _,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::ScanSubQuery(ScanSubQuery { child: r_child, .. }) = r {
                     return self.are_rel_subtrees_equal(*l_child, *r_child);
@@ -864,7 +871,7 @@ impl<'plan> Comparator<'plan> {
             Relational::ScanCte(ScanCte {
                 child: l_child,
                 alias: _,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::ScanCte(ScanCte { child: r_child, .. }) = r {
                     return self.are_rel_subtrees_equal(*l_child, *r_child);
@@ -878,6 +885,7 @@ impl<'plan> Comparator<'plan> {
                 having: l_having,
                 subqueries: _,
                 output: _,
+                distribution: _,
             }) => {
                 if let Relational::Projection(Projection {
                     child: r_child,
@@ -899,7 +907,7 @@ impl<'plan> Comparator<'plan> {
                 child: l_child,
                 filter: l_filter,
                 subqueries: _,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::Selection(Selection {
                     child: r_child,
@@ -915,7 +923,7 @@ impl<'plan> Comparator<'plan> {
                 child: l_child,
                 filter: l_filter,
                 subqueries: _,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::Having(Having {
                     child: r_child,
@@ -931,7 +939,7 @@ impl<'plan> Comparator<'plan> {
                 child: l_child,
                 gr_exprs: l_gr_exprs,
                 subqueries: _,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::GroupBy(GroupBy {
                     child: r_child,
@@ -947,7 +955,7 @@ impl<'plan> Comparator<'plan> {
                 child: l_child,
                 order_by_elements: l_elements,
                 subqueries: _,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::OrderBy(OrderBy {
                     child: r_child,
@@ -983,7 +991,7 @@ impl<'plan> Comparator<'plan> {
             Relational::Limit(Limit {
                 child: l_child,
                 limit: l_limit,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::Limit(Limit {
                     child: r_child,
@@ -1002,7 +1010,7 @@ impl<'plan> Comparator<'plan> {
                 condition: l_condition,
                 kind: l_kind,
                 subqueries: _,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::Join(Join {
                     left: r_left,
@@ -1022,7 +1030,6 @@ impl<'plan> Comparator<'plan> {
                             &l_sides,
                             &r_sides,
                         )?
-                        && self.do_refs_match_sides(l_output, r_output, &l_sides, &r_sides)?
                         && self.are_rel_subtrees_equal(*l_left, *r_left)?
                         && self.are_rel_subtrees_equal(*l_right, *r_right)?);
                 }
@@ -1030,7 +1037,7 @@ impl<'plan> Comparator<'plan> {
             Relational::Except(Except {
                 left: l_left,
                 right: l_right,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::Except(Except {
                     left: r_left,
@@ -1045,7 +1052,7 @@ impl<'plan> Comparator<'plan> {
             Relational::Intersect(Intersect {
                 left: l_left,
                 right: l_right,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::Intersect(Intersect {
                     left: r_left,
@@ -1060,7 +1067,7 @@ impl<'plan> Comparator<'plan> {
             Relational::Union(Union {
                 left: l_left,
                 right: l_right,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::Union(Union {
                     left: r_left,
@@ -1075,7 +1082,7 @@ impl<'plan> Comparator<'plan> {
             Relational::UnionAll(UnionAll {
                 left: l_left,
                 right: l_right,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::UnionAll(UnionAll {
                     left: r_left,
@@ -1090,7 +1097,7 @@ impl<'plan> Comparator<'plan> {
             Relational::Values(Values {
                 rows: l_rows,
                 subqueries: _,
-                output: _,
+                distribution: _,
             }) => {
                 if let Relational::Values(Values { rows: r_rows, .. }) = r {
                     return cmp_exprs(l_rows, r_rows);
@@ -1099,6 +1106,7 @@ impl<'plan> Comparator<'plan> {
             Relational::SelectWithoutScan(SelectWithoutScan {
                 subqueries: _,
                 output: _,
+                distribution: _,
             }) => {
                 // Output and subqueries were compared above, nothing else to check.
                 return Ok(true);
@@ -1109,7 +1117,9 @@ impl<'plan> Comparator<'plan> {
                 program: l_program,
                 // Inherited from the motion child, so it is a scan alias as well.
                 alias: _,
+                // Compared above together with the other explicit outputs.
                 output: _,
+                distribution: _,
             }) => {
                 if let Relational::Motion(Motion {
                     child: r_child,
@@ -1445,126 +1455,141 @@ impl Positions {
     }
 }
 
-/// Pair of (Column name, Option(Scan name)).
-pub(crate) type ColumnScanName = (SmolStr, Option<SmolStr>);
+/// The scan names a single column name was met under, and the positions it
+/// was met at. A column name belongs to one scan in all but the rarest
+/// queries, so the list stays inline.
+type ScanEntries<N> = SmallVec<[(Option<N>, Positions); 1]>;
 
-/// Map of { column name (with optional scan name) -> on which positions of relational node it's met }.
+/// Map of { column name -> scan name -> on which positions of relational node it's met }.
 /// Built for concrete relational node. Every column from its (relational node) output is
 /// presented as a key in `map`.
+///
+/// `N` is how the map stores the names it is keyed by. A map that is dropped
+/// before the plan it was built from is mutated borrows them
+/// ([`ColumnPositionMap::new`]); one that outlives the borrow owns them
+/// ([`ColumnPositionMap::new_owned`]).
 #[derive(Debug)]
-pub struct ColumnPositionMap {
+pub struct ColumnPositionMap<N> {
     /// Binary tree map.
-    map: BTreeMap<ColumnScanName, Positions>,
-    /// Max Scan name (in alphabetical order) that some of the columns in output can reference to.
-    /// E.g. we have Join node that references to Scan nodes "aa" and "ab". The `max_scan_name` will
-    /// be "ab".
-    ///
-    /// Used for querying binary tree `map` by ranges (see `ColumnPositionMap` `get` method below).
-    max_scan_name: Option<SmolStr>,
+    map: BTreeMap<N, ScanEntries<N>>,
 }
 
-impl ColumnPositionMap {
-    pub fn new(plan: &Plan, rel_id: NodeId) -> Result<Self, SbroadError> {
-        let rel_node = plan.get_relation_node(rel_id)?;
-        let output = plan.get_expression_node(rel_node.output())?;
-        let alias_ids = output.get_row_list()?;
+impl<'plan> ColumnPositionMap<Cow<'plan, str>> {
+    /// Builds a map that borrows the column names from `plan`.
+    ///
+    /// The map keeps `plan` borrowed, so it has to be dropped before the plan
+    /// is mutated again — see [`ColumnPositionMap::new_owned`] otherwise.
+    pub fn new(plan: &'plan Plan, rel_id: NodeId) -> Result<Self, SbroadError> {
+        Self::build(plan, rel_id, |name| name, Cow::Borrowed)
+    }
+}
 
-        let mut map = BTreeMap::new();
-        let mut max_name = None;
-        for (pos, alias_id) in alias_ids.iter().enumerate() {
-            let alias = plan.get_expression_node(*alias_id)?;
-            let alias_name = SmolStr::from(alias.get_alias_name()?);
-            let scan_name = plan.scan_name(rel_id, pos)?.map(SmolStr::from);
+impl ColumnPositionMap<SmolStr> {
+    /// Builds a map that copies the column names out of `plan`, for the
+    /// callers that keep it while the plan is still being built (the
+    /// frontend caches one map per relational node).
+    pub fn new_owned(plan: &Plan, rel_id: NodeId) -> Result<Self, SbroadError> {
+        Self::build(plan, rel_id, |name| SmolStr::from(&*name), SmolStr::from)
+    }
+}
+
+impl<N: Ord + Borrow<str>> ColumnPositionMap<N> {
+    fn build<'plan>(
+        plan: &'plan Plan,
+        rel_id: NodeId,
+        name: impl Fn(Cow<'plan, str>) -> N,
+        scan: impl Fn(&'plan str) -> N,
+    ) -> Result<Self, SbroadError> {
+        let mut map: BTreeMap<N, ScanEntries<N>> = BTreeMap::new();
+        for (pos, column) in plan.columns_of(rel_id)?.enumerate() {
+            let alias_name = name(column?.name);
+            let scan_name = plan.scan_name(RelColumn::new(rel_id, pos))?.map(&scan);
             // For query `select "a", "b" as "a" from (select "a", "b" from t)`
             // column entry "a" will have `Position::Multiple` so that if parent operator will
             // reference "a" we won't be able to identify which of these two columns
             // will it reference.
-            map.entry((alias_name, scan_name.clone()))
-                .or_insert_with(Positions::new)
-                .push(pos);
-            if max_name < scan_name {
-                max_name = scan_name;
+            let scans = map.entry(alias_name).or_default();
+            match scans.iter_mut().find(|(name, _)| {
+                name.as_ref().map(Borrow::borrow) == scan_name.as_ref().map(Borrow::borrow)
+            }) {
+                Some((_, positions)) => positions.push(pos),
+                None => {
+                    let mut positions = Positions::new();
+                    positions.push(pos);
+                    scans.push((scan_name, positions));
+                }
             }
         }
-        Ok(Self {
-            map,
-            max_scan_name: max_name,
-        })
+        Ok(Self { map })
     }
 
     /// Get position of relational node output that corresponds to given `column`.
     /// Note that we don't specify a Scan name here (see `get_with_scan` below for that logic).
     pub fn get(&self, column: &str) -> Result<Position, SbroadError> {
-        let from_key = (SmolStr::from(column), None);
-        let to_key = (SmolStr::from(column), self.max_scan_name.clone());
-        let mut iter = self.map.range((Included(from_key), Included(to_key)));
-        match (iter.next(), iter.next()) {
-            // Map contains several values for the same `column`.
-            // e.g. in the query
-            // `select "t2"."a", "t1"."a" from (select "a" from "t1") join (select "a" from "t2")
-            // for the column "a" there will be two results: {
-            // * Some(("a", "t2"), _),
-            // * Some(("a", "t1"), _)
-            // }
-            //
-            // So that given just a column name we can't say what column to refer to.
-            (Some(..), Some(..)) => Err(SbroadError::DuplicatedValue(format_smolstr!(
-                "column name {column} is ambiguous"
-            ))),
-            // Map contains single value for the given `column`.
-            (Some((_, position)), None) => {
-                if let Positions::Single(pos) = position {
-                    return Ok(*pos);
-                }
-                // In case we have query like
-                // `select "a", "a" from (select "a" from t)`
-                // where single column is met on several positions.
-                Err(SbroadError::DuplicatedValue(format_smolstr!(
-                    "column name {column} is ambiguous"
-                )))
-            }
-            _ => Err(SbroadError::NotFound(
+        let Some(scans) = self.map.get(column) else {
+            return Err(SbroadError::NotFound(
                 Entity::Column,
                 format_smolstr!("with name {}", to_user(column)),
-            )),
+            ));
+        };
+        // Map contains several values for the same `column`.
+        // e.g. in the query
+        // `select "t2"."a", "t1"."a" from (select "a" from "t1") join (select "a" from "t2")
+        // for the column "a" there will be two results: {
+        // * Some(("a", "t2"), _),
+        // * Some(("a", "t1"), _)
+        // }
+        //
+        // So that given just a column name we can't say what column to refer to.
+        //
+        // The same goes for a query like `select "a", "a" from (select "a" from t)`,
+        // where a single column is met on several positions under one scan.
+        if let [(_, Positions::Single(pos))] = scans.as_slice() {
+            return Ok(*pos);
         }
+        Err(SbroadError::DuplicatedValue(format_smolstr!(
+            "column name {column} is ambiguous"
+        )))
     }
 
     /// Get position of relational node output that corresponds to given `scan.column`.
     pub fn get_with_scan(&self, column: &str, scan: Option<&str>) -> Result<Position, SbroadError> {
-        let key = &(SmolStr::from(column), scan.map(SmolStr::from));
-        if let Some(position) = self.map.get(key) {
-            if let Positions::Single(pos) = position {
-                return Ok(*pos);
-            }
+        let positions = self
+            .map
+            .get(column)
+            .and_then(|scans| Self::under_scan(scans, scan));
+        match positions {
             // In case we have query like
             // `select "a", "a" from (select "a" from t)`
             // where single column is met on several positions.
             //
             // Even given `scan` we can't identify which of these two columns do we need to
             // refer to.
-            return Err(SbroadError::DuplicatedValue(format_smolstr!(
+            Some(Positions::Single(pos)) => Ok(*pos),
+            Some(_) => Err(SbroadError::DuplicatedValue(format_smolstr!(
                 "column name {} is ambiguous",
                 to_user(column)
-            )));
+            ))),
+            None => Err(SbroadError::NotFound(
+                Entity::Column,
+                format_smolstr!("with name {} and scan {scan:?}", to_user(column)),
+            )),
         }
-        Err(SbroadError::NotFound(
-            Entity::Column,
-            format_smolstr!("with name {} and scan {scan:?}", to_user(column)),
-        ))
     }
 
     /// Get positions of all columns in relational node output
     /// that corresponds to given `target_scan_name`.
     pub fn get_by_scan_name(&self, target_scan_name: &str) -> Result<Vec<Position>, SbroadError> {
         let mut res = Vec::new();
-        for (_, positions) in self.map.iter().filter(|((_, scan_name), _)| {
-            if let Some(scan_name) = scan_name {
-                scan_name == target_scan_name
-            } else {
-                false
-            }
-        }) {
+        for positions in self
+            .map
+            .values()
+            .flatten()
+            .filter(|(scan_name, _)| {
+                scan_name.as_ref().map(Borrow::borrow) == Some(target_scan_name)
+            })
+            .map(|(_, positions)| positions)
+        {
             if let Positions::Single(pos) = positions {
                 res.push(*pos);
             } else {
@@ -1584,6 +1609,17 @@ impl ColumnPositionMap {
             res.sort_unstable();
             Ok(res)
         }
+    }
+
+    /// Positions the column was met at under `scan`.
+    fn under_scan<'entries>(
+        scans: &'entries ScanEntries<N>,
+        scan: Option<&str>,
+    ) -> Option<&'entries Positions> {
+        scans
+            .iter()
+            .find(|(name, _)| name.as_ref().map(Borrow::borrow) == scan)
+            .map(|(_, positions)| positions)
     }
 }
 
@@ -1616,7 +1652,6 @@ pub enum JoinTargets<'targets> {
     Right {
         columns_spec: Option<ColumnsRetrievalSpec<'targets>>,
     },
-    Both,
 }
 
 /// Indicator of relational nodes source for `new_columns` call.
@@ -1629,11 +1664,6 @@ pub enum NewColumnsSource<'targets> {
         outer_child: NodeId,
         inner_child: NodeId,
         targets: JoinTargets<'targets>,
-    },
-    /// Enum variant used both for Except and UnionAll operators.
-    ExceptUnion {
-        left_child: NodeId,
-        right_child: NodeId,
     },
     /// Other relational nodes.
     Other {
@@ -1669,20 +1699,6 @@ impl Iterator for NewColumnSourceIterator<'_> {
                     0 => inner_child,
                     _ => return None,
                 },
-                JoinTargets::Both => match self.index {
-                    0 => outer_child,
-                    1 => inner_child,
-                    _ => return None,
-                },
-            },
-            NewColumnsSource::ExceptUnion { left_child, .. } => match self.index {
-                // For the `UnionAll` and `Except` operators we need only the first
-                // child to get correct column names for a new tuple
-                // (the second child aliases would be shadowed). But each reference should point
-                // to both children to give us additional information
-                // during transformations.
-                0 => left_child,
-                _ => return None,
             },
             NewColumnsSource::Other { child, .. } => match self.index {
                 0 => child,
@@ -1714,9 +1730,7 @@ impl<'source> NewColumnsSource<'source> {
                 JoinTargets::Left { columns_spec } | JoinTargets::Right { columns_spec } => {
                     columns_spec.clone()
                 }
-                JoinTargets::Both => None,
             },
-            NewColumnsSource::ExceptUnion { .. } => None,
             NewColumnsSource::Other { columns_spec, .. } => columns_spec.clone(),
         }
     }
@@ -1732,6 +1746,39 @@ impl<'source> NewColumnsSource<'source> {
 
     fn iter(&'source self) -> NewColumnSourceIterator<'source> {
         <&Self as IntoIterator>::into_iter(self)
+    }
+}
+
+/// A child column picked up by [`Plan::new_columns`] for a new output tuple.
+///
+/// Everything the new reference needs, detached from the plan: the columns are
+/// picked while the plan is borrowed and turned into nodes once it is not.
+/// The name is materialized only for an aliased tuple — a raw reference list
+/// never reads it.
+struct PickedColumn {
+    /// Position of the column in the child output.
+    pos: usize,
+    r#type: DerivedType,
+    is_system: bool,
+    /// Output alias, `None` when the new columns get no aliases.
+    name: Option<SmolStr>,
+    targets: ReferenceTarget,
+}
+
+impl PickedColumn {
+    fn new(
+        pos: usize,
+        column: &ColumnMeta<'_>,
+        targets: ReferenceTarget,
+        need_alias: bool,
+    ) -> Self {
+        PickedColumn {
+            pos,
+            r#type: column.r#type,
+            is_system: column.is_system,
+            name: need_alias.then(|| column.name_owned()),
+            targets,
+        }
     }
 }
 
@@ -1755,20 +1802,7 @@ impl Plan {
         need_aliases: bool,
         need_sharding_column: bool,
     ) -> Result<Vec<NodeId>, SbroadError> {
-        // Vec of (column position in child output, column plan id, new_targets).
-        let mut filtered_children_row_list: Vec<(usize, NodeId, ReferenceTarget, bool)> =
-            Vec::new();
-
-        let is_system_column = |expr_id: NodeId| -> Result<bool, SbroadError> {
-            let expr_id = self.get_child_under_alias(expr_id)?;
-            let expr = self.get_expression_node(expr_id)?;
-            let is_system = if let Expression::Reference(Reference { is_system, .. }) = expr {
-                *is_system
-            } else {
-                false
-            };
-            Ok(is_system)
-        };
+        let mut filtered_children_columns: Vec<PickedColumn> = Vec::new();
 
         if let Some(columns_spec) = source.get_columns_spec() {
             let (rel_child, _) = source
@@ -1776,9 +1810,7 @@ impl Plan {
                 .next()
                 .expect("Source must have a single target");
 
-            let relational_op = self.get_relation_node(rel_child)?;
-            let output_id = relational_op.output();
-            let child_node_row_list = self.get_row_list(output_id)?.clone();
+            let child_columns_len = self.columns_len(rel_child)?;
 
             let mut indices: Vec<usize> = Vec::new();
             match columns_spec {
@@ -1798,81 +1830,69 @@ impl Plan {
             };
 
             for index in indices {
-                let Some(col_id) = child_node_row_list.get(index).copied() else {
+                if index >= child_columns_len {
                     return Err(SbroadError::Invalid(
                         Entity::Expression,
                         Some(format_smolstr!(
-                            "column at position {index} is not among the {} columns of the \
-                             relational child output",
-                            child_node_row_list.len()
+                            "column at position {index} is not among the {child_columns_len} \
+                             columns of the relational child output"
                         )),
                     ));
-                };
-
-                let is_system = is_system_column(col_id)?;
-                if !need_sharding_column && is_system {
+                }
+                let column = self.column_at(RelColumn::new(rel_child, index))?;
+                if !need_sharding_column && column.is_system {
                     continue;
                 }
-                filtered_children_row_list.push((
+                filtered_children_columns.push(PickedColumn::new(
                     index,
-                    col_id,
+                    &column,
                     ReferenceTarget::Single(rel_child),
-                    is_system,
+                    need_aliases,
                 ));
             }
         } else {
             for (child_node_id, _) in source {
                 let new_targets: ReferenceTarget = match source {
-                    NewColumnsSource::ExceptUnion {
-                        left_child,
-                        right_child,
-                    } => ReferenceTarget::Union(*left_child, *right_child),
-                    NewColumnsSource::Join {
-                        targets: JoinTargets::Both,
-                        ..
-                    }
-                    | NewColumnsSource::Other { .. } => ReferenceTarget::Single(child_node_id),
-                    _ => {
+                    NewColumnsSource::Other { .. } => ReferenceTarget::Single(child_node_id),
+                    NewColumnsSource::Join { .. } => {
                         return Err(SbroadError::Invalid(
                             Entity::Node,
-                            Some("WE DIDN'T expect here somehting".into()),
+                            Some("join columns must be retrieved by a columns spec".into()),
                         ))
                     }
                 };
 
-                let rel_node = self.get_relation_node(child_node_id)?;
-                let child_row_list = self.get_row_list(rel_node.output())?;
-
-                for (pos, expr_id) in child_row_list.iter().enumerate() {
-                    let is_system = is_system_column(*expr_id)?;
-                    if !need_sharding_column && is_system {
+                for (pos, column) in self.columns_of(child_node_id)?.enumerate() {
+                    let column = column?;
+                    if !need_sharding_column && column.is_system {
                         continue;
                     }
-                    filtered_children_row_list.push((
+                    filtered_children_columns.push(PickedColumn::new(
                         pos,
-                        *expr_id,
+                        &column,
                         new_targets.clone(),
-                        is_system,
+                        need_aliases,
                     ));
                 }
             }
         };
 
         // List of columns to be passed into `Expression::Row`.
-        let mut result_row_list: Vec<NodeId> = Vec::with_capacity(filtered_children_row_list.len());
-        for (pos, alias_node_id, new_targets, is_system) in filtered_children_row_list {
-            let alias_expr = self.get_expression_node(alias_node_id)?;
+        let mut result_row_list: Vec<NodeId> = Vec::with_capacity(filtered_children_columns.len());
+        for column in filtered_children_columns {
             let asterisk_source = source.get_asterisk_source();
-            let alias_name = SmolStr::from(alias_expr.get_alias_name()?);
-            let col_type = alias_expr.calculate_type(self)?;
 
             // In case when we add output row for Motion, we can mess up with SubQuery.
             // So we should check it.
-            let r_id = self
-                .nodes
-                .add_ref(new_targets, pos, col_type, asterisk_source, is_system);
-            if need_aliases {
-                let a_id = self.nodes.add_alias(&alias_name, r_id)?;
+            let r_id = self.nodes.add_ref(
+                column.targets,
+                column.pos,
+                column.r#type,
+                asterisk_source,
+                column.is_system,
+            );
+            if let Some(name) = &column.name {
+                let a_id = self.nodes.add_alias(name, r_id)?;
                 result_row_list.push(a_id);
             } else {
                 result_row_list.push(r_id);
@@ -1904,7 +1924,7 @@ impl Plan {
             true,
             need_sharding_column,
         )?;
-        Ok(self.nodes.add_row(list, None))
+        Ok(self.nodes.add_row(list))
     }
 
     /// New output for a single child node (with aliases).
@@ -1940,48 +1960,7 @@ impl Plan {
             true,
             need_sharding_column,
         )?;
-        Ok(self.nodes.add_row(list, None))
-    }
-
-    /// New output row for union node.
-    ///
-    /// # Errors
-    /// Returns `SbroadError`:
-    /// - children are inconsistent relational nodes
-    pub fn add_row_for_union_except(
-        &mut self,
-        left: NodeId,
-        right: NodeId,
-    ) -> Result<NodeId, SbroadError> {
-        let list = self.new_columns(
-            &NewColumnsSource::ExceptUnion {
-                left_child: left,
-                right_child: right,
-            },
-            true,
-            true,
-        )?;
-        Ok(self.nodes.add_row(list, None))
-    }
-
-    /// New output row for join node.
-    ///
-    /// Contains all the columns from left and right children.
-    ///
-    /// # Errors
-    /// Returns `SbroadError`:
-    /// - children are inconsistent relational nodes
-    pub fn add_row_for_join(&mut self, left: NodeId, right: NodeId) -> Result<NodeId, SbroadError> {
-        let list = self.new_columns(
-            &NewColumnsSource::Join {
-                outer_child: left,
-                inner_child: right,
-                targets: JoinTargets::Both,
-            },
-            true,
-            true,
-        )?;
-        Ok(self.nodes.add_row(list, None))
+        Ok(self.nodes.add_row(list))
     }
 
     /// Project columns from the child node.
@@ -2016,7 +1995,7 @@ impl Plan {
             false,
             true,
         )?;
-        Ok(self.nodes.add_row(list, None))
+        Ok(self.nodes.add_row(list))
     }
 
     /// Project all the columns from the child's subquery node.
@@ -2024,21 +2003,19 @@ impl Plan {
     ///
     /// Returns сreated row id
     pub fn add_row_from_subquery(&mut self, sq_id: NodeId) -> Result<NodeId, SbroadError> {
-        let sq_rel = self.get_relation_node(sq_id)?;
-        let sq_output_id = sq_rel.output();
-        let sq_alias_ids_len = self.get_row_list(sq_output_id)?.len();
+        let column_types: Vec<DerivedType> = self
+            .columns_of(sq_id)?
+            .map(|column| Ok(column?.r#type))
+            .collect::<Result<_, SbroadError>>()?;
 
-        let mut new_refs = Vec::with_capacity(sq_alias_ids_len);
-        for pos in 0..sq_alias_ids_len {
-            let alias_id = *self
-                .get_row_list(sq_output_id)?
-                .get(pos)
-                .expect("subquery output row already checked");
-            let alias_type = self.get_expression_node(alias_id)?.calculate_type(self)?;
-            let ref_id = self.nodes.add_sq_ref(sq_id, pos, alias_type);
+        let mut new_refs = Vec::with_capacity(column_types.len());
+        for (pos, column_type) in column_types.into_iter().enumerate() {
+            let ref_id = self
+                .nodes
+                .add_sq_ref(RelColumn::new(sq_id, pos), column_type);
             new_refs.push(ref_id);
         }
-        let row_id = self.nodes.add_row(new_refs.clone(), None);
+        let row_id = self.nodes.add_row(new_refs.clone());
         Ok(row_id)
     }
 
@@ -2126,11 +2103,6 @@ impl Plan {
                     "Reference node has no targets".into(),
                 )),
                 ReferenceTarget::Single(child_id) => Ok(*child_id),
-                ReferenceTarget::Union(_, _) | ReferenceTarget::Values(_) => {
-                    Err(SbroadError::UnexpectedNumberOfValues(
-                        "Reference expected to point exactly a single relational node".into(),
-                    ))
-                }
             },
             Node::Expression(Expression::SubQueryReference(SubQueryReference {
                 rel_id, ..
@@ -2230,7 +2202,9 @@ impl Plan {
         from: NodeId,
         to: NodeId,
     ) -> Result<(), SbroadError> {
-        self.replace_target_in_subtree(self.get_relational_output(parent_id)?, from, to)?;
+        if let Some(output) = self.get_relation_node(parent_id)?.explicit_output() {
+            self.replace_target_in_subtree(output, from, to)?;
+        }
 
         // We maintain the undo journal because sometimes we revert changes with undo, and their
         // references point to an old target. This is relevant for motion, for example, because
@@ -2339,22 +2313,6 @@ impl Plan {
                         if node_id == &from_id {
                             *node_id = to_id;
                         }
-                    }
-                    ReferenceTarget::Union(left, right) => {
-                        if left == &from_id {
-                            *left = to_id;
-                        }
-
-                        if right == &from_id {
-                            *right = to_id;
-                        }
-                    }
-                    ReferenceTarget::Values(nodes) => {
-                        nodes.iter_mut().for_each(|node| {
-                            if node == &from_id {
-                                *node = to_id;
-                            }
-                        });
                     }
                 },
                 MutExpression::SubQueryReference(SubQueryReference { rel_id, .. })

@@ -243,13 +243,13 @@ fn add_rows_and_cond(
     let left_row_id = if left.len() == 1 {
         left[0]
     } else {
-        plan.nodes.add_row(left, None)
+        plan.nodes.add_row(left)
     };
 
     let right_row_id = if right.len() == 1 {
         right[0]
     } else {
-        plan.nodes.add_row(right, None)
+        plan.nodes.add_row(right)
     };
     plan.add_cond(left_row_id, *op, right_row_id)
 }

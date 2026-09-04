@@ -32,12 +32,8 @@ fn scan_rel() {
     .unwrap();
     plan.add_rel(t);
 
-    let scan_output = NodeId {
-        offset: 0,
-        arena_type: ArenaType::Arena64,
-    };
     let scan_node = NodeId {
-        offset: 4,
+        offset: 0,
         arena_type: ArenaType::Arena96,
     };
 
@@ -49,8 +45,8 @@ fn scan_rel() {
 
     let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![1, 0]) };
     assert_eq!(
-        plan.get_distribution(scan_output).unwrap(),
-        Distribution::Segment { keys: keys.into() }
+        plan.rel_distr_ref(scan_node).unwrap(),
+        &Distribution::Segment { keys: keys.into() }
     );
 }
 
@@ -83,25 +79,25 @@ fn projection() {
             .unwrap_err()
     );
 
-    let mut test_node = NodeId {
-        offset: 0,
-        arena_type: ArenaType::Arena32,
-    };
-
     // Expression node instead of relational one
+    let const_node = plan.add_const(Value::from(1_i64));
     assert_eq!(
         SbroadError::Invalid(
             Entity::Node,
-            Some(
-                "node is not Relational type: Expression(Alias(Alias { name: \"a\", child: NodeId { offset: 0, arena_type: Arena96 } }))".into()
-            )
+            Some(format_smolstr!(
+                "node is not Relational type: {:?}",
+                plan.get_node(const_node).unwrap()
+            ))
         ),
-        plan.add_proj(test_node, vec![], &["a"], false, false).unwrap_err()
+        plan.add_proj(const_node, vec![], &["a"], false, false)
+            .unwrap_err()
     );
 
-    test_node.offset = 42;
-
     // Try to build projection from the non-existing node
+    let test_node = NodeId {
+        offset: 42,
+        arena_type: ArenaType::Arena32,
+    };
     assert_eq!(
         SbroadError::NotFound(Entity::Node, "from Arena32 with index 42".to_smolstr()),
         plan.add_proj(test_node, vec![], &["a"], false, false)
@@ -136,7 +132,7 @@ fn selection() {
     let ref_row = plan.add_row_from_child(scan_id, &["a", "b"]).unwrap();
     let const_1 = plan.nodes.add_const(Value::from(1));
     let const_10 = plan.nodes.add_const(Value::from(10));
-    let const_row = plan.nodes.add_row(vec![const_1, const_10], None);
+    let const_row = plan.nodes.add_row(vec![const_1, const_10]);
     let gt_id = plan.nodes.add_bool(ref_row, Bool::Gt, const_row).unwrap();
 
     // Correct Selection operator
@@ -392,16 +388,16 @@ fn sub_query() {
     plan.add_sub_query(scan_id, Some("sq")).unwrap();
 
     // Non-relational child node
-    let a = NodeId {
-        offset: 0,
-        arena_type: ArenaType::Arena32,
-    };
+    let const_node = plan.add_const(Value::from(1_i64));
     assert_eq!(
         SbroadError::Invalid(
             Entity::Node,
-            Some("node is not Relational type: Expression(Alias(Alias { name: \"a\", child: NodeId { offset: 0, arena_type: Arena96 } }))".into())
+            Some(format_smolstr!(
+                "node is not Relational type: {:?}",
+                plan.get_node(const_node).unwrap()
+            ))
         ),
-        plan.add_sub_query(a, Some("sq")).unwrap_err()
+        plan.add_sub_query(const_node, Some("sq")).unwrap_err()
     );
 }
 

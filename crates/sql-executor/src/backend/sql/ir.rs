@@ -23,9 +23,11 @@ use twox_hash::XxHash3_64;
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::ir::{DqlSubtree, ExecutionPlan, SqlExecutionView, SubtreeViewBuilder};
+use crate::ir::columns::RelColumn;
 use crate::ir::operator::{ConflictDoUpdate, ConflictStrategy, OrderByEntity, OrderByType};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
+use crate::ir::Plan;
 
 use super::tree::SyntaxData;
 
@@ -142,14 +144,11 @@ fn push_sql_column_reference(sql: &mut String, column: &SqlColumnReference) {
     push_identifier(sql, &column.name);
 }
 
-fn reference_target(
-    ir_plan: &crate::ir::Plan,
-    ref_id: NodeId,
-) -> Result<Option<(NodeId, usize)>, SbroadError> {
-    let Ok(rel_id) = ir_plan.get_relational_from_reference_node(ref_id) else {
+fn reference_target(ir: &Plan, ref_id: NodeId) -> Result<Option<RelColumn>, SbroadError> {
+    let Ok(rel_id) = ir.get_relational_from_reference_node(ref_id) else {
         return Ok(None);
     };
-    let position = match ir_plan.get_expression_node(ref_id)? {
+    let position = match ir.get_expression_node(ref_id)? {
         Expression::Reference(Reference { position, .. })
         | Expression::SubQueryReference(SubQueryReference { position, .. }) => *position,
         _ => {
@@ -157,48 +156,38 @@ fn reference_target(
                 Entity::Expression,
                 Some(format_smolstr!(
                     "expected reference node, got {:?}",
-                    ir_plan.get_node(ref_id)?
+                    ir.get_node(ref_id)?
                 )),
             ))
         }
     };
-    Ok(Some((rel_id, position)))
+    Ok(Some(RelColumn::new(rel_id, position)))
 }
 
-fn output_alias_name(
-    ir_plan: &crate::ir::Plan,
-    rel_id: NodeId,
-    position: usize,
-) -> Result<Option<SmolStr>, SbroadError> {
-    let rel_node = ir_plan.get_relation_node(rel_id)?;
-    let output_row = ir_plan.get_expression_node(rel_node.output())?;
-    let Some(col_id) = output_row.get_row_list()?.get(position).copied() else {
+fn output_alias_name(ir: &Plan, rel_col: RelColumn) -> Result<Option<SmolStr>, SbroadError> {
+    if rel_col.position >= ir.columns_len(rel_col.rel_id)? {
         return Ok(None);
-    };
-    match ir_plan.get_expression_node(col_id)? {
-        Expression::Alias(Alias { name, .. }) => Ok(Some(name.clone())),
-        _ => Ok(None),
     }
+    Ok(Some(ir.column_at(rel_col)?.name_owned()))
 }
 
 fn exposed_or_output_alias(
     exposed: Option<SmolStr>,
-    ir_plan: &crate::ir::Plan,
-    rel_id: NodeId,
-    position: usize,
+    ir: &Plan,
+    rel_col: RelColumn,
 ) -> Result<Option<SmolStr>, SbroadError> {
     match exposed {
         Some(name) => Ok(Some(name)),
-        None => output_alias_name(ir_plan, rel_id, position),
+        None => output_alias_name(ir, rel_col),
     }
 }
 
 fn asterisk_exposed_column_name(
     view: &(impl SqlExecutionView + ?Sized),
-    ir_plan: &crate::ir::Plan,
+    ir: &Plan,
     col_id: NodeId,
 ) -> Result<Option<SmolStr>, SbroadError> {
-    let ref_id = match ir_plan.get_expression_node(col_id)? {
+    let ref_id = match ir.get_expression_node(col_id)? {
         Expression::Alias(Alias { child, .. }) => *child,
         _ => col_id,
     };
@@ -206,13 +195,13 @@ fn asterisk_exposed_column_name(
         position,
         asterisk_source: Some(_),
         ..
-    }) = ir_plan.get_expression_node(ref_id)?
+    }) = ir.get_expression_node(ref_id)?
     else {
         return Ok(None);
     };
 
-    let source_rel_id = ir_plan.get_reference_source_relation(ref_id)?;
-    relation_exposed_column_name(view, ir_plan, source_rel_id, *position)
+    let source_rel_id = ir.get_reference_source_relation(ref_id)?;
+    relation_exposed_column_name(view, ir, RelColumn::new(source_rel_id, *position))
 }
 
 fn motion_serialize_as_empty_enabled(
@@ -226,125 +215,106 @@ fn motion_serialize_as_empty_enabled(
 
 fn relation_exposed_column_name(
     view: &(impl SqlExecutionView + ?Sized),
-    ir_plan: &crate::ir::Plan,
-    rel_id: NodeId,
-    position: usize,
+    ir: &Plan,
+    rel_col: RelColumn,
 ) -> Result<Option<SmolStr>, SbroadError> {
-    let rel_node = ir_plan.get_relation_node(rel_id)?;
+    let RelColumn { rel_id, position } = rel_col;
+    let rel_node = ir.get_relation_node(rel_id)?;
     match rel_node {
         Relational::Motion(motion) => {
             if motion_serialize_as_empty_enabled(view, rel_id, motion) {
-                return output_alias_name(ir_plan, rel_id, position);
+                return output_alias_name(ir, rel_col);
             }
             if let Some(vtable) = view.get_vtables().get(&rel_id) {
-                return vtable_column_name(vtable.as_ref(), rel_id, position).map(Some);
+                return vtable_column_name(vtable.as_ref(), rel_col).map(Some);
             }
             if !motion.policy.is_local() {
                 let vtable = view.get_motion_vtable(rel_id)?;
-                return vtable_column_name(vtable.as_ref(), rel_id, position).map(Some);
+                return vtable_column_name(vtable.as_ref(), rel_col).map(Some);
             }
             if let Some(child) = motion.child {
-                return relation_exposed_column_name(view, ir_plan, child, position);
+                return relation_exposed_column_name(view, ir, RelColumn::new(child, position));
             }
-            output_alias_name(ir_plan, rel_id, position)
+            output_alias_name(ir, rel_col)
         }
         Relational::ScanCte(scan) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, scan.child, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(scan.child, position))?,
+            ir,
+            rel_col,
         ),
         Relational::ScanSubQuery(scan) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, scan.child, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(scan.child, position))?,
+            ir,
+            rel_col,
         ),
         Relational::Union(set) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, set.left, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(set.left, position))?,
+            ir,
+            rel_col,
         ),
         Relational::UnionAll(set) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, set.left, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(set.left, position))?,
+            ir,
+            rel_col,
         ),
         Relational::Except(set) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, set.left, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(set.left, position))?,
+            ir,
+            rel_col,
         ),
         Relational::Intersect(set) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, set.left, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(set.left, position))?,
+            ir,
+            rel_col,
         ),
         Relational::Selection(selection) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, selection.child, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(selection.child, position))?,
+            ir,
+            rel_col,
         ),
         Relational::Having(having) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, having.child, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(having.child, position))?,
+            ir,
+            rel_col,
         ),
         Relational::OrderBy(order_by) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, order_by.child, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(order_by.child, position))?,
+            ir,
+            rel_col,
         ),
         Relational::Limit(limit) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, limit.child, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(limit.child, position))?,
+            ir,
+            rel_col,
         ),
         Relational::GroupBy(group_by) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir_plan, group_by.child, position)?,
-            ir_plan,
-            rel_id,
-            position,
+            relation_exposed_column_name(view, ir, RelColumn::new(group_by.child, position))?,
+            ir,
+            rel_col,
         ),
         Relational::Projection(Projection { output, .. }) => {
-            let output_row = ir_plan.get_expression_node(*output)?;
+            let output_row = ir.get_expression_node(*output)?;
             let Some(col_id) = output_row.get_row_list()?.get(position).copied() else {
                 return Ok(None);
             };
-            exposed_or_output_alias(
-                asterisk_exposed_column_name(view, ir_plan, col_id)?,
-                ir_plan,
-                rel_id,
-                position,
-            )
+            exposed_or_output_alias(asterisk_exposed_column_name(view, ir, col_id)?, ir, rel_col)
         }
-        _ => output_alias_name(ir_plan, rel_id, position),
+        _ => output_alias_name(ir, rel_col),
     }
 }
 
-fn sql_column_reference(
+/// Resolves the column `rel_col` to the column reference rendered in SQL.
+fn sql_column_reference_at(
     view: &(impl SqlExecutionView + ?Sized),
-    ir_plan: &crate::ir::Plan,
-    ref_id: NodeId,
+    ir: &Plan,
+    mut rel_col: RelColumn,
 ) -> Result<Option<SqlColumnReference>, SbroadError> {
-    let Some((mut rel_id, mut position)) = reference_target(ir_plan, ref_id)? else {
-        return Ok(None);
-    };
-
     loop {
-        let rel_node = ir_plan.get_relation_node(rel_id)?;
+        let rel_node = ir.get_relation_node(rel_col.rel_id)?;
         match rel_node {
             Relational::Motion(motion) => {
-                if motion_serialize_as_empty_enabled(view, rel_id, motion) {
-                    let Some(name) = output_alias_name(ir_plan, rel_id, position)? else {
+                if motion_serialize_as_empty_enabled(view, rel_col.rel_id, motion) {
+                    let Some(name) = output_alias_name(ir, rel_col)? else {
                         return Ok(None);
                     };
                     return Ok(Some(SqlColumnReference {
@@ -352,27 +322,27 @@ fn sql_column_reference(
                         qualifier: None,
                     }));
                 }
-                if let Some(vtable) = view.get_vtables().get(&rel_id) {
-                    return sql_column_reference_from_vtable(vtable.as_ref(), rel_id, position)
-                        .map(Some);
+                if let Some(vtable) = view.get_vtables().get(&rel_col.rel_id) {
+                    return sql_column_reference_from_vtable(vtable.as_ref(), rel_col).map(Some);
                 }
                 if !motion.policy.is_local() {
-                    let vtable = view.get_motion_vtable(rel_id)?;
-                    return sql_column_reference_from_vtable(vtable.as_ref(), rel_id, position)
-                        .map(Some);
+                    let vtable = view.get_motion_vtable(rel_col.rel_id)?;
+                    return sql_column_reference_from_vtable(vtable.as_ref(), rel_col).map(Some);
                 }
             }
             Relational::ScanCte(scan) => {
-                let name = relation_exposed_column_name(view, ir_plan, scan.child, position)?
-                    .or(output_alias_name(ir_plan, rel_id, position)?);
+                let child_col = RelColumn::new(scan.child, rel_col.position);
+                let name = relation_exposed_column_name(view, ir, child_col)?
+                    .or(output_alias_name(ir, rel_col)?);
                 return Ok(name.map(|name| SqlColumnReference {
                     name,
                     qualifier: Some(scan.alias.clone()),
                 }));
             }
             Relational::ScanSubQuery(scan) => {
-                let name = relation_exposed_column_name(view, ir_plan, scan.child, position)?
-                    .or(output_alias_name(ir_plan, rel_id, position)?);
+                let child_col = RelColumn::new(scan.child, rel_col.position);
+                let name = relation_exposed_column_name(view, ir, child_col)?
+                    .or(output_alias_name(ir, rel_col)?);
                 return Ok(name.map(|name| SqlColumnReference {
                     name,
                     qualifier: scan.alias.clone().filter(|alias| !alias.is_empty()),
@@ -382,71 +352,43 @@ fn sql_column_reference(
             _ => {}
         }
 
-        let output_row = ir_plan.get_expression_node(rel_node.output())?;
-        let Some(col_id) = output_row.get_row_list()?.get(position).copied() else {
+        // The node passes a column of its child through: follow it down.
+        if rel_col.position >= ir.columns_len(rel_col.rel_id)? {
+            return Ok(None);
+        }
+        let Some(source) = ir.column_source(rel_col)? else {
             return Ok(None);
         };
-        match ir_plan.get_expression_node(col_id)? {
-            Expression::Alias(Alias { child, .. }) => match ir_plan.get_expression_node(*child)? {
-                Expression::Reference(Reference {
-                    position: child_pos,
-                    ..
-                })
-                | Expression::SubQueryReference(SubQueryReference {
-                    position: child_pos,
-                    ..
-                }) => {
-                    let Ok(next_rel_id) = ir_plan.get_relational_from_reference_node(*child) else {
-                        return Ok(None);
-                    };
-                    rel_id = next_rel_id;
-                    position = *child_pos;
-                }
-                _ => return Ok(None),
-            },
-            Expression::Reference(Reference {
-                position: child_pos,
-                ..
-            })
-            | Expression::SubQueryReference(SubQueryReference {
-                position: child_pos,
-                ..
-            }) => {
-                let Ok(next_rel_id) = ir_plan.get_relational_from_reference_node(col_id) else {
-                    return Ok(None);
-                };
-                rel_id = next_rel_id;
-                position = *child_pos;
-            }
-            _ => return Ok(None),
-        }
+        rel_col = source;
     }
 }
 
 fn vtable_column_name(
     vtable: &crate::executor::vtable::VirtualTable,
-    rel_id: NodeId,
-    position: usize,
+    rel_col: RelColumn,
 ) -> Result<SmolStr, SbroadError> {
     vtable
         .get_columns()
-        .get(position)
+        .get(rel_col.position)
         .map(|column| column.name.clone())
         .ok_or_else(|| {
             SbroadError::NotFound(
                 Entity::Column,
-                format_smolstr!("at position {position} in motion {rel_id:?}"),
+                format_smolstr!(
+                    "at position {} in motion {:?}",
+                    rel_col.position,
+                    rel_col.rel_id
+                ),
             )
         })
 }
 
 fn sql_column_reference_from_vtable(
     vtable: &crate::executor::vtable::VirtualTable,
-    rel_id: NodeId,
-    position: usize,
+    rel_col: RelColumn,
 ) -> Result<SqlColumnReference, SbroadError> {
     Ok(SqlColumnReference {
-        name: vtable_column_name(vtable, rel_id, position)?,
+        name: vtable_column_name(vtable, rel_col)?,
         qualifier: vtable.get_alias().cloned(),
     })
 }
@@ -466,26 +408,13 @@ fn is_sql_scope_boundary(rel_node: &Relational<'_>) -> bool {
     )
 }
 
-fn rendered_reference_name(
-    view: &(impl SqlExecutionView + ?Sized),
-    ir_plan: &crate::ir::Plan,
-    ref_id: NodeId,
-) -> Result<SmolStr, SbroadError> {
-    if let Some(column) = sql_column_reference(view, ir_plan, ref_id)? {
-        return Ok(column.name);
-    }
-
-    let expr = ir_plan.get_expression_node(ref_id)?;
-    Ok(ir_plan.get_alias_from_reference_node(&expr)?.into())
-}
-
 fn write_reference_sql(
     view: &(impl SqlExecutionView + ?Sized),
-    ir_plan: &crate::ir::Plan,
+    ir: &Plan,
     sql: &mut String,
     ref_id: NodeId,
 ) -> Result<(), SbroadError> {
-    let expr = ir_plan.get_expression_node(ref_id)?;
+    let expr = ir.get_expression_node(ref_id)?;
     if !matches!(
         expr,
         Expression::Reference(_) | Expression::SubQueryReference(_)
@@ -496,33 +425,43 @@ fn write_reference_sql(
         ));
     };
 
-    let Some((rel_id, position)) = reference_target(ir_plan, ref_id)? else {
+    let Some(rel_col) = reference_target(ir, ref_id)? else {
         return Err(SbroadError::Invalid(
             Entity::Expression,
             Some(format_smolstr!("reference node {ref_id:?} has no target")),
         ));
     };
-    let rel_node = ir_plan.get_relation_node(rel_id)?;
-    let alias = ir_plan.get_alias_from_reference_node(&expr)?;
+    let rel_node = ir.get_relation_node(rel_col.rel_id)?;
+    let alias = ir.get_alias_from_reference_node(&expr)?;
 
     if matches!(expr, Expression::Reference(_)) && rel_node.is_insert() {
-        push_identifier(sql, alias);
+        push_identifier(sql, &alias);
         return Ok(());
     }
 
-    if let Some(column) = sql_column_reference(view, ir_plan, ref_id)? {
+    write_column_reference_sql(view, ir, sql, rel_col)
+}
+
+/// Writes the column `rel_col` the way a reference to it is rendered in SQL.
+fn write_column_reference_sql(
+    view: &(impl SqlExecutionView + ?Sized),
+    ir: &Plan,
+    sql: &mut String,
+    rel_col: RelColumn,
+) -> Result<(), SbroadError> {
+    if let Some(column) = sql_column_reference_at(view, ir, rel_col)? {
         push_sql_column_reference(sql, &column);
         return Ok(());
     }
 
-    let alias = rendered_reference_name(view, ir_plan, ref_id)?;
-    if let Some(name) = ir_plan.scan_name(rel_id, position)? {
+    let alias = ir.column_at(rel_col)?.name;
+    if let Some(name) = ir.scan_name(rel_col)? {
         push_identifier(sql, name);
         sql.push('.');
-        push_identifier(sql, alias.as_str());
+        push_identifier(sql, &alias);
         return Ok(());
     }
-    push_identifier(sql, alias.as_str());
+    push_identifier(sql, &alias);
     Ok(())
 }
 
@@ -581,17 +520,17 @@ fn hash_iocdu_rhs_header(hasher: &mut XxHash3_64, value: IocduRhsSalt) {
 
 fn hash_iocdu(
     hasher: &mut XxHash3_64,
-    ir_plan: &crate::ir::Plan,
+    ir: &Plan,
     relation_name: &SmolStr,
     payload: &ConflictDoUpdate,
 ) -> Result<(), SbroadError> {
-    let relation = ir_plan.relations.get(relation_name).ok_or_else(|| {
+    let relation = ir.relations.get(relation_name).ok_or_else(|| {
         SbroadError::NotFound(
             Entity::Table,
             format_smolstr!("{relation_name} among plan relations"),
         )
     })?;
-    let schema_version = ir_plan.table_version_map.get(&relation.id).ok_or_else(|| {
+    let schema_version = ir.table_version_map.get(&relation.id).ok_or_else(|| {
         SbroadError::NotFound(
             Entity::Table,
             format_smolstr!("in version map with name: {}", relation.name),
@@ -615,20 +554,16 @@ fn hash_iocdu(
             hash_iocdu_rhs_header(hasher, IocduRhsSalt::Param);
             hash_plan_id_part(hasher, &target_type)?;
         } else {
-            hash_iocdu_rhs(hasher, ir_plan, item.rhs.expr())?;
+            hash_iocdu_rhs(hasher, ir, item.rhs.expr())?;
         }
     }
     Ok(())
 }
 
-fn hash_iocdu_rhs(
-    hasher: &mut XxHash3_64,
-    ir_plan: &crate::ir::Plan,
-    rhs: NodeId,
-) -> Result<(), SbroadError> {
-    let expr = ir_plan.get_expression_node(rhs)?;
+fn hash_iocdu_rhs(hasher: &mut XxHash3_64, ir: &Plan, rhs: NodeId) -> Result<(), SbroadError> {
+    let expr = ir.get_expression_node(rhs)?;
     if let Expression::Cast(Cast { child, to }) = expr {
-        let Expression::LetVarRef(var) = ir_plan.get_expression_node(*child)? else {
+        let Expression::LetVarRef(var) = ir.get_expression_node(*child)? else {
             return Err(SbroadError::Invalid(
                 Entity::Plan,
                 Some("unexpected IOCDU cast expression".into()),
@@ -698,18 +633,17 @@ fn subtree_node_id(id: NodeId, offset: u32) -> NodeId {
 // Reference targets may point to a wrapper node omitted from the SQL subtree.
 // Hash such wrappers through their visible output or child, never through raw id.
 fn to_subtree_reference_node_id(
-    ir_plan: &crate::ir::Plan,
+    ir: &Plan,
     id: NodeId,
     node_positions: &AHashMap<NodeId, u32>,
 ) -> Result<NodeId, SbroadError> {
     if let Some(offset) = node_positions.get(&id) {
         return Ok(subtree_node_id(id, *offset));
     }
-    let Node::Relational(rel) = ir_plan.get_node(id)? else {
+    let Node::Relational(rel) = ir.get_node(id)? else {
         return Err(outside_plan_id_subtree(id));
     };
-    if rel.has_output() {
-        let output = rel.output();
+    if let Some(output) = rel.explicit_output() {
         if let Some(offset) = node_positions.get(&output) {
             return Ok(subtree_node_id(id, *offset));
         }
@@ -728,48 +662,30 @@ fn to_subtree_reference_node_id(
 }
 
 fn to_subtree_reference_target(
-    ir_plan: &crate::ir::Plan,
+    ir: &Plan,
     target: &ReferenceTarget,
     node_positions: &AHashMap<NodeId, u32>,
 ) -> Result<ReferenceTarget, SbroadError> {
     match target {
         ReferenceTarget::Leaf => Ok(ReferenceTarget::Leaf),
         ReferenceTarget::Single(id) => Ok(ReferenceTarget::Single(to_subtree_reference_node_id(
-            ir_plan,
+            ir,
             *id,
             node_positions,
         )?)),
-        ReferenceTarget::Union(left, right) => Ok(ReferenceTarget::Union(
-            to_subtree_reference_node_id(ir_plan, *left, node_positions)?,
-            to_subtree_reference_node_id(ir_plan, *right, node_positions)?,
-        )),
-        // Value rows are plain expressions always rendered as a part of the subtree.
-        ReferenceTarget::Values(rows) => Ok(ReferenceTarget::Values(
-            rows.iter()
-                .map(|id| to_subtree_node_id(*id, node_positions))
-                .collect::<Result<Vec<_>, _>>()?,
-        )),
     }
 }
 
 fn plan_id_reference_target_has_system_column(
-    ir_plan: &crate::ir::Plan,
+    ir: &Plan,
     target: &ReferenceTarget,
 ) -> Result<bool, SbroadError> {
     for rel_id in target.iter() {
-        let Node::Relational(rel) = ir_plan.get_node(*rel_id)? else {
+        let Node::Relational(_) = ir.get_node(*rel_id)? else {
             continue;
         };
-        let output = ir_plan.get_expression_node(rel.output())?;
-        for alias_id in output.get_row_list()? {
-            let child_id = ir_plan.get_child_under_alias(*alias_id)?;
-            if matches!(
-                ir_plan.get_expression_node(child_id),
-                Ok(Expression::Reference(Reference {
-                    is_system: true,
-                    ..
-                }))
-            ) {
+        for column in ir.columns_of(*rel_id)? {
+            if column?.is_system {
                 return Ok(true);
             }
         }
@@ -788,24 +704,28 @@ fn normalize_plan_id_optional_node_id(
 }
 
 fn normalize_plan_id_relational(
-    ir_plan: &crate::ir::Plan,
+    ir: &Plan,
     rel: &mut RelOwned,
     node_positions: &AHashMap<NodeId, u32>,
 ) -> Result<(), SbroadError> {
     for child in rel.mut_children() {
-        *child = to_subtree_reference_node_id(ir_plan, *child, node_positions)?;
+        *child = to_subtree_reference_node_id(ir, *child, node_positions)?;
     }
     for subquery in rel.mut_subqueries() {
-        *subquery = to_subtree_reference_node_id(ir_plan, *subquery, node_positions)?;
+        *subquery = to_subtree_reference_node_id(ir, *subquery, node_positions)?;
     }
-    if rel.has_output() {
-        let output = rel.mut_output();
+    if let Some(output) = rel.explicit_output_mut() {
         *output = to_subtree_node_id(*output, node_positions)?;
     }
 
+    // Distribution drives motions and bucket discovery on the router, but it
+    // doesn't change the SQL pattern rendered for the storages. Keeping it in
+    // the key would only reduce BLOCK_PATTERN_CACHE reuse.
+    rel.unset_distr();
+
     match rel {
         RelOwned::Join(join) => {
-            join.condition = *ir_plan.undo().get_oldest(&join.condition);
+            join.condition = *ir.undo().get_oldest(&join.condition);
             join.condition = to_subtree_node_id(join.condition, node_positions)?;
         }
         RelOwned::Projection(projection) => {
@@ -816,7 +736,7 @@ fn normalize_plan_id_relational(
             normalize_plan_id_optional_node_id(&mut projection.having, node_positions)?;
         }
         RelOwned::Selection(selection) => {
-            selection.filter = *ir_plan.undo().get_oldest(&selection.filter);
+            selection.filter = *ir.undo().get_oldest(&selection.filter);
             selection.filter = to_subtree_node_id(selection.filter, node_positions)?;
         }
         RelOwned::GroupBy(group_by) => {
@@ -825,7 +745,7 @@ fn normalize_plan_id_relational(
             }
         }
         RelOwned::Having(having) => {
-            having.filter = *ir_plan.undo().get_oldest(&having.filter);
+            having.filter = *ir.undo().get_oldest(&having.filter);
             having.filter = to_subtree_node_id(having.filter, node_positions)?;
         }
         RelOwned::OrderBy(order_by) => {
@@ -870,7 +790,7 @@ impl SubtreeViewBuilder<'_> {
     }
 
     fn calculate_subtree_hash(&self) -> Result<SubtreeHash, SbroadError> {
-        let ir_plan = self.exec_plan().get_ir_plan();
+        let ir = self.exec_plan().get_ir_plan();
         let mut hasher = XxHash3_64::new();
         let mut node_positions = self
             .node_ids()
@@ -883,7 +803,7 @@ impl SubtreeViewBuilder<'_> {
         for node_id in self.node_ids() {
             let Node::Relational(Relational::Motion(Motion {
                 child: Some(child), ..
-            })) = ir_plan.get_node(*node_id)?
+            })) = ir.get_node(*node_id)?
             else {
                 continue;
             };
@@ -893,13 +813,17 @@ impl SubtreeViewBuilder<'_> {
             let motion_pos = *node_positions
                 .get(node_id)
                 .expect("subtree nodes should have local positions");
-            for hidden_id in ir_plan.exec_plan_subtree_iter(*child, Snapshot::Oldest) {
+            // The motion output references the hidden child itself, and a
+            // child without an explicit output or relational children
+            // (`VALUES`) cannot be resolved through its descendants.
+            node_positions.entry(*child).or_insert(motion_pos);
+            for hidden_id in ir.exec_plan_subtree_iter(*child, Snapshot::Oldest) {
                 node_positions.entry(hidden_id).or_insert(motion_pos);
             }
         }
 
         for node_id in self.node_ids() {
-            let node = ir_plan.get_node(*node_id)?;
+            let node = ir.get_node(*node_id)?;
             hash_plan_id_header(&mut hasher, HashHeaderSalt::Node);
             hash_plan_id_part(&mut hasher, &to_subtree_node_id(*node_id, &node_positions)?)?;
             match node {
@@ -919,8 +843,8 @@ impl SubtreeViewBuilder<'_> {
                     is_system,
                 })) => {
                     let target_has_system_column =
-                        plan_id_reference_target_has_system_column(ir_plan, target)?;
-                    let target = to_subtree_reference_target(ir_plan, target, &node_positions)?;
+                        plan_id_reference_target_has_system_column(ir, target)?;
+                    let target = to_subtree_reference_target(ir, target, &node_positions)?;
                     hash_plan_id_header(&mut hasher, HashHeaderSalt::Reference);
                     hash_plan_id_part(&mut hasher, &target)?;
                     hash_plan_id_part(&mut hasher, position)?;
@@ -960,10 +884,10 @@ impl SubtreeViewBuilder<'_> {
                             insert.conflict_strategy = ConflictStrategy::DoFail;
                         }
                     }
-                    normalize_plan_id_relational(ir_plan, &mut rel, &node_positions)?;
+                    normalize_plan_id_relational(ir, &mut rel, &node_positions)?;
                     hash_plan_id_part(&mut hasher, &rel)?;
                     if let Some((relation, payload)) = insert_do_update {
-                        hash_iocdu(&mut hasher, ir_plan, relation, payload)?;
+                        hash_iocdu(&mut hasher, ir, relation, payload)?;
                     }
                 }
                 _ => {
@@ -1163,7 +1087,7 @@ fn sql_append_bucket_filter<V: SqlExecutionView + ?Sized>(
     selection_id: NodeId,
     parameter_count: usize,
 ) -> Result<(), SbroadError> {
-    let Some(bucket_ref_id) = view.get_bucket_ref(selection_id) else {
+    let Some(bucket_col) = view.get_bucket_ref(selection_id) else {
         return Ok(());
     };
 
@@ -1184,25 +1108,13 @@ fn sql_append_bucket_filter<V: SqlExecutionView + ?Sized>(
         ));
     }
 
-    let ir_plan = view.get_ir_plan();
-    let bucket_ref = ir_plan.get_expression_node(bucket_ref_id)?;
-    let Expression::Reference(_) = bucket_ref else {
-        return Err(SbroadError::Invalid(
-            Entity::Expression,
-            Some(format_smolstr!(
-                "bucket filter target {bucket_ref_id:?} is not a reference"
-            )),
-        ));
-    };
+    let ir = view.get_ir_plan();
 
     sql.push(' ');
-    write_reference_sql(view, ir_plan, sql, bucket_ref_id)?;
+    write_column_reference_sql(view, ir, sql, bucket_col)?;
     sql.push_str(" IN (");
 
-    let param_type = ir_plan
-        .calculate_expression_type(bucket_ref_id)?
-        .map(DerivedType::new)
-        .unwrap_or(DerivedType::unknown());
+    let param_type = ir.column_at(bucket_col)?.r#type;
     let first_bucket_param = parameter_count + 1;
     for (pos, _) in bucket_ids.iter().enumerate() {
         if pos > 0 {
@@ -1256,7 +1168,7 @@ where
         result
     };
 
-    let ir_plan = view.get_ir_plan();
+    let ir = view.get_ir_plan();
     let constants = constants.as_ref().map(|constants| {
         constants
             .as_ref()
@@ -1374,7 +1286,7 @@ where
             SyntaxData::CloseBracket => sql.push(']'),
             SyntaxData::Trim => sql.push_str("TRIM"),
             SyntaxData::PlanId(id) => {
-                let node = ir_plan.get_node(*id)?;
+                let node = ir.get_node(*id)?;
                 match node {
                     Node::Ddl(_) => {
                         return Err(SbroadError::Unsupported(
@@ -1503,19 +1415,19 @@ where
                             })?;
                         }
                         Expression::Reference(_) => {
-                            let rel_id = ir_plan.get_relational_from_reference_node(*id)?;
-                            let rel_node = ir_plan.get_relation_node(rel_id)?;
-                            let alias = ir_plan.get_alias_from_reference_node(&expr)?;
+                            let rel_id = ir.get_relational_from_reference_node(*id)?;
+                            let rel_node = ir.get_relation_node(rel_id)?;
+                            let alias = ir.get_alias_from_reference_node(&expr)?;
                             if rel_node.is_insert() {
                                 // We expect `INSERT INTO t(a, b) VALUES(1, 2)`
                                 // rather then `INSERT INTO t(t.a, t.b) VALUES(1, 2)`.
-                                push_identifier(&mut sql, alias);
+                                push_identifier(&mut sql, &alias);
                                 continue;
                             }
-                            write_reference_sql(view, ir_plan, &mut sql, *id)?;
+                            write_reference_sql(view, ir, &mut sql, *id)?;
                         }
                         Expression::SubQueryReference(_) => {
-                            write_reference_sql(view, ir_plan, &mut sql, *id)?;
+                            write_reference_sql(view, ir, &mut sql, *id)?;
                         }
                         Expression::ScalarFunction(ScalarFunction {
                             name, is_system, ..
@@ -1535,7 +1447,7 @@ where
             SyntaxData::LetVarRef(id, name) => {
                 // Render LET-variable reference as `:<name>`; wrap in a
                 // CAST when type is known, mirroring the param path.
-                let var_type = match ir_plan.get_node(*id) {
+                let var_type = match ir.get_node(*id) {
                     Ok(Node::Expression(Expression::LetVarRef(let_var_ref))) => {
                         let_var_ref.var_type
                     }
@@ -1547,14 +1459,14 @@ where
                 }
             }
             SyntaxData::Parameter(id, index) | SyntaxData::ParameterColon(id, index) => {
-                let (param_type, index) = match ir_plan.get_node(*id) {
+                let (param_type, index) = match ir.get_node(*id) {
                     Ok(Node::Expression(Expression::Parameter(Parameter {
                         param_type, ..
                     }))) if constants.is_none() => (*param_type, *index),
                     Ok(Node::Expression(Expression::Constant(Constant { .. })))
                         if constants.is_some() =>
                     {
-                        let param_type = ir_plan.calculate_expression_type(*id)?;
+                        let param_type = ir.calculate_expression_type(*id)?;
                         let param_type = param_type
                             .map(DerivedType::new)
                             // NULL literal has an unknown type

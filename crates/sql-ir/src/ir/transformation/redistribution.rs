@@ -639,7 +639,7 @@ impl Plan {
                 self.is_single_node_subtree(child_id)
             }
             Relational::Selection(sel) => {
-                let child_dist = self.get_rel_distribution(sel.child)?;
+                let child_dist = self.rel_distr_ref(sel.child)?;
                 if !matches!(child_dist, Distribution::Segment { .. }) {
                     return Ok(false);
                 }
@@ -741,20 +741,21 @@ impl Plan {
     /// - uninitialized distribution for some row
     fn choose_strategy_for_bool_op_inner_sq(
         &self,
-        outer_id: NodeId,
-        inner_id: NodeId,
+        non_sq_out: NodeId,
+        sq_rel: NodeId,
         op: &Bool,
     ) -> Result<MotionPolicy, SbroadError> {
-        let outer_dist = self.get_distribution(outer_id)?;
-        let inner_dist = self.get_distribution(inner_id)?;
-        if let Distribution::Global = inner_dist {
+        let outer_dist = self.get_distribution(non_sq_out)?;
+        let inner_distr = self.rel_distr_ref(sq_rel)?;
+
+        if let Distribution::Global = inner_distr {
             return Ok(MotionPolicy::None);
         }
         if !(Bool::Eq == *op || Bool::In == *op) {
             return Ok(MotionPolicy::Full);
         }
 
-        match (outer_dist, inner_dist) {
+        match (outer_dist, inner_distr) {
             (
                 Distribution::Segment {
                     keys: ref keys_outer,
@@ -911,10 +912,10 @@ impl Plan {
         match (left, right) {
             (Some(left_sq), Some(right_sq)) => {
                 // Both sides are sub-queries and require a full copy.
-                if !matches!(self.get_distribution(bool_op.left)?, Distribution::Global) {
+                if !matches!(self.rel_distr_ref(left_sq)?, Distribution::Global) {
                     strategies.push((left_sq, MotionPolicy::Full));
                 }
-                if !matches!(self.get_distribution(bool_op.right)?, Distribution::Global) {
+                if !matches!(self.rel_distr_ref(right_sq)?, Distribution::Global) {
                     strategies.push((right_sq, MotionPolicy::Full));
                 }
             }
@@ -922,22 +923,14 @@ impl Plan {
                 // Left side is sub-query, right is an outer tuple.
                 strategies.push((
                     left_sq,
-                    self.choose_strategy_for_bool_op_inner_sq(
-                        bool_op.right,
-                        self.get_relational_output(left_sq)?,
-                        &bool_op.op,
-                    )?,
+                    self.choose_strategy_for_bool_op_inner_sq(bool_op.right, left_sq, &bool_op.op)?,
                 ));
             }
             (None, Some(right_sq)) => {
                 // Left side is an outer tuple, right is sub-query.
                 strategies.push((
                     right_sq,
-                    self.choose_strategy_for_bool_op_inner_sq(
-                        bool_op.left,
-                        self.get_relational_output(right_sq)?,
-                        &bool_op.op,
-                    )?,
+                    self.choose_strategy_for_bool_op_inner_sq(bool_op.left, right_sq, &bool_op.op)?,
                 ));
             }
             (None, None) => {}
@@ -964,7 +957,7 @@ impl Plan {
         if let Unary::Exists = op {
             let child_sq = self.get_sq_from_rel(rel_id, *child)?;
             if let Some(child_sq) = child_sq {
-                if let Distribution::Global = self.get_rel_distribution(child_sq)? {
+                if let Distribution::Global = self.rel_distr_ref(child_sq)? {
                     return Ok(Some((child_sq, MotionPolicy::None)));
                 }
                 return Ok(Some((child_sq, MotionPolicy::Full)));
@@ -1041,7 +1034,7 @@ impl Plan {
         };
 
         // Collect the distribution of the child.
-        let child_dist = self.get_rel_distribution(first_child_id)?.to_owned();
+        let child_dist = self.rel_distr_ref(first_child_id)?.to_owned();
         match (&window_dist, &child_dist) {
             (
                 Distribution::Segment {
@@ -1181,16 +1174,6 @@ impl Plan {
 
         let bool_nodes = self.get_bool_nodes_for_resolve_subquery_conflicts(expr_id);
         for bool_node in &bool_nodes {
-            let bool_op = BoolOp::from_expr(self, *bool_node)?;
-            if self.get_expression_node(bool_op.left)?.is_row() {
-                self.set_rel_expr_distribution(rel_id, bool_op.left)?;
-            }
-            if self.get_expression_node(bool_op.right)?.is_row() {
-                self.set_rel_expr_distribution(rel_id, bool_op.right)?;
-            }
-        }
-
-        for bool_node in &bool_nodes {
             let strategies = self.get_sq_node_strategies_for_bool_op(rel_id, *bool_node)?;
             for (id, policy) in strategies {
                 // NOT-wrapped subquery predicates normally need Full (NULL-safety
@@ -1198,7 +1181,7 @@ impl Plan {
                 // hold the full result on every node, so the local non-existence
                 // check is exact and Full would only add a redundant motion.
                 let override_with_full = not_nodes_children.contains(bool_node)
-                    && !matches!(self.get_rel_distribution(id)?, Distribution::Global);
+                    && !matches!(self.rel_distr_ref(id)?, Distribution::Global);
                 if override_with_full {
                     strategy.upsert_child(id, MotionPolicy::Full, Program::default());
                 } else {
@@ -1216,7 +1199,7 @@ impl Plan {
         }
 
         let mut correct_sq_strategy = |rel_id: NodeId| -> Result<(), SbroadError> {
-            if let Distribution::Global = self.get_rel_distribution(rel_id)? {
+            if let Distribution::Global = self.rel_distr_ref(rel_id)? {
                 self.correct_sq_strategy_for_global_tbl(rel_id, expr_id, &mut strategy)?;
             }
             Ok(())
@@ -1242,28 +1225,10 @@ impl Plan {
         Ok(strategy)
     }
 
-    fn set_rows_distributions_in_expr(
-        &mut self,
-        rel_id: NodeId,
-        expr_id: NodeId,
-    ) -> Result<(), SbroadError> {
-        let nodes = self.get_bool_nodes_for_resolve_subquery_conflicts(expr_id);
-        for node in nodes {
-            let bool_op = BoolOp::from_expr(self, node)?;
-            if self.get_expression_node(bool_op.left)?.is_row() {
-                self.set_rel_expr_distribution(rel_id, bool_op.left)?;
-            }
-            if self.get_expression_node(bool_op.right)?.is_row() {
-                self.set_rel_expr_distribution(rel_id, bool_op.right)?;
-            }
-        }
-        Ok(())
-    }
-
     /// Derive the motion policy for the inner child and sub-queries in the join node.
     ///
     /// # Errors
-    /// - Failed to set row distribution in the join condition tree.
+    /// - Failed to calculate distributions in the join condition tree.
     fn resolve_join_conflicts(
         &mut self,
         rel_id: NodeId,
@@ -1277,18 +1242,13 @@ impl Plan {
             self.calculate_strategy_for_single_distribution(rel_id, join_kind)?
         {
             self.insert_motion_nodes(strategy)?;
-            self.set_rows_distributions_in_expr(rel_id, cond_id)?;
             return Ok(());
         }
-
-        // First, we need to set the motion policy for each boolean expression in the join condition.
-        self.set_rows_distributions_in_expr(rel_id, cond_id)?;
 
         if let Some(strategy) =
             self.calculate_strategy_for_left_join_with_global_tbl(rel_id, join_kind)?
         {
             self.insert_motion_nodes(strategy)?;
-            self.set_rows_distributions_in_expr(rel_id, cond_id)?;
             return Ok(());
         }
 
@@ -1310,8 +1270,8 @@ impl Plan {
         // If at least one child is Global, default subquery strategies set by
         // `resolve_sq_conflicts` may be wrong for conditions with multiple
         // and-chains containing Segment subqueries — fix them up here.
-        let outer_dist = self.get_rel_distribution(outer)?;
-        let inner_dist = self.get_rel_distribution(inner)?;
+        let outer_dist = self.rel_distr_ref(outer)?;
+        let inner_dist = self.rel_distr_ref(inner)?;
         if matches!(
             (outer_dist, inner_dist),
             (Distribution::Global, _) | (_, Distribution::Global)
@@ -1320,7 +1280,6 @@ impl Plan {
         }
 
         self.insert_motion_nodes(strategy)?;
-        self.set_rows_distributions_in_expr(rel_id, cond_id)?;
 
         Ok(())
     }
@@ -1395,7 +1354,7 @@ impl Plan {
                     for child_id in [left, right] {
                         if let Some(sq_id) = self.get_sq_from_rel(rel_id, *child_id)? {
                             if let Distribution::Segment { .. } | Distribution::Single =
-                                self.get_rel_distribution(sq_id)?
+                                self.rel_distr_ref(sq_id)?
                             {
                                 subqueries.push(sq_id);
                                 contains_sq = true;
@@ -1409,7 +1368,7 @@ impl Plan {
 
         if chain_count > 1 {
             for sq_id in subqueries {
-                if let Distribution::Segment { .. } = self.get_rel_distribution(sq_id)? {
+                if let Distribution::Segment { .. } = self.rel_distr_ref(sq_id)? {
                     strategy.upsert_child(sq_id, MotionPolicy::Full, Program::default());
                 }
             }
@@ -1508,8 +1467,8 @@ impl Plan {
         };
         let outer_id = *left;
         let inner_id = *right;
-        let outer_dist = self.get_rel_distribution(outer_id)?;
-        let inner_dist = self.get_rel_distribution(inner_id)?;
+        let outer_dist = self.rel_distr_ref(outer_id)?;
+        let inner_dist = self.rel_distr_ref(inner_id)?;
 
         if !matches!(
             (outer_dist, inner_dist),
@@ -1630,9 +1589,8 @@ impl Plan {
                     // `select new_tuple, old_shard_key from t`
                     // So the child must always have distribution of `old_shard_key`.
 
-                    let child_output_id = self.get_relation_node(child_id)?.output();
-                    let child_dist = self.get_rel_distribution(child_id)?;
-                    let projection_len = self.get_row_list(child_output_id)?.len();
+                    let child_dist = self.rel_distr_ref(child_id)?;
+                    let projection_len = self.columns_len(child_id)?;
                     let new_tuple_len = table.columns.len();
                     let old_shard_key_positions =
                         (new_tuple_len..projection_len).collect::<Vec<usize>>();
@@ -1672,7 +1630,7 @@ impl Plan {
                     // Check child below projection has update table distribution.
                     // projection child
                     let pr_child = self.get_first_rel_child(child_id)?;
-                    let pr_child_dist = self.get_rel_distribution(pr_child)?;
+                    let pr_child_dist = self.rel_distr_ref(pr_child)?;
 
                     match pr_child_dist {
                         Distribution::Segment { keys, .. } => {
@@ -1801,7 +1759,7 @@ impl Plan {
         let child_id = self.dml_child_id(rel_id)?;
 
         let motion_key = self.insert_motion_key(rel_id)?;
-        let child_dist = self.get_rel_distribution(child_id)?;
+        let child_dist = self.rel_distr_ref(child_id)?;
 
         // Check that we can make a local segment motion.
         if let Distribution::Segment { keys } = child_dist {
@@ -1843,7 +1801,7 @@ impl Plan {
         // the plan (as Tarantool has a very weird behavior with anonymous column names).
         let contains_values = self.subtree_contains_values(cte_id)?;
 
-        let child_dist = self.get_rel_distribution(child_id)?;
+        let child_dist = self.rel_distr_ref(child_id)?;
         match child_dist {
             Distribution::Global | Distribution::Single
                 if !contains_values && !force_materialize =>
@@ -1963,8 +1921,8 @@ impl Plan {
 
         let left_id = self.get_rel_child(rel_id, 0)?;
         let right_id = self.get_rel_child(rel_id, 1)?;
-        let left_dist = self.get_rel_distribution(left_id)?;
-        let right_dist = self.get_rel_distribution(right_id)?;
+        let left_dist = self.rel_distr_ref(left_id)?;
+        let right_dist = self.rel_distr_ref(right_id)?;
 
         if self.is_except_on_bucket_id(left_id, right_id)? {
             return Ok(map);
@@ -2074,8 +2032,8 @@ impl Plan {
     fn resolve_except_global_vs_sharded(&mut self, except_id: NodeId) -> Result<bool, SbroadError> {
         let left_id = self.get_rel_child(except_id, 0)?;
         let right_id = self.get_rel_child(except_id, 1)?;
-        let left_dist = self.get_rel_distribution(left_id)?;
-        let right_dist = self.get_rel_distribution(right_id)?;
+        let left_dist = self.rel_distr_ref(left_id)?;
+        let right_dist = self.rel_distr_ref(right_id)?;
         if !matches!(
             (left_dist, right_dist),
             (
@@ -2087,24 +2045,16 @@ impl Plan {
         }
 
         let cloned_left_id = SubtreeCloner::clone_subtree(self, left_id)?;
-        let intersect_output_id = self.add_row_for_output(right_id, &[], true, None)?;
-        self.set_dist(
-            intersect_output_id,
-            self.get_rel_distribution(right_id)?.clone(),
-        )?;
+
+        let right_dist = self.rel_distr_ref(right_id)?.clone();
         let intersect = Intersect {
             left: cloned_left_id,
             right: right_id,
-            output: intersect_output_id,
+            distribution: Some(Box::new(right_dist)),
         };
         let intersect_id = self.add_relational(intersect.into())?;
 
         self.change_child(except_id, right_id, intersect_id)?;
-        self.replace_target_in_subtree(
-            self.get_relational_output(except_id)?,
-            right_id,
-            intersect_id,
-        )?;
 
         let mut map = Strategy::new(except_id);
         map.upsert_child(intersect_id, MotionPolicy::Full, Program::default());
@@ -2128,21 +2078,17 @@ impl Plan {
         let right_id = self.get_rel_child(rel_id, 1)?;
 
         {
-            let left_output_id = self.get_relation_node(left_id)?.output();
-            let right_output_id = self.get_relation_node(right_id)?.output();
-            let left_output_row = self.get_row_list(left_output_id)?;
-            let right_output_row = self.get_row_list(right_output_id)?;
-            if left_output_row.len() != right_output_row.len() {
+            let left_len = self.columns_len(left_id)?;
+            let right_len = self.columns_len(right_id)?;
+            if left_len != right_len {
                 return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                    "Except node children have different row lengths: left {}, right {}",
-                    left_output_row.len(),
-                    right_output_row.len()
+                    "Except node children have different row lengths: left {left_len}, right {right_len}"
                 )));
             }
         }
 
-        let left_dist = self.get_rel_distribution(left_id)?;
-        let right_dist = self.get_rel_distribution(right_id)?;
+        let left_dist = self.rel_distr_ref(left_id)?;
+        let right_dist = self.rel_distr_ref(right_id)?;
         match (left_dist, right_dist) {
             (
                 Distribution::Single | Distribution::Global,
@@ -2185,10 +2131,10 @@ impl Plan {
         Ok(map)
     }
 
-    /// Set dist from subqueries or clone it from output.
-    fn try_dist_from_subqueries(&mut self, id: NodeId, output: NodeId) -> Result<(), SbroadError> {
+    /// Set the distribution improved by subqueries or derive it from the output.
+    fn try_dist_from_subqueries(&mut self, id: NodeId) -> Result<(), SbroadError> {
         if let Some(dist) = self.dist_from_subqueries(id)? {
-            self.set_dist(output, dist)?;
+            self.set_rel_distr(id, dist)?;
         } else {
             self.set_rel_output_distribution(id)?;
         }
@@ -2223,18 +2169,15 @@ impl Plan {
 
                     if let Relational::Motion(Motion {
                         child: Some(nested_child_ref),
-                        output: nested_output_ref,
                         ..
                     }) = self.get_relation_node(sq_child)?
                     {
                         let nested_child = *nested_child_ref;
-                        let nested_output = *nested_output_ref;
 
                         if let MutRelational::ScanSubQuery(scan_sq) =
                             self.get_mut_relation_node(*motion_child)?
                         {
                             scan_sq.child = nested_child;
-                            scan_sq.output = nested_output;
                         }
                     }
                     continue;
@@ -2245,7 +2188,7 @@ impl Plan {
                 _ => {}
             }
 
-            let sq_dist = self.get_rel_distribution(sq_id)?;
+            let sq_dist = self.rel_distr_ref(sq_id)?;
 
             // We can apply the same logic out of this function:
             // * We have a relational operator that has a required and possibly Distribution::Segment(some_key)
@@ -2346,11 +2289,9 @@ impl Plan {
             for child_id in &node.children() {
                 if let Some(new_id) = old_new.get(child_id) {
                     self.change_child(id, *child_id, *new_id)?;
-                    self.replace_target_in_subtree(
-                        self.get_relational_output(id)?,
-                        *child_id,
-                        *new_id,
-                    )?;
+                    if let Some(output) = self.get_relation_node(id)?.explicit_output() {
+                        self.replace_target_in_subtree(output, *child_id, *new_id)?;
+                    }
                     old_new.remove(child_id);
                 }
             }
@@ -2361,20 +2302,20 @@ impl Plan {
                     // i.e. to the plan without any motion nodes.
                     panic!("IR mustn't contain Motion nodes at the stage of redistribution.")
                 }
-                RelOwned::Limit(Limit { output, limit, .. }) => {
+                RelOwned::Limit(Limit { limit, .. }) => {
                     let rel_child_id = self.get_first_rel_child(id)?;
-                    let child_dist = self.get_rel_distribution(rel_child_id)?.clone();
+                    let child_dist = self.rel_distr_ref(rel_child_id)?.clone();
 
                     match child_dist {
                         Distribution::Single | Distribution::Global => {
-                            self.set_dist(output, child_dist)?;
+                            self.set_rel_distr(id, child_dist)?;
                             self.pushdown_limit(id)?;
                         }
                         Distribution::Any | Distribution::Segment { .. }
                             if self.is_single_node_subtree(rel_child_id)? =>
                         {
                             // All data is on a single shard, no motion needed.
-                            self.set_dist(output, child_dist)?;
+                            self.set_rel_distr(id, child_dist)?;
                         }
                         Distribution::Any | Distribution::Segment { .. } => {
                             // Rows are distributed, so motion needed with full policy to
@@ -2383,15 +2324,12 @@ impl Plan {
                             // We don't need more than limit rows, so we can add a limit for the
                             // queries sent during the map stage.
                             let limit_id = self.add_limit(id, limit)?;
-                            self.set_dist(
-                                self.get_relational_output(limit_id)?,
-                                Distribution::Single,
-                            )?;
+                            self.set_rel_distr(limit_id, Distribution::Single)?;
                             old_new.insert(id, limit_id);
                             let mut strategy = Strategy::new(limit_id);
                             strategy.upsert_child(id, MotionPolicy::Full, Program::default());
                             self.insert_motion_nodes(strategy)?;
-                            self.set_dist(output, child_dist)?;
+                            self.set_rel_distr(id, child_dist)?;
                         }
                     }
                 }
@@ -2407,7 +2345,7 @@ impl Plan {
                     // (native or resulted from children).
                     self.set_rel_output_distribution(id)?;
                 }
-                RelOwned::Values(Values { output, rows, .. }) => {
+                RelOwned::Values(Values { rows, .. }) => {
                     let mut correct_nodes = AHashSet::new();
                     for row in rows {
                         let row_strategy = self.resolve_sq_conflicts(id, row)?;
@@ -2416,11 +2354,9 @@ impl Plan {
                     }
                     self.adjust_sqs_of_rel_node(id, &correct_nodes)?;
 
-                    self.set_dist(output, Distribution::Global)?;
+                    self.set_rel_distr(id, Distribution::Global)?;
                 }
-                RelOwned::GroupBy(GroupBy {
-                    output, gr_exprs, ..
-                }) => {
+                RelOwned::GroupBy(GroupBy { gr_exprs, .. }) => {
                     let mut correct_nodes = AHashSet::new();
                     for gr_expr in gr_exprs {
                         let gr_expr_strategy = self.resolve_sq_conflicts(id, gr_expr)?;
@@ -2429,24 +2365,18 @@ impl Plan {
                     }
                     self.adjust_sqs_of_rel_node(id, &correct_nodes)?;
 
-                    self.try_dist_from_subqueries(id, output)?;
+                    self.try_dist_from_subqueries(id)?;
                 }
-                RelOwned::Selection(Selection {
-                    output,
-                    filter: data,
-                    ..
-                }) => {
+                RelOwned::Selection(Selection { filter: data, .. }) => {
                     let strategy = self.resolve_sq_conflicts(id, data)?;
                     let correct_rel_ids = strategy.get_rel_ids();
                     self.insert_motion_nodes(strategy)?;
                     self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
 
-                    self.try_dist_from_subqueries(id, output)?;
+                    self.try_dist_from_subqueries(id)?;
                 }
                 RelOwned::OrderBy(OrderBy {
-                    output,
-                    order_by_elements,
-                    ..
+                    order_by_elements, ..
                 }) => {
                     let rel_child_id = self.get_first_rel_child(id)?;
 
@@ -2460,16 +2390,16 @@ impl Plan {
                     }
                     self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
 
-                    let child_dist = self.get_rel_distribution(rel_child_id)?;
+                    let child_dist = self.rel_distr_ref(rel_child_id)?;
                     match child_dist {
                         Distribution::Single | Distribution::Global => {
-                            self.set_dist(output, Distribution::Single)?
+                            self.set_rel_distr(id, Distribution::Single)?
                         }
                         Distribution::Any | Distribution::Segment { .. }
                             if self.is_single_node_subtree(rel_child_id)? =>
                         {
                             // We don't need any motion, since all data is located in a single shard.
-                            self.set_dist(output, child_dist.clone())?;
+                            self.set_rel_distr(id, child_dist.clone())?;
                         }
                         _ => {
                             // We must execute OrderBy on a single node containing all the rows
@@ -2481,7 +2411,7 @@ impl Plan {
                                 Program::default(),
                             );
                             self.insert_motion_nodes(strategy)?;
-                            self.set_dist(output, Distribution::Single)?
+                            self.set_rel_distr(id, Distribution::Single)?
                         }
                     }
                 }
@@ -2504,15 +2434,15 @@ impl Plan {
                         (Some(groupby_id), _) => groupby_id,
                         (None, None) => self.get_first_rel_child(id)?,
                     };
-                    let target_dist = self.get_rel_distribution(target_dist_node)?;
+                    let target_dist = self.rel_distr_ref(target_dist_node)?;
 
                     if matches!(target_dist, Distribution::Single | Distribution::Global) {
                         // The data is already on the current node, let's just set the
                         // distribution.
                         if let Some(dist) = self.dist_from_subqueries(id)? {
-                            self.set_dist(output, dist)?;
+                            self.set_rel_distr(id, dist)?;
                         } else {
-                            self.set_dist(output, target_dist.clone())?;
+                            self.set_rel_distr(id, target_dist.clone())?;
                         }
                         continue;
                     }
@@ -2536,16 +2466,11 @@ impl Plan {
                             group_by_child_id,
                         )?;
                         self.insert_motion_nodes(gb_strategy)?;
-                        self.set_dist(
-                            self.get_relational_output(group_by_id)?,
-                            Distribution::Single,
-                        )?;
-                        let rel = self.get_relation_node(id)?;
-                        self.set_dist(rel.output(), Distribution::Single)?;
+                        self.set_rel_distr(group_by_id, Distribution::Single)?;
+                        self.set_rel_distr(id, Distribution::Single)?;
 
                         if let Some(having_id) = having {
-                            let rel = self.get_relation_node(having_id)?;
-                            self.set_dist(rel.output(), Distribution::Single)?;
+                            self.set_rel_distr(having_id, Distribution::Single)?;
                         }
                         // Nothing else to do here.
                         continue;
@@ -2573,20 +2498,13 @@ impl Plan {
                     let correct_rel_ids = strategy.get_rel_ids();
                     self.insert_motion_nodes(strategy)?;
                     self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
-                    self.set_dist(output, Distribution::Global)?;
+                    self.set_rel_distr(id, Distribution::Global)?;
                 }
                 RelOwned::Join(Join {
-                    output,
-                    condition,
-                    kind,
-                    ..
+                    condition, kind, ..
                 }) => {
                     self.resolve_join_conflicts(id, condition, &kind)?;
-                    if let Some(dist) = self.dist_from_subqueries(id)? {
-                        self.set_dist(output, dist)?;
-                    } else {
-                        self.set_rel_output_distribution(id)?;
-                    }
+                    self.try_dist_from_subqueries(id)?;
                 }
                 RelOwned::Delete { .. } => {
                     let strategy = self.resolve_delete_conflicts(id)?;
@@ -2623,16 +2541,11 @@ impl Plan {
                     self.insert_motion_nodes(strategy)?;
                     self.set_rel_output_distribution(id)?;
                 }
-                RelOwned::ScanCte(ScanCte { output, child, .. }) => {
+                RelOwned::ScanCte(ScanCte { child, .. }) => {
                     // Possible, current CTE subtree has already been resolved and we
                     // can just copy the corresponding motion node.
                     if let Some(motion_id) = cte_motions.get(&child) {
                         self.set_relational_children(id, vec![*motion_id]);
-                        self.replace_target_in_subtree(
-                            self.get_relational_output(id)?,
-                            child,
-                            *motion_id,
-                        )?;
                     } else {
                         let is_single_node = self.is_single_node_subtree(child)?;
                         let is_reused = cte_ref_counts.get(&child).copied().unwrap_or(0) > 1;
@@ -2646,21 +2559,12 @@ impl Plan {
                             }
                         }
                     }
+                    // The CTE scan preserves the distribution of its child (for a
+                    // single-node subtree it lets bucket_discovery route the query
+                    // to the correct shard).
                     let child_id = self.get_first_rel_child(id)?;
-                    let child_dist = self.get_rel_distribution(child_id)?;
-                    match child_dist {
-                        Distribution::Global => {
-                            self.set_dist(output, Distribution::Global)?;
-                        }
-                        Distribution::Single => {
-                            self.set_dist(output, Distribution::Single)?;
-                        }
-                        // Single-node subtree: preserve the distribution so that
-                        // bucket_discovery can route the query to the correct shard.
-                        other => {
-                            self.set_dist(output, other.clone())?;
-                        }
-                    }
+                    let child_dist = self.rel_distr_ref(child_id)?.clone();
+                    self.set_rel_distr(id, child_dist)?;
                 }
             }
 

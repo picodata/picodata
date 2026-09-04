@@ -15,9 +15,8 @@ use sql::{
     ir::{
         acl::GrantRevokeType,
         node::{
-            acl::Acl, block::Block, ddl::Ddl, expression::Expression, plugin::Plugin,
-            relational::Relational, tcl::Tcl, Alias, AnonymousBlock, GrantPrivilege, Node,
-            RevokePrivilege,
+            acl::Acl, block::Block, ddl::Ddl, plugin::Plugin, relational::Relational, tcl::Tcl,
+            AnonymousBlock, GrantPrivilege, Node, RevokePrivilege,
         },
         types::DerivedType,
         Plan,
@@ -336,23 +335,12 @@ fn dql_output_format(ir: &Plan) -> PgResult<Vec<MetadataColumn>> {
             return Ok(metadata);
         }
     }
-    let top_output_id = ir.get_relation_node(top_id)?.output();
-    let columns = ir.get_row_list(top_output_id)?;
+    let columns = ir.columns_of(top_id)?;
     let mut metadata = Vec::with_capacity(columns.len());
-    for col_id in columns {
-        let column = ir.get_expression_node(*col_id)?;
-        let column_type = column.calculate_type(ir)?;
-        let column_name = if let Expression::Alias(Alias { name, .. }) = column {
-            name.to_string()
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some(smol_str::format_smolstr!("expected alias, got {column:?}")),
-            )
-            .into());
-        };
-        let ty = pg_type_from_sbroad(&column_type);
-        metadata.push(MetadataColumn::new(column_name, ty));
+    for column in columns {
+        let column = column?;
+        let ty = pg_type_from_sbroad(&column.r#type);
+        metadata.push(MetadataColumn::new(column.name.to_string(), ty));
     }
     Ok(metadata)
 }

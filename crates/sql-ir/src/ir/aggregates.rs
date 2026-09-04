@@ -7,6 +7,7 @@ use crate::ir::node::{NodeId, ReferenceTarget, ScalarFunction};
 use crate::ir::operator::Arithmetic;
 use crate::ir::types::{CastType, UnrestrictedType as RelType};
 use crate::ir::Plan;
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
@@ -224,9 +225,9 @@ impl Aggregate {
         Some(aggr)
     }
 
-    pub(crate) fn get_position_kinds(
+    pub(crate) fn get_position_kinds<N: Ord + Borrow<str>>(
         &self,
-        alias_to_pos: &ColumnPositionMap,
+        alias_to_pos: &ColumnPositionMap<N>,
     ) -> Result<Vec<PositionKind>, SbroadError> {
         let res = if self.is_distinct {
             // For distinct aggregates kinds of

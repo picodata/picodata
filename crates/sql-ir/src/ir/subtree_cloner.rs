@@ -83,13 +83,17 @@ impl SubtreeCloner {
         let old_relational = plan.get_relation_node(id)?;
         let mut copied: RelOwned = old_relational.get_rel_owned();
 
-        // All relational nodes have output and children lists, which must be copied.
+        // Children lists (and explicit outputs, where present) must be copied.
         // We don't need to copy subqueries because we reuse them
         let children = old_relational.children().to_vec();
         let new_children = self.copy_list(&children)?;
         copied.set_children(new_children);
-        let new_output_id = self.get_new_id(old_relational.output())?;
-        *copied.mut_output() = new_output_id;
+        if let Some(old_output) = old_relational.explicit_output() {
+            let new_output_id = self.get_new_id(old_output)?;
+            *copied
+                .explicit_output_mut()
+                .expect("owned copy keeps the explicit output") = new_output_id;
+        }
 
         // copy node specific fields, that reference other plan nodes
 
@@ -100,12 +104,13 @@ impl SubtreeCloner {
             RelOwned::SelectWithoutScan(SelectWithoutScan {
                 subqueries: _,
                 output: _,
+                distribution: _,
             })
             | RelOwned::Insert(Insert {
                 relation: _,
                 columns: _,
                 child: _,
-                output: _,
+                distribution: _,
                 conflict_strategy: _,
             })
             | RelOwned::Update(Update {
@@ -114,59 +119,59 @@ impl SubtreeCloner {
                 update_columns_map: _,
                 strategy: _,
                 pk_positions: _,
-                output: _,
+                distribution: _,
             })
             | RelOwned::Delete(Delete {
                 relation: _,
                 child: _,
-                output: _,
+                distribution: _,
             })
             | RelOwned::ScanRelation(ScanRelation { .. })
             | RelOwned::ScanCte(ScanCte {
                 alias: _,
-                output: _,
+                distribution: _,
                 child: _,
             })
             | RelOwned::ScanSubQuery(ScanSubQuery {
                 alias: _,
                 child: _,
-                output: _,
+                distribution: _,
             })
             | RelOwned::Except(Except {
                 left: _,
                 right: _,
-                output: _,
+                distribution: _,
             })
             | RelOwned::Intersect(Intersect {
                 left: _,
                 right: _,
-                output: _,
+                distribution: _,
             })
             | RelOwned::Union(Union {
                 left: _,
                 right: _,
-                output: _,
+                distribution: _,
             })
             | RelOwned::UnionAll(UnionAll {
                 left: _,
                 right: _,
-                output: _,
+                distribution: _,
             })
             | RelOwned::Limit(Limit {
                 limit: _,
                 child: _,
-                output: _,
+                distribution: _,
             }) => {}
             RelOwned::Selection(Selection {
                 child: _,
                 subqueries: _,
                 filter,
-                output: _,
+                distribution: _,
             })
             | RelOwned::Having(Having {
                 child: _,
                 subqueries: _,
-                output: _,
+                distribution: _,
                 filter,
             })
             | RelOwned::Join(Join {
@@ -174,7 +179,7 @@ impl SubtreeCloner {
                 right: _,
                 subqueries: _,
                 condition: filter,
-                output: _,
+                distribution: _,
                 kind: _,
             }) => {
                 *filter = self.get_new_id(*filter)?;
@@ -185,6 +190,7 @@ impl SubtreeCloner {
                 policy: _,
                 program,
                 output: _,
+                distribution: _,
             }) => {
                 for op in &mut program.0 {
                     match op {
@@ -214,6 +220,7 @@ impl SubtreeCloner {
                 subqueries: _,
                 windows,
                 output: _,
+                distribution: _,
                 is_distinct: _,
                 group_by,
                 having,
@@ -232,7 +239,7 @@ impl SubtreeCloner {
                 child: _,
                 subqueries: _,
                 gr_exprs,
-                output: _,
+                distribution: _,
             }) => {
                 *gr_exprs = self.copy_list(gr_exprs)?;
             }
@@ -240,7 +247,7 @@ impl SubtreeCloner {
                 child: _,
                 subqueries: _,
                 order_by_elements,
-                output: _,
+                distribution: _,
             }) => {
                 let mut new_order_by_elements = Vec::with_capacity(order_by_elements.len());
                 for element in &mut *order_by_elements {
@@ -261,7 +268,7 @@ impl SubtreeCloner {
                 *order_by_elements = new_order_by_elements;
             }
             RelOwned::Values(Values {
-                output: _,
+                distribution: _,
                 rows,
                 subqueries: _,
             }) => {
@@ -315,7 +322,7 @@ impl SubtreeCloner {
     ) -> Result<NodeId, SbroadError> {
         // We don't copy the subquery's children because otherwise it would create a new subquery.
         // All references would then point to the same subquery.
-        let dfs = PostOrder::new(|x| plan.subtree_iter_except_subquery(x, true), capacity);
+        let dfs = PostOrder::new(|x| plan.subtree_iter_except_subquery(x), capacity);
         let nodes = dfs.traverse_into_vec(top_id);
         let mut invalid_refs = Vec::new();
         for id in nodes {
@@ -343,29 +350,6 @@ impl SubtreeCloner {
                                     }
                                     None => invalid_refs.push(*node_id),
                                 }
-                            }
-                            ReferenceTarget::Union(left, right) => {
-                                let new_left = self.old_new_map.get(left).unwrap_or_else(|| {
-                                    invalid_refs.push(*left);
-                                    left
-                                });
-                                let new_right = self.old_new_map.get(right).unwrap_or_else(|| {
-                                    invalid_refs.push(*right);
-                                    right
-                                });
-                                *target = ReferenceTarget::Union(*new_left, *new_right);
-                            }
-                            ReferenceTarget::Values(nodes) => {
-                                let new_targets = nodes
-                                    .iter()
-                                    .map(|node_id| {
-                                        *self.old_new_map.get(node_id).unwrap_or_else(|| {
-                                            invalid_refs.push(*node_id);
-                                            node_id
-                                        })
-                                    })
-                                    .collect();
-                                *target = ReferenceTarget::Values(new_targets);
                             }
                         }
                     }

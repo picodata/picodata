@@ -546,7 +546,7 @@ impl Plan {
         let default_buckets = {
             let mut default_buckets = Buckets::Any;
             for child_id in rel_children.iter().chain(subqueries) {
-                let child_dist = self.get_rel_distribution(*child_id)?;
+                let child_dist = self.rel_distr_ref(*child_id)?;
                 if matches!(child_dist, Distribution::Any | Distribution::Segment { .. }) {
                     default_buckets = Buckets::All;
                     break;

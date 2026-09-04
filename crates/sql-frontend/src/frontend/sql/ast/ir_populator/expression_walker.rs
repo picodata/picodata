@@ -320,7 +320,8 @@ where
     /// Map of (relational_node_id, columns_position_map).
     /// As `ColumnPositionMap` is used for parsing references and as it may be shared for the same
     /// relational node we cache it so that we don't have to recreate it every time.
-    pub(in crate::frontend::sql) column_positions_cache: HashMap<NodeId, ColumnPositionMap>,
+    pub(in crate::frontend::sql) column_positions_cache:
+        HashMap<NodeId, ColumnPositionMap<SmolStr>>,
     /// Inside WindowBody node.
     /// Used to correctly process subqueries inside window body.
     pub(in crate::frontend::sql) inside_window_body: bool,
@@ -382,7 +383,9 @@ where
     ) -> Result<(), SbroadError> {
         use std::collections::hash_map::Entry;
         if let Entry::Vacant(e) = self.column_positions_cache.entry(rel_id) {
-            let new_map = ColumnPositionMap::new(plan, rel_id)?;
+            // The cache outlives the plan borrow: the populator keeps building
+            // nodes while these maps are alive, so they own their names.
+            let new_map = ColumnPositionMap::new_owned(plan, rel_id)?;
             e.insert(new_map);
         }
 

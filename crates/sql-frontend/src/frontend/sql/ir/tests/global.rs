@@ -40,7 +40,7 @@ fn check_distributions(plan: &Plan, nodes: &[NodeId], expected_distributions: &[
         "different number of nodes"
     );
     for (id, expected) in nodes.iter().zip(expected_distributions.iter()) {
-        let actual: DistMock = plan.get_rel_distribution(*id).unwrap().into();
+        let actual: DistMock = plan.rel_distr_ref(*id).unwrap().into();
         assert_eq!(expected, &actual, "wrong distribution for node ({id:?})");
     }
 }

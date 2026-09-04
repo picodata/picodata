@@ -1218,9 +1218,7 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
 
 fn row_len(ex_plan: &ExecutionPlan, top_id: NodeId) -> SqlResult<u32> {
     let ir_plan = ex_plan.get_ir_plan();
-    let columns_len = ir_plan
-        .get_row_list(ir_plan.get_relation_node(top_id)?.output())?
-        .len();
+    let columns_len = ir_plan.columns_len(top_id)?;
     let len = u32::try_from(columns_len).map_err(|e| {
         SbroadError::DispatchError(format_smolstr!(
             "Failed to convert columns length {columns_len} to u32: {e}"

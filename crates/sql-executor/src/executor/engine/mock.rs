@@ -1519,9 +1519,9 @@ impl Router for RouterRuntimeMock {
             .virtual_tables
             .borrow()
             .get(motion_node_id)
-            .expect(&format!(
-                "Virtual table for motion with id {motion_node_id} not found."
-            ))
+            .unwrap_or_else(|| {
+                panic!("Virtual table for motion with id {motion_node_id} not found.")
+            })
             .clone())
     }
 
@@ -1534,9 +1534,7 @@ impl Router for RouterRuntimeMock {
             .virtual_tables
             .borrow()
             .get(&values_id)
-            .expect(&format!(
-                "Virtual table for values with id {values_id} not found."
-            ))
+            .unwrap_or_else(|| panic!("Virtual table for values with id {values_id} not found."))
             .clone())
     }
 
@@ -1650,6 +1648,6 @@ impl<C: Router> ExecutingQuery<'_, C> {
         // so we join them with "\n\n" to separate each entry with a blank line.
         let explain = explain.join("\n\n");
 
-        Ok(explain.into())
+        Ok(explain)
     }
 }

@@ -253,7 +253,7 @@ fn subtree_dfs_post() {
     plan.set_top(proj_id).unwrap();
     let top = plan.get_top().unwrap();
 
-    let proj_row_id = plan.get_relation_node(proj_id).unwrap().output();
+    let proj_row_id = plan.get_relational_output(proj_id).unwrap();
     let row_children = plan
         .get_expression_node(proj_row_id)
         .unwrap()
@@ -268,7 +268,7 @@ fn subtree_dfs_post() {
     };
 
     // Traverse relational nodes in the plan tree
-    let dft_post = PostOrder::new(|node| plan.subtree_iter(node, false), plan.nodes.len());
+    let dft_post = PostOrder::new(|node| plan.subtree_iter(node), plan.nodes.len());
     let mut iter = dft_post.traverse_into_iter(top);
     assert_eq!(iter.next(), Some(*c_ref_id));
     assert_eq!(iter.next(), Some(*alias_id));

@@ -3,8 +3,7 @@ use smol_str::format_smolstr;
 use crate::errors::Entity::AST;
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ast::{ParseNode, Rule};
-use crate::ir::node::expression::Expression;
-use crate::ir::node::{Alias, NodeId};
+use crate::ir::node::NodeId;
 use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use crate::ir::Plan;
 
@@ -31,24 +30,12 @@ pub(in crate::frontend::sql) fn dql_return_columns(
     ir: &Plan,
     query_id: NodeId,
 ) -> Result<Vec<(String, DerivedType)>, SbroadError> {
-    let output_id = ir.get_relation_node(query_id)?.output();
-    let output_row = ir.get_row_list(output_id)?;
-    let mut columns = Vec::with_capacity(output_row.len());
-    for col_id in output_row {
-        let column = ir.get_expression_node(*col_id)?;
-        let column_name = if let Expression::Alias(Alias { name, .. }) = column {
-            name.to_string()
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some(smol_str::format_smolstr!("expected alias, got {column:?}")),
-            ));
-        };
-        let column = ir.get_expression_node(*col_id)?;
-        let column_type = column.calculate_type(ir)?;
-        columns.push((column_name, column_type));
-    }
-    Ok(columns)
+    ir.columns_of(query_id)?
+        .map(|column| {
+            let column = column?;
+            Ok((column.name.to_string(), column.r#type))
+        })
+        .collect()
 }
 
 pub(in crate::frontend::sql) fn parse_trimmed_unsigned_from_str(

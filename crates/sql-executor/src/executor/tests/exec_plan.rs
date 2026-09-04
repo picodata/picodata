@@ -1861,7 +1861,7 @@ fn dql_subtree_projection_windows_stay_in_original_plan() {
     let col_1 = plan.nodes.add_alias("col_1", over).unwrap();
 
     let projection = {
-        let output = plan.nodes.add_row(vec![col_1], None);
+        let output = plan.nodes.add_row(vec![col_1]);
 
         let projection = Projection {
             child: Some(scan_relation),
@@ -1871,6 +1871,7 @@ fn dql_subtree_projection_windows_stay_in_original_plan() {
             is_distinct: false,
             group_by: None,
             having: None,
+            distribution: None,
         };
 
         plan.nodes.push(projection.into())
@@ -1896,7 +1897,7 @@ fn dql_subtree_projection_windows_stay_in_original_plan() {
                     .unwrap()
             })
             .collect();
-        let motion_output = plan.nodes.add_row(motion_refs, None);
+        let motion_output = plan.nodes.add_row(motion_refs);
 
         let motion = Motion {
             alias: None,
@@ -1904,6 +1905,7 @@ fn dql_subtree_projection_windows_stay_in_original_plan() {
             policy: MotionPolicy::Full,
             program: Program::new(vec![MotionOpcode::ReshardIfNeeded]),
             output: motion_output,
+            distribution: None,
         };
         plan.add_relational(motion.into()).unwrap()
     };

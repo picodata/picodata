@@ -9,6 +9,7 @@ use super::types::{CastType, DerivedType};
 use super::value::Value;
 use crate::errors::{Entity, SbroadError};
 use crate::ir::bucket::{BucketSet, Buckets};
+use crate::ir::columns::RelColumn;
 use crate::ir::expression::TrimKind;
 use crate::ir::node::{
     Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Constant, Delete, Having, IndexExpr,
@@ -518,14 +519,13 @@ impl ColExpr {
 
     fn scan_column_name(
         plan: &Plan,
-        scan: NodeId,
-        position: usize,
+        rel_col: RelColumn,
         reference: &Expression,
     ) -> Result<(Option<SmolStr>, SmolStr), SbroadError> {
-        let tbl_name = plan.scan_name(scan, position)?;
+        let tbl_name = plan.scan_name(rel_col)?;
         let col_name = plan.get_alias_from_reference_node(reference)?;
 
-        Ok((tbl_name.map(|s| s.into()), col_name.into()))
+        Ok((tbl_name.map(|s| s.into()), col_name))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -634,8 +634,11 @@ impl ColExpr {
                 }
                 Expression::Reference(Reference { position, .. }) => {
                     let rel_id = plan.get_relational_from_reference_node(id)?;
-                    let (tbl_name, col_name) =
-                        ColExpr::scan_column_name(plan, rel_id, *position, &current_node)?;
+                    let (tbl_name, col_name) = ColExpr::scan_column_name(
+                        plan,
+                        RelColumn::new(rel_id, *position),
+                        &current_node,
+                    )?;
                     let expr =
                         ColExpr::Column(tbl_name, col_name, current_node.calculate_type(plan)?);
                     stack.push((expr, id));
@@ -643,8 +646,11 @@ impl ColExpr {
                 Expression::SubQueryReference(SubQueryReference {
                     position, rel_id, ..
                 }) => {
-                    let (tbl_name, col_name) =
-                        ColExpr::scan_column_name(plan, *rel_id, *position, &current_node)?;
+                    let (tbl_name, col_name) = ColExpr::scan_column_name(
+                        plan,
+                        RelColumn::new(*rel_id, *position),
+                        &current_node,
+                    )?;
                     let expr =
                         ColExpr::Column(tbl_name, col_name, current_node.calculate_type(plan)?);
                     stack.push((expr, id));
@@ -946,8 +952,8 @@ struct GroupBy {
 impl GroupBy {
     fn new(
         plan: &Plan,
+        gb_id: NodeId,
         gr_exprs: &Vec<NodeId>,
-        output_id: NodeId,
         sq_ref_map: &SubQueryRefMap,
         should_fmt: bool,
     ) -> Result<Self, SbroadError> {
@@ -961,10 +967,16 @@ impl GroupBy {
             let col = ColExpr::new(plan, *col_node_id, sq_ref_map, should_fmt)?;
             result.gr_exprs.push(col);
         }
-        let alias_list = plan.get_expression_node(output_id)?;
-        for col_node_id in alias_list.get_row_list()? {
-            let col = ColExpr::new(plan, *col_node_id, sq_ref_map, should_fmt)?;
-            result.output_cols.push(col);
+        // The output of GroupBy is a copy of its child's columns: render every
+        // column as `[scan.]name::type -> name`.
+        for (pos, column) in plan.columns_of(gb_id)?.enumerate() {
+            let column = column?;
+            let scan_name = plan
+                .scan_name(RelColumn::new(gb_id, pos))?
+                .map(SmolStr::from);
+            let name = column.name_owned();
+            let col = ColExpr::Column(scan_name, name.clone(), column.r#type);
+            result.output_cols.push(ColExpr::Alias(Box::new(col), name));
         }
         Ok(result)
     }
@@ -1070,7 +1082,6 @@ impl Update {
         if let Relational::Update(UpdateRel {
             relation: ref rel,
             update_columns_map,
-            output: ref output_id,
             ..
         }) = plan.get_relation_node(update_id)?
         {
@@ -1082,7 +1093,6 @@ impl Update {
                     Some(format_smolstr!("invalid table {rel} in Update node")),
                 )
             })?;
-            let output_list = plan.get_row_list(*output_id)?;
             for (col_idx, proj_col) in update_columns_map {
                 let col_name = table
                     .columns
@@ -1097,25 +1107,17 @@ impl Update {
                         )
                     })?;
                 let proj_alias = {
-                    let alias_id = *output_list.get(*proj_col).ok_or_else(|| {
-                        SbroadError::Invalid(
-                            Entity::Node,
-                            Some(format_smolstr!(
-                                "invalid update projection position {proj_col} in Update node"
-                            )),
-                        )
-                    })?;
-                    let node = plan.get_expression_node(alias_id)?;
-                    if let Expression::Alias(Alias { name, .. }) = node {
-                        properly_quoted_name(name)
-                    } else {
-                        return Err(SbroadError::Invalid(
-                            Entity::Node,
-                            Some(format_smolstr!(
-                                "expected alias as top in Update output, got: {node:?}"
-                            )),
-                        ));
-                    }
+                    let column = plan
+                        .column_at(RelColumn::new(update_id, *proj_col))
+                        .map_err(|_| {
+                            SbroadError::Invalid(
+                                Entity::Node,
+                                Some(format_smolstr!(
+                                    "invalid update projection position {proj_col} in Update node"
+                                )),
+                            )
+                        })?;
+                    properly_quoted_name(&column.name)
                 };
                 update_statements.push((col_name, proj_alias));
             }
@@ -1701,7 +1703,6 @@ impl LogicalExplain {
                 }
                 Relational::GroupBy(node::GroupBy {
                     gr_exprs,
-                    output,
                     subqueries,
                     ..
                 }) => {
@@ -1715,7 +1716,7 @@ impl LogicalExplain {
                             "GroupBy must have exactly one child".into(),
                         )
                     })?;
-                    let group_by = GroupBy::new(ir, gr_exprs, *output, &sq_ref_map, should_fmt)?;
+                    let group_by = GroupBy::new(ir, id, gr_exprs, &sq_ref_map, should_fmt)?;
 
                     (ExplainNode::GroupBy(group_by), vec![child])
                 }
@@ -1867,25 +1868,22 @@ impl LogicalExplain {
                             )
                         })?;
 
-                        let child_output_id = ir.get_relation_node(child_id)?.output();
-                        let col_list = ir.get_row_list(child_output_id)?;
-
                         let targets = (s.targets)
                             .iter()
                             .map(|r| match r {
                                 IrTarget::Reference(pos) => {
-                                    let col_id = *col_list.get(*pos).ok_or_else(|| {
-                                        SbroadError::NotFound(
-                                            Entity::Target,
-                                            format_smolstr!("reference with position {pos}"),
-                                        )
-                                    })?;
                                     let col_name = ir
-                                        .get_expression_node(col_id)?
-                                        .get_alias_name()?
-                                        .to_smolstr();
+                                        .column_at(RelColumn::new(child_id, *pos))
+                                        .map_err(|_| {
+                                            SbroadError::NotFound(
+                                                Entity::Target,
+                                                format_smolstr!("reference with position {pos}"),
+                                            )
+                                        })?;
 
-                                    Ok::<Target, SbroadError>(Target::Reference(col_name))
+                                    Ok::<Target, SbroadError>(Target::Reference(
+                                        col_name.name_owned(),
+                                    ))
                                 }
                                 IrTarget::Value(v) => Ok(Target::Value(v.clone())),
                             })
@@ -1985,10 +1983,10 @@ impl LogicalExplain {
                     (update, vec![values])
                 }
                 Relational::Delete(Delete {
-                    relation, output, ..
+                    relation, child, ..
                 }) => {
                     let mut children = vec![];
-                    if output.is_some() {
+                    if child.is_some() {
                         let values = stack.pop().ok_or_else(|| {
                             SbroadError::UnexpectedNumberOfValues(
                                 "Delete node failed to pop a value row.".into(),

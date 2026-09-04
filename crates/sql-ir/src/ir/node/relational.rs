@@ -9,6 +9,7 @@ use super::{
 use crate::{
     errors::{Entity, SbroadError},
     ir::api::children::{Children, MutChildren},
+    ir::distribution::Distribution,
 };
 
 #[allow(clippy::module_name_repetitions)]
@@ -64,8 +65,13 @@ impl From<RelOwned> for NodeAligned {
 }
 
 impl RelOwned {
-    pub fn has_output(&self) -> bool {
-        !matches!(self, RelOwned::Delete(Delete { output: None, .. }))
+    /// Whether the node stores its output tuple explicitly (see
+    /// `Relational::explicit_output`).
+    pub fn has_explicit_output(&self) -> bool {
+        matches!(
+            self,
+            RelOwned::Projection(_) | RelOwned::SelectWithoutScan(_) | RelOwned::Motion(_)
+        )
     }
 
     pub fn arena_type(&self) -> ArenaType {
@@ -80,14 +86,14 @@ impl RelOwned {
             | RelOwned::Selection(_)
             | RelOwned::Having(_)
             | RelOwned::Values(_)
-            | RelOwned::OrderBy(_)
-            | RelOwned::Join(_)
             | RelOwned::Delete(_)
-            | RelOwned::ScanSubQuery(_)
-            | RelOwned::GroupBy(_) => ArenaType::Arena64,
-            RelOwned::Projection(_) | RelOwned::ScanRelation(_) | RelOwned::Insert(_) => {
-                ArenaType::Arena96
-            }
+            | RelOwned::ScanSubQuery(_) => ArenaType::Arena64,
+            RelOwned::Projection(_)
+            | RelOwned::ScanRelation(_)
+            | RelOwned::Insert(_)
+            | RelOwned::Join(_)
+            | RelOwned::GroupBy(_)
+            | RelOwned::OrderBy(_) => ArenaType::Arena96,
             RelOwned::Update(_) | RelOwned::Motion(_) => ArenaType::Arena136,
         }
     }
@@ -300,32 +306,41 @@ impl RelOwned {
         }
     }
 
-    /// Gets an mutable reference to the output tuple node id.
+    /// Gets a mutable reference to the explicit output tuple node id, if any
+    /// (see `Relational::explicit_output`).
     #[must_use]
-    pub fn mut_output(&mut self) -> &mut NodeId {
+    pub fn explicit_output_mut(&mut self) -> Option<&mut NodeId> {
         match self {
-            RelOwned::Delete(Delete { output, .. }) => output
-                .as_mut()
-                .expect("DELETE without WHERE clause doesn't have an output."),
-            RelOwned::ScanCte(ScanCte { output, .. })
-            | RelOwned::Except(Except { output, .. })
-            | RelOwned::GroupBy(GroupBy { output, .. })
-            | RelOwned::OrderBy(OrderBy { output, .. })
-            | RelOwned::Update(Update { output, .. })
-            | RelOwned::Having(Having { output, .. })
-            | RelOwned::Join(Join { output, .. })
-            | RelOwned::Limit(Limit { output, .. })
-            | RelOwned::Insert(Insert { output, .. })
-            | RelOwned::Intersect(Intersect { output, .. })
-            | RelOwned::Motion(Motion { output, .. })
-            | RelOwned::Projection(Projection { output, .. })
-            | RelOwned::ScanRelation(ScanRelation { output, .. })
-            | RelOwned::ScanSubQuery(ScanSubQuery { output, .. })
-            | RelOwned::Selection(Selection { output, .. })
+            RelOwned::Projection(Projection { output, .. })
             | RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. })
-            | RelOwned::Union(Union { output, .. })
-            | RelOwned::UnionAll(UnionAll { output, .. })
-            | RelOwned::Values(Values { output, .. }) => output,
+            | RelOwned::Motion(Motion { output, .. }) => Some(output),
+            _ => None,
+        }
+    }
+
+    /// Gets a mutable reference to the distribution of the output tuple.
+    pub fn unset_distr(&mut self) {
+        match self {
+            RelOwned::ScanCte(ScanCte { distribution, .. })
+            | RelOwned::Except(Except { distribution, .. })
+            | RelOwned::Delete(Delete { distribution, .. })
+            | RelOwned::Insert(Insert { distribution, .. })
+            | RelOwned::Intersect(Intersect { distribution, .. })
+            | RelOwned::Update(Update { distribution, .. })
+            | RelOwned::Join(Join { distribution, .. })
+            | RelOwned::Limit(Limit { distribution, .. })
+            | RelOwned::Motion(Motion { distribution, .. })
+            | RelOwned::Projection(Projection { distribution, .. })
+            | RelOwned::ScanRelation(ScanRelation { distribution, .. })
+            | RelOwned::ScanSubQuery(ScanSubQuery { distribution, .. })
+            | RelOwned::Selection(Selection { distribution, .. })
+            | RelOwned::SelectWithoutScan(SelectWithoutScan { distribution, .. })
+            | RelOwned::GroupBy(GroupBy { distribution, .. })
+            | RelOwned::Having(Having { distribution, .. })
+            | RelOwned::OrderBy(OrderBy { distribution, .. })
+            | RelOwned::UnionAll(UnionAll { distribution, .. })
+            | RelOwned::Union(Union { distribution, .. })
+            | RelOwned::Values(Values { distribution, .. }) => *distribution = None,
         }
     }
 }
@@ -385,32 +400,42 @@ pub enum MutRelational<'a> {
 }
 
 impl MutRelational<'_> {
-    /// Gets an mutable reference to the output tuple node id.
+    /// Gets a mutable reference to the explicit output tuple node id, if any
+    /// (see `Relational::explicit_output`).
     #[must_use]
-    pub fn mut_output(&mut self) -> &mut NodeId {
+    pub fn explicit_output_mut(&mut self) -> Option<&mut NodeId> {
         match self {
-            MutRelational::Delete(Delete { output, .. }) => output
-                .as_mut()
-                .expect("DELETE without WHERE clause doesn't have an output."),
-            MutRelational::ScanCte(ScanCte { output, .. })
-            | MutRelational::Except(Except { output, .. })
-            | MutRelational::GroupBy(GroupBy { output, .. })
-            | MutRelational::OrderBy(OrderBy { output, .. })
-            | MutRelational::Update(Update { output, .. })
-            | MutRelational::Having(Having { output, .. })
-            | MutRelational::Join(Join { output, .. })
-            | MutRelational::Limit(Limit { output, .. })
-            | MutRelational::Insert(Insert { output, .. })
-            | MutRelational::Intersect(Intersect { output, .. })
-            | MutRelational::Motion(Motion { output, .. })
-            | MutRelational::Projection(Projection { output, .. })
-            | MutRelational::ScanRelation(ScanRelation { output, .. })
-            | MutRelational::ScanSubQuery(ScanSubQuery { output, .. })
-            | MutRelational::Selection(Selection { output, .. })
+            MutRelational::Projection(Projection { output, .. })
             | MutRelational::SelectWithoutScan(SelectWithoutScan { output, .. })
-            | MutRelational::Union(Union { output, .. })
-            | MutRelational::UnionAll(UnionAll { output, .. })
-            | MutRelational::Values(Values { output, .. }) => output,
+            | MutRelational::Motion(Motion { output, .. }) => Some(output),
+            _ => None,
+        }
+    }
+
+    /// Gets a mutable reference to the distribution of the output tuple.
+    #[must_use]
+    pub fn distribution_mut(&mut self) -> &mut Option<Box<Distribution>> {
+        match self {
+            MutRelational::ScanCte(ScanCte { distribution, .. })
+            | MutRelational::Except(Except { distribution, .. })
+            | MutRelational::Delete(Delete { distribution, .. })
+            | MutRelational::Insert(Insert { distribution, .. })
+            | MutRelational::Intersect(Intersect { distribution, .. })
+            | MutRelational::Update(Update { distribution, .. })
+            | MutRelational::Join(Join { distribution, .. })
+            | MutRelational::Limit(Limit { distribution, .. })
+            | MutRelational::Motion(Motion { distribution, .. })
+            | MutRelational::Projection(Projection { distribution, .. })
+            | MutRelational::ScanRelation(ScanRelation { distribution, .. })
+            | MutRelational::ScanSubQuery(ScanSubQuery { distribution, .. })
+            | MutRelational::Selection(Selection { distribution, .. })
+            | MutRelational::SelectWithoutScan(SelectWithoutScan { distribution, .. })
+            | MutRelational::GroupBy(GroupBy { distribution, .. })
+            | MutRelational::Having(Having { distribution, .. })
+            | MutRelational::OrderBy(OrderBy { distribution, .. })
+            | MutRelational::UnionAll(UnionAll { distribution, .. })
+            | MutRelational::Union(Union { distribution, .. })
+            | MutRelational::Values(Values { distribution, .. }) => distribution,
         }
     }
 
@@ -601,37 +626,56 @@ impl MutRelational<'_> {
 }
 
 #[allow(dead_code)]
+impl<'a> Relational<'a> {
+    /// Gets the distribution of the output tuple if it has already been
+    /// calculated (see `Plan::add_motions`).
+    #[must_use]
+    pub fn distribution(&self) -> Option<&'a Distribution> {
+        match *self {
+            Relational::ScanCte(node) => node.distribution.as_deref(),
+            Relational::Except(node) => node.distribution.as_deref(),
+            Relational::Delete(node) => node.distribution.as_deref(),
+            Relational::Insert(node) => node.distribution.as_deref(),
+            Relational::Intersect(node) => node.distribution.as_deref(),
+            Relational::Update(node) => node.distribution.as_deref(),
+            Relational::Join(node) => node.distribution.as_deref(),
+            Relational::Limit(node) => node.distribution.as_deref(),
+            Relational::Motion(node) => node.distribution.as_deref(),
+            Relational::Projection(node) => node.distribution.as_deref(),
+            Relational::ScanRelation(node) => node.distribution.as_deref(),
+            Relational::ScanSubQuery(node) => node.distribution.as_deref(),
+            Relational::Selection(node) => node.distribution.as_deref(),
+            Relational::SelectWithoutScan(node) => node.distribution.as_deref(),
+            Relational::GroupBy(node) => node.distribution.as_deref(),
+            Relational::Having(node) => node.distribution.as_deref(),
+            Relational::OrderBy(node) => node.distribution.as_deref(),
+            Relational::UnionAll(node) => node.distribution.as_deref(),
+            Relational::Union(node) => node.distribution.as_deref(),
+            Relational::Values(node) => node.distribution.as_deref(),
+        }
+    }
+}
+
 impl Relational<'_> {
-    pub fn has_output(&self) -> bool {
-        !matches!(self, Relational::Delete(Delete { output: None, .. }))
+    /// Whether the node stores its output tuple explicitly (see
+    /// [`Relational::explicit_output`]).
+    pub fn has_explicit_output(&self) -> bool {
+        self.explicit_output().is_some()
     }
 
-    /// Gets an immutable id of the output tuple node of the plan's arena.
+    /// Id of the explicit output tuple (a `Row` of aliases) of the node.
+    ///
+    /// Nodes whose columns are derived from their children or from the table
+    /// (see `Plan::columns_of`) have no explicit output and return `None`.
+    /// `Motion` keeps an explicit row even though its columns copy the child's:
+    /// a materialized motion must answer for them after the child is hidden.
     #[must_use]
-    pub fn output(&self) -> NodeId {
+    pub fn explicit_output(&self) -> Option<NodeId> {
         match self {
-            Relational::Delete(Delete { output, .. }) => {
-                output.expect("DELETE without WHERE clause doesn't have an output.")
-            }
-            Relational::ScanCte(ScanCte { output, .. })
-            | Relational::Except(Except { output, .. })
-            | Relational::GroupBy(GroupBy { output, .. })
-            | Relational::OrderBy(OrderBy { output, .. })
-            | Relational::Having(Having { output, .. })
-            | Relational::Update(Update { output, .. })
-            | Relational::Limit(Limit { output, .. })
-            | Relational::Join(Join { output, .. })
-            | Relational::Insert(Insert { output, .. })
-            | Relational::Intersect(Intersect { output, .. })
-            | Relational::Motion(Motion { output, .. })
-            | Relational::Projection(Projection { output, .. })
-            | Relational::ScanRelation(ScanRelation { output, .. })
-            | Relational::ScanSubQuery(ScanSubQuery { output, .. })
-            | Relational::Selection(Selection { output, .. })
+            Relational::Projection(Projection { output, .. })
             | Relational::SelectWithoutScan(SelectWithoutScan { output, .. })
-            | Relational::Union(Union { output, .. })
-            | Relational::UnionAll(UnionAll { output, .. })
-            | Relational::Values(Values { output, .. }) => *output,
+            | Relational::Motion(Motion { output, .. }) => Some(*output),
+            _ => None,
         }
     }
 

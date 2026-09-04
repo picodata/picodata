@@ -24,8 +24,7 @@ use crate::{
     executor::vtable::vtable_indexed_column_name,
     ir::{
         node::{
-            relational::Relational, Alias, Constant, Delete, Insert, Limit, Motion, NodeId, Update,
-            Values,
+            relational::Relational, Constant, Delete, Insert, Limit, Motion, NodeId, Update, Values,
         },
         operator::{
             BlockConflictDoUpdate, ConflictDoUpdate, ConflictStrategy, ConflictUpdateItem,
@@ -1519,15 +1518,16 @@ pub fn dispatch_by_buckets<'p>(
 }
 
 pub fn vtable_columns(plan: &Plan, top_id: NodeId) -> Result<Vec<Column>, SbroadError> {
-    let top = plan.get_relation_node(top_id)?;
-    let output_id = top.output();
-    let columns = plan.get_row_list(output_id)?;
+    let columns = plan.columns_of(top_id)?;
     let mut res = Vec::with_capacity(columns.len());
-    for (pos, col_id) in columns.iter().enumerate() {
-        let col = plan.get_expression_node(*col_id)?;
+    for (pos, column) in columns.enumerate() {
         let name = vtable_indexed_column_name(pos);
-        let col_type = col.calculate_type(plan)?;
-        res.push(Column::new(name.as_str(), col_type, ColumnRole::User, true));
+        res.push(Column::new(
+            name.as_str(),
+            column?.r#type,
+            ColumnRole::User,
+            true,
+        ));
     }
     Ok(res)
 }
@@ -2003,22 +2003,15 @@ pub fn try_get_metadata_from_plan_for_top(
         return Ok(None);
     }
 
-    // Get metadata (column types) from the top node's output tuple.
-    let top_output_id = ir.get_relation_node(top_id)?.output();
-    let columns = ir.get_row_list(top_output_id)?;
+    // Get metadata (column types) from the top node's columns.
+    let columns = ir.columns_of(top_id)?;
     let mut metadata = Vec::with_capacity(columns.len());
-    for col_id in columns {
-        let column = ir.get_expression_node(*col_id)?;
-        let column_type = column.calculate_type(ir)?.to_string();
-        let column_name = if let Expression::Alias(Alias { name, .. }) = column {
-            name.to_string()
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some(smol_str::format_smolstr!("expected alias, got {column:?}")),
-            ));
-        };
-        metadata.push(MetadataColumn::new(column_name, column_type));
+    for column in columns {
+        let column = column?;
+        metadata.push(MetadataColumn::new(
+            column.name.to_string(),
+            column.r#type.to_string(),
+        ));
     }
     Ok(Some(metadata))
 }
@@ -2033,8 +2026,7 @@ fn metadata_write<'p>(
     plan: &Plan,
     top_id: NodeId,
 ) -> Result<(), SbroadError> {
-    let top_output_id = plan.get_relation_node(top_id)?.output();
-    let columns = plan.get_row_list(top_output_id)?;
+    let columns = plan.columns_of(top_id)?;
     let mut mp: Vec<u8> = Vec::new();
     let len = u32::try_from(columns.len()).map_err(|e| {
         SbroadError::Invalid(
@@ -2043,16 +2035,13 @@ fn metadata_write<'p>(
         )
     })?;
     write_array_len(&mut mp, len).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
-    for col_id in columns {
-        let column = plan.get_expression_node(*col_id)?;
-        let col_type = column.calculate_type(plan)?.to_string();
-        let Expression::Alias(Alias { name, .. }) = column else {
-            return Err(to_mp_err("Expected column to be an alias".into()));
-        };
+    for column in columns {
+        let column = column?;
+        let col_type = column.r#type.to_string();
 
         write_map_len(&mut mp, 2).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
         write_str(&mut mp, "name").map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
-        write_str(&mut mp, name).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
+        write_str(&mut mp, &column.name).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
         write_str(&mut mp, "type").map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
         write_str(&mut mp, &col_type).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
     }

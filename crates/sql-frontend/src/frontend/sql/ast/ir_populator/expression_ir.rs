@@ -429,7 +429,7 @@ impl ParseExpression {
 
                     plan_children_ids.push(plan_child_id);
                 }
-                plan.nodes.add_row(plan_children_ids, None)
+                plan.nodes.add_row(plan_children_ids)
             }
             ParseExpression::ArrayLiteral { children } => {
                 let mut plan_children_ids = Vec::with_capacity(children.len());

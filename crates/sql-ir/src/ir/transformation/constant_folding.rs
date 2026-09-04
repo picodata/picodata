@@ -2,8 +2,8 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    ArenaType, BoolExpr, Constant, Join, Node, Node64, NodeId, Selection, SubQueryReference,
-    UnaryExpr,
+    ArenaType, BoolExpr, Constant, Join, Node, Node64, Node96, NodeId, Selection,
+    SubQueryReference, UnaryExpr,
 };
 use crate::ir::operator::{Bool, Unary};
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
@@ -82,11 +82,17 @@ fn handle_isnull(val: &Value) -> Result<Option<Value>, SbroadError> {
 }
 
 fn collect_join_and_selection_nodes(plan: &Plan) -> Vec<NodeId> {
-    plan.nodes
+    let selections = plan
+        .nodes
         .iter64_with_ids()
-        .filter(|(_, n)| matches!(n, Node64::Selection(_) | Node64::Join(_)))
-        .map(|(id, _)| id)
-        .collect()
+        .filter(|(_, n)| matches!(n, Node64::Selection(_)))
+        .map(|(id, _)| id);
+    let joins = plan
+        .nodes
+        .iter96_with_ids()
+        .filter(|(_, n)| matches!(n, Node96::Join(_)))
+        .map(|(id, _)| id);
+    selections.chain(joins).collect()
 }
 
 impl Plan {

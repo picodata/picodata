@@ -2,7 +2,7 @@ use pretty_assertions::assert_eq;
 use sql::collection;
 use sql::ir::distribution::{Distribution, Key};
 use sql::ir::helpers::RepeatableState;
-use sql::ir::node::{Node64, NodeId};
+use sql::ir::node::{Node96, NodeId};
 use sql::ir::relation::Column;
 use sql::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
 use std::collections::HashSet;
@@ -112,24 +112,24 @@ fn inner_join3() {
         panic!("Expected a motion node");
     }
 
-    // Check distribution of the join output tuple.
-    let mut join_node = None;
-    for node in plan.nodes.iter64().enumerate() {
-        if let Node64::Join(_) = node.1 {
-            join_node = Some(
-                plan.get_relation_node(NodeId {
-                    offset: u32::try_from(node.0).unwrap(),
-                    arena_type: sql::ir::node::ArenaType::Arena64,
-                })
-                .unwrap(),
-            );
-            break;
-        }
-    }
-    let join = join_node.unwrap();
-    let dist = plan.get_distribution(join.output()).unwrap();
+    // Check distribution of the join node.
+    let join_id = plan
+        .nodes
+        .iter96()
+        .enumerate()
+        .find_map(|(offset, node)| {
+            matches!(node, Node96::Join(_)).then_some(NodeId {
+                offset: u32::try_from(offset).unwrap(),
+                arena_type: sql::ir::node::ArenaType::Arena96,
+            })
+        })
+        .unwrap();
+
     let keys: HashSet<_, RepeatableState> = collection! { Key::new(vec![0]), Key::new(vec![2]) };
-    assert_eq!(Distribution::Segment { keys: keys.into() }, dist,);
+    assert_eq!(
+        plan.rel_distr_ref(join_id).unwrap(),
+        &Distribution::Segment { keys: keys.into() }
+    );
 }
 
 #[test]

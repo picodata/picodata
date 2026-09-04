@@ -12,9 +12,8 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Constant, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, Node,
-    NodeId, OrderBy, Projection, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
-    Selection, Union, UnionAll, Update, Values,
+    Constant, Delete, Except, Intersect, Join, Motion, Node, NodeId, ScanRelation, Selection,
+    Union, UnionAll, Values,
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
@@ -210,22 +209,16 @@ where
     pub fn bucket_discovery(&mut self, top_id: NodeId) -> Result<Buckets, SbroadError> {
         let ir_plan = self.exec_plan.get_ir_plan();
         let top_node = ir_plan.get_relation_node(top_id)?;
-        if top_node.is_dml() && !top_node.has_output() {
+        if matches!(top_node, Relational::Delete(Delete { child: None, .. })) {
             // DML without output (e.g. DELETE without WHERE clause) should be executed on all buckets.
             return Ok(Buckets::All);
         }
 
-        // if top's output has Distribution::Single then the whole subtree must executed only on
-        // a single node, no need to traverse the subtree
-        let top_output_id = ir_plan.get_relational_output(top_id)?;
-        if let Expression::Row(Row {
-            distribution: Some(dist),
-            ..
-        }) = ir_plan.get_expression_node(top_output_id)?
-        {
-            if *dist == Distribution::Single {
-                return Ok(Buckets::Any);
-            }
+        // If the top node has Distribution::Single then the whole subtree must be executed only
+        // on a single node, no need to traverse the subtree. Some nodes (e.g. DELETE with a
+        // filter) never get a distribution, so an unset one is simply skipped.
+        if let Ok(Distribution::Single) = ir_plan.rel_distr_ref(top_id) {
+            return Ok(Buckets::Any);
         }
 
         // We use a `exec_plan_subtree_iter()` because we need DNF version of the
@@ -250,26 +243,19 @@ where
 
             let rel = ir_plan.get_relation_node(node_id)?;
             match rel {
-                Relational::ScanRelation(ScanRelation {
-                    output, relation, ..
-                }) => {
+                Relational::ScanRelation(ScanRelation { relation, .. }) => {
                     if ir_plan
                         .get_relation_or_error(relation.as_str())?
                         .is_global()
                     {
-                        self.bucket_map.insert(*output, Buckets::Any);
+                        self.bucket_map.insert(node_id, Buckets::Any);
                     } else {
-                        self.bucket_map.insert(*output, Buckets::All);
+                        self.bucket_map.insert(node_id, Buckets::All);
                     }
                 }
-                Relational::Motion(Motion {
-                    child,
-                    policy,
-                    output,
-                    ..
-                }) => match policy {
+                Relational::Motion(Motion { child, policy, .. }) => match policy {
                     MotionPolicy::Full => {
-                        self.bucket_map.insert(*output, Buckets::Any);
+                        self.bucket_map.insert(node_id, Buckets::Any);
                     }
                     MotionPolicy::Segment(_) => {
                         let virtual_table = self.exec_plan.get_motion_vtable(node_id)?;
@@ -279,13 +265,13 @@ where
                             .copied()
                             .collect::<HashSet<_, _>>();
                         self.bucket_map
-                            .insert(*output, Buckets::new_filtered(buckets));
+                            .insert(node_id, Buckets::new_filtered(buckets));
                     }
                     MotionPolicy::Local => {
                         let child_id = ir_plan.get_first_rel_child(node_id)?;
                         let child_buckets = self
                             .bucket_map
-                            .get(&ir_plan.get_relational_output(child_id)?)
+                            .get(&child_id)
                             .ok_or_else(|| {
                                 SbroadError::FailedTo(
                                     Action::Retrieve,
@@ -294,7 +280,7 @@ where
                                 )
                             })?
                             .clone();
-                        self.bucket_map.insert(*output, child_buckets);
+                        self.bucket_map.insert(node_id, child_buckets);
                     }
                     MotionPolicy::LocalSegment(_) => {
                         // See `dispatch` method in `src/executor.rs` in order to understand when
@@ -310,7 +296,7 @@ where
                                 .copied()
                                 .collect::<HashSet<_, _>>();
                             self.bucket_map
-                                .insert(*output, Buckets::new_filtered(buckets));
+                                .insert(node_id, Buckets::new_filtered(buckets));
                         } else {
                             // We'll create and populate a local segmented virtual table on the
                             // storage later. At the moment the best thing we can do is to copy
@@ -321,10 +307,9 @@ where
                                 )
                             })?;
 
-                            let child_rel = ir_plan.get_relation_node(child_id)?;
                             let child_buckets = self
                                 .bucket_map
-                                .get(&child_rel.output())
+                                .get(&child_id)
                                 .ok_or_else(|| {
                                     SbroadError::FailedTo(
                                         Action::Retrieve,
@@ -333,7 +318,7 @@ where
                                     )
                                 })?
                                 .clone();
-                            self.bucket_map.insert(*output, child_buckets);
+                            self.bucket_map.insert(node_id, child_buckets);
                         }
                     }
                     MotionPolicy::None => {
@@ -345,15 +330,12 @@ where
                         ));
                     }
                 },
-                Relational::Delete(Delete { output: None, .. }) => {
+                Relational::Delete(Delete { child: None, .. }) => {
                     unreachable!("DELETE without WHERE clause should have been handled previously.")
                 }
-                Relational::Delete(Delete {
-                    output: Some(output),
-                    ..
-                })
-                | Relational::Insert(Insert { output, .. })
-                | Relational::Update(Update { output, .. }) => {
+                Relational::Delete(Delete { child: Some(_), .. })
+                | Relational::Insert(_)
+                | Relational::Update(_) => {
                     let child_id = ir_plan.get_first_rel_child(node_id)?;
                     // Block-optimized INSERTs sit directly on top of a Values node (the
                     // motion got eliminated). Compute concrete buckets from the rows so
@@ -362,12 +344,12 @@ where
                         && matches!(ir_plan.get_relation_node(child_id)?, Relational::Values(_))
                     {
                         let buckets = self.insert_buckets_from_values(node_id, child_id)?;
-                        self.bucket_map.insert(*output, buckets);
+                        self.bucket_map.insert(node_id, buckets);
                         continue;
                     }
                     let child_buckets = self
                         .bucket_map
-                        .get(&ir_plan.get_relational_output(child_id)?)
+                        .get(&child_id)
                         .ok_or_else(|| {
                             SbroadError::FailedTo(
                                 Action::Retrieve,
@@ -386,20 +368,19 @@ where
                             my_buckets = Buckets::All;
                         }
                     }
-                    self.bucket_map.insert(*output, my_buckets);
+                    self.bucket_map.insert(node_id, my_buckets);
                 }
-                Relational::Projection(Projection { output, .. })
-                | Relational::GroupBy(GroupBy { output, .. })
-                | Relational::Having(Having { output, .. })
-                | Relational::OrderBy(OrderBy { output, .. })
-                | Relational::ScanCte(ScanCte { output, .. })
-                | Relational::ScanSubQuery(ScanSubQuery { output, .. })
-                | Relational::Limit(Limit { output, .. }) => {
+                Relational::Projection(_)
+                | Relational::GroupBy(_)
+                | Relational::Having(_)
+                | Relational::OrderBy(_)
+                | Relational::ScanCte(_)
+                | Relational::ScanSubQuery(_)
+                | Relational::Limit(_) => {
                     let child_id = ir_plan.get_first_rel_child(node_id)?;
-                    let child_rel = ir_plan.get_relation_node(child_id)?;
                     let child_buckets = self
                         .bucket_map
-                        .get(&child_rel.output())
+                        .get(&child_id)
                         .ok_or_else(|| {
                             SbroadError::FailedTo(
                                 Action::Retrieve,
@@ -408,79 +389,57 @@ where
                             )
                         })?
                         .clone();
-                    self.bucket_map.insert(*output, child_buckets);
+                    self.bucket_map.insert(node_id, child_buckets);
                 }
-                Relational::Except(Except { left, output, .. }) => {
+                Relational::Except(Except { left, .. }) => {
                     // We are only interested in the first child (the left one).
                     // The rows from the second child would be transferred to the
                     // first child by the motion or already located in the first
                     // child's bucket. So we don't need to worry about the second
                     // child's buckets here.
-                    let first_rel = ir_plan.get_relation_node(*left)?;
                     let first_buckets = self
                         .bucket_map
-                        .get(&first_rel.output())
+                        .get(left)
                         .expect("of the first except child from the bucket map.")
                         .clone();
-                    self.bucket_map.insert(*output, first_buckets);
+                    self.bucket_map.insert(node_id, first_buckets);
                 }
-                Relational::Union(Union {
-                    left,
-                    right,
-                    output,
-                    ..
-                })
-                | Relational::UnionAll(UnionAll {
-                    left,
-                    right,
-                    output,
-                    ..
-                }) => {
-                    let first_rel = ir_plan.get_relation_node(*left)?;
-                    let second_rel = ir_plan.get_relation_node(*right)?;
+                Relational::Union(Union { left, right, .. })
+                | Relational::UnionAll(UnionAll { left, right, .. }) => {
                     let first_buckets = self
                         .bucket_map
-                        .get(&first_rel.output())
+                        .get(left)
                         .expect("of the first union all child from the bucket map.");
                     let second_buckets = self
                         .bucket_map
-                        .get(&second_rel.output())
+                        .get(right)
                         .expect("of the second union all child from the bucket map.");
                     let buckets = first_buckets.disjunct(second_buckets);
-                    self.bucket_map.insert(*output, buckets);
+                    self.bucket_map.insert(node_id, buckets);
                 }
-                Relational::Intersect(Intersect {
-                    left,
-                    right,
-                    output,
-                    ..
-                }) => {
-                    let first_rel = ir_plan.get_relation_node(*left)?;
-                    let second_rel = ir_plan.get_relation_node(*right)?;
+                Relational::Intersect(Intersect { left, right, .. }) => {
                     let first_buckets = self
                         .bucket_map
-                        .get(&first_rel.output())
+                        .get(left)
                         .expect("of the first intersect child from the bucket map.");
                     let second_buckets = self
                         .bucket_map
-                        .get(&second_rel.output())
+                        .get(right)
                         .expect("of the second intersect child from the bucket map.");
                     let buckets = first_buckets.disjunct(second_buckets);
-                    self.bucket_map.insert(*output, buckets);
+                    self.bucket_map.insert(node_id, buckets);
                 }
                 Relational::Selection(Selection {
                     child,
                     subqueries,
                     filter,
-                    output,
                     ..
                 }) => {
                     // We need to get the buckets of the child node for the case
                     // when the filter returns no buckets to reduce.
-                    let child_rel = ir_plan.get_relation_node(*child)?;
                     let child_buckets = self
                         .bucket_map
-                        .get(&child_rel.output())
+                        .get(child)
                         .ok_or_else(|| {
                             SbroadError::FailedTo(
                                 Action::Retrieve,
@@ -489,7 +448,6 @@ where
                             )
                         })?
                         .clone();
-                    let output_id = *output;
                     let filter_id = *filter;
 
                     let filter_buckets = if let Expression::Constant(Constant {
@@ -507,21 +465,19 @@ where
                     };
 
                     self.bucket_map
-                        .insert(output_id, child_buckets.conjunct(&filter_buckets));
+                        .insert(node_id, child_buckets.conjunct(&filter_buckets));
                 }
                 Relational::Join(Join {
                     left,
                     right,
                     subqueries,
                     condition,
-                    output,
                     kind,
+                    ..
                 }) => {
-                    let inner_rel = ir_plan.get_relation_node(*left)?;
-                    let outer_rel = ir_plan.get_relation_node(*right)?;
                     let inner_buckets = self
                         .bucket_map
-                        .get(&inner_rel.output())
+                        .get(left)
                         .ok_or_else(|| {
                             SbroadError::FailedTo(
                                 Action::Retrieve,
@@ -532,7 +488,7 @@ where
                         .clone();
                     let outer_buckets = self
                         .bucket_map
-                        .get(&outer_rel.output())
+                        .get(right)
                         .ok_or_else(|| {
                             SbroadError::FailedTo(
                                 Action::Retrieve,
@@ -541,7 +497,6 @@ where
                             )
                         })?
                         .clone();
-                    let output_id = *output;
                     let condition_id = *condition;
                     let join_buckets = match kind {
                         JoinKind::Inner => {
@@ -557,22 +512,21 @@ where
                         }
                         JoinKind::LeftOuter => inner_buckets.disjunct(&outer_buckets),
                     };
-                    self.bucket_map.insert(output_id, join_buckets);
+                    self.bucket_map.insert(node_id, join_buckets);
                 }
-                Relational::Values(Values { output, .. }) => {
+                Relational::Values(_) => {
                     // We can materialize buckets on any node.
-                    self.bucket_map.insert(*output, Buckets::Any);
+                    self.bucket_map.insert(node_id, Buckets::Any);
                 }
-                Relational::SelectWithoutScan(SelectWithoutScan { output, .. }) => {
-                    self.bucket_map.insert(*output, Buckets::Any);
+                Relational::SelectWithoutScan(_) => {
+                    self.bucket_map.insert(node_id, Buckets::Any);
                 }
             }
         }
 
-        let top_rel = ir_plan.get_relation_node(top_id)?;
         let top_buckets = self
             .bucket_map
-            .get(&top_rel.output())
+            .get(&top_id)
             .ok_or_else(|| {
                 SbroadError::FailedTo(
                     Action::Retrieve,

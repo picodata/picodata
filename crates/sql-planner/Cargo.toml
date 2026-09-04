@@ -55,6 +55,11 @@ name = "optimize"
 harness = false
 test = false
 
+[[bench]]
+name = "generate_sql"
+harness = false
+test = false
+
 [[example]]
 name = "ast_fill_alloc"
 

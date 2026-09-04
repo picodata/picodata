@@ -9,6 +9,7 @@ use crate::frontend::sql::ast::Rule;
 use crate::frontend::sql::get_real_function_name;
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::frontend::sql::type_system::{self, get_parameter_derived_types, TypeAnalyzer};
+use crate::ir::columns::RelColumn;
 use crate::ir::expression::{ColumnWithScan, FunctionFeature, Substring, TrimKind};
 use crate::ir::metadata::Metadata;
 use crate::ir::node::{
@@ -956,16 +957,10 @@ where
                         // Referencing single node.
                         match left_child_col_position {
                             Ok(col_position) => {
-								let child = plan.get_relation_node(*plan_left_id)?;
-								let child_alias_ids = plan.get_row_list(
-									child.output()
-								)?;
-								let child_alias_id = child_alias_ids
-									.get(col_position)
-									.expect("column position is invalid");
 								let col_type = plan
-									.get_expression_node(*child_alias_id)?
-									.calculate_type(plan)?;
+									.column_at(RelColumn::new(*plan_left_id, col_position))
+									.expect("column position is invalid")
+									.r#type;
 								let ref_id = plan.nodes.add_ref(
 									ReferenceTarget::Single(*plan_left_id),
 									col_position,

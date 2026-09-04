@@ -61,9 +61,8 @@ impl Plan {
         // Check that the INSERT columns have the same length as the child node's
         // output columns.
         let child_id = self.dml_child_id(insert_id)?;
-        let child_output_id = self.get_relation_node(child_id)?.output();
-        let child_row = self.get_row_list(child_output_id)?;
-        if columns.len() != child_row.len() {
+        let child_row_len = self.columns_len(child_id)?;
+        if columns.len() != child_row_len {
             return Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!(
@@ -71,7 +70,7 @@ impl Plan {
                     insert_id,
                     columns.len(),
                     child_id,
-                    child_row.len()
+                    child_row_len
                 )),
             ));
         }

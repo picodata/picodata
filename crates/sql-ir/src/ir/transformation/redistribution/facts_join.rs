@@ -67,8 +67,8 @@ impl Plan {
             return Ok(MotionPolicy::None);
         }
 
-        let outer_dist = self.get_rel_distribution(outer_id)?;
-        let inner_dist = self.get_rel_distribution(inner_id)?;
+        let outer_dist = self.rel_distr_ref(outer_id)?;
+        let inner_dist = self.rel_distr_ref(inner_id)?;
 
         match (outer_dist, inner_dist) {
             (

@@ -133,8 +133,8 @@ pub struct ExecutingQuery<'a, C> {
     exec_plan: ExecutionPlan,
     /// Coordinator runtime
     coordinator: &'a C,
-    /// Bucket map of view { plan output_id (Expression::Row) -> `Buckets` }.
-    /// It's supposed to denote relational nodes' output buckets destination.
+    /// Bucket map of view { relational node id -> `Buckets` }.
+    /// It denotes the buckets where the output of the relational node is located.
     bucket_map: HashMap<NodeId, Buckets>,
     exec_ctx: ExecutionContext,
 }

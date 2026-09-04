@@ -15,9 +15,12 @@ use crate::executor::engine::Vshard;
 use crate::executor::vtable::{VirtualTable, VirtualTableMap};
 use crate::executor::Buckets;
 use crate::ir::bucket::BucketSet;
+use crate::ir::columns::RelColumn;
 use crate::ir::node::expression::Expression;
-use crate::ir::node::relational::{MutRelational, Relational};
-use crate::ir::node::{Alias, Motion, Node, NodeId, Reference, SubQueryReference, Update};
+use crate::ir::node::relational::Relational;
+use crate::ir::node::{
+    Alias, Motion, Node, NodeId, Projection, Reference, SubQueryReference, Update,
+};
 use crate::ir::operator::UpdateStrategy;
 use crate::ir::relation::SpaceEngine;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
@@ -195,65 +198,64 @@ impl<'plan> DqlSubtree<'plan> {
 
     fn effective_reference_alias(&self, expr: &Expression) -> Result<SmolStr, SbroadError> {
         let plan = self.get_ir_plan();
-        let Some((rel_id, position)) = reference_target(expr) else {
-            return Ok(SmolStr::from(plan.get_alias_from_reference_node(expr)?));
+        let Some(rel_col) = reference_target(expr) else {
+            return plan.get_alias_from_reference_node(expr);
         };
-        if let Some(alias) = self.materialized_motion_alias(rel_id, position)? {
+        if let Some(alias) = self.materialized_motion_alias(rel_col)? {
             return Ok(alias);
         }
-        if let Some(alias) = self.renamed_output_alias(rel_id, position, &mut AHashSet::new())? {
+        if let Some(alias) = self.renamed_output_alias(rel_col, &mut AHashSet::new())? {
             return Ok(alias);
         }
-        Ok(SmolStr::from(plan.get_alias_from_reference_node(expr)?))
+        plan.get_alias_from_reference_node(expr)
     }
 
     fn renamed_output_alias(
         &self,
-        rel_id: NodeId,
-        position: usize,
+        rel_col: RelColumn,
         visited: &mut AHashSet<NodeId>,
     ) -> Result<Option<SmolStr>, SbroadError> {
+        let RelColumn { rel_id, position } = rel_col;
         if !visited.insert(rel_id) {
             return Ok(None);
         }
 
         let plan = self.get_ir_plan();
-        let rel = plan.get_relation_node(rel_id)?;
-        let output = rel.output();
-        let output_list = plan.get_row_list(output)?;
-        let Some(alias_id) = output_list.get(position) else {
+        if position >= plan.columns_len(rel_id)? {
             return Ok(None);
-        };
-        let Expression::Alias(Alias { child, .. }) = plan.get_expression_node(*alias_id)? else {
-            return Ok(None);
-        };
-        let Expression::Reference(Reference {
-            target,
-            position,
-            asterisk_source,
-            ..
-        }) = plan.get_expression_node(*child)?
-        else {
-            return Ok(None);
-        };
-        if matches!(rel, Relational::Projection(_)) && asterisk_source.is_none() {
-            return Ok(None);
+        }
+        if let Relational::Projection(Projection { output, .. }) = plan.get_relation_node(rel_id)? {
+            // Only columns expanded from an asterisk are renamed through a projection.
+            let alias_id = plan.get_row_list(*output)?[position];
+            let Expression::Alias(Alias { child, .. }) = plan.get_expression_node(alias_id)? else {
+                return Ok(None);
+            };
+            let Expression::Reference(Reference {
+                asterisk_source: Some(_),
+                ..
+            }) = plan.get_expression_node(*child)?
+            else {
+                return Ok(None);
+            };
         }
 
-        let Some(child_rel_id) = target.first() else {
+        let Some(source) = plan.column_source(rel_col)? else {
             return Ok(None);
         };
-        if let Some(alias) = self.materialized_motion_alias(*child_rel_id, *position)? {
+        if let Some(alias) = self.materialized_motion_alias(source)? {
             return Ok(Some(alias));
         }
-        self.renamed_output_alias(*child_rel_id, *position, visited)
+        self.renamed_output_alias(source, visited)
     }
 
     fn materialized_motion_alias(
         &self,
-        motion_id: NodeId,
-        position: usize,
+        motion_col: RelColumn,
     ) -> Result<Option<SmolStr>, SbroadError> {
+        let RelColumn {
+            rel_id: motion_id,
+            position,
+        } = motion_col;
         if !self.contains_vtable_for_motion(motion_id) {
             return Ok(None);
         }
@@ -271,14 +273,16 @@ impl<'plan> DqlSubtree<'plan> {
     }
 }
 
-fn reference_target(expr: &Expression) -> Option<(NodeId, usize)> {
+fn reference_target(expr: &Expression) -> Option<RelColumn> {
     match expr {
         Expression::Reference(Reference {
             target, position, ..
-        }) => target.first().map(|rel_id| (*rel_id, *position)),
+        }) => target
+            .first()
+            .map(|rel_id| RelColumn::new(*rel_id, *position)),
         Expression::SubQueryReference(SubQueryReference {
             rel_id, position, ..
-        }) => Some((*rel_id, *position)),
+        }) => Some(RelColumn::new(*rel_id, *position)),
         _ => None,
     }
 }
@@ -311,13 +315,11 @@ pub(crate) trait SqlExecutionView: std::fmt::Debug {
 
     /// Resolves a reference alias as it should be rendered in SQL.
     fn reference_alias(&self, expr: &Expression) -> Result<SmolStr, SbroadError> {
-        Ok(SmolStr::from(
-            self.get_ir_plan().get_alias_from_reference_node(expr)?,
-        ))
+        self.get_ir_plan().get_alias_from_reference_node(expr)
     }
 
     /// Returns the synthetic `bucket_id` reference for a selection node.
-    fn get_bucket_ref(&self, selection_id: NodeId) -> Option<NodeId> {
+    fn get_bucket_ref(&self, selection_id: NodeId) -> Option<RelColumn> {
         self.as_execution_plan().get_bucket_ref(selection_id)
     }
 
@@ -331,10 +333,9 @@ pub(crate) trait SqlExecutionView: std::fmt::Debug {
         self.as_execution_plan().effective_motion_child(motion_id)
     }
 
-    /// Returns the output node if the motion is rendered as a leaf in this view.
-    fn effective_motion_leaf_output(&self, node_id: NodeId) -> Option<NodeId> {
-        self.as_execution_plan()
-            .effective_motion_leaf_output(node_id)
+    /// Whether the motion is rendered as a leaf in this view.
+    fn is_effective_motion_leaf(&self, node_id: NodeId) -> bool {
+        self.as_execution_plan().is_effective_motion_leaf(node_id)
     }
 
     /// Returns the effective `SerializeAsEmptyTable` state for a motion.
@@ -375,7 +376,8 @@ impl SqlExecutionView for DqlSubtree<'_> {
 /// It either yields a single replacement leaf or delegates to the normal IR
 /// subtree iterator.
 pub(crate) enum EffectiveExecPlanSubtreeIterator<'plan> {
-    /// A subtree collapsed to one effective leaf node.
+    /// A motion collapsed to one effective leaf: its output tuple is the only
+    /// child, the materialized subtree below it stays hidden.
     Once(std::iter::Once<NodeId>),
     /// A regular IR execution subtree traversal.
     Subtree(ExecPlanSubtreeIterator<'plan>),
@@ -510,7 +512,7 @@ impl<'plan> SubtreeViewBuilder<'plan> {
         let mut dispatch_flags = SubtreeDispatchFlags::default();
 
         for node_id in &node_ids {
-            if exec_plan.effective_motion_leaf_output(*node_id).is_some() {
+            if exec_plan.is_effective_motion_leaf(*node_id) {
                 leaf_motions.push(*node_id);
             }
             if let Ok(Node::Expression(expr)) = ir_plan.get_node(*node_id) {
@@ -623,9 +625,10 @@ impl LocalSqlParams {
 pub(crate) struct BucketFilter {
     /// Normalized bucket ids used as SQL suffix parameters.
     bucket_ids: Vec<u64>,
-    /// Map of `Selection` node id to the system `bucket_id` reference node id
-    /// rendered on the left-hand side of the generated `IN (...)` predicate.
-    targets: AHashMap<NodeId, NodeId>,
+    /// Map of `Selection` node id to the source of the system `bucket_id`
+    /// column rendered on the left-hand side of the generated `IN (...)`
+    /// predicate.
+    targets: AHashMap<NodeId, RelColumn>,
 }
 
 fn bucket_filter_calculate(
@@ -658,9 +661,9 @@ fn bucket_filter_calculate(
                 None => relation_name = Some(node_relation_name),
             }
         };
-        if let Relational::Selection(selection) = rel {
-            if let Some(bucket_ref_id) = bucket_ref_from_output(plan, selection.output)? {
-                targets.insert(node_id, bucket_ref_id);
+        if let Relational::Selection(_) = rel {
+            if let Some(bucket_column) = bucket_column_source(plan, node_id)? {
+                targets.insert(node_id, bucket_column);
             }
         }
     }
@@ -697,19 +700,15 @@ fn bucket_filter_relation_name<'plan>(rel: &Relational<'plan>) -> Option<&'plan 
     }
 }
 
-fn bucket_ref_from_output(plan: &Plan, output_id: NodeId) -> Result<Option<NodeId>, SbroadError> {
-    let output_expr = plan.get_expression_node(output_id)?;
-    let row_list = output_expr.get_row_list()?;
-    let bucket_ref_id = row_list.iter().find_map(|col_id| {
-        let col_id = plan.get_child_under_alias(*col_id).ok()?;
-        let expr = plan.get_expression_node(col_id).ok()?;
-        let Expression::Reference(Reference { is_system, .. }) = expr else {
-            return None;
-        };
-        is_system.then_some(col_id)
-    });
-
-    Ok(bucket_ref_id)
+/// Finds the system `bucket_id` column among the columns of `rel_id` and
+/// returns the child column it is taken from.
+fn bucket_column_source(plan: &Plan, rel_id: NodeId) -> Result<Option<RelColumn>, SbroadError> {
+    for (position, column) in plan.columns_of(rel_id)?.enumerate() {
+        if column?.is_system {
+            return plan.column_source(RelColumn::new(rel_id, position));
+        }
+    }
+    Ok(None)
 }
 
 impl ExecutionPlan {
@@ -779,9 +778,9 @@ impl ExecutionPlan {
         dfs.traverse_into_iter(top_id).next().is_some()
     }
 
-    /// Returns the bucket reference attached to `selection_id` by the active
+    /// Returns the bucket column attached to `selection_id` by the active
     /// bucket filter overlay.
-    pub(crate) fn get_bucket_ref(&self, selection_id: NodeId) -> Option<NodeId> {
+    pub(crate) fn get_bucket_ref(&self, selection_id: NodeId) -> Option<RelColumn> {
         self.bucket_filter
             .as_ref()?
             .targets
@@ -942,7 +941,9 @@ impl ExecutionPlan {
         Ok(*child)
     }
 
-    /// Returns the output node used when `node_id` is an effective motion leaf.
+    /// Returns the output tuple of `node_id` when it is a motion rendered as
+    /// an effective leaf: its subtree is materialized (or unlinked) and hidden
+    /// from traversals, so the tuple stands in for the whole subtree.
     pub(crate) fn effective_motion_leaf_output(&self, node_id: NodeId) -> Option<NodeId> {
         let Ok(Node::Relational(Relational::Motion(Motion { output, policy, .. }))) =
             self.get_ir_plan().get_node(node_id)
@@ -955,6 +956,12 @@ impl ExecutionPlan {
             return Some(*output);
         }
         None
+    }
+
+    /// Whether `node_id` is a motion rendered as an effective leaf (see
+    /// [`Self::effective_motion_leaf_output`]).
+    pub(crate) fn is_effective_motion_leaf(&self, node_id: NodeId) -> bool {
+        self.effective_motion_leaf_output(node_id).is_some()
     }
 
     /// Returns the root below a motion if the motion subtree is still visible.
@@ -1460,20 +1467,6 @@ impl ExecutionPlan {
             Entity::Relational,
             Some("invalid motion".into()),
         ))
-    }
-
-    /// Unlink the subtree of the motion node.
-    pub fn unlink_motion_subtree(&mut self, motion_id: NodeId) -> Result<(), SbroadError> {
-        let motion = self.get_mut_ir_plan().get_mut_relation_node(motion_id)?;
-        if let MutRelational::Motion(Motion { child, .. }) = motion {
-            *child = None;
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::Relational,
-                Some(format_smolstr!("node ({motion_id:?}) is not motion")),
-            ));
-        }
-        Ok(())
     }
 
     /// # Errors
