@@ -26,7 +26,7 @@ buckets = [2997]
 explain (buckets) select * from (select * from t where a = 5 and c = 'lol') t
 join (select * from tt where d = 5) tt on t.a = tt.d;
 -- EXPECTED:
-buckets = [219,442]
+buckets = [219, 442]
 
 -- TEST: buckets-join-all
 -- SQL:
@@ -45,7 +45,7 @@ buckets <= [1-3000]
 -- SQL:
 explain (buckets) delete from t where a = 1 and c = '2' or a = 3 and c = '4';
 -- EXPECTED:
-buckets = [2520,2997]
+buckets = [2520, 2997]
 
 -- TEST: buckets-delete-all
 -- SQL:
@@ -119,4 +119,39 @@ buckets <= [1-3000]
 EXPLAIN (buckets)
 SELECT COUNT(*) FROM tt WHERE d = 1 OR d = 42;
 -- EXPECTED:
-buckets = [1934,2426]
+buckets = [1934, 2426]
+
+-- TEST: buckets-fmt-fits-single-line
+-- SQL:
+EXPLAIN (buckets, fmt)
+SELECT COUNT(*) FROM tt WHERE d = 1 OR d = 42;
+-- EXPECTED:
+buckets = [1934, 2426]
+
+-- TEST: buckets-fmt-wrapped
+-- SQL:
+EXPLAIN (buckets, fmt)
+SELECT * FROM tt WHERE d IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                             13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23);
+-- EXPECTED:
+buckets = [
+  219, 246, 509, 626, 653, 680, 799, 1403,
+  1410, 1418, 1439, 1488, 1514, 1860, 1934,
+  1948, 1958, 2312, 2564, 2640, 2752, 2802,
+  2852
+]
+
+-- TEST: buckets-fmt-not-a-list
+-- SQL:
+EXPLAIN (buckets, fmt)
+SELECT * FROM _pico_table;
+-- EXPECTED:
+buckets = any
+
+-- TEST: buckets-no-fmt-stays-on-one-line
+-- SQL:
+EXPLAIN (buckets)
+SELECT * FROM tt WHERE d IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                             13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23);
+-- EXPECTED:
+buckets = [219, 246, 509, 626, 653, 680, 799, 1403, 1410, 1418, 1439, 1488, 1514, 1860, 1934, 1948, 1958, 2312, 2564, 2640, 2752, 2802, 2852]

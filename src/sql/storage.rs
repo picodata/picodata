@@ -24,6 +24,7 @@ use sql::explain::executor::RawExplainEntry;
 use sql::ir::bucket::Buckets;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::options::Options;
+use sql::ir::ExplainOptions;
 use std::cell::{OnceCell, RefCell};
 use std::time::Duration;
 
@@ -655,6 +656,7 @@ impl Vshard for StorageRuntime {
 
         if plan.is_raw_explain() {
             let plan_id = ex_plan.get_plan_id()?;
+            let should_fmt = plan.explain_options.contains(ExplainOptions::Fmt);
 
             let explain_once = |sql: String,
                                 params: LocalSqlParams,
@@ -672,7 +674,14 @@ impl Vshard for StorageRuntime {
                     sql,
                 };
 
-                explain_execute(self, miss_info, params.params(), buckets, motion_info)
+                explain_execute(
+                    self,
+                    miss_info,
+                    params.params(),
+                    buckets,
+                    motion_info,
+                    should_fmt,
+                )
             };
             let has_segment_motion = ex_plan.has_segment_motion(top_id);
             if ex_plan.has_serialize_as_empty_motion(top_id) {
@@ -743,8 +752,14 @@ impl Vshard for StorageRuntime {
                 };
 
                 let motion_info = MotionInfo::new_for_query(has_segment_motion, None);
-                let entry =
-                    explain_execute(self, miss_info, sql_params.params(), buckets, motion_info)?;
+                let entry = explain_execute(
+                    self,
+                    miss_info,
+                    sql_params.params(),
+                    buckets,
+                    motion_info,
+                    should_fmt,
+                )?;
                 append_query_entry_to_port(RawExplainEntry::Single(entry), port)?;
             }
 

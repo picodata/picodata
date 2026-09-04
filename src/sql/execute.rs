@@ -739,6 +739,7 @@ pub fn explain_execute(
     params: &[Value],
     buckets: &Buckets,
     motion_info: MotionInfo,
+    should_fmt: bool,
 ) -> Result<QueryEntry, SbroadError> {
     let _plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
     let metadata = miss_info.vtable_metadata();
@@ -756,6 +757,7 @@ pub fn explain_execute(
         buckets: buckets.clone(),
         bucket_count,
         is_upper_bound,
+        should_fmt,
     };
 
     let explain_query = ExplainQuery::new(miss_info.sql());

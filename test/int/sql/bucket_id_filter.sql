@@ -154,7 +154,7 @@ projection (t.a::int -> a)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [1591,1934]
+buckets = [1591, 1934]
 
 -- TEST: anded-with-unrelated-filter-explain
 -- SQL:

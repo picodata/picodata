@@ -29,13 +29,20 @@ pub fn format_sql(explain: &str, params: &[impl ToString], should_fmt: bool) -> 
 
 pub const INDENT: &str = "  ";
 
+/// Width of the `EXPLAIN` section headers.
+pub const EXPLAIN_WIDTH: u16 = 70;
+
+/// Width the `FMT` option formats to: textual representations
+/// wider than this are not printed as a single line.
+pub const FMT_WIDTH: usize = 46;
+
 pub fn make_explain_header1(s: impl ToString) -> comfy_table::Table {
     let mut header = ::comfy_table::Table::new();
     header
         .load_preset(::comfy_table::presets::UTF8_HORIZONTAL_ONLY)
         .set_content_arrangement(::comfy_table::ContentArrangement::DynamicFullWidth)
         .add_row([s.to_string()])
-        .set_width(70);
+        .set_width(EXPLAIN_WIDTH);
 
     header
 }

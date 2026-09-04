@@ -1,4 +1,4 @@
-use crate::explain::utils::indent;
+use crate::explain::utils::{indent, FMT_WIDTH};
 use itertools::Itertools;
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
@@ -33,7 +33,7 @@ use std::fmt::{self, Display, Write};
 /// We use this buffer to check if the textual representation
 /// is short enough to be printed as a single line.
 #[derive(Default)]
-struct TinyFmtBuffer(SmallVec<[u8; 46]>);
+struct TinyFmtBuffer(SmallVec<[u8; FMT_WIDTH]>);
 
 impl TinyFmtBuffer {
     /// Does the buffer contain `'\n'`?

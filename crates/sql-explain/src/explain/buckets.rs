@@ -1,3 +1,4 @@
+use crate::explain::utils::{FMT_WIDTH, INDENT};
 use ahash::AHashSet;
 use serde::{Deserialize, Serialize};
 use sql_executor::executor::{
@@ -11,7 +12,7 @@ use sql_ir::ir::{
     node::{block::BlockOwned, relational::Relational, Motion, Node, NodeId},
     transformation::redistribution::MotionPolicy,
     tree::traversal::{PostOrder, REL_CAPACITY},
-    Plan,
+    ExplainOptions, Plan,
 };
 use std::fmt::Display;
 
@@ -24,11 +25,12 @@ pub struct BoundedBuckets {
     /// Whether `buckets` is only an upper bound estimate rather than the exact
     /// execution set.
     pub is_upper_bound: bool,
+    pub should_fmt: bool,
 }
 
 impl Display for BoundedBuckets {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let repr = buckets_repr(&self.buckets, self.bucket_count);
+        let repr = buckets_repr(&self.buckets, self.bucket_count, self.should_fmt);
         match self.buckets {
             Buckets::All => write!(f, "buckets <= {repr}"),
             Buckets::Any => write!(f, "buckets = {repr}"),
@@ -52,11 +54,12 @@ impl Display for BoundedBuckets {
 }
 
 impl BoundedBuckets {
-    pub fn new(buckets: Buckets, bucket_count: u64) -> Self {
+    pub fn new(buckets: Buckets, bucket_count: u64, should_fmt: bool) -> Self {
         BoundedBuckets {
             buckets,
             bucket_count,
             is_upper_bound: false,
+            should_fmt,
         }
     }
 }
@@ -73,6 +76,7 @@ pub fn bounded_buckets_from_query<R: Router>(
     let coord = query.get_coordinator();
     let vshard = coord.get_current_vshard_object().unwrap();
     let bucket_count = vshard.bucket_count();
+    let should_fmt = ir.explain_options.contains(ExplainOptions::Fmt);
 
     if ir.is_block()? {
         let top_id = ir.get_top()?;
@@ -81,18 +85,22 @@ pub fn bounded_buckets_from_query<R: Router>(
             unreachable!("plan.is_block() returned true, but top is {block:?}")
         };
         let buckets = query.calculate_block_buckets(&block)?;
-        return Ok(BoundedBuckets::new(buckets, bucket_count));
+        return Ok(BoundedBuckets::new(buckets, bucket_count, should_fmt));
     }
 
     if ir.is_sharded_insert()? {
         let buckets = query.try_calculate_sharded_insert_buckets()?;
 
         let actual_buckets = buckets.unwrap_or(Buckets::All);
-        return Ok(BoundedBuckets::new(actual_buckets, bucket_count));
+        return Ok(BoundedBuckets::new(
+            actual_buckets,
+            bucket_count,
+            should_fmt,
+        ));
     }
 
     if !can_estimate_buckets(ir)? {
-        return Ok(BoundedBuckets::new(Buckets::All, bucket_count));
+        return Ok(BoundedBuckets::new(Buckets::All, bucket_count, should_fmt));
     }
 
     let top_id = ir.get_top()?;
@@ -168,7 +176,7 @@ pub fn bounded_buckets_from_query<R: Router>(
     }
 
     let buckets = estimated_buckets.expect("there's at least one subtree");
-    let buckets_info = BoundedBuckets::new(buckets, bucket_count);
+    let buckets_info = BoundedBuckets::new(buckets, bucket_count, should_fmt);
 
     Ok(buckets_info)
 }
@@ -227,7 +235,53 @@ fn can_estimate_buckets(plan: &Plan) -> Result<bool, SbroadError> {
     Ok(can_estimate)
 }
 
-pub fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
+/// Render bucket ranges as a comma separated list in brackets.
+///
+/// A range is a contiguous run of buckets, passed down as a `(first, last)`
+/// pair. A run of a single bucket is rendered as a plain id, a run of two
+/// adjacent buckets as a pair of ids (`1, 2`), and anything wider as a
+/// range (`1-3`).
+///
+/// Without the `FMT` option, or when the whole list fits on one line,
+/// it is printed as is. Otherwise it is broken up so that every line
+/// holds as many ranges as fit into [`FMT_WIDTH`].
+fn format_bucket_ranges(ranges: &[(u64, u64)], should_fmt: bool) -> String {
+    let sep = ", ";
+    let render = |&(l, r): &(u64, u64)| match r - l {
+        0 => l.to_string(),
+        1 => format!("{l}{sep}{r}"),
+        _ => format!("{l}-{r}"),
+    };
+    let ranges: Vec<String> = ranges.iter().map(render).collect();
+
+    let width = FMT_WIDTH;
+
+    let inline = format!("[{}]", ranges.join(sep));
+    if !should_fmt || inline.len() <= width {
+        return inline;
+    }
+
+    // Besides the ranges and separators, a wrapped line holds the indent
+    // and (unless it is the last one) a trailing comma.
+    let budget = width - 1;
+
+    let lines = ranges
+        .iter()
+        .fold(Vec::new(), |mut lines: Vec<String>, range| {
+            match lines.last_mut() {
+                Some(line) if line.len() + sep.len() + range.len() <= budget => {
+                    line.push_str(sep);
+                    line.push_str(range);
+                }
+                _ => lines.push(format!("{INDENT}{range}")),
+            }
+            lines
+        });
+
+    format!("[\n{}\n]", lines.join(",\n"))
+}
+
+pub fn buckets_repr(buckets: &Buckets, bucket_count: u64, should_fmt: bool) -> String {
     match buckets {
         Buckets::All => format!("[1-{bucket_count}]"),
         Buckets::Filtered(BucketSet::Exact(buckets_set)) => 'f: {
@@ -238,28 +292,19 @@ pub fn buckets_repr(buckets: &Buckets, bucket_count: u64) -> String {
             let mut nums: Vec<u64> = buckets_set.iter().copied().collect();
             nums.sort_unstable();
 
-            let mut ranges = Vec::new();
+            // Contiguous runs of buckets, collected as (first, last) pairs.
+            let mut ranges: Vec<(u64, u64)> = Vec::new();
             let mut l = 0;
             for r in 1..nums.len() {
                 if nums[r - 1] + 1 == nums[r] {
                     continue;
                 }
-                if r - l == 1 {
-                    ranges.push(format!("{}", nums[l]));
-                } else {
-                    ranges.push(format!("{}-{}", nums[l], nums[r - 1]))
-                }
+                ranges.push((nums[l], nums[r - 1]));
                 l = r;
             }
+            ranges.push((nums[l], nums[nums.len() - 1]));
 
-            let r = nums.len();
-            if r - l == 1 {
-                ranges.push(format!("{}", nums[r - 1]));
-            } else {
-                ranges.push(format!("{}-{}", nums[l], nums[r - 1]))
-            }
-
-            format!("[{}]", ranges.join(","))
+            format_bucket_ranges(&ranges, should_fmt)
         }
         Buckets::Filtered(BucketSet::EstimatedCount { lower, upper }) => {
             if lower != upper {

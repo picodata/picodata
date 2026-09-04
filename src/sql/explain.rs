@@ -164,6 +164,7 @@ pub fn explain_execute_block<'p>(
         statements,
         params,
         bucket_count,
+        explain_options,
         ..
     } = block;
     let params = &mut params.into_iter();
@@ -172,6 +173,7 @@ pub fn explain_execute_block<'p>(
         buckets: buckets.clone(),
         bucket_count,
         is_upper_bound: false,
+        should_fmt: explain_options.contains(ExplainOptions::Fmt),
     };
     let motion_info = MotionInfo::new_for_transaction();
 

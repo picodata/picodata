@@ -1243,7 +1243,7 @@ insert into t on conflict: fail
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [898,1787,2356]
+buckets = [898, 1787, 2356]
 
 -- TEST: explain-insert-with-buckets-2
 -- SQL:
@@ -1261,7 +1261,7 @@ projection (t.a::int -> a, t.b::double -> b, t.c::string -> c)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = [898,1787,2356]
+buckets = [898, 1787, 2356]
 
 -- TEST: explain-insert-with-buckets-3
 -- SQL:
