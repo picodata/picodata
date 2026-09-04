@@ -530,7 +530,6 @@ instance:
 
 def test_plugin_listener_advertise_change_rejected(cluster: Cluster, port_distributor: PortDistributor):
     """Test that changing advertise address on restart fails."""
-    from conftest import log_crawler
 
     host = cluster.base_host
     plugin_port = port_distributor.get()
@@ -583,10 +582,11 @@ instance:
                         advertise: changed.example.com:8888
 """)
 
-    err = "different"
-    crawler = log_crawler(i1, err)
-    i1.fail_to_start()
-    assert crawler.matched
+    i1.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different "
+        "`plugin.testplug_listener.service.listenerservice.listener.advertise`, "
+        "which is not allowed, was: 'original.example.com:7777' became: 'changed.example.com:8888'"
+    )
 
 
 def test_plugin_listener_add_new_on_restart(cluster: Cluster, port_distributor: PortDistributor):
@@ -877,4 +877,4 @@ instance:
     i1.wait_online()
 
     # check that the plugin receives the config that was specified in the config file
-    assert lc.matched
+    lc.wait_matched()

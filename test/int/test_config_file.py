@@ -248,12 +248,10 @@ cluster:
     was = instance.cluster_name  # type: ignore
     instance.cluster_name = "new-cluster-name"
     assert instance.cluster_name != was
-    err = f"""\
-invalid configuration: instance restarted with a different `cluster_name`, which is not allowed, was: '{was}' became: 'new-cluster-name'
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different `cluster_name`, "
+        f"which is not allowed, was: '{was}' became: 'new-cluster-name'\n"
+    )
     instance.cluster_name = was
 
     #
@@ -262,12 +260,10 @@ invalid configuration: instance restarted with a different `cluster_name`, which
     was = instance.name  # type: ignore
     instance.name = "new-instance-name"
     assert instance.name != was
-    err = f"""\
-invalid configuration: instance restarted with a different `instance_name`, which is not allowed, was: '{was}' became: 'new-instance-name'
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different `instance_name`, "
+        f"which is not allowed, was: '{was}' became: 'new-instance-name'\n"
+    )
     instance.name = was
 
     #
@@ -276,12 +272,10 @@ invalid configuration: instance restarted with a different `instance_name`, whic
     was = instance.tier  # type: ignore
     instance.tier = "new-tier"
     assert instance.tier != was
-    err = """\
-invalid configuration: instance restarted with a different `tier`, which is not allowed, was: 'default' became: 'new-tier'
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different `tier`, "
+        "which is not allowed, was: 'default' became: 'new-tier'\n"
+    )
     instance.tier = was
 
     #
@@ -290,12 +284,10 @@ invalid configuration: instance restarted with a different `tier`, which is not 
     was = instance.replicaset_name  # type: ignore
     instance.replicaset_name = "new-replicaset-name"
     assert instance.replicaset_name != was
-    err = f"""\
-invalid configuration: instance restarted with a different `replicaset_name`, which is not allowed, was: '{was}' became: 'new-replicaset-name'
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different `replicaset_name`, "
+        f"which is not allowed, was: '{was}' became: 'new-replicaset-name'\n"
+    )
     instance.replicaset_name = was
 
     #
@@ -304,12 +296,10 @@ invalid configuration: instance restarted with a different `replicaset_name`, wh
     was = instance.iproto_listen  # type: ignore
     instance.env["PICODATA_IPROTO_ADVERTISE"] = "example.com:1234"
     assert instance.env["PICODATA_IPROTO_ADVERTISE"] != was
-    err = f"""\
-invalid configuration: instance restarted with a different iproto advertise address, which is not allowed, was: '{was}' became: 'example.com:1234'
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different iproto advertise address, "
+        f"which is not allowed, was: '{was}' became: 'example.com:1234'\n"
+    )
     del instance.env["PICODATA_IPROTO_ADVERTISE"]
 
     #
@@ -330,12 +320,10 @@ cluster:
         new-new-tier:
 """
     )
-    err = """\
-invalid configuration: instance restarted with a different set of tiers in configuration file, which is not allowed: tiers previously not seen: 'new-new-tier'
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different set of tiers in configuration file, "
+        "which is not allowed: tiers previously not seen: 'new-new-tier'\n"
+    )
 
     #
     # Change tier configuration: remove old tier
@@ -351,12 +339,10 @@ cluster:
         default:
 """
     )
-    err = """\
-invalid configuration: instance restarted with a different set of tiers in configuration file, which is not allowed: tiers not found in configuration: 'new-tier'
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different set of tiers in configuration file, "
+        "which is not allowed: tiers not found in configuration: 'new-tier'\n"
+    )
 
     #
     # Change tier configuration: default_replication_factor
@@ -375,12 +361,10 @@ cluster:
             replication_factor: 1
 """
     )
-    err = """\
-invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'default' `replication_factor` was persisted as `2`, but became `69`
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different tier configuration, "
+        "which is not allowed: tier 'default' `replication_factor` was persisted as `2`, but became `69`\n"
+    )
 
     #
     # Change tier configuration: default_bucket_count
@@ -399,12 +383,10 @@ cluster:
             replication_factor: 1
 """
     )
-    err = """\
-invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'default' `bucket_count` was persisted as `3000`, but became `6000`
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different tier configuration, "
+        "which is not allowed: tier 'default' `bucket_count` was persisted as `3000`, but became `6000`\n"
+    )
 
     #
     # Change tier configuration: can_vote
@@ -423,12 +405,10 @@ cluster:
             replication_factor: 1
 """
     )
-    err = """\
-invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'new-tier' `can_vote` was persisted as `false`, but became `true`
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different tier configuration, "
+        "which is not allowed: tier 'new-tier' `can_vote` was persisted as `false`, but became `true`\n"
+    )
 
     #
     # Change tier configuration: replication_factor
@@ -446,12 +426,10 @@ cluster:
             can_vote: true
 """
     )
-    err = """\
-invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'new-tier' `replication_factor` was persisted as `1`, but became `2`
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different tier configuration, "
+        "which is not allowed: tier 'new-tier' `replication_factor` was persisted as `1`, but became `2`\n"
+    )
 
     #
     # Change tier configuration: bucket_count
@@ -471,12 +449,10 @@ cluster:
             replication_factor: 1
 """
     )
-    err = """\
-invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'default' `bucket_count` was persisted as `3000`, but became `0`
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different tier configuration, "
+        "which is not allowed: tier 'default' `bucket_count` was persisted as `3000`, but became `0`\n"
+    )
 
     #
     # Change tier configuration: experimental_sharding_implementation
@@ -498,12 +474,11 @@ cluster:
             experimental_sharding_implementation: true
 """
     )
-    err = """\
-invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'new-tier' `experimental_sharding_implementation` was persisted as `false`, but became `true`
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different tier configuration, "
+        "which is not allowed: tier 'new-tier' `experimental_sharding_implementation` "
+        "was persisted as `false`, but became `true`\n"
+    )
 
     #
     # Change tier configuration: wal_mode
@@ -525,12 +500,10 @@ cluster:
             wal_mode: fsync
 """
     )
-    err = """\
-invalid configuration: instance restarted with a different tier configuration, which is not allowed: tier 'new-tier' `wal_mode` was persisted as `fsync`, but became `write`
-"""  # noqa: E501
-    crawler = log_crawler(instance, err)
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(
+        expected_log="invalid configuration: instance restarted with a different tier configuration, "
+        "which is not allowed: tier 'new-tier' `wal_mode` was persisted as `fsync`, but became `write`\n"
+    )
 
 
 def test_default_path_to_config_file(cluster: Cluster):
@@ -581,7 +554,7 @@ Using configuration file '{config_path}'.
     crawler = log_crawler(instance, msg)
     instance.start(cwd=work_dir)
     instance.wait_online()
-    assert crawler.matched
+    crawler.wait_matched()
 
     assert instance.eval("return box.cfg.memtx_memory") == 536870912
     instance.terminate()
@@ -590,14 +563,10 @@ Using configuration file '{config_path}'.
 def test_config_file_enoent(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.env.update({"PICODATA_CONFIG_FILE": "./unexisting_dir/trash.yaml"})
-    err = f"""\
-can't read from '{cluster.data_dir}/./unexisting_dir/trash.yaml': No such file or directory (os error 2)
-"""  # noqa: E501
-    crawler = log_crawler(i1, err)
 
-    i1.fail_to_start()
-
-    assert crawler.matched
+    i1.fail_to_start(
+        expected_log=f"can't read from '{cluster.data_dir}/./unexisting_dir/trash.yaml': No such file or directory (os error 2)"
+    )
 
 
 def test_config_file_with_empty_tiers(cluster: Cluster):
@@ -608,27 +577,19 @@ cluster:
 """
     )
     i1 = cluster.add_instance(wait_online=False)
-    err = """\
-invalid configuration: empty `cluster.tier` section which is required to define the initial tiers\
-"""  # noqa: E501
-    crawler = log_crawler(i1, err.strip())
 
-    i1.fail_to_start()
-
-    assert crawler.matched
+    i1.fail_to_start(
+        expected_log="invalid configuration: empty `cluster.tier` section which is required to define the initial tiers"
+    )
 
 
 def test_run_with_tier_which_is_not_in_tier_list(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.tier = "unexistent_tier"
-    err = """\
-current instance is assigned tier 'unexistent_tier' which is not defined in the configuration file\
-"""
-    crawler = log_crawler(i1, err)
 
-    i1.fail_to_start()
-
-    assert crawler.matched
+    i1.fail_to_start(
+        expected_log="current instance is assigned tier 'unexistent_tier' which is not defined in the configuration file"
+    )
 
 
 def test_config_file_with_garbage(cluster: Cluster):
@@ -649,14 +610,11 @@ super-cluster:
 """
     )
     i1 = cluster.add_instance(wait_online=False)
-    err = """\
-invalid configuration: unknown parameters: `super-cluster` (did you mean `cluster`?), `cluster.replication_topology`, `instance.instance_id` (did you mean `name`?)\
-"""  # noqa: E501
-    crawler = log_crawler(i1, err)
 
-    i1.fail_to_start()
-
-    assert crawler.matched
+    i1.fail_to_start(
+        expected_log="invalid configuration: unknown parameters: `super-cluster` (did you mean `cluster`?), "
+        "`cluster.replication_topology`, `instance.instance_id` (did you mean `name`?)"
+    )
 
 
 def test_config_file_with_init_replication_factor(cluster: Cluster):
@@ -664,14 +622,10 @@ def test_config_file_with_init_replication_factor(cluster: Cluster):
     cluster.set_config_file(cfg)
     i1 = cluster.add_instance(wait_online=False)
     i1.init_replication_factor = 1
-    err = """\
-error: option `--init-replication-factor` cannot be used with `--config` simultaneously\
-"""
-    crawler = log_crawler(i1, err)
 
-    i1.fail_to_start()
-
-    assert crawler.matched
+    i1.fail_to_start(
+        expected_log="error: option `--init-replication-factor` cannot be used with `--config` simultaneously",
+    )
 
 
 def test_config_file_box_cfg_parameters(cluster: Cluster):

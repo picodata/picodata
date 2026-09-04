@@ -148,10 +148,6 @@ instance:
 
     i1 = cluster.add_instance(wait_online=False, tier="storage")
 
-    c1 = log_crawler(
-        i1, "CRITICAL: invalid configuration: at least one tier must be allowed to vote (`can_vote = true`)"
+    i1.fail_to_start(
+        expected_log="CRITICAL: invalid configuration: at least one tier must be allowed to vote (`can_vote = true`)"
     )
-
-    i1.fail_to_start()
-
-    c1.wait_matched()

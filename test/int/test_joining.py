@@ -440,47 +440,33 @@ def test_pico_service_invalid_requirements_password(cluster: Cluster):
 
     invalid_password = ""
     i1.set_service_password(invalid_password)
-    lc = log_crawler(i1, "CRITICAL: service password cannot be empty")
-    i1.fail_to_start()
-    lc.wait_matched()
+    i1.fail_to_start(expected_log="CRITICAL: service password cannot be empty")
 
     # manually overwrite the file with a non-ascii password
     assert i1.service_password_file
     with open(i1.service_password_file, "wb") as f:
         f.write(b"\x80")
-    lc = log_crawler(i1, "CRITICAL: service password must be encoded as utf-8")
-    i1.fail_to_start()
-    lc.wait_matched()
+    i1.fail_to_start(expected_log="CRITICAL: service password must be encoded as utf-8")
 
     invalid_password = "\n\n"
     i1.set_service_password(invalid_password)
-    lc = log_crawler(i1, "CRITICAL: service password cannot start with a newline character")
-    i1.fail_to_start()
-    lc.wait_matched()
+    i1.fail_to_start(expected_log="CRITICAL: service password cannot start with a newline character")
 
     invalid_password = "\n\nnothing"
     i1.set_service_password(invalid_password)
-    lc = log_crawler(i1, "CRITICAL: service password cannot start with a newline character")
-    i1.fail_to_start()
-    lc.wait_matched()
+    i1.fail_to_start(expected_log="CRITICAL: service password cannot start with a newline character")
 
     invalid_password = "hello\n\nworld"
     i1.set_service_password(invalid_password)
-    lc = log_crawler(i1, "CRITICAL: service password cannot be split into multiple lines")
-    i1.fail_to_start()
-    lc.wait_matched()
+    i1.fail_to_start(expected_log="CRITICAL: service password cannot be split into multiple lines")
 
     invalid_password = "€"
     i1.set_service_password(invalid_password)
-    lc = log_crawler(i1, "CRITICAL: service password characters must be within ascii range")
-    i1.fail_to_start()
-    lc.wait_matched()
+    i1.fail_to_start(expected_log="CRITICAL: service password characters must be within ascii range")
 
     invalid_password = "s3cr3t@M3ss4g3"
     i1.set_service_password(invalid_password)
-    lc = log_crawler(i1, "CRITICAL: service password characters must be alphanumeric")
-    i1.fail_to_start()
-    lc.wait_matched()
+    i1.fail_to_start(expected_log="CRITICAL: service password characters must be alphanumeric")
 
 
 def test_join_with_duplicate_instance_name(cluster: Cluster):

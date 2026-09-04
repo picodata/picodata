@@ -1,4 +1,4 @@
-from conftest import Cluster, PortDistributor, log_crawler
+from conftest import Cluster, PortDistributor
 import os
 import pathlib
 
@@ -84,11 +84,8 @@ instance:
     )
 
     instance = cluster.add_instance(wait_online=False)
-    err = "cannot use both old iproto settings"
-    crawler = log_crawler(instance, err)
 
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(expected_log="cannot use both old iproto settings")
 
 
 def test_conflict_old_and_new_http_config(cluster: Cluster, port_distributor: PortDistributor):
@@ -111,11 +108,8 @@ instance:
     )
 
     instance = cluster.add_instance(wait_online=False)
-    err = "cannot use both old http settings"
-    crawler = log_crawler(instance, err)
 
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(expected_log="cannot use both old http settings")
 
 
 def test_conflict_old_and_new_pg_config(cluster: Cluster, port_distributor: PortDistributor):
@@ -139,11 +133,8 @@ instance:
     )
 
     instance = cluster.add_instance(wait_online=False)
-    err = "cannot use both old pg settings"
-    crawler = log_crawler(instance, err)
 
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(expected_log="cannot use both old pg settings")
 
 
 def test_plugin_listener_config(cluster: Cluster, port_distributor: PortDistributor):
@@ -254,11 +245,8 @@ instance:
     )
 
     instance = cluster.add_instance(wait_online=False)
-    err = "cannot use both old iproto settings"
-    crawler = log_crawler(instance, err)
 
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(expected_log="cannot use both old iproto settings")
 
 
 def test_iproto_new_section_with_enabled_false_conflicts(cluster: Cluster, port_distributor: PortDistributor):
@@ -286,11 +274,8 @@ instance:
     )
 
     instance = cluster.add_instance(wait_online=False)
-    err = "cannot use both old iproto settings"
-    crawler = log_crawler(instance, err)
 
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(expected_log="cannot use both old iproto settings")
 
 
 def test_http_section_defaults_to_enabled(cluster: Cluster, port_distributor: PortDistributor):
@@ -366,11 +351,8 @@ instance:
     )
 
     instance = cluster.add_instance(wait_online=False)
-    err = "cannot use both old pg settings"
-    crawler = log_crawler(instance, err)
 
-    instance.fail_to_start()
-    assert crawler.matched
+    instance.fail_to_start(expected_log="cannot use both old pg settings")
 
 
 def test_http_tls_with_password_file(cluster: Cluster, port_distributor: PortDistributor):

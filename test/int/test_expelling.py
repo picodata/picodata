@@ -6,7 +6,6 @@ from conftest import (
     Cluster,
     Instance,
     Retriable,
-    log_crawler,
     CommandFailed,
     picodata_expel,
 )
@@ -39,9 +38,7 @@ def test_expel_follower(cluster: Cluster):
     # assert i3.process
     Retriable().call(i3.assert_process_dead)
 
-    lc = log_crawler(i3, "current instance is expelled from the cluster")
-    i3.fail_to_start()
-    assert lc.matched
+    i3.fail_to_start(expected_log="current instance is expelled from the cluster")
 
 
 def test_expel_leader(cluster: Cluster):
@@ -65,9 +62,7 @@ def test_expel_leader(cluster: Cluster):
     # assert i1.process
     Retriable().call(i1.assert_process_dead)
 
-    lc = log_crawler(i1, "current instance is expelled from the cluster")
-    i1.fail_to_start()
-    assert lc.matched
+    i1.fail_to_start(expected_log="current instance is expelled from the cluster")
 
 
 def test_expel_by_follower(cluster: Cluster):
@@ -299,9 +294,7 @@ rerun with --force if you still want to expel the instance"""
 
     # Try adding an instance to 'storage_2' directly, which is not allowed
     storage6 = cluster.add_instance(name="storage6", replicaset_name="storage_2", tier="storage", wait_online=False)
-    lc = log_crawler(storage6, "cannot join replicaset which is being expelled")
-    storage6.fail_to_start()
-    lc.wait_matched()
+    storage6.fail_to_start(expected_log="cannot join replicaset which is being expelled")
 
     # Block bucket rebalancing, so that we can check what happens when master of
     # replicaset being expelled has it's state changed from Expelled to something else
