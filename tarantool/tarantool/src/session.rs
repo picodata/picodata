@@ -167,6 +167,7 @@ pub use picodata::*;
 #[cfg(not(feature = "picodata"))]
 pub use vanilla::*;
 
+#[derive(Debug)]
 pub struct SuGuard {
     pub original_user_id: UserId,
 }
@@ -179,7 +180,7 @@ impl Drop for SuGuard {
 
 #[inline]
 pub fn su(target_uid: UserId) -> Result<SuGuard, Error> {
-    let original_user_id = uid().expect("infallible with c api");
+    let original_user_id = uid()?;
     su_impl(target_uid)?;
 
     Ok(SuGuard { original_user_id })
