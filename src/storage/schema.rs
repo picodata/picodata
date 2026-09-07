@@ -954,6 +954,12 @@ pub fn ddl_create_tt_proc_on_master(new_proc_name: &str) -> traft::Result<()> {
         proc_exports.push("SQL");
     }
 
+    // Change user to make admin the owner of the created stored procedure, as this function
+    // may be called from an RPC, making pico_service the owner otherwise.
+    // This makes upgraded procs consistent with ones created during bootstrap, which are always
+    // owned by admin.
+    let _su_guard = tarantool::session::su(ADMIN_ID)?;
+
     lua.exec_with(
         "local name, is_public, param_list, exports = ...
         local proc_name = '.' .. name
