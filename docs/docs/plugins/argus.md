@@ -21,11 +21,11 @@ Picodata, для которой перед этим была настроена 
 Для разных версий плагина Argus требуются определённые версии Picodata.
 Ниже приведена таблица совместимости:
 
-| Argus | Picodata | ФСТЭК-сертификат |
-| ------ | ------ | :-----: |
-| 2.1.2 | 25.2.2 | :white_check_mark: |
-| 2.2.5 | 25.5.7 (25.5.*) | |
-| 2.3.0 | 26.1.1 | |
+| Argus | Picodata        |  ФСТЭК-сертификат  |
+|-------|-----------------|:------------------:|
+| 2.1.2 | 25.2.2          | :white_check_mark: |
+| 2.2.5 | 25.5.7 (25.5.*) |                    |
+| 2.3.1 | 26.1.*          | :white_check_mark: |
 
 См. также:
 
@@ -44,7 +44,7 @@ Picodata, для которой перед этим была настроена 
 
 ```
 └── argus
-    └── 2.3.0
+    └── 2.3.1
         ├── libargus.so
         └── manifest.yaml
 ```
@@ -74,7 +74,7 @@ Picodata, для которой перед этим была настроена 
 При запуске одного инстанса из [командной строки] директорию плагина
 можно указать с помощью параметра:
 
-```bash
+```shell
 picodata run --share-dir=<SHARE-DIR> ...
 ```
 
@@ -90,9 +90,9 @@ picodata run --share-dir=<SHARE-DIR> ...
 следующих SQL-команд:
 
 ```sql
-CREATE PLUGIN argus 2.3.0;
-ALTER PLUGIN argus 2.3.0 ADD SERVICE argus TO TIER default;
-ALTER PLUGIN argus 2.3.0 ENABLE;
+CREATE PLUGIN argus 2.3.1;
+ALTER PLUGIN argus 2.3.1 ADD SERVICE argus TO TIER default;
+ALTER PLUGIN argus 2.3.1 ENABLE;
 ```
 
 !!! note "Примечание"
@@ -181,7 +181,7 @@ all:
 
     plugins:
       argus:                                    # плагин
-        path: '../plugins/argus_2.3.0.tar.gz'   # путь до пакета плагина
+        path: '../plugins/argus_2.3.1.tar.gz'   # путь до пакета плагина
         config: '../plugins/argus-config.yml'   # путь до файла с настройками плагина
         services:
           argus:
@@ -253,7 +253,7 @@ argus:
 
 Запустите развёртывание Argus:
 
-```bash
+```shell
 ansible-playbook -i argus.yml picodata.yml
 ```
 
@@ -270,13 +270,13 @@ ansible-playbook -i argus.yml picodata.yml
 
 Склонируйте репозиторий с исходным кодом плагина:
 
-```bash
+```shell
 git clone https://git.picodata.io/picodata/plugin/argus.git
 ```
 
 Соберите плагин:
 
-```bash
+```shell
 cd argus
 cargo build --release
 ```
