@@ -95,6 +95,7 @@ export type InstanceNodeType = InstanceType & {
 };
 
 export type FullInstance = {
+  audit?: string | null;
   log?: InstanceLog;
   replication?: Record<number, InstanceReplication>;
   vinyl?: InstanceVinyl;

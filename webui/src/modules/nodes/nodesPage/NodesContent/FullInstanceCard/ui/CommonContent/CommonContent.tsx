@@ -202,6 +202,15 @@ export const CommonContent = ({
             >
               {fullInstance.log?.format}
             </SectionField>
+            <SectionField
+              title={fullInstance.audit}
+              name={"audit"}
+              link={getConfigurationLink("#instance_audit")}
+            >
+              <CopyField text={fullInstance.audit}>
+                {fullInstance.audit}
+              </CopyField>
+            </SectionField>
           </SectionFieldsContent>
         </Section>
       </Box>
