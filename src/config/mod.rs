@@ -979,14 +979,6 @@ Using configuration file '{args_path}'.");
 
         let mut has_votable_tier = false;
         for (name, info) in tiers {
-            if let Some(explicit_name) = &info.name {
-                return Err(Error::InvalidConfiguration(format!(
-                    "tier '{name}' has an explicit name field '{explicit_name}', \
-                     which is not allowed. \
-                     Tier name is always derived from the outer dictionary's key"
-                )));
-            }
-
             if info.can_vote {
                 has_votable_tier = true;
             }

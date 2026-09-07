@@ -175,9 +175,6 @@ impl Default for Tier {
 #[serde(deny_unknown_fields)]
 pub struct TierConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<SmolStr>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub replication_factor: Option<u8>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -212,7 +209,6 @@ impl TierConfig {
     /// This function is used in tests.
     pub fn for_tier(tier: &Tier) -> Self {
         Self {
-            name: Some(tier.name.clone()),
             replication_factor: Some(tier.replication_factor),
             bucket_count: Some(tier.bucket_count),
             can_vote: tier.can_vote,
