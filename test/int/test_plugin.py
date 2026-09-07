@@ -3903,9 +3903,12 @@ def test_plugin_on_cluster_leader_change_err(cluster: Cluster):
     version = "0.1.0"
     service = _SERVICE_ON_CLUSTER_LEADER_CHANGE
 
-    def global_wait():
-        i1.sql("create table _t (a int primary key);")
-        i1.sql("drop table _t wait applied globally;")
+    def check_poisoned(expected: int):
+        [[poisoned]] = i2.sql("SELECT COUNT(*) FROM _pico_service_route WHERE poison = true")
+        assert poisoned == expected
+
+    def check_raft_leader_is(instance: Instance):
+        assert i1.raft_leader_id() == instance.raft_id
 
     # wait for the first instance to be the raft leader
     i1 = cluster.add_instance(wait_online=True)
@@ -3936,29 +3939,22 @@ def test_plugin_on_cluster_leader_change_err(cluster: Cluster):
     Retriable().call(check_on_cluster_leader_change)
     lc2.wait_matched()
 
-    assert i1.raft_leader_id() == 2
+    Retriable().call(check_raft_leader_is, i2)
 
     # check that the service routes became poisoned
-    [[poisoned]] = i2.sql("SELECT COUNT(*) FROM _pico_service_route WHERE poison = true")
-    assert poisoned == 2
+    Retriable().call(check_poisoned, 2)
 
     # cure the routes by running .on_config_change
     i1.sql(f"ALTER PLUGIN {plugin} {version} SET {service}.on_cluster_leader_change_should_return_error='true'")
-    # not all services were able to get the config change to call on_config_change before adding this hack
-    global_wait()
 
-    [[poisoned]] = i2.sql("SELECT COUNT(*) FROM _pico_service_route WHERE poison = true")
-    assert poisoned == 0
+    Retriable().call(check_poisoned, 0)
 
     # make i1 leader again
     i2.raft_transfer_leadership(i1.raft_id)
-    time.sleep(1)
-    assert i1.raft_leader_id() == 1
+    Retriable().call(check_raft_leader_is, i1)
 
     # cure the routes by running .on_config_change
     i1.sql(f"ALTER PLUGIN {plugin} {version} SET {service}.on_cluster_leader_change_should_return_error='true'")
-    # not all services were able to get the config change to call on_config_change before adding this hack
-    global_wait()
 
     lc2 = log_crawler(
         i2,
@@ -3993,8 +3989,7 @@ def test_plugin_on_cluster_leader_change_err(cluster: Cluster):
         i3.check_process_alive()
         raise e from e
 
-    [[poisoned]] = i2.sql("SELECT COUNT(*) FROM _pico_service_route WHERE poison = true")
-    assert poisoned == 1
+    Retriable().call(check_poisoned, 1)
 
 
 def test_plugin_on_cluster_leader_change_all_callbacks(cluster: Cluster):
