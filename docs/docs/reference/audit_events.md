@@ -236,6 +236,20 @@ start_boot/start_join -> create_local_db + connect_local_db
 }
 ```
 
+### create_index
+
+Создание индекса.
+
+```json
+{
+     "title": "create_index",
+     "message": "created index `{name}`",
+     "severity": "medium",
+     "name": ...,
+     ...
+}
+```
+
 ### create_local_db
 
 Создание базы данных. Событие фиксируется после добавления инстанса в
