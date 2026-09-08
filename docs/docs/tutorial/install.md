@@ -7,13 +7,13 @@
 
 Мы предоставляем готовые пакеты с Picodata для следующих операционных систем:
 
-- [RHEL 8-9 и совместимые с ним дистрибутивы, например Rocky Linux](#rhel8)
-- [Fedora 41-43](#fedora)
-- [РЕД ОС 7.3 “Муром”](#redos)
+- [RHEL 8–9 и совместимые с ним дистрибутивы, например Rocky Linux](#rhel8)
+- [Fedora 43–44](#fedora)
+- [РЕД ОС 7.x и 8.x](#redos)
 - [Astra Linux 1.7 и 1.8 SE](#astra)
-- [Debian 11 "Bullseye", 12 "Bookworm" и 13 "Trixie"](#debian)
-- [Ubuntu 20.04 (Focal Fossa), 22.04 (Jammy Jellyfish), 24.04 (Noble Numbat) и совместимые дистрибутивы](#ubuntu)
-- [Семейство Alt Linux на основе платформ p10 и p11](#altlinux)
+- [Debian 12 "Bookworm" и 13 "Trixie"](#debian)
+- [Ubuntu 22.04 (Jammy Jellyfish), 24.04 (Noble Numbat), 26.04 (Resolute Raccoon) и совместимые дистрибутивы](#ubuntu)
+- [Семейство Alt Linux на основе платформ p9, p10 и p11](#altlinux)
 - [ROSA Chrome (платформа 2021.1)](#rosalinux)
 
 Готовые пакеты можно установить как через добавление репозиториев, так и
@@ -61,7 +61,14 @@ rpm --import https://download.picodata.io/tarantool-picodata/picodata.gpg.key
 Подключите репозиторий:
 
 ```shell
-dnf install https://download.picodata.io/tarantool-picodata/el/8/x86_64/picodata-release-1.1.3.0-1.el8.x86_64.rpm
+rpm --import https://download.picodata.io/tarantool-picodata/picodata.gpg.key
+echo '
+[picodata]
+name=Picodata Yum Repo
+baseurl=https://download.picodata.io/tarantool-picodata/el/$releasever/$basearch
+enabled=1
+gpgcheck=1
+' > /etc/yum.repos.d/picodata.repo
 ```
 
 После успешного выполнения команды в вашей системе появится
@@ -108,7 +115,7 @@ dnf install -y picodata
 dnf install -y tarantool-picodata
 ```
 
-### Fedora 41–43 {: #fedora }
+### Fedora 43–44 {: #fedora }
 
 Создайте файл `/etc/yum.repos.d/picodata.repo`:
 
@@ -134,7 +141,7 @@ dnf install -y picodata
 dnf install -y tarantool-picodata
 ```
 
-### РЕД ОС/RED OS 7.3 “Муром” {: #redos }
+### РЕД ОС/RED OS 7.x и 8.x {: #redos }
 
 Импортируйте ключ репозитория Picodata, используя следующую команду в
 терминале (здесь и далее команды следует вводить с <a href="#priv">правами администратора</a>):
@@ -146,11 +153,14 @@ rpm --import https://download.picodata.io/tarantool-picodata/picodata.gpg.key
 Подключите репозиторий:
 
 ```shell
-dnf install https://download.picodata.io/tarantool-picodata/redos/7/x86_64/picodata-release-1.1.3.0-1.el7.x86_64.rpm
+echo "
+[picodata]
+name=Picodata Yum Repo
+baseurl=https://download.picodata.io/tarantool-picodata/redos/\$releasever/\$basearch
+enabled=1
+gpgcheck=1
+" > /etc/yum.repos.d/picodata.repo
 ```
-
-После успешного выполнения команды в вашей системе появится
-дополнительный репозиторий в `/etc/yum.repos.d/picodata.repo`.
 
 Установите пакет Picodata, скопировав и вставив в терминал следующие
 команды:
@@ -224,7 +234,7 @@ curl -s https://download.picodata.io/tarantool-picodata/astra/picodata_pub.key -
 
 После этого потребуется перезагрузка.
 
-### Debian 11–13 {: #debian }
+### Debian 12–13 {: #debian }
 
 Подключите репозиторий Picodata, используя следующие команды в терминале (здесь и далее команды следует вводить с <a href="#priv">правами администратора</a>):
 
@@ -261,7 +271,7 @@ apt install picodata
 apt install tarantool-picodata
 ```
 
-### Ubuntu 20.04, 22.04, 24.04 {: #ubuntu }
+### Ubuntu 22.04, 24.04, 26.04 {: #ubuntu }
 
 Подключите репозиторий Picodata, используя следующие команды в терминале (здесь и далее команды следует вводить с <a href="#priv">правами администратора</a>):
 
@@ -299,19 +309,25 @@ apt install picodata
 apt install tarantool-picodata
 ```
 
-### Alt Linux (платформы p10 и p11) {: #altlinux }
+### Alt Linux (платформа p10) {: #altlinux }
 
 Подключите репозиторий Picodata, используя следующие команды в терминале
 (здесь и далее команды следует вводить с <a href="#priv">правами администратора</a>)):
 
 ```shell
+apt-get install -y gpg curl apt-https
 curl -s https://download.picodata.io/tarantool-picodata/picodata.gpg.key | gpg --no-default-keyring --keyring gnupg-ring:/usr/lib/alt-gpgkeys/pubring.gpg --import
-. /etc/os-release
 echo "
-rpm https://download.picodata.io/tarantool-picodata/altlinux/ ${ALT_BRANCH_ID}/x86_64 main
-rpm https://download.picodata.io/tarantool-picodata/altlinux/ ${ALT_BRANCH_ID}/x86_64 debuginfo
-rpm-src https://download.picodata.io/tarantool-picodata/altlinux/ ${ALT_BRANCH_ID}/x86_64 main
+rpm [picodata] https://download.picodata.io/tarantool-picodata/altlinux p10/x86_64 main
+rpm [picodata] https://download.picodata.io/tarantool-picodata/altlinux p10/x86_64 debuginfo
+rpm-src [picodata] https://download.picodata.io/tarantool-picodata/altlinux p10/x86_64 main
 " > /etc/apt/sources.list.d/picodata.list
+echo '
+simple-key "picodata" {
+       Fingerprint "2EB992F946D6AD71A035BC5B6F7E9F5C3F63892C";
+       Name "kdy@picodata.io";
+}
+' > /etc/apt/vendors.list.d/picodata.list
 ```
 
 Обновите список источников:
@@ -340,7 +356,13 @@ apt-get install tarantool-picodata
 
 ```shell
 rpm --import https://download.picodata.io/tarantool-picodata/picodata.gpg.key
-dnf install https://download.picodata.io/tarantool-picodata/rosa/chrome/x86_64/picodata-release-1.1.3.0-1-rosa2021.1.x86_64.rpm
+echo "
+[picodata]
+name=Picodata Yum Repo
+baseurl=https://download.picodata.io/tarantool-picodata/rosa/\$releasever/\$basearch
+enabled=1
+gpgcheck=1
+" > /etc/yum.repos.d/picodata.repo
 ```
 
 Установите пакет Picodata, скопировав и вставив в терминал следующую
@@ -374,27 +396,28 @@ curl -L https://download.binary.picodata.io/tarantool-picodata/install.sh | bash
 Доступны Docker-образы с Picodata, в том числе, distroless:
 
 ```shell
-docker.binary.picodata.io/picodata:latest
-docker.binary.picodata.io/picodata:<номер версии>
-docker.binary.picodata.io/picodata:<номер версии>-distroless
+docker pull picodata/picodata:latest
+docker pull picodata/picodata:<номер версии>
+docker pull picodata/picodata-distroless:<номер версии>
 ```
 
 Сборка из мастера:
 
 ```shell
-docker.binary.picodata.io/picodata:master
-docker.binary.picodata.io/picodata:master-distroless
+docker pull docker.binary.picodata.io/picodata:master
+docker pull docker.binary.picodata.io/picodata:master-distroless
 ```
 
 Примеры команд:
 
 ```shell
-docker pull docker.binary.picodata.io/picodata:25.2.1
-docker pull docker.binary.picodata.io/picodata:25.1.1-distroless
+docker pull picodata/picodata:26.2.1
+docker pull picodata/picodata:26
+docker pull picodata/picodata-distroless:26.2
 docker pull docker.binary.picodata.io/picodata:master
 ```
 
-Образы собраны на базе ОС Rocky Linux 8.
+Образы собраны на базе ОС Rocky Linux 8, доступны под архитектуры x86 и arm.
 
 ## Установка из исходного кода {: #installing_from_sources }
 
@@ -431,7 +454,7 @@ source "$HOME/.cargo/env"
 
 Установите NodeJS для вашей ОС:
 
-??? example "RHEL 8/9 и деривативы, Fedora 41-43"
+??? example "RHEL 8/9 и деривативы, Fedora 43–44"
     ```shell
     curl -sL https://rpm.nodesource.com/setup_lts.x | sudo bash -
     sudo dnf install nodejs
@@ -439,13 +462,28 @@ source "$HOME/.cargo/env"
 
 ??? example "Ubuntu 22.04 и 24.04"
     ```shell
-    sudo apt install npm -y
+    sudo apt update
+    sudo apt install -y curl gpg ca-certificates
+    curl -fsSL https://nodesource.com | sudo -E bash -
+    sudo apt install -y nodejs
+    sudo corepack enable
+    ```
+
+??? example "Ubuntu 26.04"
+    ```shell
+    sudo apt update
+    sudo apt install -y curl gnupg ca-certificates
+    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+    sudo apt install -y nodejs
     ```
 
 ??? example "Alt Server p10"
     ```shell
     su -
-    apt-get install -y node
+    apt-get install curl
+    curl https://raw.githubusercontent.com/creationix/nvm/master/install.sh | bash
+    source ~/.bashrc
+    nvm install --lts
     ```
 
 ??? example "macOS"
@@ -529,14 +567,6 @@ Corepack, который сам установит необходимую вер
 
 ### Получение исходного кода {: #getting_sources }
 
-Загрузка с Gitlab:
-
-```shell
-git clone https://git.picodata.io/core/picodata.git --recursive
-```
-
-Загрузка с зеркала GitHub:
-
 ```shell
 git clone https://github.com/picodata/picodata.git --recursive
 ```
@@ -610,12 +640,10 @@ test result: ok. 6 passed; 0 failed; finished in 0.88s
 
 Порядок действий для удаления Picodata:
 
-- перед удалением необходимо [остановить и вывести из
-  кластера](../tutorial/node_expel.md#expel) все запущенные на данном хосте
+- перед удалением необходимо остановить все запущенные на данном хосте
   инстансы Picodata
-- для каждого инстанса требуется удалить его [рабочие
-  файлы](../architecture/instance_runtime_files.md). Например: `rm -rf
-  *.xlog *.vylog *.snap *.sock`
+- для каждого инстанса требуется удалить его рабочую директорию
+  ([instance_dir](../reference/config.md#instance_instance_dir))
 - если Picodata была установлена из готового пакета для определенной ОС,
   то следует удалить этот пакет, используя системный менеджер пакетов
   (например, `sudo apt remove picodata` или `sudo dnf remove picodata`)
