@@ -15,6 +15,7 @@ import {
   RaftLeaderNameCell,
   StyledVoterIcon,
   CellCenter,
+  MemoryUsageLabel,
 } from "../common";
 import { ReplicasetNodeType } from "../../../../../shared/entity/replicaset";
 import { ErrorBlock } from "../common/ErrorBlock";
@@ -121,6 +122,7 @@ export const ReplicasetCardAlt = memo(
             <ContentFlexCenteredCell></ContentFlexCenteredCell>
 
             <CapacityProgressCell>
+              <MemoryUsageLabel scope="replicaset" />
               <CapacityProgress
                 percent={replicaset.capacityUsage}
                 currentValue={replicaset.used}

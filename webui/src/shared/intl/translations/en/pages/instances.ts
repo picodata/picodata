@@ -63,6 +63,18 @@ export const instances = {
     common: {
       hasRaftLeader: "Has governor",
       hasVoter: "Has voter",
+      memory: {
+        label: "Memory",
+        infoTitle: "How memory usage is calculated",
+        infoDescriptionReplicaset:
+          "The percentage shows how much of the available memory is already allocated on the replicaset's leader instance.",
+        infoDescriptionTier:
+          "The percentage shows how much of the available memory is already allocated across the tier: for each replicaset, the amount allocated on its leader instance is summed across all replicasets in the tier.",
+        infoFreedMemoryNote:
+          "Can also include memory that was allocated for data and later freed but not yet returned by the allocator — for example, after a TRUNCATE TABLE, the freed memory may still be reported as used.",
+        infoRestartNote:
+          "This value may drop after an instance restarts. Freed memory isn't returned to the OS during normal operation — only on restart.",
+      },
     },
     tierCard: {
       name: {

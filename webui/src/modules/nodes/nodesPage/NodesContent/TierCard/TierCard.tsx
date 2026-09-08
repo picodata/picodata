@@ -15,6 +15,7 @@ import {
   StyledLeaderIcon,
   VotersStatusBlock,
   CellCenter,
+  MemoryUsageLabel,
 } from "../common";
 
 import {
@@ -104,6 +105,7 @@ export const TierCardAlt = memo(
           </CellCenter>
 
           <TierCapacityProgressCell>
+            <MemoryUsageLabel scope="tier" />
             <CapacityProgress
               percent={tier.capacityUsage}
               currentValue={tier.used ?? 0}
