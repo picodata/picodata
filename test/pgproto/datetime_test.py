@@ -372,21 +372,21 @@ def test_unimplemented_time_functions(postgres: Postgres):
     # those functions are parsed but raise an error when executing
     with pytest.raises(
         psycopg.errors.InternalError,
-        match=re.escape("sbroad: SQL function `CURRENT_TIME` not implemented"),
+        match=re.escape("SQL function `CURRENT_TIME` not implemented"),
     ):
         cur.execute("""SELECT current_time;""")
     with pytest.raises(
         psycopg.errors.InternalError,
-        match=re.escape("sbroad: SQL function `CURRENT_TIME` not implemented"),
+        match=re.escape("SQL function `CURRENT_TIME` not implemented"),
     ):
         cur.execute("""SELECT current_time(7);""")
     with pytest.raises(
         psycopg.errors.InternalError,
-        match=re.escape("sbroad: SQL function `LOCALTIME` not implemented"),
+        match=re.escape("SQL function `LOCALTIME` not implemented"),
     ):
         cur.execute("""SELECT localtime;""")
     with pytest.raises(
         psycopg.errors.InternalError,
-        match=re.escape("sbroad: SQL function `LOCALTIME` not implemented"),
+        match=re.escape("SQL function `LOCALTIME` not implemented"),
     ):
         cur.execute("""SELECT localtime(7);""")

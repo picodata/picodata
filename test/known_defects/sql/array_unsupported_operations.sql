@@ -5,7 +5,7 @@
 with cte(a) as (values (array[1]))
 select * from cte where cte.a = array[5];
 -- ERROR:
-sbroad: Query 2 from EXPLAIN \(RAW\): Type mismatch: can not convert array\(\[1\]\) to comparable type
+Query 2 from EXPLAIN \(RAW\): Type mismatch: can not convert array\(\[1\]\) to comparable type
 
 -- TEST: array-compared-union
 -- SQL:
@@ -25,7 +25,7 @@ Failed to execute SQL statement: field type 'array' is not comparable
 -- SQL:
 create table t (id int primary key, val int[]) distributed by (val);
 -- ERROR:
-sbroad: invalid column: Sharding key column val is not of scalar type.
+invalid column: Sharding key column val is not of scalar type.
 
 -- TEST: array-primary-key
 -- SQL:

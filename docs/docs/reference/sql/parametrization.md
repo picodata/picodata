@@ -151,7 +151,7 @@ INSERT INTO t (int_col, datetime_col) VALUES ($1, $2);
   SELECT * FROM t WHERE id = $1 AND val != $1;
   ```
   ```sql title="сообщение о невозможности прочитать данные с указанным фильтром"
-  ERROR:  sbroad: inconsistent types text and int deduced for parameter $1,
+  ERROR:  inconsistent types text and int deduced for parameter $1,
   consider using transitive type casts through a common type, e.g. $1::text::int and $1::text
   ```
 

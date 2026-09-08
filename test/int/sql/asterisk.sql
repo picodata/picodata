@@ -130,14 +130,14 @@ FROM (SELECT a, b FROM t1 WHERE b = 9) AS s;
 WITH base AS (SELECT a FROM t1 WHERE b = 9)
 SELECT t1.* FROM base;
 -- ERROR:
-sbroad: table 't1' not found
+table 't1' not found
 
 -- TEST: cte-dot-other-2
 -- SQL:
 WITH base AS (SELECT a FROM t1 WHERE b = 9)
 SELECT t2.* FROM base;
 -- ERROR:
-sbroad: table 't2' not found
+table 't2' not found
 
 -- TEST: cte-join-table-dot-row-number
 -- SQL:

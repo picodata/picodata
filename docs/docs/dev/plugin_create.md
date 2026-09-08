@@ -347,7 +347,7 @@ type '\help' for interactive help
 
 ```sql
 (admin) sql> SELECT * FROM weather;
-sbroad: table with name "weather" not found
+table with name "weather" not found
 ```
 
 Теперь попробуем поднять HTTP-сервер.

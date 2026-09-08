@@ -94,7 +94,7 @@ def test_iproto_execute(instance: Instance):
         conn.execute(f"SELECT * FRUM {TABLE_NAME}")
     assert dql.value.args[:2] == (
         "SbroadError",
-        f"sbroad: rule parsing error:  --> 1:10\n  |\n1 | SELECT * FRUM {TABLE_NAME}\n  |          ^---\n  |\n  = expected EOI, OrderBy, Limit, UnionOp, ExceptOp, UnionAllOp, or DqlOption",  # noqa: E501
+        f"rule parsing error:  --> 1:10\n  |\n1 | SELECT * FRUM {TABLE_NAME}\n  |          ^---\n  |\n  = expected EOI, OrderBy, Limit, UnionOp, ExceptOp, UnionAllOp, or DqlOption",  # noqa: E501
     )
 
     acl = instance.sql(f"GRANT WRITE ON TABLE {TABLE_NAME} TO {USER_NAME}")

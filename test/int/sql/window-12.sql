@@ -32,37 +32,37 @@ SELECT (sum(x) OVER (ORDER BY x))::int * (count(y) OVER (ORDER BY x))::int FROM 
 -- SQL:
 select count(x) over (partition by 1 + false) from t6;
 -- ERROR:
-sbroad: could not resolve operator overload for \+\(int, bool\)
+could not resolve operator overload for \+\(int, bool\)
 
 -- TEST: window12-2.2
 -- SQL:
 SELECT count(x) OVER (PARTITION BY 'hello'::text - 3) FROM t6;
 -- ERROR:
-sbroad: could not resolve operator overload for -\(text, int\)
+could not resolve operator overload for -\(text, int\)
 
 -- TEST: window12-2.3
 -- SQL:
 SELECT count(*) OVER (ORDER BY current_date || 5) FROM t6;
 -- ERROR:
-sbroad: could not resolve operator overload for \|\|\(datetime, int\)
+could not resolve operator overload for \|\|\(datetime, int\)
 
 -- TEST: window12-2.4
 -- SQL:
 SELECT count(*) OVER (ORDER BY '2025‑01‑01'::datetime - 'abc') FROM t6;
 -- ERROR:
-sbroad: could not resolve operator overload for -\(datetime, text\)
+could not resolve operator overload for -\(datetime, text\)
 
 -- TEST: window12-2.5
 -- SQL:
 SELECT avg(x) FILTER (WHERE x > '2025‑01‑01'::datetime) OVER () FROM t6;
 -- ERROR:
-sbroad: could not resolve operator overload for >\(int, datetime\)
+could not resolve operator overload for >\(int, datetime\)
 
 -- TEST: window12-2.6
 -- SQL:
 SELECT  sum(x)  OVER ( ORDER BY x ROWS BETWEEN 1 + false PRECEDING AND 1 FOLLOWING) from t6;
 -- ERROR:
-sbroad: could not resolve operator overload for \+\(int, bool\)
+could not resolve operator overload for \+\(int, bool\)
 
 -- TEST: window12-3.1
 -- SQL:
@@ -232,7 +232,7 @@ SELECT max(a) OVER w FROM t_win WINDOW w AS ()
 EXCEPT 
 SELECT max(1) OVER w ORDER BY 1;
 -- ERROR:
-sbroad: invalid expression: Window with name w not found
+invalid expression: Window with name w not found
 
 -- TEST: window12-4.2
 -- SQL:
@@ -251,7 +251,7 @@ SELECT a, (SELECT max(b) OVER w FROM t_win)
 FROM t_win 
 WINDOW w AS (PARTITION BY a);
 -- ERROR:
-sbroad: invalid expression: Window with name w not found
+invalid expression: Window with name w not found
 
 -- TEST: window12-4.4
 -- SQL:
@@ -315,7 +315,7 @@ WITH cte AS (
 )
 SELECT sum(a) OVER w FROM cte;
 -- ERROR:
-sbroad: invalid expression: Window with name w not found
+invalid expression: Window with name w not found
 
 -- TEST: window12-4.11
 -- SQL:

@@ -112,7 +112,7 @@ forward analysis (on > ro_to_rw > off):
 SELECT * FROM t WHERE b = 'lol'
 OPTION (FORWARD = OFF);
 -- ERROR:
-sbroad: invalid option: cannot satisfy "forward = off": buckets span multiple nodes and are not present on the current node
+invalid option: cannot satisfy "forward = off": buckets span multiple nodes and are not present on the current node
 
 -- TEST: test-explain-forward-off-block-query
 -- SQL:
@@ -215,7 +215,7 @@ forward analysis (on > ro_to_rw > off):
 SELECT * FROM t WHERE bucket_id = 1934 OR b = 'lol'
 OPTION (FORWARD = OFF);
 -- ERROR:
-sbroad: invalid option: cannot satisfy "forward = off": buckets span multiple nodes and are not present on the current node
+invalid option: cannot satisfy "forward = off": buckets span multiple nodes and are not present on the current node
 
 -- TEST: test-explain-forward-bucket-id-block-query
 -- SQL:

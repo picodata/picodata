@@ -77,7 +77,7 @@ VALUES (1, 'bricks', 'heavy');
 
 ```
 ---
-sbroad: Lua error (IR dispatch): LuaError(ExecutionError("sbroad: failed to create transaction: RolledBack(FailedTo(Insert, Some(Space), \"TupleFound: Duplicate key exists in unique index \\\"WAREHOUSE_pkey\\\" in space \\\"WAREHOUSE\\\" with old tuple - [1, 1934, \\\"bricks\\\", \\\"heavy\\\"] and new tuple - [1, 1934, \\\"bricks\\\", \\\"heavy\\\"]\"))"))
+Lua error (IR dispatch): LuaError(ExecutionError("failed to create transaction: RolledBack(FailedTo(Insert, Some(Space), \"TupleFound: Duplicate key exists in unique index \\\"WAREHOUSE_pkey\\\" in space \\\"WAREHOUSE\\\" with old tuple - [1, 1934, \\\"bricks\\\", \\\"heavy\\\"] and new tuple - [1, 1934, \\\"bricks\\\", \\\"heavy\\\"]\"))"))
 ```
 
 Для обработки таких ситуаций можно использовать необязательный параметр

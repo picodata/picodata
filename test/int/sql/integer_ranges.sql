@@ -29,13 +29,13 @@ INSERT INTO unsigned_table SELECT 2, 9223372036854775806;
 -- SQL:
 INSERT INTO integer_table SELECT 3, 9223372036854775808;
 -- ERROR:
-sbroad: invalid query: value doesn\'t fit into integer range
+invalid query: value doesn\'t fit into integer range
 
 -- TEST: test_insert_value_above_max_value_into_unsigned_table
 -- SQL:
 INSERT INTO unsigned_table SELECT 3, 9223372036854775808;
 -- ERROR:
-sbroad: invalid query: value doesn\'t fit into integer range
+invalid query: value doesn\'t fit into integer range
 
 -- TEST: test_insert_value_above_max_value_into_int_table#2
 -- SQL:
@@ -53,13 +53,13 @@ failed decoding i64: out of range integral type conversion attempted
 -- SQL:
 INSERT INTO integer_table SELECT 3, 18446744073709551614;
 -- ERROR:
-sbroad: invalid query: value doesn\'t fit into integer range
+invalid query: value doesn\'t fit into integer range
 
 -- TEST: test_insert_value_above_max_value_into_unsigned_table#3
 -- SQL:
 INSERT INTO unsigned_table SELECT 3, 18446744073709551614;
 -- ERROR:
-sbroad: invalid query: value doesn\'t fit into integer range
+invalid query: value doesn\'t fit into integer range
 
 -- TEST: test_insert_value_above_max_value_into_int_table#4
 -- SQL:
@@ -78,13 +78,13 @@ failed decoding i64: out of range integral type conversion attempted
 -- SQL:
 INSERT INTO integer_table VALUES(3, 9223372036854775808);
 -- ERROR:
-sbroad: invalid query: value doesn\'t fit into integer range
+invalid query: value doesn\'t fit into integer range
 
 -- TEST: test_insert_value_above_max_value_into_unsigned_table_via_values
 -- SQL:
 INSERT INTO unsigned_table VALUES(3, 9223372036854775808);
 -- ERROR:
-sbroad: invalid query: value doesn\'t fit into integer range
+invalid query: value doesn\'t fit into integer range
 
 -- TEST: test_insert_value_above_max_value_into_int_table_via_values#2
 -- SQL:
@@ -102,13 +102,13 @@ failed decoding i64: out of range integral type conversion attempted
 -- SQL:
 INSERT INTO integer_table VALUES(3, 18446744073709551614);
 -- ERROR:
-sbroad: invalid query: value doesn\'t fit into integer range
+invalid query: value doesn\'t fit into integer range
 
 -- TEST: test_insert_value_above_max_value_into_unsigned_table_via_values#3
 -- SQL:
 INSERT INTO unsigned_table VALUES(3, 18446744073709551614);
 -- ERROR:
-sbroad: invalid query: value doesn\'t fit into integer range
+invalid query: value doesn\'t fit into integer range
 
 -- TEST: test_insert_value_above_max_value_into_int_table_via_values#4
 -- SQL:

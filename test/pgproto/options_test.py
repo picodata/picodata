@@ -259,6 +259,6 @@ def test_invalid_parametrized_sql_options(postgres: Postgres):
         # a negative integer only gets rejected during option lowering
         with pytest.raises(
             psycopg.InternalError,
-            match=r"sbroad: invalid OptionSpec: expected option sql_motion_row_max to be a non-negative integer, got: Integer\(-1\)",
+            match=r"invalid OptionSpec: expected option sql_motion_row_max to be a non-negative integer, got: Integer\(-1\)",
         ):
             cur.execute(q1, [-1])

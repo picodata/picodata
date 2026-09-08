@@ -223,7 +223,7 @@ SELECT type, COUNT(*) as c FROM warehouse
 GROUP BY type
 HAVING c > 3;
 
-sbroad: column with name "C" not found
+column with name "C" not found
 ```
 -->
 

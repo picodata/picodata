@@ -211,7 +211,7 @@ pub enum ResultSet {
     // Example:
     // ---
     // - null   <-----
-    // - "sbroad: rule parsing error: ...
+    // - "rule parsing error: ...
     Error(Option<()>, String),
 }
 

@@ -77,7 +77,7 @@ SQL-запросов, исполняющихся на узлах кластер�
 
 ```sql
 -- Ошибка указывает на стадию 4
-ERROR:  sbroad: Query 4 from EXPLAIN (RAW): ...
+ERROR:  Query 4 from EXPLAIN (RAW): ...
 ```
 
 

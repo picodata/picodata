@@ -138,7 +138,7 @@ pub enum Error {
     #[error("{0}")]
     Ddl(#[from] crate::schema::DdlError),
 
-    #[error("sbroad: {0}")]
+    #[error("{0}")]
     Sbroad(#[from] sql::errors::SbroadError),
 
     #[error("transaction: {0}")]

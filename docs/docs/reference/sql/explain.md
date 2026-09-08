@@ -109,7 +109,7 @@ SELECT name, id FROM _pico_table WHERE MAX(id) = 5;
 ```
 
 ```sql
-ERROR:  sbroad: Query 1 from EXPLAIN (RAW): Failed to compile SQL statement: misuse of aggregate function MAX()
+ERROR:  Query 1 from EXPLAIN (RAW): Failed to compile SQL statement: misuse of aggregate function MAX()
 ```
 
 Тем не менее, Picodata выполнит `EXPLAIN` от такого запроса:

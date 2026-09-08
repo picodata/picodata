@@ -14,10 +14,10 @@ INSERT INTO v2 VALUES (10), (20);
 -- SQL:
 SELECT MAX(EXISTS (SELECT * FROM v1)) OVER () FROM v2;
 -- ERROR:
-sbroad: invalid expression: column at position 2 is not among the 2 columns of the relational child output
+invalid expression: column at position 2 is not among the 2 columns of the relational child output
 
 -- TEST: subquery-in-window-argument-explicit-columns
 -- SQL:
 SELECT MAX(EXISTS (SELECT v1.c0, v1.c1, v1.c2 FROM v1)) OVER () FROM v2;
 -- ERROR:
-sbroad: invalid expression: column at position 2 is not among the 2 columns of the relational child output
+invalid expression: column at position 2 is not among the 2 columns of the relational child output

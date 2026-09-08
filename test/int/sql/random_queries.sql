@@ -241,7 +241,7 @@ INSERT INTO s VALUES (1, '{
     }
 }');
 -- ERROR:
-(?s)sbroad: failed to parse .* as a value of type map, consider using explicit type casts
+(?s)failed to parse .* as a value of type map, consider using explicit type casts
 
 -- TEST: test-json-is-not-keyword-1
 -- SQL:
@@ -300,7 +300,7 @@ SELECT "t".* FROM (SELECT 1) AS "t";
 -- SQL:
 SELECT "no_such_table".* FROM (SELECT 1);
 -- ERROR:
-sbroad: table 'no_such_table' not found
+table 'no_such_table' not found
 
 -- TEST: test-qualified-references-3
 -- SQL:

@@ -25,7 +25,7 @@ SELECT a FROM t INDEXED BY aaa WHERE true;
 -- SQL:
 SELECT * FROM t INDEXED BY aa WHERE true;
 -- ERROR:
-sbroad: index aa not found
+index aa not found
 
 -- TEST: indexed-by-3
 -- SQL:
@@ -192,7 +192,7 @@ SELECT * FROM t INDEXED BY aaa;
 -- SQL:
 SELECT * FROM t INDEXED BY bbb;
 -- ERROR:
-sbroad: index 'bbb' for table 't' not found
+index 'bbb' for table 't' not found
 
 -- TEST: indexed-by-13
 -- SQL:
@@ -210,19 +210,19 @@ ALTER INDEX aaa RENAME to aaaa;
 -- SQL:
 SELECT * FROM t INDEXED BY aaa;
 -- ERROR:
-sbroad: index aaa not found
+index aaa not found
 
 -- TEST: indexed-by-17
 -- SQL:
 DELETE FROM t INDEXED BY aaa WHERE FALSE;
 -- ERROR:
-sbroad: index aaa not found
+index aaa not found
 
 -- TEST: indexed-by-18
 -- SQL:
 UPDATE t INDEXED BY aaa SET b = d FROM s INDEXED BY bbb WHERE FALSE;
 -- ERROR:
-sbroad: index aaa not found
+index aaa not found
 
 -- TEST: indexed-by-13
 -- SQL:

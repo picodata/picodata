@@ -52,7 +52,7 @@ def test_params_specified_via_cast(postgres: Postgres):
     # Test an ambiguous parameter type error.
     with pytest.raises(
         DatabaseError,
-        match=r"sbroad: inconsistent types int and double deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::int::double and \$1::int",
+        match=r"inconsistent types int and double deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::int::double and \$1::int",
     ):
         conn.run(
             """ SELECT "id" FROM "tall" WHERE "id" = :p1::integer + :p1::double; """,
@@ -344,20 +344,20 @@ def test_params_inference_errors(postgres: Postgres):
 
     with pytest.raises(
         DatabaseError,
-        match=r"sbroad: inconsistent types int and double deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::int::double and \$1::int",
+        match=r"inconsistent types int and double deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::int::double and \$1::int",
     ):
         conn.run("SELECT :p::int + :p::double", p=1)
 
     with pytest.raises(
         DatabaseError,
-        match=r"sbroad: inconsistent types text and int deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::text::int and \$1::text",
+        match=r"inconsistent types text and int deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::text::int and \$1::text",
     ):
         conn.run("SELECT * FROM (SELECT 1) WHERE :p = 1 AND :p = '1.5'", p=1)
 
     # Example of a suggestion with unsupported casts.
     with pytest.raises(
         DatabaseError,
-        match=r"sbroad: inconsistent types int and bool deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::int::bool and \$1::int",
+        match=r"inconsistent types int and bool deduced for parameter \$1\, consider using transitive type casts through a common type\, e.g. \$1::int::bool and \$1::int",
     ):
         conn.run("with q(x) as (select 1) select :p from q where :p and :p > 0", p=1)
 

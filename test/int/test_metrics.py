@@ -31,12 +31,12 @@ def test_picodata_metrics(cluster: Cluster) -> None:
 
     with pytest.raises(TarantoolError) as e:
         i2.sql("INSERT INTO test VALUES (1, 'one')")
-        assert e.value.args[:2] == ("SbroadError", "sbroad: Lua error (IR dispatch)")
+        assert e.value.args[:2] == ("SbroadError", "Lua error (IR dispatch)")
 
     i2.sql("INSERT INTO test VALUES (2, 'two')")
     with pytest.raises(TarantoolError) as e:
         instance.sql("INSERT INTO test VALUES (2, 'two')")
-        assert e.value.args[:2] == ("SbroadError", "sbroad: Lua error (IR dispatch)")
+        assert e.value.args[:2] == ("SbroadError", "Lua error (IR dispatch)")
 
     http_listen = instance.http_listen
     url = f"http://{http_listen}/metrics"

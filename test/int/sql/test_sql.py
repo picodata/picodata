@@ -50,7 +50,7 @@ def test_pico_sql(cluster: Cluster):
             1,
         )
 
-    invalid_meta_msg = re.escape('sbroad: table with name "absent_table" not found')
+    invalid_meta_msg = re.escape('table with name "absent_table" not found')
     with pytest.raises(ReturnError, match=invalid_meta_msg):
         i1.call(
             "pico.sql",
@@ -4519,7 +4519,7 @@ def test_procedure_privileges(cluster: Cluster):
     # check we can't grant create specific procedure
     with pytest.raises(
         TarantoolError,
-        match="sbroad: invalid privilege",
+        match="invalid privilege",
     ):
         grant_procedure("create", bob, "foo")
 
@@ -6999,7 +6999,7 @@ def test_forbid_order_by_with_array(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1 = cluster.instances[0]
 
-    error_message = "sbroad: invalid expression: " + "Array is not supported as a sort type for ORDER BY"
+    error_message = "invalid expression: " + "Array is not supported as a sort type for ORDER BY"
     error_message = re.escape(error_message)
 
     with pytest.raises(
@@ -7086,7 +7086,7 @@ def test_groupby_with_column_positions(cluster: Cluster):
     dql = i1.sql("""SELECT b FROM t GROUP BY 1 ORDER BY 1""")
     assert dql == [[2], [4], [6], [8]]
 
-    error_message = "sbroad: invalid query: " + "GROUP BY position 7 is not in select list"
+    error_message = "invalid query: " + "GROUP BY position 7 is not in select list"
     error_message = re.escape(error_message)
 
     with pytest.raises(
@@ -7095,7 +7095,7 @@ def test_groupby_with_column_positions(cluster: Cluster):
     ):
         i1.sql("""SELECT * FROM t GROUP BY 7""")
 
-    error_message = "sbroad: invalid query: " + "GROUP BY position 3 is not in select list"
+    error_message = "invalid query: " + "GROUP BY position 3 is not in select list"
     error_message = re.escape(error_message)
 
     with pytest.raises(

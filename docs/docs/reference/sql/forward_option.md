@@ -85,7 +85,7 @@ OPTION (FORWARD = OFF, READ_PREFERENCE = REPLICA);
 ```
 
 ```
-ERROR:  sbroad: invalid OptionSpec: "forward = off" is not compatible with "read_preference = replica"
+ERROR:  invalid OptionSpec: "forward = off" is not compatible with "read_preference = replica"
 ```
 
 ## Исполнение запросов с пересылками (motion) {: #motion }
@@ -179,7 +179,7 @@ INSERT INTO c VALUES (1, 2);
 Теперь выполнение запроса с опцией `forward = off` приведет к ошибке 
 
 ```
-ERROR:  sbroad: invalid option: cannot satisfy "forward = off":
+ERROR:  invalid option: cannot satisfy "forward = off":
 buckets span multiple nodes and are not present on the current node, try using "forward = on" instead
 ```
 

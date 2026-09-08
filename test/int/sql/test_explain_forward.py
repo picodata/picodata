@@ -34,16 +34,14 @@ def test_forward_option(cluster: Cluster):
         SELECT * FROM t WHERE a = 1 OPTION (FORWARD = OFF, READ_PREFERENCE = REPLICA)
 """)
     except Exception as e:
-        assert (
-            str(e) == 'sbroad: invalid OptionSpec: "forward = off" is not compatible with "read_preference = replica"'
-        )
+        assert str(e) == 'invalid OptionSpec: "forward = off" is not compatible with "read_preference = replica"'
 
     try:
         master_conn.execute("""
         SELECT * FROM t WHERE a = 1 OPTION (FORWARD = OFF, READ_PREFERENCE = ANY)
 """)
     except Exception as e:
-        assert str(e) == 'sbroad: invalid OptionSpec: "forward = off" is not compatible with "read_preference = any"'
+        assert str(e) == 'invalid OptionSpec: "forward = off" is not compatible with "read_preference = any"'
 
     master_conn.execute("""
     SELECT * FROM t WHERE a = 1 OPTION (FORWARD = OFF, READ_PREFERENCE = LEADER)
@@ -110,7 +108,7 @@ forward analysis (on > ro_to_rw > off):
     except Exception as e:
         assert str(e) == "".join(
             [
-                'sbroad: invalid option: cannot satisfy "forward = off": ',
+                'invalid option: cannot satisfy "forward = off": ',
                 'buckets span multiple nodes and are not present on the current node, try using "forward = on" instead',
             ]
         )
