@@ -185,6 +185,16 @@ pytest
 uv run pytest -k test_sql_acl
 ```
 
+### How CI splits the suite
+
+CI runs the python tests as two jobs, `test-py-sql-linux` and
+`test-py-not-sql-linux`. Both are reproducible locally:
+
+```bash
+make test-py-sql      # test/int/sql, test/known_defects/sql, test/pgproto
+make test-py-not-sql  # everything else
+```
+
 ### Running SQL tests
 
 The `.sql` files under `test/int/sql` and `test/known_defects/sql` are collected

@@ -165,7 +165,17 @@ bench-sql-check:
 
 .PHONY: test-py
 test-py:
-	uv run pytest $(PYTEST_NUMPROCESSES) $(PYTEST_FLAGS) -vv --color=yes
+	uv run pytest $(PYTEST_NUMPROCESSES) $(PYTEST_SELECT) $(PYTEST_FLAGS) -vv --color=yes
+
+SQL_TEST_PATHS := test/int/sql test/known_defects/sql test/pgproto
+
+.PHONY: test-py-sql
+test-py-sql: PYTEST_SELECT = $(SQL_TEST_PATHS)
+test-py-sql: test-py
+
+.PHONY: test-py-not-sql
+test-py-not-sql: PYTEST_SELECT = $(addprefix --deselect=,$(SQL_TEST_PATHS))
+test-py-not-sql: test-py
 
 .PHONY: test
 test: test-rs test-py
@@ -177,7 +187,7 @@ coverage-test-$(1):
 	tools/coverage.py run $(MAKE) test-$(1)
 endef
 
-override TEST_PARTS := rs py
+override TEST_PARTS := rs py py-sql py-not-sql
 $(foreach PART,$(TEST_PARTS),$(eval $(call TEST_TEMPLATE,$(PART))))
 
 .PHONY: coverage-report

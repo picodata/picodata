@@ -564,11 +564,11 @@ test-py-sql-linux:
     - |
       ci-log-section start "test" Test
       if [ "$BUILD_PROFILE" = "dev" ]; then
-        make coverage-test-py \
-          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
+        make coverage-test-py-sql \
+          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10"
       else
-        make test-py \
-          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k '(sql or pgproto)'"
+        make test-py-sql \
+          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10"
       fi
       ci-log-section end "test"
     - |
@@ -657,11 +657,11 @@ test-py-not-sql-linux:
     - |
       ci-log-section start "test" Test
       if [ "$BUILD_PROFILE" = "dev" ]; then
-        make coverage-test-py \
-          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k 'not (sql or pgproto)'"
+        make coverage-test-py-not-sql \
+          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10"
       else
-        make test-py \
-          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10 -k 'not (sql or pgproto)'"
+        make test-py-not-sql \
+          PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui -n$KUBERNETES_CPU_REQUEST --durations=10"
       fi
       ci-log-section end "test"
     - |
