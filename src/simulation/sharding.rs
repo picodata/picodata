@@ -112,11 +112,7 @@ pub fn is_governor_poke_enabled(instance: &PretendInstance) -> bool {
     }
 
     let this_replicaset = instance.topology.get().this_replicaset().clone();
-    if this_replicaset.current_bucket_state_version != this_replicaset.target_bucket_state_version {
-        return false;
-    }
-
-    if this_replicaset.effective_master_name() == Some(&instance.name) {
+    if this_replicaset.current_bucket_state_version == this_replicaset.target_bucket_state_version {
         return false;
     }
 
