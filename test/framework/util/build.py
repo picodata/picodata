@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import pytest
+import yaml  # type: ignore
 from packaging.version import Version
 
 from framework.log import log
@@ -251,3 +252,36 @@ class Executable:
         alias = VersionAlias.CURRENT
         path = picodata_executable_path()
         return Executable(version, alias, path)
+
+
+ERROR_INJECTION_FEATURE = "error_injection"
+
+
+@functools.cache
+def cargo_features(executable: str) -> frozenset[str]:
+    """
+    Set of cargo features the given picodata binary was built with,
+    as reported by `picodata -VV`.
+    """
+    long_version = subprocess.check_output([executable, "-VV"], text=True)
+    info = yaml.safe_load(long_version)
+    features = info.get("cargo_features") or []
+    return frozenset(features)
+
+
+def assert_error_injection_supported(executable: str, error: str) -> None:
+    """
+    Fail the test explicitly if `executable` was built without the
+    `error_injection` cargo feature. Otherwise arming an injection is
+    silently ignored (via `PICODATA_ERROR_INJECTION_*`) or fails with an
+    obscure error (via `pico._inject_error`), and the test fails much
+    later in a way which is hard to make sense of.
+    """
+    if ERROR_INJECTION_FEATURE in cargo_features(executable):
+        return
+
+    raise AssertionError(
+        f"cannot arm error injection '{error}': '{executable}' is built without the "
+        f"'{ERROR_INJECTION_FEATURE}' cargo feature. Rebuild picodata with it enabled, "
+        f"e.g. `make build-dev` or `cargo build --features {ERROR_INJECTION_FEATURE}`."
+    )

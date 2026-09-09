@@ -54,6 +54,7 @@ from framework.registry import Registry
 from framework.util.build import Executable
 from framework.util.build import perform_cargo_build
 from framework.util.build import picodata_executable_path
+from framework.util.build import assert_error_injection_supported
 from framework.util.git import project_git_version
 from framework.util.path import project_root_path
 from framework.util.version import ExecutableVersion
@@ -121,6 +122,10 @@ METRICS_PORT = 7500
 
 MAX_LOGIN_ATTEMPTS = 4
 PICO_SERVICE_ID = 32
+
+# Environment variables with this prefix arm the corresponding error injection,
+# see `error_injection::set_from_env` in src/error_injection.rs.
+ERROR_INJECTION_ENV_PREFIX = "PICODATA_ERROR_INJECTION_"
 
 CLI_TIMEOUT = int(10 * TIMEOUT_SCALE)  # seconds
 DEFAULT_RPC_TIMEOUT = 10  # seconds — default for call/eval/sql, scaled in Instance.connect
@@ -992,6 +997,12 @@ class Instance:
     def picodata_version(self):
         return self.call(".proc_version_info")["picodata_version"]
 
+    def assert_error_injection_supported(self, error: str):
+        """
+        Fail explicitly if this instance's binary doesn't support error injection.
+        """
+        assert_error_injection_supported(self.executable.command, error)
+
     @property
     def audit_flag_value(self):
         """
@@ -1115,6 +1126,12 @@ class Instance:
         timeout: int | float = DEFAULT_RPC_TIMEOUT,
         error_log_level: int = logging.ERROR,
     ):
+        if fn == "pico._inject_error":
+            # This stored procedure only exists in binaries built with the
+            # `error_injection` feature. Report this explicitly instead of
+            # failing with "Procedure 'pico._inject_error' is not defined".
+            self.assert_error_injection_supported(str(args[0]))
+
         log.info(f"{self.name or self.port} RPC CALL {fn}{clamp_for_logs(args)}", stacklevel=2)
         try:
             with self.connect(timeout=timeout, user=user, password=password) as conn:
@@ -1397,6 +1414,13 @@ class Instance:
             self.peers = list(map(lambda i: i.iproto_listen, peers))
 
         env = {**self.env}
+
+        for key in env:
+            error = key.removeprefix(ERROR_INJECTION_ENV_PREFIX)
+            if error != key:
+                # Picodata silently ignores these variables when built without
+                # the `error_injection` feature, so check it up front.
+                self.assert_error_injection_supported(error)
 
         # Set a default, but let os.environ override it
         if "PICODATA_LOG_LEVEL" not in env:
