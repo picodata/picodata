@@ -70,7 +70,7 @@ impl<'q> Binder<'q> for MultisetStmt<'q, Raw> {
             .push_frame(Stmt::new(From::empty(), Stage::Projection));
 
         // WITH clause is opaque boundary for analysis (binding + type derivation).
-        let ctes = ctes.analyze(meta)?;
+        ctes.analyze(meta)?;
 
         meta.binder.stmt_body = match inner {
             MultisetInner::Select(stmt) => Some(MultisetInner::Select(stmt.bind(meta)?)),
@@ -117,7 +117,7 @@ impl<'q> Binder<'q> for MultisetStmt<'q, Raw> {
         }
 
         Ok(Self::BoundNode::from_parts(
-            ctes,
+            std::mem::take(&mut frame.ctes),
             meta.binder.take_stmt_body()?,
             order_by,
             limit,
@@ -288,7 +288,9 @@ impl TypeDeriver for MultisetStmt<'_, Analyzed> {
 }
 
 impl<'q> Analyzer<'q> for Ctes<'q, Raw> {
-    type Node = Ctes<'q, Analyzed>;
+    /// The analyzed clause is parked on the statement frame — it is the
+    /// frame's CTE scope — and the statement takes it back once bound.
+    type Node = ();
 
     fn analyze<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::Node> {
         let raw_ctes = self.into();
@@ -300,18 +302,13 @@ impl<'q> Analyzer<'q> for Ctes<'q, Raw> {
             )));
         }
 
-        let mut analyzed_ctes = Vec::with_capacity(raw_ctes.len());
         for cte in raw_ctes {
             let analyzed_cte = Rc::new(cte.analyze(meta)?);
             // Every analyzed CTE joins the current scope right away,
             // so bodies of subsequent CTEs in the same WITH clause can reference it.
-            meta.binder
-                .top_frame_mut()?
-                .ctes
-                .add(Rc::clone(&analyzed_cte));
-            analyzed_ctes.push(analyzed_cte);
+            meta.binder.top_frame_mut()?.ctes.add(analyzed_cte);
         }
-        Ok(Ctes::from(analyzed_ctes))
+        Ok(())
     }
 }
 

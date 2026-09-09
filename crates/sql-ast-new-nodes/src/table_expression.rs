@@ -223,54 +223,65 @@ impl<'q> From<'q, Analyzed> {
         &self,
         var: &RawVar,
     ) -> ColumnRoute<(Rc<TableFactor<'q, Analyzed>>, usize)> {
-        let tbl_qualifier = var.table_name();
+        route_column(self.entries(), var)
+    }
+}
 
-        tbl_qualifier.map_or_else(
-            || {
-                let column_routes = self
-                    .entries()
-                    .iter()
-                    .map(|entry| {
+/// Route a column reference against a run of FROM entries.
+///
+/// [`From::column_route`] routes against the whole clause. A `JOIN ... USING`
+/// column is routed twice, against the entries preceding the joined table and
+/// against the joined table alone, which is why the entries come as a slice.
+pub fn route_column<'q>(
+    entries: &[FromEntry<'q, Analyzed>],
+    var: &RawVar,
+) -> ColumnRoute<(Rc<TableFactor<'q, Analyzed>>, usize)> {
+    let tbl_qualifier = var.table_name();
+
+    tbl_qualifier.map_or_else(
+        || {
+            let column_routes = entries
+                .iter()
+                .map(|entry| {
+                    entry
+                        .column_route(var)
+                        .map(|col_pos| (Rc::clone(entry.tbl_factor()), col_pos))
+                })
+                .filter(|route| !matches!(route, ColumnRoute::ColumnMissing))
+                .collect::<Vec<_>>();
+
+            if column_routes.len() > 1 {
+                // Resolved into more than 1 entity
+                ColumnRoute::Ambigious
+            } else if column_routes
+                .iter()
+                .any(|route| matches!(route, ColumnRoute::Ambigious))
+            {
+                // Any FROM entry has ambigious resolution
+                // For example, query `SELECT a FROM (SELECT 1 AS a, 2 AS a)` has ambigious `a` column.
+                ColumnRoute::Ambigious
+            } else {
+                column_routes
+                    .into_iter()
+                    .find(|route| matches!(route, ColumnRoute::Resolved(_)))
+                    .unwrap_or(ColumnRoute::NoMatch)
+            }
+        },
+        |t_name| {
+            entries
+                .iter()
+                .find(|entry| entry.name().is_some_and(|name| name == t_name))
+                .map_or(
+                    ColumnRoute::NoMatch,
+                    // This path should not return `FromColumnRoute::NoMatch`.
+                    |entry| {
                         entry
                             .column_route(var)
                             .map(|col_pos| (Rc::clone(entry.tbl_factor()), col_pos))
-                    })
-                    .filter(|route| !matches!(route, ColumnRoute::ColumnMissing))
-                    .collect::<Vec<_>>();
-
-                if column_routes.len() > 1 {
-                    // Resolved into more than 1 entity
-                    ColumnRoute::Ambigious
-                } else if column_routes
-                    .iter()
-                    .any(|route| matches!(route, ColumnRoute::Ambigious))
-                {
-                    // Any FROM entry has ambigious resolution
-                    // For example, query `SELECT a FROM (SELECT 1 AS a, 2 AS a)` has ambigious `a` column.
-                    ColumnRoute::Ambigious
-                } else {
-                    column_routes
-                        .into_iter()
-                        .find(|route| matches!(route, ColumnRoute::Resolved(_)))
-                        .unwrap_or(ColumnRoute::NoMatch)
-                }
-            },
-            |t_name| {
-                self.entries()
-                    .iter()
-                    .find(|entry| entry.name().is_some_and(|name| name == t_name))
-                    .map_or(
-                        ColumnRoute::NoMatch,
-                        // This path should not return `FromColumnRoute::NoMatch`.
-                        |entry| {
-                            entry
-                                .column_route(var)
-                                .map(|col_pos| (Rc::clone(entry.tbl_factor()), col_pos))
-                        },
-                    )
-            },
-        )
-    }
+                    },
+                )
+        },
+    )
 }
 
 impl<'q, State: AstState<'q>> Display for From<'q, State> {

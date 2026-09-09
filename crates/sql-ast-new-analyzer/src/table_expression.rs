@@ -11,9 +11,12 @@
 //! [`curr_from`](crate::BinderCtx::curr_from) rather than on the frame stack: it
 //! is being built, so it is not yet a scope anything can resolve against. Join
 //! conditions are the exception — they *must* see the entries bound before them,
-//! so ON and USING push the partially built clause onto
-//! [`from_frames`](crate::BinderCtx::frames) for the duration and take it
-//! back afterwards.
+//! so ON and USING install the partially built clause into the statement's own
+//! frame on [`frames`](crate::BinderCtx::frames) for the duration and take it
+//! back afterwards. The statement's frame rather than a temporary one, because
+//! the condition belongs to that query level. A reference in it resolves at the
+//! depth it keeps once the clause is complete, and the frame's
+//! [`Stage`] is what rejects an aggregate written there.
 //!
 //! Picodata has no LATERAL, so a joined table itself is bound with `curr_from`
 //! taken away: a subquery in it cannot reference its siblings. A table
@@ -25,10 +28,11 @@ use std::rc::Rc;
 use smol_str::{format_smolstr, SmolStr};
 
 use sql_ast_new_nodes::error::AstResult;
-use sql_ast_new_nodes::expr::{Expr, ExprInner, FunctionCallArgs, RawVar};
+use sql_ast_new_nodes::expr::{Expr, ExprInner, FunctionCallArgs};
 use sql_ast_new_nodes::table_expression::{
-    AnalyzedCteOrTable, BoundJoinUsingVar, ColumnRoute, From, FromEntry, GroupBy, JoinKind,
-    JoinUsingColumn, JoinedTable, OrdrByGrpByElem, TableFactor, TableFactorInner, TableFunction,
+    route_column, AnalyzedCteOrTable, BoundJoinUsingVar, ColumnRoute, From, FromEntry, GroupBy,
+    JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem, TableFactor, TableFactorInner,
+    TableFunction,
 };
 use sql_ast_new_nodes::{Analyzed, NamedEntity, Raw};
 use sql_ir::ir::metadata::Metadata;
@@ -39,11 +43,11 @@ use sql_type_system::error::Error as TypeSystemError;
 use sql_type_system::expr::Type as TypeSystemType;
 use sql_type_system::type_system::FunctionKind;
 
-use crate::expr::bind_var;
+use crate::expr::var_from_route;
 use crate::multiset::analyze_subquery;
 use crate::{
     analyze_err, duplicated_name, semantic_err, texpr_from_derived_type, AnalyzerCtx,
-    AstTypeReport, Binder, Discoverer, ExprTypeDeriver, Stage, Stmt,
+    AstTypeReport, Binder, Discoverer, ExprTypeDeriver, Stage,
 };
 
 /// Resolve relation references. Recursively analyze subqueries if they are presented.
@@ -172,21 +176,20 @@ fn bind_table_function<'q, M: Metadata>(
         )));
     };
 
-    let frame = Stmt::new(
-        std::mem::take(&mut meta.binder.curr_from),
-        Stage::FunctionInFrom,
-    );
-    meta.binder.push_frame(frame);
+    // As for a join condition, the arguments belong to the statement's query
+    // level: install the partial clause into its own frame for the duration.
+    let partial_from = std::mem::take(&mut meta.binder.curr_from);
+    let frame = meta.binder.top_frame_mut()?;
+    debug_assert!(frame.from.is_empty());
+    frame.from = partial_from;
+    let saved_stage = frame.set_stage(Stage::FunctionInFrom);
     meta.binder.binding_table_function = true;
     let bound = func.call.bind(meta);
     meta.binder.binding_table_function = false;
+    let frame = meta.binder.top_frame_mut()?;
+    frame.set_stage(saved_stage);
+    meta.binder.curr_from = std::mem::take(&mut frame.from);
     let (mut call, t_expr) = bound?;
-    meta.binder.curr_from = meta
-        .binder
-        .pop_frame(Some(
-            "Expected the same statement frame after the analysis of a function in FROM",
-        ))?
-        .from;
 
     // The types of the columns are needed before the statement is typed.
     meta.type_system.analyzer.analyze(&t_expr, None)?;
@@ -240,6 +243,12 @@ fn bind_table_function<'q, M: Metadata>(
 impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
     type BoundNode = JoinedTable<'q, Analyzed>;
 
+    /// The join condition is bound against the entries bound so far, plus the
+    /// joined table itself. That partial clause is installed into the
+    /// statement's own frame for the duration. The frame is the query level the
+    /// condition belongs to, so a column reference resolves at the very depth
+    /// it will have once the clause is complete, and an aggregate or window
+    /// function written in the condition is rejected by the frame's stage.
     fn bind<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::BoundNode> {
         let (tbl, kind, condition, using_cols) = self.into_parts();
 
@@ -274,25 +283,26 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
                 || (kind == JoinKind::Cross && condition.is_none() && using_cols.is_empty())
         );
 
+        // Previously analyzed entries in current FROM clause should be visible to the join condition.
+        // For example, in this query
+        // `SELECT * FROM (SELECT 1 a) t1 INNER JOIN (SELECT 2 a) t2 ON (SELECT t1.a)::BOOL`
+        // `t1.a` should be resolved subquery `t1` output attribute.
+        let partial_from = std::mem::take(&mut meta.binder.curr_from);
+        let stage = if condition.is_some() {
+            Stage::JoinOn
+        } else {
+            Stage::JoinUsing
+        };
+        let frame = meta.binder.top_frame_mut()?;
+        debug_assert!(frame.from.is_empty());
+        frame.from = partial_from;
+        let saved_stage = frame.set_stage(stage);
+
         let analyzed_cond = match condition {
             None => None,
             Some(cond) => {
-                // Previously analyzed entries in current FROM clause should be visible to JOIN/ON clause.
-                // For example, in this query
-                // `SELECT * FROM (SELECT 1 a) t1 INNER JOIN (SELECT 2 a) t2 ON (SELECT t1.a)::BOOL`
-                // `t1.a` should be resolved subquery `t1` output attribute.
-                let frame = Stmt::new(std::mem::take(&mut meta.binder.curr_from), Stage::JoinOn);
-                meta.binder.push_frame(frame);
                 let (bound_expr, t_expr) = cond.bind(meta)?;
-                meta.binder.curr_from = meta
-                    .binder
-                    .pop_frame(Some(
-                        "Expected the same statement frame after JOIN/ON analysis",
-                    ))?
-                    .from;
-
                 meta.type_system.add_filter(t_expr);
-
                 Some(bound_expr)
             }
         };
@@ -301,6 +311,11 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
             .into_iter()
             .map(|col| col.bind(meta))
             .collect::<AstResult<Vec<_>>>()?;
+
+        let frame = meta.binder.top_frame_mut()?;
+        frame.set_stage(saved_stage);
+        let partial_from = std::mem::take(&mut frame.from);
+        meta.binder.curr_from = partial_from;
 
         // We expect to find inner analyzed table factor of joined table.
         let inner_tbl_factor = match meta.binder.curr_from.pop_entry()? {
@@ -324,9 +339,10 @@ impl<'q> Binder<'q> for JoinUsingColumn {
 
     /// Bind column references in JOIN/USING.
     ///
-    /// The idea is to firstly bind column reference against
-    /// FROM entries preceding joined table and secondly bind it against
-    /// only joined table which is last entry in current FROM clause.
+    /// The column is resolved twice against the partial FROM clause the
+    /// enclosing [`JoinedTable`] installed into the frame: first against the
+    /// entries preceding the joined table, then against the joined table alone,
+    /// which is the last entry.
     ///
     /// The merged output column's type is the common type of the two inputs,
     /// derived exactly like one output column of a set operation.
@@ -334,38 +350,29 @@ impl<'q> Binder<'q> for JoinUsingColumn {
     /// Type of each bound var is known by this moment because the are
     /// either table column or output attribute of a from entry subquery.
     fn bind<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::BoundNode> {
-        // Retrieve joined table. Keep only preceding it FROM entries.
-        let last_joined_tbl = meta.binder.curr_from.pop_entry()?;
-
-        // Use previously bound FROM entries as statement frame.
-        let frame = Stmt::new(std::mem::take(&mut meta.binder.curr_from), Stage::JoinUsing);
-        meta.binder.push_frame(frame);
-
-        let resolve_var = |var: &RawVar, meta: &mut AnalyzerCtx<'q, M>| bind_var(var, meta, true);
+        let from = &meta.binder.top_frame_ref()?.from;
+        let (joined_tbl, preceding) = from.entries().split_last().ok_or_else(|| {
+            analyze_err(format_smolstr!(
+                "expected the joined table in the FROM clause under analysis"
+            ))
+        })?;
 
         // Resolve against entries preceding joined table.
-        let first_resolved_column = resolve_var(&self.0, meta)?.1;
+        let first_resolved_column = var_from_route(route_column(preceding, &self.0), &self.0)?;
 
         // The left input of this merge is the join output built so far.
         // A column an earlier USING merge produced contributes its merged type,
         // so a chain of merges unifies left to right.
-        let left_type = meta
-            .binder
-            .top_frame_ref()?
-            .from
-            .join_using_var(&first_resolved_column)
-            .map_or_else(
-                || first_resolved_column.data_type(),
-                BoundJoinUsingVar::data_type,
-            );
-
-        let mut saved_from = std::mem::replace(
-            &mut meta.binder.top_frame_mut()?.from,
-            From::from_tbl_factors(vec![last_joined_tbl]),
+        let left_type = from.join_using_var(&first_resolved_column).map_or_else(
+            || first_resolved_column.data_type(),
+            BoundJoinUsingVar::data_type,
         );
 
         // Resolve against only joined table entry.
-        let second_resolved_column = resolve_var(&self.0, meta)?.1;
+        let second_resolved_column = var_from_route(
+            route_column(std::slice::from_ref(joined_tbl), &self.0),
+            &self.0,
+        )?;
 
         let left_t_expr = texpr_from_derived_type(left_type, meta.type_system.inc_expr_id());
         let joined_t_expr = texpr_from_derived_type(
@@ -377,16 +384,6 @@ impl<'q> Binder<'q> for JoinUsingColumn {
             &[left_t_expr, joined_t_expr],
             None,
         )?;
-
-        let last_joined_tbl = meta
-            .binder
-            .pop_frame(Some("Expected statement frame in JOIN/USING analysis"))?
-            .from
-            .pop_entry()?;
-
-        // Adjust current FROM entries.
-        saved_from.add_entry(last_joined_tbl);
-        meta.binder.curr_from = saved_from;
 
         Ok(Self::BoundNode::new(
             first_resolved_column,

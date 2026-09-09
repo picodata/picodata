@@ -16,6 +16,8 @@
 use sql_ir::ir::aggregates::AggregateKind;
 use sql_type_system::expr::{ComparisonOperator, Type, UnaryOperator};
 
+use std::rc::Rc;
+
 use smol_str::format_smolstr;
 
 use crate::cast::{can_cast, coerce_text_literal};
@@ -32,7 +34,7 @@ use sql_ast_new_nodes::expr::{
     IsExpr, IsValue, Like, Literal, LiteralKind, RawVar, Similar, Substring, TimeFunction, Trim,
     UnaryOp, UnaryOperation, ValuesRow,
 };
-use sql_ast_new_nodes::table_expression::{BoundJoinUsingVar, BoundVar, ColumnRoute};
+use sql_ast_new_nodes::table_expression::{BoundJoinUsingVar, BoundVar, ColumnRoute, TableFactor};
 use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, AstNodeId, Raw};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::table_function::find_table_function;
@@ -141,42 +143,37 @@ fn cannot_resolve_err(var: &RawVar) -> AstErr {
 pub(crate) fn bind_var<'q, M: Metadata>(
     var: &RawVar,
     meta: &AnalyzerCtx<'q, M>,
-    is_local: bool,
 ) -> AstResult<(usize, BoundVar<'q>)> {
-    let to_take = if is_local {
-        1
-    } else {
-        meta.binder.frames.len()
+    let Some((lvl, column_route)) =
+        meta.binder
+            .frames
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(lvl, Stmt { from, .. })| match from.column_route(var) {
+                ColumnRoute::NoMatch => None,
+                other => Some((lvl, other)),
+            })
+    else {
+        return Err(cannot_resolve_err(var));
     };
-    if let Some((lvl, column_route)) = meta
-        .binder
-        .frames
-        .iter()
-        .enumerate()
-        .rev()
-        .take(to_take)
-        .find_map(|(lvl, Stmt { from, .. })| match from.column_route(var) {
-            ColumnRoute::NoMatch => None,
-            other => Some((lvl, other)),
-        })
-    {
-        let (tbl_factor, col_pos) = match column_route {
-            ColumnRoute::NoMatch => {
-                return Err(analyze_err(format_smolstr!(
-                    "incorrect handling of no match for column reference"
-                )))
-            }
-            ColumnRoute::ColumnMissing => return Err(cannot_resolve_err(var)),
-            ColumnRoute::Resolved(resolved) => resolved,
-            ColumnRoute::Ambigious => {
-                return Err(semantic_err(format_smolstr!(
-                    "column reference '{var}' is ambigious"
-                )))
-            }
-        };
-        Ok((lvl, BoundVar::from_parts(tbl_factor, col_pos)))
-    } else {
-        Err(cannot_resolve_err(var))
+    Ok((lvl, var_from_route(column_route, var)?))
+}
+
+/// The bound variable a routing outcome stands for,
+/// or the user-facing error it amounts to.
+pub(crate) fn var_from_route<'q>(
+    column_route: ColumnRoute<(Rc<TableFactor<'q, Analyzed>>, usize)>,
+    var: &RawVar,
+) -> AstResult<BoundVar<'q>> {
+    match column_route {
+        ColumnRoute::NoMatch | ColumnRoute::ColumnMissing => Err(cannot_resolve_err(var)),
+        ColumnRoute::Resolved((tbl_factor, col_pos)) => {
+            Ok(BoundVar::from_parts(tbl_factor, col_pos))
+        }
+        ColumnRoute::Ambigious => Err(semantic_err(format_smolstr!(
+            "column reference '{var}' is ambigious"
+        ))),
     }
 }
 
@@ -448,7 +445,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
             }
             ExprInner::Var(var) => {
                 // Bind column reference to tuple source (FROM clause entry, outer-query, etc.).
-                let (lvl, bound_var) = bind_var(&var, meta, false)?;
+                let (lvl, bound_var) = bind_var(&var, meta)?;
 
                 // Register column reference usage.
                 meta.binder.reg_var(lvl, bound_var.clone())?;

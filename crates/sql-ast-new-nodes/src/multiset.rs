@@ -63,7 +63,6 @@
 //! same technique [`expr`](super::expr) uses for operators.
 
 use std::fmt::{Display, Error, Formatter};
-use std::rc::Rc;
 
 use crate::error::AstResult;
 use crate::expr::{Expr, ValuesRow};
@@ -483,16 +482,6 @@ pub struct Ctes<'q, State: AstState<'q>> {
 impl<'q> Ctes<'q, Raw> {
     pub fn into(self) -> Vec<Cte<'q, Raw>> {
         self.ctes
-    }
-}
-
-impl<'q> Ctes<'q, Analyzed> {
-    pub fn exists(&self, name: &str) -> bool {
-        self.ctes.iter().any(|cte| cte.name.as_str() == name)
-    }
-
-    pub fn into_mut(&mut self) -> &mut Vec<Rc<Cte<'q, Analyzed>>> {
-        &mut self.ctes
     }
 }
 

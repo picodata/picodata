@@ -98,6 +98,21 @@ fn aggregate_in_join_on_error() {
     );
 }
 
+/// The aggregate is written in a subquery, but its argument belongs to the
+/// join's own level, so it is an aggregate of that level. The statement's
+/// frame carries the `JoinOn` stage while the condition binds, and that stage
+/// is what rejects it.
+#[test]
+fn aggregate_over_join_level_column_in_join_on_subquery_error() {
+    insta::assert_snapshot!(
+        analyze_error(
+            "SELECT t1.a FROM t1 INNER JOIN t3 ON t1.a = (SELECT max(t3.a) FROM t4)",
+            &[]
+        ),
+        @"semantic error: aggregate functions are not allowed in JOIN conditions"
+    );
+}
+
 #[test]
 fn aggregate_in_join_using_references_outward_relation() {
     insta::assert_snapshot!(
