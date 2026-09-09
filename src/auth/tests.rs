@@ -81,9 +81,12 @@ where
 /// at the end of the test which will stop the server and reset the
 /// configuration to the default authentication method.
 ///
+/// The server will bind to the provided `port`. Please pass a unique value, so
+/// that tests running in parallel don't race each other to bind on the same port.
+///
 /// If `glauth` is not found, returns an error message. You can download it
 /// from <https://github.com/glauth/glauth/releases>.
-pub fn setup_ldap_auth(username: &str, password: &str) -> Result<impl Drop, String> {
+pub fn setup_ldap_auth(username: &str, password: &str, port: u16) -> Result<impl Drop, String> {
     let res = std::process::Command::new("glauth").output();
 
     match res {
@@ -100,7 +103,6 @@ pub fn setup_ldap_auth(username: &str, password: &str) -> Result<impl Drop, Stri
     let ldap_cfg_path = tempdir.path().join("ldap.cfg");
     let mut ldap_cfg_file = std::fs::File::create(&ldap_cfg_path).unwrap();
 
-    const LDAP_SERVER_PORT: u16 = 1389;
     const LDAP_SERVER_HOST: &str = "127.0.0.1";
 
     let password_sha256 = sha256_hex(password);
@@ -111,7 +113,7 @@ pub fn setup_ldap_auth(username: &str, password: &str) -> Result<impl Drop, Stri
                 r#"
             [ldap]
                 enabled = true
-                listen = "{LDAP_SERVER_HOST}:{LDAP_SERVER_PORT}"
+                listen = "{LDAP_SERVER_HOST}:{port}"
 
             [ldaps]
                 enabled = false
@@ -155,7 +157,7 @@ pub fn setup_ldap_auth(username: &str, password: &str) -> Result<impl Drop, Stri
     // Wait for ldap server to start up
     let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
     while fiber::clock() < deadline {
-        let res = std::net::TcpStream::connect((LDAP_SERVER_HOST, LDAP_SERVER_PORT));
+        let res = std::net::TcpStream::connect((LDAP_SERVER_HOST, port));
         match res {
             Ok(_) => {
                 // Ldap server is ready
@@ -192,7 +194,7 @@ pub fn setup_ldap_auth(username: &str, password: &str) -> Result<impl Drop, Stri
             ),
             connect: Some(crate::address::LdapAddress {
                 host: LDAP_SERVER_HOST.to_string(),
-                port: LDAP_SERVER_PORT.to_string(),
+                port: port.to_string(),
             }),
             tls: crate::config::TlsClientSettings {
                 enabled: Some(false),
@@ -335,7 +337,7 @@ async fn ldap_net_box() {
     let password = "B Gone";
 
     let _guard = tarantool::unwrap_ok_or!(
-        setup_ldap_auth(username, password),
+        setup_ldap_auth(username, password, 1389),
         Err(e) => {
             println!("{e}, skipping ldap test");
             return;
@@ -612,7 +614,7 @@ async fn ldap_auth_method() {
     let password = "B. Goode";
 
     let _guard = tarantool::unwrap_ok_or!(
-        setup_ldap_auth(username, password),
+        setup_ldap_auth(username, password, 1390),
         Err(e) => {
             println!("{e}, skipping ldap test");
             return;

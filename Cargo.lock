@@ -2711,6 +2711,7 @@ dependencies = [
  "md-5 0.10.6",
  "native-tls",
  "nix 0.29.0",
+ "num_cpus",
  "once_cell",
  "openssl",
  "pbkdf2",

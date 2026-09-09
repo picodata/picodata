@@ -493,11 +493,23 @@ pub struct Test {
     #[clap(long = "nocapture", env = "PICODATA_TEST_NOCAPTURE")]
     /// Do not capture test output.
     pub nocapture: bool,
+
+    #[clap(long = "jobs", short = 'j', env = "PICODATA_TEST_JOBS")]
+    /// Number of parallel jobs, defaults to # of CPUs.
+    pub jobs: Option<usize>,
 }
 
 impl Test {
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
         Ok(vec![current_exe()?])
+    }
+
+    pub fn jobs(&self) -> usize {
+        let Some(jobs) = self.jobs else {
+            return num_cpus::get();
+        };
+
+        jobs.max(1)
     }
 }
 
