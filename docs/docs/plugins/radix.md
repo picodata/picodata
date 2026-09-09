@@ -1,6 +1,8 @@
 # Radix
 
 В данном разделе приведены сведения о Radix, плагине для СУБД Picodata.
+Информация в данном разделе дополняет пользовательскую документацию,
+которая поставляется клиентам Picodata вместе со сборками плагина Radix.
 
 !!! tip "Picodata Enterprise"
     Функциональность плагина доступна только в коммерческой версии Picodata.
@@ -23,11 +25,13 @@ Redis на базе СУБД Picodata. Каждый экземпляр Radix о�
 Версии плагина Radix требуют определённых версий СУБД Picodata. Ниже
 показана таблица совместимости версий:
 
-| Radix  | Picodata        |  ФСТЭК-сертификат  |
-|--------|-----------------|:------------------:|
-| 0.9.0  | 25.2.2          | :white_check_mark: |
-| 0.14.1 | 25.5.7 (25.5.*) |                    |
-| 1.0.6  | 26.1.5 (26.1.*) |                    |
+| Radix  | Picodata        |  ФСТЭК-сертификат  |         LTS        |
+|--------|-----------------|:------------------:|:------------------:|
+| 0.9.0  | 25.2.2          | :white_check_mark: |                    |
+| 0.14.1 | 25.5.7 (25.5.*) |                    |                    |
+| 1.0.5  | 26.1.4 (26.1.*) | :white_check_mark: | :white_check_mark: |
+| 1.0.7  | 26.1.6 (26.1.*) |                    | :white_check_mark: |
+| 1.1.1  | 26.1.6 (26.1.*) |                    |                    |
 
 См. также:
 
@@ -61,7 +65,7 @@ Picodata на нескольких узлах, в том числе, с подд
 
 plugins:
   radix:                                                          # плагин
-    path: '../files/radix_1.0.6-centos_el8.tar.gz'                # путь до пакета с Radix
+    path: '../files/radix_1.1.1-centos_el8.tar.gz'                # путь до пакета с Radix
     config: '../files/radix-config.yml'                           # путь до файла с настройками Radix
     services:
       radix:
@@ -91,7 +95,7 @@ plugins:
       tier_for_db_13: 'default'
       tier_for_db_14: 'default'
       tier_for_db_15: 'default'
-      unlogged: 'UNLOGGED'
+      unlogged: ''
 ```
 
 При настройке плагина можно использовать литералы, которые будут подставлены при разворачивании кластера:
@@ -160,7 +164,7 @@ plugins:
 
         plugins:
           radix:                                                        # плагин
-            path: '../plugins/radix_1.0.6-1-ubuntu_noble.tar.gz'        # путь до пакета с Radix
+            path: '../plugins/radix_1.1.1-1-ubuntu_noble.tar.gz'        # путь до пакета с Radix
             config: '../plugins/radix-config.yml'                       # путь до файла с настройками Radix
             services:
               radix:
@@ -189,7 +193,7 @@ plugins:
               tier_for_db_13: 'default'
               tier_for_db_14: 'default'
               tier_for_db_15: 'default'
-              unlogged: 'UNLOGGED'
+              unlogged: ''
     DC1:                                # имя датацентра (failure_domain)
       hosts:                            # серверы в датацентре
         server-1-1:                     # имя сервера в инвентарном файле
@@ -231,9 +235,9 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 
 Доступны два образа:
 
-- `<registry>/radix:1.0.6` — полноценный образ, готовый для
+- `<registry>/radix:1.1.1` — полноценный образ, готовый для
   использования в Kubernetes. Не имеет преднастроек.
-- `<registry>/radix:1.0.6-standalone` — образ с одиночным инстансом
+- `<registry>/radix:1.1.1-standalone` — образ с одиночным инстансом
   Picodata и предустановленным плагином Radix для быстрого ознакомления.
   Не предназначен для использования в производственной среде.
 
@@ -243,8 +247,8 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 Запуск одиночного образа:
 
 ```shell
-docker pull <registry>/radix:1.0.6-standalone
-docker run --rm -p 7379:7379 -p 4327:4327 -p 5327:5327 <registry>/radix:1.0.6-standalone
+docker pull <registry>/radix:1.1.1-standalone
+docker run --rm -p 7379:7379 -p 4327:4327 -p 5327:5327 <registry>/radix:1.1.1-standalone
 ```
 
 После старта плагин готов к работе:
@@ -357,7 +361,7 @@ Radix поддерживает 16 баз данных, каждую из кот�
 в административной консоли Picodata:
 
 ```sql
-CREATE PLUGIN radix 1.0.6;
+CREATE PLUGIN radix 1.1.1;
 ```
 
 Выполните указанные ниже шаги для того, чтобы включить плагин.
@@ -373,67 +377,76 @@ CREATE PLUGIN radix 1.0.6;
 **Пример для одного тира (default)**
 
 ```sql
-ALTER PLUGIN radix 1.0.6 ADD SERVICE radix TO TIER default;
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_0='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_1='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_2='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_3='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_4='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_5='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_6='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_7='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_8='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_9='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_10='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_11='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_12='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_13='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_14='default';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_15='default';
+ALTER PLUGIN radix 1.1.1 ADD SERVICE radix TO TIER default;
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_0='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_1='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_2='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_3='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_4='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_5='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_6='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_7='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_8='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_9='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_10='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_11='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_12='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_13='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_14='default';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_15='default';
 ```
 
 **Пример для двух тиров (hot/cold)**
 
 
 ```sql
-ALTER PLUGIN radix 1.0.6 ADD SERVICE radix TO TIER hot;
-ALTER PLUGIN radix 1.0.6 ADD SERVICE radix TO TIER cold;
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_0='hot';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_1='hot';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_2='hot';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_3='hot';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_4='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_5='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_6='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_7='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_8='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_9='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_10='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_11='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_12='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_13='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_14='cold';
-ALTER PLUGIN radix 1.0.6 SET migration_context.tier_for_db_15='cold';
+ALTER PLUGIN radix 1.1.1 ADD SERVICE radix TO TIER hot;
+ALTER PLUGIN radix 1.1.1 ADD SERVICE radix TO TIER cold;
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_0='hot';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_1='hot';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_2='hot';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_3='hot';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_4='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_5='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_6='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_7='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_8='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_9='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_10='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_11='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_12='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_13='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_14='cold';
+ALTER PLUGIN radix 1.1.1 SET migration_context.tier_for_db_15='cold';
 ```
 
-Параметр `unlogged` может принимать только два значения: `''` (пустая строка) для включенного WAL (режим Radix до версии 1.0.0):
+Параметр `unlogged` может принимать только два значения: `''` (пустая строка) для включённого WAL (режим Radix до версии 1.0.0):
 
 ```sql
-ALTER PLUGIN radix 1.0.6 SET migration_context.unlogged='' OPTION(TIMEOUT=1200);
+ALTER PLUGIN radix 1.1.1 SET migration_context.unlogged='' OPTION(TIMEOUT=1200);
 ```
 
 или `UNLOGGED` для отключённого:
 
 ```sql
-ALTER PLUGIN radix 1.0.6 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOUT=1200);
+ALTER PLUGIN radix 1.1.1 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOUT=1200);
 ```
+
+!!! warning "Внимание!"
+    При установке значения `UNLOGGED` данные на диск не пишутся, и
+    сохраняются только в ОЗУ на [лидере репликасета]. Это означает,
+    что перезапуск лидера приведёт к потере данных, которые на нём
+    хранились. См. [подробнее](../reference/sql/create_table.md#params) о
+    режиме `UNLOGGED` при создании таблицы.
+
+[лидере репликасета]: ../overview/glossary.md#leader
 
 #### Запуск миграции {: #plugin_migrate }
 
 Для выполнения миграции выполните команду:
 
 ```sql
-ALTER PLUGIN radix MIGRATE TO 1.0.6 OPTION(TIMEOUT=300);
+ALTER PLUGIN radix MIGRATE TO 1.1.1 OPTION(TIMEOUT=300);
 ```
 
 <!--
@@ -475,7 +488,7 @@ GRANT radix_writer TO default;
 После этого включите плагин:
 
 ```sql
-ALTER PLUGIN radix 1.0.6 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 1.1.1 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:
@@ -512,8 +525,8 @@ redis-cli -p 7301
 и лишь затем включить новую версию. Пример:
 
 ```sql
-ALTER PLUGIN radix 1.0.5 DISABLE OPTION(TIMEOUT=30);
-ALTER PLUGIN radix 1.0.6 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 1.0.6 DISABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 1.1.1 ENABLE OPTION(TIMEOUT=30);
 ```
 
 #### Миграция с помощью radix-cli {: #migrate_with_radix-cli }
@@ -536,6 +549,49 @@ $ <picodata_share_dir>/radix/1.0.6/radix-cli migrate redis://localhost:7379/1 re
 Пропущено (по TTL):       0
 Не удалось: 0
 ```
+
+Убедитесь, что во время миграции в источнике и приёмнике не выполняются
+модифицирующие операции над самими данными или их свойствами (например,
+TTL), так как это усложняет процесс миграции. В частности, состояние
+ключа на приёмнике невозможно будет предсказать если:
+
+- источник содержит ключи-коллекции размера больше
+  `--collection-chunk-size` (или его стандартного значения) и
+  эти ключи модифицируются в процессе переноса
+- приёмник содержит ключи-коллекции и они модифицируются кем-то
+  кроме утилиты `radix-cli`
+
+Также, при запуске миграции с параметром  `--overwrite` утилита может
+удалить только что записанный ключ.
+
+Перед началом миграции утилита печатает совет остановить запись в
+источник и приёмник, и ожидает ввода с клавиатуры: подтвердите запуск
+или нажмите ++esc++ для отмены миграции. Обратите внимание:
+
+- Ожидание ввода используется только при ручном запуске утилиты из
+терминала. Если утилита работает из скрипта или её вывод перенаправлен,
+совет просто печатается, и перенос идёт дальше.
+- Флаг `--yes` отвечает за пользователя и убирает ожидание там, где
+терминал есть, а нажать клавишу некому (например, `docker run -t`).
+
+Отдельное подтверждение нужно для `--overwrite`: без него существующие ключи
+приёмника пропускаются, а с ним — перезаписываются данными из источника без
+возможности восстановления. Поэтому утилита просит набрать имя
+picodata-кластера в приёмнике — чтобы случайно не перезаписать данные в чужом кластере.
+
+| `--overwrite` | `--yes` | Запуск       | Поведение                                                    |
+| ------------- | ------- | ------------ | ------------------------------------------------------------ |
+| нет           | любой   | любой        | существующие ключи приёмника пропускаются, подтверждения нет |
+| да            | нет     | из терминала | предупреждение о перезаписи, затем ввод имени кластера       |
+| да            | да      | любой        | предупреждение печатается, перенос идёт без вопросов         |
+| да            | нет     | из скрипта   | перенос не начинается: подтвердить некому, нужен `--yes`     |
+
+Имя кластера утилита берёт из поля `picodata_cluster_name` в секции `radix`
+ответа [INFO](#info). Имеются два исключения:
+
+- Radix, который это поле не отдаёт (сборки до 0.9.0), не даст набрать имя,
+  поэтому `--overwrite` для него тоже требует `--yes`;
+- приёмник, который не является Radix (обычный Redis), подтверждения не требует.
 
 ### Понижение версии плагина {: #radix_downgrade }
 
@@ -639,7 +695,7 @@ radix:
 Пример команды, применяющей файл конфигурации:
 
 ```shell
-picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file radix/secret.txt radix 1.0.6 radix/plugin_config.yaml
+picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file radix/secret.txt radix 1.1.1 radix/plugin_config.yaml
 ```
 
 ### Авторизация и управление доступом {: #auth_and_access_control}
@@ -836,8 +892,8 @@ user pubsub on sanitize-payload #4cb5461c1904e3be5b941a47fba6c3afdf97a6f8f271220
   то нужно будет указать его вместо `default` в файле с правами.
 - из файла с правами надо удалить всё, что связано с паролями (строки с
   префиксами `>`, `<`, `#`, `!` и строка `nopass`). Radix рассчитан на
-  применение в корпоративной среде и не позволяет передавать пароли пользователей 
-  через незашифрованный файл на диске. Для управления пользователями и их паролями 
+  применение в корпоративной среде и не позволяет передавать пароли пользователей
+  через незашифрованный файл на диске. Для управления пользователями и их паролями
   рекомендуется использовать централизованное хранилище (например, LDAP, для
   синхронизации с которым Picodata предлагает плагин [Argus](argus.md)).
 - Метки включения пользователя (`off` и `on`) задаются в Picodata — их
@@ -900,7 +956,7 @@ GRANT radix_writer TO pubsub OPTION(TIMEOUT=1200);
 Включите в Radix авторизацию, указав путь к файлу с правами и имя пользователя по умолчанию:
 
 ```sql
-ALTER PLUGIN radix 1.0.6 SET radix.authorization_mode='{ "state": "enabled", "aclfile": "/tmp/users.acl", "default_user_name": "default" }';
+ALTER PLUGIN radix 1.1.1 SET radix.authorization_mode='{ "state": "enabled", "aclfile": "/tmp/users.acl", "default_user_name": "default" }';
 ```
 
 **Включение плагина**
@@ -908,7 +964,7 @@ ALTER PLUGIN radix 1.0.6 SET radix.authorization_mode='{ "state": "enabled", "ac
 Включите плагин Radix в Picodata:
 
 ```sql
-ALTER PLUGIN radix 1.0.6 ENABLE;
+ALTER PLUGIN radix 1.1.1 ENABLE;
 ```
 
 При первом запуске заданному по умолчанию пользователю выдается ACL на
@@ -1096,7 +1152,7 @@ OK
 ##### Изменение конфигурации Radix через SQL-запросы в Picodata {: #setup_radix_with_sql }
 
 ```sql
-ALTER PLUGIN radix 1.0.6 SET radix.authorization_mode='{"state": "enabled", "default_user_name": "custom_user"}';
+ALTER PLUGIN radix 1.1.1 SET radix.authorization_mode='{"state": "enabled", "default_user_name": "custom_user"}';
 ```
 
 ##### Использование LDAP {: #ldapuser }
@@ -1105,7 +1161,7 @@ ALTER PLUGIN radix 1.0.6 SET radix.authorization_mode='{"state": "enabled", "def
 CREATE USER custom_user USING ldap;
 GRANT radix_reader TO custom_user;
 GRANT radix_writer TO custom_user;
-ALTER PLUGIN radix 1.0.6 SET radix.authorization_mode = '{ "state": "enabled", "default_user_name": "custom_user" }';
+ALTER PLUGIN radix 1.1.1 SET radix.authorization_mode = '{ "state": "enabled", "default_user_name": "custom_user" }';
 ```
 
 ##### Использование Argus для синхронизации пользователей {: #argus }
@@ -1283,28 +1339,28 @@ Redis Standalone, развернув Radix в составе одного реп
 Picodata. Пример:
 
 ```
-127.0.0.1:7298> info
+127.0.0.1:6379> info
 # Server
 redis_version:8.0.0
-redis_git_sha1:715333fcf2a9f469566c029c1751699959e8706c
+redis_git_sha1:78e076758e31fb7ddc2d62b09ae14435868b8f9f
 ... # остальные поля и секции
 
 # Radix
-radix_version:1.0.5
-picodata_version:26.1.2
-picodata_cluster_name:radix
-picodata_cluster_uuid:e0d4ede1-422a-4e5e-a0e5-e4d53ef5e37e
+radix_version:1.1.1
+picodata_version:26.1.6
+picodata_cluster_name:radix-docker-standalone
+picodata_cluster_uuid:9f0005c4-b3f1-42b4-abf0-772299e563be
 picodata_instance_name:default_1_1
-picodata_instance_uuid:98f35dae-1cb5-4ba8-a5c3-fbb369b4fdc2
+picodata_instance_uuid:153a0c8e-5a07-4792-8995-a8a3e5f1c3be
 slab_info_items_size:16272
 slab_info_items_used:160
 slab_info_items_used_ratio:0.98
-slab_info_quota_size:2000000000
+slab_info_quota_size:268435456
 slab_info_quota_used:33554432
-slab_info_quota_used_ratio:1.68
+slab_info_quota_used_ratio:12.5
 slab_info_arena_size:33554432
-slab_info_arena_used:311456
-slab_info_arena_used_ratio:0.9
+slab_info_arena_used:49312
+slab_info_arena_used_ratio:0.1
 ```
 
 Значение по умолчанию — `true`.
@@ -1485,7 +1541,7 @@ RESET`](#latency_reset).
 Команда `LATENCY HISTOGRAM` строит гистограмму задержек по статистике каждой команды и работает независимо от этого порога.
 
 ```sql
-ALTER PLUGIN radix 1.0.6 SET radix.latency_monitor_threshold_ms = '1';
+ALTER PLUGIN radix 1.1.1 SET radix.latency_monitor_threshold_ms = '1';
 ```
 
 ### slowlog_log_slower_than_us
@@ -1501,7 +1557,7 @@ ALTER PLUGIN radix 1.0.6 SET radix.latency_monitor_threshold_ms = '1';
 По умолчанию — `10000` (10 миллисекунд).
 
 ```sql
-ALTER PLUGIN radix 1.0.6 SET radix.slowlog_log_slower_than_us = '0';
+ALTER PLUGIN radix 1.1.1 SET radix.slowlog_log_slower_than_us = '0';
 ```
 
 ### slowlog_max_len
@@ -1511,7 +1567,7 @@ ALTER PLUGIN radix 1.0.6 SET radix.slowlog_log_slower_than_us = '0';
 По умолчанию — `128`.
 
 ```sql
-ALTER PLUGIN radix 1.0.6 SET radix.slowlog_max_len = '256';
+ALTER PLUGIN radix 1.1.1 SET radix.slowlog_max_len = '256';
 ```
 
 ### debug
@@ -2044,7 +2100,7 @@ QUIT
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["quit" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["quit" ] }';
     ```
 
 #### readonly {: #cluster_readonly }
@@ -2895,7 +2951,7 @@ HMSET key field value [field value ...]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["hmset" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["hmset" ] }';
     ```
 
 #### hscan
@@ -3812,7 +3868,7 @@ ZRANGEBYLEX key min max [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
     ```
 
 #### zrangebyscore
@@ -3832,7 +3888,7 @@ ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
     ```
 
 #### zrangestore
@@ -3941,7 +3997,7 @@ ZREVRANGE key start stop [WITHSCORES]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrange" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrange" ] }';
     ```
 
 #### zrevrangebylex
@@ -3961,7 +4017,7 @@ ZREVRANGEBYLEX key max min [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
     ```
 
 #### zrevrangebyscore
@@ -3981,7 +4037,7 @@ ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
     ```
 
 #### zrevrank
@@ -4183,7 +4239,7 @@ BRPOPLPUSH source destination timeout
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["brpoplpush" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["brpoplpush" ] }';
     ```
 
 #### brpop
@@ -4714,7 +4770,7 @@ RPOPLPUSH source destination
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["rpoplpush" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["rpoplpush" ] }';
     ```
 
 #### rpush
@@ -5076,7 +5132,7 @@ PSETEX key milliseconds value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 #### set
@@ -5137,7 +5193,7 @@ SET key value EX seconds
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setex" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setex" ] }';
     ```
 
 Установка некорректного значения вернёт ошибку.
@@ -5160,7 +5216,7 @@ SETNX key value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.0.6 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setnx" ] }';
+    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setnx" ] }';
     ```
 
 #### strlen
@@ -5186,7 +5242,7 @@ Radix поддерживает необходимый минимум коман�
 включить, используйте запрос:
 
 ```sql
-ALTER PLUGIN radix 1.0.6 SET radix.sentinel_enabled = 'true';
+ALTER PLUGIN radix 1.1.1 SET radix.sentinel_enabled = 'true';
 ```
 <span class="tag">поддерживается с версии 0.10.0</span>
 
@@ -5486,27 +5542,27 @@ INFO [section [section ...]]
 
 ??? example "Образец вывода полного набора сведений"
     ```
-    127.0.0.1:7379> info
+    127.0.0.1:6379> info
     # Server
     redis_version:8.0.0
-    redis_git_sha1:4d88b87df206042060f675dcf280380b8f653850
+    redis_git_sha1:aa3d2882602f094b1941e32c297a5260880ba985
     redis_git_dirty:1
     redis_build_id:
     redis_mode:standalone
-    os:Fedora Linux 7.1.3-200.fc44.x86_64 x86_64
+    os:AlmaLinux 7.2.4-200.fc44.x86_64 x86_64
     arch_bits:64
     monotonic_clock:POSIX clock_gettime with CLOCK_MONOTONIC
     multiplexing_api:epoll
     atomicvar_api:c11-builtin
-    gcc_version:rustc 1.96.0 (ac68faa20 2026-05-25)
-    process_id:413282
+    gcc_version:rustc 1.98.1 (48a229cea 2026-09-01)
+    process_id:1
     process_supervised:no
-    run_id:bc7e5829e9a642ffb975fca1e4b1d13e
-    tcp_port:6000
-    server_time_usec:1784042476298261000
-    uptime_in_seconds:5657
+    run_id:8642b760e02946f9b2cf5df9caedc627
+    tcp_port:6379
+    server_time_usec:1789051928765325000
+    uptime_in_seconds:22
     uptime_in_days:0
-    hz:3500
+    hz:3200
     configured_hz:0
     lru_clock:0
     executable:/usr/bin/picodata
@@ -5529,39 +5585,39 @@ INFO [section [section ...]]
     total_blocking_keys_on_nokey:0
 
     # Memory
-    used_memory:142606336
-    used_memory_human:136.00M
-    used_memory_rss:101560320
-    used_memory_rss_human:96.86M
-    used_memory_peak:142606336
-    used_memory_peak_human:136.00M
+    used_memory:130023424
+    used_memory_human:124.00M
+    used_memory_rss:65708032
+    used_memory_rss_human:62.66M
+    used_memory_peak:130023424
+    used_memory_peak_human:124.00M
     used_memory_peak_perc:100.00
-    used_memory_overhead:109051904
-    used_memory_startup:142606336
+    used_memory_overhead:96468992
+    used_memory_startup:130023424
     used_memory_dataset:33554432
-    used_memory_dataset_perc:23.53
-    allocator_allocated:142606336
-    allocator_active:142606336
-    allocator_resident:101560320
-    total_system_memory:33281937408
+    used_memory_dataset_perc:25.81
+    allocator_allocated:130023424
+    allocator_active:130023424
+    allocator_resident:65708032
+    total_system_memory:33281540096
     total_system_memory_human:31.00G
-    used_memory_lua:20492553
-    used_memory_vm_eval:20492553
-    used_memory_lua_human:19.54M
+    used_memory_lua:7453438
+    used_memory_vm_eval:7453438
+    used_memory_lua_human:7.11M
     used_memory_scripts_eval:0
     number_of_cached_scripts:0
     number_of_functions:0
     number_of_libraries:0
     used_memory_vm_functions:0
-    used_memory_vm_total:20492553
-    used_memory_vm_total_human:19.54M
+    used_memory_vm_total:7453438
+    used_memory_vm_total_human:7.11M
     used_memory_functions:0
     used_memory_scripts:0
     used_memory_scripts_human:0B
-    maxmemory:2000000000
-    maxmemory_human:1.86G
+    maxmemory:268435456
+    maxmemory_human:256.00M
     maxmemory_policy:noeviction
-    allocator_frag_ratio:1.68
+    allocator_frag_ratio:12.50
     allocator_frag_bytes:33554432
     allocator_muzzy:0
     allocator_rss_ratio:NaN
@@ -5571,7 +5627,7 @@ INFO [section [section ...]]
     mem_total_replication_buffers:0
     mem_fragmentation_ratio:NaN
     mem_fragmentation_bytes:0
-    mem_clients_normal:57344
+    mem_clients_normal:24576
     mem_allocator:slab
     active_defrag_running:0
     lazyfree_pending_objects:0
@@ -5582,11 +5638,11 @@ INFO [section [section ...]]
     async_loading:0
 
     # Stats
-    total_connections_received:6
-    total_commands_processed:46
+    total_connections_received:2
+    total_commands_processed:4
     instantaneous_ops_per_sec:0
-    total_net_input_bytes:1714
-    total_net_output_bytes:6449
+    total_net_input_bytes:98
+    total_net_output_bytes:718
     total_net_repl_input_bytes:0
     total_net_repl_output_bytes:0
     instantaneous_input_kbps:0.00
@@ -5608,17 +5664,17 @@ INFO [section [section ...]]
     latest_fork_usec:0
     migrate_cached_sockets:0
     unexpected_error_replies:0
-    total_error_replies:11
-    total_reads_processed:50
-    total_writes_processed:46
+    total_error_replies:2
+    total_reads_processed:6
+    total_writes_processed:4
     client_query_buffer_limit_disconnections:0
     client_output_buffer_limit_disconnections:0
     reply_buffer_expands:0
     reply_buffer_shrinks:0
     request_buffer_expands:0
     request_buffer_shrinks:0
-    acl_access_denied_auth:9
-    acl_access_denied_cmd:5
+    acl_access_denied_auth:0
+    acl_access_denied_cmd:0
     acl_access_denied_key:0
     acl_access_denied_channel:0
     watching_clients:0
@@ -5629,50 +5685,38 @@ INFO [section [section ...]]
     role:master
     connected_slaves:0
     master_failover_state:no-failover
-    master_replid:3c509e53-9bf0-4b3a-87a7-d0447878329a
-    master_replid2:3c509e53-9bf0-4b3a-87a7-d0447878329a
-    master_repl_offset:34958
-    second_repl_offset:34958
+    master_replid:153a0c8e-5a07-4792-8995-a8a3e5f1c3be
+    master_replid2:153a0c8e-5a07-4792-8995-a8a3e5f1c3be
+    master_repl_offset:34845
+    second_repl_offset:34845
     repl_backlog_active:0
     repl_backlog_size:0
     repl_backlog_first_byte_offset: 0
     repl_backlog_histlen:0
 
     # CPU
-    used_cpu_sys:6.089428
-    used_cpu_user:19.063304
+    used_cpu_sys:0.010062
+    used_cpu_user:0.029083
     used_cpu_sys_children:0.000000
     used_cpu_user_children:0.000000
-    used_cpu_sys_main_thread:5.061797
-    used_cpu_user_main_thread:20.074558
+    used_cpu_sys_main_thread:0.009573
+    used_cpu_user_main_thread:0.028856
 
     # Modules
 
     # Errorstats
-    errorstat_MALFORMED_ARGS:count=1
-    errorstat_SYNTAX_ERROR:count=4
-    errorstat_UNKNOWN_COMMAND:count=6
+    errorstat_UNKNOWN_COMMAND:count=2
     # Cluster
     cluster_enabled:1
 
     # Keyspace
 
     # Commandstats
-    cmdstat_client|id:calls=1,usec=37,usec_per_call=37,rejected_calls=0,failed_calls=0
-    cmdstat_info:calls=3,usec=123,usec_per_call=41,rejected_calls=0,failed_calls=0
-    cmdstat_client|info:calls=5,usec=139,usec_per_call=27.8,rejected_calls=0,failed_calls=0
-    cmdstat_client|getname:calls=1,usec=46,usec_per_call=46,rejected_calls=0,failed_calls=0
-    cmdstat_client|list:calls=3,usec=83,usec_per_call=27.666666666666668,rejected_calls=0,failed_calls=0
-    cmdstat_client|kill:calls=11,usec=227,usec_per_call=20.636363636363637,rejected_calls=1,failed_calls=4
-    cmdstat_client|help:calls=1,usec=68,usec_per_call=68,rejected_calls=0,failed_calls=0
+    cmdstat_info:calls=1,usec=59,usec_per_call=59,rejected_calls=0,failed_calls=0
+    cmdstat_ping:calls=1,usec=198,usec_per_call=198,rejected_calls=0,failed_calls=0
     # Latencystats
-    latency_percentiles_usec_client info:p50.0=27,p99.0=30,p99.9=30
-    latency_percentiles_usec_client getname:p50.0=46,p99.0=46,p99.9=46
-    latency_percentiles_usec_info:p50.0=25,p99.0=79,p99.9=79
-    latency_percentiles_usec_client id:p50.0=37,p99.0=37,p99.9=37
-    latency_percentiles_usec_client help:p50.0=68,p99.0=68,p99.9=68
-    latency_percentiles_usec_client list:p50.0=30,p99.0=34,p99.9=34
-    latency_percentiles_usec_client kill:p50.0=21,p99.0=42,p99.9=42
+    latency_percentiles_usec_info:p50.0=59,p99.0=59,p99.9=59
+    latency_percentiles_usec_ping:p50.0=198,p99.0=198,p99.9=198
     # Sentinel
     sentinel_masters:1
     sentinel_tilt:0
@@ -5682,21 +5726,21 @@ INFO [section [section ...]]
     sentinel_simulate_failure_flags:0
 
     # Radix
-    radix_version:1.0.6
-    picodata_version:26.1.5-0-gf8070ddd5
-    picodata_cluster_name:demo_radix
-    picodata_cluster_uuid:9d2e51fa-6fb8-47b7-8808-f693c6663948
-    picodata_instance_name:i1
-    picodata_instance_uuid:3c509e53-9bf0-4b3a-87a7-d0447878329a
-    slab_info_items_size:48928
-    slab_info_items_used:3656
-    slab_info_items_used_ratio:7.47
-    slab_info_quota_size:2000000000
+    radix_version:1.1.1
+    picodata_version:26.1.6
+    picodata_cluster_name:radix-docker-standalone
+    picodata_cluster_uuid:9f0005c4-b3f1-42b4-abf0-772299e563be
+    picodata_instance_name:default_1_1
+    picodata_instance_uuid:153a0c8e-5a07-4792-8995-a8a3e5f1c3be
+    slab_info_items_size:16272
+    slab_info_items_used:160
+    slab_info_items_used_ratio:0.98
+    slab_info_quota_size:268435456
     slab_info_quota_used:33554432
-    slab_info_quota_used_ratio:1.68
+    slab_info_quota_used_ratio:12.5
     slab_info_arena_size:33554432
-    slab_info_arena_used:708168
-    slab_info_arena_used_ratio:2.1
+    slab_info_arena_used:49312
+    slab_info_arena_used_ratio:0.1
     ```
 
 #### latency graph {: #latency_graph }
@@ -6033,6 +6077,158 @@ Picodata другим способом.
 ```
 
 ## Журнал изменений {: #changelog }
+
+### 1.1.1 — 2026-09-04 {: #01.1.1 }
+
+**Исправления**
+
+- Устранена паника ZRANDMEMBER на слишком большом count
+- Исправлено поведение set get с ключом нестрокового типа
+- Исправлена обработка отрицательных таймаутов в блокирующих командах
+- Добавлено возвращение элементов при упавшей вставке в *lmove
+- Исправлен выбор ключа в *lmpop
+- Устранена паника BZPOPMIN на опустошённом ключе
+
+**Тестирование**
+
+- Выбор слота переведён на все диапазоны мастера
+- Убран пропуск тестов pushx в тестсьюте Redis
+- Добавлен just-рецепт запуска тестов на версию resp-протокола
+
+**Прочее**
+
+- Rust обновлён до 1.98.1
+- Пайплайн унифицирован с остальными плагинами
+- Исправлена генерация ченжлога для сообщения Бендера
+- Удалён ненужный префикс в ссылке Бендера
+
+### 1.1.0 — 2026-08-26 {: #01.1.0 }
+
+**Новая функциональность**
+
+- Добавлена команда hello
+
+**Новая функциональность (CLI)**
+
+- Добавлено подтверждение --overwrite именем picodata-кластера
+- Добавлена потоковая миграция больших коллекций
+
+**Исправления**
+
+- Подсчёт длины списка переведён на чтение счётчика в метаданных
+- Исправлено поведение LPUSHX на ключе другого типа: теперь возвращается WRONGTYPE
+- Убрано требование наличия дефолтного юзера на старте плагина
+- Исправлен подсчет pubsub-подключений и перенаправление pubsub-запросов
+- Максимальный размер кортежа в локальном кластере выставлен в 512MB
+- Ограничty rank сверху и снизу в lpos
+- Убрана паника в srandmember при передаче больших чисел
+- Исправлено поведение hset с существующие полями
+- Исправлено поведение zincrby в случае, если ключ не существовал
+- Исправлено поведение zrank с флагом withscores в случае отсутствующего множества
+- Формат вывода bzmpop и zmpop приведён в соответствии с Redis
+- Исправлено поведение SMOVE в соответствии с тестами Redis
+- Исправлено сообщение ошибки при получении неизвестного флага в SET
+- Добавлена явная проверка на дефолтный пароль для md5 и chap-sha1
+- Исправлено создание веток на поддержку
+- Добавлена явная проверка на дефолтный пароль для md5 и chap-sha1
+- Исправлены различные ошибки в аутентификации и авторизации
+- Исправлен путь генерации файлов спецификации в radix-commands
+- Исправлен подсчет результата в del для хешей
+- Флаг о секции radix в info выставлен в false для compatible манифестов
+
+**Исправления (CLI)**
+
+- Добавлена валидация SRC_URL/DST_URL при разборе аргументов
+
+**Производительность**
+
+- LRANGE переведён на использование seek по TREE-индексу
+
+**Документация**
+
+- Добавлен ADR о потоковой миграции больших коллекций
+- Исправлены неточности с AUTH в пользовательской документации
+- Добавлена пользовательская документация по AUTH в 1.0.5
+
+**Внутренние улучшения**
+
+- Пользователь по умолчанию переименован в default
+- Логика auth в общей обработке команд вынесена в отдельные функции
+- Изменена сигнатура set_connection_user_name
+- Битовая маска доступа к БД вынесена в отдельное поле контекста подключения
+- Импорт redis-protocol унифицирован с другими членами воркспейса
+
+**Тестирование**
+
+- Флакающий тест тестсьюта Redis linked lmoves пропущен
+- Добавлены ссылки на тикеты в тестсьют Redis
+- Отформатирован тестсьют для set'ов
+- Расширен тестсьют incr
+- Переписана система задания тестсьюта Redis на toml-конфиги
+- Тесты redis-protocol переведены на HSET с HMSET
+- Добавлен прогон тестов для redis-protocol
+- Исправлен выбор слота в тестах реплик
+- Обновлён список проходящих Redis-тестов
+- TestRedisMultiDiffBucket тест переведён на ту же модель, что и остальные multi-тесты
+
+**Тестирование (CLI)**
+
+- Добавлены тесты подтверждения миграции
+
+**Прочее**
+
+- Обновлена ссылка на апи Telegram
+- Добавлено сохранение артефактов для тестов миграции
+- Добавлен линтер сообщений коммитов
+- Версия локального redis унифицирована для кластера и одного инстанса
+- Исправлены правила автоматического повтора в Gitlab
+- Запуск Redis-тестов ограничен одним инстансом
+- Добавлена сборка под debian:trixie, ubuntu:resolute и fedora:44
+- Ограничен список ОС для джобы deploy-certified-build
+- Указана версия для главного крейта
+- Автоматизирован процесс релиза
+- Добавлен файл со списком авторов плагина
+- Унифицировали версии для всех компонент
+- Убран запрет на non-protected ветки в CI
+- Добавлена сборка всех таргетов в just build
+- Добавлена джоба, которая падает на указанных ветках, если код запушили вручную
+- Изменен рецепт бампа ченджлога для удобства
+- Возвращен just-рецепт для обновления Redis-тестов
+- Изменено правило запуска в CI сборки образа buildkit-jq:latest
+- Улучшены сообщения об ошибках в auth тестах
+- Удалено скачивание riot из нашего докер-образа redis
+- Удалена job'а, тестирующая миграцию с помощью RIOT
+- Добавлен кеш скомпилированных бинарей в CI
+- Rust обновлён до 1.97
+- Удалена сложная система фич из redis-protocol
+- Удалён неиспользуемый код из redis-protocol
+- Фаззинг redis-protocol перенесён в корень репозитория
+- Унифицированы номера версий всех крейтов Radix
+- Обновлены зависимости
+- Унифицировано управление зависимостями
+- Удалён неиспользуемый скрипт
+- В redis-protocol включены все необходимые фичи по умолчанию
+- Добавлена просьба не удалять автора redis-protocol
+- Удалён CI-конфиг redis-protocol
+- Выключены cargo-тесты redis-protocol
+- Удалена ошибочная генерация junit-тестов для интеграционных тестов
+- Обновлены сборочные образа до 26.1.5
+- Добавлена джоба для прогона Redis-тестов
+- Добавлены повторные прогоны CI джобов при ошибке раннера
+- Убрана часть переписанных схем генерации
+- Добавлена генерация команд из спеки Redis
+- Ветка release/1.0 добавлена в  cargo-deny-scheduled
+- Исправлено создание веток на поддержку
+- Улучшена конфигурация окружения в .envrc
+- Изменены зависимости джобы deploy
+- Обновлены скрипты генерации журнала изменений
+- Добавлена джоба для регулярной проверки сборки докер-образов
+
+**Сборка**
+
+- Добавлена проверка всего кода redis-protocol
+- Убрана проверка наших лицензий в redis-protocol
+- Форкнут redis-protocol.rs
 
 ### 1.0.6 — 2026-07-21 {: #01.0.6 }
 
