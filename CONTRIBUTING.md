@@ -325,8 +325,7 @@ FAILED test/int/sql/eliminate_motion.sql::pgproto-2rsX1 - SqlTestFailure: elimin
 
     [
         'projection (count((*::int))::int -> "col_1")',
-        '    group by ("t1"."a"::int) output: ("t1"."a"::int -> "a",
-  "t1"."bucket_id"::int -> "bucket_id", "t1"."b"::int -> "b")',
+        '    group by ("t1"."a"::int)',
         '        selection "t1"."a"::int = 1::int',
   +     '            scan "t1"',
   ?                         ^

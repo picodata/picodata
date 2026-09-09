@@ -945,38 +945,24 @@ impl Display for Projection {
 struct GroupBy {
     /// List of colums in sql query
     gr_exprs: Vec<ColExpr>,
-    output_cols: Vec<ColExpr>,
     should_fmt: bool,
 }
 
 impl GroupBy {
     fn new(
         plan: &Plan,
-        gb_id: NodeId,
         gr_exprs: &Vec<NodeId>,
         sq_ref_map: &SubQueryRefMap,
         should_fmt: bool,
     ) -> Result<Self, SbroadError> {
         let mut result = GroupBy {
             gr_exprs: vec![],
-            output_cols: vec![],
             should_fmt,
         };
 
         for col_node_id in gr_exprs {
             let col = ColExpr::new(plan, *col_node_id, sq_ref_map, should_fmt)?;
             result.gr_exprs.push(col);
-        }
-        // The output of GroupBy is a copy of its child's columns: render every
-        // column as `[scan.]name::type -> name`.
-        for (pos, column) in plan.columns_of(gb_id)?.enumerate() {
-            let column = column?;
-            let scan_name = plan
-                .scan_name(RelColumn::new(gb_id, pos))?
-                .map(SmolStr::from);
-            let name = column.name_owned();
-            let col = ColExpr::Column(scan_name, name.clone(), column.r#type);
-            result.output_cols.push(ColExpr::Alias(Box::new(col), name));
         }
         Ok(result)
     }
@@ -986,8 +972,6 @@ impl Display for GroupBy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "group by (")?;
         write_list::<CommaSep>(f, &self.gr_exprs, self.should_fmt)?;
-        write!(f, ") output (")?;
-        write_list::<CommaSep>(f, &self.output_cols, self.should_fmt)?;
         write!(f, ")")?;
 
         Ok(())
@@ -1716,7 +1700,7 @@ impl LogicalExplain {
                             "GroupBy must have exactly one child".into(),
                         )
                     })?;
-                    let group_by = GroupBy::new(ir, id, gr_exprs, &sq_ref_map, should_fmt)?;
+                    let group_by = GroupBy::new(ir, gr_exprs, &sq_ref_map, should_fmt)?;
 
                     (ExplainNode::GroupBy(group_by), vec![child])
                 }

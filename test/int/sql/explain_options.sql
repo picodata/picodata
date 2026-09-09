@@ -437,14 +437,14 @@ limit 1
     order by (a::int)
       scan
         projection (gr_expr_1::int -> a)
-          group by (gr_expr_1::int) output (gr_expr_1::int)
+          group by (gr_expr_1::int)
             motion [policy: full, program: ReshardIfNeeded]
               limit 1
                 projection (gr_expr_1::int)
                   order by (gr_expr_1::int)
                     scan
                       projection (t.a::int -> gr_expr_1)
-                        group by (t.a::int) output (t.a::int -> a, t.b::double -> b, t.c::string -> c, t.bucket_id::int -> bucket_id)
+                        group by (t.a::int)
                           scan t
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -494,14 +494,14 @@ limit 1
     order by (a::int)
       scan
         projection (gr_expr_1::int -> a)
-          group by (gr_expr_1::int) output (gr_expr_1::int)
+          group by (gr_expr_1::int)
             motion [policy: full, program: ReshardIfNeeded]
               limit 1
                 projection (gr_expr_1::int)
                   order by (gr_expr_1::int)
                     scan
                       projection (t.a::int -> gr_expr_1)
-                        group by (t.a::int) output (t.a::int -> a, t.b::double -> b, t.c::string -> c, t.bucket_id::int -> bucket_id)
+                        group by (t.a::int)
                           scan t
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -563,14 +563,14 @@ limit 1
     order by (a::int)
       scan
         projection (gr_expr_1::int -> a)
-          group by (gr_expr_1::int) output (gr_expr_1::int)
+          group by (gr_expr_1::int)
             motion [policy: full, program: ReshardIfNeeded]
               limit 1
                 projection (gr_expr_1::int)
                   order by (gr_expr_1::int)
                     scan
                       projection (t.a::int -> gr_expr_1)
-                        group by (t.a::int) output (t.a::int -> a, t.b::double -> b, t.c::string -> c, t.bucket_id::int -> bucket_id)
+                        group by (t.a::int)
                           scan t
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -600,10 +600,10 @@ limit 1
                     scan t
                   motion [policy: segment([ref(b)]), program: ReshardIfNeeded]
                     projection (gr_expr_1::double -> b)
-                      group by (gr_expr_1::double) output (gr_expr_1::double)
+                      group by (gr_expr_1::double)
                         motion [policy: full, program: ReshardIfNeeded]
                           projection (t.b::double -> gr_expr_1)
-                            group by (t.b::double) output (t.a::int -> a, t.b::double -> b, t.c::string -> c, t.bucket_id::int -> bucket_id)
+                            group by (t.b::double)
                               scan t
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -687,20 +687,14 @@ limit 1
     order by (1)
       scan
         projection (gr_expr_1::int -> a)
-          group by (gr_expr_1::int) output (gr_expr_1::int)
+          group by (gr_expr_1::int)
             motion [policy: full, program: ReshardIfNeeded]
               limit 1
                 projection (gr_expr_1::int)
                   order by (1)
                     scan
                       projection (t.a::int -> gr_expr_1)
-                        group by (t.a::int) output (
-                          t.a::int -> a,
-                          t.b::double -> b,
-                          t.c::string -> c,
-                          t.bucket_id::int -> bucket_id,
-                          tt.b::double -> b
-                        )
+                        group by (t.a::int)
                           join on (tt.b::double = t.a::int)
                             scan t
                             motion [policy: full, program: ReshardIfNeeded]

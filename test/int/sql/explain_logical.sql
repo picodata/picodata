@@ -25,14 +25,14 @@ limit 2
     order by (4)
       scan
         projection (gr_expr_1::int -> a, gr_expr_2::double -> b, gr_expr_3::string -> c, gr_expr_4::int -> a, gr_expr_5::double -> b, gr_expr_6::string -> c)
-          group by (gr_expr_1::int, gr_expr_2::double, gr_expr_3::string, gr_expr_4::int, gr_expr_5::double, gr_expr_6::string) output (gr_expr_1::int, gr_expr_2::double, gr_expr_3::string, gr_expr_4::int, gr_expr_5::double, gr_expr_6::string)
+          group by (gr_expr_1::int, gr_expr_2::double, gr_expr_3::string, gr_expr_4::int, gr_expr_5::double, gr_expr_6::string)
             motion [policy: full, program: ReshardIfNeeded]
               limit 2
                 projection (gr_expr_1::int, gr_expr_2::double, gr_expr_3::string, gr_expr_4::int, gr_expr_5::double, gr_expr_6::string)
                   order by (4)
                     scan
                       projection (t.a::int -> gr_expr_1, t.b::double -> gr_expr_2, t.c::string -> gr_expr_3, tt.a::int -> gr_expr_4, tt.b::double -> gr_expr_5, tt.c::string -> gr_expr_6)
-                        group by (t.a::int, t.b::double, t.c::string, tt.a::int, tt.b::double, tt.c::string) output (t.a::int -> a, t.b::double -> b, t.c::string -> c, t.bucket_id::int -> bucket_id, tt.a::int -> a, tt.b::double -> b, tt.c::string -> c, tt.bucket_id::int -> bucket_id)
+                        group by (t.a::int, t.b::double, t.c::string, tt.a::int, tt.b::double, tt.c::string)
                           selection (t.b::double = 3::int)
                             join on (true::bool)
                               scan t
@@ -70,13 +70,6 @@ limit 2
             gr_expr_4::int,
             gr_expr_5::double,
             gr_expr_6::string
-          ) output (
-            gr_expr_1::int,
-            gr_expr_2::double,
-            gr_expr_3::string,
-            gr_expr_4::int,
-            gr_expr_5::double,
-            gr_expr_6::string
           )
             motion [policy: full, program: ReshardIfNeeded]
               limit 2
@@ -105,15 +98,6 @@ limit 2
                           tt.a::int,
                           tt.b::double,
                           tt.c::string
-                        ) output (
-                          t.a::int -> a,
-                          t.b::double -> b,
-                          t.c::string -> c,
-                          t.bucket_id::int -> bucket_id,
-                          tt.a::int -> a,
-                          tt.b::double -> b,
-                          tt.c::string -> c,
-                          tt.bucket_id::int -> bucket_id
                         )
                           selection (t.b::double = 3::int)
                             join on (true::bool)

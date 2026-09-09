@@ -369,10 +369,10 @@ fn test_query_explain_11() {
     ──────────────────────────────────────────────────────────────────────
 
     projection (gr_expr_1::string -> a, sum(count_1::int)::int -> col_1)
-      group by (gr_expr_1::string) output (gr_expr_1::string, count_1::int)
+      group by (gr_expr_1::string)
         motion [policy: full, program: ReshardIfNeeded]
           projection (unnamed_subquery_1.a::string -> gr_expr_1, count(unnamed_subquery_1.b::int::int)::int -> count_1)
-            group by (unnamed_subquery_1.a::string) output (unnamed_subquery.e::int -> e, unnamed_subquery.f::int -> f, unnamed_subquery_1.a::string -> a, unnamed_subquery_1.b::int -> b)
+            group by (unnamed_subquery_1.a::string)
               join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
                 scan unnamed_subquery
                   projection (t2.e::int -> e, t2.f::int -> f)

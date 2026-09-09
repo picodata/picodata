@@ -20,7 +20,7 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
-  group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
+  group by (t1.a::int)
     selection (t1.a::int = 1::int)
       scan t1
 ''
@@ -46,7 +46,7 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a LIMIT 1;
 ''
 limit 1
   projection (count(*)::int -> col_1)
-    group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
+    group by (t1.a::int)
       selection (t1.a::int = 1::int)
         scan t1
 ''
@@ -71,7 +71,7 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) GROUP BY a;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
-  group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
+  group by (t1.a::int)
     selection ((t1.a::int = 1::int and (t1.a::int < 2::int or t1.a::int > 3::int)))
       scan t1
 ''
@@ -96,7 +96,7 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND (a < 2 OR a > 3) AND b = 2 GROUP
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
-  group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
+  group by (t1.a::int)
     selection ((t1.a::int = 1::int and (t1.a::int < 2::int or t1.a::int > 3::int) and t1.b::int = 2::int))
       scan t1
 ''
@@ -121,7 +121,7 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND b = 2 GROUP BY a;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
-  group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
+  group by (t1.a::int)
     selection ((t1.a::int = 1::int and t1.a::int < 10::int and t1.b::int = 2::int))
       scan t1
 ''
@@ -146,10 +146,10 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 OR a = 2 GROUP BY a;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (sum(count_1::int)::int -> col_1)
-  group by (gr_expr_1::int) output (gr_expr_1::int, count_1::int)
+  group by (gr_expr_1::int)
     motion [policy: full, program: ReshardIfNeeded]
       projection (t1.a::int -> gr_expr_1, count(*)::int -> count_1)
-        group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
+        group by (t1.a::int)
           selection (t1.a::int = 1::int or t1.a::int = 2::int)
             scan t1
 ''
@@ -173,7 +173,7 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 AND a < 10 AND a = 2 GROUP BY a;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (count(*)::int -> col_1)
-  group by (t1.a::int) output (t1.a::int -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
+  group by (t1.a::int)
     selection ((t1.a::int = 1::int and t1.a::int < 10::int and t1.a::int = 2::int))
       scan t1
 ''
@@ -334,7 +334,7 @@ EXPLAIN SELECT b, count(*) FROM t WHERE a = 1 GROUP BY b HAVING count(*) > 1;
 ''
 projection (t.b::int -> b, count(*)::int -> col_1)
   having (count(*)::int > 1::int)
-    group by (t.b::int) output (t.id::int -> id, t.bucket_id::int -> bucket_id, t.a::int -> a, t.b::int -> b)
+    group by (t.b::int)
       selection (t.a::int = 1::int)
         scan t
 ''

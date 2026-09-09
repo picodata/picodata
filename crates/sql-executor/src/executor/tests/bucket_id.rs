@@ -146,7 +146,7 @@ fn groupby_bucket_id() {
     let plan = sql_to_optimized_ir(input, vec![]);
     assert_snapshot!(plan.explain_logical().unwrap(), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
-      group by (t.a::int, t.b::int, t.c::int, t.d::int, t.bucket_id::int) output (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+      group by (t.a::int, t.b::int, t.c::int, t.d::int, t.bucket_id::int)
         scan t
     ");
 }

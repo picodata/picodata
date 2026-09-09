@@ -561,10 +561,10 @@ EXPLAIN SELECT DISTINCT (values (1)) from testing_space;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (gr_expr_1::int -> col_1)
-  group by (gr_expr_1::int) output (gr_expr_1::int)
+  group by (gr_expr_1::int)
     motion [policy: full, program: ReshardIfNeeded]
       projection (ROW($0) -> gr_expr_1)
-        group by (ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+        group by (ROW($0))
           scan testing_space
 subquery $0:
   scan
@@ -587,10 +587,10 @@ EXPLAIN SELECT DISTINCT "product_units", (values (1)) from testing_space;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (gr_expr_1::int -> product_units, gr_expr_2::int -> col_1)
-  group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int)
+  group by (gr_expr_1::int, gr_expr_2::int)
     motion [policy: full, program: ReshardIfNeeded]
       projection (testing_space.product_units::int -> gr_expr_1, ROW($0) -> gr_expr_2)
-        group by (testing_space.product_units::int, ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+        group by (testing_space.product_units::int, ROW($0))
           scan testing_space
 subquery $0:
   scan
@@ -613,10 +613,10 @@ EXPLAIN SELECT DISTINCT (values (1)), (values (2)) from testing_space;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (gr_expr_1::int -> col_1, gr_expr_2::int -> col_2)
-  group by (gr_expr_1::int, gr_expr_2::int) output (gr_expr_1::int, gr_expr_2::int)
+  group by (gr_expr_1::int, gr_expr_2::int)
     motion [policy: full, program: ReshardIfNeeded]
       projection (ROW($1) -> gr_expr_1, ROW($0) -> gr_expr_2)
-        group by (ROW($1), ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+        group by (ROW($1), ROW($0))
           scan testing_space
 subquery $0:
   scan
@@ -644,10 +644,10 @@ EXPLAIN SELECT DISTINCT (SELECT a FROM t1) from testing_space;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (gr_expr_1::int -> col_1)
-  group by (gr_expr_1::int) output (gr_expr_1::int)
+  group by (gr_expr_1::int)
     motion [policy: full, program: ReshardIfNeeded]
       projection (ROW($0) -> gr_expr_1)
-        group by (ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+        group by (ROW($0))
           scan testing_space
 subquery $0:
   motion [policy: full, program: ReshardIfNeeded]
@@ -682,10 +682,10 @@ subquery $1:
   motion [policy: full, program: ReshardIfNeeded]
     scan
       projection (gr_expr_1::int -> col_1)
-        group by (gr_expr_1::int) output (gr_expr_1::int)
+        group by (gr_expr_1::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (ROW($0) -> gr_expr_1)
-              group by (ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+              group by (ROW($0))
                 scan testing_space
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -774,10 +774,10 @@ EXPLAIN SELECT "id" + (SELECT 1) FROM testing_space GROUP BY "id" + (SELECT 1);
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (gr_expr_1::int -> col_1)
-  group by (gr_expr_1::int) output (gr_expr_1::int)
+  group by (gr_expr_1::int)
     motion [policy: full, program: ReshardIfNeeded]
       projection (testing_space.id::int + ROW($0) -> gr_expr_1)
-        group by (testing_space.id::int + ROW($0)) output (testing_space.id::int -> id, testing_space.bucket_id::int -> bucket_id, testing_space.name::string -> name, testing_space.product_units::int -> product_units)
+        group by (testing_space.id::int + ROW($0))
           scan testing_space
 subquery $0:
   scan
