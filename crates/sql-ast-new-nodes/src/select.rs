@@ -169,10 +169,7 @@ impl<'q> SelectStmt<'q, Analyzed> {
             .is_some_and(|tbl_expr| tbl_expr.has_having())
     }
 
-    pub fn grouping_vars(
-        &self,
-        select_list: &SelectListExprs<'q, Analyzed>,
-    ) -> HashSet<(usize, usize)> {
+    pub fn grouping_vars(&self, select_list: &SelectListExprs<'q, Analyzed>) -> HashSet<BoundVar> {
         self.table_expression
             .as_ref()
             .map_or_else(HashSet::new, |tbl_expr| tbl_expr.grouping_vars(select_list))
@@ -345,7 +342,7 @@ impl<'q> SelectListExprs<'q, Analyzed> {
 
     /// Var behind the `pos`-th select list projection, counting from 1 -
     /// the numbering GROUP BY positions use.
-    pub(crate) fn var_ref(&self, pos: usize) -> Option<&BoundVar<'q>> {
+    pub(crate) fn var_ref(&self, pos: usize) -> Option<&BoundVar> {
         self.0.get(pos).and_then(ProjectionExpr::var_ref)
     }
 
@@ -416,6 +413,9 @@ pub struct ProjectionExpr<'q, State: AstState<'q>> {
     /// Set by the parser after the element is built: the trailing alias is a
     /// separate grammar rule, attached to the projection parsed just before it.
     pub alias: Option<Ident>,
+    /// The name the expression suggests on its own, derived by the analyzer;
+    /// see [`AstState::ProjNameT`].
+    inferred_name: State::ProjNameT,
 }
 
 impl<'q, State: AstState<'q>> Render<'q, State> for ProjectionExpr<'q, State> {
@@ -436,13 +436,25 @@ impl<'q, State: AstState<'q>> Render<'q, State> for ProjectionExpr<'q, State> {
 
 impl<'q, State: AstState<'q>> ProjectionExpr<'q, State> {
     pub fn new(expr: Expr<'q, State>, alias: Option<Ident>) -> Self {
-        Self { expr, alias }
+        Self {
+            expr,
+            alias,
+            inferred_name: State::ProjNameT::default(),
+        }
     }
 
     pub fn expr_ref(&self) -> &Expr<'q, State> {
         &self.expr
     }
+}
 
+impl<'q> ProjectionExpr<'q, Raw> {
+    pub fn into_parts(self) -> (Expr<'q, Raw>, Option<Ident>) {
+        (self.expr, self.alias)
+    }
+
+    /// The name this projection exposes: its explicit alias, or the name the
+    /// expression suggests on its own (see [`NamedEntity`] for [`Expr`]).
     pub fn output_name(&self) -> Option<&str> {
         match self.alias.as_ref() {
             Some(alias) => Some(alias.as_str()),
@@ -451,25 +463,41 @@ impl<'q, State: AstState<'q>> ProjectionExpr<'q, State> {
     }
 }
 
-impl<'q> ProjectionExpr<'q, Raw> {
-    pub fn into_parts(self) -> (Expr<'q, Raw>, Option<Ident>) {
-        (self.expr, self.alias)
-    }
-}
-
 impl<'q> ProjectionExpr<'q, Analyzed> {
-    pub fn from_parts(expr: Expr<'q, Analyzed>, alias: Option<Ident>) -> Self {
-        Self { expr, alias }
+    /// `inferred_name` is what the expression suggests on its own, consulted
+    /// when there is no alias; the analyzer derives it while the scope the
+    /// expression was bound in is still at hand.
+    pub fn from_parts(
+        expr: Expr<'q, Analyzed>,
+        alias: Option<Ident>,
+        inferred_name: Option<Ident>,
+    ) -> Self {
+        Self {
+            expr,
+            alias,
+            inferred_name,
+        }
     }
 
-    pub fn from_bound_var(var: BoundVar<'q>, expr_id: AstNodeId) -> Self {
+    pub fn from_bound_var(var: BoundVar, expr_id: AstNodeId, name: Option<Ident>) -> Self {
         ProjectionExpr::from_parts(
             Expr::from_parts(
                 ExprInner::<'q, Analyzed>::Var(var),
                 AnalyzedExprMeta::new(DerivedType::unknown(), expr_id),
             ),
             None,
+            name,
         )
+    }
+
+    /// The name this projection exposes: its explicit alias, or the name the
+    /// expression itself suggests (for a bare column reference, the name of
+    /// the referenced column).
+    pub fn output_name(&self) -> Option<&str> {
+        self.alias
+            .as_ref()
+            .or(self.inferred_name.as_ref())
+            .map(Ident::as_str)
     }
 
     pub(crate) fn data_type(&self) -> DerivedType {
@@ -480,12 +508,12 @@ impl<'q> ProjectionExpr<'q, Analyzed> {
         &mut self.expr
     }
 
-    pub fn var_ref(&self) -> Option<&BoundVar<'q>> {
+    pub fn var_ref(&self) -> Option<&BoundVar> {
         self.expr_ref().var_ref()
     }
 
     /// See [`Expr::transient_var_ref`].
-    pub fn transient_var_ref(&self) -> Option<&BoundVar<'q>> {
+    pub fn transient_var_ref(&self) -> Option<&BoundVar> {
         self.expr_ref().transient_var_ref()
     }
 }
@@ -502,8 +530,6 @@ mod structural_eq {
     use crate::structural_eq::StructuralEq;
 
     impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for SelectStmt<'q, S> {
-        /// The table expression goes first. It is what pairs this statement's
-        /// relations into the scope, and the select list reads them.
         fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
             self.table_expression
                 .eq_with(&other.table_expression, scope)

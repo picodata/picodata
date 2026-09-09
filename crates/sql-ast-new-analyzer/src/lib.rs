@@ -46,10 +46,13 @@
 //! All three source kinds — tables, CTEs and FROM-subqueries — answer column
 //! lookups through the same [`AttributeView`] interface, so the consumers
 //! (column references, asterisk expansion) never care which kind they hit.
-//! What a reference resolves to is a [`BoundVar`]:
-//! the `Rc`-shared
-//! analyzed FROM plus (relation, column) positions, reading name and type
-//! through the source on demand.
+//! What a reference resolves to is a [`BoundVar`]: the depth of the frame it
+//! resolved against, the FROM entry and the column, all by position. The frame
+//! stack is therefore also the [`Scope`] every positional reference is read
+//! through while binding, and its invariant is that `frames.len() - 1` is the
+//! depth of the statement under analysis: nothing but a `MultisetStmt` pushes
+//! a frame, so a depth recorded here is the depth the reference keeps in the
+//! finished tree.
 //!
 //!
 //! # Type inference
@@ -121,6 +124,7 @@ use smol_str::{format_smolstr, SmolStr};
 use sql_ast_new_nodes::error::{ast_err, ast_invariant_err, AstErr, AstResult};
 use sql_ast_new_nodes::expr::Expr;
 use sql_ast_new_nodes::multiset::MultisetInner;
+use sql_ast_new_nodes::scope::{Depth, EqDepths, FrameView, Scope};
 use sql_ast_new_nodes::table_expression::{AttributeView, BoundVar, From};
 use sql_ast_new_nodes::{
     Analyzed, AnalyzedAst, AstNodeId, DqlStmt, NamedEntity, Node, Raw, RawAst,
@@ -333,7 +337,7 @@ pub(crate) struct BinderCtx<'q> {
     pub(crate) frames: Vec<Stmt<'q>>,
 
     /// Aggregate calls whose arguments are under analysis, innermost last.
-    pub(crate) aggrs: Vec<AggrCtx<'q>>,
+    pub(crate) aggrs: Vec<AggrCtx>,
 
     /// Current mutable [`From`] frame accumulating entries.
     ///
@@ -359,6 +363,39 @@ pub(crate) struct BinderCtx<'q> {
 
 const EMPTY_FRAME_STACK_ERR: &str = "expected non-empty stack of statement frames";
 const MISSING_STMT_BODY_ERR: &str = "missing multiset statement body in analyzer context";
+
+/// The frame stack is the scope positional references are read through.
+impl<'q> Scope<'q> for BinderCtx<'q> {
+    fn frame<'a>(&'a self, depth: Depth) -> Option<FrameView<'a, 'q>>
+    where
+        'q: 'a,
+    {
+        self.frames.get(depth).map(|frame| FrameView {
+            ctes: &frame.ctes,
+            from: Some(&frame.from),
+        })
+    }
+}
+
+/// The scope of a statement being finished: its frame is already popped, so
+/// it is the binder's stack plus that one frame on top.
+pub(crate) struct FinishingScope<'a, 'q> {
+    pub(crate) binder: &'a BinderCtx<'q>,
+    pub(crate) own: FrameView<'a, 'q>,
+}
+
+impl<'q> Scope<'q> for FinishingScope<'_, 'q> {
+    fn frame<'a>(&'a self, depth: Depth) -> Option<FrameView<'a, 'q>>
+    where
+        'q: 'a,
+    {
+        if depth == self.binder.frames.len() {
+            Some(self.own)
+        } else {
+            self.binder.frame(depth)
+        }
+    }
+}
 
 impl<'q> BinderCtx<'q> {
     pub(crate) fn top_frame_ref(&self) -> AstResult<&Stmt<'q>> {
@@ -400,7 +437,7 @@ impl<'q> BinderCtx<'q> {
     /// The aggregate calls a reference resolving to `lvl` is visible to.
     ///
     /// A level deeper than a call's own level belongs to a subquery of that call.
-    fn aggrs_seeing(&mut self, lvl: usize) -> impl Iterator<Item = &mut AggrCtx<'q>> {
+    fn aggrs_seeing(&mut self, lvl: usize) -> impl Iterator<Item = &mut AggrCtx> {
         self.aggrs.iter_mut().filter(move |aggr| lvl <= aggr.depth)
     }
 
@@ -515,7 +552,7 @@ impl<'q> BinderCtx<'q> {
     ///    `SELECT (SELECT t2.a FROM t1 t2 WHERE sum(t1.a) > 1) FROM t1` is OK.
     /// 2. Accounting aggregated and target column references.
     /// 3. Rejecting a frame offset that reads a column of its own level.
-    pub(crate) fn reg_var(&mut self, lvl: usize, var: BoundVar<'q>) -> AstResult<()> {
+    pub(crate) fn reg_var(&mut self, lvl: usize, var: BoundVar) -> AstResult<()> {
         self.update_col_sem_lvl(lvl);
 
         // Whatever becomes of the column below, aggregated or plain, a frame
@@ -593,6 +630,8 @@ impl<'q> BinderCtx<'q> {
         marks: &[Option<GroupingKeyMark>],
         expr: &Expr<'q, Analyzed>,
     ) {
+        // `expr` was just bound, so it is written at the innermost open level.
+        let expr_depth = self.frames.len().saturating_sub(1);
         for (lvl, mark) in marks
             .iter()
             .enumerate()
@@ -601,7 +640,13 @@ impl<'q> BinderCtx<'q> {
             let Some(frame) = self.frames.get_mut(lvl) else {
                 continue;
             };
-            if !frame.grouping_covers(expr) {
+            if !frame.grouping_covers(
+                expr,
+                EqDepths {
+                    left: lvl,
+                    right: expr_depth,
+                },
+            ) {
                 continue;
             }
             frame.target_vars.truncate(mark.frame);
@@ -619,12 +664,6 @@ impl<'q> BinderCtx<'q> {
 
     pub(crate) fn set_stmt_body(&mut self, body: MultisetInner<'q, Analyzed>) {
         self.stmt_body = Some(body);
-    }
-
-    pub(crate) fn stmt_body_mut(&mut self) -> AstResult<&mut MultisetInner<'q, Analyzed>> {
-        self.stmt_body
-            .as_mut()
-            .ok_or_else(|| analyze_err(format_smolstr!("{MISSING_STMT_BODY_ERR}")))
     }
 
     pub(crate) fn take_stmt_body(&mut self) -> AstResult<MultisetInner<'q, Analyzed>> {
@@ -646,7 +685,7 @@ impl<'q> BinderCtx<'q> {
 /// observed it. An index means the same thing to every call that can see it,
 /// which is what lets each of the two fields below be a single number.
 #[derive(Default)]
-pub(crate) struct AggrCtx<'q> {
+pub(crate) struct AggrCtx {
     /// The index in `from_frames` of the level the call itself is written at.
     pub(crate) depth: usize,
     /// The deepest level, no deeper than [`Self::depth`], that a column read in
@@ -663,10 +702,10 @@ pub(crate) struct AggrCtx<'q> {
     /// Ordered rather than a set, because a grouping key bound inside these
     /// arguments rewinds the columns it accounts for by position - see
     /// [`BinderCtx::drop_grouping_key_vars`].
-    vars: Vec<Vec<BoundVar<'q>>>,
+    vars: Vec<Vec<BoundVar>>,
 }
 
-impl<'q> AggrCtx<'q> {
+impl AggrCtx {
     pub(crate) fn new(depth: usize) -> Self {
         Self {
             depth,
@@ -734,7 +773,7 @@ impl<'q> AggrCtx<'q> {
     ///
     /// semantic level of `max` is 1 (`t2`) which implies level `t1` is not grouped.
     /// Therefore, using ungrouped and unaggregated `t1.b` is valid.
-    pub(crate) fn add_var(&mut self, lvl: usize, var: BoundVar<'q>) {
+    pub(crate) fn add_var(&mut self, lvl: usize, var: BoundVar) {
         if let Some(frame_vars) = self.vars.get_mut(lvl) {
             if !frame_vars.contains(&var) {
                 frame_vars.push(var);

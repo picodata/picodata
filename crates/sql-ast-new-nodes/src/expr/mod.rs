@@ -91,9 +91,9 @@ impl<'q, State: AstState<'q>> Expr<'q, State> {
     }
 }
 
-impl<'q> Expr<'q, Analyzed> {
+impl Expr<'_, Analyzed> {
     /// The column this expression *is*.
-    pub fn var_ref(&self) -> Option<&BoundVar<'q>> {
+    pub fn var_ref(&self) -> Option<&BoundVar> {
         match self.inner {
             ExprInner::Var(ref var) => Some(var),
             ExprInner::Cast(ref cast) => cast.identity_child().and_then(Expr::var_ref),
@@ -102,7 +102,7 @@ impl<'q> Expr<'q, Analyzed> {
     }
 
     /// The column this expression *reads*, through any casts.
-    pub fn transient_var_ref(&self) -> Option<&BoundVar<'q>> {
+    pub fn transient_var_ref(&self) -> Option<&BoundVar> {
         match self.inner {
             ExprInner::Var(ref var) => Some(var),
             ExprInner::Cast(ref cast) => cast.child_ref().transient_var_ref(),
@@ -111,20 +111,37 @@ impl<'q> Expr<'q, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> NamedEntity for Expr<'q, State> {
-    fn name(&self) -> Option<&str> {
+impl<'q, State: AstState<'q>> Expr<'q, State> {
+    /// The name a projection of this expression exposes without an alias,
+    /// PostgreSQL-style. `var_name` names a column reference: a raw one by
+    /// its own last field, an analyzed one through the scope it was bound in,
+    /// which is why the caller supplies it.
+    pub fn figure_colname<'a, F>(&'a self, var_name: &F) -> Option<&'a str>
+    where
+        F: Fn(&'a State::VarType) -> Option<&'a str>,
+    {
         match self.inner_ref() {
-            // A column reference is named by its own last field.
-            ExprInner::Var(var) => var.name(),
+            ExprInner::Var(var) => var_name(var),
             // A call is named by the function.
             ExprInner::FunctionCall(call) => Some(call.name()),
             ExprInner::WindowFunction(call) => Some(call.name()),
-            // A cast defers to its operand and falls back to the target type.
-            ExprInner::Cast(cast) => cast.child_ref().name(),
+            // A cast defers to its operand.
+            ExprInner::Cast(cast) => cast.child_ref().figure_colname(var_name),
             // CASE takes the name of its ELSE branch, if that branch has one.
-            ExprInner::Case(case) => case.else_expr.as_deref().and_then(NamedEntity::name),
+            ExprInner::Case(case) => case
+                .else_expr
+                .as_deref()
+                .and_then(|else_expr| else_expr.figure_colname(var_name)),
             _ => None,
         }
+    }
+}
+
+/// Only the raw tree can name itself: a raw column reference is its own last
+/// field.
+impl NamedEntity for Expr<'_, Raw> {
+    fn name(&self) -> Option<&str> {
+        self.figure_colname(&<RawVar as NamedEntity>::name)
     }
 }
 

@@ -23,18 +23,17 @@
 //! function is the exception: as in PostgreSQL, its arguments see the entries
 //! bound before it.
 
-use std::rc::Rc;
-
 use smol_str::{format_smolstr, SmolStr};
 
 use sql_ast_new_nodes::error::AstResult;
 use sql_ast_new_nodes::expr::{Expr, ExprInner, FunctionCallArgs};
+use sql_ast_new_nodes::scope::CteRef;
 use sql_ast_new_nodes::table_expression::{
     route_column, AnalyzedCteOrTable, BoundJoinUsingVar, ColumnRoute, From, FromEntry, GroupBy,
     JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem, TableFactor, TableFactorInner,
     TableFunction,
 };
-use sql_ast_new_nodes::{Analyzed, NamedEntity, Raw};
+use sql_ast_new_nodes::{Analyzed, Ident, NamedEntity, Raw};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::relation::{Column, ColumnRole};
 use sql_ir::ir::table_function::{find_table_function, TableFunctionColumnType};
@@ -82,9 +81,9 @@ impl<'q> Binder<'q> for FromEntry<'q, Raw> {
 
     fn bind<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::BoundNode> {
         match self {
-            Self::TableFactor(tbl_factor) => Ok(Self::BoundNode::TableFactor(Rc::new(
-                tbl_factor.bind(meta)?,
-            ))),
+            Self::TableFactor(tbl_factor) => {
+                Ok(Self::BoundNode::TableFactor(tbl_factor.bind(meta)?))
+            }
             Self::JoinedTable(joined_tbl) => {
                 Ok(Self::BoundNode::JoinedTable(joined_tbl.bind(meta)?))
             }
@@ -121,28 +120,30 @@ impl<'q> Binder<'q> for TableFactor<'q, Raw> {
         let (inner, alias, indexed_by) = self.into_parts();
         let inner = match inner {
             TableFactorInner::CteOrTable(name) => {
+                // Innermost declaration first: a CTE shadows a same-named one
+                // of an enclosing statement, and any same-named table.
                 let found_cte =
                     meta.binder
                         .frames
                         .iter()
                         .enumerate()
                         .rev()
-                        .find_map(|(lvl, frame)| {
+                        .find_map(|(depth, frame)| {
                             frame
                                 .ctes
                                 .ctes_ref()
                                 .iter()
-                                .find(|cte| {
+                                .position(|cte| {
                                     cte.name().is_some_and(|cte_name| cte_name == name.as_str())
                                 })
-                                .map(|cte| (lvl, Rc::clone(cte)))
+                                .map(|offset| CteRef { depth, offset })
                         });
 
-                if let Some((lvl, cte)) = found_cte {
+                if let Some(cte) = found_cte {
                     // An enclosing aggregate call must not belong to a level
                     // above the one the CTE is defined at.
-                    meta.binder.update_cte_lvl(lvl);
-                    TableFactorInner::CteOrTable(AnalyzedCteOrTable::Cte(cte))
+                    meta.binder.update_cte_lvl(cte.depth);
+                    TableFactorInner::CteOrTable(AnalyzedCteOrTable::Cte { name, cte })
                 } else if let Ok(table) = meta.table(name.as_str()) {
                     TableFactorInner::CteOrTable(AnalyzedCteOrTable::Table(table))
                 } else {
@@ -262,10 +263,10 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
         // reference the FROM entries before it. A table function is the
         // exception: as in PostgreSQL, its arguments see them.
         let analyzed_tbl = if matches!(tbl.inner, TableFactorInner::Function(_)) {
-            Rc::new(tbl.bind(meta)?)
+            tbl.bind(meta)?
         } else {
             let preserved_from = std::mem::take(&mut meta.binder.curr_from);
-            let analyzed_tbl = Rc::new(tbl.bind(meta)?);
+            let analyzed_tbl = tbl.bind(meta)?;
             meta.binder.curr_from = preserved_from;
             analyzed_tbl
         };
@@ -335,7 +336,7 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
 }
 
 impl<'q> Binder<'q> for JoinUsingColumn {
-    type BoundNode = BoundJoinUsingVar<'q>;
+    type BoundNode = BoundJoinUsingVar;
 
     /// Bind column references in JOIN/USING.
     ///
@@ -350,7 +351,9 @@ impl<'q> Binder<'q> for JoinUsingColumn {
     /// Type of each bound var is known by this moment because the are
     /// either table column or output attribute of a from entry subquery.
     fn bind<M: Metadata>(self, meta: &mut AnalyzerCtx<'q, M>) -> AstResult<Self::BoundNode> {
-        let from = &meta.binder.top_frame_ref()?.from;
+        let scope = &meta.binder;
+        let depth = scope.depth()?;
+        let from = &scope.top_frame_ref()?.from;
         let (joined_tbl, preceding) = from.entries().split_last().ok_or_else(|| {
             analyze_err(format_smolstr!(
                 "expected the joined table in the FROM clause under analysis"
@@ -358,20 +361,28 @@ impl<'q> Binder<'q> for JoinUsingColumn {
         })?;
 
         // Resolve against entries preceding joined table.
-        let first_resolved_column = var_from_route(route_column(preceding, &self.0), &self.0)?;
+        let first_resolved_column = var_from_route(
+            depth,
+            route_column(preceding, &self.0, scope),
+            &self.0,
+            scope,
+        )?;
 
         // The left input of this merge is the join output built so far.
         // A column an earlier USING merge produced contributes its merged type,
         // so a chain of merges unifies left to right.
-        let left_type = from.join_using_var(&first_resolved_column).map_or_else(
+        let left_type = from.join_using_var(first_resolved_column).map_or_else(
             || first_resolved_column.data_type(),
             BoundJoinUsingVar::data_type,
         );
 
-        // Resolve against only joined table entry.
+        // Resolve against only joined table entry, which is the last one.
         let second_resolved_column = var_from_route(
-            route_column(std::slice::from_ref(joined_tbl), &self.0),
+            depth,
+            route_column(std::slice::from_ref(joined_tbl), &self.0, scope)
+                .map(|(_, column_pos)| (preceding.len(), column_pos)),
             &self.0,
+            scope,
         )?;
 
         let left_t_expr = texpr_from_derived_type(left_type, meta.type_system.inc_expr_id());
@@ -385,7 +396,13 @@ impl<'q> Binder<'q> for JoinUsingColumn {
             None,
         )?;
 
+        let name = self
+            .0
+            .name()
+            .ok_or_else(|| analyze_err(format_smolstr!("expected column name")))?;
+
         Ok(Self::BoundNode::new(
+            Ident::normalized(name),
             first_resolved_column,
             second_resolved_column,
             merged_type.into(),
@@ -422,7 +439,12 @@ impl<'q, M: Metadata> Discoverer<'q, M> for GroupBy<'q, Raw> {
                     // ambiguous, and no alias can answer which relation was meant.
                     let proj_alias_pos = if let ExprInner::Var(var) = expr.inner_ref() {
                         let local_miss = var.table_name().is_none()
-                            && match meta.binder.top_frame_ref()?.from.column_route(var) {
+                            && match meta
+                                .binder
+                                .top_frame_ref()?
+                                .from
+                                .column_route(var, &meta.binder)
+                            {
                                 ColumnRoute::Ambigious => {
                                     return Err(semantic_err(format_smolstr!(
                                         "column reference '{var}' is ambigious"

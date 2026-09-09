@@ -30,7 +30,7 @@ use super::*;
 use crate::structural_eq::StructuralEq;
 
 impl<'q, State: AstState<'q>> Expr<'q, State> {
-    /// Structural comparison, from an empty scope. The entry point for a
+    /// Structural comparison, from the default scope. The entry point for a
     /// single pair of expressions; `==` is the same comparison for raw nodes.
     ///
     /// Deliberately partial in [`Analyzed`]: window functions never compare

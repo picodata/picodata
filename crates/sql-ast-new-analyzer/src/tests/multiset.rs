@@ -118,6 +118,70 @@ fn correlated_subquery_in_cte() {
     insta::assert_snapshot!(analyzed(query, &[]), @"SELECT (WITH q AS (SELECT t2.a::double) SELECT q.a::double FROM q)::double FROM t2");
 }
 
+// ------------- Where a CTE reference points -------------
+//
+// A reference to a CTE is a position in the WITH clause of the statement that
+// declared it, read through the stack of enclosing statements. These pin the
+// shapes where the declaring statement is not the referencing one.
+
+/// The declaring statement is the set operation; both operands, one level
+/// deeper, read the same declaration.
+#[test]
+fn cte_referenced_from_both_set_operation_operands() {
+    let query = "WITH c AS (SELECT a FROM t3) SELECT a FROM c UNION SELECT a FROM c";
+    insta::assert_snapshot!(analyzed(query, &[]), @"WITH c AS (SELECT t3.a::int FROM t3) (SELECT c.a::int FROM c) UNION (SELECT c.a::int FROM c)");
+}
+
+/// A CTE declared inside a CTE body refers to an outer CTE two statements up,
+/// and the outer statement refers to the inner-declaring one.
+#[test]
+fn cte_referenced_from_nested_cte_body() {
+    let query = "WITH c1 AS (SELECT a FROM t3), c2 AS (WITH x AS (SELECT a FROM c1) SELECT a FROM x) SELECT a FROM c2";
+    insta::assert_snapshot!(analyzed(query, &[]), @"WITH c1 AS (SELECT t3.a::int FROM t3), c2 AS (WITH x AS (SELECT c1.a::int FROM c1) SELECT x.a::int FROM x) SELECT c2.a::int FROM c2");
+}
+
+/// A CTE-backed relation in a correlated scalar subquery: its columns resolve
+/// and render through the declaration one level up, next to the outer column.
+#[test]
+fn cte_column_and_outer_column_in_correlated_subquery() {
+    let query =
+        "WITH c AS (SELECT a, b FROM t3) SELECT (SELECT c.a FROM c WHERE c.b = t1.e) FROM t1";
+    insta::assert_snapshot!(analyzed(query, &[]), @"WITH c AS (SELECT t3.a::int, t3.b::text FROM t3) SELECT (SELECT c.a::int FROM c WHERE (c.b::text = t1.e::text)::bool)::int FROM t1");
+}
+
+/// The same subquery over a CTE written as a GROUP BY key and again in HAVING
+/// compares equal: both bind to the same positions.
+#[test]
+fn cte_subquery_grouping_key_matches_having() {
+    let query = "WITH c AS (SELECT a FROM t3) SELECT sum(t1.a) FROM t1 GROUP BY (SELECT a FROM c) HAVING (SELECT a FROM c) > 1";
+    insta::assert_snapshot!(analyzed(query, &[]), @"WITH c AS (SELECT t3.a::int FROM t3) SELECT sum(t1.a::int)::decimal FROM t1 GROUP BY (SELECT c.a::int FROM c)::int HAVING ((SELECT c.a::int FROM c)::int > 1::int)::bool");
+}
+
+/// A subquery declaring its own CTE, written as a GROUP BY key and again in
+/// HAVING, compares equal: the declaration and the references under it are
+/// positional, so the two copies bind to the same values.
+#[test]
+fn cte_declaring_subquery_grouping_key_matches_having() {
+    let query = "SELECT sum(t1.b) FROM t1 GROUP BY (WITH c AS (SELECT a FROM t3) SELECT c.a FROM c WHERE c.a = t1.a) HAVING (WITH c AS (SELECT a FROM t3) SELECT c.a FROM c WHERE c.a = t1.a) > 1";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT sum(t1.b::int)::decimal FROM t1 GROUP BY (WITH c AS (SELECT t3.a::int FROM t3) SELECT c.a::int FROM c WHERE (c.a::int = t1.a::int)::bool)::int HAVING ((WITH c AS (SELECT t3.a::int FROM t3) SELECT c.a::int FROM c WHERE (c.a::int = t1.a::int)::bool)::int > 1::int)::bool");
+}
+
+/// The comparison is by value: a CTE body that differs makes the HAVING
+/// subquery a different expression, and its outer column is ungrouped.
+#[test]
+fn cte_declaring_subquery_with_different_body_is_not_grouping_key() {
+    let query = "SELECT sum(t1.b) FROM t1 GROUP BY (WITH c AS (SELECT a FROM t3) SELECT c.a FROM c WHERE c.a = t1.a) HAVING (WITH c AS (SELECT b FROM t3) SELECT c.b FROM c WHERE c.b = t1.e) > 'x'";
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: column "t1.e" must appear in the GROUP BY clause or be used in an aggregate function"#);
+}
+
+/// The ungrouped column of a CTE-backed relation is named through the scope
+/// in the rejection.
+#[test]
+fn cte_ungrouped_column_named_in_error() {
+    let query = "WITH c AS (SELECT a, b FROM t3) SELECT c.b, t1.a FROM c INNER JOIN t1 ON c.a = t1.a GROUP BY t1.a";
+    insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: column "c.b" must appear in the GROUP BY clause or be used in an aggregate function"#);
+}
+
 // ------------- Set operations -------------
 
 #[test]

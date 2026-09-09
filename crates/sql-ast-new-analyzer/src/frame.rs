@@ -24,12 +24,15 @@ use smol_str::format_smolstr;
 use sql_ast_new_nodes::error::AstResult;
 use sql_ast_new_nodes::expr::Expr;
 use sql_ast_new_nodes::multiset::Ctes;
+use sql_ast_new_nodes::rendering::Rendered;
+use sql_ast_new_nodes::scope::{Depth, EqDepths, Scope};
 use sql_ast_new_nodes::select::{SelectList, SelectStmt};
 use sql_ast_new_nodes::table_expression::{BoundVar, From, GroupBy};
 use sql_ast_new_nodes::window::{FrameType, NamedWindow};
-use sql_ast_new_nodes::{Analyzed, Raw};
+use sql_ast_new_nodes::{Analyzed, Raw, StructuralEq};
 
 use crate::{analyze_err, semantic_err, AstTypeExpr};
+use sql_ir::ir::types::DerivedType;
 
 pub(crate) struct Stmt<'q> {
     /// WITH clause of current frame. Empty in case of `VALUES`.
@@ -48,7 +51,7 @@ pub(crate) struct Stmt<'q> {
     /// aggregate functions under select list expressions.
     pub(crate) grby_ctx: GroupByCtx,
     /// Used vars. These ones are neither grouped nor aggregated.
-    pub(crate) target_vars: Vec<BoundVar<'q>>,
+    pub(crate) target_vars: Vec<BoundVar>,
     /// Whether this frame is aggregated.
     pub(crate) is_aggr: bool,
     /// Named windows bound by the WINDOW clause, in definition order. Parked on
@@ -83,7 +86,14 @@ impl<'q> Stmt<'q> {
     /// If current frame is grouped validate target list referencing only grouped columns
     /// or columns functionally dependent on any grouped expressions subset -
     /// i.e. grouping expression is unique (e.g. PK, unique index etc.).
-    pub(crate) fn check_grouping(&self, stmt: &SelectStmt<'q, Analyzed>) -> AstResult<()> {
+    ///
+    /// `scope` reads the target vars' sources; the frame itself is already
+    /// popped by now, so it is the binder's stack plus this frame on top.
+    pub(crate) fn check_grouping<S: Scope<'q> + ?Sized>(
+        &self,
+        stmt: &SelectStmt<'q, Analyzed>,
+        scope: &S,
+    ) -> AstResult<()> {
         if stmt.has_group_by() || self.is_aggr || stmt.has_having() {
             // Get grouping expressions from GROUP BY
             let group_by = stmt.grouping_vars(stmt.select_list());
@@ -91,27 +101,36 @@ impl<'q> Stmt<'q> {
             // TODO: wire functional dependencies through subquery and CTE boundaries
 
             // Fill set of relations whose PK is GROUP BY expressions subset.
-            let mut tblpk_grby_subset = HashSet::<usize>::new();
+            let relation = |var: &BoundVar| (var.depth, var.entry);
+            let mut tblpk_grby_subset = HashSet::<(Depth, usize)>::new();
             self.target_vars
                 .iter()
-                .filter_map(|var| var.source.table().map(|tbl| (var.src_key(), tbl)))
-                .for_each(|(id, tbl)| {
+                .filter_map(|var| {
+                    let tbl = scope.entry(*var)?.tbl_factor().table()?;
+                    Some((var, tbl))
+                })
+                .for_each(|(var, tbl)| {
+                    let id = relation(var);
                     if !tblpk_grby_subset.contains(&id)
                         && !tbl.primary_key.positions.is_empty()
-                        && tbl
-                            .primary_key
-                            .positions
-                            .iter()
-                            .all(|&pos| group_by.contains(&(id, pos)))
+                        && tbl.primary_key.positions.iter().all(|&pos| {
+                            group_by.contains(&BoundVar::new(
+                                var.depth,
+                                var.entry,
+                                pos,
+                                DerivedType::unknown(),
+                            ))
+                        })
                     {
                         tblpk_grby_subset.insert(id);
                     }
                 });
 
             if let Some(target_var) = self.target_vars.iter().find(|target_var| {
-                !tblpk_grby_subset.contains(&target_var.src_key())
-                    && !group_by.contains(&target_var.key())
+                !tblpk_grby_subset.contains(&relation(target_var)) && !group_by.contains(target_var)
             }) {
+                let target_var =
+                    Rendered::<'_, 'q, Analyzed, _>::new(target_var, scope.render_scope());
                 return Err(semantic_err(format_smolstr!(
                     r#"column "{target_var}" must appear in the GROUP BY clause or be used in an aggregate function"#
                 )));
@@ -121,13 +140,14 @@ impl<'q> Stmt<'q> {
     }
 
     /// Whether `expr` is one of this level's expression grouping keys.
-    pub(crate) fn grouping_covers(&self, expr: &Expr<'q, Analyzed>) -> bool {
+    /// `depths.left` is this level, `depths.right` the depth `expr` is written at.
+    pub(crate) fn grouping_covers(&self, expr: &Expr<'q, Analyzed>, mut depths: EqDepths) -> bool {
         self.bound_grby_ref().is_some_and(|group_by| {
             group_by
                 .0
                 .iter()
                 .filter_map(|elem| elem.grouping_key_expr(self.bound_sel_lst_ref().ok()))
-                .any(|key| key.structural_eq(expr))
+                .any(|key| key.eq_with(expr, &mut depths))
         })
     }
 
@@ -142,7 +162,7 @@ impl<'q> Stmt<'q> {
     }
 
     /// If this `var` does not come from grouping expression add it to targets.
-    pub(crate) fn add_target_var(&mut self, var: BoundVar<'q>) {
+    pub(crate) fn add_target_var(&mut self, var: BoundVar) {
         if self.stage.forbid_ungrouped() && !self.target_vars.contains(&var) {
             self.target_vars.push(var);
         }

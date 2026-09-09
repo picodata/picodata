@@ -14,11 +14,14 @@
 //!
 //!
 //! # What belongs here
-//! Declarations, `Display`, and any query over a node that needs nothing but the node.
-//! The dividing line against `sql-ast-new-analyzer` is whether a routine
-//! needs the type system, the scope stacks or `Metadata`.
-//! For example, column *routing* ([`table_expression::From::column_route`]) does not
-//! and lives here. Asterisk *expansion* mints type-system ids and does not.
+//! Declarations, rendering, and any query over a node that needs nothing but
+//! the node and the [`Scope`](scope::Scope) it sits in — the stack of enclosing
+//! statements that positional references are read through, which is a view
+//! over nodes and so lives here too. The dividing line against
+//! `sql-ast-new-analyzer` is whether a routine needs the type system, the
+//! binder's own frame bookkeeping or `Metadata`. For example, column *routing*
+//! ([`table_expression::From::column_route`]) does not and lives here.
+//! Asterisk *expansion* mints type-system ids and does not.
 //!
 //! This crate knows nothing about pest beyond one rule: [`Ident`]'s rendering
 //! probes [`Rule::RegularIdentifier`] to decide whether an identifier can be
@@ -83,7 +86,6 @@ pub mod table_expression;
 pub mod window;
 
 use std::fmt::{self, Display, Error, Formatter};
-use std::rc::Rc;
 
 use pest::Parser;
 use smol_str::SmolStr;
@@ -100,16 +102,16 @@ use sql_ir::ir::types::{DerivedType, NestedType, UnrestrictedType};
 pub type AstNodeId = u32;
 
 use crate::rendering::{render_via_display, Render};
-use crate::scope::FrameView;
-use crate::table_expression::{BoundJoinUsingVar, JoinUsingColumn, RelationPairs};
+use crate::scope::{EqDepths, FrameView};
+use crate::table_expression::{BoundJoinUsingVar, JoinUsingColumn};
 
 pub use crate::structural_eq::StructuralEq;
 
 use self::expr::render::Precedence;
 use self::expr::{Expr, ExprInner, Parameter, RawVar};
-use self::multiset::{Cte, MultisetStmt};
+use self::multiset::MultisetStmt;
 use self::select::{ProjectionExpr, SelectListElem};
-use self::table_expression::{AnalyzedCteOrTable, BoundVar, FromEntry, TableFactor};
+use self::table_expression::{AnalyzedCteOrTable, BoundVar};
 use self::window::{NamedWindow, WindowFunction};
 
 /// A normalized SQL identifier — the single identifier representation used
@@ -133,6 +135,12 @@ impl Ident {
             None => SmolStr::new(raw.to_lowercase()),
         };
         Self(normalized)
+    }
+
+    /// An identifier that is already in normalized form: a catalog column
+    /// name, or the text of another identifier.
+    pub fn normalized(name: &str) -> Self {
+        Self(SmolStr::new(name))
     }
 
     pub fn as_str(&self) -> &str {
@@ -193,22 +201,13 @@ pub trait NamedEntity {
     fn name(&self) -> Option<&str>;
 }
 
-/// Sharing a node must not hide its name: forwarded so that a state whose
-/// payload is an `Rc` (see [`Analyzed`]) still satisfies the [`NamedEntity`]
-/// bounds on [`AstState`]. Mirrors the way `std` forwards `Display` through `Rc`.
-impl<T: NamedEntity + ?Sized> NamedEntity for Rc<T> {
-    fn name(&self) -> Option<&str> {
-        (**self).name()
-    }
-}
-
 /// Typestate of the AST:
 /// * [`Raw`] (fresh from the parser)
 /// * [`Analyzed`] (after name resolution and type inference).
 ///
 /// One set of node structs serves both states.
 /// The associated types swap the per-state payloads.
-/// For example, a column reference is a bare name in [`Raw`] and a resolved pointer in [`Analyzed`].
+/// For example, a column reference is a bare name in [`Raw`] and a resolved position in [`Analyzed`].
 /// Therefore, tree cannot carry data its stage has no right to hold.
 ///
 /// See [Trees That Grow](https://arxiv.org/abs/1610.04799) for theoretical explanation.
@@ -223,24 +222,26 @@ pub trait AstState<'q>: Sized {
     where
         'q: 'a;
 
-    type CteT: Render<'q, Self> + StructuralEq<Self::EqScope>;
-
     type SelectListElemT: Render<'q, Self> + StructuralEq<Self::EqScope>;
 
-    type TableFactorT: NamedEntity + Render<'q, Self> + StructuralEq<Self::EqScope>;
+    /// The name a projection exposes when it has no alias: nothing in [`Raw`];
+    /// in [`Analyzed`] the name the analyzer derived from the expression, kept
+    /// on the node because deriving it from a resolved column reference would
+    /// take the scope the reference was bound in.
+    type ProjNameT: Default;
+
     type JoinUsingColumnT: Render<'q, Self> + StructuralEq<Self::EqScope>;
 
     type CteOrTableT: NamedEntity + Render<'q, Self> + StructuralEq<Self::EqScope>;
 
     type ExprMeta: ExprMetaT;
 
-    type VarType: Render<'q, Self> + StructuralEq<Self::EqScope> + NamedEntity;
+    type VarType: Render<'q, Self> + StructuralEq<Self::EqScope>;
 
-    /// The correspondence between the relations two compared subtrees
-    /// introduce, threaded through [`StructuralEq::eq_with`]. [`Raw`] resolves
-    /// nothing and carries none (`()`); [`Analyzed`] records pairs of FROM
-    /// factors, so the same subquery written twice compares equal even though
-    /// binding minted each copy its own relations. See [`crate::structural_eq`].
+    /// What structural comparison threads through [`StructuralEq::eq_with`]:
+    /// nothing in [`Raw`]; in [`Analyzed`] the depths the two sides are written
+    /// at, which positional references are read against. The default is
+    /// two sides written at the same depth. See [`crate::structural_eq`].
     type EqScope: Default;
 
     /// Whether the written form of a cast (`CAST(x AS t)` vs `x::t`) tells two
@@ -254,16 +255,6 @@ pub trait AstState<'q>: Sized {
     /// bare column and its no-op cast are the same grouping key.
     fn eq_subject<'e>(expr: &'e Expr<'q, Self>) -> &'e Expr<'q, Self> {
         expr
-    }
-
-    /// Record into `scope` that `left` and `right` occupy the same position of
-    /// corresponding FROM clauses. A no-op for [`Raw`], which compares column
-    /// references by their written name instead.
-    fn pair_relations(
-        _left: &FromEntry<'q, Self>,
-        _right: &FromEntry<'q, Self>,
-        _scope: &mut Self::EqScope,
-    ) {
     }
 
     /// State-specific comparison of two window functions.
@@ -331,10 +322,8 @@ impl<'q> AstState<'q> for Raw {
     where
         'q: 'a;
 
-    type CteT = Cte<'q, Raw>;
-
     type SelectListElemT = SelectListElem<'q>;
-    type TableFactorT = TableFactor<'q, Raw>;
+    type ProjNameT = ();
     type JoinUsingColumnT = JoinUsingColumn;
     type CteOrTableT = Ident;
 
@@ -399,22 +388,19 @@ impl<'q> AstState<'q> for Analyzed {
     where
         'q: 'a;
 
-    type CteT = Rc<Cte<'q, Analyzed>>;
-
     type SelectListElemT = ProjectionExpr<'q, Analyzed>;
-    /// Original From clause is shared by resolved column references. See [`BoundVar`].
-    type TableFactorT = Rc<TableFactor<'q, Analyzed>>;
-    type JoinUsingColumnT = BoundJoinUsingVar<'q>;
-    type CteOrTableT = AnalyzedCteOrTable<'q>;
+    type ProjNameT = Option<Ident>;
+    type JoinUsingColumnT = BoundJoinUsingVar;
+    type CteOrTableT = AnalyzedCteOrTable;
 
     type ExprMeta = AnalyzedExprMeta;
-    type VarType = BoundVar<'q>;
+    /// A position in an enclosing FROM clause. See [`BoundVar`].
+    type VarType = BoundVar;
 
     type ValuesColumnsT = Vec<Column>;
 
-    /// Pairs of FROM factors, keyed the way [`BoundVar::src_key`] keys their
-    /// [`Rc`]s, pushed as the comparison walks corresponding FROM clauses.
-    type EqScope = RelationPairs;
+    /// Where each side is written. See [`EqDepths`].
+    type EqScope = EqDepths;
 
     /// Analysis erases the spelling: `CAST(a AS int)` and `a::int` are the
     /// same conversion.
@@ -429,16 +415,6 @@ impl<'q> AstState<'q> for Analyzed {
             }
         }
         expr
-    }
-
-    fn pair_relations(
-        left: &FromEntry<'q, Self>,
-        right: &FromEntry<'q, Self>,
-        scope: &mut Self::EqScope,
-    ) {
-        let key =
-            |entry: &FromEntry<'q, Self>| Rc::as_ptr(entry.tbl_factor()) as *const () as usize;
-        scope.push((key(left), key(right)));
     }
 
     /// A window function is conservatively never equal to another: it cannot

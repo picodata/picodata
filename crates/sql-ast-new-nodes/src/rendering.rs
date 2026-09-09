@@ -21,7 +21,6 @@
 //! does not cross a crate boundary and the stages are separate crates.
 
 use std::fmt::{Display, Formatter, Result};
-use std::rc::Rc;
 
 use crate::AstState;
 
@@ -35,15 +34,6 @@ pub trait Render<'q, State: AstState<'q>> {
 }
 
 impl<'q, S: AstState<'q>, T: Render<'q, S>> Render<'q, S> for Box<T> {
-    fn render<'a>(&'a self, f: &mut Formatter<'_>, scope: &mut S::RenderScope<'a>) -> Result
-    where
-        'q: 'a,
-    {
-        T::render(self, f, scope)
-    }
-}
-
-impl<'q, S: AstState<'q>, T: Render<'q, S>> Render<'q, S> for Rc<T> {
     fn render<'a>(&'a self, f: &mut Formatter<'_>, scope: &mut S::RenderScope<'a>) -> Result
     where
         'q: 'a,

@@ -437,6 +437,32 @@ fn join_subquery_in_join_condition_does_not_see_entries_to_its_right() {
     );
 }
 
+/// A join condition binds in the statement's own frame, so a reference in it
+/// to the join's own relation and one to the enclosing query sit one level
+/// apart, exactly as they will in the finished tree.
+#[test]
+fn join_on_condition_mixes_own_and_outer_relations() {
+    let query = "SELECT (SELECT t2.c FROM t2 INNER JOIN t3 ON t3.a = t1.a AND t3.a = t2.c) FROM t1";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT (SELECT t2.c::int FROM t2 INNER JOIN t3 ON ((t3.a::int = t1.a::int)::bool AND (t3.a::int = t2.c::int)::bool)::bool)::int FROM t1");
+}
+
+/// A subquery inside the join condition reaches the joined table through the
+/// partially built clause, one level up from its own FROM.
+#[test]
+fn join_on_condition_subquery_correlates_to_joined_table() {
+    let query =
+        "SELECT t1.a FROM t1 INNER JOIN t3 ON t1.a = (SELECT max(t4.a) FROM t4 WHERE t4.b = t3.b)";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int FROM t1 INNER JOIN t3 ON (t1.a::int = (SELECT max(t4.a::int)::int FROM t4 WHERE (t4.b::text = t3.b::text)::bool)::int)::bool");
+}
+
+/// The merged `USING` column resolved from a later join condition binds to the
+/// left input, at the position it has in the whole clause.
+#[test]
+fn join_on_condition_after_using_reads_merged_column() {
+    let query = "SELECT * FROM t3 INNER JOIN t4 USING (a) INNER JOIN t5 ON t5.c = a";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t3.a::int, t3.b::text, t4.b::text, t5.c::int, t5.d::text FROM t3 INNER JOIN t4 USING (a) INNER JOIN t5 ON (t5.c::int = t3.a::int)::bool");
+}
+
 // ------------- GROUP BY -------------
 #[test]
 fn group_by_simple() {
@@ -1881,6 +1907,93 @@ fn expression_grouping_key_reaches_into_a_subquery_below_it() {
             &[],
         ),
         @"SELECT 1::int FROM t1 GROUP BY (CAST(t1.a AS double) + t1.c::double)::double HAVING ((SELECT count(*)::int FROM t2 WHERE ((CAST(t1.a AS double) + t1.c::double)::double > CAST(0 AS double))::bool)::int > 0::int)::bool"
+    );
+}
+
+/// A subquery key written again one level deeper still matches: its own
+/// relations sit one level deeper too, and are compared by their distance
+/// below the copy, while `t1.a` is compared as the outer column it is. The
+/// same holds in every clause held to the grouping, and any number of levels
+/// down. Postgres 19 accepts all of these; 18 rejects them.
+#[test]
+fn subquery_key_matches_its_copy_written_deeper() {
+    insta::assert_snapshot!(
+        analyzed(
+            "SELECT (SELECT (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a)) FROM t1 GROUP BY (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a)",
+            &[],
+        ),
+        @"SELECT (SELECT (SELECT max(t3.a::int)::int FROM t3 WHERE (t3.a::int = t1.a::int)::bool)::int)::int FROM t1 GROUP BY (SELECT max(t3.a::int)::int FROM t3 WHERE (t3.a::int = t1.a::int)::bool)::int"
+    );
+    insta::assert_snapshot!(
+        analyzed(
+            "SELECT 1 FROM t1 GROUP BY (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a) HAVING (SELECT (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a)) > 0",
+            &[],
+        ),
+        @"SELECT 1::int FROM t1 GROUP BY (SELECT max(t3.a::int)::int FROM t3 WHERE (t3.a::int = t1.a::int)::bool)::int HAVING ((SELECT (SELECT max(t3.a::int)::int FROM t3 WHERE (t3.a::int = t1.a::int)::bool)::int)::int > 0::int)::bool"
+    );
+    insta::assert_snapshot!(
+        analyzed(
+            "SELECT 1 FROM t1 GROUP BY (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a) ORDER BY (SELECT (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a))",
+            &[],
+        ),
+        @"SELECT 1::int FROM t1 GROUP BY (SELECT max(t3.a::int)::int FROM t3 WHERE (t3.a::int = t1.a::int)::bool)::int ORDER BY (SELECT (SELECT max(t3.a::int)::int FROM t3 WHERE (t3.a::int = t1.a::int)::bool)::int)::int ASC"
+    );
+    insta::assert_snapshot!(
+        analyzed(
+            "SELECT (SELECT (SELECT (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a))) FROM t1 GROUP BY (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a)",
+            &[],
+        ),
+        @"SELECT (SELECT (SELECT (SELECT max(t3.a::int)::int FROM t3 WHERE (t3.a::int = t1.a::int)::bool)::int)::int)::int FROM t1 GROUP BY (SELECT max(t3.a::int)::int FROM t3 WHERE (t3.a::int = t1.a::int)::bool)::int"
+    );
+}
+
+/// The same with CTEs: one declared above the key is an outer reference, one
+/// declared inside the key moves with it, and a grouping query inside a CTE
+/// body matches the same way one level down. Postgres 19 accepts all three.
+#[test]
+fn subquery_key_written_deeper_with_ctes() {
+    insta::assert_snapshot!(
+        analyzed(
+            "WITH c AS (SELECT a FROM t3) SELECT (SELECT (SELECT max(c.a) FROM c WHERE c.a = t1.a)) FROM t1 GROUP BY (SELECT max(c.a) FROM c WHERE c.a = t1.a)",
+            &[],
+        ),
+        @"WITH c AS (SELECT t3.a::int FROM t3) SELECT (SELECT (SELECT max(c.a::int)::int FROM c WHERE (c.a::int = t1.a::int)::bool)::int)::int FROM t1 GROUP BY (SELECT max(c.a::int)::int FROM c WHERE (c.a::int = t1.a::int)::bool)::int"
+    );
+    insta::assert_snapshot!(
+        analyzed(
+            "SELECT (SELECT (WITH c AS (SELECT a FROM t3) SELECT max(c.a) FROM c WHERE c.a = t1.a)) FROM t1 GROUP BY (WITH c AS (SELECT a FROM t3) SELECT max(c.a) FROM c WHERE c.a = t1.a)",
+            &[],
+        ),
+        @"SELECT (SELECT (WITH c AS (SELECT t3.a::int FROM t3) SELECT max(c.a::int)::int FROM c WHERE (c.a::int = t1.a::int)::bool)::int)::int FROM t1 GROUP BY (WITH c AS (SELECT t3.a::int FROM t3) SELECT max(c.a::int)::int FROM c WHERE (c.a::int = t1.a::int)::bool)::int"
+    );
+    insta::assert_snapshot!(
+        analyzed(
+            "WITH w AS (SELECT (SELECT (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a)) AS x FROM t1 GROUP BY (SELECT max(t3.a) FROM t3 WHERE t3.a = t1.a)) SELECT x FROM w",
+            &[],
+        ),
+        @"WITH w AS (SELECT (SELECT (SELECT max(t3.a::int)::int FROM t3 WHERE (t3.a::int = t1.a::int)::bool)::int)::int AS x FROM t1 GROUP BY (SELECT max(t3.a::int)::int FROM t3 WHERE (t3.a::int = t1.a::int)::bool)::int) SELECT w.x::int FROM w"
+    );
+}
+
+/// The deeper copy reads a relation (`m`) or a CTE (`c`) of the level in
+/// between, at the same position the key's own relation or the outer CTE
+/// has. That is a different expression, so `t1.a` stays ungrouped - as
+/// Postgres 18 and 19 both say.
+#[test]
+fn subquery_key_copy_reading_the_level_in_between_is_uncovered() {
+    insta::assert_snapshot!(
+        analyze_error(
+            "SELECT (SELECT (SELECT max(m.a) + t1.a FROM t3) FROM t3 AS m) FROM t1 GROUP BY (SELECT max(t3.a) + t1.a FROM t3)",
+            &[],
+        ),
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+    );
+    insta::assert_snapshot!(
+        analyze_error(
+            "WITH c AS (SELECT a FROM t3) SELECT (WITH c AS (SELECT a FROM t3) SELECT (SELECT max(c.a) + t1.a FROM c)) FROM t1 GROUP BY (SELECT max(c.a) + t1.a FROM c)",
+            &[],
+        ),
+        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
 }
 

@@ -560,7 +560,7 @@ impl Display for Limit {
 }
 
 pub struct Ctes<'q, State: AstState<'q>> {
-    ctes: Vec<State::CteT>,
+    ctes: Vec<Cte<'q, State>>,
 }
 
 impl<'q> Ctes<'q, Raw> {
@@ -570,15 +570,15 @@ impl<'q> Ctes<'q, Raw> {
 }
 
 impl<'q, State: AstState<'q>> Ctes<'q, State> {
-    pub fn add(&mut self, cte: State::CteT) {
+    pub fn add(&mut self, cte: Cte<'q, State>) {
         self.ctes.push(cte);
     }
 
-    pub fn ctes_ref(&self) -> &Vec<State::CteT> {
+    pub fn ctes_ref(&self) -> &Vec<Cte<'q, State>> {
         &self.ctes
     }
 
-    pub fn from(ctes: Vec<State::CteT>) -> Self {
+    pub fn from(ctes: Vec<Cte<'q, State>>) -> Self {
         Self { ctes }
     }
 
@@ -627,6 +627,16 @@ impl<'q> Cte<'q, Raw> {
     }
 }
 
+impl<'q, State: AstState<'q>> Cte<'q, State> {
+    pub(crate) fn columns_ref(&self) -> &Vec<Ident> {
+        &self.columns
+    }
+
+    pub fn body_ref(&self) -> &MultisetStmt<'q, State> {
+        &self.body
+    }
+}
+
 impl<'q> Cte<'q, Analyzed> {
     pub fn from_parts(name: Ident, columns: Vec<Ident>, body: MultisetStmt<'q, Analyzed>) -> Self {
         Self {
@@ -634,14 +644,6 @@ impl<'q> Cte<'q, Analyzed> {
             columns,
             body,
         }
-    }
-
-    pub(crate) fn columns_ref(&self) -> &Vec<Ident> {
-        &self.columns
-    }
-
-    pub fn body_ref(&self) -> &MultisetStmt<'q, Analyzed> {
-        &self.body
     }
 
     /// The CTE's `column_pos`-th result attribute. An explicit column list
@@ -809,7 +811,6 @@ impl<'q> ValuesStmt<'q, Analyzed> {
 mod structural_eq {
     use super::*;
     use crate::structural_eq::StructuralEq;
-    use crate::table_expression::RelationPairs;
 
     /// Structural comparison for raw statements.
     impl PartialEq for MultisetStmt<'_, Raw> {
@@ -819,8 +820,6 @@ mod structural_eq {
     }
 
     impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for MultisetStmt<'q, S> {
-        /// The body goes before ORDER BY: it is what pairs this statement's
-        /// relations into the scope, and ORDER BY reads them.
         fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
             self.ctes.eq_with(&other.ctes, scope)
                 && self.inner.eq_with(&other.inner, scope)
@@ -869,19 +868,14 @@ mod structural_eq {
         }
     }
 
-    impl StructuralEq<()> for Cte<'_, Raw> {
-        fn eq_with(&self, other: &Self, scope: &mut ()) -> bool {
+    /// A declaration is its name, its column list and its body. The body's
+    /// references are positional in [`Analyzed`], so the same `WITH` written
+    /// twice compares equal there too.
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for Cte<'q, S> {
+        fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
             self.name == other.name
                 && self.columns == other.columns
                 && self.body.eq_with(&other.body, scope)
-        }
-    }
-
-    /// A statement declaring its own CTEs holds bodies no other statement shares,
-    /// so it is never equal to another.
-    impl StructuralEq<RelationPairs> for Cte<'_, Analyzed> {
-        fn eq_with(&self, _other: &Self, _scope: &mut RelationPairs) -> bool {
-            false
         }
     }
 

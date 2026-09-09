@@ -17,10 +17,13 @@
 use smol_str::format_smolstr;
 
 use sql_ast_new_nodes::error::AstResult;
+use sql_ast_new_nodes::scope::{EqDepths, Scope};
 use sql_ast_new_nodes::select::{
     ProjectionExpr, SelectList, SelectListElem, SelectListExprs, SelectStmt,
 };
-use sql_ast_new_nodes::table_expression::{From, GroupBy, OrdrByGrpByElem, TableExpression};
+use sql_ast_new_nodes::table_expression::{
+    BoundVar, From, GroupBy, OrdrByGrpByElem, TableExpression,
+};
 use sql_ast_new_nodes::window::NamedWindows;
 use sql_ast_new_nodes::{Analyzed, Ident, Raw};
 use sql_ir::ir::metadata::Metadata;
@@ -244,7 +247,9 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
                         .find_map(|(lvl, Stmt { from, .. })| {
                             from.resolve_asterisk(
                                 t_name.as_ref().map(Ident::as_str),
+                                lvl,
                                 &mut meta.type_system,
+                                &meta.binder,
                             )
                             .map(|resolved| (lvl, resolved))
                         })
@@ -278,7 +283,13 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
                                 && frame
                                     .bound_grby_ref()
                                     .is_some_and(|grby| grby.contains_pos(expanded_pos + offset)))
-                                || frame.grouping_covers(proj.expr_ref())
+                                || frame.grouping_covers(
+                                    proj.expr_ref(),
+                                    EqDepths {
+                                        left: lvl,
+                                        right: depth,
+                                    },
+                                )
                         });
                         if grouped {
                             // Every aggregate call enclosing this asterisk belongs to
@@ -287,7 +298,7 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
                             meta.binder.update_col_sem_lvl(lvl);
                         } else {
                             // Not under GROUP BY, account it in target exprs.
-                            meta.binder.reg_var(lvl, bound_var.clone())?;
+                            meta.binder.reg_var(lvl, *bound_var)?;
                         }
                     }
 
@@ -333,7 +344,16 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
 
                     meta.type_system.add_proj_elem(t_expr);
 
-                    let bound_proj_expr = ProjectionExpr::new(bound_expr, alias);
+                    // The name the projection exposes without an alias is
+                    // derived now, while the scope its column references were
+                    // bound in is at hand.
+                    let inferred_name = bound_expr
+                        .figure_colname(&|var: &BoundVar| {
+                            meta.binder.attribute(*var).and_then(|attr| attr.name())
+                        })
+                        .map(Ident::normalized);
+                    let bound_proj_expr =
+                        ProjectionExpr::from_parts(bound_expr, alias, inferred_name);
 
                     meta.binder
                         .top_frame_mut()?

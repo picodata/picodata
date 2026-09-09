@@ -16,16 +16,13 @@
 use sql_ir::ir::aggregates::AggregateKind;
 use sql_type_system::expr::{ComparisonOperator, Type, UnaryOperator};
 
-use std::rc::Rc;
-
 use smol_str::format_smolstr;
 
 use crate::cast::{can_cast, coerce_text_literal};
 use crate::multiset::analyze_subquery;
 use crate::window::{bind_win_fn, derive_window_function_types};
 use crate::{
-    analyze_err, semantic_err, texpr_from_attribute, texpr_from_derived_type, Binder,
-    ExprTypeDeriver, Stage, Stmt,
+    analyze_err, semantic_err, texpr_from_derived_type, Binder, ExprTypeDeriver, Stage, Stmt,
 };
 use sql_ast_new_nodes::error::{AstErr, AstResult};
 use sql_ast_new_nodes::expr::{
@@ -34,7 +31,8 @@ use sql_ast_new_nodes::expr::{
     IsExpr, IsValue, Like, Literal, LiteralKind, RawVar, Similar, Substring, TimeFunction, Trim,
     UnaryOp, UnaryOperation, ValuesRow,
 };
-use sql_ast_new_nodes::table_expression::{BoundJoinUsingVar, BoundVar, ColumnRoute, TableFactor};
+use sql_ast_new_nodes::scope::{Depth, Scope};
+use sql_ast_new_nodes::table_expression::{BoundJoinUsingVar, BoundVar, ColumnRoute};
 use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, AstNodeId, Raw};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::table_function::find_table_function;
@@ -140,36 +138,49 @@ fn cannot_resolve_err(var: &RawVar) -> AstErr {
 /// The level returned is the index of the frame the reference resolved against:
 /// scanning is innermost-outward, but an index means the same thing to every
 /// query level, which is what `AggrCtx` needs to compare levels across nesting.
-pub(crate) fn bind_var<'q, M: Metadata>(
+/// It is also the depth the bound variable records.
+pub(crate) fn bind_var<M: Metadata>(
     var: &RawVar,
-    meta: &AnalyzerCtx<'q, M>,
-) -> AstResult<(usize, BoundVar<'q>)> {
+    meta: &AnalyzerCtx<'_, M>,
+) -> AstResult<(usize, BoundVar)> {
+    let scope = &meta.binder;
     let Some((lvl, column_route)) =
-        meta.binder
+        scope
             .frames
             .iter()
             .enumerate()
             .rev()
-            .find_map(|(lvl, Stmt { from, .. })| match from.column_route(var) {
-                ColumnRoute::NoMatch => None,
-                other => Some((lvl, other)),
-            })
+            .find_map(
+                |(lvl, Stmt { from, .. })| match from.column_route(var, scope) {
+                    ColumnRoute::NoMatch => None,
+                    other => Some((lvl, other)),
+                },
+            )
     else {
         return Err(cannot_resolve_err(var));
     };
-    Ok((lvl, var_from_route(column_route, var)?))
+    Ok((lvl, var_from_route(lvl, column_route, var, scope)?))
 }
 
-/// The bound variable a routing outcome stands for,
+/// The bound variable a routing outcome at `depth` stands for,
 /// or the user-facing error it amounts to.
-pub(crate) fn var_from_route<'q>(
-    column_route: ColumnRoute<(Rc<TableFactor<'q, Analyzed>>, usize)>,
+/// The column's type is read right here, while the scope is at hand.
+/// A source the scope cannot read is reported as an unresolvable reference.
+pub(crate) fn var_from_route<'q, S: Scope<'q> + ?Sized>(
+    depth: Depth,
+    column_route: ColumnRoute<(usize, usize)>,
     var: &RawVar,
-) -> AstResult<BoundVar<'q>> {
+    scope: &S,
+) -> AstResult<BoundVar> {
     match column_route {
         ColumnRoute::NoMatch | ColumnRoute::ColumnMissing => Err(cannot_resolve_err(var)),
-        ColumnRoute::Resolved((tbl_factor, col_pos)) => {
-            Ok(BoundVar::from_parts(tbl_factor, col_pos))
+        ColumnRoute::Resolved((entry, column_pos)) => {
+            let probe = BoundVar::new(depth, entry, column_pos, DerivedType::unknown());
+            let data_type = scope
+                .attribute(probe)
+                .map(|attr| attr.data_type())
+                .ok_or_else(|| cannot_resolve_err(var))?;
+            Ok(BoundVar::new(depth, entry, column_pos, data_type))
         }
         ColumnRoute::Ambigious => Err(semantic_err(format_smolstr!(
             "column reference '{var}' is ambigious"
@@ -177,27 +188,22 @@ pub(crate) fn var_from_route<'q>(
     }
 }
 
-/// Mirror node for a resolved column reference: the source attribute's type,
-/// or `None` when the attribute cannot be read (a subquery output without a
-/// derived type yet).
-pub(crate) fn texpr_from_bound_var(var: &BoundVar<'_>, id: AstNodeId) -> Option<AstTypeExpr> {
-    var.attribute().map(|attr| texpr_from_attribute(attr, id))
+/// Mirror node for a resolved column reference: the source column's type.
+pub(crate) fn texpr_from_bound_var(var: BoundVar, id: AstNodeId) -> AstTypeExpr {
+    texpr_from_derived_type(var.data_type(), id)
 }
 
 /// The expression an unqualified reference to a `USING`-merged column binds to.
 pub(crate) fn using_merged_expr<'q>(
     type_system: &mut TypeSystem,
-    var: &BoundVar<'q>,
+    var: BoundVar,
     common_type: DerivedType,
     id: AstNodeId,
 ) -> Option<(Expr<'q, Analyzed>, AstTypeExpr)> {
     let cast_type = CastType::try_from(common_type.get().as_ref()?).ok()?;
     let child_id = type_system.inc_expr_id();
-    let child_t_expr = texpr_from_bound_var(var, child_id)?;
-    let child = Expr::from_parts(
-        ExprInner::Var(var.clone()),
-        AnalyzedExprMeta::new_with_id(child_id),
-    );
+    let child_t_expr = texpr_from_bound_var(var, child_id);
+    let child = Expr::from_parts(ExprInner::Var(var), AnalyzedExprMeta::new_with_id(child_id));
     let cast = Cast::from_parts(Box::new(child), cast_type, CastSyntax::Call);
     let t_expr = cast_to_type_expr(&cast, id, child_t_expr);
     Some((
@@ -448,7 +454,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                 let (lvl, bound_var) = bind_var(&var, meta)?;
 
                 // Register column reference usage.
-                meta.binder.reg_var(lvl, bound_var.clone())?;
+                meta.binder.reg_var(lvl, bound_var)?;
 
                 if let Some(d_type) = var
                     .table_name()
@@ -457,14 +463,14 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                         meta.binder
                             .frames
                             .get(lvl)
-                            .and_then(|frame| frame.from.join_using_var(&bound_var))
+                            .and_then(|frame| frame.from.join_using_var(bound_var))
                             .map(BoundJoinUsingVar::data_type),
                     )
                     .flatten()
                 {
                     // Some `JOIN/USING` corresponds to this bound var.
                     // Column should be converted to the JOIN/USING common type..
-                    match using_merged_expr(&mut meta.type_system, &bound_var, d_type, curr_id) {
+                    match using_merged_expr(&mut meta.type_system, bound_var, d_type, curr_id) {
                         Some((expr, t_expr)) => (expr.into_inner(), t_expr),
                         None => (
                             ExprInner::<'q, Analyzed>::Var(bound_var),
@@ -472,10 +478,10 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                         ),
                     }
                 } else {
-                    texpr_from_bound_var(&bound_var, curr_id)
-                        .map_or(Err(cannot_resolve_err(&var)), |t_expr| {
-                            Ok((ExprInner::<'q, Analyzed>::Var(bound_var), t_expr))
-                        })?
+                    (
+                        ExprInner::<'q, Analyzed>::Var(bound_var),
+                        texpr_from_bound_var(bound_var, curr_id),
+                    )
                 }
             }
             ExprInner::Literal(lit) => {

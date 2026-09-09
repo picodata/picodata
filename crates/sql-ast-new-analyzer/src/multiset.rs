@@ -13,8 +13,6 @@
 //! [`ctes`](Stmt::ctes) frame as soon as it is analyzed, so the
 //! bodies of later CTEs in the same WITH clause can reference it.
 
-use std::rc::Rc;
-
 use smol_str::format_smolstr;
 
 use sql_ast_new_nodes::error::AstResult;
@@ -22,6 +20,8 @@ use sql_ast_new_nodes::expr::{ExprInner, ValuesRow};
 use sql_ast_new_nodes::multiset::{
     Cte, Ctes, MultisetInner, MultisetStmt, Operation, OrderBy, OrderByElement, ValuesStmt,
 };
+use sql_ast_new_nodes::scope::FrameView;
+use sql_ast_new_nodes::select::SelectStmt;
 use sql_ast_new_nodes::table_expression::{From, OrdrByGrpByElem};
 use sql_ast_new_nodes::window::NamedWindows;
 use sql_ast_new_nodes::{Analyzed, NamedEntity, Raw};
@@ -32,7 +32,7 @@ use sql_type_system::expr::Type as TypeSystemType;
 
 use crate::{
     analyze_err, duplicated_name, frame::Stage, frame::Stmt, semantic_err, Analyzer, AnalyzerCtx,
-    AstTypeReport, Binder, ExprTypeDeriver, TypeDeriver, TypeSystem,
+    AstTypeReport, Binder, ExprTypeDeriver, FinishingScope, TypeDeriver, TypeSystem,
 };
 
 impl<'q> Analyzer<'q> for MultisetStmt<'q, Raw> {
@@ -88,11 +88,12 @@ impl<'q> Binder<'q> for MultisetStmt<'q, Raw> {
 
         // Pop bound statement frame from context stack.
         let mut frame = meta.binder.pop_frame(None)?;
+        let mut body = meta.binder.take_stmt_body()?;
 
         // If inner statement is SELECT do the following:
         // 1. Validate grouping expressions
         // 2. Push back FROM clause out of frame context
-        if let MultisetInner::Select(stmt) = meta.binder.stmt_body_mut()? {
+        if let MultisetInner::Select(stmt) = &mut body {
             // Put back select list into SELECT statement.
             stmt.set_sel_lst(frame.take_bound_sel_lst()?);
 
@@ -113,12 +114,22 @@ impl<'q> Binder<'q> for MultisetStmt<'q, Raw> {
                 stmt.set_grby(grby);
             }
 
-            frame.check_grouping(stmt)?;
+            // The frame is off the stack and its FROM is in the statement, so
+            // the scope the target vars are read through is assembled by hand.
+            let stmt: &SelectStmt<'q, Analyzed> = stmt;
+            let scope = FinishingScope {
+                binder: &meta.binder,
+                own: FrameView {
+                    ctes: &frame.ctes,
+                    from: stmt.from_ref(),
+                },
+            };
+            frame.check_grouping(stmt, &scope)?;
         }
 
         Ok(Self::BoundNode::from_parts(
             std::mem::take(&mut frame.ctes),
-            meta.binder.take_stmt_body()?,
+            body,
             order_by,
             limit,
         ))
@@ -303,7 +314,7 @@ impl<'q> Analyzer<'q> for Ctes<'q, Raw> {
         }
 
         for cte in raw_ctes {
-            let analyzed_cte = Rc::new(cte.analyze(meta)?);
+            let analyzed_cte = cte.analyze(meta)?;
             // Every analyzed CTE joins the current scope right away,
             // so bodies of subsequent CTEs in the same WITH clause can reference it.
             meta.binder.top_frame_mut()?.ctes.add(analyzed_cte);

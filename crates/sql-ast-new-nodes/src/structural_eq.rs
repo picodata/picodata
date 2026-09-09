@@ -6,22 +6,24 @@
 //! `expr/structural_eq.rs` for expressions, a `structural_eq` module beside each
 //! statement node - is written a single time.
 //!
-//! The `Scope` parameter is the correspondence between the relations the two
-//! compared subtrees introduce. Binding mints a fresh
-//! [`TableFactor`](crate::table_expression::TableFactor) per relation, so the same
-//! subquery written twice owns two of them, and its own column references would
-//! compare unequal by identity. Comparing such a pair therefore records which
-//! relations correspond ([`AstState::pair_relations`](crate::AstState::pair_relations));
-//! references to anything outside them stay identity-compared, which is what tells
-//! a correlated reference to one query level from a reference to another.
-//! [`Raw`](crate::Raw) resolves nothing and its scope is `()`.
+//! The `Scope` parameter is what a state threads through the comparison
+//! ([`AstState::EqScope`](crate::AstState::EqScope)). [`Raw`](crate::Raw) needs
+//! none. In [`Analyzed`](crate::Analyzed) a resolved column reference is a
+//! position in an enclosing statement
+//! ([`BoundVar`](crate::table_expression::BoundVar)), so the same subquery
+//! written twice binds its references to equal values, and a correlated
+//! reference to one query level differs from a reference to another by depth.
+//! Written at two different depths, its references into its own subqueries
+//! differ by that distance; the scope is the pair of depths
+//! ([`EqDepths`](crate::scope::EqDepths)) that relates them.
 //!
 //! Entry points - [`Expr::structural_eq`](crate::expr::Expr::structural_eq) and the
-//! [`PartialEq`] sugar over raw nodes - start from an empty scope. Inside the walk
-//! every recursion must go through [`eq_with`](StructuralEq::eq_with), never through
-//! `==`, so the scope reaches the column references.
-
-use std::rc::Rc;
+//! [`PartialEq`] sugar over raw nodes - start from the default scope: both sides
+//! written at the same depth. A caller comparing across depths calls
+//! [`eq_with`](StructuralEq::eq_with) with its own
+//! [`EqDepths`](crate::scope::EqDepths). Inside the walk every recursion must
+//! go through [`eq_with`](StructuralEq::eq_with), never through `==`, so the
+//! scope reaches the column references.
 
 use crate::Ident;
 
@@ -31,12 +33,6 @@ pub trait StructuralEq<Scope> {
 }
 
 impl<Scope, T: StructuralEq<Scope>> StructuralEq<Scope> for Box<T> {
-    fn eq_with(&self, other: &Self, scope: &mut Scope) -> bool {
-        T::eq_with(self, other, scope)
-    }
-}
-
-impl<Scope, T: StructuralEq<Scope>> StructuralEq<Scope> for Rc<T> {
     fn eq_with(&self, other: &Self, scope: &mut Scope) -> bool {
         T::eq_with(self, other, scope)
     }

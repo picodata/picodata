@@ -10,22 +10,23 @@
 //! declares it.
 
 use std::collections::HashSet;
-use std::rc::Rc;
 
 use smol_str::format_smolstr;
 
 use crate::expr::using_merged_expr;
-use crate::{semantic_err, texpr_from_attribute, texpr_from_derived_type};
+use crate::{analyze_err, semantic_err, texpr_from_attribute, texpr_from_derived_type};
 use sql_ast_new_nodes::error::{AstErr, AstResult};
 use sql_ast_new_nodes::expr::{Expr, ExprInner};
-use sql_ast_new_nodes::multiset::{Cte, MultisetStmt};
+use sql_ast_new_nodes::multiset::MultisetStmt;
 use sql_ast_new_nodes::rendering::Rendered;
+use sql_ast_new_nodes::scope::{CteRef, Depth, Scope};
 use sql_ast_new_nodes::select::ProjectionExpr;
 use sql_ast_new_nodes::table_expression::{
     AnalyzedCteOrTable, AttributeView, BoundVar, From, FromEntry, TableFactor, TableFactorInner,
 };
-use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, NamedEntity};
+use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, Ident, NamedEntity};
 use sql_ir::ir::relation::{Column, ColumnRole};
+use sql_ir::ir::types::DerivedType;
 
 use super::TypeSystem;
 
@@ -37,10 +38,14 @@ pub(crate) fn missing_from_entry_error(t_name: &str) -> AstErr {
 
 /// Asterisk resolver.
 pub(crate) trait ResolveFromAsterisk<'q> {
-    fn resolve_asterisk(
+    /// `depth` is the frame this FROM clause belongs to: what the
+    /// manufactured column references record.
+    fn resolve_asterisk<S: Scope<'q> + ?Sized>(
         &self,
         qualifier: Option<&str>,
+        depth: Depth,
         type_system: &mut TypeSystem,
+        scope: &S,
     ) -> Option<AstResult<Vec<ProjectionExpr<'q, Analyzed>>>>;
 }
 
@@ -75,25 +80,36 @@ impl<'q> ResolveFromAsterisk<'q> for From<'q, Analyzed> {
     ///
     /// expected to resolve select list into all the columns of `t1`
     /// concatenated with all the columns of `t2`.
-    fn resolve_asterisk(
+    fn resolve_asterisk<S: Scope<'q> + ?Sized>(
         &self,
         qualifier: Option<&str>,
+        depth: Depth,
         type_system: &mut TypeSystem,
+        scope: &S,
     ) -> Option<AstResult<Vec<ProjectionExpr<'q, Analyzed>>>> {
         // TODO: design HINTs for queries like `SELECT t1.* FROM t1 AS x`
         let Some(t_name) = qualifier else {
-            return Some(resolve_unqualified_asterisk(self, type_system));
+            return Some(resolve_unqualified_asterisk(
+                self,
+                depth,
+                type_system,
+                scope,
+            ));
         };
         // A qualified asterisk names one relation and expands to *its* columns,
         // so a USING merge does not hide anything from it.
         self.entries()
             .iter()
-            .find(|entry| entry.name().is_some_and(|name| name == t_name))
-            .map(|entry| {
+            .enumerate()
+            .find(|(_, entry)| entry.name().is_some_and(|name| name == t_name))
+            .map(|(entry_pos, entry)| {
                 entry.resolve_asterisk(AsteriskResolver::new(
+                    depth,
+                    entry_pos,
                     entry.tbl_factor(),
                     type_system,
                     &HashSet::new(),
+                    scope,
                 ))
             })
     }
@@ -116,12 +132,14 @@ impl<'q> ResolveFromAsterisk<'q> for From<'q, Analyzed> {
 ///
 /// Both merged columns are then withheld from the per-entry expansion, so a
 /// name merged along a chain of joins is emitted exactly once.
-fn resolve_unqualified_asterisk<'q>(
+fn resolve_unqualified_asterisk<'q, S: Scope<'q> + ?Sized>(
     from: &From<'q, Analyzed>,
+    depth: Depth,
     type_system: &mut TypeSystem,
+    scope: &S,
 ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
     let mut total_proj = Vec::<ProjectionExpr<'q, Analyzed>>::new();
-    let mut reduced_columns = HashSet::<&BoundVar<'q>>::new();
+    let mut reduced_columns = HashSet::<BoundVar>::new();
     for using in from
         .entries()
         .iter()
@@ -141,24 +159,27 @@ fn resolve_unqualified_asterisk<'q>(
                 None => {
                     let t_expr = texpr_from_derived_type(using.data_type(), id);
                     (
-                        Expr::from_parts(
-                            ExprInner::Var(left.clone()),
-                            AnalyzedExprMeta::new_with_id(id),
-                        ),
+                        Expr::from_parts(ExprInner::Var(left), AnalyzedExprMeta::new_with_id(id)),
                         t_expr,
                     )
                 }
             };
             type_system.add_proj_elem(t_expr);
-            total_proj.push(ProjectionExpr::from_parts(expr, None));
+            let name = scope
+                .attribute(left)
+                .and_then(|attr| attr.name().map(Ident::normalized));
+            total_proj.push(ProjectionExpr::from_parts(expr, None, name));
         }
     }
 
-    for entry in from.entries().iter() {
+    for (entry_pos, entry) in from.entries().iter().enumerate() {
         let resolved = entry.resolve_asterisk(AsteriskResolver::new(
+            depth,
+            entry_pos,
             entry.tbl_factor(),
             type_system,
             &reduced_columns,
+            scope,
         ))?;
         total_proj.extend(resolved);
     }
@@ -168,22 +189,19 @@ fn resolve_unqualified_asterisk<'q>(
 /// Expansion against one FROM entry. A local trait, so that the analyzer can
 /// still write `factor.resolve_asterisk(..)` on a node type it does not own.
 trait ResolveAsterisk<'q> {
-    fn resolve_asterisk(
+    fn resolve_asterisk<S: Scope<'q> + ?Sized>(
         &self,
-        asterisk_resolver: AsteriskResolver<'q, '_>,
+        asterisk_resolver: AsteriskResolver<'q, '_, S>,
     ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>>;
 }
 
 impl<'q> ResolveAsterisk<'q> for FromEntry<'q, Analyzed> {
     /// Resolve asterisk for [`FromEntry`].
-    fn resolve_asterisk(
+    fn resolve_asterisk<S: Scope<'q> + ?Sized>(
         &self,
-        asterisk_resolver: AsteriskResolver<'q, '_>,
+        asterisk_resolver: AsteriskResolver<'q, '_, S>,
     ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
-        match self {
-            Self::TableFactor(tbl_factor) => tbl_factor.resolve_asterisk(asterisk_resolver),
-            Self::JoinedTable(joined_tbl) => joined_tbl.table.resolve_asterisk(asterisk_resolver),
-        }
+        self.tbl_factor().resolve_asterisk(asterisk_resolver)
     }
 }
 
@@ -193,18 +211,18 @@ impl<'q> ResolveAsterisk<'q> for TableFactor<'q, Analyzed> {
     /// the one recoverable-by-the-user case: naming the original table
     /// instead of its alias gets the dedicated "perhaps you meant the alias" error
     /// and anything else the generic missing-FROM-entry error.
-    fn resolve_asterisk(
+    fn resolve_asterisk<S: Scope<'q> + ?Sized>(
         &self,
-        asterisk_resolver: AsteriskResolver<'q, '_>,
+        asterisk_resolver: AsteriskResolver<'q, '_, S>,
     ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
         self.inner.resolve_asterisk(asterisk_resolver)
     }
 }
 
 impl<'q> ResolveAsterisk<'q> for TableFactorInner<'q, Analyzed> {
-    fn resolve_asterisk(
+    fn resolve_asterisk<S: Scope<'q> + ?Sized>(
         &self,
-        asterisk_resolver: AsteriskResolver<'q, '_>,
+        asterisk_resolver: AsteriskResolver<'q, '_, S>,
     ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
         match self {
             Self::CteOrTable(cte_or_table) => cte_or_table.resolve_asterisk(asterisk_resolver),
@@ -214,13 +232,13 @@ impl<'q> ResolveAsterisk<'q> for TableFactorInner<'q, Analyzed> {
     }
 }
 
-impl<'q> ResolveAsterisk<'q> for AnalyzedCteOrTable<'q> {
-    fn resolve_asterisk(
+impl<'q> ResolveAsterisk<'q> for AnalyzedCteOrTable {
+    fn resolve_asterisk<S: Scope<'q> + ?Sized>(
         &self,
-        asterisk_resolver: AsteriskResolver<'q, '_>,
+        asterisk_resolver: AsteriskResolver<'q, '_, S>,
     ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
         match self {
-            Self::Cte(cte) => asterisk_resolver.resolve_from_cte(cte),
+            Self::Cte { cte, .. } => asterisk_resolver.resolve_from_cte(*cte),
             Self::Table(table) => asterisk_resolver.resolve_from_columns(&table.columns),
         }
     }
@@ -228,16 +246,20 @@ impl<'q> ResolveAsterisk<'q> for AnalyzedCteOrTable<'q> {
 
 /// Context for expanding one `*` / `t.*`. Expansion manufactures resolved
 /// column references that never existed in the source; each needs the
-/// `Rc`-shared FROM to point into, the position of the relation being
-/// expanded, and fresh type-system mirror ids, so the synthesized references
-/// end up typed exactly like explicitly written ones.
+/// position of the relation being expanded (`depth` and `entry`, see
+/// [`BoundVar`]), the scope a CTE-backed relation's body is read through, and
+/// fresh type-system mirror ids, so the synthesized references end up typed
+/// exactly like explicitly written ones.
 ///
 /// `reduced_vars` names the columns a `USING` merge has already emitted once,
 /// up front. It is empty for a qualified asterisk.
-struct AsteriskResolver<'q, 'ast> {
-    tbl_factor: &'ast Rc<TableFactor<'q, Analyzed>>,
+struct AsteriskResolver<'q, 'ast, S: Scope<'q> + ?Sized> {
+    depth: Depth,
+    entry: usize,
+    tbl_factor: &'ast TableFactor<'q, Analyzed>,
     type_system: &'ast mut TypeSystem,
-    reduced_vars: &'ast HashSet<&'ast BoundVar<'q>>,
+    reduced_vars: &'ast HashSet<BoundVar>,
+    scope: &'ast S,
 }
 
 const SUBQUERY_DISPLAY_PREFIX: usize = 32;
@@ -245,52 +267,62 @@ const SUBQUERY_DISPLAY_PREFIX: usize = 32;
 fn proj_expr<'q>(
     ts: &mut TypeSystem,
     attr: AttributeView<'q, '_>,
-    var: BoundVar<'q>,
+    var: BoundVar,
 ) -> ProjectionExpr<'q, Analyzed> {
+    let name = attr.name().map(Ident::normalized);
     let t_expr = texpr_from_attribute(attr, ts.inc_expr_id());
-    let proj_expr = ProjectionExpr::from_bound_var(var, t_expr.id());
+    let proj_expr = ProjectionExpr::from_bound_var(var, t_expr.id(), name);
     ts.add_proj_elem(t_expr);
     proj_expr
 }
 
-impl<'q, 'ast> AsteriskResolver<'q, 'ast> {
+impl<'q, 'ast, S: Scope<'q> + ?Sized> AsteriskResolver<'q, 'ast, S> {
     fn new(
-        tbl_factor: &'ast Rc<TableFactor<'q, Analyzed>>,
+        depth: Depth,
+        entry: usize,
+        tbl_factor: &'ast TableFactor<'q, Analyzed>,
         type_system: &'ast mut TypeSystem,
-        reduced_vars: &'ast HashSet<&'ast BoundVar<'q>>,
+        reduced_vars: &'ast HashSet<BoundVar>,
+        scope: &'ast S,
     ) -> Self {
         Self {
+            depth,
+            entry,
             tbl_factor,
             type_system,
             reduced_vars,
+            scope,
         }
     }
 
-    fn bound_var(&self, column_pos: usize) -> BoundVar<'q> {
-        BoundVar::from_parts(Rc::clone(self.tbl_factor), column_pos)
+    fn bound_var(&self, column_pos: usize, data_type: DerivedType) -> BoundVar {
+        BoundVar::new(self.depth, self.entry, column_pos, data_type)
     }
 
     /// A column a `USING` merge already emitted up front.
-    fn reduced(&self, var: &BoundVar<'q>) -> bool {
-        self.reduced_vars.contains(var)
+    fn reduced(&self, var: BoundVar) -> bool {
+        self.reduced_vars.contains(&var)
     }
 
-    fn resolve_from_cte(
-        self,
-        cte: &'ast Cte<'q, Analyzed>,
-    ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
+    fn resolve_from_cte(self, cte: CteRef) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
+        let cte = self.scope.cte(cte).ok_or_else(|| {
+            analyze_err(format_smolstr!(
+                "expected the declaration of CTE '{}' in scope",
+                self.tbl_factor.inner.name().unwrap_or_default()
+            ))
+        })?;
         let mut proj_exprs = vec![];
         for column_pos in 0..cte.body_ref().result_columns_cnt()? {
-            let var = self.bound_var(column_pos);
-            if self.reduced(&var) {
-                continue;
-            }
             let attr = cte.attribute(column_pos).ok_or_else(|| {
                 semantic_err(format_smolstr!(
                     "cannot get attribute from '{}' CTE result",
                     cte.name.as_str()
                 ))
             })?;
+            let var = self.bound_var(column_pos, attr.data_type());
+            if self.reduced(var) {
+                continue;
+            }
 
             proj_exprs.push(proj_expr(self.type_system, attr, var));
         }
@@ -308,8 +340,8 @@ impl<'q, 'ast> AsteriskResolver<'q, 'ast> {
             .enumerate()
             .filter(|(_, col)| matches!(col.role, ColumnRole::User))
         {
-            let var = self.bound_var(column_pos);
-            if self.reduced(&var) {
+            let var = self.bound_var(column_pos, column.r#type);
+            if self.reduced(var) {
                 continue;
             }
             proj_exprs.push(proj_expr(
@@ -327,20 +359,20 @@ impl<'q, 'ast> AsteriskResolver<'q, 'ast> {
     ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
         let mut proj_exprs = vec![];
         for column_pos in 0..stmt.result_columns_cnt()? {
-            let var = self.bound_var(column_pos);
-            if self.reduced(&var) {
-                continue;
-            }
             let attr = stmt.attribute(column_pos).ok_or_else(|| {
                 semantic_err(format_smolstr!(
                     "cannot get attribute from subquery '({})' result",
-                    Rendered::<'_, 'q, Analyzed, _>::new(stmt, Vec::new())
+                    Rendered::<'_, 'q, Analyzed, _>::new(stmt, self.scope.render_scope())
                         .to_string()
                         .chars()
                         .take(SUBQUERY_DISPLAY_PREFIX)
                         .collect::<String>()
                 ))
             })?;
+            let var = self.bound_var(column_pos, attr.data_type());
+            if self.reduced(var) {
+                continue;
+            }
 
             proj_exprs.push(proj_expr(self.type_system, attr, var));
         }
