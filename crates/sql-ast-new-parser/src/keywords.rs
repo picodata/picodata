@@ -45,7 +45,7 @@ use crate::parse;
 /// that the input was accepted and that it produced the tree it should have.
 fn render(query: &str) -> Result<String, String> {
     match parse(query) {
-        Ok(ast) => Ok(normalize_whitespace(&ast.root.to_string())),
+        Ok(ast) => Ok(normalize_whitespace(&ast.to_string())),
         Err(err) => Err(err.to_string()),
     }
 }

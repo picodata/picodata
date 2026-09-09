@@ -66,8 +66,12 @@ use std::fmt::{Display, Error, Formatter};
 
 use crate::error::AstResult;
 use crate::expr::{Expr, ValuesRow};
+use crate::rendering::{raw_display, Render};
+use crate::scope::FrameView;
 use crate::select::SelectStmt;
-use crate::table_expression::{AttributeView, OrdrByGrpByElem, UniqueColumnRoute};
+use crate::table_expression::{
+    AttributeView, From as FromClause, OrdrByGrpByElem, UniqueColumnRoute,
+};
 use crate::{Analyzed, AstState, Ident, NamedEntity, Raw};
 use sql_ir::ir::relation::Column;
 use sql_ir::ir::types::DerivedType;
@@ -197,6 +201,22 @@ impl<'q> MultisetStmt<'q, Analyzed> {
         &mut self.inner
     }
 
+    /// The `FROM` clause of the `SELECT` body, if the body is one.
+    pub fn from_ref(&self) -> Option<&FromClause<'q, Analyzed>> {
+        match &self.inner {
+            MultisetInner::Select(stmt) => stmt.from_ref(),
+            MultisetInner::Values(_) | MultisetInner::Operation(_) => None,
+        }
+    }
+
+    /// What this statement contributes to the scope of everything nested in it.
+    pub fn frame_view(&self) -> FrameView<'_, 'q> {
+        FrameView {
+            ctes: &self.ctes,
+            from: self.from_ref(),
+        }
+    }
+
     #[allow(clippy::type_complexity)]
     pub fn parts_ref(
         &self,
@@ -215,21 +235,50 @@ impl<'q> MultisetStmt<'q, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for MultisetStmt<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+/// A statement is a scope level: it enters the render scope before any of its
+/// parts and leaves it afterwards, on the error path too.
+impl<'q, State: AstState<'q>> Render<'q, State> for MultisetStmt<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        State::enter_stmt(self, scope);
+        let res = self.render_parts(f, scope);
+        State::exit_stmt(scope);
+        res
+    }
+}
+
+impl<'q, State: AstState<'q>> MultisetStmt<'q, State> {
+    fn render_parts<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         if !self.ctes.is_empty() {
-            write!(f, "{} ", self.ctes)?;
+            self.ctes.render(f, scope)?;
+            f.write_str(" ")?;
         }
-        write!(f, "{}", self.inner)?;
-        self.order_by
-            .as_ref()
-            .map_or(Ok(()), |order_by| write!(f, " {order_by}"))?;
-        self.limit
-            .as_ref()
-            .map_or(Ok(()), |limit| write!(f, " {limit}"))?;
+        self.inner.render(f, scope)?;
+        if let Some(order_by) = &self.order_by {
+            f.write_str(" ")?;
+            order_by.render(f, scope)?;
+        }
+        if let Some(limit) = &self.limit {
+            write!(f, " {limit}")?;
+        }
         Ok(())
     }
 }
+
+raw_display!(MultisetStmt);
 
 pub enum MultisetInner<'q, State: AstState<'q>> {
     Values(ValuesStmt<'q, State>),
@@ -237,12 +286,19 @@ pub enum MultisetInner<'q, State: AstState<'q>> {
     Operation(Operation<'q, State>),
 }
 
-impl<'q, State: AstState<'q>> Display for MultisetInner<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for MultisetInner<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
-            MultisetInner::Values(values) => write!(f, "{values}"),
-            MultisetInner::Select(select) => write!(f, "{select}"),
-            MultisetInner::Operation(operation) => write!(f, "{operation}"),
+            MultisetInner::Values(values) => values.render(f, scope),
+            MultisetInner::Select(select) => select.render(f, scope),
+            MultisetInner::Operation(operation) => operation.render(f, scope),
         }
     }
 }
@@ -296,13 +352,24 @@ impl<'q> Operation<'q, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Operation<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "({}) {}", self.left, self.op)?;
+impl<'q, State: AstState<'q>> Render<'q, State> for Operation<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        f.write_str("(")?;
+        self.left.render(f, scope)?;
+        write!(f, ") {}", self.op)?;
         if matches!(self.dup_elimination, OpDupElimination::All) {
             write!(f, " ALL")?;
         }
-        write!(f, " ({})", self.right)
+        f.write_str(" (")?;
+        self.right.render(f, scope)?;
+        f.write_str(")")
     }
 }
 
@@ -327,15 +394,24 @@ pub struct OrderBy<'q, State: AstState<'q>> {
     elems: Vec<OrderByElement<'q, State>>,
 }
 
-impl<'q, State: AstState<'q>> Display for OrderBy<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for OrderBy<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         // Parsing guarantees at least one ORDER BY element.
         let Some((first_elem, other_elems)) = self.elems.split_first() else {
             return Ok(());
         };
-        write!(f, "ORDER BY {first_elem}")?;
+        f.write_str("ORDER BY ")?;
+        first_elem.render(f, scope)?;
         for elem in other_elems {
-            write!(f, ", {elem}")?;
+            f.write_str(", ")?;
+            elem.render(f, scope)?;
         }
         Ok(())
     }
@@ -378,9 +454,17 @@ pub struct OrderByElement<'q, State: AstState<'q>> {
     pub nulls: OrderByNulls,
 }
 
-impl<'q, State: AstState<'q>> Display for OrderByElement<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{} {}", self.expr, self.direction)?;
+impl<'q, State: AstState<'q>> Render<'q, State> for OrderByElement<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        self.expr.render(f, scope)?;
+        write!(f, " {}", self.direction)?;
         if !self.nulls.is_default() {
             write!(f, " {}", self.nulls)?;
         }
@@ -509,14 +593,23 @@ impl<'q, State: AstState<'q>> Default for Ctes<'q, State> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Ctes<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for Ctes<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         let Some((first, ctes)) = self.ctes.split_first() else {
             return Ok(());
         };
-        write!(f, "WITH {first}")?;
+        f.write_str("WITH ")?;
+        first.render(f, scope)?;
         for cte in ctes {
-            write!(f, ", {cte}")?;
+            f.write_str(", ")?;
+            cte.render(f, scope)?;
         }
         Ok(())
     }
@@ -573,8 +666,15 @@ impl<'q, State: AstState<'q>> NamedEntity for Cte<'q, State> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Cte<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for Cte<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         write!(f, "{}", self.name)?;
         if let Some((first, columns)) = self.columns.split_first() {
             write!(f, " ({first}")?;
@@ -583,7 +683,9 @@ impl<'q, State: AstState<'q>> Display for Cte<'q, State> {
             }
             write!(f, ")")?;
         }
-        write!(f, " AS ({})", self.body)
+        f.write_str(" AS (")?;
+        self.body.render(f, scope)?;
+        f.write_str(")")
     }
 }
 
@@ -608,16 +710,24 @@ pub struct ValuesStmt<'q, State: AstState<'q>> {
     columns: State::ValuesColumnsT,
 }
 
-impl<'q, State: AstState<'q>> Display for ValuesStmt<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for ValuesStmt<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         write!(f, "VALUES ")?;
         // Parsing guarantees at least one row.
         let Some((first_values_row, other_values_rows)) = self.rows.split_first() else {
             return Ok(());
         };
-        write!(f, "{first_values_row}")?;
+        first_values_row.render(f, scope)?;
         for values_row in other_values_rows {
-            write!(f, ", {values_row}")?;
+            f.write_str(", ")?;
+            values_row.render(f, scope)?;
         }
         Ok(())
     }

@@ -13,9 +13,10 @@
 //! * [`ProjectionExpr`], an expression with an optional alias.
 
 use std::collections::HashSet;
-use std::fmt::{Display, Error, Formatter};
+use std::fmt::{Error, Formatter};
 
 use crate::expr::{Expr, ExprInner};
+use crate::rendering::{raw_display, Render};
 use crate::table_expression::{
     AttributeView, BoundVar, From, GroupBy, TableExpression, UniqueColumnRoute,
 };
@@ -180,16 +181,34 @@ impl<'q> SelectStmt<'q, Analyzed> {
     pub fn select_list(&self) -> &SelectListExprs<'q, Analyzed> {
         &self.select_list.elements
     }
-}
 
-impl<'q, State: AstState<'q>> Display for SelectStmt<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}", self.select_list)?;
+    /// The `FROM` clause, if the statement has a table expression.
+    pub fn from_ref(&self) -> Option<&From<'q, Analyzed>> {
         self.table_expression
             .as_ref()
-            .map_or(Ok(()), |table_expression| write!(f, " {table_expression}"))
+            .map(TableExpression::from_ref)
     }
 }
+
+impl<'q, State: AstState<'q>> Render<'q, State> for SelectStmt<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        self.select_list.render(f, scope)?;
+        if let Some(table_expression) = &self.table_expression {
+            f.write_str(" ")?;
+            table_expression.render(f, scope)?;
+        }
+        Ok(())
+    }
+}
+
+raw_display!(SelectStmt);
 
 #[derive(Default)]
 pub struct SelectList<'q, State: AstState<'q>> {
@@ -299,15 +318,21 @@ impl<'q> SelectList<'q, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for SelectList<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for SelectList<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         if self.is_distinct {
             write!(f, "SELECT DISTINCT ")?;
         } else {
             write!(f, "SELECT ")?;
         }
-        write!(f, "{}", self.elements)?;
-        Ok(())
+        self.elements.render(f, scope)
     }
 }
 
@@ -346,15 +371,23 @@ impl<'q, State: AstState<'q>> Default for SelectListExprs<'q, State> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for SelectListExprs<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for SelectListExprs<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         // Parsing guarantees a non-empty select list.
         let Some((first, rest)) = self.0.split_first() else {
             return Ok(());
         };
-        write!(f, "{first}")?;
+        first.render(f, scope)?;
         for elem in rest {
-            write!(f, ", {elem}")?;
+            f.write_str(", ")?;
+            elem.render(f, scope)?;
         }
         Ok(())
     }
@@ -365,12 +398,15 @@ pub enum SelectListElem<'q> {
     Expr(ProjectionExpr<'q, Raw>),
 }
 
-impl Display for SelectListElem<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q> Render<'q, Raw> for SelectListElem<'q> {
+    fn render<'a>(&'a self, f: &mut Formatter<'_>, scope: &mut ()) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
             SelectListElem::Asterisk(Some(specifier)) => write!(f, "{specifier}.*"),
             SelectListElem::Asterisk(None) => write!(f, "*"),
-            SelectListElem::Expr(expr) => write!(f, "{}", expr),
+            SelectListElem::Expr(expr) => expr.render(f, scope),
         }
     }
 }
@@ -382,9 +418,16 @@ pub struct ProjectionExpr<'q, State: AstState<'q>> {
     pub alias: Option<Ident>,
 }
 
-impl<'q, State: AstState<'q>> Display for ProjectionExpr<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}", self.expr)?;
+impl<'q, State: AstState<'q>> Render<'q, State> for ProjectionExpr<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        self.expr.render(f, scope)?;
         self.alias
             .as_ref()
             .map_or(Ok(()), |alias| write!(f, " AS {alias}"))

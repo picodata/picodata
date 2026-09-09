@@ -1,5 +1,5 @@
-//! Rendering: every node's `Display`, and the precedence ladder that decides
-//! where parentheses have to be re-inserted.
+//! Rendering: every expression node's [`Render`], and the precedence ladder
+//! that decides where parentheses have to be re-inserted.
 //!
 //! Rendering is part of correctness here, not a debugging aid. The parser drops
 //! the parentheses a query was written with, so the only way a rendered tree can
@@ -14,6 +14,7 @@ use std::fmt::{Display, Error, Formatter};
 use sql_ir::ir::types::{CastType, NestedType};
 
 use super::*;
+use crate::rendering::{raw_display, render_via_display, Render};
 
 impl<'q, State: AstState<'q>> Expr<'q, State> {
     /// Binding tier of this expression's rendered form: [`Precedence::Atom`]
@@ -57,17 +58,33 @@ impl<'q, State: AstState<'q>> Expr<'q, State> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Expr<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        State::fmt_expr(self, f)
+impl<'q, State: AstState<'q>> Render<'q, State> for Expr<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        State::fmt_expr(self, f, scope)
     }
 }
 
-impl<'q, State: AstState<'q>> Display for ExprInner<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+raw_display!(Expr);
+
+impl<'q, State: AstState<'q>> Render<'q, State> for ExprInner<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
             ExprInner::Nil => write!(f, "Nil"),
-            ExprInner::BinaryOperation(operation) => write!(f, "{operation}"),
+            ExprInner::BinaryOperation(operation) => operation.render(f, scope),
             ExprInner::UnaryOperation(UnaryOperation { operand, operator }) => {
                 // The space after a sign is load-bearing: `- 1` re-parses as
                 // this node over a literal, while a glued `-1` would lex as
@@ -77,30 +94,34 @@ impl<'q, State: AstState<'q>> Display for ExprInner<'q, State> {
                     UnaryOp::Not => Precedence::Not,
                     UnaryOp::Minus | UnaryOp::Plus => Precedence::UnarySign,
                 };
-                write_operand(f, operand, tier, OperandPos::Left)
+                write_operand(f, scope, operand, tier, OperandPos::Left)
             }
-            ExprInner::Var(var) => write!(f, "{var}"),
+            ExprInner::Var(var) => var.render(f, scope),
             ExprInner::Literal(Literal { value, quotes, .. }) => {
                 let quote = quotes.quote();
                 write!(f, "{quote}{value}{quote}")
             }
-            ExprInner::SubQuery(query) => write!(f, "({query})"),
-            ExprInner::Row(row) => write!(f, "{row}"),
-            ExprInner::Array(array) => write!(f, "{array}"),
-            ExprInner::WindowFunction(window_function) => write!(f, "{window_function}"),
-            ExprInner::FunctionCall(function_call) => write!(f, "{function_call}"),
+            ExprInner::SubQuery(query) => {
+                f.write_str("(")?;
+                query.render(f, scope)?;
+                f.write_str(")")
+            }
+            ExprInner::Row(row) => row.render(f, scope),
+            ExprInner::Array(array) => array.render(f, scope),
+            ExprInner::WindowFunction(window_function) => window_function.render(f, scope),
+            ExprInner::FunctionCall(function_call) => function_call.render(f, scope),
             ExprInner::Parameter(parameter) => write!(f, "{parameter}"),
-            ExprInner::Cast(cast) => write!(f, "{cast}"),
-            ExprInner::Like(like) => write!(f, "{like}"),
-            ExprInner::Similar(similar) => write!(f, "{similar}"),
-            ExprInner::Between(between) => write!(f, "{between}"),
-            ExprInner::In(in_expr) => write!(f, "{in_expr}"),
-            ExprInner::Is(is_expr) => write!(f, "{is_expr}"),
-            ExprInner::Index(index) => write!(f, "{index}"),
-            ExprInner::Trim(trim) => write!(f, "{trim}"),
-            ExprInner::Substring(substring) => write!(f, "{substring}"),
-            ExprInner::Case(case) => write!(f, "{case}"),
-            ExprInner::Exists(exists) => write!(f, "{exists}"),
+            ExprInner::Cast(cast) => cast.render(f, scope),
+            ExprInner::Like(like) => like.render(f, scope),
+            ExprInner::Similar(similar) => similar.render(f, scope),
+            ExprInner::Between(between) => between.render(f, scope),
+            ExprInner::In(in_expr) => in_expr.render(f, scope),
+            ExprInner::Is(is_expr) => is_expr.render(f, scope),
+            ExprInner::Index(index) => index.render(f, scope),
+            ExprInner::Trim(trim) => trim.render(f, scope),
+            ExprInner::Substring(substring) => substring.render(f, scope),
+            ExprInner::Case(case) => case.render(f, scope),
+            ExprInner::Exists(exists) => exists.render(f, scope),
             ExprInner::TimeFunction(time_function) => write!(f, "{time_function}"),
         }
     }
@@ -175,16 +196,19 @@ fn needs_parentheses(precedence: Precedence, op: Precedence, pos: OperandPos) ->
 /// ([`Right`](OperandPos::Right) and [`NonAssoc`](OperandPos::NonAssoc)
 /// positions), wrapping it in parentheses when re-parsing the bare form
 /// would regroup the expression or fail to parse.
-fn write_operand<'q, State: AstState<'q>>(
+fn write_operand<'a, 'q: 'a, State: AstState<'q>>(
     f: &mut Formatter<'_>,
-    operand: &Expr<'q, State>,
+    scope: &mut State::RenderScope<'a>,
+    operand: &'a Expr<'q, State>,
     op: Precedence,
     pos: OperandPos,
 ) -> Result<(), Error> {
     if needs_parentheses(State::display_precedence(operand), op, pos) {
-        write!(f, "({operand})")
+        f.write_str("(")?;
+        operand.render(f, scope)?;
+        f.write_str(")")
     } else {
-        write!(f, "{operand}")
+        operand.render(f, scope)
     }
 }
 
@@ -215,19 +239,26 @@ impl BinaryOp {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for BinaryOperation<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for BinaryOperation<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         let precedence = self.op.precedence();
-        write_operand(f, &self.left, precedence, self.op.left_operand_pos())?;
+        write_operand(f, scope, &self.left, precedence, self.op.left_operand_pos())?;
         write!(f, " {} ", self.op)?;
-        write_operand(f, &self.right, precedence, OperandPos::Right)
+        write_operand(f, scope, &self.right, precedence, OperandPos::Right)
     }
 }
 
 /// Renders `table.column` (or bare `column`). Unlike the rest of the node
-/// [`Display`] cluster, this leaf impl is used in production: the analyzer's
+/// rendering cluster, this leaf impl is used in production: the analyzer's
 /// column-resolution errors print the offending reference through it. It
-/// reaches no other node's [`Display`].
+/// reaches no other node's rendering.
 impl Display for RawVar {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         if let Some(table_name) = self.table_name.as_ref() {
@@ -238,40 +269,75 @@ impl Display for RawVar {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for ValuesRow<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+render_via_display!(RawVar);
+
+impl<'q, State: AstState<'q>> Render<'q, State> for ValuesRow<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         let Some((first_value, other_values)) = self.values.split_first() else {
             return write!(f, "()");
         };
-        write!(f, "({first_value}")?;
+        f.write_str("(")?;
+        first_value.render(f, scope)?;
         for value in other_values {
-            write!(f, ", {value}")?;
+            f.write_str(", ")?;
+            value.render(f, scope)?;
         }
         write!(f, ")")
     }
 }
 
-impl<'q, State: AstState<'q>> Display for ArrayLiteral<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for ArrayLiteral<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         write!(f, "ARRAY[")?;
         if let Some((first_elem, other_elems)) = self.elems.split_first() {
-            write!(f, "{first_elem}")?;
+            first_elem.render(f, scope)?;
             for elem in other_elems {
-                write!(f, ", {elem}")?;
+                f.write_str(", ")?;
+                elem.render(f, scope)?;
             }
         }
         write!(f, "]")
     }
 }
 
-impl<'q, State: AstState<'q>> Display for FunctionCall<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}({})", self.name, self.args)
+impl<'q, State: AstState<'q>> Render<'q, State> for FunctionCall<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        write!(f, "{}(", self.name)?;
+        self.args.render(f, scope)?;
+        f.write_str(")")
     }
 }
 
-impl<'q, State: AstState<'q>> Display for FunctionCallArgs<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for FunctionCallArgs<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
             FunctionCallArgs::CountAsterisk => write!(f, "*"),
             FunctionCallArgs::Exprs { distinct, exprs } => {
@@ -281,9 +347,10 @@ impl<'q, State: AstState<'q>> Display for FunctionCallArgs<'q, State> {
                 let Some((first, rest)) = exprs.split_first() else {
                     return Ok(());
                 };
-                write!(f, "{first}")?;
+                first.render(f, scope)?;
                 for expr in rest {
-                    write!(f, ", {expr}")?;
+                    f.write_str(", ")?;
+                    expr.render(f, scope)?;
                 }
                 Ok(())
             }
@@ -314,41 +381,93 @@ impl Display for CastTypeSql {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Cast<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for Cast<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self.syntax {
-            CastSyntax::Call => write!(f, "CAST({} AS {})", self.child, CastTypeSql(self.ty)),
+            CastSyntax::Call => {
+                f.write_str("CAST(")?;
+                self.child.render(f, scope)?;
+                write!(f, " AS {})", CastTypeSql(self.ty))
+            }
             CastSyntax::Postfix => {
-                write_operand(f, &self.child, Precedence::Postfix, OperandPos::Left)?;
+                write_operand(f, scope, &self.child, Precedence::Postfix, OperandPos::Left)?;
                 write!(f, "::{}", CastTypeSql(self.ty))
             }
-            CastSyntax::TypedLiteral => write!(f, "{} {}", CastTypeSql(self.ty), self.child),
+            CastSyntax::TypedLiteral => {
+                write!(f, "{} ", CastTypeSql(self.ty))?;
+                self.child.render(f, scope)
+            }
         }
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Like<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for Like<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         let op = if self.is_ilike { "ILIKE" } else { "LIKE" };
-        write_operand(f, &self.left, Precedence::Matching, OperandPos::NonAssoc)?;
+        write_operand(
+            f,
+            scope,
+            &self.left,
+            Precedence::Matching,
+            OperandPos::NonAssoc,
+        )?;
         write!(f, " {}{op} ", if self.is_not { "NOT " } else { "" })?;
-        write_operand(f, &self.right, Precedence::Matching, OperandPos::NonAssoc)?;
+        write_operand(
+            f,
+            scope,
+            &self.right,
+            Precedence::Matching,
+            OperandPos::NonAssoc,
+        )?;
         if let Some(escape) = &self.escape {
             write!(f, " ESCAPE ")?;
-            write_operand(f, escape, Precedence::Matching, OperandPos::NonAssoc)?;
+            write_operand(f, scope, escape, Precedence::Matching, OperandPos::NonAssoc)?;
         }
         Ok(())
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Similar<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write_operand(f, &self.left, Precedence::Matching, OperandPos::NonAssoc)?;
+impl<'q, State: AstState<'q>> Render<'q, State> for Similar<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        write_operand(
+            f,
+            scope,
+            &self.left,
+            Precedence::Matching,
+            OperandPos::NonAssoc,
+        )?;
         write!(f, " {}SIMILAR ", if self.is_not { "NOT " } else { "" })?;
-        write_operand(f, &self.right, Precedence::Matching, OperandPos::NonAssoc)?;
+        write_operand(
+            f,
+            scope,
+            &self.right,
+            Precedence::Matching,
+            OperandPos::NonAssoc,
+        )?;
         if let Some(escape) = &self.escape {
             write!(f, " ESCAPE ")?;
-            write_operand(f, escape, Precedence::Matching, OperandPos::NonAssoc)?;
+            write_operand(f, scope, escape, Precedence::Matching, OperandPos::NonAssoc)?;
         }
         Ok(())
     }
@@ -414,35 +533,72 @@ fn operand_renders_as_bexpr<'q, State: AstState<'q>>(
     needs_parentheses(State::display_precedence(operand), op, pos) || renders_as_bexpr(operand)
 }
 
-impl<'q, State: AstState<'q>> Display for Between<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write_operand(f, &self.left, Precedence::Matching, OperandPos::NonAssoc)?;
+impl<'q, State: AstState<'q>> Render<'q, State> for Between<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        write_operand(
+            f,
+            scope,
+            &self.left,
+            Precedence::Matching,
+            OperandPos::NonAssoc,
+        )?;
         write!(f, " {}BETWEEN ", if self.is_not { "NOT " } else { "" })?;
         if renders_as_bexpr(&self.center) {
-            write!(f, "{}", self.center)?;
+            self.center.render(f, scope)?;
         } else {
-            write!(f, "({})", self.center)?;
+            f.write_str("(")?;
+            self.center.render(f, scope)?;
+            f.write_str(")")?;
         }
         write!(f, " AND ")?;
-        write_operand(f, &self.right, Precedence::Matching, OperandPos::NonAssoc)
-    }
-}
-
-impl<'q, State: AstState<'q>> Display for InExpr<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write_operand(f, &self.left, Precedence::Matching, OperandPos::NonAssoc)?;
-        write!(
+        write_operand(
             f,
-            " {}IN {}",
-            if self.is_not { "NOT " } else { "" },
-            self.rhs
+            scope,
+            &self.right,
+            Precedence::Matching,
+            OperandPos::NonAssoc,
         )
     }
 }
 
-impl<'q, State: AstState<'q>> Display for IsExpr<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write_operand(f, &self.child, Precedence::Is, OperandPos::Left)?;
+impl<'q, State: AstState<'q>> Render<'q, State> for InExpr<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        write_operand(
+            f,
+            scope,
+            &self.left,
+            Precedence::Matching,
+            OperandPos::NonAssoc,
+        )?;
+        write!(f, " {}IN ", if self.is_not { "NOT " } else { "" })?;
+        self.rhs.render(f, scope)
+    }
+}
+
+impl<'q, State: AstState<'q>> Render<'q, State> for IsExpr<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        write_operand(f, scope, &self.child, Precedence::Is, OperandPos::Left)?;
         write!(
             f,
             " IS {}{}",
@@ -463,10 +619,19 @@ impl Display for IsValue {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for IndexExpr<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write_operand(f, &self.child, Precedence::Postfix, OperandPos::Left)?;
-        write!(f, "[{}]", self.which)
+impl<'q, State: AstState<'q>> Render<'q, State> for IndexExpr<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        write_operand(f, scope, &self.child, Precedence::Postfix, OperandPos::Left)?;
+        f.write_str("[")?;
+        self.which.render(f, scope)?;
+        f.write_str("]")
     }
 }
 
@@ -480,62 +645,114 @@ impl Display for TrimKind {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Trim<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for Trim<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         write!(f, "TRIM(")?;
         if self.kind.is_none() && self.pattern.is_none() {
-            return write!(f, "{})", self.target);
+            self.target.render(f, scope)?;
+            return f.write_str(")");
         }
         if let Some(kind) = &self.kind {
             write!(f, "{kind} ")?;
         }
         if let Some(pattern) = &self.pattern {
-            write!(f, "{pattern} ")?;
+            pattern.render(f, scope)?;
+            f.write_str(" ")?;
         }
-        write!(f, "FROM {})", self.target)
+        f.write_str("FROM ")?;
+        self.target.render(f, scope)?;
+        f.write_str(")")
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Substring<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for Substring<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        f.write_str("SUBSTRING(")?;
         match self {
             Substring::FromFor(target, start, length) => {
-                write!(f, "SUBSTRING({target} FROM {start} FOR {length})")
+                target.render(f, scope)?;
+                f.write_str(" FROM ")?;
+                start.render(f, scope)?;
+                f.write_str(" FOR ")?;
+                length.render(f, scope)?;
             }
             Substring::Regular(target, start, length) => {
-                write!(f, "SUBSTRING({target}, {start}, {length})")
+                target.render(f, scope)?;
+                f.write_str(", ")?;
+                start.render(f, scope)?;
+                f.write_str(", ")?;
+                length.render(f, scope)?;
             }
-            Substring::For(target, length) => write!(f, "SUBSTRING({target} FOR {length})"),
-            Substring::From(target, start) => write!(f, "SUBSTRING({target} FROM {start})"),
-            Substring::Similar(expr) => write!(f, "SUBSTRING({expr})"),
+            Substring::For(target, length) => {
+                target.render(f, scope)?;
+                f.write_str(" FOR ")?;
+                length.render(f, scope)?;
+            }
+            Substring::From(target, start) => {
+                target.render(f, scope)?;
+                f.write_str(" FROM ")?;
+                start.render(f, scope)?;
+            }
+            Substring::Similar(expr) => expr.render(f, scope)?,
         }
+        f.write_str(")")
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Case<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for Case<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         write!(f, "CASE")?;
         if let Some(search) = &self.search {
-            write!(f, " {search}")?;
+            f.write_str(" ")?;
+            search.render(f, scope)?;
         }
         for (condition, result) in &self.when_blocks {
-            write!(f, " WHEN {condition} THEN {result}")?;
+            f.write_str(" WHEN ")?;
+            condition.render(f, scope)?;
+            f.write_str(" THEN ")?;
+            result.render(f, scope)?;
         }
         if let Some(else_expr) = &self.else_expr {
-            write!(f, " ELSE {else_expr}")?;
+            f.write_str(" ELSE ")?;
+            else_expr.render(f, scope)?;
         }
         write!(f, " END")
     }
 }
 
-impl<'q, State: AstState<'q>> Display for Exists<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(
-            f,
-            "{}EXISTS ({})",
-            if self.is_not { "NOT " } else { "" },
-            self.subquery
-        )
+impl<'q, State: AstState<'q>> Render<'q, State> for Exists<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        write!(f, "{}EXISTS (", if self.is_not { "NOT " } else { "" })?;
+        self.subquery.render(f, scope)?;
+        f.write_str(")")
     }
 }
 

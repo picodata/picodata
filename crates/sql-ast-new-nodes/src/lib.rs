@@ -26,14 +26,17 @@
 //!
 //!
 //! # Rendering and comparison
-//! The [`Display`] cluster writes a tree back as SQL, and it is built to
+//! The [`Render`] cluster writes a tree back as SQL, and it is built to
 //! round-trip: it re-inserts the parentheses the parser dropped, driven by the
 //! same precedence ladder, so pinning a rendering pins the *shape* of the tree
 //! rather than the mere fact that a query was accepted. That is what every
-//! stage's snapshot tests assert through. Two leaves have production readers as
-//! well — [`write_sql_ident`] (with [`Ident`]'s [`Display`]) and
-//! `Display for RawVar` — because the analyzer's column-resolution errors
-//! print the offending reference.
+//! stage's snapshot tests assert through, via the [`Display`] of the tree root.
+//! It is one walk for both states, threading a state-specific scope
+//! ([`AstState::RenderScope`]) the way structural comparison does; see
+//! [`rendering`]. Two leaves have production readers as well —
+//! [`write_sql_ident`] (with [`Ident`]'s [`Display`]) and `Display for RawVar`
+//! — because the analyzer's column-resolution errors print the offending
+//! reference.
 //!
 //! Alongside it, structural comparison answers what rendering cannot: do two
 //! different spellings produce the same tree? It is one walk for both states
@@ -73,6 +76,7 @@ pub mod error;
 pub mod expr;
 pub mod multiset;
 pub mod rendering;
+pub mod scope;
 pub mod select;
 mod structural_eq;
 pub mod table_expression;
@@ -95,6 +99,8 @@ use sql_ir::ir::types::{DerivedType, NestedType, UnrestrictedType};
 /// `nodes` that stores it, in [`AnalyzedExprMeta`].
 pub type AstNodeId = u32;
 
+use crate::rendering::{render_via_display, Render};
+use crate::scope::FrameView;
 use crate::table_expression::{BoundJoinUsingVar, JoinUsingColumn, RelationPairs};
 
 pub use crate::structural_eq::StructuralEq;
@@ -139,6 +145,8 @@ impl NamedEntity for Ident {
         Some(self.as_str())
     }
 }
+
+render_via_display!(Ident);
 
 impl PartialEq<str> for Ident {
     fn eq(&self, other: &str) -> bool {
@@ -205,20 +213,28 @@ impl<T: NamedEntity + ?Sized> NamedEntity for Rc<T> {
 ///
 /// See [Trees That Grow](https://arxiv.org/abs/1610.04799) for theoretical explanation.
 ///
-/// Every payload renders, so each associated type carries a [`Display`] bound.
+/// Every payload renders, so each associated type carries a [`Render`] bound.
 pub trait AstState<'q>: Sized {
-    type CteT: Display + StructuralEq<Self::EqScope>;
+    /// What rendering carries down the walk (see [`rendering`]): nothing for
+    /// [`Raw`]; for [`Analyzed`] the statements the walk is inside of, one
+    /// [`FrameView`] per level, pushed by [`enter_stmt`](AstState::enter_stmt).
+    /// `'a` is the borrow of the tree being rendered.
+    type RenderScope<'a>: Default + Clone
+    where
+        'q: 'a;
 
-    type SelectListElemT: Display + StructuralEq<Self::EqScope>;
+    type CteT: Render<'q, Self> + StructuralEq<Self::EqScope>;
 
-    type TableFactorT: NamedEntity + Display + StructuralEq<Self::EqScope>;
-    type JoinUsingColumnT: Display + StructuralEq<Self::EqScope>;
+    type SelectListElemT: Render<'q, Self> + StructuralEq<Self::EqScope>;
 
-    type CteOrTableT: NamedEntity + Display + StructuralEq<Self::EqScope>;
+    type TableFactorT: NamedEntity + Render<'q, Self> + StructuralEq<Self::EqScope>;
+    type JoinUsingColumnT: Render<'q, Self> + StructuralEq<Self::EqScope>;
+
+    type CteOrTableT: NamedEntity + Render<'q, Self> + StructuralEq<Self::EqScope>;
 
     type ExprMeta: ExprMetaT;
 
-    type VarType: Display + StructuralEq<Self::EqScope> + NamedEntity;
+    type VarType: Render<'q, Self> + StructuralEq<Self::EqScope> + NamedEntity;
 
     /// The correspondence between the relations two compared subtrees
     /// introduce, threaded through [`StructuralEq::eq_with`]. [`Raw`] resolves
@@ -268,10 +284,32 @@ pub trait AstState<'q>: Sized {
     /// the `column1..columnN` name/type pairs the analyzer derives in [`Analyzed`].
     type ValuesColumnsT: Default;
 
+    /// Rendering enters a statement: [`Analyzed`] pushes the statement's frame
+    /// onto the scope, so the column references below resolve their names.
+    /// [`Raw`] has nothing to push.
+    fn enter_stmt<'a>(_stmt: &'a MultisetStmt<'q, Self>, _scope: &mut Self::RenderScope<'a>)
+    where
+        'q: 'a,
+    {
+    }
+
+    /// The counterpart of [`enter_stmt`](AstState::enter_stmt).
+    fn exit_stmt<'a>(_scope: &mut Self::RenderScope<'a>)
+    where
+        'q: 'a,
+    {
+    }
+
     /// State-specific expression rendering:
     /// * [`Raw`] renders the bare expression.
     /// * [`Analyzed`] decorates it with the inferred type.
-    fn fmt_expr(expr: &Expr<'q, Self>, f: &mut Formatter<'_>) -> fmt::Result;
+    fn fmt_expr<'a>(
+        expr: &'a Expr<'q, Self>,
+        f: &mut Formatter<'_>,
+        scope: &mut Self::RenderScope<'a>,
+    ) -> fmt::Result
+    where
+        'q: 'a;
 
     /// Binding tier of the *rendered* form of `expr` in this state, used by
     /// operand rendering to decide parenthesization. [`Raw`] renders the bare
@@ -288,6 +326,11 @@ pub trait AstState<'q>: Sized {
 pub struct Raw;
 
 impl<'q> AstState<'q> for Raw {
+    type RenderScope<'a>
+        = ()
+    where
+        'q: 'a;
+
     type CteT = Cte<'q, Raw>;
 
     type SelectListElemT = SelectListElem<'q>;
@@ -320,8 +363,15 @@ impl<'q> AstState<'q> for Raw {
         left.eq_with(right, scope)
     }
 
-    fn fmt_expr(expr: &Expr<'q, Self>, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", expr.inner_ref())
+    fn fmt_expr<'a>(
+        expr: &'a Expr<'q, Self>,
+        f: &mut Formatter<'_>,
+        scope: &mut Self::RenderScope<'a>,
+    ) -> fmt::Result
+    where
+        'q: 'a,
+    {
+        expr.inner_ref().render(f, scope)
     }
 }
 
@@ -342,6 +392,13 @@ impl ExprMetaT for RawExprMeta {}
 pub struct Analyzed;
 
 impl<'q> AstState<'q> for Analyzed {
+    /// The statements the rendering walk is inside of, outermost first: the
+    /// stack a resolved column reference is read against.
+    type RenderScope<'a>
+        = Vec<FrameView<'a, 'q>>
+    where
+        'q: 'a;
+
     type CteT = Rc<Cte<'q, Analyzed>>;
 
     type SelectListElemT = ProjectionExpr<'q, Analyzed>;
@@ -405,23 +462,46 @@ impl<'q> AstState<'q> for Analyzed {
         false
     }
 
+    fn enter_stmt<'a>(stmt: &'a MultisetStmt<'q, Self>, scope: &mut Self::RenderScope<'a>)
+    where
+        'q: 'a,
+    {
+        scope.push(stmt.frame_view());
+    }
+
+    fn exit_stmt<'a>(scope: &mut Self::RenderScope<'a>)
+    where
+        'q: 'a,
+    {
+        scope.pop();
+    }
+
     /// Render the expression followed by its inferred type as a `::type` suffix (when known).
     /// `::type` is postfix-cast syntax, so compound expressions are wrapped in parentheses exactly
     /// like an explicit postfix cast (`(1 + 2)::int`). A cast root is left as-is to avoid a
     /// redundant `x::t::t`.
     /// For the same reason a cast's immediate child carries no type, so only the cast itself states the type.
-    fn fmt_expr(expr: &Expr<'q, Self>, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt_expr<'a>(
+        expr: &'a Expr<'q, Self>,
+        f: &mut Formatter<'_>,
+        scope: &mut Self::RenderScope<'a>,
+    ) -> fmt::Result
+    where
+        'q: 'a,
+    {
         let body = expr.inner_ref();
         let d_type = expr.data_type();
 
         if expr.is_cast() {
-            return write!(f, "{body}");
+            return body.render(f, scope);
         }
 
         if expr.precedence() < Precedence::Postfix && d_type.get().is_some() {
-            write!(f, "({body})")
+            f.write_str("(")?;
+            body.render(f, scope)?;
+            f.write_str(")")
         } else {
-            write!(f, "{body}")
+            body.render(f, scope)
         }?;
 
         match d_type.get() {
@@ -463,9 +543,10 @@ impl<'q> AnalyzedAst<'q> {
     }
 }
 
+/// The root is where rendering starts, and so where the scope starts: empty.
 impl<'q, State: AstState<'q>> Display for AbstractSyntaxTree<'q, State> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}", self.root)
+        self.root.render(f, &mut State::RenderScope::default())
     }
 }
 
@@ -477,11 +558,18 @@ pub enum Node<'q, State: AstState<'q>> {
     DqlStmt(DqlStmt<'q, State>),
 }
 
-impl<'q, State: AstState<'q>> Display for Node<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for Node<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> fmt::Result
+    where
+        'q: 'a,
+    {
         match self {
             Node::<'q, State>::Empty => Ok(()),
-            Node::DqlStmt(stmt) => write!(f, "{}", stmt),
+            Node::DqlStmt(stmt) => stmt.render(f, scope),
         }
     }
 }
@@ -502,9 +590,16 @@ impl<'q, State: AstState<'q>> DqlStmt<'q, State> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for DqlStmt<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}", self.stmt)?;
+impl<'q, State: AstState<'q>> Render<'q, State> for DqlStmt<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> fmt::Result
+    where
+        'q: 'a,
+    {
+        self.stmt.render(f, scope)?;
         if let Some(option) = &self.option {
             write!(f, " {}", option)?;
         }

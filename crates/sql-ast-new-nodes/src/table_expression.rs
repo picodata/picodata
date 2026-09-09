@@ -27,6 +27,7 @@ use std::rc::Rc;
 use crate::error::{ast_invariant_err, AstResult};
 use crate::expr::{Expr, ExprInner, RawVar};
 use crate::multiset::{Cte, MultisetStmt};
+use crate::rendering::{raw_display, render_via_display, Render};
 use crate::select::{ProjectionExpr, SelectList, SelectListExprs};
 use crate::window::NamedWindows;
 use crate::{write_sql_ident, Analyzed, AstState, Ident, NamedEntity, Raw, NONAME_COLUMN};
@@ -111,6 +112,10 @@ impl<'q> TableExpression<'q, Analyzed> {
         )
     }
 
+    pub fn from_ref(&self) -> &From<'q, Analyzed> {
+        &self.from
+    }
+
     pub(crate) fn has_group_by(&self) -> bool {
         !self.group_by.0.is_empty()
     }
@@ -144,22 +149,34 @@ impl<'q> TableExpression<'q, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for TableExpression<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "FROM {}", self.from)?;
-        self.selection
-            .as_ref()
-            .map_or(Ok(()), |selection| write!(f, " WHERE {selection}"))?;
+impl<'q, State: AstState<'q>> Render<'q, State> for TableExpression<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        f.write_str("FROM ")?;
+        self.from.render(f, scope)?;
+        if let Some(selection) = &self.selection {
+            f.write_str(" WHERE ")?;
+            selection.render(f, scope)?;
+        }
 
-        write!(f, "{}", self.group_by)?;
+        self.group_by.render(f, scope)?;
 
-        self.having
-            .as_ref()
-            .map_or(Ok(()), |having_expr| write!(f, " HAVING {having_expr}"))?;
+        if let Some(having_expr) = &self.having {
+            f.write_str(" HAVING ")?;
+            having_expr.render(f, scope)?;
+        }
 
-        write!(f, "{}", self.windows)
+        self.windows.render(f, scope)
     }
 }
+
+raw_display!(TableExpression);
 
 /// List of entries. Every FROM entry is [`TableFactor`] or [`JoinedTable`].
 pub struct From<'q, State: AstState<'q>> {
@@ -284,12 +301,20 @@ pub fn route_column<'q>(
     )
 }
 
-impl<'q, State: AstState<'q>> Display for From<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for From<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         let (initial, joined) = self.tbl_factors.split_first().ok_or(Error)?;
-        write!(f, "{initial}")?;
+        initial.render(f, scope)?;
         for joined_ttbl in joined.iter() {
-            write!(f, " {joined_ttbl}")?;
+            f.write_str(" ")?;
+            joined_ttbl.render(f, scope)?;
         }
         Ok(())
     }
@@ -369,11 +394,18 @@ impl<'q> FromEntry<'q, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for FromEntry<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for FromEntry<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
-            Self::TableFactor(tbl_factor) => write!(f, "{tbl_factor}"),
-            Self::JoinedTable(joined_tbl) => write!(f, "{joined_tbl}"),
+            Self::TableFactor(tbl_factor) => tbl_factor.render(f, scope),
+            Self::JoinedTable(joined_tbl) => joined_tbl.render(f, scope),
         }
     }
 }
@@ -454,9 +486,16 @@ impl<'q> TableFactor<'q, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for TableFactor<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}", self.inner)?;
+impl<'q, State: AstState<'q>> Render<'q, State> for TableFactor<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        self.inner.render(f, scope)?;
         self.alias
             .as_ref()
             .map_or(Ok(()), |alias| write!(f, " AS {}", alias))?;
@@ -484,12 +523,23 @@ impl<'q, State: AstState<'q>> NamedEntity for TableFactorInner<'q, State> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for TableFactorInner<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for TableFactorInner<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
-            TableFactorInner::CteOrTable(src) => write!(f, "{src}"),
-            TableFactorInner::SubQuery(src) => write!(f, "({src})"),
-            TableFactorInner::Function(src) => write!(f, "{src}"),
+            TableFactorInner::CteOrTable(src) => src.render(f, scope),
+            TableFactorInner::SubQuery(src) => {
+                f.write_str("(")?;
+                src.render(f, scope)?;
+                f.write_str(")")
+            }
+            TableFactorInner::Function(src) => src.render(f, scope),
         }
     }
 }
@@ -513,12 +563,19 @@ impl<'q, State: AstState<'q>> NamedEntity for TableFunction<'q, State> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for TableFunction<'q, State> {
+impl<'q, State: AstState<'q>> Render<'q, State> for TableFunction<'q, State> {
     /// The call is written without its type, so that the rendering parses.
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}", self.call.inner)?;
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        self.call.inner.render(f, scope)?;
         if self.with_ordinality {
-            write!(f, " WITH ORDINALITY")?;
+            f.write_str(" WITH ORDINALITY")?;
         }
         Ok(())
     }
@@ -564,26 +621,37 @@ impl<'q> JoinedTable<'q, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for JoinedTable<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for JoinedTable<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self.kind {
             JoinKind::Inner => write!(f, "INNER JOIN")?,
             JoinKind::Left => write!(f, "LEFT OUTER JOIN")?,
             JoinKind::Cross => write!(f, "CROSS JOIN")?,
         }
-        write!(f, " {}", self.table)?;
+        f.write_str(" ")?;
+        self.table.render(f, scope)?;
         if matches!(self.kind, JoinKind::Cross) {
             return Ok(());
         }
         // Parsing rejects a non-CROSS JOIN without USING and without ON.
         if let Some((first_col, others)) = self.using_cols.split_first() {
-            write!(f, " USING ({}", first_col)?;
+            f.write_str(" USING (")?;
+            first_col.render(f, scope)?;
             for col_name in others {
-                write!(f, ", {}", col_name)?;
+                f.write_str(", ")?;
+                col_name.render(f, scope)?;
             }
-            write!(f, ")")
+            f.write_str(")")
         } else if let Some(condition) = &self.condition {
-            write!(f, " ON {}", condition)
+            f.write_str(" ON ")?;
+            condition.render(f, scope)
         } else {
             Ok(())
         }
@@ -619,12 +687,21 @@ impl Default for GroupBy<'_, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for GroupBy<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for GroupBy<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         if let Some((first_gb_expr, other_gb_exprs)) = self.0.split_first() {
-            write!(f, " GROUP BY {first_gb_expr}")?;
+            f.write_str(" GROUP BY ")?;
+            first_gb_expr.render(f, scope)?;
             for expr in other_gb_exprs {
-                write!(f, ", {expr}")?;
+                f.write_str(", ")?;
+                expr.render(f, scope)?;
             }
         }
         Ok(())
@@ -670,11 +747,18 @@ impl<'q> OrdrByGrpByElem<'q, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for OrdrByGrpByElem<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for OrdrByGrpByElem<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
             Self::Ordinal(pos) => write!(f, "{}", pos + 1),
-            Self::Expr(expr) => write!(f, "{expr}"),
+            Self::Expr(expr) => expr.render(f, scope),
         }
     }
 }
@@ -786,6 +870,13 @@ impl Display for AnalyzedCteOrTable<'_> {
         }
     }
 }
+
+render_via_display!(
+    AnalyzedCteOrTable<'_>,
+    BoundVar<'_>,
+    BoundJoinUsingVar<'_>,
+    JoinUsingColumn
+);
 
 /// A resolved column reference.
 #[derive(Clone)]

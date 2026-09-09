@@ -19,6 +19,7 @@ use crate::{semantic_err, texpr_from_attribute, texpr_from_derived_type};
 use sql_ast_new_nodes::error::{AstErr, AstResult};
 use sql_ast_new_nodes::expr::{Expr, ExprInner};
 use sql_ast_new_nodes::multiset::{Cte, MultisetStmt};
+use sql_ast_new_nodes::rendering::Rendered;
 use sql_ast_new_nodes::select::ProjectionExpr;
 use sql_ast_new_nodes::table_expression::{
     AnalyzedCteOrTable, AttributeView, BoundVar, From, FromEntry, TableFactor, TableFactorInner,
@@ -333,7 +334,8 @@ impl<'q, 'ast> AsteriskResolver<'q, 'ast> {
             let attr = stmt.attribute(column_pos).ok_or_else(|| {
                 semantic_err(format_smolstr!(
                     "cannot get attribute from subquery '({})' result",
-                    stmt.to_string()
+                    Rendered::<'_, 'q, Analyzed, _>::new(stmt, Vec::new())
+                        .to_string()
                         .chars()
                         .take(SUBQUERY_DISPLAY_PREFIX)
                         .collect::<String>()

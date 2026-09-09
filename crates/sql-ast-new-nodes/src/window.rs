@@ -41,6 +41,7 @@ use std::fmt::{Display, Error, Formatter};
 
 use crate::expr::Expr;
 use crate::multiset::OrderBy;
+use crate::rendering::{raw_display, Render};
 use crate::{Analyzed, AstState, Ident, Raw};
 
 /// Window function invocation: `name(args) [FILTER (WHERE expr)] OVER window`.
@@ -51,13 +52,25 @@ pub struct WindowFunction<'q, State: AstState<'q>> {
     pub window: WindowRef<'q, State>,
 }
 
-impl<'q, State: AstState<'q>> Display for WindowFunction<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}({})", self.name, self.args)?;
+impl<'q, State: AstState<'q>> Render<'q, State> for WindowFunction<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        write!(f, "{}(", self.name)?;
+        self.args.render(f, scope)?;
+        f.write_str(")")?;
         if let Some(filter) = &self.filter {
-            write!(f, " FILTER (WHERE {filter})")?;
+            f.write_str(" FILTER (WHERE ")?;
+            filter.render(f, scope)?;
+            f.write_str(")")?;
         }
-        write!(f, " OVER {}", self.window)
+        f.write_str(" OVER ")?;
+        self.window.render(f, scope)
     }
 }
 
@@ -67,6 +80,8 @@ impl<'q, State: AstState<'q>> WindowFunction<'q, State> {
     }
 }
 
+raw_display!(WindowFunction);
+
 pub enum WindowFunctionArgs<'q, State: AstState<'q>> {
     /// `count(*)`
     Asterisk,
@@ -74,17 +89,25 @@ pub enum WindowFunctionArgs<'q, State: AstState<'q>> {
     List(Vec<Expr<'q, State>>),
 }
 
-impl<'q, State: AstState<'q>> Display for WindowFunctionArgs<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for WindowFunctionArgs<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
             WindowFunctionArgs::Asterisk => write!(f, "*"),
             WindowFunctionArgs::List(exprs) => {
                 let Some((first, rest)) = exprs.split_first() else {
                     return Ok(());
                 };
-                write!(f, "{first}")?;
+                first.render(f, scope)?;
                 for expr in rest {
-                    write!(f, ", {expr}")?;
+                    f.write_str(", ")?;
+                    expr.render(f, scope)?;
                 }
                 Ok(())
             }
@@ -99,11 +122,22 @@ pub enum WindowRef<'q, State: AstState<'q>> {
     Spec(WindowSpec<'q, State>),
 }
 
-impl<'q, State: AstState<'q>> Display for WindowRef<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for WindowRef<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
             WindowRef::Name(name) => write!(f, "{name}"),
-            WindowRef::Spec(spec) => write!(f, "({spec})"),
+            WindowRef::Spec(spec) => {
+                f.write_str("(")?;
+                spec.render(f, scope)?;
+                f.write_str(")")
+            }
         }
     }
 }
@@ -119,26 +153,37 @@ pub struct WindowSpec<'q, State: AstState<'q>> {
     pub frame: Option<WindowFrame<'q, State>>,
 }
 
-impl<'q, State: AstState<'q>> Display for WindowSpec<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for WindowSpec<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         let mut sep = "";
         if let Some(base) = self.base.as_ref() {
             write!(f, "{base}")?;
             sep = " ";
         }
         if let Some((first, rest)) = self.partition_by.split_first() {
-            write!(f, "{sep}PARTITION BY {first}")?;
+            write!(f, "{sep}PARTITION BY ")?;
+            first.render(f, scope)?;
             for expr in rest {
-                write!(f, ", {expr}")?;
+                f.write_str(", ")?;
+                expr.render(f, scope)?;
             }
             sep = " ";
         }
         if let Some(order_by) = self.order_by.as_ref() {
-            write!(f, "{sep}{order_by}")?;
+            f.write_str(sep)?;
+            order_by.render(f, scope)?;
             sep = " ";
         }
         if let Some(frame) = &self.frame {
-            write!(f, "{sep}{frame}")?;
+            f.write_str(sep)?;
+            frame.render(f, scope)?;
         }
         Ok(())
     }
@@ -149,9 +194,17 @@ pub struct WindowFrame<'q, State: AstState<'q>> {
     pub bounds: FrameBounds<'q, State>,
 }
 
-impl<'q, State: AstState<'q>> Display for WindowFrame<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{} {}", self.ty, self.bounds)
+impl<'q, State: AstState<'q>> Render<'q, State> for WindowFrame<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        write!(f, "{} ", self.ty)?;
+        self.bounds.render(f, scope)
     }
 }
 
@@ -175,11 +228,23 @@ pub enum FrameBounds<'q, State: AstState<'q>> {
     Between(FrameBound<'q, State>, FrameBound<'q, State>),
 }
 
-impl<'q, State: AstState<'q>> Display for FrameBounds<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for FrameBounds<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
-            FrameBounds::Single(bound) => write!(f, "{bound}"),
-            FrameBounds::Between(from, to) => write!(f, "BETWEEN {from} AND {to}"),
+            FrameBounds::Single(bound) => bound.render(f, scope),
+            FrameBounds::Between(from, to) => {
+                f.write_str("BETWEEN ")?;
+                from.render(f, scope)?;
+                f.write_str(" AND ")?;
+                to.render(f, scope)
+            }
         }
     }
 }
@@ -192,13 +257,26 @@ pub enum FrameBound<'q, State: AstState<'q>> {
     UnboundedFollowing,
 }
 
-impl<'q, State: AstState<'q>> Display for FrameBound<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for FrameBound<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         match self {
             FrameBound::UnboundedPreceding => write!(f, "UNBOUNDED PRECEDING"),
-            FrameBound::Preceding(offset) => write!(f, "{offset} PRECEDING"),
+            FrameBound::Preceding(offset) => {
+                offset.render(f, scope)?;
+                f.write_str(" PRECEDING")
+            }
             FrameBound::CurrentRow => write!(f, "CURRENT ROW"),
-            FrameBound::Following(offset) => write!(f, "{offset} FOLLOWING"),
+            FrameBound::Following(offset) => {
+                offset.render(f, scope)?;
+                f.write_str(" FOLLOWING")
+            }
             FrameBound::UnboundedFollowing => write!(f, "UNBOUNDED FOLLOWING"),
         }
     }
@@ -213,12 +291,21 @@ impl NamedWindows<'_, Raw> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for NamedWindows<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+impl<'q, State: AstState<'q>> Render<'q, State> for NamedWindows<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
         if let Some((first_window, other_windows)) = self.0.split_first() {
-            write!(f, " WINDOW {first_window}")?;
+            f.write_str(" WINDOW ")?;
+            first_window.render(f, scope)?;
             for window in other_windows {
-                write!(f, ", {window}")?;
+                f.write_str(", ")?;
+                window.render(f, scope)?;
             }
         }
         Ok(())
@@ -257,11 +344,22 @@ impl<'q> NamedWindow<'q, Analyzed> {
     }
 }
 
-impl<'q, State: AstState<'q>> Display for NamedWindow<'q, State> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{} AS ({})", self.name, self.spec)
+impl<'q, State: AstState<'q>> Render<'q, State> for NamedWindow<'q, State> {
+    fn render<'a>(
+        &'a self,
+        f: &mut Formatter<'_>,
+        scope: &mut State::RenderScope<'a>,
+    ) -> Result<(), Error>
+    where
+        'q: 'a,
+    {
+        write!(f, "{} AS (", self.name)?;
+        self.spec.render(f, scope)?;
+        f.write_str(")")
     }
 }
+
+raw_display!(NamedWindow);
 
 /// Structural comparison, one impl per node for both states.
 ///
