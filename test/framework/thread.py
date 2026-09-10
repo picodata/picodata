@@ -43,6 +43,10 @@ class ThreadWhichReturnsAValue(threading.Thread):
         if the thread is finished.
         """
         super().join(timeout)
+
+        if isinstance(self.result, Exception):
+            raise self.result from self.result
+
         return not self.is_alive()
 
     def join(self, timeout: float | None = 10) -> Any:
