@@ -3,6 +3,8 @@ use ::tarantool::test::TestCase;
 use nix::unistd::{self, fork, ForkResult};
 use std::collections::VecDeque;
 use std::io::{self, ErrorKind, Read, Write};
+use std::time::Duration;
+use std::time::Instant;
 
 macro_rules! color {
     (@priv red) => { "\x1b[0;31m" };
@@ -20,10 +22,11 @@ const FAILED: &str = color![red "FAILED" clear];
 #[derive(Default)]
 struct TestResults {
     passed_count: u64,
+    durations: Vec<(&'static str, Duration)>,
     skipped_count: u64,
     filtered_out_count: u64,
     failed: Vec<(&'static str, Vec<u8>)>,
-    elapsed: std::time::Duration,
+    elapsed: Duration,
 }
 
 impl TestResults {
@@ -33,7 +36,7 @@ impl TestResults {
 }
 
 enum TestOutcome {
-    Passed,
+    Passed { duration: Duration },
     Failed { log: Vec<u8> },
 }
 
@@ -75,7 +78,7 @@ pub fn main(args: args::Test) -> ! {
 ////////////////////////////////////////////////////////////////////////////////
 
 fn run_tests(args: &args::Test) -> TestResults {
-    let now = std::time::Instant::now();
+    let now = Instant::now();
 
     let tests = ::tarantool::test::test_cases();
     println!("total {} tests", tests.len());
@@ -187,9 +190,10 @@ fn run_tests(args: &args::Test) -> TestResults {
             let test_name = process.test.name();
             let outcome = finish_test_subprocess(process);
             match outcome {
-                TestOutcome::Passed => {
+                TestOutcome::Passed { duration } => {
                     println!("test {test_name} ... {PASSED}");
                     results.passed_count += 1;
+                    results.durations.push((test_name, duration));
                 }
                 TestOutcome::Failed { log } => {
                     println!("test {test_name} ... {FAILED}");
@@ -211,6 +215,7 @@ fn report_test_results(args: &args::Test, results: TestResults) -> bool {
     let ok = results.is_success();
     let TestResults {
         passed_count,
+        mut durations,
         skipped_count,
         filtered_out_count,
         failed,
@@ -221,8 +226,21 @@ fn report_test_results(args: &args::Test, results: TestResults) -> bool {
     if screen_width == 0 {
         screen_width = 80;
     }
-    if !ok {
+
+    println!();
+
+    if !durations.is_empty() {
+        durations.sort_unstable_by(|(_, l), (_, r)| r.cmp(l));
+        let count = durations.len().min(10);
+        let slowest = &durations[..count];
+        println!("{count} slowest tests:");
+        for (test, duration) in slowest {
+            println!("    {test}: {:0.3?}s", duration.as_secs_f64());
+        }
         println!();
+    }
+
+    if !ok {
         println!("failed tests:");
         for (test, log) in &failed {
             if !args.nocapture {
@@ -254,8 +272,7 @@ fn report_test_results(args: &args::Test, results: TestResults) -> bool {
             println!("    {test}:");
         }
     }
-    println!(" finished in {:.3}s", elapsed.as_secs_f32());
-    println!();
+    println!("finished in {:.3}s", elapsed.as_secs_f32());
 
     ok
 }
@@ -281,6 +298,7 @@ struct TestSubprocess {
     output_pipe: ipc::Fd,
     /// Everything the test process has written into [`Self::output_pipe`] so far.
     output: Vec<u8>,
+    start: Instant,
 }
 
 /// Forks a process which runs a single test in it.
@@ -349,6 +367,7 @@ fn spawn_test_subprocess(
                 pid: child.into(),
                 output_pipe: rx,
                 output: Vec::new(),
+                start: Instant::now(),
             }
         }
     }
@@ -404,7 +423,8 @@ fn finish_test_subprocess(process: TestSubprocess) -> TestOutcome {
 
     // If the test passed, its exit code should be zero.
     if libc::WIFEXITED(rc) && libc::WEXITSTATUS(rc) == 0 {
-        return TestOutcome::Passed;
+        let duration = process.start.elapsed();
+        return TestOutcome::Passed { duration };
     }
 
     TestOutcome::Failed {
