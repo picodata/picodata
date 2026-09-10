@@ -18,23 +18,34 @@ from conftest import (
 )
 
 
-def router_discovered_the_split(i: Instance):
+def router_matches_bucket_ownership(router: Instance, storages: list[tuple[Instance, str]]):
     """
-    Helper that updates stale router cache.
+    Helper that waits for a stale router cache to catch up with the sync tier's
+    actual bucket ownership.
     """
-    replicasets_seen = i.eval("""
+    owner_of = {}
+    for instance, uuid in storages:
+        for bucket in instance.eval("return box.space._bucket.index.status:select({'active'})"):
+            owner_of[bucket[0]] = uuid
+
+    cached = router.eval("""
         local router = pico.router['sync_tier']
         router:discovery_wakeup()
-        local seen = {}
+        local out = {}
         for bucket_id = 1, router:bucket_count() do
             local rs = router:route(bucket_id)
-            if rs ~= nil then seen[rs.uuid] = true end
+            table.insert(out, rs ~= nil and rs.uuid or '')
         end
-        local count = 0
-        for _ in pairs(seen) do count = count + 1 end
-        return count
+        return out
     """)
-    assert replicasets_seen == 2, f"router still maps all buckets to {replicasets_seen} replicaset(s)"
+
+    assert len(owner_of) == len(cached), f"only {len(owner_of)} of {len(cached)} buckets are active"
+
+    owners = {uuid: sum(1 for owner in owner_of.values() if owner == uuid) for _, uuid in storages}
+    assert all(owners.values()), f"buckets are not split across the tier yet: {owners}"
+
+    stale = [bucket_id for bucket_id, uuid in enumerate(cached, start=1) if uuid != owner_of[bucket_id]]
+    assert not stale, f"router cache is behind for buckets {stale}"
 
 
 def get_master_instance(*instances) -> Instance:
@@ -1859,8 +1870,11 @@ cluster:
     master.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
     master.sql(f"INSERT INTO t VALUES {','.join([str((i, 'initial')) for i in range(1, 17)])}")
 
-    for i in [master, replica]:
-        assert i.eval("return box.space.t:count()") == 16
+    def r1_has_rows(count):
+        for i in [master, replica]:
+            assert i.eval("return box.space.t:count()") == count
+
+    Retriable().call(r1_has_rows, 16)
 
     i3 = cluster.add_instance(tier="sync_tier", replicaset_name="r2")
     cluster.wait_governor_status("idle")
@@ -1871,8 +1885,7 @@ cluster:
     # DML is still mapped to r1, because r2 is not ready yet.
     i3.sql("INSERT INTO t VALUES (17, 'ok')")
     assert i3.eval("return box.space.t:count()") == 0
-    for i in [master, replica]:
-        assert i.eval("return box.space.t:count()") == 17
+    Retriable().call(r1_has_rows, 17)
 
     i4 = cluster.add_instance(tier="sync_tier", replicaset_name="r2")
     cluster.wait_governor_status("idle")
@@ -1881,15 +1894,18 @@ cluster:
     cluster.wait_until_buckets_balanced(exclude=arbiters)
 
     # Fix stale router cache
-    Retriable().call(router_discovered_the_split, master)
+    uuids = dict(master.sql("SELECT name, uuid FROM _pico_replicaset"))
+    storages = [(master, uuids["r1"]), (i3, uuids["r2"])]
+    Retriable().call(router_matches_bucket_ownership, i3, storages)
 
     i3.sql("INSERT INTO t VALUES (18, 'ok')")
 
     def instances_have_data():
-        assert master.eval("return box.space.t:count()") == 11
-        assert i3.eval("return box.space.t:count()") == 7
-        assert replica.eval("return box.space.t:count()") == 11
-        assert i4.eval("return box.space.t:count()") == 7
+        assert i3.sql("SELECT * FROM t WHERE id = 18") == [[18, "ok"]]
+        assert master.eval("return box.space.t:count()") == 10
+        assert i3.eval("return box.space.t:count()") == 8
+        assert replica.eval("return box.space.t:count()") == 10
+        assert i4.eval("return box.space.t:count()") == 8
 
     Retriable().call(instances_have_data)
 
@@ -1937,7 +1953,9 @@ cluster:
     cluster.wait_until_buckets_balanced(exclude=arbiters)
 
     # Fix stale router cache
-    Retriable().call(router_discovered_the_split, master)
+    uuids = dict(master.sql("SELECT name, uuid FROM _pico_replicaset"))
+    storages = [(master, uuids["r1"]), (i3, uuids["r2"])]
+    Retriable().call(router_matches_bucket_ownership, master, storages)
 
     master.sql(f"INSERT INTO t VALUES {','.join([str((i, 'initial')) for i in range(1, 17)])}")
 
