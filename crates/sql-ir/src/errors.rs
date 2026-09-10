@@ -1,3 +1,4 @@
+use crate::ir::options::SQL_MOTION_ROW_MAX_HINT;
 use crate::ir::types::UnrestrictedType;
 use rmp_serde::encode::Error as EncodeError;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -375,6 +376,14 @@ pub enum SbroadError {
 impl SbroadError {
     pub fn other(msg: impl Into<SmolStr>) -> Self {
         Self::Other(msg.into())
+    }
+
+    // Stays an `ExecutionError`: `TaggedExecutionError` only re-wraps that variant.
+    pub fn motion_row_max_exceeded(limit: impl fmt::Display, rows: impl fmt::Display) -> Self {
+        Self::ExecutionError(format_smolstr!(
+            "Exceeded maximum number of rows ({limit}) in virtual table: {rows}. \
+             {SQL_MOTION_ROW_MAX_HINT}"
+        ))
     }
 }
 

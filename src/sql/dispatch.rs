@@ -1315,9 +1315,7 @@ fn port_write_tuples<'tuples, 'p>(
         })?;
         *row_count += 1;
         if max_rows > 0 && *row_count > max_rows {
-            return Err(SbroadError::ExecutionError(format_smolstr!(
-                "Exceeded maximum number of rows ({max_rows}) in virtual table: {row_count}"
-            )));
+            return Err(SbroadError::motion_row_max_exceeded(max_rows, *row_count));
         }
 
         port_append_mp(port, mp, row_len).map_err(|e| {

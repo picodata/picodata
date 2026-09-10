@@ -21,7 +21,7 @@ INSERT INTO t VALUES (1);
 -- SQL:
 select * from "testing_space" option(sql_vdbe_opcode_max = 5);
 -- ERROR:
-Reached a limit on max executed vdbe opcodes. Limit: 5
+Reached a limit on max executed vdbe opcodes. Limit: 5. Adjust with OPTION \(sql_vdbe_opcode_max = <new_limit>\) or ALTER SYSTEM.
 
 -- TEST: test_basic-2
 -- SQL:
@@ -84,7 +84,7 @@ expected VdbeOpcodeMax, MotionRowMax, ReadPreference, or Forward
 -- SQL:
 insert into "testing_space" select "id" + 10, "name", "product_units" from "testing_space" option(sql_motion_row_max = 1);
 -- ERROR:
-Exceeded maximum number of rows \(1\) in virtual table: \d+
+Exceeded maximum number of rows \(1\) in virtual table: \d+. Adjust with OPTION \(sql_motion_row_max = <new_limit>\) or ALTER SYSTEM.
 
 -- TEST: test_sql_motion_row_max_on_storage-2
 -- SQL:
@@ -111,7 +111,7 @@ Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(1\) in virtual t
 -- SQL:
 select "id" from "testing_space" group by "id" option(sql_motion_row_max = 5);
 -- ERROR:
-Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(5\) in virtual table: 6
+Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(5\) in virtual table: 6. Adjust with OPTION \(sql_motion_row_max = <new_limit>\) or ALTER SYSTEM.
 
 -- TEST: test_sql_motion_row_max_on_router-2
 -- SQL:
@@ -159,7 +159,7 @@ Query 2 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(2\) in virtual t
 -- SQL:
 insert into t values (1), (2), (3) option (sql_motion_row_max = 2);
 -- ERROR:
-Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(2\) in virtual table: 3
+Query 1 from EXPLAIN \(RAW\): Exceeded maximum number of rows \(2\) in virtual table: 3. Adjust with OPTION \(sql_motion_row_max = <new_limit>\) or ALTER SYSTEM.
 
 -- TEST: test-sql-motion-row-max-exceeded-select-values
 -- SQL:

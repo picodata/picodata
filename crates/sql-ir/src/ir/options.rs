@@ -11,6 +11,12 @@ use tarantool::define_str_enum;
 pub const DEFAULT_SQL_MOTION_ROW_MAX: u64 = 5000;
 pub const DEFAULT_SQL_VDBE_OPCODE_MAX: u64 = 45000;
 
+// Appended to the errors raised when the corresponding limit is hit.
+pub const SQL_MOTION_ROW_MAX_HINT: &str =
+    "Adjust with OPTION (sql_motion_row_max = <new_limit>) or ALTER SYSTEM.";
+pub const SQL_VDBE_OPCODE_MAX_HINT: &str =
+    "Adjust with OPTION (sql_vdbe_opcode_max = <new_limit>) or ALTER SYSTEM.";
+
 /// Whether the timeout was explicitly specified in the SQL statement
 /// or should be replaced with the system default at bind time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

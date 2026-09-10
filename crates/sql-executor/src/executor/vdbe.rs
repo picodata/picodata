@@ -3,9 +3,10 @@ use crate::{
     errors::SbroadError,
     executor::engine::{BlockQuery, VersionMap},
     ir::node::BlockStatement,
+    ir::options::SQL_VDBE_OPCODE_MAX_HINT,
     ir::value::{EncodedValue, Value},
 };
-use smol_str::ToSmolStr;
+use smol_str::{format_smolstr, ToSmolStr};
 use std::{
     borrow::Cow,
     ffi::{c_char, c_int, c_void, CStr},
@@ -14,7 +15,10 @@ use std::{
     ptr::{self, NonNull},
 };
 use tarantool::ffi::sql::PortC;
-use tarantool::{error::TarantoolError, session::with_su};
+use tarantool::{
+    error::{TarantoolError, TarantoolErrorCode},
+    session::with_su,
+};
 use thiserror::Error;
 
 extern "C" {
@@ -61,6 +65,12 @@ impl From<SqlError> for SbroadError {
     fn from(value: SqlError) -> Self {
         match value {
             SqlError::OutdatedStorageSchema => Self::OutdatedStorageSchema,
+            SqlError::FailedToExecuteStmt(e)
+                if e.error_code() == TarantoolErrorCode::ExceededVdbeMaxSteps as u32 =>
+            {
+                let message = e.message();
+                Self::VdbeError(format_smolstr!("{message}. {SQL_VDBE_OPCODE_MAX_HINT}"))
+            }
             value => Self::VdbeError(value.to_smolstr()),
         }
     }

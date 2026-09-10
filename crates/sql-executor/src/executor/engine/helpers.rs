@@ -1592,11 +1592,7 @@ pub fn materialize_values(
         let limit = exec_plan.get_ir_plan().effective_options.sql_motion_row_max;
         let values_count = rows.len();
         if limit > 0 && limit < values_count as i64 {
-            return Err(SbroadError::ExecutionError(format_smolstr!(
-                "Exceeded maximum number of rows ({}) in virtual table: {}",
-                limit,
-                values_count,
-            )));
+            return Err(SbroadError::motion_row_max_exceeded(limit, values_count));
         }
 
         let first_row_id = rows.first().expect("Values node must contain rows.");

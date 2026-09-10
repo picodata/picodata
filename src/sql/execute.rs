@@ -314,13 +314,12 @@ pub fn stmt_execute<'p, 'b>(
 
     // We should check if we exceed the maximum number of rows.
     if port.size() > 0 {
-        let current_rows = port.size() - if has_metadata { 1 } else { 0 }; // exclude metadata tuple
-        if sql_motion_row_max > 0 && current_rows as u64 > sql_motion_row_max {
-            return Err(SbroadError::ExecutionError(format_smolstr!(
-                "Exceeded maximum number of rows ({}) in virtual table: {}",
+        let current_rows = (port.size() - if has_metadata { 1 } else { 0 }) as u64; // exclude metadata tuple
+        if sql_motion_row_max > 0 && current_rows > sql_motion_row_max {
+            return Err(SbroadError::motion_row_max_exceeded(
                 sql_motion_row_max,
-                current_rows
-            )));
+                current_rows,
+            ));
         }
     }
 
