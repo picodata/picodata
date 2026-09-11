@@ -1,9 +1,6 @@
 //! [`Platform`] abstracts every leaf IO operation performed by
 //! simulated code behind a trait, so that multiple isolated instances can be
 //! run in one process for the purpose of simulation testing.
-//!
-//! [`PlatformActual`] is the actual production implementation; the simulation
-//! provides one of its own.
 
 use crate::config::AlterSystemParametersRef;
 use crate::resharding_loop;
@@ -94,28 +91,18 @@ pub trait Platform {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// PlatformActual
+// impl for Node
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Production implementation of [`Platform`].
 /// See also module-level doc-comments.
-pub struct PlatformActual {
-    node: &'static node::Node,
-}
-
-impl PlatformActual {
-    pub fn new(node: &'static node::Node) -> Self {
-        Self { node }
-    }
-}
-
-impl Platform for PlatformActual {
+impl Platform for node::Node {
     fn topology_cache(&self) -> &TopologyCache {
-        &self.node.topology_cache
+        &self.topology_cache
     }
 
     fn alter_system_parameters(&self) -> &AlterSystemParametersRef {
-        &self.node.alter_system_parameters
+        &self.alter_system_parameters
     }
 
     async fn wait_action_requested(
@@ -127,7 +114,7 @@ impl Platform for PlatformActual {
     }
 
     fn applied_index(&self) -> RaftIndex {
-        self.node.get_index()
+        self.get_index()
     }
 
     fn do_cas(&self, applied: RaftIndex, dmls: Vec<Dml>, timeout: Duration) -> Result<()> {
@@ -135,7 +122,7 @@ impl Platform for PlatformActual {
     }
 
     fn wait_until_master(&self, timeout: Duration) -> Result<RaftIndex> {
-        self.node.wait_index_change(timeout)
+        self.wait_index_change(timeout)
     }
 
     fn read_local_buckets(&self, start: u64, end: u64) -> Result<Vec<VshardBucketRecord>> {

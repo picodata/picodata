@@ -8,7 +8,6 @@ use crate::resharding_loop::action::ReshardingAction;
 use crate::resharding_loop::action::*;
 use crate::schema::ADMIN_ID;
 use crate::simulation::platform::Platform;
-use crate::simulation::platform::PlatformActual;
 use crate::storage::Replicasets;
 use crate::storage::SystemTable;
 use crate::tlog;
@@ -93,9 +92,9 @@ impl ReshardingLoop {
                 // The fiber starts before the global node is initialized, but
                 // resharding_loop requires it, so we wait explicitly. Thankfully
                 // we only have to do this once at program start.
-                let platform;
+                let node;
                 loop {
-                    let Ok(node) = node::global() else {
+                    let Ok(n) = node::global() else {
                         _ = requested_status_rx
                             .changed()
                             .timeout(RESHARDING_LOOP_SHORT_RETRY)
@@ -103,13 +102,13 @@ impl ReshardingLoop {
                         continue;
                     };
 
-                    platform = PlatformActual::new(node);
+                    node = n;
                     break;
                 }
 
                 loop {
                     let res = resharding_loop(
-                        &platform,
+                        node,
                         &state_tx,
                         &mut requested_status_rx,
                         &mut actual_status_tx,
