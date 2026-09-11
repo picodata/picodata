@@ -2630,6 +2630,8 @@ class Cluster:
                     raise e from e
                 except Exception as e:
                     if time.time() > deadline:
+                        for instance in self.instances:
+                            instance.check_process_alive()
                         raise e from e
                     else:
                         # This instance is not yet online, check if maybe one
@@ -2734,6 +2736,7 @@ class Cluster:
         log_to_console: bool | None = None,
         log_to_file: bool | None = None,
         executable: Executable | None = None,
+        timeout: int | float = WAIT_ONLINE_TIMEOUT,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to attain Online grade unless `wait_online` is `False`.
@@ -2814,7 +2817,7 @@ class Cluster:
 
         if wait_online:
             instance.start()
-            instance.wait_online()
+            instance.wait_online(timeout=timeout)
 
         return instance
 
