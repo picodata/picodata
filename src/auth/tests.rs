@@ -146,13 +146,22 @@ pub fn setup_ldap_auth(username: &str, password: &str, port: u16) -> Result<impl
     // Start the ldap server
     //
     println!();
-    let mut ldap_server_process = std::process::Command::new("glauth")
+    let mut command = std::process::Command::new("glauth");
+    command
         .arg("-c")
         .arg(&ldap_cfg_path)
         .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .spawn()
-        .unwrap();
+        .stderr(std::process::Stdio::inherit());
+    // Kill `glauth` if this process dies unexpectedly, otherwise it keeps
+    // our stdout/stderr pipe open and the test runner hangs reading it.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        use std::os::unix::process::CommandExt as _;
+        command.pre_exec(|| {
+            nix::sys::prctl::set_pdeathsig(nix::sys::signal::SIGKILL).map_err(std::io::Error::from)
+        });
+    }
+    let mut ldap_server_process = command.spawn().unwrap();
 
     // Wait for ldap server to start up
     let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
