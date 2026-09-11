@@ -469,6 +469,7 @@ test-rs-linux:
     # Selects [profile.ci] from .config/nextest.toml, which also determines
     # where the JUnit report is written: target/nextest/$NEXTEST_PROFILE/
     NEXTEST_PROFILE: ci
+    PICODATA_TEST_JOBS: $KUBERNETES_CPU_REQUEST
   cache:
     - <<: *cache_git
       policy: pull
