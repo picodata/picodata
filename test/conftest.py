@@ -26,14 +26,12 @@ from typing import (
     Callable,
     Dict,
     Generator,
-    Iterator,
     List,
     Literal,
     Optional,
     Tuple,
     Type,
 )
-from itertools import count
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 import tarantool
@@ -2361,7 +2359,7 @@ CLUSTER_COLORS = (
 
 @dataclass
 class Cluster:
-    id: str
+    name: str
     data_dir: str
     base_host: str
     port_distributor: PortDistributor
@@ -2779,7 +2777,7 @@ class Cluster:
         instance = Instance(
             executable=executable,
             cwd=self.data_dir,
-            cluster_name=self.id,
+            cluster_name=self.name,
             name=name,
             replicaset_name=replicaset_name,
             _instance_dir=instance_dir,
@@ -3448,19 +3446,13 @@ def cargo_build_fixt(pytestconfig: pytest.Config) -> None:
     copy_testable_plugins()
 
 
-@pytest.fixture(scope="session")
-def cluster_names(xdist_worker_number) -> Iterator[str]:
-    """Unique `cluster_name` generator."""
-    return (f"cluster-{xdist_worker_number}-{i}" for i in count())
-
-
 @pytest.fixture(scope="class")
 def class_tmp_dir(tmpdir_factory):
     return tmpdir_factory.mktemp("tmp")
 
 
 @pytest.fixture(scope="class")
-def cluster_factory(class_tmp_dir, cluster_names, port_distributor, cargo_build_fixt, request):
+def cluster_factory(class_tmp_dir, port_distributor, cargo_build_fixt, request):
     pytest_timeout = get_pytest_timeout(request.config)
 
     def cluster_factory_():
@@ -3468,7 +3460,7 @@ def cluster_factory(class_tmp_dir, cluster_names, port_distributor, cargo_build_
         # see how it's done in def binary_path()
         share_dir = os.getcwd() + "/test/plugins/share_dir"
         cluster = Cluster(
-            id=next(cluster_names),
+            name=request.node.name,
             data_dir=class_tmp_dir,
             share_dir=share_dir,
             base_host=BASE_HOST,
@@ -3501,12 +3493,12 @@ def cluster(cluster_factory) -> Generator[Cluster, None, None]:
 
 
 @pytest.fixture
-def second_cluster(tmpdir, cluster_names, port_distributor, cargo_build_fixt, request):
+def second_cluster(tmpdir, port_distributor, cargo_build_fixt, request):
     cluster2_dir = os.path.join(tmpdir, "cluster2")
     os.makedirs(cluster2_dir, exist_ok=True)
 
     cluster = Cluster(
-        id=next(cluster_names),
+        name=request.node.name + "_second_cluster",
         data_dir=cluster2_dir,
         base_host=BASE_HOST,
         port_distributor=port_distributor,

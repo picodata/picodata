@@ -69,7 +69,7 @@ def test_request_follower(cluster2: Cluster):
     generated_uuid = str(uuid.uuid4())
     actual = raft_join(
         instance=i2,
-        cluster_name=cluster2.id,
+        cluster_name=cluster2.name,
         instance_name="fake-0",
         uuid=generated_uuid,
         timeout_seconds=1,
@@ -580,7 +580,7 @@ def test_proc_raft_join_is_idempotent(cluster: Cluster):
     for i in range(3):
         result = raft_join(
             instance=leader,
-            cluster_name=cluster.id,
+            cluster_name=cluster.name,
             instance_name=str(instance.name),
             uuid=instance_uuid,
             timeout_seconds=1,
@@ -608,7 +608,7 @@ def test_proc_raft_join_fails_for_alive_instance(cluster: Cluster):
     with pytest.raises(TarantoolError) as exc:
         raft_join(
             instance=leader,
-            cluster_name=cluster.id,
+            cluster_name=cluster.name,
             instance_name=str(instance.name),
             uuid=instance_uuid,
             timeout_seconds=1,

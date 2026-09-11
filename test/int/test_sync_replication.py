@@ -2702,7 +2702,7 @@ def test_replica_restart_under_write_load(cluster: Cluster):
     cluster.set_config_file(
         yaml=f"""
 cluster:
-    name: {cluster.id}
+    name: {cluster.name}
     tier:
         default:
             replication_factor: 3

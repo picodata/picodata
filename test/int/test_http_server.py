@@ -466,7 +466,7 @@ def test_webui_with_plugin(cluster: Cluster):
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": 0.0,
-            "clusterName": cluster.id,
+            "clusterName": cluster.name,
             "replicasetsCount": 3,
             "instancesCurrentStateOnline": 3,
             "instancesCurrentStateOffline": 0,
@@ -646,7 +646,7 @@ def test_webui_replicaset_state(cluster: Cluster):
         assert response.headers.get("content-type") == "application/json"
         assert json.load(response) == {
             "capacityUsage": 0.0,
-            "clusterName": cluster.id,
+            "clusterName": cluster.name,
             "replicasetsCount": 2,
             "instancesCurrentStateOnline": 3,
             "instancesCurrentStateOffline": 1,
@@ -989,7 +989,7 @@ def test_healthcheck_k8s_probes(cluster: Cluster):
     cluster.set_config_file(
         yaml=f"""
 cluster:
-    name: {cluster.id}
+    name: {cluster.name}
     tier:
         default:
             replication_factor: 3
@@ -1207,7 +1207,7 @@ def test_kubernetes_probes_disabled(cluster: Cluster):
     cluster.set_config_file(
         yaml=f"""
 cluster:
-    name: {cluster.id}
+    name: {cluster.name}
     tier:
         default:
             replication_factor: 1
