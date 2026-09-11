@@ -371,3 +371,17 @@ projection (1::int -> col_1)
 SELECT CAST(:a AS int) as "col_1"
 ''
 projection (:a::int -> col_1)
+
+-- TEST: concat-casted-operands
+-- SQL:
+explain (logical) select c::text || a::text from t;
+-- EXPECTED:
+projection (t.c::string::string || t.a::int::string -> col_1)
+  scan t
+
+-- TEST: concat-operand-casted-to-non-text
+-- SQL:
+explain (logical) select c || a::int from t;
+-- EXPECTED:
+projection (t.c::string::string || t.a::int::int::string -> col_1)
+  scan t

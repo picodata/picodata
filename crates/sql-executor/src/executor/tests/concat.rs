@@ -17,7 +17,7 @@ fn scalar_function_and_explicit_cast_operands_test() {
     let info = get_broadcast(r#"SELECT trim('hello') || CAST(42 as string) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (TRIM (CAST($1 AS string)) as string) || CAST (CAST (CAST($2 AS int) as string) as string) as \"col_1\" FROM \"t1\""
+      - "SELECT CAST (TRIM (CAST($1 AS string)) as string) || CAST (CAST($2 AS int) as string) as \"col_1\" FROM \"t1\""
       - - String: hello
         - Integer: 42
     "#);
@@ -41,11 +41,34 @@ fn column_operand_and_chained_concat_without_parens_test() {
     );
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT \"t1\".\"a\" FROM \"t1\" WHERE CAST (\"t1\".\"a\" as string) || CAST($1 AS string) = CAST ((CAST (CAST (CAST($2 AS int) as string) as string) || CAST (TRIM (CAST($3 AS string)) as string)) as string) || CAST($4 AS string)"
+      - "SELECT \"t1\".\"a\" FROM \"t1\" WHERE CAST (\"t1\".\"a\" as string) || CAST($1 AS string) = CAST ((CAST (CAST($2 AS int) as string) || CAST (TRIM (CAST($3 AS string)) as string)) as string) || CAST($4 AS string)"
       - - String: a
         - Integer: 42
         - String: b
         - String: a
+    "#);
+}
+
+/// Operands that are already casted to text don't get a second cast on top:
+/// `||` needs its arguments to be text, and an explicit `::text` already provides it.
+#[test]
+fn explicitly_casted_operands_test() {
+    let info = get_broadcast(r#"SELECT "a"::text || "b"::text FROM "t1""#);
+    assert_yaml_snapshot!(info, @r#"
+    All:
+      - "SELECT CAST (\"t1\".\"a\" as string) || CAST (\"t1\".\"b\" as string) as \"col_1\" FROM \"t1\""
+      - []
+    "#);
+}
+
+/// A cast to a non-text type still has to be casted to text.
+#[test]
+fn operand_casted_to_non_text_test() {
+    let info = get_broadcast(r#"SELECT "a" || "b"::int FROM "t1""#);
+    assert_yaml_snapshot!(info, @r#"
+    All:
+      - "SELECT CAST (\"t1\".\"a\" as string) || CAST (CAST (\"t1\".\"b\" as int) as string) as \"col_1\" FROM \"t1\""
+      - []
     "#);
 }
 

@@ -1229,3 +1229,15 @@ SELECT string_col || 'x' FROM arithmetic_space;
 SELECT double_col || 'x' FROM arithmetic_space;
 -- UNORDERED:
 '1.1x', '2.1x', '3.1x'
+
+-- TEST: concat-casted-operands-1
+-- SQL:
+SELECT string_col::text || int_col::text FROM arithmetic_space;
+-- UNORDERED:
+'1231', '1232', '1233'
+
+-- TEST: concat-casted-operands-2
+-- SQL:
+SELECT 'x' || int_col::int FROM arithmetic_space;
+-- UNORDERED:
+'x1', 'x2', 'x3'

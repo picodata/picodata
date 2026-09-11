@@ -1,16 +1,16 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::aggregates::AggregateKind;
-use crate::ir::node::expression::{ExprChildren, Expression};
-use crate::ir::node::{Cast, Concat, NodeId, ScalarFunction};
+use crate::ir::node::expression::{ExprChildren, Expression, EXPECTED_CHILDREN_CNT};
+use crate::ir::node::{Cast, NodeId, ScalarFunction};
 use crate::ir::node::{Node32, Node96};
 use crate::ir::types::CastType;
 use crate::ir::Plan;
 use crate::utils::normalize_name_from_sql;
 use crate::utils::to_user;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql_type_system::type_system::TypeAnalyzer;
-use sql_type_system::TypeReport;
 
 use super::expression::{FunctionFeature, VolatilityType};
 use super::types::{DerivedType, UnrestrictedType};
@@ -252,52 +252,80 @@ impl Plan {
     /// Exact expressions:
     ///   - ScalarFunction, Trim, Like
     ///   - Concat
+    ///
+    /// We add these casts in order to avoid SQL errors on local execution stage.
+    /// An argument that is already casted to the target type is left as is,
+    /// so we don't produce redundant casts like `a::text::text`.
     pub fn explicit_cast_func_args(
         &mut self,
         type_analyzer: &TypeAnalyzer<NodeId>,
     ) -> Result<(), SbroadError> {
-        self.cast_scalar_fn_args(type_analyzer.get_report())?;
-        self.cast_concat_operator_args()
-    }
+        let type_report = type_analyzer.get_report();
 
-    /// We add these casts in order to avoid SQL errors on local execution stage
-    fn cast_scalar_fn_args(&mut self, type_report: &TypeReport<NodeId>) -> Result<(), SbroadError> {
-        let scalar_fns = self
+        /// The type an argument must be casted to.
+        #[derive(Clone, Copy)]
+        enum CastTarget {
+            /// The same type for every argument, no matter what the argument's own type is.
+            Fixed(CastType),
+            /// The argument's own type, taken from the type system report.
+            FromReport,
+        }
+
+        // A node to cast the arguments of, its arguments and the type to cast them to.
+        type ArgsToCast = (
+            NodeId,
+            SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]>,
+            CastTarget,
+        );
+
+        let func_args = self
             .nodes
             .iter96_with_ids()
             .filter_map(|(id, node)| {
                 if let Node96::ScalarFunction(scalar_fn) = node {
-                    Some((id, scalar_fn.children.clone()))
+                    Some((
+                        id,
+                        scalar_fn.children.clone().into(),
+                        CastTarget::FromReport,
+                    ))
                 } else {
                     None
                 }
             })
             // TRIM and LIKE are not ScalarFunction nodes, but Tarantool resolves their overload
-            // the same way, so their arguments need the same casts.
+            // the same way, so the reported type is what their arguments must be casted to.
             .chain(self.nodes.iter32_with_ids().filter_map(|(id, node)| {
-                let children = match node {
-                    Node32::Trim(trim) => trim.expr_children(),
-                    Node32::Like(like) => like.expr_children(),
+                let (children, cast_target) = match node {
+                    Node32::Trim(trim) => (trim.expr_children(), CastTarget::FromReport),
+                    Node32::Like(like) => (like.expr_children(), CastTarget::FromReport),
+                    // PostgreSQL concats strings with values of other types and we want to do the
+                    // same, but Tarantool concats only strings, so we cast `||` arguments to text.
+                    Node32::Concat(concat) => {
+                        (concat.expr_children(), CastTarget::Fixed(CastType::String))
+                    }
                     _ => return None,
                 };
-                Some((id, children.to_vec()))
+                Some((id, children, cast_target))
             }))
-            .collect::<Vec<(NodeId, Vec<NodeId>)>>();
+            .collect::<Vec<ArgsToCast>>();
 
-        for (node_id, args) in scalar_fns.into_iter() {
+        for (node_id, args, cast_target) in func_args.into_iter() {
             for (idx, arg_id) in args.iter().enumerate() {
                 let arg_id = *arg_id;
                 let arg_expr = self.get_expression_node(arg_id)?;
 
-                let get_cast_type = || {
+                let get_cast_type = || match cast_target {
+                    CastTarget::Fixed(cast_type) => Ok(Some(cast_type)),
                     /*
                         `GROUP BY` aliases can still appear here as placeholders. Type analysis
                         records the type for the aliased child expression, not for the alias node.
                     */
-                    DerivedType::from(type_report.get_type(&self.get_child_under_alias(arg_id)?))
-                        .get()
-                        .filter(|ty| ty.is_scalar())
-                        .map_or(Ok(None), |ty| CastType::try_from(&ty).map(Some))
+                    CastTarget::FromReport => DerivedType::from(
+                        type_report.get_type(&self.get_child_under_alias(arg_id)?),
+                    )
+                    .get()
+                    .filter(|ty| ty.is_scalar())
+                    .map_or(Ok(None), |ty| CastType::try_from(&ty).map(Some)),
                 };
 
                 let cast_type = match arg_expr {
@@ -310,8 +338,8 @@ impl Plan {
                 };
 
                 let cast_id = self.add_cast(arg_id, cast_type)?;
-                let mut scalar_fn_node_mut = self.get_mut_expression_node(node_id)?;
-                let child_mut = scalar_fn_node_mut
+                let mut func_node_mut = self.get_mut_expression_node(node_id)?;
+                let child_mut = func_node_mut
                     .expr_children_mut()
                     .into_iter()
                     .nth(idx)
@@ -321,57 +349,6 @@ impl Plan {
             }
         }
 
-        Ok(())
-    }
-
-    /// Cast non-text argument of concat (`||`) operator into text.
-    /// Each overload of the `||` operator must satisfy the following requirements:
-    ///   - Both arguments must be scalar.
-    ///   - At least one argument must be `Text`.
-    ///     The invariant above must be consistent with overloads definition of `||`
-    ///     in Picodata SQL type system (see `frontend::sql::type_system` module
-    ///     in the `sql-frontend` crate).
-    fn cast_concat_operator_args(&mut self) -> Result<(), SbroadError> {
-        let concat_nodes = self
-            .nodes
-            .iter32_with_ids()
-            .filter_map(|(id, node)| {
-                if let Node32::Concat(concat) = node {
-                    Some((id, concat.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<(NodeId, Concat)>>();
-
-        for (node_id, concat) in concat_nodes.into_iter() {
-            let args = concat.expr_children();
-
-            for (idx, arg_id) in args.into_iter().enumerate() {
-                /*
-                    `GROUP BY` aliases can still appear here as placeholders. Type analysis
-                    records the type for the aliased child expression.
-                    Type system report does not have alias nodes.
-                    Hence, we unconditionally cast all arguments to String
-
-                    We expect e.g. such expressions
-                    `1 || '1'`, `1.5 || '1'`, `'x' || 1.5 + 1`
-                    `SELECT a::int AS a1 FROM t GROUP BY a1, a1 || 'x';`
-                    to be valid
-                */
-
-                let cast_id = self.add_cast(arg_id, CastType::String)?;
-
-                let mut concat_node_mut = self.get_mut_expression_node(node_id)?;
-                let child_mut = concat_node_mut
-                    .expr_children_mut()
-                    .into_iter()
-                    .nth(idx)
-                    .expect("`idx` is in bounds of children array");
-
-                *child_mut = cast_id;
-            }
-        }
         Ok(())
     }
 }
