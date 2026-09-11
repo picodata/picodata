@@ -506,7 +506,7 @@ impl Test {
 
     pub fn jobs(&self) -> usize {
         let Some(jobs) = self.jobs else {
-            return num_cpus::get();
+            return (num_cpus::get() / 2).max(1);
         };
 
         jobs.max(1)
