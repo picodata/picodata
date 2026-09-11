@@ -1,11 +1,13 @@
+use smol_str::SmolStr;
 use std::time::Duration;
 use tarantool::fiber;
 use tarantool::time::Instant;
 
 /// Manages the a simple exponential backoff strategy and timeout.
+#[derive(Default, Debug)]
 pub struct SimpleBackoffManager {
     /// For debugging purposes
-    name: &'static str,
+    name: SmolStr,
     last_try: Option<Instant>,
 
     base_timeout: Duration,
@@ -23,6 +25,11 @@ impl SimpleBackoffManager {
 
     #[inline]
     pub fn new(name: &'static str, base_timeout: Duration, max_timeout: Duration) -> Self {
+        Self::with_name(SmolStr::new_static(name), base_timeout, max_timeout)
+    }
+
+    #[inline]
+    pub fn with_name(name: SmolStr, base_timeout: Duration, max_timeout: Duration) -> Self {
         Self {
             name,
             last_try: None,
@@ -44,22 +51,29 @@ impl SimpleBackoffManager {
     /// executed now or if it must wait for the backoff timeout.
     #[track_caller]
     pub fn should_try(&self) -> bool {
-        let Some(last_try) = self.last_try else {
+        let Some(next_try) = self.should_wait_until() else {
             return true;
         };
         let now = fiber::clock();
-        let timeout = self.timeout();
-        let result = now.duration_since(last_try) > timeout;
+        let result = now > next_try;
         if !result {
             crate::tlog!(
                 Debug,
-                "backoff manager: {} should wait {} ms",
+                "backoff manager: {} should wait {:0.3?}",
                 self.name,
-                timeout.as_millis()
+                next_try.duration_since(now)
             );
         }
 
         result
+    }
+
+    /// Returns the instant at which it's ok to make another attempt, or
+    /// `None` is it's ok right now.
+    pub fn should_wait_until(&self) -> Option<Instant> {
+        let last_try = self.last_try?;
+
+        Some(last_try.saturating_add(self.timeout()))
     }
 
     #[inline]
