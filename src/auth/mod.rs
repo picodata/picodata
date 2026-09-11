@@ -91,6 +91,10 @@ pub(crate) fn authenticate_with_password(
             let password = ldap_prepare(password);
             do_authenticate(user, password, &zero_salt(), method)
         }
+        Some((AuthMethod::Cert, _)) => Err(BoxError::new(
+            TarantoolErrorCode::PasswordMismatch,
+            "'cert' authentication is only possible over a connection with a client certificate",
+        )),
         Some((method @ AuthMethod::ChapSha1, _)) => {
             let password = chap_sha1_prepare(password, &zero_salt());
             do_authenticate(user, password, &zero_salt(), method)
@@ -114,8 +118,10 @@ fn register_picodata_auth_methods() {
     let scram = typed_method::TypedAuthMethodWrapper(methods::scram::ScramAuthMethod);
     let md5 = typed_method::TypedAuthMethodWrapper(methods::md5::Md5AuthMethod);
     let ldap = typed_method::TypedAuthMethodWrapper(methods::ldap::LdapAuthMethod);
+    let cert = typed_method::TypedAuthMethodWrapper(methods::cert::CertAuthMethod);
 
     tarantool::auth_method_register(scram);
     tarantool::auth_method_register(md5);
     tarantool::auth_method_register(ldap);
+    tarantool::auth_method_register(cert);
 }

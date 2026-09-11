@@ -1725,7 +1725,7 @@ fn parse_create_user_ir(ast: &AstCore, node: &ParseNode) -> Result<CreateUser, S
             Rule::WaitAppliedGlobally => wait_applied_globally = true,
             Rule::WaitAppliedLocally => wait_applied_globally = false,
             Rule::Timeout => timeout = get_timeout(ast, *child_id)?,
-            method @ (Rule::ScramSha256 | Rule::ChapSha1 | Rule::Md5 | Rule::Ldap) => {
+            method @ (Rule::ScramSha256 | Rule::ChapSha1 | Rule::Md5 | Rule::Ldap | Rule::Cert) => {
                 auth_method = auth_method_from_auth_rule(method);
             }
             _ => return unexpected_acl_child(child_node),
@@ -1815,6 +1815,7 @@ fn parse_alter_password_option(
 
     let (password, auth_method) = match pwd_or_ldap_node.rule {
         Rule::Ldap => (SmolStr::default(), AuthMethod::Ldap),
+        Rule::Cert => (SmolStr::default(), AuthMethod::Cert),
         Rule::SingleQuotedString => {
             let password_literal = retrieve_string_literal(ast, *pwd_or_ldap_node_id)?;
             let password = escape_single_quotes(&password_literal);
@@ -2418,6 +2419,7 @@ fn auth_method_from_auth_rule(auth_rule: Rule) -> AuthMethod {
         Rule::ScramSha256 => AuthMethod::ScramSha256,
         Rule::ChapSha1 => AuthMethod::ChapSha1,
         Rule::Ldap => AuthMethod::Ldap,
+        Rule::Cert => AuthMethod::Cert,
         Rule::Md5 => AuthMethod::Md5,
         _ => unreachable!("got a non-auth parsing rule"),
     }

@@ -1265,3 +1265,33 @@ def test_acl_wait_applied_options(cluster: Cluster):
         """
     )
     assert acl["row_count"] == 1
+
+
+def test_cert_auth_without_mtls(cluster: Cluster):
+    """
+    Check that `cert` authentication fails if there's no client certificate.
+    """
+    (i1,) = cluster.deploy(instance_count=1)
+    i1.sql("CREATE USER cert_user USING cert")
+
+    # This instance's iproto listener has no TLS configured, so the connection
+    # can't present a client certificate. Note that tarantool authenticates the
+    # user right away if the certificate matches (see `try_authenticate_iproto`),
+    # so our auth method is only reached when that check didn't succeed.
+    error = i1.eval(
+        """
+        local netbox = require('net.box')
+        local conn = netbox.connect(..., {
+            user = 'cert_user',
+            password = '',
+            auth_type = 'cert',
+            wait_connected = 5,
+        })
+        local err = tostring(conn.error)
+        conn:close()
+        return err
+        """,
+        f"{i1.host}:{i1.port}",
+    )
+
+    assert error == "client certificate is missing"

@@ -154,6 +154,10 @@ pub enum PgError {
     #[error(transparent)]
     AuthError(#[from] AuthError),
 
+    // Error message format is compatible with Postgres.
+    #[error("certificate authentication failed for user '{0}'")]
+    CertAuthError(SmolStr),
+
     // This is picodata's main app error which incapsulates
     // everything else, including sbroad and tarantool errors.
     #[error(transparent)]
@@ -239,6 +243,7 @@ impl PgError {
     fn code(&self) -> PgErrorCode {
         match self {
             Self::SslRequired => PgErrorCode::InvalidAuthorizationSpecification,
+            Self::CertAuthError(_) => PgErrorCode::InvalidAuthorizationSpecification,
             Self::ProtocolViolation(_) => PgErrorCode::ProtocolViolation,
             Self::FeatureNotSupported(_) => PgErrorCode::FeatureNotSupported,
             Self::AuthError(_) => PgErrorCode::InvalidPassword,

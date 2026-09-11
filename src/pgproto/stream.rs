@@ -1,6 +1,7 @@
 use super::tls::{TlsAcceptor, TlsStream};
 use crate::tlog;
 use bytes::{BufMut, BytesMut};
+use openssl::nid::Nid;
 use pgwire::messages::{DecodeContext, SslNegotiationMetaMessage};
 use std::io::{self, ErrorKind::UnexpectedEof, Write};
 
@@ -83,6 +84,36 @@ impl<S> PgStream<S> {
             PgSocket::Plain(stream) => stream,
             PgSocket::Secure(ssl_stream) => ssl_stream.get_ref(),
         }
+    }
+
+    pub fn peer_cert(&self) -> Option<openssl::x509::X509> {
+        match &self.socket {
+            PgSocket::Plain(_) => None,
+            PgSocket::Secure(stream) => stream.ssl().peer_certificate(),
+        }
+    }
+
+    /// User name derived from the peer certificate's Common Name (CN),
+    /// truncated at the first `@` just like `iproto_ssl_cert_get_user`.
+    /// This function returns IO error if CN is not a valid utf-8.
+    pub fn peer_cert_username(&self) -> io::Result<Option<String>> {
+        use openssl::x509::{X509NameEntryRef, X509};
+
+        // We deliberately consider only the 1st CN; this is what postgres does.
+        fn take_first_cn(cert: &X509) -> Option<&X509NameEntryRef> {
+            cert.subject_name().entries_by_nid(Nid::COMMONNAME).next()
+        }
+
+        let cert = self.peer_cert();
+        let entry = cert.as_ref().and_then(take_first_cn);
+        let Some(entry) = entry else {
+            return Ok(None);
+        };
+
+        let cn = entry.data().as_utf8()?;
+        let filtered_cn = cn.split('@').next().unwrap_or(&cn);
+
+        Ok(Some(filtered_cn.to_owned()))
     }
 }
 
@@ -180,7 +211,7 @@ impl<S: io::Read + io::Write> PgStream<S> {
 }
 
 impl<S: io::Read + io::Write> PgStream<S> {
-    pub fn into_secure(self, acceptor: &TlsAcceptor) -> io::Result<PgStream<S>> {
+    pub fn upgrade_to_tls(self, acceptor: &TlsAcceptor) -> io::Result<PgStream<S>> {
         let PgSocket::Plain(socket) = self.socket else {
             panic!("BUG: cannot upgrade TLS stream");
         };
