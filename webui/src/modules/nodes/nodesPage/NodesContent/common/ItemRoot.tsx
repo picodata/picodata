@@ -1,11 +1,12 @@
-import { Box, styled } from "@mui/material";
+import { Box, styled, Tooltip } from "@mui/material";
 import { green } from "@mui/material/colors";
 import LibraryAddCheckIcon from "@mui/icons-material/LibraryAddCheck";
+import { PropsWithChildren } from "react";
 
 import { Leader } from "shared/icons";
 
 export const ITEM_GRID_COLUMNS_SCHEMA =
-  "180px 2fr 120px 120px 160px 280px 1fr 2fr 60px";
+  "minmax(110px, 1.4fr) minmax(70px, 1fr) minmax(70px, 0.6fr) minmax(70px, 0.6fr) minmax(95px, 0.8fr) minmax(130px, 1.6fr) minmax(90px, 0.7fr) minmax(125px, 1.8fr) 44px";
 
 const BORDER_RADIUS = "6px";
 
@@ -18,13 +19,29 @@ export const ItemRoot = styled(Box)({
     overflow: "hidden",
   },
 });
-export const CellLabel = styled(Box)(({ theme }) => ({
+const StyledCellLabel = styled(Box)(({ theme }) => ({
+  maxWidth: "100%",
   fontSize: "12px",
   fontStyle: "normal",
   fontWeight: 400,
   lineHeight: "16px",
   color: theme.common.colors.typography.colorTextBlack,
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+  textOverflow: "ellipsis",
 }));
+
+export const CellLabel = ({ children, ...rest }: PropsWithChildren) => {
+  const label = <StyledCellLabel {...rest}>{children}</StyledCellLabel>;
+
+  // Only plain text labels get a truncation tooltip - composite children
+  // (e.g. a label next to an info icon) already manage their own hints.
+  if (typeof children !== "string") {
+    return label;
+  }
+
+  return <Tooltip title={children}>{label}</Tooltip>;
+};
 
 export const CellValue = styled(Box)({
   fontSize: "14px",

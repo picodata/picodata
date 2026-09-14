@@ -11,7 +11,7 @@ export const Root = styled("div")({
   overflow: "hidden",
   padding: "4px max(8px, 2%)",
   maxWidth: "max-content",
-  minWidth: "150px",
+  minWidth: "130px",
 });
 export const AddressLabel = styled("span")({
   fontSize: "12px",

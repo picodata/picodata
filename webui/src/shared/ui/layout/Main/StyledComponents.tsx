@@ -6,12 +6,13 @@ export const Root = styled("div")({
 export const WorkSpace = styled("div")({
   overflow: "hidden",
   width: "100vw",
-  minWidth: "1440px",
+  minWidth: "1024px",
   display: "grid",
   gridTemplateRows: "min-content 1fr",
   height: "100%",
 });
 export const LayoutMain = styled("main")({
-  overflow: "hidden",
-  margin: "0 130px 28px 130px",
+  overflowX: "auto",
+  overflowY: "hidden",
+  margin: "0 clamp(24px, 6vw, 130px) 28px clamp(24px, 6vw, 130px)",
 });
