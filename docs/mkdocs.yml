@@ -23,6 +23,7 @@ not_in_nav: |
   dev/connectors_index.md
   dev/connectors/java.md
   plugins/argus.md
+  plugins/s3r.md
   plugins/svarog.md
   plugins/task.md
   plugins/ouroboros.md
