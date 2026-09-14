@@ -147,7 +147,20 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             (
                 "exec_script",
                 InternalScript::AlterSystemSpacesIsSync.as_str(),
-            )
+            ),
+            // Missing operations from previous schema change.
+            // It was problem before: we cherry-picked to 26.1 (release 26.1.3)
+            // only one operation (`proc_raft_transfer_leader`) with schema version
+            // 26.2.1, and other operations with version 26.2.1 are skipped for
+            // the future upgrade 26.1 -> 26.2 or 26.1 -> 26.2 -> 26.3.
+            ("exec_script", InternalScript::CreateIfNotExistSqlBuiltins.as_str()),
+            ("proc_name", "proc_instance_health_status"),
+            ("proc_name", "proc_array_cast"),
+            ("exec_script", InternalScript::InsertExperimentalShardingImplementationIntoPicoDbConfig.as_str()),
+            ("exec_script", InternalScript::InsertReplicationModeIntoPicoDbConfig.as_str()),
+            ("proc_name", "proc_instance_details"),
+            ("proc_name", "proc_resharding"),
+            ("exec_script", InternalScript::InsertWalModeIntoPicoDbConfig.as_str()),
         ],
     ),
 ];
