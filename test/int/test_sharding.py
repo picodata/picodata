@@ -8,6 +8,7 @@ from conftest import (
     Cluster,
     Instance,
     Retriable,
+    WAIT_ONLINE_TIMEOUT,
     log_crawler,
 )
 
@@ -544,7 +545,7 @@ cluster:
         instance = cluster.add_instance(wait_online=False, tier="storage", log_to_file=True, log_to_console=False)
         instance.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
 
-    cluster.wait_online(timeout=60)
+    cluster.wait_online(WAIT_ONLINE_TIMEOUT * 2)
 
 
 def test_sharding_initial_distribution(cluster: Cluster):

@@ -14,6 +14,7 @@ from conftest import (
     Instance,
     Retriable,
     TarantoolError,
+    WAIT_ONLINE_TIMEOUT,
     log_crawler,
 )
 
@@ -277,7 +278,7 @@ cluster:
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i3 = cluster.add_instance(wait_online=False, tier="sync_tier")
-    cluster.wait_online(timeout=60)
+    cluster.wait_online(WAIT_ONLINE_TIMEOUT * 2)
 
     master_name = i1.replicaset_master_name()
     master = next(i for i in [i1, i2, i3] if i.name == master_name)
@@ -501,7 +502,7 @@ cluster:
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i3 = cluster.add_instance(wait_online=False, tier="sync_tier")
-    cluster.wait_online(timeout=60)
+    cluster.wait_online(WAIT_ONLINE_TIMEOUT * 2)
 
     master_name = i1.replicaset_master_name()
     master = next(i for i in [i1, i2, i3] if i.name == master_name)
@@ -1195,7 +1196,7 @@ cluster:
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i3 = cluster.add_instance(wait_online=False, tier="sync_tier")
-    cluster.wait_online(timeout=60)
+    cluster.wait_online(WAIT_ONLINE_TIMEOUT * 2)
 
     master_name = i1.replicaset_master_name()
     master = next(i for i in [i1, i2, i3] if i.name == master_name)
@@ -1274,7 +1275,7 @@ cluster:
     leader = cluster.leader()
 
     r1 = [cluster.add_instance(wait_online=False, tier="sync_tier") for _ in range(3)]
-    cluster.wait_online(timeout=60)
+    cluster.wait_online(WAIT_ONLINE_TIMEOUT * 2)
 
     master_name = r1[0].replicaset_master_name()
     master = next(i for i in r1 if i.name == master_name)
@@ -1647,7 +1648,7 @@ cluster:
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i3 = cluster.add_instance(wait_online=False, tier="sync_tier")
-    cluster.wait_online(timeout=60)
+    cluster.wait_online(WAIT_ONLINE_TIMEOUT * 2)
 
     master_name = i1.replicaset_master_name()
     master = next(i for i in [i1, i2, i3] if i.name == master_name)
@@ -2122,7 +2123,7 @@ cluster:
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i3 = cluster.add_instance(wait_online=False, tier="sync_tier")
-    cluster.wait_online(timeout=60)
+    cluster.wait_online(WAIT_ONLINE_TIMEOUT * 2)
 
     master_name = i1.replicaset_master_name()
     master = next(i for i in [i1, i2, i3] if i.name == master_name)
@@ -2254,7 +2255,7 @@ cluster:
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i3 = cluster.add_instance(wait_online=False, tier="sync_tier")
-    cluster.wait_online(timeout=60)
+    cluster.wait_online(WAIT_ONLINE_TIMEOUT * 2)
 
     master_name = i1.replicaset_master_name()
     master = next(i for i in [i1, i2, i3] if i.name == master_name)
@@ -2365,7 +2366,7 @@ cluster:
     i1 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i2 = cluster.add_instance(wait_online=False, tier="sync_tier")
     i3 = cluster.add_instance(wait_online=False, tier="sync_tier")
-    cluster.wait_online(timeout=60)
+    cluster.wait_online(WAIT_ONLINE_TIMEOUT * 2)
 
     replicaset_name = i1.replicaset_name
     master_name = i1.replicaset_master_name()
