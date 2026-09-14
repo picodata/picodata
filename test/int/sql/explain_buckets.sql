@@ -130,7 +130,7 @@ buckets = [1934, 2426]
 
 -- TEST: buckets-fmt-wrapped
 -- SQL:
-EXPLAIN (buckets, fmt)
+EXPLAIN (buckets, verbose, fmt)
 SELECT * FROM tt WHERE d IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
                              13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23);
 -- EXPECTED:
@@ -150,8 +150,60 @@ buckets = any
 
 -- TEST: buckets-no-fmt-stays-on-one-line
 -- SQL:
-EXPLAIN (buckets)
+EXPLAIN (buckets, verbose)
 SELECT * FROM tt WHERE d IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
                              13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23);
 -- EXPECTED:
 buckets = [219, 246, 509, 626, 653, 680, 799, 1403, 1410, 1418, 1439, 1488, 1514, 1860, 1934, 1948, 1958, 2312, 2564, 2640, 2752, 2802, 2852]
+
+-- TEST: buckets-truncated
+-- SQL:
+EXPLAIN (buckets)
+SELECT * FROM tt WHERE d IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                             13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23);
+-- EXPECTED:
+buckets = [219, 246, 509, 626, 653, 680, ... (17 more)]
+
+-- TEST: buckets-truncated-fmt-stays-on-one-line
+-- SQL:
+EXPLAIN (buckets, fmt)
+SELECT * FROM tt WHERE d IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                             13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23);
+-- EXPECTED:
+buckets = [219, 246, 509, 626, 653, 680, ... (17 more)]
+
+-- TEST: buckets-verbose-fits-single-line
+-- SQL:
+EXPLAIN (buckets, verbose)
+SELECT COUNT(*) FROM tt WHERE d = 1 OR d = 42;
+-- EXPECTED:
+buckets = [1934, 2426]
+
+-- TEST: buckets-verbose-default-facets
+-- SQL:
+EXPLAIN (verbose)
+SELECT * FROM tt WHERE d IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                             13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23);
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (tt.d::int -> d)
+  selection (tt.d::int in ROW(1::int, 2::int, 3::int, 4::int, 5::int, 6::int, 7::int, 8::int, 9::int, 10::int, 11::int, 12::int, 13::int, 14::int, 15::int, 16::int, 17::int, 18::int, 19::int, 20::int, 21::int, 22::int, 23::int))
+    scan tt
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [219, 246, 509, 626, 653, 680, 799, 1403, 1410, 1418, 1439, 1488, 1514, 1860, 1934, 1948, 1958, 2312, 2564, 2640, 2752, 2802, 2852]
+
+-- TEST: buckets-verbose-without-buckets-facet
+-- SQL:
+EXPLAIN (logical, verbose)
+SELECT * FROM tt WHERE d = 1;
+-- EXPECTED:
+projection (tt.d::int -> d)
+  selection (tt.d::int = 1::int)
+    scan tt

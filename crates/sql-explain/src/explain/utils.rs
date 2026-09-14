@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use smol_str::SmolStr;
 use sql_ir::ir::node::{BlockEntryKind, IfBranch, StatementLocation};
 use std::fmt;
@@ -35,6 +36,41 @@ pub const EXPLAIN_WIDTH: u16 = 70;
 /// Width the `FMT` option formats to: textual representations
 /// wider than this are not printed as a single line.
 pub const FMT_WIDTH: usize = 46;
+
+/// We use this buffer to check if the textual representation
+/// is short enough to be printed as a single line.
+#[derive(Default)]
+pub(crate) struct TinyFmtBuffer(SmallVec<[u8; FMT_WIDTH]>);
+
+impl TinyFmtBuffer {
+    /// Does the buffer contain `'\n'`?
+    pub(crate) fn has_newline(&self) -> bool {
+        self.0.contains(&b'\n')
+    }
+
+    fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.0).unwrap()
+    }
+}
+
+impl fmt::Display for TinyFmtBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl fmt::Write for TinyFmtBuffer {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let this = &mut self.0;
+        let new_len = this.len().checked_add(s.len()).ok_or(fmt::Error)?;
+        if new_len > this.capacity() {
+            return Err(fmt::Error);
+        }
+        this.extend_from_slice(s.as_bytes());
+
+        Ok(())
+    }
+}
 
 pub fn make_explain_header1(s: impl ToString) -> comfy_table::Table {
     let mut header = ::comfy_table::Table::new();

@@ -315,7 +315,7 @@ buckets = any
 -- TEST: explain-union-global-sharded-4
 -- SKIP_FOR: 2rsX1
 -- SQL:
-EXPLAIN (RAW, BUCKETS)
+EXPLAIN (RAW, BUCKETS, VERBOSE)
 SELECT * FROM t WHERE a in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10) UNION ALL SELECT * FROM g;
 -- EXPECTED:
 ──────────────────────────────────────────────────────────────────────
@@ -398,7 +398,7 @@ buckets <= [1-3000]
 -- TEST: explain-union-global-sharded-6
 -- SKIP_FOR: 2rsX1
 -- SQL:
-EXPLAIN (RAW, BUCKETS)
+EXPLAIN (RAW, BUCKETS, VERBOSE)
 SELECT * FROM t WHERE a = 5 and a IN (SELECT MIN(a) FROM t) UNION ALL SELECT * FROM g;
 -- EXPECTED:
 ──────────────────────────────────────────────────────────────────────

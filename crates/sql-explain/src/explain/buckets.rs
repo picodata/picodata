@@ -1,5 +1,6 @@
-use crate::explain::utils::{FMT_WIDTH, INDENT};
+use crate::explain::utils::{TinyFmtBuffer, FMT_WIDTH, INDENT};
 use ahash::AHashSet;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sql_executor::executor::{
     engine::{Router, Vshard},
@@ -14,7 +15,24 @@ use sql_ir::ir::{
     tree::traversal::{PostOrder, REL_CAPACITY},
     ExplainOptions, Plan,
 };
-use std::fmt::Display;
+use std::fmt::{Display, Write as _};
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
+pub struct BucketFormatOptions {
+    /// `FMT`: break a list wider than [`FMT_WIDTH`] up across lines.
+    pub fmt: bool,
+    /// `VERBOSE`: print every bucket instead of the first few.
+    pub verbose: bool,
+}
+
+impl From<ExplainOptions> for BucketFormatOptions {
+    fn from(options: ExplainOptions) -> Self {
+        BucketFormatOptions {
+            fmt: options.contains(ExplainOptions::Fmt),
+            verbose: options.contains(ExplainOptions::Verbose),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BoundedBuckets {
@@ -25,12 +43,12 @@ pub struct BoundedBuckets {
     /// Whether `buckets` is only an upper bound estimate rather than the exact
     /// execution set.
     pub is_upper_bound: bool,
-    pub should_fmt: bool,
+    pub format_options: BucketFormatOptions,
 }
 
 impl Display for BoundedBuckets {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let repr = buckets_repr(&self.buckets, self.bucket_count, self.should_fmt);
+        let repr = buckets_repr(&self.buckets, self.bucket_count, self.format_options);
         match self.buckets {
             Buckets::All => write!(f, "buckets <= {repr}"),
             Buckets::Any => write!(f, "buckets = {repr}"),
@@ -54,12 +72,12 @@ impl Display for BoundedBuckets {
 }
 
 impl BoundedBuckets {
-    pub fn new(buckets: Buckets, bucket_count: u64, should_fmt: bool) -> Self {
+    pub fn new(buckets: Buckets, bucket_count: u64, format_options: BucketFormatOptions) -> Self {
         BoundedBuckets {
             buckets,
             bucket_count,
             is_upper_bound: false,
-            should_fmt,
+            format_options,
         }
     }
 }
@@ -76,7 +94,7 @@ pub fn bounded_buckets_from_query<R: Router>(
     let coord = query.get_coordinator();
     let vshard = coord.get_current_vshard_object().unwrap();
     let bucket_count = vshard.bucket_count();
-    let should_fmt = ir.explain_options.contains(ExplainOptions::Fmt);
+    let format_options = ir.explain_options.into();
 
     if ir.is_block()? {
         let top_id = ir.get_top()?;
@@ -85,7 +103,7 @@ pub fn bounded_buckets_from_query<R: Router>(
             unreachable!("plan.is_block() returned true, but top is {block:?}")
         };
         let buckets = query.calculate_block_buckets(&block)?;
-        return Ok(BoundedBuckets::new(buckets, bucket_count, should_fmt));
+        return Ok(BoundedBuckets::new(buckets, bucket_count, format_options));
     }
 
     if ir.is_sharded_insert()? {
@@ -95,12 +113,16 @@ pub fn bounded_buckets_from_query<R: Router>(
         return Ok(BoundedBuckets::new(
             actual_buckets,
             bucket_count,
-            should_fmt,
+            format_options,
         ));
     }
 
     if !can_estimate_buckets(ir)? {
-        return Ok(BoundedBuckets::new(Buckets::All, bucket_count, should_fmt));
+        return Ok(BoundedBuckets::new(
+            Buckets::All,
+            bucket_count,
+            format_options,
+        ));
     }
 
     let top_id = ir.get_top()?;
@@ -176,7 +198,7 @@ pub fn bounded_buckets_from_query<R: Router>(
     }
 
     let buckets = estimated_buckets.expect("there's at least one subtree");
-    let buckets_info = BoundedBuckets::new(buckets, bucket_count, should_fmt);
+    let buckets_info = BoundedBuckets::new(buckets, bucket_count, format_options);
 
     Ok(buckets_info)
 }
@@ -235,53 +257,146 @@ fn can_estimate_buckets(plan: &Plan) -> Result<bool, SbroadError> {
     Ok(can_estimate)
 }
 
-/// Render bucket ranges as a comma separated list in brackets.
-///
-/// A range is a contiguous run of buckets, passed down as a `(first, last)`
-/// pair. A run of a single bucket is rendered as a plain id, a run of two
-/// adjacent buckets as a pair of ids (`1, 2`), and anything wider as a
-/// range (`1-3`).
-///
-/// Without the `FMT` option, or when the whole list fits on one line,
-/// it is printed as is. Otherwise it is broken up so that every line
-/// holds as many ranges as fit into [`FMT_WIDTH`].
-fn format_bucket_ranges(ranges: &[(u64, u64)], should_fmt: bool) -> String {
-    let sep = ", ";
-    let render = |&(l, r): &(u64, u64)| match r - l {
-        0 => l.to_string(),
-        1 => format!("{l}{sep}{r}"),
-        _ => format!("{l}-{r}"),
-    };
-    let ranges: Vec<String> = ranges.iter().map(render).collect();
+/// Separator between the printed elements of a bucket list.
+const SEP: &str = ", ";
 
-    let width = FMT_WIDTH;
-
-    let inline = format!("[{}]", ranges.join(sep));
-    if !should_fmt || inline.len() <= width {
-        return inline;
-    }
-
-    // Besides the ranges and separators, a wrapped line holds the indent
-    // and (unless it is the last one) a trailing comma.
-    let budget = width - 1;
-
-    let lines = ranges
-        .iter()
-        .fold(Vec::new(), |mut lines: Vec<String>, range| {
-            match lines.last_mut() {
-                Some(line) if line.len() + sep.len() + range.len() <= budget => {
-                    line.push_str(sep);
-                    line.push_str(range);
-                }
-                _ => lines.push(format!("{INDENT}{range}")),
-            }
-            lines
-        });
-
-    format!("[\n{}\n]", lines.join(",\n"))
+/// Ids and ranges of the set, in printing order. A contiguous run of buckets
+/// is passed in as a `(first, last)` pair: a run of a single bucket is printed
+/// as a plain id, a run of two adjacent buckets as two ids (`1, 2`), and
+/// anything wider as a range (`1-3`).
+fn items(ranges: &[(u64, u64)]) -> impl Iterator<Item = (u64, u64)> + '_ {
+    ranges.iter().flat_map(|&(l, r)| match r - l {
+        1 => vec![(l, l), (r, r)],
+        _ => vec![(l, r)],
+    })
 }
 
-pub fn buckets_repr(buckets: &Buckets, bucket_count: u64, should_fmt: bool) -> String {
+fn render(&(l, r): &(u64, u64)) -> String {
+    match r - l {
+        0 => l.to_string(),
+        _ => format!("{l}-{r}"),
+    }
+}
+
+/// Do the rendered elements, with the `... (N more)` marker for the `hidden`
+/// buckets, fit into a single line of [`FMT_WIDTH`]?
+fn fits_single_line(shown: &[(String, u64)], hidden: u64) -> bool {
+    let mut line = TinyFmtBuffer::default();
+    let items = shown.iter().map(|(text, _)| text).format(SEP);
+    if hidden > 0 {
+        write!(line, "[{items}{SEP}... ({hidden} more)]").is_ok()
+    } else {
+        write!(line, "[{items}]").is_ok()
+    }
+}
+
+/// The elements a bucket list is printed as: ids, ranges and, when the list
+/// is shortened, the trailing `... (N more)`.
+struct BucketList(Vec<String>);
+
+impl BucketList {
+    /// Print the rendered elements, telling how many buckets are left out.
+    fn new(mut items: Vec<String>, hidden: u64) -> Self {
+        if hidden > 0 {
+            items.push(format!("... ({hidden} more)"));
+        }
+
+        Self(items)
+    }
+
+    /// Every id and range of the set.
+    fn full(ranges: &[(u64, u64)]) -> Self {
+        Self::new(items(ranges).map(|item| render(&item)).collect(), 0)
+    }
+
+    /// The head of the set: as many ids and ranges as fit into
+    /// [`FMT_WIDTH`], since a shortened list is always printed on a
+    /// single line.
+    fn shortened(ranges: &[(u64, u64)]) -> Self {
+        /// How many buckets an id or a range covers.
+        fn bucket_number(&(l, r): &(u64, u64)) -> u64 {
+            r - l + 1
+        }
+
+        let mut shown: Vec<(String, u64)> = Vec::new();
+        let mut hidden = ranges.iter().map(bucket_number).sum();
+
+        for item in items(ranges) {
+            let count = bucket_number(&item);
+            shown.push((render(&item), count));
+            hidden -= count;
+
+            // The first element is printed however wide it is.
+            if shown.len() > 1 && !fits_single_line(&shown, hidden) {
+                let (_, count) = shown.pop().expect("more than one element");
+                hidden += count;
+                break;
+            }
+        }
+
+        Self::new(shown.into_iter().map(|(text, _)| text).collect(), hidden)
+    }
+
+    /// Print the whole list on a single line.
+    fn line(&self) -> String {
+        format!("[{}]", self.0.join(SEP))
+    }
+
+    /// Print the list broken up across lines, every one of them holding as
+    /// many elements as fit into [`FMT_WIDTH`]. A list that fits into a
+    /// single line is printed as is.
+    fn lines(&self) -> String {
+        let mut buffer = TinyFmtBuffer::default();
+        if write!(buffer, "[{}]", self.0.iter().format(SEP)).is_ok() {
+            return buffer.to_string();
+        }
+
+        // Besides the elements and separators, a wrapped line holds the indent
+        // and (unless it is the last one) a trailing comma.
+        let budget = FMT_WIDTH - 1;
+
+        let lines = self
+            .0
+            .iter()
+            .fold(Vec::new(), |mut lines: Vec<String>, item| {
+                match lines.last_mut() {
+                    Some(line) if line.len() + SEP.len() + item.len() <= budget => {
+                        line.push_str(SEP);
+                        line.push_str(item);
+                    }
+                    _ => lines.push(format!("{INDENT}{item}")),
+                }
+                lines
+            });
+
+        format!("[\n{}\n]", lines.join(",\n"))
+    }
+}
+
+/// Render bucket ranges as a comma separated list in brackets.
+///
+/// Without the `VERBOSE` option only the head of the list is printed,
+/// followed by `... (N more)` with the number of buckets left out. Only
+/// a full list is ever broken up across lines, and only with the `FMT`
+/// option.
+fn format_bucket_ranges(ranges: &[(u64, u64)], format_options: BucketFormatOptions) -> String {
+    if !format_options.verbose {
+        return BucketList::shortened(ranges).line();
+    }
+
+    let list = BucketList::full(ranges);
+    if format_options.fmt {
+        return list.lines();
+    }
+
+    list.line()
+}
+
+pub fn buckets_repr(
+    buckets: &Buckets,
+    bucket_count: u64,
+    format_options: BucketFormatOptions,
+) -> String {
     match buckets {
         Buckets::All => format!("[1-{bucket_count}]"),
         Buckets::Filtered(BucketSet::Exact(buckets_set)) => 'f: {
@@ -304,7 +419,7 @@ pub fn buckets_repr(buckets: &Buckets, bucket_count: u64, should_fmt: bool) -> S
             }
             ranges.push((nums[l], nums[nums.len() - 1]));
 
-            format_bucket_ranges(&ranges, should_fmt)
+            format_bucket_ranges(&ranges, format_options)
         }
         Buckets::Filtered(BucketSet::EstimatedCount { lower, upper }) => {
             if lower != upper {

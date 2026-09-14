@@ -734,6 +734,7 @@ bitflags! {
         const Buckets = 1 << 3;
         const Forward = 1 << 4;
         const Context = 1 << 5;
+        const Verbose = 1 << 6;
     }
 }
 

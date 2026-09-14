@@ -31,7 +31,7 @@ use sql::executor::vtable::{
     vtable_indexed_column_name, VTableTuple, VirtualTable, VirtualTableTupleEncoder,
 };
 use sql::executor::{Port, PortType};
-use sql::explain::buckets::BoundedBuckets;
+use sql::explain::buckets::{BoundedBuckets, BucketFormatOptions};
 use sql::explain::executor::{MotionInfo, QueryEntry};
 use sql::ir::bucket::Buckets;
 use sql::ir::helpers::RepeatableState;
@@ -739,7 +739,7 @@ pub fn explain_execute(
     params: &[Value],
     buckets: &Buckets,
     motion_info: MotionInfo,
-    should_fmt: bool,
+    format_options: BucketFormatOptions,
 ) -> Result<QueryEntry, SbroadError> {
     let _plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
     let metadata = miss_info.vtable_metadata();
@@ -757,7 +757,7 @@ pub fn explain_execute(
         buckets: buckets.clone(),
         bucket_count,
         is_upper_bound,
-        should_fmt,
+        format_options,
     };
 
     let explain_query = ExplainQuery::new(miss_info.sql());

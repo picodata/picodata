@@ -22,6 +22,27 @@ fn logical_and_buckets_headers() {
     ");
 }
 
+#[test]
+fn verbose_alone_selects_default_facets() {
+    let sql = r#"explain (verbose) select e from t2
+        where e = 1 and f in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    projection (t2.e::int -> e)
+      selection ((t2.e::int = 1::int and t2.f::int in ROW(1::int, 2::int, 3::int, 4::int, 5::int, 6::int, 7::int, 8::int, 9::int, 10::int)))
+        scan t2
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets = [100, 550, 1077, 1098, 3485, 5930, 6691, 7479, 7602, 8577]
+    ");
+}
+
 // Select.
 
 #[test]

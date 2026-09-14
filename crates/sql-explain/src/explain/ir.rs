@@ -1,4 +1,4 @@
-use crate::explain::utils::{indent, FMT_WIDTH};
+use crate::explain::utils::{indent, TinyFmtBuffer};
 use itertools::Itertools;
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, SmolStrBuilder, ToSmolStr};
@@ -29,41 +29,6 @@ use sql_ir::ir::{node, ExplainOptions, Plan};
 use sql_ir::utils::OrderedMap;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Display, Write};
-
-/// We use this buffer to check if the textual representation
-/// is short enough to be printed as a single line.
-#[derive(Default)]
-struct TinyFmtBuffer(SmallVec<[u8; FMT_WIDTH]>);
-
-impl TinyFmtBuffer {
-    /// Does the buffer contain `'\n'`?
-    fn has_newline(&self) -> bool {
-        self.0.contains(&b'\n')
-    }
-
-    fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.0).unwrap()
-    }
-}
-
-impl Display for TinyFmtBuffer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-impl fmt::Write for TinyFmtBuffer {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        let this = &mut self.0;
-        let new_len = this.len().checked_add(s.len()).ok_or(fmt::Error)?;
-        if new_len > this.capacity() {
-            return Err(fmt::Error);
-        }
-        this.extend_from_slice(s.as_bytes());
-
-        Ok(())
-    }
-}
 
 fn name_requires_quotes(s: &str) -> bool {
     !s.chars()

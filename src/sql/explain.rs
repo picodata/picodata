@@ -173,7 +173,7 @@ pub fn explain_execute_block<'p>(
         buckets: buckets.clone(),
         bucket_count,
         is_upper_bound: false,
-        should_fmt: explain_options.contains(ExplainOptions::Fmt),
+        format_options: explain_options.into(),
     };
     let motion_info = MotionInfo::new_for_transaction();
 

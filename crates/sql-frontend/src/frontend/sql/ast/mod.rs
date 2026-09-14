@@ -1915,6 +1915,7 @@ fn parse_explain_query_plan_options(
         match explain_option_node.rule {
             Rule::ExplainRaw => explain_options |= ExplainOptions::Raw,
             Rule::ExplainFmt => explain_options |= ExplainOptions::Fmt,
+            Rule::ExplainVerbose => explain_options |= ExplainOptions::Verbose,
             Rule::ExplainBuckets => explain_options |= ExplainOptions::Buckets,
             Rule::ExplainLogical => explain_options |= ExplainOptions::Logical,
             Rule::ExplainForward => explain_options |= ExplainOptions::Forward,

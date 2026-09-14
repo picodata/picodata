@@ -2449,7 +2449,7 @@ plan:
 -- TEST: raw-buckets-fmt-wrapped
 -- SKIP_FOR: 2rsX1
 -- SQL:
-explain (raw, buckets, fmt)
+explain (raw, buckets, verbose, fmt)
 select d from tt where d in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
                              13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23);
 -- EXPECTED:
@@ -2513,3 +2513,61 @@ buckets = [
   1948, 1958, 2312, 2564, 2640, 2752, 2802,
   2852
 ]
+
+-- TEST: raw-buckets-fmt-truncated
+-- SKIP_FOR: 2rsX1
+-- SQL:
+explain (raw, buckets, fmt)
+select d from tt where d in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                             13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23);
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+SELECT
+  "tt"."d"
+FROM
+  "tt"
+WHERE
+  "tt"."d" in (
+    CAST(1 AS int),
+    CAST(2 AS int),
+    CAST(3 AS int),
+    CAST(4 AS int),
+    CAST(5 AS int),
+    CAST(6 AS int),
+    CAST(7 AS int),
+    CAST(8 AS int),
+    CAST(9 AS int),
+    CAST(10 AS int),
+    CAST(11 AS int),
+    CAST(12 AS int),
+    CAST(13 AS int),
+    CAST(14 AS int),
+    CAST(15 AS int),
+    CAST(16 AS int),
+    CAST(17 AS int),
+    CAST(18 AS int),
+    CAST(19 AS int),
+    CAST(20 AS int),
+    CAST(21 AS int),
+    CAST(22 AS int),
+    CAST(23 AS int)
+  )
+''
+plan:
+    [0] SEARCH TABLE tt USING PRIMARY KEY (d=?) (~22 rows)
+    [0] EXECUTE LIST SUBQUERY 1
+''
+buckets = [219, 246, 509, 626, 653, 680, ... (17 more)]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [219, 246, 509, 626, 653, 680, ... (17 more)]

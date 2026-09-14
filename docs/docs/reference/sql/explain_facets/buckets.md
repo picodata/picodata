@@ -66,7 +66,7 @@ buckets <= [1-3000]
 опции [`FMT`](../explain.md#explain-fmt):
 
 ```sql
-EXPLAIN (BUCKETS, FMT) SELECT * FROM warehouse
+EXPLAIN (BUCKETS, VERBOSE, FMT) SELECT * FROM warehouse
 WHERE id IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
              13, 14, 15, 16);
 ```
@@ -77,4 +77,33 @@ buckets = [
   1934, 1948, 1958, 2564, 2640, 2752, 2802,
   2852
 ]
+```
+
+## Подробный вывод {: #buckets-verbose }
+
+По умолчанию выводится лишь начало списка бакетов — столько элементов, сколько
+умещается в одну строку (диапазон смежных бакетов считается одним элементом).
+В конце указывается, сколько бакетов осталось за ними:
+
+```sql
+EXPLAIN (BUCKETS) SELECT * FROM warehouse
+WHERE id IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+             13, 14, 15, 16);
+```
+
+```sql
+buckets = [219, 626, 653, 799, 1403, ... (11 more)]
+```
+
+Чтобы вывести список целиком, можно воспользоваться опцией
+[`VERBOSE`](../explain.md#explain-verbose):
+
+```sql
+EXPLAIN (BUCKETS, VERBOSE) SELECT * FROM warehouse
+WHERE id IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+             13, 14, 15, 16);
+```
+
+```sql
+buckets = [219, 626, 653, 799, 1403, 1410, 1418, 1860, 1934, 1948, 1958, 2564, 2640, 2752, 2802, 2852]
 ```
