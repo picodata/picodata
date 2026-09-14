@@ -119,8 +119,8 @@ pub fn validate_password(
     auth_method: &AuthMethod, // reference is taken for easier API interaction
     parameters: &AlterSystemParametersRef,
 ) -> traft::Result<()> {
-    if let AuthMethod::Ldap = auth_method {
-        // LDAP doesn't need password for authentication
+    if let AuthMethod::Ldap | AuthMethod::Cert = auth_method {
+        // These methods don't need a password for authentication
         return Ok(());
     }
 

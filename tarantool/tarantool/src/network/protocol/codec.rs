@@ -240,6 +240,13 @@ pub fn encode_auth(
             auth_data = ldap_auth_data(password);
         }
         #[cfg(feature = "picodata")]
+        AuthMethod::Cert => {
+            // The client certificate is the credential, there is nothing to send.
+            let mut res = Vec::with_capacity(MP_STR_MAX_HEADER_SIZE);
+            rmp::encode::write_str_len(&mut res, 0).expect("Can't fail for a Vec");
+            auth_data = res;
+        }
+        #[cfg(feature = "picodata")]
         AuthMethod::Md5 => {
             // We only use first four bytes of a salt. To understand why,
             // check `MD5_SALT_LEN` from `tarantool-sys/src/lib/core/md5.h:enum`,

@@ -36,27 +36,46 @@ fn read_password_message(
     Ok(message)
 }
 
+fn check_cert_username(
+    stream: &PgStream<impl io::Read + io::Write>,
+    proto_user: &str,
+) -> PgResult<()> {
+    match stream.peer_cert_username()? {
+        Some(cert_user) if cert_user != proto_user => {
+            tlog!(
+                Info,
+                "provided user name ({proto_user}) and \
+                 certificate user name ({cert_user}) do not match"
+            );
+            Err(AuthError::for_username(proto_user).into())
+        }
+        _ => Ok(()),
+    }
+}
+
 fn auth_exchange_classic(
     stream: &mut PgStream<impl io::Read + io::Write>,
     user: &str,
     auth: &AuthDef,
     salt: [u8; 4],
 ) -> PgResult<()> {
-    stream.write_message(match auth.method {
+    let method = auth.method;
+    stream.write_message(match method {
         AuthMethod::Md5 => messages::md5_auth_request(&salt),
         AuthMethod::Ldap => messages::cleartext_auth_request(),
         AuthMethod::ChapSha1 => {
             tlog!(
                 Warning,
-                "user {user} attempted to login using chap-sha1 which is unsupported in pgproto"
+                "user {user} attempted to login using \
+                 chap-sha1 which is unsupported in pgproto"
             );
 
             // We cannot return a more specific error message because
             // it'll allow an attacker to brute force user names.
             return Err(AuthError::for_username(user).into());
         }
-        AuthMethod::ScramSha256 => {
-            unreachable!("auth_exchange cannot handle scram-sha256");
+        AuthMethod::ScramSha256 | AuthMethod::Cert => {
+            unreachable!("auth_exchange cannot handle {method}");
         }
     })?;
 
@@ -68,12 +87,14 @@ fn auth_exchange_classic(
     let mut salt_buf = [0u8; crate::auth::SALT_LEN];
     salt_buf[0..4].copy_from_slice(&salt);
 
-    crate::auth::do_authenticate(user, password, &salt_buf, auth.method)
+    crate::auth::do_authenticate(user, password, &salt_buf, method)
         // Raise a proper auth error with an explanation as needed.
         .map_err(|_| AuthError {
             user: user.into(),
-            extra: explain_box_error(auth.method),
+            extra: explain_box_error(method),
         })?;
+
+    check_cert_username(stream, user)?;
 
     stream.write_message_noflush(messages::auth_ok())?;
 
@@ -126,6 +147,7 @@ fn do_auth_exchange_sasl(
                 stream.write_message(messages::sasl_continue(reply))?;
             }
             Ok(Step::Success(_, reply)) => {
+                check_cert_username(stream, user)?;
                 stream.write_message_noflush(messages::sasl_final(reply))?;
                 stream.write_message(messages::auth_ok())?;
                 return Ok(());
@@ -144,6 +166,35 @@ fn do_auth_exchange_sasl(
 
         input_bytes = msg.data;
     }
+}
+
+/// The certificate is the credential, so there is nothing to exchange.
+fn auth_exchange_cert(
+    stream: &mut PgStream<impl io::Read + io::Write>,
+    user: &str,
+) -> PgResult<()> {
+    match stream.peer_cert_username()? {
+        Some(cert_user) if cert_user == user => {}
+        cert_user => {
+            if let Some(cert_user) = cert_user {
+                tlog!(
+                    Info,
+                    "provided user name ({user}) and \
+                     certificate user name ({cert_user}) do not match"
+                );
+            }
+            return Err(PgError::CertAuthError(user.into()));
+        }
+    }
+
+    // XXX: Use tarantool's wrapper which will perform additional
+    // checks, execute triggers and update the credentials.
+    let main_res = crate::auth::authenticate_ext(user, || PgResult::Ok(()));
+    main_res?.map_err(|_| PgError::CertAuthError(user.into()))?;
+
+    stream.write_message_noflush(messages::auth_ok())?;
+
+    Ok(())
 }
 
 fn auth_exchange_sasl(
@@ -178,6 +229,9 @@ pub fn authenticate(
     // from the standpoint of timings (at least for scram).
     let maybe_auth = crate::auth::try_get_auth_def(storage, user);
     match maybe_auth {
+        Some(auth) if auth.method == AuthMethod::Cert => {
+            auth_exchange_cert(stream, user)?;
+        }
         Some(auth) if auth.method == AuthMethod::ScramSha256 => {
             let secret = ServerSecret::parse(&auth.data).expect("invalid AuthDef in catalog");
             auth_exchange_sasl(stream, user, &secret)?;

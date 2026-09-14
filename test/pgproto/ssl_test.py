@@ -51,13 +51,13 @@ def test_ssl_enabled(postgres_with_tls: Postgres):
 def test_mtls_with_known_cert(postgres_with_mtls: Postgres):
     create_user(postgres_with_mtls)
 
-    try_connect_psycopg(postgres_with_mtls, client_tls_pair_name="server")
+    try_connect_psycopg(postgres_with_mtls, client_tls_pair_name="client-user")
 
 
 def test_custom_server_cert_paths(postgres_with_custom_cert_paths: Postgres):
     create_user(postgres_with_custom_cert_paths)
 
-    try_connect_psycopg(postgres_with_custom_cert_paths, client_tls_pair_name="server")
+    try_connect_psycopg(postgres_with_custom_cert_paths, client_tls_pair_name="client-user")
 
 
 def test_mtls_without_client_cert(postgres_with_mtls: Postgres):
@@ -74,12 +74,81 @@ def test_mtls_with_unknown_cert(postgres_with_mtls: Postgres):
         try_connect_psycopg(postgres_with_mtls, client_tls_pair_name="self-signed")
 
 
+def test_mtls_cn_must_match_username(postgres_with_mtls: Postgres):
+    create_user(postgres_with_mtls)
+
+    # CN=example.com, so the certificate does not name the user we ask for.
+    with pytest.raises(psycopg.OperationalError, match="authentication failed"):
+        try_connect_psycopg(postgres_with_mtls, client_tls_pair_name="server")
+
+
+def test_mtls_cn_is_truncated_at_at_sign(postgres_with_mtls: Postgres):
+    create_user(postgres_with_mtls)
+
+    # CN=user@example.com authenticates the user "user".
+    try_connect_psycopg(postgres_with_mtls, client_tls_pair_name="client-user-at-example-com")
+
+
+def test_mtls_cn_mismatch_is_indistinguishable_from_bad_password(postgres_with_mtls: Postgres):
+    create_user(postgres_with_mtls)
+
+    # A client must not be able to tell which of the two factors it got wrong,
+    # nor whether the user exists at all.
+    def error_of(**kwargs) -> str:
+        with pytest.raises(psycopg.OperationalError) as e:
+            try_connect_psycopg(postgres_with_mtls, **kwargs)
+        return str(e.value)
+
+    bad_password = error_of(client_tls_pair_name="client-user", password="wrong")
+    bad_cn = error_of(client_tls_pair_name="server")
+    assert bad_cn == bad_password
+
+    missing_user = error_of(client_tls_pair_name="server", user="nosuchuser")
+    assert missing_user == bad_password.replace(f"'{USER}'", "'nosuchuser'")
+
+
+def test_cert_auth_method(postgres_with_mtls: Postgres):
+    create_cert_user(postgres_with_mtls)
+
+    # The certificate is the credential, no password is sent at all.
+    try_connect_psycopg(postgres_with_mtls, client_tls_pair_name="client-user", password=None)
+    try_connect_psycopg(postgres_with_mtls, client_tls_pair_name="client-user-at-example-com", password=None)
+
+
+def test_cert_auth_method_rejects_other_cn(postgres_with_mtls: Postgres):
+    create_cert_user(postgres_with_mtls)
+
+    with pytest.raises(psycopg.OperationalError, match="certificate authentication failed"):
+        try_connect_psycopg(postgres_with_mtls, client_tls_pair_name="server", password=None)
+
+
+def test_cert_auth_method_without_tls(postgres: Postgres):
+    # There's no TLS at all, so there's no certificate to authenticate with.
+    create_cert_user(postgres)
+
+    with pytest.raises(psycopg.OperationalError, match="certificate authentication failed"):
+        try_connect_psycopg(postgres, sslmode="disable", password=None)
+
+
+def test_cert_auth_method_requires_client_cert(postgres_with_tls: Postgres):
+    # `postgres_with_tls` has no CA configured, so no client certificate is
+    # requested and the `cert` method has nothing to authenticate with.
+    create_cert_user(postgres_with_tls)
+
+    with pytest.raises(psycopg.OperationalError, match="certificate authentication failed"):
+        try_connect_psycopg(postgres_with_tls, password=None)
+
+
 USER = "user"
 PASSWORD = "P@ssw0rd"
 
 
 def create_user(postgres: Postgres):
     postgres.instance.sql(f"CREATE USER \"{USER}\" WITH PASSWORD '{PASSWORD}'")
+
+
+def create_cert_user(postgres: Postgres):
+    postgres.instance.sql(f'CREATE USER "{USER}" USING cert')
 
 
 def try_connect_pg8000(postgres: Postgres, sslmode: str = "require"):
@@ -95,15 +164,23 @@ def try_connect_pg8000(postgres: Postgres, sslmode: str = "require"):
     pg.Connection(USER, password=PASSWORD, host=postgres.host, port=postgres.port, ssl_context=ssl_context).close()
 
 
-def try_connect_psycopg(postgres: Postgres, client_tls_pair_name: str | None = None, sslmode: str = "require"):
+def try_connect_psycopg(
+    postgres: Postgres,
+    client_tls_pair_name: str | None = None,
+    sslmode: str = "require",
+    user: str = USER,
+    password: str | None = PASSWORD,
+):
     host = postgres.host
     port = postgres.port
     connection_string = f"\
-            user = {USER} \
-            password={PASSWORD} \
+            user = {user} \
             host={host} \
             port={port} \
             sslmode={sslmode}"
+
+    if password is not None:
+        connection_string += f" password={password}"
 
     if client_tls_pair_name is not None:
         ssl_dir = Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
