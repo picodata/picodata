@@ -148,6 +148,7 @@ fn auth_method_from_auth_rule(auth_rule: Rule) -> AuthMethod {
         Rule::ScramSha256 => AuthMethod::ScramSha256,
         Rule::ChapSha1 => AuthMethod::ChapSha1,
         Rule::Ldap => AuthMethod::Ldap,
+        Rule::Cert => AuthMethod::Cert,
         Rule::Md5 => AuthMethod::Md5,
         _ => unreachable!("got a non-auth parsing rule"),
     }
@@ -7225,6 +7226,10 @@ impl AbstractSyntaxTree {
                                     password = SmolStr::default();
                                     auth_method = AuthMethod::Ldap;
                                 }
+                                Rule::Cert => {
+                                    password = SmolStr::default();
+                                    auth_method = AuthMethod::Cert;
+                                }
                                 Rule::SingleQuotedString => {
                                     let password_literal =
                                         retrieve_string_literal(self, *pwd_or_ldap_node_id)?;
@@ -7328,7 +7333,8 @@ impl AbstractSyntaxTree {
                             method @ (Rule::ScramSha256
                             | Rule::ChapSha1
                             | Rule::Md5
-                            | Rule::Ldap) => {
+                            | Rule::Ldap
+                            | Rule::Cert) => {
                                 auth_method = auth_method_from_auth_rule(method);
                             }
                             _ => {

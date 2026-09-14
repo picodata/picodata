@@ -172,7 +172,7 @@ fn handle_ssl_request<S: Read + Write>(
     };
 
     stream.write_message(messages::ssl_accept())?;
-    stream.into_secure(acceptor)
+    stream.upgrade_to_tls(acceptor)
 }
 
 /// Respond to SslRequest if you receive it, read startup message, verify parameters and return them.

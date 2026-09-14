@@ -89,6 +89,10 @@ pub(crate) fn authenticate_with_password(
             let password = ldap_prepare(password);
             do_authenticate(user, password, &zero_salt(), method)
         }
+        Some((AuthMethod::Cert, _)) => Err(BoxError::new(
+            TarantoolErrorCode::PasswordMismatch,
+            "'cert' authentication is only possible over a connection with a client certificate",
+        )),
         Some((method @ AuthMethod::ChapSha1, _)) => {
             let password = chap_sha1_prepare(password, &zero_salt());
             do_authenticate(user, password, &zero_salt(), method)
@@ -110,6 +114,8 @@ pub(crate) fn authenticate_with_password(
 /// Call tarantool to register auth methods that are implemented in Rust.
 pub(crate) fn register_picodata_auth_methods() {
     let scram = typed_method::TypedAuthMethodWrapper(methods::scram::ScramAuthMethod);
+    let cert = typed_method::TypedAuthMethodWrapper(methods::cert::CertAuthMethod);
 
     tarantool::auth_method_register(scram);
+    tarantool::auth_method_register(cert);
 }

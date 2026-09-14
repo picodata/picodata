@@ -24,6 +24,7 @@ crate::define_str_enum! {
         ScramSha256 = "scram-sha256",
         ChapSha1 = "chap-sha1",
         Ldap = "ldap",
+        Cert = "cert",
     }
 }
 

@@ -63,3 +63,17 @@ openssl req -new -key server.key -out server.csr -subj "/CN=pico_service@example
 openssl x509 -req -in server.csr -CA intermediate-ca.crt -CAkey intermediate-ca.key \
     -out server-with-ext.crt -days 36500 -sha256 \
     -extfile server_ext.cnf -extensions server_ext
+
+# Client certificates for pgproto certificate authentication. The user name is
+# taken from CN, truncated at the first '@', so both of these authenticate the
+# pgproto user "user".
+for cn in "user" "user@example.com"; do
+    name="client-$(echo "$cn" | sed 's/@/-at-/g; s/\./-/g')"
+    openssl genrsa -out "$name.key" 2048
+    openssl req -new -key "$name.key" -out "$name.csr" -subj "/CN=$cn"
+    openssl x509 -req -in "$name.csr" -CA intermediate-ca.crt -CAkey intermediate-ca.key \
+        -CAcreateserial -out "$name.crt" -days 36500 -sha256
+    rm -f "$name.csr"
+    openssl verify -CAfile combined-ca.crt "$name.crt"
+done
+rm -f ./*.srl
