@@ -134,14 +134,24 @@ fn cast_type_from_pair(cast_target_pair: Pair<Rule>) -> Result<CastType, SbroadE
         .expect("Type expected under CastTarget");
     let has_array_suffix = cast_target_pairs.next().is_some();
 
+    if has_array_suffix {
+        let column_def_type = type_pair
+            .into_inner()
+            .next()
+            .expect("concrete type expected under Type");
+        let elem = NestedType::try_from(column_def_type.as_rule())?;
+        return Ok(CastType::Array(elem));
+    }
+    cast_type_from_type_pair(type_pair)
+}
+
+/// Scalar cast type from a `Type` pair.
+fn cast_type_from_type_pair(type_pair: Pair<Rule>) -> Result<CastType, SbroadError> {
+    debug_assert_eq!(type_pair.as_rule(), Rule::Type);
     let mut column_def_type_pairs = type_pair.into_inner();
     let column_def_type = column_def_type_pairs
         .next()
         .expect("concrete type expected under Type");
-    if has_array_suffix {
-        let elem = NestedType::try_from(column_def_type.as_rule())?;
-        return Ok(CastType::Array(elem));
-    }
     if column_def_type.as_rule() != Rule::TypeVarchar {
         return CastType::try_from(&column_def_type.as_rule());
     }
@@ -1073,6 +1083,17 @@ where
                     let cast_type = cast_type_from_pair(type_pair)?;
 
                     ParseExpression::Cast { cast_type, child: Box::new(child_parse_expr) }
+                }
+                Rule::TypedLiteral => {
+                    // `T 'str'` is a sugar for `CAST('str' AS T)`.
+                    let mut inner_pairs = primary.into_inner();
+                    let type_pair = inner_pairs.next().expect("TypedLiteral has no type child");
+                    let cast_type = cast_type_from_type_pair(type_pair)?;
+                    let literal_pair = inner_pairs.next().expect("TypedLiteral has no literal child");
+                    let val = crate::frontend::sql::ir::value_from_node(&literal_pair)?;
+                    let plan_id = plan.add_const(val);
+
+                    ParseExpression::Cast { cast_type, child: Box::new(ParseExpression::PlanId { plan_id }) }
                 }
                 Rule::Case => {
                     let mut inner_pairs = primary.into_inner();

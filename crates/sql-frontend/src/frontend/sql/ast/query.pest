@@ -483,7 +483,7 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
         CastPostfix = { WO ~ "::" ~ WO ~ CastTarget }
         IsPostfix = ${ ^"is" ~ W ~ (NotFlag ~ W)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" }
-        AtomicExpr = _{ Literal | Parameter | Over | CastOp | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime
+        AtomicExpr = _{ Literal | Parameter | Over | CastOp | TypedLiteral | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime
                     | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | ArrayLiteral | Row }
             Literal = { True | False | Null | Double | Decimal | Unsigned | Integer | SingleQuotedString }
                 True     = { ^"true" }
@@ -564,6 +564,8 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
                 CastTarget = { Type ~ CastArraySuffix? }
                     CastArraySuffix = { (WO ~ EmptyBracket) | (W ~ ArrayKeywordSuffix) }
                         EmptyBracket = { "[" ~ WO ~ "]" }
+            // Typed literal `T 'str'`, a sugar for `CAST('str' AS T)`.
+            TypedLiteral = ${ Type ~ WO ~ SingleQuotedString }
 
                 ColumnDefType = { (DomainType | Type) ~ ArraySuffix? }
                     // Accepted: T[], T[N], T[][], T[N][M], T[][N], T ARRAY, T ARRAY[N]

@@ -102,7 +102,7 @@ builtin     ::= 'LAST_VALUE' '(' expression ')'
 case        ::= 'CASE' expression?
                 ('WHEN' expression 'THEN' expression)+
                 ('ELSE' expression)? 'END'
-cast        ::= 'CAST' '(' expression 'AS' unrestricted_type ')' | expression '::' unrestricted_type
+cast        ::= 'CAST' '(' expression 'AS' unrestricted_type ')' | expression '::' unrestricted_type | unrestricted_type string
 coalesce    ::= 'COALESCE' '(' expression ',' expression (',' expression)* ')'
 like        ::= expression 'LIKE' expression ('ESCAPE' expression)?
 localtimestamp ::= 'LOCALTIMESTAMP' ('(' unsigned ')')?

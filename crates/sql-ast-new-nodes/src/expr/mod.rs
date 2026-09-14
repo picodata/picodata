@@ -337,12 +337,13 @@ pub enum ParameterStyle {
     Pg,
 }
 
-/// `CAST(child AS type)` and `child::type` build the same node;
+/// `CAST(child AS type)`, `child::type` and `type 'child'` build the same node;
 /// the syntax is kept only to render the expression back faithfully.
 #[derive(PartialEq)]
 pub enum CastSyntax {
     Call,
     Postfix,
+    TypedLiteral,
 }
 
 pub struct Cast<'q, State: AstState<'q>> {

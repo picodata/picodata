@@ -241,6 +241,7 @@ pub(super) fn parse_expr<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<
                 }
                 Rule::Parameter => parse_parameter_expr(primary, ctx),
                 Rule::CastOp => parse_cast_op(primary, ctx),
+                Rule::TypedLiteral => parse_typed_literal(primary),
                 Rule::Trim => parse_trim(primary, ctx),
                 Rule::Substring => parse_substring(primary, ctx),
                 Rule::Case => parse_case(primary, ctx),
@@ -732,6 +733,25 @@ fn parse_cast_op<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExpr<
     let ty = parse_cast_target(target_pair)?;
 
     Ok(Expr::cast(child, ty, CastSyntax::Call))
+}
+
+/// `T 'str'`, a sugar for `CAST('str' AS T)`.
+fn parse_typed_literal<'q>(pair: Pair<'q, Rule>) -> AstResult<RawExpr<'q>> {
+    debug_assert_eq!(pair.as_rule(), Rule::TypedLiteral);
+
+    let mut inner_pairs = pair.into_inner();
+    let type_pair = inner_pairs.next().ok_or_else(|| {
+        parse_invariant_error(format_smolstr!("`TypedLiteral` must contain `Type`"))
+    })?;
+    let ty = parse_cast_type(type_pair)?;
+    let literal_pair = inner_pairs.next().ok_or_else(|| {
+        parse_invariant_error(format_smolstr!(
+            "`TypedLiteral` must contain `SingleQuotedString`"
+        ))
+    })?;
+    let child = parse_literal(literal_pair)?;
+
+    Ok(Expr::cast(child, ty, CastSyntax::TypedLiteral))
 }
 
 fn parse_is_postfix<'q>(operand: RawExpr<'q>, op: Pair<'q, Rule>) -> AstResult<RawExpr<'q>> {

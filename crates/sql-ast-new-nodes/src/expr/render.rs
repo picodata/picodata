@@ -36,7 +36,7 @@ impl<'q, State: AstState<'q>> Expr<'q, State> {
             ExprInner::Is(_) => Precedence::Is,
             ExprInner::Cast(cast) => match cast.syntax {
                 CastSyntax::Postfix => Precedence::Postfix,
-                CastSyntax::Call => Precedence::Atom,
+                CastSyntax::Call | CastSyntax::TypedLiteral => Precedence::Atom,
             },
             ExprInner::Index(_) => Precedence::Postfix,
             ExprInner::Nil
@@ -322,6 +322,7 @@ impl<'q, State: AstState<'q>> Display for Cast<'q, State> {
                 write_operand(f, &self.child, Precedence::Postfix, OperandPos::Left)?;
                 write!(f, "::{}", CastTypeSql(self.ty))
             }
+            CastSyntax::TypedLiteral => write!(f, "{} {}", CastTypeSql(self.ty), self.child),
         }
     }
 }

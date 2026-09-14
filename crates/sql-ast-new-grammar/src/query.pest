@@ -220,7 +220,7 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (WO ~ In ~ WO ~ ((Va
         CastPostfix = { WO ~ "::" ~ WO ~ CastTarget }
         IsPostfix = ${ ^"is" ~ KwEnd ~ WO ~ (NotFlag ~ WO)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" ~ KwEnd }
-        AtomicExpr = _{ Literal | Parameter | Over | CastOp | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime
+        AtomicExpr = _{ Literal | Parameter | Over | CastOp | TypedLiteral | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime
                     | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | ArrayLiteral | ValuesRow }
             // The numeric alternatives are boundary-guarded at this use site,
             // not inside the tokens: `Integer` is a building block of
@@ -329,6 +329,8 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (WO ~ In ~ WO ~ ((Va
             ArrayLiteral = ${ ^"array" ~ WO ~ "[" ~ WO ~ (Expr ~ (WO ~ "," ~ WO ~ Expr)*)? ~ WO ~ "]" }
 
             CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ CastTarget ~ WO ~ ")" }
+            //  Typed literal `T 'str'`, a sugar for `CAST('str' AS T)`.
+            TypedLiteral = ${ Type ~ KwEnd ~ WO ~ SingleQuotedString }
 
                 //  Cast targets admit an array suffix: `int[]`, `int ARRAY`,
                 //  `int ARRAY[5]` (the bound is accepted and ignored).

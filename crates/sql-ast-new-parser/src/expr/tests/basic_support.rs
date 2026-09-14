@@ -518,6 +518,39 @@ fn cast_op_array_brackets() {
 }
 
 #[test]
+fn typed_literal() {
+    insta::assert_snapshot!(render_expr("bool 't'"), @"bool 't'");
+    insta::assert_snapshot!(render_expr("int'1'"), @"int '1'");
+    insta::assert_snapshot!(render_expr("varchar(10) 'x'"), @"string 'x'");
+    insta::assert_snapshot!(render_expr("numeric(5, 2) '1.5'"), @"decimal '1.5'");
+    insta::assert_snapshot!(render_expr("text 'it''s'"), @"string 'it''s'");
+}
+
+#[test]
+fn typed_literal_composes() {
+    insta::assert_snapshot!(render_expr("int '1'::text"), @"int '1'::string");
+    insta::assert_snapshot!(render_expr("int '1' + 1"), @"int '1' + 1");
+    insta::assert_snapshot!(render_expr("-int '1'"), @"- int '1'");
+    insta::assert_snapshot!(render_expr("bool 't' IS TRUE"), @"bool 't' IS TRUE");
+}
+
+#[test]
+fn typed_literal_keeps_type_names_as_identifiers() {
+    insta::assert_snapshot!(render_expr("bool"), @"bool");
+    insta::assert_snapshot!(render_expr("numeric(1)"), @"numeric(1)");
+}
+
+#[test]
+fn typed_literal_rejects() {
+    insta::assert_snapshot!(expr_err("int 1"), @"expression parsing error: expression parsing stopped before: `1`");
+    insta::assert_snapshot!(expr_err("int $1"), @"expression parsing error: expression parsing stopped before: `$1`");
+    insta::assert_snapshot!(expr_err("int[] '{1}'"), @"expression parsing error: expression parsing stopped before: `[] '{1}'`");
+    insta::assert_snapshot!(expr_err("int array '{1}'"), @"expression parsing error: expression parsing stopped before: `array '{1}'`");
+    insta::assert_snapshot!(expr_err("int 'a' 'b'"), @"expression parsing error: expression parsing stopped before: `'b'`");
+    insta::assert_snapshot!(expr_err("intx 'a'"), @"expression parsing error: expression parsing stopped before: `'a'`");
+}
+
+#[test]
 fn scalar_casts_datetime_decimal_uuid() {
     insta::assert_snapshot!(render_expr("a::datetime"), @"a::datetime");
     insta::assert_snapshot!(render_expr("a::decimal"), @"a::decimal");

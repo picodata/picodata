@@ -10,6 +10,28 @@ use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::value::Value;
 
 #[test]
+fn typed_literal_in_sharding_key_filter() {
+    let query = r#"SELECT * FROM "test_space" WHERE "id" = int '1'"#;
+
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top = plan.get_top().unwrap();
+    let buckets = query.bucket_discovery(top).unwrap();
+
+    let param1 = Value::from(1);
+
+    let bucket1 = query
+        .get_coordinator()
+        .determine_bucket_id(&[&param1])
+        .unwrap();
+    let bucket_set: HashSet<_, _> = vec![bucket1].into_iter().collect();
+    let expected = Buckets::new_filtered(bucket_set);
+
+    assert_eq!(expected, buckets);
+}
+
+#[test]
 #[allow(clippy::similar_names)]
 fn simple_union_query() {
     let query = r#"SELECT * FROM (
