@@ -19,6 +19,13 @@ pub unsafe trait AuthMethod {
     /// Auth method name. This is the name to use for the method's registration with tarantool.
     const NAME: &'static ffi::CStr;
 
+    /// Set if the authentication method does not need a password in [`AuthMethod::auth_data_prepare`].
+    ///
+    /// Tarantool will pass an empty slice for `password` if this flag is set to true.
+    ///
+    /// This is an opt-in because most methods require password.
+    const PASSWORDLESS_DATA_PREPARE: bool = false;
+
     type Authenticator: Authenticator<Method = Self>;
 
     /// Server-side user authentication data, OUT representation.
@@ -96,6 +103,7 @@ pub struct TypedAuthMethodWrapper<T>(pub T);
 
 impl<M: AuthMethod> RawAuthMethod for TypedAuthMethodWrapper<M> {
     const NAME: &'static ffi::CStr = M::NAME;
+    const PASSWORDLESS_DATA_PREPARE: bool = M::PASSWORDLESS_DATA_PREPARE;
     type Authenticator = TypedAuthenticatorWrapper<M>;
 
     unsafe fn auth_data_prepare(&self, password: &[u8], user: &[u8]) -> NonNull<[u8]> {
