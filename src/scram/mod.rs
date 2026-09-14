@@ -29,13 +29,12 @@ mod messages;
 mod pbkdf2;
 mod secret;
 mod signature;
-pub mod tarantool;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine as _;
 pub use exchange::Exchange;
 pub use key::ScramKey;
-pub use secret::ServerSecret;
+pub use secret::{ServerSecret, SCRAM_DEFAULT_ITERATIONS, SCRAM_DEFAULT_SALT_LEN};
 
 const SCRAM_SHA_256: &str = "SCRAM-SHA-256";
 const SCRAM_SHA_256_PLUS: &str = "SCRAM-SHA-256-PLUS";

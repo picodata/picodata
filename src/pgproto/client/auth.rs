@@ -65,7 +65,7 @@ fn auth_exchange_classic(
         .map(|x| x.password)
         .map_err(io::Error::other)?;
 
-    let mut salt_buf = [0u8; crate::auth::SALT_MIN_LEN];
+    let mut salt_buf = [0u8; crate::auth::SALT_LEN];
     salt_buf[0..4].copy_from_slice(&salt);
 
     crate::auth::do_authenticate(user, password, &salt_buf, auth.method)

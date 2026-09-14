@@ -1105,7 +1105,7 @@ fn init_common(
     shredding: bool,
 ) -> Result<(), Error> {
     // Note: we should do this *before* calling `box.cfg {}`.
-    crate::auth::register_tarantool_auth_methods();
+    crate::auth::register_picodata_auth_methods();
 
     std::fs::create_dir_all(config.instance.instance_dir()).map_err(|err| {
         Error::other(format!(
