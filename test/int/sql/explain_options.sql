@@ -2447,7 +2447,7 @@ plan:
     [0] TRIVIAL
 
 -- TEST: raw-buckets-fmt-wrapped
--- SKIP_FOR: 1rsX1
+-- SKIP_FOR: 2rsX1
 -- SQL:
 explain (raw, buckets, fmt)
 select d from tt where d in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
@@ -2458,7 +2458,7 @@ select d from tt where d in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
 ──────────────────────────────────────────────────────────────────────
 ''
 ╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 2/2) │
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
 SELECT
