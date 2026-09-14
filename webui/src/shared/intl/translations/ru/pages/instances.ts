@@ -116,7 +116,7 @@ export const instances: TPages["instances"] = {
         outOf: "из",
       },
       state: {
-        label: "Стейт лидера",
+        label: "Состояние лидера",
       },
       replicasetStateNotReady: {
         label: "Не готов",
@@ -136,7 +136,7 @@ export const instances: TPages["instances"] = {
         label: "Целевое состояние",
       },
       currentState: {
-        label: "Стейт",
+        label: "Состояние",
       },
       binaryAddress: {
         label: "IPROTO",
@@ -172,10 +172,10 @@ export const instances: TPages["instances"] = {
         leader: "Лидер",
         voter: "Голосующий",
         log: "Лог",
-        state: "Стейт",
+        state: "Состояние",
         picodataVersion: "Версия Picodata",
-        currentState: "Стейт (текущий)",
-        targetState: "Стейт (целевой)",
+        currentState: "Состояние (текущее)",
+        targetState: "Состояние (целевое)",
       },
       errorMessage: {
         title: "Не удалось подключиться к инстансу",
