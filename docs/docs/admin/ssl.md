@@ -50,9 +50,10 @@ TLS/SSL позволяет не передавать его по сети в о�
 
 ```yaml
 pgproto:
-    tls: enabled: true
-        cert_file: tls/custom_server.crt
-        key_file: tls/custom_server.key
+  tls:
+    enabled: true
+    cert_file: tls/custom_server.crt
+    key_file: tls/custom_server.key
 ```
 
 Если нужно включить проверку клиентского сертификата ([mTLS]), добавьте
@@ -61,11 +62,11 @@ pgproto:
 
 ```yaml
 pgproto:
-    tls:
-        enabled: true
-        cert_file: tls/custom_server.crt
-        key_file: tls/custom_server.key
-        ca_file: tls/custom_ca.crt
+  tls:
+    enabled: true
+    cert_file: tls/custom_server.crt
+    key_file: tls/custom_server.key
+    ca_file: tls/custom_ca.crt
 ```
 
 !!! note "Примечание"
@@ -108,6 +109,41 @@ psql 'host=192.168.0.22 port=5001 user=admin sslmode=verify-ca sslrootcert=/etc/
 ```shell
 psql "user=admin host=192.168.0.22 port=5001 sslrootcert=/etc/certs/ca.crt sslcert=/etc/certs/myserver1.int.crt sslkey=/etc/certs/myserver1.int.key"
 ```
+
+### Аутентификация по сертификату {: #pgproto_cert_auth }
+
+В режиме [mTLS] Picodata дополнительно проверяет, кому выдан клиентский
+сертификат: поле Common Name (CN) в нем, обрезанное по первому символу
+`@`, должно совпадать с именем пользователя, указанным при подключении.
+Например, сертификаты с `CN=alice` и `CN=alice@example.com` подходят
+только для пользователя `alice`.
+
+Проверка выполняется после обычного обмена аутентификационными
+сообщениями и действует для всех методов аутентификации, поэтому
+несовпадение имен неотличимо от неверного пароля.
+
+Это позволяет использовать клиентский сертификат двумя способами:
+
+- Как второй фактор аутентификации (2FA). Пользователь создан с одним из
+  парольных методов (`md5`, `scram-sha256`, `ldap`), поэтому для
+  подключения нужно одновременно знать пароль и предъявить сертификат,
+  выданный этому пользователю:
+
+    ```sql
+    CREATE USER "alice" WITH PASSWORD 'P@ssw0rd' USING md5;
+    ```
+
+- Как единственный фактор аутентификации (1FA). Пользователь создан с
+  методом `cert`, при котором пароль не используется вовсе, и
+  подлинность подтверждает только клиентский сертификат:
+
+    ```sql
+    CREATE USER "alice" USING cert;
+    ```
+
+    Если у подключения нет подходящего сертификата (например, mTLS не
+    настроен или имя пользователя не совпало), то оно будет отклонено с
+    ошибкой `certificate authentication failed for user 'alice'`.
 
 ## Создание сертификатов и ключей {: #create_certs_and_keys }
 
@@ -247,9 +283,8 @@ openssl x509 -req -in wildcard.int.csr -CA ca.crt -CAkey ca.key -CAcreateserial 
     `instance.iproto.advertise`. Например, если в настройке инстанса
     указано:
     ```yaml
-    instance:
     iproto:
-        advertise: myserver1.int:13001
+      advertise: myserver1.int:13001
     ```
     то в поле `subjectAltName` сертификата должно быть значение
     `myserver1.int` или wildcard `*.int`.
@@ -269,11 +304,11 @@ openssl x509 -req -in wildcard.int.csr -CA ca.crt -CAkey ca.key -CAcreateserial 
 
     ```yaml
     iproto:
-        tls:
-            enabled: true
-            cert_file: tls/server.crt
-            key_file: tls/server.key
-            ca_file: tls/ca.crt
+      tls:
+        enabled: true
+        cert_file: tls/server.crt
+        key_file: tls/server.key
+        ca_file: tls/ca.crt
     ```
     !!! note "Примечание"
         mTLS должен быть включен на всех инстансах кластера
@@ -301,10 +336,10 @@ configure].
 
 ```yaml
 http:
-    tls:
-        enabled: true
-        cert_file: cert.pem
-        key_file: key.pem
+  tls:
+    enabled: true
+    cert_file: cert.pem
+    key_file: key.pem
 ```
 
 [метрикам]: local_monitoring.md/#enable_metrics
