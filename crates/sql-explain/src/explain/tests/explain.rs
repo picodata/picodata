@@ -1,670 +1,474 @@
-use crate::explain::buckets::{buckets_repr, BoundedBuckets};
-use crate::explain::ir::LogicalExplain;
-use pretty_assertions::assert_eq;
-use sql_ir::ir::bucket::BucketSet;
-use sql_ir::ir::bucket::Buckets;
-use sql_ir::ir::helpers::RepeatableState;
-use std::collections::HashSet;
+use super::{explain, explain_with_params};
+use sql_ir::ir::value::Value;
 
-use sql_executor::test_helpers::sql_to_optimized_ir;
-use sql_ir::collection;
+// Facet headers.
 
 #[test]
-fn simple_query_without_cond_plan() {
-    let query =
-        r#"SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t""#;
+fn logical_and_buckets_headers() {
+    let sql = r#"EXPLAIN (LOGICAL, BUCKETS) SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t""#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
-
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
-
-    insta::assert_snapshot!(explain_tree.to_string(), @r"
     projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
       scan hash_testing -> t
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets <= [1-10000]
+    ");
+}
+
+// Select.
+
+#[test]
+fn select_from_global_table() {
+    let sql = r#"explain (logical, buckets) select a from global_t"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    projection (global_t.a::int -> a)
+      scan global_t
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets = any
     ");
 }
 
 #[test]
-fn simple_query_with_cond_plan() {
-    let query = r#"SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t" WHERE "t"."identification_number" = 1 AND "t"."product_code" = '222'"#;
+fn select_with_composite_key_filter() {
+    let sql = r#"explain (logical, buckets) select e from t2 where e = 1 and f = 13"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
+    projection (t2.e::int -> e)
+      selection ((t2.e::int = 1::int and t2.f::int = 13::int))
+        scan t2
 
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
 
-    insta::assert_snapshot!(explain_tree.to_string(), @r"
-    projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
-      selection ((t.identification_number::int = 1::int and t.product_code::string = '222'::string))
-        scan hash_testing -> t
+    buckets = [111]
     ");
 }
 
 #[test]
-fn union_query_plan() {
-    let query = r#"SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t"
+fn select_with_contradicting_row_filters() {
+    let sql = r#"explain (logical, buckets) select a, b from t1 where (a, b) = ('1', 1) and (a, b) = ('2', 2)"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    projection (t1.a::string -> a, t1.b::int -> b)
+      selection ((ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int) and ROW(t1.a::string, t1.b::int) = ROW('2'::string, 2::int)))
+        scan t1
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets = []
+    ");
+}
+
+// Set operations.
+
+#[test]
+fn union_all() {
+    let sql = r#"explain (logical, buckets) SELECT "t"."identification_number" as "c1", "product_code" FROM "hash_testing" as "t"
         UNION ALL
         SELECT "t2"."identification_number", "product_code" FROM "hash_testing_hist" as "t2""#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
-
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
-
-    insta::assert_snapshot!(explain_tree.to_string(), @r"
     union all
       projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
         scan hash_testing -> t
       projection (t2.identification_number::int -> identification_number, t2.product_code::string -> product_code)
         scan hash_testing_hist -> t2
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets <= [1-10000]
     ");
 }
 
+// Joins.
+
+/// Table t2 is sharded by (e, f), t1 by (a, b). The join has Segment {e, f}
+/// vs Segment {a, b}: they don't equal each other, so motion is needed. We
+/// know e = f = 10 and e = b, hence by transitivity e = f = b, so the motion
+/// key is derived as segment([b, b]).
+///
+/// Buckets can't be estimated after a segment motion reshards the rows,
+/// so only the upper bound is shown.
 #[test]
-fn union_subquery_plan() {
-    let query = r#"SELECT * FROM (
-SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "sys_op" > 0 and "sysFrom" < 0
-UNION ALL
-SELECT "id", "FIRST_NAME" FROM "test_space_hist" WHERE "sys_op" < 0
-) as "t"
-WHERE "id" = 1"#;
-
-    let plan = sql_to_optimized_ir(query, vec![]);
-
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
-
-    insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    projection (t.id::int -> id, t."FIRST_NAME"::string -> "FIRST_NAME")
-      selection (t.id::int = 1::int)
-        scan t
-          union all
-            projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-              selection ((test_space.sys_op::int > 0::int and test_space."sysFrom"::int < 0::int))
-                scan test_space
-            projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-              selection (test_space_hist.sys_op::int < 0::int)
-                scan test_space_hist
-    "#);
-}
-
-#[test]
-fn union_cond_subquery_plan() {
-    let query = r#"SELECT * FROM (
-SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "sys_op" > 0 and "sysFrom" < 0
-UNION ALL
-SELECT "id", "FIRST_NAME" FROM "test_space_hist" WHERE "sys_op" < 0
-) as "t"
-WHERE "id" IN (SELECT "id"
-   FROM (
-      SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "sys_op" > 0
-      UNION ALL
-      SELECT "id", "FIRST_NAME" FROM "test_space_hist" WHERE "sys_op" < 0
-  ) as "t2"
-  WHERE "t2"."id" = 4)
+fn segment_motion_key_derived_by_transitivity() {
+    let sql = r#"explain (logical, buckets) select a, count(b) from
+    (select e, f from t2 where (e, f) = (10, 10))
+    join
+    (select a, b from t1 where (a, b) = ('20', 20))
+    on e = b
+    group by a
 "#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
+    projection (gr_expr_1::string -> a, sum(count_1::int)::int -> col_1)
+      group by (gr_expr_1::string)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (unnamed_subquery_1.a::string -> gr_expr_1, count(unnamed_subquery_1.b::int::int)::int -> count_1)
+            group by (unnamed_subquery_1.a::string)
+              join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
+                scan unnamed_subquery
+                  projection (t2.e::int -> e, t2.f::int -> f)
+                    selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
+                      scan t2
+                motion [policy: segment([ref(b), ref(b)]), program: ReshardIfNeeded]
+                  scan unnamed_subquery_1
+                    projection (t1.a::string -> a, t1.b::int -> b)
+                      selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
+                        scan t1
 
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
 
-    insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    projection (t.id::int -> id, t."FIRST_NAME"::string -> "FIRST_NAME")
-      selection (t.id::int in ROW($0))
-        scan t
-          union all
-            projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-              selection ((test_space.sys_op::int > 0::int and test_space."sysFrom"::int < 0::int))
-                scan test_space
-            projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-              selection (test_space_hist.sys_op::int < 0::int)
-                scan test_space_hist
-    subquery $0:
-      scan
-        projection (t2.id::int -> id)
-          selection (t2.id::int = 4::int)
-            scan t2
-              union all
-                projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-                  selection (test_space.sys_op::int > 0::int)
-                    scan test_space
-                projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-                  selection (test_space_hist.sys_op::int < 0::int)
-                    scan test_space_hist
-    "#);
-}
-
-#[test]
-fn explain_except1() {
-    let query = r#"SELECT "product_code" as "pc" FROM "hash_testing" AS "t"
-        EXCEPT DISTINCT
-        SELECT "identification_number"::text FROM "hash_testing_hist""#;
-
-    let plan = sql_to_optimized_ir(query, vec![]);
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
-
-    insta::assert_snapshot!(explain_tree.to_string(), @r"
-    except
-      projection (t.product_code::string -> pc)
-        scan hash_testing -> t
-      motion [policy: full, program: ReshardIfNeeded]
-        projection (hash_testing_hist.identification_number::int::string -> col_1)
-          scan hash_testing_hist
+    buckets <= [1-10000]
     ");
 }
 
+/// Table t2 is sharded by (e, f), t1 by (a, b). The join has Segment {e, f}
+/// vs Segment {a, b}: they don't equal each other, so motion is needed. We
+/// only know e = b, which doesn't cover t2's sharding key, so no new segment
+/// key can be derived and the motion is full.
+///
+/// The plan has no segment motion, so the exact bucket set is estimated.
 #[test]
-fn motion_subquery_plan() {
-    let query = r#"
-    SELECT * FROM (
-        SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "sys_op" > 0 and "sysFrom" < 0
-        UNION ALL
-        SELECT "id", "FIRST_NAME" FROM "test_space_hist" WHERE "sys_op" < 0
-    ) as "t"
-    WHERE
-    "id" IN (SELECT "id"
-        FROM (
-            SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "sys_op" > 0
-            UNION ALL
-            SELECT "id", "FIRST_NAME" FROM "test_space_hist" WHERE "sys_op" < 0
-        ) as "t2"
-        WHERE "t2"."id" = 4)
-    OR "id" IN (SELECT "identification_number"
-        FROM "hash_testing"
-        WHERE "identification_number" = 5 AND "product_code" = '123'
-        )
+fn join_with_full_motion() {
+    let sql = r#"explain (logical, buckets) select a from
+    (select e, f from t2 where (e, f) = (10, 12))
+    join
+    (select a, b from t1 where (a, b) = ('20', 20))
+    on e = b
 "#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
+    projection (unnamed_subquery_1.a::string -> a)
+      join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
+        scan unnamed_subquery
+          projection (t2.e::int -> e, t2.f::int -> f)
+            selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 12::int))
+              scan t2
+        motion [policy: full, program: ReshardIfNeeded]
+          scan unnamed_subquery_1
+            projection (t1.a::string -> a, t1.b::int -> b)
+              selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
+                scan t1
 
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
 
-    insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    projection (t.id::int -> id, t."FIRST_NAME"::string -> "FIRST_NAME")
-      selection (t.id::int in ROW($1) or t.id::int in ROW($0))
-        scan t
-          union all
-            projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-              selection ((test_space.sys_op::int > 0::int and test_space."sysFrom"::int < 0::int))
-                scan test_space
-            projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-              selection (test_space_hist.sys_op::int < 0::int)
-                scan test_space_hist
-    subquery $0:
-      motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
-        scan
-          projection (hash_testing.identification_number::int -> identification_number)
-            selection ((hash_testing.identification_number::int = 5::int and hash_testing.product_code::string = '123'::string))
-              scan hash_testing
-    subquery $1:
-      scan
-        projection (t2.id::int -> id)
-          selection (t2.id::int = 4::int)
-            scan t2
-              union all
-                projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-                  selection (test_space.sys_op::int > 0::int)
-                    scan test_space
-                projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
-                  selection (test_space_hist.sys_op::int < 0::int)
-                    scan test_space_hist
-    "#);
+    buckets = [62, 6266]
+    ");
 }
 
+// DML.
+
+/// Source and target are sharded by the same key, so rows stay on their
+/// storages: local segment motion only recalculates `bucket_id`.
 #[test]
-fn motion_join_plan() {
-    let query = r#"SELECT "t1"."FIRST_NAME"
-FROM (SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" = 3) as "t1"
-    JOIN (SELECT "identification_number", "product_code" FROM "hash_testing") as "t2" ON "t1"."id"="t2"."identification_number"
-WHERE "t2"."product_code" = '123'"#;
+fn insert_select_uses_local_segment_motion() {
+    let sql = r#"explain (logical, buckets) insert into t1 select a, b from t1"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
-
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
-
-    insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    projection (t1."FIRST_NAME"::string -> "FIRST_NAME")
-      selection (t2.product_code::string = '123'::string)
-        join on (t1.id::int = t2.identification_number::int)
+    insert into t1 on conflict: fail
+      motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
+        projection (t1.a::string -> a, t1.b::int -> b)
           scan t1
-            projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-              selection (test_space.id::int = 3::int)
-                scan test_space
-          motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets <= [1-10000]
+    ");
+}
+
+#[test]
+fn insert_into_global_table_uses_full_motion() {
+    let sql = r#"explain (logical, buckets) insert into global_t values (1, 1)"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    insert into global_t on conflict: fail
+      motion [policy: full, program: ReshardIfNeeded]
+        values
+          value ROW(1::int, 1::int)
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets = any
+    ");
+}
+
+#[test]
+fn insert_select_into_global_table_uses_full_motion() {
+    let sql = r#"explain (logical, buckets) insert into global_t select a, b from t1 where (a, b) = ('1', 1)"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    insert into global_t on conflict: fail
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (t1.a::string -> a, t1.b::int -> b)
+          selection (ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int))
+            scan t1
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets = [6691]
+    ");
+}
+
+/// Updating a sharding-key column is executed as delete + insert. The
+/// projection holds the new row followed by the old sharding key (col_5,
+/// col_6), and the motion program splits every row into a delete tuple
+/// routed by the old key and an insert tuple routed by the new key at
+/// positions 0 and 1.
+#[test]
+fn update_of_sharding_key_rearranges_rows() {
+    let sql = r#"explain (logical, buckets) update t2 set e = 20 where (e, f) = (10, 10)"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    update t2 (f = col_1, h = col_3, bucket_id = col_4, e = col_0, g = col_2)
+      motion [policy: segment([]), program: [PrimaryKey(2, 3), RearrangeForShardedUpdate(0, 1)]]
+        projection (20::int -> col_0, t2.f::int -> col_1, t2.g::int -> col_2, t2.h::int -> col_3, t2.bucket_id::int -> col_4, t2.e::int -> col_5, t2.f::int -> col_6)
+          selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
             scan t2
-              projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
-                scan hash_testing
-    "#);
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets <= [1-10000]
+    ");
 }
 
-#[test]
-fn sq_join_plan() {
-    let query = r#"SELECT "t1"."FIRST_NAME"
-FROM (SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" = 3) as "t1"
-    JOIN "hash_testing" ON "t1"."id"=(SELECT "identification_number" FROM "hash_testing")"#;
-
-    let plan = sql_to_optimized_ir(query, vec![]);
-
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
-
-    insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    projection (t1."FIRST_NAME"::string -> "FIRST_NAME")
-      join on (t1.id::int = ROW($0))
-        scan t1
-          projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-            selection (test_space.id::int = 3::int)
-              scan test_space
-        motion [policy: full, program: ReshardIfNeeded]
-          projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
-            scan hash_testing
-    subquery $0:
-      motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
-        scan
-          projection (hash_testing.identification_number::int -> identification_number)
-            scan hash_testing
-    "#);
-}
+// Casts.
 
 #[test]
-fn unary_condition_plan() {
-    let query = r#"SELECT "id", "FIRST_NAME" FROM "test_space" WHERE "id" IS NULL and "FIRST_NAME" IS NOT NULL"#;
+fn constant_casts_folded_in_insert() {
+    let sql = r#"explain (logical, buckets) INSERT INTO t1 VALUES ('txt'::text::text::text, 2::decimal::integer::double::integer)"#;
+    insta::assert_snapshot!(explain(sql), @r#"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
-
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
-
-    insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-      selection ((test_space.id::int is null and not test_space."FIRST_NAME"::string is null))
-        scan test_space
-    "#);
-}
-
-#[test]
-fn insert_plan() {
-    let query = r#"INSERT INTO "test_space" ("id", "FIRST_NAME") VALUES (1, '123')"#;
-
-    let plan = sql_to_optimized_ir(query, vec![]);
-
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
-
-    insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    insert into test_space on conflict: fail
-      motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
+    insert into t1 on conflict: fail
+      motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
-          value ROW(1::int, '123'::string)
+          value ROW('txt'::string, 2::int)
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets = [369]
     "#);
 }
 
 #[test]
-fn multiply_insert_plan() {
-    let query = r#"INSERT INTO "test_space" ("id", "FIRST_NAME") VALUES (1, '123'), (2, '456'), (3, '789')"#;
+fn constant_casts_folded_in_select() {
+    let sql = r#"explain (logical, buckets) SELECT * FROM t3 WHERE a = 'kek'::text::text::text"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
+    projection (t3.a::string -> a, t3.b::int -> b)
+      selection (t3.a::string = 'kek'::string)
+        scan t3
 
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
 
-    insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    insert into test_space on conflict: fail
-      motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
-        values
-          value ROW(1::int, '123'::string)
-          value ROW(2::int, '456'::string)
-          value ROW(3::int, '789'::string)
-    "#);
-}
-
-#[test]
-fn insert_select_plan() {
-    let query = r#"INSERT INTO "test_space" ("id", "FIRST_NAME")
-SELECT "identification_number", "product_code" FROM "hash_testing""#;
-
-    let plan = sql_to_optimized_ir(query, vec![]);
-
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
-
-    insta::assert_snapshot!(explain_tree.to_string(), @r"
-    insert into test_space on conflict: fail
-      motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
-        projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
-          scan hash_testing
+    buckets = [1610]
     ");
 }
 
 #[test]
-fn select_value_plan() {
-    let query = r#"select * from (values (1))"#;
+fn constant_casts_folded_in_update() {
+    let sql = r#"explain (logical, buckets) UPDATE t SET c = 2 WHERE a = 1::int::int and b = 2::integer::decimal"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
+    update t (c = col_0)
+      motion [policy: local, program: ReshardIfNeeded]
+        projection (2::int -> col_0, t.b::int -> col_1)
+          selection ((t.a::int = 1::int and t.b::int = 2::decimal))
+            scan t
 
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
 
-    insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    projection (unnamed_subquery."COLUMN_1"::int -> "COLUMN_1")
-      scan unnamed_subquery
-        motion [policy: full, program: ReshardIfNeeded]
-          values
-            value ROW(1::int)
-    "#);
-}
-
-#[test]
-fn select_cast_plan1() {
-    let query = r#"SELECT CAST("id" as int) as "b" FROM "test_space""#;
-
-    let plan = sql_to_optimized_ir(query, vec![]);
-
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
-
-    insta::assert_snapshot!(explain_tree.to_string(), @r"
-    projection (test_space.id::int::int -> b)
-      scan test_space
+    buckets = [550]
     ");
 }
 
 #[test]
-fn select_cast_plan2() {
-    let query = r#"SELECT "id", "FIRST_NAME" FROM "test_space" WHERE CAST("id" as int) = 1"#;
+fn constant_casts_folded_in_delete() {
+    let sql = r#"explain (logical, buckets) DELETE FROM "t2" where "e" = 3::integer and "f" = 2::decimal"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
+    delete from t2
+      motion [policy: local, program: [PrimaryKey(0, 1), ReshardIfNeeded]]
+        projection (t2.g::int -> pk_col_0, t2.h::int -> pk_col_1)
+          selection ((t2.e::int = 3::int and t2.f::int = 2::decimal))
+            scan t2
 
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
 
-    insta::assert_snapshot!(explain_tree.to_string(), @r#"
-    projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
-      selection (test_space.id::int::int = 1::int)
-        scan test_space
-    "#);
+    buckets = [9374]
+    ");
 }
 
+// Prepared statements.
+
 #[test]
-fn select_cast_plan_nested() {
-    let query = r#"SELECT cast(trim("id"::text) as string) FROM "test_space""#;
+fn prepared_single_key_aggregate_stays_single_node() {
+    let sql = r#"explain (logical, buckets) select count(*)
+        from t5
+        where a = $1"#;
+    let params = vec![Value::Integer(1)];
+    insta::assert_snapshot!(explain_with_params(sql, params), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
+    projection (count(*)::int -> col_1)
+      selection (t5.a::int = 1::int)
+        scan t5
 
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
 
-    insta::assert_snapshot!(explain_tree.to_string(), @r"
-    projection (TRIM(test_space.id::int::string)::string -> col_1)
-      scan test_space
+    buckets = [3940]
     ");
 }
 
 #[test]
-fn select_cast_plan_nested_where() {
-    let query = r#"SELECT "id" FROM "test_space" WHERE cast(trim("id"::text) as string) = '1'"#;
+fn prepared_single_key_with_constant_drops_reduce_stage() {
+    let sql = r#"explain (logical, buckets) select count(*)
+        from t5
+        where a = $1 and a = 1"#;
+    let params = vec![Value::Integer(1)];
+    insta::assert_snapshot!(explain_with_params(sql, params), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
+    projection (count(*)::int -> col_1)
+      selection ((t5.a::int = 1::int and t5.a::int = 1::int))
+        scan t5
 
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
 
-    insta::assert_snapshot!(explain_tree.to_string(), @r"
-    projection (test_space.id::int -> id)
-      selection (TRIM(test_space.id::int::string)::string = '1'::string)
-        scan test_space
+    buckets = [3940]
     ");
 }
 
 #[test]
-fn select_cast_plan_nested_where2() {
-    let query = r#"SELECT "id" FROM "test_space" WHERE trim(cast(42 as string)) = '1'"#;
+fn prepared_reused_parameters_drops_reduce_stage() {
+    let sql = r#"explain (logical, buckets) select count(*)
+        from t5
+        where a = $1 and a = $1 and a = $2"#;
+    let params = vec![Value::Integer(1), Value::Integer(1)];
+    insta::assert_snapshot!(explain_with_params(sql, params), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-    let plan = sql_to_optimized_ir(query, vec![]);
+    projection (count(*)::int -> col_1)
+      selection ((t5.a::int = 1::int and t5.a::int = 1::int and t5.a::int = 1::int))
+        scan t5
 
-    let top = &plan.get_top().unwrap();
-    let explain_tree = LogicalExplain::new(&plan, *top).unwrap();
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
 
-    insta::assert_snapshot!(explain_tree.to_string(), @r"
-    projection (test_space.id::int -> id)
-      selection (TRIM(42::int::string) = '1'::string)
-        scan test_space
+    buckets = [3940]
     ");
 }
 
 #[test]
-fn check_buckets_repr() {
-    let bc = 3000;
-    assert_eq!("[1-3000]", buckets_repr(&Buckets::All, bc, false));
-    assert_eq!("any", buckets_repr(&Buckets::Any, bc, false));
-    assert_eq!(
-        "[1-3]",
-        buckets_repr(
-            &Buckets::Filtered(BucketSet::Exact(collection!(1, 2, 3))),
-            bc,
-            false
-        )
-    );
-    assert_eq!(
-        "[1-3]",
-        buckets_repr(
-            &Buckets::Filtered(BucketSet::Exact(collection!(3, 2, 1))),
-            bc,
-            false
-        )
-    );
-    assert_eq!(
-        "[1, 2]",
-        buckets_repr(
-            &Buckets::Filtered(BucketSet::Exact(collection!(1, 2))),
-            bc,
-            false
-        )
-    );
-    assert_eq!(
-        "[1, 10, 11, 21-23]",
-        buckets_repr(
-            &Buckets::Filtered(BucketSet::Exact(collection!(1, 10, 11, 23, 22, 21))),
-            bc,
-            false
-        )
-    );
-    assert_eq!(
-        "[]",
-        buckets_repr(
-            &Buckets::Filtered(BucketSet::Exact(collection!())),
-            bc,
-            false
-        )
-    );
-}
+fn prepared_partial_composite_key_keeps_reduce_stage() {
+    let sql = r#"explain (logical, buckets) select count(*)
+        from "hash_testing"
+        where ("identification_number", "product_code") = ($1, trim("product_code"))"#;
+    let params = vec![Value::Integer(1)];
+    insta::assert_snapshot!(explain_with_params(sql, params), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
 
-#[test]
-fn check_buckets_repr_fmt() {
-    let bc = 3000;
-    assert_eq!("[1-3000]", buckets_repr(&Buckets::All, bc, true));
-    assert_eq!("any", buckets_repr(&Buckets::Any, bc, true));
-    assert_eq!(
-        "[]",
-        buckets_repr(
-            &Buckets::Filtered(BucketSet::Exact(collection!())),
-            bc,
-            true
-        )
-    );
+    projection (sum(count_1::int)::int -> col_1)
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (count(*)::int -> count_1)
+          selection (ROW(hash_testing.identification_number::int, hash_testing.product_code::string) = ROW(1::int, TRIM(hash_testing.product_code::string::string)))
+            scan hash_testing
 
-    // Lists that fit into a single line are left as is.
-    let eight = collection!(219, 626, 799, 1410, 1860, 1934, 1958, 2564);
-    assert_eq!(
-        "[219, 626, 799, 1410, 1860, 1934, 1958, 2564]",
-        buckets_repr(&Buckets::Filtered(BucketSet::Exact(eight)), bc, true)
-    );
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
 
-    // Narrow ranges keep filling the line as long as they fit into it.
-    let twelve: HashSet<u64, RepeatableState> = (0..12).map(|i| i * 2 + 1).collect();
-    assert_eq!(
-        "[1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23]",
-        buckets_repr(&Buckets::Filtered(BucketSet::Exact(twelve)), bc, true)
-    );
-
-    // Longer lists are split so that each line fills the format width.
-    let many: HashSet<u64, RepeatableState> = (1..=23).map(|i| i * 100).collect();
-    insta::assert_snapshot!(
-        buckets_repr(&Buckets::Filtered(BucketSet::Exact(many)), bc, true),
-        @r"
-    [
-      100, 200, 300, 400, 500, 600, 700, 800, 900,
-      1000, 1100, 1200, 1300, 1400, 1500, 1600,
-      1700, 1800, 1900, 2000, 2100, 2200, 2300
-    ]
-    "
-    );
-
-    // A range is never split across lines.
-    let ranges: HashSet<u64, RepeatableState> = (0..12)
-        .flat_map(|i| [i * 10, i * 10 + 1, i * 10 + 2])
-        .collect();
-    insta::assert_snapshot!(
-        buckets_repr(&Buckets::Filtered(BucketSet::Exact(ranges)), bc, true),
-        @r"
-    [
-      0-2, 10-12, 20-22, 30-32, 40-42, 50-52,
-      60-62, 70-72, 80-82, 90-92, 100-102,
-      110-112
-    ]
-    "
-    );
-}
-
-/// Wide ranges leave room for fewer items per line than plain ids do.
-/// Modelled on a cluster with 30000 buckets.
-#[test]
-fn check_buckets_repr_fmt_width() {
-    let bc = 30000;
-
-    // Ten wide ranges make up 131 characters, so the list is wrapped.
-    let ten_wide: HashSet<u64, RepeatableState> = (0..10)
-        .flat_map(|i| {
-            let base = 10000 + i * 100;
-            [base, base + 1, base + 2]
-        })
-        .collect();
-    insta::assert_snapshot!(
-        buckets_repr(&Buckets::Filtered(BucketSet::Exact(ten_wide)), bc, true),
-        @r"
-    [
-      10000-10002, 10100-10102, 10200-10202,
-      10300-10302, 10400-10402, 10500-10502,
-      10600-10602, 10700-10702, 10800-10802,
-      10900-10902
-    ]
-    "
-    );
-
-    // Plain five-digit ids are narrow enough to pack more per line.
-    let wide_ids: HashSet<u64, RepeatableState> = (0..23).map(|i| 10000 + i * 137).collect();
-    insta::assert_snapshot!(
-        buckets_repr(&Buckets::Filtered(BucketSet::Exact(wide_ids)), bc, true),
-        @r"
-    [
-      10000, 10137, 10274, 10411, 10548, 10685,
-      10822, 10959, 11096, 11233, 11370, 11507,
-      11644, 11781, 11918, 12055, 12192, 12329,
-      12466, 12603, 12740, 12877, 13014
-    ]
-    "
-    );
-}
-
-/// `EXPLAIN (BUCKETS)` output for a set built out of many ranges. A range
-/// is wider than a plain id, so fewer of them fit on a line.
-#[test]
-fn check_buckets_output_many_ranges() {
-    let bc = 30000;
-
-    // 50 ranges of three contiguous buckets each.
-    let ranges: HashSet<u64, RepeatableState> = (0..50)
-        .flat_map(|i| {
-            let base = 1000 + i * 100;
-            [base, base + 1, base + 2]
-        })
-        .collect();
-    let buckets = Buckets::Filtered(BucketSet::Exact(ranges));
-
-    // Without FMT the whole list stays on one line, however long.
-    insta::assert_snapshot!(
-        BoundedBuckets::new(buckets.clone(), bc, false),
-        @"buckets = [1000-1002, 1100-1102, 1200-1202, 1300-1302, 1400-1402, 1500-1502, 1600-1602, 1700-1702, 1800-1802, 1900-1902, 2000-2002, 2100-2102, 2200-2202, 2300-2302, 2400-2402, 2500-2502, 2600-2602, 2700-2702, 2800-2802, 2900-2902, 3000-3002, 3100-3102, 3200-3202, 3300-3302, 3400-3402, 3500-3502, 3600-3602, 3700-3702, 3800-3802, 3900-3902, 4000-4002, 4100-4102, 4200-4202, 4300-4302, 4400-4402, 4500-4502, 4600-4602, 4700-4702, 4800-4802, 4900-4902, 5000-5002, 5100-5102, 5200-5202, 5300-5302, 5400-5402, 5500-5502, 5600-5602, 5700-5702, 5800-5802, 5900-5902]"
-    );
-
-    // With FMT six nine-character ranges fit per line.
-    insta::assert_snapshot!(
-        BoundedBuckets::new(buckets, bc, true),
-        @r"
-    buckets = [
-      1000-1002, 1100-1102, 1200-1202, 1300-1302,
-      1400-1402, 1500-1502, 1600-1602, 1700-1702,
-      1800-1802, 1900-1902, 2000-2002, 2100-2102,
-      2200-2202, 2300-2302, 2400-2402, 2500-2502,
-      2600-2602, 2700-2702, 2800-2802, 2900-2902,
-      3000-3002, 3100-3102, 3200-3202, 3300-3302,
-      3400-3402, 3500-3502, 3600-3602, 3700-3702,
-      3800-3802, 3900-3902, 4000-4002, 4100-4102,
-      4200-4202, 4300-4302, 4400-4402, 4500-4502,
-      4600-4602, 4700-4702, 4800-4802, 4900-4902,
-      5000-5002, 5100-5102, 5200-5202, 5300-5302,
-      5400-5402, 5500-5502, 5600-5602, 5700-5702,
-      5800-5802, 5900-5902
-    ]
-    "
-    );
-}
-
-/// Singletons, adjacent pairs and ranges mixed together. Item widths differ
-/// here, so the number packed onto a line varies with what happens to land
-/// on it.
-#[test]
-fn check_buckets_output_mixed_widths() {
-    let bc = 30000;
-
-    let mixed: HashSet<u64, RepeatableState> = (0..24)
-        .flat_map(|i| match i % 4 {
-            0 => vec![100 + i],
-            1 => vec![1000 + i * 100, 1001 + i * 100],
-            2 => vec![10000 + i * 100, 10001 + i * 100, 10002 + i * 100],
-            _ => vec![20000 + i * 7],
-        })
-        .collect();
-    let buckets = Buckets::Filtered(BucketSet::Exact(mixed));
-
-    insta::assert_snapshot!(
-        BoundedBuckets::new(buckets.clone(), bc, false),
-        @"buckets = [100, 104, 108, 112, 116, 120, 1100, 1101, 1500, 1501, 1900, 1901, 2300, 2301, 2700, 2701, 3100, 3101, 10200-10202, 10600-10602, 11000-11002, 11400-11402, 11800-11802, 12200-12202, 20021, 20049, 20077, 20105, 20133, 20161]"
-    );
-
-    // Every line is packed up to the format width.
-    insta::assert_snapshot!(
-        BoundedBuckets::new(buckets, bc, true),
-        @r"
-    buckets = [
-      100, 104, 108, 112, 116, 120, 1100, 1101,
-      1500, 1501, 1900, 1901, 2300, 2301,
-      2700, 2701, 3100, 3101, 10200-10202,
-      10600-10602, 11000-11002, 11400-11402,
-      11800-11802, 12200-12202, 20021, 20049,
-      20077, 20105, 20133, 20161
-    ]
-    "
-    );
-
-    // An upper bound is a single range, so FMT leaves it alone.
-    insta::assert_snapshot!(
-        BoundedBuckets::new(Buckets::All, bc, true),
-        @"buckets <= [1-30000]"
-    );
+    buckets <= [1-10000]
+    ");
 }
