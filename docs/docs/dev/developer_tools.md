@@ -10,6 +10,8 @@
 - [Java](../dev/connectors/java.md)
 - [JDBC](../dev/connectors/jdbc.md)
 - [Go](../dev/connectors/go.md)
+- [Pycopyn](../dev/connectors/picopyn.md)
+- [Rust](../dev/connectors/rust.md)
 
 ## Разработка плагинов {: #plugins }
 
