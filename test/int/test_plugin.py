@@ -4072,7 +4072,11 @@ def test_plugin_on_replicaset_leader_change_two_callbacks(cluster: Cluster):
     service = _SERVICE_TWO_CALLBACKS_ON_REPLICASET_LEADER_CHANGE
 
     def global_wait():
-        i1.sql("create table _t (a int primary key);")
+        # The table is global, because dropping a sharded table pauses the
+        # vshard rebalancer until the drop is committed, and under load
+        # that made this helper itself flaky. A global table has no buckets,
+        # so the rebalancer is never touched.
+        i1.sql("create table _t (a int primary key) distributed globally;")
         i1.sql("drop table _t wait applied globally;")
 
     # wait for the first instance to be the raft leader
