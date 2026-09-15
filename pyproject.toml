@@ -8,6 +8,7 @@ readme = "README.md"
 dependencies = [
     "asyncpg>=0.30.0,<0.31",
     "funcy>=2.0,<3",
+    "gevent>=24.11.1,<25",
     "msgpack>=1.1.0,<2",
     "mypy>=1.13.0,<2",
     "packaging>=24.1,<25",

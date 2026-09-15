@@ -174,7 +174,7 @@ impl TarantoolBuildRoot {
 
             let mut common_args = vec![
                 format!("-DCMAKE_BUILD_TYPE={}", self.options.build_profile()),
-                "-DBUILD_TESTING=FALSE".to_string(),
+                "-DBUILD_TESTING=TRUE".to_string(),
                 "-DBUILD_DOC=FALSE".to_string(),
             ];
 

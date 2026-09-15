@@ -446,8 +446,10 @@ build-linux:
         du -hc --max-depth=1 target
         ci-log-section end "coverage-data"
       else
-        # we need only couple files from target directory for non coverage build
-        tar cf bckp.tar target/$TARGET/picodata target/$TARGET/libtestplug.so
+        # we need only couple files from target directory for non coverage build,
+        # plus the tarantool build files for test-tarantool-sys-linux
+        tar cf bckp.tar target/$TARGET/picodata target/$TARGET/libtestplug.so \
+          $(tools/test-tarantool-sys.py files)
         rm -rf target/$TARGET
         tar xf bckp.tar
         rm bckp.tar
@@ -682,6 +684,60 @@ test-py-not-sql-linux:
       fi
   after_script:
     - ./tools/upload-flake-tracker-report.sh
+
+test-tarantool-sys-linux:
+  stage: test
+  extends:
+    - .test_rules
+    - .parallel
+  needs:
+    - job: build-linux
+      artifacts: true
+  variables:
+    KUBERNETES_CPU_REQUEST: 8
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    TEST_RUN_JOBS: $KUBERNETES_CPU_REQUEST
+    TEST_RUN_RETRIES: 3
+    SERVER_START_TIMEOUT: 400
+    TEST_TIMEOUT: 420
+    NO_OUTPUT_TIMEOUT: 440
+    REPLICATION_SYNC_TIMEOUT: 400
+  cache:
+    - <<: *cache_git
+      policy: pull
+    - <<: *py_cache
+      policy: pull
+  script:
+    - tools/ensure_checkout.sh
+    - *uv-sync
+    - |
+      ci-log-section start "test" Test
+      if [ "$BUILD_PROFILE" = "dev" ]; then
+        make coverage-test-tarantool-sys
+      else
+        make test-tarantool-sys
+      fi
+      ci-log-section end "test"
+    - |
+      if [ "$BUILD_PROFILE" = "dev" ]; then
+        ci-log-section start "coverage-data" prepare coverage data ...
+        du -hc --max-depth=1 target
+        make coverage-data-merge
+        make coverage-trim-target
+        du -hc --max-depth=1 target
+        tar czf - target | curl --insecure --silent  --upload-file - --fail \
+          --show-error --max-time 1200 --user "$GITCACHE_FS_CRED" \
+          "https://picofs.picodata.int/gitlab_cache/target-testtarantoolsys-${BUILD_PROFILE}-${CI_PIPELINE_ID}.tar.gz"
+        echo "coverage data uploaded"
+        ci-log-section end "coverage-data"
+      fi
+  after_script:
+    - mkdir -p test-artifacts && cp -r /tmp/t/log /tmp/t/rejects test-artifacts/ || true
+  artifacts:
+    when: on_failure
+    paths:
+      - test-artifacts/
+    expire_in: 3 days
 
 lint:
   stage: test
@@ -1137,6 +1193,9 @@ deploy-coverage:
     - |
       curl --insecure --silent --fail --show-error --max-time 1200 \
        --user "$GITCACHE_FS_CRED" "https://picofs.picodata.int/gitlab_cache/target-testrs-dev-${CI_PIPELINE_ID}.tar.gz" | tar xzf -
+    - |
+      curl --insecure --silent --fail --show-error --max-time 1200 \
+       --user "$GITCACHE_FS_CRED" "https://picofs.picodata.int/gitlab_cache/target-testtarantoolsys-dev-${CI_PIPELINE_ID}.tar.gz" | tar xzf -
     - make coverage-report
     - ZIP_FILENAME=picodata_${CI_COMMIT_REF_SLUG}_${CI_COMMIT_SHORT_SHA}
     - REPORT_URL=https://fs.picodata.io/reportfiler/$ZIP_FILENAME/

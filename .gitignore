@@ -41,6 +41,9 @@ test/manual/sql/*.json
 # Optional data collection from tests.
 required_rolling_versions.txt
 
+# Symlink created by tools/test-tarantool-sys.py.
+tools/picodata-tarantool/picodata
+
 # IDE configuration folders
 .idea/
 .vscode/

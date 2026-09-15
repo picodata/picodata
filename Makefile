@@ -189,6 +189,11 @@ test-py-sql: test-py
 test-py-not-sql: PYTEST_SELECT = $(addprefix --deselect=,$(SQL_TEST_PATHS))
 test-py-not-sql: test-py
 
+# Test-run reads its options from the env, e.g. `make test-tarantool-sys TEST_RUN_TESTS=box/`.
+.PHONY: test-tarantool-sys
+test-tarantool-sys:
+	uv run tools/test-tarantool-sys.py run
+
 .PHONY: test
 test: test-rs test-py
 
@@ -199,7 +204,7 @@ coverage-test-$(1):
 	tools/coverage.py run $(MAKE) test-$(1)
 endef
 
-override TEST_PARTS := rs py py-sql py-not-sql
+override TEST_PARTS := rs py py-sql py-not-sql tarantool-sys
 $(foreach PART,$(TEST_PARTS),$(eval $(call TEST_TEMPLATE,$(PART))))
 
 .PHONY: coverage-report
@@ -392,6 +397,8 @@ trim-target:
 	echo "target/keep.list" > target/keep.list
 	@# Preserve all built binaries (picodata, tests, *.so).
 	tools/find-executables.sh "$(CARGO_TARGET_DIR)" >> target/keep.list
+	@# Preserve the tarantool build files needed by test-tarantool-sys.
+	tools/test-tarantool-sys.py files >> target/keep.list
 	@# Preserve `cargo build --timings` statistics.
 	echo "$(CARGO_TARGET_DIR)/cargo-timings/" >> target/keep.list
 	@# Preserve code coverage data (if any).

@@ -432,7 +432,14 @@ pub struct Tarantool {
 impl Tarantool {
     /// Get the arguments that will be passed to `tarantool_main`
     pub fn tt_args(&self) -> Result<Vec<Cow<'_, CStr>>, String> {
-        Ok(std::iter::once(current_exe()?.into())
+        use std::os::unix::ffi::OsStringExt as _;
+
+        // Keep our argv[0], so that the caller can choose tarantool's `arg[-1]`.
+        let argv0 = std::env::args_os().next().unwrap_or_default();
+        let argv0 = CString::new(argv0.into_vec())
+            .map_err(|e| format!("argv[0] contains nul bytes: {e}"))?;
+
+        Ok(std::iter::once(argv0.into())
             .chain(self.args.iter().map(AsRef::as_ref).map(Cow::from))
             .collect())
     }

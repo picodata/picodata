@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+
+picodata=$dir/picodata
+if [ ! -x "$picodata" ]; then
+    picodata=picodata
+fi
+
+exec -a "$dir/$(basename -- "$0")" "$picodata" tarantool -- "$@"
