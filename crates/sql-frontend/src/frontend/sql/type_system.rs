@@ -460,7 +460,7 @@ fn default_type_system() -> TypeSystem {
         Function::new_scalar(
             get_real_function_name("pico_raft_leader_uuid").expect("shouldn't fail"),
             [],
-            Uuid,
+            Text,
         ),
         Function::new_scalar(
             get_real_function_name("pico_replicaset_name").expect("shouldn't fail"),
