@@ -128,6 +128,8 @@ PICO_SERVICE_ID = 32
 ERROR_INJECTION_ENV_PREFIX = "PICODATA_ERROR_INJECTION_"
 
 CLI_TIMEOUT = int(10 * TIMEOUT_SCALE)  # seconds
+# For a picodata process to run to a terminal state (exit or graceful shutdown).
+PROCESS_EXIT_TIMEOUT = int(10 * TIMEOUT_SCALE)  # seconds
 DEFAULT_RPC_TIMEOUT = 10  # seconds — default for call/eval/sql, scaled in Instance.connect
 
 TOO_LONG_FOR_LOGS = 512
@@ -1343,7 +1345,7 @@ class Instance:
         # Send SIGTERM to trigger graceful shutdown
         self.process.terminate()
 
-    def await_termination(self, kill_after_seconds=10) -> int | None:
+    def await_termination(self, kill_after_seconds=PROCESS_EXIT_TIMEOUT) -> int | None:
         if self.process is None:
             # Idempotency
             return None
@@ -1365,7 +1367,7 @@ class Instance:
             self.kill()
             self.process = None
 
-    def terminate(self, kill_after_seconds=10, on_shutdown_timeout: int | None = None) -> int | None:
+    def terminate(self, kill_after_seconds=PROCESS_EXIT_TIMEOUT, on_shutdown_timeout: int | None = None) -> int | None:
         self.start_termination(on_shutdown_timeout=on_shutdown_timeout)
         return self.await_termination(kill_after_seconds=kill_after_seconds)
 
@@ -1501,7 +1503,7 @@ class Instance:
                 daemon=True,
             ).start()
 
-    def fail_to_start(self, timeout: int = 10, expected_log: str | None = None):
+    def fail_to_start(self, timeout: int = PROCESS_EXIT_TIMEOUT, expected_log: str | None = None):
         assert self.process is None, "process is already running"
 
         if expected_log is not None:
@@ -1531,7 +1533,7 @@ class Instance:
             # so using lc.matched here is not flaky.
             assert lc.matched
 
-    def wait_process_stopped(self, timeout: int = 10):
+    def wait_process_stopped(self, timeout: int = PROCESS_EXIT_TIMEOUT):
         if self.process is None:
             return
 
@@ -2834,10 +2836,10 @@ class Cluster:
                 except Exception as e:
                     errors.append(e)
 
-            # Await graceful shutdown of all instances, kill after 10 seconds
+            # Await graceful shutdown of all instances, kill after the timeout
             for instance in reversed(self.instances):
                 try:
-                    instance.await_termination(kill_after_seconds=10)
+                    instance.await_termination()
                 except Exception as e:
                     errors.append(e)
         except KeyboardInterrupt:
