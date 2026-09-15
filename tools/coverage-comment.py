@@ -7,6 +7,7 @@
 import argparse
 import json
 import os
+import string
 import sys
 import urllib.error
 import urllib.request
@@ -23,8 +24,13 @@ SCRIPT_NAME = Path(__file__).name
 REPORT_JSON = "report.json"
 TARANTOOL_SYS = "tarantool-sys"
 
-BASELINE_REPORT = f"https://fs.picodata.io/reportfiler/master/{REPORT_JSON}"
+# Every master pipeline publishes a report of its own (see `deploy-coverage`
+# in .gitlab-ci.yml), and there's also a rolling one for the tip of the branch
+BASELINE_COMMIT = f"https://fs.picodata.io/reportfiler/picodata_master_{{sha}}/{REPORT_JSON}"
+BASELINE_MASTER = f"https://fs.picodata.io/reportfiler/master/{REPORT_JSON}"
 DEFAULT_REPORT = f"target/cov/coverage/report/{REPORT_JSON}"
+
+SHA_LENGTH = 8  # Same as gitlab's CI_COMMIT_SHORT_SHA
 
 FETCH_TIMEOUT = 15
 TEST_WEIGHT = 0.01
@@ -98,6 +104,51 @@ class FileChange:
         return self.percent * max(self.old.count, self.new.count) * weight
 
 
+@dataclass(frozen=True)
+class Baseline:
+    """A published report we compare against, see `--baseline`"""
+
+    url: str
+    name: str  # what to call it in the comment
+
+    def __post_init__(self) -> None:
+        # We link to the root of the report, hence the strict naming
+        assert self.url.endswith(f"/{REPORT_JSON}"), f"a baseline should point at <root>/{REPORT_JSON}"
+
+    @property
+    def root(self) -> str:
+        return self.url.removesuffix(REPORT_JSON)
+
+
+def baselines(value: str) -> list[Baseline]:
+    """
+    Work out what to compare against. A commit sha (usually the one the branch
+    forked off of) picks the report published for that very commit; anything
+    else is taken as a url or a path to a report of your own.
+
+    The rolling report for the tip of master comes last as a fallback: on
+    master itself it's all we have, and a fork point might have no report.
+    """
+
+    tip = [Baseline(BASELINE_MASTER, "master")]
+
+    # An empty value is how CI spells "this isn't a merge request"
+    source = value.strip()
+    if not source:
+        return tip
+
+    # A hex string of an abbreviated-to-full sha1 length is a commit
+    sha = source.lower()
+    if SHA_LENGTH <= len(sha) <= 40 and set(sha) <= set(string.hexdigits):
+        sha = sha[:SHA_LENGTH]
+        return [Baseline(BASELINE_COMMIT.format(sha=sha), f"master@{sha}"), *tip]
+
+    if not source.endswith(f"/{REPORT_JSON}"):
+        raise argparse.ArgumentTypeError(f"neither a commit sha nor a <root>/{REPORT_JSON}: {value!r}")
+
+    return [Baseline(source, "master")]
+
+
 def load_report(source: str) -> dict[str, Lines]:
     report: Any
     if source.startswith(("http://", "https://")):
@@ -123,6 +174,20 @@ def load_report(source: str) -> dict[str, Lines]:
         raise Exception(f"No coverage data in {source}")
 
     return files
+
+
+def load_baseline(candidates: list[Baseline]) -> tuple[Baseline, dict[str, Lines]]:
+    """Load the first of the given reports we can get our hands on"""
+
+    *fallbacks, last = candidates
+    for candidate in fallbacks:
+        try:
+            return candidate, load_report(candidate.url)
+        except Exception as e:
+            print(f"{SCRIPT_NAME}: {e}; trying the next baseline", file=sys.stderr)
+
+    # The last one has nothing to fall back to, so let it fail loudly
+    return last, load_report(last.url)
 
 
 def diff_reports(old: dict[str, Lines], new: dict[str, Lines]) -> list[FileChange]:
@@ -190,15 +255,15 @@ def render_table(root: str, title: str, changes: list[FileChange]) -> list[str]:
     ]
 
 
-def render(root: str, base: str, old: dict[str, Lines], new: dict[str, Lines]) -> str:
+def render(root: str, base: str, name: str, old: dict[str, Lines], new: dict[str, Lines]) -> str:
     was, now = Lines.total(old.values()), Lines.total(new.values())
     delta_rel = fmt_percent(now.percent - was.percent)
     delta_abs = fmt_lines(now.covered - was.covered)
     text = [
-        f"Oh boy! [**Here's your code coverage report**]({root}).",
+        f"Oh boy! [**Here's your report**]({root}).",
         f"Line coverage is **{now.percent:.2f}%**, "
         f"{delta_rel} (or {delta_abs} lines) "
-        f"compared to **{was.percent:.2f}%** in [master]({base}).",
+        f"compared to **{was.percent:.2f}%** in [{name}]({base}).",
     ]
 
     changes = diff_reports(old, new)
@@ -217,7 +282,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Summarize the changes in line coverage",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=f"example:\n    {sys.argv[0]} https://fs.picodata.io/reportfiler/picodata_branch_deadbeef/",
+        epilog=(
+            "example:\n"
+            f"    {sys.argv[0]} --baseline 79dddd57"
+            " https://fs.picodata.io/reportfiler/picodata_branch_deadbeef/"
+        ),
     )
     parser.add_argument(
         "url",
@@ -232,22 +301,20 @@ def main() -> None:
     )
     parser.add_argument(
         "--baseline",
-        metavar="URL|PATH",
-        default=BASELINE_REPORT,
-        help="json report to compare against (default: %(default)s)",
+        metavar="SHA|URL|PATH",
+        default="",
+        type=baselines,
+        help="the commit the branch forked off of, or a json report to compare "
+        "against (default: the report published for the tip of master)",
     )
     args = parser.parse_args()
 
     # `urljoin` cuts the last segment off unless the url ends with a slash
     root = args.url if args.url.endswith("/") else f"{args.url}/"
 
-    # We link to the root of the baseline report, hence the strict naming
-    assert args.baseline.endswith(f"/{REPORT_JSON}"), f"--baseline should point at <root>/{REPORT_JSON}"
-    base = args.baseline.removesuffix(REPORT_JSON)
-
-    old = load_report(args.baseline)
+    base, old = load_baseline(args.baseline)
     new = load_report(args.report)
-    sys.stdout.write(render(root, base, old, new))
+    sys.stdout.write(render(root, base.root, base.name, old, new))
 
 
 if __name__ == "__main__":

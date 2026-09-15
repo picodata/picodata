@@ -1136,9 +1136,11 @@ deploy-coverage:
     - ZIP_FILENAME=picodata_${CI_COMMIT_REF_SLUG}_${CI_COMMIT_SHORT_SHA}
     - REPORT_URL=https://fs.picodata.io/reportfiler/$ZIP_FILENAME/
     - |
-      # A summary of the changes in coverage; if we can't build one
-      # (e.g. there's no report for the main branch yet), just link the report.
-      tools/coverage-comment.py "$REPORT_URL" > coverage-comment.md ||
+      # A summary of the changes in coverage against the report published for
+      # the commit this branch forked off of, falling back to the tip of
+      # master (that's also what we use on master itself, where the variable
+      # is empty). If we can't build one, just link the report we've built.
+      tools/coverage-comment.py "$REPORT_URL" --baseline "$CI_MERGE_REQUEST_DIFF_BASE_SHA" > coverage-comment.md ||
         echo "Oh boy! [**Here's your code coverage report**](${REPORT_URL})." > coverage-comment.md
     - (cd target/cov/coverage/report && zip -r --quiet ../$ZIP_FILENAME .)
     - |
