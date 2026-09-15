@@ -99,9 +99,9 @@ mod tests {
             // Check that it contains the identifier string at least.
             let target_str = b"SCRAM-SHA-256$4096:";
 
-            result
+            assert!(result
                 .windows(target_str.len())
-                .any(move |sub_slice| sub_slice == target_str);
+                .any(|sub_slice| sub_slice == target_str));
         }
 
         unsafe { checkpoint.restore() };

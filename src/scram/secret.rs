@@ -155,7 +155,7 @@ impl std::fmt::Display for ServerSecret {
         write!(
             f,
             "SCRAM-SHA-256${}:{}${}:{}",
-            SCRAM_DEFAULT_ITERATIONS,
+            self.iterations,
             self.salt_base64,
             BASE64_STANDARD.encode(&self.stored_key),
             BASE64_STANDARD.encode(&self.server_key),
@@ -221,5 +221,19 @@ mod tests {
 
         assert_eq!(BASE64_STANDARD.encode(parsed.stored_key), stored_key);
         assert_eq!(BASE64_STANDARD.encode(parsed.server_key), server_key);
+    }
+
+    #[test]
+    fn display_keeps_actual_iterations() {
+        let iterations = 128;
+        let password = b"secret42";
+        let secret = ServerSecret::generate(password, b"some salt", iterations);
+
+        let formatted = secret.to_string();
+        assert!(formatted.starts_with(&format!("SCRAM-SHA-256${iterations}:")));
+
+        let parsed = ServerSecret::parse(&formatted).unwrap();
+        assert_eq!(parsed, secret);
+        assert!(!bool::from(parsed.is_password_invalid(password)));
     }
 }
