@@ -40,7 +40,7 @@ Grafana. Инструкция по использованию dashboard-файл
 Для установки роли выполните команду:
 
 ```shell
-ansible-galaxy install -f git+https://git.picodata.io/core/picodata-ansible.git
+ansible-galaxy role install -f picodata.picodata_ansible
 ```
 
 Создание инвентарного файла, плейбука, а также доступный набор действий

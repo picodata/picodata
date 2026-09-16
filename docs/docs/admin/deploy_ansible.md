@@ -26,21 +26,21 @@
 Установите роль из репозитория через `ansible-galaxy`:
 
 ```shell
-ansible-galaxy install -f git+https://git.picodata.io/core/picodata-ansible.git
+ansible-galaxy role install -f picodata.picodata_ansible
 ```
 
 или создайте файл `requirements.yml` со следующим содержимым:
 
 ```yml
-- src: https://git.picodata.io/core/picodata-ansible.git
-  scm: git
+roles:
+  - name: picodata.picodata_ansible
 ```
 
 При необходимости укажите нужную версию роли:
 ```yml
-- src: https://git.picodata.io/core/picodata-ansible.git
-  scm: git
-  version: 25.5.1
+roles:
+  - name: picodata.picodata_ansible
+    version: 26.2.1
 ```
 
 и затем выполните команду:
@@ -387,7 +387,7 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml -t restore_full
 Пример команды для восстановления кластера из определенной резервной копии:
 
 ```shell
-ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml -t restore -e restore_dir=20250716203059
+ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml -t restore -e restore_dir=20260916203059
 ```
 
 !!! warning title "Внимание!"
