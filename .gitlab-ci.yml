@@ -991,14 +991,11 @@ asan:
       - BASE_IMAGE_TAG
       - BASE_IMAGE_LATEST
 
-pack-on-tag:
+.pack-on-tag:
   stage: pack
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "web"
-    - if: $CI_COMMIT_TAG
   variables:
+    TYPE: "NIGHTLY"
     PROJECT_TARGET: "picodata"
-    TYPE: "RELEASE"
     BRANCH_TARGET: $CI_COMMIT_TAG
   inherit:
     variables:
@@ -1009,13 +1006,25 @@ pack-on-tag:
     project: "picodata/devops/builder"
     strategy: depend
 
+pack-on-tag-release:
+  extends: .pack-on-tag
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_TAG
+  variables:
+    TYPE: "RELEASE"
+
+pack-on-tag-rc:
+  extends: .pack-on-tag
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ "/^.*-rc\d+$/"
+
 pack-on-tag-certified:
-  stage: pack
+  extends: .pack-on-tag
   rules:
     - when: manual
       allow_failure: true
   variables:
-    PROJECT_TARGET: "picodata"
     TYPE: "RELEASE"
     BRANCH_TARGET: $CI_COMMIT_REF_NAME
     CERTIFICATION_BUILD: "true"
@@ -1025,8 +1034,19 @@ pack-on-tag-certified:
       - PROJECT_TARGET
       - BRANCH_TARGET
       - CERTIFICATION_BUILD
-  trigger:
-    project: "picodata/devops/builder"
+
+pack-on-tag-other:
+  extends: .pack-on-tag
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ "/^.*-.*/" && $CI_COMMIT_TAG !~ "/^.*-rc\d+$/"
+  variables:
+    DEPLOY: false
+  inherit:
+    variables:
+      - TYPE
+      - PROJECT_TARGET
+      - BRANCH_TARGET
+      - DEPLOY
 
 .deploy-docker-tmpl:
   stage: docker
