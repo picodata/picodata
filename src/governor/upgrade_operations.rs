@@ -7,7 +7,7 @@ use crate::config::DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT;
 use crate::config::DEFAULT_GOVERNOR_DDL_RPC_TIMEOUT;
 use crate::config::DEFAULT_REPLICATION_MODE;
 use crate::storage::schema::ddl_change_format_on_master;
-use crate::storage::{DbConfig, Instances, Replicasets, SystemTable, Tiers};
+use crate::storage::{DbConfig, Instances, Plugins, Replicasets, SystemTable, Tiers};
 use crate::tier::DEFAULT_TIER;
 use crate::traft;
 use crate::{system_parameter_name, tlog};
@@ -164,6 +164,8 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             // Procs for retrieving runtime log config
             ("proc_name", "proc_log_level"),
             ("proc_name", "proc_log_level_map"),
+            // Adding UI extensions to _pico_plugin
+            ("exec_script",InternalScript::AlterPicoPluginAddWebuiField.as_str()),
         ],
     ),
 ];
@@ -270,6 +272,17 @@ tarantool::define_str_enum! {
 
         /// Make system tarantool spaces synchronous (`is_sync = true`).
         AlterSystemSpacesIsSync = "alter_system_spaces_is_sync",
+
+        /// Schema upgrade operation equivalent to:
+        /// ```ignore
+        /// ALTER TABLE _pico_plugin ADD COLUMN webui ARRAY NULL;
+        /// ```
+        ///
+        /// Rows written before this field existed simply decode `webui` as an
+        /// empty array (see `#[serde(default)]` on `PluginDef::webui`) - there's
+        /// nothing to backfill, since no manifest could declare `webui:` pages
+        /// before this picodata version existed.
+        AlterPicoPluginAddWebuiField = "alter_pico_plugin_add_webui_field",
     }
 }
 
@@ -330,6 +343,9 @@ crate::define_rpc_request! {
 
             InternalScript::AlterSystemSpacesIsSync =>
                 alter_system_spaces_is_sync(),
+
+            InternalScript::AlterPicoPluginAddWebuiField =>
+                execute_alter_pico_plugin_add_webui_field(),
         }
     }
 
@@ -394,6 +410,11 @@ fn execute_alter_pico_instance_add_target_state_reason_and_change_time() -> traf
 
 fn execute_alter_pico_table_add_opts_field() -> traft::Result<Response> {
     actualize_system_table_format::<PicoTable>()?;
+    Ok(Response {})
+}
+
+fn execute_alter_pico_plugin_add_webui_field() -> traft::Result<Response> {
+    actualize_system_table_format::<Plugins>()?;
     Ok(Response {})
 }
 

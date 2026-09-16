@@ -13,7 +13,7 @@ use crate::info::PICODATA_VERSION;
 use crate::plugin::lock::PicoPropertyLock;
 use crate::plugin::migration::MigrationInfo;
 use crate::plugin::PluginError::PluginNotFound;
-use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ADMIN_ID};
+use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, WebuiPageDef, ADMIN_ID};
 use crate::storage::{self, PropertyName, SystemTable};
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
@@ -111,6 +111,9 @@ pub enum PluginError {
     IncompatiblePicopluginVersion(String),
     #[error("Plugin dynamic library file not found")]
     PluginLibraryNotFound,
+    #[cfg(feature = "webui")]
+    #[error("Failed to register webui route for plugin `{0}`: {1}")]
+    WebuiRouteRegistration(PluginIdentifier, String),
 }
 
 struct DisplaySomeOrDefault<'a>(&'a Option<ErrorInfo>, &'a str);
@@ -284,6 +287,9 @@ pub struct Manifest {
     /// Plugin migration list.
     #[serde(default)]
     pub migration: Vec<SmolStr>,
+    /// Plugin WebUI pages, in the order they should appear in the navigation.
+    #[serde(default)]
+    pub webui: Vec<WebuiPageDef>,
 }
 
 impl Manifest {
@@ -311,7 +317,71 @@ impl Manifest {
             ));
         }
 
+        // To serve plugin's UI we need our own UI
+        manifest.validate_webui(&plugin_dir, &manifest_path)?;
+
         Ok(manifest)
+    }
+
+    /// Validate the `webui:` manifest section: page slugs must be unique within
+    /// the manifest, and every `entry` file must exist on disk relative to
+    /// `<plugin_dir>/assets/webui/` without escaping that directory.
+    fn validate_webui(
+        &self,
+        plugin_dir: &std::path::Path,
+        manifest_path: &std::path::Path,
+    ) -> Result<()> {
+        let assets_dir = plugin_dir.join("assets").join("webui");
+
+        let mut seen_slugs = std::collections::HashSet::with_capacity(self.webui.len());
+        for page in &self.webui {
+            if !seen_slugs.insert(page.slug.as_str()) {
+                return Err(PluginError::InvalidManifest(
+                    manifest_path.to_string_lossy().to_string(),
+                    format!("duplicate webui page slug `{}`", page.slug).into(),
+                ));
+            }
+
+            let entry = std::path::Path::new(page.entry.as_str());
+            // Reject absolute paths and `..` components so the entry can't
+            // escape the assets directory. Symlinks are deliberately not
+            // checked: plugin files are installed by the cluster administrator,
+            // and if the plugin installation is compromised the system is
+            // doomed anyways.
+            let is_confined = entry.components().all(|c| {
+                matches!(
+                    c,
+                    std::path::Component::Normal(_) | std::path::Component::CurDir
+                )
+            });
+            if !is_confined {
+                return Err(PluginError::InvalidManifest(
+                    manifest_path.to_string_lossy().to_string(),
+                    format!(
+                        "webui page `{}` entry `{}` must be a relative path inside `{}`",
+                        page.slug,
+                        page.entry,
+                        assets_dir.display(),
+                    )
+                    .into(),
+                ));
+            }
+
+            let entry_path = assets_dir.join(entry);
+            if !entry_path.is_file() {
+                return Err(PluginError::InvalidManifest(
+                    manifest_path.to_string_lossy().to_string(),
+                    format!(
+                        "webui page `{}` refers to a non-existent entry file `{}`",
+                        page.slug,
+                        entry_path.display(),
+                    )
+                    .into(),
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     /// Return plugin defenition built from manifest.
@@ -323,6 +393,7 @@ impl Manifest {
             version: self.version.clone(),
             description: self.description.clone(),
             migration_list: self.migration.clone(),
+            webui: self.webui.clone(),
         }
     }
 
@@ -363,6 +434,7 @@ impl Manifest {
             version: SmolStr::new_static("1.2.3-pre-rc1"),
             services: vec![],
             migration: vec![],
+            webui: vec![],
         }
     }
 }
@@ -1303,6 +1375,139 @@ pub fn change_config_atom(
     };
 
     reenterable_plugin_cas_request(node, make_op, deadline).map(|_| ())
+}
+
+#[cfg(all(test, feature = "webui"))]
+mod webui_tests {
+    use crate::plugin::Manifest;
+    use crate::schema::{WebuiPageAuth, WebuiPageDef};
+    use smol_str::SmolStr;
+
+    fn webui_page(slug: &str, entry: &str) -> WebuiPageDef {
+        WebuiPageDef {
+            slug: SmolStr::new(slug),
+            title: SmolStr::new(format!("{slug}.title")),
+            entry: SmolStr::new(entry),
+            auth: WebuiPageAuth::default(),
+        }
+    }
+
+    #[test]
+    fn webui_page_auth_defaults_to_cluster() {
+        let yaml = "slug: dashboard\ntitle: dashboard.title\nentry: dist/page.js\n";
+        let page: WebuiPageDef = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(page.auth, WebuiPageAuth::Cluster);
+    }
+
+    #[test]
+    fn webui_page_auth_plugin_parses() {
+        let yaml = "slug: public\ntitle: public.title\nentry: dist/public.js\nauth: plugin\n";
+        let page: WebuiPageDef = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(page.auth, WebuiPageAuth::Plugin);
+    }
+
+    #[test]
+    fn manifest_webui_defaults_to_empty() {
+        let yaml = "name: p\ndescription: d\nversion: 1.0.0\nservices: []\n";
+        let manifest: Manifest = serde_yaml::from_str(yaml).unwrap();
+        assert!(manifest.webui.is_empty());
+    }
+
+    #[test]
+    fn manifest_webui_preserves_declaration_order() {
+        let yaml = r#"
+name: p
+description: d
+version: 1.0.0
+services: []
+webui:
+  - slug: b
+    title: b.title
+    entry: dist/b.js
+  - slug: a
+    title: a.title
+    entry: dist/a.js
+"#;
+        let manifest: Manifest = serde_yaml::from_str(yaml).unwrap();
+        let slugs: Vec<_> = manifest.webui.iter().map(|p| p.slug.as_str()).collect();
+        assert_eq!(slugs, vec!["b", "a"]);
+    }
+
+    #[test]
+    fn validate_webui_ok_when_entries_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("assets/webui")).unwrap();
+        std::fs::write(dir.path().join("assets/webui/dashboard.js"), "").unwrap();
+
+        let mut manifest = Manifest::for_tests();
+        manifest.webui = vec![webui_page("dashboard", "dashboard.js")];
+
+        let manifest_path = dir.path().join("manifest.yaml");
+        assert!(manifest.validate_webui(dir.path(), &manifest_path).is_ok());
+    }
+
+    #[test]
+    fn validate_webui_rejects_duplicate_slug() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("assets/webui")).unwrap();
+        std::fs::write(dir.path().join("assets/webui/a.js"), "").unwrap();
+        std::fs::write(dir.path().join("assets/webui/b.js"), "").unwrap();
+
+        let mut manifest = Manifest::for_tests();
+        manifest.webui = vec![
+            webui_page("dashboard", "a.js"),
+            webui_page("dashboard", "b.js"),
+        ];
+
+        let manifest_path = dir.path().join("manifest.yaml");
+        let err = manifest
+            .validate_webui(dir.path(), &manifest_path)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("duplicate webui page slug"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn validate_webui_rejects_missing_entry_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("assets/webui")).unwrap();
+
+        let mut manifest = Manifest::for_tests();
+        manifest.webui = vec![webui_page("dashboard", "missing.js")];
+
+        let manifest_path = dir.path().join("manifest.yaml");
+        let err = manifest
+            .validate_webui(dir.path(), &manifest_path)
+            .unwrap_err();
+        assert!(err.to_string().contains("non-existent entry file"), "{err}");
+    }
+
+    #[test]
+    fn validate_webui_rejects_entry_escaping_assets_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("assets/webui/dist")).unwrap();
+        std::fs::write(dir.path().join("manifest.yaml"), "").unwrap();
+        let manifest_path = dir.path().join("manifest.yaml");
+
+        let abs_entry = manifest_path.to_string_lossy().to_string();
+        for entry in [
+            "../../manifest.yaml",
+            "dist/../../../manifest.yaml",
+            &abs_entry,
+        ] {
+            let mut manifest = Manifest::for_tests();
+            manifest.webui = vec![webui_page("dashboard", entry)];
+            let err = manifest
+                .validate_webui(dir.path(), &manifest_path)
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("must be a relative path inside"),
+                "{entry}: {err}"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

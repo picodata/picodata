@@ -6,6 +6,8 @@ pub mod auth;
 mod cluster;
 mod health;
 mod instance;
+#[cfg(feature = "webui")]
+pub(crate) mod plugin_ui;
 
 pub(crate) use auth::{http_api_config, http_api_login, http_api_refresh_session};
 pub(crate) use cluster::{
@@ -16,6 +18,8 @@ pub(crate) use health::{
     http_api_health_status_with_auth, HealthStatus,
 };
 pub(crate) use instance::http_api_instance_detail_with_auth;
+#[cfg(feature = "webui")]
+pub(crate) use plugin_ui::http_api_plugin_ui_pages_with_auth;
 
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 const CONTENT_TYPE_JSON: &'static str = "application/json";
@@ -28,6 +32,14 @@ pub(crate) struct HttpResponse(pub(crate) http::Response<String>);
 impl HttpResponse {
     /// Creates a JSON response with the given status code and body.
     pub fn to_json_response(status: StatusCode, body: String) -> Self {
+        Self::to_response(status, CONTENT_TYPE_JSON, body)
+    }
+
+    /// Creates a response with the given status code, content type and body.
+    ///
+    /// Used to serve a plugin's static webui assets (`plugin_ui::serve_plugin_asset`),
+    /// where the content type isn't always JSON and is guessed per file from its extension.
+    pub fn to_response(status: StatusCode, content_type: &str, body: String) -> Self {
         /* Building HTTP response can't fail here because it would fail only for invalid status
          * code (outside 100-999 range), invalid HTTP version or header name/value issues such as
          * \r\n characters. None of these can possibly happen here.
@@ -35,7 +47,7 @@ impl HttpResponse {
         Self(
             http::Response::builder()
                 .status(status)
-                .header(http::header::CONTENT_TYPE, CONTENT_TYPE_JSON)
+                .header(http::header::CONTENT_TYPE, content_type)
                 .body(body)
                 .expect("building HTTP response should not fail"),
         )

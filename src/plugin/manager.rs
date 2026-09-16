@@ -343,8 +343,30 @@ impl PluginManager {
     /// # Arguments
     /// * `ident`: plugin identity
     pub fn try_enable(&self, ident: &PluginIdentifier) -> Result<()> {
-        let service_defs = self.try_load(ident)?;
+        #[cfg_attr(not(feature = "webui"), allow(unused_variables))]
+        let (plugin_def, service_defs) = self.try_load(ident)?;
         self.handle_plugin_enable(ident, &service_defs)?;
+
+        // A plugin that declares webui pages but fails to actually
+        // serve them isn't considered successfully enabled, so this failure
+        // is fatal to the whole `try_enable` call, same as a failed
+        // `on_start`.
+        //
+        // We try to serve webui only if HTTP server is enabled
+        #[cfg(feature = "webui")]
+        if !plugin_def.webui.is_empty() {
+            if PicodataConfig::get().instance.http.enabled() {
+                crate::http_server::plugin_ui::register_plugin_ui_route(ident)
+                    .map_err(|err| PluginError::WebuiRouteRegistration(ident.clone(), err))?;
+            } else {
+                tlog!(
+                    Warning,
+                    "plugin '{}' version {} declares webui pages, but this instance has HTTP disabled, so its webui assets won't be served",
+                    ident.name,
+                    ident.version,
+                );
+            }
+        }
 
         Ok(())
     }
@@ -363,7 +385,10 @@ impl PluginManager {
     ///
     /// # Arguments
     /// * `ident`: plugin identity
-    pub fn try_load(&self, ident: &PluginIdentifier) -> Result<Vec<ServiceDef>> {
+    ///
+    /// Returns the plugin's [`PluginDef`] (as stored in `_pico_plugin`) alongside
+    /// its loaded service defs, so callers don't have to re-fetch it themselves.
+    pub fn try_load(&self, ident: &PluginIdentifier) -> Result<(PluginDef, Vec<ServiceDef>)> {
         let node = node::global().expect("node must be already initialized");
         let plugin_def = node
             .storage
@@ -391,7 +416,7 @@ impl PluginManager {
             .lock()
             .insert(plugin_def.name.clone(), plugin_state);
 
-        Ok(service_defs)
+        Ok((plugin_def, service_defs))
     }
 
     /// Check the possibility of loading plugin into instance.
@@ -496,6 +521,14 @@ impl PluginManager {
         let plugin = self.plugins.lock().remove(plugin_name);
 
         if let Some(plugin_state) = plugin {
+            // Idempotent no-op if this plugin never had a webui route registered
+            #[cfg(feature = "webui")]
+            {
+                let ident =
+                    PluginIdentifier::new(plugin_name.into(), plugin_state.version.as_str().into());
+                crate::http_server::plugin_ui::unregister_plugin_ui_route(&ident);
+            }
+
             // stop all background jobs and remove metrics first
             self.stop_background_jobs(&plugin_state.services);
             self.remove_metrics_handlers(&plugin_state.services);

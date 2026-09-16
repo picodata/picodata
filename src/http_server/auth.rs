@@ -270,13 +270,36 @@ fn validate_auth(auth_header: &str) -> AuthResult<AuthContext> {
     })
 }
 
+/// Resolve the caller's [`AuthContext`] from an `Authorization` header. When
+/// auth is disabled cluster-wide, this succeeds with a default (fully
+/// privileged) context
+fn resolve_auth(auth_header: &str) -> AuthResult<AuthContext> {
+    allow_disabled_auth!(validate_auth(auth_header), AuthContext::default())
+}
+
 pub(super) fn auth_middleware<F, T, E>(auth_header: String, handler: F) -> ApiResult<T>
 where
     F: FnOnce() -> Result<T, E>,
     ApiError: From<E>,
 {
-    allow_disabled_auth!(validate_auth(&auth_header), AuthContext::default())?;
+    resolve_auth(&auth_header)?;
     Ok(handler()?)
+}
+
+/// A reusable, non-rejecting alternative to [`auth_middleware`].
+///
+/// Unlike `auth_middleware`, a missing or invalid `Authorization` header is
+/// not treated as an error: the handler is still called, but with `None`
+/// instead of `Some(AuthContext)`, so it is up to the handler to decide what
+/// (if anything) an anonymous caller is allowed to see. When auth is disabled
+/// cluster-wide, behavior matches `auth_middleware`: the handler is called
+/// with a default (fully privileged) `AuthContext`.
+pub(super) fn auth_middleware_optional<F, T, E>(auth_header: String, handler: F) -> ApiResult<T>
+where
+    F: FnOnce(Option<AuthContext>) -> Result<T, E>,
+    ApiError: From<E>,
+{
+    Ok(handler(resolve_auth(&auth_header).ok())?)
 }
 
 #[derive(Serialize)]

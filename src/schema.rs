@@ -600,6 +600,41 @@ impl From<IndexDef> for IndexOptions {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// WebuiPageDef
+////////////////////////////////////////////////////////////////////////////////
+
+/// Authentication requirement of a single [`WebuiPageDef`].
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum WebuiPageAuth {
+    /// The page is mounted behind the same WebUI (JWT) session as the core pages.
+    /// This is the default.
+    #[default]
+    Cluster,
+    /// The page manages its own authentication and is mounted without requiring
+    /// a WebUI session; it is also served to anonymous requests to
+    /// `GET /api/v1/plugin-ui/pages`.
+    Plugin,
+}
+
+/// A single WebUI page declared by a plugin's manifest `webui:` section,
+/// stored as part of that plugin's `_pico_plugin` row (see [`PluginDef::webui`]).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WebuiPageDef {
+    /// Page slug, unique within the plugin manifest. Used to build the page's
+    /// route `/plugin/<plugin>/<slug>` in the host WebUI.
+    pub slug: SmolStr,
+    /// i18n key for the page title shown in the navigation sidebar.
+    pub title: SmolStr,
+    /// Path (relative to `assets/webui/` of the plugin's installation directory)
+    /// to the page's ES module entry point.
+    pub entry: SmolStr,
+    /// Whether the page requires a valid WebUI session. Defaults to [`WebuiPageAuth::Cluster`].
+    #[serde(default)]
+    pub auth: WebuiPageAuth,
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // PluginDef
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -622,6 +657,10 @@ pub struct PluginDef {
     pub description: SmolStr,
     /// List of migration files.
     pub migration_list: Vec<SmolStr>,
+    /// WebUI pages declared by the plugin manifest's `webui:` section, in
+    /// declaration order.
+    #[serde(default)]
+    pub webui: Vec<WebuiPageDef>,
 }
 
 impl Encode for PluginDef {}
@@ -641,6 +680,7 @@ impl PluginDef {
             Field::from(("version", FieldType::String)).is_nullable(false),
             Field::from(("description", FieldType::String)).is_nullable(false),
             Field::from(("migration_list", FieldType::Array(TypedArray::Any))).is_nullable(false),
+            Field::from(("webui", FieldType::Array(TypedArray::Any))).is_nullable(true),
         ]
     }
 
@@ -652,6 +692,7 @@ impl PluginDef {
             version: "0.0.1".into(),
             description: "description".into(),
             migration_list: vec![],
+            webui: vec![],
         }
     }
 
