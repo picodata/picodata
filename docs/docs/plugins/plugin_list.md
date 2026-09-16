@@ -10,7 +10,7 @@
 - [Franz](franz.md) — фреймворк для интеграции Apache Kafka с Picodata
 - [Kirovets](kirovets.md) — плагин виртуализации данных, который позволяет организовать эффективный сбор, обработку, хранение и публикацию данных в виде HTTP API
 - [Radix](radix.md) — реализация Redis на базе Picodata, предназначенная для замены существующих инсталляций Redis
-- [s3r](s3r.md) — объектное хранилище с интерфейсом, совместимым с Amazon S3
+- [S3R](s3r.md) — объектное хранилище с интерфейсом, совместимым с Amazon S3
 - [Silver](silver.md) — плагин для расчета себестоимости при работе с Picodata
 - [Sirin](sirin.md) — плагин, реализующий поддержку API Apache Cassandra (CQL и протокол Cassandra v4) поверх Picodata
 - [Synapse](synapse.md) — инструмент миграции с кластера проприетарной СУБД Oracle (например, Oracle Exadata) на кластер PostgreSQL

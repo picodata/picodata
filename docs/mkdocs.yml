@@ -23,7 +23,6 @@ not_in_nav: |
   dev/connectors_index.md
   dev/connectors/java.md
   plugins/argus.md
-  plugins/s3r.md
   plugins/svarog.md
   plugins/task.md
   plugins/ouroboros.md
@@ -171,6 +170,7 @@ nav:
       - plugins/franz.md
       - plugins/kirovets.md
       - plugins/radix.md
+      - plugins/s3r.md
       - plugins/silver.md
       - plugins/sirin.md
       - plugins/synapse.md
