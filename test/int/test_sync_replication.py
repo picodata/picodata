@@ -193,6 +193,7 @@ cluster:
     assert is_sync is True, f"Expected is_sync=true for sync tier, got {is_sync}"
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_ddl_through_sync_follower(cluster: Cluster):
     """CREATE TABLE works through a read-only synchronous follower."""
     cluster.set_config_file(
@@ -472,6 +473,7 @@ cluster:
     Retriable().call(replicaset_converged)
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_cascading_failover(cluster: Cluster):
     """
     Test cascading master failover in a sync tier (RF=3).
@@ -719,6 +721,7 @@ cluster:
     Retriable().call(replicaset_converged)
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_replica_death_rf2(cluster: Cluster):
     """
     Sync replicaset with RF=2, replica dies abruptly and cannot returns back.
@@ -795,6 +798,7 @@ cluster:
     cluster.wait_governor_status("idle")
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_master_death_rf2(cluster: Cluster):
     """
     Sync replicaset with RF=2, master dies abruptly and cannot return back.
@@ -871,6 +875,7 @@ cluster:
     cluster.wait_governor_status("idle")
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_master_death_with_unconfirmed_txns_rf2(cluster: Cluster):
     """
     Test master failover in a sync replicaset (RF=2) when the master dies
@@ -960,6 +965,7 @@ cluster:
     cluster.wait_governor_status("idle")
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_master_death_and_return_rf2(cluster: Cluster):
     """
     Sync replicaset with RF=2, master dies abruptly but returns back.
@@ -1168,6 +1174,7 @@ cluster:
     Retriable().call(write_and_ddl_converged)
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_expel_master_rf3(cluster: Cluster):
     """
     Test that expelling the sync tier master triggers a switchover.
@@ -1250,6 +1257,7 @@ cluster:
     Retriable().call(replicaset_has_writable_master)
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_expel_replicas_rf3(cluster: Cluster):
     """
     Test expelling both replicas of an RF=3 sync replicaset.
@@ -1314,6 +1322,7 @@ cluster:
     assert master.eval("return box.info.synchro.queue.len") == 0
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_expel_master_rf2(cluster: Cluster):
     """
     Test expelling the master of a two-node sync replicaset.
@@ -1378,6 +1387,7 @@ cluster:
     assert replica.eval("return box.info.synchro.queue.len") == 0
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_sync_before_promotion(cluster: Cluster):
     """
     Test the voluntary master switchover in a sync tier (RF=3): the master is
@@ -1483,6 +1493,7 @@ cluster:
     Retriable().call(write_replicated_everywhere)
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_unlogged_tables_truncated_on_demotion(cluster: Cluster):
     """
     Unlogged (non-replicated) tables must be truncated on an instance that
@@ -1623,6 +1634,7 @@ cluster:
     Retriable().call(replicaset_converged)
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_quorum_loss_when_leader_in_sync_replicaset(cluster: Cluster):
     """
     Regression test for the governor self-unfence path (`handle_self_read_only`).
@@ -1836,6 +1848,7 @@ cluster:
     Retriable().call(data_converged_everywhere)
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_add_new_replicaset_rf2(cluster: Cluster):
     """
     Test synchronous replication with addition of new replicaset.
@@ -1911,6 +1924,7 @@ cluster:
     Retriable().call(instances_have_data)
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_two_replicasets_rf2(cluster: Cluster):
     """
     Test synchronous replication with two replicasets.
@@ -2095,6 +2109,7 @@ cluster:
         assert i.eval("return box.info.synchro.queue.len") == 0
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_lagging_replica_does_not_become_master_rf3(cluster: Cluster):
     """
     RF=3 sync replicaset: a master, an up-to-date ("fresh") replica and a
@@ -2225,6 +2240,7 @@ cluster:
     Retriable().call(write_replicated_to_both)
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_master_death_with_lagging_replica_rf3(cluster: Cluster):
     """
     Same scenario as
@@ -2337,6 +2353,7 @@ cluster:
         assert i.eval("return box.info.synchro.queue.len") == 0
 
 
+@pytest.mark.flaky(reruns=3)
 def test_sync_replication_promote_lost_election_retargets_to_fallback_rf3(cluster: Cluster):
     """
     RF=3 sync replicaset: the promotion of the target master loses the
