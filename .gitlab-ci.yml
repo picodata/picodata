@@ -37,10 +37,10 @@ variables:
   REGISTRY: docker-public.binary.picodata.io
   BASE_IMAGE: ${CI_REGISTRY_IMAGE}/picodata-build-base
   BASE_IMAGE_DOCS: ${CI_REGISTRY_IMAGE}/docs
-  BASE_IMAGE_LATEST: "26.1"
+  BASE_IMAGE_LATEST: "26.1-certauth"
   BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
 
-  MAIN_BRANCH: &main-branch "26.1"
+  MAIN_BRANCH: &main-branch "26.1.4-new-cert-auth"
   # to use in cache:key, do not forget to update it with MAIN_BRANCH
   # MAIN_BRANCH in lowercase, shortened to 63 bytes, and
   # with everything except 0-9 and a-z replaced with -.
@@ -832,7 +832,10 @@ deploy-doc-prod:
   extends:
     - .deploy-doc
   rules:
-    - if: ($CI_COMMIT_BRANCH == $MAIN_BRANCH) && ($CI_PIPELINE_SOURCE != "schedule")
+    # MAIN_BRANCH points at this temporary release branch, so the usual
+    # `$CI_COMMIT_BRANCH == $MAIN_BRANCH` condition would publish its docs
+    # to production on every push.
+    - when: never
   variables:
     STAGE: PROD
 
