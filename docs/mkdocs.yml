@@ -26,6 +26,7 @@ not_in_nav: |
   plugins/svarog.md
   plugins/task.md
   plugins/ouroboros.md
+  espd/admin_manual.md
 
 # Навигация
 # https://www.mkdocs.org/user-guide/configuration/#nav
