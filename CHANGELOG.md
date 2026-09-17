@@ -8,6 +8,17 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [26.1.4-certauth] - 2026-09-17 
+
+### Fixes
+
+- When a client certificate is presented in pgproto, require the user from the
+  startup packet to match certificate Common Name -- truncated at the first `@`.
+  The check runs after the auth exchange, so a mismatch is indistinguishable 
+  from a bad password. It applies to every auth method, which is what turns a password
+  login into a second factor. The patch also adds support for `cert` auth method which
+  allows user to disable password login in favor of certificate auth only.
+
 ## [26.1.4] - 2026-05-28
 
 ### Fixes
