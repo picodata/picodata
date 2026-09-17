@@ -95,7 +95,11 @@ symbolic-demangle = { version = "13.2", default-features = false, features = ["r
 tempfile = "3.8"
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "macros"] }
-tokio = { version = "1.52.3", default-features = false, features = ["rt-multi-thread"] }
+tokio = { version = "1.52.3", default-features = false, features = [
+    "rt-multi-thread",
+    "macros",
+] }
+tokio-postgres = { version = "0.7.18", features = ["with-serde_json-1"] }
 url = "2.5.8"
 uuid = { version = "0.8", features = ["v4"] } # TODO: update to 1.0
 va_list = ">=0.1.4"

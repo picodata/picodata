@@ -67,7 +67,7 @@ pub(super) fn render_dump(
             .iter()
             .find(|index| index.id == PRIMARY_KEY_ID)
             .ok_or_else(|| {
-                ExportError::Unsupported(format!(
+                ExportError::unsupported(format!(
                     "table `{}` has no primary key in `_pico_index`",
                     table.name
                 ))
@@ -204,7 +204,7 @@ mod tests {
 
         assert_snapshot!(header_of(&dump), @r"
         --
-        -- picodata dump
+        -- picodata export
         --
         -- Dumped by:       picodata 26.3.0
         -- Dumped from:     picodata 26.3.0
@@ -231,7 +231,7 @@ mod tests {
         assert!(dump.ends_with(";\n"), "{dump}");
         assert_snapshot!(dump, @r"
         --
-        -- picodata dump
+        -- picodata export
         --
         -- Dumped by:       picodata 26.3.0
         -- Dumped from:     picodata 26.3.0
@@ -282,7 +282,7 @@ mod tests {
         )
         .expect_err("the dump cannot be written");
 
-        assert_snapshot!(error, @"table `t` has no primary key in `_pico_index`");
+        assert_snapshot!(error.kind, @"table `t` has no primary key in `_pico_index`");
     }
 
     #[test]
@@ -300,7 +300,7 @@ mod tests {
         .expect_err("the dump cannot be written");
 
         assert_snapshot!(
-            error,
+            error.kind,
             @"table `t` is sharded explicitly by field `bucket_id`, which has no DDL syntax"
         );
     }
@@ -314,7 +314,7 @@ mod tests {
 
         assert_snapshot!(header_of(&dump), @r"
         --
-        -- picodata dump
+        -- picodata export
         --
         -- Dumped by:       picodata 26.3.0
         -- Dumped from:     picodata 26.2.0, 26.3.0
@@ -348,7 +348,7 @@ mod tests {
 
         assert_snapshot!(header_of(&dump), @r"
         --
-        -- picodata dump
+        -- picodata export
         --
         -- Dumped by:       picodata 26.3.0
         -- Dumped from:     picodata 26.3.0

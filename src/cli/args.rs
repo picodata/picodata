@@ -39,6 +39,7 @@ pub enum Command {
     Test(Test),
     Admin(Admin),
     Status(Status),
+    Export(Export),
     #[clap(subcommand)]
     Config(Config),
     #[clap(subcommand)]
@@ -678,6 +679,95 @@ impl Status {
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
         Ok(vec![current_exe()?])
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Export
+////////////////////////////////////////////////////////////////////////////////
+
+const SUPPORTED_DSN_PARAMETERS: &str = "\
+Supported connection string parameters:
+  host, hostaddr, port, user, password, dbname, options, application_name,
+  connect_timeout, sslmode (disable or prefer: TLS is not supported)";
+
+#[derive(Debug, Parser, PartialEq)]
+#[clap(
+    about = "Export picodata cluster as plain SQL",
+    // `-h` is taken by `--host`, just like in `psql` and `pg_dump`, so the
+    // automatic help flag is disabled and re-added below under `-?`.
+    disable_help_flag = true,
+    after_help = SUPPORTED_DSN_PARAMETERS,
+)]
+pub struct Export {
+    #[clap(value_name = "DSN")]
+    /// Connection string in the Postgres (libpq) format: either an URI
+    /// (`postgres://user@host:port`) or a list of `key=value`
+    /// pairs (`'host=127.0.0.1 port=4327 user=admin'`).
+    ///
+    /// Quote it: the `key=value` form contains spaces, and a URI with
+    /// parameters contains `?` and `&`, all of which the shell would eat.
+    ///
+    /// Parameters given here take precedence over `-h`, `-p` and `-U`,
+    /// which matches the behaviour of `pg_dump`.
+    pub dsn: Option<String>,
+
+    #[clap(short = 'h', long = "host", value_name = "HOST")]
+    /// Address of a picodata instance to connect to over pgproto.
+    ///
+    /// Ignored if the DSN already specifies a host. Defaults to "127.0.0.1".
+    pub host: Option<String>,
+
+    #[clap(short = 'p', long = "port", value_name = "PORT")]
+    /// Pgproto port of the instance.
+    ///
+    /// Ignored if the DSN already specifies a port. Defaults to "4327".
+    pub port: Option<u16>,
+
+    #[clap(short = 'U', long = "username", value_name = "USERNAME")]
+    /// Name of the user to connect as.
+    ///
+    /// Ignored if the DSN already specifies a user. There is no default:
+    /// unlike libpq, picodata never falls back to the OS user name.
+    ///
+    /// The user must be able to read the system tables, so in practice
+    /// this is "admin".
+    pub username: Option<String>,
+
+    #[clap(short = 'f', long = "file", value_name = "FILE")]
+    /// Write the dump to this file instead of the standard output.
+    pub file: Option<PathBuf>,
+
+    #[clap(
+        short = 'F',
+        long = "format",
+        value_name = "FORMAT",
+        default_value = "p",
+        value_parser = ["p", "plain"],
+    )]
+    /// Output format. Only plain SQL is supported.
+    pub format: String,
+
+    // It is required as long as data exporting is not supported.
+    // Data export is planned to be added in a backward-compatible manner.
+    #[clap(short = 's', long = "schema-only", required = true)]
+    /// Dump the schema only, omitting the data
+    pub schema_only: bool,
+
+    #[clap(short = 'v', long = "verbose")]
+    /// Report the progress to the standard error.
+    pub verbose: bool,
+
+    // NB: `-V`/`--version` is not declared here on purpose:
+    // it is a global flag of the top-level `Picodata` command.
+    #[clap(
+        short = '?',
+        long = "help",
+        action = clap::ArgAction::Help,
+        help = "Print help"
+    )]
+    /// The value is never read: the field exists only to carry the attribute
+    /// that re-adds the help flag disabled by `disable_help_flag`.
+    pub help: Option<bool>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////

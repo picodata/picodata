@@ -462,7 +462,7 @@ fn read_password_from_file(path: &Path) -> traft::Result<String> {
 ///
 /// This function bypasses `stdin` redirection and always prompts a
 /// password from a TTY.
-fn prompt_password(prompt: &str) -> std::io::Result<String> {
+pub(super) fn prompt_password(prompt: &str) -> std::io::Result<String> {
     // See also: <https://man7.org/linux/man-pages/man3/termios.3.html>.
     let mut tty = std::fs::File::options()
         .read(true)

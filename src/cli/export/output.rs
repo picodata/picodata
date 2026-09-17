@@ -1,9 +1,10 @@
 use std::io::{BufWriter, StdoutLock, Write};
 use std::path::Path;
 
+use nix::unistd::{access, AccessFlags};
 use tempfile::NamedTempFile;
 
-use crate::cli::export::ExportError;
+use crate::cli::export::{ExportError, ExportErrorKind};
 
 pub(super) enum DumpOutput<'path> {
     Stdout(BufWriter<StdoutLock<'static>>),
@@ -16,6 +17,21 @@ pub(super) enum DumpOutput<'path> {
 }
 
 impl<'path> DumpOutput<'path> {
+    /// Checks the destination before the password prompt and the network round trips.
+    /// The temporary file is not created here, otherwise interrupted export may leave it dangling.
+    pub(super) fn check(output_file: Option<&Path>) -> Result<(), ExportError> {
+        let Some(path) = output_file else {
+            return Ok(());
+        };
+        if path.is_dir() {
+            let source = std::io::Error::from(std::io::ErrorKind::IsADirectory);
+            return Err(failed_at(path.display(), source));
+        }
+        let parent = get_parent_directory(path);
+        access(parent, AccessFlags::W_OK | AccessFlags::X_OK)
+            .map_err(|errno| failed_at(path.display(), errno.into()))
+    }
+
     pub(super) fn open(output_file: Option<&'path Path>) -> Result<Self, ExportError> {
         let Some(path) = output_file else {
             return Ok(Self::Stdout(BufWriter::new(std::io::stdout().lock())));
@@ -46,6 +62,24 @@ impl<'path> DumpOutput<'path> {
         }
     }
 
+    /// Specifies the destination of the dump whose writing was interrupted by an error.
+    /// The renderer writes into a plain `Write` and cannot know where that leads.
+    pub(super) fn name_destination_of(&self, error: ExportError) -> ExportError {
+        let ExportError { kind, location } = error;
+        let ExportErrorKind::Write(source) = kind else {
+            return ExportError { kind, location };
+        };
+        // The original location is kept.
+        let path = match self {
+            Self::Stdout(_) => STDOUT.to_owned(),
+            Self::File { path, .. } => path.display().to_string(),
+        };
+        ExportError {
+            kind: ExportErrorKind::Output { path, source },
+            location,
+        }
+    }
+
     fn writer(&mut self) -> &mut dyn Write {
         match self {
             Self::Stdout(writer) => writer,
@@ -70,11 +104,12 @@ impl Write for DumpOutput<'_> {
 
 const STDOUT: &str = "<stdout>";
 
+#[track_caller]
 fn failed_at(destination: impl std::fmt::Display, source: std::io::Error) -> ExportError {
-    ExportError::Output {
+    ExportError::from(ExportErrorKind::Output {
         path: destination.to_string(),
         source,
-    }
+    })
 }
 
 fn get_parent_directory(path: &Path) -> &Path {
@@ -86,6 +121,7 @@ fn get_parent_directory(path: &Path) -> &Path {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use insta::assert_snapshot;
     use pretty_assertions::assert_eq;
 
     fn write_to(path: &Path, dump: &str) -> Result<(), ExportError> {
@@ -138,6 +174,30 @@ mod tests {
         write_to(&path, "-- dump\n").expect("writes");
 
         assert_eq!(list_directory(directory.path()), ["dump.sql"]);
+    }
+
+    #[test]
+    fn checking_the_destination_creates_nothing() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let path = directory.path().join("dump.sql");
+
+        DumpOutput::check(Some(&path)).expect("the destination is writable");
+
+        assert!(list_directory(directory.path()).is_empty());
+    }
+
+    #[test]
+    fn a_directory_or_a_missing_parent_fails_the_check() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let missing_parent = directory.path().join("missing").join("dump.sql");
+
+        for path in [directory.path(), &missing_parent] {
+            let error = DumpOutput::check(Some(path)).expect_err("cannot be written");
+            assert!(
+                matches!(error.kind, ExportErrorKind::Output { .. }),
+                "{error:?}"
+            );
+        }
     }
 
     #[test]
@@ -200,6 +260,48 @@ mod tests {
         assert_eq!(
             std::fs::metadata(&path).expect("stats the dump").len(),
             written
+        );
+    }
+
+    #[test]
+    fn a_write_that_failed_midway_is_reported_with_its_destination() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let path = directory.path().join("dump.sql");
+        let output = DumpOutput::open(Some(&path)).expect("opens");
+
+        let reported = output.name_destination_of(
+            ExportErrorKind::Write(std::io::Error::from_raw_os_error(28)).into(),
+        );
+
+        let ExportErrorKind::Output { path: named, .. } = &reported.kind else {
+            panic!("expected a destination, got {reported:?}");
+        };
+        assert_eq!(named, &path.display().to_string());
+    }
+
+    #[test]
+    fn a_write_to_the_standard_output_names_it_too() {
+        let output = DumpOutput::open(None).expect("opens");
+
+        let reported = output.name_destination_of(
+            ExportErrorKind::Write(std::io::Error::from_raw_os_error(32)).into(),
+        );
+
+        assert_snapshot!(
+            crate::cli::export::describe_chain(&reported.kind),
+            @"failed writing the dump to <stdout>: Broken pipe (os error 32)"
+        );
+    }
+
+    #[test]
+    fn an_error_that_is_not_a_write_error_returns_as_is() {
+        let output = DumpOutput::open(None).expect("opens");
+
+        let reported = output.name_destination_of(ExportErrorKind::NoUser.into());
+
+        assert!(
+            matches!(reported.kind, ExportErrorKind::NoUser),
+            "{reported:?}"
         );
     }
 

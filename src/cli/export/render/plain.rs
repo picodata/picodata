@@ -43,7 +43,7 @@ impl<W: Write> ExportFormat for PlainTextFormat<W> {
         write!(
             self.output,
             "--\n\
-             -- picodata dump\n\
+             -- picodata export\n\
              --\n\
              -- Dumped by:       picodata {exporter}\n\
              -- Dumped from:     picodata {cluster}\n\
@@ -74,19 +74,21 @@ impl<W: Write> ExportFormat for PlainTextFormat<W> {
               -- create a tier: configure them before applying this dump.\n\
               --\n",
         )?;
-        let mut tiers: Vec<_> = catalog.tiers.iter().collect();
-        tiers.sort_by(|left, right| left.name.cmp(&right.name));
-        tiers.iter().try_for_each(|tier| -> io::Result<()> {
-            writeln!(
-                self.output,
-                "--   {name}: replication_factor = {factor}, bucket_count = {buckets}, \
+        // `fetch_tiers` has already sorted them by name.
+        catalog
+            .tiers
+            .iter()
+            .try_for_each(|tier| -> io::Result<()> {
+                writeln!(
+                    self.output,
+                    "--   {name}: replication_factor = {factor}, bucket_count = {buckets}, \
                  replication_mode = {mode}",
-                name = tier.name,
-                factor = tier.replication_factor,
-                buckets = tier.bucket_count,
-                mode = tier.replication_mode,
-            )
-        })?;
+                    name = tier.name,
+                    factor = tier.replication_factor,
+                    buckets = tier.bucket_count,
+                    mode = tier.replication_mode,
+                )
+            })?;
         self.output.write_all(b"--\n")?;
         Ok(())
     }

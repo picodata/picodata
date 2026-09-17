@@ -20,7 +20,7 @@ pub(super) fn render(table: &RawTable, primary_key: &RawIndex) -> Result<String,
         .filter(|column| !is_bucket_id_implicit(&column.name))
         .map(|column| {
             let field_type = render_sql_type(column.field_type).map_err(|unsupported| {
-                ExportError::Unsupported(format!(
+                ExportError::unsupported(format!(
                     "table `{}`, column `{}`: {unsupported}",
                     table.name, column.name
                 ))
@@ -71,7 +71,7 @@ fn render_distribution(table: &RawTable) -> Result<String, ExportError> {
         RawDistribution::Global => Ok("DISTRIBUTED GLOBALLY".to_owned()),
         RawDistribution::ShardedImplicitly(sharding_key, sharding_function, tier) => {
             if *sharding_function != ShardingFn::Murmur3 {
-                return Err(ExportError::Unsupported(format!(
+                return Err(ExportError::unsupported(format!(
                     "table `{}` is sharded with `{}`, and DDL can only use murmur3",
                     table.name,
                     sharding_function.as_str(),
@@ -89,7 +89,7 @@ fn render_distribution(table: &RawTable) -> Result<String, ExportError> {
                 tier = quote_ident(tier),
             ))
         }
-        RawDistribution::ShardedByField(field, _) => Err(ExportError::Unsupported(format!(
+        RawDistribution::ShardedByField(field, _) => Err(ExportError::unsupported(format!(
             "table `{}` is sharded explicitly by field `{field}`, which has no DDL syntax",
             table.name
         ))),
@@ -118,7 +118,7 @@ fn render_primary_key(
         .collect();
 
     if parts.is_empty() {
-        return Err(ExportError::Unsupported(format!(
+        return Err(ExportError::unsupported(format!(
             "table `{}` has an empty primary key",
             table.name
         )));
@@ -143,6 +143,7 @@ mod tests {
     fn render_failure(table: &RawTable, primary_key: &RawIndex) -> String {
         render(table, primary_key)
             .expect_err("the table cannot be exported")
+            .kind
             .to_string()
     }
 
