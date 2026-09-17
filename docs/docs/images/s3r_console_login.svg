@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="520" viewBox="0 0 680 520">
+<title>Вход в консоль управления</title>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000000"/></marker>
+<marker id="arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z" fill="#000000"/></marker>
+</defs>
+<rect x="0" y="0" width="680" height="520" fill="#ffffff"/>
+<rect x="7" y="8" width="156" height="46" rx="6" fill="#f2f2f2" stroke="#000000" stroke-width="1"/>
+<text x="85" y="36" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">Браузер</text>
+<line x1="85" y1="54" x2="85" y2="506" stroke="#7f7f7f" stroke-width="1" stroke-dasharray="3 3"/>
+<rect x="177" y="8" width="156" height="46" rx="6" fill="#f2f2f2" stroke="#000000" stroke-width="1"/>
+<text x="255" y="28" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">Консоль и API</text>
+<text x="255" y="45" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">управления S3R</text>
+<line x1="255" y1="54" x2="255" y2="506" stroke="#7f7f7f" stroke-width="1" stroke-dasharray="3 3"/>
+<rect x="347" y="8" width="156" height="46" rx="6" fill="#f2f2f2" stroke="#000000" stroke-width="1"/>
+<text x="425" y="28" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">Поставщик</text>
+<text x="425" y="45" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">аутентификации</text>
+<line x1="425" y1="54" x2="425" y2="506" stroke="#7f7f7f" stroke-width="1" stroke-dasharray="3 3"/>
+<rect x="517" y="8" width="156" height="46" rx="6" fill="#f2f2f2" stroke="#000000" stroke-width="1"/>
+<text x="595" y="28" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">Picodata:</text>
+<text x="595" y="45" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">пользователи и роли</text>
+<line x1="595" y1="54" x2="595" y2="506" stroke="#7f7f7f" stroke-width="1" stroke-dasharray="3 3"/>
+<line x1="88" y1="88" x2="252" y2="88" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<text x="170.0" y="81" font-family="'Liberation Mono', Menlo, monospace" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">GET /v2/start</text>
+<line x1="252" y1="130" x2="88" y2="130" stroke="#000000" stroke-width="1" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+<text x="170.0" y="123" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">адрес поставщика и client_id</text>
+<line x1="88" y1="172" x2="422" y2="172" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<text x="255.0" y="165" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">вход пользователя, код с PKCE</text>
+<line x1="422" y1="214" x2="88" y2="214" stroke="#000000" stroke-width="1" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+<text x="255.0" y="207" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">код авторизации</text>
+<line x1="88" y1="256" x2="252" y2="256" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<text x="170.0" y="249" font-family="'Liberation Mono', Menlo, monospace" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">POST /v2/code</text>
+<line x1="258" y1="298" x2="422" y2="298" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<text x="340.0" y="291" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">обмен кода на токен</text>
+<line x1="422" y1="340" x2="258" y2="340" stroke="#000000" stroke-width="1" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+<text x="340.0" y="333" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">токен доступа</text>
+<line x1="252" y1="382" x2="88" y2="382" stroke="#000000" stroke-width="1" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+<text x="170.0" y="375" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">только токен доступа</text>
+<line x1="88" y1="424" x2="252" y2="424" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<text x="170.0" y="417" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">запрос API с токеном</text>
+<line x1="258" y1="466" x2="592" y2="466" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<text x="425.0" y="459" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">пользователь из username_claim и его роли</text>
+</svg>

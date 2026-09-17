@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="560" viewBox="0 0 680 560">
+<title>Сетевые контуры S3R</title>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000000"/></marker>
+<marker id="arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z" fill="#000000"/></marker>
+</defs>
+<rect x="0" y="0" width="680" height="560" fill="#ffffff"/>
+<rect x="8" y="8" width="664" height="300" rx="10" fill="#ffffff" stroke="#000000" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="20" y="28" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="start" fill="#000000">Клиентский контур</text>
+<text x="20" y="46" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">S3: HTTP/1.1 и TLS, при ca_file взаимный TLS</text>
+<rect x="8" y="320" width="664" height="176" rx="10" fill="#ffffff" stroke="#000000" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="20" y="460" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="start" fill="#000000">Внутрикластерный контур</text>
+<text x="20" y="480" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">HTTP/2, взаимный TLS с общим удостоверяющим центром кластера</text>
+<rect x="120" y="58" width="180" height="34" rx="17" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="210" y="80" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">Клиенты S3</text>
+<rect x="400" y="58" width="220" height="34" rx="17" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="510" y="80" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">Браузер администратора</text>
+<rect x="20" y="112" width="190" height="322" rx="10" fill="#f2f2f2" stroke="#000000" stroke-width="1"/>
+<text x="115" y="424" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">node1</text>
+<rect x="33" y="148" width="164" height="34" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="115" y="170" font-family="'Liberation Mono', Menlo, monospace" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">s3r_api :8443</text>
+<rect x="33" y="238" width="164" height="34" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="115" y="260" font-family="'Liberation Mono', Menlo, monospace" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">HTTP Picodata :6006</text>
+<rect x="33" y="364" width="164" height="34" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="115" y="386" font-family="'Liberation Mono', Menlo, monospace" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">s3r_storage :8700</text>
+<line x1="165.0" y1="92" x2="95" y2="147" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<rect x="245" y="112" width="190" height="322" rx="10" fill="#f2f2f2" stroke="#000000" stroke-width="1"/>
+<text x="340" y="424" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">node2</text>
+<rect x="258" y="148" width="164" height="34" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="340" y="170" font-family="'Liberation Mono', Menlo, monospace" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">s3r_api :8443</text>
+<rect x="258" y="238" width="164" height="34" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="340" y="260" font-family="'Liberation Mono', Menlo, monospace" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">HTTP Picodata :6006</text>
+<rect x="258" y="364" width="164" height="34" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="340" y="386" font-family="'Liberation Mono', Menlo, monospace" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">s3r_storage :8700</text>
+<line x1="210.0" y1="92" x2="320" y2="147" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<rect x="470" y="112" width="190" height="322" rx="10" fill="#f2f2f2" stroke="#000000" stroke-width="1"/>
+<text x="565" y="424" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">node3</text>
+<rect x="483" y="148" width="164" height="34" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="565" y="170" font-family="'Liberation Mono', Menlo, monospace" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">s3r_api :8443</text>
+<rect x="483" y="238" width="164" height="34" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="565" y="260" font-family="'Liberation Mono', Menlo, monospace" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">HTTP Picodata :6006</text>
+<rect x="483" y="364" width="164" height="34" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="565" y="386" font-family="'Liberation Mono', Menlo, monospace" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">s3r_storage :8700</text>
+<line x1="255.0" y1="92" x2="545" y2="147" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="197" y1="381" x2="258" y2="381" stroke="#000000" stroke-width="1" marker-end="url(#arrow)" marker-start="url(#arrow-start)"/>
+<line x1="422" y1="381" x2="483" y2="381" stroke="#000000" stroke-width="1" marker-end="url(#arrow)" marker-start="url(#arrow-start)"/>
+<path d="M 620 75 L 664 75 L 664 255 L 649 255" fill="none" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="530" y1="92" x2="590" y2="147" stroke="#000000" stroke-width="1" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+<text x="20" y="520" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#000000">HTTP Picodata: веб-интерфейс Picodata, консоль и API управления S3R, метрики /metrics</text>
+<line x1="20" y1="540" x2="60" y2="540" stroke="#000000" stroke-width="1" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+<text x="68" y="544" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#000000">загрузка и скачивание файлов из консоли по предподписанным ссылкам</text>
+</svg>

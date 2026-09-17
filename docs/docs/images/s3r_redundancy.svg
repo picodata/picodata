@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="470" viewBox="0 0 680 470">
+<title>Уровни избыточности на одной площадке</title>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000000"/></marker>
+<marker id="arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z" fill="#000000"/></marker>
+</defs>
+<rect x="0" y="0" width="680" height="470" fill="#ffffff"/>
+<rect x="10" y="8" width="210" height="398" rx="10" fill="#f2f2f2" stroke="#000000" stroke-width="1"/>
+<text x="115" y="32" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">node1</text>
+<text x="115" y="50" font-family="'Liberation Mono', Menlo, monospace" font-size="11" font-weight="normal" text-anchor="middle" fill="#444444">host=node1</text>
+<path d="M 83.0 97.14285714285714 L 83.0 148.85714285714286 A 32.0 9.142857142857142 0 0 0 147.0 148.85714285714286 L 147.0 97.14285714285714" fill="#ed453a" stroke="#000000" stroke-width="1"/>
+<ellipse cx="115" cy="97.14285714285714" rx="32.0" ry="9.142857142857142" fill="#f4b0aa" stroke="#000000" stroke-width="1"/>
+<text x="115" y="180" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">ведущая реплика</text>
+<rect x="20" y="200" width="190" height="190" rx="8" fill="#ffffff" stroke="#000000" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="115" y="220" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#444444">группа 2+2</text>
+<path d="M 32.0 240.85714285714286 L 32.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 66.0 301.14285714285717 L 66.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="49" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="49" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=a</text>
+<rect x="34" y="340" width="30" height="22" rx="3" fill="#9fe3e3" stroke="#000000" stroke-width="1"/>
+<text x="49" y="356" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#000000">D1</text>
+<path d="M 76.0 240.85714285714286 L 76.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 110.0 301.14285714285717 L 110.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="93" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="93" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=b</text>
+<rect x="78" y="340" width="30" height="22" rx="3" fill="#9fe3e3" stroke="#000000" stroke-width="1"/>
+<text x="93" y="356" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#000000">D2</text>
+<path d="M 120.0 240.85714285714286 L 120.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 154.0 301.14285714285717 L 154.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="137" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="137" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=c</text>
+<rect x="122" y="340" width="30" height="22" rx="3" fill="#eda699" stroke="#000000" stroke-width="1"/>
+<text x="137" y="356" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#000000">P1</text>
+<path d="M 164.0 240.85714285714286 L 164.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 198.0 301.14285714285717 L 198.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="181" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="181" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=d</text>
+<rect x="166" y="340" width="30" height="22" rx="3" fill="#eda699" stroke="#000000" stroke-width="1"/>
+<text x="181" y="356" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#000000">P2</text>
+<rect x="235" y="8" width="210" height="398" rx="10" fill="#f2f2f2" stroke="#000000" stroke-width="1"/>
+<text x="340" y="32" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">node2</text>
+<text x="340" y="50" font-family="'Liberation Mono', Menlo, monospace" font-size="11" font-weight="normal" text-anchor="middle" fill="#444444">host=node2</text>
+<path d="M 308.0 97.14285714285714 L 308.0 148.85714285714286 A 32.0 9.142857142857142 0 0 0 372.0 148.85714285714286 L 372.0 97.14285714285714" fill="#c6c6c6" stroke="#000000" stroke-width="1"/>
+<ellipse cx="340" cy="97.14285714285714" rx="32.0" ry="9.142857142857142" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="340" y="180" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">реплика</text>
+<rect x="245" y="200" width="190" height="190" rx="8" fill="#ffffff" stroke="#000000" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="340" y="220" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#444444">группа 2+2</text>
+<path d="M 257.0 240.85714285714286 L 257.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 291.0 301.14285714285717 L 291.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="274" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="274" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=a</text>
+<path d="M 301.0 240.85714285714286 L 301.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 335.0 301.14285714285717 L 335.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="318" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="318" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=b</text>
+<path d="M 345.0 240.85714285714286 L 345.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 379.0 301.14285714285717 L 379.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="362" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="362" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=c</text>
+<path d="M 389.0 240.85714285714286 L 389.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 423.0 301.14285714285717 L 423.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="406" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="406" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=d</text>
+<rect x="460" y="8" width="210" height="398" rx="10" fill="#f2f2f2" stroke="#000000" stroke-width="1"/>
+<text x="565" y="32" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">node3</text>
+<text x="565" y="50" font-family="'Liberation Mono', Menlo, monospace" font-size="11" font-weight="normal" text-anchor="middle" fill="#444444">host=node3</text>
+<path d="M 533.0 97.14285714285714 L 533.0 148.85714285714286 A 32.0 9.142857142857142 0 0 0 597.0 148.85714285714286 L 597.0 97.14285714285714" fill="#c6c6c6" stroke="#000000" stroke-width="1"/>
+<ellipse cx="565" cy="97.14285714285714" rx="32.0" ry="9.142857142857142" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="565" y="180" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">реплика</text>
+<rect x="470" y="200" width="190" height="190" rx="8" fill="#ffffff" stroke="#000000" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="565" y="220" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#444444">группа 2+2</text>
+<path d="M 482.0 240.85714285714286 L 482.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 516.0 301.14285714285717 L 516.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="499" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="499" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=a</text>
+<path d="M 526.0 240.85714285714286 L 526.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 560.0 301.14285714285717 L 560.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="543" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="543" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=b</text>
+<path d="M 570.0 240.85714285714286 L 570.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 604.0 301.14285714285717 L 604.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="587" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="587" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=c</text>
+<path d="M 614.0 240.85714285714286 L 614.0 301.14285714285717 A 17.0 4.857142857142857 0 0 0 648.0 301.14285714285717 L 648.0 240.85714285714286" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="631" cy="240.85714285714286" rx="17.0" ry="4.857142857142857" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="631" y="326" font-family="'Liberation Mono', Menlo, monospace" font-size="10" font-weight="normal" text-anchor="middle" fill="#000000">hba=d</text>
+<line x1="149" y1="128" x2="306" y2="128" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<path d="M 115 88 C 115 62, 565 62, 565 86" fill="none" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<text x="115" y="382" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#444444">фрагменты одного блока</text>
+<rect x="10" y="420" width="24" height="16" rx="3" fill="#c6c6c6" stroke="#000000" stroke-width="1"/>
+<text x="42" y="433" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#000000">строки объектов и объекты до inline_max: копии на инстансах репликасета, replication_factor = 3</text>
+<rect x="10" y="444" width="11" height="16" rx="2" fill="#9fe3e3" stroke="#000000" stroke-width="1"/>
+<rect x="23" y="444" width="11" height="16" rx="2" fill="#eda699" stroke="#000000" stroke-width="1"/>
+<text x="42" y="457" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#000000">содержимое крупных объектов: фрагменты на дисках одного инстанса</text>
+</svg>
