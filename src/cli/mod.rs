@@ -5,6 +5,10 @@ pub mod default_config;
 #[cfg(feature = "demo")]
 pub mod demo;
 pub mod expel;
+// The `picodata export` command and reading the catalog over pgproto come
+// separately; until then only the dump rendering is here, with no caller.
+#[expect(dead_code)]
+pub mod export;
 pub mod plugin;
 pub mod restore;
 pub mod run;

@@ -82,6 +82,30 @@ const PARSING_PAIRS_MAP_CAPACITY: usize = 100;
 #[grammar = "frontend/sql/ast/query.pest"]
 pub(super) struct ParseTree;
 
+#[must_use]
+pub fn is_reserved_keyword(word: &str) -> bool {
+    use pest::Parser as _;
+
+    // `Keyword` matches a prefix (`select` in `selection`), and only a whole word is reserved.
+    ParseTree::parse(Rule::Keyword, word)
+        .is_ok_and(|mut pairs| pairs.next().is_some_and(|pair| pair.as_str() == word))
+}
+
+#[cfg(test)]
+mod keyword_tests {
+    use super::is_reserved_keyword;
+
+    #[test]
+    fn a_whole_keyword_is_reserved_and_a_word_starting_like_one_is_not() {
+        assert!(is_reserved_keyword("select"));
+        assert!(is_reserved_keyword("SELECT"));
+        assert!(is_reserved_keyword("in"));
+        assert!(!is_reserved_keyword("selection"));
+        assert!(!is_reserved_keyword("id"));
+        assert!(!is_reserved_keyword(""));
+    }
+}
+
 impl<'q> AbstractSyntaxTree<'q> {
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::uninlined_format_args)]
