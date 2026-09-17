@@ -1978,11 +1978,13 @@ cluster:
     assert i3.eval("return box.space.t:count()") == 7
 
     # The replica dies ungracefully, so it never reports going Offline
-    # itself. Speed up the automatic failure detection. Arm the aggressive
-    # timeout as late as possible: while in effect it also auto-offlines
-    # instances whose applied index transiently lags (routine on slow ASan
-    # builds under load), causing spurious offlining and master switchover.
-    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
+    # itself. Speed up the automatic failure detection, but leave room for
+    # several heartbeats. The leader auto-offlines a learner whose applied
+    # index report is older than governor_auto_offline_timeout. An idle
+    # learner only reports it when replying to a heartbeat, and the leader
+    # sends those at most once per raft heartbeat period (1s) and at most once
+    # per governor_auto_offline_timeout / 3.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 5")
 
     # The replica "segfaults" and cannot be restarted.
     replica.kill()
