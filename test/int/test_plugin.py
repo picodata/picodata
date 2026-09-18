@@ -3895,7 +3895,12 @@ def test_plugin_on_cluster_leader_change_ok(cluster: Cluster):
         i3.check_process_alive()
         raise e from e
 
-    assert i2.raft_leader_id() in [2, 3]
+    # i2 may still be a pre-candidate from `.proc_raft_promote` with leader id 0
+    # until the new leader's heartbeat reaches it.
+    def check_i2_knows_leader():
+        assert i2.raft_leader_id() in [2, 3]
+
+    Retriable().call(check_i2_knows_leader)
 
 
 def test_plugin_on_cluster_leader_change_err(cluster: Cluster):
