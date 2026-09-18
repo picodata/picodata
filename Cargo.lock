@@ -3123,7 +3123,7 @@ dependencies = [
 [[package]]
 name = "raft"
 version = "0.7.0"
-source = "git+https://git.picodata.io/core/raft-rs.git?branch=picodata-master#e4c9a388e838d8bf35a33f02d2c4dd92975c3438"
+source = "git+https://git.picodata.io/core/raft-rs.git?branch=picodata-master#06b7fceb84613f5f276b7b0281b8576327ad1d4f"
 dependencies = [
  "fxhash",
  "getset",
@@ -3140,7 +3140,7 @@ dependencies = [
 [[package]]
 name = "raft-proto"
 version = "0.7.0"
-source = "git+https://git.picodata.io/core/raft-rs.git?branch=picodata-master#e4c9a388e838d8bf35a33f02d2c4dd92975c3438"
+source = "git+https://git.picodata.io/core/raft-rs.git?branch=picodata-master#06b7fceb84613f5f276b7b0281b8576327ad1d4f"
 dependencies = [
  "protobuf",
  "protobuf-codegen",
