@@ -1037,3 +1037,26 @@ def test_sentinel_does_not_panic_on_long_activation_wait(cluster: Cluster):
     instance.env["PICODATA_ERROR_INJECTION_SELF_ACTIVATION_WAITING_TIMEOUT"] = "1"
     instance.env["PICODATA_ERROR_INJECTION_DELAY_BEFORE_APPLYING_RAFT_ENTRY"] = "0.1"
     instance.start_and_wait()
+
+
+def test_joiner_is_not_starved_after_uninitialized_response(cluster: Cluster):
+    leader = cluster.add_instance(wait_online=True)
+    # Heartbeats to online learners are throttled to governor_auto_offline_timeout / 3.
+    # Make that period much longer than any wait_online timeout, so that the joiner
+    # can only get Online in time if its heartbeats are not throttled.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1800")
+
+    # The postjoin script runs after the joiner starts listening on iproto but
+    # before its raft node is initialized. Raft messages the leader sends it in
+    # the meantime are answered with `Uninitialized`.
+    script = f"{cluster.data_dir}/slow_postjoin.lua"
+    with open(script, "w") as f:
+        f.write("require('fiber').sleep(2)")
+
+    uninitialized = log_crawler(leader, "Uninitialized: uninitialized yet")
+
+    joiner = cluster.add_instance(wait_online=False)
+    joiner.env["PICODATA_SCRIPT"] = script
+    joiner.start_and_wait()
+
+    assert uninitialized.matched

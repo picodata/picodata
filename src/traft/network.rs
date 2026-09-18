@@ -1,3 +1,4 @@
+use crate::error_code::ErrorCode;
 use crate::instance::Instance;
 use crate::instance::InstanceName;
 use crate::mailbox::Mailbox;
@@ -13,6 +14,7 @@ use crate::traft::Result;
 use crate::unwrap_ok_or;
 use crate::util::relay_connection_config;
 use ::raft::prelude as raft;
+use ::tarantool::error::TarantoolErrorCode;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::oneshot;
 use ::tarantool::fiber::r#async::timeout::Error as TOError;
@@ -289,6 +291,18 @@ impl PoolWorker {
                                 cb(result.map_err(Error::from));
                             }
                             OnRequestResult::ReportUnreachable => {
+                                // The peer is up but has no raft node yet (it is still
+                                // joining or restarting), so it cannot know the leader.
+                                // Report it as such, so that heartbeats to it are not
+                                // throttled and it learns the leader as soon as it can.
+                                // Otherwise a learner may wait for up to
+                                // governor_auto_offline_timeout / 3 to hear from us.
+                                let is_peer_uninitialized = matches!(
+                                    &result,
+                                    Err(TOError::Failed(ClientError::ErrorResponse(e)))
+                                        if e.error_code() == ErrorCode::Uninitialized as u32
+                                            || e.error_code() == TarantoolErrorCode::NoSuchProc as u32
+                                );
                                 match result {
                                     Err(TOError::Failed(ClientError::ErrorResponse(e))) => {
                                         tlog!(Warning, "error when sending message to peer: {}{e}", picodata_plugin::util::DisplayErrorLocation(&e);
@@ -303,7 +317,12 @@ impl PoolWorker {
                                 if let Some(instance_reachability) = &instance_reachability {
                                     instance_reachability
                                         .borrow_mut()
-                                        .report_communication_result(raft_id, is_connected, None, None);
+                                        .report_communication_result(
+                                            raft_id,
+                                            is_connected,
+                                            None,
+                                            is_peer_uninitialized.then_some(true),
+                                        );
                                 }
                             }
                         }
