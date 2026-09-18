@@ -6,14 +6,13 @@ use crate::ir::node::{Node32, Node96};
 use crate::ir::types::CastType;
 use crate::ir::Plan;
 use crate::utils::normalize_name_from_sql;
-use crate::utils::to_user;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql_type_system::type_system::TypeAnalyzer;
 
 use super::expression::{FunctionFeature, VolatilityType};
-use super::types::{DerivedType, UnrestrictedType};
+use super::types::DerivedType;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Function {
@@ -131,50 +130,28 @@ impl Plan {
         children: Vec<NodeId>,
         is_distinct: bool,
     ) -> Result<NodeId, SbroadError> {
-        match kind {
-            AggregateKind::GRCONCAT => {
-                if children.len() > 2 || children.is_empty() {
+        // Arity is settled by overload resolution, so the only argument left to check is
+        // group_concat's optional delimiter: it must be a literal, and DISTINCT forbids it.
+        if kind == AggregateKind::GRCONCAT {
+            match children.get(1) {
+                Some(_) if is_distinct => {
                     return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!(
-                            "GROUP_CONCAT aggregate function can have one or two arguments at most. Got: {} arguments", children.len()
-                        )),
-                    ));
-                }
-                match children.get(1) {
-                    Some(_) if is_distinct => {
-                        return Err(SbroadError::Invalid(
                                 Entity::Query,
                                 Some(format_smolstr!(
                                     "distinct GROUP_CONCAT aggregate function has only one argument. Got: {} arguments", children.len()
                                 )),
                             ));
-                    }
-                    Some(child)
-                        if !matches!(
-                            self.get_expression_node(*child)?,
-                            Expression::Constant(_)
-                        ) =>
-                    {
-                        return Err(SbroadError::Invalid(
+                }
+                Some(child)
+                    if !matches!(self.get_expression_node(*child)?, Expression::Constant(_)) =>
+                {
+                    return Err(SbroadError::Invalid(
                                 Entity::Query,
                                 Some(format_smolstr!(
                                     "GROUP_CONCAT aggregate function second argument must be a string literal.")),
                             ));
-                    }
-                    _ => {}
                 }
-            }
-            _ => {
-                if children.len() != 1 {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!(
-                            "Expected one argument for aggregate: {}.",
-                            to_user(kind.to_string())
-                        )),
-                    ));
-                }
+                _ => {}
             }
         }
         let feature = if is_distinct {
@@ -184,7 +161,8 @@ impl Plan {
         };
         let func_expr = ScalarFunction {
             name: kind.to_smolstr(),
-            func_type: kind.get_type(self, &children)?,
+            // Filled in from the overload the type system resolves for this call.
+            func_type: DerivedType::unknown(),
             children,
             feature,
             is_system: true,
@@ -201,37 +179,18 @@ impl Plan {
         func_name: SmolStr,
         children: Vec<NodeId>,
     ) -> Result<NodeId, SbroadError> {
-        let kind = AggregateKind::from_name(&func_name);
-        let (func_name, func_type) = match kind {
-            Some(kind) => (kind.to_smolstr(), kind.get_type(self, &children)?),
+        let func_name = match AggregateKind::from_name(&func_name) {
+            Some(kind) => kind.to_smolstr(),
             None => {
-                let derived_type = match func_name.as_str() {
-                    "row_number" => DerivedType::new(UnrestrictedType::Integer),
-                    "last_value" => {
-                        if children.len() != 1 {
-                            return Err(SbroadError::Invalid(
-                                Entity::Query,
-                                Some(format_smolstr!(
-                                    "window function {} expects 1 argument, got {}",
-                                    func_name,
-                                    children.len()
-                                )),
-                            ));
-                        }
-                        let param = self.get_expression_node(children[0])?;
-                        param.calculate_type(self)?
-                    }
-                    _ => {
-                        return Err(SbroadError::Invalid(
-                            Entity::Query,
-                            Some(format_smolstr!(
-                                "window function {} does not exist",
-                                func_name
-                            )),
-                        ))
-                    }
-                };
-                (func_name, derived_type)
+                if !matches!(func_name.as_str(), "row_number" | "last_value") {
+                    return Err(SbroadError::Invalid(
+                        Entity::Query,
+                        Some(format_smolstr!(
+                            "window function {func_name} does not exist"
+                        )),
+                    ));
+                }
+                func_name
             }
         };
 
@@ -239,7 +198,8 @@ impl Plan {
             name: func_name,
             children,
             feature: None,
-            func_type,
+            // Filled in from the overload the type system resolves for this call.
+            func_type: DerivedType::unknown(),
             is_system: true,
             is_window: true,
             volatility_type: VolatilityType::Stable,

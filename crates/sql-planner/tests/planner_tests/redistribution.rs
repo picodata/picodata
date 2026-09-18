@@ -417,7 +417,7 @@ fn test_slices_2() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (sum(count_1::int)::decimal::int -> col_1)
+    projection (sum(count_1::int::int)::int::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(t2.e::int::int)::int -> count_1)
           join on (true::bool)

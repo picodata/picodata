@@ -2373,6 +2373,12 @@ SELECT DISTINCT sum(b) OVER (), total(b) OVER (),
 -- EXPECTED:
 14, 14, 2, 4
 
+-- TEST: window-13-last-value-arithmetic-argument
+-- SQL:
+SELECT a, last_value(abs(b) - coalesce(b, 0)) OVER (ORDER BY a) FROM wt ORDER BY 1;
+-- EXPECTED:
+1, 0, 2, 0, 3, 0, 4, 0, 5, 0
+
 -- TEST: window-13-sum-and-avg-of-double
 -- SQL:
 SELECT sum(CAST(1e39 AS DOUBLE)) OVER (), avg(CAST(1e39 AS DOUBLE)) OVER () FROM (VALUES (1));

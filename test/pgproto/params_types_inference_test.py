@@ -364,7 +364,7 @@ def test_params_inference_errors(postgres: Postgres):
     with pytest.raises(DatabaseError, match=r"row value misused"):
         conn.run("SELECT (:p,:p)", p=1)
 
-    with pytest.raises(DatabaseError, match=r"row with 2 values has no scalar type"):
+    with pytest.raises(DatabaseError, match=r"row value misused"):
         conn.run("SELECT max((:p,:p))", p=1)
 
     with pytest.raises(DatabaseError, match=r"row value misused"):

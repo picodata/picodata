@@ -1022,10 +1022,10 @@ buckets <= [1-3000]
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT CAST (sum ("COL_0") as int) as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_12891936899671101525_1136" )
+SELECT CAST (sum (CAST ("COL_0" as decimal)) as int) as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_17621510721798107379_1136" )
 ''
 plan:
-    [0] SCAN TABLE _tmp_12891936899671101525_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_17621510721798107379_1136 (~1048576 rows)
 ''
 buckets = any
 ''
@@ -1200,10 +1200,10 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "name", CAST (sum ("COL_1") as int) as "col_1" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_15630784039318954824_0136" ) GROUP BY "COL_0"
+SELECT "COL_0" as "name", CAST (sum (CAST ("COL_1" as decimal)) as int) as "col_1" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_5358045835402968887_0136" ) GROUP BY "COL_0"
 ''
 plan:
-    [0] SCAN TABLE _tmp_15630784039318954824_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_5358045835402968887_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any

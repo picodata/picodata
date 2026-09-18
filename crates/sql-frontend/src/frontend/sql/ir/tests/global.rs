@@ -69,13 +69,13 @@ fn front_sql_global_tbl_sq1() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
       selection (global_t.a::int in ROW($1) or global_t.a::int in ROW($0))
         scan global_t
     subquery $0:
       scan
-        projection (sum(sum_1::decimal)::decimal -> col_1)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1)
               scan t
@@ -101,13 +101,13 @@ fn front_sql_global_tbl_multiple_sqs1() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
       selection ((ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) and global_t.a::int in ROW($0)))
         scan global_t
     subquery $0:
       scan
-        projection (sum(sum_1::decimal)::decimal -> col_1)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1)
               scan t
@@ -135,13 +135,13 @@ fn front_sql_global_tbl_multiple_sqs2() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (global_t.a::int -> a, global_t.b::int -> b)
       selection (ROW(global_t.a::int, global_t.b::int) in ROW($1, $1) or global_t.a::int in ROW($0))
         scan global_t
     subquery $0:
       scan
-        projection (sum(sum_1::decimal)::decimal -> col_1)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1)
               scan t
@@ -397,11 +397,11 @@ fn front_sql_global_join4() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Single]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (s.e::decimal -> e)
       left join on (true::bool)
         scan s
-          projection (sum(sum_1::decimal)::decimal -> e)
+          projection (sum(sum_1::decimal::decimal)::decimal -> e)
             motion [policy: full, program: ReshardIfNeeded]
               projection (sum(t2.e::int::int)::decimal -> sum_1)
                 scan t2
@@ -420,12 +420,12 @@ fn front_sql_global_join5() {
     let plan = sql_to_optimized_ir(input, vec![]);
     check_join_dist(&plan, &[DistMock::Single]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (s.e::decimal -> e)
       left join on (true::bool)
         scan global_t
         scan s
-          projection (sum(sum_1::decimal)::decimal -> e)
+          projection (sum(sum_1::decimal::decimal)::decimal -> e)
             motion [policy: full, program: ReshardIfNeeded]
               projection (sum(t2.e::int::int)::decimal -> sum_1)
                 scan t2
@@ -832,14 +832,14 @@ fn front_sql_global_union_all3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     union all
       projection (unnamed_subquery.a::decimal -> a)
         scan unnamed_subquery
           union all
             projection (global_t.a::int -> a)
               scan global_t
-            projection (sum(sum_1::decimal)::decimal -> col_1)
+            projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
               motion [policy: full, program: ReshardIfNeeded]
                 projection (sum(t2.e::int::int)::decimal -> sum_1)
                   scan t2
@@ -921,12 +921,12 @@ fn front_sql_global_union2() {
     "#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     motion [policy: full, program: RemoveDuplicates]
       union
         projection (global_t.a::int -> a)
           scan global_t
-        projection (sum(sum_1::decimal)::decimal -> col_1)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t2.e::int::int)::decimal -> sum_1)
               scan t2
@@ -1046,11 +1046,11 @@ fn check_plan_except_global_vs_single() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     except
       projection (global_t.a::int -> a)
         scan global_t
-      projection (sum(sum_1::decimal)::decimal -> col_1)
+      projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
         motion [policy: full, program: ReshardIfNeeded]
           projection (sum(t2.e::int::int)::decimal -> sum_1)
             scan t2
@@ -1067,9 +1067,9 @@ fn check_plan_except_single_vs_global() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     except
-      projection (sum(sum_1::decimal)::decimal -> col_1)
+      projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
         motion [policy: full, program: ReshardIfNeeded]
           projection (sum(t2.e::int::int)::decimal -> sum_1)
             scan t2

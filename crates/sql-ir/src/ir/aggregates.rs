@@ -1,5 +1,5 @@
 use ahash::AHashMap;
-use smol_str::{format_smolstr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::helpers::RepeatableState;
@@ -54,9 +54,12 @@ impl Display for AggregateKind {
 
 impl AggregateKind {
     /// Returns None in case passed function name is not aggregate.
+    ///
+    /// The name may be in any case: callers that must reject a quoted, case-preserved
+    /// spelling like `"SUM"` check fold invariance themselves.
     #[must_use]
     pub fn from_name(func_name: &str) -> Option<AggregateKind> {
-        let normalized = func_name.to_lowercase();
+        let normalized: SmolStr = func_name.chars().flat_map(char::to_lowercase).collect();
         let kind = match normalized.as_str() {
             "count" => AggregateKind::COUNT,
             "sum" => AggregateKind::SUM,
@@ -70,98 +73,25 @@ impl AggregateKind {
         Some(kind)
     }
 
-    /// Returns None in case passed function name is not aggregate.
+    /// Aggregates that must be present on the local (Map) stage of two stage aggregation in
+    /// order to calculate this aggregate on the reduce stage.
     #[must_use]
-    pub fn from_name_unnorm(func_name: &str) -> Option<AggregateKind> {
-        let kind = match func_name {
-            "count" => AggregateKind::COUNT,
-            "sum" => AggregateKind::SUM,
-            "avg" => AggregateKind::AVG,
-            "total" => AggregateKind::TOTAL,
-            "min" => AggregateKind::MIN,
-            "max" => AggregateKind::MAX,
-            "group_concat" | "string_agg" => AggregateKind::GRCONCAT,
-            _ => return None,
-        };
-        Some(kind)
-    }
-
-    /// Get type of the corresponding aggregate function.
-    pub fn get_type(self, plan: &Plan, args: &[NodeId]) -> Result<DerivedType, SbroadError> {
-        let ty = match self {
-            AggregateKind::COUNT => RelType::Integer,
-            AggregateKind::TOTAL => RelType::Double,
-            AggregateKind::GRCONCAT => RelType::String,
-            AggregateKind::MIN | AggregateKind::MAX => {
-                let child_node = args.first().ok_or_else(|| {
-                    SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                        "expected at least 1 argument, got 0"
-                    ))
-                })?;
-                let expr_node = plan.get_expression_node(*child_node)?;
-                return expr_node.calculate_type(plan);
-            }
-            AggregateKind::AVG | AggregateKind::SUM => {
-                let child_node = args.first().ok_or_else(|| {
-                    SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                        "expected at least 1 argument, got 0"
-                    ))
-                })?;
-                let expr_node = plan.get_expression_node(*child_node)?;
-                let ty = expr_node.calculate_type(plan)?;
-                if let Some(RelType::Double) = ty.get() {
-                    RelType::Double
-                } else {
-                    RelType::Decimal
-                }
-            }
-        };
-        Ok(DerivedType::new(ty))
-    }
-
-    /// Get aggregate functions that must be present on the local (Map) stage
-    /// of two stage aggregation in order to calculate given aggregate (`self`)
-    /// on the reduce stage.
-    #[must_use]
-    pub fn get_local_aggregates_kinds(&self) -> Vec<AggregateKind> {
+    pub fn local_kinds(self) -> &'static [AggregateKind] {
         match self {
-            AggregateKind::COUNT => vec![AggregateKind::COUNT],
-            AggregateKind::SUM => vec![AggregateKind::SUM],
-            AggregateKind::AVG => vec![AggregateKind::SUM, AggregateKind::COUNT],
-            AggregateKind::TOTAL => vec![AggregateKind::TOTAL],
-            AggregateKind::MIN => vec![AggregateKind::MIN],
-            AggregateKind::MAX => vec![AggregateKind::MAX],
-            AggregateKind::GRCONCAT => vec![AggregateKind::GRCONCAT],
+            AggregateKind::COUNT => &[AggregateKind::COUNT],
+            AggregateKind::SUM => &[AggregateKind::SUM],
+            AggregateKind::AVG => &[AggregateKind::SUM, AggregateKind::COUNT],
+            AggregateKind::TOTAL => &[AggregateKind::TOTAL],
+            AggregateKind::MIN => &[AggregateKind::MIN],
+            AggregateKind::MAX => &[AggregateKind::MAX],
+            AggregateKind::GRCONCAT => &[AggregateKind::GRCONCAT],
         }
     }
 
-    /// Calculate argument type of aggregate function
-    ///
-    /// # Errors
-    /// - Invalid index
-    /// - Node doesn't exist in the plan
-    /// - Node is not an expression type
-    pub fn get_arg_type(
-        idx: usize,
-        plan: &Plan,
-        args: &[NodeId],
-    ) -> Result<DerivedType, SbroadError> {
-        let arg_id = *args.get(idx).ok_or(SbroadError::NotFound(
-            Entity::Index,
-            format_smolstr!("no element at index {idx} in args {args:?}"),
-        ))?;
-        let expr = plan.get_expression_node(arg_id)?;
-        expr.calculate_type(plan)
-    }
-
-    /// Get final aggregate corresponding to given local aggregate.
-    /// 1) Checks that `local_aggregate` and final `self` aggregate corresponds to each other
-    /// 2) Gets type of final aggregate
-    pub fn get_final_aggregate_kind(
-        &self,
-        local_aggregate: &AggregateKind,
-    ) -> Result<AggregateKind, SbroadError> {
-        let res = match (self, local_aggregate) {
+    /// Aggregate that finishes this one on the reduce stage from the `local` aggregate its
+    /// map stage computed.
+    pub fn final_kind(self, local: AggregateKind) -> Result<AggregateKind, SbroadError> {
+        let res = match (self, local) {
             (AggregateKind::COUNT | AggregateKind::AVG, AggregateKind::COUNT)
             | (AggregateKind::SUM | AggregateKind::AVG, AggregateKind::SUM) => AggregateKind::SUM,
             (AggregateKind::TOTAL, AggregateKind::TOTAL) => AggregateKind::TOTAL,
@@ -172,7 +102,7 @@ impl AggregateKind {
                 return Err(SbroadError::Invalid(
                     Entity::Aggregate,
                     Some(format_smolstr!(
-                        "invalid local aggregate {local_aggregate} for original aggregate: {self}"
+                        "invalid local aggregate {local} for original aggregate: {self}"
                     )),
                 ))
             }
@@ -213,7 +143,7 @@ pub struct Aggregate {
     /// original query: `select avg(distinct b) from t`
     /// map query: `select b as l1 from t group by b)`
     /// map will contain: `avg` -> `l1`
-    pub lagg_aliases: AHashMap<AggregateKind, Rc<String>>,
+    pub lagg_aliases: AHashMap<AggregateKind, Rc<str>>,
     /// Id of aggregate function in plan.
     pub fun_id: NodeId,
     /// Whether this aggregate was marked distinct in original user query
@@ -233,7 +163,7 @@ impl Aggregate {
         let aggr = Self {
             kind,
             fun_id,
-            lagg_aliases: AHashMap::with_capacity(2),
+            lagg_aliases: AHashMap::new(),
             parent_rel,
             parent_expr,
             is_distinct,
@@ -246,8 +176,9 @@ impl Aggregate {
         alias_to_pos: &ColumnPositionMap<N>,
     ) -> Result<Vec<PositionKind>, SbroadError> {
         let res = if self.is_distinct {
-            // For distinct aggregates kinds of
-            // local and final aggregates are the same.
+            // A distinct aggregate has no map stage: its argument goes into the local GROUP
+            // BY, which dedups it per shard, and the aggregate runs once on the reduce stage.
+            // So the alias names a grouping expression and the kind stays the user's.
             let local_alias = self
                 .lagg_aliases
                 .get(&self.kind)
@@ -255,29 +186,51 @@ impl Aggregate {
             let pos = alias_to_pos.get(local_alias)?;
             vec![(pos, self.kind)]
         } else {
-            let aggr_kinds = self.kind.get_local_aggregates_kinds();
-            let mut res = Vec::with_capacity(aggr_kinds.len());
-            for aggr_kind in aggr_kinds {
+            let local_kinds = self.kind.local_kinds();
+            let mut res = Vec::with_capacity(local_kinds.len());
+            for local_kind in local_kinds {
                 let local_alias = self
                     .lagg_aliases
-                    .get(&aggr_kind)
-                    .expect("missing local alias for local aggregate ({aggr_kind}): {self:?}");
+                    .get(local_kind)
+                    .expect("missing local alias for local aggregate ({local_kind}): {self:?}");
                 let pos = alias_to_pos.get(local_alias)?;
-                res.push((pos, aggr_kind));
+                res.push((pos, *local_kind));
             }
             res
         };
         Ok(res)
     }
 
+    /// Type the type system inferred for the aggregate the user wrote.
+    fn aggr_type(&self, plan: &Plan) -> Result<DerivedType, SbroadError> {
+        let Expression::ScalarFunction(ScalarFunction { func_type, .. }) =
+            plan.get_expression_node(self.fun_id)?
+        else {
+            unreachable!("Aggregate should reference ScalarFunction by fun_id")
+        };
+        Ok(*func_type)
+    }
+
+    /// Type of the local aggregate `local_kind` computes.
+    ///
+    /// Every local stage produces what the aggregate itself produces - `avg` and `sum` share
+    /// a signature, and the rest are their own local stage - except AVG's `count` half, which
+    /// counts rows.
+    fn local_type(local_kind: AggregateKind, aggr_type: DerivedType) -> DerivedType {
+        match local_kind {
+            AggregateKind::COUNT => DerivedType::new(RelType::Integer),
+            _ => aggr_type,
+        }
+    }
+
+    /// `col_type` is the type of the local column at `position` that the reduce stage reads.
     fn create_final_aggr(
         &self,
         plan: &mut Plan,
         position: Position,
         final_kind: AggregateKind,
+        col_type: DerivedType,
     ) -> Result<NodeId, SbroadError> {
-        let fun_expr = plan.get_expression_node(self.fun_id)?;
-        let col_type = fun_expr.calculate_type(plan)?;
         let child_id = plan.get_first_rel_child(self.parent_rel)?;
         let ref_id = plan.nodes.add_ref(
             ReferenceTarget::Single(child_id),
@@ -286,8 +239,23 @@ impl Aggregate {
             None,
             false,
         );
-        let children: Vec<NodeId> = match self.kind {
-            AggregateKind::AVG => vec![plan.add_cast(ref_id, CastType::Double)?],
+        let children: Vec<NodeId> = match final_kind {
+            // Tarantool picks an overload while it resolves the names, and a subquery has
+            // no column types at that moment. The reduce stage reads the local column
+            // through one, over the motion's table, so sum() sees an argument of type any,
+            // takes the first overload that accepts it and reports a decimal while it adds
+            // doubles. An ORDER BY or a DISTINCT over such a result then rejects the value:
+            // "expected decimal, got double". The cast gives the overload search the type
+            // the column has.
+            AggregateKind::SUM | AggregateKind::AVG => {
+                let Some(ty) = col_type.get() else {
+                    return Err(SbroadError::Invalid(
+                        Entity::Aggregate,
+                        Some(format_smolstr!("{} has no type", self.kind)),
+                    ));
+                };
+                vec![plan.add_cast(ref_id, CastType::try_from(ty)?)?]
+            }
             AggregateKind::GRCONCAT => {
                 let Expression::ScalarFunction(ScalarFunction { children, .. }) =
                     plan.get_expression_node(self.fun_id)?
@@ -308,24 +276,20 @@ impl Aggregate {
         } else {
             None
         };
-        // Type the node after the function it is, not after the aggregate the user wrote:
-        // `children` holds the map stage's output, so this derives the reduce stage's type
-        // from the first stage's. The two differ for COUNT, whose reduce stage is a sum().
-        let func_type = final_kind.get_type(plan, &children)?;
         let final_aggr = ScalarFunction {
             name: final_kind.to_smolstr(),
             children,
             feature,
-            func_type,
+            func_type: col_type,
             is_system: true,
             volatility_type: super::expression::VolatilityType::Stable,
             is_window: false,
         };
         let aggr_id = plan.nodes.push(final_aggr.into());
-        // Tarantool sum() returns a decimal for an integer argument, as PostgreSQL does. The
-        // reduce stage of COUNT adds the counts of the shards. Thus cast that sum to the
-        // integer of the column. If you do not cast it, the value is a decimal and picodata
-        // cannot decode it.
+        // Tarantool sum() returns a decimal for an integer argument, as PostgreSQL does, so
+        // the sum that adds up the counts of the shards for COUNT returns one too. The
+        // column keeps the integer that COUNT declares, and picodata cannot decode a
+        // decimal into it. Thus cast the result back.
         if final_kind == AggregateKind::SUM && *col_type.get() == Some(RelType::Integer) {
             return plan.add_cast(aggr_id, CastType::Integer);
         }
@@ -363,16 +327,20 @@ impl Aggregate {
             HashMap::with_capacity(AGGR_CAPACITY);
 
         if self.is_distinct {
-            // For distinct aggregates kinds of local and final aggregates are the same.
+            // No map stage to finish, so this is the aggregate the user wrote; see
+            // `get_position_kinds`.
             let (position, local_kind) = position_kinds
                 .first()
                 .expect("Distinct aggregate should have the only position kind");
-            let aggr_id = self.create_final_aggr(plan, *position, self.kind)?;
+            let aggr_type = self.aggr_type(plan)?;
+            let aggr_id = self.create_final_aggr(plan, *position, self.kind, aggr_type)?;
             final_aggregates.insert(*local_kind, aggr_id);
         } else {
+            let aggr_type = self.aggr_type(plan)?;
             for (position, local_kind) in position_kinds {
-                let final_aggregate_kind = self.kind.get_final_aggregate_kind(&local_kind)?;
-                let aggr_id = self.create_final_aggr(plan, position, final_aggregate_kind)?;
+                let final_kind = self.kind.final_kind(local_kind)?;
+                let col_type = Self::local_type(local_kind, aggr_type);
+                let aggr_id = self.create_final_aggr(plan, position, final_kind, col_type)?;
                 final_aggregates.insert(local_kind, aggr_id);
             }
         }
@@ -380,20 +348,18 @@ impl Aggregate {
         let final_expr_id = if final_aggregates.len() == 1 {
             *final_aggregates.values().next().unwrap()
         } else {
-            match self.kind {
-                AggregateKind::AVG => {
-                    let sum_aggr = *final_aggregates
-                        .get(&AggregateKind::SUM)
-                        .expect("SUM aggregate expr should exist for final AVG");
-                    let count_aggr = *final_aggregates
-                        .get(&AggregateKind::COUNT)
-                        .expect("COUNT aggregate expr should exist for final AVG");
-                    plan.add_arithmetic_to_plan(sum_aggr, Arithmetic::Divide, count_aggr)?
-                }
-                _ => {
-                    unreachable!("The only aggregate with multiple final aggregates is AVG")
-                }
-            }
+            assert_eq!(
+                self.kind,
+                AggregateKind::AVG,
+                "only AVG has more than one final aggregate"
+            );
+            let sum_aggr = *final_aggregates
+                .get(&AggregateKind::SUM)
+                .expect("SUM aggregate expr should exist for final AVG");
+            let count_aggr = *final_aggregates
+                .get(&AggregateKind::COUNT)
+                .expect("COUNT aggregate expr should exist for final AVG");
+            plan.add_arithmetic_to_plan(sum_aggr, Arithmetic::Divide, count_aggr)?
         };
         Ok(final_expr_id)
     }
@@ -466,11 +432,14 @@ impl<'plan> AggrCollector<'plan> {
 /// used at local stage.
 struct AggregateSignature<'plan> {
     pub kind: AggregateKind,
+    /// Type the local aggregate produces, taken from the type the type system inferred for
+    /// the aggregate this one is a stage of.
+    pub func_type: DerivedType,
     /// Ids of expressions used as arguments to aggregate.
     pub arguments: Vec<NodeId>,
     pub plan: &'plan Plan,
     /// Local alias of this local aggregate.
-    pub local_alias: Rc<String>,
+    pub local_alias: Rc<str>,
 }
 
 impl Hash for AggregateSignature<'_> {
@@ -498,8 +467,8 @@ impl PartialEq<Self> for AggregateSignature<'_> {
 
 impl Eq for AggregateSignature<'_> {}
 
-fn aggr_local_alias(kind: AggregateKind, index: usize) -> String {
-    format!("{kind}_{index}")
+fn aggr_local_alias(kind: AggregateKind, index: usize) -> Rc<str> {
+    Rc::from(format!("{kind}_{index}"))
 }
 
 impl Plan {
@@ -554,12 +523,13 @@ impl Plan {
     pub fn create_local_aggregate(
         &mut self,
         kind: AggregateKind,
+        func_type: DerivedType,
         arguments: &[NodeId],
         local_alias: &str,
     ) -> Result<NodeId, SbroadError> {
         let fun: Function = Function {
             name: kind.to_smolstr(),
-            func_type: kind.get_type(self, arguments)?,
+            func_type,
             is_system: true,
             volatility: super::expression::VolatilityType::Stable,
         };
@@ -591,12 +561,13 @@ impl Plan {
         let mut unique_local_aggregates: HashSet<AggregateSignature, RepeatableState> =
             HashSet::with_hasher(RepeatableState);
         for pos in 0..aggrs.len() {
-            let (final_kind, arguments, aggr_kinds) = {
+            let (aggr_kind, aggr_type, arguments, local_kinds) = {
                 let aggr: &Aggregate = aggrs.get(pos).unwrap();
                 if aggr.is_distinct {
                     continue;
                 }
 
+                let aggr_type = aggr.aggr_type(self)?;
                 let Expression::ScalarFunction(ScalarFunction {
                     children: arguments,
                     ..
@@ -607,16 +578,18 @@ impl Plan {
 
                 (
                     aggr.kind,
+                    aggr_type,
                     arguments.clone(),
-                    aggr.kind.get_local_aggregates_kinds(),
+                    aggr.kind.local_kinds(),
                 )
             };
 
-            for kind in aggr_kinds {
-                let local_alias = Rc::new(aggr_local_alias(final_kind, local_alias_index));
+            for kind in local_kinds.iter().copied() {
+                let local_alias = aggr_local_alias(aggr_kind, local_alias_index);
 
                 let signature = AggregateSignature {
                     kind,
+                    func_type: Aggregate::local_type(kind, aggr_type),
                     arguments: arguments.clone(),
                     plan: self,
                     local_alias: local_alias.clone(),
@@ -635,14 +608,22 @@ impl Plan {
             }
         }
 
-        type LocalAggregate = (AggregateKind, Vec<NodeId>, Rc<String>);
+        type LocalAggregate = (AggregateKind, DerivedType, Vec<NodeId>, Rc<str>);
         // Add non-distinct aggregates to local projection.
         let local_aggregates: Vec<LocalAggregate> = unique_local_aggregates
             .into_iter()
-            .map(|x| (x.kind, x.arguments.clone(), x.local_alias.clone()))
+            .map(|x| {
+                (
+                    x.kind,
+                    x.func_type,
+                    x.arguments.clone(),
+                    x.local_alias.clone(),
+                )
+            })
             .collect();
-        for (kind, arguments, local_alias) in local_aggregates {
-            let alias_id = self.create_local_aggregate(kind, &arguments, local_alias.as_str())?;
+        for (kind, func_type, arguments, local_alias) in local_aggregates {
+            let alias_id =
+                self.create_local_aggregate(kind, func_type, &arguments, local_alias.as_ref())?;
             output_cols.push(alias_id);
         }
 

@@ -691,7 +691,7 @@ fn front_order_by_over_single_distribution_must_not_add_motion() {
         scan
           projection (unnamed_subquery.id_count::int -> id_count)
             scan unnamed_subquery
-              projection (sum(count_1::int)::decimal::int -> id_count)
+              projection (sum(count_1::int::int)::int::int -> id_count)
                 motion [policy: full, program: ReshardIfNeeded]
                   projection (count(test_space.id::int::int)::int -> count_1)
                     scan test_space
@@ -1032,7 +1032,7 @@ fn front_sql_groupby_on_bucket_id() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (t.b::int -> b, count(*)::int -> col_1)
       group by (t.b::int)
         scan t
@@ -1313,7 +1313,7 @@ fn front_sql_join() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (t1.product_code::string -> product_code, t1.product_units::bool -> product_units)
       join on ((t1.identification_number::int = t2.id::decimal and not t2.id::decimal is null))
         scan t1
@@ -1321,7 +1321,7 @@ fn front_sql_join() {
             scan hash_single_testing
         motion [policy: full, program: ReshardIfNeeded]
           scan t2
-            projection (sum(sum_1::decimal)::decimal -> id)
+            projection (sum(sum_1::decimal::decimal)::decimal -> id)
               motion [policy: full, program: ReshardIfNeeded]
                 projection (sum(test_space.id::int::int)::decimal -> sum_1)
                   scan test_space
@@ -1380,7 +1380,7 @@ fn front_sql_aggregates() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (gr_expr_1::int -> b, sum(count_1::int)::decimal::int + sum(count_2::int)::decimal::int -> col_1)
+    projection (gr_expr_1::int -> b, sum(count_1::int::int)::int::int + sum(count_2::int::int)::int::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, count(t.a::int::int)::int -> count_1, count(t.b::int::int)::int -> count_2)
@@ -1418,8 +1418,8 @@ fn front_sql_avg_aggregate() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (sum(avg_1::decimal::double)::double / sum(avg_2::decimal::double)::double -> col_1, avg(distinct gr_expr_1::decimal::double)::double -> col_2, sum(avg_1::decimal::double)::double / sum(avg_2::decimal::double)::double * sum(avg_1::decimal::double)::double / sum(avg_2::decimal::double)::double -> col_3)
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (sum(avg_1::decimal::decimal)::decimal / sum(avg_2::int::int)::int::int -> col_1, avg(distinct gr_expr_1::decimal::decimal)::decimal -> col_2, sum(avg_1::decimal::decimal)::decimal / sum(avg_2::int::int)::int::int * sum(avg_1::decimal::decimal)::decimal / sum(avg_2::int::int)::int::int -> col_3)
       motion [policy: full, program: ReshardIfNeeded]
         projection (t.b::int::int -> gr_expr_1, sum(t.b::int::int)::decimal -> avg_1, count(t.b::int::int)::int -> avg_2)
           group by (t.b::int::int)
@@ -1534,7 +1534,7 @@ fn front_sql_count_asterisk1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (sum(count_1::int)::decimal::int -> col_1, sum(count_1::int)::decimal::int -> col_2)
+    projection (sum(count_1::int::int)::int::int -> col_1, sum(count_1::int::int)::int::int -> col_2)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
           scan t
@@ -1548,7 +1548,7 @@ fn front_sql_count_asterisk2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (sum(count_1::int)::decimal::int -> col_1, gr_expr_1::int -> b)
+    projection (sum(count_1::int::int)::int::int -> col_1, gr_expr_1::int -> b)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
@@ -1580,7 +1580,7 @@ fn front_sql_aggregates_with_subexpressions() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (gr_expr_1::int -> b, sum(count_1::int)::decimal::int -> col_1, sum(count_2::int)::decimal::int -> col_2)
+    projection (gr_expr_1::int -> b, sum(count_1::int::int)::int::int -> col_1, sum(count_2::int::int)::int::int -> col_2)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, count(TRIM(t.a::int::string)::string)::int -> count_2, count((t.a::int * t.b::int + 1::int)::int)::int -> count_1)
@@ -1596,7 +1596,7 @@ fn front_sql_aggregates_with_distinct1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (gr_expr_1::int -> b, count(distinct gr_expr_2::int)::int -> col_1, count(distinct gr_expr_3::int)::int -> col_2)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -1613,8 +1613,8 @@ fn front_sql_aggregates_with_distinct2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (gr_expr_1::int -> b, sum(distinct gr_expr_2::decimal)::decimal -> col_1)
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (gr_expr_1::int -> b, sum(distinct gr_expr_2::decimal::decimal)::decimal -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, (t.a::int + t.b::int + 3::int)::int -> gr_expr_2)
@@ -1629,8 +1629,8 @@ fn front_sql_aggregates_with_distinct3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (sum(distinct gr_expr_1::decimal)::decimal -> col_1)
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (sum(distinct gr_expr_1::decimal::decimal)::decimal -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection ((t.a::int + t.b::int + 3::int)::int -> gr_expr_1)
           group by ((t.a::int + t.b::int + 3::int)::int)
@@ -1732,7 +1732,7 @@ fn front_sql_pg_style_params3() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (gr_expr_1::int -> col_1)
-      having (sum(count_1::int)::decimal::int > 42::int)
+      having (sum(count_1::int::int)::int::int > 42::int)
         group by (gr_expr_1::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (t.a::int + 42::int -> gr_expr_1, count(t.b::int::int)::int -> count_1)
@@ -1899,8 +1899,8 @@ fn front_sql_aggregate_without_groupby() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (sum(sum_1::decimal)::decimal -> col_1)
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (sum((t.a::int * t.b::int + 1::int)::int)::decimal -> sum_1)
           scan t
@@ -1916,7 +1916,7 @@ fn front_sql_aggregate_without_groupby2() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (t1.col_1::int -> col_1)
       scan t1
-        projection (sum(count_1::int)::decimal::int -> col_1)
+        projection (sum(count_1::int::int)::int::int -> col_1)
           motion [policy: full, program: ReshardIfNeeded]
             projection (count(test_space.id::int::int)::int -> count_1)
               scan test_space
@@ -1932,7 +1932,7 @@ fn front_sql_aggregate_on_aggregate() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (max(t1.c::int::int)::int -> col_1)
       scan t1
-        projection (sum(count_1::int)::decimal::int -> c)
+        projection (sum(count_1::int::int)::int::int -> c)
           motion [policy: full, program: ReshardIfNeeded]
             projection (count(test_space.id::int::int)::int -> count_1)
               scan test_space
@@ -1949,12 +1949,12 @@ fn front_sql_union_single_left() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     union all
       projection (t.a::int -> a)
         scan t
       motion [policy: segment([ref(col_1)]), program: ReshardIfNeeded]
-        projection (sum(sum_1::decimal)::decimal -> col_1)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1)
               scan t
@@ -1971,10 +1971,10 @@ fn front_sql_union_single_right() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     union all
       motion [policy: segment([ref(col_1)]), program: ReshardIfNeeded]
-        projection (sum(sum_1::decimal)::decimal -> col_1)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1)
               scan t
@@ -1993,13 +1993,13 @@ fn front_sql_union_single_both() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     union all
-      projection (sum(sum_1::decimal)::decimal -> col_1)
+      projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
         motion [policy: full, program: ReshardIfNeeded]
           projection (sum(t.a::int::int)::decimal -> sum_1)
             scan t
-      projection (sum(sum_1::decimal)::decimal -> col_1)
+      projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
         motion [policy: full, program: ReshardIfNeeded]
           projection (sum(t.a::int::int)::decimal -> sum_1)
             scan t
@@ -2016,7 +2016,7 @@ fn front_sql_insert_single() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     insert into t on conflict: fail
       motion [policy: segment([value(NULL), ref(col_2)]), program: ReshardIfNeeded]
-        projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::decimal::int -> col_2)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1, sum(count_2::int::int)::int::int -> col_2)
           motion [policy: full, program: ReshardIfNeeded]
             projection (count(t.d::int::int)::int -> count_2, sum(t.b::int::int)::decimal -> sum_1)
               scan t
@@ -2036,7 +2036,7 @@ fn front_sql_except_single_right() {
       projection (t.a::int -> a, t.b::int -> b)
         scan t
       motion [policy: segment([ref(col_1), ref(col_2)]), program: ReshardIfNeeded]
-        projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::decimal::int -> col_2)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1, sum(count_2::int::int)::int::int -> col_2)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1, count(t.b::int::int)::int -> count_2)
               scan t
@@ -2054,7 +2054,7 @@ fn front_sql_except_single_right() {
       projection (t.b::int -> b, t.a::int -> a)
         scan t
       motion [policy: segment([ref(col_2), ref(col_1)]), program: ReshardIfNeeded]
-        projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::decimal::int -> col_2)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1, sum(count_2::int::int)::int::int -> col_2)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1, count(t.b::int::int)::int -> count_2)
               scan t
@@ -2072,7 +2072,7 @@ fn front_sql_except_single_left() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     except
       motion [policy: segment([ref(col_1), ref(col_2)]), program: ReshardIfNeeded]
-        projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::decimal::int -> col_2)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1, sum(count_2::int::int)::int::int -> col_2)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1, count(t.b::int::int)::int -> count_2)
               scan t
@@ -2092,12 +2092,12 @@ fn front_sql_except_single_both() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     except
       motion [policy: segment([ref(col_1)]), program: ReshardIfNeeded]
-        projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::decimal::int -> col_2)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1, sum(count_2::int::int)::int::int -> col_2)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1, count(t.b::int::int)::int -> count_2)
               scan t
       motion [policy: segment([ref(col_1)]), program: ReshardIfNeeded]
-        projection (sum(sum_1::decimal)::decimal -> col_1, sum(sum_2::decimal)::decimal -> col_2)
+        projection (sum(sum_1::decimal::decimal)::decimal -> col_1, sum(sum_2::decimal::decimal)::decimal -> col_2)
           motion [policy: full, program: ReshardIfNeeded]
             projection (sum(t.a::int::int)::decimal -> sum_1, sum(t.b::int::int)::decimal -> sum_2)
               scan t
@@ -2129,7 +2129,7 @@ fn front_sql_groupby_expression2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (gr_expr_1::int + sum(count_1::int)::decimal::int -> col_1)
+    projection (gr_expr_1::int + sum(count_1::int::int)::int::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int + t.b::int -> gr_expr_1, count(t.a::int::int)::int -> count_1)
@@ -2146,7 +2146,7 @@ fn front_sql_groupby_expression3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (gr_expr_1::int -> col_1, (gr_expr_2::int * sum(sum_1::decimal)::decimal) / sum(count_2::int)::decimal::int -> col_2)
+    projection (gr_expr_1::int -> col_1, (gr_expr_2::int * sum(sum_1::decimal::decimal)::decimal) / sum(count_2::int::int)::int::int -> col_2)
       group by (gr_expr_1::int, gr_expr_2::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int + t.b::int -> gr_expr_1, t.c::int * t.d::int -> gr_expr_2, count((t.a::int * t.b::int)::int)::int -> count_2, sum((t.c::int * t.d::int)::int)::decimal -> sum_1)
@@ -2392,7 +2392,7 @@ fn front_sql_groupby_expression_with_sq_and_aggregate() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (gr_expr_1::int -> col_1, sum(count_1::int)::decimal::int -> col_2)
+    projection (gr_expr_1::int -> col_1, sum(count_1::int::int)::int::int -> col_2)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.a::int + ROW($0) -> gr_expr_1, count(*)::int -> count_1)
@@ -2470,7 +2470,7 @@ fn front_sql_distinct_aggregate_sq_next_to_grouping_expr_sq() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (count(distinct gr_expr_2::int)::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2503,7 +2503,7 @@ fn front_sql_groupby_sq_with_join() {
         GROUP BY "a" + (SELECT sum("x"."c") FROM "t" AS "x" JOIN "t" AS "y" ON "x"."a" = "y"."b")"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (gr_expr_1::decimal -> col_1)
       group by (gr_expr_1::decimal)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2513,7 +2513,7 @@ fn front_sql_groupby_sq_with_join() {
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
-          projection (sum(sum_1::decimal)::decimal -> col_1)
+          projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
             motion [policy: full, program: ReshardIfNeeded]
               projection (sum(x.c::int::int)::decimal -> sum_1)
                 join on (x.a::int = y.b::int)
@@ -2582,7 +2582,7 @@ fn front_sql_groupby_expression_with_sq_over_differently_aliased_scan() {
         GROUP BY "a" + (SELECT sum("y"."b") FROM "t" AS "y")"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (gr_expr_1::decimal -> col_1)
       group by (gr_expr_1::decimal)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2592,7 +2592,7 @@ fn front_sql_groupby_expression_with_sq_over_differently_aliased_scan() {
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
-          projection (sum(sum_1::decimal)::decimal -> col_1)
+          projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
             motion [policy: full, program: ReshardIfNeeded]
               projection (sum(y.b::int::int)::decimal -> sum_1)
                 scan t -> y
@@ -2606,7 +2606,7 @@ fn front_sql_groupby_sq_with_join_over_unnamed_derived_table() {
         GROUP BY "a" + (SELECT sum("e") FROM "t2" JOIN (SELECT "a" FROM "t") ON "e" = "a")"#;
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (gr_expr_1::decimal -> col_1)
       group by (gr_expr_1::decimal)
         motion [policy: full, program: ReshardIfNeeded]
@@ -2616,7 +2616,7 @@ fn front_sql_groupby_sq_with_join_over_unnamed_derived_table() {
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
-          projection (sum(sum_1::decimal)::decimal -> col_1)
+          projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
             motion [policy: full, program: ReshardIfNeeded]
               projection (sum(t2.e::int::int)::decimal -> sum_1)
                 join on (t2.e::int = unnamed_subquery.a::int)
@@ -2874,18 +2874,18 @@ fn front_sql_groupby_with_aggregates() {
         on (t1."a", t2."g") = (t2."e", t1."b")"#;
 
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (t1.a::int -> a, t1.b::int -> b, t1.c::decimal -> c, t2.g::int -> g, t2.e::int -> e, t2.f::decimal -> f)
       join on (ROW(t1.a::int, t1.b::int) = ROW(t2.e::int, t2.g::int))
         scan t1
-          projection (gr_expr_1::int -> a, gr_expr_2::int -> b, sum(sum_1::decimal)::decimal -> c)
+          projection (gr_expr_1::int -> a, gr_expr_2::int -> b, sum(sum_1::decimal::decimal)::decimal -> c)
             group by (gr_expr_1::int, gr_expr_2::int)
               motion [policy: full, program: ReshardIfNeeded]
                 projection (t.a::int -> gr_expr_1, t.b::int -> gr_expr_2, sum(t.c::int::int)::decimal -> sum_1)
                   group by (t.a::int, t.b::int)
                     scan t
         scan t2
-          projection (gr_expr_1::int -> g, gr_expr_2::int -> e, sum(sum_1::decimal)::decimal -> f)
+          projection (gr_expr_1::int -> g, gr_expr_2::int -> e, sum(sum_1::decimal::decimal)::decimal -> f)
             group by (gr_expr_1::int, gr_expr_2::int)
               motion [policy: full, program: ReshardIfNeeded]
                 projection (t2.g::int -> gr_expr_1, t2.e::int -> gr_expr_2, sum(t2.f::int::int)::decimal -> sum_1)
@@ -2926,12 +2926,12 @@ fn front_sql_left_join_single_left() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (t1.a::decimal -> a, t2.b::int -> b)
       left join on (t1.a::decimal = t2.b::int)
         motion [policy: segment([ref(a)]), program: ReshardIfNeeded]
           scan t1
-            projection (sum(sum_1::decimal)::decimal / 3::int -> a)
+            projection (sum(sum_1::decimal::decimal)::decimal / 3::int -> a)
               motion [policy: full, program: ReshardIfNeeded]
                 projection (sum(test_space.id::int::int)::decimal -> sum_1)
                   scan test_space
@@ -2953,12 +2953,12 @@ fn front_sql_left_join_single_left2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     // full motion should be under outer child
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     projection (t1.a::decimal -> a, t2.b::int -> b)
       left join on (t1.a::decimal + 3::int <> t2.b::int)
         motion [policy: segment([ref(a)]), program: ReshardIfNeeded]
           scan t1
-            projection (sum(sum_1::decimal)::decimal / 3::int -> a)
+            projection (sum(sum_1::decimal::decimal)::decimal / 3::int -> a)
               motion [policy: full, program: ReshardIfNeeded]
                 projection (sum(test_space.id::int::int)::decimal -> sum_1)
                   scan test_space
@@ -2984,12 +2984,12 @@ fn front_sql_left_join_single_both() {
     projection (t1.a::decimal -> a, t2.b::int -> b)
       left join on (t1.a::decimal <> t2.b::int)
         scan t1
-          projection (sum(sum_1::decimal)::decimal / 3::int -> a)
+          projection (sum(sum_1::decimal::decimal)::decimal / 3::int -> a)
             motion [policy: full, program: ReshardIfNeeded]
               projection (sum(test_space.id::int::int)::decimal -> sum_1)
                 scan test_space
         scan t2
-          projection (sum(count_1::int)::decimal::int -> b)
+          projection (sum(count_1::int::int)::int::int -> b)
             motion [policy: full, program: ReshardIfNeeded]
               projection (count(test_space.id::int::int)::int -> count_1)
                 scan test_space
@@ -3032,9 +3032,9 @@ fn front_sql_having1() {
 
     println!("Formatted arena: {}", plan.formatted_arena().unwrap());
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (gr_expr_1::int -> a, sum(sum_1::decimal)::decimal -> col_1)
-      having ((gr_expr_1::int > 1::int and sum(distinct gr_expr_2::decimal)::decimal > 1::int))
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (gr_expr_1::int -> a, sum(sum_1::decimal::decimal)::decimal -> col_1)
+      having ((gr_expr_1::int > 1::int and sum(distinct gr_expr_2::decimal::decimal)::decimal > 1::int))
         group by (gr_expr_1::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (t.a::int -> gr_expr_1, t.b::int::int -> gr_expr_2, sum(t.b::int::int)::decimal -> sum_1)
@@ -3051,9 +3051,9 @@ fn front_sql_having2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (sum(sum_1::decimal)::decimal * count(distinct gr_expr_1::int)::int -> col_1, sum(sum_1::decimal)::decimal -> col_2)
-      having ((sum(distinct gr_expr_1::decimal)::decimal > 1::int and sum(sum_1::decimal)::decimal > 1::int))
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (sum(sum_1::decimal::decimal)::decimal * count(distinct gr_expr_1::int)::int -> col_1, sum(sum_1::decimal::decimal)::decimal -> col_2)
+      having ((sum(distinct gr_expr_1::decimal::decimal)::decimal > 1::int and sum(sum_1::decimal::decimal)::decimal > 1::int))
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int::int -> gr_expr_1, sum(t.a::int::int)::decimal -> sum_1)
             group by (t.b::int::int)
@@ -3069,9 +3069,9 @@ fn front_sql_having3() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (sum(sum_1::decimal)::decimal -> col_1)
-      having (sum(sum_1::decimal)::decimal > 1::int)
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
+      having (sum(sum_1::decimal::decimal)::decimal > 1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (sum(t.a::int::int)::decimal -> sum_1)
             scan t
@@ -3104,7 +3104,7 @@ fn front_sql_having_with_sq() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (gr_expr_1::int -> "sysFrom", sum(distinct gr_expr_2::decimal)::decimal -> sum, count(distinct gr_expr_2::int)::int -> count)
+    projection (gr_expr_1::int -> "sysFrom", sum(distinct gr_expr_2::decimal::decimal)::decimal -> sum, count(distinct gr_expr_2::int)::int -> count)
       having (ROW($0) > count(distinct gr_expr_2::int)::int)
         group by (gr_expr_1::int)
           motion [policy: full, program: ReshardIfNeeded]
@@ -3148,7 +3148,7 @@ fn front_sql_having_with_sq_segment_motion() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (gr_expr_1::int -> "sysFrom", gr_expr_2::int -> sys_op, sum(distinct gr_expr_3::decimal)::decimal -> sum, count(distinct gr_expr_3::int)::int -> count)
+    projection (gr_expr_1::int -> "sysFrom", gr_expr_2::int -> sys_op, sum(distinct gr_expr_3::decimal::decimal)::decimal -> sum, count(distinct gr_expr_3::int)::int -> count)
       having (ROW(gr_expr_1::int, gr_expr_2::int) in ROW($0, $0))
         group by (gr_expr_1::int, gr_expr_2::int)
           motion [policy: full, program: ReshardIfNeeded]
@@ -3175,7 +3175,7 @@ fn front_sql_having_with_sq_segment_local_motion() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (gr_expr_1::int -> "sysFrom", gr_expr_2::int -> sys_op, sum(distinct gr_expr_3::decimal)::decimal -> sum, count(distinct gr_expr_3::int)::int -> count)
+    projection (gr_expr_1::int -> "sysFrom", gr_expr_2::int -> sys_op, sum(distinct gr_expr_3::decimal::decimal)::decimal -> sum, count(distinct gr_expr_3::int)::int -> count)
       having (ROW(gr_expr_1::int, gr_expr_2::int) in ROW($0, $0))
         group by (gr_expr_1::int, gr_expr_2::int)
           motion [policy: full, program: ReshardIfNeeded]
@@ -3199,7 +3199,7 @@ fn front_sql_unique_local_aggregates() {
 
     // here we must compute only two aggregates at local stage: sum(a), count(a)
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (sum(sum_1::decimal)::decimal -> col_1, sum(count_2::int)::decimal::int -> col_2, sum(sum_1::decimal)::decimal + sum(count_2::int)::decimal::int -> col_3)
+    projection (sum(sum_1::decimal::decimal)::decimal -> col_1, sum(count_2::int::int)::int::int -> col_2, sum(sum_1::decimal::decimal)::decimal + sum(count_2::int::int)::int::int -> col_3)
       motion [policy: full, program: ReshardIfNeeded]
         projection (sum(t.a::int::int)::decimal -> sum_1, count(t.a::int::int)::int -> count_2)
           scan t
@@ -3216,8 +3216,8 @@ fn front_sql_unique_local_groupings() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     // here we must compute only two groupby columns at local stage: a, b
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (sum(distinct gr_expr_2::decimal)::decimal -> col_1, count(distinct gr_expr_2::int)::int -> col_2, count(distinct gr_expr_3::int)::int -> col_3)
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (sum(distinct gr_expr_2::decimal::decimal)::decimal -> col_1, count(distinct gr_expr_2::int)::int -> col_2, count(distinct gr_expr_3::int)::int -> col_3)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, t.a::int::int -> gr_expr_2, t.b::int::int -> gr_expr_3)
@@ -3313,8 +3313,8 @@ fn front_sql_select_distinct_with_aggr() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (sum(sum_1::decimal)::decimal -> col_1, gr_expr_1::int -> b)
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (sum(sum_1::decimal::decimal)::decimal -> col_1, gr_expr_1::int -> b)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (t.b::int -> gr_expr_1, sum(t.a::int::int)::decimal -> sum_1)
@@ -3329,8 +3329,8 @@ fn front_sql_select_distinct_with_aggr2() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (sum(sum_1::decimal)::decimal -> col_1)
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (sum(sum_1::decimal::decimal)::decimal -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (sum(t.a::int::int)::decimal -> sum_1)
           scan t
@@ -3807,7 +3807,7 @@ fn front_sql_update6() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     update t3 (b = col_0)
       motion [policy: local, program: ReshardIfNeeded]
         projection (2::int -> col_0, t3.a::string -> col_1)
@@ -3816,7 +3816,7 @@ fn front_sql_update6() {
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
-          projection (sum(sum_1::decimal)::decimal -> s)
+          projection (sum(sum_1::decimal::decimal)::decimal -> s)
             motion [policy: full, program: ReshardIfNeeded]
               projection (sum(t3.b::int::int)::decimal -> sum_1)
                 scan t3
@@ -4194,9 +4194,8 @@ fn front_count_no_params() {
     let err = plan.unwrap_err();
 
     assert_eq!(
-        true,
+        "could not resolve function overload for count()",
         err.to_string()
-            .contains("invalid query: Expected one argument for aggregate: \"count\"")
     );
 }
 
@@ -4460,7 +4459,7 @@ fn front_subqueries_interpreted_as_expression_under_group_by() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (sum(count_1::int)::decimal::int -> col_1)
+    projection (sum(count_1::int::int)::int::int -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
           projection (test_space.id::int + ROW($0) -> gr_expr_1, count(*)::int -> count_1)
@@ -4492,7 +4491,7 @@ fn front_select_without_scan_2() {
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
-          projection (sum(count_1::int)::decimal::int -> col_1)
+          projection (sum(count_1::int::int)::int::int -> col_1)
             motion [policy: full, program: ReshardIfNeeded]
               projection (count(*)::int -> count_1)
                 scan t2

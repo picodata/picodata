@@ -615,10 +615,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_1356237005327065706_0136" ) GROUP BY "COL_0" HAVING sum ("COL_1") = CAST(0 AS int)
+SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_1879919115115793640_0136" ) GROUP BY "COL_0" HAVING sum (CAST ("COL_1" as decimal)) = CAST(0 AS int)
 ''
 plan:
-    [0] SCAN TABLE _tmp_1356237005327065706_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_1879919115115793640_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭─────────────────────────────────╮
@@ -664,10 +664,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_12133845285015910755_1136" ) GROUP BY "COL_0" HAVING sum ("COL_1") = CAST(0 AS int)
+SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_8118577962894911439_1136" ) GROUP BY "COL_0" HAVING sum (CAST ("COL_1" as decimal)) = CAST(0 AS int)
 ''
 plan:
-    [0] SCAN TABLE _tmp_12133845285015910755_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_8118577962894911439_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭─────────────────────────────────╮
@@ -821,10 +821,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", CAST (sum ("COL_1") as int) as "global_rows", sum ("COL_3") as "global_units", sum ("COL_2") as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_7921097236583323284_0136" ) GROUP BY "COL_0" HAVING sum ("COL_2") > sum ("COL_3") ) ORDER BY "global_units" DESC LIMIT 10
+SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", CAST (sum (CAST ("COL_1" as int)) as int) as "global_rows", sum (CAST ("COL_3" as decimal)) as "global_units", sum (CAST ("COL_2" as decimal)) as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_11484464996825375076_0136" ) GROUP BY "COL_0" HAVING sum (CAST ("COL_2" as decimal)) > sum (CAST ("COL_3" as decimal)) ) ORDER BY "global_units" DESC LIMIT 10
 ''
 plan:
-    [0] SCAN TABLE _tmp_7921097236583323284_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_11484464996825375076_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 

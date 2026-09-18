@@ -110,7 +110,7 @@ type GroupbyExpressionsMap = AHashMap<NodeId, Vec<ExpressionLocationId>>;
 /// initial query: `select a, count(distinct b) from t group by a`
 /// map query: `select a as l1, b group by a, b`
 /// Then this map will map id of `a` to `l1`
-type LocalAliasesMap = HashMap<NodeId, Rc<String>>;
+type LocalAliasesMap = HashMap<NodeId, Rc<str>>;
 
 /// Helper struct to map expressions used in `GroupBy` to
 /// expressions used in some other node (`Projection`, `Having`, `OrderBy`)
@@ -198,8 +198,8 @@ impl<'plan> ExpressionMapper<'plan> {
 
 /// Generate alias for grouping expression used under local GroupBy.
 /// Read more about local aliases under `add_local_projection` comments.
-fn grouping_expr_local_alias(index: usize) -> Rc<String> {
-    Rc::new(format!("gr_expr_{index}"))
+fn grouping_expr_local_alias(index: usize) -> Rc<str> {
+    Rc::from(format!("gr_expr_{index}"))
 }
 
 /// Capacity for the vecs/maps of grouping expressions we expect
@@ -234,7 +234,7 @@ struct GroupByInfo {
     grouping_exprs: Vec<NodeId>,
     grouping_exprs_map: GroupbyExpressionsMap,
     /// Map of { grouping_expr under local GroupBy -> its alias }.
-    grouping_expr_to_alias_map: OrderedMap<NodeId, Rc<String>, RepeatableState>,
+    grouping_expr_to_alias_map: OrderedMap<NodeId, Rc<str>, RepeatableState>,
     reduce_info: GroupByReduceInfo,
 }
 
@@ -605,7 +605,7 @@ impl Plan {
         // so that our tests are not flaky.
         let mut unique_grouping_expr_to_alias_map: OrderedMap<
             GroupingExpression,
-            Rc<String>,
+            Rc<str>,
             RepeatableState,
         > = OrderedMap::with_capacity_and_hasher(GR_EXPR_CAPACITY, RepeatableState);
         // Grouping expressions for local GroupBy.
@@ -734,7 +734,7 @@ impl Plan {
         output_cols: &mut Vec<NodeId>,
     ) -> Result<(), SbroadError> {
         // Map of { grouping_expr_alias -> proj_output_position }.
-        let mut alias_to_pos: HashMap<Rc<String>, usize> = HashMap::with_capacity(EXPR_CAPACITY);
+        let mut alias_to_pos: HashMap<Rc<str>, usize> = HashMap::with_capacity(EXPR_CAPACITY);
         // Add grouping expressions to local projection.
         for (pos, (gr_expr, local_alias)) in
             groupby_info.grouping_expr_to_alias_map.iter().enumerate()

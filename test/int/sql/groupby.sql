@@ -404,6 +404,196 @@ SELECT DISTINCT count("e") FROM "arithmetic_space" GROUP BY "b";
 -- UNORDERED:
 1, 2
 
+-- TEST: test_sum_setup
+-- SQL:
+DROP TABLE IF EXISTS sum_t;
+CREATE TABLE sum_t (id INT PRIMARY KEY, g INT, i INT, d DOUBLE, t TEXT);
+INSERT INTO sum_t VALUES
+    (1, 1, 2, 0.25, 'a'),
+    (2, 1, 2, 0.5, 'b'),
+    (3, 1, -3, 1.5, 'a'),
+    (4, 2, 5, 2.5, 'c'),
+    (5, 2, 7, 0.25, 'c');
+
+-- TEST: test_sum_distinct_ordered_by_aggregate_with_limit
+-- SQL:
+SELECT g, sum(DISTINCT i) FROM sum_t GROUP BY g ORDER BY 2 DESC LIMIT 8;
+-- EXPECTED:
+2, 12, 1, -1
+
+-- TEST: test_sum_double_ordered_by_aggregate_with_limit
+-- SQL:
+SELECT g, sum(d) FROM sum_t GROUP BY g ORDER BY 2 DESC LIMIT 8;
+-- EXPECTED:
+2, 2.75, 1, 2.25
+
+-- TEST: test_distinct_sum_double_with_groupby
+-- SQL:
+SELECT DISTINCT sum(d) FROM sum_t GROUP BY g;
+-- UNORDERED:
+2.25, 2.75
+
+-- TEST: test_count_distinct_double
+-- SQL:
+SELECT g, count(DISTINCT d) FROM sum_t GROUP BY g ORDER BY 1;
+-- EXPECTED:
+1, 3, 2, 2
+
+-- TEST: test_count_distinct_text
+-- SQL:
+SELECT g, count(DISTINCT t) FROM sum_t GROUP BY g ORDER BY 1;
+-- EXPECTED:
+1, 2, 2, 1
+
+-- TEST: test_other_aggregates_setup
+-- SQL:
+DROP TABLE IF EXISTS aggr_t;
+CREATE TABLE aggr_t (id INT PRIMARY KEY, g INT, i INT, d DOUBLE, t TEXT, k TEXT);
+INSERT INTO aggr_t VALUES
+    (1, 1, 1, 0.5, 'a', 'x'),
+    (2, 1, 4, 1.5, 'b', 'x'),
+    (3, 2, 2, 2.5, 'c', 'y'),
+    (4, 3, 1, 0.5, 'a', 'x'),
+    (5, 3, 4, 1.5, 'b', 'x');
+
+-- TEST: test_avg_ordered_by_aggregate_with_limit
+-- SQL:
+SELECT g, avg(i), avg(DISTINCT i), avg(d) FROM aggr_t GROUP BY g ORDER BY 2 DESC, 1 LIMIT 8;
+-- EXPECTED:
+1, 2.5, 2.5, 1.0,
+3, 2.5, 2.5, 1.0,
+2, 2, 2, 2.5
+
+-- TEST: test_distinct_avg_with_groupby
+-- SQL:
+SELECT DISTINCT avg(i), avg(DISTINCT i), avg(d) FROM aggr_t GROUP BY g;
+-- UNORDERED:
+2.5, 2.5, 1.0,
+2, 2, 2.5
+
+-- TEST: test_total_ordered_by_aggregate_with_limit
+-- SQL:
+SELECT g, total(i), total(DISTINCT d) FROM aggr_t GROUP BY g ORDER BY 2 DESC, 1 LIMIT 8;
+-- EXPECTED:
+1, 5.0, 2.0,
+3, 5.0, 2.0,
+2, 2.0, 2.5
+
+-- TEST: test_distinct_total_with_groupby
+-- SQL:
+SELECT DISTINCT total(i), total(DISTINCT d) FROM aggr_t GROUP BY g;
+-- UNORDERED:
+5.0, 2.0,
+2.0, 2.5
+
+-- TEST: test_min_max_ordered_by_aggregate_with_limit
+-- SQL:
+SELECT g, min(i), max(d), max(t) FROM aggr_t GROUP BY g ORDER BY 2 DESC, 1 LIMIT 8;
+-- EXPECTED:
+2, 2, 2.5, 'c',
+1, 1, 1.5, 'b',
+3, 1, 1.5, 'b'
+
+-- TEST: test_distinct_min_max_with_groupby
+-- SQL:
+SELECT DISTINCT min(i), max(d), max(t) FROM aggr_t GROUP BY g;
+-- UNORDERED:
+1, 1.5, 'b',
+2, 2.5, 'c'
+
+-- TEST: test_group_concat_ordered_by_aggregate_with_limit
+-- SQL:
+SELECT g, group_concat(k, '-') FROM aggr_t GROUP BY g ORDER BY 2 DESC, 1 LIMIT 8;
+-- EXPECTED:
+2, 'y', 1, 'x-x', 3, 'x-x'
+
+-- TEST: test_distinct_group_concat_with_groupby
+-- SQL:
+SELECT DISTINCT group_concat(k, '-') FROM aggr_t GROUP BY g;
+-- UNORDERED:
+'x-x', 'y'
+
+-- TEST: test_count_distinct_ordered_by_aggregate_with_limit
+-- SQL:
+SELECT g, count(DISTINCT t) FROM aggr_t GROUP BY g ORDER BY 2 DESC, 1 LIMIT 8;
+-- EXPECTED:
+1, 2, 3, 2, 2, 1
+
+-- TEST: test_distinct_count_distinct_with_groupby
+-- SQL:
+SELECT DISTINCT count(DISTINCT t) FROM aggr_t GROUP BY g;
+-- UNORDERED:
+2, 1
+
+-- TEST: test_avg_and_count_of_one_column
+-- SQL:
+SELECT avg(i), count(i) FROM aggr_t;
+-- EXPECTED:
+Decimal('2.4'), 5
+
+-- TEST: test_avg_and_count_of_one_column_ordered_with_limit
+-- SQL:
+SELECT g, avg(i), count(i) FROM aggr_t GROUP BY g ORDER BY 3 DESC, 1 LIMIT 8;
+-- EXPECTED:
+1, 2.5, 2,
+3, 2.5, 2,
+2, 2, 1
+
+-- TEST: test_distinct_avg_and_count_of_one_column
+-- SQL:
+SELECT DISTINCT avg(i), count(i) FROM aggr_t GROUP BY g;
+-- UNORDERED:
+2.5, 2,
+2, 1
+
+-- TEST: test_avg_and_count_asterisk
+-- SQL:
+SELECT avg(i), count(*) FROM aggr_t;
+-- EXPECTED:
+Decimal('2.4'), 5
+
+-- TEST: test_avg_and_count_asterisk_ordered_with_limit
+-- SQL:
+SELECT g, avg(i), count(*) FROM aggr_t GROUP BY g ORDER BY 3 DESC, 1 LIMIT 8;
+-- EXPECTED:
+1, 2.5, 2,
+3, 2.5, 2,
+2, 2, 1
+
+-- TEST: test_distinct_avg_and_count_asterisk
+-- SQL:
+SELECT DISTINCT avg(i), count(*) FROM aggr_t GROUP BY g;
+-- UNORDERED:
+2.5, 2,
+2, 1
+
+-- TEST: test_avg_and_sum_of_one_column
+-- SQL:
+SELECT avg(i), sum(i) FROM aggr_t;
+-- EXPECTED:
+Decimal('2.4'), 12
+
+-- TEST: test_avg_and_sum_of_one_column_ordered_with_limit
+-- SQL:
+SELECT g, avg(i), sum(i) FROM aggr_t GROUP BY g ORDER BY 3 DESC, 1 LIMIT 8;
+-- EXPECTED:
+1, 2.5, 5,
+3, 2.5, 5,
+2, 2, 2
+
+-- TEST: test_distinct_avg_and_sum_of_one_column
+-- SQL:
+SELECT DISTINCT avg(i), sum(i) FROM aggr_t GROUP BY g;
+-- UNORDERED:
+2.5, 5,
+2, 2
+
+-- TEST: test_avg_and_sum_of_one_double_column
+-- SQL:
+SELECT avg(d), sum(d) FROM aggr_t;
+-- EXPECTED:
+1.3, 6.5
+
 -- TEST: test_aggr_invalid
 -- SQL:
 SELECT "d", count(sum("e")) from "arithmetic_space" group by "d";
@@ -700,6 +890,12 @@ INSERT INTO big_sum VALUES
 SELECT sum(v) FROM big_sum;
 -- EXPECTED:
 Decimal('27670116110564327421')
+
+-- TEST: test_avg_over_integers_is_decimal
+-- SQL:
+SELECT avg("a"), avg(distinct "id") FROM "arithmetic_space" WHERE "id" <> 2;
+-- EXPECTED:
+Decimal('1.6666666666666666666666666666666666667'), Decimal('2.6666666666666666666666666666666666667')
 
 -- TEST: test_avg_with_groupby
 -- SQL:

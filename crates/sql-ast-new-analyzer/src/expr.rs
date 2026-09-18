@@ -553,7 +553,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
             ExprInner::FunctionCall(call) => {
                 let (name, args) = call.into_parts();
 
-                let is_aggr_func = AggregateKind::from_name_unnorm(name.as_str()).is_some();
+                let is_aggr_func = AggregateKind::from_name(name.as_str()).is_some();
 
                 if is_aggr_func {
                     meta.binder.init_aggr()?;
