@@ -13,8 +13,8 @@ use crate::ir::columns::RelColumn;
 use crate::ir::expression::{ColumnWithScan, FunctionFeature, Substring, TrimKind};
 use crate::ir::metadata::Metadata;
 use crate::ir::node::{
-    Bound, BoundType, CountAsterisk, Frame, FrameType, LetVarRef, NodeId, Over, ReferenceTarget,
-    TimeParameters, Timestamp, Window,
+    Bound, BoundType, CountAsterisk, CurrentUser, Frame, FrameType, LetVarRef, NodeId, Over,
+    ReferenceTarget, TimeParameters, Timestamp, Window,
 };
 use crate::ir::operator::{Arithmetic, Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::types::{CastType, DerivedType, NestedType, UnrestrictedType};
@@ -1172,6 +1172,10 @@ where
                 }
                 Rule::CurrentDate => {
                     let plan_id = plan.nodes.push(Timestamp::Date.into());
+                    ParseExpression::PlanId { plan_id }
+                }
+                Rule::CurrentUser => {
+                    let plan_id = plan.nodes.push(CurrentUser {}.into());
                     ParseExpression::PlanId { plan_id }
                 }
                 rule @ (Rule::CurrentTime |

@@ -721,6 +721,13 @@ impl ColExpr {
                     let expr = ColExpr::Const(name, current_node.calculate_type(plan)?);
                     stack.push((expr, id));
                 }
+                Expression::CurrentUser(_) => {
+                    let expr = ColExpr::Const(
+                        "CurrentUser".to_smolstr(),
+                        current_node.calculate_type(plan)?,
+                    );
+                    stack.push((expr, id));
+                }
                 Expression::Parameter(_) => (),
                 Expression::LetVarRef(let_var_ref) => {
                     let expr = ColExpr::Const(

@@ -202,6 +202,7 @@ impl Expression<'_> {
             }
             Expression::CountAsterisk(_) => DerivedType::new(UnrestrictedType::Integer),
             Expression::Timestamp(_) => DerivedType::new(UnrestrictedType::Datetime),
+            Expression::CurrentUser(_) => DerivedType::new(UnrestrictedType::String),
             Expression::Parameter(Parameter { param_type, .. }) => *param_type,
             Expression::LetVarRef(LetVarRef { var_type, .. }) => *var_type,
         };

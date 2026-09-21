@@ -1503,6 +1503,11 @@ impl Router for RouterRuntimeMock {
         Ok(f())
     }
 
+    /// Unit tests run without tarantool, so a fixed user name is used.
+    fn get_user_name() -> Result<String, SbroadError> {
+        Ok("admin".to_string())
+    }
+
     fn new_port<'p>(&self) -> impl Port<'p> {
         PortMocked::new()
     }

@@ -4080,6 +4080,75 @@ fn front_sql_current_date() {
 }
 
 #[test]
+fn front_sql_current_user() {
+    // `CURRENT_USER` gets transformed to the user name constant on bind
+    let input = r#"explain (logical) SELECT current_user FROM (values (1))
+    WHERE CURRENT_USER = 'admin'"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection ('admin'::string -> col_1)
+      selection ('admin'::string = 'admin'::string)
+        scan unnamed_subquery
+          motion [policy: full, program: ReshardIfNeeded]
+            values
+              value ROW(1::int)
+    ");
+}
+
+#[test]
+fn front_sql_current_user_in_group_by() {
+    let input = r#"explain (logical) SELECT current_user, count(*) FROM (values (1), (2))
+    GROUP BY current_user"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection ('admin'::string -> col_1, count(*)::int -> col_2)
+      group by ('admin'::string)
+        scan unnamed_subquery
+          motion [policy: full, program: ReshardIfNeeded]
+            values
+              value ROW(1::int)
+              value ROW(2::int)
+    ");
+}
+
+#[test]
+fn front_sql_current_user_prefix_is_identifier() {
+    // `current_user` must not steal the prefix of a longer identifier
+    let input = r#"explain (logical) SELECT current_user_id FROM (SELECT 1 AS current_user_id)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (unnamed_subquery.current_user_id::int -> current_user_id)
+      scan unnamed_subquery
+        projection (1::int -> current_user_id)
+    ");
+}
+
+#[test]
+fn front_sql_current_user_quoted_is_identifier() {
+    let input = r#"explain (logical) SELECT "current_user" FROM (SELECT 1 AS "current_user")"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (unnamed_subquery.current_user::int -> current_user)
+      scan unnamed_subquery
+        projection (1::int -> current_user)
+    ");
+}
+
+#[test]
+fn front_sql_current_user_with_parentheses() {
+    // Like in PostgreSQL, `CURRENT_USER` is written without parentheses
+    let error = expect_sql_to_ir_error(r#"SELECT current_user()"#, &[]);
+    insta::assert_snapshot!(error.to_string(), @r"
+    rule parsing error:  --> 1:20
+      |
+    1 | SELECT current_user()
+      |                    ^---
+      |
+      = expected EOI, DqlOption, ConcatInfixOp, Add, Subtract, Modulo, Multiply, Divide, Eq, Gt, GtEq, Lt, LtEq, NotEq, IndexPostfix, or CastPostfix
+    ");
+}
+
+#[test]
 fn front_sql_check_non_null_columns_specified() {
     let input = r#"insert into "test_space" ("sys_op") values (1)"#;
 

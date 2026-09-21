@@ -12,8 +12,8 @@ use crate::{
 
 use super::{
     Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk,
-    LetVarRef, Like, NodeAligned, NodeId, Over, Parameter, Reference, Row, ScalarFunction,
-    SubQueryReference, Timestamp, Trim, UnaryExpr, Window,
+    CurrentUser, LetVarRef, Like, NodeAligned, NodeId, Over, Parameter, Reference, Row,
+    ScalarFunction, SubQueryReference, Timestamp, Trim, UnaryExpr, Window,
 };
 
 pub const EXPECTED_CHILDREN_CNT: usize = 4;
@@ -67,6 +67,15 @@ impl ExprChildren for CountAsterisk {
 }
 
 impl ExprChildren for Timestamp {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        SmallVec::new()
+    }
+}
+
+impl ExprChildren for CurrentUser {
     fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
         SmallVec::new()
     }
@@ -373,6 +382,7 @@ pub enum ExprOwned {
     CountAsterisk(CountAsterisk),
     Case(Case),
     Timestamp(Timestamp),
+    CurrentUser(CurrentUser),
     Over(Over),
     Window(Window),
     Parameter(Parameter),
@@ -402,6 +412,7 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::Trim(trim) => trim.into(),
             ExprOwned::Unary(unary) => unary.into(),
             ExprOwned::Timestamp(lt) => lt.into(),
+            ExprOwned::CurrentUser(cu) => cu.into(),
             ExprOwned::Parameter(param) => param.into(),
             ExprOwned::LetVarRef(let_var_ref) => let_var_ref.into(),
         }
@@ -440,6 +451,7 @@ pub enum Expression<'a> {
     CountAsterisk(&'a CountAsterisk),
     Case(&'a Case),
     Timestamp(&'a Timestamp),
+    CurrentUser(&'a CurrentUser),
     Over(&'a Over),
     Window(&'a Window),
     Parameter(&'a Parameter),
@@ -467,6 +479,7 @@ pub enum MutExpression<'a> {
     CountAsterisk(&'a mut CountAsterisk),
     Case(&'a mut Case),
     Timestamp(&'a mut Timestamp),
+    CurrentUser(&'a mut CurrentUser),
     Over(&'a mut Over),
     Window(&'a mut Window),
     Parameter(&'a mut Parameter),
@@ -575,6 +588,8 @@ impl Expression<'_> {
             | Expression::SubQueryReference(_)
             // `'2026-04-12'::timestamp`
             | Expression::Timestamp(_)
+            // `CURRENT_USER`
+            | Expression::CurrentUser(_)
             // `TRIM('hello')`
             | Expression::Trim(_)
             // `PARTITION BY (...) ...`
@@ -632,6 +647,7 @@ impl Expression<'_> {
             | Expression::ScalarFunction(_)
             | Expression::SubQueryReference(_)
             | Expression::Timestamp(_)
+            | Expression::CurrentUser(_)
             | Expression::Trim(_)
             | Expression::Window(_)
             | Expression::Unary(UnaryExpr {
@@ -699,6 +715,7 @@ impl Expression<'_> {
             Expression::CountAsterisk(n) => n.expr_children(),
             Expression::Case(n) => n.expr_children(),
             Expression::Timestamp(n) => n.expr_children(),
+            Expression::CurrentUser(n) => n.expr_children(),
             Expression::Over(n) => n.expr_children(),
             Expression::Window(n) => n.expr_children(),
             Expression::Parameter(n) => n.expr_children(),
@@ -746,6 +763,7 @@ impl Expression<'_> {
             Expression::Trim(trim) => ExprOwned::Trim((*trim).clone()),
             Expression::Unary(unary) => ExprOwned::Unary((*unary).clone()),
             Expression::Timestamp(lt) => ExprOwned::Timestamp((*lt).clone()),
+            Expression::CurrentUser(cu) => ExprOwned::CurrentUser((*cu).clone()),
             Expression::Parameter(param) => ExprOwned::Parameter((*param).clone()),
             Expression::LetVarRef(let_var_ref) => ExprOwned::LetVarRef((*let_var_ref).clone()),
         }
@@ -774,6 +792,7 @@ impl MutExpression<'_> {
             MutExpression::CountAsterisk(n) => n.expr_children_mut(),
             MutExpression::Case(n) => n.expr_children_mut(),
             MutExpression::Timestamp(n) => n.expr_children_mut(),
+            MutExpression::CurrentUser(n) => n.expr_children_mut(),
             MutExpression::Over(n) => n.expr_children_mut(),
             MutExpression::Window(n) => n.expr_children_mut(),
             MutExpression::Parameter(n) => n.expr_children_mut(),
@@ -821,6 +840,7 @@ impl ExprOwned {
             ExprOwned::CountAsterisk(n) => n.expr_children_mut(),
             ExprOwned::Case(n) => n.expr_children_mut(),
             ExprOwned::Timestamp(n) => n.expr_children_mut(),
+            ExprOwned::CurrentUser(n) => n.expr_children_mut(),
             ExprOwned::Over(n) => n.expr_children_mut(),
             ExprOwned::Window(n) => n.expr_children_mut(),
             ExprOwned::Parameter(n) => n.expr_children_mut(),

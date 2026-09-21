@@ -38,6 +38,7 @@ expression  ::= (('NOT'* (
                     | cast
                     | coalesce
                     | current_date
+                    | current_user
                     | ilike
                     | json_extract_path
                     | literal

@@ -288,7 +288,7 @@ fn dispatch_bound_statement_impl<'p>(
     governor_op_id: Option<u64>,
     port: &mut impl Port<'p>,
 ) -> traft::Result<()> {
-    let mut query = ExecutingQuery::from_bound_statement(runtime, statement);
+    let mut query = ExecutingQuery::from_bound_statement(runtime, statement)?;
     if query.is_empty() {
         port.set_type(PortType::DispatchDml);
         port_write_dml_response(port, 0);

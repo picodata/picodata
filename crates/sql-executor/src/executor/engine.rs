@@ -302,6 +302,14 @@ pub trait Router: QueryCache {
 
     fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError>;
 
+    /// Get the name of the user whose privileges the query is executed with.
+    ///
+    /// It is called on execute, only for the statements that contain `CURRENT_USER`.
+    ///
+    /// # Errors
+    /// - The user can't be determined (e.g. the session is closed).
+    fn get_user_name() -> Result<String, SbroadError>;
+
     /// Extract a list of the sharding key values from a map for the given space.
     ///
     /// # Errors

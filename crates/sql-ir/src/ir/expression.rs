@@ -352,6 +352,11 @@ impl<'plan> Comparator<'plan> {
                             return Ok(l_timestamp == r_timestamp);
                         }
                     }
+                    Expression::CurrentUser(_) => {
+                        if let Expression::CurrentUser(_) = right {
+                            return Ok(true);
+                        }
+                    }
                     Expression::Parameter(Parameter {
                         param_type: l_param_type,
                         index: l_index,
@@ -1416,6 +1421,9 @@ impl<'plan> Comparator<'plan> {
             }
             Expression::Timestamp(_) => {
                 "Timestamp".hash(state);
+            }
+            Expression::CurrentUser(_) => {
+                "CurrentUser".hash(state);
             }
             Expression::Parameter(_) => {
                 "Parameter".hash(state);

@@ -420,6 +420,15 @@ impl Router for RouterRuntime {
         with_su(ADMIN_ID, f).map_err(|e| e.into())
     }
 
+    /// Tarantool only provides the name of the session user, which may differ
+    /// from the effective one (e.g. inside `box.session.su(user, func)`).
+    /// But the query parsing switches to admin with `session::with_su`,
+    /// which resets the effective user to the session one on return.
+    /// So by the time of execution both of them are the same.
+    fn get_user_name() -> Result<String, SbroadError> {
+        Ok(tarantool::session::user_name()?)
+    }
+
     fn new_port<'p>(&self) -> impl Port<'p> {
         PicoPortOwned::new()
     }

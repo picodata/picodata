@@ -44,13 +44,15 @@ fn block_pattern_key_hashes_insert_do_update_param_rhs_by_type() {
         prepared
             .bind(vec![Value::Integer(1)], Options::default())
             .unwrap(),
-    );
+    )
+    .unwrap();
     let mut query2 = ExecutingQuery::from_bound_statement(
         &coordinator,
         prepared
             .bind(vec![Value::Integer(2)], Options::default())
             .unwrap(),
-    );
+    )
+    .unwrap();
     let key1 = get_block_pattern_key_from_query(&mut query1);
     let key2 = get_block_pattern_key_from_query(&mut query2);
     assert_eq!(key1, key2);
@@ -70,7 +72,8 @@ fn raw_explain_block_bind_insert_do_update_param_rhs() {
         prepared
             .bind(vec![iocdu_param.clone()], Options::default())
             .unwrap(),
-    );
+    )
+    .unwrap();
     let exec_plan = query.get_mut_exec_plan();
     assert!(exec_plan.get_ir_plan().is_raw_explain());
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();

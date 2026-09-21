@@ -1403,6 +1403,7 @@ where
                         | Expression::Trim { .. }
                         | Expression::Unary { .. }
                         | Expression::Timestamp { .. }
+                        | Expression::CurrentUser { .. }
                         | Expression::Parameter { .. }
                         | Expression::LetVarRef { .. } => {}
                         Expression::Constant(Constant { value, .. }) => {

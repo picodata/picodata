@@ -429,7 +429,7 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
             //       Please, try to keep the list in alphabetical order.
             Keyword = {  ^"all" | ^"and" | ^"array" | ^"asc" | ^"as"
                         | ^"begin" | ^"between" | ^"by"
-                        | ^"case" | ^"cast" | ^"current_date" | ^"current_time" | ^"current_timestamp"
+                        | ^"case" | ^"cast" | ^"current_date" | ^"current_time" | ^"current_timestamp" | ^"current_user"
                         | ^"desc" | ^"distinct"
                         | ^"else" | ^"end" | ^"except" | ^"exists"
                         | ^"false" | ^"filter" | ^"from" | ^"group"
@@ -489,7 +489,7 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
         CastPostfix = { WO ~ "::" ~ WO ~ CastTarget }
         IsPostfix = ${ ^"is" ~ W ~ (NotFlag ~ W)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" }
-        AtomicExpr = _{ Literal | Parameter | Over | CastOp | TypedLiteral | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime
+        AtomicExpr = _{ Literal | Parameter | Over | CastOp | TypedLiteral | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | CurrentUser | LocalTimestamp | LocalTime
                     | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | ArrayLiteral | Row }
             Literal = { True | False | Null | Double | Decimal | Unsigned | Integer | SingleQuotedString }
                 True     = { ^"true" }
@@ -543,6 +543,10 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
             CurrentDate = { ^"current_date" }
             CurrentTime = { ^"current_time" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
             CurrentTimestamp = { ^"current_timestamp" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
+            // Without the boundary lookahead the keyword would steal the prefix
+            // of a longer identifier (`current_user_id`), as PEG never backtracks
+            // into an ordered choice that has already succeeded.
+            CurrentUser = { ^"current_user" ~ &IdentifierInapplicableSymbol }
             LocalTime = { ^"localtime" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
             LocalTimestamp = { ^"localtimestamp" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
             Trim = ${

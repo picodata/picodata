@@ -9,7 +9,7 @@ use crate::backend::sql::ir::PatternWithParams;
 use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::SbroadError;
 use crate::executor::engine::helpers::table_name;
-use crate::executor::engine::mock::RouterConfigurationMock;
+use crate::executor::engine::mock::{RouterConfigurationMock, RouterRuntimeMock};
 use crate::executor::engine::Router;
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::ExecutingQuery;
@@ -33,6 +33,8 @@ pub fn sql_to_optimized_ir(query: &str, params: Vec<Value>) -> Plan {
         .optimize()
         .unwrap()
         .update_timestamps()
+        .unwrap()
+        .update_current_user(RouterRuntimeMock::get_user_name)
         .unwrap()
         .cast_constants()
         .unwrap()
@@ -151,6 +153,6 @@ where
             .optimize_statement()?
             .bind_statement(params, Options::default())?;
 
-        Ok(ExecutingQuery::from_plan(coordinator, plan))
+        ExecutingQuery::from_plan(coordinator, plan)
     }
 }

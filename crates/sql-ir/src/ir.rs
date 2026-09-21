@@ -181,6 +181,7 @@ impl Nodes {
                     Node::Expression(Expression::LetVarRef(let_var_ref))
                 }
                 Node32::Timestamp(lt) => Node::Expression(Expression::Timestamp(lt)),
+                Node32::CurrentUser(cu) => Node::Expression(Expression::CurrentUser(cu)),
                 Node32::Backup(backup) => Node::Ddl(Ddl::Backup(backup)),
                 Node32::ArrayLiteral(arr) => Node::Expression(Expression::ArrayLiteral(arr)),
             }),
@@ -337,6 +338,7 @@ impl Nodes {
                         MutNode::Expression(MutExpression::LetVarRef(let_var_ref))
                     }
                     Node32::Timestamp(lt) => MutNode::Expression(MutExpression::Timestamp(lt)),
+                    Node32::CurrentUser(cu) => MutNode::Expression(MutExpression::CurrentUser(cu)),
                     Node32::Backup(backup) => MutNode::Ddl(MutDdl::Backup(backup)),
                     Node32::ArrayLiteral(arr) => {
                         MutNode::Expression(MutExpression::ArrayLiteral(arr))
@@ -2519,6 +2521,7 @@ impl Plan {
             (Expression::Timestamp(lhs_timestamp), Expression::Timestamp(rhs_timestamp)) => {
                 Ok(lhs_timestamp == rhs_timestamp)
             }
+            (Expression::CurrentUser(_), Expression::CurrentUser(_)) => Ok(true),
             (
                 Expression::Over(Over {
                     stable_func: lhs_stable_func,

@@ -402,7 +402,8 @@ impl Plan {
                     Expression::Row(_) => right_expr.get_row_list()?.as_slice(),
                     Expression::Constant(_)
                     | Expression::Reference(_)
-                    | Expression::Parameter(_) => &[right_id],
+                    | Expression::Parameter(_)
+                    | Expression::CurrentUser(_) => &[right_id],
                     _ => continue,
                 };
 
@@ -480,8 +481,9 @@ impl Plan {
                                 }
                                 // Before `bind_params` we can't get actual value, but the
                                 // query is still single-node if all sharding-key columns are
-                                // fixed by constants or parameters.
-                                Expression::Parameter(_) => {
+                                // fixed by constants or parameters. CURRENT_USER is replaced
+                                // with a constant on bind as well.
+                                Expression::Parameter(_) | Expression::CurrentUser(_) => {
                                     has_parameter = true;
                                 }
                                 _ => {

@@ -556,6 +556,17 @@ impl From<Timestamp> for NodeAligned {
     }
 }
 
+/// Node representing the `CURRENT_USER` SQL function.
+/// It is replaced with the name of the effective user on execute.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CurrentUser {}
+
+impl From<CurrentUser> for NodeAligned {
+    fn from(value: CurrentUser) -> Self {
+        Self::Node32(Node32::CurrentUser(value))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ScanCte {
     /// CTE's name.
@@ -1878,6 +1889,7 @@ pub enum Node32 {
     Parameter(Parameter),
     Constant(Constant),
     Timestamp(Timestamp),
+    CurrentUser(CurrentUser),
     // end the section to allow in-place swapping with Constant using the replace32()
 }
 
@@ -1921,6 +1933,7 @@ impl Node32 {
                 NodeOwned::Expression(ExprOwned::LetVarRef(let_var_ref))
             }
             Node32::Timestamp(lt) => NodeOwned::Expression(ExprOwned::Timestamp(lt)),
+            Node32::CurrentUser(cu) => NodeOwned::Expression(ExprOwned::CurrentUser(cu)),
             Node32::ArrayLiteral(arr) => NodeOwned::Expression(ExprOwned::ArrayLiteral(arr)),
         }
     }

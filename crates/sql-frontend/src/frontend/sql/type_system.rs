@@ -369,6 +369,12 @@ pub fn to_type_expr(
             let kind = TypeExprKind::Literal(Type::Datetime);
             Ok(TypeExpr::new(node_id, kind))
         }
+        Expression::CurrentUser(_) => {
+            // Resolved to a user name only after planning, so it can't be
+            // coerced like a string literal: treat it as a typed text value.
+            let kind = TypeExprKind::Reference(Type::Text);
+            Ok(TypeExpr::new(node_id, kind))
+        }
         Expression::CountAsterisk(_) => {
             // Handle it as `COUNT(1)`
             let kind = TypeExprKind::Literal(Type::Integer);

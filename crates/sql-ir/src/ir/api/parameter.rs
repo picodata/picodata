@@ -210,6 +210,32 @@ impl Plan {
         Ok(self)
     }
 
+    /// Replaces the `CURRENT_USER` functions with the name of the effective user.
+    ///
+    /// The user name comes from `get_user_name` (see `Router::get_user_name`).
+    /// It is called only if the plan contains `CURRENT_USER`,
+    /// so that the queries without it do not pay for the lookup.
+    pub fn update_current_user(
+        mut self,
+        get_user_name: impl Fn() -> Result<String, SbroadError>,
+    ) -> Result<Self, SbroadError> {
+        let mut user_name: Option<String> = None;
+
+        for node in self.nodes.arena32.iter_mut() {
+            if let Node32::CurrentUser(_) = node {
+                let name = match &user_name {
+                    Some(name) => name,
+                    None => user_name.insert(get_user_name()?),
+                };
+                *node = Node32::Constant(Constant {
+                    value: Value::String(name.clone()),
+                });
+            }
+        }
+
+        Ok(self)
+    }
+
     pub fn update_substring(self) -> Result<Self, SbroadError> {
         self.try_transform_to_substr()?.check_parameter_types()
     }

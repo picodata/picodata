@@ -194,7 +194,8 @@ where
     C: Router,
 {
     /// Create a query ready for execution from a bound statement.
-    fn from_bound_statement(runtime: &'a C, statement: BoundStatement) -> Self;
+    fn from_bound_statement(runtime: &'a C, statement: BoundStatement)
+        -> Result<Self, SbroadError>;
 
     /// A shorthand to create a query directly from SQL text.
     /// Equivalent to chaining [`BoundStatement::parse_and_bind`] and
@@ -212,7 +213,10 @@ impl<'a, C> ExecutingQueryExt<'a, C> for executor::ExecutingQuery<'a, C>
 where
     C: Router,
 {
-    fn from_bound_statement(runtime: &'a C, statement: BoundStatement) -> Self {
+    fn from_bound_statement(
+        runtime: &'a C,
+        statement: BoundStatement,
+    ) -> Result<Self, SbroadError> {
         Self::from_plan(runtime, *statement.plan)
     }
 
@@ -227,7 +231,7 @@ where
         let bound_statement =
             BoundStatement::parse_and_bind(coordinator, query_text, params, Options::default())?;
 
-        Ok(Self::from_bound_statement(coordinator, bound_statement))
+        Self::from_bound_statement(coordinator, bound_statement)
     }
 }
 

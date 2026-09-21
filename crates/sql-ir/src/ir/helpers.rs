@@ -354,6 +354,9 @@ impl Plan {
                         writeln!(buf, "DateTime [precision = {precision}, include_timezone = {include_timezone}]")?;
                     }
                 },
+                Expression::CurrentUser(_) => {
+                    writeln!(buf, "CurrentUser")?;
+                }
                 Expression::Parameter(Parameter {
                     param_type,
                     index,

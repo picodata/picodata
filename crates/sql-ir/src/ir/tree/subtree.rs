@@ -313,6 +313,7 @@ fn subtree_next<'plan>(
                 Expression::Constant { .. }
                 | Expression::CountAsterisk { .. }
                 | Expression::Timestamp { .. }
+                | Expression::CurrentUser { .. }
                 | Expression::Reference { .. }
                 | Expression::Parameter { .. }
                 | Expression::LetVarRef { .. } => None,

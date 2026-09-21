@@ -1068,7 +1068,9 @@ impl<'p> SyntaxPlan<'p> {
                 Expression::Unary { .. } => self.add_unary_op(id),
                 Expression::ScalarFunction { .. } => self.add_stable_func(id),
                 Expression::Trim { .. } => self.add_trim(id),
-                Expression::Timestamp { .. } | Expression::Parameter { .. } => {}
+                Expression::Timestamp { .. }
+                | Expression::CurrentUser { .. }
+                | Expression::Parameter { .. } => {}
                 Expression::LetVarRef(let_var_ref) => {
                     let sn = SyntaxNode::new_let_var_ref(id, let_var_ref.name.clone());
                     self.nodes.push_sn_plan(sn);

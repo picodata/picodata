@@ -541,7 +541,13 @@ impl Plan {
                         .get(*pos)
                         .expect("sharding-key position must exist in values row");
                     let cell = plan.get_expression_node(cell_id)?;
-                    if !matches!(cell, Expression::Constant(_) | Expression::Parameter(_)) {
+                    // CURRENT_USER is substituted with a constant on bind, like a parameter.
+                    if !matches!(
+                        cell,
+                        Expression::Constant(_)
+                            | Expression::Parameter(_)
+                            | Expression::CurrentUser(_)
+                    ) {
                         return Err(SbroadError::other(
                             "INSERT in transaction requires constant or parameter values for sharding-key columns"
                         ));

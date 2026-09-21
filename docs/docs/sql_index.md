@@ -73,6 +73,7 @@ article.md-typeset.md-typeset ul {
 * [CTE](reference/sql/with.md)
 * [CURRENT_DATE](reference/sql/time_and_date.md#current_date)
 * [CURRENT_TIMESTAMP](reference/sql/time_and_date.md#current_timestamp)
+* [CURRENT_USER](reference/sql/system_functions.md#current_user)
 
 <b>D</b>
 
