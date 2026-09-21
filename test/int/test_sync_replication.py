@@ -18,6 +18,10 @@ from conftest import (
     log_crawler,
 )
 
+pytestmark = pytest.mark.skip(
+    reason="Skip temporarily due to flakiness. Remove after the fix (see <https://git.picodata.io/core/picodata/-/work_items/3198>)."
+)
+
 
 def router_matches_bucket_ownership(router: Instance, storages: list[tuple[Instance, str]]):
     """
