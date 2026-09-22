@@ -577,7 +577,7 @@ fn default_type_system() -> TypeSystem {
         Function::new_window("min", [Datetime], Datetime),
         // - sum
         Function::new_window("sum", [Integer], Numeric),
-        Function::new_window("sum", [Double], Numeric),
+        Function::new_window("sum", [Double], Double),
         Function::new_window("sum", [Numeric], Numeric),
         // - total
         Function::new_window("total", [Integer], Double),
@@ -585,7 +585,7 @@ fn default_type_system() -> TypeSystem {
         Function::new_window("total", [Numeric], Double),
         // - avg
         Function::new_window("avg", [Integer], Numeric),
-        Function::new_window("avg", [Double], Numeric),
+        Function::new_window("avg", [Double], Double),
         Function::new_window("avg", [Numeric], Numeric),
         // - string_agg & group_concat
         Function::new_window("string_agg", [Text], Text),

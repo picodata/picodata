@@ -89,7 +89,7 @@ EXPLAIN (LOGICAL) SELECT COUNT(*) FROM t;
 ```
 
 ```
-projection (sum(count_1::int)::int::int -> col_1)
+projection (sum(count_1::int::int)::int::int -> col_1)
   motion [policy: full, program: ReshardIfNeeded]
     projection (count(*)::int -> count_1)
       scan t
