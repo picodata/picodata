@@ -9,10 +9,12 @@ from typing import Any
 import pytest
 from _pytest.python import FunctionDefinition, Metafunc
 from decimal import Decimal
+from datetime import datetime, timedelta, timezone
 import re
 from conftest import TIMEOUT_SCALE, Cluster, TarantoolError, get_pytest_timeout
 import psycopg
 import enum
+import tarantool
 
 
 NOT_AN_ERROR = "-"
@@ -200,6 +202,17 @@ class AbstractRunner(ABC):
         return output, do_check
 
 
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def _from_tarantool(value: Any) -> Any:
+    # `tarantool.Datetime` is unhashable and never equals `datetime`,
+    # which is what psycopg returns and `Datetime('...')` expects.
+    if isinstance(value, tarantool.Datetime):  # type: ignore
+        return _EPOCH + timedelta(microseconds=value.value // 1000)
+    return value
+
+
 class IprotoRunner(AbstractRunner):
     protocol = "iproto"
     run_query_error = TarantoolError
@@ -217,9 +230,9 @@ class IprotoRunner(AbstractRunner):
         for row in result:
             match row:
                 case list():
-                    rows.append(row)
+                    rows.append([_from_tarantool(v) for v in row])
                 case tuple():
-                    rows.append(row)
+                    rows.append(tuple(_from_tarantool(v) for v in row))
                 case _:
                     # This chicanery is needed for EXPLAIN.
                     rows.append((row,))
@@ -323,6 +336,8 @@ def _parse_line(input_string, lead_sym: Any, split_by: str):
             result.append(bool(element.lower() == "true"))
         elif element.find("Decimal") != -1:
             result.append(Decimal(element[9:-2]))
+        elif element.startswith("Datetime("):
+            result.append(datetime.fromisoformat(element[10:-2]))
         else:
             try:
                 # Try to convert element to float
