@@ -189,4 +189,5 @@ def try_connect_psycopg(
         connection_string += f" sslcert={client_cert_path} sslkey={client_key_path}"
         os.chmod(client_key_path, 0o600)
 
-    psycopg.connect(connection_string).close()
+    with psycopg.connect(connection_string) as conn:
+        assert conn.execute("SELECT CURRENT_USER").fetchall() == [(user,)]

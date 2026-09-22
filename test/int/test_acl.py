@@ -42,9 +42,13 @@ def test_max_login_attempts(cluster: Cluster):
             reconnect_max_attempts=0,
         )
 
+    def assert_current_user(c: Connection, user: str):
+        assert c.call(".proc_sql_dispatch", "SELECT CURRENT_USER", [])[0][0]["rows"] == [[user]]
+
     # First login is successful
     c = connect(i1, user="foo", password="T0psecret")
     assert c
+    assert_current_user(c, "foo")
 
     # Several failed login attempts but one less than maximum
     for _ in range(MAX_LOGIN_ATTEMPTS - 1):
@@ -59,6 +63,7 @@ def test_max_login_attempts(cluster: Cluster):
         password="T0psecret",
     )
     assert c
+    assert_current_user(c, "foo")
 
     # Maximum failed login attempts
     for _ in range(MAX_LOGIN_ATTEMPTS):
@@ -816,6 +821,8 @@ def test_submit_sql_after_revoke_login(cluster: Cluster):
     assert acl["row_count"] == 1
 
     with i1.connect(timeout=2, user="alice", password=password) as conn:
+        assert conn.sql("SELECT CURRENT_USER")["rows"] == [["alice"]]
+
         ddl = conn.sql(
             """
             create table t (a int not null, primary key (a)) distributed by (a)
@@ -863,6 +870,8 @@ def test_admin_set_password(cluster: Cluster):
     password = os.getenv("PICODATA_ADMIN_PASSWORD")
     i1.sql(f"ALTER USER admin WITH PASSWORD '{password}' USING chap-sha1")
     with i1.connect(timeout=5, user="admin", password=password) as conn:
+        assert conn.sql("SELECT CURRENT_USER")["rows"] == [["admin"]]
+
         query = conn.sql(
             'select * from "_pico_user"',
         )

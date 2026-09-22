@@ -4,6 +4,10 @@ from conftest import Postgres, Cluster, log_crawler, Instance
 from framework.port_distributor import PortDistributor
 
 
+def assert_current_user(conn: pg.Connection, user: str):
+    assert conn.execute_simple("SELECT CURRENT_USER").rows == [[user]]
+
+
 def test_auth(postgres: Postgres):
     i1 = postgres.instance
 
@@ -13,6 +17,7 @@ def test_auth(postgres: Postgres):
 
     # test successful authentication
     conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
+    assert_current_user(conn, user)
     conn.close()
 
     # test authentication with a wrong password
@@ -50,6 +55,7 @@ def test_admin_auth(cluster: Cluster):
         pg.Connection(user, password="wrong password", host=i1.pg_host, port=i1.pg_port)
 
     conn = pg.Connection(user=user, password=password, host=i1.pg_host, port=i1.pg_port)
+    assert_current_user(conn, user)
 
     conn.close()
 
@@ -84,6 +90,7 @@ def test_user_blocking_after_a_series_of_unsuccessful_auth_attempts(
 
     # check if the user can connect
     conn = pg.Connection(user, password=password, host=host, port=port)
+    assert_current_user(conn, user)
     conn.close()
 
     # connect many times with an invalid password to block the user
@@ -114,7 +121,8 @@ def test_user_auth_failure_counter_resets_on_success(postgres: Postgres):
             pg.Connection(user, password="WrongPassword", host=postgres.host, port=postgres.port)
 
     # reset the failure counter by a successful authentication
-    pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
+    assert_current_user(conn, user)
 
     # fail 3 more times after the reset
     for _ in range(3):
@@ -122,7 +130,8 @@ def test_user_auth_failure_counter_resets_on_success(postgres: Postgres):
             pg.Connection(user, password="WrongPassword", host=postgres.host, port=postgres.port)
 
     # check if the user is not banned
-    pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
+    assert_current_user(conn, user)
 
 
 def test_same_error_from_different_auth_methods_pgproto(cluster: Cluster):
@@ -153,7 +162,7 @@ def check_authenticated(i: Instance, user: str, password="Admin1234"):
         host=i.pg_host,
         port=i.pg_port,
     )
-    assert conn.execute_simple("SELECT pico_raft_leader_id()").rows == [[1]]
+    assert_current_user(conn, user)
 
 
 def test_scram_sha256_cases(cluster: Cluster):

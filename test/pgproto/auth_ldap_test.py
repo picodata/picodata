@@ -47,6 +47,7 @@ def test_auth_ldap_plaintext(
     )
 
     assert conn.execute_simple("SELECT 1").rows == [[1]]
+    assert conn.execute_simple("SELECT CURRENT_USER").rows == [[ldap_server_plaintext.user]]
 
     # invalid creds
     with pytest.raises(
@@ -164,6 +165,7 @@ def test_auth_ldap_starttls(
         port=i1.pg_port,
     )
     assert conn.execute_simple("SELECT 1").rows == [[1]]
+    assert conn.execute_simple("SELECT CURRENT_USER").rows == [[ldap_server_starttls.user]]
 
 
 @pytest.mark.parametrize("config_mode", ["legacy", "yaml"])
@@ -210,6 +212,7 @@ def test_auth_ldap_implicit_tls(
         port=i1.pg_port,
     )
     assert conn.execute_simple("SELECT 1").rows == [[1]]
+    assert conn.execute_simple("SELECT CURRENT_USER").rows == [[ldap_server_tls.user]]
 
 
 @pytest.mark.parametrize("ldap_server", ["starttls", "tls"], indirect=True)
@@ -247,6 +250,7 @@ def test_auth_ldap_verified_tls(
         port=i1.pg_port,
     )
     assert conn.execute_simple("SELECT 1").rows == [[1]]
+    assert conn.execute_simple("SELECT CURRENT_USER").rows == [[ldap_server.user]]
 
 
 @pytest.mark.parametrize("ldap_server", ["starttls", "tls"], indirect=True)

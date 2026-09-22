@@ -3121,6 +3121,8 @@ def test_sql_alter_login(cluster: Cluster):
         password=owner_password,
     )
     assert acl["row_count"] == 1
+    assert i1.sql("SELECT CURRENT_USER", user=owner_username, password=owner_password) == [[owner_username]]
+    assert i1.sql("SELECT CURRENT_USER", user=username, password=password) == [[username]]
 
     # Alter user with LOGIN option - opertaion is idempotent.
     acl = i1.sql(f"alter user {username} with login", sudo=True)
@@ -3742,7 +3744,7 @@ def test_user_changes_password(cluster: Cluster):
         password=old_password,
     )
     # ensure we can authenticate with new password
-    i1.sql("SELECT * FROM (VALUES (1))", user=user_name, password=new_password)
+    assert i1.sql("SELECT CURRENT_USER", user=user_name, password=new_password) == [[user_name]]
 
 
 def test_create_drop_procedure(cluster: Cluster):

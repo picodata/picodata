@@ -536,8 +536,8 @@ def test_auth(auth_method: str, instance_with_audit_file: Instance):
         pass
     events = audit.events()
 
-    with instance.connect_via_pgproto(timeout=4, user="ymir", password="T0psecret"):
-        pass
+    with instance.connect_via_pgproto(timeout=4, user="ymir", password="T0psecret") as conn:
+        assert conn.execute("SELECT CURRENT_USER").fetchall() == [("ymir",)]
 
     auth_ok = take_until_title(events, "auth_ok")
     assert auth_ok is not None
