@@ -17,6 +17,7 @@ use crate::sql::lua::{
 };
 use crate::topology_cache::TopologyCacheRef;
 use crate::traft::node;
+use crate::util::MpValueAsJson;
 use ahash::{AHashMap, AHashSet};
 use rmp::decode::{read_array_len, read_bool, read_int};
 use rmp::encode::write_uint;
@@ -1730,5 +1731,5 @@ fn pcall_error(mp: &[u8]) -> String {
 fn msgpack_decode(bytes: &[u8]) -> Result<String, String> {
     let mut cur = Cursor::new(bytes);
     let v: rmpv::Value = rmpv::decode::read_value(&mut cur).map_err(|e| format!("{e}"))?;
-    serde_json::to_string(&v).map_err(|e| format!("{e}"))
+    serde_json::to_string(&MpValueAsJson(&v)).map_err(|e| format!("{e}"))
 }

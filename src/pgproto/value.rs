@@ -1,5 +1,6 @@
 use super::error::DynError;
 use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
+use crate::util::MpValueAsJson;
 use bytes::{BufMut, BytesMut};
 use pgwire::types::{format::FormatOptions, FromSqlText, ToSqlText};
 use postgres_types::{to_sql_checked, FromSql, IsNull, Kind, Oid, ToSql, Type};
@@ -174,7 +175,7 @@ pub struct Json(rmpv::Value);
 
 impl std::fmt::Display for Json {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let string = serde_json::to_string(&self.0).map_err(|_| {
+        let string = serde_json::to_string(&MpValueAsJson(&self.0)).map_err(|_| {
             crate::tlog!(Warning, "failed to print `{self:?}` as json");
             std::fmt::Error
         })?;
@@ -217,7 +218,7 @@ impl ToSqlText for Json {
 impl ToSql for Json {
     #[inline(always)]
     fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<DynError>> {
-        postgres_types::Json(&self.0).to_sql(ty, out)
+        postgres_types::Json(MpValueAsJson(&self.0)).to_sql(ty, out)
     }
 
     postgres_types::accepts!(JSON, JSONB);
@@ -866,5 +867,136 @@ mod tests {
             SbroadValue::Tuple(_) => assert_eq!(format!("{sb}"), "[7,NULL,9]"),
             other => panic!("expected SbroadValue::Tuple, got {other:?}"),
         }
+    }
+}
+
+/// Rendering of msgpack extension values (decimal, uuid, datetime) inside a
+/// json column, i.e. a column whose sbroad type is `any`, `map` or `array(any)`
+/// - `_pico_index.opts` of a vinyl index, for example.
+///
+/// Note: unlike the module above these run under `picodata test` (see
+/// `test/inner.rs`), because decoding a decimal needs tarantool's own symbols.
+mod json_ext_tests {
+    use super::*;
+
+    /// Decode `msgpack` as a json column and return the bytes we'd put on the wire.
+    fn json_wire_text(msgpack: &[u8]) -> String {
+        let mut cursor = Cursor::new(msgpack);
+        let value = PgValue::decode_mp(&mut cursor, &Type::JSON).unwrap();
+        // The whole value must have been consumed.
+        assert_eq!(cursor.position() as usize, msgpack.len());
+
+        let PgValue::Json(json) = value else {
+            panic!("expected PgValue::Json, got {value:?}");
+        };
+
+        let mut out = BytesMut::new();
+        json.to_sql(&Type::JSON, &mut out).unwrap();
+        let wire = String::from_utf8(out.to_vec()).unwrap();
+
+        // `Display` is expected to produce the same thing.
+        assert_eq!(wire, json.to_string());
+        wire
+    }
+
+    /// Wrap `value_mp` into `[{"opt": <value>}]`, the shape of `_pico_index.opts`.
+    fn wrap_in_array_of_maps(value_mp: &[u8]) -> Vec<u8> {
+        let mut mp = Vec::new();
+        rmp::encode::write_array_len(&mut mp, 1).unwrap();
+        rmp::encode::write_map_len(&mut mp, 1).unwrap();
+        rmp::encode::write_str(&mut mp, "opt").unwrap();
+        mp.extend_from_slice(value_mp);
+        mp
+    }
+
+    fn check(value_mp: &[u8], expected: &str) {
+        assert_eq!(json_wire_text(value_mp), expected);
+        assert_eq!(
+            json_wire_text(&wrap_in_array_of_maps(value_mp)),
+            format!(r#"[{{"opt":{expected}}}]"#)
+        );
+    }
+
+    #[::tarantool::test]
+    fn json_decimal_ext_is_rendered_as_string() {
+        // This is what `CREATE INDEX .. WITH (bloom_fpr = 0.001)` puts into
+        // `_pico_index.opts`.
+        let decimal = tarantool::decimal::Decimal::from_str("0.001").unwrap();
+        check(&tarantool::msgpack::encode(&decimal), r#""0.001""#);
+
+        // A decimal with no fractional part is stored as a plain integer, so it
+        // was not broken - ensure it still works as expected.
+        let mut mp = Vec::new();
+        rmp::encode::write_uint(&mut mp, 42).unwrap();
+        check(&mp, "42");
+    }
+
+    #[::tarantool::test]
+    fn json_uuid_ext_is_rendered_as_string() {
+        let uuid = tarantool::uuid::Uuid::from_str("00112233-4455-6677-8899-aabbccddeeff").unwrap();
+        check(
+            &tarantool::msgpack::encode(&uuid),
+            r#""00112233-4455-6677-8899-aabbccddeeff""#,
+        );
+    }
+
+    #[::tarantool::test]
+    fn json_datetime_ext_is_rendered_as_string() {
+        let datetime: tarantool::datetime::Datetime =
+            time::OffsetDateTime::from_unix_timestamp(1_704_164_645)
+                .unwrap()
+                .into();
+        check(
+            &tarantool::msgpack::encode(&datetime),
+            r#""2024-01-02T03:04:05Z""#,
+        );
+    }
+
+    #[::tarantool::test]
+    fn json_unknown_ext_keeps_its_raw_form() {
+        // Check we print original value for unknown ext type
+        let mut mp = Vec::new();
+        rmp::encode::write_ext_meta(&mut mp, 3, 42).unwrap();
+        mp.extend_from_slice(&[1, 2, 3]);
+
+        check(&mp, "[42,[1,2,3]]");
+    }
+
+    #[::tarantool::test]
+    fn json_malformed_ext_keeps_its_raw_form() {
+        // Check we print original value for known ext type with malformed payload
+        use tarantool::ffi::{datetime::MP_DATETIME, decimal::MP_DECIMAL, uuid::MP_UUID};
+
+        let cases: [(i8, &[u8], &str); 3] = [
+            (MP_UUID, &[1, 2, 3, 4], "[2,[1,2,3,4]]"),
+            (MP_DATETIME, &[1, 2, 3], "[4,[1,2,3]]"),
+            (MP_DECIMAL, &[0xff, 0xff], "[1,[255,255]]"),
+        ];
+
+        for (tag, payload, expected) in cases {
+            let mut mp = Vec::new();
+            rmp::encode::write_ext_meta(&mut mp, payload.len() as u32, tag).unwrap();
+            mp.extend_from_slice(payload);
+            check(&mp, expected);
+        }
+    }
+
+    #[::tarantool::test]
+    fn json_without_extensions_is_unchanged() {
+        let mut mp = Vec::new();
+        rmp::encode::write_map_len(&mut mp, 4).unwrap();
+        rmp::encode::write_str(&mut mp, "unique").unwrap();
+        rmp::encode::write_bool(&mut mp, true).unwrap();
+        rmp::encode::write_str(&mut mp, "page_size").unwrap();
+        rmp::encode::write_uint(&mut mp, 4096).unwrap();
+        rmp::encode::write_str(&mut mp, r#"quote"me"#).unwrap();
+        rmp::encode::write_nil(&mut mp).unwrap();
+        rmp::encode::write_str(&mut mp, "ratio").unwrap();
+        rmp::encode::write_f64(&mut mp, 3.5).unwrap();
+
+        assert_eq!(
+            json_wire_text(&mp),
+            r#"{"unique":true,"page_size":4096,"quote\"me":null,"ratio":3.5}"#
+        );
     }
 }

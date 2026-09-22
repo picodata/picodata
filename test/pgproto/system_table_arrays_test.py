@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import psycopg
 import pytest
 from conftest import Postgres
@@ -81,6 +83,48 @@ def test_wire_uncast_any_element(postgres: Postgres, binary):
     assert _fetchall(conn, f"SELECT format[1]['nonexistent'] FROM _pico_table WHERE name = {ph}", binary, ["t1"]) == [
         (None,)
     ]
+
+
+def test_wire_vinyl_index_opts(postgres: Postgres, binary):
+    # `bloom_fpr` is stored as a msgpack DECIMAL extension nested in the
+    # `array(any)` column `_pico_index.opts`. It has no json counterpart, so it
+    # must come out as a string rather than the raw `[tag, [bytes]]` form.
+    conn = _setup(postgres)
+    i1 = postgres.instance
+    i1.sql(
+        "CREATE TABLE t_vinyl (a INT PRIMARY KEY, b INT) USING vinyl "
+        "WITH (bloom_fpr = 0.001, run_size_ratio = 3.5, page_size = 4096) "
+        "DISTRIBUTED BY (a)"
+    )
+    i1.sql("CREATE INDEX i_vinyl ON t_vinyl (b) WITH (bloom_fpr = 0.023)")
+
+    index_where = "table_id = (SELECT id FROM _pico_table WHERE name = 't_vinyl')"
+
+    # Note: the primary index is named after the table id, so select it by id.
+    assert _fetchall(conn, f"SELECT opts FROM _pico_index WHERE {index_where} AND id = 0", binary) == [
+        (
+            [
+                {"unique": True},
+                {"bloom_fpr": "0.001"},
+                {"page_size": 4096},
+                {"run_size_ratio": "3.5"},
+            ],
+        )
+    ]
+    assert _fetchall(conn, "SELECT opts FROM _pico_index WHERE name = 'i_vinyl'", binary) == [
+        ([{"unique": False}, {"bloom_fpr": "0.023"}],)
+    ]
+
+    # A single element of an untyped array is of type any, which is encoded as
+    # json just the same.
+    assert _fetchall(conn, "SELECT opts[2]['bloom_fpr'] FROM _pico_index WHERE name = 'i_vinyl'", binary) == [
+        ("0.023",)
+    ]
+
+    # An explicit cast still gives the value's own type.
+    assert _fetchall(
+        conn, "SELECT CAST(opts[2]['bloom_fpr'] AS DECIMAL) FROM _pico_index WHERE name = 'i_vinyl'", binary
+    ) == [(Decimal("0.023"),)]
 
 
 def test_wire_array_param_roundtrip(postgres: Postgres, binary):

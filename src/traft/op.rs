@@ -20,11 +20,8 @@ use serde_bytes::Bytes;
 use smol_str::SmolStr;
 use sql::ir::operator::ConflictStrategy;
 use std::collections::BTreeMap;
-use tarantool::datetime::Datetime;
 use tarantool::error::{TarantoolError, TarantoolErrorCode};
-use tarantool::ffi::datetime::MP_DATETIME;
 use tarantool::index::IndexType;
-use tarantool::msgpack::ExtStruct;
 use tarantool::session::UserId;
 use tarantool::space::SpaceEngineType;
 
@@ -474,13 +471,12 @@ impl std::fmt::Display for Op {
                         }
                         map.end()
                     }
-                    Value::Ext(MP_DATETIME, bytes) => {
-                        let res = Datetime::try_from(ExtStruct::new(MP_DATETIME, bytes));
-                        match res {
-                            Ok(datetime) => serializer.serialize_str(&datetime.to_string()),
-                            Err(e) => serializer.serialize_str(&e),
-                        }
-                    }
+                    // Decimals, uuids & datetimes have no json counterpart, so
+                    // render them as strings instead of rmpv's `[tag, [bytes]]`.
+                    Value::Ext(tag, bytes) => match crate::util::mp_ext_to_string(*tag, bytes) {
+                        Some(text) => serializer.serialize_str(&text),
+                        None => self.0.serialize(serializer),
+                    },
                     other => other.serialize(serializer),
                 }
             }

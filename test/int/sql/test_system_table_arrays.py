@@ -1,5 +1,9 @@
+from decimal import Decimal
+from uuid import UUID
+
 import pytest
 from conftest import Cluster, Instance, TarantoolError
+from tarantool import Datetime  # type: ignore[attr-defined]
 
 _PLUGIN = "testplug"
 _PLUGIN_VERSION = "0.1.0"
@@ -62,6 +66,45 @@ def test_dql_each_array_column(cluster: Cluster):
 
     [[tiers]] = i1.sql(f"SELECT tiers FROM _pico_service WHERE {_SERVICE_WHERE}")
     assert tiers == [_DEFAULT_TIER]
+
+
+def test_msgpack_extensions_over_iproto(cluster: Cluster):
+    """Over iproto msgpack extension values nested in an `any` column keep their
+    own type - unlike pgproto, which has to render them as json strings.
+    See `test/pgproto/types_test.py::test_map_with_msgpack_extensions`."""
+    i1 = _setup(cluster)
+
+    i1.sql(
+        "CREATE TABLE t_vinyl (a INT PRIMARY KEY, b INT) USING vinyl "
+        "WITH (bloom_fpr = 0.001, run_size_ratio = 3.5) DISTRIBUTED BY (a)"
+    )
+    i1.sql("CREATE INDEX i_vinyl ON t_vinyl (b) WITH (bloom_fpr = 0.023)")
+
+    [[opts]] = i1.sql("SELECT opts FROM _pico_index WHERE name = 'i_vinyl'")
+    assert opts == [{"unique": False}, {"bloom_fpr": Decimal("0.023")}]
+
+    [[bloom_fpr]] = i1.sql("SELECT opts[2]['bloom_fpr'] FROM _pico_index WHERE name = 'i_vinyl'")
+    assert bloom_fpr == Decimal("0.023")
+
+    # Uuids & datetimes never land in an `any` column on their own, so put them
+    # into a json column via lua.
+    i1.sql("CREATE TABLE t_json (id INT PRIMARY KEY, j JSON) DISTRIBUTED GLOBALLY")
+    i1.eval(
+        """
+        box.space.t_json:replace{1, {
+            dec = require('decimal').new('0.001'),
+            uid = require('uuid').fromstr('00112233-4455-6677-8899-aabbccddeeff'),
+            dt = require('datetime').new{
+                year=2024, month=1, day=2, hour=3, min=4, sec=5, tzoffset=0
+            },
+        }}
+        """
+    )
+
+    [[j]] = i1.sql("SELECT j FROM t_json")
+    assert j["dec"] == Decimal("0.001")
+    assert j["uid"] == UUID("00112233-4455-6677-8899-aabbccddeeff")
+    assert j["dt"] == Datetime(year=2024, month=1, day=2, hour=3, minute=4, sec=5)
 
 
 def test_element_access(cluster: Cluster):

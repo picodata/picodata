@@ -705,6 +705,58 @@ def test_map(postgres: Postgres):
         )
 
 
+def test_map_with_msgpack_extensions(postgres: Postgres):
+    """Msgpack extension values nested in a map/any column have no json
+    counterpart, so they must be rendered as strings, not as the raw
+    `[tag, [bytes]]` msgpack extension form."""
+    user = "postgres"
+    password = "P@ssw0rd"
+    i1 = postgres.instance
+
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+    i1.sql("CREATE TABLE t (id INT PRIMARY KEY, j JSON) DISTRIBUTED GLOBALLY")
+    i1.sql(f'GRANT READ ON TABLE "t" TO "{user}"', sudo=True)
+
+    # Decimals, uuids & datetimes can't be spelled inside a json literal, so
+    # put them into the map via lua.
+    i1.eval(
+        """
+        box.space.t:replace{1, {
+            dec = require('decimal').new('0.001'),
+            uid = require('uuid').fromstr('00112233-4455-6677-8899-aabbccddeeff'),
+            dt = require('datetime').new{
+                year=2024, month=1, day=2, hour=3, min=4, sec=5, tzoffset=0
+            },
+            plain = 42,
+        }}
+        """
+    )
+
+    expected = {
+        "dec": "0.001",
+        "uid": "00112233-4455-6677-8899-aabbccddeeff",
+        "dt": "2024-01-02T03:04:05Z",
+        "plain": 42,
+    }
+
+    conn = psycopg.connect(
+        f"user = {user} password={password} host={postgres.host} port={postgres.port} sslmode=disable"
+    )
+    conn.autocommit = True
+
+    for binary in (False, True):
+        assert conn.execute('SELECT "j" FROM "t"', binary=binary).fetchall() == [(expected,)]
+
+    # A scalar of type any goes through the very same json encoding.
+    scalars = """ SELECT "j"['dec'], "j"['uid'], "j"['dt'] FROM "t" """
+    for binary in (False, True):
+        assert conn.execute(scalars, binary=binary).fetchall() == [(expected["dec"], expected["uid"], expected["dt"])]
+
+    # ..while an explicit cast still yields the value's own type.
+    casts = """ SELECT CAST("j"['dec'] AS DECIMAL), CAST("j"['uid'] AS UUID) FROM "t" """
+    assert conn.execute(casts).fetchall() == [(Decimal("0.001"), UUID("00112233-4455-6677-8899-aabbccddeeff"))]
+
+
 def test_datetime(postgres: Postgres):
     user = "postgres"
     password = "P@ssw0rd"

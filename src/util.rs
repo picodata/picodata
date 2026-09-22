@@ -934,6 +934,82 @@ pub fn check_msgpack_matches_type(
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// msgpack extensions as json
+////////////////////////////////////////////////////////////////////////////////
+
+/// Render a tarantool msgpack extension value as a string.
+///
+/// Returns `None` if the extension type is unknown, or if the payload
+/// is malformed. Callers are expected to fall back to the original value in that
+/// case, so we give original payload for possible troubleshooting - see [`MpValueAsJson`].
+pub fn mp_ext_to_string(tag: i8, data: &[u8]) -> Option<String> {
+    use tarantool::ffi;
+    use tarantool::msgpack::ExtStruct;
+    use time::format_description::well_known::Rfc3339;
+
+    let ext = ExtStruct::new(tag, data);
+    match tag {
+        ffi::decimal::MP_DECIMAL => tarantool::decimal::Decimal::try_from(ext)
+            .ok()
+            .map(|v| v.to_string()),
+        ffi::uuid::MP_UUID => tarantool::uuid::Uuid::try_from(ext)
+            .ok()
+            .map(|v| v.to_string()),
+        ffi::datetime::MP_DATETIME => tarantool::datetime::Datetime::try_from(ext)
+            .ok()
+            // Note: rfc3339, same as tarantool's own datetime tostring.
+            // Postgres renders a timestamptz inside json in a similar way.
+            // It spells zero offset as `+00:00` instead of `Z`, but both conform to the rfc:
+            //     postgres=# SELECT to_json(TIMESTAMPTZ '2024-01-02 03:04:05+00');
+            //     "2024-01-02T03:04:05+00:00"
+            .and_then(|v| v.into_inner().format(&Rfc3339).ok()),
+        _ => None,
+    }
+}
+
+/// Serializes an [`rmpv::Value`] similar to `serde_json`, except that
+/// tarantool extension values (decimal, uuid, datetime) are rendered as strings
+/// instead of rmpv's raw `[tag, [bytes]]` fallback.
+///
+/// Json has no type for any of those, so a string is the only representation
+/// which doesn't lose information. Extension types we don't know about keep the
+/// `[tag, [bytes]]` form, to allow troubleshooting which would be difficult
+/// if we swallowed the data.
+#[derive(Debug)]
+pub struct MpValueAsJson<'a>(pub &'a rmpv::Value);
+
+impl serde::Serialize for MpValueAsJson<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use rmpv::Value;
+        use serde::ser::{SerializeMap, SerializeSeq};
+
+        match self.0 {
+            Value::Array(items) => {
+                let mut seq = serializer.serialize_seq(Some(items.len()))?;
+                for item in items {
+                    seq.serialize_element(&Self(item))?;
+                }
+                seq.end()
+            }
+            Value::Map(entries) => {
+                let mut map = serializer.serialize_map(Some(entries.len()))?;
+                for (key, value) in entries {
+                    map.serialize_entry(&Self(key), &Self(value))?;
+                }
+                map.end()
+            }
+            Value::Ext(tag, data) => match mp_ext_to_string(*tag, data) {
+                Some(text) => serializer.serialize_str(&text),
+                None => self.0.serialize(serializer),
+            },
+            // Everything else is serialized by rmpv itself, so that string
+            // escaping, number formatting & error handling stay exactly the same.
+            other => other.serialize(serializer),
+        }
+    }
+}
+
 /// Connection config for inter-instance communication
 /// via `pico_service` user with `ChapSha1` auth method.
 pub fn relay_connection_config() -> Config {
