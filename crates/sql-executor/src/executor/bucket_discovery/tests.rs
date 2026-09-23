@@ -1113,7 +1113,6 @@ fn folded_join_condition() {
     let left = r#"SELECT a."id" FROM "test_space" AS a LEFT JOIN "test_space_hist" AS b ON "#;
     let cases = [
         ("false", vec![], Value::Boolean(false)),
-        ("null", vec![], Value::Null),
         (
             r#"a."id" = b."id" AND $1 = 1"#,
             vec![Value::from(2)],
@@ -1129,6 +1128,19 @@ fn folded_join_condition() {
         let buckets = join_buckets(&sql, params, &folded);
         assert_eq!(Buckets::All, buckets, "{sql}");
     }
+}
+
+/// Without enrichment, ON NULL remains NULL for both join kinds.
+#[cfg(not(feature = "enrich_restrictions"))]
+#[test]
+fn null_join_condition() {
+    let sql = r#"SELECT a."id" FROM "test_space" AS a JOIN "test_space_hist" AS b ON null"#;
+    assert_eq!(
+        Buckets::new_empty(),
+        join_buckets(sql, vec![], &Value::Null)
+    );
+    let sql = r#"SELECT a."id" FROM "test_space" AS a LEFT JOIN "test_space_hist" AS b ON null"#;
+    assert_eq!(Buckets::All, join_buckets(sql, vec![], &Value::Null));
 }
 
 /// A column compared with a `NULL` parameter is never `TRUE`, so the query is
@@ -1153,4 +1165,86 @@ fn column_eq_null_param_in_one_or_branch() {
 fn column_eq_null_param_in_row() {
     let query = r#"SELECT "id" FROM "test_space" WHERE "sysFrom" = $1 AND "sys_op" = 1"#;
     assert_eq!(Buckets::new_empty(), discover(query, vec![Value::Null]));
+}
+
+/// Pruning on the `false` markers `enrich_restrictions` derives.
+#[cfg(feature = "enrich_restrictions")]
+mod enrich_markers {
+    use super::{discover, join_buckets};
+    use crate::ir::bucket::Buckets;
+    use crate::ir::value::Value;
+    use pretty_assertions::assert_eq;
+
+    /// Enrichment folds INNER JOIN ON NULL to false. LEFT JOIN retains NULL
+    /// and preserves its left rows.
+    #[test]
+    fn null_inner_join_condition_gets_a_false_marker() {
+        let sql = r#"SELECT a."id" FROM "test_space" AS a JOIN "test_space_hist" AS b ON null"#;
+        assert_eq!(
+            Buckets::new_empty(),
+            join_buckets(sql, vec![], &Value::Boolean(false))
+        );
+        let sql =
+            r#"SELECT a."id" FROM "test_space" AS a LEFT JOIN "test_space_hist" AS b ON null"#;
+        assert_eq!(Buckets::All, join_buckets(sql, vec![], &Value::Null));
+    }
+
+    /// Check pruning from a contradiction outside the sharding key.
+    fn empty_by_contradiction(query: &str) {
+        assert_eq!(Buckets::new_empty(), discover(query, vec![]), "{query}");
+    }
+
+    #[test]
+    fn contradictory_where_on_a_non_sharding_column() {
+        empty_by_contradiction(
+            r#"SELECT "id" FROM "test_space" WHERE "sysFrom" = 1 AND "sysFrom" = 2"#,
+        );
+    }
+
+    /// Binding folds the marked ON to false, enabling bucket pruning.
+    #[test]
+    fn contradictory_inner_join_condition_on_a_non_sharding_column() {
+        empty_by_contradiction(
+            r#"SELECT "t"."id" FROM "test_space" AS "t"
+            JOIN "test_space_hist" AS "h" ON "t"."sysFrom" = 1 AND "t"."sysFrom" = 2"#,
+        );
+    }
+
+    /// The conflict appears only after combining ON and WHERE facts.
+    #[test]
+    fn contradictory_class_across_join_condition_and_where() {
+        empty_by_contradiction(
+            r#"SELECT "t"."id" FROM "test_space" AS "t"
+            JOIN "test_space_hist" AS "h" ON "t"."sysFrom" = "h"."sysFrom"
+            WHERE "t"."sysFrom" = 1 AND "h"."sysFrom" = 2"#,
+        );
+    }
+
+    #[test]
+    fn every_or_arm_contradictory() {
+        empty_by_contradiction(
+            r#"SELECT "id" FROM "test_space"
+            WHERE ("sysFrom" = 1 AND "sysFrom" = 2) OR ("sys_op" = 1 AND "sys_op" = 2)"#,
+        );
+    }
+
+    /// A contradiction in the right subquery of a LEFT JOIN must not prune
+    /// the left side: its rows survive with NULLs.
+    #[test]
+    fn contradiction_in_left_join_right_subquery_keeps_left_side() {
+        let query = r#"SELECT "t"."id" FROM "test_space" AS "t"
+            LEFT JOIN (
+                SELECT "id" FROM "test_space_hist" WHERE "sysFrom" = 1 AND "sysFrom" = 2
+            ) AS "s" ON "t"."id" = "s"."id""#;
+        assert_eq!(Buckets::All, discover(query, vec![]));
+    }
+
+    /// A contradiction in one UNION ALL arm must not prune the other arm.
+    #[test]
+    fn contradiction_in_one_union_all_arm_keeps_the_other() {
+        let query = r#"SELECT "id" FROM "test_space" WHERE "sysFrom" = 1 AND "sysFrom" = 2
+            UNION ALL
+            SELECT "id" FROM "test_space_hist""#;
+        assert_eq!(Buckets::All, discover(query, vec![]));
+    }
 }

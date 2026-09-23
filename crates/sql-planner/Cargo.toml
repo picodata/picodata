@@ -40,7 +40,7 @@ name = "sql"
 [features]
 mock = ["sql-ir/mock", "sql-executor/mock", "sql-frontend/mock"]
 __bench_ast_new = ["sql-frontend/__bench_ast_new"]
-enrich_restrictions = ["sql-ir/enrich_restrictions"]
+enrich_restrictions = ["sql-ir/enrich_restrictions", "sql-executor/enrich_restrictions"]
 
 [[bench]]
 name = "ast_fill"

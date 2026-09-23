@@ -411,6 +411,13 @@ impl EquivalenceClass {
             None => self.params.first().copied().map(ClassPin::Param),
         }
     }
+
+    /// Whether the class contains conflicting constants, including conflicts
+    /// found by merging facts from separate filters.
+    #[must_use]
+    pub fn is_contradictory(&self) -> bool {
+        self.contradictory
+    }
 }
 
 /// Identifier of an output slot used by the public API.
@@ -488,6 +495,10 @@ pub struct EqualityFacts {
     /// against it that the facts it holds were built for the subtree it is
     /// walking, and not left over from another one.
     analyzed_top: NodeId,
+    /// Selections and INNER JOINs with individually unsatisfiable conditions.
+    /// Sorted and deduplicated. Conflicts across conditions are recorded in
+    /// [`EquivalenceClass::contradictory`].
+    dead_rels: Box<[NodeId]>,
 }
 
 /// Raw cross-side equalities collected for a LEFT JOIN during `analyze`.
@@ -715,18 +726,11 @@ impl EqualityFacts {
         self.const_of_class(class_id)
     }
 
-    /// Every class that pins a value, as `(pin, class)`.
-    ///
-    /// The pin holds unconditionally in the class' domain — `LEFT JOIN`
-    /// scope-only pins live in [`ResolvedScope`], not in the global classes — so
-    /// a value surfaced here is safe to push down to a base relation.
-    // Only the `enrich_restrictions` pass reads the facts back out; without it
-    // these accessors are unused, but the analysis they sit on is not.
+    /// Selections and INNER JOINs with individually unsatisfiable conditions.
+    #[must_use]
     #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
-    pub(super) fn pinned_classes(&self) -> impl Iterator<Item = (ClassPin<'_>, &EquivalenceClass)> {
-        self.classes
-            .iter()
-            .filter_map(|class| Some((class.pin()?, class)))
+    pub(super) fn dead_rels(&self) -> &[NodeId] {
+        &self.dead_rels
     }
 
     /// The subtree root these facts were analyzed for. Every
@@ -1017,7 +1021,14 @@ impl EqualityFactsBuilder {
         }
     }
 
-    fn freeze(self, param_types: AHashMap<u16, DerivedType>) -> EqualityFacts {
+    fn freeze(
+        self,
+        param_types: AHashMap<u16, DerivedType>,
+        mut dead_rels: Vec<NodeId>,
+    ) -> EqualityFacts {
+        // Keep a stable order and remove duplicate visits.
+        dead_rels.sort_unstable_by_key(|rel| (rel.arena_type, rel.offset));
+        dead_rels.dedup();
         let groups = self.members.groups_number();
 
         let mut root_to_class: AHashMap<UnionFindGroup, ClassId> =
@@ -1228,6 +1239,7 @@ impl EqualityFactsBuilder {
             param_types,
             // Domain 0 is the one `get_equality_facts` opened for its `top_id`.
             analyzed_top: self.domain_roots[0],
+            dead_rels: dead_rels.into_boxed_slice(),
         }
     }
 }
@@ -1247,6 +1259,8 @@ pub struct EqualityAnalysis<'p> {
     // Declared type of each query parameter, captured as equality terms are
     // extracted.
     param_types: AHashMap<u16, DerivedType>,
+    // Unsatisfiable conditions, sorted and deduplicated in `freeze`.
+    dead_rels: Vec<NodeId>,
 }
 
 impl<'p> EqualityAnalysis<'p> {
@@ -1260,12 +1274,15 @@ impl<'p> EqualityAnalysis<'p> {
             next_domain_id: DomainId(0),
             visited_shared_bodies: AHashSet::with_hasher(equality_facts_hash_state()),
             param_types: AHashMap::with_hasher(equality_facts_hash_state()),
+            dead_rels: Vec::new(),
         };
 
         let top_domain = analyzer.open_domain(top_id);
         analyzer.analyze(top_id, top_domain)?;
 
-        Ok(analyzer.builder.freeze(analyzer.param_types))
+        Ok(analyzer
+            .builder
+            .freeze(analyzer.param_types, analyzer.dead_rels))
     }
 
     fn alias_passthrough_output(
@@ -1675,6 +1692,7 @@ impl<'p> EqualityAnalysis<'p> {
         // conjunct.
         let clauses: Conjuncts = restr.clauses().iter().map(|c| c.clause()).collect();
         let Facts(partition) = self.derive_conjuncts(&clauses, &[], domain)? else {
+            self.dead_rels.push(rel_id);
             return Ok(());
         };
         for group in partition {

@@ -12,6 +12,14 @@
 //! a parameter check with no valid placement is skipped. The query's original
 //! equalities are always kept.
 //!
+//! An unpinned class derives equalities between columns with the same relation
+//! and placement. Each column is paired with the first, producing `n - 1`
+//! predicates for `n` columns. Cross-relation pairs are not derived.
+//!
+//! An unsatisfiable filter or INNER JOIN condition gets a `false` conjunct.
+//! A class with conflicting constants from separate filters gets a `false`
+//! predicate within its domain, using the placement rules for parameter checks.
+//!
 //! Only equalities that hold for every row are used; an outer join's `ON` is left
 //! out, as it holds only for matched rows.
 
@@ -21,13 +29,14 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{Join, NodeId, Projection, ReferenceTarget, ScanSubQuery, Selection};
 use crate::ir::operator::{Bool, JoinKind};
-use crate::ir::transformation::equality_facts::{ClassPin, Slot};
+use crate::ir::transformation::equality_facts::{ClassPin, EqualityFacts, EquivalenceClass, Slot};
 use crate::ir::tree::traversal::REL_CAPACITY;
 use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use ahash::{AHashMap, AHashSet};
 use smallvec::{smallvec, SmallVec};
+use std::collections::hash_map::Entry;
 
 enum Pin {
     Const(Value),
@@ -48,6 +57,15 @@ enum Placement {
     NewSubquery { parent: NodeId, child: NodeId },
 }
 
+/// One `left = right` equality between two columns of the same relational
+/// node, derived from an unpinned class and attached through `placement`.
+struct ColPair {
+    placement: Placement,
+    rel_id: NodeId,
+    left: usize,
+    right: usize,
+}
+
 /// A star of equalities connecting columns and parameters to one shared pin.
 /// Stores the operands and placements; `build_predicates` creates the expressions.
 /// Every lowest column member must have a placement. Parameter checks without
@@ -59,9 +77,53 @@ struct Star {
     params: Option<(Placement, Vec<(u16, DerivedType)>)>,
 }
 
+/// What enrichment derives from one class, see [`classify`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum ClassAction<'a> {
+    /// A `false` marker: the class is unsatisfiable.
+    Contradiction,
+    /// A star of `member = pin` (and `$param = pin`) equalities.
+    Pinned(ClassPin<'a>),
+    /// `col = col` pairs between members on one relational node.
+    Pairs,
+}
+
+/// Choose one action: mark a contradiction, derive equalities to a pin, or
+/// derive column pairs. Pins hold throughout the class's domain; facts scoped
+/// to a LEFT JOIN's ON are excluded from global classes.
+///
+/// Pairs require an unpinned class with two members on the same relation.
+/// A NULL constant is not a pin and does not permit pair derivation.
+/// Members are sorted by relation, so adjacent entries suffice for this check.
+fn classify(class: &EquivalenceClass) -> Option<ClassAction<'_>> {
+    if class.is_contradictory() {
+        return Some(ClassAction::Contradiction);
+    }
+    if let Some(pin) = class.pin() {
+        return (!class.members.is_empty() || !class.params.is_empty())
+            .then_some(ClassAction::Pinned(pin));
+    }
+    (class.constant.is_none()
+        && class.params.is_empty()
+        && class
+            .members
+            .windows(2)
+            .any(|pair| pair[0].rel_id == pair[1].rel_id))
+    .then_some(ClassAction::Pairs)
+}
+
+/// Predicates in build order: pinned equalities, column pairs, then false
+/// markers for unsatisfiable conditions and contradictory classes.
+#[derive(Default)]
+struct Enrichment {
+    stars: Vec<Star>,
+    pairs: Vec<ColPair>,
+    empty: Vec<Placement>,
+}
+
 impl Plan {
-    /// Enrich the query with the equality conditions its pinned classes imply.
-    /// No-op unless facts, restrictions, and at least one pin all exist.
+    /// Add implied equalities and false markers from analyzed facts.
+    /// Requires equality facts and restrictions.
     ///
     /// # Errors
     /// - Building a predicate, reading a column, or splicing a filter fails.
@@ -73,19 +135,15 @@ impl Plan {
                 .is_none_or(|facts| facts.analyzed_top() == top_id),
             "facts analyzed for another subtree"
         );
-        let has_pins = self
-            .facts
-            .as_ref()
-            .is_some_and(|facts| facts.pinned_classes().next().is_some());
-        if !(has_pins && self.restrictions.is_some()) {
+        if self.restrictions.is_none() {
             return Ok(self);
         }
-
         // Three phases, kept apart so the search never depends on the order of
         // already-inserted nodes: plan where each class emits (reads the tree),
         // build the predicate expressions, then apply the relational changes.
-        let parents = self.rel_parents(top_id);
-        let planned = self.collect_class_predicates(&parents)?;
+        let Some(planned) = self.plan_enrichment(top_id)? else {
+            return Ok(self);
+        };
         let grouped = self.build_predicates(planned)?;
         // Splicing does not read equality facts. Register the inserted nodes
         // afterwards to rebuild each affected class's members only once.
@@ -99,19 +157,93 @@ impl Plan {
         Ok(self)
     }
 
-    /// Build the derived predicate nodes for every planned [`Star`], grouped by the
-    /// [`Placement`] each attaches through. Only expression nodes are built here, so
-    /// the reads that resolved placements stay valid.
+    /// Plan predicates in a stable order without modifying the tree.
+    /// Return `None` when no class or relation needs enrichment.
+    ///
+    /// # Errors
+    /// - Reading a relational node or an output column fails.
+    fn plan_enrichment(&self, top_id: NodeId) -> Result<Option<Enrichment>, SbroadError> {
+        let Some(facts) = self.facts.as_ref() else {
+            return Ok(None);
+        };
+        let mut candidates: Vec<(&EquivalenceClass, ClassAction<'_>)> = facts
+            .classes
+            .iter()
+            .filter_map(|class| Some((class, classify(class)?)))
+            .collect();
+        if candidates.is_empty() && facts.dead_rels().is_empty() {
+            return Ok(None);
+        }
+        // Sort by stable sources because ClassId order depends on hashing.
+        candidates.sort_unstable_by_key(|(class, _)| {
+            (
+                class.anchor.arena_type,
+                class.anchor.offset,
+                class.members.as_ref(),
+                class.params.as_ref(),
+            )
+        });
+
+        // Only column placement needs a parent map.
+        let parents = if candidates.iter().any(|(class, action)| {
+            !class.members.is_empty() && !matches!(action, ClassAction::Contradiction)
+        }) {
+            self.rel_parents(top_id)
+        } else {
+            AHashMap::new()
+        };
+        // Cache each source column's first output position per parent.
+        // Shared across classes to avoid quadratic scans of wide outputs.
+        // Valid only during planning, before the tree changes.
+        let mut lift_index: AHashMap<NodeId, AHashMap<RelColumn, usize>> = AHashMap::new();
+        // Two domains pinning the same param to the same value are two distinct
+        // checks, so key seen checks by anchor too.
+        let mut param_check_seen: AHashSet<(u16, ClassPin<'_>, NodeId)> = AHashSet::new();
+        let mut planned = Enrichment {
+            empty: self.dead_rel_markers(facts)?,
+            ..Enrichment::default()
+        };
+        for (class, action) in candidates {
+            match action {
+                ClassAction::Contradiction => {
+                    if let Some(placement) = self.place_param_check(class.anchor)? {
+                        planned.empty.push(placement);
+                    }
+                }
+                ClassAction::Pinned(pin) => {
+                    let star = self.plan_class_star(
+                        facts,
+                        class,
+                        pin,
+                        &parents,
+                        &mut lift_index,
+                        &mut param_check_seen,
+                    )?;
+                    planned.stars.extend(star);
+                }
+                ClassAction::Pairs => {
+                    self.plan_class_pairs(class, &parents, &mut lift_index, &mut planned.pairs)?;
+                }
+            }
+        }
+        Ok(Some(planned))
+    }
+
+    /// Build expressions grouped by [`Placement`] without changing relations.
     ///
     /// # Errors
     /// - Reading an output column or building a predicate fails.
     fn build_predicates(
         &mut self,
-        planned: Vec<Star>,
+        Enrichment {
+            stars,
+            pairs,
+            empty,
+        }: Enrichment,
     ) -> Result<AHashMap<Placement, Vec<NodeId>, RepeatableState>, SbroadError> {
         let mut grouped: AHashMap<Placement, Vec<NodeId>, RepeatableState> =
             AHashMap::with_hasher(RepeatableState::default());
-        for class in planned {
+        for class in stars {
             // Param checks before column pins, for a stable rendered conjunct order.
             if let Some((placement, params)) = class.params {
                 for (param, param_type) in params {
@@ -127,6 +259,14 @@ impl Plan {
             // TODO: here we enrich only filters, but motions can be executed with
             // one-time filter violation. One way to prevent it is to store one-time
             // filters in the plan and execute them before the rest.
+        }
+        for pair in pairs {
+            let eq_id = self.make_col_eq(pair.rel_id, pair.left, pair.right)?;
+            grouped.entry(pair.placement).or_default().push(eq_id);
+        }
+        for placement in empty {
+            let false_id = self.add_const(Value::Boolean(false));
+            grouped.entry(placement).or_default().push(false_id);
         }
         Ok(grouped)
     }
@@ -237,107 +377,151 @@ impl Plan {
         Ok(filter)
     }
 
-    /// Plan a [`Star`] for each pinned class that needs predicates: select the
-    /// columns, parameters, and their placements without modifying the tree.
+    /// Plan equalities to a class's pin. Every lowest column member requires
+    /// a placement; parameter checks without one are skipped.
+    /// Return `None` when no predicates are needed.
     ///
     /// # Errors
     /// - Reading an output column fails.
-    fn collect_class_predicates(
+    /// - A lowest member has no placement.
+    fn plan_class_star<'f>(
         &self,
+        facts: &'f EqualityFacts,
+        class: &'f EquivalenceClass,
+        pin: ClassPin<'f>,
         parents: &AHashMap<NodeId, NodeId>,
-    ) -> Result<Vec<Star>, SbroadError> {
-        let Some(facts) = self.facts.as_ref() else {
-            return Ok(Vec::new());
-        };
-        // Two domains pinning the same param to the same value are two distinct
-        // checks, so key seen checks by anchor too.
-        let mut param_check_seen: AHashSet<(u16, ClassPin<'_>, NodeId)> = AHashSet::new();
-        let mut planned: Vec<Star> = Vec::new();
-        // Reverse output index per parent, built lazily on the first lift through
-        // that parent and reused for every class: source column -> first output
-        // position carrying it. Without it, lifting `W` columns through one wide
-        // node rescans its output each time, an O(W^2) walk. Lives only for this
-        // planning phase, before the tree is mutated.
-        let mut lift_index: AHashMap<NodeId, AHashMap<RelColumn, usize>> = AHashMap::new();
-        // Class ids follow hash-table iteration order, which must not decide the
-        // predicate order or which class owns a duplicate param check: order the
-        // classes by their stable sources first.
-        let mut pinned: Vec<_> = facts
-            .pinned_classes()
-            .filter(|(_, class)| !class.members.is_empty() || !class.params.is_empty())
-            .collect();
-        pinned.sort_unstable_by_key(|(_, class)| {
-            (
-                class.anchor.arena_type,
-                class.anchor.offset,
-                class.members.as_ref(),
-                class.params.as_ref(),
-            )
-        });
-        for (pin, class) in pinned {
-            let member_set: AHashSet<Slot> = class.members.iter().copied().collect();
-            // Distinct lowest members cannot converge: each lifted slot has one source.
-            let mut cols: Vec<(Placement, Slot)> = Vec::new();
-            for &member in class.members.iter() {
-                // Start from the lowest copy of this column in the class: skip a
-                // copy whose own source is already a member. Check the full
-                // (rel, position) pair: two columns of one LEFT
-                // JOIN can have different lower bounds (a nullable right column
-                // stays on the join output while a left one reaches its scan).
-                let source = self.column_source(RelColumn::new(member.rel_id, member.pos))?;
-                let has_deeper_member =
-                    source.is_some_and(|s| member_set.contains(&Slot::new(s.rel_id, s.position)));
-                if has_deeper_member {
-                    continue;
-                }
-                let Some((placement, slot)) =
-                    self.place_column(member, &member_set, parents, &mut lift_index)?
-                else {
-                    // Each lowest member must reach a restricting WHERE or INNER
-                    // JOIN ON through same-column members, unless an earlier
-                    // insertion is possible.
-                    debug_assert!(
-                        false,
-                        "enrich_restrictions: no placement for class member {member:?}"
-                    );
-                    return Err(SbroadError::Invalid(
-                        Entity::Plan,
-                        Some(smol_str::ToSmolStr::to_smolstr(&format!(
-                            "enrich_restrictions: no placement for class member {member:?}"
-                        ))),
-                    ));
-                };
-                cols.push((placement, slot));
-            }
-            // One check per (param, pin, anchor); the pin param itself needs none.
-            let mut params: Vec<(u16, DerivedType)> = Vec::new();
-            for &param in &class.params {
-                if pin != ClassPin::Param(param)
-                    && param_check_seen.insert((param, pin, class.anchor))
-                {
-                    params.push((param, facts.param_type(param)));
-                }
-            }
-            let checks = if params.is_empty() {
-                None
-            } else {
-                self.place_param_check(class.anchor)?
-                    .map(|placement| (placement, params))
-            };
-            if cols.is_empty() && checks.is_none() {
+        lift_index: &mut AHashMap<NodeId, AHashMap<RelColumn, usize>>,
+        param_check_seen: &mut AHashSet<(u16, ClassPin<'f>, NodeId)>,
+    ) -> Result<Option<Star>, SbroadError> {
+        let member_set: AHashSet<Slot> = class.members.iter().copied().collect();
+        // Distinct lowest members cannot converge: each lifted slot has one source.
+        let mut cols: Vec<(Placement, Slot)> = Vec::new();
+        for &member in class.members.iter() {
+            if !self.is_lowest_member(member, &member_set)? {
                 continue;
             }
-            let pin = match pin {
-                ClassPin::Const(value) => Pin::Const(value.clone()),
-                ClassPin::Param(idx) => Pin::Param(idx, facts.param_type(idx)),
+            let Some((placement, slot)) =
+                self.place_column(member, &member_set, parents, lift_index)?
+            else {
+                // Each lowest member must reach a restricting WHERE or INNER
+                // JOIN ON through same-column members, unless an earlier
+                // insertion is possible.
+                debug_assert!(
+                    false,
+                    "enrich_restrictions: no placement for class member {member:?}"
+                );
+                return Err(SbroadError::Invalid(
+                    Entity::Plan,
+                    Some(smol_str::ToSmolStr::to_smolstr(&format!(
+                        "enrich_restrictions: no placement for class member {member:?}"
+                    ))),
+                ));
             };
-            planned.push(Star {
-                pin,
-                cols,
-                params: checks,
-            });
+            cols.push((placement, slot));
         }
-        Ok(planned)
+        // One check per (param, pin, anchor); the pin param itself needs none.
+        let mut params: Vec<(u16, DerivedType)> = Vec::new();
+        for &param in &class.params {
+            if pin != ClassPin::Param(param) && param_check_seen.insert((param, pin, class.anchor))
+            {
+                params.push((param, facts.param_type(param)));
+            }
+        }
+        let checks = if params.is_empty() {
+            None
+        } else {
+            self.place_param_check(class.anchor)?
+                .map(|placement| (placement, params))
+        };
+        if cols.is_empty() && checks.is_none() {
+            return Ok(None);
+        }
+        let pin = match pin {
+            ClassPin::Const(value) => Pin::Const(value.clone()),
+            ClassPin::Param(idx) => Pin::Param(idx, facts.param_type(idx)),
+        };
+        Ok(Some(Star {
+            pin,
+            cols,
+            params: checks,
+        }))
+    }
+
+    /// Pair lowest members that share a relation and placement with the first
+    /// member of their group. Skip members without a valid placement.
+    ///
+    /// # Errors
+    /// - Reading an output column fails.
+    fn plan_class_pairs(
+        &self,
+        class: &EquivalenceClass,
+        parents: &AHashMap<NodeId, NodeId>,
+        lift_index: &mut AHashMap<NodeId, AHashMap<RelColumn, usize>>,
+        pairs: &mut Vec<ColPair>,
+    ) -> Result<(), SbroadError> {
+        let member_set: AHashSet<Slot> = class.members.iter().copied().collect();
+        // Use the first member as each group's centre. Sorted members and
+        // lookup-only map access keep the predicate order deterministic.
+        let mut centres: AHashMap<(Placement, NodeId), usize> = AHashMap::new();
+        for &member in class.members.iter() {
+            if !self.is_lowest_member(member, &member_set)? {
+                continue;
+            }
+            let Some((placement, slot)) =
+                self.place_column(member, &member_set, parents, lift_index)?
+            else {
+                continue;
+            };
+            match centres.entry((placement, slot.rel_id)) {
+                Entry::Occupied(centre) => pairs.push(ColPair {
+                    placement,
+                    rel_id: slot.rel_id,
+                    left: *centre.get(),
+                    right: slot.pos,
+                }),
+                Entry::Vacant(centre) => {
+                    centre.insert(slot.pos);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Place `false` in each unsatisfiable Selection filter or INNER JOIN
+    /// condition. Class-level contradictions are handled by `plan_enrichment`.
+    ///
+    /// # Errors
+    /// - Reading a relational node fails.
+    fn dead_rel_markers(&self, facts: &EqualityFacts) -> Result<Vec<Placement>, SbroadError> {
+        let dead = facts.dead_rels();
+        let mut empty: Vec<Placement> = Vec::with_capacity(dead.len());
+        for &rel in dead {
+            match self.get_relation_node(rel)? {
+                Relational::Selection(_) => empty.push(Placement::ExistingSelection(rel)),
+                Relational::Join(Join {
+                    kind: JoinKind::Inner,
+                    ..
+                }) => empty.push(Placement::InnerJoinOn(rel)),
+                // `apply_expr_facts` runs only for these two.
+                _ => debug_assert!(false, "dead rel {rel:?} is no Selection or INNER Join"),
+            }
+        }
+        Ok(empty)
+    }
+
+    /// Check that the column's source is not already a class member.
+    /// Compare both relation and position: columns of a LEFT JOIN can have
+    /// different lower bounds depending on which side they belong to.
+    ///
+    /// # Errors
+    /// - Reading an output column fails.
+    fn is_lowest_member(
+        &self,
+        member: Slot,
+        member_set: &AHashSet<Slot>,
+    ) -> Result<bool, SbroadError> {
+        let source = self.column_source(RelColumn::new(member.rel_id, member.pos))?;
+        Ok(!source.is_some_and(|s| member_set.contains(&Slot::new(s.rel_id, s.position))))
     }
 
     /// Where a `col = pin` clause for class member `slot` attaches, and the slot it
@@ -434,9 +618,8 @@ impl Plan {
     /// `None` when there is no such spot. The class's original equalities still
     /// enforce the omitted check.
     ///
-    /// A `WHERE` is preferred to a join `ON` because a check that folds to a
-    /// constant `false` is pruned at the router only inside a `Selection` (the
-    /// same `false` folded into a join condition is not).
+    /// Binding folds constant checks. A false Selection filter or INNER JOIN
+    /// condition allows bucket pruning.
     fn place_param_check(&self, anchor: NodeId) -> Result<Option<Placement>, SbroadError> {
         // Step through an optional subquery body, then an optional Projection.
         let root = match self.get_relation_node(anchor)? {
@@ -454,8 +637,7 @@ impl Plan {
         if matches!(inner_node, Relational::Selection(Selection { .. })) {
             return Ok(Some(Placement::ExistingSelection(inner)));
         }
-        // Then a plain Selection spliced on the Projection's input edge, so a
-        // `false`-folding check can still prune at the router.
+        // Then a plain Selection spliced on the Projection's input edge.
         if let Some(projection) = projection {
             if let Some(placement) = self.new_filter_placement(projection, inner)? {
                 return Ok(Some(placement));
@@ -522,6 +704,33 @@ impl Plan {
                 .add_ref(ReferenceTarget::Single(rel_id), pos, col_type, None, false);
         let pin_id = self.make_pin(pin);
         self.add_bool(ref_id, Bool::Eq, pin_id)
+    }
+
+    /// Build a detached `Reference(rel, left) = Reference(rel, right)`. Both
+    /// columns sit on the same node; each keeps its own column type.
+    fn make_col_eq(
+        &mut self,
+        rel_id: NodeId,
+        left: usize,
+        right: usize,
+    ) -> Result<NodeId, SbroadError> {
+        let left_type = self.output_col_type(rel_id, left)?;
+        let right_type = self.output_col_type(rel_id, right)?;
+        let left_id = self.nodes.add_ref(
+            ReferenceTarget::Single(rel_id),
+            left,
+            left_type,
+            None,
+            false,
+        );
+        let right_id = self.nodes.add_ref(
+            ReferenceTarget::Single(rel_id),
+            right,
+            right_type,
+            None,
+            false,
+        );
+        self.add_bool(left_id, Bool::Eq, right_id)
     }
 
     /// Build `Parameter($param) = <pin>` as a detached, column-less SQL conjunct.

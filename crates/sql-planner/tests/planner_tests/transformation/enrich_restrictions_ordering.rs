@@ -34,7 +34,7 @@ fn predicates_and_plan_ids_are_stable_across_processes() {
             .filter_map(|line| line.strip_prefix("ORDERING_RESULT "))
             .map(str::to_owned)
             .collect();
-        assert_eq!(results.len(), 5, "{stdout}");
+        assert_eq!(results.len(), 8, "{stdout}");
         if let Some(expected) = &expected {
             pretty_assertions::assert_eq!(expected, &results);
         } else {
@@ -74,6 +74,22 @@ fn ordering_probe() {
         (
             "SELECT a FROM t WHERE a = $1 AND b = $2",
             vec![Value::Integer(1), Value::Integer(2)],
+        ),
+        // One unpinned class with a pair group on each side of the join.
+        (
+            "SELECT l.a FROM t l JOIN t r ON l.a = r.a WHERE l.a = l.b AND r.a = r.b",
+            vec![],
+        ),
+        // Dead rels in different set-operation arms.
+        (
+            "SELECT a FROM t WHERE a = 1 AND a = 2 \
+             UNION ALL SELECT a FROM t WHERE b = 1 AND b = 2",
+            vec![],
+        ),
+        // A class with conflicting constants from ON and WHERE facts.
+        (
+            "SELECT l.a FROM t l JOIN t r ON l.b = r.b WHERE l.b = 1 AND r.b = 2",
+            vec![],
         ),
     ];
     for (query, values) in cases {

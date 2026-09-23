@@ -49,3 +49,5 @@ sql-explain = { path = "../sql-explain", features = ["mock"] }
 # `test_helpers` module can parse SQL text into IR plans. Production builds
 # (mock off) never compile sql-frontend into this crate.
 mock = ["sql-ir/mock", "dep:sql-frontend", "sql-frontend?/mock"]
+# Derive predicates from equality facts for bucket pruning.
+enrich_restrictions = ["sql-ir/enrich_restrictions"]
