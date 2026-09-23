@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="476" viewBox="0 0 680 476">
+<title>Путь запроса на запись</title>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000000"/></marker>
+<marker id="arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z" fill="#000000"/></marker>
+</defs>
+<rect x="0" y="0" width="680" height="476" fill="#ffffff"/>
+<circle cx="24" cy="34" r="12" fill="#ed453a" stroke="none"/>
+<text x="24" y="39" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">1</text>
+<rect x="56" y="16" width="120" height="36" rx="18" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="116" y="39" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">Клиент</text>
+<line x1="178" y1="34" x2="250" y2="34" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<rect x="252" y="16" width="160" height="36" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<text x="332" y="39" font-family="'Liberation Mono', Menlo, monospace" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">s3r_api</text>
+<text x="428" y="39" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">проверка подписи SigV4</text>
+<circle cx="24" cy="104" r="12" fill="#ed453a" stroke="none"/>
+<text x="24" y="109" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">2</text>
+<rect x="56" y="86" width="356" height="36" rx="4" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+<line x1="145" y1="86" x2="145" y2="122" stroke="#000000" stroke-width="1"/>
+<line x1="234" y1="86" x2="234" y2="122" stroke="#000000" stroke-width="1"/>
+<line x1="323" y1="86" x2="323" y2="122" stroke="#000000" stroke-width="1"/>
+<text x="100" y="109" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">полоса 0</text>
+<text x="189" y="109" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">полоса 1</text>
+<text x="278" y="109" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">полоса 2</text>
+<text x="367" y="109" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">полоса 3</text>
+<rect x="56" y="86" width="89" height="36" rx="4" fill="none" stroke="#ed453a" stroke-width="2.5"/>
+<text x="428" y="101" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">объект разбит на полосы</text>
+<text x="428" y="117" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">размером stripe_bytes</text>
+<circle cx="24" cy="184" r="12" fill="#ed453a" stroke="none"/>
+<text x="24" y="189" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">3</text>
+<path d="M 100 122 L 100 144 M 110 144 L 350 144" fill="none" stroke="#000000" stroke-width="1"/>
+<line x1="110" y1="144" x2="110" y2="164" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="190" y1="144" x2="190" y2="164" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="270" y1="144" x2="270" y2="164" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="350" y1="144" x2="350" y2="164" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<rect x="80" y="166" width="60" height="36" rx="4" fill="#9fe3e3" stroke="#000000" stroke-width="1"/>
+<text x="110" y="189" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">D1</text>
+<rect x="160" y="166" width="60" height="36" rx="4" fill="#9fe3e3" stroke="#000000" stroke-width="1"/>
+<text x="190" y="189" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">D2</text>
+<rect x="240" y="166" width="60" height="36" rx="4" fill="#eda699" stroke="#000000" stroke-width="1"/>
+<text x="270" y="189" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">P1</text>
+<rect x="320" y="166" width="60" height="36" rx="4" fill="#eda699" stroke="#000000" stroke-width="1"/>
+<text x="350" y="189" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#000000">P2</text>
+<text x="428" y="181" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">полоса закодирована в k = 2 фрагмента</text>
+<text x="428" y="197" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">данных и m = 2 фрагмента чётности</text>
+<circle cx="24" cy="262" r="12" fill="#ed453a" stroke="none"/>
+<text x="24" y="267" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">4</text>
+<rect x="56" y="240" width="360" height="150" rx="10" fill="none" stroke="#000000" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="66" y="406" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">группа размещения 2+2</text>
+<line x1="110" y1="203" x2="110" y2="283" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<path d="M 88.0 292.2857142857143 L 88.0 341.7142857142857 A 22.0 6.285714285714286 0 0 0 132.0 341.7142857142857 L 132.0 292.2857142857143" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="110" cy="292.2857142857143" rx="22.0" ry="6.285714285714286" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="110" y="380" font-family="'Liberation Mono', Menlo, monospace" font-size="11" font-weight="normal" text-anchor="middle" fill="#000000">hba=a</text>
+<line x1="190" y1="203" x2="190" y2="283" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<path d="M 168.0 292.2857142857143 L 168.0 341.7142857142857 A 22.0 6.285714285714286 0 0 0 212.0 341.7142857142857 L 212.0 292.2857142857143" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="190" cy="292.2857142857143" rx="22.0" ry="6.285714285714286" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="190" y="380" font-family="'Liberation Mono', Menlo, monospace" font-size="11" font-weight="normal" text-anchor="middle" fill="#000000">hba=b</text>
+<line x1="270" y1="203" x2="270" y2="283" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<path d="M 248.0 292.2857142857143 L 248.0 341.7142857142857 A 22.0 6.285714285714286 0 0 0 292.0 341.7142857142857 L 292.0 292.2857142857143" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="270" cy="292.2857142857143" rx="22.0" ry="6.285714285714286" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="270" y="380" font-family="'Liberation Mono', Menlo, monospace" font-size="11" font-weight="normal" text-anchor="middle" fill="#000000">hba=c</text>
+<line x1="350" y1="203" x2="350" y2="283" stroke="#000000" stroke-width="1" stroke-dasharray="4 3"/>
+<path d="M 328.0 292.2857142857143 L 328.0 341.7142857142857 A 22.0 6.285714285714286 0 0 0 372.0 341.7142857142857 L 372.0 292.2857142857143" fill="#c5c5c5" stroke="#000000" stroke-width="1"/>
+<ellipse cx="350" cy="292.2857142857143" rx="22.0" ry="6.285714285714286" fill="#eaeaea" stroke="#000000" stroke-width="1"/>
+<text x="350" y="380" font-family="'Liberation Mono', Menlo, monospace" font-size="11" font-weight="normal" text-anchor="middle" fill="#000000">hba=d</text>
+<text x="428" y="257" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">фрагменты переданы на диски</text>
+<text x="428" y="273" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">группы по HTTP/2</text>
+<circle cx="24" cy="334" r="12" fill="#ed453a" stroke="none"/>
+<text x="24" y="339" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">5</text>
+<path d="M 102 322 L 108 329 L 120 314" fill="none" stroke="#1a7f37" stroke-width="2.5"/>
+<path d="M 182 322 L 188 329 L 200 314" fill="none" stroke="#1a7f37" stroke-width="2.5"/>
+<path d="M 262 322 L 268 329 L 280 314" fill="none" stroke="#1a7f37" stroke-width="2.5"/>
+<path d="M 342 314 L 358 330 M 358 314 L 342 330" fill="none" stroke="#ed453a" stroke-width="2.5"/>
+<text x="428" y="329" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">приняты 3 фрагмента: не меньше</text>
+<text x="428" y="345" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">k + m − write_tolerance и не меньше k</text>
+<text x="428" y="367" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">фрагмент P2 перестроит владелец группы</text>
+<text x="428" y="383" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">на ближайшем проходе repair</text>
+<circle cx="24" cy="440" r="12" fill="#ed453a" stroke="none"/>
+<text x="24" y="445" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">6</text>
+<rect x="56" y="420" width="356" height="40" rx="6" fill="#c8eeee" stroke="#000000" stroke-width="1"/>
+<text x="234" y="445" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="normal" text-anchor="middle" fill="#000000">строка объекта в таблице s3r_t&lt;N&gt;_object</text>
+<path d="M 234 390 L 234 418" fill="none" stroke="#000000" stroke-width="1" marker-end="url(#arrow)"/>
+<text x="428" y="436" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">метаданные фиксируются</text>
+<text x="428" y="452" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">после записи всех фрагментов</text>
+</svg>
