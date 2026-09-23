@@ -8,7 +8,7 @@ use crate::ir::node::{
     expression::Expression, BoolExpr, Constant, NodeId, Reference, ReferenceTarget,
 };
 use crate::ir::operator::Bool;
-use crate::ir::value::{value_to_decimal_or_error, Value};
+use crate::ir::value::{value_to_decimal_or_error, Trivalent, Value};
 use crate::ir::{Plan, Positions};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -248,6 +248,20 @@ pub trait BucketsResolver {
     ) -> Result<Buckets, SbroadError>;
 }
 
+/// Whether `l = r` is provably not `TRUE`: `NULL` on either side, or two values
+/// of the same kind that differ. Values of different kinds are left undecided:
+/// `Value::eq` is not symmetric across numeric kinds (an integer beyond the
+/// exact double range) and need not match the storage coercions. Tuples are
+/// left undecided too, as `Value::eq` never reports them equal.
+fn constant_pair_rejects_eq(l: &Value, r: &Value) -> bool {
+    match (l, r) {
+        (Value::Null, _) | (_, Value::Null) => true,
+        (Value::Tuple(_), _) | (_, Value::Tuple(_)) => false,
+        _ if std::mem::discriminant(l) == std::mem::discriminant(r) => l.eq(r) == Trivalent::False,
+        _ => false,
+    }
+}
+
 /// Accumulate `other` into a conjunction with `acc`.
 fn conjunct_into(acc: &mut Option<Buckets>, other: Buckets) {
     *acc = Some(match acc.take() {
@@ -354,6 +368,40 @@ impl Plan {
         Ok(())
     }
 
+    /// Whether constants make `left = right` provably not `TRUE`, either
+    /// directly or at some position of two rows. Such pairs survive binding
+    /// when a parameter was merged into a row (`(b, $1) = (1, 1)`), which
+    /// constant folding does not look into.
+    ///
+    /// A `NULL` constant on either side is enough: `x = NULL` is never `TRUE`
+    /// whatever `x` is.
+    fn constants_reject_eq(&self, left_id: NodeId, right_id: NodeId) -> Result<bool, SbroadError> {
+        let left = self.get_expression_node(left_id)?;
+        let right = self.get_expression_node(right_id)?;
+        match (&left, &right) {
+            (Expression::Constant(Constant { value: Value::Null }), _)
+            | (_, Expression::Constant(Constant { value: Value::Null })) => Ok(true),
+            (
+                Expression::Constant(Constant { value: l }),
+                Expression::Constant(Constant { value: r }),
+            ) => Ok(constant_pair_rejects_eq(l, r)),
+            (Expression::Row(_), Expression::Row(_)) => {
+                let left_list = left.get_row_list()?;
+                let right_list = right.get_row_list()?;
+                if left_list.len() != right_list.len() {
+                    return Ok(false);
+                }
+                for (&l, &r) in left_list.iter().zip(right_list) {
+                    if self.constants_reject_eq(l, r)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            _ => Ok(false),
+        }
+    }
+
     /// Inner logic of `get_expression_tree_buckets` for simple expressions (without OR and AND
     /// operators).
     /// In general it returns `Buckets::All`, but in some cases (e.g. `Eq` and `In` operators) it
@@ -371,7 +419,6 @@ impl Plan {
         let tier = self.tier.as_ref();
         let expr = self.get_expression_node(expr_id)?;
 
-        // Try to collect buckets from an explicit `bucket_id = value` predicate.
         if let Expression::Bool(BoolExpr {
             op: Bool::Eq,
             left,
@@ -379,6 +426,12 @@ impl Plan {
             ..
         }) = expr
         {
+            // The expression is a conjunct of a DNF chain, so a `FALSE` or `NULL`
+            // comparison of constants rejects every row of the chain.
+            if self.constants_reject_eq(*left, *right)? {
+                return Ok(Some(Buckets::new_empty()));
+            }
+            // Try to collect buckets from an explicit `bucket_id = value` predicate.
             self.collect_buckets_from_bucket_id_eq(*left, *right, resolver, tier, &mut buckets)?;
         }
 
@@ -584,3 +637,6 @@ impl Plan {
         Ok(Buckets::All)
     }
 }
+
+#[cfg(test)]
+mod tests;

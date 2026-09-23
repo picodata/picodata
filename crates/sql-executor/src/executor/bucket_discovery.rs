@@ -20,6 +20,18 @@ use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target}
 use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
+use crate::ir::Plan;
+
+/// Whether a filter or an INNER JOIN condition is folded to a constant that
+/// rejects every row.
+fn is_false_or_null(plan: &Plan, expr_id: NodeId) -> Result<bool, SbroadError> {
+    Ok(matches!(
+        plan.get_expression_node(expr_id)?,
+        Expression::Constant(Constant {
+            value: Value::Boolean(false) | Value::Null,
+        })
+    ))
+}
 
 struct ExecutorBucketsResolver<'p, C: Router> {
     coordinator: &'p C,
@@ -450,10 +462,7 @@ where
                         .clone();
                     let filter_id = *filter;
 
-                    let filter_buckets = if let Expression::Constant(Constant {
-                        value: Value::Boolean(false) | Value::Null,
-                    }) = ir_plan.get_expression_node(filter_id)?
-                    {
+                    let filter_buckets = if is_false_or_null(ir_plan, filter_id)? {
                         Buckets::new_empty()
                     } else {
                         ir_plan.get_expression_tree_buckets(
@@ -500,12 +509,16 @@ where
                     let condition_id = *condition;
                     let join_buckets = match kind {
                         JoinKind::Inner => {
-                            let filter_buckets = ir_plan.get_expression_tree_buckets(
-                                condition_id,
-                                &[*left, *right],
-                                subqueries,
-                                &resolver,
-                            )?;
+                            let filter_buckets = if is_false_or_null(ir_plan, condition_id)? {
+                                Buckets::new_empty()
+                            } else {
+                                ir_plan.get_expression_tree_buckets(
+                                    condition_id,
+                                    &[*left, *right],
+                                    subqueries,
+                                    &resolver,
+                                )?
+                            };
                             inner_buckets
                                 .disjunct(&outer_buckets)
                                 .conjunct(&filter_buckets)

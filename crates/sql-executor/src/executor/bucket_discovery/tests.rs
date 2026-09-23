@@ -973,3 +973,184 @@ fn explicit_bucket_id_in_delete() {
         Buckets::Filtered(BucketSet::Exact(collection!(42)))
     );
 }
+
+fn discover(query: &str, params: Vec<Value>) -> Buckets {
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, params).unwrap();
+    let top = query.get_exec_plan().get_ir_plan().get_top().unwrap();
+    query.bucket_discovery(top).unwrap()
+}
+
+/// The only relational node of the tree under `top` that `is_wanted` accepts.
+fn single_rel(
+    plan: &crate::ir::Plan,
+    top: crate::ir::node::NodeId,
+    is_wanted: impl Fn(&crate::ir::node::relational::Relational) -> bool,
+) -> crate::ir::node::NodeId {
+    use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+
+    let tree = PostOrderWithFilter::new(
+        |node| plan.nodes.rel_iter(node),
+        |node| {
+            plan.get_relation_node(node)
+                .is_ok_and(|rel| is_wanted(&rel))
+        },
+        REL_CAPACITY,
+    );
+    let found = tree.traverse_into_vec(top);
+    assert_eq!(1, found.len(), "expected exactly one matching node");
+    found[0]
+}
+
+/// A parameter compared with a constant is merged into a row equality
+/// (`(b, $1) = (1, 1)`), which constant folding does not look into. A bound
+/// value that fails the comparison makes the query provably empty.
+#[test]
+fn unequal_constants_in_row_after_bind() {
+    use crate::ir::node::expression::Expression;
+    use crate::ir::node::relational::Relational;
+    use crate::ir::node::{BoolExpr, Selection};
+    use crate::ir::operator::Bool;
+
+    let sql = r#"SELECT "id" FROM "test_space" WHERE "sysFrom" = 1 AND $1 = 1"#;
+    let coordinator = RouterRuntimeMock::new();
+    let mut query =
+        ExecutingQuery::from_text_and_params(&coordinator, sql, vec![Value::from(2)]).unwrap();
+
+    // The bound pair must still sit in a row equality, or the test would pass
+    // without the check once folding learns to look into rows.
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top = plan.get_top().unwrap();
+    let selection = single_rel(plan, top, |rel| matches!(rel, Relational::Selection(_)));
+    let Relational::Selection(Selection { filter, .. }) =
+        plan.get_relation_node(selection).unwrap()
+    else {
+        unreachable!()
+    };
+    let Expression::Bool(BoolExpr {
+        op: Bool::Eq,
+        left,
+        right,
+    }) = plan.get_expression_node(*filter).unwrap()
+    else {
+        panic!("expected the filter to be an equality");
+    };
+    let left = plan
+        .get_row_list(*left)
+        .expect("expected a row on the left");
+    let right = plan
+        .get_row_list(*right)
+        .expect("expected a row on the right");
+    assert_eq!(left.len(), right.len(), "row widths differ");
+    let constant = |id| match plan.get_expression_node(id).unwrap() {
+        Expression::Constant(c) => Some(c.value.clone()),
+        _ => None,
+    };
+    let pairs: Vec<_> = left
+        .iter()
+        .zip(right)
+        .filter_map(|(&l, &r)| Some((constant(l)?, constant(r)?)))
+        .collect();
+    let (two, one) = (Value::from(2), Value::from(1));
+    assert!(
+        pairs.contains(&(two.clone(), one.clone())) || pairs.contains(&(one, two)),
+        "expected the bound pair 2 = 1 in the row equality, got {pairs:?}"
+    );
+
+    assert_eq!(Buckets::new_empty(), query.bucket_discovery(top).unwrap());
+    assert_eq!(Buckets::All, discover(sql, vec![Value::from(1)]));
+}
+
+#[test]
+fn null_constant_in_row_after_bind() {
+    let query = r#"SELECT "id" FROM "test_space" WHERE "sysFrom" = 1 AND $1 = 1"#;
+    assert_eq!(Buckets::new_empty(), discover(query, vec![Value::Null]));
+}
+
+/// Different numeric kinds are left undecided: `Value::eq` is not symmetric
+/// across them.
+#[test]
+fn mixed_numeric_constants_in_row_after_bind() {
+    let query = r#"SELECT "id" FROM "test_space" WHERE "sysFrom" = 1 AND $1 = 1"#;
+    assert_eq!(Buckets::All, discover(query, vec![Value::from(2.5)]));
+}
+
+#[test]
+fn unequal_constants_in_one_or_branch() {
+    let query = r#"SELECT "id" FROM "test_space" WHERE ("sysFrom" = 1 AND $1 = 1) OR "id" = 5"#;
+    let coordinator = RouterRuntimeMock::new();
+    let bucket = coordinator.determine_bucket_id(&[&Value::from(5)]).unwrap();
+    let expected = Buckets::new_filtered(vec![bucket].into_iter().collect());
+    assert_eq!(expected, discover(query, vec![Value::from(2)]));
+}
+
+/// Check that the query's join condition is folded to `folded`, then discover
+/// its buckets on the same query.
+fn join_buckets(sql: &str, params: Vec<Value>, folded: &Value) -> Buckets {
+    use crate::ir::node::expression::Expression;
+    use crate::ir::node::relational::Relational;
+    use crate::ir::node::{Constant, Join};
+
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, params).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top = plan.get_top().unwrap();
+    let join = single_rel(plan, top, |rel| matches!(rel, Relational::Join(_)));
+    let Relational::Join(Join { condition, .. }) = plan.get_relation_node(join).unwrap() else {
+        unreachable!()
+    };
+    let Expression::Constant(Constant { value }) = plan.get_expression_node(*condition).unwrap()
+    else {
+        panic!("expected the join condition to be folded to a constant");
+    };
+    assert_eq!(folded, value);
+    query.bucket_discovery(top).unwrap()
+}
+
+#[test]
+fn folded_join_condition() {
+    let inner = r#"SELECT a."id" FROM "test_space" AS a JOIN "test_space_hist" AS b ON "#;
+    let left = r#"SELECT a."id" FROM "test_space" AS a LEFT JOIN "test_space_hist" AS b ON "#;
+    let cases = [
+        ("false", vec![], Value::Boolean(false)),
+        ("null", vec![], Value::Null),
+        (
+            r#"a."id" = b."id" AND $1 = 1"#,
+            vec![Value::from(2)],
+            Value::Boolean(false),
+        ),
+    ];
+    for (condition, params, folded) in cases {
+        let sql = format!("{inner}{condition}");
+        let buckets = join_buckets(&sql, params.clone(), &folded);
+        assert_eq!(Buckets::new_empty(), buckets, "{sql}");
+        // A LEFT JOIN keeps its left side whatever the condition.
+        let sql = format!("{left}{condition}");
+        let buckets = join_buckets(&sql, params, &folded);
+        assert_eq!(Buckets::All, buckets, "{sql}");
+    }
+}
+
+/// A column compared with a `NULL` parameter is never `TRUE`, so the query is
+/// provably empty even though only one side of the comparison is a constant.
+#[test]
+fn column_eq_null_param() {
+    let query = r#"SELECT "id" FROM "test_space" WHERE "sysFrom" = $1"#;
+    assert_eq!(Buckets::new_empty(), discover(query, vec![Value::Null]));
+}
+
+#[test]
+fn column_eq_null_param_in_one_or_branch() {
+    let query = r#"SELECT "id" FROM "test_space" WHERE ("sysFrom" = $1 AND "id" = 1) OR "id" = 5"#;
+    let coordinator = RouterRuntimeMock::new();
+    let bucket = coordinator.determine_bucket_id(&[&Value::from(5)]).unwrap();
+    let expected = Buckets::new_filtered(vec![bucket].into_iter().collect());
+    assert_eq!(expected, discover(query, vec![Value::Null]));
+}
+
+/// The same inside a row equality: `("sysFrom", "sys_op") = (NULL, 1)`.
+#[test]
+fn column_eq_null_param_in_row() {
+    let query = r#"SELECT "id" FROM "test_space" WHERE "sysFrom" = $1 AND "sys_op" = 1"#;
+    assert_eq!(Buckets::new_empty(), discover(query, vec![Value::Null]));
+}

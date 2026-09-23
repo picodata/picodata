@@ -351,3 +351,174 @@ buckets = any
 ──────────────────────────────────────────────────────────────────────
 ''
 buckets = any
+
+-- TEST: count-unequal-constants-in-row-after-bind
+-- SQL:
+SELECT count(*) FROM t WHERE b = 10 AND ? = 1;
+-- PARAMS:
+2
+-- EXPECTED:
+0
+
+-- TEST: sum-unequal-constants-in-row-after-bind
+-- SQL:
+SELECT sum(b) FROM t WHERE b = 10 AND ? = 1;
+-- PARAMS:
+2
+-- EXPECTED:
+null
+
+-- TEST: count-null-constant-in-row-after-bind
+-- SQL:
+SELECT count(*) FROM t WHERE b = 10 AND ? = 1;
+-- PARAMS:
+null
+-- EXPECTED:
+0
+
+-- TEST: sum-null-constant-in-row-after-bind
+-- SQL:
+SELECT sum(b) FROM t WHERE b = 10 AND ? = 1;
+-- PARAMS:
+null
+-- EXPECTED:
+null
+
+-- TEST: equal-constants-in-row-after-bind
+-- SQL:
+SELECT a FROM t WHERE b = 10 AND ? = 1;
+-- PARAMS:
+1
+-- EXPECTED:
+1
+
+-- TEST: unequal-constants-in-one-or-branch
+-- SQL:
+SELECT a FROM t WHERE (b = 10 AND ? = 1) OR a = 3;
+-- PARAMS:
+2
+-- EXPECTED:
+3
+
+-- TEST: count-unequal-constants-in-one-or-branch
+-- SQL:
+SELECT count(*) FROM t WHERE (b = 10 AND ? = 1) OR a = 3;
+-- PARAMS:
+2
+-- EXPECTED:
+1
+
+-- TEST: count-column-eq-null-param
+-- SQL:
+SELECT count(*) FROM t WHERE b = ?;
+-- PARAMS:
+null
+-- EXPECTED:
+0
+
+-- TEST: sum-column-eq-null-param
+-- SQL:
+SELECT sum(b) FROM t WHERE b = ?;
+-- PARAMS:
+null
+-- EXPECTED:
+null
+
+-- TEST: column-eq-null-param-in-row
+-- SQL:
+SELECT a FROM t WHERE b = ? AND a = 1;
+-- PARAMS:
+null
+-- EXPECTED:
+
+-- TEST: column-eq-null-param-in-one-or-branch
+-- SQL:
+SELECT a FROM t WHERE (b = ? AND a = 1) OR a = 3;
+-- PARAMS:
+null
+-- EXPECTED:
+3
+
+-- TEST: count-inner-join-on-false
+-- SQL:
+SELECT count(*) FROM t JOIN t2 ON false;
+-- EXPECTED:
+0
+
+-- TEST: sum-inner-join-on-false
+-- SQL:
+SELECT sum(t.b) FROM t JOIN t2 ON false;
+-- EXPECTED:
+null
+
+-- TEST: count-inner-join-on-null
+-- SQL:
+SELECT count(*) FROM t JOIN t2 ON null;
+-- EXPECTED:
+0
+
+-- TEST: sum-inner-join-on-null
+-- SQL:
+SELECT sum(t.b) FROM t JOIN t2 ON null;
+-- EXPECTED:
+null
+
+-- TEST: count-inner-join-folded-after-bind
+-- SQL:
+SELECT count(*) FROM t JOIN t2 ON t.a = t2.a AND ? = 1;
+-- PARAMS:
+2
+-- EXPECTED:
+0
+
+-- TEST: sum-inner-join-folded-after-bind
+-- SQL:
+SELECT sum(t.b) FROM t JOIN t2 ON t.a = t2.a AND ? = 1;
+-- PARAMS:
+2
+-- EXPECTED:
+null
+
+-- TEST: inner-join-not-folded-after-bind
+-- SQL:
+SELECT t.a, t2.b FROM t JOIN t2 ON t.a = t2.a AND ? = 1;
+-- PARAMS:
+1
+-- UNORDERED:
+1, 1,
+2, 2,
+3, 3
+
+-- TEST: left-join-on-false
+-- SQL:
+SELECT t.a, t2.b FROM t LEFT JOIN t2 ON false;
+-- UNORDERED:
+1, null,
+2, null,
+3, null
+
+-- TEST: left-join-on-null
+-- SQL:
+SELECT t.a, t2.b FROM t LEFT JOIN t2 ON null;
+-- UNORDERED:
+1, null,
+2, null,
+3, null
+
+-- TEST: left-join-folded-after-bind
+-- SQL:
+SELECT t.a, t2.b FROM t LEFT JOIN t2 ON t.a = t2.a AND ? = 1;
+-- PARAMS:
+2
+-- UNORDERED:
+1, null,
+2, null,
+3, null
+
+-- TEST: count-left-join-folded-after-bind
+-- SQL:
+SELECT count(*) FROM t LEFT JOIN t2 ON t.a = t2.a AND ? = 1;
+-- PARAMS:
+2
+-- EXPECTED:
+3
