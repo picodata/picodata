@@ -6,6 +6,10 @@ We are waiting for the new vshard, then we will adjust the recovery
 process in the code and tests.
 """
 
+import random
+import threading
+
+import psycopg
 import pytest
 
 from conftest import (
@@ -2683,3 +2687,69 @@ cluster:
             assert i.eval("return box.info.synchro.queue.len") == 0
 
     Retriable().call(replicaset_converged)
+
+
+@pytest.mark.timeout(600)
+def test_replica_restart_under_write_load(cluster: Cluster):
+    """Restarting a replica must not crash the others.
+
+    When a replica goes Offline, replication is reconfigured on every other
+    instance, which cancels their appliers. An applier cancelled while it waited
+    on the order latch returned an error without setting a diagnostic, and the
+    caller aborted the whole instance (tarantool gh-10397). Under a steady write
+    load that happened within a few restarts.
+    """
+    cluster.set_config_file(
+        yaml=f"""
+cluster:
+    name: {cluster.id}
+    tier:
+        default:
+            replication_factor: 3
+            replication_mode: sync
+"""
+    )
+    instances = cluster.deploy(instance_count=3)
+    instances[0].sql("CREATE USER writer WITH PASSWORD 'Passw0rd'", sudo=True)
+    instances[0].sql("GRANT CREATE TABLE TO writer", sudo=True)
+    dsns = [f"host={i.pg_host} port={i.pg_port} user=writer password=Passw0rd" for i in instances]
+    with psycopg.connect(dsns[0], autocommit=True) as conn:
+        conn.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT) DISTRIBUTED BY (id)")
+
+    stop = threading.Event()
+    writes = [0]
+
+    def write(seed: int):
+        rng = random.Random(seed)
+        conn = None
+        while not stop.is_set():
+            try:
+                if conn is None:
+                    conn = psycopg.connect(rng.choice(dsns), autocommit=True, connect_timeout=5)
+                conn.execute("INSERT INTO t VALUES (%s, 1) ON CONFLICT DO REPLACE", (rng.randrange(10_000),))
+                writes[0] += 1
+            except psycopg.Error:
+                # The coordinator is being restarted; try another one.
+                conn = None
+                stop.wait(0.05)
+
+    writers = [threading.Thread(target=write, args=(seed,), daemon=True) for seed in range(8)]
+    for writer in writers:
+        writer.start()
+
+    try:
+        for n in range(10):
+            victim = instances[n % len(instances)]
+            assert victim.terminate() == 0
+            victim.start()
+            victim.wait_online()
+            # Mastership moves by election on a sync tier, and an election needs
+            # a quorum: restarting the next instance before the cluster settles
+            # eventually leaves no candidate able to win.
+            cluster.wait_governor_status("idle")
+            for instance in instances:
+                instance.check_process_alive()
+    finally:
+        stop.set()
+
+    assert writes[0] > 0
