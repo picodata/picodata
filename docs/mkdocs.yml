@@ -170,7 +170,14 @@ nav:
       - plugins/argus.md
       - plugins/franz.md
       - plugins/kirovets.md
-      - plugins/radix.md
+      - Radix:
+          - plugins/radix/index.md
+          - plugins/radix/install.md
+          - plugins/radix/usage.md
+          - plugins/radix/configuration.md
+          - plugins/radix/radix_settings.md
+          - plugins/radix/supported_commands.md
+          - plugins/radix/changelog.md
       - plugins/s3r.md
       - plugins/silver.md
       - plugins/sirin.md

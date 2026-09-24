@@ -117,7 +117,7 @@ Picodata Enterprise включает все функции открытой ве
     - модуль расчета себестоимости (плагин [Silver])
 
 [Argus]: ../plugins/argus.md
-[Radix]: ../plugins/radix.md
+[Radix]: ../plugins/radix/index.md
 [Silver]: ../plugins/silver.md
 [Synapse]: ../plugins/synapse.md
 [Ouroboros]: ../plugins/ouroboros.md

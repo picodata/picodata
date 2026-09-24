@@ -137,7 +137,10 @@ def on_post_build(config: MkDocsConfig):
         prefix, src_uri = item.split()
 
         path, _ = os.path.splitext(src_uri)
-        dest_uri = os.path.join(path, "index.html")
+        if os.path.basename(path) == "index":
+            dest_uri = f"{path}.html"
+        else:
+            dest_uri = os.path.join(path, "index.html")
         abs_dest_path = os.path.normpath(os.path.join(config["site_dir"], dest_uri))
 
         with open(abs_dest_path, "r") as f:
