@@ -218,7 +218,7 @@ class IprotoRunner(AbstractRunner):
     protocol = "iproto"
     run_query_error = TarantoolError
     replicaset_counts = (2,)
-    replication_factors = (1,)
+    replication_factors = (1, 2)
 
     def __init__(self, cluster: Cluster):
         super().__init__()
@@ -244,7 +244,7 @@ class PgprotoRunner(AbstractRunner):
     protocol = "pgproto"
     run_query_error = psycopg.Error
     replicaset_counts = (1, 2)
-    replication_factors = (1,)
+    replication_factors = (1, 2)
 
     def __init__(self, cluster: Cluster):
         super().__init__()
