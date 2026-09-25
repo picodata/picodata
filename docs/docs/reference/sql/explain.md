@@ -130,10 +130,92 @@ plan:
 Failed to compile SQL statement: misuse of aggregate function MAX()
 ```
 
-На данный момент у возможности построить `EXPLAIN` для проблемных запросов есть
-ограничения:
+То же относится к транзакционным блокам, запросы которых затрагивают разные
+бакеты. Транзакция выполняется на одном бакете, поэтому такой блок исполнить
+нельзя:
 
-- Нельзя получить `EXPLAIN` для запроса с транзакционным блоком, если он затрагивает более одного бакета.
+```sql
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM foo WHERE id = 1;
+  DELETE FROM foo WHERE id = 2;
+END $$;
+```
+
+```sql
+ERROR:  statement 1 (RETURN QUERY) and statement 2 (DML): different buckets: [1934] and [1410]
+```
+
+Однако к такому запросу применим `EXPLAIN`, и из вывода фасетов
+[`RAW`](./explain_facets/raw.md#interaction-with-buckets) и
+[`BUCKETS`](./explain_facets/buckets.md#buckets-transactions) видно, какие
+бакеты выводятся для каждого из запросов:
+
+```sql
+EXPLAIN (RAW, BUCKETS)
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM foo WHERE id = 1;
+  DELETE FROM foo WHERE id = 2;
+END $$;
+```
+
+```sql
+──────────────────────────────────────────────────────────────────────
+ # Raw plan
+──────────────────────────────────────────────────────────────────────
+
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/4) │
+╰───────────────────────────────────────────────╯
+
+SELECT "foo"."id" FROM "foo" WHERE "foo"."id" = 1::int
+
+plan:
+    [0] SEARCH TABLE foo USING PRIMARY KEY (id=?) (~1 row)
+
+buckets = [1934]
+
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/4) │
+╰────────────────────────────────────────╯
+
+DELETE FROM "foo" WHERE "foo"."id" = 2::int
+
+plan:
+    [0] SEARCH TABLE foo USING PRIMARY KEY (id=?) (~1 row)
+
+buckets = [1410]
+
+──────────────────────────────────────────────────────────────────────
+ # Buckets
+──────────────────────────────────────────────────────────────────────
+
+buckets = [1410, 1934]
+```
+
+`EXPLAIN` применим и к транзакционным блокам с запросами, которые нельзя
+выполнить в транзакции, например с запросами, требующими [перемещения
+данных](./explain_facets/logical.md#data_motion_types) (см.
+[ограничения](./transactions.md#limitations)). Вместо локального SQL такого
+запроса выводится причина, по которой его нельзя выполнить:
+
+```sql
+EXPLAIN (RAW)
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM foo ORDER BY id;
+END $$;
+```
+
+```sql
+╭─────────────────────────────────╮
+│ 1. Return query (WHOLE STORAGE) │
+╰─────────────────────────────────╯
+
+**Error**: cannot generate SQL: the query requires cross-shard data movement
+```
+
+Фасет [`LOGICAL`](./explain_facets/logical.md) выводит ту же причину вместе с
+логическим планом запроса. Из плана видно, где именно происходит перемещение
+данных.
 
 ## Возможности форматирования {: #explain-fmt }
 
