@@ -24,7 +24,7 @@ INSERT INTO "testing_space_hist" ("id", "name", "product_units") VALUES
             (1, '123', 5);
 INSERT INTO "space_simple_shard_key" ("id", "name", "sysOp") VALUES (1, 'ok', 1), (10, null, 0);
 INSERT INTO "space_simple_shard_key_hist" ("id", "name", "sysOp") VALUES (1, 'ok_hist', 3), (2, 'ok_hist_2', 1);
-INSERT INTO "datetime_t" ("dt", "a") VALUES ('2021-08-20 22:59:59 +180'::datetime, 1), ('2021-08-21 22:59:59 +180'::datetime, 1);
+INSERT INTO "datetime_t" ("dt", "a") VALUES ('2021-08-20T22:59:59+03:00'::datetime, 1), ('2021-08-21T22:59:59+03:00'::datetime, 1);
 
 -- TEST: test_incorrect_query
 -- SQL:
