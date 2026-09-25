@@ -1,6 +1,6 @@
 use crate::explain::utils::{TinyFmtBuffer, FMT_WIDTH, INDENT};
 use ahash::AHashSet;
-use itertools::Itertools;
+use itertools::{process_results, Itertools};
 use serde::{Deserialize, Serialize};
 use sql_executor::executor::{
     engine::{Router, Vshard},
@@ -11,7 +11,7 @@ use sql_ir::ir::bucket::BucketSet;
 use sql_ir::ir::PlanKind;
 use sql_ir::ir::{
     bucket::Buckets,
-    node::{block::BlockOwned, relational::Relational, Motion, NodeId},
+    node::{block::BlockOwned, relational::Relational, BlockEntries, Motion, NodeId},
     transformation::redistribution::MotionPolicy,
     tree::traversal::{NodeIter, PostOrder},
     ExplainOptions, Plan,
@@ -83,6 +83,26 @@ impl BoundedBuckets {
     }
 }
 
+/// Gives the buckets of a statement of a transactional block.
+pub fn get_block_statement_buckets<R: Router>(
+    query: &mut ExecutingQuery<'_, R>,
+    query_id: NodeId,
+) -> Result<Buckets, SbroadError> {
+    let plan = query.get_exec_plan().get_ir_plan();
+    if plan.subtree_has_motions(query_id)? {
+        return estimate_subtree_buckets(query, query_id);
+    }
+    query.bucket_discovery(query_id)
+}
+
+/// Returns the union of the buckets of all block statements.
+#[must_use]
+pub fn union_block_buckets(per_stmt: impl Iterator<Item = Buckets>) -> Buckets {
+    per_stmt
+        .reduce(|acc, buckets| acc.disjunct(&buckets))
+        .unwrap_or(Buckets::Any)
+}
+
 /// Estimate on which buckets query will be executed.
 ///
 /// We gather all subtrees from plan that don't have
@@ -93,7 +113,7 @@ pub fn bounded_buckets_from_query<R: Router>(
 ) -> Result<BoundedBuckets, SbroadError> {
     let ir = query.get_exec_plan().get_ir_plan();
     let coord = query.get_coordinator();
-    let vshard = coord.get_current_vshard_object().unwrap();
+    let vshard = coord.get_vshard_object_by_tier(ir.tier.as_ref())?;
     let bucket_count = vshard.bucket_count();
     let format_options = ir.explain_options.into();
 
@@ -103,30 +123,36 @@ pub fn bounded_buckets_from_query<R: Router>(
         let BlockOwned::Anonymous(block) = block else {
             unreachable!("plan.is_block() returned true, but top is {block:?}")
         };
-        let buckets = query.calculate_block_buckets(&block)?;
+        // EXPLAIN accepts blocks that cannot run: blocks with statements on
+        // different buckets, or with statements that move data. For these
+        // blocks, the result can contain more than one bucket, and it can be
+        // approximate.
+        let per_stmt = BlockEntries::new(&block.statements)
+            .map(|entry| entry.with(|query_id| get_block_statement_buckets(query, *query_id)));
+        let buckets = process_results(per_stmt, |buckets| union_block_buckets(buckets))?;
         return Ok(BoundedBuckets::new(buckets, bucket_count, format_options));
     }
 
-    if ir.is_sharded_insert()? {
-        let buckets = query.try_calculate_sharded_insert_buckets()?;
-
-        let actual_buckets = buckets.unwrap_or(Buckets::All);
-        return Ok(BoundedBuckets::new(
-            actual_buckets,
-            bucket_count,
-            format_options,
-        ));
-    }
-
-    if !can_estimate_buckets(ir)? {
-        return Ok(BoundedBuckets::new(
-            Buckets::All,
-            bucket_count,
-            format_options,
-        ));
-    }
-
     let top_id = ir.get_top()?;
+    let buckets = estimate_subtree_buckets(query, top_id)?;
+    Ok(BoundedBuckets::new(buckets, bucket_count, format_options))
+}
+
+/// Gives the approximate buckets of the query `top_id`. Refer to
+/// [`bounded_buckets_from_query`].
+fn estimate_subtree_buckets<R: Router>(
+    query: &mut ExecutingQuery<'_, R>,
+    top_id: NodeId,
+) -> Result<Buckets, SbroadError> {
+    let ir = query.get_exec_plan().get_ir_plan();
+    if ir.is_sharded_insert(top_id)? {
+        let buckets = query.try_calculate_sharded_insert_buckets(top_id)?;
+        return Ok(buckets.unwrap_or(Buckets::All));
+    }
+
+    if !can_estimate_buckets(ir, top_id)? {
+        return Ok(Buckets::All);
+    }
 
     let dfs_tree = PostOrder::new(&ir.nodes, |node| ir.nodes.rel_iter(node), top_id);
     // Stores previously computed results for each
@@ -197,10 +223,7 @@ pub fn bounded_buckets_from_query<R: Router>(
         }
     }
 
-    let buckets = estimated_buckets.expect("there's at least one subtree");
-    let buckets_info = BoundedBuckets::new(buckets, bucket_count, format_options);
-
-    Ok(buckets_info)
+    Ok(estimated_buckets.expect("there's at least one subtree"))
 }
 
 /// Currently we don't estimate buckets for DML queries with
@@ -217,9 +240,7 @@ pub fn bounded_buckets_from_query<R: Router>(
 ///
 /// Also we can't estimate buckets in plans with `Motion(Segment)`
 /// because after we resharding, we can get any set of buckets.
-fn can_estimate_buckets(plan: &Plan) -> Result<bool, SbroadError> {
-    let top_id = plan.get_top()?;
-
+fn can_estimate_buckets(plan: &Plan, top_id: NodeId) -> Result<bool, SbroadError> {
     let dfs = PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top_id);
     for (_, rel) in dfs.relational() {
         let has_segment_motion = matches!(

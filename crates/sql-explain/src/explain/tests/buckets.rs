@@ -375,7 +375,7 @@ fn fmt_leaves_truncated_list_inline() {
     );
 }
 
-// Transactional blocks over one bucket.
+// Transactional blocks.
 
 fn explain_block(sql: &str, params: Vec<Value>) -> Result<String, String> {
     let metadata = &RouterRuntimeMock::new();
@@ -415,6 +415,6 @@ fn block_condition_and_dml_on_different_buckets() {
     let block = "EXPLAIN (BUCKETS) DO $$ BEGIN \
         IF (SELECT count(*) FROM t5 WHERE a = $1) > 0 THEN UPDATE t5 SET b = 1 WHERE a = $2; END IF; \
     END $$";
-    let error = explain_block(block, vec![Value::from(1), Value::from(2)]).unwrap_err();
-    assert!(error.contains("different buckets"), "{error}");
+    let explain = explain_block(block, vec![Value::from(1), Value::from(2)]).unwrap();
+    assert_eq!(explain, "buckets = [2072, 3940]");
 }

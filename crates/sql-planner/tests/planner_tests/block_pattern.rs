@@ -2,7 +2,7 @@
 //! pipeline (`PreparedStatement`), which lives in this umbrella crate.
 
 use sql::backend::sql::ir::block_pattern_key;
-use sql::executor::engine::helpers::generate_pattern_with_params_for_block;
+use sql::executor::engine::helpers::{generate_pattern_with_params_for_block, BlockRenderOptions};
 use sql::executor::engine::mock::RouterRuntimeMock;
 use sql::executor::engine::BlockRuntimeHook;
 use sql::executor::ExecutingQuery;
@@ -87,7 +87,8 @@ fn raw_explain_block_bind_insert_do_update_param_rhs() {
     };
 
     let (query, params) =
-        generate_pattern_with_params_for_block(exec_plan, query_id, false).unwrap();
+        generate_pattern_with_params_for_block(exec_plan, query_id, BlockRenderOptions::EXPLAIN)
+            .unwrap();
 
     assert_eq!(query.hooks.len(), 1);
     let BlockRuntimeHook::IdxInsertOnConflictDoUpdate {

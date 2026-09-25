@@ -15,7 +15,7 @@ use crate::explain::buckets::BoundedBuckets;
 use crate::explain::utils::format_block_stage_label;
 use crate::explain::utils::format_block_stage_number;
 
-use crate::explain::utils::{format_sql, indent_custom, indent_with_prefix};
+use crate::explain::utils::{format_no_sql, format_sql, indent_custom, indent_with_prefix};
 use crate::write_explain_header2;
 
 /// Helper struct which is used for EXPLAIN (RAW) output generation.
@@ -39,8 +39,8 @@ pub struct MotionInfo {
 }
 
 impl MotionInfo {
-    // Queries in transactional blocks can not
-    // have motions.
+    // Use this function for a block statement that can run in a transaction.
+    // These statements have no motions.
     pub fn new_for_transaction() -> Self {
         Self {
             has_segment_motion: false,
@@ -121,13 +121,13 @@ impl RawExplainEntry {
         // Provide a fallback for empty raw plans.
         match &mut query_entry {
             RawExplainEntry::Single(entry) => {
-                if entry.tuples.as_ref().is_ok_and(Vec::is_empty) {
+                if entry.plan_mut().is_some_and(|plan| plan.is_empty()) {
                     add_trivial_fallback(entry);
                 }
             }
             RawExplainEntry::Multiple(entries) => {
                 for entry in entries {
-                    if entry.tuples.as_ref().is_ok_and(Vec::is_empty) {
+                    if entry.plan_mut().is_some_and(|plan| plan.is_empty()) {
                         add_trivial_fallback(entry);
                     }
                 }
@@ -139,7 +139,7 @@ impl RawExplainEntry {
 }
 
 fn add_trivial_fallback(entry: &mut QueryEntry) {
-    if let Ok(items) = &mut entry.tuples {
+    if let Some(items) = entry.plan_mut() {
         items.push(RawExplainTuple {
             selectid: 0,
             order: 0,
@@ -166,12 +166,21 @@ pub fn decode_vdbe_plan<'p>(port: &impl Port<'p>) -> Result<Vec<RawExplainTuple>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct QueryEntry {
+pub struct LocalQuery {
     sql: String,
+    params: Vec<String>,
+    /// The VDBE plan of `sql`. If `sql` does not compile, this field contains
+    /// the error.
+    tuples: Result<Vec<RawExplainTuple>, String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct QueryEntry {
+    /// If it is not possible to make the local SQL, this field contains the
+    /// reason.
+    local_query: Result<LocalQuery, String>,
     location: ExplainQueryLocation,
     buckets: BoundedBuckets,
-    params: Vec<String>,
-    tuples: Result<Vec<RawExplainTuple>, String>,
 }
 
 impl QueryEntry {
@@ -183,12 +192,33 @@ impl QueryEntry {
         tuples: Result<Vec<RawExplainTuple>, String>,
     ) -> QueryEntry {
         QueryEntry {
-            sql,
+            local_query: Ok(LocalQuery {
+                sql,
+                params,
+                tuples,
+            }),
             location,
             buckets,
-            params,
-            tuples,
         }
+    }
+
+    /// Makes an entry for a block statement that has no local SQL.
+    /// For example, the statement moves data.
+    pub fn without_sql(
+        location: ExplainQueryLocation,
+        buckets: BoundedBuckets,
+        reason: String,
+    ) -> QueryEntry {
+        QueryEntry {
+            local_query: Err(reason),
+            location,
+            buckets,
+        }
+    }
+
+    fn plan_mut(&mut self) -> Option<&mut Vec<RawExplainTuple>> {
+        let local_query = self.local_query.as_mut().ok()?;
+        local_query.tuples.as_mut().ok()
     }
 }
 
@@ -267,11 +297,6 @@ fn write_raw_explain_entry(
     format_options: RawExplainOptions,
 ) -> fmt::Result {
     let should_fmt = format_options.contains(RawExplainOptions::Fmt);
-    let sql = format_sql(&entry.sql, &entry.params, should_fmt);
-    let plan = match &entry.tuples {
-        Ok(tuples) => format_raw_plan(tuples, should_fmt),
-        Err(err) => err.clone(),
-    };
 
     let source = &entry.location;
     match stage {
@@ -283,8 +308,24 @@ fn write_raw_explain_entry(
             write_explain_header2!(f, "{idx} Query ({source})")?;
         }
     }
-    write!(f, "\n{sql}\n\n")?;
-    write!(f, "plan:\n{plan}")?;
+    match &entry.local_query {
+        Ok(LocalQuery {
+            sql,
+            params,
+            tuples,
+        }) => {
+            let sql = format_sql(sql, params, should_fmt);
+            let plan = match tuples {
+                Ok(tuples) => format_raw_plan(tuples, should_fmt),
+                Err(err) => err.clone(),
+            };
+            write!(f, "\n{sql}\n\n")?;
+            write!(f, "plan:\n{plan}")?;
+        }
+        Err(reason) => {
+            write!(f, "\n{}", format_no_sql(reason))?;
+        }
+    }
 
     let show_buckets = format_options.contains(RawExplainOptions::ShowBuckets);
     if show_buckets {

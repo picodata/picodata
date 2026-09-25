@@ -567,10 +567,10 @@ impl Router for RouterRuntime {
     }
 }
 
-/// Get the number of replicasets in current tier.
-pub(crate) fn get_current_tier_replicasets_num() -> usize {
+/// Get the number of replicasets in the given tier, or the current tier if unset.
+pub(crate) fn get_tier_replicasets_num(tier: Option<&str>) -> usize {
     let node = node::global().expect("raft node must be initialized");
-    let tier = node.catalog_cache.my_tier_name();
+    let tier = tier.unwrap_or_else(|| node.catalog_cache.my_tier_name());
     let topology_ref = node.catalog_cache.get();
     let replicasets_iter = topology_ref.all_replicasets();
     replicasets_iter
@@ -578,8 +578,14 @@ pub(crate) fn get_current_tier_replicasets_num() -> usize {
         .count()
 }
 
-pub fn replicasets_by_buckets(buckets: &Buckets) -> Result<Vec<String>, SbroadError> {
-    let tier = get_current_tier_name()?;
+pub fn replicasets_by_buckets(
+    buckets: &Buckets,
+    tier: Option<&str>,
+) -> Result<Vec<String>, SbroadError> {
+    let tier = match tier {
+        Some(tier) => tier,
+        None => get_current_tier_name()?,
+    };
 
     if let Buckets::All = buckets {
         let node = node::global().expect("raft node must be initialized");

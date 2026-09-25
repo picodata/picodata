@@ -1694,15 +1694,12 @@ impl Plan {
         ))
     }
 
-    /// Checks that top node of the plan is sharded insert.
+    /// Checks if node `id` is an INSERT into a sharded table.
     ///
     /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_sharded_insert(&self) -> Result<bool, SbroadError> {
-        let top_id = self.get_top()?;
-        if let Node::Relational(Relational::Insert(Insert { relation, .. })) =
-            self.get_node(top_id)?
-        {
+    /// - The node is not in the plan, or the node is not correct.
+    pub fn is_sharded_insert(&self, id: NodeId) -> Result<bool, SbroadError> {
+        if let Node::Relational(Relational::Insert(Insert { relation, .. })) = self.get_node(id)? {
             let table = self
                 .relations
                 .get(relation)

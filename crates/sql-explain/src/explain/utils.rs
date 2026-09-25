@@ -57,6 +57,10 @@ fn parenthesize_cast_negatives(sql: &str, params: &mut [String]) {
     }
 }
 
+pub fn format_no_sql(reason: impl fmt::Display) -> String {
+    format!("**Error**: cannot generate SQL: {reason}")
+}
+
 pub const INDENT: &str = "  ";
 
 /// Width of the `EXPLAIN` section headers.

@@ -918,6 +918,8 @@ SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = 42::int
 plan:
     [0] SEARCH TABLE tt USING PRIMARY KEY (d=?) (~1 row)
 ''
+buckets = [2426]
+''
 ╭────────────────────────────────────────╮
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
@@ -926,6 +928,8 @@ DELETE FROM "tt" WHERE "tt"."d" = 42::int
 ''
 plan:
     [0] SEARCH TABLE tt USING PRIMARY KEY (d=?) (~1 row)
+''
+buckets = [2426]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -951,9 +955,9 @@ END $$;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────────────────────────╮
-│ 1. Let "var_1" (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────────╯
+╭─────────────────────────╮
+│ 1. Let "var_1" (ROUTER) │
+╰─────────────────────────╯
 ''
 SELECT "g"."c"::int as "col_1" FROM "g" WHERE true::bool
 ''
@@ -961,9 +965,9 @@ projection (g.c::text::int -> col_1)
   selection (true::bool)
     scan g
 ''
-╭────────────────────────────────────────────╮
-│ 2.1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────────╯
+╭───────────────────────╮
+│ 2.1. If cond (ROUTER) │
+╰───────────────────────╯
 ''
 SELECT :var_1::int = 300::int as "cond"
 ''
@@ -1019,9 +1023,9 @@ END $$;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-╭───────────────────────────────────────────╮
-│ 1. Let "a1" (CONST-FILTERED STORAGE, 1/1) │
-╰───────────────────────────────────────────╯
+╭──────────────────────╮
+│ 1. Let "a1" (ROUTER) │
+╰──────────────────────╯
 ''
 SELECT "g"."a" FROM "g" WHERE "g"."b" = 2.5::decimal
 ''
@@ -1043,18 +1047,18 @@ limit 1
           selection ((t.a::int = 42::int and t.c::text = 'kek'::text))
             scan t
 ''
-╭───────────────────────────────────────────────╮
-│ 3. Return query (CONST-FILTERED STORAGE, 1/1) │
-╰───────────────────────────────────────────────╯
+╭──────────────────────────╮
+│ 3. Return query (ROUTER) │
+╰──────────────────────────╯
 ''
 SELECT "g"."a" FROM "g"
 ''
 projection (g.a::int -> a)
   scan g
 ''
-╭────────────────────────────────────────────╮
-│ 4.1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────────╯
+╭───────────────────────╮
+│ 4.1. If cond (ROUTER) │
+╰───────────────────────╯
 ''
 SELECT :a2::double = :a1::int as "cond"
 ''
@@ -1071,9 +1075,9 @@ update t (b = col_0)
     selection ((t.a::int = 42::int and t.c::text = 'kek'::text))
       scan t
 ''
-╭────────────────────────────────────────────╮
-│ 5.1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────────╯
+╭───────────────────────╮
+│ 5.1. If cond (ROUTER) │
+╰───────────────────────╯
 ''
 SELECT :a1::int = (-1)::int as "cond"
 ''
@@ -1093,14 +1097,16 @@ insert into t on conflict: fail
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭───────────────────────────────────────────╮
-│ 1. Let "a1" (CONST-FILTERED STORAGE, 1/1) │
-╰───────────────────────────────────────────╯
+╭──────────────────────╮
+│ 1. Let "a1" (ROUTER) │
+╰──────────────────────╯
 ''
 SELECT "g"."a" FROM "g" WHERE "g"."b" = 2.5::decimal
 ''
 plan:
     [0] SCAN TABLE g (~262144 rows)
+''
+buckets = any
 ''
 ╭───────────────────────────────────────────╮
 │ 2. Let "a2" (CONST-FILTERED STORAGE, 1/1) │
@@ -1111,23 +1117,29 @@ SELECT "b" FROM ( SELECT "t"."b" FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
 ''
-╭───────────────────────────────────────────────╮
-│ 3. Return query (CONST-FILTERED STORAGE, 1/1) │
-╰───────────────────────────────────────────────╯
+buckets = [2873]
+''
+╭──────────────────────────╮
+│ 3. Return query (ROUTER) │
+╰──────────────────────────╯
 ''
 SELECT "g"."a" FROM "g"
 ''
 plan:
     [0] SCAN TABLE g (~1048576 rows)
 ''
-╭────────────────────────────────────────────╮
-│ 4.1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────────╯
+buckets = any
+''
+╭───────────────────────╮
+│ 4.1. If cond (ROUTER) │
+╰───────────────────────╯
 ''
 SELECT :a2::double = :a1::int as "cond"
 ''
 plan:
     [0] TRIVIAL
+''
+buckets = any
 ''
 ╭───────────────────────────────────────────────────╮
 │ 4.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
@@ -1138,14 +1150,18 @@ UPDATE "t" SET "b" = 5.5::decimal WHERE "t"."a" = 42::int and "t"."c" = 'kek'::t
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
 ''
-╭────────────────────────────────────────────╮
-│ 5.1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────────╯
+buckets = [2873]
+''
+╭───────────────────────╮
+│ 5.1. If cond (ROUTER) │
+╰───────────────────────╯
 ''
 SELECT :a1::int = (-1)::int as "cond"
 ''
 plan:
     [0] TRIVIAL
+''
+buckets = any
 ''
 ╭───────────────────────────────────────────────────╮
 │ 5.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
@@ -1155,6 +1171,8 @@ INSERT INTO "t" ("a", "c", "bucket_id") VALUES (42::int, 'kek'::text, 2873::int)
 ''
 plan:
     [0] TRIVIAL
+''
+buckets = [2873]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Forward                                                            
@@ -1258,6 +1276,8 @@ WHERE
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
 ''
+buckets = [739]
+''
 ╭────────────────────────────────────────╮
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
@@ -1266,6 +1286,8 @@ DELETE FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 'lol'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
+''
+buckets = [739]
 ''
 ╭────────────────────────────────────────╮
 │ 3. Query (CONST-FILTERED STORAGE, 1/1) │
@@ -1278,6 +1300,8 @@ VALUES
 ''
 plan:
     [0] TRIVIAL
+''
+buckets = [739]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Forward                                                            
@@ -1317,9 +1341,9 @@ END $$;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-╭───────────────────────────────────────────────────────╮
-│ 1. **Unused** let "var" (CONST-FILTERED STORAGE, 1/1) │
-╰───────────────────────────────────────────────────────╯
+╭──────────────────────────────────╮
+│ 1. **Unused** let "var" (ROUTER) │
+╰──────────────────────────────────╯
 ''
 SELECT 1::int as "col_1"
 ''
@@ -1335,9 +1359,9 @@ projection (t.a::int -> a)
   selection ((t.a::int = 42::int and t.c::text = 'lol'::text))
     scan t
 ''
-╭───────────────────────────────────────────────╮
-│ 3. Return query (CONST-FILTERED STORAGE, 1/1) │
-╰───────────────────────────────────────────────╯
+╭──────────────────────────╮
+│ 3. Return query (ROUTER) │
+╰──────────────────────────╯
 ''
 SELECT :var::int as "col_1"
 ''
@@ -1379,9 +1403,9 @@ insert into t on conflict: fail
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭───────────────────────────────────────────────────────╮
-│ 1. **Unused** let "var" (CONST-FILTERED STORAGE, 1/1) │
-╰───────────────────────────────────────────────────────╯
+╭──────────────────────────────────╮
+│ 1. **Unused** let "var" (ROUTER) │
+╰──────────────────────────────────╯
 ''
 SELECT 1::int as "col_1"
 ''
@@ -1397,9 +1421,9 @@ SELECT "t"."a" FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 'lol'::text
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
 ''
-╭───────────────────────────────────────────────╮
-│ 3. Return query (CONST-FILTERED STORAGE, 1/1) │
-╰───────────────────────────────────────────────╯
+╭──────────────────────────╮
+│ 3. Return query (ROUTER) │
+╰──────────────────────────╯
 ''
 SELECT :var::int as "col_1"
 ''
@@ -1664,14 +1688,16 @@ end $$;
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────────╮
-│ 1.1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────────╯
+╭───────────────────────╮
+│ 1.1. If cond (ROUTER) │
+╰───────────────────────╯
 ''
 SELECT true::bool as "cond"
 ''
 plan:
     [0] TRIVIAL
+''
+buckets = any
 ''
 ╭───────────────────────────────────────────────────╮
 │ 1.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
@@ -1681,6 +1707,8 @@ UPDATE "b" SET "val" = "b"."id" WHERE "b"."id" = 1::int
 ''
 plan:
     [0] SEARCH TABLE b USING PRIMARY KEY (id=?) (~1 row)
+''
+buckets = [1934]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

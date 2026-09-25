@@ -789,6 +789,36 @@ END $$;
 -- ERROR:
 transaction cannot be executed on all buckets
 
+-- TEST: explain-block-bucket-id-in-list
+-- SQL:
+EXPLAIN (buckets)
+DO $$
+BEGIN
+  RETURN QUERY SELECT a FROM t WHERE bucket_id IN (1934, 1410);
+END $$;
+-- EXPECTED:
+buckets = [1410, 1934]
+
+-- TEST: explain-block-bucket-id-out-of-range
+-- SQL:
+EXPLAIN (buckets)
+DO $$
+BEGIN
+  RETURN QUERY SELECT a FROM t WHERE bucket_id = 999999;
+END $$;
+-- EXPECTED:
+buckets = []
+
+-- TEST: explain-block-bucket-id-ored-with-unrelated-filter
+-- SQL:
+EXPLAIN (buckets)
+DO $$
+BEGIN
+  RETURN QUERY SELECT a FROM t WHERE bucket_id = 1934 OR b > 100;
+END $$;
+-- EXPECTED:
+buckets <= [1-3000]
+
 -- TEST: block-bucket-id-with-parameter
 -- SQL:
 DO $$

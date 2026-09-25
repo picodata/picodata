@@ -684,13 +684,14 @@ impl Vshard for StorageRuntime {
                     params.params(),
                     buckets,
                     motion_info,
+                    plan.tier.as_deref(),
                     format_options,
                 )
             };
             let has_segment_motion = ex_plan.has_segment_motion(top_id);
             if ex_plan.has_serialize_as_empty_motion(top_id) {
-                let multiple_replicasets =
-                    !matches!(buckets, Buckets::Any) && replicasets_by_buckets(buckets)?.len() > 1;
+                let multiple_replicasets = !matches!(buckets, Buckets::Any)
+                    && replicasets_by_buckets(buckets, plan.tier.as_deref())?.len() > 1;
 
                 // Disabling `serialize_as_empty` changes the effective subtree.
                 let mut sub_plan = ex_plan.clone();
@@ -762,6 +763,7 @@ impl Vshard for StorageRuntime {
                     sql_params.params(),
                     buckets,
                     motion_info,
+                    plan.tier.as_deref(),
                     format_options,
                 )?;
                 append_query_entry_to_port(RawExplainEntry::Single(entry), port)?;

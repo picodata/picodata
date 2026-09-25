@@ -9,7 +9,6 @@ use crate::catalog_cache::CatalogCacheRef;
 use crate::config::{DEFAULT_SQL_PREEMPTION, DYNAMIC_CONFIG};
 use crate::metrics::{observe_sql_local_query_duration, record_sql_local_query_total};
 use crate::schema::ADMIN_ID;
-use crate::sql::explain::explain_execute_block;
 use crate::sql::lua::{
     bucket_into_rs, dispatch_session_id, escape_bytes, lua_custom_plan_dispatch,
     lua_decode_rs_ibufs, lua_single_plan_dispatch, reference_add, reference_del, reference_use,
@@ -47,7 +46,7 @@ use sql::ir::node::{Delete, Insert, Motion, NodeId, Update};
 use sql::ir::operator::UpdateStrategy;
 use sql::ir::options::{Options, ReadPreference};
 use sql::ir::transformation::redistribution::MotionPolicy;
-use sql::ir::{ExplainOptions, Plan};
+use sql::ir::Plan;
 use sql::utils::ByteCounter;
 use sql_protocol::block::write_block_packet;
 use sql_protocol::decode::{execute_read_response, SqlExecute, TupleIter};
@@ -577,10 +576,6 @@ pub(crate) fn block_dispatch<'p>(
     timeout: Duration,
     tier: Option<&str>,
 ) -> Result<(), SbroadError> {
-    if block.explain_options.contains(ExplainOptions::Raw) {
-        return explain_execute_block(block, buckets, port);
-    }
-
     let deadline = Instant::now_fiber().saturating_add(timeout);
     match buckets {
         Buckets::All => Err(SbroadError::other(

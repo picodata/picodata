@@ -947,13 +947,33 @@ fn explain_iocdu_hook(
     ))
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct BlockRenderOptions {
+    /// If `true`, the SQL uses `:N` for parameters in place of `$N`.
+    pub colon_params: bool,
+    /// If `true`, the list also contains the values for
+    /// `ON CONFLICT DO UPDATE`.
+    pub bind_iocdu_params: bool,
+}
+
+impl BlockRenderOptions {
+    pub const EXECUTE: Self = Self {
+        colon_params: true,
+        bind_iocdu_params: true,
+    };
+    pub const EXPLAIN: Self = Self {
+        colon_params: false,
+        bind_iocdu_params: false,
+    };
+}
+
 /// Generate pattern with params for block query.
 /// Note that this function can generate UPDATE queries,
 /// not sure if we should support it elsewhere.
 pub fn generate_pattern_with_params_for_block(
     plan: &ExecutionPlan,
     query_id: NodeId,
-    use_colon_params: bool,
+    render: BlockRenderOptions,
 ) -> Result<(BlockQuery, Vec<Value>), SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
 
@@ -977,7 +997,7 @@ pub fn generate_pattern_with_params_for_block(
         //      PlanId(Selection), <expr>
         //  ]
         //
-        //  XXX Thanks to the checks in the parser (see `ensure_can_generate_local_sql_for_update`)
+        //  XXX The checks in `Plan::validate_block_statement` make sure that:
         //  - <expr> cannot have subqueries so it's safe to divide projection exprs by <alias>
         //  - there are no joins, so WHERE comes right after the part with from and scan
         //    (and maybe indexed by)
@@ -1060,13 +1080,13 @@ pub fn generate_pattern_with_params_for_block(
             plan_id,
             constant_ids,
             params,
-            use_colon_params,
+            render,
         );
     }
 
     let sp = SyntaxPlan::new(plan, query_id, Snapshot::Oldest)?;
     let mut on = OrderedSyntaxNodes::try_from(sp)?;
-    if use_colon_params {
+    if render.colon_params {
         on.render_params_with_colon();
     }
     let nodes = on.to_syntax_data()?;
@@ -1162,7 +1182,7 @@ fn generate_insert_pattern_for_block(
     plan_id: u64,
     constant_ids: Vec<NodeId>,
     mut params: Vec<Value>,
-    use_colon_params: bool,
+    render: BlockRenderOptions,
 ) -> Result<(BlockQuery, Vec<Value>), SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
 
@@ -1205,14 +1225,13 @@ fn generate_insert_pattern_for_block(
 
     let sp = SyntaxPlan::new(plan, insert.child, Snapshot::Oldest)?;
     let mut on = OrderedSyntaxNodes::try_from(sp)?;
-    if use_colon_params {
+    if render.colon_params {
         on.render_params_with_colon();
     }
     let values_nodes = on.to_syntax_data()?;
 
-    let bind_iocdu_params = !plan.get_ir_plan().is_raw_explain();
     let parameter_indexes =
-        append_iocdu_param_values(plan, insert, &mut params, bind_iocdu_params)?;
+        append_iocdu_param_values(plan, insert, &mut params, render.bind_iocdu_params)?;
     if let ConflictStrategy::DoUpdate { payload } = &insert.conflict_strategy {
         hooks.push(prepare_iocdu_hook(
             plan,
@@ -1316,60 +1335,46 @@ fn dispatch_block<'p>(
         .map(|(name, ty)| MetadataColumn::of_type(name.to_string(), ty))
         .collect();
 
-    let use_colon_params = !plan.get_ir_plan().is_raw_explain();
-    let cache_key: Option<u64> = if use_colon_params {
-        Some(block_pattern_key(plan, &block.statements)?)
+    let cache_key = block_pattern_key(plan, &block.statements)?;
+    let cached = BLOCK_PATTERN_CACHE
+        .with(|c| -> Result<_, SbroadError> { Ok(c.borrow_mut().get(&cache_key)?.cloned()) })?;
+    if cached.is_some() {
+        fire_block_pattern_cache_hook(|h| h.on_hit);
     } else {
-        None
-    };
-    let cached_patterns: Option<(u64, Rc<Vec<BlockStatement<BlockQuery>>>)> = match cache_key {
-        Some(key) => {
-            let cached = BLOCK_PATTERN_CACHE
-                .with(|c| -> Result<_, SbroadError> { Ok(c.borrow_mut().get(&key)?.cloned()) })?;
-            if cached.is_some() {
-                fire_block_pattern_cache_hook(|h| h.on_hit);
-            } else {
-                fire_block_pattern_cache_hook(|h| h.on_miss);
-            }
-            cached.map(|c| (key, c))
-        }
-        None => None,
-    };
+        fire_block_pattern_cache_hook(|h| h.on_miss);
+    }
 
     let mut params: Vec<Vec<Value>> = Vec::new();
-    let statements: Rc<Vec<BlockStatement<BlockQuery>>> =
-        if let Some((_, cached)) = &cached_patterns {
-            for entry in BlockEntries::new(&block.statements) {
-                entry.with(|id| {
-                    let query_params = generate_params_for_block_query(plan, *id)?;
-                    params.push(query_params);
-                    Ok(())
-                })?
-            }
-            Rc::clone(cached)
-        } else {
-            let mut statements = Vec::with_capacity(block.statements.len());
-            // FIXME: add error location tracing,
-            // (e.g. Statement 1 (RETURN QUERY): some shit happened)
-            for stmt in block.statements {
-                let mapped = stmt.try_map(|id| -> Result<BlockQuery, SbroadError> {
-                    let (query, stmt_params) =
-                        generate_pattern_with_params_for_block(plan, id, use_colon_params)?;
-                    params.push(stmt_params);
-                    Ok(query)
-                })?;
-                statements.push(mapped);
-            }
-            let statements = Rc::new(statements);
-            if let Some(key) = cache_key {
-                BLOCK_PATTERN_CACHE.with(|c| -> Result<(), SbroadError> {
-                    c.borrow_mut().put(key, Rc::clone(&statements))?;
-                    Ok(())
-                })?;
-                fire_block_pattern_cache_hook(|h| h.on_added);
-            }
-            statements
-        };
+    let statements: Rc<Vec<BlockStatement<BlockQuery>>> = if let Some(cached) = &cached {
+        for entry in BlockEntries::new(&block.statements) {
+            entry.with(|id| {
+                let query_params = generate_params_for_block_query(plan, *id)?;
+                params.push(query_params);
+                Ok(())
+            })?
+        }
+        Rc::clone(cached)
+    } else {
+        let mut statements = Vec::with_capacity(block.statements.len());
+        // FIXME: add error location tracing,
+        // (e.g. Statement 1 (RETURN QUERY): error occurred)
+        for stmt in block.statements {
+            let mapped = stmt.try_map(|id| -> Result<BlockQuery, SbroadError> {
+                let (query, stmt_params) =
+                    generate_pattern_with_params_for_block(plan, id, BlockRenderOptions::EXECUTE)?;
+                params.push(stmt_params);
+                Ok(query)
+            })?;
+            statements.push(mapped);
+        }
+        let statements = Rc::new(statements);
+        BLOCK_PATTERN_CACHE.with(|c| -> Result<(), SbroadError> {
+            c.borrow_mut().put(cache_key, Rc::clone(&statements))?;
+            Ok(())
+        })?;
+        fire_block_pattern_cache_hook(|h| h.on_added);
+        statements
+    };
 
     let vdbe_max_steps = plan.get_ir_plan().effective_options.sql_vdbe_opcode_max as _;
     let table_versions = (*plan.get_ir_plan().table_version_map).clone();
@@ -1382,8 +1387,6 @@ fn dispatch_block<'p>(
         index_versions,
         vdbe_max_steps,
         returns_rows: !block.return_columns.is_empty(),
-        explain_options: plan.get_ir_plan().explain_options,
-        bucket_count: tier_runtime.bucket_count(),
     };
     tier_runtime.exec_block_on_buckets(metadata, exec_block, buckets, &request_id, port)
 }

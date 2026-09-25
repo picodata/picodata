@@ -285,10 +285,7 @@ where
         let mut block_buckets: Option<(StatementLocation, Buckets)> = None;
         for entry in BlockEntries::new(&block.statements) {
             let buckets = entry.with(|query_id| {
-                let buckets = match self.bind_block_insert_buckets(*query_id)? {
-                    Some(buckets) => buckets,
-                    None => self.bucket_discovery(*query_id)?,
-                };
+                let buckets = self.bucket_discovery(*query_id)?;
                 match &buckets {
                     Buckets::All => {
                         return Err(SbroadError::Other(

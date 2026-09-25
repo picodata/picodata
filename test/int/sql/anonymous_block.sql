@@ -1117,6 +1117,366 @@ END $$;
 -- EXPECTED:
 1
 
+-- TEST: explain-buckets-per-query
+-- SKIP_FOR: 2rsX1
+-- SQL:
+EXPLAIN (raw, buckets)
+DO $$ BEGIN
+  LET v = (SELECT 1);
+  IF v = 1 THEN
+    DELETE FROM t WHERE pk = 1;
+  END IF;
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭─────────────────────╮
+│ 1. Let "v" (ROUTER) │
+╰─────────────────────╯
+''
+SELECT 1::int as "col_1"
+''
+plan:
+    [0] TRIVIAL
+''
+buckets = any
+''
+╭───────────────────────╮
+│ 2.1. If cond (ROUTER) │
+╰───────────────────────╯
+''
+SELECT :v::int = 1::int as "cond"
+''
+plan:
+    [0] TRIVIAL
+''
+buckets = any
+''
+╭───────────────────────────────────────────────────╮
+│ 2.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────────╯
+''
+DELETE FROM "t" WHERE "t"."pk" = 1::int
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+''
+buckets = [1934]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1934]
+
+-- TEST: explain-multibucket-block-is-accepted
+-- SKIP_FOR: 2rsX1
+-- SQL:
+EXPLAIN (raw, buckets)
+DO $$ BEGIN RETURN QUERY SELECT * FROM t WHERE pk = 1 OR pk = 2; END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
+''
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 1::int or "t"."pk" = 2::int
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~2 rows)
+    [0] EXECUTE LIST SUBQUERY 1
+''
+buckets = [1410, 1934]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1410, 1934]
+
+-- TEST: explain-empty-bucket-block-is-accepted
+-- SKIP_FOR: 2rsX1
+-- SQL:
+EXPLAIN (raw, buckets)
+DO $$ BEGIN RETURN QUERY SELECT * FROM t WHERE pk = 1 AND pk = 2; END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭──────────────────────────╮
+│ 1. Return query (ROUTER) │
+╰──────────────────────────╯
+''
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 1::int and "t"."pk" = 2::int
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+''
+buckets = []
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = []
+
+-- TEST: explain-all-buckets-block-is-accepted
+-- SKIP_FOR: 2rsX1
+-- SQL:
+EXPLAIN (raw, buckets)
+DO $$ BEGIN DELETE FROM t; END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+DELETE FROM "t"
+''
+plan:
+    [0] TRIVIAL
+''
+buckets <= [1-3000]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets <= [1-3000]
+
+-- TEST: explain-disagreeing-buckets-block-is-accepted
+-- SKIP_FOR: 2rsX1
+-- SQL:
+EXPLAIN (raw, buckets)
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM t WHERE pk = 1;
+  DELETE FROM t WHERE pk = 2;
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
+''
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 1::int
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+''
+buckets = [1934]
+''
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+DELETE FROM "t" WHERE "t"."pk" = 2::int
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+''
+buckets = [1410]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1410, 1934]
+
+-- TEST: explain-logical-disagreeing-buckets-block
+-- SKIP_FOR: 2rsX1
+-- SQL:
+EXPLAIN (logical)
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM t WHERE pk = 1;
+  DELETE FROM t WHERE pk = 2;
+END $$;
+-- EXPECTED:
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
+''
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 1::int
+''
+projection (t.pk::int -> pk, t.a::int -> a, t.b::int -> b)
+  selection (t.pk::int = 1::int)
+    scan t
+''
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+DELETE FROM "t" WHERE "t"."pk" = 2::int
+''
+delete from t
+  projection (t.pk::int -> pk_col_0)
+    selection (t.pk::int = 2::int)
+      scan t
+
+-- TEST: explain-insert-keeps-its-own-bucket
+-- SKIP_FOR: 2rsX1
+-- SQL:
+EXPLAIN (raw, buckets)
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM t WHERE pk = 1;
+  INSERT INTO t VALUES (2, 2, 2) ON CONFLICT DO REPLACE;
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭───────────────────────────────────────────────╮
+│ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
+╰───────────────────────────────────────────────╯
+''
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 1::int
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+''
+buckets = [1934]
+''
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+INSERT OR REPLACE INTO "t" ("pk", "a", "b", "bucket_id") VALUES (2::int, 2::int, 2::int, 1410::int)
+''
+plan:
+    [0] TRIVIAL
+''
+buckets = [1410]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1410, 1934]
+
+-- TEST: explain-multibucket-insert-gets-per-row-buckets
+-- SKIP_FOR: 2rsX1
+-- SQL:
+EXPLAIN (logical, raw, buckets)
+DO $$ BEGIN
+  INSERT INTO t VALUES (1, 1, 1), (2, 2, 2), (1, 3, 3) ON CONFLICT DO REPLACE;
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+INSERT OR REPLACE INTO "t" ("pk", "a", "b", "bucket_id") VALUES (1::int, 1::int, 1::int, 1934::int), (2::int, 2::int, 2::int, 1410::int), (1::int, 3::int, 3::int, 1934::int)
+''
+insert into t on conflict: replace
+  values
+    value ROW(1::int, 1::int, 1::int, 1934::int)
+    value ROW(2::int, 2::int, 2::int, 1410::int)
+    value ROW(1::int, 3::int, 3::int, 1934::int)
+''
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
+''
+INSERT OR REPLACE INTO "t" ("pk", "a", "b", "bucket_id") VALUES (1::int, 1::int, 1::int, 1934::int), (2::int, 2::int, 2::int, 1410::int), (1::int, 3::int, 3::int, 1934::int)
+''
+plan:
+    [0] TRIVIAL
+''
+buckets = [1410, 1934]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1410, 1934]
+
+-- TEST: explain-motion-block-reports-error
+-- SQL:
+EXPLAIN (logical, raw)
+DO $$ BEGIN RETURN QUERY SELECT * FROM t ORDER BY pk; END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+╭─────────────────────────────────╮
+│ 1. Return query (WHOLE STORAGE) │
+╰─────────────────────────────────╯
+''
+**Error**: cannot generate SQL: the query requires cross-shard data movement
+''
+projection (pk::int, a::int, b::int)
+  order by (pk::int)
+    motion [policy: full, program: ReshardIfNeeded]
+      scan
+        projection (t.pk::int -> pk, t.a::int -> a, t.b::int -> b)
+          scan t
+''
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭─────────────────────────────────╮
+│ 1. Return query (WHOLE STORAGE) │
+╰─────────────────────────────────╯
+''
+**Error**: cannot generate SQL: the query requires cross-shard data movement
+
+-- TEST: explain-motion-block-buckets-are-upper-bound
+-- SKIP_FOR: 2rsX1
+-- SQL:
+EXPLAIN (raw, buckets)
+DO $$ BEGIN
+  INSERT INTO t VALUES (2, 2, (SELECT 1));
+END $$;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Raw plan                                                           
+──────────────────────────────────────────────────────────────────────
+''
+╭─────────────────────────────────────────╮
+│ 1. Query (DYN-FILTERED STORAGE, <= 1/1) │
+╰─────────────────────────────────────────╯
+''
+**Error**: cannot generate SQL: INSERT in transaction does not support subqueries in VALUES
+''
+buckets <= [1410]
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1410]
+
+-- TEST: multibucket-block-still-rejected-without-explain
+-- SQL:
+DO $$ BEGIN
+  RETURN QUERY SELECT * FROM t WHERE pk = 1;
+  DELETE FROM t WHERE pk = 2;
+END $$;
+-- ERROR:
+statement 1 \(RETURN QUERY\) and statement 2 \(DML\): different buckets: \[1934\] and \[1410\]
+
 -- TEST: block-with-sql_vdbe_opcode_max-0
 -- SQL:
 do $$ BEGIN RETURN QUERY select * from t where pk = 1; END $$ option (sql_vdbe_opcode_max = 0);
@@ -2071,27 +2431,27 @@ SELECT "t4"."a" FROM "t4" WHERE "t4"."pk" = 1::int
 plan:
     [0] SEARCH TABLE t4 USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭────────────────────────────────────────────╮
-│ 2.1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────────╯
+╭───────────────────────╮
+│ 2.1. If cond (ROUTER) │
+╰───────────────────────╯
 ''
 SELECT :v::int > 0::int as "cond"
 ''
 plan:
     [0] TRIVIAL
 ''
-╭──────────────────────────────────────────────────────────╮
-│ 2.2. If body: Return query (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────────────────────╯
+╭─────────────────────────────────────╮
+│ 2.2. If body: Return query (ROUTER) │
+╰─────────────────────────────────────╯
 ''
 SELECT :v::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
 ''
-╭───────────────────────────────────────────────────────╮
-│ 2.3.1. If body: If cond (CONST-FILTERED STORAGE, 1/1) │
-╰───────────────────────────────────────────────────────╯
+╭──────────────────────────────────╮
+│ 2.3.1. If body: If cond (ROUTER) │
+╰──────────────────────────────────╯
 ''
 SELECT :v::int > 1::int as "cond"
 ''
@@ -2128,18 +2488,18 @@ BEGIN
   END IF;
 END $$;
 -- EXPECTED:
-╭────────────────────────────────────────────╮
-│ 1.1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────────╯
+╭───────────────────────╮
+│ 1.1. If cond (ROUTER) │
+╰───────────────────────╯
 ''
 SELECT true::bool as "cond"
 ''
 plan:
     [0] TRIVIAL
 ''
-╭──────────────────────────────────────────────────────────╮
-│ 1.2. If body: Return query (CONST-FILTERED STORAGE, 1/1) │
-╰──────────────────────────────────────────────────────────╯
+╭─────────────────────────────────────╮
+│ 1.2. If body: Return query (ROUTER) │
+╰─────────────────────────────────────╯
 ''
 SELECT 1::int as "col_1"
 ''
@@ -2678,9 +3038,9 @@ BEGIN
   END IF;
 END $$;
 -- EXPECTED:
-╭────────────────────────────────────────────╮
-│ 1.1. If cond (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────────╯
+╭───────────────────────╮
+│ 1.1. If cond (ROUTER) │
+╰───────────────────────╯
 ''
 SELECT true::bool as "cond"
 ''

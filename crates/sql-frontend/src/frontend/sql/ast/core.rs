@@ -1780,31 +1780,6 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
     plan: &Plan,
     worker: &ExpressionWalker<'_, M>,
 ) -> Result<AnonymousBlock, SbroadError> {
-    fn ensure_can_generate_local_sql_for_dml(
-        kind: &str,
-        top_id: NodeId,
-        plan: &Plan,
-    ) -> Result<(), SbroadError> {
-        let dfs = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top_id);
-        for (_, rel) in dfs.relational() {
-            match rel {
-                Relational::ScanSubQuery(_) => {
-                    return Err(SbroadError::Other(format_smolstr!(
-                        "{kind} in transaction cannot have subqueries"
-                    )))
-                }
-                Relational::Join(_) => {
-                    return Err(SbroadError::Other(format_smolstr!(
-                        "{kind} in transaction cannot have joins"
-                    )))
-                }
-                _ => (),
-            }
-        }
-
-        Ok(())
-    }
-
     // Every `RETURN QUERY` in the block (top-level or inside an IF body)
     // contributes to the block's output format, so they all must agree on the
     // column types. Names are taken from the first one.
@@ -2086,20 +2061,6 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
             TableKind::GlobalSpace => return Err(cannot_modify_error("global", &relation.name)),
             TableKind::SystemSpace => return Err(cannot_modify_error("system", &relation.name)),
             TableKind::ShardedSpace { .. } => (),
-        }
-    }
-
-    // Ensure `generate_pattern_with_params_for_block` can handle queries.
-    for entry in BlockEntries::new(&statements) {
-        let node_id = *entry.query;
-        match plan.get_relation_node(node_id)? {
-            Relational::Update(_) => {
-                ensure_can_generate_local_sql_for_dml("UPDATE", node_id, plan)?
-            }
-            Relational::Delete(_) => {
-                ensure_can_generate_local_sql_for_dml("DELETE", node_id, plan)?
-            }
-            _ => {}
         }
     }
 

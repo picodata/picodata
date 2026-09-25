@@ -1,20 +1,24 @@
-use crate::explain::buckets::bounded_buckets_from_query;
+use crate::explain::buckets::{bounded_buckets_from_query, get_block_statement_buckets};
 use crate::explain::executor::BlockStageHeader;
 use crate::explain::executor::MotionInfo;
 use crate::explain::ir::LogicalExplain;
+use crate::explain::utils::format_no_sql;
 use crate::explain::utils::format_sql;
 use crate::explain::utils::indent;
 use crate::{write_explain_header1, write_explain_header2};
 use smol_str::ToSmolStr as _;
-use sql_executor::executor::engine::helpers::generate_pattern_with_params_for_block;
-use sql_executor::executor::engine::{BlockQuery, Router};
+use sql_executor::executor::engine::helpers::{
+    generate_pattern_with_params_for_block, BlockRenderOptions,
+};
+use sql_executor::executor::engine::{BlockQuery, Router, Vshard as _};
 use sql_executor::executor::ExecutingQuery;
 use sql_executor::executor::Port;
 use sql_ir::errors::SbroadError;
 use sql_ir::ir::bucket::Buckets;
 use sql_ir::ir::node::block::{Block, BlockOwned};
-use sql_ir::ir::node::{AnonymousBlock, BlockEntries, BlockStatement};
+use sql_ir::ir::node::{AnonymousBlock, BlockEntries};
 use sql_ir::ir::options::OptionKind;
+use sql_ir::ir::transformation::BlockExecutionRestriction;
 use sql_ir::ir::PlanKind;
 use sql_ir::ir::{value::Value, ExplainOptions, Plan};
 use std::fmt::Write as _;
@@ -50,6 +54,25 @@ pub fn explain_logical(plan: &Plan) -> Result<String, SbroadError> {
     Ok(explain.to_string())
 }
 
+/// The local SQL and the parameters of a block statement. If it is not
+/// possible to make the local SQL, EXPLAIN shows the reason in its place.
+pub type BlockStatementSql = Result<(BlockQuery, Vec<Value>), BlockExecutionRestriction>;
+
+/// The local SQL and routing data of a block statement.
+pub struct BlockStatementExplainData {
+    pub sql: BlockStatementSql,
+    pub buckets: Buckets,
+    pub motion_info: MotionInfo,
+}
+
+/// The data for the RAW EXPLAIN of a transactional block.
+pub struct BlockExplainData {
+    /// Statements in `BlockEntries` order.
+    pub statements: Vec<BlockStatementExplainData>,
+    pub explain_options: ExplainOptions,
+    pub bucket_count: u64,
+}
+
 pub struct ExplainExecutingQuery<'a, C> {
     inner: ExecutingQuery<'a, C>,
 }
@@ -64,8 +87,54 @@ impl<'a, C> ExplainExecutingQuery<'a, C>
 where
     C: Router,
 {
+    pub fn is_block(&self) -> Result<bool, SbroadError> {
+        self.inner.top_is(PlanKind::BLOCK)
+    }
+
+    /// Writes the RAW EXPLAIN entries of a query to `port`.
+    ///
+    /// # Errors
+    /// - The query is a transactional block. For a block, use
+    ///   [`Self::block_explain_data`].
     pub fn dispatch<'p>(&mut self, port: &mut impl Port<'p>) -> Result<(), SbroadError> {
+        if self.is_block()? {
+            return Err(SbroadError::Other(
+                "transactional blocks are explained via block_explain_data".into(),
+            ));
+        }
+
         self.inner.dispatch(port)
+    }
+
+    /// Makes the RAW EXPLAIN data of a transactional block. The data shows each
+    /// statement at the location where the statement runs. EXPLAIN accepts a
+    /// block with statements on different buckets, but such a block cannot run.
+    pub fn block_explain_data(&mut self) -> Result<BlockExplainData, SbroadError> {
+        let plan = self.inner.get_exec_plan().get_ir_plan();
+        let top_id = plan.get_top()?;
+        let block = plan.get_owned_block_node(top_id)?;
+        let BlockOwned::Anonymous(block) = block else {
+            unreachable!("plan.is_block() returned true, but top is {block:?}")
+        };
+        let explain_options = plan.explain_options;
+        // Use the tier of the plan. The tier of this node can be different.
+        let tier = match plan.tier.as_ref() {
+            None => self.inner.get_coordinator().get_current_tier_name()?,
+            tier => tier.cloned(),
+        };
+        let bucket_count = self
+            .inner
+            .get_coordinator()
+            .get_vshard_object_by_tier(tier.as_ref())?
+            .bucket_count();
+
+        let statements = self.generate_block_explain_statements(&block)?;
+
+        Ok(BlockExplainData {
+            statements,
+            explain_options,
+            bucket_count,
+        })
     }
 
     /// Render the logical plan. `build_location` names where a query runs
@@ -73,7 +142,7 @@ where
     /// that knowledge, since it depends on the cluster topology.
     pub fn explain_logical(
         &mut self,
-        build_location: impl Fn(&Buckets, &MotionInfo) -> ExplainQueryLocation,
+        build_location: impl Fn(&BlockStatementExplainData) -> ExplainQueryLocation,
     ) -> Result<String, SbroadError> {
         let mut buf = String::new();
         let exec_query = &self.inner;
@@ -92,32 +161,32 @@ where
             };
 
             // Write the bucket_id cells of INSERT rows before the logical plan is made.
-            let mut_exec_query = &mut self.inner;
-            let buckets = mut_exec_query.calculate_block_buckets(&block)?;
-            let logical_explains = self.get_block_logical(&block)?;
-            let block_statements = self.generate_block_patterns(block)?;
+            let block_explain = self.block_explain_data()?;
 
             let exec_query = &self.inner;
-            let explain_options = exec_query.get_exec_plan().get_ir_plan().explain_options;
+            let plan = exec_query.get_exec_plan().get_ir_plan();
+            let explain_options = plan.explain_options;
             let should_fmt = explain_options.contains(ExplainOptions::Fmt);
 
-            // One stage per query, in execution order -- the same order
-            // `logical_explains` and `unused_lets` are indexed by.
-            let mut entries = BlockEntries::new(&block_statements).enumerate().peekable();
-            while let Some((idx, entry)) = entries.next() {
+            let mut entries = BlockEntries::new(&block.statements)
+                .zip(&block_explain.statements)
+                .peekable();
+            while let Some((entry, statement)) = entries.next() {
                 let number = format_block_stage_number(&entry.location);
                 let stage = format_block_stage_label(&entry.location);
 
-                let (query, params) = entry.query;
-                let motion_info = MotionInfo::new_for_transaction();
-                let source = build_location(&buckets, &motion_info);
+                let source = build_location(statement);
                 write_explain_header2!(&mut buf, "{number} {stage} ({source})").unwrap();
                 writeln!(&mut buf).unwrap();
 
-                let sql = format_sql(&query.pattern, params, should_fmt);
+                let sql = match &statement.sql {
+                    Ok((query, params)) => format_sql(&query.pattern, params, should_fmt),
+                    Err(restriction) => format_no_sql(restriction),
+                };
                 write!(&mut buf, "{sql}\n\n").unwrap();
 
-                write!(&mut buf, "{}", logical_explains[idx]).unwrap();
+                let logical = entry.with(|query_id| LogicalExplain::new(plan, *query_id))?;
+                write!(&mut buf, "{logical}").unwrap();
 
                 if entries.peek().is_some() {
                     write!(&mut buf, "\n\n").unwrap();
@@ -169,8 +238,7 @@ where
             })
             .ok();
 
-        let is_block = maybe_block_stages.is_some();
-        if explain_options.contains(ExplainOptions::Buckets) && !is_block {
+        if explain_options.contains(ExplainOptions::Buckets) {
             format_options.insert(RawExplainOptions::ShowBuckets);
         }
 
@@ -223,31 +291,40 @@ where
         Ok(buf)
     }
 
-    fn get_block_logical(
-        &self,
+    /// Makes the local SQL and routing data of each block statement. Each INSERT
+    /// row uses its own bucket. If it is not possible to make the local SQL of a
+    /// statement, the result contains the reason.
+    fn generate_block_explain_statements(
+        &mut self,
         block: &AnonymousBlock,
-    ) -> Result<Vec<LogicalExplain>, SbroadError> {
-        let mut explain = Vec::with_capacity(block.statements.len());
-        let plan = self.inner.get_exec_plan().get_ir_plan();
-        for entry in BlockEntries::new(&block.statements) {
-            let explain_entry = entry.with(|query_id| LogicalExplain::new(plan, *query_id))?;
-            explain.push(explain_entry);
-        }
-
-        Ok(explain)
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn generate_block_patterns(
-        &self,
-        block: AnonymousBlock,
-    ) -> Result<Vec<BlockStatement<(BlockQuery, Vec<Value>)>>, SbroadError> {
-        let exec_plan = self.inner.get_exec_plan();
+    ) -> Result<Vec<BlockStatementExplainData>, SbroadError> {
         let mut statements = Vec::with_capacity(block.statements.len());
-        for stmt in block.statements {
-            statements.push(
-                stmt.try_map(|id| generate_pattern_with_params_for_block(exec_plan, id, false))?,
-            );
+        for entry in BlockEntries::new(&block.statements) {
+            let buckets =
+                entry.with(|query_id| get_block_statement_buckets(&mut self.inner, *query_id))?;
+            let id = *entry.query;
+            let exec_plan = self.inner.get_exec_plan();
+            let motion_info = if exec_plan.get_ir_plan().subtree_has_motions(id)? {
+                let has_segment_motion = exec_plan.has_segment_motion(id);
+                MotionInfo::new_for_query(has_segment_motion, None)
+            } else {
+                MotionInfo::new_for_transaction()
+            };
+            let sql =
+                if let Some(restriction) = exec_plan.get_ir_plan().validate_block_statement(id)? {
+                    Err(restriction)
+                } else {
+                    Ok(generate_pattern_with_params_for_block(
+                        exec_plan,
+                        id,
+                        BlockRenderOptions::EXPLAIN,
+                    )?)
+                };
+            statements.push(BlockStatementExplainData {
+                sql,
+                buckets,
+                motion_info,
+            });
         }
 
         Ok(statements)

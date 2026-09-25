@@ -1009,9 +1009,9 @@ BEGIN
   RETURN QUERY SELECT 4;
 END $$;
 -- EXPECTED:
-╭───────────────────────────────────────────────╮
-│ 1. Return query (CONST-FILTERED STORAGE, 1/2) │
-╰───────────────────────────────────────────────╯
+╭──────────────────────────╮
+│ 1. Return query (ROUTER) │
+╰──────────────────────────╯
 ''
 SELECT 2::int as "col_1"
 ''
@@ -1027,9 +1027,9 @@ SELECT "t"."b" + 2::int as "col_1" FROM "t" WHERE "t"."pk" = 1::int
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 ''
-╭───────────────────────────────────────────────╮
-│ 3. Return query (CONST-FILTERED STORAGE, 1/2) │
-╰───────────────────────────────────────────────╯
+╭──────────────────────────╮
+│ 3. Return query (ROUTER) │
+╰──────────────────────────╯
 ''
 SELECT 4::int as "col_1"
 ''
@@ -1140,8 +1140,35 @@ plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
 
 -- TEST: explain-query-different-buckets
+-- SKIP_FOR: 1rsX1
 -- SQL:
 EXPLAIN (RAW) DO $$
+BEGIN
+  UPDATE t SET a = a + 1 WHERE pk = 1;
+  UPDATE t SET a = a * 2 WHERE pk = 2;
+END $$;
+-- EXPECTED:
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
+''
+UPDATE "t" SET "a" = "t"."a" + 1::int WHERE "t"."pk" = 1::int
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+''
+╭────────────────────────────────────────╮
+│ 2. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
+''
+UPDATE "t" SET "a" = "t"."a" * 2::int WHERE "t"."pk" = 2::int
+''
+plan:
+    [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
+
+-- TEST: query-different-buckets-is-still-rejected
+-- SQL:
+DO $$
 BEGIN
   UPDATE t SET a = a + 1 WHERE pk = 1;
   UPDATE t SET a = a * 2 WHERE pk = 2;

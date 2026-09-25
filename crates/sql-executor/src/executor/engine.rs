@@ -25,7 +25,6 @@ use crate::ir::operator::BlockConflictDoUpdate;
 use crate::ir::options::Forward;
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
-use crate::ir::ExplainOptions;
 
 use super::preemption::SchedulerOptions;
 use super::Port;
@@ -466,8 +465,6 @@ pub struct BlockExecData {
     pub index_versions: HashMap<[u32; 2], u64, RepeatableState>,
     pub vdbe_max_steps: u64,
     pub returns_rows: bool,
-    pub explain_options: ExplainOptions,
-    pub bucket_count: u64,
 }
 
 /// Key for the storage-side cache of assembled block VDBEs.
@@ -507,6 +504,9 @@ pub trait Vshard {
         port: &mut impl Port<'p>,
     ) -> Result<(), SbroadError>;
 
+    /// `buckets` contains one bucket, or it is [`Buckets::Any`] if no statement
+    /// sets the bucket. It is not possible to execute a block on more than one
+    /// bucket.
     fn exec_block_on_buckets<'p>(
         &self,
         metadata: Vec<MetadataColumn>,

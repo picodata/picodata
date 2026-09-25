@@ -17,9 +17,11 @@ use crate::ir::node::{
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
+use crate::ir::transformation::BlockExecutionRestriction;
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
+use crate::ir::PlanKind;
 
 struct ExecutorBucketsResolver<'p, C: Router> {
     coordinator: &'p C,
@@ -110,7 +112,8 @@ where
             }
         }
 
-        let vshard_object = self.get_coordinator().get_current_vshard_object()?;
+        let tier = self.exec_plan.get_ir_plan().tier.as_ref();
+        let vshard_object = self.get_coordinator().get_vshard_object_by_tier(tier)?;
         let bucket_id = vshard_object.determine_bucket_id(&values)?;
 
         Ok(Some(bucket_id))
@@ -141,12 +144,14 @@ where
         Ok(Some(Buckets::new_filtered(bucket_set)))
     }
 
-    // Calculates buckets for sharded insert queries(e.g.
-    // `INSERT INTO t VALUES (1, 2)`). In case when it's not
-    // possible to calculate buckets it returns None.
-    pub fn try_calculate_sharded_insert_buckets(&self) -> Result<Option<Buckets>, SbroadError> {
+    // Calculates the buckets of the sharded INSERT `insert_id`, for example
+    // `INSERT INTO t VALUES (1, 2)`. If this is not possible, the function
+    // returns `None`.
+    pub fn try_calculate_sharded_insert_buckets(
+        &self,
+        insert_id: NodeId,
+    ) -> Result<Option<Buckets>, SbroadError> {
         let plan = self.get_exec_plan().get_ir_plan();
-        let insert_id = plan.get_top()?;
         let child_id = plan.dml_child_id(insert_id)?;
         let Relational::Motion(Motion { child, policy, .. }) = plan.get_relation_node(child_id)?
         else {
@@ -178,12 +183,16 @@ where
     /// Write the bucket of each block INSERT row to its `bucket_id` cell,
     /// the last cell of the row (see `Plan::optimize_block`).
     ///
-    /// Returns `None` if `query_id` is not an INSERT of VALUES.
+    /// Returns `None` if the plan is not a block, or if `query_id` is not
+    /// an INSERT of VALUES.
     pub(crate) fn bind_block_insert_buckets(
         &mut self,
         query_id: NodeId,
     ) -> Result<Option<Buckets>, SbroadError> {
         let plan = self.exec_plan.get_ir_plan();
+        if !plan.top_is(PlanKind::BLOCK)? {
+            return Ok(None);
+        }
         let Relational::Insert(Insert { child, .. }) = plan.get_relation_node(query_id)? else {
             return Ok(None);
         };
@@ -196,11 +205,7 @@ where
             let row_list = plan.get_row_list(*row_id)?;
             let bucket_id = self
                 .try_calculate_values_row_bucket_id(row_list, &motion_key)?
-                .ok_or_else(|| {
-                    SbroadError::other(
-                        "INSERT in transaction requires constant or parameter values for sharding-key columns",
-                    )
-                })?;
+                .ok_or_else(|| BlockExecutionRestriction::InsertShardingKey.into_error())?;
             let cell_id = *row_list
                 .last()
                 .expect("block INSERT row must have a bucket_id cell");
@@ -253,12 +258,19 @@ where
 
     /// Discover required buckets to execute the query subtree.
     ///
+    /// For a block INSERT of VALUES, the function writes the bucket of each
+    /// row to its `bucket_id` cell. It gives these buckets.
+    ///
     /// # Errors
     /// - Relational iterator returns non-relational nodes.
     /// - Failed to find a virtual table.
     /// - Relational nodes contain invalid children.
     #[allow(clippy::too_many_lines)]
     pub fn bucket_discovery(&mut self, top_id: NodeId) -> Result<Buckets, SbroadError> {
+        if let Some(buckets) = self.bind_block_insert_buckets(top_id)? {
+            return Ok(buckets);
+        }
+
         let ir_plan = self.exec_plan.get_ir_plan();
         // Global tables have no buckets, so a statement that touches only
         // them runs on any node whatever its filter (e.g. `WHERE false`).

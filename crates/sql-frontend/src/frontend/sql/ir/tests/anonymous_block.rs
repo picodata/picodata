@@ -345,7 +345,8 @@ fn delete_in_block_errors() {
     ];
 
     for (query, error_pattern) in error_cases {
-        let error = expect_sql_to_ir_error(query, &[]);
+        let mut plan = sql_to_ir_without_bind(query, &[]);
+        let error = plan.optimize_block().unwrap_err();
         eprintln!("{}: {} vs {}", query, error, error_pattern);
         assert!(error.to_string().contains(error_pattern));
     }
@@ -1162,10 +1163,11 @@ fn single_bucket_statements_in_blocks() {
     }
 
     // DML in a block cannot have subqueries yet; LET can.
-    let error = expect_sql_to_ir_error(
+    let mut plan = sql_to_ir_without_bind(
         "DO $$ BEGIN UPDATE t5 SET b = (SELECT b FROM t3_2 WHERE a = $1) WHERE a = $1; END $$",
         &[],
     );
+    let error = plan.optimize_block().unwrap_err();
     assert!(
         error
             .to_string()

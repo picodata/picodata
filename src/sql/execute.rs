@@ -756,6 +756,7 @@ pub fn explain_execute(
     params: &[Value],
     buckets: &Buckets,
     motion_info: MotionInfo,
+    tier: Option<&str>,
     format_options: BucketFormatOptions,
 ) -> Result<QueryEntry, SbroadError> {
     let _plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
@@ -782,6 +783,7 @@ pub fn explain_execute(
         params,
         &buckets_info,
         motion_info,
+        tier,
         std::iter::empty::<&str>(),
     )
 }

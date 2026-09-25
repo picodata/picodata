@@ -1,9 +1,9 @@
 use crate::sql::port::PicoPortOwned;
-use crate::sql::router::{get_current_tier_replicasets_num, replicasets_by_buckets, RouterRuntime};
+use crate::sql::router::{get_tier_replicasets_num, replicasets_by_buckets, RouterRuntime};
 use crate::vdbe::explain::RawExplainProvider;
 use smol_str::{format_smolstr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
-use sql::executor::engine::{BlockExecData, BlockQuery, BlockRuntimeHook};
+use sql::executor::engine::{BlockQuery, BlockRuntimeHook};
 use sql::executor::vdbe::{SharedStmt, SqlError, SqlStmt};
 use sql::executor::ExecutingQuery;
 use sql::executor::Port;
@@ -11,18 +11,17 @@ use sql::explain::buckets::BoundedBuckets;
 use sql::explain::executor::{
     decode_vdbe_plan, ExplainQueryLocation, MotionInfo, QueryEntry, RawExplainEntry,
 };
-use sql::explain::ExplainExecutingQuery;
+use sql::explain::{BlockExplainData, ExplainExecutingQuery};
 use sql::ir::bucket::{BucketSet, Buckets};
-use sql::ir::node::BlockEntries;
 use sql::ir::value::Value;
 use sql::ir::ExplainOptions;
-use std::vec::IntoIter;
 use tarantool::msgpack::encode;
 
 /// Create an instance of `ExplainQueryLocation` from `Buckets` and `MotionInfo`.
 fn build_explain_query_location(
     buckets: &Buckets,
     motion_info: &MotionInfo,
+    tier: Option<&str>,
 ) -> ExplainQueryLocation {
     let is_dyn_filtered = motion_info.has_segment_motion;
 
@@ -33,7 +32,7 @@ fn build_explain_query_location(
                 ExplainQueryLocation::Router
             }
             Buckets::Filtered(_) | Buckets::All => {
-                let replicasets_num = get_current_tier_replicasets_num();
+                let replicasets_num = get_tier_replicasets_num(tier);
                 if !as_empty {
                     if is_dyn_filtered {
                         ExplainQueryLocation::DynFiltered {
@@ -60,9 +59,9 @@ fn build_explain_query_location(
         }
         Buckets::Filtered(BucketSet::Exact(set)) if set.is_empty() => ExplainQueryLocation::Router,
         Buckets::Filtered(_) => {
-            let (replicaset_count, all_replicasets) = match replicasets_by_buckets(buckets) {
+            let (replicaset_count, all_replicasets) = match replicasets_by_buckets(buckets, tier) {
                 Ok(replicasets) => {
-                    let all_replicasets = get_current_tier_replicasets_num();
+                    let all_replicasets = get_tier_replicasets_num(tier);
                     (replicasets.len(), all_replicasets)
                 }
                 Err(_) => {
@@ -87,12 +86,19 @@ fn build_explain_query_location(
 
 pub fn explain_query(query: ExecutingQuery<'_, RouterRuntime>) -> Result<String, SbroadError> {
     let explain_options = query.get_exec_plan().get_ir_plan().explain_options;
+    let tier = query.get_exec_plan().get_ir_plan().tier.clone();
 
     let mut explain = Vec::new();
     let mut explain_query = ExplainExecutingQuery::from(query);
 
     if explain_options.contains(ExplainOptions::Logical) {
-        let logical = explain_query.explain_logical(build_explain_query_location)?;
+        let logical = explain_query.explain_logical(|statement| {
+            build_explain_query_location(
+                &statement.buckets,
+                &statement.motion_info,
+                tier.as_deref(),
+            )
+        })?;
         explain.push(logical);
     }
 
@@ -110,7 +116,12 @@ pub fn explain_query(query: ExecutingQuery<'_, RouterRuntime>) -> Result<String,
 
     if explain_options.contains(ExplainOptions::Raw) {
         let mut port = PicoPortOwned::new();
-        explain_query.dispatch(&mut port)?;
+        if explain_query.is_block()? {
+            let block = explain_query.block_explain_data()?;
+            explain_execute_block(block, tier.as_deref(), &mut port)?;
+        } else {
+            explain_query.dispatch(&mut port)?;
+        }
 
         let raw_explain = explain_query.explain_raw(&mut port)?;
         if !raw_explain.is_empty() {
@@ -155,43 +166,47 @@ fn explain_block_hook_rows(query: &BlockQuery) -> impl Iterator<Item = &str> {
     })
 }
 
+/// Writes the RAW EXPLAIN of a transactional block to `port`.
+///
+/// Each [`QueryEntry`] contains the buckets of its statement, not the buckets
+/// of the full block. The `buckets = ...` line and the location of each stage
+/// use these buckets.
 pub fn explain_execute_block<'p>(
-    block: BlockExecData,
-    buckets: &Buckets,
+    block: BlockExplainData,
+    tier: Option<&str>,
     port: &mut impl Port<'p>,
 ) -> Result<(), SbroadError> {
-    let BlockExecData {
+    let BlockExplainData {
         statements,
-        params,
-        bucket_count,
         explain_options,
-        ..
-    } = block;
-    let params = &mut params.into_iter();
-
-    let bucket_info = BoundedBuckets {
-        buckets: buckets.clone(),
         bucket_count,
-        is_upper_bound: false,
-        format_options: explain_options.into(),
-    };
-    let motion_info = MotionInfo::new_for_transaction();
+    } = block;
 
-    let explain_one = |explain_query: ExplainQuery,
-                       query: &BlockQuery,
-                       params: &[Value]|
-     -> Result<QueryEntry, SbroadError> {
-        let raw_plan_hook_details = explain_block_hook_rows(query);
-        explain_query.execute_guarded(params, &bucket_info, motion_info, raw_plan_hook_details)
-    };
-
-    let next_params = |params: &mut IntoIter<_>| params.next().expect("not enough params");
-    // One entry per query, in execution order -- the same order `params` is
-    // indexed by, and the order the router expects when it names the stages.
-    for entry in BlockEntries::new(&statements) {
-        let query = entry.query;
-        let explain_query = ExplainQuery::new(&query.pattern);
-        let entry = explain_one(explain_query, query, &next_params(params))?;
+    for statement in &statements {
+        let motion_info = statement.motion_info;
+        let bucket_info = BoundedBuckets {
+            buckets: statement.buckets.clone(),
+            bucket_count,
+            is_upper_bound: motion_info.has_segment_motion,
+            format_options: explain_options.into(),
+        };
+        let entry = match &statement.sql {
+            Ok((query, params)) => {
+                let raw_plan_hook_details = explain_block_hook_rows(query);
+                ExplainQuery::new(&query.pattern).execute_guarded(
+                    params,
+                    &bucket_info,
+                    motion_info,
+                    tier,
+                    raw_plan_hook_details,
+                )?
+            }
+            Err(restriction) => {
+                let location =
+                    build_explain_query_location(&bucket_info.buckets, &motion_info, tier);
+                QueryEntry::without_sql(location, bucket_info, restriction.to_string())
+            }
+        };
         append_query_entry_to_port(RawExplainEntry::Single(entry), port)?;
     }
 
@@ -236,9 +251,10 @@ impl<'a> ExplainQuery<'a> {
         params: &[Value],
         bucket_info: &BoundedBuckets,
         motion_info: MotionInfo,
+        tier: Option<&str>,
         raw_plan_hook_details: impl IntoIterator<Item: AsRef<str>>,
     ) -> Result<QueryEntry, SbroadError> {
-        let location = build_explain_query_location(&bucket_info.buckets, &motion_info);
+        let location = build_explain_query_location(&bucket_info.buckets, &motion_info, tier);
         let sql_query = self.sql;
 
         let raw_explain_hook_err = |e: String| {

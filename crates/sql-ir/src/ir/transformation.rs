@@ -21,7 +21,8 @@ mod split_columns;
 
 use crate::ir::PlanKind;
 use ahash::AHashMap;
-use smol_str::format_smolstr;
+use smol_str::ToSmolStr as _;
+use std::fmt;
 
 use super::node::expression::Expression;
 use super::node::relational::{MutRelational, Relational};
@@ -34,7 +35,7 @@ use crate::ir::node::{
 use crate::ir::operator::Bool;
 use crate::ir::options::Options;
 use crate::ir::subtree_cloner::SubtreeCloner;
-use crate::ir::transformation::redistribution::{MotionPolicy, Target};
+use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
@@ -295,6 +296,55 @@ pub enum Stage {
     End,
 }
 
+/// The reason that a block statement cannot run in a transaction. It is not
+/// possible to make the local SQL of such a statement. When the block runs,
+/// picodata gives this reason as an error. EXPLAIN shows the reason in place
+/// of the local SQL.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlockExecutionRestriction {
+    DmlSubquery(&'static str),
+    DmlJoin(&'static str),
+    InsertValuesSubquery,
+    InsertShardingKey,
+    DataMovement,
+}
+
+impl BlockExecutionRestriction {
+    #[must_use]
+    pub fn into_error(self) -> SbroadError {
+        match self {
+            BlockExecutionRestriction::DataMovement => SbroadError::Other(
+                "cannot run in a transactional block because it requires \
+                 cross-shard data movement; restrict by the sharding key, \
+                 or move it outside the block"
+                    .into(),
+            ),
+            restriction => SbroadError::Other(restriction.to_smolstr()),
+        }
+    }
+}
+
+impl fmt::Display for BlockExecutionRestriction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockExecutionRestriction::DmlSubquery(kind) => {
+                write!(f, "{kind} in transaction cannot have subqueries")
+            }
+            BlockExecutionRestriction::DmlJoin(kind) => write!(f, "{kind} in transaction cannot have joins"),
+            BlockExecutionRestriction::InsertValuesSubquery => {
+                write!(f, "INSERT in transaction does not support subqueries in VALUES")
+            }
+            BlockExecutionRestriction::InsertShardingKey => write!(
+                f,
+                "INSERT in transaction requires constant or parameter values for sharding-key columns"
+            ),
+            BlockExecutionRestriction::DataMovement => {
+                write!(f, "the query requires cross-shard data movement")
+            }
+        }
+    }
+}
+
 impl Plan {
     /// Apply optimization rules to the plan.
     ///
@@ -526,75 +576,28 @@ impl Plan {
         // (parameters become constants after binding). Other cells may hold arbitrary
         // expressions — they will be evaluated by the storage's local SQL.
         //
+        // If it is not possible to remove the motion, this function keeps it.
+        // Then `validate_block_statement` reports the motion.
+        //
         // The local SQL must write `bucket_id`, so also add a `bucket_id` cell to
         // each row and the column to the INSERT columns. After bind, nodes can
-        // only change in place, so `calculate_block_buckets` overwrites each
+        // only change in place, so `bind_block_insert_buckets` overwrites each
         // cell with the bucket of its row.
         fn eliminate_insert_motion(plan: &mut Plan, insert_id: NodeId) -> Result<(), SbroadError> {
-            // INSERT into a global table gets MotionPolicy::Full and is not supported in blocks;
-            // leave the motion in place so the block optimizer reports it.
-            if plan.dml_node_table(insert_id)?.is_global() {
-                return Ok(());
-            }
-
-            let motion_id = plan.dml_child_id(insert_id)?;
-            let Relational::Motion(Motion { policy, .. }) = plan.get_relation_node(motion_id)?
-            else {
+            let Some((key, values_id)) = plan.insert_values_under_motion(insert_id)? else {
                 return Ok(());
             };
-            let (MotionPolicy::Segment(key) | MotionPolicy::LocalSegment(key)) = policy else {
+            if plan.validate_insert_values(key, values_id)?.is_some() {
                 return Ok(());
-            };
-
-            let values_id = plan.get_rel_child(motion_id, 0)?;
-            let Relational::Values(Values {
-                rows, subqueries, ..
-            }) = plan.get_relation_node(values_id)?
-            else {
-                return Ok(());
-            };
-            if !subqueries.is_empty() {
-                return Err(SbroadError::other(
-                    "INSERT in transaction does not support subqueries in VALUES",
-                ));
-            }
-
-            // Collect cell positions in each value row that correspond to
-            // sharding-key columns.
-            let key_positions: Vec<usize> = key
-                .targets
-                .iter()
-                .filter_map(|t| match t {
-                    Target::Reference(pos) => Some(*pos),
-                    Target::Value(_) => None,
-                })
-                .collect();
-
-            for row_id in rows {
-                let row_list = plan.get_row_list(*row_id)?;
-                for pos in &key_positions {
-                    let cell_id = *row_list
-                        .get(*pos)
-                        .expect("sharding-key position must exist in values row");
-                    let cell = plan.get_expression_node(cell_id)?;
-                    // CURRENT_USER is substituted with a constant on bind, like a parameter.
-                    if !matches!(
-                        cell,
-                        Expression::Constant(_)
-                            | Expression::Parameter(_)
-                            | Expression::CurrentUser(_)
-                    ) {
-                        return Err(SbroadError::other(
-                            "INSERT in transaction requires constant or parameter values for sharding-key columns"
-                        ));
-                    }
-                }
             }
 
             let bucket_id_pos = plan
                 .dml_node_table(insert_id)?
                 .get_bucket_id_position()?
                 .expect("sharded table must have a bucket_id column");
+            let Relational::Values(Values { rows, .. }) = plan.get_relation_node(values_id)? else {
+                unreachable!("insert_values_under_motion returns a Values node");
+            };
             for row_id in rows.clone() {
                 let cell_id = plan.add_const(Value::Integer(0));
                 plan.get_mut_expression_node(row_id)?
@@ -625,12 +628,13 @@ impl Plan {
             eliminate_motions_in_subtree(plan, *query)?;
             let new_top = plan.get_top().expect("just set");
             *query = new_top;
-            if plan.subtree_has_motions(new_top)? {
-                return Err(SbroadError::Other(format_smolstr!(
-                    "cannot run in a transactional block because it requires \
-                     cross-shard data movement; restrict by the sharding key, \
-                     or move it outside the block"
-                )));
+            // EXPLAIN accepts a statement that cannot run in a transaction. It
+            // shows the plan of the statement and the reason that the statement
+            // has no local SQL.
+            if !plan.is_explain() {
+                if let Some(restriction) = plan.validate_block_statement(new_top)? {
+                    return Err(restriction.into_error());
+                }
             }
             Ok(())
         }
@@ -654,7 +658,138 @@ impl Plan {
         Ok(self)
     }
 
-    fn subtree_has_motions(&self, top_id: NodeId) -> Result<bool, SbroadError> {
+    /// Gives the reason that the block statement `query_id` cannot run in a
+    /// transaction, or `None` if it can run.
+    ///
+    /// Before this call, [`Plan::optimize_block`] must optimize the statement.
+    pub fn validate_block_statement(
+        &self,
+        query_id: NodeId,
+    ) -> Result<Option<BlockExecutionRestriction>, SbroadError> {
+        let dml_kind = match self.get_relation_node(query_id)? {
+            Relational::Update(_) => Some("UPDATE"),
+            Relational::Delete(_) => Some("DELETE"),
+            _ => None,
+        };
+
+        let mut dml_restriction = None;
+        let mut has_motion = false;
+        let dfs = PostOrder::new(&self.nodes, |x| self.nodes.rel_iter(x), query_id);
+        for (_, rel) in dfs.relational() {
+            match rel {
+                Relational::ScanSubQuery(_) => {
+                    if let Some(kind) = dml_kind {
+                        dml_restriction.get_or_insert(BlockExecutionRestriction::DmlSubquery(kind));
+                    }
+                }
+                Relational::Join(_) => {
+                    if let Some(kind) = dml_kind {
+                        dml_restriction.get_or_insert(BlockExecutionRestriction::DmlJoin(kind));
+                    }
+                }
+                Relational::Motion(_) => has_motion = true,
+                _ => {}
+            }
+        }
+
+        // UPDATE and DELETE must have the flat `SELECT ... FROM t WHERE ...`
+        // form, also without motions. Their local SQL is made from this form.
+        if dml_restriction.is_some() {
+            return Ok(dml_restriction);
+        }
+        if !has_motion {
+            return Ok(None);
+        }
+        if let Some((key, values_id)) = self.insert_values_under_motion(query_id)? {
+            if let Some(restriction) = self.validate_insert_values(key, values_id)? {
+                return Ok(Some(restriction));
+            }
+        }
+
+        Ok(Some(BlockExecutionRestriction::DataMovement))
+    }
+
+    /// Gives the sharding key and the `Values` node of an INSERT into a sharded
+    /// table with the form `Insert -> Motion(Segment | LocalSegment) -> Values`.
+    /// For other forms, the function gives `None`.
+    fn insert_values_under_motion(
+        &self,
+        insert_id: NodeId,
+    ) -> Result<Option<(&MotionKey, NodeId)>, SbroadError> {
+        if !matches!(self.get_relation_node(insert_id)?, Relational::Insert(_)) {
+            return Ok(None);
+        }
+        // An INSERT into a global table gets MotionPolicy::Full. Picodata does
+        // not support this INSERT in blocks.
+        if self.dml_node_table(insert_id)?.is_global() {
+            return Ok(None);
+        }
+
+        let motion_id = self.dml_child_id(insert_id)?;
+        let Relational::Motion(Motion { policy, .. }) = self.get_relation_node(motion_id)? else {
+            return Ok(None);
+        };
+        let (MotionPolicy::Segment(key) | MotionPolicy::LocalSegment(key)) = policy else {
+            return Ok(None);
+        };
+
+        let values_id = self.get_rel_child(motion_id, 0)?;
+        if !matches!(self.get_relation_node(values_id)?, Relational::Values(_)) {
+            return Ok(None);
+        }
+
+        Ok(Some((key, values_id)))
+    }
+
+    /// Gives the reason that the router cannot calculate the bucket of each
+    /// `Values` row from `key`, or `None` if it can.
+    fn validate_insert_values(
+        &self,
+        key: &MotionKey,
+        values_id: NodeId,
+    ) -> Result<Option<BlockExecutionRestriction>, SbroadError> {
+        let Relational::Values(Values {
+            rows, subqueries, ..
+        }) = self.get_relation_node(values_id)?
+        else {
+            return Ok(None);
+        };
+        if !subqueries.is_empty() {
+            return Ok(Some(BlockExecutionRestriction::InsertValuesSubquery));
+        }
+
+        // Collect cell positions in each value row that correspond to
+        // sharding-key columns.
+        let key_positions: Vec<usize> = key
+            .targets
+            .iter()
+            .filter_map(|t| match t {
+                Target::Reference(pos) => Some(*pos),
+                Target::Value(_) => None,
+            })
+            .collect();
+
+        for row_id in rows {
+            let row_list = self.get_row_list(*row_id)?;
+            for pos in &key_positions {
+                let cell_id = *row_list
+                    .get(*pos)
+                    .expect("sharding-key position must exist in values row");
+                let cell = self.get_expression_node(cell_id)?;
+                // Binding replaces CURRENT_USER with a constant, the same as a parameter.
+                if !matches!(
+                    cell,
+                    Expression::Constant(_) | Expression::Parameter(_) | Expression::CurrentUser(_)
+                ) {
+                    return Ok(Some(BlockExecutionRestriction::InsertShardingKey));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub fn subtree_has_motions(&self, top_id: NodeId) -> Result<bool, SbroadError> {
         let has_motions = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
             .relational()
             .any(|(_, rel)| matches!(rel, Relational::Motion(_)));

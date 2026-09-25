@@ -20,7 +20,7 @@ where
         let explain_options = self.inner.get_exec_plan().get_ir_plan().explain_options;
         let mut explain = Vec::new();
         if explain_options.contains(ExplainOptions::Logical) {
-            let logical = self.explain_logical(|_, _| ExplainQueryLocation::Whole)?;
+            let logical = self.explain_logical(|_| ExplainQueryLocation::Whole)?;
             explain.push(logical);
         }
 
