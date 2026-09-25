@@ -160,6 +160,8 @@ article.md-typeset.md-typeset ul {
 * [PICO_INSTANCE_HEALTH_STATUS](reference/sql/pico_instance_health_status.md)
 * [PICO_INSTANCE_NAME](reference/sql/pico_instance_name.md)
 * [PICO_INSTANCE_UUID](reference/sql/pico_instance_uuid.md)
+* [PICO_LOG_LEVEL](reference/sql/pico_log_level.md)
+* [PICO_LOG_LEVEL_MAP](reference/sql/pico_log_level_map.md)
 * [PICO_RAFT_LEADER_ID](reference/sql/pico_raft_leader_id.md)
 * [PICO_RAFT_LEADER_UUID](reference/sql/pico_raft_leader_uuid.md)
 * [PICO_REPLICASET_NAME](reference/sql/pico_replicaset_name.md)

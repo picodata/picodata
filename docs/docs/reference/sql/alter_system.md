@@ -1,7 +1,8 @@
 # ALTER SYSTEM
 
 [DDL](ddl.md)-команда `ALTER SYSTEM` используется для изменения
-[параметров конфигурации СУБД](../../reference/db_config.md).
+[параметров конфигурации СУБД](../../reference/db_config.md), а также
+[динамических параметров](#runtime_params) инстанса.
 
 ## Синтаксис {: #syntax }
 
@@ -34,6 +35,8 @@
 - [Управление доступом — Таблица привилегий](../../admin/access_control.md#privileges_table)
 
 ## Примеры {: #examples }
+
+### Системные параметры {: #system_params }
 
 Установка параметра:
 
@@ -69,4 +72,41 @@ ALTER SYSTEM RESET memtx_checkpoint_interval FOR TIER default;
 
 ```sql
 SELECT * FROM _pico_db_config WHERE key = 'auth_password_enforce_digits';
+```
+
+### Динамические параметры {: #runtime_params }
+
+Для изменения динамических параметров запущенного инстанса используйте
+синтаксис `ALTER SYSTEM SET LOCAL`. Такая команда имеет следующие
+свойства:
+
+- изменения не записываются в системную таблицу `_pico_db_config`
+- изменения локальны и не влияют на работу других инстансов Picodata
+- изменения сбрасываются при перезапуске инстанса Picodata
+
+Текущий уровень журналирования можно получить с помощью
+[PICO_LOG_LEVEL](pico_log_level.md), а список всех уровней и их числовых
+значений — с помощью [PICO_LOG_LEVEL_MAP](pico_log_level_map.md).
+
+Пример использования:
+
+```sql
+ALTER SYSTEM SET LOCAL log_level = 'warn';
+```
+или:
+
+```sql
+ALTER SYSTEM SET LOCAL log_level TO 'warn';
+```
+
+Сброс на исходное значение, заданное при запуске инстанса:
+
+```sql
+ALTER SYSTEM RESET LOCAL log_level;
+```
+
+или
+
+```sql
+ALTER SYSTEM SET LOCAL log_level TO DEFAULT;
 ```

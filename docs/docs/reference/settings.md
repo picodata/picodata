@@ -12,7 +12,7 @@ hide:
 Справочник разделен на две части:
 
 - [настройки запуска Picodata](#picodata_start_settings) (параметры инстанса и кластера), управляемые через файл конфигурации и параметры CLI
-- [настройки СУБД](#sql_settings), управляемые через SQL-запросы
+- [настройки СУБД и локальные параметры](#sql_settings), управляемые через SQL-запросы
 
 <style>
 .md-typeset .admonition.abstract {
@@ -90,6 +90,7 @@ td.td3 ul {
 .instance,
 .cluster,
 .sql-cluster,
+.sql-local,
 .sql-tier {
     padding: 0.1em 0.5em;
     border-radius: 1em;
@@ -114,6 +115,10 @@ td.td3 ul {
 
 .sql-tier {
     background-color: #6acc78;
+}
+
+.sql-local {
+    background-color: #ff758a;
 }
 
 .fill-width {
@@ -804,13 +809,16 @@ table.legend {
 </table>
 </div>
 
-## Настройки СУБД {: #sql_settings }
+## Настройки СУБД и локальные параметры {: #sql_settings }
 
 ### Легенда {: #legend_db data-search-exclude }
 
 <table class="legend"><tr><td>
     <span class="sql-cluster legend-id">pg_portal_max</span><span class="legend-dash">—</span>настройка применима к кластеру<br>
     <span class="sql-tier legend-id">iproto_net_msg_max</span><span class="legend-dash">—</span>настройка применима к отдельному тиру<br>
+    <span class="sql-local legend-id">log_level</span><span
+        class="legend-dash">—</span>настройка применима к отдельному инстансу
+    и может быть изменена динамически<br>
 </td></tr></table>
 <br>
 
@@ -952,6 +960,16 @@ table.legend {
             <td>
             ```sql
             ALTER SYSTEM SET iproto_net_msg_max = 400 FOR TIER default;
+            ```
+            </td>
+        </tr>
+        <tr>
+            <td><span class="sql-local">[log_level](sql/pico_log_level.md){.link}</span></td>
+            <td>Уровень важности событий, регистрируемых в отладочном журнале</td>
+            <td>1</td>
+            <td>
+            ```sql
+            ALTER SYSTEM SET LOCAL log_level = 'warn';
             ```
             </td>
         </tr>

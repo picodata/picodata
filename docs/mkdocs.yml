@@ -164,6 +164,8 @@ nav:
               - reference/sql/pico_instance_health_status.md
               - reference/sql/pico_instance_name.md
               - reference/sql/pico_instance_uuid.md
+              - reference/sql/pico_log_level.md
+              - reference/sql/pico_log_level_map.md
               - reference/sql/pico_raft_leader_id.md
               - reference/sql/pico_raft_leader_uuid.md
               - reference/sql/pico_replicaset_name.md

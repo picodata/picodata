@@ -1088,6 +1088,47 @@ picodata run -c instance.log.format=json
 Аналогичная переменная окружения: `PICODATA_LOG_LEVEL`<br>
 Задание параметра в командной строке: [`picodata run --log-level`]
 
+Уровень важности событий можно задавать при запуске инстанса и менять
+во время его работы с помощью SQL-запросов.
+Используйте следующий синтаксис:
+
+```sql
+ALTER SYSTEM SET LOCAL log_level = 'warn';
+```
+или:
+
+```sql
+ALTER SYSTEM SET LOCAL log_level TO 'warn';
+```
+Сброс на исходное значение, заданное при запуске инстанса:
+
+```sql
+ALTER SYSTEM RESET LOCAL log_level;
+```
+
+или
+
+```sql
+ALTER SYSTEM SET LOCAL log_level TO DEFAULT;
+```
+
+Получение текущего значения:
+
+```sql
+SELECT pico_log_level();
+
+> 'info'
+```
+
+Получение всех возможных значений параметра (текстовых значение и
+соответствующих им номеров):
+
+```sql
+SELECT pico_log_level_map();
+
+> {"fatal":0,"system":1,"error":2,"crit":3,"warn":4,"info":5,"verbose":6,"debug":7}
+```
+
 [`picodata run --log-level`]: cli.md#run_log_level
 
 ### instance.memtx.dir {: #instance_memtx_dir }

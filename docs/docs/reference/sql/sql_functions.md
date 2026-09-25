@@ -29,6 +29,8 @@
 | [PICO_INSTANCE_HEALTH_STATUS](pico_instance_health_status.md) | Сведения о состоянии инстанса в формате JSON по его UUID |
 | [PICO_INSTANCE_NAME](pico_instance_name.md) | Имя инстанса по его UUID |
 | [PICO_INSTANCE_UUID](pico_instance_uuid.md) | UUID текущего инстанса в текстовом виде |
+| [PICO_LOG_LEVEL](pico_log_level.md) | Текущий уровень журналирования инстанса в текстовом виде |
+| [PICO_LOG_LEVEL_MAP](pico_log_level_map.md) | Соответствие названий уровней журналирования их числовым значениям в формате JSON |
 | [PICO_RAFT_LEADER_ID](pico_raft_leader_id.md) | Идентификатор лидера raft-группы |
 | [PICO_RAFT_LEADER_UUID](pico_raft_leader_uuid.md) | UUID лидера raft-группы в текстовом виде |
 | [PICO_REPLICASET_NAME](pico_replicaset_name.md) | Имя репликасета инстанса по его UUID |
