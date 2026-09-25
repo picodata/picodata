@@ -1,0 +1,252 @@
+# What a SQLancer run against this branch may see.
+#
+#   errors     a statement that fails with an error containing `pattern` does not fail the run;
+#              anything else is a finding
+#   suppress   named switches in SQLancer's generator that keep a pattern out of the statements it
+#              builds at all, which is what a bug that crashes the instance needs: a crash ends the
+#              run, so allowing its error would not help
+#
+# Every entry carries a `repro` you can paste into psql, the `issue` it is tracked under, or both.
+# An entry with an issue is a picodata bug: delete it in the merge request that fixes the bug, and
+# from that commit on its error is a finding again. An entry with only a repro is an error picodata
+# returns by design. SQLancer runs every repro once at startup and warns about the ones that no
+# longer produce their error.
+#
+# Quote every pattern: several hold a colon followed by a space, which unquoted YAML reads as a
+# nested mapping.
+
+errors:
+
+  ##########################################################################
+  # BY DESIGN
+  ##########################################################################
+
+  # Integer arithmetic that leaves the 64-bit range, folded while planning or caught when encoding.
+  - pattern: "out of range integral type conversion attempted"
+    repro: SELECT 9223372036854775807 * 2;
+
+  # The same overflow, where Tarantool does the arithmetic itself.
+  - pattern: "integer is overflowed"
+    repro: |
+      CREATE TABLE io (k INT PRIMARY KEY, v INT);
+      INSERT INTO io VALUES (1, -9223372036854775807);
+      SELECT v + v FROM io;
+
+  - pattern: "division by zero"
+    repro: SELECT 1 / 0;
+
+  # Decimal arithmetic beyond the 38 digits a decimal holds.
+  - pattern: "decimal is overflowed"
+    repro: SELECT CAST(1e37 AS DECIMAL) * 10;
+
+  # A value that does not spell a value of the type it is cast to.
+  - pattern: "Type mismatch: can not convert"
+    repro: SELECT CAST(1e30 AS INT);
+
+  # The same mismatch on the way in, where a literal meets a typed operand.
+  - pattern: "consider using explicit type casts"
+    repro: SELECT 1 + 'abc';
+
+  # A cast that can only be decided once the value is known.
+  - pattern: "Failed to cast"
+    repro: SELECT array[1]::text[];
+
+  # A motion larger than sql_motion_row_max.
+  - pattern: "Exceeded maximum number of rows"
+    repro: |
+      CREATE TABLE mr (k INT PRIMARY KEY, v INT);
+      INSERT INTO mr VALUES (1, 1), (2, 2), (3, 3);
+      SELECT k FROM mr WHERE v IN (SELECT k FROM mr) OPTION (sql_motion_row_max = 1);
+
+  # A plan that needs more opcodes than sql_vdbe_opcode_max.
+  - pattern: "Reached a limit on max executed vdbe opcodes"
+    repro: |
+      CREATE TABLE vo (k INT PRIMARY KEY);
+      INSERT INTO vo VALUES (1), (2), (3);
+      SELECT * FROM vo ORDER BY k OPTION (sql_vdbe_opcode_max = 10);
+
+  # SUBSTR with a negative length.
+  - pattern: "Length of the result cannot be less than 0"
+    repro: SELECT SUBSTR('abc', 1, -1);
+
+  # A computed UNSIGNED above i64::MAX, of which the domain only accepts the lower half on the way in.
+  - pattern: "couldn't encode DECIMAL value"
+    repro: |
+      CREATE TABLE bg (k INT PRIMARY KEY, u UNSIGNED);
+      INSERT INTO bg VALUES (1, 9223372036854775807), (2, 9223372036854775807);
+      SELECT SUM(u) OVER () FROM bg;
+
+  # SQLancer picks primary keys at random rather than tracking which ones are taken.
+  - pattern: "Duplicate key exists in unique index"
+    repro: |
+      CREATE TABLE dk (k INT PRIMARY KEY);
+      INSERT INTO dk VALUES (1);
+      INSERT INTO dk VALUES (1);
+
+  # A value outside the domain of the column's type.
+  - pattern: "type does not match one required by operation"
+    repro: |
+      CREATE TABLE ud (k INT PRIMARY KEY, u UNSIGNED);
+      INSERT INTO ud VALUES (1, -1);
+
+  - pattern: "Global tables can use only memtx engine"
+    repro: CREATE TABLE gv (k INT PRIMARY KEY) USING VINYL DISTRIBUTED GLOBALLY;
+
+  ##########################################################################
+  # KNOWN BUGS
+  ##########################################################################
+
+  # A * that an ORDER BY sorts over a motion; naming the columns instead works. The message spells
+  # "Can't" with a typographic apostrophe, hence the shorter pattern.
+  - pattern: "resolve field"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3048
+    repro: |
+      CREATE TABLE ob (c0 INT PRIMARY KEY, c1 TEXT);
+      INSERT INTO ob VALUES (2, 'b'), (1, 'a');
+      SELECT DISTINCT * FROM ob ORDER BY 1 LIMIT 4;
+
+  # LIKE as an operand of a comparison: picodata gives it PostgreSQL's precedence but emits no
+  # parentheses, so Tarantool's trailing ESCAPE swallows the surrounding operator.
+  - pattern: "wrong arguments for function LIKE()"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3129
+    repro: |
+      CREATE TABLE lk (c0 TEXT PRIMARY KEY);
+      INSERT INTO lk VALUES ('a');
+      SELECT c0 FROM lk WHERE TRUE BETWEEN FALSE AND (c0 LIKE c0);
+
+  # Two columns of a join that share a name both resolve to the first, so a row carries one column
+  # in the place of another. Silent whenever their types agree.
+  - pattern: "cannot be represented as a value of type"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3210
+    repro: |
+      CREATE TABLE q1 (c0 INT PRIMARY KEY, c1 DECIMAL);
+      INSERT INTO q1 VALUES (1, 1.5);
+      CREATE TABLE q2 (c0 DECIMAL PRIMARY KEY, c1 UUID);
+      INSERT INTO q2 VALUES (2.5, '11111111-1111-1111-1111-111111111111');
+      SELECT DISTINCT * FROM q1 LEFT JOIN q2 ON TRUE ORDER BY 1;
+  # The same defect, as pgproto reports it.
+  - pattern: "expected a string, got"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3210
+    repro: |
+      CREATE TABLE ft (c0 INT PRIMARY KEY, c1 BOOL, c2 DOUBLE, c3 TEXT);
+      INSERT INTO ft VALUES (1, true, 0.5, 'a'), (2, false, 1.5, 'b');
+      CREATE TABLE ft2 (c0 INT PRIMARY KEY, c1 TEXT);  INSERT INTO ft2 VALUES (1, 'x'), (3, 'y');
+      SELECT DISTINCT * FROM ft LEFT JOIN ft2 ON ft.c1 ORDER BY 1;
+  # The same defect, as the decoder reports it.
+  - pattern: "the type decoded isn't match with the expected one"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3210
+    repro: |
+      CREATE TABLE ft (c0 INT PRIMARY KEY, c1 BOOL, c2 DOUBLE, c3 TEXT);
+      INSERT INTO ft VALUES (1, true, 0.5, 'a'), (2, false, 1.5, 'b');
+      CREATE TABLE ft2 (c0 INT PRIMARY KEY, c1 TEXT);  INSERT INTO ft2 VALUES (1, 'x'), (3, 'y');
+      SELECT ft.c2, ft2.c1, ft.c1 FROM ft JOIN ft2 ON ft.c1
+          GROUP BY ft.c2, ft2.c1, ft.c1 ORDER BY 2 DESC;
+
+  # A CAST as an operand of a comparison whose other side is a subquery, rejected while planning.
+  # "Refence" is picodata's own typo.
+  - pattern: "invalid node: node is not Row or Refence type"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3212
+    repro: |
+      CREATE TABLE ci (c0 INT PRIMARY KEY);
+      SELECT c0 FROM ci WHERE CAST(c0 AS INT) IN (SELECT c0 FROM ci);
+
+  # A subquery in a window function's argument or FILTER clause that projects more columns than the
+  # child output holds.
+  - pattern: "columns of the relational child output"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3155
+    repro: |
+      CREATE TABLE v1 (c0 INT, c1 INT, c2 INT, PRIMARY KEY (c0));
+      CREATE TABLE v2 (c0 INT, PRIMARY KEY (c0)) DISTRIBUTED BY (c0);
+      SELECT MAX(EXISTS (SELECT * FROM v1)) OVER () FROM v2;
+
+  # Two OVER clauses naming the same window.
+  - pattern: "is not among the columns the projection keeps"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3156
+    repro: |
+      CREATE TABLE nw (a INT PRIMARY KEY, b INT);
+      SELECT SUM(0) OVER w, SUM(0) OVER w FROM nw WINDOW w AS (ORDER BY b);
+
+  # A DISTINCT aggregate over NULL on a sharded table: its argument goes into the local GROUP BY,
+  # so the reduce stage reads a column the motion could not give a type.
+  - pattern: "wrong arguments for function TOTAL()"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3211
+    repro: |
+      CREATE TABLE dn (c0 INT PRIMARY KEY);
+      SELECT TOTAL(DISTINCT NULL) FROM dn;
+  - pattern: "wrong arguments for function GROUP_CONCAT()"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3211
+    repro: |
+      CREATE TABLE dn (c0 INT PRIMARY KEY);
+      SELECT STRING_AGG(DISTINCT NULL) FROM dn;
+
+  # STRING_AGG over a moving ROWS frame loses the separator once an empty string empties the
+  # accumulator, and every later removal then cuts into the data.
+  - pattern: "couldn't encode a non-utf8 string"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3213
+    repro: |
+      CREATE TABLE sa (k INT PRIMARY KEY, s TEXT);
+      INSERT INTO sa VALUES (1, 'а'), (2, ''), (3, 'бвг'), (4, 'д');
+      SELECT k, STRING_AGG(s) OVER (ORDER BY k ROWS 1 PRECEDING) FROM sa;
+  # The same broken string, rejected on the iproto path rather than by pgproto.
+  - pattern: "invalid utf-8 sequence"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3213
+
+  # The reduce stage of a sharded aggregate keeps the value's own type while the plan declares the
+  # aggregate's, and an ORDER BY with a LIMIT, a DISTINCT or a GROUP BY then rejects the value.
+  - pattern: "type does not match one required by operation: expected decimal"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3209
+    repro: |
+      CREATE TABLE gg (a INT PRIMARY KEY, b INT, c DOUBLE);
+      INSERT INTO gg VALUES (1, 1, 1.5), (2, 1, 2.5), (3, 2, 3.5);
+      SELECT b, COUNT(a) FROM gg GROUP BY b ORDER BY 2 LIMIT 8;
+  # The same, as a DISTINCT over the aggregate sees it.
+  - pattern: "index part type: expected decimal"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3209
+    repro: |
+      CREATE TABLE gg (a INT PRIMARY KEY, b INT, c DOUBLE);
+      INSERT INTO gg VALUES (1, 1, 1.5), (2, 1, 2.5), (3, 2, 3.5);
+      SELECT DISTINCT COUNT(a) FROM gg GROUP BY b;
+  # The same seen from Tarantool, where the reduce stage's sum() is handed a column of no type.
+  - pattern: "wrong arguments for function SUM()"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3209
+    repro: |
+      CREATE TABLE gg (a INT PRIMARY KEY, b INT, c DOUBLE);
+      INSERT INTO gg VALUES (1, 1, 1.5), (2, 1, 2.5), (3, 2, 3.5);
+      SELECT b FROM gg GROUP BY b HAVING SUM(DISTINCT NULL) <= 0.4;
+
+  # A window over a table sharded by two columns, with a subquery on the left of an IN whose list
+  # covers that key: the motion key has more targets than the subquery's virtual table has columns.
+  - pattern: "failed to find a distribution key column"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3214
+    repro: |
+      CREATE TABLE dkt (a INT, b INT, c INT, PRIMARY KEY (a, b)) DISTRIBUTED BY (a, b);
+      CREATE TABLE dks (x INT PRIMARY KEY);
+      INSERT INTO dkt VALUES (1, 1, 10), (2, 2, 20);
+      INSERT INTO dks VALUES (1);
+      SELECT MIN(c) FILTER (WHERE (SELECT x FROM dks) IN (a, b)) OVER () FROM dkt;
+  # The same query under EXPLAIN, which fails earlier, in the plan printer.
+  - pattern: "target reference with position"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3214
+    repro: |
+      CREATE TABLE dkt (a INT, b INT, c INT, PRIMARY KEY (a, b)) DISTRIBUTED BY (a, b);
+      CREATE TABLE dks (x INT PRIMARY KEY);
+      EXPLAIN SELECT MIN(c) FILTER (WHERE (SELECT x FROM dks) IN (a, b)) OVER () FROM dkt;
+
+suppress:
+
+  # Folding a comparison of a non-finite DOUBLE against a DECIMAL panics and aborts the instance, so
+  # the magnitude of generated double constants is clamped instead.
+  - name: huge-double-constants
+    issue: https://git.picodata.io/core/picodata/-/work_items/2965
+    repro: |
+      CREATE TABLE nf (c0 INT PRIMARY KEY);
+      SELECT * FROM nf WHERE 1e400 > 1.0;
+
+  # Casting the empty string TO_CHAR returns segfaults in the parser mem_cast_explicit dispatches
+  # into, so TEXT is dropped from the source types a generated CAST may take.
+  - name: cast-from-text
+    issue: https://git.picodata.io/core/tarantool/-/work_items/145
+    repro: |
+      CREATE TABLE tc (c0 DATETIME, PRIMARY KEY (c0));
+      INSERT INTO tc (c0) VALUES (CAST('2012-12-28T22:40:38Z' AS DATETIME));
+      SELECT tc.c0 FROM tc WHERE CAST(TO_CHAR(tc.c0, '') AS BOOL);

@@ -7,6 +7,7 @@ This page is an entry point for documents in `doc/dev`.
 - [How do we triage incoming issues?](./triage.md)
 - [Maintainer of the Week](./maintainer_of_the_week.md)
 - [How we deal with flaky tests](./flaky.md)
+- [Fuzzing SQL with SQLancer](./sqlancer.md)
 
 ## Infrastructure and Operations
 

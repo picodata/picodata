@@ -369,6 +369,18 @@ uv run --with matplotlib pytest test/manual/test_scaling.py::test_cas_conflicts
 This keeps `pyproject.toml` and `uv.lock` unchanged, because we do not want to
 have `matplotlib` installed by default.
 
+## Fuzzing SQL with SQLancer
+
+`tools/sqlancer.py` deploys a single instance and fuzzes it with SQLancer's picodata driver,
+collecting the fuzzer logs, a replayable repro and the instance's data directory:
+
+```bash
+uv run tools/sqlancer.py --duration 60
+```
+
+See [doc/dev/sqlancer.md](doc/dev/sqlancer.md) for the oracles, the artifacts and how known bugs
+are gated.
+
 ## Benchmarks and flamegraphs
 
 ### Benchmarks
