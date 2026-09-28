@@ -232,6 +232,16 @@ errors:
       CREATE TABLE dks (x INT PRIMARY KEY);
       EXPLAIN SELECT MIN(c) FILTER (WHERE (SELECT x FROM dks) IN (a, b)) OVER () FROM dkt;
 
+  # A window aggregate encodes its argument as a decimal, so a double beyond the 38 digits a
+  # decimal holds fails. The same expression outside a window keeps the double and succeeds. It
+  # takes a decimal to reach the aggregate: COALESCE over a double and a decimal literal is what
+  # the fuzzer keeps finding.
+  - pattern: "cannot be represented using 38 digits"
+    repro: |
+      CREATE TABLE wd (c0 INT PRIMARY KEY);
+      INSERT INTO wd VALUES (1);
+      SELECT AVG(COALESCE(1.0e39, 0.43)) OVER () FROM wd;
+
 suppress:
 
   # Folding a comparison of a non-finite DOUBLE against a DECIMAL panics and aborts the instance, so
