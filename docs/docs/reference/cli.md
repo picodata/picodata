@@ -715,16 +715,20 @@ type '\help' for interactive help
 [Восстановление](sql/backup.md#restore).
 
 ```shell
-picodata restore --path <BACKUP_PATH>
+picodata restore --path <BACKUP_PATH> --config <CONFIG_FILE>
 ```
 
 - `BACKUP_PATH`: Путь к директории резервной копии (например,
   ./backup/20250101T120000)
+- `<CONFIG_FILE>` (опционально): Путь к файлу конфигурации инстанса
+  (например, ./demo/config_demo.yaml). Если файл располагается в текущей
+  директории и имеет стандартное имя (`picodata.yaml`), то данный
+  параметр можно не указывать
 
 **Пример**
 
 ```shell
-$ picodata restore --path ./backup/20250101T120000
+$ picodata restore --path ./backup/20250101T120000 --config ./demo/config_demo.yaml
 ```
 
 ## picodata config default {: #config_default }
