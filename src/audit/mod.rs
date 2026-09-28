@@ -1,5 +1,5 @@
 use crate::static_ref;
-use crate::traft::LogicalClock;
+use crate::traft::{LogicalClock, LogicalClockInstant};
 use once_cell::sync::OnceCell;
 use std::ffi::{CStr, CString};
 use tarantool::{error::TarantoolError, log::SayLevel};
@@ -121,7 +121,7 @@ impl Drop for Log {
 /// A helper for serializing slog's record to json.
 struct AuditSerializer {
     map: serde_json::Map<String, serde_json::Value>,
-    clock: LogicalClock,
+    clock: LogicalClockInstant,
 }
 
 impl slog::Serializer for AuditSerializer {
@@ -139,7 +139,7 @@ impl slog::Serializer for AuditSerializer {
 }
 
 impl AuditSerializer {
-    fn new(clock: LogicalClock) -> Self {
+    fn new(clock: LogicalClockInstant) -> Self {
         Self {
             map: serde_json::Map::new(),
             clock,
@@ -303,14 +303,11 @@ impl slog::Drain for Log {
 
 // Note: we don't want to expose these implementation details.
 static ROOT: OnceCell<slog::Logger> = OnceCell::new();
-static mut CLOCK: OnceCell<LogicalClock> = OnceCell::new();
+static CLOCK: OnceCell<LogicalClock> = OnceCell::new();
 
 /// Generate next unique record id.
-fn next_unique_id() -> Option<LogicalClock> {
-    // SAFETY: we'll call this only from TX thread.
-    let clock = unsafe { static_ref!(mut CLOCK).get_mut().unwrap() };
-    clock.inc();
-    Some(*clock)
+fn next_unique_id() -> Option<LogicalClockInstant> {
+    Some(CLOCK.get()?.inc())
 }
 
 /// A public log drain for the [`crate::audit!`] macro.

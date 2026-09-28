@@ -62,7 +62,6 @@ use crate::traft::network::WorkerOptions;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::op::{Acl, Ddl, Dml, Op};
 use crate::traft::Flags;
-use crate::traft::LogicalClock;
 use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
@@ -70,6 +69,7 @@ use crate::traft::RaftMessageExt;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
 use crate::traft::{ConnectionPool, RaftMessageFlags};
+use crate::traft::{LogicalClock, LogicalClockInstant};
 use crate::unwrap_ok_or;
 use crate::unwrap_some_or;
 use crate::util::NoYieldsRefCell;
@@ -608,7 +608,7 @@ impl Node {
 
 pub(crate) struct NodeImpl {
     pub raw_node: RawNode,
-    pub read_state_wakers: HashMap<LogicalClock, oneshot::Sender<RaftIndex>>,
+    pub read_state_wakers: HashMap<LogicalClockInstant, oneshot::Sender<RaftIndex>>,
     joint_state_latch: KVCell<RaftIndex, oneshot::Sender<Result<(), RaftError>>>,
     storage: Catalog,
     topology_cache: Rc<TopologyCache>,
@@ -3334,12 +3334,9 @@ impl NodeImpl {
     /// entries in raft log. Notification is broadcasted when the
     /// corresponding entry is committed.
     #[inline]
-    fn schedule_read_state_waker(&mut self) -> (LogicalClock, oneshot::Receiver<RaftIndex>) {
+    fn schedule_read_state_waker(&mut self) -> (LogicalClockInstant, oneshot::Receiver<RaftIndex>) {
         let (tx, rx) = oneshot::channel();
-        let lc = {
-            self.lc.inc();
-            self.lc
-        };
+        let lc = self.lc.inc();
         self.read_state_wakers.insert(lc, tx);
         (lc, rx)
     }
