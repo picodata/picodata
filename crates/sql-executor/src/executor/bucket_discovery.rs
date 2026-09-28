@@ -211,6 +211,36 @@ where
             })
     }
 
+    /// Whether the execution subtree reads or writes data placed by buckets:
+    /// a sharded table or a motion other than a full (replicated) one.
+    fn references_buckets(&self, top_id: NodeId) -> Result<bool, SbroadError> {
+        let ir_plan = self.exec_plan.get_ir_plan();
+        let tree = PostOrderWithFilter::new(
+            |node| {
+                self.exec_plan
+                    .effective_exec_plan_subtree_iter(node, Snapshot::Latest)
+            },
+            |node| matches!(ir_plan.get_node(node), Ok(Node::Relational(..))),
+            REL_CAPACITY,
+        );
+        for node_id in tree.traverse_into_iter(top_id) {
+            let references_buckets = match ir_plan.get_relation_node(node_id)? {
+                Relational::ScanRelation(ScanRelation { relation, .. }) => !ir_plan
+                    .get_relation_or_error(relation.as_str())?
+                    .is_global(),
+                Relational::Insert(_) | Relational::Update(_) | Relational::Delete(_) => {
+                    !ir_plan.dml_node_table(node_id)?.is_global()
+                }
+                Relational::Motion(Motion { policy, .. }) => !matches!(policy, MotionPolicy::Full),
+                _ => false,
+            };
+            if references_buckets {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// Discover required buckets to execute the query subtree.
     ///
     /// # Errors
@@ -220,6 +250,12 @@ where
     #[allow(clippy::too_many_lines)]
     pub fn bucket_discovery(&mut self, top_id: NodeId) -> Result<Buckets, SbroadError> {
         let ir_plan = self.exec_plan.get_ir_plan();
+        // Global tables have no buckets, so a statement that touches only
+        // them runs on any node whatever its filter (e.g. `WHERE false`).
+        if !self.references_buckets(top_id)? {
+            return Ok(Buckets::Any);
+        }
+
         let top_node = ir_plan.get_relation_node(top_id)?;
         if matches!(top_node, Relational::Delete(Delete { child: None, .. })) {
             // DML without output (e.g. DELETE without WHERE clause) should be executed on all buckets.

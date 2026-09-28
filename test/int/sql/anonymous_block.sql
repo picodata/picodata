@@ -1086,6 +1086,37 @@ DO $$ BEGIN RETURN QUERY SELECT * FROM t WHERE pk = 1 OR pk = 2; END $$;
 -- ERROR:
 transaction can only be executed on a single bucket, got \[1410, 1934\]
 
+-- TEST: block-global-where-false
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT pk FROM g WHERE false; END $$;
+-- EXPECTED:
+
+-- TEST: block-global-contradiction
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT pk FROM g WHERE pk = 1 AND 1 = 2; END $$;
+-- EXPECTED:
+
+-- TEST: block-global-join-on-false
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT x.pk FROM g x JOIN g y ON false; END $$;
+-- EXPECTED:
+
+-- TEST: block-global-let-where-false
+-- SQL:
+DO $$ BEGIN LET v = (SELECT a FROM g WHERE false); RETURN QUERY SELECT v; END $$;
+-- EXPECTED:
+null
+
+-- TEST: block-global-where-false-with-sharded
+-- SQL:
+DO $$
+BEGIN
+  RETURN QUERY SELECT pk FROM g WHERE false;
+  RETURN QUERY SELECT pk FROM t WHERE pk = 1;
+END $$;
+-- EXPECTED:
+1
+
 -- TEST: block-with-sql_vdbe_opcode_max-0
 -- SQL:
 do $$ BEGIN RETURN QUERY select * from t where pk = 1; END $$ option (sql_vdbe_opcode_max = 0);
