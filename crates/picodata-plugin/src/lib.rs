@@ -2,6 +2,7 @@
 
 use abi_stable::{rstr, std_types::RStr};
 
+pub mod audit;
 pub mod authentication;
 pub mod background;
 pub mod error_code;
@@ -35,4 +36,12 @@ mod test_macros {
 
     #[tarantool::proc]
     fn example() {}
+}
+
+// Re-exports for macros.
+// This isn't part of the crate stability guarantees.
+#[doc(hidden)]
+pub mod macro_support {
+    pub use abi_stable;
+    pub use smol_str;
 }

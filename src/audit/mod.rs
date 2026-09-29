@@ -1,7 +1,8 @@
-use crate::static_ref;
-use crate::traft::{LogicalClock, LogicalClockInstant};
-use once_cell::sync::OnceCell;
+use crate::audit::entry::AuditEntry;
+use crate::traft::LogicalClock;
+use abi_stable::std_types::RStr;
 use std::ffi::{CStr, CString};
+use std::sync::OnceLock;
 use tarantool::{error::TarantoolError, log::SayLevel};
 
 pub mod policy;
@@ -78,15 +79,15 @@ mod ffi {
     }
 }
 
-/// A safe wrapper for tarantool's log object.
+/// A safe wrapper for tarantool's log object configured to write to the audit log.
 #[derive(Debug)]
-pub struct Log(*mut ffi::Log);
+struct TarantoolAuditLog(*mut ffi::Log);
 
 // SAFETY: tarantool's logger should be thread-safe.
-unsafe impl Sync for Log {}
-unsafe impl Send for Log {}
+unsafe impl Sync for TarantoolAuditLog {}
+unsafe impl Send for TarantoolAuditLog {}
 
-impl Log {
+impl TarantoolAuditLog {
     /// Create a new log object using `box.cfg`'s log option.
     fn new(params: impl AsRef<CStr>) -> Result<Self, TarantoolError> {
         // SAFETY: this call just allocates space for the object.
@@ -106,9 +107,31 @@ impl Log {
 
         Ok(Self(log))
     }
+
+    fn say_json(&self, json: &[u8]) {
+        // SAFETY: All arguments' invariants have already been checked.
+        // Only the last two arguments will be used by the fmt callback.
+        unsafe {
+            ffi::log_say(
+                self.0,
+                SayLevel::Info,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                // We use (almost) the same calling convention as `say_format_json`.
+                // Core tarantool might write non-json payloads to our log during
+                // e.g. log rotation (see `log_rotate`), so we have to adapt.
+                AUDIT_FMT_MAGIC.as_ptr(),
+                // `say_format_audit` will make use of both
+                // a pointer to the message and its size.
+                json.as_ptr(),
+                json.len(),
+            );
+        }
+    }
 }
 
-impl Drop for Log {
+impl Drop for TarantoolAuditLog {
     fn drop(&mut self) {
         // SAFETY: we own this object, so now we can drop it.
         unsafe {
@@ -118,79 +141,38 @@ impl Drop for Log {
     }
 }
 
-/// A helper for serializing slog's record to json.
-struct AuditSerializer {
-    map: serde_json::Map<String, serde_json::Value>,
-    clock: LogicalClockInstant,
+mod entry;
+
+#[derive(Debug)]
+struct AuditLogger {
+    clock: LogicalClock,
+    log: TarantoolAuditLog,
 }
 
-impl slog::Serializer for AuditSerializer {
-    /// Don't print `None` values at all.
-    fn emit_none(&mut self, _key: slog::Key) -> slog::Result {
-        Ok(())
+impl AuditLogger {
+    pub fn new(config: &str, raft_id: u64, raft_gen: u64) -> Self {
+        let clock = LogicalClock::new(raft_id, raft_gen);
+
+        let config = CString::new(config).expect("audit log config contains nul");
+        let log = TarantoolAuditLog::new(config).expect("failed to create audit log");
+
+        Self { clock, log }
     }
 
-    fn emit_arguments(&mut self, key: slog::Key, val: &std::fmt::Arguments) -> slog::Result {
-        // TODO: optimize excessive string allocations here and below.
-        // TODO: make sure we're not trying to overwrite a value here (via assert).
-        self.map.insert(key.to_string(), val.to_string().into());
-        Ok(())
-    }
-}
+    pub fn record(&self, message: &str, keys: &[RStr<'_>], values: &[RStr<'_>]) {
+        let id = self.clock.inc();
+        let time = chrono::Local::now();
 
-impl AuditSerializer {
-    fn new(clock: LogicalClockInstant) -> Self {
-        Self {
-            map: serde_json::Map::new(),
-            clock,
-        }
-    }
+        let entry = AuditEntry::new(id, time, message, keys, values);
+        let kv_str = serde_json::to_vec(&entry).expect("failed to serialize audit log");
 
-    fn into_string(self) -> String {
-        serde_json::Value::from(self.map).to_string()
-    }
-
-    fn serialize_any(mut self, msg: impl std::fmt::Display) -> Self {
-        let id = self.clock.to_string();
-        self.map.insert("id".into(), id.into());
-        let time = chrono::Local::now().format("%FT%H:%M:%S%.3f%z").to_string();
-        self.map.insert("time".into(), time.into());
-        let message = msg.to_string();
-
-        // Unfortunately we have to match by string there because this message is emitted on tarantool side
-        // in say.c::log_rotate without any additional arguments we'd like to have in resulting audit log entry
-        if message == "log file has been reopened" {
-            self.map.insert(
-                String::from("title"),
-                serde_json::Value::from("audit_rotate"),
-            );
-            self.map.insert(
-                String::from("severity"),
-                serde_json::Value::from(Severity::Low.as_str()),
-            );
-        }
-
-        self.map.insert("message".into(), message.into());
-
-        self
-    }
-
-    fn serialize_slog(mut self, record: &slog::Record, values: &slog::OwnedKVList) -> Self {
-        self = self.serialize_any(record.msg());
-
-        use slog::KV;
-        // It's safe to use .unwrap() here since
-        // AuditSerializer doesn't return anything but Ok()
-        record.kv().serialize(record, &mut self).unwrap();
-        values.serialize(record, &mut self).unwrap();
-
-        self
+        self.log.say_json(&kv_str);
     }
 }
 
 /// Special fmt string to let [`say_format_audit`] know that
 /// the caller has already applied json formatting to inputs.
-const AUDIT_FMT_MAGIC: &std::ffi::CStr = tarantool::c_str!("json");
+const AUDIT_FMT_MAGIC: &CStr = c"json";
 
 // We don't need certain fields (e.g. fiber name) in audit log entries,
 // so we have to implement the format logic ourselves.
@@ -228,6 +210,9 @@ extern "C" fn say_format_audit(
 
         Cow::Borrowed(data)
     } else {
+        // This is a fallback branch for cases where tarantool has called our logger directly.
+        // Regular entries emitted by picodata or plugins should be handled by the condition arm above.
+
         let mut scratch = [0u8; 1024];
         // SAFETY: caller is responsible for all args.
         let count = unsafe {
@@ -243,11 +228,32 @@ extern "C" fn say_format_audit(
         let count = count.clamp(0, scratch.len() as i32) as usize;
 
         // SAFETY: I'm 95% positive it will be valid utf8...
-        let str = unsafe { std::str::from_utf8_unchecked(&scratch[..count]) };
-        let clock = next_unique_id().expect("failed to generate audit entry id");
-        let data = AuditSerializer::new(clock).serialize_any(str).into_string();
+        let message = unsafe { std::str::from_utf8_unchecked(&scratch[..count]) };
+        let id = LOGGER
+            .get()
+            .expect("say_format_audit called while LOGGER has not been initialized")
+            .clock
+            .inc();
+        let time = chrono::Local::now();
 
-        Cow::Owned(data.into_bytes())
+        // Unfortunately we have to match by string there because this message is emitted on tarantool side
+        // in say.c::log_rotate without any additional arguments we'd like to have in resulting audit log entry
+        let (keys, values) = if message == "log file has been reopened" {
+            static KEYS: &[RStr<'static>] = &[RStr::from_str("title"), RStr::from_str("severity")];
+            static VALUES: &[RStr<'static>] = &[
+                RStr::from_str("audit_rotate"),
+                RStr::from_str(picodata_plugin::audit::Severity::Low.as_str()),
+            ];
+
+            (KEYS, VALUES)
+        } else {
+            ([].as_slice(), [].as_slice())
+        };
+
+        let entry = AuditEntry::new(id, time, message, keys, values);
+        let data = serde_json::to_vec(&entry).expect("failed to serialize audit log");
+
+        Cow::Owned(data)
     };
 
     // SAFETY: caller is responsible for providing valid `buf` & `len`.
@@ -263,145 +269,39 @@ extern "C" fn say_format_audit(
     count as core::ffi::c_int
 }
 
-impl slog::Drain for Log {
-    type Ok = ();
-    type Err = slog::Never;
+static LOGGER: OnceLock<AuditLogger> = OnceLock::new();
 
-    fn log(
-        &self,
-        record: &slog::Record,
-        values: &slog::OwnedKVList,
-    ) -> Result<Self::Ok, Self::Err> {
-        let clock = next_unique_id().expect("failed to generate audit entry id");
-        let msg = AuditSerializer::new(clock)
-            .serialize_slog(record, values)
-            .into_string();
-
-        // SAFETY: All arguments' invariants have already been checked.
-        // Only the last two arguments will be used by the fmt callback.
-        unsafe {
-            ffi::log_say(
-                self.0,
-                SayLevel::Info,
-                std::ptr::null(),
-                0,
-                std::ptr::null(),
-                // We use (almost) the same calling convention as `say_format_json`.
-                // Core tarantool might write non-json payloads to our log during
-                // e.g. log rotation (see `log_rotate`), so we have to adapt.
-                AUDIT_FMT_MAGIC.as_ptr(),
-                // `say_format_audit` will make use of both
-                // a pointer to the message and its size.
-                msg.as_ptr(),
-                msg.len(),
-            );
-        }
-
-        Ok(())
-    }
-}
-
-// Note: we don't want to expose these implementation details.
-static ROOT: OnceCell<slog::Logger> = OnceCell::new();
-static CLOCK: OnceCell<LogicalClock> = OnceCell::new();
-
-/// Generate next unique record id.
-fn next_unique_id() -> Option<LogicalClockInstant> {
-    Some(CLOCK.get()?.inc())
-}
-
-/// A public log drain for the [`crate::audit!`] macro.
-pub fn root() -> Option<&'static slog::Logger> {
-    ROOT.get()
-}
-
-tarantool::define_str_enum! {
-    /// Type-safe entry severity for use in [`crate::audit!`].
-    /// Severity levels and their usage are defined in the RFC.
-    pub enum Severity {
-        Low = "low",
-        Medium = "medium",
-        High = "high",
-    }
-}
-
-// A helper macro which rewrites audit field syntax to the one used by slog.
-#[doc(hidden)]
-#[macro_export]
-macro_rules! audit_kv(
-    // Format using Display. Example: `key: %value`.
-    ($key:ident : %$value:expr, $($rest:tt)*) => {
-        (slog::kv!(stringify!($key) => %$value), $crate::audit_kv!($($rest)*))
-    };
-    // Format using Debug. Example: `key: ?value`.
-    ($key:ident : ?$value:expr, $($rest:tt)*) => {
-        (slog::kv!(stringify!($key) => ?$value), $crate::audit_kv!($($rest)*))
-    };
-    // Substitute as is. Example: `key: value`.
-    ($key:ident : $value:expr, $($rest:tt)*) => {
-        (slog::kv!(stringify!($key) => $value), $crate::audit_kv!($($rest)*))
-    };
-    () => { () };
-);
-
-/// This is the main API for adding new entries to the audit log.
-/// The required fields are `message`, `title` and `severity`,
-/// the rest is up to the caller. Auxiliary values may be prefixed
-/// with `%` or `?` to format them using `Display` or `Debug`.
+/// Check if audit is enabled.
 ///
-/// Example:
-/// ```
-/// # use picodata::audit;
-/// audit!(
-///     message: "hello, world!",
-///     title: "greeting",
-///     severity: Low,
-/// );
-/// ```
-#[macro_export(local_inner_macros)]
-macro_rules! audit(
-    (
-        message: $message:expr,
-        title: $title:expr,
-        severity: $severity:ident,
-        $($aux_fields:tt)*
-    ) => {
-        if let Some(root) = $crate::audit::root() {
-            slog::log!(
-                // Boilerplate required by slog.
-                root, slog::Level::Info, "",
-                // The message itself.
-                $message;
-                // Additional fields.
-                audit_kv!(
-                    title: $title,
-                    severity: $crate::audit::Severity::$severity.as_str(),
-                    $($aux_fields)*
-                )
-            );
+/// Will return `false` before [`crate::audit::init`] is called,
+/// even if audit is configured on this instance.
+pub fn is_enabled() -> bool {
+    LOGGER.get().is_some()
+}
+
+/// Actually write a record to an audit log.
+///
+/// While writing to audit log using this function will work, you should use the higher-level macro
+/// [`crate::audit!`] instead.
+pub fn record_impl(message: &str, keys: &[RStr<'_>], values: &[RStr<'_>]) -> bool {
+    match LOGGER.get() {
+        Some(logger) => {
+            logger.record(message, keys, values);
+            true
         }
-    };
-);
+        None => false,
+    }
+}
 
 /// Initialize audit log.
 /// NOTE: unique id generation depends on the raft machine's
-/// state, and config` will be parsed by tarantool's core (see `say.c`).
-/// WARNING: this will fail if the cell is already set (shouldn't be possible, though).
+/// state, and `config` will be parsed by tarantool's core (see `say.c`).
+/// WARNING: this will panic if the audit was already configured (shouldn't be possible, though).
 pub fn init(config: &str, raft_id: u64, raft_gen: u64) {
-    // SAFETY: this is the first time we access this variable, and it's
-    // always done from the main (TX) thread.
-    unsafe {
-        static_ref!(const CLOCK)
-            .set(LogicalClock::new(raft_id, raft_gen))
-            .expect("failed to initialize global audit event id generator");
-    }
-
-    let config = CString::new(config).expect("audit log config contains nul");
-    let log = Log::new(config).expect("failed to create audit log");
-
     // Note: this'll only fail if the cell's already set (shouldn't be possible).
-    ROOT.set(slog::Logger::root(log, slog::o!()))
-        .expect("failed to initialize global audit drain");
+    LOGGER
+        .set(AuditLogger::new(config, raft_id, raft_gen))
+        .expect("failed to initialize global audit logger");
 
     crate::audit!(
         message: "audit log is ready",
@@ -424,4 +324,31 @@ pub fn init(config: &str, raft_id: u64, raft_gen: u64) {
         );
     })
     .expect("failed to install audit trigger for instance shutdown");
+}
+
+/// Like [`picodata_plugin::audit!`], but always uses `picodata` as subsystem and skips the FFI,
+/// calling picodata functions directly.
+#[macro_export]
+macro_rules! audit {
+    (
+        message: $message:expr,
+        title: $title:expr,
+        severity: $severity:ident,
+        $($aux_fields:tt)*
+    ) => {
+        picodata_plugin::audit! {
+            // skip FFI
+            @with_functions {
+                $crate::audit::is_enabled,
+                $crate::audit::record_impl
+            }
+            {
+                subsystem: "picodata",
+                message: $message,
+                title: $title,
+                severity: $severity,
+                $($aux_fields)*
+            }
+        }
+    };
 }

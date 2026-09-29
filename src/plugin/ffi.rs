@@ -10,8 +10,8 @@ use crate::{cas, config, sql, tlog, traft};
 use ::sql::ir::operator::ConflictStrategy;
 use ::sql::ir::value::double::Double;
 use ::sql::ir::value::Value;
-use abi_stable::pmr::{RErr, RNone, ROk, ROption, RResult, RSome};
-use abi_stable::std_types::{RDuration, RString, RVec, Tuple2};
+use abi_stable::pmr::{RErr, RNone, ROk, ROption, RResult, RSlice, RSome};
+use abi_stable::std_types::{RDuration, RStr, RString, RVec, Tuple2};
 use abi_stable::{sabi_extern_fn, RTuple};
 use picodata_plugin::background::FfiBackgroundJobCancellationToken;
 use picodata_plugin::background::JobCancellationResult;
@@ -385,6 +385,22 @@ pub extern "C" fn pico_ffi_register_metrics_handler(handler: FfiMetricsHandler) 
     }
 
     0
+}
+
+#[no_mangle]
+pub extern "C" fn pico_ffi_audit_is_enabled() -> i32 {
+    crate::audit::is_enabled() as i32
+}
+#[no_mangle]
+pub extern "C" fn pico_ffi_audit_record(
+    message: RStr<'_>,
+    keys: RSlice<'_, RStr<'_>>,
+    values: RSlice<'_, RStr<'_>>,
+) -> i32 {
+    let message = message.as_str();
+    let keys = keys.as_slice();
+    let values = values.as_slice();
+    crate::audit::record_impl(message, keys, values) as i32
 }
 
 /// Returns error with code [`picodata_plugin::error_code::ErrorCode::NoSuchService`]

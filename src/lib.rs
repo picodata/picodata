@@ -993,7 +993,7 @@ fn set_login_check() {
                         severity: High,
                         user: %user,
                         initiator: %user,
-                        verdict: format_args!("{err}; user blocked"),
+                        verdict: format!("{err}; user blocked"),
                     );
 
                     // Raises an error instead of returning it as a function result.

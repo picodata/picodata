@@ -1,3 +1,5 @@
+pico_ffi_audit_is_enabled
+pico_ffi_audit_record
 pico_ffi_authenticate
 pico_ffi_background_cancel_jobs_by_tag
 pico_ffi_background_register_job_cancellation_token

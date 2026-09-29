@@ -7,7 +7,8 @@ use crate::transport::rpc::client::FfiSafeRpcRequestArguments;
 use crate::transport::rpc::server::FfiRpcHandler;
 use crate::util::{FfiSafeBytes, FfiSafeStr};
 use abi_stable::derive_macro_reexports::{ROption, RResult};
-use abi_stable::std_types::{RDuration, RString, RVec};
+use abi_stable::pmr::RSlice;
+use abi_stable::std_types::{RDuration, RStr, RString, RVec};
 use abi_stable::RTuple;
 use tarantool::ffi::tarantool::BoxTuple;
 
@@ -63,6 +64,13 @@ extern "C" {
     ) -> i32;
 
     pub fn pico_ffi_register_metrics_handler(handler: FfiMetricsHandler) -> i32;
+
+    pub fn pico_ffi_audit_is_enabled() -> i32;
+    pub fn pico_ffi_audit_record(
+        message: RStr<'_>,
+        keys: RSlice<'_, RStr<'_>>,
+        values: RSlice<'_, RStr<'_>>,
+    ) -> i32;
 
     pub fn pico_ffi_background_register_job_cancellation_token(
         plugin: FfiSafeStr,

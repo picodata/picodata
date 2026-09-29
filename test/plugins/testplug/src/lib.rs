@@ -1333,6 +1333,108 @@ impl Service for TwoCallbacksOnReplicasetLeaderChangeService {
     }
 }
 
+/// Test audit from plugins
+struct AuditWriteService;
+
+#[derive(Deserialize)]
+struct AuditWriteConfig {
+    test_type: String,
+}
+
+impl Service for AuditWriteService {
+    type Config = AuditWriteConfig;
+
+    fn on_start(&mut self, _context: &PicoContext, config: Self::Config) -> CallbackResult<()> {
+        tarantool::say_info!("AuditWriteService on_start called");
+
+        tarantool::say_info!(
+            "audit is {}",
+            if picodata_plugin::audit::is_enabled() {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+
+        picodata_plugin::define_audit!("testplug");
+
+        match config.test_type.as_str() {
+            "audit" => {
+                assert!(
+                    picodata_plugin::audit::is_enabled(),
+                    "the audit log should be configured in this test"
+                );
+
+                let message = "hello";
+
+                audit! {
+                    message: "testplug says {message}",
+                    title: "testplug_event",
+                    severity: High,
+                    initiator: "admin",
+                    thing: "a value",
+                    // These two would not be emitted to not clobber the picodata-written fields.
+                    id: "clobber",
+                    time: "clobber",
+                };
+
+                // No additional fields is a valid entry.
+                audit! {
+                    message: "testplug says nothing else",
+                    title: "testplug_bare",
+                    severity: Low,
+                }
+            }
+            "audit_off_thread" => {
+                // spawn a thread and attempt to write to audit log from there
+                assert!(
+                    picodata_plugin::audit::is_enabled(),
+                    "the audit log should be configured in this test"
+                );
+
+                let (tx, rx) = sync::mpsc::channel();
+
+                let thread = std::thread::spawn(move || {
+                    let () = rx.recv().unwrap();
+                    audit! {
+                        message: "something happened in the background thread",
+                        title: "event_bg",
+                        severity: High,
+                    }
+                });
+
+                tx.send(()).unwrap();
+                audit! {
+                    message: "something happened in the tx thread",
+                    title: "event_tx",
+                    severity: High,
+                }
+                thread.join().unwrap();
+            }
+            // The other half of the contract: `record` answers `false` when there is nowhere
+            // to write. Asserted on an instance started without an audit log, because with one
+            // configured this cannot be told from a `bool` that is always true -- which is
+            // what it was before the FFI carried the host's answer back.
+            "audit_disabled" => {
+                assert!(
+                    !picodata_plugin::audit::is_enabled(),
+                    "record must report false when no audit log is configured"
+                );
+                audit! {
+                    message: "there is nowhere to write this",
+                    title: "testplug_should_not_appear",
+                    severity: High,
+                }
+            }
+            _ => {
+                panic!("invalid test type")
+            }
+        }
+
+        Ok(())
+    }
+}
+
 // Ensures that macros usage at least compiles.
 #[tarantool::proc]
 fn example_stored_proc() {}
@@ -1395,4 +1497,6 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
         "0.1.0",
         TwoCallbacksOnReplicasetLeaderChangeService::default,
     );
+
+    reg.add("audit_write_service", "0.1.0", || AuditWriteService);
 }

@@ -138,6 +138,7 @@ def copy_testable_plugins() -> None:
         f"{share_dir}/testplug_custom_listener/0.1.0",
         f"{share_dir}/testplug_vinyl_tx_denial/0.1.0",
         f"{share_dir}/testplug_on_cluster_leader_change/0.1.0",
+        f"{share_dir}/testplug_audit_write/0.1.0",
     ]
     for destination_directory in plugin_destinations:
         copy_plugin_library(source_directory, destination_directory, "libtestplug")

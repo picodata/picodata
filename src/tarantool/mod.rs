@@ -1013,7 +1013,7 @@ extern "C" fn xlog_shredding_remove_cb(
         message: "shredding started for {filename}",
         title: "shredding_started",
         severity: Low,
-        filename: &filename,
+        filename: %filename,
     );
 
     let path_exists = path.exists();
@@ -1055,7 +1055,7 @@ extern "C" fn xlog_shredding_remove_cb(
                 message: "shredding finished for {filename}",
                 title: "shredding_finished",
                 severity: Low,
-                filename: &filename,
+                filename: %filename,
             );
             0
         }
@@ -1066,7 +1066,7 @@ extern "C" fn xlog_shredding_remove_cb(
                 title: "shredding_failed",
                 severity: Low,
                 error: &err,
-                filename: &filename,
+                filename: %filename,
             );
             -1
         }

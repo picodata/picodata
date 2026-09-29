@@ -38,7 +38,7 @@ pub fn get_audit_policy_name_by_id(policy_id: AuditPolicyId) -> Option<&'static 
 
 /// Determines whether DML operations performed by a user require audit logging.
 pub fn is_dml_audit_enabled_for_user(plan: &ir::Plan) -> Result<bool, SbroadError> {
-    if crate::audit::root().is_none() {
+    if !crate::audit::is_enabled() {
         return Ok(false);
     }
     if !plan.is_dml()? {

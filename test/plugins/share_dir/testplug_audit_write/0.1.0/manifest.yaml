@@ -1,0 +1,8 @@
+description: plugin for testing writing to audit log from plugin
+name: testplug_audit_write
+version: 0.1.0
+services:
+  - name: audit_write_service
+    description: service for testing writing to audit log from plugin
+    default_configuration:
+      test_type: default

@@ -27,6 +27,15 @@ def instance_with_audit_file(unstarted_instance: Instance):
     yield unstarted_instance
 
 
+@pytest.fixture
+def instance_without_audit(unstarted_instance: Instance):
+    # The harness enables `--audit /dev/stderr` on every instance by default.
+    unstarted_instance.audit = False
+    unstarted_instance.start()
+    unstarted_instance.wait_online()
+    yield unstarted_instance
+
+
 class AuditFile:
     def __init__(self, path):
         self.path = path
@@ -1004,3 +1013,112 @@ def test_audit_via_sql_pgproto_prepared(instance_with_audit_file: Instance, tabl
     assert dml["message"] == "apply `INSERT INTO \"test\" VALUES ($1, $2::text);` with params [42,'string']"
     assert dml["severity"] == "medium"
     assert dml["initiator"] == "admin"
+
+
+def install_and_enable_audit_write_plugin(instance: Instance, test_type: str):
+    plugin = "testplug_audit_write"
+    service = "audit_write_service"
+    instance.sql(f"CREATE PLUGIN {plugin} 0.1.0")
+    instance.sql(f"ALTER PLUGIN {plugin} 0.1.0 ADD SERVICE {service} TO TIER default")
+    instance.sql(f"ALTER PLUGIN {plugin} 0.1.0 SET {service}.test_type = '{test_type}'")
+    instance.sql(f"ALTER PLUGIN {plugin} 0.1.0 ENABLE")
+
+
+def test_plugin_writes_to_the_same_log(instance_with_audit_file: Instance):
+    """
+    Validate that writing to audit log from a plugin works
+    """
+
+    instance = instance_with_audit_file
+    install_and_enable_audit_write_plugin(instance, "audit")
+
+    events = AuditFile(instance.audit_flag_value).events()
+
+    event = take_until_title(events, "init_audit")
+    assert event is not None
+    # check that core picodata events have the correct subsystem
+    del event["id"], event["time"]
+    assert event == {"message": "audit log is ready", "subsystem": "picodata", "title": "init_audit", "severity": "low"}
+
+    event = take_until_title(events, "testplug_event")
+    assert event is not None
+
+    # we can't check against concrete values for `id` and `time`, but we can at least check that user-supplied KVs didn't overwrite them
+    assert event["id"] != "clobber"
+    assert event["time"] != "clobber"
+    del event["id"], event["time"]
+
+    assert event == {
+        "message": "testplug says hello",
+        "subsystem": "testplug",
+        "title": "testplug_event",
+        "severity": "high",
+        "initiator": "admin",
+        "thing": "a value",
+    }
+
+    # No additional fields is still a valid entry.
+    event = take_until_title(events, "testplug_bare")
+    assert event is not None
+    del event["id"], event["time"]
+    assert event == {
+        "message": "testplug says nothing else",
+        "subsystem": "testplug",
+        "title": "testplug_bare",
+        "severity": "low",
+    }
+
+    # One id clock for the whole file: the plugin's entry is numbered in the same sequence as
+    # the startup entries above it, not restarted from one.
+    ids = [e["id"] for e in AuditFile(instance.audit_flag_value).events()]
+    assert ids == sorted(ids, key=lambda i: [int(p) for p in i.split(".")])
+    assert len(set(ids)) == len(ids)
+
+
+def test_plugin_offthread(instance_with_audit_file: Instance):
+    """
+    Validate that plugin can write to audit log off tx thread
+    """
+
+    instance = instance_with_audit_file
+    install_and_enable_audit_write_plugin(instance, "audit_off_thread")
+
+    events = AuditFile(instance.audit_flag_value).events()
+    # these events can arrive at any order, so put them into dedicated variables first
+    event_tx = None
+    event_bg = None
+    for event in events:
+        if event["title"] == "event_tx":
+            event_tx = event
+        if event["title"] == "event_bg":
+            event_bg = event
+    assert event_tx is not None
+    del event_tx["id"], event_tx["time"]
+    assert event_tx == {
+        "message": "something happened in the tx thread",
+        "subsystem": "testplug",
+        "title": "event_tx",
+        "severity": "high",
+    }
+
+    assert event_bg is not None
+    del event_bg["id"], event_bg["time"]
+    assert event_bg == {
+        "message": "something happened in the background thread",
+        "subsystem": "testplug",
+        "title": "event_bg",
+        "severity": "high",
+    }
+
+
+def test_plugin_record_reports_false_when_there_is_no_audit_log(
+    instance_without_audit: Instance,
+):
+    """
+    Validate that plugin can successfully detect a disabled audit log
+    """
+
+    instance = instance_without_audit
+    install_and_enable_audit_write_plugin(instance, "audit_disabled")
+
+    # If we have got here, it means that the `assert!(!picodata_plugin::audit::is_enabled())` in the plugin has passed 🎉
