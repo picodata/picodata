@@ -24,6 +24,8 @@ Cassandra v4) поверх резидентной СУБД Picodata. Sirin по�
 | Named parameter markers                                             | ✅ Поддерживается    |
 | Pagination                                                          | ✅ Поддерживается    |
 | TTL                                                                 | ✅ Поддерживаются    |
+| USING TIMESTAMP                                                     | ✅ Поддерживается    |
+| Коллекции `set`, `map`, `list`                                      | ✅ Поддерживаются    |
 | Static columns                                                      | ✅ Поддерживаются    |
 | Телеметрия                                                          | ✅ Поддерживается    |
 | Инструменты (cqlsh, DBeaver, picodata admin)                        | ✅ Поддерживается    |
@@ -33,7 +35,6 @@ Cassandra v4) поверх резидентной СУБД Picodata. Sirin по�
 | User-defined types (UDT)                                            | ❌ Не поддерживаются |
 | Материализованные представления (MV)                                | ❌ Не поддерживаются |
 | GROUP BY                                                            | ❌ Не поддерживается |
-
 
 ### Ограничения {: #limitations }
 
@@ -102,10 +103,22 @@ Sirin поддерживает основные типы данных Cassandra.
 
 Коллекции позволяют хранить несколько значений в одном столбце. Вложенные коллекции не поддерживаются.
 
-| Тип         | Описание                                   | Пример литерала          |
-|-------------|--------------------------------------------|--------------------------|
-| `map<K, V>` | Набор пар ключ-значение. Ключи уникальны.  | `{'key1': 1, 'key2': 2}` |
-| `set<T>`    | Неупорядоченный набор уникальных значений. | `{1, 2, 3}`              |
+| Тип         | Описание                                             | Пример литерала          |
+|-------------|------------------------------------------------------|--------------------------|
+| `map<K, V>` | Набор пар ключ-значение. Ключи уникальны.            | `{'key1': 1, 'key2': 2}` |
+| `set<T>`    | Набор уникальных значений.                           | `{1, 2, 3}`              |
+| `list<T>`   | Упорядоченный список значений, допускающий повторы.  | `[1, 2, 2, 3]`           |
+
+Элементы `set` и пары `map` возвращаются отсортированными по значению элемента и ключу
+соответственно. Список `list` сохраняет порядок элементов, заданный при записи.
+
+Столбцы-коллекции не могут входить в первичный ключ.
+
+Пустая коллекция равнозначна `null`: запись `[]` или `{}` удаляет значение столбца, а при чтении
+такой столбец возвращает `null`. Значение `null` внутри коллекции не допускается — например,
+литерал `[1, null]` отклоняется.
+
+См. [подробнее](#collection_operations) об операциях над коллекциями в `UPDATE` и `DELETE`.
 
 !!! note "Ограничения коллекций"
     Вложенные коллекции и `frozen<>` не поддерживаются.
@@ -116,8 +129,8 @@ Sirin поддерживает основные типы данных Cassandra.
 
 #### CREATE KEYSPACE {: #create_keyspace }
 
-Создаёт пространство имён — логический контейнер для таблиц. Параметры репликации принимаются
-синтаксически для совместимости с Cassandra, но не применяются: репликацией управляет Picodata.
+Создаёт пространство имён — логический контейнер для таблиц. Параметры репликации проверяются и
+сохраняются в схеме, но не применяются: репликацией управляет Picodata.
 
 ```bnf
 <create-keyspace-stmt> ::= CREATE KEYSPACE [IF NOT EXISTS] <ks-name>
@@ -126,8 +139,22 @@ Sirin поддерживает основные типы данных Cassandra.
 ```
 
 - `IF NOT EXISTS` — не возвращает ошибку, если пространство имён уже существует
-- `replication_strategy` и `replication_factor` игнорируются
 - `durable_writes` игнорируется; запись всегда производится в журнал фиксации
+- другие параметры, кроме `REPLICATION` и `DURABLE_WRITES`, не допускаются — запрос отклоняется
+  с синтаксической ошибкой
+
+Несмотря на то что параметры `REPLICATION` не применяются, Sirin проверяет их корректность и отклоняет запрос,
+если они заданы неверно. Допустимые значения:
+
+| Класс (`class`)           | Обязательные параметры                        | Допустимые значения                              |
+|---------------------------|-----------------------------------------------|--------------------------------------------------|
+| `SimpleStrategy`          | `replication_factor`                          | Неотрицательное целое. Прочие ключи игнорируются |
+| `NetworkTopologyStrategy` | `'<имя DC>': <число>` для каждого дата-центра | Каждое значение — неотрицательное целое          |
+| `LocalStrategy`           | —                                             | —                                                |
+
+- `class` обязателен; имя класса можно указать коротко (`SimpleStrategy`) или полностью
+  (`org.apache.cassandra.locator.SimpleStrategy`)
+- неизвестный класс или некорректное значение приводят к ошибке `Invalid`
 
 Пример:
 
@@ -155,8 +182,9 @@ DROP KEYSPACE IF EXISTS mykeyspace;
 #### ALTER KEYSPACE {: #alter_keyspace }
 
 Проверяет существование пространства имён (с учётом `IF EXISTS`), но не изменяет его —
-`replication` и `durable_writes` принимаются синтаксически и не применяются: репликацией
-управляет Picodata.
+`replication` и `durable_writes` принимаются синтаксически, их содержимое не проверяется и не
+применяется: репликацией управляет Picodata. Другие параметры не допускаются — запрос
+отклоняется с синтаксической ошибкой.
 
 ```bnf
 <alter-keyspace-stmt> ::= ALTER KEYSPACE [IF EXISTS] <ks-name>
@@ -201,19 +229,72 @@ PRIMARY KEY ((country, city), user_id)
 <table-options> ::= <table-option> [AND <table-option>]*
 
 <table-option> ::= CLUSTERING ORDER BY '(' <clustering-order> [',' <clustering-order>]* ')'
-                 | default_time_to_live '=' <integer>
-                 | COMMENT '=' <string>
-                 | <other-cassandra-option>
+                 | <option-name> '=' <value>
 ```
 
-Поддерживаемые параметры таблицы:
+Допускается только фиксированный набор параметров, перечисленных ниже. Любой другой параметр
+(например, `additional_write_policy`, `extensions`, `memtable`, `tablets`, `tombstone_gc`)
+отклоняется с синтаксической ошибкой. Значения параметров проверяются; при некорректном
+значении запрос также отклоняется с синтаксической ошибкой.
+
+Применяемые параметры:
 
 | Параметр | Описание |
 |---|---|
 | <div style="width:200px">`CLUSTERING ORDER BY`</div> | Задаёт порядок сортировки для столбцов кластеризующего ключа. По умолчанию — `ASC`. |
-| `default_time_to_live` | Время жизни строк в секундах. Значение `0` означает, что строки не удаляются автоматически. Если задано, применяется к каждой вставляемой строке, если явное значение `TTL` не указано в самом запросе `INSERT`. |
+| `default_time_to_live` | Время жизни строк в секундах, целое от `0` до `630720000`. Значение `0` (по умолчанию) означает, что строки не удаляются автоматически. Применяется к каждой вставляемой строке, если в запросе не указан `USING TTL`. |
 
-Остальные параметры Cassandra (`compaction`, `compression`, `gc_grace_seconds`, `caching` и т. д.) принимаются синтаксически для обеспечения совместимости, но не применяются.
+Параметры, которые проверяются и сохраняются в схеме (возвращаются в `DESCRIBE` и
+`system_schema.tables`), но не влияют на работу таблицы:
+
+| Параметр                      | Допустимые значения                                  | По умолчанию     |
+|-------------------------------|------------------------------------------------------|------------------|
+| `comment`                     | Строка                                               | `''`             |
+| `cdc`                         | `true`, `false`                                      | `false`          |
+| `bloom_filter_fp_chance`      | Число от `0` до `1`                                  | `0.01`           |
+| `crc_check_chance`            | Число от `0` до `1`                                  | `1.0`            |
+| `gc_grace_seconds`            | Целое от `0` до `2147483647`                         | `604800`         |
+| `memtable_flush_period_in_ms` | Целое от `0` до `2147483647`                         | `0`              |
+| `min_index_interval`          | Целое от `1` до `2147483647`                         | `128`            |
+| `max_index_interval`          | Целое от `1` до `2147483647`                         | `2048`           |
+| `speculative_retry`           | Строка, значение не проверяется                      | `'99PERCENTILE'` |
+| `read_repair`                 | Строка, значение не проверяется                      | `'BLOCKING'`     |
+| `caching`                     | Map, см. ниже                                        | `{'keys': 'ALL', 'rows_per_partition': 'NONE'}` |
+| `compaction`                  | Map, см. ниже                                        | `{'class': 'SizeTieredCompactionStrategy'}` |
+| `compression`                 | Map, см. ниже                                        | `{'class': 'LZ4Compressor'}` |
+
+**caching**
+
+- допустимы только ключи `keys` и `rows_per_partition`
+- `keys` — `ALL` или `NONE`
+- `rows_per_partition` — `ALL`, `NONE` или неотрицательное целое
+- значения нечувствительны к регистру
+
+**compaction**
+
+- `class` обязателен и задаётся только коротким именем: `SizeTieredCompactionStrategy`,
+  `TimeWindowCompactionStrategy` или `LeveledCompactionStrategy`. Полные имена
+  (`org.apache.cassandra.db.compaction.*`) и другие классы (`UnifiedCompactionStrategy`,
+  `IncrementalCompactionStrategy` и т. д.) отклоняются
+- общие подпараметры для всех классов: `enabled`, `log_all`, `only_purge_repaired_tombstone`,
+  `unchecked_tombstone_compaction`, `tombstone_threshold`, `tombstone_compaction_interval`,
+  `min_threshold`, `max_threshold` (`min_threshold` не может быть больше `max_threshold`)
+- подпараметры `SizeTieredCompactionStrategy`: `bucket_low`, `bucket_high` (`bucket_low` не может
+  быть больше `bucket_high`), `min_sstable_size`
+- подпараметры `TimeWindowCompactionStrategy`: `compaction_window_unit` (`MINUTES`, `HOURS`, `DAYS`),
+  `compaction_window_size`, `split_during_flush`
+- подпараметры `LeveledCompactionStrategy`: `sstable_size_in_mb`
+
+**compression**
+
+- `class` задаётся только коротким именем: `LZ4Compressor`, `SnappyCompressor` или `DeflateCompressor`.
+  Полные имена (`org.apache.cassandra.io.compress.*`) и другие классы (например, `ZstdCompressor`)
+  отклоняются. Вместо `class` допускается устаревший `sstable_compression`, но не оба сразу
+- `chunk_length_in_kb` — положительная степень двойки
+- `crc_check_chance` — число от `0` до `1`; переопределяет параметр таблицы `crc_check_chance`
+- `{'enabled': false}` отключает сжатие; другие подпараметры вместе с ним не допускаются
+
+Изменение параметров таблицы после создания (`ALTER TABLE ... WITH`) не поддерживается.
 
 **Статические столбцы:**
 
@@ -299,6 +380,8 @@ CREATE TABLE events (
 
 - `IF NOT EXISTS` — пропускает столбцы, которые уже существуют, вместо возврата ошибки
 - добавляемые столбцы могут быть статическими (`STATIC`); статические столбцы допускаются только в таблицах с кластеризующим ключом
+- в таблицу со столбцами `counter` можно добавить только столбцы `counter`, а в таблицу без них — только
+  столбцы других типов
 
 **RENAME** — переименовывает столбцы первичного ключа:
 
@@ -368,6 +451,35 @@ DROP TABLE IF EXISTS mykeyspace.events;
 TRUNCATE TABLE mykeyspace.events;
 ```
 
+#### DESCRIBE {: #describe }
+
+Возвращает список пространств имён или DDL-описание пространства имён/таблицы.
+
+```bnf
+<describe-stmt> ::= DESCRIBE KEYSPACES
+                  | DESCRIBE [TABLE] <keyspace-name> '.' <table-name>
+                  | DESCRIBE [TABLE] <table-name>
+                  | DESCRIBE <keyspace-name>
+```
+
+- `DESCRIBE KEYSPACES` — возвращает имена всех пространств имён, включая системные. Не требует
+  привилегий
+- `DESCRIBE <keyspace-name>.<table-name>` — возвращает DDL-описание таблицы. Требует привилегию `DESCRIBE`
+  на таблицу
+- `DESCRIBE <name>` — если в текущем пространстве имён есть таблица `<name>`, возвращает её DDL-описание,
+  иначе — DDL-описание пространства имён `<name>` и всех его таблиц. Требует привилегию `DESCRIBE` на
+  таблицу или пространство имён соответственно
+
+Возвращаемый набор DDL-команд можно выполнить повторно, чтобы воссоздать объект с той же схемой.
+
+Примеры:
+
+```sql
+DESCRIBE KEYSPACES;
+DESCRIBE mykeyspace;
+DESCRIBE TABLE mykeyspace.events;
+```
+
 ### Операции с данными (DML) {: #data_operations }
 
 #### INSERT {: #insert }
@@ -382,12 +494,17 @@ TRUNCATE TABLE mykeyspace.events;
                       '(' <column-names> ')'
                   VALUES '(' <values> ')'
                   [IF NOT EXISTS]
-                  [USING TTL <int>]
+                  [USING <using-param> [AND <using-param>]]
+
+<using-param> ::= TTL <int>
+                | TIMESTAMP <int>
 ```
 
 - `IF NOT EXISTS` — вставляет строку только если она не существует (см. [LWT](#lwt))
 - `USING TTL <seconds>` — задаёт время жизни строки в секундах; переопределяет `default_time_to_live` таблицы
-- `USING TIMESTAMP` — не поддерживается
+- `USING TIMESTAMP <microseconds>` — задаёт метку времени записи (см. [USING TIMESTAMP](#using_timestamp))
+
+В `VALUES` вместо литералов можно использовать [функции](#functions) и маркеры параметров (`?`, `:name`).
 
 Примеры:
 
@@ -408,6 +525,12 @@ INSERT INTO mykeyspace.users (user_id, email)
     IF NOT EXISTS;
 ```
 
+```sql title="Вставка с TTL и явной меткой времени"
+INSERT INTO mykeyspace.sessions (session_id, user_id)
+    VALUES (uuid(), 123e4567-e89b-12d3-a456-426614174000)
+    USING TTL 3600 AND TIMESTAMP 1767225600000000;
+```
+
 #### UPDATE {: #update }
 
 Обновляет один или несколько столбцов строки. Строка идентифицируется по полному первичному ключу
@@ -416,33 +539,63 @@ INSERT INTO mykeyspace.users (user_id, email)
 
 ```bnf
 <update-stmt> ::= UPDATE [<keyspace-name> '.'] <table-name>
-                  [USING TTL <int>]
+                  [USING <using-param> [AND <using-param>]]
                   SET <assignment> [',' <assignment>]*
                   WHERE <where-clause>
                   [<if-clause>]
 
+<using-param> ::= TTL <int>
+                | TIMESTAMP <int>
+
 <assignment> ::= <column-name> '=' <value>
                | <column-name> '=' <column-name> '+' <value>
                | <column-name> '=' <column-name> '-' <value>
+               | <column-name> '=' <value> '+' <column-name>
+               | <column-name> '[' <index> ']' '=' <value>
 ```
 
 - `<if-clause>` — делает выполнение `UPDATE` условным (см. [LWT](#lwt)): `IF EXISTS` либо
   `IF <condition> [AND <condition> ...]`
-- `USING TTL <int>` — устанавливает время жизни (в секундах) для обновляемой строки. Допустимый диапазон: от `0` до `630720000` (20 лет). Значение `0` сбрасывает TTL — срок жизни строки становится неограниченным. Не применяется к таблицам с колонками типа `counter`
+- `USING TTL <int>` — устанавливает время жизни (в секундах) для столбцов, изменяемых этим `UPDATE`.
+  Время жизни остальных столбцов строки не меняется. Допустимый диапазон: от `0` до `630720000`
+  (20 лет). Значение `0` означает, что записанные значения хранятся бессрочно. Не применяется к
+  таблицам с колонками типа `counter`
+- `USING TIMESTAMP <microseconds>` — задаёт метку времени записи (см. [USING TIMESTAMP](#using_timestamp))
 
 **Ограничения Sirin:**
 
-- `USING TIMESTAMP` не поддерживается
-- операции над коллекциями (`col = col + [...]`, `map[key] = value`) не поддерживаются
 - ограничения `IF`-условий описаны в разделе [LWT](#lwt)
 
 **Виды присваиваний:**
 
-| Форма               | Применение          | Пример                |
-|---------------------|---------------------|-----------------------|
-| `col = value`       | Установить значение | `name = 'Bob'`        |
-| `col = col + value` | Инкремент счётчика  | `visits = visits + 1` |
-| `col = col - value` | Декремент счётчика  | `visits = visits - 1` |
+| Форма               | Применение                                        | Пример                        |
+|---------------------|---------------------------------------------------|-------------------------------|
+| `col = value`       | Установить значение                               | `name = 'Bob'`                |
+| `col = col + value` | Инкремент счётчика, добавление в коллекцию        | `visits = visits + 1`         |
+| `col = col - value` | Декремент счётчика, удаление из коллекции         | `visits = visits - 1`         |
+| `col = value + col` | Добавление элементов в начало `list`              | `events = ['start'] + events` |
+| `col[i] = value`    | Замена элемента `list` по индексу                 | `events[0] = 'init'`          |
+
+##### Операции над коллекциями {: #collection_operations }
+
+| Тип        | Операция                     | Описание                                                                      |
+|------------|------------------------------|-------------------------------------------------------------------------------|
+| `set<T>`   | `s = s + {v1, v2}`           | Добавляет элементы в множество                                                |
+| `set<T>`   | `s = s - {v1, v2}`           | Удаляет элементы из множества                                                 |
+| `map<K,V>` | `m = m + {k1: v1, k2: v2}`   | Добавляет пары; значения существующих ключей перезаписываются                 |
+| `map<K,V>` | `m = m - {k1, k2}`           | Удаляет пары с указанными ключами. Правый операнд — множество ключей `set<K>` |
+| `list<T>`  | `l = l + [v1, v2]`           | Добавляет элементы в конец списка                                             |
+| `list<T>`  | `l = [v1, v2] + l`           | Добавляет элементы в начало списка                                            |
+| `list<T>`  | `l = l - [v1, v2]`           | Удаляет все вхождения указанных значений                                      |
+| `list<T>`  | `l[i] = v`                   | Заменяет элемент с индексом `i` (нумерация с `0`); `l[i] = null` удаляет его  |
+| `list<T>`  | `DELETE l[i] FROM ...`       | Удаляет элемент с индексом `i`, сдвигая последующие (см. [DELETE](#delete))   |
+
+- присваивание `col = value` заменяет коллекцию целиком
+- добавление или удаление пустой коллекции либо `null` (`s = s + {}`, `l = l - null`) ничего не меняет
+- если список пуст или индекс выходит за его границы, `l[i] = v` и `DELETE l[i]` возвращают ошибку
+- при удалении единственного элемента столбец получает значение `null`
+- запись и удаление отдельного элемента поддерживаются только для `list`: `m[key] = value`;
+  `DELETE m[key]` для `map` и `DELETE s[value]` для `set` не поддерживаются
 
 Примеры:
 
@@ -457,6 +610,28 @@ UPDATE mykeyspace.users USING TTL 3600
     SET session_token = 'abc'
     WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
 ```
+
+```sql title="Добавление и удаление элементов коллекций"
+UPDATE mykeyspace.users
+    SET tags = tags + {'vip'}, settings = settings - {'theme'}, history = history + ['login']
+    WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+```
+
+```sql title="Замена элемента списка по индексу"
+UPDATE mykeyspace.users
+    SET history[0] = 'signup'
+    WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+```
+
+!!! warning "Особенности операций над list"
+    - добавление в начало и в конец списка неидемпотентно: если запрос завершился по таймауту,
+      его повтор может добавить элементы дважды
+    - запись и удаление по индексу (`l[i] = v`, `DELETE l[i]`), а также удаление по значению
+      (`l = l - [...]`) читают текущее значение списка перед записью и выполняются медленнее
+      обычного обновления
+    - TTL из `USING TTL` применяется только к элементам, добавленным этим запросом
+
+    Если порядок элементов и повторы не нужны, используйте `set`.
 
 ```sql title="Инкремент счётчика"
 UPDATE mykeyspace.stats
@@ -484,21 +659,28 @@ UPDATE mykeyspace.users
 по первичному ключу.
 
 ```bnf
-<delete-stmt> ::= DELETE [<column-name> [',' <column-name>]*]
+<delete-stmt> ::= DELETE [<target> [',' <target>]*]
                   FROM [<keyspace-name> '.'] <table-name>
+                  [USING TIMESTAMP <int>]
                   WHERE <where-clause>
                   [<if-clause>]
+
+<target> ::= <column-name>
+           | <column-name> '[' <index> ']'
 ```
 
 - Если список столбцов не указан — удаляется вся строка.
 - Если список столбцов указан — удаляются только значения этих столбцов (столбцы
   получают значение `null`). Столбцы первичного ключа удалить нельзя.
+- `<column-name>[<index>]` — удаляет из `list` элемент с указанным индексом (нумерация с `0`);
+  последующие элементы сдвигаются
 - `<if-clause>` — делает выполнение `DELETE` условным (см. [LWT](#lwt)): `IF EXISTS` либо
   `IF <condition> [AND <condition> ...]`
-- `USING TIMESTAMP` — не поддерживается
+- `USING TIMESTAMP <microseconds>` — задаёт метку времени удаления (см. [USING TIMESTAMP](#using_timestamp))
 - `WHERE` должен содержать как минимум полный ключ партиционирования
-- удаление отдельной пары ключ-значение из `map` (`DELETE col[key] FROM ...`) не
-  поддерживается — можно удалить только весь столбец целиком
+- удаление отдельной пары из `map` (`DELETE col[key] FROM ...`) и элемента из `set`
+  (`DELETE col[value] FROM ...`) не поддерживается; вместо этого используйте
+  `UPDATE ... SET col = col - {key}`
 
 Примеры:
 
@@ -524,6 +706,11 @@ DELETE email FROM mykeyspace.users
     WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
 ```
 
+```sql title="Удаление элемента списка по индексу"
+DELETE history[0] FROM mykeyspace.users
+    WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+```
+
 ```sql title="Удаление нескольких строк (по диапазону clustering key)"
 DELETE FROM mykeyspace.events
     WHERE device_id = 123e4567-e89b-12d3-a456-426614174000
@@ -543,15 +730,27 @@ DELETE FROM mykeyspace.events
                   [ALLOW FILTERING]
 
 <select-clause> ::= '*'
-                  | <column-name> [AS <alias>] [',' <column-name> [AS <alias>]]*
+                  | <selector> [AS <alias>] [',' <selector> [AS <alias>]]*
+
+<selector> ::= <column-name>
+             | <column-name> '[' <literal> ']'
 ```
+
+Селектор `<column-name>[<literal>]` возвращает значение `map` по ключу, который задаётся только литералом.
+Выборка элемента `set` и выборка диапазона (`m['a'..'c']`) не поддерживаются.
 
 **WHERE**
 
-Задаёт условие фильтрации строк. Поддерживаемые операторы: `=`, `<`, `>`, `<=`, `>=`, `!=`, `IN`.
+Задаёт условие фильтрации строк. Поддерживаемые операторы: `=`, `<`, `>`, `<=`, `>=`, `!=`, `IN`,
+`CONTAINS`. В правой части условия можно использовать литералы, маркеры параметров и
+[функции](#functions).
 
 Для эффективной работы рекомендуется всегда указывать полный ключ партиционирования. Фильтрация по
 неключевым столбцам требует `ALLOW FILTERING`.
+
+`col CONTAINS value` отбирает строки, в которых коллекция содержит значение: элемент `list` или `set`,
+значение (не ключ) `map`. Условие `CONTAINS` всегда требует `ALLOW FILTERING`. `CONTAINS KEY` в
+`WHERE` не поддерживается.
 
 ```sql
 WHERE device_id = 123e4567-e89b-12d3-a456-426614174000
@@ -561,7 +760,39 @@ WHERE device_id = 123e4567-e89b-12d3-a456-426614174000
 **ORDER BY**
 
 Порядок сортировки можно задавать только по столбцам кластеризующего ключа, и только
-в том направлении, которое задано в `CLUSTERING ORDER BY` таблицы или в обратном ему.
+в том направлении, которое задано в `CLUSTERING ORDER BY` таблицы или в обратном ему — одновременно
+для всех перечисленных столбцов.
+
+Примеры для таблицы со смешанным порядком кластеризации:
+
+```sql
+CREATE TABLE readings (
+    sensor_id int,
+    day       date,
+    seq       int,
+    value     double,
+    PRIMARY KEY (sensor_id, day, seq)
+) WITH CLUSTERING ORDER BY (day DESC, seq ASC);
+```
+
+```sql title="Прямой порядок — совпадает с CLUSTERING ORDER BY (результат тот же, что и без ORDER BY)"
+SELECT * FROM readings WHERE sensor_id = 1 ORDER BY day DESC, seq ASC;
+```
+
+```sql title="Обратный порядок — направление инвертировано для всех столбцов"
+SELECT * FROM readings WHERE sensor_id = 1 ORDER BY day ASC, seq DESC;
+```
+
+```sql title="Ошибка — направление инвертировано только для одного столбца"
+SELECT * FROM readings WHERE sensor_id = 1 ORDER BY day DESC, seq DESC;
+```
+
+Столбцы перечисляются в порядке их объявления в кластеризующем ключе. Столбец можно пропустить, если
+в `WHERE` он ограничен единственным значением (`=` или `IN` с одним элементом):
+
+```sql title="Столбец day зафиксирован в WHERE, сортировка только по seq"
+SELECT * FROM readings WHERE sensor_id = 1 AND day = '2026-01-15' ORDER BY seq DESC;
+```
 
 **LIMIT**
 
@@ -594,8 +825,9 @@ SELECT DISTINCT region, sensor_id, firmware FROM sensors;
 **Ограничения:**
 
 - `GROUP BY` не поддерживается
-- `USING CONSISTENCY`, `USING TIMESTAMP` не поддерживаются
-- функции в списке столбцов (`COUNT(*)`, `CAST()`, вызовы функций) не поддерживаются
+- `USING CONSISTENCY` не поддерживается
+- функции в проекции — между `SELECT` и `FROM` (`COUNT(*)`, `CAST()`, `token()`, `writetime()`, `ttl()`
+  и т. д.) — не поддерживаются (например, запрос `SELECT token(id) FROM t` не будет работать)
 - сравнение кортежей, например `(a, b) > (1, 2)`, не поддерживается
 
 Примеры:
@@ -624,12 +856,18 @@ SELECT * FROM mykeyspace.users
     ALLOW FILTERING;
 ```
 
+```sql title="Значение map по ключу и фильтрация по элементу коллекции"
+SELECT user_id, settings['theme'] FROM mykeyspace.users
+    WHERE tags CONTAINS 'vip'
+    ALLOW FILTERING;
+```
+
 #### BATCH {: #batch }
 
-Объединяет несколько DML-операций в один запрос. Все операции батча применяются атомарно.
+Объединяет несколько DML-операций в один пакетный запрос (батч). Все операции батча применяются атомарно.
 
 ```bnf
-<batch-stmt> ::= BEGIN [UNLOGGED] BATCH
+<batch-stmt> ::= BEGIN [UNLOGGED] BATCH [USING TIMESTAMP <int>]
                      <dml-stmt> ';'
                      [<dml-stmt> ';']*
                  APPLY BATCH
@@ -640,7 +878,8 @@ SELECT * FROM mykeyspace.users
 
 - `UNLOGGED` — в Cassandra отключает журнал батча для повышения производительности; в Sirin
   принимается синтаксически, поведение не меняется.
-- `USING TIMESTAMP` на уровне батча не поддерживается.
+- `USING TIMESTAMP <microseconds>` — задаёт единую метку времени для всех операций батча
+  (см. [USING TIMESTAMP](#using_timestamp)).
 
 Пример:
 
@@ -652,6 +891,25 @@ BEGIN BATCH
     DELETE FROM mykeyspace.users
         WHERE user_id = 00000000-0000-0000-0000-000000000001;
 APPLY BATCH;
+```
+
+#### USING TIMESTAMP {: #using_timestamp }
+
+Каждое записанное значение хранит метку времени записи. По умолчанию это текущее время узла,
+обрабатывающего запрос. `USING TIMESTAMP` позволяет задать метку явно — целым числом микросекунд
+с начала эпохи Unix (1970-01-01 00:00:00 UTC).
+
+При конкурирующих записях одного и того же значения сохраняется запись с бóльшей меткой времени.
+Запись/удаление с меткой времени меньше, чем у уже сохранённого значения, это значение не
+изменяет.
+
+`USING TIMESTAMP` поддерживается в `INSERT`, `UPDATE`, `DELETE` и `BATCH`. Использовать его вместе с
+условиями LWT (`IF NOT EXISTS`, `IF EXISTS`, `IF <condition>`) нельзя.
+
+```sql
+UPDATE mykeyspace.users USING TIMESTAMP 1767225600000000
+    SET name = 'Alice'
+    WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
 ```
 
 #### LWT (Lightweight transactions) {: #lwt }
@@ -677,17 +935,17 @@ Lightweight transactions позволяют выполнять операции 
 
 Каждое условие сравнивает значение обычного или статического столбца с выражением:
 
-| Форма                    | Описание                                   |
-|--------------------------|--------------------------------------------|
-| `col = value`            | Равно                                      |
-| `col != value`           | Не равно                                   |
-| `col > value`            | Больше                                     |
-| `col >= value`           | Больше или равно                           |
-| `col < value`            | Меньше                                     |
-| `col <= value`           | Меньше или равно                           |
-| `col IN (value, ...)`    | Значение столбца входит в список           |
-| `col CONTAINS value`     | Значение входит в коллекцию (`set`, `map`) |
-| `col CONTAINS KEY value` | Ключ входит в `map`                        |
+| Форма                    | Описание                                           |
+|--------------------------|----------------------------------------------------|
+| `col = value`            | Равно                                              |
+| `col != value`           | Не равно                                           |
+| `col > value`            | Больше                                             |
+| `col >= value`           | Больше или равно                                   |
+| `col < value`            | Меньше                                             |
+| `col <= value`           | Меньше или равно                                   |
+| `col IN (value, ...)`    | Значение столбца входит в список                   |
+| `col CONTAINS value`     | Значение входит в коллекцию (`list`, `set`, `map`) |
+| `col CONTAINS KEY value` | Ключ входит в `map`                                |
 
 Несколько условий объединяются через `AND`.
 
@@ -696,7 +954,7 @@ Lightweight transactions позволяют выполнять операции 
 - в условии нельзя использовать столбцы первичного ключа — они уже заданы в `WHERE`
 - условия на столбцы типа `counter` не поддерживаются; более того, `IF EXISTS` тоже
   не поддерживается для таблиц, содержащих `counter`-столбцы
-- `CONTAINS` применим только к столбцам типа `set` и `map`, `CONTAINS KEY` — только к `map`
+- `CONTAINS` применим только к коллекциям, `CONTAINS KEY` — только к `map`
 - сравнение с `NULL` допустимо только через `=` и `!=`; операторы `>`, `>=`, `<`, `<=`
   со значением `NULL` возвращают ошибку
 
@@ -783,7 +1041,7 @@ Sirin использует ролевую модель управления до
 - `PASSWORD` — пароль в открытом виде, хешируется при сохранении. Задаётся либо `PASSWORD`, либо `HASHED PASSWORD` — одновременно оба параметра не допускаются
 - `HASHED PASSWORD` — предварительно вычисленный bcrypt-хеш пароля. Используется при переносе учётных записей из другой Cassandra-совместимой системы
 - `LOGIN` — разрешает вход в систему. По умолчанию `false`. При `LOGIN = true` обязательно указать `PASSWORD` или `HASHED PASSWORD`
-- `SUPERUSER` — наделяет ролью суперпользователя с полными правами. По умолчанию `false`
+- `SUPERUSER` — наделяет роль правами суперпользователя. По умолчанию `false`
 - `IF NOT EXISTS` — не возвращает ошибку, если роль уже существует
 - `ACCESS TO DATACENTERS {'dc1', 'dc2', ...}` — ограничивает вход только с узлов указанных дата-центров. Каждый узел Picodata имеет параметр [`instance.failure_domain`](../tutorial/deploy.md#failure_domains) — словарь произвольных ключей, описывающих его физическое размещение (например, `{"DC": "DC1", "HOST": "node1"}`). Параметр конфигурации плагина `router.auth.network.dc_failure_domain_key` задаёт, какой именно ключ из этого словаря считать именем дата-центра (по умолчанию `dc`)
 - `ACCESS TO ALL DATACENTERS` — разрешает вход с узлов любого дата-центра (поведение по умолчанию)
@@ -945,12 +1203,12 @@ REVOKE data_readers FROM alice;
 
 Применимые привилегии зависят от типа ресурса:
 
-| Ресурс                      | Применимые привилегии                          |
-|-----------------------------|------------------------------------------------|
-| ALL KEYSPACES, KEYSPACE     | CREATE, ALTER, DROP, SELECT, MODIFY, AUTHORIZE |
-| TABLE                       | ALTER, DROP, SELECT, MODIFY, AUTHORIZE         |
-| ALL ROLES, ROLE             | CREATE, ALTER, DROP, AUTHORIZE, DESCRIBE       |
-| ALL CIDR GROUPS, CIDR GROUP | CREATE, ALTER, DROP, AUTHORIZE, DESCRIBE       |
+| Ресурс                      | Применимые привилегии                                    |
+|-----------------------------|----------------------------------------------------------|
+| ALL KEYSPACES, KEYSPACE     | CREATE, ALTER, DROP, SELECT, MODIFY, AUTHORIZE, DESCRIBE |
+| TABLE                       | ALTER, DROP, SELECT, MODIFY, AUTHORIZE, DESCRIBE         |
+| ALL ROLES, ROLE             | CREATE, ALTER, DROP, AUTHORIZE, DESCRIBE                 |
+| ALL CIDR GROUPS, CIDR GROUP | CREATE, ALTER, DROP, AUTHORIZE, DESCRIBE                 |
 
 Описание привилегий:
 
@@ -962,7 +1220,7 @@ REVOKE data_readers FROM alice;
 | `SELECT`    | Чтение данных                                         |
 | `MODIFY`    | Запись данных (INSERT, UPDATE, DELETE)                |
 | `AUTHORIZE` | Управление правами доступа (GRANT, REVOKE)            |
-| `DESCRIBE`  | Просмотр информации о ролях (LIST ROLES)              |
+| `DESCRIBE`  | Просмотр ролей (LIST ROLES) и схемы (DESCRIBE)        |
 
 Примеры:
 
@@ -1070,8 +1328,9 @@ REVOKE ALL PERMISSIONS ON KEYSPACE ks1 FROM alice;
 
 ### TTL и механизм экспирации {: #ttl_and_expiration }
 
-TTL (Time To Live) определяет время жизни строки в секундах. По истечении TTL строка
-становится невидимой для чтения и помечается для физического удаления.
+TTL (Time To Live) определяет время жизни записанных значений в секундах. По истечении TTL
+значения становятся невидимыми для чтения; строка, у которой истекли все значения, помечается
+для физического удаления.
 
 #### Задание TTL {: #ttl_set }
 
@@ -1087,7 +1346,9 @@ CREATE TABLE mykeyspace.sessions (
 ) WITH default_time_to_live = 86400;   -- 24 часа
 ```
 
-**На уровне строки** — через `USING TTL` в операторах `INSERT` и `UPDATE`. Переопределяет `default_time_to_live`.
+**На уровне запроса** — через `USING TTL` в операторах `INSERT` и `UPDATE`. Переопределяет
+`default_time_to_live`. TTL применяется к значениям, записанным этим запросом: `UPDATE ... USING TTL`
+не меняет время жизни столбцов, которые он не затрагивает.
 
 ```sql title="Строка удалится через 10 минут"
 INSERT INTO mykeyspace.sessions (session_id, user_id)
@@ -1099,6 +1360,12 @@ INSERT INTO mykeyspace.sessions (session_id, user_id)
 INSERT INTO mykeyspace.sessions (session_id, user_id)
     VALUES (uuid(), 123e4567-e89b-12d3-a456-426614174000)
     USING TTL 0;
+```
+
+```sql title="Значение столбца token истечёт через 5 минут, остальные столбцы не изменятся"
+UPDATE mykeyspace.sessions USING TTL 300
+    SET token = 'abc'
+    WHERE session_id = 123e4567-e89b-12d3-a456-426614174000;
 ```
 
 #### Механизм удаления {: #ttl_expiration_mechanism }
@@ -1116,23 +1383,37 @@ Sirin использует двухэтапный механизм удален�
 
 ### Функции {: #functions }
 
-На данный момент Sirin поддерживает функции для работы со значениями типа `timeuuid`. Эти функции
-используются в условиях `WHERE` для фильтрации строк по временно́му диапазону.
+Функции можно использовать в качестве значений: в `VALUES` оператора `INSERT`, в правой части
+присваиваний `UPDATE`, в правой части условий `WHERE` и `IF`. Аргументами функций могут быть литералы
+и маркеры параметров (`?`, `:name`) — тип маркера определяется типом аргумента функции.
+
+#### Функция uuid {: #uuid_function }
+
+`uuid()` генерирует случайный UUID версии 4 (тип `uuid`).
 
 #### Функции timeuuid {: #timeuuid_functions }
 
-| <div style="width:150px">Функция</div> | Описание                                                                                                                               |
-|----------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| `now()`                                | Генерирует новый уникальный `timeuuid`, соответствующий текущему моменту времени. Синонимы: `currentTimeuuid()`, `current_timeuuid()`. |
-| `minTimeuuid(t)`                       | Возвращает минимально возможный `timeuuid` для заданного момента времени `t` (типа `timestamp`). Синонимы: `min_timeuuid()`.           |
-| `maxTimeuuid(t)`                       | Возвращает максимально возможный `timeuuid` для заданного момента времени `t` (типа `timestamp`). Синонимы: `max_timeuuid()`.          |
+| Функция          | Описание                                                                                                                        |
+|------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| `now()`          | Генерирует новый уникальный `timeuuid` для текущего момента времени. Синонимы: `currentTimeuuid()`, `current_timeuuid()`.       |
+| `minTimeuuid(t)` | Возвращает минимально возможный `timeuuid` для заданного момента времени `t` (типа `timestamp`). Синоним: `min_timeuuid()`.     |
+| `maxTimeuuid(t)` | Возвращает максимально возможный `timeuuid` для заданного момента времени `t` (типа `timestamp`). Синоним: `max_timeuuid()`.    |
+
+`minTimeuuid()` и `maxTimeuuid()` удобно использовать в `WHERE` для выборки по временнóму диапазону.
+
+#### Функция token {: #token_function }
+
+`token(v1, ..., vN)` вычисляет токен партиции (хеш Murmur3, тип `bigint`) по значениям столбцов ключа
+партиционирования. Число и типы аргументов должны совпадать со столбцами ключа партиционирования
+таблицы, к которой относится запрос.
 
 !!! note "Примечание"
-    Функции `now()`, `minTimeuuid()`, `maxTimeuuid()` поддерживаются только в условии `WHERE`. Использование в списке столбцов оператора `SELECT` не поддерживается.
+    `token()` вычисляет значение, но не может стоять в левой части условия: фильтрация вида
+    `WHERE token(pk) > ...` не поддерживается.
 
 **Примеры:**
 
-```sql title="Фильтрация событий за последние сутки"
+```sql title="Фильтрация событий по временнóму диапазону"
 SELECT * FROM ks1.events
 WHERE device_id = 123e4567-e89b-12d3-a456-426614174000
   AND event_id > minTimeuuid('2024-01-01 00:00:00+0000')
@@ -1145,9 +1426,20 @@ WHERE device_id = 123e4567-e89b-12d3-a456-426614174000
   AND event_id < now();
 ```
 
+```sql title="Генерация идентификаторов при вставке"
+INSERT INTO ks1.events (device_id, event_id, payload)
+    VALUES (uuid(), now(), 'boot');
+```
+
+```sql title="Маркеры параметров в аргументах функции (prepared statement)"
+SELECT * FROM ks1.events
+WHERE device_id = ?
+  AND event_id > minTimeuuid(?);
+```
+
 #### Ограничения {: #functions_limitations }
 
-- функции поддерживаются только в условии `WHERE`, не в списке столбцов `SELECT`
+- функции не поддерживаются в проекции `SELECT` (между `SELECT` и `FROM`)
 - агрегатные функции (`count`, `sum`, `avg`, `min`, `max`) не поддерживаются
 - пользовательские функции (UDF) и пользовательские агрегаты (UDA) не поддерживаются
 - триггеры не поддерживаются
@@ -1188,6 +1480,46 @@ INSERT INTO sessions (id, user_id) VALUES (uuid(), 42) USING TTL 600;
     - `cqlsh` — стандартный CLI для Cassandra
     - DBeaver — GUI для управления базами данных
 
+### Маршрутизация запросов на мастер {: #master_routing }
+
+Запросы обрабатываются на мастерах репликасетов. Реплики сообщают драйверу топологию так,
+чтобы трафик уходил на мастера:
+
+- в `system.local` реплика описывает себя, но с пустым набором токенов,
+  поэтому драйвер, учитывающий токены при маршрутизации (token-aware), не направляет на неё запросы
+- в `system.peers` и `system.peers_v2` реплика возвращает всех мастеров кластера, включая мастера
+  своего репликасета
+
+Драйвер, подписанный на события `TOPOLOGY_CHANGE` (запрос `REGISTER`), получает push-события:
+
+- при подключении к реплике — `NEW_NODE` для мастера и `REMOVED_NODE` для самой реплики
+- при смене мастера — бывший мастер отправляет своим клиентам те же события, а новый мастер —
+  `NEW_NODE` для себя
+
+События `STATUS_CHANGE` и `SCHEMA_CHANGE` принимаются в подписке, но не отправляются.
+
+### Уровни согласованности {: #consistency_levels }
+
+Уровни согласованности, которые драйвер передаёт в кадрах `QUERY`, `EXECUTE` и `BATCH`
+(`consistency` и `serial_consistency`), принимаются, но не влияют на выполнение запроса. Запрос
+всегда выполняется на мастере репликасета, а гарантии согласованности определяются синхронной
+репликацией Picodata. Например, запросы с `LOCAL_QUORUM` и `ONE` выполняются одинаково, а условные
+запросы (LWT) с `SERIAL` и `LOCAL_SERIAL` — тоже.
+
+Поэтому ошибки `Unavailable`, `ReadTimeout` и `WriteTimeout`, связанные с недостаточным числом
+ответивших реплик, не возвращаются.
+
+Запрос отклоняется с ошибкой `Invalid` (`0x2200`), только если кадр содержит некорректное значение:
+
+- неизвестный код уровня согласованности
+- в поле `serial_consistency` передано значение, отличное от `SERIAL` и `LOCAL_SERIAL`
+
+### Prepared statements {: #prepared_statements }
+
+Подготовленные запросы кешируются на узле отдельно для каждого пространства имён. Если запроса нет
+в кеше (например, после перезапуска узла), `EXECUTE` и `BATCH` возвращают ошибку `Unprepared`
+(`0x2500`), и драйвер должен автоматически подготовить запрос заново.
+
 ## Развёртывание, эксплуатация и восстановление {: #deployment_operations_recovery }
 
 Все процедуры полностью соответствуют инфраструктуре Picodata.
@@ -1225,9 +1557,10 @@ instance:
 ```
 
 - `listen` — адрес, на котором сервис слушает входящие соединения
-- `advertise` — адрес, который клиенты получают через `system.local` / `system.peers` /
-  `system.peers_v2` и используют для прямых подключений к узлу, в том числе для
-  token-aware роутинга запросов драйвером. Если не задан, равен `listen`
+- `advertise` — адрес, который клиенты получают через `system.local` /
+  `system.peers` / `system.peers_v2` и используют для прямых подключений
+  к узлу, в том числе для того, чтобы драйвер мог маршрутизировать
+  запросы с учётом токенов. Если не задан, равен `listen`
 - `tls` — настройка TLS-соединения. На данный момент не поддерживается.
 
 Без этого блока сервис `router` не запустится — Picodata потребует явно
@@ -1289,7 +1622,7 @@ router:
 без перезапуска кластера:
 
 ```sql
-ALTER PLUGIN sirin 1.4.0 SET router.auth.is_required='true';
+ALTER PLUGIN sirin 2.0.0 SET router.auth.is_required='true';
 ```
 
 Параметр `permissions_validity` задаёт интервал, с которым Sirin проверяет изменения прав в рамках
@@ -1297,5 +1630,46 @@ ALTER PLUGIN sirin 1.4.0 SET router.auth.is_required='true';
 действовать не позднее чем через 2 секунды — без разрыва соединения.
 
 ```sql
-ALTER PLUGIN sirin 1.4.0 SET router.auth.permissions_validity='5s';
+ALTER PLUGIN sirin 2.0.0 SET router.auth.permissions_validity='5s';
 ```
+
+### Метрики {: #metrics }
+
+Sirin публикует метрики в формате Prometheus через HTTP-эндпоинт Picodata `/metrics` (см.
+[Метрики](../reference/metrics.md)). Все метрики плагина имеют префикс `sirin_`.
+
+**Протокол и соединения:**
+
+| Метрика                                   | Тип       | Метки              | Описание                                                          |
+|-------------------------------------------|-----------|--------------------|-------------------------------------------------------------------|
+| `sirin_proto_active_connections`          | gauge     | —                  | Число активных клиентских соединений                              |
+| `sirin_proto_request_latency_seconds`     | histogram | `opcode`, `status` | Время обработки запросов протокола                                |
+| `sirin_proto_outgoing_queue_depth_frames` | histogram | —                  | Число фреймов в исходящей очереди соединения                      |
+| `sirin_prepared_statements_active`        | gauge     | —                  | Число подготовленных запросов в кеше                              |
+
+**Обработка запросов (router):**
+
+| Метрика                                      | Тип       | Метки                          | Описание                                                                                   |
+|----------------------------------------------|-----------|--------------------------------|--------------------------------------------------------------------------------------------|
+| `sirin_statements_processed_total`           | counter   | `operation_type`, `result`     | Число обработанных запросов. `operation_type`: `regular`, `prepare`, `execute`, `batch`; запросы внутри `BATCH` считаются по отдельности |
+| `sirin_statement_processing_latency_seconds` | histogram | `type`, `status`               | Время обработки запроса. `type`: `select`, `insert`, `update`, `delete`, `batch`, `other`  |
+| `sirin_statement_select_processed_total`     | counter   | `allow_filtering`, `status`    | Число обработанных `SELECT`                                                                |
+| `sirin_statement_select_rows_returned_total` | counter   | —                              | Число строк, возвращённых успешными `SELECT`                                               |
+| `sirin_router_rpc_batch_outbound_dmls_total` | counter   | `dml_kind`                     | Число DML-операций, отправленных из router в storage в составе батчей                      |
+
+Метка `status` принимает значения `ok` и `error`.
+
+**Хранение (storage):**
+
+| Метрика                                   | Тип       | Метки            | Описание                                          |
+|-------------------------------------------|-----------|------------------|---------------------------------------------------|
+| `sirin_storage_rpc_latency_seconds`       | histogram | `path`, `status` | Время обработки RPC-запросов на storage           |
+| `sirin_ttl_expired_records_deleted_total` | counter   | `table`          | Число строк, физически удалённых по истечении TTL |
+
+**Ресурсы процесса:**
+
+| Метрика                                     | Тип     | Метки  | Описание                                                            |
+|---------------------------------------------|---------|--------|---------------------------------------------------------------------|
+| `sirin_cpu_tx_thread_time_seconds`          | gauge   | `kind` | Процессорное время TX-потока                                        |
+| `sirin_cpu_tokio_thread_time_seconds_total` | counter | `kind` | Суммарное процессорное время потоков, обслуживающих соединения      |
+| `sirin_process_resident_memory_bytes`       | gauge   | —      | Резидентная память процесса (RSS)                                   |
