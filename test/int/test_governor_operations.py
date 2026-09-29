@@ -20,13 +20,13 @@ def make_operation_tuple(id: int, op: str) -> list[Any]:
     ]
 
 
-def insert_operations(cluster: Cluster, ops: list[str]) -> int:
+def insert_operations(cluster: Cluster, ops: list[str], id_start=1) -> int:
     index, _, _ = cluster.batch_cas(
         [
             dict(
                 table="_pico_governor_queue",
                 kind="insert",
-                tuple=make_operation_tuple(i + 1, op),
+                tuple=make_operation_tuple(i + id_start, op),
             )
             for i, op in enumerate(ops)
         ],
@@ -492,3 +492,58 @@ def test_restart_upgrade_after_fail(cluster: Cluster):
     assert res[0][0] == "done"
     res = i1.sql("SELECT * FROM my_table")
     assert res == []
+
+
+def test_governor_op_queue_alter_system(cluster: Cluster):
+    i1 = cluster.add_instance()
+    # Remember the default values
+    [[default_gaot]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'governor_auto_offline_timeout'")
+    [[default_grot]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'governor_raft_op_timeout'")
+
+    # Run an ALTER SYSTEM SET command as governor queue operation
+    id_start = 1
+    ops = [
+        "ALTER SYSTEM SET governor_auto_offline_timeout TO 1337",
+        "ALTER SYSTEM SET governor_raft_op_timeout TO 69105",
+    ]
+    index = insert_operations(cluster, ops, id_start)
+    id_start += len(ops)
+    cluster.raft_wait_index(index + len(ops) * 2)
+
+    # Check the command was executed successfully
+    [[new_gaot]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'governor_auto_offline_timeout'")
+    assert default_gaot != new_gaot
+    [[new_grot]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'governor_raft_op_timeout'")
+    assert default_grot != new_grot
+
+    # Run an ALTER SYSTEM RESET command as governor queue operation
+    ops = ["ALTER SYSTEM RESET governor_auto_offline_timeout"]
+    index = insert_operations(cluster, ops, id_start)
+    id_start += len(ops)
+    cluster.raft_wait_index(index + len(ops) * 2)
+
+    # Check the command was executed successfully
+    [[new_gaot]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'governor_auto_offline_timeout'")
+    assert default_gaot == new_gaot
+    # Sanity check
+    [[new_grot]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'governor_raft_op_timeout'")
+    assert default_grot != new_grot
+
+    # Run an ALTER SYSTEM RESET ALL command as governor queue operation
+    ops = ["ALTER SYSTEM RESET ALL"]
+    index = insert_operations(cluster, ops, id_start)
+    id_start += len(ops)
+    cluster.raft_wait_index(index + len(ops) * 2)
+
+    # Check the command was executed successfully
+    [[new_gaot]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'governor_auto_offline_timeout'")
+    assert default_gaot == new_gaot
+    [[new_grot]] = i1.sql("SELECT value FROM _pico_db_config WHERE key = 'governor_raft_op_timeout'")
+    assert default_grot == new_grot
+
+    # Make sure all steps are complete
+    rows = i1.sql("SELECT DISTINCT status FROM _pico_governor_queue")
+    assert rows == [["done"]]
+
+    # Sanity check
+    cluster.wait_governor_status("idle")

@@ -1446,6 +1446,7 @@ fn alter_system_cluster_ir_node_to_op_or_result(
     ty: &AlterSystemType,
     tier_name: Option<&str>,
     current_user: UserId,
+    governor_op_id: Option<u64>,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     fn make_dmls<T>(
         param_value: &T,
@@ -1498,6 +1499,7 @@ fn alter_system_cluster_ir_node_to_op_or_result(
         Ok(dmls)
     }
 
+    let mut ops;
     match ty {
         AlterSystemType::AlterSystemSet {
             param_name,
@@ -1509,9 +1511,7 @@ fn alter_system_cluster_ir_node_to_op_or_result(
 
             let casted_value: sql::ir::value::EncodedValue<'_> = crate::config::validate_alter_system_parameter_value(param_name, param_value)?;
 
-            let dmls = make_dmls(&casted_value, param_name, tier_name, storage, current_user)?;
-
-            Ok(Continue(Op::BatchDml{ ops: dmls }))
+            ops = make_dmls(&casted_value, param_name, tier_name, storage, current_user)?;
         }
         AlterSystemType::AlterSystemReset { param_name } => {
             match param_name {
@@ -1521,20 +1521,27 @@ fn alter_system_cluster_ir_node_to_op_or_result(
                         return Err(Error::other(format!("unknown parameter: '{param_name}'")));
                     };
 
-                    let dmls = make_dmls(&default_value, param_name, tier_name, storage, current_user)?;
-
-                    Ok(Continue(Op::BatchDml { ops: dmls }))
+                    ops = make_dmls(&default_value, param_name, tier_name, storage, current_user)?;
                 }
                 // reset all
                 None => {
                     let tiers = storage.tiers.iter()?.map(|tier| tier.name).collect::<Vec<_>>();
                     let tiers = tiers.iter().map(|s| &**s).collect::<Vec<_>>();
-                    let dmls = crate::config::get_defaults_for_all_system_parameters(&tiers, false)?;
-                    Ok(Continue(Op::BatchDml { ops: dmls }))
+                    ops = crate::config::get_defaults_for_all_system_parameters(&tiers, false)?;
                 }
             }
         }
     }
+
+    // ALTER SYSTEM is classified as DDL but it desugars into a batch of
+    // DMLs. Governor queue DML operations are handled by appending an
+    // implicit status update finalizer DML to the batch.
+    if let Some(governor_op_id) = governor_op_id {
+        let op = make_governor_queue_op_finalizer(governor_op_id)?;
+        ops.push(op);
+    }
+
+    Ok(Continue(Op::BatchDml { ops }))
 }
 
 fn execute_alter_system_local(ty: &AlterSystemType, current_user: UserId) -> traft::Result<()> {
@@ -1700,6 +1707,7 @@ fn ddl_ir_node_to_op_or_result(
                 ty,
                 tier_name.as_deref(),
                 current_user,
+                governor_op_id,
             )
         }
         DdlOwned::CreateTable(CreateTable {
@@ -3302,17 +3310,7 @@ fn do_dml_on_global_tbl_no_retry(
     // If we have DML in governor operation (running from governor),
     // we need to add final update operation to change status.
     if let Some(governor_op_id) = governor_op_id {
-        let mut update_ops = UpdateOps::new();
-        update_ops.assign(
-            column_name!(governor_queue::GovernorOperationDef, status),
-            governor_queue::GovernorOpStatus::Done,
-        )?;
-        let op = Dml::update(
-            governor_queue::GovernorQueue::TABLE_ID,
-            &[governor_op_id],
-            update_ops,
-            ADMIN_ID,
-        )?;
+        let op = make_governor_queue_op_finalizer(governor_op_id)?;
         ops.push(op);
 
         row_count = ops.len();
@@ -3342,6 +3340,21 @@ fn do_dml_on_global_tbl_no_retry(
             })
         }
     })?
+}
+
+fn make_governor_queue_op_finalizer(governor_op_id: u64) -> traft::Result<Dml> {
+    let mut update_ops = UpdateOps::new();
+    update_ops.assign(
+        column_name!(governor_queue::GovernorOperationDef, status),
+        governor_queue::GovernorOpStatus::Done,
+    )?;
+    let dml = Dml::update(
+        governor_queue::GovernorQueue::TABLE_ID,
+        &[governor_op_id],
+        update_ops,
+        ADMIN_ID,
+    )?;
+    Ok(dml)
 }
 
 // TODO: move this to sbroad
