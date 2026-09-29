@@ -961,8 +961,8 @@ fn set_login_check() {
                         message: "successfully authenticated user `{user}`",
                         title: "auth_ok",
                         severity: High,
-                        user: %user,
-                        initiator: %user,
+                        user: user,
+                        initiator: user,
                         verdict: "user is not blocked",
                     );
                 }
@@ -971,8 +971,8 @@ fn set_login_check() {
                         message: "failed to authenticate user `{user}`",
                         title: "auth_fail",
                         severity: High,
-                        user: %user,
-                        initiator: %user,
+                        user: user,
+                        initiator: user,
                         verdict: "user is not blocked",
                     );
                 }
@@ -981,8 +981,8 @@ fn set_login_check() {
                         message: "failed to authenticate unknown user `{user}`",
                         title: "auth_fail",
                         severity: High,
-                        user: %user,
-                        initiator: %user,
+                        user: user,
+                        initiator: user,
                         verdict: "user is not blocked",
                     );
                 }
@@ -991,8 +991,8 @@ fn set_login_check() {
                         message: "failed to authenticate user `{user}`",
                         title: "auth_fail",
                         severity: High,
-                        user: %user,
-                        initiator: %user,
+                        user: user,
+                        initiator: user,
                         verdict: format!("{err}; user blocked"),
                     );
 

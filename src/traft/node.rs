@@ -1465,8 +1465,8 @@ impl NodeImpl {
                             message: "created table `{name}`",
                             title: "create_table",
                             severity: Medium,
-                            name: %name,
-                            initiator: %initiator_def.name,
+                            name: name,
+                            initiator: initiator_def.name,
                         );
                     }
 
@@ -1482,8 +1482,8 @@ impl NodeImpl {
                             message: "dropped table `{name}`",
                             title: "drop_table",
                             severity: Medium,
-                            name: %name,
-                            initiator: %initiator_def.name,
+                            name: name,
+                            initiator: initiator_def.name,
                         );
                     }
 
@@ -1511,7 +1511,7 @@ impl NodeImpl {
                             message: "truncated table `{name}`",
                             title: "truncate_table",
                             severity: Medium,
-                            name: %name,
+                            name: name,
                             initiator: initiator_def.name,
                         );
                     }
@@ -1538,8 +1538,8 @@ impl NodeImpl {
                             message: "renamed table `{old_name}` to `{new_name}`",
                             title: "rename_table",
                             severity: Medium,
-                            old_name: %old_name,
-                            new_name: %new_name,
+                            old_name: old_name,
+                            new_name: new_name,
                             initiator: initiator_def.name,
                         );
                     }
