@@ -977,6 +977,10 @@ pub mod stage {
             /// replication code.
             pub replicaset_dml: UpdateOps,
 
+            /// Optional operation to bump the version of sharding config.
+            /// Applied together with `replicaset_dml` once the promotion succeeds.
+            pub bump_dml: Vec<Dml>,
+
             /// Eligible online alternatives, excluding `new_master_name`.
             pub fallback_candidates: Vec<PromotionCandidate>,
 

@@ -1501,6 +1501,69 @@ cluster:
     Retriable().call(write_replicated_everywhere)
 
 
+def test_sync_replication_switchover_updates_vshard_master(cluster: Cluster):
+    """
+    A voluntary switchover in a sync tier, with every instance online, must
+    reach vshard. The vshard config names the replicaset master explicitly,
+    so neither the routers nor the storages learn the election result on
+    their own: they follow the new master only after the governor applies a
+    new vshard config.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        sync_tier:
+            replication_factor: 3
+            replication_mode: sync
+            bucket_count: 30
+"""
+    )
+
+    i1, i2, i3 = cluster.deploy(instance_count=3, tier="sync_tier")
+    instances = [i1, i2, i3]
+
+    master_name = i1.replicaset_master_name()
+    master = next(i for i in instances if i.name == master_name)
+    new_master = next(i for i in instances if i.name != master_name)
+
+    master.sql("CREATE TABLE t (id INT NOT NULL, PRIMARY KEY (id))")
+    master.sql("INSERT INTO t VALUES (1)")
+
+    def vshard_master_view(instance: Instance):
+        return instance.eval(
+            """
+            local rs = select(2, next(pico.router['sync_tier'].replicasets))
+            local master = rs.master and rs.master.name or box.NULL
+            return {master, vshard.storage.internal.is_master}
+            """
+        )
+
+    for i in instances:
+        assert vshard_master_view(i) == [master.name, i is master]
+
+    index, _ = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=[i1.replicaset_name],
+        ops=[("=", "target_master_name", new_master.name)],
+    )
+    cluster.raft_wait_index(index)
+    assert i1.replicaset_master_name() == new_master.name
+    cluster.wait_governor_status("idle")
+
+    assert new_master.eval("return box.info.ro") is False
+    assert master.eval("return box.info.ro") is True
+
+    for i in instances:
+        assert vshard_master_view(i) == [new_master.name, i is new_master]
+
+    # Every instance routes a sharded write to the new master.
+    for key, i in enumerate(instances, start=2):
+        i.sql(f"INSERT INTO t VALUES ({key})")
+
+
 @pytest.mark.flaky(reruns=3)
 def test_sync_replication_unlogged_tables_truncated_on_demotion(cluster: Cluster):
     """

@@ -305,6 +305,15 @@ pub fn handle_sync_master_election_promote<'i>(
             &new_master_name,
         )?;
 
+        let mut bump_dml = vec![];
+
+        // Vshard configuration names the replicaset master explicitly, so
+        // routers and storages don't follow the election result on their own
+        if tier.has_buckets() {
+            let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op(tier)?;
+            bump_dml.push(vshard_config_version_bump);
+        }
+
         let ranges = vec![
             // We make a decision based on these instances' state so the operation
             // should fail in case there's a change to it in the uncommitted log
@@ -326,6 +335,7 @@ pub fn handle_sync_master_election_promote<'i>(
                 new_master_name,
                 promote_rpc,
                 replicaset_dml,
+                bump_dml,
                 fallback_candidates,
                 ranges,
             }
@@ -804,9 +814,16 @@ mod tests {
         .is_none());
         let election_plan =
             handle_sync_master_election_promote(&topology_ref, &db_config, 7).unwrap();
-        assert!(matches!(
-            election_plan,
-            Some(Plan::ReplicasetMasterElectionPromote { .. })
-        ));
+        let Some(Plan::ReplicasetMasterElectionPromote(election_plan)) = election_plan else {
+            panic!("expected a promote plan");
+        };
+
+        let [vshard_config_version_bump] = &election_plan.bump_dml[..] else {
+            panic!("expected a single vshard config bump");
+        };
+        assert_eq!(
+            vshard_config_version_bump.table_id(),
+            storage::Tiers::TABLE_ID
+        );
     }
 }

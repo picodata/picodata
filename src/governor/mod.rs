@@ -530,6 +530,7 @@ impl Loop {
                 new_master_name,
                 promote_rpc,
                 mut replicaset_dml,
+                bump_dml,
                 fallback_candidates,
                 ranges,
             }) => {
@@ -584,8 +585,12 @@ impl Loop {
                                     ADMIN_ID,
                                 )?;
 
+                                let mut ops = bump_dml;
+                                ops.push(master_actualize_dml);
+
+                                let op = Op::single_dml_or_batch(ops);
                                 let predicate = cas::Predicate::new(applied, ranges);
-                                let cas = cas::Request::new(master_actualize_dml, predicate, ADMIN_ID)?;
+                                let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
                                 let deadline =
                                     fiber::clock().saturating_add(raft_op_timeout);
                                 cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
