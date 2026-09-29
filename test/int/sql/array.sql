@@ -785,3 +785,37 @@ null
 SELECT b::int[][1][2]['bad'] FROM t1 WHERE a = 1;
 -- EXPECTED:
 null
+
+-- TEST: array-left-join-count
+-- SQL:
+WITH cte(a) AS (VALUES (ARRAY[1, 2, 3]))
+SELECT count(*) FROM cte LEFT JOIN cte t2 ON true;
+-- EXPECTED:
+1
+
+-- TEST: array-left-join-elements
+-- SQL:
+WITH cte(a) AS (VALUES (ARRAY[1, 2, 3]))
+SELECT cte.a[1], cte.a[3], t2.a[1], t2.a[3] FROM cte LEFT JOIN cte t2 ON true;
+-- EXPECTED:
+1, 3, 1, 3
+
+-- TEST: array-left-join-two-arrays
+-- SQL:
+WITH a(x) AS (VALUES (ARRAY[1, 2, 3])), b(y) AS (VALUES (ARRAY[4, 5, 6]))
+SELECT a.x[1], a.x[3], b.y[1], b.y[3] FROM a LEFT JOIN b ON true;
+-- EXPECTED:
+1, 3, 4, 6
+
+-- TEST: array-left-join-two-arrays-no-match
+-- SQL:
+WITH a(x) AS (VALUES (ARRAY[1, 2, 3])), b(y) AS (VALUES (ARRAY[4, 5, 6]))
+SELECT a.x[1], a.x[3], b.y[1], b.y[3] FROM a LEFT JOIN b ON false;
+-- EXPECTED:
+1, 3, null, null
+
+-- TEST: array-left-join-of-table
+-- SQL:
+SELECT t1.a, t2.b[1] FROM t1 LEFT JOIN t1 t2 ON t1.a = t2.a WHERE t1.a = 1;
+-- EXPECTED:
+1, 1

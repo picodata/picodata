@@ -14,13 +14,6 @@ select * from cte union select * from cte;
 -- ERROR:
 Tuple field 1 \(_COLUMN_0\) type does not match one required by operation: expected scalar, got array
 
--- TEST: array-compared-left-join
--- SQL:
-with cte(a) as (values (array[1, 2, 3]))
-select * from cte left join cte t2 on true;
--- ERROR:
-Failed to execute SQL statement: field type 'array' is not comparable
-
 -- TEST: array-distribution-key
 -- SQL:
 create table t (id int primary key, val int[]) distributed by (val);
