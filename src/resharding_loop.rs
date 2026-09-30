@@ -39,6 +39,7 @@ use tarantool::time::Instant;
 use tarantool::transaction::transaction;
 
 mod action;
+pub mod bucket_ranges;
 mod find_sharded_bucket_updates;
 pub mod test;
 

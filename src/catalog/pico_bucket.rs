@@ -142,6 +142,13 @@ impl BucketRecord {
             && (self.current_replicaset_name == replicaset_name
                 || self.target_replicaset_name.as_deref() == Some(replicaset_name))
     }
+
+    #[inline]
+    pub fn is_mergeable_with(&self, other: &Self) -> bool {
+        self.state == other.state
+            && self.current_replicaset_name == other.current_replicaset_name
+            && self.target_replicaset_name == other.target_replicaset_name
+    }
 }
 
 impl Encode for BucketRecord {}

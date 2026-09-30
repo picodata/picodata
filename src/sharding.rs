@@ -1,6 +1,7 @@
 use crate::catalog::pico_bucket::BucketRecord;
 use crate::error_or_panic;
 use crate::replicaset::Replicaset;
+use crate::resharding_loop::bucket_ranges::BucketRanges;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 
@@ -152,68 +153,5 @@ impl TierBucketsInfo {
         };
 
         *curr_count += to_add;
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// BucketRanges
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Default, Debug, Clone)]
-pub struct BucketRanges {
-    /// An array of records ordered by [`BucketRecord::bucket_id_start`].
-    inner: Vec<BucketRecord>,
-}
-
-impl BucketRanges {
-    #[inline(always)]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    #[inline(always)]
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    #[inline(always)]
-    pub fn iter(&self) -> std::slice::Iter<'_, BucketRecord> {
-        self.inner.iter()
-    }
-
-    /// Inserts the new range. Returns `Some(old)` if there was already a range
-    /// with the same `bucket_id_start` value. Otherwise returns `None`.
-    pub fn insert(&mut self, new_range: BucketRecord) -> Option<BucketRecord> {
-        let res = self
-            .inner
-            .binary_search_by_key(&new_range.bucket_id_start, |r| r.bucket_id_start);
-        match res {
-            Ok(found_at) => {
-                // A record with the same `bucket_id_start` already exists.
-                // Replace it with the new one, return the old one to the
-                // caller.
-                let mut slot = new_range;
-                std::mem::swap(&mut self.inner[found_at], &mut slot);
-                return Some(slot);
-            }
-            Err(insert_at) => {
-                // Record with exact `bucket_id_start` match is not present.
-                self.inner.insert(insert_at, new_range);
-                return None;
-            }
-        }
-    }
-
-    /// Find the bucket range with the same `bucket_id_start` and remove it from
-    /// the collection. Returns `Some(old)` if such range was found and remove.
-    /// Otherwise returns `None`.
-    pub fn remove_starting_at(&mut self, bucket_id_start: u64) -> Option<BucketRecord> {
-        let Ok(index) = self
-            .inner
-            .binary_search_by_key(&bucket_id_start, |r| r.bucket_id_start)
-        else {
-            return None;
-        };
-        Some(self.inner.remove(index))
     }
 }
