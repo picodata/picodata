@@ -173,6 +173,7 @@ nav:
       - Radix:
           - plugins/radix/index.md
           - plugins/radix/install.md
+          - plugins/radix/certified.md
           - plugins/radix/usage.md
           - plugins/radix/configuration.md
           - plugins/radix/radix_settings.md
