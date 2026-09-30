@@ -161,45 +161,7 @@ impl Expression<'_> {
                 }
             }
             Expression::ArrayLiteral(ArrayLiteral { col_type, .. }) => *col_type,
-            Expression::ScalarFunction(ScalarFunction {
-                name,
-                func_type,
-                children,
-                ..
-            }) => {
-                match name.as_str() {
-                    "max" | "min" => {
-                        // min/max functions have a scalar type, which means that their actual type can be
-                        // inferred from the arguments.
-                        let expr_id = children
-                            .first()
-                            .expect("min/max functions must have an argument");
-                        let expr = plan.get_expression_node(*expr_id)?;
-                        expr.calculate_type(plan)?
-                    }
-                    "coalesce" => {
-                        // TODO: infer type using type system.
-                        let mut last_ty = DerivedType::unknown();
-                        for child_id in children {
-                            let child = plan.get_expression_node(*child_id)?;
-                            let ty = child.calculate_type(plan)?;
-                            if let Some(ty) = ty.get() {
-                                last_ty.set(*ty)
-                            }
-                        }
-                        last_ty
-                    }
-                    "abs" => {
-                        let child = children.first().ok_or(SbroadError::Invalid(
-                            Entity::SQLFunction,
-                            Some("abs function must have an argument".to_smolstr()),
-                        ))?;
-                        let child_ty = plan.get_expression_node(*child)?;
-                        child_ty.calculate_type(plan)?
-                    }
-                    _ => *func_type,
-                }
-            }
+            Expression::ScalarFunction(ScalarFunction { func_type, .. }) => *func_type,
             Expression::CountAsterisk(_) => DerivedType::new(UnrestrictedType::Integer),
             Expression::Timestamp(_) => DerivedType::new(UnrestrictedType::Datetime),
             Expression::CurrentUser(_) => DerivedType::new(UnrestrictedType::String),

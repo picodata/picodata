@@ -453,7 +453,7 @@ fn concat_arg_casted_to_non_text() {
 fn count_has_local_and_final_stages() {
     let sql = r#"explain (logical) select count(*) from t2"#;
     insta::assert_snapshot!(explain(sql), @"
-    projection (sum(count_1::int)::int::int -> col_1)
+    projection (sum(count_1::int)::decimal::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
           scan t2

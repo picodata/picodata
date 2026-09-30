@@ -187,7 +187,7 @@ explain select cast(max(cast(1 as int)) as double);
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (max(1::double)::int::double -> col_1)
+projection (max(1::double)::double::double -> col_1)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

@@ -66,7 +66,7 @@ fn projection_any_dist_for_expr() {
 
     // check explain first
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (sum(count_1::int)::int::int -> col_1)
+    projection (sum(count_1::int)::decimal::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(test_space.id::int::int)::int -> count_1)
           scan test_space

@@ -2348,6 +2348,31 @@ SELECT avg(b) OVER (ORDER BY a ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)
 -- EXPECTED:
 Decimal('0'), Decimal('37'), Decimal('38.333333333333333333333333333333333333')
 
+-- TEST: window-13-aggregate-setup
+-- SQL:
+DROP TABLE IF EXISTS wt;
+CREATE TABLE wt (a INT PRIMARY KEY, b INT) DISTRIBUTED BY (b);
+INSERT INTO wt VALUES (1, 2), (2, 2), (3, 3), (4, 3), (5, 4);
+
+-- TEST: window-13-aggregate-ordered-by-result
+-- SQL:
+SELECT b, count(a) OVER () FROM wt ORDER BY 2, 1 LIMIT 8;
+-- EXPECTED:
+2, 5, 2, 5, 3, 5, 3, 5, 4, 5
+
+-- TEST: window-13-aggregate-distinct-count
+-- SQL:
+SELECT DISTINCT count(a) OVER () FROM wt;
+-- EXPECTED:
+5
+
+-- TEST: window-13-aggregate-distinct-others
+-- SQL:
+SELECT DISTINCT sum(b) OVER (), total(b) OVER (),
+                min(b) OVER (), max(b) OVER () FROM wt;
+-- EXPECTED:
+14, 14, 2, 4
+
 -- TEST: window-13-sum-and-avg-of-double
 -- SQL:
 SELECT sum(CAST(1e39 AS DOUBLE)) OVER (), avg(CAST(1e39 AS DOUBLE)) OVER () FROM (VALUES (1));

@@ -1583,7 +1583,7 @@ SELECT a FROM t1 WHERE
 (1 NOT BETWEEN 0 AND COALESCE(NULL, NULL)) BETWEEN 0 = 0 AND (EXISTS (SELECT 1) OR TRUE);
 -- EXPECTED:
 projection (t1.a::int -> a)
-  selection (((1::int > coalesce(NULL::unknown, NULL::unknown)::any) >= true::bool and (1::int > coalesce(NULL::unknown, NULL::unknown)::any) <= true::bool))
+  selection (((1::int > coalesce(NULL::unknown, NULL::unknown)::int) >= true::bool and (1::int > coalesce(NULL::unknown, NULL::unknown)::int) <= true::bool))
     scan t1
 
 -- TEST: test-not-between-over-folded-subquery-branch

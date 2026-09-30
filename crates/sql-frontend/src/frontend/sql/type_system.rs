@@ -734,12 +734,38 @@ fn annotate_composite_types(
         };
         matches!(
             expr,
-            Expression::ArrayLiteral(_) | Expression::Index(_) | Expression::Parameter(_)
+            Expression::ArrayLiteral(_)
+                | Expression::Index(_)
+                | Expression::Parameter(_)
+                | Expression::ScalarFunction(_)
+                | Expression::Over(_)
         )
     };
 
     let post_order = PostOrderWithFilter::new(|node| plan.subtree_iter(node), is_target, 0);
     let targets: Vec<_> = post_order.traverse_into_vec(expr_id);
+
+    // A window function is analyzed under its `Over` node, so the wrapped function has no
+    // entry of its own and takes the window's type. Resolve which node each return type
+    // belongs to before taking a mutable borrow of the plan.
+    let mut func_types: Vec<(NodeId, Type)> = Vec::new();
+    for id in &targets {
+        let target = match plan.get_expression_node(*id)? {
+            Expression::ScalarFunction(ScalarFunction { is_window, .. }) if !is_window => *id,
+            Expression::Over(Over { stable_func, .. }) => *stable_func,
+            _ => continue,
+        };
+        func_types.push((target, report.get_return_type(id)));
+    }
+
+    for (id, ty) in func_types {
+        let MutExpression::ScalarFunction(ScalarFunction { func_type, .. }) =
+            plan.get_mut_expression_node(id)?
+        else {
+            unreachable!("only scalar functions are collected")
+        };
+        *func_type = DerivedType::from(ty);
+    }
 
     for id in targets {
         match plan.get_mut_expression_node(id)? {
@@ -752,6 +778,8 @@ fn annotate_composite_types(
             MutExpression::Parameter(Parameter {
                 param_type, index, ..
             }) => *param_type = param_types[*index as usize - 1],
+            // Bound above: their return type, not the type their context coerced them to.
+            MutExpression::ScalarFunction(_) | MutExpression::Over(_) => {}
             _ => unreachable!("filter restricts node kinds"),
         }
     }

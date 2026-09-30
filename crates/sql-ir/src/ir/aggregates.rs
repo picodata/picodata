@@ -308,7 +308,10 @@ impl Aggregate {
         } else {
             None
         };
-        let func_type = self.kind.get_type(plan, &children)?;
+        // Type the node after the function it is, not after the aggregate the user wrote:
+        // `children` holds the map stage's output, so this derives the reduce stage's type
+        // from the first stage's. The two differ for COUNT, whose reduce stage is a sum().
+        let func_type = final_kind.get_type(plan, &children)?;
         let final_aggr = ScalarFunction {
             name: final_kind.to_smolstr(),
             children,

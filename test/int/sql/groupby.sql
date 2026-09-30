@@ -392,6 +392,18 @@ group by cs;
 -- EXPECTED:
 4, 1
 
+-- TEST: test_count_ordered_by_aggregate_with_limit
+-- SQL:
+SELECT "b", count("e") FROM "arithmetic_space" GROUP BY "b" ORDER BY 2, 1 LIMIT 8;
+-- EXPECTED:
+1, 1, 2, 1, 3, 2
+
+-- TEST: test_distinct_count_with_groupby
+-- SQL:
+SELECT DISTINCT count("e") FROM "arithmetic_space" GROUP BY "b";
+-- UNORDERED:
+1, 2
+
 -- TEST: test_aggr_invalid
 -- SQL:
 SELECT "d", count(sum("e")) from "arithmetic_space" group by "d";

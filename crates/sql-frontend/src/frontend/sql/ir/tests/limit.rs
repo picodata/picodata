@@ -63,7 +63,7 @@ fn group_by() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     limit 555
-      projection (sum(count_1::int)::int::int -> col_1, gr_expr_1::int -> b)
+      projection (sum(count_1::int)::decimal::int -> col_1, gr_expr_1::int -> b)
         group by (gr_expr_1::int)
           motion [policy: full, program: ReshardIfNeeded]
             projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)
@@ -448,7 +448,7 @@ fn limit_pushdown_having_filter_aggregate() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     limit 5
       projection (gr_expr_1::int -> b)
-        having (sum(count_1::int)::int::int > 1::int)
+        having (sum(count_1::int)::decimal::int > 1::int)
           group by (gr_expr_1::int)
             motion [policy: full, program: ReshardIfNeeded]
               projection (t.b::int -> gr_expr_1, count(*)::int -> count_1)

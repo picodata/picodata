@@ -156,6 +156,15 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
         self.casts.get(id).cloned()
     }
 
+    /// Get the type an expression produces, ignoring any coercion a parent applied to it.
+    ///
+    /// # Panics
+    /// Panics if there is no such id in the report.
+    #[track_caller]
+    pub fn get_return_type(&self, id: &Id) -> Type {
+        self.types[id]
+    }
+
     /// Report expression type.
     fn report(&mut self, id: &Id, ty: Type) {
         self.types.insert(id.clone(), ty);
