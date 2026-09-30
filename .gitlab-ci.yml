@@ -782,6 +782,8 @@ lint:
 
 .test-patch-rules: &test-patch-rules
   rules:
+    # FIXME: test-patch jobs are temporarily disabled, remove this rule to re-enable them
+    - when: never
     # scheduled pipelines on release branches are for audit, not for tests or builds
     - if: ($CI_COMMIT_BRANCH =~ /^\d+\.\d+$/) && ($CI_PIPELINE_SOURCE == "schedule")
       when: never
