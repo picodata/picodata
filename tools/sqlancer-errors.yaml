@@ -232,6 +232,16 @@ errors:
       CREATE TABLE dks (x INT PRIMARY KEY);
       EXPLAIN SELECT MIN(c) FILTER (WHERE (SELECT x FROM dks) IN (a, b)) OVER () FROM dkt;
 
+  # A join of global tables whose condition is a subquery over a sharded table gets no Motion(Full)
+  # for the subquery.
+  - pattern: "expected Motion(Full) for subquery child"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3240
+    repro: |
+      CREATE TABLE mg1 (c0 INT PRIMARY KEY) DISTRIBUTED GLOBALLY;
+      CREATE TABLE mg2 (c0 INT PRIMARY KEY) DISTRIBUTED GLOBALLY;
+      CREATE TABLE ms (c0 INT PRIMARY KEY);
+      SELECT * FROM mg1 JOIN mg2 ON (SELECT true FROM ms);
+
   # A window aggregate encodes its argument as a decimal, so a double beyond the 38 digits a
   # decimal holds fails. The same expression outside a window keeps the double and succeeds. It
   # takes a decimal to reach the aggregate: COALESCE over a double and a decimal literal is what

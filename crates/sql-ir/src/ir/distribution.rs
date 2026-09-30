@@ -629,7 +629,12 @@ impl Plan {
                 Distribution::Any => {
                     // Earlier when resolving conflicts for subqueries we must have
                     // inserted Motion(Full) for subquery with Any distribution.
-                    panic!("Expected Motion(Full) for subquery child ({sq_id}).")
+                    return Err(SbroadError::Invalid(
+                        Entity::Distribution,
+                        Some(format_smolstr!(
+                            "expected Motion(Full) for subquery child ({sq_id})"
+                        )),
+                    ));
                 }
                 Distribution::Single | Distribution::Global => {
                     // TODO: In case we have a single sq can we improve Global to Single?
