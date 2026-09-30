@@ -819,3 +819,154 @@ SELECT a.x[1], a.x[3], b.y[1], b.y[3] FROM a LEFT JOIN b ON false;
 SELECT t1.a, t2.b[1] FROM t1 LEFT JOIN t1 t2 ON t1.a = t2.a WHERE t1.a = 1;
 -- EXPECTED:
 1, 1
+
+-- TEST: select-array-literal
+-- SQL:
+SELECT ARRAY[1, 2, 3], ARRAY[1, NULL, 3], ARRAY[NULL], ARRAY[]::int[];
+-- EXPECTED:
+[1, 2, 3], [1, NULL, 3], [NULL], []
+
+-- TEST: select-array-literal-typed
+-- SQL:
+SELECT ARRAY[1.5::double, 2::double], ARRAY[1.5, 2.5], ARRAY['hello', 'world'], ARRAY[true, false, NULL];
+-- EXPECTED:
+[1.5, 2.0], [Decimal('1.5'), Decimal('2.5')], ['hello', 'world'], [true, false, NULL]
+
+-- TEST: select-array-literal-text-with-separators
+-- SQL:
+SELECT ARRAY['a, b', '[c]', ']'], 'd, e';
+-- EXPECTED:
+['a, b', '[c]', ']'], 'd, e'
+
+-- TEST: select-array-int-column
+-- SQL:
+SELECT a, b FROM t1 ORDER BY a;
+-- EXPECTED:
+1, [1, 2, 3],
+2, [],
+3, NULL,
+4, [NULL],
+5, [3, 2, 1],
+10, [0],
+14, [1, NULL, 3],
+15, [1, 2],
+16, [3, 4],
+100, [],
+101, [10, 20],
+102, NULL,
+103, [3, 4]
+
+-- TEST: select-array-double-column
+-- SQL:
+SELECT a, b FROM t_dbl ORDER BY a;
+-- EXPECTED:
+1, [1.0, 2.0, 3.0],
+2, [1.5, 2.5],
+3, [1.0, 2.5, 3.0],
+4, [1.5, 2.5],
+90, []
+
+-- TEST: select-array-decimal-column
+-- SQL:
+SELECT a, b FROM t_dec ORDER BY a;
+-- EXPECTED:
+1, [Decimal('1'), Decimal('2'), Decimal('3')],
+2, [Decimal('1'), Decimal('2.5'), Decimal('3')],
+3, [Decimal('1'), Decimal('2')]
+
+-- TEST: select-array-text-column
+-- SQL:
+SELECT a, b FROM t_txt ORDER BY a;
+-- EXPECTED:
+1, ['hello', 'world'],
+90, []
+
+-- TEST: select-array-bool-column
+-- SQL:
+SELECT a, b FROM t_bool ORDER BY a;
+-- EXPECTED:
+1, [true, false, true],
+2, [true, false],
+90, [],
+91, [NULL]
+
+-- TEST: select-array-unordered
+-- SQL:
+SELECT a, b FROM t_idx;
+-- UNORDERED:
+3, [7, 8, 9],
+1, [10, 20, 30],
+2, [5, 15]
+
+-- TEST: select-array-union-all-unordered
+-- SQL:
+SELECT b FROM t_idx UNION ALL SELECT b FROM t_idx;
+-- UNORDERED:
+[5, 15], [5, 15], [7, 8, 9], [7, 8, 9], [10, 20, 30], [10, 20, 30]
+
+-- TEST: select-array-left-join
+-- SQL:
+WITH cte(a) AS (VALUES (ARRAY[1, 2, 3]))
+SELECT * FROM cte LEFT JOIN cte t2 ON true;
+-- EXPECTED:
+[1, 2, 3], [1, 2, 3]
+
+-- TEST: select-array-left-join-no-match
+-- SQL:
+WITH a(x) AS (VALUES (ARRAY[1, 2, 3])), b(y) AS (VALUES (ARRAY[4, 5, 6]))
+SELECT * FROM a LEFT JOIN b ON false;
+-- EXPECTED:
+[1, 2, 3], NULL
+
+-- TEST: select-array-join-tables
+-- SQL:
+SELECT t1.a, t1.b, t_idx.b FROM t1 JOIN t_idx ON t1.a = t_idx.a ORDER BY 1;
+-- EXPECTED:
+1, [1, 2, 3], [10, 20, 30],
+2, [], [5, 15],
+3, NULL, [7, 8, 9]
+
+-- TEST: select-array-param-int
+-- SQL:
+SELECT $1::int[];
+-- PARAMS:
+[1, NULL, 3]
+-- EXPECTED:
+[1, NULL, 3]
+
+-- TEST: select-array-param-text
+-- SQL:
+SELECT $1::text[];
+-- PARAMS:
+['a, b', '[c]']
+-- EXPECTED:
+['a, b', '[c]']
+
+-- TEST: insert-array-param
+-- SQL:
+INSERT INTO t_idx VALUES (4, $1::int[]);
+-- PARAMS:
+[40, NULL]
+
+-- TEST: insert-array-param-readback
+-- SQL:
+SELECT b FROM t_idx WHERE a = 4;
+-- EXPECTED:
+[40, NULL]
+
+-- TEST: init-nested
+-- SQL:
+CREATE TABLE t_nested (a INT, b TEXT, PRIMARY KEY (a, b)) DISTRIBUTED BY (b, a);
+
+-- TEST: select-array-nested-index-parts
+-- SQL:
+SELECT parts FROM _pico_index
+WHERE table_id = (SELECT id FROM _pico_table WHERE name = 't_nested') AND id = 0;
+-- EXPECTED:
+[['a', 'integer', NULL, false, NULL], ['b', 'string', NULL, false, NULL]]
+
+-- TEST: select-array-nested-sharding-key
+-- SQL:
+SELECT distribution['ShardedImplicitly'] FROM _pico_table WHERE name = 't_nested';
+-- EXPECTED:
+[['b', 'a'], 'murmur3', 'default']

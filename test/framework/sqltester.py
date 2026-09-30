@@ -25,9 +25,25 @@ def init_cluster(cluster: Cluster, instance_count: int, replication_factor: int)
     return cluster
 
 
+class _Array(tuple):
+    """Hashable stand-in for an array value, printed the way tests spell it."""
+
+    def __repr__(self):
+        return repr(list(self))
+
+
+def _hashable(value):
+    if isinstance(value, list):
+        return _Array(map(_hashable, value))
+    return value
+
+
 def compare_results(expected, actual):
-    expected_counter = Counter(map(tuple, expected))
-    actual_counter = Counter(map(tuple, actual))
+    # Array values come as lists (both from the runners and from the parsed
+    # expectation), and lists are unhashable, so `Counter` can't count rows
+    # containing them. Convert arrays to hashable tuples first.
+    expected_counter = Counter(tuple(map(_hashable, row)) for row in expected)
+    actual_counter = Counter(tuple(map(_hashable, row)) for row in actual)
 
     missing = expected_counter - actual_counter
     unexpected = actual_counter - expected_counter
@@ -248,9 +264,34 @@ class PgprotoRunner(AbstractRunner):
             return cur.fetchall()
 
 
+# Split `input_string` by `split_by`, except inside `[...]` arrays and
+# single-quoted strings.
+def _split_top_level(input_string: str, split_by: str) -> list[str]:
+    elements = []
+    depth = 0
+    in_quotes = False
+    cur_start = 0
+    for i, ch in enumerate(input_string):
+        if ch == "'":
+            in_quotes = not in_quotes
+        elif in_quotes:
+            continue
+        elif ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+        elif ch == split_by and depth == 0:
+            elements.append(input_string[cur_start:i])
+            cur_start = i + 1
+    elements.append(input_string[cur_start:])
+    return elements
+
+
 def _parse_line(input_string, lead_sym: Any, split_by: str):
     result: list[Any] = []
-    elements = input_string.split(split_by)
+    # Strip trailing whitespace so that a trailing comma is skipped rather
+    # than parsed as a blank (NULL) element: `[1, 2, ]` is `[1, 2]`.
+    elements = _split_top_level(input_string.rstrip(), split_by)
 
     for element in elements:
         if (
@@ -269,6 +310,9 @@ def _parse_line(input_string, lead_sym: Any, split_by: str):
         elif element.startswith("'") and element.endswith("'"):
             # If element in single quotes, remove them and add as string
             result.append(element[1:-1])
+        elif element.startswith("[") and element.endswith("]"):
+            # If element in square brackets, parse it as an array
+            result.append(_parse_line(element[1:-1], lead_sym, split_by))
         elif element.lower() in {"null", "none", "nil"}:
             # If element is a null, add as None
             result.append(None)
