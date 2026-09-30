@@ -1,4 +1,4 @@
-import axios, { AxiosError, AxiosRequestConfig, AxiosResponse } from "axios";
+import axios, { AxiosError, AxiosRequestConfig } from "axios";
 
 import { SessionModel } from "shared/session";
 
@@ -16,21 +16,8 @@ export async function postSession({ username, password }: Credentials) {
 }
 
 export function refreshSession(config: AxiosRequestConfig) {
-  if (refreshSession.lastResult) {
-    return refreshSession.lastResult;
-  }
-
-  refreshSession.lastResult = axios
-    .get<SessionModel>(sessionURL, config)
-    .finally(() => {
-      refreshSession.lastResult = null;
-    });
-
-  return refreshSession.lastResult;
+  return axios.get<SessionModel>(sessionURL, config);
 }
-
-// Simple request deduplication technique
-refreshSession.lastResult = null as Promise<AxiosResponse<SessionModel>> | null;
 
 // TODO: enable when DELETE /session works
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

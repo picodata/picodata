@@ -1,10 +1,12 @@
 import { styled } from "@mui/material";
+import { NavLink } from "react-router-dom";
 
 export const Root = styled("div")<{ $isOpen: boolean }>(
   ({ theme, $isOpen }) => ({
-    width: $isOpen ? "192px" : "64px",
+    width: $isOpen ? "288px" : "64px",
     flexShrink: 0,
     overflow: "hidden",
+    overflowY: $isOpen ? "auto" : "hidden",
     background: $isOpen
       ? `linear-gradient(
     176.39deg,
@@ -46,7 +48,7 @@ export const MenuIcon = styled("div")<{ $isOpen: boolean }>(
 export const NavLinksList = styled("div")<{ $isOpen: boolean }>(
   ({ $isOpen }) => ({
     marginTop: "80px",
-    opacity: $isOpen ? 1 : 0,
+    display: $isOpen ? "block" : "none",
   })
 );
 
@@ -55,4 +57,61 @@ export const NavLinkText = styled("span")({
   fontWeight: 500,
   lineHeight: "30px",
   userSelect: "none",
+});
+
+export const MenuNavLink = styled(NavLink)(({ theme }) => ({
+  display: "flex",
+  alignItems: "center",
+  columnGap: "16px",
+  color: theme.common.colors.typography.colorTextBlack,
+  marginBottom: "16px",
+  "&:last-child": { marginBottom: 0 },
+  "&:hover, &[aria-current='page']": {
+    color: theme.common.colors.typography.colorTextOrange,
+  },
+}));
+
+export const PluginGroup = styled("details")({
+  marginTop: "16px",
+  overflowWrap: "anywhere",
+});
+
+export const PluginSummary = styled("summary")({
+  display: "flex",
+  alignItems: "center",
+  columnGap: "16px",
+  cursor: "pointer",
+  fontSize: "16px",
+  fontWeight: 500,
+  listStyle: "none",
+  "&::-webkit-details-marker": { display: "none" },
+  "&::before": {
+    content: "'▶'",
+    width: "24px",
+    flexShrink: 0,
+    fontSize: "12px",
+    textAlign: "center",
+  },
+  "details[open] > &::before": {
+    transform: "rotate(90deg)",
+  },
+});
+
+export const PluginPages = styled("div")({
+  paddingTop: "12px",
+});
+
+export const PluginPageIconSlot = styled("span")({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  width: "24px",
+  height: "24px",
+});
+
+export const PluginPageIcon = styled("img")({
+  width: "20px",
+  height: "20px",
+  objectFit: "contain",
 });

@@ -1,0 +1,1 @@
+export { usePluginUiTranslations } from "./useTranslations";

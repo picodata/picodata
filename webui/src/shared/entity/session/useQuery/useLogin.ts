@@ -1,9 +1,10 @@
 import { useMutation } from "react-query";
-import { AxiosError } from "axios";
+import { AxiosError, CanceledError } from "axios";
 import { useContext } from "react";
 
 import { useMutationConfig } from "shared/api";
-import { useSessionStore, SessionModel } from "shared/session";
+import { SessionModel } from "shared/session";
+import { sessionStore } from "shared/session/store";
 import { ConfigQueryContext } from "shared/entity/config";
 import { ApiError } from "shared/api/errors";
 
@@ -12,21 +13,25 @@ import { SessionError, Credentials } from "../types";
 
 export const useLogin = () => {
   const queryConfig = useMutationConfig();
-  const [, session] = useSessionStore();
   const config = useContext(ConfigQueryContext);
 
   return useMutation<SessionModel, AxiosError<SessionError>, Credentials>({
     mutationKey: [api.postSession.name],
-    mutationFn: (credentials) =>
-      api.postSession(credentials).then((r) => r.data),
+    mutationFn: async (credentials) => {
+      const { scope } = sessionStore.getSnapshot();
+      const { data } = await api.postSession(credentials);
+      if (sessionStore.getSnapshot().scope !== scope) {
+        throw new CanceledError("Session changed during login");
+      }
+      sessionStore.set(data);
+      return data;
+    },
     onSuccess(value) {
       // This means that the app config is outdated
       // and auth is acutally disabled
       if (!value.auth) {
         config?.refetch();
       }
-
-      session.set(value);
     },
     onError(error) {
       // This means that the app config is outdated

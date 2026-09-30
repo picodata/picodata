@@ -1,6 +1,4 @@
-import { useRef } from "react";
-import cn from "classnames";
-import { NavLink } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
 import { BurgerIcon } from "shared/icons/BurgerIcon";
@@ -9,9 +7,19 @@ import { InstancesIcon } from "shared/icons/navLinks/InstancesIcon";
 import { Routes } from "shared/router/config";
 import { useLsState } from "shared/localStorage/hooks/useLsState";
 import { useTranslation } from "shared/intl";
+import { usePluginUiPages } from "shared/entity/pluginUi";
+import { groupPluginUiPages } from "shared/entity/pluginUi/utils";
+import { useSessionStore } from "shared/session";
+import { useAppConfig } from "shared/entity/config";
 
-import { MenuIcon, NavLinksList, NavLinkText, Root } from "./StyledComponents";
-import styles from "./SideMenu.module.css";
+import {
+  MenuIcon,
+  MenuNavLink,
+  NavLinksList,
+  NavLinkText,
+  Root,
+} from "./StyledComponents";
+import { PluginNavGroup } from "./PluginNavGroup";
 
 export const SideMenu = () => {
   const [isOpen, setIsOpen] = useLsState({
@@ -21,6 +29,11 @@ export const SideMenu = () => {
   });
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isExpanded, setIsExpanded] = useState(isOpen);
+
+  useEffect(() => {
+    if (!isOpen) setIsExpanded(false);
+  }, [isOpen]);
 
   useOutsideClickEvent(containerRef, () => {
     setIsOpen(false);
@@ -28,6 +41,9 @@ export const SideMenu = () => {
 
   const { translation } = useTranslation();
   const sideMenuTranslations = translation.sideMenu;
+  const { data: pages = [] } = usePluginUiPages();
+  const [tokens] = useSessionStore();
+  const { isAuthEnabled } = useAppConfig();
 
   const navLinks = [
     {
@@ -38,27 +54,35 @@ export const SideMenu = () => {
   ];
 
   return (
-    <Root ref={containerRef} $isOpen={isOpen}>
+    <Root
+      ref={containerRef}
+      $isOpen={isOpen}
+      onTransitionEnd={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          event.propertyName === "width" &&
+          isOpen
+        ) {
+          setIsExpanded(true);
+        }
+      }}
+    >
       <MenuIcon $isOpen={isOpen} onClick={() => setIsOpen(!isOpen)}>
         <BurgerIcon />
       </MenuIcon>
-      <NavLinksList $isOpen={isOpen}>
-        {navLinks.map((link) => {
-          return (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              className={({ isActive }) => {
-                if (isActive) return cn(styles.navLink, styles.activeNavLink);
-
-                return styles.navLink;
-              }}
-            >
-              {link.icon}
-              <NavLinkText>{link.label}</NavLinkText>
-            </NavLink>
-          );
-        })}
+      <NavLinksList $isOpen={isOpen && isExpanded}>
+        {(!isAuthEnabled || tokens.auth) &&
+          navLinks.map((link) => {
+            return (
+              <MenuNavLink key={link.to} to={link.to}>
+                {link.icon}
+                <NavLinkText>{link.label}</NavLinkText>
+              </MenuNavLink>
+            );
+          })}
+        {groupPluginUiPages(pages).map(([plugin, pluginPages]) => (
+          <PluginNavGroup key={plugin} plugin={plugin} pages={pluginPages} />
+        ))}
       </NavLinksList>
       {/* Пример смены языка
       <div

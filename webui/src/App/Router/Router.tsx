@@ -16,6 +16,16 @@ import { NoAuth } from "./NoAuth";
 
 const router = createBrowserRouter([
   {
+    Component: MainLayout,
+    children: [
+      {
+        path: Routes.PLUGIN_PAGE,
+        lazy: () => import("./PluginPageRoute"),
+        hydrateFallbackElement: createElement(LoadingIndicator),
+      },
+    ],
+  },
+  {
     // Typical pages are not restricted when env auth is disabled
     element: createElement(Protected),
     children: [

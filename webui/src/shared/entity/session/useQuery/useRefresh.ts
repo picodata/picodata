@@ -1,23 +1,29 @@
 import { AxiosError } from "axios";
 import { useMutation } from "react-query";
+import { useEffect } from "react";
 
-import { SessionModel, useSessionStore } from "shared/session";
-import { useMutationConfig, withToken } from "shared/api";
+import { SessionModel, useSessionScope } from "shared/session";
+import { useMutationConfig } from "shared/api";
 
-import * as api from "../api";
+import { refreshCurrentSession } from "../refresh";
 import { SessionError } from "../types";
 
 export const useRefresh = () => {
   const queryConfig = useMutationConfig();
-  const [tokens, session] = useSessionStore();
+  const scope = useSessionScope();
 
-  return useMutation<SessionModel, AxiosError<SessionError>>({
-    mutationKey: [api.refreshSession.name, tokens.refresh],
-    mutationFn: () =>
-      api.refreshSession(withToken(() => tokens.refresh)).then((r) => r.data),
-    onSuccess(value) {
-      session.set(value);
-    },
+  const mutation = useMutation<SessionModel, AxiosError<SessionError>, number>({
+    mutationKey: ["refreshSession", scope],
+    mutationFn: refreshCurrentSession,
     ...queryConfig,
   });
+  const { reset } = mutation;
+  useEffect(() => reset(), [scope, reset]);
+
+  return {
+    ...mutation,
+    error: mutation.variables === scope ? mutation.error : null,
+    isLoading: mutation.variables === scope && mutation.isLoading,
+    mutateAsync: () => mutation.mutateAsync(scope),
+  };
 };
