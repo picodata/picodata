@@ -108,6 +108,8 @@ type StableHashMap<K, V> = HashMap<K, V, StableHasher>;
 pub struct TypeReport<Id: Hash + Eq + Clone> {
     // TODO: consider using smallvec for small reports.
     // TODO: consider using different hash table or different state.
+    // The type an expression produces on its own. What it is used as, once a parent has
+    // coerced it, is `types` overlaid with `casts`; see `get_type`.
     types: StableHashMap<Id, Type>,
     casts: StableHashMap<Id, Type>,
     // Types of parameters met in expression.
@@ -127,18 +129,19 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
         }
     }
 
-    /// Get expression type.
+    /// Get the type an expression is used as: the type it produces, or the type a parent
+    /// coerced it to.
     ///
     /// # Panics
     /// Panics if there is no such id in the report.
     #[track_caller]
     pub fn get_type(&self, id: &Id) -> Type {
-        self.types[id]
+        self.casts.get(id).copied().unwrap_or(self.types[id])
     }
 
     /// Try to get expression type.
     pub fn try_get_type(&self, id: &Id) -> Option<Type> {
-        self.types.get(id).copied()
+        self.casts.get(id).or_else(|| self.types.get(id)).copied()
     }
 
     /// Merge 2 reports.
@@ -792,7 +795,6 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 for (arg, ty) in zip(args, &overload.args_types) {
                     if report.get_type(&arg.id) != *ty {
                         report.cast(&arg.id, *ty);
-                        report.report(&arg.id, *ty);
                     }
                 }
                 resolved_overloads.push((overload, report));
