@@ -42,7 +42,7 @@ buckets = any
 
 -- TEST: raw-buckets-join-many
 -- SQL:
-explain (raw, buckets) select * from t join t on true group by 1, 2, 3, 4, 5, 6 order by 4 limit 5;
+explain (raw, buckets) select * from t join t as t2 on true group by 1, 2, 3, 4, 5, 6 order by 4 limit 5;
 -- EXPECTED:
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -52,10 +52,10 @@ explain (raw, buckets) select * from t join t on true group by 1, 2, 3, 4, 5, 6 
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "t"."a", "t"."b", "t"."c", "t"."bucket_id" FROM "t"
+SELECT "t2"."a", "t2"."b", "t2"."c", "t2"."bucket_id" FROM "t" as "t2"
 ''
 plan:
-    [0] SCAN TABLE t (~1048576 rows)
+    [0] SCAN TABLE t AS t2 (~1048576 rows)
 ''
 buckets <= [1-3000]
 ''
@@ -63,11 +63,11 @@ buckets <= [1-3000]
 │ 2. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3", "gr_expr_4", "gr_expr_5", "gr_expr_6" FROM ( SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2", "t"."c" as "gr_expr_3", "t"."COL_0" as "gr_expr_4", "t"."COL_1" as "gr_expr_5", "t"."COL_2" as "gr_expr_6" FROM "t" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_5707121753915152380_0136" ) as "t" ON CAST(true AS bool) GROUP BY "t"."a", "t"."b", "t"."c", "t"."COL_0", "t"."COL_1", "t"."COL_2" ) ORDER BY 4 LIMIT 5
+SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3", "gr_expr_4", "gr_expr_5", "gr_expr_6" FROM ( SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2", "t"."c" as "gr_expr_3", "t2"."COL_0" as "gr_expr_4", "t2"."COL_1" as "gr_expr_5", "t2"."COL_2" as "gr_expr_6" FROM "t" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_13837325007437510382_0136" ) as "t2" ON CAST(true AS bool) GROUP BY "t"."a", "t"."b", "t"."c", "t2"."COL_0", "t2"."COL_1", "t2"."COL_2" ) ORDER BY 4 LIMIT 5
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
-        [0] SCAN TABLE _tmp_5707121753915152380_0136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_13837325007437510382_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''

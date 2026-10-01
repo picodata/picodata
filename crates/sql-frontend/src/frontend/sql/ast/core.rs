@@ -248,10 +248,88 @@ impl AstCore {
 
         self.set_top(0)?;
 
+        self.check_table_names()?;
         self.transform_update()?;
         self.transform_delete()?;
         self.transform_select()?;
         Ok(())
+    }
+
+    /// Check that no two items of a FROM clause (including the target table
+    /// of `UPDATE ... FROM`) are visible under the same table name, as
+    /// PostgreSQL does. Nested queries have their own FROM clauses.
+    ///
+    /// Tarantool checks this as well (`srcListCheckTableNames`), but only
+    /// when it parses a local statement that still carries both names. The
+    /// plan is rewritten on the way down, so the duplicate may never reach
+    /// it:
+    /// - `EXPLAIN` and the parse-only paths dispatch nothing at all;
+    /// - the stage holding the duplicate may be pruned by bucket discovery,
+    ///   as in `... JOIN t ON true WHERE false`;
+    /// - a global branch of a set operator is serialized as an empty table
+    ///   (`SerializeAsEmptyTable`) on every replicaset but one, which leaves
+    ///   those statements with no FROM items for that branch.
+    fn check_table_names(&self) -> Result<(), SbroadError> {
+        let mut stack = vec![self.get_top()?];
+        while let Some(id) = stack.pop() {
+            let node = self.nodes.get_node(id)?;
+            // The stack pops in reverse, so push the children reversed to
+            // visit them in the order they are written: of the queries at
+            // the same level, the first one with a repeated name reports it.
+            stack.extend(node.children.iter().rev());
+
+            let mut names: HashSet<SmolStr> = HashSet::new();
+            for child_id in &node.children {
+                let child = self.nodes.get_node(*child_id)?;
+                let name = match (node.rule, child.rule) {
+                    (Rule::Select | Rule::Update, Rule::Scan) => self.scan_name(*child_id)?,
+                    (Rule::Select, Rule::Join) => {
+                        let scan_id = child
+                            .children
+                            .iter()
+                            .find(|id| matches!(self.nodes.get_node(**id), Ok(n) if n.rule == Rule::Scan))
+                            .expect("Join must have a Scan child");
+                        self.scan_name(*scan_id)?
+                    }
+                    (Rule::Update, Rule::IndexedTableScan) => {
+                        let scan_table_id = child.children.first().expect("must exist");
+                        let scan_table = self.nodes.get_node(*scan_table_id)?;
+                        let table_id = scan_table.children.first().expect("must exist");
+                        Some(parse_normalized_identifier(self, *table_id)?)
+                    }
+                    _ => None,
+                };
+                let Some(name) = name else {
+                    continue;
+                };
+                if names.contains(&name) {
+                    return Err(SbroadError::Other(format_smolstr!(
+                        "table name {} specified more than once",
+                        to_user(name)
+                    )));
+                }
+                names.insert(name);
+            }
+        }
+        Ok(())
+    }
+
+    /// Return the name a `Scan` is visible under: its alias, or the name of
+    /// the table or CTE. `None` for a subquery without an alias.
+    fn scan_name(&self, scan_id: usize) -> Result<Option<SmolStr>, SbroadError> {
+        let scan = self.nodes.get_node(scan_id)?;
+        let source_id = *scan.children.first().expect("Scan must have a source");
+        let alias_id = scan
+            .children
+            .get(1)
+            .filter(|id| matches!(self.nodes.get_node(**id), Ok(n) if n.rule == Rule::Identifier));
+        if let Some(alias_id) = alias_id {
+            return Ok(Some(parse_normalized_identifier(self, *alias_id)?));
+        }
+        if self.nodes.get_node(source_id)?.rule == Rule::ScanCteOrTable {
+            return Ok(Some(parse_normalized_identifier(self, source_id)?));
+        }
+        Ok(None)
     }
 
     /// Bring join AST to expected kind

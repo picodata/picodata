@@ -555,7 +555,7 @@ fn clause_based_parameter_type_inference() {
     );
 
     // JOIN
-    assert_ok("WITH t AS (SELECT 1) SELECT * FROM t join t on $1")
+    assert_ok("WITH t AS (SELECT 1) SELECT * FROM t join t as t2 on $1")
 }
 
 #[test]

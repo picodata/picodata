@@ -110,7 +110,8 @@ fn test_bool_folding5() {
 
 #[test]
 fn test_bool_folding6() {
-    let query = r#"explain (logical) SELECT * from t JOIN t on true WHERE 1 = 1 AND 56 <= 500"#;
+    let query =
+        r#"explain (logical) SELECT * from t JOIN t AS t2 on true WHERE 1 = 1 AND 56 <= 500"#;
 
     let coordinator = RouterRuntimeMock::new();
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
@@ -120,13 +121,13 @@ fn test_bool_folding6() {
     let buckets = query.bucket_discovery(top).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.a::int -> a, t2.b::int -> b, t2.c::int -> c, t2.d::int -> d)
       selection (true::bool)
         join on (true::bool)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
-            projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
-              scan t
+            projection (t2.a::int -> a, t2.b::int -> b, t2.c::int -> c, t2.d::int -> d, t2.bucket_id::int -> bucket_id)
+              scan t -> t2
     ");
 
     assert_eq!(Buckets::All, buckets);

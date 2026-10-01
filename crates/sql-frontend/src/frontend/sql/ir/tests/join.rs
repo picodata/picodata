@@ -1,4 +1,6 @@
-use sql_executor::test_helpers::sql_to_optimized_ir;
+use sql_executor::test_helpers::{
+    expect_sql_to_ir_error, sql_to_ir_without_bind, sql_to_optimized_ir,
+};
 use sql_explain::explain::explain_logical;
 
 #[test]
@@ -97,4 +99,89 @@ fn multi_join4() {
           projection (t3.bucket_id::int -> bucket_id, t3.a::string -> a, t3.b::int -> b)
             scan t3
     ");
+}
+
+#[test]
+fn join_duplicate_table_name() {
+    let cases = [
+        ("SELECT 1 FROM t JOIN t ON true", "t"),
+        ("SELECT 1 FROM t LEFT JOIN t ON true", "t"),
+        // An alias clashes with a table, a subquery or another alias.
+        ("SELECT 1 FROM t JOIN t1 AS t ON true", "t"),
+        ("SELECT 1 FROM t JOIN (SELECT 1) AS t ON true", "t"),
+        ("SELECT 1 FROM t AS x JOIN t1 AS x ON true", "x"),
+        (
+            "SELECT 1 FROM (VALUES (1)) AS v JOIN (VALUES (2)) AS v ON true",
+            "v",
+        ),
+        // Names are compared after normalization, without the schema.
+        (r#"SELECT 1 FROM t JOIN t AS "t" ON true"#, "t"),
+        ("SELECT 1 FROM public.t JOIN t ON true", "t"),
+        // Any earlier item of the FROM clause counts, not only the adjacent one.
+        ("SELECT 1 FROM t JOIN t1 ON true JOIN t ON true", "t"),
+        // Rejected before the join condition is resolved.
+        ("SELECT * FROM t JOIN t ON t.a = t.a", "t"),
+        ("WITH q AS (SELECT 1) SELECT 1 FROM q JOIN q ON true", "q"),
+        (
+            "WITH t AS (SELECT 1 AS a) SELECT 1 FROM t JOIN t ON true",
+            "t",
+        ),
+        // Nested queries are checked too.
+        ("SELECT (SELECT count(*) FROM t JOIN t ON true)", "t"),
+        (
+            "WITH q AS (SELECT 1 FROM t JOIN t ON true) SELECT * FROM q",
+            "t",
+        ),
+        (
+            "SELECT 1 FROM t UNION ALL SELECT 1 FROM t1 JOIN t1 ON true",
+            "t1",
+        ),
+        (
+            "INSERT INTO t SELECT t.a, t.b, t.c, t.d FROM t JOIN t ON true",
+            "t",
+        ),
+        // The first repeated name is reported, and the outer FROM clause is
+        // checked before the queries nested in it.
+        (
+            "SELECT 1 FROM t JOIN t1 ON true JOIN t1 ON true JOIN t ON true",
+            "t1",
+        ),
+        (
+            "SELECT 1 FROM t JOIN t ON true WHERE EXISTS (SELECT 1 FROM t1 JOIN t1 ON true)",
+            "t",
+        ),
+        // PostgreSQL reports "t1" here.
+        (
+            "SELECT 1 FROM (SELECT 1 FROM t1 JOIN t1 ON true) AS s JOIN t ON true JOIN t ON true",
+            "t",
+        ),
+    ];
+
+    for (query, name) in cases {
+        let error = expect_sql_to_ir_error(query, &[]);
+        assert_eq!(
+            error.to_string(),
+            format!(r#"table name "{name}" specified more than once"#),
+            "{query}"
+        );
+    }
+}
+
+#[test]
+fn join_distinct_table_names() {
+    let queries = [
+        "SELECT * FROM (SELECT * FROM t) as q JOIN t ON true",
+        "SELECT 1 FROM t JOIN t AS u ON true",
+        "WITH q AS (SELECT 1) SELECT 1 FROM q JOIN q AS r ON true",
+        // Quoted names are case-sensitive.
+        r#"SELECT 1 FROM t JOIN t AS "T" ON true"#,
+        // Subqueries without an alias have no name.
+        "SELECT 1 FROM (SELECT 1) JOIN (SELECT 2) ON true",
+        // A nested query has a FROM clause of its own.
+        "SELECT 1 FROM t AS x WHERE EXISTS (SELECT 1 FROM t1 AS x)",
+    ];
+
+    for query in queries {
+        sql_to_ir_without_bind(query, &[]);
+    }
 }

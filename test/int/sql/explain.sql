@@ -425,22 +425,22 @@ plan:
 
 -- TEST: test_raw_explain-5
 -- SQL:
-EXPLAIN (RAW, FMT) SELECT * from testing_space JOIN testing_space ON true GROUP BY 1, 2, 3, 4, 5, 6 ORDER BY 1 LIMIT 1;
+EXPLAIN (RAW, FMT) SELECT * from testing_space JOIN testing_space AS ts2 ON true GROUP BY 1, 2, 3, 4, 5, 6 ORDER BY 1 LIMIT 1;
 -- EXPECTED:
 ╭──────────────────────────╮
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
 SELECT
-  "testing_space"."id",
-  "testing_space"."bucket_id",
-  "testing_space"."name",
-  "testing_space"."product_units"
+  "ts2"."id",
+  "ts2"."bucket_id",
+  "ts2"."name",
+  "ts2"."product_units"
 FROM
-  "testing_space"
+  "testing_space" as "ts2"
 ''
 plan:
-    [0] SCAN TABLE testing_space (~1048576 rows)
+    [0] SCAN TABLE testing_space AS ts2 (~1048576 rows)
 ''
 ╭──────────────────────────╮
 │ 2. Query (WHOLE STORAGE) │
@@ -459,9 +459,9 @@ FROM
       "testing_space"."id" as "gr_expr_1",
       "testing_space"."name" as "gr_expr_2",
       "testing_space"."product_units" as "gr_expr_3",
-      "testing_space"."COL_0" as "gr_expr_4",
-      "testing_space"."COL_2" as "gr_expr_5",
-      "testing_space"."COL_3" as "gr_expr_6"
+      "ts2"."COL_0" as "gr_expr_4",
+      "ts2"."COL_2" as "gr_expr_5",
+      "ts2"."COL_3" as "gr_expr_6"
     FROM
       "testing_space"
       INNER JOIN (
@@ -471,15 +471,15 @@ FROM
           "COL_2",
           "COL_3"
         FROM
-          "_tmp_16817940174543898825_0136"
-      ) as "testing_space" ON CAST(true AS bool)
+          "_tmp_4030661933660288186_0136"
+      ) as "ts2" ON CAST(true AS bool)
     GROUP BY
       "testing_space"."id",
       "testing_space"."name",
       "testing_space"."product_units",
-      "testing_space"."COL_0",
-      "testing_space"."COL_2",
-      "testing_space"."COL_3"
+      "ts2"."COL_0",
+      "ts2"."COL_2",
+      "ts2"."COL_3"
   )
 ORDER BY
   1
@@ -488,7 +488,7 @@ LIMIT
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
-        [0] SCAN TABLE _tmp_16817940174543898825_0136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_4030661933660288186_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''

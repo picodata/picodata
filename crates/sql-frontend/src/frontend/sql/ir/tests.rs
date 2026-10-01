@@ -462,7 +462,7 @@ fn front_sql_between_invalid() {
 #[test]
 fn front_sql_parse_inner_join() {
     let input = r#"SELECT * FROM "hash_testing"
-        left join "hash_testing" on true inner join "hash_testing" on true"#;
+        left join "hash_testing" as h2 on true inner join "hash_testing" as h3 on true"#;
 
     // Check there are no panics
     let _ = sql_to_optimized_ir(input, vec![]);
@@ -4653,7 +4653,7 @@ mod multi_queries {
         r#"alter plugin "abc" 0.1.0 remove service "svc1" from tier "tier1" option(timeout=11)"#,
         r#"create table if not exists t(a int primary key,b int) using memtx distributed by(a,b) wait applied locally option(timeout=1)"#,
         r#"create procedure if not exists name(int,int,varchar(1)) language sql as $$insert into t values(1,2)$$ wait applied globally"#,
-        r#"with cte1(a,b) as(select * from t),cte2 as(select * from t) select * from t join t on true group by a having b union all select * from t order by a"#,
+        r#"with cte1(a,b) as(select * from t),cte2 as(select * from t) select * from t join t as t2 on true group by a having b union all select * from t order by a"#,
         r#"select cast(1 as int) or not exists (values(true)) and 1+1 and true or (a in (select * from t)) and i is not null"#,
     ];
 

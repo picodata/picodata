@@ -5462,7 +5462,7 @@ def test_metadata(instance: Instance):
     # JOIN + LIMIT column metadata
     data = instance.sql(
         """
-        SELECT * FROM "t" JOIN "t" ON true LIMIT 1
+        SELECT * FROM "t" JOIN "t" AS t1 ON true LIMIT 1
         """,
         strip_metadata=False,
     )
@@ -5490,7 +5490,7 @@ def test_metadata(instance: Instance):
     # JOIN column metadata
     data = instance.sql(
         """
-        SELECT * FROM "t" JOIN "t" ON true
+        SELECT * FROM "t" JOIN "t" AS t1 ON true
         """,
         strip_metadata=False,
     )
