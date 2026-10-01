@@ -580,8 +580,8 @@ fn hash_iocdu_rhs(hasher: &mut XxHash3_64, ir: &Plan, rhs: NodeId) -> Result<(),
 
 /// Key for the router-side cache of rendered block SQL patterns.
 ///
-/// Each plan caches its block hash in a `OnceCell` so repeated calls within
-/// the same plan instance are basically free.
+/// The hash is memoized in the plan's `BlockCache`, which every clone of a
+/// prepared block plan shares, so repeated executions never rehash the block.
 pub fn block_pattern_key(
     exec_plan: &ExecutionPlan,
     statements: &[BlockStatement<NodeId>],

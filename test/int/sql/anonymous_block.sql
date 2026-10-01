@@ -2993,3 +2993,85 @@ BEGIN
 END $$;
 -- ERROR:
 Expression subquery returned more than 1 row
+
+-- TEST: prepared-params-init
+-- SQL:
+DROP TABLE IF EXISTS tp;
+CREATE TABLE tp (id INT PRIMARY KEY, v INT);
+INSERT INTO tp VALUES (1, 5), (2, 50);
+
+-- TEST: prepared-params-fold-dml-first
+-- SQL:
+DO $$ BEGIN UPDATE tp SET v = v + 1 WHERE id = $1 AND ($2 OR v = 0); END $$;
+-- PARAMS:
+1, false
+-- EXPECTED:
+
+-- TEST: prepared-params-fold-dml-second
+-- SQL:
+DO $$ BEGIN UPDATE tp SET v = v + 1 WHERE id = $1 AND ($2 OR v = 0); END $$;
+-- PARAMS:
+1, true
+-- EXPECTED:
+
+-- TEST: prepared-params-fold-dml-check
+-- SQL:
+SELECT v FROM tp WHERE id = 1;
+-- EXPECTED:
+6,
+
+-- TEST: prepared-params-fold-dql-first
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT v FROM tp WHERE id = $1 AND ($2 OR v = 0); END $$;
+-- PARAMS:
+1, false
+-- EXPECTED:
+
+-- TEST: prepared-params-fold-dql-second
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT v FROM tp WHERE id = $1 AND ($2 OR v = 0); END $$;
+-- PARAMS:
+1, true
+-- EXPECTED:
+6,
+
+-- TEST: prepared-params-bare-bool-first
+-- SQL:
+DO $$ BEGIN UPDATE tp SET v = v + 1 WHERE id = $1 AND $2; END $$;
+-- PARAMS:
+1, true
+-- EXPECTED:
+
+-- TEST: prepared-params-bare-bool-second
+-- SQL:
+DO $$ BEGIN UPDATE tp SET v = v + 1 WHERE id = $1 AND $2; END $$;
+-- PARAMS:
+1, false
+-- EXPECTED:
+
+-- TEST: prepared-params-bare-bool-check
+-- SQL:
+SELECT v FROM tp WHERE id = 1;
+-- EXPECTED:
+7,
+
+-- TEST: prepared-params-cast-first
+-- SQL:
+DO $$ BEGIN UPDATE tp SET v = v + 1 WHERE id = $1::int; END $$;
+-- PARAMS:
+1
+-- EXPECTED:
+
+-- TEST: prepared-params-cast-second
+-- SQL:
+DO $$ BEGIN UPDATE tp SET v = v + 1 WHERE id = $1::int; END $$;
+-- PARAMS:
+2
+-- EXPECTED:
+
+-- TEST: prepared-params-cast-check
+-- SQL:
+SELECT id, v FROM tp ORDER BY id;
+-- EXPECTED:
+1, 8,
+2, 51

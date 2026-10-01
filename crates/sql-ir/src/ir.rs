@@ -857,10 +857,12 @@ impl SubtreeHashCache {
 /// executions of a cached block: the SQL pattern hash and the constant node
 /// ids of each statement.
 ///
-/// Block statement subtrees carry no motions or vtables and parameter binding
-/// preserves constant node ids, so both artifacts stay valid across executions
-/// of a cached block plan. Shared across plan clones through the same `Rc`, so
-/// plan clones and `Rc::make_mut` copies keep a warm cache.
+/// Block statement subtrees carry no motions or vtables, and every pass that
+/// runs on a prepared block plan after it is cached (`bind_params`,
+/// `update_timestamps`, `cast_constants`, `update_current_user`) overwrites
+/// nodes in place, so both artifacts stay valid across executions. Shared
+/// across plan clones through the same `Rc`, so plan clones and
+/// `Rc::make_mut` copies keep a warm cache.
 #[derive(Clone, Debug, Default)]
 pub struct BlockCache {
     inner: Rc<BlockCacheInner>,

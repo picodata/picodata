@@ -348,12 +348,21 @@ impl Plan {
 
         if self.is_empty() {
             // Empty query, do nothing
-        } else if self.is_dql_or_dml()? || self.is_block()? {
+        } else if self.is_dql_or_dml()? {
             self.bind_params(params, default_options)?;
             self = self
                 .update_timestamps()?
                 .cast_constants()?
                 .fold_boolean_tree()?;
+        } else if self.is_block()? {
+            self.bind_params(params, default_options)?;
+            // A prepared block plan is cloned per execution and `BlockCache`
+            // memoizes the constant ids and pattern hash of the first one,
+            // so every post-bind pass on a block must overwrite nodes in
+            // place. `fold_boolean_tree` allocates nodes and re-points
+            // filters depending on the bound values; for blocks it runs at
+            // parse time only (`optimize_block`).
+            self = self.update_timestamps()?.cast_constants()?;
         }
 
         Ok(self)
