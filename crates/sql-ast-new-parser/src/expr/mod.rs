@@ -40,7 +40,7 @@ use sql_ast_new_nodes::expr::{
 };
 use sql_ast_new_nodes::{Ident, Raw};
 use sql_ir::ir::aggregates::AggregateKind;
-use sql_ir::ir::types::{CastType, NestedType};
+use sql_ir::ir::types::{array_element_unsupported, CastType, NestedType};
 
 lazy_static::lazy_static! {
     /// Operator precedence lives here, not in the grammar: pest matches
@@ -635,7 +635,7 @@ fn parse_cast_target(pair: Pair<'_, Rule>) -> AstResult<CastType> {
         Rule::TypeDecimal => NestedType::Numeric,
         Rule::TypeDouble => NestedType::Double,
         Rule::TypeInt => NestedType::Integer,
-        Rule::TypeJSON => NestedType::Json,
+        Rule::TypeJSON => return Err(array_element_unsupported("json").into()),
         Rule::TypeString | Rule::TypeText => NestedType::Text,
         Rule::TypeVarchar => {
             if let Some(length_pair) = concrete_type_pair.into_inner().next() {

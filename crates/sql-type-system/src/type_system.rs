@@ -996,7 +996,8 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
 
         let nested = match elem_ty {
             Type::Array(_) => return Err(ErrorKind::NestedArraysAreNotSupported.into()),
-            other => NestedType::try_from(other).expect("non-array types are valid nested types"),
+            Type::Json => return Err(ErrorKind::JsonArraysAreNotSupported.into()),
+            other => NestedType::try_from(other).expect("other types are valid nested types"),
         };
         report.report(expr_id, Type::Array(nested));
         Ok(report)

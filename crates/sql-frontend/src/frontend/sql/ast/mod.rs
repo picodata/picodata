@@ -18,7 +18,9 @@ use crate::ir::node::tcl::Tcl;
 
 use crate::ir::index::Index;
 use crate::ir::node::ddl::DdlOwned;
-use crate::ir::types::{CastType, DerivedType, NestedType, UnrestrictedType};
+use crate::ir::types::{
+    array_element_unsupported, CastType, DerivedType, NestedType, UnrestrictedType,
+};
 use ::core::panic;
 use itertools::Itertools;
 use pest::iterators::{Pair, Pairs};
@@ -2745,7 +2747,7 @@ impl TryFrom<Rule> for NestedType {
             Rule::TypeInt => Ok(NestedType::Integer),
             Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => Ok(NestedType::Text),
             Rule::TypeUuid => Ok(NestedType::Uuid),
-            Rule::TypeJSON => Ok(NestedType::Json),
+            Rule::TypeJSON => Err(array_element_unsupported("json")),
             _ => Err(SbroadError::Unsupported(
                 Entity::Type,
                 Some(format_smolstr!(

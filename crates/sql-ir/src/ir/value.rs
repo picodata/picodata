@@ -971,7 +971,8 @@ impl Value {
                 Value::Integer(_) => nested == NestedType::Integer,
                 Value::String(_) => nested == NestedType::Text,
                 Value::Uuid(_) => nested == NestedType::Uuid,
-                Value::Json(_) => nested == NestedType::Json,
+                // There is no array of json.
+                Value::Json(_) => false,
                 // Nested arrays are not supported.
                 Value::Tuple(_) => false,
             })

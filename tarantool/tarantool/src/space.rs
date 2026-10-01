@@ -356,7 +356,6 @@ define_str_enum! {
         String = "text[]",
         Uuid = "uuid[]",
         Map = "map[]",
-        Json = "json[]",
         /// Element type of an untyped array (the bare `array`).
         Any = "array",
     }
@@ -514,7 +513,6 @@ mod field_type_tests {
             TypedArray::String,
             TypedArray::Uuid,
             TypedArray::Map,
-            TypedArray::Json,
         ] {
             let label = elem.as_str();
             assert!(label.ends_with("[]"), "{label} should end with []");

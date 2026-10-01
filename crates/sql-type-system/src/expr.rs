@@ -10,9 +10,9 @@ pub enum NestedType {
     Datetime,
     Uuid,
 
-    /// Element type for `json[]`.
+    /// An array of maps. Only the system catalog has one; it has no SQL
+    /// spelling. There is no array of json, see `Error::JsonArraysAreNotSupported`.
     Map,
-    Json,
 
     /// Forbidden for user tables.
     Any,
@@ -29,7 +29,6 @@ impl From<NestedType> for Type {
             NestedType::Datetime => Type::Datetime,
             NestedType::Uuid => Type::Uuid,
             NestedType::Map => Type::Map,
-            NestedType::Json => Type::Json,
             NestedType::Any => Type::Any,
         }
     }
@@ -48,9 +47,8 @@ impl TryFrom<Type> for NestedType {
             Type::Datetime => NestedType::Datetime,
             Type::Uuid => NestedType::Uuid,
             Type::Map => NestedType::Map,
-            Type::Json => NestedType::Json,
             Type::Any => NestedType::Any,
-            Type::Array(_) => return Err(value),
+            Type::Json | Type::Array(_) => return Err(value),
         })
     }
 }
@@ -66,7 +64,6 @@ impl NestedType {
             NestedType::Datetime => "datetime[]",
             NestedType::Uuid => "uuid[]",
             NestedType::Map => "map[]",
-            NestedType::Json => "json[]",
             NestedType::Any => "array",
         }
     }

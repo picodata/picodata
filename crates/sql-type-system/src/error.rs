@@ -115,6 +115,9 @@ pub enum ErrorKind {
     #[error("{0} takes at most {1} arguments, got {2}")]
     TooManyArguments(&'static str, usize, usize),
 
+    #[error("json cannot be used as an array element type")]
+    JsonArraysAreNotSupported,
+
     #[error("{0}")]
     Other(String),
 }

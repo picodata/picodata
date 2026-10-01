@@ -458,10 +458,10 @@ fn cast_postfix_array() {
 
 #[test]
 fn cast_postfix_json() {
-    // `json` is the native JSON type, alone and as an array element.
+    // `json` is the native JSON type. There is no array of json.
     insta::assert_snapshot!(render_expr("a::json"), @"a::json");
     insta::assert_snapshot!(render_expr("CAST(a AS json)"), @"CAST(a AS json)");
-    insta::assert_snapshot!(render_expr("a::json[]"), @"a::json[]");
+    insta::assert_snapshot!(expr_err("a::json[]"), @"unsupported type: json cannot be used as an array element type");
 }
 
 #[test]

@@ -239,7 +239,6 @@ fn array_cast_empty_typed_by_cast() {
         ("double", NestedType::Double),
         ("text", NestedType::Text),
         ("bool", NestedType::Boolean),
-        ("json", NestedType::Json),
     ] {
         let sql = format!(r#"SELECT ARRAY[]::{ty}[] FROM "test_space""#);
         let plan = sql_to_ir(&sql, vec![]);
@@ -401,4 +400,30 @@ fn array_cast_to_unsigned_parse_error() {
         msg.to_lowercase().contains("parse") || msg.contains("rule") || msg.contains("expected"),
         "expected a parse error, got: {msg}"
     );
+}
+
+#[test]
+fn json_arrays_are_rejected() {
+    // An array is indexed from 1 and json from 0, so there is no `json[]`:
+    // not as a cast, not as a column type and not inferred from a literal.
+    for sql in [
+        r#"SELECT ARRAY[]::json[] FROM "test_space""#,
+        r#"SELECT CAST(ARRAY['{}'] AS json[]) FROM "test_space""#,
+        r#"CREATE TABLE t (id INT PRIMARY KEY, a json[])"#,
+    ] {
+        let msg = expect_sql_to_ir_error(sql, &[]).to_string();
+        assert_eq!(
+            msg, "unsupported type: json cannot be used as an array element type",
+            "for {sql}"
+        );
+    }
+    let msg =
+        expect_sql_to_ir_error(r#"SELECT ARRAY['{}'::json] FROM "test_space""#, &[]).to_string();
+    assert!(
+        msg.contains("json cannot be used as an array element type"),
+        "unexpected error: {msg}"
+    );
+
+    // Scalar json is unaffected.
+    let _ = sql_to_ir(r#"SELECT '{}'::json FROM "test_space""#, vec![]);
 }

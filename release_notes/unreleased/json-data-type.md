@@ -15,3 +15,4 @@
 - Over the PostgreSQL protocol a `JSON` column is advertised as `jsonb`, and
   `jsonb` bound parameters are accepted.
 - `JSON` columns cannot take part in a primary key, a sharding key or an index.
+- Arrays of `JSON` (`json[]`) are not supported.

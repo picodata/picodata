@@ -62,7 +62,7 @@ SCHEMA = [
         c_int INT NOT NULL, c_unsigned UNSIGNED, c_double DOUBLE, c_decimal DECIMAL,
         c_bool BOOL, c_text TEXT, c_uuid UUID, c_datetime DATETIME, c_json JSON,
         c_text_arr TEXT[], c_int_arr INT[], c_uuid_arr UUID[], c_double_arr DOUBLE[],
-        c_bool_arr BOOL[], c_datetime_arr DATETIME[], c_decimal_arr DECIMAL[], c_json_arr JSON[],
+        c_bool_arr BOOL[], c_datetime_arr DATETIME[], c_decimal_arr DECIMAL[],
         PRIMARY KEY (c_int)
     )
     DISTRIBUTED GLOBALLY

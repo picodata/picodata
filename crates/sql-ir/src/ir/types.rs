@@ -23,10 +23,22 @@ pub enum NestedType {
     Boolean,
     Datetime,
     Uuid,
+    /// Only the system catalog has an array of maps; it has no SQL spelling.
     Map,
-    Json,
     /// The element type of `ANY[]`, allowed in migration DDL only.
     Any,
+}
+
+/// The error for an array of `ty`, a type that cannot be an array element
+/// (see [`NestedType`]). `ty` is the type's SQL name.
+#[must_use]
+pub fn array_element_unsupported(ty: &str) -> SbroadError {
+    SbroadError::Unsupported(
+        Entity::Type,
+        Some(format_smolstr!(
+            "{ty} cannot be used as an array element type"
+        )),
+    )
 }
 
 impl From<NestedType> for TypeSystemNestedType {
@@ -40,7 +52,6 @@ impl From<NestedType> for TypeSystemNestedType {
             NestedType::Datetime => Self::Datetime,
             NestedType::Uuid => Self::Uuid,
             NestedType::Map => Self::Map,
-            NestedType::Json => Self::Json,
             NestedType::Any => Self::Any,
         }
     }
@@ -59,7 +70,6 @@ impl NestedType {
             NestedType::Datetime => "datetime",
             NestedType::Uuid => "uuid",
             NestedType::Map => "map",
-            NestedType::Json => "json",
             NestedType::Any => "any",
         }
     }
@@ -81,7 +91,6 @@ impl NestedType {
             "datetime" => NestedType::Datetime,
             "uuid" => NestedType::Uuid,
             "map" => NestedType::Map,
-            "json" => NestedType::Json,
             "any" => NestedType::Any,
             other => {
                 return Err(SbroadError::Invalid(
@@ -107,7 +116,6 @@ impl From<TypeSystemNestedType> for NestedType {
             TypeSystemNestedType::Datetime => Self::Datetime,
             TypeSystemNestedType::Uuid => Self::Uuid,
             TypeSystemNestedType::Map => Self::Map,
-            TypeSystemNestedType::Json => Self::Json,
             TypeSystemNestedType::Any => Self::Any,
         }
     }
@@ -370,7 +378,6 @@ impl From<NestedType> for TypedArray {
             NestedType::Text => Self::String,
             NestedType::Uuid => Self::Uuid,
             NestedType::Map => Self::Map,
-            NestedType::Json => Self::Json,
             NestedType::Any => Self::Any,
         }
     }
@@ -387,7 +394,6 @@ impl From<TypedArray> for NestedType {
             TypedArray::String => Self::Text,
             TypedArray::Uuid => Self::Uuid,
             TypedArray::Map => Self::Map,
-            TypedArray::Json => Self::Json,
             TypedArray::Any => Self::Any,
         }
     }
@@ -404,7 +410,6 @@ impl From<NestedType> for UnrestrictedType {
             NestedType::Text => UnrestrictedType::String,
             NestedType::Uuid => UnrestrictedType::Uuid,
             NestedType::Map => UnrestrictedType::Map,
-            NestedType::Json => UnrestrictedType::Json,
             NestedType::Any => UnrestrictedType::Any,
         }
     }
@@ -423,7 +428,7 @@ impl TryFrom<UnrestrictedType> for NestedType {
             UnrestrictedType::String => Ok(NestedType::Text),
             UnrestrictedType::Uuid => Ok(NestedType::Uuid),
             UnrestrictedType::Map => Ok(NestedType::Map),
-            UnrestrictedType::Json => Ok(NestedType::Json),
+            UnrestrictedType::Json => Err(array_element_unsupported("json")),
             UnrestrictedType::Any => Ok(NestedType::Any),
             UnrestrictedType::Array(_) => Err(SbroadError::Invalid(
                 Entity::Type,
