@@ -53,7 +53,6 @@ variables:
   MAIN_BRANCH_SLUG: master
 
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
-  KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
   FF_USE_FASTZIP: "true"
   FF_TIMESTAMPS: "true"
   CACHE_COMPRESSION_LEVEL: "fastest"
@@ -166,26 +165,36 @@ variables:
   fallback_keys:
     - rolling_binaries_cache-$MAIN_BRANCH_SLUG
 
-.kaniko_image: &kaniko_image
+.buildkit_image: &buildkit_image
   image:
-    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.23.1-debug
+    name: docker-proxy.binary.picodata.io/moby/buildkit:rootless
     entrypoint: [""]
     pull_policy: [if-not-present]
   tags:
     - docker-k8s
-  variables:
-    GIT_USERNAME: $CI_REGISTRY_USER
-    GIT_PASSWORD: $CI_REGISTRY_PASSWORD
+  before_script:
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > ~/.docker/config.json
   script:
-    - >
-      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
-      --build-arg TARANTOOL_VERSION=${TARANTOOL_VERSION}
-      --build-arg RUST_VERSION=${RUST_VERSION}
-      --build-arg BASE_IMAGE=${BASE_IMAGE}
-      --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG}
-      ${PUSH_DOCKER}
-      --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
-      --destination ${DESTINATION}
+    - |
+      # $MAIN_BRANCH always builds from scratch (no cache import) but exports
+      # its layers so that dev branches can reuse them.
+      CACHE_ARGS="--export-cache type=registry,ref=${CACHE_IMAGE}:${CI_COMMIT_REF_SLUG},mode=max,image-manifest=true,oci-mediatypes=true"
+      if [ "$CI_COMMIT_REF_NAME" != "$MAIN_BRANCH" ]; then
+        CACHE_ARGS="$CACHE_ARGS --import-cache type=registry,ref=${CACHE_IMAGE}:${CI_COMMIT_REF_SLUG}"
+        CACHE_ARGS="$CACHE_ARGS --import-cache type=registry,ref=${CACHE_IMAGE}:${MAIN_BRANCH_SLUG}"
+      fi
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=${CI_PROJECT_DIR} \
+        --local dockerfile=${CI_PROJECT_DIR}/$(dirname ${DOCKERFILE}) \
+        --opt filename=$(basename ${DOCKERFILE}) \
+        --opt build-arg:TARANTOOL_VERSION=${TARANTOOL_VERSION} \
+        --opt build-arg:RUST_VERSION=${RUST_VERSION} \
+        --opt build-arg:BASE_IMAGE=${BASE_IMAGE} \
+        --opt build-arg:BASE_IMAGE_TAG=${BASE_IMAGE_TAG} \
+        --output type=image,name=${DESTINATION},push=true \
+        $CACHE_ARGS
 
 tarantool-module-trigger:
   stage: test
@@ -193,10 +202,11 @@ tarantool-module-trigger:
   # when jobs did not see job variables like $CARGO_HOME.
   # Anyway this child pipeline always was independent, it does not need variables from this file,
   # except MAIN_BRANCH which is used in rules. If global variable is used in rules - it should be
-  # inherited.
+  # inherited. MAIN_BRANCH_SLUG is used as a fallback buildkit cache ref.
   inherit:
     variables:
       - MAIN_BRANCH
+      - MAIN_BRANCH_SLUG
   variables:
     PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
   trigger:
@@ -271,7 +281,7 @@ docs:
 
 build-base-image:
   stage: build-base-image
-  <<: *kaniko_image
+  <<: *buildkit_image
   rules:
     - <<: *if-build-base-changes-on-master-branch
     - <<: *if-build-base-changes-on-dev-branch
@@ -284,6 +294,8 @@ build-base-image:
   variables:
     DOCKERFILE: docker-build-base/Dockerfile
     DESTINATION: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    CACHE_IMAGE: ${BASE_IMAGE}/cache
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
 
 # When on master, the job creates cache containing fully fetched repository in working directory.
 # The cache includes submodules. This will happen once

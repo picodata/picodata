@@ -14,7 +14,7 @@ default:
 
 variables:
   BASE_IMAGE_DOCS: ${CI_REGISTRY_IMAGE}/docs
-  KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
+  REGISTRY_MIRROR: docker-proxy.binary.picodata.io
 
 workflow:
   rules:
@@ -30,14 +30,14 @@ stages:
 build-docs-image:
   stage: build-base-image
   image:
-    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.23.1-debug
+    name: docker-proxy.binary.picodata.io/moby/buildkit:rootless
     entrypoint: [""]
     pull_policy: [if-not-present]
   variables:
-    GIT_USERNAME: $CI_REGISTRY_USER
-    GIT_PASSWORD: $CI_REGISTRY_PASSWORD
     DOCKERFILE: docker-build-base/docs.Dockerfile
     DESTINATION: ${BASE_IMAGE_DOCS}:${BASE_IMAGE_TAG}
+    CACHE_IMAGE: ${BASE_IMAGE_DOCS}/cache
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox --config=/tmp/buildkitd.toml
   rules:
     - changes:
         paths:
@@ -53,11 +53,27 @@ build-docs-image:
       allow_failure: true
       variables:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+  before_script:
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > ~/.docker/config.json
+    # pull Docker Hub images through our proxy
+    - printf '[registry."docker.io"]\n  mirrors = ["%s"]\n' "$REGISTRY_MIRROR" > /tmp/buildkitd.toml
   script:
-    - >
-      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
-      --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
-      --destination ${DESTINATION}
+    - |
+      # $MAIN_BRANCH always builds from scratch (no cache import) but exports
+      # its layers so that dev branches can reuse them.
+      CACHE_ARGS="--export-cache type=registry,ref=${CACHE_IMAGE}:${CI_COMMIT_REF_SLUG},mode=max,image-manifest=true,oci-mediatypes=true"
+      if [ "$CI_COMMIT_REF_NAME" != "$MAIN_BRANCH" ]; then
+        CACHE_ARGS="$CACHE_ARGS --import-cache type=registry,ref=${CACHE_IMAGE}:${CI_COMMIT_REF_SLUG}"
+        CACHE_ARGS="$CACHE_ARGS --import-cache type=registry,ref=${CACHE_IMAGE}:${MAIN_BRANCH_SLUG}"
+      fi
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=${CI_PROJECT_DIR} \
+        --local dockerfile=${CI_PROJECT_DIR}/$(dirname ${DOCKERFILE}) \
+        --opt filename=$(basename ${DOCKERFILE}) \
+        --output type=image,name=${DESTINATION},push=true \
+        $CACHE_ARGS
 
 lint-docs:
   stage: lint
