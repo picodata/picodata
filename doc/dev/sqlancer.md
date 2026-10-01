@@ -15,9 +15,9 @@ and collects everything a finding needs into one directory.
 - the pytest virtualenv (`uv sync`, see [CONTRIBUTING.md](../../CONTRIBUTING.md)) — the tool
   imports `Cluster` from `test/conftest.py`;
 - a JDK and Maven (the fork builds with `source`/`target` 11);
-- a picodata binary — `target/release/picodata` by default, built with `make build-release` if it
-  is missing; `--target debug` and `--target fast-release` pick another profile, `--picodata` one
-  built elsewhere;
+- a picodata binary — `target/release/picodata` by default, brought up to date with
+  `make build-release` before every run; `--target debug` and `--target fast-release` pick another
+  profile, `--picodata` one built elsewhere;
 - ssh access to `core/sqlancer`, unless you point `--src` at a checkout you already have.
 
 ### Running

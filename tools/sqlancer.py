@@ -104,10 +104,10 @@ def find_picodata(given: Optional[str], target: str) -> Path:
             raise SetupError(f"{picodata} is not executable")
         return picodata
     built = ROOT / "target" / target / "picodata"
-    if not os.access(built, os.X_OK):
-        log_section("picodata-build", f"Building picodata: no {built} yet ...")
-        check_call(["make", MAKE_TARGET[target]], cwd=ROOT)
-        log_section("picodata-build")
+    # make is a no-op on an up-to-date tree, so a stale binary is never fuzzed.
+    log_section("picodata-build", f"Building picodata: make {MAKE_TARGET[target]} ...")
+    check_call(["make", MAKE_TARGET[target]], cwd=ROOT)
+    log_section("picodata-build")
     if not os.access(built, os.X_OK):
         raise SetupError(f"make {MAKE_TARGET[target]} left no binary at {built}")
     return built
