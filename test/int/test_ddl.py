@@ -3127,6 +3127,14 @@ cluster:
 
     leader.sql("UPDATE _pico_replicaset SET target_config_version = target_config_version + 1 WHERE tier = 'storage'")
 
+    def check_replication_configured():
+        [[current, target]] = leader.sql(
+            "SELECT current_config_version, target_config_version FROM _pico_replicaset WHERE tier = 'storage'"
+        )
+        assert current == target
+
+    Retriable().call(check_replication_configured)
+
     storage_1_2.call("pico._inject_error", "BROKEN_REPLICATION", False)
 
     # DDL succeeds because sentinel will detect that `storage_1_1` has crashed
