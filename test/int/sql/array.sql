@@ -250,7 +250,7 @@ column at position 2 is of type uuid[], but expression is of type int[]
 -- SQL:
 CREATE TABLE t_uint (a INT PRIMARY KEY, b UNSIGNED[]);
 -- ERROR:
-TypeUnsigned cannot be used as an array element type
+unsupported type: unsigned cannot be used as an array element type
 
 -- TEST: empty-into-dbl
 -- SQL:

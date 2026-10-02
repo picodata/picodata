@@ -2748,12 +2748,8 @@ impl TryFrom<Rule> for NestedType {
             Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => Ok(NestedType::Text),
             Rule::TypeUuid => Ok(NestedType::Uuid),
             Rule::TypeJSON => Err(array_element_unsupported("json")),
-            _ => Err(SbroadError::Unsupported(
-                Entity::Type,
-                Some(format_smolstr!(
-                    "{ast_type:?} cannot be used as an array element type"
-                )),
-            )),
+            Rule::TypeUnsigned => Err(array_element_unsupported("unsigned")),
+            _ => Err(array_element_unsupported(&format_smolstr!("{ast_type:?}"))),
         }
     }
 }
