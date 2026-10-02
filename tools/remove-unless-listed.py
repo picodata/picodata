@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 from enum import Enum
 from pathlib import Path
 
@@ -55,7 +56,11 @@ def remove(
     if dry_run and print_opt == PrintOption.NONE:
         print_opt = PrintOption.ALL
 
-    for root, dirs, files in root_dir.walk(top_down=False):
+    for root, dirs, files in os.walk(root_dir, topdown=False):
+        root = Path(root)
+        # os.walk lists symlinks to directories in `dirs`, treat them as files
+        files = files + [name for name in dirs if (root / name).is_symlink()]
+        dirs = [name for name in dirs if not (root / name).is_symlink()]
         for file in files:
             handle_file(root, file, is_dir=False)
         for file in dirs:
