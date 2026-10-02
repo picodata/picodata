@@ -38,6 +38,7 @@ expression  ::= (('NOT'* (
                     | cast
                     | coalesce
                     | current_date
+                    | current_timestamp
                     | current_user
                     | ilike
                     | json_extract_path
@@ -76,10 +77,22 @@ expression  ::= (('NOT'* (
                     | 'OR'
                 )
                 expression
-aggregate   ::= ('AVG' | 'COUNT' | 'MAX' | 'MIN' | 'SUM' | 'TOTAL') '(' ('DISTINCT'? expression) ')'
-               | ('GROUP_CONCAT' | 'STRING_AGG') '(' expression ',' "'" string "'" ')'
-window      ::= (builtin | aggregate) ('FILTER' '(' 'WHERE' expression ')')?
-                 'OVER' (name | ('(' partition ')'))
+aggregate   ::= avg | count | group_concat | max | min | string_agg | sum | total
+avg         ::= 'AVG' '(' 'DISTINCT'? expression ')'
+count       ::= 'COUNT' '(' ('*' | 'DISTINCT'? expression) ')'
+group_concat ::= 'GROUP_CONCAT' '(' ('DISTINCT' expression | expression (',' "'" string "'")?) ')'
+max         ::= 'MAX' '(' 'DISTINCT'? expression ')'
+min         ::= 'MIN' '(' 'DISTINCT'? expression ')'
+string_agg  ::= 'STRING_AGG' '(' ('DISTINCT' expression | expression (',' "'" string "'")?) ')'
+sum         ::= 'SUM' '(' 'DISTINCT'? expression ')'
+total       ::= 'TOTAL' '(' 'DISTINCT'? expression ')'
+window      ::= builtin
+                | window_aggregate ('FILTER' '(' 'WHERE' expression ')')?
+                  'OVER' window_definition
+window_aggregate ::= ('AVG' | 'MAX' | 'MIN' | 'SUM' | 'TOTAL') '(' expression ')'
+                   | 'COUNT' '(' ('*' | expression) ')'
+                   | ('GROUP_CONCAT' | 'STRING_AGG') '(' expression (',' expression)? ')'
+window_definition ::= name | '(' partition ')'
 partition   ::= ('PARTITION' 'BY' expression (',' expression)*)?
                  ('ORDER' 'BY' expression ('ASC' | 'DESC')? (',' expression ('ASC' | 'DESC')?)*)?
                  (('RANGE' | 'ROWS') (
@@ -98,13 +111,16 @@ partition   ::= ('PARTITION' 'BY' expression (',' expression)*)?
                       )
                    ) | ('UNBOUNDED' 'PRECEDING') | ('CURRENT' 'ROW') | ( expression 'PRECEDING')
                  ))?
-builtin     ::= 'LAST_VALUE' '(' expression ')'
-                | 'ROW_NUMBER' '(' ')'
+builtin     ::= last_value | row_number
+last_value  ::= 'LAST_VALUE' '(' expression ')' 'OVER' window_definition
+row_number  ::= 'ROW_NUMBER' '(' ')' 'OVER' window_definition
 case        ::= 'CASE' expression?
                 ('WHEN' expression 'THEN' expression)+
                 ('ELSE' expression)? 'END'
 cast        ::= 'CAST' '(' expression 'AS' unrestricted_type ')' | expression '::' unrestricted_type | unrestricted_type string
 coalesce    ::= 'COALESCE' '(' expression ',' expression (',' expression)* ')'
+current_date ::= 'CURRENT_DATE'
+current_timestamp ::= 'CURRENT_TIMESTAMP' ('(' unsigned ')')?
 like        ::= expression 'LIKE' expression ('ESCAPE' expression)?
 localtimestamp ::= 'LOCALTIMESTAMP' ('(' unsigned ')')?
 ilike       ::= expression 'ILIKE' expression ('ESCAPE' expression)?

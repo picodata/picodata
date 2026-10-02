@@ -138,22 +138,55 @@ nav:
           - reference/sql/join.md
           - reference/sql/groupby.md
       - Функции и выражения:
-          - reference/sql/abs.md
-          - reference/sql/case.md
-          - reference/sql/cast.md
-          - reference/sql/coalesce.md
-          - reference/sql/ilike.md
-          - reference/sql/json_extract_path.md
-          - reference/sql/like.md
-          - reference/sql/lower.md
-          - reference/sql/substr.md
-          - reference/sql/substring.md
-          - reference/sql/trim.md
-          - reference/sql/upper.md
-          - reference/sql/aggregate.md
-          - reference/sql/window_builtin.md
-          - reference/sql/time_and_date.md
-          - reference/sql/system_functions.md
+          - Алфавитный указатель: reference/sql/sql_functions.md
+          - Скалярные:
+              - Числовые:
+                  - reference/sql/abs.md
+              - Строковые:
+                  - reference/sql/lower.md
+                  - reference/sql/substr.md
+                  - reference/sql/substring.md
+                  - reference/sql/trim.md
+                  - reference/sql/upper.md
+              - Дата и время:
+                  - reference/sql/current_date.md
+                  - reference/sql/current_timestamp.md
+                  - reference/sql/localtimestamp.md
+                  - reference/sql/to_char.md
+                  - reference/sql/to_date.md
+              - JSON:
+                  - reference/sql/json_extract_path.md
+          - Системные:
+              - reference/sql/_pico_bucket.md
+              - reference/sql/current_user.md
+              - reference/sql/pico_config_file_path.md
+              - reference/sql/pico_instance_dir.md
+              - reference/sql/pico_instance_health_status.md
+              - reference/sql/pico_instance_name.md
+              - reference/sql/pico_instance_uuid.md
+              - reference/sql/pico_raft_leader_id.md
+              - reference/sql/pico_raft_leader_uuid.md
+              - reference/sql/pico_replicaset_name.md
+              - reference/sql/pico_tier_name.md
+              - reference/sql/version.md
+          - Агрегатные:
+              - reference/sql/avg.md
+              - reference/sql/count.md
+              - reference/sql/group_concat.md
+              - reference/sql/max.md
+              - reference/sql/min.md
+              - reference/sql/string_agg.md
+              - reference/sql/sum.md
+              - reference/sql/total.md
+          - Оконные:
+              - reference/sql/last_value.md
+              - reference/sql/row_number.md
+          - Выражения и операторы:
+              - reference/sql/case.md
+              - reference/sql/cast.md
+              - reference/sql/coalesce.md
+              - reference/sql/like.md
+              - reference/sql/ilike.md
   - Разработка:
       - dev/developer_tools.md
       - Внешние коннекторы:

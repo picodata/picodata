@@ -447,38 +447,33 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">E091-01</span></td>
             <td>AVG</td>
-            <td class="td3 center">[Агрегатные функции](sql/aggregate.md#syntax) -><br>
-                                   AVG</td>
+            <td class="td3 center">[AVG](sql/avg.md#syntax)</td>
             <td></td>
         </tr>
         <tr>
             <td class="center"><span class="full">E091-02</span></td>
             <td>COUNT</td>
-            <td class="td3 center">[Агрегатные функции](sql/aggregate.md#syntax) -><br>
-                                   COUNT</td>
+            <td class="td3 center">[COUNT](sql/count.md#syntax)</td>
             <td></td>
         </tr>
         <tr>
             <td class="center"><span class="full">E091-03</span></td>
             <td>MAX</td>
-            <td class="td3 center">[Агрегатные функции](sql/aggregate.md#syntax) -><br>
-                                   MAX</td>
+            <td class="td3 center">[MAX](sql/max.md#syntax)</td>
             <td></td>
         </tr>
         <tr>
             <td class="center"><span class="full">E091-04</span></td>
             <td>MIN</td>
-            <td class="td3 center">[Агрегатные функции](sql/aggregate.md#syntax) -><br>
-                                   MIN</td>
+            <td class="td3 center">[MIN](sql/min.md#syntax)</td>
             <td></td>
         </tr>
         <tr>
             <td class="center"><span class="full">E091-05</span></td>
             <td>SUM</td>
             <td class="td3 center"><ul>
-                                   <li>[Агрегатные функции](sql/aggregate.md#syntax) -></li>
-                                   <li>SUM</li>
-                                   <li>TOTAL</li>
+                                   <li>[SUM](sql/sum.md#syntax)</li>
+                                   <li>[TOTAL](sql/total.md#syntax)</li>
                                    </ul></td>
             <td></td>
         </tr>
@@ -491,8 +486,7 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">E091-07</span></td>
             <td>Квантификатор DISTINCT</td>
-            <td class="td3 center">[Агрегатные функции](sql/aggregate.md#syntax) -><br>
-                                   DISTINCT</td>
+            <td class="td3 center">[DISTINCT](sql/groupby.md#aggregate_distinct)</td>
             <td></td>
         </tr>
 <!-- E101 Basic data manipulation -->
@@ -839,7 +833,7 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">F051-06</span></td>
             <td>Функция CURRENT_DATE</td>
-            <td class="td3 center">[CURRENT_DATE](sql/time_and_date.md#current_date)</td>
+            <td class="td3 center">[CURRENT_DATE](sql/current_date.md)</td>
             <td></td>
         </tr>
         <tr>
@@ -851,7 +845,7 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">F051-08</span></td>
             <td>LOCALTIMESTAMP</td>
-            <td class="td3 center">[LOCALTIMESTAMP](sql/time_and_date.md#localtimestamp)</td>
+            <td class="td3 center">[LOCALTIMESTAMP](sql/localtimestamp.md)</td>
             <td></td>
         </tr>
 <!-- F081 UNION and EXCEPT in views -->
@@ -1108,8 +1102,7 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">—</span></td>
             <td>GROUP_CONCAT</td>
-            <td class="td3 center">[Агрегатные функции](sql/aggregate.md#syntax) -><br>
-                                   GROUP_CONCAT</td>
+            <td class="td3 center">[GROUP_CONCAT](sql/group_concat.md#syntax)</td>
             <td></td>
         </tr>
         <tr>
@@ -1176,13 +1169,13 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">—</span></td>
             <td>TO_CHAR</td>
-            <td class="td3 center">[TO_CHAR](sql/time_and_date.md#to_char)</td>
+            <td class="td3 center">[TO_CHAR](sql/to_char.md)</td>
             <td></td>
         </tr>
         <tr>
             <td class="center"><span class="full">—</span></td>
             <td>TO_DATE</td>
-            <td class="td3 center">[TO_DATE](sql/time_and_date.md#to_date)</td>
+            <td class="td3 center">[TO_DATE](sql/to_date.md)</td>
             <td></td>
         </tr>
         <tr>

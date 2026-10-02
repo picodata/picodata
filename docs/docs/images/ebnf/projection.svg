@@ -85,7 +85,7 @@
       <text class="nonterminal" x="327" y="129">name</text>
    </a>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../aggregate"
+      xlink:href="../groupby#aggregate"
       xlink:title="aggregate">
       <rect x="51" y="187" width="86" height="32"/>
       <rect x="49" y="185" width="86" height="32" class="nonterminal"/>

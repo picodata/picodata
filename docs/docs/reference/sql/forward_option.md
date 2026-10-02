@@ -64,7 +64,7 @@ postgres://postgres:T0psecret@127.0.0.1:4327?options=forward%3Doff
 ## Взаимодействие с READ_PREFERENCE {: #read-preference }
 
 Для DQL-запросов опция `FORWARD` взаимодействует с опцией
-[`READ_PREFERENCE`](dql.md#params), которая задаёт стратегию чтения данных.
+[`READ_PREFERENCE`](dql.md#params), которая задает стратегию чтения данных.
 Опция `FORWARD` имеет приоритет над `READ_PREFERENCE`. С подробным описанием
 взаимодействия можно ознакомиться в таблице ниже:
 

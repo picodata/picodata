@@ -37,6 +37,10 @@ article.md-typeset.md-typeset ul {
 }
 </style>
 
+<b>_</b>
+
+* [_PICO_BUCKET](reference/sql/_pico_bucket.md)
+
 <b>A</b>
 
 * [ABS](reference/sql/abs.md)
@@ -47,7 +51,7 @@ article.md-typeset.md-typeset ul {
 * [ALTER TABLE](reference/sql/alter_table.md)
 * [ALTER USER](reference/sql/alter_user.md)
 * [AUDIT POLICY](reference/sql/audit_policy.md)
-* [AVG](reference/sql/aggregate.md#functions)
+* [AVG](reference/sql/avg.md)
 
 <b>B</b>
 
@@ -63,7 +67,7 @@ article.md-typeset.md-typeset ul {
 * [COALESCE](reference/sql/coalesce.md)
 * [column](reference/sql/object.md)
 * [CONTEXT](reference/sql/explain_facets/context.md)
-* [COUNT](reference/sql/aggregate.md#functions)
+* [COUNT](reference/sql/count.md)
 * [CREATE INDEX](reference/sql/create_index.md)
 * [CREATE PLUGIN](reference/sql/create_plugin.md)
 * [CREATE PROCEDURE](reference/sql/create_procedure.md)
@@ -71,9 +75,9 @@ article.md-typeset.md-typeset ul {
 * [CREATE TABLE](reference/sql/create_table.md)
 * [CREATE USER](reference/sql/create_user.md)
 * [CTE](reference/sql/with.md)
-* [CURRENT_DATE](reference/sql/time_and_date.md#current_date)
-* [CURRENT_TIMESTAMP](reference/sql/time_and_date.md#current_timestamp)
-* [CURRENT_USER](reference/sql/system_functions.md#current_user)
+* [CURRENT_DATE](reference/sql/current_date.md)
+* [CURRENT_TIMESTAMP](reference/sql/current_timestamp.md)
+* [CURRENT_USER](reference/sql/current_user.md)
 
 <b>D</b>
 
@@ -99,7 +103,7 @@ article.md-typeset.md-typeset ul {
 * [EXCEPT DISTINCT](reference/sql/select.md#except_with_subquery)
 * [execution plan](overview/glossary.md#execution_plan)
 * [EXPLAIN](reference/sql/explain.md)
-* [expression](reference/sql/aggregate.md#expression)
+* [expression](reference/sql/groupby.md#expression)
 
 <b>F</b>
 
@@ -109,7 +113,7 @@ article.md-typeset.md-typeset ul {
 
 * [GRANT](reference/sql/grant.md)
 * [GROUP BY](reference/sql/select.md#filter_and_group)
-* [GROUP_CONCAT](reference/sql/aggregate.md#functions)
+* [GROUP_CONCAT](reference/sql/group_concat.md)
 
 <b>I</b>
 
@@ -127,20 +131,21 @@ article.md-typeset.md-typeset ul {
 
 <b>L</b>
 
+* [LAST_VALUE](reference/sql/last_value.md)
 * [LEFT OUTER JOIN](reference/sql/join.md#left_join)
 * [LET](reference/sql/let.md)
 * [LIKE](reference/sql/like.md)
 * [LIMIT](reference/sql/select.md#params)
 * [LIMIT ALL](reference/sql/select.md#params)
 * [LIMIT NULL](reference/sql/select.md#params)
-* [LOCALTIMESTAMP](reference/sql/time_and_date.md#localtimestamp)
+* [LOCALTIMESTAMP](reference/sql/localtimestamp.md)
 * [LOGICAL](reference/sql/explain_facets/logical.md)
 * [LOWER](reference/sql/lower.md)
 
 <b>M</b>
 
-* [MAX](reference/sql/aggregate.md#functions)
-* [MIN](reference/sql/aggregate.md#functions)
+* [MAX](reference/sql/max.md)
+* [MIN](reference/sql/min.md)
 * [motion](reference/sql/explain_facets/logical.md#data_motion_types)
 
 <b>O</b>
@@ -150,14 +155,15 @@ article.md-typeset.md-typeset ul {
 
 <b>P</b>
 
-* [PICO_INSTANCE_UUID](reference/sql/system_functions.md#pico_instance_uuid)
-* [PICO_INSTANCE_NAME](reference/sql/system_functions.md#pico_instance_name)
-* [PICO_REPLICASET_NAME](reference/sql/system_functions.md#pico_replicaset_name)
-* [PICO_TIER_NAME](reference/sql/system_functions.md#pico_tier_name)
-* [PICO_INSTANCE_DIR](reference/sql/system_functions.md#pico_instance_dir)
-* [PICO_CONFIG_FILE_PATH](reference/sql/system_functions.md#pico_config_file_path)
-* [PICO_RAFT_LEADER_ID](reference/sql/system_functions.md#pico_raft_leader_id)
-* [PICO_RAFT_LEADER_UUID](reference/sql/system_functions.md#pico_raft_leader_uuid)
+* [PICO_CONFIG_FILE_PATH](reference/sql/pico_config_file_path.md)
+* [PICO_INSTANCE_DIR](reference/sql/pico_instance_dir.md)
+* [PICO_INSTANCE_HEALTH_STATUS](reference/sql/pico_instance_health_status.md)
+* [PICO_INSTANCE_NAME](reference/sql/pico_instance_name.md)
+* [PICO_INSTANCE_UUID](reference/sql/pico_instance_uuid.md)
+* [PICO_RAFT_LEADER_ID](reference/sql/pico_raft_leader_id.md)
+* [PICO_RAFT_LEADER_UUID](reference/sql/pico_raft_leader_uuid.md)
+* [PICO_REPLICASET_NAME](reference/sql/pico_replicaset_name.md)
+* [PICO_TIER_NAME](reference/sql/pico_tier_name.md)
 * [plugin](architecture/plugins.md)
 * [procedure](admin/access_control.md#proc_access)
 * [projection](reference/sql/explain_facets/logical.md#query-with-scan)
@@ -168,6 +174,7 @@ article.md-typeset.md-typeset ul {
 * [RETURN QUERY](reference/sql/return_query.md)
 * [REVOKE](reference/sql/revoke.md)
 * [role](admin/access_control.md#role_model)
+* [ROW_NUMBER](reference/sql/row_number.md)
 
 <b>S</b>
 
@@ -175,17 +182,18 @@ article.md-typeset.md-typeset ul {
 * [SELECT](reference/sql/select.md)
 * [sharding key](overview/glossary.md#sharding_key)
 * [stored procedure](overview/glossary.md#stored_procedure)
+* [STRING_AGG](reference/sql/string_agg.md)
 * [SUBSTR](reference/sql/substr.md)
 * [SUBSTRING](reference/sql/substring.md)
-* [SUM](reference/sql/aggregate.md#functions)
+* [SUM](reference/sql/sum.md)
 
 <b>T</b>
 
 * [table](overview/glossary.md#table)
 * [TEXT](reference/sql_types.md#text)
-* [TO_CHAR](reference/sql/time_and_date.md#to_char)
-* [TO_DATE](reference/sql/time_and_date.md#to_date)
-* [TOTAL](reference/sql/aggregate.md#functions)
+* [TO_CHAR](reference/sql/to_char.md)
+* [TO_DATE](reference/sql/to_date.md)
+* [TOTAL](reference/sql/total.md)
 * [TRIM](reference/sql/trim.md)
 * [TRUNCATE TABLE](reference/sql/truncate_table.md)
 * [type](reference/sql_types.md)
@@ -205,7 +213,7 @@ article.md-typeset.md-typeset ul {
 
 * [VALUES](reference/sql/values.md)
 * [VARCHAR](reference/sql_types.md#text)
-* [version](reference/sql/system_functions.md#version)
+* [version](reference/sql/version.md)
 
 <b>W</b>
 
