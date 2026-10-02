@@ -99,13 +99,27 @@ build-$(1)-pkg: override CARGO_FLAGS += --profile=$(1)
 build-$(1)-pkg: override CARGO_FLAGS += $$(LOCKED)
 build-$(1)-pkg: build
 
+# Prebuild the coverage-instrumented libraries, binaries, and Rust tests.
+# Build the regular targets and the test targets in separate Cargo
+# invocations so each gets its own set of dependency features. A combined
+# `--lib --bins --tests` build would enable test-only features in `picodata`.
+#
+# `--tests` selects Picodata's Rust integration test target, so Cargo also
+# builds the `picodata` executable. The SQL crates' dev-dependencies enable
+# `standalone_decimal` in that invocation. That feature selects a stub for
+# `tarantool::json::parse` because standalone Rust tests lack the Tarantool
+# region functions needed to reclaim the parse result. The stub returns
+# "JSON parsing needs a tarantool runtime" even in a running Picodata server.
+#
+# Both builds write `picodata` to the same path. `tools/coverage.py` sets
+# `SKIP_CARGO_BUILD=1`, so pytest launches the executable left by the last
+# build. Keep `--lib --bins` last so pytest exercises the server with
+# Tarantool's JSON parser and decimal implementation.
 .PHONY: coverage-build-$(1)
 coverage-build-$(1): export CARGO_TARGET_DIR = $$(TARGET_DIR_COV)
 coverage-build-$(1):
-	@# For code coverage we'd like to build everything in advance.
-	@# XXX: we can't use `--lib --bins --tests` simultaneously due to feature unification.
-	tools/coverage.py run $$(MAKE) build-$(1) CARGO_FLAGS="$$(CARGO_FLAGS) --lib --bins"
 	tools/coverage.py run $$(MAKE) build-$(1) CARGO_FLAGS="$$(CARGO_FLAGS) --tests"
+	tools/coverage.py run $$(MAKE) build-$(1) CARGO_FLAGS="$$(CARGO_FLAGS) --lib --bins"
 endef
 
 # Extra mandatory cargo flags of the `build-*-pkg` packages for each profile:
