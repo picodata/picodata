@@ -242,6 +242,14 @@ errors:
       CREATE TABLE ms (c0 INT PRIMARY KEY);
       SELECT * FROM mg1 JOIN mg2 ON (SELECT true FROM ms);
 
+  # EXISTS over a VALUES list reaches the storage as "exists ( ( SELECT ... ) )", whose doubled
+  # parentheses its parser rejects. The pattern is the most specific part of the message, yet it
+  # also matches any other syntax error before a parenthesis in the SQL sent to the storage.
+  - pattern: "Failed to compile SQL statement: Syntax error at line 1 near '('"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3255
+    repro: |
+      SELECT * FROM (VALUES (1)) WHERE EXISTS (VALUES (1));
+
   # A window aggregate encodes its argument as a decimal, so a double beyond the 38 digits a
   # decimal holds fails. The same expression outside a window keeps the double and succeeds. It
   # takes a decimal to reach the aggregate: COALESCE over a double and a decimal literal is what
