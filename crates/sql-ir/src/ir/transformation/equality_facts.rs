@@ -346,6 +346,33 @@ enum EqualityFactAtom {
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Hash)]
 pub struct ClassId(u32);
 
+impl ClassId {
+    /// Index of the class in [`EqualityFacts::classes`].
+    #[must_use]
+    pub fn index(self) -> usize {
+        usize::try_from(self.0).expect("class id should fit usize")
+    }
+}
+
+/// One top-level conjunct of a restriction that is a plain `term = term`
+/// equality the analysis fully understood: both sides are a column, a constant
+/// or a parameter of one type, and they are not the same term. Its two terms
+/// are members of `class_id`, so a consumer that derives the whole class may
+/// drop this conjunct from `owner_rel` in favour of the derived clauses.
+///
+/// Recorded only for a satisfiable `Selection` filter or INNER `JOIN`
+/// condition, never for a `LEFT JOIN` `ON`, a conjunct under `OR` / `NOT`, a
+/// row equality or a comparison through a cast or computed expression.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceEquality {
+    /// The `Selection` or INNER `Join` whose filter / condition holds it.
+    pub owner_rel: NodeId,
+    /// The conjunct itself, a direct `AND` operand of the owner's condition.
+    pub expr_id: NodeId,
+    /// The final class both of its terms belong to.
+    pub class_id: ClassId,
+}
+
 /// Materialized equivalence class.
 ///
 /// First-class object built at [`EqualityFactsBuilder::freeze`] time, one
@@ -500,6 +527,11 @@ pub struct EqualityFacts {
     /// Sorted and deduplicated. Conflicts across conditions are recorded in
     /// [`EquivalenceClass::contradictory`].
     dead_rels: Box<[NodeId]>,
+    /// Restriction conjuncts that are plain equalities within one class, in
+    /// analysis order. See [`SourceEquality`]. They describe the conditions
+    /// as analyzed: enrichment clears them once it rewrites those conditions,
+    /// so they are never read as a list of current clauses.
+    source_equalities: Box<[SourceEquality]>,
 }
 
 /// Raw cross-side equalities collected for a LEFT JOIN during `analyze`.
@@ -689,6 +721,13 @@ impl EqualityFacts {
         self.class(class_id)?.constant.as_ref()
     }
 
+    /// The id of each class, in the order of [`EqualityFacts::classes`].
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn class_ids(&self) -> impl Iterator<Item = ClassId> {
+        (0..self.classes.len())
+            .map(|index| ClassId(u32::try_from(index).expect("class index fits u32")))
+    }
+
     fn class(&self, class_id: ClassId) -> Option<&EquivalenceClass> {
         self.classes
             .get(usize::try_from(class_id.0).expect("class id should fit usize"))
@@ -732,6 +771,19 @@ impl EqualityFacts {
     #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
     pub(super) fn dead_rels(&self) -> &[NodeId] {
         &self.dead_rels
+    }
+
+    /// Restriction conjuncts that are plain equalities within one class, as
+    /// analyzed. Empty once enrichment has rewritten the conditions.
+    #[must_use]
+    pub fn source_equalities(&self) -> &[SourceEquality] {
+        &self.source_equalities
+    }
+
+    /// Forget the source equalities after their conditions were rewritten.
+    #[cfg(feature = "enrich_restrictions")]
+    pub(super) fn clear_source_equalities(&mut self) {
+        self.source_equalities = Box::default();
     }
 
     /// The subtree root these facts were analyzed for. Every
@@ -953,6 +1005,9 @@ struct EqualityFactsBuilder {
     origins: AHashMap<NodeId, Vec<SlotKey>>,
     domain_roots: Vec<NodeId>,
     scoped: AHashMap<NodeId, ScopedFacts>,
+    /// `(owner_rel, expr_id, one of its terms)` of each source equality,
+    /// bound to its final class in `freeze`.
+    sources: Vec<(NodeId, NodeId, EqualityFactAtom)>,
 }
 
 impl EqualityFactsBuilder {
@@ -963,6 +1018,7 @@ impl EqualityFactsBuilder {
             origins: AHashMap::with_hasher(equality_facts_hash_state()),
             domain_roots: Vec::new(),
             scoped: AHashMap::with_hasher(equality_facts_hash_state()),
+            sources: Vec::new(),
         }
     }
 
@@ -1037,7 +1093,7 @@ impl EqualityFactsBuilder {
     }
 
     fn freeze(
-        self,
+        mut self,
         param_types: AHashMap<u16, DerivedType>,
         mut dead_rels: Vec<NodeId>,
     ) -> EqualityFacts {
@@ -1045,6 +1101,18 @@ impl EqualityFactsBuilder {
         dead_rels.sort_unstable_by_key(|rel| (rel.arena_type, rel.offset));
         dead_rels.dedup();
         let groups = self.members.groups_number();
+        // Resolve each source's group before `into_groups` consumes the
+        // union-find; its root is the one `into_groups` reports.
+        let sources: Vec<(NodeId, NodeId, UnionFindGroup)> = std::mem::take(&mut self.sources)
+            .into_iter()
+            .map(|(owner_rel, expr_id, atom)| {
+                let group = self
+                    .members
+                    .find(&atom)
+                    .expect("a source's terms are unioned before freeze");
+                (owner_rel, expr_id, group)
+            })
+            .collect();
 
         let mut root_to_class: AHashMap<UnionFindGroup, ClassId> =
             AHashMap::with_capacity_and_hasher(groups, equality_facts_hash_state());
@@ -1140,6 +1208,15 @@ impl EqualityFactsBuilder {
                 }
             }
         }
+
+        let source_equalities: Box<[SourceEquality]> = sources
+            .into_iter()
+            .map(|(owner_rel, expr_id, group)| SourceEquality {
+                owner_rel,
+                expr_id,
+                class_id: root_to_class[&group],
+            })
+            .collect();
 
         // Preserve the public invariant that every visited output slot has a
         // class, even when no predicate mentions it. Create those singleton
@@ -1254,6 +1331,7 @@ impl EqualityFactsBuilder {
             // Domain 0 is the one `get_equality_facts` opened for its `top_id`.
             analyzed_top: self.domain_roots[0],
             dead_rels: dead_rels.into_boxed_slice(),
+            source_equalities,
         }
     }
 }
@@ -1705,12 +1783,20 @@ impl<'p> EqualityAnalysis<'p> {
         // The whole per-node filter is one AND-region: every clause is a
         // conjunct.
         let clauses: Conjuncts = restr.clauses().iter().map(|c| c.clause()).collect();
-        let Facts(partition) = self.derive_conjuncts(&clauses, &[], domain)? else {
+        // Only enrichment replaces source equalities; skip the bookkeeping
+        // when it is compiled out.
+        let mut sources = cfg!(feature = "enrich_restrictions").then(Vec::new);
+        let Facts(partition) = self.derive_conjuncts(&clauses, &[], domain, sources.as_mut())?
+        else {
+            // An unsatisfiable condition keeps every conjunct.
             self.dead_rels.push(rel_id);
             return Ok(());
         };
         for group in partition {
             self.builder.union_atoms(group);
+        }
+        for (expr_id, atom) in sources.into_iter().flatten() {
+            self.builder.sources.push((rel_id, expr_id, atom));
         }
         Ok(())
     }
@@ -1803,7 +1889,7 @@ impl<'p> EqualityAnalysis<'p> {
         }
         let mut conjuncts = Conjuncts::new();
         self.collect_and_conjuncts(node, &mut conjuncts)?;
-        self.derive_conjuncts(&conjuncts, nulls_in, domain)
+        self.derive_conjuncts(&conjuncts, nulls_in, domain, None)
     }
 
     /// Flatten this analysis' top-level `AND` spine without paying the shared
@@ -1834,11 +1920,16 @@ impl<'p> EqualityAnalysis<'p> {
     /// Processes one maximal `AND`-region: a flat list of conjuncts, each of which
     /// may itself be an `OR`. This is the old `collect_chain_facts`, generalized
     /// so an `OR` conjunct contributes the intersection of its arms' facts.
+    ///
+    /// With `sources`, also collect each conjunct that is a scalar equality
+    /// of two distinct terms, with one of its interned terms. They are valid
+    /// only if the region turns out satisfiable.
     fn derive_conjuncts(
         &mut self,
         conjuncts: &[NodeId],
         nulls_in: &[SlotKey],
         domain: DomainId,
+        mut sources: Option<&mut Vec<(NodeId, EqualityFactAtom)>>,
     ) -> Result<DeriveOutcome, SbroadError> {
         // Pass 1 collects slots that are known NULL via `IS NULL` (plus any
         // inherited from the enclosing conjunction); pass 2 then kills the whole
@@ -1896,6 +1987,11 @@ impl<'p> EqualityAnalysis<'p> {
                     if left_terms.len() != right_terms.len() {
                         continue;
                     }
+                    // A row equality stays: replacing it needs every component
+                    // covered, not just one.
+                    let scalar = sources.is_some()
+                        && !matches!(self.plan.get_expression_node(*left)?, Expression::Row(_))
+                        && !matches!(self.plan.get_expression_node(*right)?, Expression::Row(_));
                     for (left_term, right_term) in left_terms.into_iter().zip(right_terms) {
                         let is_null_slot = |term: &FactTerm| match &term.atom {
                             FactAtom::Slot(slot) => null_slots.contains(slot),
@@ -1919,6 +2015,15 @@ impl<'p> EqualityAnalysis<'p> {
                             }
                         }
 
+                        if let (true, Some(sources)) = (scalar, sources.as_deref_mut()) {
+                            // `a = a` (also through aliases of one column) and
+                            // `$1 = $1` reject NULLs. Class connectivity alone
+                            // does not preserve that check: keep these sources.
+                            let left_atom = self.builder.intern_atom(left_term.atom.clone());
+                            if left_atom != self.builder.intern_atom(right_term.atom.clone()) {
+                                sources.push((*node_id, left_atom));
+                            }
+                        }
                         local.union(left_term.atom, right_term.atom);
                     }
                 }

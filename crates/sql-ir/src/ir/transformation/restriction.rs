@@ -121,6 +121,14 @@ impl Restrictions {
         self.by_rel.insert(rel_id, Restriction { clauses: infos });
     }
 
+    /// Keep only the clauses of `rel_id` whose node `keep` accepts.
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn retain(&mut self, rel_id: NodeId, mut keep: impl FnMut(NodeId) -> bool) {
+        if let Some(restriction) = self.by_rel.get_mut(&rel_id) {
+            restriction.clauses.retain(|info| keep(info.clause));
+        }
+    }
+
     /// Follow [`Plan::replace_target_in_relational`]`(rel_id, from, to)`: the
     /// clauses of `rel_id` reference `to` instead of `from`.
     #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]

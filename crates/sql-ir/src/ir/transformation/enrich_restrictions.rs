@@ -10,7 +10,7 @@
 //! conjunct placed within the class's domain — never above an outer join or
 //! aggregate the fact does not constrain. Each column and each parameter check
 //! must have a valid placement; a missing one is an error, never a silently
-//! dropped predicate. The query's original equalities are always kept.
+//! dropped predicate.
 //!
 //! An unpinned class derives equalities between columns with the same relation
 //! and placement, each paired with the first. Columns of different relations
@@ -25,6 +25,17 @@
 //!
 //! Only equalities that hold for every row are used; an outer join's `ON` is left
 //! out, as it holds only for matched rows.
+//!
+//! A class whose clauses are all planned replaces the query's own equalities
+//! within it: each [`SourceEquality`] of such a class is dropped from its
+//! `WHERE` or INNER `ON`, which keeps its other conjuncts and gains the derived
+//! clauses placed there. The derived clauses cover the class within its domain:
+//! column conditions follow their members, while column-less checks use a host
+//! where failure empties the domain. Everything else stays: an outer join's
+//! `ON`, `OR` / `NOT` subtrees, row equalities, casts and other opaque terms,
+//! self-comparisons such as `a = a`, the conjuncts of an unsatisfiable condition
+//! and every source of a contradictory class. A condition left with no conjunct
+//! becomes `true`; the node itself stays.
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::columns::RelColumn;
@@ -39,7 +50,7 @@ use crate::ir::operator::{Bool, JoinKind};
 #[cfg(debug_assertions)]
 use crate::ir::transformation::equality_facts::UnionFind;
 use crate::ir::transformation::equality_facts::{
-    ClassId, ClassPin, EqualityFacts, EquivalenceClass, Slot,
+    ClassId, ClassPin, EqualityFacts, EquivalenceClass, Slot, SourceEquality,
 };
 use crate::ir::transformation::restriction::{RestrictInfo, Restriction};
 use crate::ir::tree::traversal::REL_CAPACITY;
@@ -164,7 +175,12 @@ struct Enrichment {
     stars: Vec<Star>,
     pairs: Vec<ColPair>,
     empty: Vec<Placement>,
+    /// Source conjuncts to drop, keyed by the fold placement of their owner.
+    replaced: Replaced,
 }
+
+/// The [`SourceEquality`] conjuncts each existing filter or INNER `ON` loses.
+type Replaced = AHashMap<Placement, AHashSet<NodeId>>;
 
 impl Plan {
     /// Add implied equalities and false markers from analyzed facts.
@@ -186,10 +202,15 @@ impl Plan {
         // Three phases, kept apart so the search never depends on the order of
         // already-inserted nodes: plan where each class emits (reads the tree),
         // build the predicate expressions, then apply the relational changes.
-        let Some(planned) = self.plan_enrichment(top_id)? else {
+        let Some(mut planned) = self.plan_enrichment(top_id)? else {
             return Ok(self);
         };
-        let grouped = self.build_predicates(planned)?;
+        let mut replaced = std::mem::take(&mut planned.replaced);
+        let mut grouped = self.build_predicates(planned)?;
+        // An owner that only loses sources is rebuilt too.
+        for &placement in replaced.keys() {
+            grouped.entry(placement).or_default();
+        }
         // Splicing does not read equality facts. Register the inserted nodes
         // afterwards to rebuild each affected class's members only once.
         let mut passthroughs = Vec::new();
@@ -208,14 +229,20 @@ impl Plan {
         #[cfg(debug_assertions)]
         let mut emitted: Vec<(NodeId, NodeId)> = Vec::new();
         // Each step keeps the restrictions in step with the tree: later
-        // readers see no missing clause, nor a slot of a replaced child.
-        // Facts stay valid: the classes are unchanged and the inserted nodes
-        // are registered below.
+        // readers see no dropped or missing clause, nor a slot of a replaced
+        // child. Facts stay valid: the classes are unchanged and the inserted
+        // nodes are registered below.
         for (placement, clauses) in folds.into_iter().chain(splices) {
+            let dropped = replaced.remove(&placement);
             #[cfg(debug_assertions)]
             let derived: Vec<NodeId> = clauses.iter().map(RestrictInfo::clause).collect();
             #[cfg_attr(not(debug_assertions), allow(unused_variables))]
-            let rel = self.materialize_restrictions(placement, clauses, &mut passthroughs)?;
+            let rel = self.materialize_restrictions(
+                placement,
+                clauses,
+                dropped.as_ref(),
+                &mut passthroughs,
+            )?;
             #[cfg(debug_assertions)]
             emitted.extend(derived.into_iter().map(|clause| (rel, clause)));
         }
@@ -226,6 +253,8 @@ impl Plan {
         }
         if let Some(facts) = self.facts.as_mut() {
             facts.register_passthroughs(&passthroughs);
+            // The conditions they name are rewritten now.
+            facts.clear_source_equalities();
         }
         Ok(self)
     }
@@ -239,16 +268,17 @@ impl Plan {
         let Some(facts) = self.facts.as_ref() else {
             return Ok(None);
         };
-        let mut candidates: Vec<(&EquivalenceClass, ClassAction<'_>)> = facts
+        let mut candidates: Vec<(ClassId, &EquivalenceClass, ClassAction<'_>)> = facts
             .classes
             .iter()
-            .filter_map(|class| Some((class, classify(class)?)))
+            .zip(facts.class_ids())
+            .filter_map(|(class, id)| Some((id, class, classify(class)?)))
             .collect();
         if candidates.is_empty() && facts.dead_rels().is_empty() {
             return Ok(None);
         }
         // Sort by stable sources because ClassId order depends on hashing.
-        candidates.sort_unstable_by_key(|(class, _)| {
+        candidates.sort_unstable_by_key(|(_, class, _)| {
             (
                 class.anchor.arena_type,
                 class.anchor.offset,
@@ -258,7 +288,7 @@ impl Plan {
         });
 
         // Only column placement needs a parent map.
-        let parents = if candidates.iter().any(|(class, action)| {
+        let parents = if candidates.iter().any(|(_, class, action)| {
             !class.members.is_empty() && !matches!(action, ClassAction::Contradiction)
         }) {
             self.rel_parents(top_id)
@@ -283,12 +313,18 @@ impl Plan {
             empty: self.dead_rel_markers(facts)?,
             ..Enrichment::default()
         };
-        for (class, action) in candidates {
+        // Classes whose every clause is planned. Only these replace sources;
+        // a class `classify` skips is not complete.
+        let mut complete: AHashSet<ClassId> = AHashSet::new();
+        for (class_id, class, action) in candidates {
             match action {
+                // Its sources stay: the `false` alone would also do, but its
+                // placement is not proven to cover every source yet.
                 ClassAction::Contradiction => {
                     planned
                         .empty
                         .push(self.required_domain_check(facts, class, None)?);
+                    continue;
                 }
                 ClassAction::Pinned(pin) => {
                     let star = self.plan_class_star(
@@ -303,6 +339,7 @@ impl Plan {
                 }
                 ClassAction::Pairs => {
                     self.plan_class_pairs(
+                        class_id,
                         class,
                         &parents,
                         &mut lift_index,
@@ -311,7 +348,11 @@ impl Plan {
                     )?;
                 }
             }
+            // Every failure above is an error, so reaching here means the
+            // class is fully planned.
+            complete.insert(class_id);
         }
+        planned.replaced = self.replaced_sources(facts.source_equalities(), &complete)?;
         Ok(Some(planned))
     }
 
@@ -340,6 +381,41 @@ impl Plan {
         debug_assert_eq!(seen, emitted.len(), "a derived clause is no restriction");
     }
 
+    /// Group the sources of `complete` classes by the fold placement of their
+    /// owner.
+    ///
+    /// # Errors
+    /// - Reading a relational node fails.
+    fn replaced_sources(
+        &self,
+        sources: &[SourceEquality],
+        complete: &AHashSet<ClassId>,
+    ) -> Result<Replaced, SbroadError> {
+        let mut replaced = Replaced::new();
+        for source in sources {
+            if !complete.contains(&source.class_id) {
+                continue;
+            }
+            let placement = match self.get_relation_node(source.owner_rel)? {
+                Relational::Selection(_) => Placement::ExistingSelection(source.owner_rel),
+                Relational::Join(Join {
+                    kind: JoinKind::Inner,
+                    ..
+                }) => Placement::InnerJoinOn(source.owner_rel),
+                // The analysis records sources of these two only.
+                _ => unreachable!(
+                    "source owner {:?} is no Selection or INNER Join",
+                    source.owner_rel
+                ),
+            };
+            replaced
+                .entry(placement)
+                .or_default()
+                .insert(source.expr_id);
+        }
+        Ok(replaced)
+    }
+
     /// Build expressions grouped by [`Placement`] without changing relations.
     ///
     /// # Errors
@@ -350,6 +426,7 @@ impl Plan {
             stars,
             pairs,
             empty,
+            replaced: _,
         }: Enrichment,
     ) -> Result<AHashMap<Placement, Vec<RestrictInfo>, RepeatableState>, SbroadError> {
         let mut grouped: AHashMap<Placement, Vec<RestrictInfo>, RepeatableState> =
@@ -397,11 +474,13 @@ impl Plan {
         Ok(grouped)
     }
 
-    /// Materialize nonempty `derived` at the planned `placement`: extend an
-    /// existing filter or INNER JOIN condition, or create the planned filter nodes.
-    /// Record each inserted chain in `passthroughs` as `(child, inserted_nodes)`.
-    /// The owner's restriction follows: `derived` is appended. Return the node
-    /// whose filter / condition changed.
+    /// Materialize `derived` at the planned `placement`: extend an existing
+    /// filter or INNER JOIN condition without its `dropped` conjuncts, or create
+    /// the planned filter nodes. Only a fold may drop conjuncts or have no
+    /// clauses. Record each inserted chain in `passthroughs` as
+    /// `(child, inserted_nodes)`. The owner's restriction follows: `derived`
+    /// is appended, `dropped` removed. Return the node whose filter /
+    /// condition changed.
     ///
     /// # Errors
     /// - Building the `AND` filter or splicing a node fails.
@@ -409,8 +488,16 @@ impl Plan {
         &mut self,
         placement: Placement,
         derived: Vec<RestrictInfo>,
+        dropped: Option<&AHashSet<NodeId>>,
         passthroughs: &mut Vec<(NodeId, SmallVec<[NodeId; 3]>)>,
     ) -> Result<NodeId, SbroadError> {
+        debug_assert!(
+            matches!(
+                placement,
+                Placement::ExistingSelection(_) | Placement::InnerJoinOn(_)
+            ) || (dropped.is_none() && !derived.is_empty()),
+            "enrich_restrictions: a new filter drops nothing and is never empty"
+        );
         Ok(match placement {
             // Fold onto the existing filter / condition, which stays the AND's base.
             Placement::ExistingSelection(selection) => {
@@ -419,7 +506,7 @@ impl Plan {
                 else {
                     unreachable!("caller checked Selection");
                 };
-                let filter = self.fold_condition(selection, *filter, derived)?;
+                let filter = self.rebuild_condition(selection, *filter, dropped, derived)?;
                 let MutRelational::Selection(Selection {
                     filter: filter_id, ..
                 }) = self.get_mut_relation_node(selection)?
@@ -436,7 +523,7 @@ impl Plan {
                 let Relational::Join(Join { condition, .. }) = self.get_relation_node(join)? else {
                     unreachable!("caller checked Join");
                 };
-                let condition = self.fold_condition(join, *condition, derived)?;
+                let condition = self.rebuild_condition(join, *condition, dropped, derived)?;
                 let MutRelational::Join(Join {
                     condition: condition_id,
                     ..
@@ -489,28 +576,83 @@ impl Plan {
         Ok(new_sel)
     }
 
-    /// Fold `derived` onto `owner`'s filter / condition `base`. The owner's
-    /// restriction gets the same edit: `derived` is appended, or is the whole
-    /// restriction when the fold replaces a bare `true`.
+    /// The existing filter / condition `base` of `owner` without its `dropped`
+    /// conjuncts and with `derived` folded on; `true` when nothing remains.
+    /// The owner's restriction gets the same edit: the dropped sources leave
+    /// it and `derived` is appended. When no old conjunct survives (all were
+    /// dropped, or only a bare `true` that the fold replaces), the restriction
+    /// is `derived` (or the new `true`) alone.
     ///
     /// # Errors
     /// - Reading an expression or building the `AND` fails.
-    fn fold_condition(
+    fn rebuild_condition(
         &mut self,
         owner: NodeId,
         base: NodeId,
-        derived: Vec<RestrictInfo>,
+        dropped: Option<&AHashSet<NodeId>>,
+        mut derived: Vec<RestrictInfo>,
     ) -> Result<NodeId, SbroadError> {
         let clauses: Vec<NodeId> = derived.iter().map(RestrictInfo::clause).collect();
-        let (condition, replaced) = self.fold_onto(base, clauses)?;
+        let (condition, kept_none) = match self.without_conjuncts(owner, base, dropped)? {
+            // Fold onto the remaining condition; a bare `true` may be replaced.
+            Some(kept) => self.fold_onto(kept, clauses)?,
+            None if clauses.is_empty() => {
+                let true_id = self.add_const(Value::Boolean(true));
+                // TODO: drop the bare `true` from restrictions? It restricts
+                // nothing and is kept only to match `RestrictionBuilder`, which
+                // records it too; skip it there as well if removed.
+                derived.push(RestrictInfo::implied(true_id, SmallVec::new()));
+                (true_id, true)
+            }
+            None => (self.and_of(clauses)?, true),
+        };
         if let Some(restrictions) = self.restrictions.as_mut() {
-            if replaced {
+            if kept_none {
                 restrictions.set(owner, derived);
             } else {
+                if let Some(dropped) = dropped {
+                    restrictions.retain(owner, |clause| !dropped.contains(&clause));
+                }
                 restrictions.extend(owner, derived);
             }
         }
         Ok(condition)
+    }
+
+    /// `owner`'s condition `base` without its `dropped` top-level conjuncts,
+    /// the rest `AND`ed in their order; `None` when none remain. The conjuncts
+    /// come from `owner`'s restriction, still unchanged here. Builds new `AND`
+    /// nodes only and never changes a kept conjunct, which another node may
+    /// share.
+    ///
+    /// # Errors
+    /// - `owner` has no restriction.
+    /// - Building the `AND` fails.
+    fn without_conjuncts(
+        &mut self,
+        owner: NodeId,
+        base: NodeId,
+        dropped: Option<&AHashSet<NodeId>>,
+    ) -> Result<Option<NodeId>, SbroadError> {
+        let Some(dropped) = dropped.filter(|dropped| !dropped.is_empty()) else {
+            return Ok(Some(base));
+        };
+        let clauses = self.owner_restriction(owner)?.clauses();
+        let kept: Vec<NodeId> = clauses
+            .iter()
+            .map(RestrictInfo::clause)
+            .filter(|clause| !dropped.contains(clause))
+            .collect();
+        // Sources are conjuncts of this very condition, read at analysis.
+        debug_assert_eq!(
+            clauses.len() - kept.len(),
+            dropped.len(),
+            "enrich_restrictions: a dropped source is no conjunct of {base:?}"
+        );
+        if kept.is_empty() {
+            return Ok(None);
+        }
+        self.and_of(kept).map(Some)
     }
 
     /// Relink `parent` from `child` to `spliced` (the top of the inserted chain),
@@ -540,6 +682,9 @@ impl Plan {
         base: NodeId,
         clauses: Vec<NodeId>,
     ) -> Result<(NodeId, bool), SbroadError> {
+        if clauses.is_empty() {
+            return Ok((base, false));
+        }
         if matches!(
             self.get_expression_node(base)?,
             Expression::Constant(Constant {
@@ -665,6 +810,7 @@ impl Plan {
     /// - Lowest members on one relation land through different placements.
     fn plan_class_pairs(
         &self,
+        class_id: ClassId,
         class: &EquivalenceClass,
         parents: &AHashMap<NodeId, NodeId>,
         lift_index: &mut AHashMap<NodeId, AHashMap<RelColumn, usize>>,
@@ -784,13 +930,8 @@ impl Plan {
                             entry.insert(self.stated_pairs_by_class(stated_pairs.facts, join)?)
                         }
                     };
-                    // Any member names the class in the facts.
-                    let class_id = class
-                        .members
-                        .first()
-                        .and_then(|m| stated_pairs.facts.class_of_slot(m.rel_id, m.pos));
-                    let (left, right) = class_id
-                        .and_then(|class_id| stated.get(&class_id))
+                    let (left, right) = stated
+                        .get(&class_id)
                         .copied()
                         .unwrap_or((left_rep, right_rep));
                     debug_assert!(

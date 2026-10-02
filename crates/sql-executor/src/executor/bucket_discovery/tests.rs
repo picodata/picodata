@@ -1107,6 +1107,9 @@ fn join_buckets(sql: &str, params: Vec<Value>, folded: &Value) -> Buckets {
     query.bucket_discovery(top).unwrap()
 }
 
+/// Without enrichment, the condition folds in the join's `ON`; with it, an
+/// INNER join's parameter check moves above the join (see `enrich_markers`).
+#[cfg(not(feature = "enrich_restrictions"))]
 #[test]
 fn folded_join_condition() {
     let inner = r#"SELECT a."id" FROM "test_space" AS a JOIN "test_space_hist" AS b ON "#;
@@ -1167,13 +1170,35 @@ fn column_eq_null_param_in_row() {
     assert_eq!(Buckets::new_empty(), discover(query, vec![Value::Null]));
 }
 
-/// Pruning on the `false` markers `enrich_restrictions` derives.
+/// Pruning on the `false` markers and parameter gates `enrich_restrictions`
+/// derives.
 #[cfg(feature = "enrich_restrictions")]
 mod enrich_markers {
     use super::{discover, join_buckets};
     use crate::ir::bucket::Buckets;
     use crate::ir::value::Value;
     use pretty_assertions::assert_eq;
+
+    /// Enrichment moves the INNER ON's `$1 = 1` to a gate above the join; the
+    /// bound value folds it to false and prunes every bucket.
+    #[test]
+    fn bound_parameter_gate_above_inner_join_prunes_buckets() {
+        let sql = r#"SELECT a."id" FROM "test_space" AS a JOIN "test_space_hist" AS b
+            ON a."id" = b."id" AND $1 = 1"#;
+        assert_eq!(Buckets::new_empty(), discover(sql, vec![Value::from(2)]));
+    }
+
+    /// A LEFT join's `ON` is no restriction: its parameter check stays there,
+    /// folds to false, and the left side is kept.
+    #[test]
+    fn bound_parameter_folds_left_join_on() {
+        let sql = r#"SELECT a."id" FROM "test_space" AS a LEFT JOIN "test_space_hist" AS b
+            ON a."id" = b."id" AND $1 = 1"#;
+        assert_eq!(
+            Buckets::All,
+            join_buckets(sql, vec![Value::from(2)], &Value::Boolean(false))
+        );
+    }
 
     /// Enrichment folds INNER JOIN ON NULL to false. LEFT JOIN retains NULL
     /// and preserves its left rows.

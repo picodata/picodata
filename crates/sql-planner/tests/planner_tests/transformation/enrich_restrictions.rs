@@ -29,7 +29,8 @@ fn run_enrich(query: &str, params: &[DerivedType]) -> Plan {
 }
 
 /// The restrictions stored after a pass describe the current IR: they equal a
-/// full rebuild over `top_id`, made without the stored cache.
+/// full rebuild over `top_id`, made without the stored cache. The sources the
+/// pass consumed are gone from the facts.
 #[track_caller]
 fn assert_restrictions_match_ir(plan: &Plan, top_id: NodeId, context: &str) {
     let stored = plan.restrictions.clone();
@@ -40,6 +41,12 @@ fn assert_restrictions_match_ir(plan: &Plan, top_id: NodeId, context: &str) {
         .unwrap()
         .restrictions;
     assert_eq!(stored, fresh, "{context}");
+    assert!(
+        plan.facts
+            .as_ref()
+            .is_none_or(|facts| facts.source_equalities().is_empty()),
+        "{context}"
+    );
 }
 
 /// The plain logical-explain rendering of `plan`.
@@ -53,11 +60,10 @@ fn const_pins_every_member_at_the_base_scan() {
     // a = b AND b = 1 => the class {a, b, 1} pins the constant, so both members
     // get `col = 1` at the base scan, including `a = 1`, which the WHERE never
     // spells out.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(r#"SELECT "a" FROM "t" WHERE "a" = "b" AND "b" = 1"#, &[]);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = t.b::int and t.b::int = 1::int and t.a::int = 1::int and t.b::int = 1::int))
+      selection ((t.a::int = 1::int and t.b::int = 1::int))
         scan t
     ");
 }
@@ -74,8 +80,8 @@ fn const_crosses_an_inner_join_to_the_other_scan() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection (t.a::int = 1::int)
-        join on (t.a::int = t2.e::int)
+      selection (true::bool)
+        join on (true::bool)
           scan t
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
               selection (t.a::int = 1::int)
@@ -99,7 +105,7 @@ fn a_passthrough_stack_collapses_to_one_clause_at_the_base_scan() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (unnamed_subquery.a::int -> a)
-      selection (unnamed_subquery.a::int = 1::int)
+      selection (true::bool)
         scan unnamed_subquery
           projection (t.a::int -> a)
             selection (t.a::int = 1::int)
@@ -111,14 +117,13 @@ fn a_passthrough_stack_collapses_to_one_clause_at_the_base_scan() {
 fn param_pins_every_member_when_no_const() {
     // a = $1 AND a = b => the class {a, b, $1} has no literal, so the parameter is
     // the pin and each member gets `col = $1`, transitive b included.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "a" = $1 AND "a" = "b""#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = $1::int and t.a::int = t.b::int and t.a::int = $1::int and t.b::int = $1::int))
+      selection ((t.a::int = $1::int and t.b::int = $1::int))
         scan t
     ");
 }
@@ -129,14 +134,13 @@ fn const_wins_over_param_and_leaves_a_one_time_filter() {
     // column gets `a = 5`, and the parameter member gets `$1 = 5`.
     // The `$1::int` is the declared type, not one inferred
     // from the constant it was pinned to.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "a" = $1 AND "a" = 5"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = $1::int and t.a::int = 5::int and $1::int = 5::int and t.a::int = 5::int))
+      selection (($1::int = 5::int and t.a::int = 5::int))
         scan t
     ");
 }
@@ -146,14 +150,13 @@ fn extra_params_get_a_one_time_filter_against_the_pin_param() {
     // a = $1 AND a = $2 => the class pins the lowest param, so the column gets
     // `a = $1` and the other param gets `$2 = $1`. This produces one parameter
     // check whose operands keep their own declared types.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "a" = $1 AND "a" = $2"#,
         &[DerivedType::new(UnrestrictedType::Integer); 2],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = $1::int and t.a::int = $2::int and $2::int = $1::int and t.a::int = $1::int))
+      selection (($2::int = $1::int and t.a::int = $1::int))
         scan t
     ");
 }
@@ -166,7 +169,6 @@ fn a_one_time_filter_carries_on_a_selection_above_a_passthrough_projection() {
     // the `$1 = 1` one-time filter carries on a real `selection` spliced above the
     // derived table. The column pins (`a = 1`, `b = 1`) still land at the base
     // scan inside.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT * FROM (SELECT "a" FROM "t" WHERE "a" = 1 AND "a" = "b" AND "b" = $1)"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
@@ -176,7 +178,7 @@ fn a_one_time_filter_carries_on_a_selection_above_a_passthrough_projection() {
       selection ($1::int = 1::int)
         scan unnamed_subquery
           projection (t.a::int -> a)
-            selection ((t.a::int = 1::int and t.a::int = t.b::int and t.b::int = $1::int and t.a::int = 1::int and t.b::int = 1::int))
+            selection ((t.a::int = 1::int and t.b::int = 1::int))
               scan t
     ");
 }
@@ -186,14 +188,13 @@ fn implied_clauses_are_base_keyed_deduped() {
     // a = 1 AND a = b AND b = 1: several class members and several source clauses
     // collapse onto the same base column, but each (slot, pin) is emitted once,
     // `a = 1` appears once under the scan, not three times.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "a" = 1 AND "a" = "b" AND "b" = 1"#,
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = 1::int and t.a::int = t.b::int and t.b::int = 1::int and t.a::int = 1::int and t.b::int = 1::int))
+      selection ((t.a::int = 1::int and t.b::int = 1::int))
         scan t
     ");
 }
@@ -201,11 +202,10 @@ fn implied_clauses_are_base_keyed_deduped() {
 #[test]
 fn unpinned_class_pairs_columns_of_one_table() {
     // Both unpinned columns reach the same scan filter.
-    // TODO: the derived pair duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(r#"SELECT "a" FROM "t" WHERE "a" = "b""#, &[]);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = t.b::int and t.a::int = t.b::int))
+      selection (t.a::int = t.b::int)
         scan t
     ");
 }
@@ -213,11 +213,10 @@ fn unpinned_class_pairs_columns_of_one_table() {
 #[test]
 fn unpinned_class_stars_instead_of_full_product() {
     // Derive a=b and a=c for the three-member class; b=c follows transitively.
-    // TODO: the derived pair duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(r#"SELECT "a" FROM "t" WHERE "a" = "b" AND "b" = "c""#, &[]);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = t.b::int and t.b::int = t.c::int and t.a::int = t.b::int and t.a::int = t.c::int))
+      selection ((t.a::int = t.b::int and t.a::int = t.c::int))
         scan t
     ");
 }
@@ -225,11 +224,10 @@ fn unpinned_class_stars_instead_of_full_product() {
 #[test]
 fn a_pinned_class_derives_no_pairs() {
     // The constant pin yields a=1 and b=1, which also imply a=b.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(r#"SELECT "a" FROM "t" WHERE "a" = "b" AND "b" = 1"#, &[]);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = t.b::int and t.b::int = 1::int and t.a::int = 1::int and t.b::int = 1::int))
+      selection ((t.a::int = 1::int and t.b::int = 1::int))
         scan t
     ");
 }
@@ -237,15 +235,15 @@ fn a_pinned_class_derives_no_pairs() {
 #[test]
 fn a_join_condition_restates_its_own_pair() {
     // t.a = t2.e is one unpinned class whose columns meet in the join's ON --
-    // exactly where the query already states the pair. The pair is still
-    // derived (it restates the source conjunct until dedup lands).
+    // exactly where the query already states the pair. The derived pair replaces
+    // the source conjunct, so the ON states it once.
     let plan = run_enrich(
         r#"SELECT "t"."a" FROM "t" JOIN "t2" ON "t"."a" = "t2"."e""#,
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      join on ((t.a::int = t2.e::int and t.a::int = t2.e::int))
+      join on (t.a::int = t2.e::int)
         scan t
         scan t2
     ");
@@ -255,7 +253,8 @@ fn a_join_condition_restates_its_own_pair() {
 fn a_cross_table_pair_from_a_where_moves_into_the_inner_on() {
     // `l.b = r.f` comes from a WHERE above an INNER join. Its columns first
     // meet on the join's operands, so the pair goes into the ON, where an
-    // INNER join filters exactly as the WHERE does. The WHERE keeps its own.
+    // INNER join filters exactly as the WHERE does. The WHERE loses its source
+    // and is left as `true`.
     let plan = run_enrich(
         r#"SELECT * FROM "t" AS "l" JOIN "t2" AS "r" ON "l"."a" = "r"."e"
            WHERE "l"."b" = "r"."f""#,
@@ -263,8 +262,8 @@ fn a_cross_table_pair_from_a_where_moves_into_the_inner_on() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, r.e::int -> e, r.f::int -> f, r.g::int -> g, r.h::int -> h)
-      selection (l.b::int = r.f::int)
-        join on ((l.a::int = r.e::int and l.a::int = r.e::int and l.b::int = r.f::int))
+      selection (true::bool)
+        join on ((l.a::int = r.e::int and l.b::int = r.f::int))
           scan t -> l
           scan t2 -> r
     ");
@@ -280,7 +279,7 @@ fn a_join_on_true_gets_its_pair_in_the_on() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      selection (t.a::int = t2.e::int)
+      selection (true::bool)
         join on (t.a::int = t2.e::int)
           scan t
           scan t2
@@ -299,7 +298,7 @@ fn a_transitive_pair_connects_a_third_table() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, x.a::int -> a, x.b::int -> b, x.c::int -> c, x.d::int -> d)
-      selection ((t.a::int = t2.e::int and t2.e::int = x.b::int))
+      selection (true::bool)
         join on (t.a::int = x.b::int)
           join on (t.a::int = t2.e::int)
             scan t
@@ -311,8 +310,8 @@ fn a_transitive_pair_connects_a_third_table() {
 #[test]
 fn a_join_prefers_the_edge_its_on_already_states() {
     // Any edge between the lower join and `x` connects the class; the upper ON
-    // already states `t2.e = x.b`, so that one is picked (restated) instead of
-    // adding `t.a = x.b`.
+    // already states `t2.e = x.b`, so that one is picked (replacing the source)
+    // instead of adding `t.a = x.b`.
     let plan = run_enrich(
         r#"SELECT * FROM "t" JOIN "t2" ON "t"."a" = "t2"."e"
            JOIN "t" AS "x" ON "t2"."e" = "x"."b""#,
@@ -320,8 +319,8 @@ fn a_join_prefers_the_edge_its_on_already_states() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, x.a::int -> a, x.b::int -> b, x.c::int -> c, x.d::int -> d)
-      join on ((t2.e::int = x.b::int and t2.e::int = x.b::int))
-        join on ((t.a::int = t2.e::int and t.a::int = t2.e::int))
+      join on (t2.e::int = x.b::int)
+        join on (t.a::int = t2.e::int)
           scan t
           scan t2
         scan t -> x
@@ -331,8 +330,8 @@ fn a_join_prefers_the_edge_its_on_already_states() {
 #[test]
 fn a_cross_table_pair_stays_above_an_outer_join() {
     // t2.f is on the nullable side, so the class meets only on the LEFT JOIN's
-    // output: the pair stays in the WHERE above it (restating it there),
-    // never entering the join.
+    // output: the pair stays in the WHERE above it (replacing the source
+    // there), never entering the join.
     let plan = run_enrich(
         r#"SELECT * FROM "t" LEFT JOIN "t2" ON "t"."a" = "t2"."e"
            WHERE "t"."b" = "t2"."f""#,
@@ -340,7 +339,7 @@ fn a_cross_table_pair_stays_above_an_outer_join() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      selection ((t.b::int = t2.f::int and t.b::int = t2.f::int))
+      selection (t.b::int = t2.f::int)
         left join on (t.a::int = t2.e::int)
           scan t
           scan t2
@@ -359,7 +358,7 @@ fn an_inner_join_above_an_outer_join_takes_the_pair() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, x.a::int -> a, x.b::int -> b, x.c::int -> c, x.d::int -> d)
-      join on ((t2.f::int = x.b::int and t2.g::int = x.b::int and t2.f::int = t2.g::int and t2.f::int = x.b::int))
+      join on ((t2.f::int = t2.g::int and t2.f::int = x.b::int))
         left join on (t.a::int = t2.e::int)
           scan t
           scan t2
@@ -374,7 +373,7 @@ fn nested_left_joins_emit_a_spanning_set_after_pair_groups_converge() {
     // ties its own copy to the carried l.b, giving l.b = r.b and l.b = o.b,
     // never a third edge r.b = o.b that would close a cycle. Both derived pairs
     // belong in the top WHERE, not in either LEFT JOIN ON or on a nullable
-    // input. Source equalities remain until dedup is added.
+    // input. They replace the source equalities, so `r.b = o.b` is gone.
     let plan = run_enrich(
         "SELECT l.a FROM t l \
          LEFT JOIN t r ON l.a = r.a \
@@ -384,7 +383,7 @@ fn nested_left_joins_emit_a_spanning_set_after_pair_groups_converge() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a)
-      selection ((l.b::int = r.b::int and r.b::int = o.b::int and l.b::int = r.b::int and l.b::int = o.b::int))
+      selection ((l.b::int = r.b::int and l.b::int = o.b::int))
         left join on (l.a::int = o.a::int)
           left join on (l.a::int = r.a::int)
             scan t -> l
@@ -407,7 +406,7 @@ fn three_nested_left_joins_star_around_the_preserved_column() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a)
-      selection ((l.b::int = r.b::int and r.b::int = o.b::int and o.b::int = p.b::int and l.b::int = r.b::int and l.b::int = o.b::int and l.b::int = p.b::int))
+      selection ((l.b::int = r.b::int and l.b::int = o.b::int and l.b::int = p.b::int))
         left join on (l.a::int = p.a::int)
           left join on (l.a::int = o.a::int)
             left join on (l.a::int = r.a::int)
@@ -432,7 +431,7 @@ fn nullable_groups_star_inside_and_link_once_across() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a)
-      selection ((l.b::int = r.b::int and r.b::int = r.c::int and r.c::int = o.b::int and o.b::int = o.c::int and r.b::int = r.c::int and o.b::int = o.c::int and l.b::int = r.b::int and l.b::int = o.b::int))
+      selection ((r.b::int = r.c::int and o.b::int = o.c::int and l.b::int = r.b::int and l.b::int = o.b::int))
         left join on (l.a::int = o.a::int)
           left join on (l.a::int = r.a::int)
             scan t -> l
@@ -457,8 +456,8 @@ fn an_inner_join_links_two_outer_join_subtrees_once() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (x.lb::int -> lb)
-      selection ((x.lb::int = x.rb::int and y.lb::int = y.rb::int))
-        join on ((x.lb::int = y.lb::int and x.lb::int = y.lb::int))
+      selection (true::bool)
+        join on (x.lb::int = y.lb::int)
           scan x
             projection (x.lb::int -> lb, x.rb::int -> rb)
               selection (x.lb::int = x.rb::int)
@@ -488,7 +487,7 @@ fn aliases_of_one_column_are_one_vertex() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (s.a::int -> a, s.a2::int -> a2, s.b::int -> b)
-      selection ((s.a::int = s.b::int and s.a2::int = s.b::int))
+      selection (true::bool)
         scan s
           projection (t.a::int -> a, t.a::int -> a2, t.b::int -> b)
             selection (t.a::int = t.b::int)
@@ -507,8 +506,8 @@ fn a_shared_cte_joined_with_itself_links_its_call_sites_once() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a)
-      selection ((l.a::int = r.b::int and l.b::int = r.b::int))
-        join on ((l.a::int = r.a::int and l.a::int = r.a::int))
+      selection (true::bool)
+        join on (l.a::int = r.a::int)
           scan l
             projection (l.a::int -> a, l.b::int -> b)
               selection (l.a::int = l.b::int)
@@ -534,7 +533,7 @@ fn a_shared_cte_on_the_nullable_side_links_through_the_where() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a)
-      selection ((l.b::int = r.a::int and r.a::int = r.b::int and r.a::int = r.b::int and l.b::int = r.a::int))
+      selection ((r.a::int = r.b::int and l.b::int = r.a::int))
         left join on (l.a::int = r.a::int)
           scan cte l($0)
           scan cte r($0)
@@ -555,7 +554,7 @@ fn a_join_pair_and_an_operand_carrier_share_a_join() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      selection ((t.a::int = t2.e::int and t.b::int = 1::int))
+      selection (true::bool)
         join on (t.a::int = t2.e::int)
           scan t
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -574,7 +573,7 @@ fn a_pair_is_pushed_through_a_passthrough_stack() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (unnamed_subquery.a::int -> a)
-      selection (unnamed_subquery.a::int = unnamed_subquery.b::int)
+      selection (true::bool)
         scan unnamed_subquery
           projection (t.a::int -> a, t.b::int -> b)
             selection (t.a::int = t.b::int)
@@ -585,14 +584,13 @@ fn a_pair_is_pushed_through_a_passthrough_stack() {
 #[test]
 fn a_pair_about_the_nullable_side_settles_above_the_outer_join() {
     // Nullable-side members stop at the LEFT JOIN output.
-    // TODO: the derived pair duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT * FROM "t" LEFT JOIN "t2" ON "t"."a" = "t2"."e" WHERE "t2"."f" = "t2"."g""#,
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      selection ((t2.f::int = t2.g::int and t2.f::int = t2.g::int))
+      selection (t2.f::int = t2.g::int)
         left join on (t.a::int = t2.e::int)
           scan t
           scan t2
@@ -608,8 +606,8 @@ fn a_pair_crosses_an_inner_join_to_the_other_scan() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      selection (t2.f::int = t2.g::int)
-        join on ((t.a::int = t2.e::int and t.a::int = t2.e::int))
+      selection (true::bool)
+        join on (t.a::int = t2.e::int)
           scan t
           scan t2
             projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -862,7 +860,7 @@ fn no_pin_across_an_outer_join_nullable_side() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection (t.a::int = 1::int)
+      selection (true::bool)
         left join on (t.a::int = t2.e::int)
           scan t
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -879,14 +877,13 @@ fn a_pin_about_the_nullable_side_settles_above_the_outer_join() {
     // whose ON does not filter unmatched rows. It settles directly above the
     // join. Hence the doubled clause: the filter spells `t2.f = 1`, and the pass
     // settled the same fact here.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "t"."a" FROM "t" LEFT JOIN "t2" ON "t"."a" = "t2"."e" WHERE "t2"."f" = 1"#,
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t2.f::int = 1::int and t2.f::int = 1::int))
+      selection (t2.f::int = 1::int)
         left join on (t.a::int = t2.e::int)
           scan t
           scan t2
@@ -903,7 +900,7 @@ fn a_pin_about_the_preserved_side_still_descends() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection (t.b::int = 1::int)
+      selection (true::bool)
         left join on (t.a::int = t2.e::int)
           scan t
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -917,11 +914,10 @@ fn a_pin_about_the_preserved_side_still_descends() {
 fn a_pinned_bucket_id_is_recorded() {
     // A pinned bucket_id identifies the query's bucket and gets a derived equality
     // like any other column.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(r#"SELECT "a" FROM "t" WHERE "bucket_id" = 42"#, &[]);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.bucket_id::int = 42::int and t.bucket_id::int = 42::int))
+      selection (t.bucket_id::int = 42::int)
         scan t
     ");
 }
@@ -929,14 +925,13 @@ fn a_pinned_bucket_id_is_recorded() {
 #[test]
 fn a_transitively_pinned_bucket_id_is_recorded() {
     // The payoff case: nothing in the query says `bucket_id = 42`, the class does.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "bucket_id" = "a" AND "a" = 42"#,
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.bucket_id::int = t.a::int and t.a::int = 42::int and t.a::int = 42::int and t.bucket_id::int = 42::int))
+      selection ((t.a::int = 42::int and t.bucket_id::int = 42::int))
         scan t
     ");
 }
@@ -946,14 +941,13 @@ fn a_barrier_settles_the_clause_instead_of_dropping_it() {
     // a = 1 AND a = b derives b = 1, but the base column sits behind a GROUP BY.
     // The clause is still valid on the aggregation's own output, so it settles on
     // the projection above the grouping rather than being thrown away.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a", "b" FROM (SELECT "a", "b" FROM "t" GROUP BY "a", "b") WHERE "a" = 1 AND "a" = "b""#,
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (unnamed_subquery.a::int -> a, unnamed_subquery.b::int -> b)
-      selection ((unnamed_subquery.a::int = 1::int and unnamed_subquery.a::int = unnamed_subquery.b::int and unnamed_subquery.a::int = 1::int and unnamed_subquery.b::int = 1::int))
+      selection ((unnamed_subquery.a::int = 1::int and unnamed_subquery.b::int = 1::int))
         scan unnamed_subquery
           projection (t.a::int -> a, t.b::int -> b)
             group by (t.a::int, t.b::int)
@@ -974,7 +968,7 @@ fn group_by_without_where() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (unnamed_subquery_1.a::int -> a, unnamed_subquery_1.b::int -> b)
-      selection ((unnamed_subquery_1.a::int = 1::int and unnamed_subquery_1.a::int = unnamed_subquery_1.b::int))
+      selection (true::bool)
         scan unnamed_subquery_1
           projection (unnamed_subquery.a::int -> a, unnamed_subquery.b::int -> b)
             selection ((unnamed_subquery.a::int = 1::int and unnamed_subquery.b::int = 1::int))
@@ -990,14 +984,13 @@ fn a_barrier_is_not_crossed() {
     // The flip side: the clause settles *on* the barrier and must not leak below
     // it. `max(a) = 1` says nothing about the rows feeding the aggregate, so the
     // base scan stays bare.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM (SELECT max("a") as "a" FROM "t") WHERE "a" = 1"#,
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (unnamed_subquery.a::int -> a)
-      selection ((unnamed_subquery.a::int = 1::int and unnamed_subquery.a::int = 1::int))
+      selection (unnamed_subquery.a::int = 1::int)
         scan unnamed_subquery
           projection (max(t.a::int::int)::int -> a)
             scan t
@@ -1009,19 +1002,18 @@ fn a_one_time_filter_per_param_pin_and_anchor() {
     // `$1` is domain-tagged, so the outer query and the isolated subquery put it
     // in two different classes. Both pin 5, so both parameter checks read
     // `$1 = 5`. They are still two one-time filters, keyed at two anchors.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "a" = $1 AND "a" = 5 AND "b" IN (SELECT "e" FROM "t2" WHERE "e" = $1 AND "e" = 5)"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = $1::int and t.a::int = 5::int and t.b::int in ROW($0) and $1::int = 5::int and t.a::int = 5::int))
+      selection ((t.b::int in ROW($0) and $1::int = 5::int and t.a::int = 5::int))
         scan t
     subquery $0:
       scan
         projection (t2.e::int -> e)
-          selection ((t2.e::int = $1::int and t2.e::int = 5::int and $1::int = 5::int and t2.e::int = 5::int))
+          selection (($1::int = 5::int and t2.e::int = 5::int))
             scan t2
     ");
 }
@@ -1031,19 +1023,18 @@ fn conflicting_one_time_filters_for_one_param_stay_in_their_own_domains() {
     // The flip side: two domains pinning $1 to different values. Together they
     // prove the query empty at bind time, but `$1 = 7` is a fact about the
     // subquery, and this pass does not lift it out of one.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "a" = $1 AND "a" = 5 AND "b" IN (SELECT "e" FROM "t2" WHERE "e" = $1 AND "e" = 7)"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = $1::int and t.a::int = 5::int and t.b::int in ROW($0) and $1::int = 5::int and t.a::int = 5::int))
+      selection ((t.b::int in ROW($0) and $1::int = 5::int and t.a::int = 5::int))
         scan t
     subquery $0:
       scan
         projection (t2.e::int -> e)
-          selection ((t2.e::int = $1::int and t2.e::int = 7::int and $1::int = 7::int and t2.e::int = 7::int))
+          selection (($1::int = 7::int and t2.e::int = 7::int))
             scan t2
     ");
 }
@@ -1061,7 +1052,6 @@ fn a_one_time_filter_stays_inside_a_not_in_subquery() {
     // Bound `$1 = 3` the subquery is empty, `NOT IN` is true for every row, and
     // the answer is all of `t`. A one-time filter at the outer selection would
     // delete it.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "b" NOT IN (SELECT "e" FROM "t2" WHERE "e" = $1 AND "e" = 7)"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
@@ -1073,7 +1063,7 @@ fn a_one_time_filter_stays_inside_a_not_in_subquery() {
     subquery $0:
       scan
         projection (t2.e::int -> e)
-          selection ((t2.e::int = $1::int and t2.e::int = 7::int and $1::int = 7::int and t2.e::int = 7::int))
+          selection (($1::int = 7::int and t2.e::int = 7::int))
             scan t2
     ");
 }
@@ -1082,7 +1072,6 @@ fn a_one_time_filter_stays_inside_a_not_in_subquery() {
 fn a_one_time_filter_stays_inside_a_union_arm() {
     // An empty arm still lets its sibling through, so a one-time filter keyed on
     // the `union all` would drop `t2`'s rows too.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "a" = $1 AND "a" = 7 UNION ALL SELECT "e" FROM "t2""#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
@@ -1090,7 +1079,7 @@ fn a_one_time_filter_stays_inside_a_union_arm() {
     assert_snapshot!(logical(&plan), @r"
     union all
       projection (t.a::int -> a)
-        selection ((t.a::int = $1::int and t.a::int = 7::int and $1::int = 7::int and t.a::int = 7::int))
+        selection (($1::int = 7::int and t.a::int = 7::int))
           scan t
       projection (t2.e::int -> e)
         scan t2
@@ -1100,7 +1089,6 @@ fn a_one_time_filter_stays_inside_a_union_arm() {
 #[test]
 fn a_one_time_filter_stays_inside_an_except_arm() {
     // The subtrahend: empty right arm means the answer is the whole left one.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" EXCEPT SELECT "e" FROM "t2" WHERE "e" = $1 AND "e" = 7"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
@@ -1110,7 +1098,7 @@ fn a_one_time_filter_stays_inside_an_except_arm() {
       projection (t.a::int -> a)
         scan t
       projection (t2.e::int -> e)
-        selection ((t2.e::int = $1::int and t2.e::int = 7::int and $1::int = 7::int and t2.e::int = 7::int))
+        selection (($1::int = 7::int and t2.e::int = 7::int))
           scan t2
     ");
 }
@@ -1119,7 +1107,6 @@ fn a_one_time_filter_stays_inside_an_except_arm() {
 fn a_one_time_filter_stays_on_the_nullable_side_of_an_outer_join() {
     // The fact is inside the derived table, which the LEFT JOIN preserves `t`
     // against: an empty right side null-extends instead of filtering.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "t"."a" FROM "t" LEFT JOIN (SELECT "e" FROM "t2" WHERE "e" = $1 AND "e" = 7) s ON "t"."a" = s."e""#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
@@ -1130,7 +1117,7 @@ fn a_one_time_filter_stays_on_the_nullable_side_of_an_outer_join() {
         scan t
         scan s
           projection (t2.e::int -> e)
-            selection ((t2.e::int = $1::int and t2.e::int = 7::int and $1::int = 7::int and t2.e::int = 7::int))
+            selection (($1::int = 7::int and t2.e::int = 7::int))
               scan t2
     ");
 }
@@ -1140,7 +1127,6 @@ fn a_one_time_filter_stays_inside_a_subquery_under_or() {
     // A plain `IN` propagates emptiness to the whole query, but under `OR` it
     // does not: with `$1 = 3` the `IN` is false and the rows with `a = 3` are
     // still the answer.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "b" IN (SELECT "e" FROM "t2" WHERE "e" = $1 AND "e" = 7) OR "a" = 3"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
@@ -1152,7 +1138,7 @@ fn a_one_time_filter_stays_inside_a_subquery_under_or() {
     subquery $0:
       scan
         projection (t2.e::int -> e)
-          selection ((t2.e::int = $1::int and t2.e::int = 7::int and $1::int = 7::int and t2.e::int = 7::int))
+          selection (($1::int = 7::int and t2.e::int = 7::int))
             scan t2
     ");
 }
@@ -1193,7 +1179,6 @@ fn a_one_time_filter_settles_in_the_innermost_of_nested_domains() {
     // Two opaque subquery boundaries stacked: the one-time filter is derived in
     // the innermost body (`t3`), and its anchor is that body's root, not the
     // middle subquery over `t2`, and not the outer query.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "b" IN (SELECT "e" FROM "t2" WHERE "e" IN (SELECT "b" FROM "t3" WHERE "b" = $1 AND "b" = 7))"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
@@ -1205,7 +1190,7 @@ fn a_one_time_filter_settles_in_the_innermost_of_nested_domains() {
     subquery $0:
       scan
         projection (t3.b::int -> b)
-          selection ((t3.b::int = $1::int and t3.b::int = 7::int and $1::int = 7::int and t3.b::int = 7::int))
+          selection (($1::int = 7::int and t3.b::int = 7::int))
             scan t3
     subquery $1:
       scan
@@ -1219,14 +1204,13 @@ fn a_one_time_filter_settles_in_the_innermost_of_nested_domains() {
 fn a_one_time_filter_stays_below_an_aggregate() {
     // An aggregate over no rows still returns a row, so `$1 = 7` keyed above the
     // `count` would delete the `count(*) = 0` answer the query is entitled to.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT count("a") FROM "t" WHERE "a" = $1 AND "a" = 7"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (count(t.a::int::int)::int -> col_1)
-      selection ((t.a::int = $1::int and t.a::int = 7::int and $1::int = 7::int and t.a::int = 7::int))
+      selection (($1::int = 7::int and t.a::int = 7::int))
         scan t
     ");
 }
@@ -1240,7 +1224,6 @@ fn a_param_check_stays_below_an_aggregate_inside_a_not_in() {
     // false and `t`'s rows remain the answer. The check must fold into the inner
     // WHERE. It must never climb to the outer selection (which would delete those rows),
     // and never rise onto the aggregate above its own anchor.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "b" NOT IN (SELECT count("e") FROM "t2" WHERE "e" = $1 AND "e" = 7)"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
@@ -1252,7 +1235,7 @@ fn a_param_check_stays_below_an_aggregate_inside_a_not_in() {
     subquery $0:
       scan
         projection (count(t2.e::int::int)::int -> col_1)
-          selection ((t2.e::int = $1::int and t2.e::int = 7::int and $1::int = 7::int and t2.e::int = 7::int))
+          selection (($1::int = 7::int and t2.e::int = 7::int))
             scan t2
     ");
 }
@@ -1262,7 +1245,6 @@ fn a_one_time_filter_stays_below_an_explicit_group_by() {
     // An explicit `GROUP BY` leaves a real `group by (...)` node between the
     // projection and the `WHERE`. `$1 = 5` says nothing about the grouped rows the
     // projection returns, so it stays keyed on the pre-aggregation `WHERE`.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a", count("b") FROM "t" WHERE "a" = $1 AND "a" = 5 GROUP BY "a""#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
@@ -1270,7 +1252,7 @@ fn a_one_time_filter_stays_below_an_explicit_group_by() {
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, count(t.b::int::int)::int -> col_1)
       group by (t.a::int)
-        selection ((t.a::int = $1::int and t.a::int = 5::int and $1::int = 5::int and t.a::int = 5::int))
+        selection (($1::int = 5::int and t.a::int = 5::int))
           scan t
     ");
 }
@@ -1280,7 +1262,6 @@ fn a_one_time_filter_stays_below_an_order_by() {
     // `ORDER BY` changes nothing about which rows exist, but it opens a fresh
     // domain, and the one-time filter follows it down rather than sitting on the
     // query root out of habit.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "a" = $1 AND "a" = 7 ORDER BY "a""#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
@@ -1290,7 +1271,7 @@ fn a_one_time_filter_stays_below_an_order_by() {
       order by (a::int)
         scan
           projection (t.a::int -> a)
-            selection ((t.a::int = $1::int and t.a::int = 7::int and $1::int = 7::int and t.a::int = 7::int))
+            selection (($1::int = 7::int and t.a::int = 7::int))
               scan t
     ");
 }
@@ -1301,20 +1282,19 @@ fn two_classes_may_share_a_target() {
     // that asymmetry are two different classes, and their members land on the
     // *same* base slot: the inner class pins the literal, the outer the parameter.
     // Both clauses are real and neither may be dropped.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(
         r#"SELECT "a" FROM (SELECT "a" FROM "t" WHERE "a" = 5 ORDER BY "a") WHERE "a" = $1"#,
         &[DerivedType::new(UnrestrictedType::Integer); 1],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (unnamed_subquery.a::int -> a)
-      selection ((unnamed_subquery.a::int = $1::int and unnamed_subquery.a::int = $1::int))
+      selection (unnamed_subquery.a::int = $1::int)
         scan unnamed_subquery
           projection (a::int)
             order by (a::int)
               scan
                 projection (t.a::int -> a)
-                  selection ((t.a::int = 5::int and t.a::int = 5::int))
+                  selection (t.a::int = 5::int)
                     scan t
     ");
 }
@@ -1331,7 +1311,7 @@ fn converging_aliases_of_one_column_collapse() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (unnamed_subquery.x::int -> x)
-      selection (unnamed_subquery.x::int = 1::int)
+      selection (true::bool)
         scan unnamed_subquery
           projection (t.a::int -> x, t.a::int -> y)
             selection (t.a::int = 1::int)
@@ -1353,8 +1333,8 @@ fn const_reaches_both_call_sites_of_a_shared_cte() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a)
-      selection (l.a::int = 5::int)
-        join on (l.a::int = r.a::int)
+      selection (true::bool)
+        join on (true::bool)
           scan l
             projection (l.a::int -> a)
               selection (l.a::int = 5::int)
@@ -1384,8 +1364,8 @@ fn pin_into_a_projection_only_subquery_operand_inserts_a_filter() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (sub.a::int -> a)
-      selection (sub.a::int = 1::int)
-        join on (sub.a::int = t2.e::int)
+      selection (true::bool)
+        join on (true::bool)
           scan sub
             projection (t.a::int -> a)
               selection (t.a::int = 1::int)
@@ -1411,8 +1391,8 @@ fn pin_into_a_filtered_subquery_operand_uses_the_existing_filter() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (sub.a::int -> a)
-      selection (sub.a::int = 1::int)
-        join on (sub.a::int = t2.e::int)
+      selection (true::bool)
+        join on (true::bool)
           scan sub
             projection (t.a::int -> a)
               selection ((t.a::int > 0::int and t.a::int = 1::int))
@@ -1441,8 +1421,8 @@ fn a_carrier_survives_a_motion_spliced_above_its_landing_scan() {
 
     assert_snapshot!(logical(&plan), @r"
     projection (t1.a::int -> a, t1.b::int -> b, t1.c::int -> c, t1.d::int -> d, t2.a::int -> a, t2.b::int -> b, t2.c::int -> c, t2.d::int -> d)
-      selection (t1.a::int = 1::int)
-        join on (t1.a::int = t2.b::int)
+      selection (true::bool)
+        join on (true::bool)
           scan t1
             projection (t1.a::int -> a, t1.b::int -> b, t1.c::int -> c, t1.d::int -> d, t1.bucket_id::int -> bucket_id)
               selection (t1.a::int = 1::int)
@@ -1566,7 +1546,7 @@ fn name_clash_folds_into_the_inner_on_others_still_descend() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, r.a::int -> a, r.b::int -> b, r.c::int -> c, r.d::int -> d, t3.a::string -> a, t3.b::int -> b)
-      join on ((r.b::int = t3.b::int and t3.b::int = 1::int and r.b::int = 1::int))
+      join on (r.b::int = 1::int)
         left join on (l.a::int = r.b::int)
           scan t -> l
           scan t -> r
@@ -1596,7 +1576,7 @@ fn a_derived_clause_lifts_through_nested_left_joins_into_the_inner_on() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a, r.b::int -> b)
-      join on ((r.b::int = t3.b::int and t3.b::int = 1::int and r.b::int = 1::int))
+      join on (r.b::int = 1::int)
         left join on (l.a::int = v.a::int)
           left join on (l.a::int = r.a::int)
             scan t -> l
@@ -1616,7 +1596,7 @@ fn a_derived_clause_lifts_through_nested_left_joins_into_the_inner_on() {
          LEFT JOIN t v ON l.a = v.a \
          JOIN t3 ON r.b = t3.b AND t3.b = 1",
     );
-    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."b" FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."a" LEFT JOIN "t" as "v" ON "l"."a" = "v"."a" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = "t3"."b" and ("r"."b", "t3"."b") = (CAST($2 AS int), CAST($3 AS int))"#);
+    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."b" FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."a" LEFT JOIN "t" as "v" ON "l"."a" = "v"."a" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = CAST($2 AS int)"#);
 }
 
 /// Output column names of the plan's top relational node, in order.
@@ -1680,20 +1660,20 @@ fn join_sql(ex_plan: &ExecutionPlan, top: NodeId, snapshot: Snapshot) -> String 
 
 #[test]
 fn preserved_side_filter_stays_below_left_join_in_sql() {
-    // The derived l.a = 1 filters the left scan; the original WHERE remains above
-    // the LEFT JOIN, so the equality appears at both levels.
+    // The derived l.a = 1 filters the left scan and replaces the original WHERE
+    // above the LEFT JOIN, which is left as `true`.
     let sql =
         optimized_join_sql("SELECT l.a, r.a FROM t l LEFT JOIN t r ON l.a = r.b WHERE l.a = 1");
-    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."a" FROM (SELECT * FROM "t" as "l" WHERE "l"."a" = CAST($1 AS int)) as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" WHERE "l"."a" = CAST($2 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."a" FROM (SELECT * FROM "t" as "l" WHERE "l"."a" = CAST($1 AS int)) as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" WHERE CAST($2 AS bool)"#);
 }
 
 #[test]
 fn nullable_side_filter_stays_above_left_join_in_sql() {
-    // The derived r.b = 1 stays above the LEFT JOIN alongside the original
-    // equality; `(r.b, r.b) = ($1, $2)` contains both conditions.
+    // The derived r.b = 1 stays above the LEFT JOIN and replaces the original
+    // equality, so it is stated once.
     let sql =
         optimized_join_sql("SELECT l.a, r.a FROM t l LEFT JOIN t r ON l.a = r.b WHERE r.b = 1");
-    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."a" FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" WHERE ("r"."b", "r"."b") = (CAST($1 AS int), CAST($2 AS int))"#);
+    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."a" FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" WHERE "r"."b" = CAST($1 AS int)"#);
 }
 
 #[test]
@@ -1746,7 +1726,7 @@ fn a_join_pair_follows_an_operand_carrier_in_sql() {
     // The SQL counterpart of `a_join_pair_and_an_operand_carrier_share_a_join`:
     // the pair in the ON must name the carrier's alias, not the scan it wraps.
     let sql = optimized_join_sql(r#"SELECT * FROM t JOIN t3 ON true WHERE t.a = t3.b AND t.b = 1"#);
-    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT * FROM "t" WHERE "t"."b" = CAST($1 AS int)) as "t" INNER JOIN "t3" ON "t"."a" = "t3"."b" WHERE ("t"."a", "t"."b") = ("t3"."b", CAST($2 AS int))"#);
+    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT * FROM "t" WHERE "t"."b" = CAST($1 AS int)) as "t" INNER JOIN "t3" ON "t"."a" = "t3"."b" WHERE CAST($2 AS bool)"#);
 }
 
 #[test]
@@ -1769,8 +1749,8 @@ fn unique_subquery_output_still_descends_through_a_carrier() {
         rendered.push_str(&format!("{}\n", join_sql(&ex_plan, top, snapshot)));
     }
     assert_snapshot!(rendered, @r#"
-    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "y", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."col_0" = CAST($2 AS int)) as "t3" ON "s"."c" = "t3"."col_0" and "t3"."col_0" = CAST($3 AS int)
-    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "y", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."col_0" = CAST($2 AS int)) as "t3" ON "s"."c" = "t3"."col_0" and "t3"."col_0" = CAST($3 AS int)
+    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "y", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."col_0" = CAST($2 AS int)) as "t3" ON CAST($3 AS bool)
+    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "y", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."col_0" = CAST($2 AS int)) as "t3" ON CAST($3 AS bool)
     "#);
 }
 
@@ -1810,25 +1790,25 @@ fn duplicate_names_carry_only_when_the_filter_column_is_unique() {
 
     assert_snapshot!(rendered, @r#"
     SELECT * FROM t l LEFT JOIN t r ON l.a = r.b JOIN t3 ON r.b = t3.b AND t3.b = 1
-    SELECT * FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = "t3"."b" and ("r"."b", "t3"."b") = (CAST($2 AS int), CAST($3 AS int))
+    SELECT * FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = CAST($2 AS int)
 
     SELECT * FROM (SELECT DISTINCT a AS x, b AS x, col_0 AS c FROM t) s JOIN t3 ON s.c = t3.b AND t3.b = 1
-    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($2 AS int)) as "t3" ON "s"."c" = "t3"."b" and "t3"."b" = CAST($3 AS int)
+    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($2 AS int)) as "t3" ON CAST($3 AS bool)
 
     SELECT * FROM (SELECT DISTINCT a AS x, b AS x, col_0 AS c FROM t) s LEFT JOIN t r ON s.c = r.b JOIN t3 ON r.b = t3.b AND t3.b = 1
-    SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" LEFT JOIN "t" as "r" ON "s"."c" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = "t3"."b" and ("r"."b", "t3"."b") = (CAST($2 AS int), CAST($3 AS int))
+    SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" LEFT JOIN "t" as "r" ON "s"."c" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = CAST($2 AS int)
 
     SELECT * FROM t l LEFT JOIN (SELECT DISTINCT a AS x, b AS x, col_0 AS c FROM t) s ON l.col_0 = s.c JOIN t3 ON s.c = t3.b AND t3.b = 1
-    SELECT * FROM "t" as "l" LEFT JOIN (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" ON "l"."col_0" = "s"."c" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "s"."c" = "t3"."b" and ("s"."c", "t3"."b") = (CAST($2 AS int), CAST($3 AS int))
+    SELECT * FROM "t" as "l" LEFT JOIN (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" ON "l"."col_0" = "s"."c" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "s"."c" = CAST($2 AS int)
 
     SELECT * FROM (SELECT a AS x, b AS x, col_0 AS c FROM t LIMIT 10) s JOIN t3 ON s.c = t3.b AND t3.b = 1
-    SELECT * FROM (SELECT * FROM (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($2 AS int)) as "t3" ON "s"."c" = "t3"."b" and "t3"."b" = CAST($3 AS int)
+    SELECT * FROM (SELECT * FROM (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($2 AS int)) as "t3" ON CAST($3 AS bool)
 
     SELECT * FROM (SELECT a AS x, b AS x, col_0 AS c FROM t LIMIT 10) s LEFT JOIN t r ON s.c = r.b JOIN t3 ON r.b = t3.b AND t3.b = 1
-    SELECT * FROM (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" LEFT JOIN "t" as "r" ON "s"."c" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = "t3"."b" and ("r"."b", "t3"."b") = (CAST($2 AS int), CAST($3 AS int))
+    SELECT * FROM (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" LEFT JOIN "t" as "r" ON "s"."c" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = CAST($2 AS int)
 
     SELECT * FROM t l LEFT JOIN (SELECT a AS x, b AS x, col_0 AS c FROM t LIMIT 10) s ON l.col_0 = s.c JOIN t3 ON s.c = t3.b AND t3.b = 1
-    SELECT * FROM "t" as "l" LEFT JOIN (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" ON "l"."col_0" = "s"."c" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "s"."c" = "t3"."b" and ("s"."c", "t3"."b") = (CAST($2 AS int), CAST($3 AS int))
+    SELECT * FROM "t" as "l" LEFT JOIN (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" ON "l"."col_0" = "s"."c" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "s"."c" = CAST($2 AS int)
     "#);
 }
 
@@ -1843,7 +1823,7 @@ fn duplicate_names_with_unique_filter_column_render_a_star_carrier() {
         "SELECT * FROM (SELECT DISTINCT a AS x, b AS x, col_0 AS c FROM t) s \
          JOIN t3 ON s.c = t3.b AND t3.b = 1",
     );
-    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($2 AS int)) as "t3" ON "s"."c" = "t3"."b" and "t3"."b" = CAST($3 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($2 AS int)) as "t3" ON CAST($3 AS bool)"#);
 }
 
 #[test]
@@ -1862,7 +1842,7 @@ fn a_sharded_join_bucket_id_clash_folds_into_the_inner_on() {
         .unwrap();
     assert_snapshot!(logical(&plan), @r"
     projection (l.x::int -> x, r.y::int -> y)
-      join on ((r.y::int = t3.a::int and t3.a::int = 1::int and r.y::int = 1::int))
+      join on (r.y::int = 1::int)
         left join on (l.x::int = r.y::int)
           scan u -> l
           scan v -> r
@@ -1905,7 +1885,7 @@ fn shared_cte_duplicate_names_descend_through_a_star_carrier() {
     assert_snapshot!(rendered, @r"
     WITH s AS (SELECT DISTINCT a AS x, b AS x, col_0 AS c FROM t) SELECT * FROM s l JOIN s r ON l.c = r.c AND l.c = 1
     projection (l.x::int -> x, l.x::int -> x, l.c::int -> c, r.x::int -> x, r.x::int -> x, r.c::int -> c)
-      join on ((l.c::int = r.c::int and l.c::int = 1::int))
+      join on (true::bool)
         scan l
           projection (l.x::int -> x, l.x::int -> x, l.c::int -> c)
             selection (l.c::int = 1::int)
@@ -1921,7 +1901,7 @@ fn shared_cte_duplicate_names_descend_through_a_star_carrier() {
 
     WITH s AS (SELECT DISTINCT a AS x, a AS x, col_0 AS c FROM t) SELECT * FROM s l JOIN s r ON l.c = r.c AND l.c = 1
     projection (l.x::int -> x, l.x::int -> x, l.c::int -> c, r.x::int -> x, r.x::int -> x, r.c::int -> c)
-      join on ((l.c::int = r.c::int and l.c::int = 1::int))
+      join on (true::bool)
         scan l
           projection (l.x::int -> x, l.x::int -> x, l.c::int -> c)
             selection (l.c::int = 1::int)
@@ -1955,7 +1935,7 @@ fn setop_operand_duplicate_names_descend_through_a_star_carrier() {
     assert_snapshot!(rendered, @r"
     SELECT * FROM (SELECT a AS x, b AS x, col_0 AS c FROM t UNION ALL SELECT a AS x, b AS x, col_0 AS c FROM t3) u JOIN t3 ON u.c = t3.b AND t3.b = 1
     projection (u.x::int -> x, u.x::int -> x, u.c::int -> c, t3.a::int -> a, t3.b::int -> b, t3.col_0::int -> col_0)
-      join on ((u.c::int = t3.b::int and t3.b::int = 1::int))
+      join on (true::bool)
         scan u
           projection (u.x::int -> x, u.x::int -> x, u.c::int -> c)
             selection (u.c::int = 1::int)
@@ -1972,7 +1952,7 @@ fn setop_operand_duplicate_names_descend_through_a_star_carrier() {
 
     SELECT * FROM (SELECT a AS x, b AS x, col_0 AS c FROM t EXCEPT SELECT a AS x, b AS x, col_0 AS c FROM t3) u JOIN t3 ON u.c = t3.b AND t3.b = 1
     projection (u.x::int -> x, u.x::int -> x, u.c::int -> c, t3.a::int -> a, t3.b::int -> b, t3.col_0::int -> col_0)
-      join on ((u.c::int = t3.b::int and t3.b::int = 1::int))
+      join on (true::bool)
         scan u
           projection (u.x::int -> x, u.x::int -> x, u.c::int -> c)
             selection (u.c::int = 1::int)
@@ -1989,7 +1969,7 @@ fn setop_operand_duplicate_names_descend_through_a_star_carrier() {
 
     SELECT * FROM (SELECT a AS x, b AS x, col_0 AS c FROM t UNION SELECT a AS x, b AS x, col_0 AS c FROM t3) u JOIN t3 ON u.c = t3.b AND t3.b = 1
     projection (u.x::int -> x, u.x::int -> x, u.c::int -> c, t3.a::int -> a, t3.b::int -> b, t3.col_0::int -> col_0)
-      join on ((u.c::int = t3.b::int and t3.b::int = 1::int))
+      join on (true::bool)
         scan u
           projection (u.x::int -> x, u.x::int -> x, u.c::int -> c)
             selection (u.c::int = 1::int)
@@ -2019,7 +1999,7 @@ fn separate_carriers_keep_each_operands_column_identity() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.x::int -> x, l.x::int -> x, l.c::int -> c, r.x::int -> x, r.x::int -> x, r.c::int -> c)
-      join on ((l.c::int = r.c::int and l.c::int = 1::int))
+      join on (true::bool)
         scan l
           projection (l.x::int -> x, l.x::int -> x, l.c::int -> c)
             selection (l.c::int = 1::int)
@@ -2043,7 +2023,7 @@ fn a_carrier_is_not_built_over_a_join_with_unique_names() {
     let sql = optimized_join_sql(
         "SELECT l.* FROM u l LEFT JOIN v r ON l.x = r.y JOIN t3 ON r.y = t3.b AND t3.b = 1",
     );
-    assert_snapshot!(sql, @r#"SELECT "l".* FROM "u" as "l" LEFT JOIN "v" as "r" ON "l"."x" = "r"."y" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."y" = "t3"."b" and ("r"."y", "t3"."b") = (CAST($2 AS int), CAST($3 AS int))"#);
+    assert_snapshot!(sql, @r#"SELECT "l".* FROM "u" as "l" LEFT JOIN "v" as "r" ON "l"."x" = "r"."y" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."y" = CAST($2 AS int)"#);
 }
 
 #[test]
@@ -2065,7 +2045,7 @@ fn a_param_gate_never_builds_a_carrier_over_a_join() {
     assert_snapshot!(logical(&plan), @r"
     projection (r.a::int -> a, count(*)::int -> col_1)
       group by (r.a::int)
-        join on ((l.a::int = r.b::int and r.b::int = $1::int and r.b::int = 1::int and $1::int = 1::int))
+        join on ($1::int = 1::int)
           scan l
             projection (l.a::int -> a, l.b::int -> b, l.col_0::int -> col_0)
               selection (l.a::int = 1::int)
@@ -2074,6 +2054,24 @@ fn a_param_gate_never_builds_a_carrier_over_a_join() {
             projection (r.a::int -> a, r.b::int -> b, r.col_0::int -> col_0)
               selection (r.b::int = 1::int)
                 scan t -> r
+    ");
+}
+
+#[test]
+fn a_param_gate_from_an_inner_on_lands_above_the_join() {
+    // The INNER ON's `$1 = 1` is a source of the class {$1, 1}: it gives way
+    // to the gate, which takes a new filter right above the join, while the
+    // ON keeps only the column equality.
+    let plan = run_enrich(
+        "SELECT l.a FROM t l JOIN t2 r ON l.a = r.e AND $1 = 1",
+        &[DerivedType::new(UnrestrictedType::Integer)],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a)
+      selection ($1::int = 1::int)
+        join on (l.a::int = r.e::int)
+          scan t -> l
+          scan t2 -> r
     ");
 }
 
@@ -2100,7 +2098,7 @@ fn a_param_gate_stays_inside_its_domain() {
         scan s
           projection (r.a::int -> k, count(*)::int -> x, count(*)::int -> x)
             group by (r.a::int)
-              join on ((l.a::int = r.b::int and r.b::int = $1::int and r.b::int = 1::int and $1::int = 1::int))
+              join on ($1::int = 1::int)
                 scan l
                   projection (l.a::int -> a, l.b::int -> b, l.col_0::int -> col_0)
                     selection (l.a::int = 1::int)
@@ -2128,7 +2126,7 @@ fn a_param_gate_at_a_left_join_anchor_lands_in_the_source_join_on() {
     projection (l.a::int -> a, count(*)::int -> col_1)
       group by (l.a::int)
         left join on (r.a::int = o.a::int)
-          join on ((l.a::int = r.b::int and r.b::int = $1::int and r.b::int = 1::int and $1::int = 1::int))
+          join on ($1::int = 1::int)
             scan l
               projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, l.bucket_id::int -> bucket_id)
                 selection (l.a::int = 1::int)
@@ -2155,7 +2153,7 @@ fn a_parameter_only_class_at_a_left_join_anchor_lands_in_the_source_join_on() {
     projection (l.a::int -> a, count(*)::int -> col_1)
       group by (l.a::int)
         left join on (r.a::int = o.a::int)
-          join on ((l.a::int = r.b::int and $1::int = $2::int and $2::int = $1::int and l.a::int = r.b::int))
+          join on (($2::int = $1::int and l.a::int = r.b::int))
             scan t -> l
             scan t -> r
           scan t -> o
@@ -2186,7 +2184,7 @@ fn a_param_gate_at_a_left_join_anchor_never_enters_the_nullable_side() {
     projection (l.a::int -> a, count(*)::int -> col_1)
       group by (l.a::int)
         left join on (r.a::int = o.a::int)
-          join on ((l.a::int = r.b::int and r.b::int = $1::int and r.b::int = 1::int and $1::int = 1::int))
+          join on ($1::int = 1::int)
             scan l
               projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, l.bucket_id::int -> bucket_id)
                 selection (l.a::int = 1::int)
@@ -2197,7 +2195,7 @@ fn a_param_gate_at_a_left_join_anchor_never_enters_the_nullable_side() {
                   scan t -> r
           scan o
             projection (t.a::int -> a)
-              selection ((t.b::int = 5::int and t.b::int = 5::int))
+              selection (t.b::int = 5::int)
                 scan t
     ");
 }
@@ -2265,7 +2263,7 @@ fn a_param_gate_descends_a_chain_of_left_joins() {
       group by (l.a::int)
         left join on (r.c::int = p.c::int)
           left join on (r.a::int = o.a::int)
-            join on ((l.a::int = r.b::int and r.b::int = $1::int and r.b::int = 1::int and $1::int = 1::int))
+            join on ($1::int = 1::int)
               scan l
                 projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, l.bucket_id::int -> bucket_id)
                   selection (l.a::int = 1::int)
@@ -2301,7 +2299,7 @@ fn a_param_gate_in_a_nullable_subquery_stays_in_its_domain() {
           projection (l.a::int -> a, count(*)::int -> c)
             group by (l.a::int)
               left join on (r.a::int = o.a::int)
-                join on ((l.a::int = r.b::int and r.b::int = $1::int and r.b::int = 1::int and $1::int = 1::int))
+                join on ($1::int = 1::int)
                   scan l
                     projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, l.bucket_id::int -> bucket_id)
                       selection (l.a::int = 1::int)
@@ -2369,7 +2367,7 @@ fn a_param_gate_over_a_join_subquery_prefers_a_new_selection_to_the_on() {
       scan
         projection (t2.e::int -> e)
           selection ($1::int = 7::int)
-            join on ((t2.e::int = t3.b::int and t2.e::int = $1::int and t2.e::int = 7::int))
+            join on (true::bool)
               scan t2
                 projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
                   selection (t2.e::int = 7::int)
@@ -2393,7 +2391,7 @@ fn different_columns_of_a_class_on_one_node_do_not_shadow_each_other() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a, r.b::int -> b)
-      selection ((l.a::int = r.b::int and l.a::int = 1::int and r.b::int = 1::int))
+      selection (r.b::int = 1::int)
         left join on (l.a::int = r.b::int)
           scan l
             projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, l.bucket_id::int -> bucket_id)
@@ -2414,7 +2412,7 @@ fn a_column_predicate_folds_into_an_inner_join_on_under_group_by() {
     assert_snapshot!(logical(&plan), @r"
     projection (r.b::int -> b, count(*)::int -> col_1)
       group by (r.b::int)
-        join on ((r.b::int = t3.b::int and t3.b::int = 1::int and r.b::int = 1::int))
+        join on (r.b::int = 1::int)
           left join on (l.a::int = r.b::int)
             scan t -> l
             scan t -> r
@@ -2435,9 +2433,9 @@ fn a_const_crosses_three_inner_joins_to_every_scan() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection (t.a::int = 1::int)
-        join on (t2.e::int = t3.b::int)
-          join on (t.a::int = t2.e::int)
+      selection (true::bool)
+        join on (true::bool)
+          join on (true::bool)
             scan t
               projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
                 selection (t.a::int = 1::int)
@@ -2457,12 +2455,11 @@ fn a_const_crosses_three_inner_joins_to_every_scan() {
 fn a_delete_where_pins_the_base_scan() {
     // DELETE ... WHERE a = b AND b = 1 pins the class {a, b, 1}; the derived a = 1
     // must reach the scan feeding the delete.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(r#"DELETE FROM "t" WHERE "a" = "b" AND "b" = 1"#, &[]);
     assert_snapshot!(logical(&plan), @r"
     delete from t
       projection (t.b::int -> pk_col_0)
-        selection ((t.a::int = t.b::int and t.b::int = 1::int and t.a::int = 1::int and t.b::int = 1::int))
+        selection ((t.a::int = 1::int and t.b::int = 1::int))
           scan t
     ");
 }
@@ -2471,27 +2468,130 @@ fn a_delete_where_pins_the_base_scan() {
 fn an_update_where_pins_the_base_scan() {
     // UPDATE ... WHERE a = b AND b = 1 pins the class {a, b, 1}; the derived a = 1
     // must reach the scan feeding the update.
-    // TODO: the derived pin duplicates the source equality; dedup will drop it later.
     let plan = run_enrich(r#"UPDATE "t" SET "c" = 5 WHERE "a" = "b" AND "b" = 1"#, &[]);
     assert_snapshot!(logical(&plan), @r"
     update t (c = col_0)
       projection (5::int -> col_0, t.b::int -> col_1)
-        selection ((t.a::int = t.b::int and t.b::int = 1::int and t.a::int = 1::int and t.b::int = 1::int))
+        selection ((t.a::int = 1::int and t.b::int = 1::int))
           scan t
     ");
 }
 
 #[test]
+fn self_comparisons_are_never_replaced() {
+    // Self-comparisons reject NULLs and are conservatively kept, even when
+    // another derived clause also rejects them. So does `x = y` over two
+    // aliases of one column, which is `a = a` again.
+    let plan = run_enrich(
+        r#"SELECT "a" FROM "t" WHERE "a" = "a" AND $1 = $1 AND "a" = "b" AND "b" = 1"#,
+        &[DerivedType::new(UnrestrictedType::Integer); 1],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a)
+      selection ((t.a::int = t.a::int and $1::int = $1::int and t.a::int = 1::int and t.b::int = 1::int))
+        scan t
+    ");
+
+    let plan = run_enrich(
+        "SELECT * FROM (SELECT a AS x, a AS y FROM t) s WHERE s.x = s.y",
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (s.x::int -> x, s.y::int -> y)
+      selection (s.x::int = s.y::int)
+        scan s
+          projection (t.a::int -> x, t.a::int -> y)
+            scan t
+    ");
+}
+
+#[test]
+fn a_parameter_only_class_keeps_its_constraint() {
+    // `$1 = $2 AND $2 = $3` has no column: the sources give way to the checks
+    // against the pin, which still require all three to be equal.
+    let plan = run_enrich(
+        r#"SELECT "a" FROM "t" WHERE $1 = $2 AND $2 = $3 AND "b" > 0"#,
+        &[DerivedType::new(UnrestrictedType::Integer); 3],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a)
+      selection ((t.b::int > 0::int and $2::int = $1::int and $3::int = $1::int))
+        scan t
+    ");
+}
+
+#[test]
+fn unsupported_equalities_stay_untouched() {
+    // The class {a, b, 1} is complete, so `a = b` and `b = 1` go. The OR, the
+    // cast, the comparison across types and the LEFT JOIN ON stay, even though
+    // they mention class members.
+    let plan = run_enrich(
+        r#"SELECT t.a FROM t LEFT JOIN t2 ON t.a = t2.e
+           WHERE t.a = t.b AND t.b = 1 AND (t.a = 1 OR t.c = 2)
+             AND CAST(t.a AS string) = '1' AND t.d = 1.5"#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a)
+      selection (((t.a::int = 1::int or t.c::int = 2::int) and t.a::int::string = '1'::string and t.d::int = 1.5::decimal))
+        left join on (t.a::int = t2.e::int)
+          scan t
+            projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              selection ((t.a::int = 1::int and t.b::int = 1::int))
+                scan t
+          scan t2
+    ");
+}
+
+#[test]
+fn a_dead_filter_keeps_every_conjunct() {
+    // `a = 1 AND a = 2` kills the whole filter, so its equality facts and
+    // replaceable sources are discarded: even the unrelated `b = c` stays.
+    let plan = run_enrich(
+        r#"SELECT "a" FROM "t" WHERE "a" = 1 AND "b" = "c" AND "a" = 2"#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a)
+      selection ((t.a::int = 1::int and t.b::int = t.c::int and t.a::int = 2::int and false::bool))
+        scan t
+    ");
+}
+
+#[test]
+fn a_contradictory_class_keeps_its_sources_beside_a_replaced_class() {
+    // The two filters conflict only together: {a, 1, 2} is contradictory and
+    // keeps both sources, while {b, c} is complete and its source gives way to
+    // the derived pair.
+    let plan = run_enrich(
+        "SELECT * FROM (SELECT a, b, c FROM t WHERE a = 1 AND b = c) s WHERE s.a = 2",
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (s.a::int -> a, s.b::int -> b, s.c::int -> c)
+      selection ((s.a::int = 2::int and false::bool))
+        scan s
+          projection (t.a::int -> a, t.b::int -> b, t.c::int -> c)
+            selection ((t.a::int = 1::int and t.b::int = t.c::int))
+              scan t
+    ");
+}
+
+#[test]
 fn enrich_refreshes_the_restrictions_it_rewrote() {
-    // Later passes must not miss a derived clause or see a slot of a replaced
-    // child: `run_enrich` checks the stored restrictions against a full
-    // rebuild after every enrichment.
+    // Later passes must not read a dropped source, miss a derived clause or
+    // see a slot of a replaced child: `run_enrich` checks the stored
+    // restrictions against a full rebuild after every enrichment.
     let int = DerivedType::new(UnrestrictedType::Integer);
     for (query, params) in [
-        // Clauses added to an existing filter and an INNER ON.
+        // Clauses added and removed in one filter.
         (r#"SELECT "a" FROM "t" WHERE "a" = "b" AND "b" = 1"#, 0),
+        // The WHERE and the ON only lose their sources.
+        (r#"SELECT * FROM "t" JOIN "t2" ON "t"."a" = "t2"."e" WHERE "t"."a" = 1"#, 0),
         (r#"SELECT * FROM "t" AS "l" JOIN "t2" AS "r" ON "l"."a" = "r"."e" WHERE "l"."b" = "r"."f""#, 0),
-        // The carrier over `l` retargets `l.a` in an ON that gains no conjunct.
+        ("SELECT l.a FROM t l LEFT JOIN t r ON l.a = r.a WHERE l.b = r.b AND r.b = 1", 0),
+        // The carrier over `l` retargets `l.a` in an ON that neither gains
+        // nor loses a conjunct.
         ("SELECT l.a FROM t l JOIN t r ON l.a > r.a WHERE l.b = 1", 0),
         // Carriers under both join inputs.
         ("SELECT * FROM t JOIN t2 ON t.a > t2.e WHERE t.b = 1 AND t2.f = 2", 0),
@@ -2557,7 +2657,80 @@ fn enrich_of_a_subtree_keeps_restrictions_outside_it() {
     subquery $0:
       scan
         projection (t2.e::int -> e)
-          selection ((t2.e::int = t2.f::int and t2.f::int = 1::int and t2.e::int = 1::int and t2.f::int = 1::int))
+          selection ((t2.e::int = 1::int and t2.f::int = 1::int))
             scan t2
+    ");
+}
+
+#[test]
+fn enrich_is_idempotent_on_a_reanalyzed_plan() {
+    // Re-running the analysis and enrich on its own output finds the derived
+    // clauses as new sources and emits equivalent replacements. The rendered
+    // logical plan stays the same; expression IDs and arena size may change.
+    for query in [
+        r#"SELECT "a" FROM "t" WHERE "a" = "b" AND "b" = 1"#,
+        r#"SELECT "a" FROM "t" WHERE "a" = $1 AND "a" = $2"#,
+        r#"SELECT * FROM "t" JOIN "t2" ON "t"."a" = "t2"."e" WHERE "t"."a" = 1"#,
+        r#"SELECT * FROM "t" AS "l" JOIN "t2" AS "r" ON "l"."a" = "r"."e" WHERE "l"."b" = "r"."f""#,
+        "SELECT l.a FROM t l LEFT JOIN t r ON l.a = r.a LEFT JOIN t o ON l.a = o.a \
+         WHERE l.b = r.b AND r.b = o.b",
+    ] {
+        let once = run_enrich(query, &[DerivedType::new(UnrestrictedType::Integer); 2]);
+        let top_id = once.get_top().unwrap();
+        let expected = logical(&once);
+        let twice = once
+            .analyze_restrictions_in_subtree(top_id)
+            .unwrap()
+            .analyze_equality_facts_in_subtree(top_id)
+            .unwrap()
+            .enrich_restrictions_from_facts(top_id)
+            .unwrap();
+        assert_eq!(logical(&twice), expected, "{query}");
+    }
+}
+
+#[test]
+fn replaced_join_equalities_keep_the_motions() {
+    // Motion planning reads the equality classes, not the ON text, so a join
+    // whose ON lost its source to column pins stays co-located, as does one
+    // whose ON states the pair once instead of twice.
+    let plan = optimized_join_plan("SELECT * FROM t JOIN t3 ON t.a = t3.a WHERE t.a = 1", true);
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.col_0::int -> col_0, t3.a::int -> a, t3.b::int -> b, t3.col_0::int -> col_0)
+      selection (true::bool)
+        join on (true::bool)
+          scan t
+            projection (t.a::int -> a, t.b::int -> b, t.col_0::int -> col_0, t.bucket_id::int -> bucket_id)
+              selection (t.a::int = 1::int)
+                scan t
+          scan t3
+            projection (t3.a::int -> a, t3.b::int -> b, t3.col_0::int -> col_0, t3.bucket_id::int -> bucket_id)
+              selection (t3.a::int = 1::int)
+                scan t3
+    ");
+
+    let plan = optimized_join_plan("SELECT * FROM t JOIN t3 ON t.a = t3.a", true);
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.col_0::int -> col_0, t3.a::int -> a, t3.b::int -> b, t3.col_0::int -> col_0)
+      join on (t.a::int = t3.a::int)
+        scan t
+        scan t3
+    ");
+
+    // Not co-located: the motion still repartitions by the class member.
+    let plan = optimized_join_plan("SELECT * FROM t JOIN t3 ON t.a = t3.b WHERE t.a = 1", true);
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.col_0::int -> col_0, t3.a::int -> a, t3.b::int -> b, t3.col_0::int -> col_0)
+      selection (true::bool)
+        join on (true::bool)
+          scan t
+            projection (t.a::int -> a, t.b::int -> b, t.col_0::int -> col_0, t.bucket_id::int -> bucket_id)
+              selection (t.a::int = 1::int)
+                scan t
+          motion [policy: segment([ref(b)]), program: ReshardIfNeeded]
+            scan t3
+              projection (t3.a::int -> a, t3.b::int -> b, t3.col_0::int -> col_0, t3.bucket_id::int -> bucket_id)
+                selection (t3.b::int = 1::int)
+                  scan t3
     ");
 }
