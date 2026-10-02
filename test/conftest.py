@@ -3175,6 +3175,16 @@ class Cluster:
                     vshard.storage.garbage_collector_wakeup()
 
                     if vshard.storage.internal.rebalancer_fiber ~= nil then
+                        -- vshard considers the cluster balanced while every replicaset
+                        -- is within `rebalancer_disbalance_threshold` (1% by default) of
+                        -- its etalon, but we wait for the exact etalon. A transfer can
+                        -- be cut short near its end, e.g. a vshard reconfiguration (an
+                        -- instance joining) fails the in-flight bucket_send with
+                        -- OBJECT_IS_OUTDATED, and the leftover few buckets would then
+                        -- never be moved. Make the rebalancer move them. The next
+                        -- vshard.storage.cfg restores the configured threshold.
+                        vshard.storage.internal.rebalancer_disbalance_threshold = 0
+
                         -- The rebalancer fiber is responsible for sending sharded
                         -- data between storages.
                         vshard.storage.rebalancer_wakeup()
