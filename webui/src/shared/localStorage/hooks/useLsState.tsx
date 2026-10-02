@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { z } from "zod";
 
 export interface LsStateOptions<T extends z.ZodSchema> {
@@ -7,21 +7,54 @@ export interface LsStateOptions<T extends z.ZodSchema> {
   defaultValue: z.infer<T>;
 }
 
-export const useLsState = <T extends z.ZodSchema>(args: LsStateOptions<T>) => {
-  const [value, setValue] = useState(() => {
+// All hook instances using the same key must observe the same value,
+// otherwise a write from one component (e.g. login) is invisible to
+// components mounted earlier (e.g. the session refresher).
+const cache = new Map<string, unknown>();
+const listeners = new Map<string, Set<() => void>>();
+
+function subscribe(key: string, listener: () => void) {
+  let keyListeners = listeners.get(key);
+  if (!keyListeners) {
+    keyListeners = new Set();
+    listeners.set(key, keyListeners);
+  }
+  keyListeners.add(listener);
+
+  return () => {
+    keyListeners?.delete(listener);
+  };
+}
+
+function readCached<T extends z.ZodSchema>(args: LsStateOptions<T>) {
+  if (!cache.has(args.key)) {
+    let value: z.infer<T>;
     try {
-      return getLsValue<T>(args);
+      value = getLsValue<T>(args);
     } catch (e) {
-      return args.defaultValue;
+      value = args.defaultValue;
     }
-  });
+    cache.set(args.key, value);
+  }
+
+  return cache.get(args.key) as z.infer<T>;
+}
+
+export const useLsState = <T extends z.ZodSchema>(args: LsStateOptions<T>) => {
+  const { key } = args;
+
+  const value = useSyncExternalStore(
+    useCallback((listener) => subscribe(key, listener), [key]),
+    () => readCached(args)
+  );
 
   const onChange = useCallback(
     (newValue?: z.infer<T>) => {
-      setValue(newValue);
-      localStorage.setItem(args.key, JSON.stringify(newValue));
+      cache.set(key, newValue);
+      localStorage.setItem(key, JSON.stringify(newValue));
+      listeners.get(key)?.forEach((listener) => listener());
     },
-    [args.key, setValue]
+    [key]
   );
 
   return [value, onChange] as const;
