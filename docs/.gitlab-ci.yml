@@ -43,12 +43,16 @@ build-docs-image:
         paths:
           - docker-build-base/docs.Dockerfile
           - docs/.gitlab-ci.yml
+          - docs/Pipfile
+          - docs/Pipfile.lock
         # we can use variable for compare_to option in downstream pipeline
         compare_to: $MAIN_BRANCH
     - changes:
         paths:
           - docker-build-base/docs.Dockerfile
           - docs/.gitlab-ci.yml
+          - docs/Pipfile
+          - docs/Pipfile.lock
     - when: manual
       allow_failure: true
       variables:

@@ -262,6 +262,8 @@ docs:
         paths:
           - docker-build-base/docs.Dockerfile
           - docs/.gitlab-ci.yml
+          - docs/Pipfile
+          - docs/Pipfile.lock
         compare_to: *main-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
