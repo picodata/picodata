@@ -108,6 +108,7 @@ variables:
         - tools/clone.sh
         - .gitlab-ci.yml
         - .pre-commit-config.yaml
+        - .python-version
 
   - &if-build-base-changes-on-dev-branch
     if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -117,6 +118,7 @@ variables:
         - tools/clone.sh
         - .gitlab-ci.yml
         - .pre-commit-config.yaml
+        - .python-version
       compare_to: *main-branch
 
   - &if-no-docs
@@ -855,6 +857,10 @@ test-patch-tarantool:
       policy: pull-push
   script:
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
+    # test-run has its own requirements, keep them in a separate venv
+    # (with pip seeded for install-test-deps) instead of the project one
+    - uv venv --seed /tmp/test-run-venv
+    - source /tmp/test-run-venv/bin/activate
     - pushd tarantool-sys/ && make -f .test.mk test-release;
   after_script:
     - find /tmp/t/ -type s -delete

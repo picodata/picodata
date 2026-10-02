@@ -37,11 +37,6 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
            nodejs \
            openssl-devel \
            patch \
-           python3.11 \
-           python3-gevent \
-           python3.11-pip \
-           python3.11-six \
-           python3.11-yaml \
            readline-devel \
            yarn \
            zlib-devel \
@@ -52,7 +47,10 @@ RUN rm -f /etc/yum.repos.d/pgdg-redhat-all.repo \
     && npm install -g corepack \
     # use corepack to install and manage yarn version
     && corepack enable \
-    && ln -fs /usr/bin/python3 /usr/bin/python \
+    # Python comes from uv only, see below. LLVM still pulls python3.12 for its
+    # own scripts, keep it but drop the unversioned python3 it registers.
+    && alternatives --remove python3 /usr/bin/python3.12 \
+    && test ! -e /usr/bin/python3 \
     && dnf clean all && \
     mkdir -p $(go env GOPATH)/bin && \
     export PATH=$(go env GOPATH)/bin:$PATH && \
@@ -109,6 +107,13 @@ COPY tools/clone.sh /usr/bin/clone.sh
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 RUN uv --version
 
+# The only Python in the image is managed by uv (links in /root/.local/bin).
+ENV UV_PYTHON_PREFERENCE=only-managed
+COPY .python-version /tmp/.python-version
+RUN uv python install "$(cat /tmp/.python-version)" --default --preview-features python-install-default \
+    && python3 --version \
+    && rm /tmp/.python-version
+
 # Pre-build the hook environments so validate-commit-headers needs no network
 # at test time. prek fetches uv from GitHub (public PyPI is unreliable in CI)
 # and caches the hook repo and its venv under PREK_HOME.
@@ -127,3 +132,6 @@ RUN set -e; \
 
 # Timezone
 RUN ln -fs /usr/share/zoneinfo/Europe/Moscow /etc/localtime
+
+# Jobs use the interpreter installed above and never download another one
+ENV UV_PYTHON_DOWNLOADS=never
