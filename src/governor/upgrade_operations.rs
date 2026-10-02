@@ -507,7 +507,8 @@ fn insert_replication_mode_into_pico_db_config() -> traft::Result<Response> {
 
 fn insert_wal_mode_into_pico_db_config() -> traft::Result<Response> {
     let node = traft::node::global()?;
-    transaction::transaction(|| -> traft::Result<()> {
+    // A local table: the write must not wait for the synchro queue.
+    transaction::transaction_force_async(|| -> traft::Result<()> {
         let topology = node.catalog_cache.get();
         for tier in topology.all_tiers() {
             node.storage.db_config.replace(
@@ -533,7 +534,8 @@ fn insert_wal_mode_into_pico_db_config() -> traft::Result<Response> {
 fn replace_global_parameter(name: &str, value: &impl serde::Serialize) -> traft::Result<()> {
     let node = traft::node::global()?;
 
-    transaction::transaction(|| -> traft::Result<()> {
+    // A local table: the write must not wait for the synchro queue.
+    transaction::transaction_force_async(|| -> traft::Result<()> {
         node.storage
             .db_config
             .replace(name, DbConfig::GLOBAL_SCOPE, value)?;
