@@ -591,7 +591,7 @@ table.legend {
         </tr>
         <tr>
             <td><span class="cluster">replication_mode</span></td>
-            <td>Режим репликации тира (синхронный/асинхронный).</td>
+            <td>Режим репликации шардированных таблиц тира (синхронный/асинхронный).</td>
             <td>async</td>
             <td>[picodata run -c cluster.tier='{"default": {"replication_mode": "sync", "can_vote": true}}'](cli.md#run_config_parameter)</td>
             <td>[cluster.tier.<tier_name\>.replication_mode](config.md#cluster_tier_tier_replication_mode)</td>
