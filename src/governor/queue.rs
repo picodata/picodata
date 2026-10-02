@@ -12,12 +12,14 @@ use crate::rpc;
 use crate::schema::ADMIN_ID;
 use crate::storage::{Properties, PropertyName, SystemTable};
 use crate::tlog;
+use crate::traft::error::Error;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{RaftIndex, Result};
 use crate::version::Version;
 use smol_str::SmolStr;
 use std::str::FromStr;
 use std::time::Duration;
+use tarantool::error::TarantoolErrorCode;
 use tarantool::space::UpdateOps;
 
 const MIN_PICODATA_VERSION_WITH_G_QUEUE: Version = Version::new_clean(25, 3, 0);
@@ -309,6 +311,14 @@ fn finish_catalog_upgrade<'i>(
     let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
 
     Ok(Some(FinishCatalogUpgrade { cas }.into()))
+}
+
+/// Returns `true` if an operation step failed with an error which goes away on
+/// its own. The governor retries such a step instead of marking the operation
+/// failed.
+pub fn is_transient_operation_error(e: &Error) -> bool {
+    // A replicaset master is read-only until it wins an election.
+    e.error_code() == TarantoolErrorCode::Readonly as u32
 }
 
 pub fn make_change_status_cas(

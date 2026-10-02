@@ -1319,6 +1319,27 @@ pub fn box_promote() -> Result<(), ::tarantool::error::Error> {
     Ok(())
 }
 
+/// Runs a lua chunk like `lua.exec` does, but keeps the code of a box error
+/// the chunk raises, e.g. ER_READONLY, instead of turning it into a generic
+/// lua error.
+pub fn exec_lua_keeping_box_error(code: &str) -> Result<(), Error> {
+    let lua = lua_state();
+    let (ok, err): (Option<tlua::True>, Option<::tarantool::error::BoxError>) = lua
+        .eval_with(
+            "local ok, err = pcall(assert(loadstring(...)))
+            if ok then return true end
+            return nil, err",
+            code,
+        )
+        .map_err(LuaError::from)?;
+
+    match (ok, err) {
+        (Some(_), _) => Ok(()),
+        (None, Some(e)) => Err(e.into()),
+        (None, None) => Err(Error::other("lua chunk raised a nil error")),
+    }
+}
+
 /// Return codes for IPROTO request handlers.
 #[derive(Debug)]
 #[repr(C)]

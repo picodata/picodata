@@ -1922,8 +1922,10 @@ impl Loop {
                                 }
                             });
                         }
-                        if let Err(e) = try_join_all(fs).await {
-                            error_message = Some(e.to_string());
+                        match try_join_all(fs).await {
+                            Ok(_) => {}
+                            Err(e) if queue::is_transient_operation_error(&e) => return Err(e),
+                            Err(e) => error_message = Some(e.to_string()),
                         }
                     }
                 }
@@ -1978,8 +1980,10 @@ impl Loop {
                                 }
                             });
                         }
-                        if let Err(e) = try_join_all(fs).await {
-                            error_message = Some(e.to_string());
+                        match try_join_all(fs).await {
+                            Ok(_) => {}
+                            Err(e) if queue::is_transient_operation_error(&e) => return Err(e),
+                            Err(e) => error_message = Some(e.to_string()),
                         }
                     }
                 }

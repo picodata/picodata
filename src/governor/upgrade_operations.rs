@@ -11,10 +11,12 @@ use crate::config::DEFAULT_JWT_REFRESH_TOKEN_LIFETIME;
 use crate::config::DEFAULT_REPLICATION_MODE;
 use crate::storage::schema::ddl_change_format_on_master;
 use crate::storage::{DbConfig, Instances, Plugins, Replicasets, SystemTable, Tiers};
+use crate::tarantool::exec_lua_keeping_box_error;
 use crate::tier::DEFAULT_TIER;
 use crate::traft;
 use crate::{system_parameter_name, tlog};
 use std::rc::Rc;
+use tarantool::error::{BoxError, TarantoolErrorCode};
 use tarantool::{fiber, transaction};
 
 /// Maps system catalog versions to their corresponding upgrade governor operations.
@@ -606,16 +608,43 @@ fn update_governor_common_rpc_timeout_in_pico_db_config() -> traft::Result<Respo
     Ok(Response {})
 }
 
-fn execute_drop_obsolete_procedures() -> traft::Result<Response> {
+/// Returns `true` if this instance is the writable master of its replicaset,
+/// so it must run a script which changes the Tarantool schema. The governor
+/// invokes the scripts on every instance, and replicas receive the schema
+/// changes from their master.
+///
+/// Returns ER_READONLY if this instance is the designated master but it's not
+/// writable yet, for example while it's being promoted in an election. The
+/// governor retries the operation then. Skipping the script would leave the
+/// whole replicaset without the change.
+fn must_run_on_master() -> traft::Result<bool> {
     let node = traft::node::global()?;
-    // The governor invokes this script on every instance. Replicas receive the
-    // schema changes from their writable replicaset master.
-    if node.is_readonly() {
+    if !node.is_readonly() {
+        return Ok(true);
+    }
+
+    let my_name = node.catalog_cache.my_instance_name();
+    let topology_ref = node.catalog_cache.get();
+    let replicaset = topology_ref.this_replicaset();
+    if replicaset.current_master_name != my_name && replicaset.target_master_name != my_name {
+        return Ok(false);
+    }
+
+    let e = BoxError::new(
+        TarantoolErrorCode::Readonly,
+        "the replicaset master is not writable yet",
+    );
+    Err(e.into())
+}
+
+fn execute_drop_obsolete_procedures() -> traft::Result<Response> {
+    if !must_run_on_master()? {
         return Ok(Response {});
     }
 
-    let lua = tarantool::lua_state();
-    lua.exec(
+    // Keeps the error code, so that ER_READONLY is retried, see
+    // `must_run_on_master`.
+    exec_lua_keeping_box_error(
         r#"
         local obsolete = {
             '.proc_cas',
@@ -667,7 +696,7 @@ fn execute_drop_pgproto_test_procedures() -> traft::Result<Response> {
 
 fn actualize_system_table_format<T: SystemTable>() -> traft::Result<()> {
     let node = traft::node::global()?;
-    let is_master = !node.is_readonly();
+    let is_master = must_run_on_master()?;
 
     let table_id = T::TABLE_ID;
     let table_name = T::TABLE_NAME;
@@ -721,22 +750,20 @@ fn actualize_system_table_format<T: SystemTable>() -> traft::Result<()> {
 }
 
 fn execute_create_lua_procs() -> traft::Result<Response> {
-    let node = traft::node::global()?;
-    let is_master = !node.is_readonly();
-    if !is_master {
+    if !must_run_on_master()? {
         return Ok(Response {});
     }
-    let lua = tarantool::lua_state();
-    lua.exec(r#" require('sbroad.builtins').create_functions() "#)?;
+    // Keeps the error code, so that ER_READONLY is retried, see
+    // `must_run_on_master`.
+    exec_lua_keeping_box_error(r#" require('sbroad.builtins').create_functions() "#)?;
     Ok(Response {})
 }
 
 fn alter_system_spaces_is_sync() -> traft::Result<Response> {
-    let node = traft::node::global()?;
-    let is_master = !node.is_readonly();
-    if !is_master {
+    if !must_run_on_master()? {
         return Ok(Response {});
     }
+    let node = traft::node::global()?;
     if !node
         .alter_system_parameters
         .borrow()
