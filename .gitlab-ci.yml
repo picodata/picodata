@@ -579,6 +579,7 @@ test-py-sql-linux:
     - <<: *py_cache
       policy: pull
   script:
+    - tools/ensure_checkout.sh
     - *uv-sync
     - |
       ci-log-section start "test" Test
@@ -672,6 +673,7 @@ test-py-not-sql-linux:
     - <<: *rolling_binaries_cache
       policy: pull
   script:
+    - tools/ensure_checkout.sh
     - *uv-sync
     - |
       ci-log-section start "test" Test
