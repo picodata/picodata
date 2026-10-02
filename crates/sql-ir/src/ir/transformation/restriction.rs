@@ -63,6 +63,21 @@ impl RestrictInfo {
     pub fn subqueries(&self) -> &[NodeId] {
         &self.subqueries
     }
+
+    /// Update cached column and subquery sources to match
+    /// [`Plan::replace_target_in_subtree`].
+    fn retarget(&mut self, from: NodeId, to: NodeId) {
+        for slot in &mut self.slots {
+            if slot.rel_id == from {
+                slot.rel_id = to;
+            }
+        }
+        for subquery in &mut self.subqueries {
+            if *subquery == from {
+                *subquery = to;
+            }
+        }
+    }
 }
 
 /// The restriction clauses for one relational node's filter or condition.
@@ -92,6 +107,29 @@ impl Restrictions {
     }
     pub fn add(&mut self, rel_id: NodeId, info: RestrictInfo) {
         self.by_rel.entry(rel_id).or_default().clauses.push(info);
+    }
+
+    /// Append `infos` to the restriction of `rel_id`.
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn extend(&mut self, rel_id: NodeId, infos: Vec<RestrictInfo>) {
+        self.by_rel.entry(rel_id).or_default().clauses.extend(infos);
+    }
+
+    /// Make `infos` the whole restriction of `rel_id`.
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn set(&mut self, rel_id: NodeId, infos: Vec<RestrictInfo>) {
+        self.by_rel.insert(rel_id, Restriction { clauses: infos });
+    }
+
+    /// Follow [`Plan::replace_target_in_relational`]`(rel_id, from, to)`: the
+    /// clauses of `rel_id` reference `to` instead of `from`.
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn retarget(&mut self, rel_id: NodeId, from: NodeId, to: NodeId) {
+        if let Some(restriction) = self.by_rel.get_mut(&rel_id) {
+            for info in &mut restriction.clauses {
+                info.retarget(from, to);
+            }
+        }
     }
 }
 
@@ -164,30 +202,32 @@ impl<'p> RestrictionBuilder<'p> {
         clause: NodeId,
     ) -> Result<(SmallVec<[Slot; 2]>, SmallVec<[NodeId; 1]>), SbroadError> {
         let mut slots: SmallVec<[Slot; 2]> = SmallVec::new();
-        for ref_id in self.plan.get_refs_from_subtree(clause)? {
-            let Expression::Reference(Reference {
-                target, position, ..
-            }) = self.plan.get_expression_node(ref_id)?
-            else {
-                continue;
-            };
-            for node in target.iter() {
-                let slot = Slot::new(*node, *position);
-                if !slots.contains(&slot) {
-                    slots.push(slot);
-                }
-            }
-        }
-
         let mut subqueries: SmallVec<[NodeId; 1]> = SmallVec::new();
-        for sq_id in self.plan.get_sq_refs_from_subtree(clause)? {
-            let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) =
-                self.plan.get_expression_node(sq_id)?
-            else {
-                continue;
-            };
-            if !subqueries.contains(rel_id) {
-                subqueries.push(*rel_id);
+        // One walk for both kinds. Like `get_refs_from_subtree`, it stays in
+        // the expression tree and never enters a subquery's relations.
+        let dfs = PostOrderWithFilter::new(
+            |node| self.plan.nodes.expr_iter(node, false),
+            |_| true,
+            EXPR_CAPACITY,
+        );
+        for node_id in dfs.traverse_into_iter(clause) {
+            match self.plan.get_expression_node(node_id)? {
+                Expression::Reference(Reference {
+                    target, position, ..
+                }) => {
+                    for node in target.iter() {
+                        let slot = Slot::new(*node, *position);
+                        if !slots.contains(&slot) {
+                            slots.push(slot);
+                        }
+                    }
+                }
+                Expression::SubQueryReference(SubQueryReference { rel_id, .. })
+                    if !subqueries.contains(rel_id) =>
+                {
+                    subqueries.push(*rel_id);
+                }
+                _ => {}
             }
         }
 
@@ -203,5 +243,25 @@ impl Plan {
     pub fn analyze_restrictions_in_subtree(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
         self.restrictions = RestrictionBuilder::build(&self, top_id).map(Some)?;
         Ok(self)
+    }
+
+    /// Debug check that the stored restrictions describe the current IR of the
+    /// subtree at `top_id`: each of its owners has exactly the restriction a
+    /// full, independent rebuild gives. Entries outside the subtree are not
+    /// checked, so a pass over part of the plan keeps them as they are.
+    #[cfg(debug_assertions)]
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn debug_assert_restrictions_fresh(&self, top_id: NodeId) {
+        let Some(stored) = self.restrictions.as_ref() else {
+            return;
+        };
+        let fresh = RestrictionBuilder::build(self, top_id).expect("restrictions rebuild");
+        for (rel_id, restriction) in &fresh.by_rel {
+            debug_assert_eq!(
+                stored.for_rel(*rel_id),
+                Some(restriction),
+                "stale restriction of {rel_id:?}"
+            );
+        }
     }
 }

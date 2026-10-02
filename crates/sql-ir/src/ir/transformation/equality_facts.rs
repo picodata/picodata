@@ -157,7 +157,7 @@ fn equality_facts_hash_state() -> RandomState {
 }
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
-struct UnionFindGroup(usize);
+pub(super) struct UnionFindGroup(usize);
 
 impl UnionFindGroup {
     fn index(&self) -> usize {
@@ -165,7 +165,7 @@ impl UnionFindGroup {
     }
 }
 
-struct UnionFind<T> {
+pub(super) struct UnionFind<T> {
     elems: AHashMap<T, usize>,
     parents: Vec<usize>,
     sizes: Vec<usize>,
@@ -357,11 +357,12 @@ pub struct ClassId(u32);
 /// - `constant` — value pinned to the class, if any.  `None` either when
 ///   no constant atom was ever unioned in, or when `contradictory == true`
 ///   (the class lost its single-value invariant);
-/// - `contradictory` — PostgreSQL's `ec_broken`: two non-equal constants
-///   were merged into the same class (typically via slot-eq facts from
-///   different expressions).  Semantically the class is unsatisfiable, so
-///   any row matching it cannot exist — consumers may short-circuit to
-///   an empty result.
+/// - `contradictory` — two non-equal constants were merged into the same
+///   class (typically via slot-eq facts from different expressions).  The
+///   class is proven unsatisfiable, so no row matching it can exist —
+///   consumers may short-circuit to an empty result.  This is not
+///   PostgreSQL's `ec_broken`, which marks a class whose implied clauses
+///   could not be built and says nothing about satisfiability.
 ///
 /// The type and its fields are public for the whitebox tests in
 /// `crates/sql-planner/tests/planner_tests`; not part of the planner API.
@@ -703,8 +704,8 @@ impl EqualityFacts {
         scope.repr_info.get(repr)
     }
 
-    /// Is the class for this slot marked contradictory (PostgreSQL's
-    /// `ec_broken`)?  A contradictory class merged two non-equal constants,
+    /// Is the class for this slot marked contradictory?  A contradictory
+    /// class merged two non-equal constants,
     /// so no row can satisfy it; callers may prune the surrounding plan
     /// slice to an empty result.  Returns `false` if the slot has no class
     /// (unanalyzed node or out-of-range position).
@@ -739,6 +740,20 @@ impl EqualityFacts {
     #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
     pub(super) fn analyzed_top(&self) -> NodeId {
         self.analyzed_top
+    }
+
+    /// Do `a` and `b` belong to one domain? `false` when either was not analyzed.
+    /// A domain grows downwards from its root only through Selections, plain
+    /// Projections, both INNER JOIN operands, a LEFT JOIN's preserved side and
+    /// pass-through subqueries, so an empty node empties every ancestor up to
+    /// the root.
+    #[must_use]
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn same_domain(&self, a: NodeId, b: NodeId) -> bool {
+        matches!(
+            (self.domains.get(&a), self.domains.get(&b)),
+            (Some(x), Some(y)) if x == y
+        )
     }
 
     /// The declared type of query parameter `index` (1-based), or unknown when
@@ -1081,8 +1096,7 @@ impl EqualityFactsBuilder {
                     // both constants land in `a`'s class.
                     //
                     // The class is semantically unsatisfiable in that
-                    // case — analogous to PostgreSQL's `ec_broken`.  We
-                    // drop the constant (so consumers don't pin slots to
+                    // case.  We drop the constant (so consumers don't pin slots to
                     // a value that contradicts the other constraint) and
                     // mark the class contradictory so callers that care
                     // can prune the plan slice to empty.

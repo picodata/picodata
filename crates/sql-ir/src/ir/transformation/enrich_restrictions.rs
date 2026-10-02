@@ -8,13 +8,16 @@
 //! exists ([`Placement`]), so it can restrict a table scan even across a join. A
 //! bind parameter has no column, so it becomes an ordinary `parameter = value`
 //! conjunct placed within the class's domain — never above an outer join or
-//! aggregate the fact does not constrain. Each column must have a valid placement;
-//! a parameter check with no valid placement is skipped. The query's original
-//! equalities are always kept.
+//! aggregate the fact does not constrain. Each column and each parameter check
+//! must have a valid placement; a missing one is an error, never a silently
+//! dropped predicate. The query's original equalities are always kept.
 //!
 //! An unpinned class derives equalities between columns with the same relation
-//! and placement. Each column is paired with the first, producing `n - 1`
-//! predicates for `n` columns. Cross-relation pairs are not derived.
+//! and placement, each paired with the first. Columns of different relations
+//! are linked where their branches meet: an INNER join gets a pair between
+//! its operands in `ON`; an outer join's nullable output group is linked to
+//! a carried member above that join. Each source group is connected internally,
+//! and `k` groups get `k - 1` cross-group pairs.
 //!
 //! An unsatisfiable filter or INNER JOIN condition gets a `false` conjunct.
 //! A class with conflicting constants from separate filters gets a `false`
@@ -26,10 +29,19 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::columns::RelColumn;
 use crate::ir::helpers::RepeatableState;
+use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
-use crate::ir::node::{Join, NodeId, Projection, ReferenceTarget, ScanSubQuery, Selection};
+use crate::ir::node::{
+    BoolExpr, Constant, Join, NodeId, Projection, Reference, ReferenceTarget, ScanSubQuery,
+    Selection,
+};
 use crate::ir::operator::{Bool, JoinKind};
-use crate::ir::transformation::equality_facts::{ClassPin, EqualityFacts, EquivalenceClass, Slot};
+#[cfg(debug_assertions)]
+use crate::ir::transformation::equality_facts::UnionFind;
+use crate::ir::transformation::equality_facts::{
+    ClassId, ClassPin, EqualityFacts, EquivalenceClass, Slot,
+};
+use crate::ir::transformation::restriction::{RestrictInfo, Restriction};
 use crate::ir::tree::traversal::REL_CAPACITY;
 use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
@@ -57,19 +69,51 @@ enum Placement {
     NewSubquery { parent: NodeId, child: NodeId },
 }
 
-/// One `left = right` equality between two columns of the same relational
-/// node, derived from an unpinned class and attached through `placement`.
+/// One `left = right` equality between two columns, derived from an unpinned
+/// class and attached through `placement`. Both columns are visible there: they
+/// sit on one node, or on the two operands of the INNER join whose `ON` it is.
 struct ColPair {
     placement: Placement,
-    rel_id: NodeId,
-    left: usize,
-    right: usize,
+    left: Slot,
+    right: Slot,
+}
+
+/// One source group of an unpinned class: lowest members on one relation. They
+/// share the placement and node they land through; `positions` are theirs there.
+struct PairGroup {
+    /// The relation every lowest member of the group is on.
+    source: NodeId,
+    placement: Placement,
+    placed: NodeId,
+    positions: SmallVec<[usize; 4]>,
+}
+
+/// The first stated `ON` pair of each class at each join, see
+/// [`Plan::stated_pairs_by_class`]. Indexed lazily, once per join, by the
+/// classes of `facts`.
+struct StatedPairs<'f> {
+    facts: &'f EqualityFacts,
+    by_join: AHashMap<NodeId, AHashMap<ClassId, (Slot, Slot)>>,
+}
+
+/// The class members one join brings together, see [`Plan::plan_class_pairs`].
+#[derive(Default)]
+struct JoinSides {
+    /// Members on the left operand's output.
+    left: SmallVec<[Slot; 2]>,
+    /// Members on the right operand's output.
+    right: SmallVec<[Slot; 2]>,
+    /// Members on the join's own output whose lowest copy is the join itself:
+    /// an outer join's nullable-side columns, not linked below it. They form
+    /// one source group.
+    own: SmallVec<[Slot; 2]>,
+    /// Members on the join's own output carried up from an operand.
+    carried: SmallVec<[Slot; 2]>,
 }
 
 /// A star of equalities connecting columns and parameters to one shared pin.
 /// Stores the operands and placements; `build_predicates` creates the expressions.
-/// Every lowest column member must have a placement. Parameter checks without
-/// a valid placement are omitted.
+/// Every lowest column member and every needed parameter check has a placement.
 struct Star {
     pin: Pin,
     cols: Vec<(Placement, Slot)>,
@@ -84,7 +128,7 @@ enum ClassAction<'a> {
     Contradiction,
     /// A star of `member = pin` (and `$param = pin`) equalities.
     Pinned(ClassPin<'a>),
-    /// `col = col` pairs between members on one relational node.
+    /// `col = col` pairs between members, on one node or where they meet.
     Pairs,
 }
 
@@ -92,8 +136,9 @@ enum ClassAction<'a> {
 /// derive column pairs. Pins hold throughout the class's domain; facts scoped
 /// to a LEFT JOIN's ON are excluded from global classes.
 ///
-/// Pairs require an unpinned class with two members on the same relation.
-/// A NULL constant is not a pin and does not permit pair derivation.
+/// Pairs require an unpinned class with two members on the same relation:
+/// this includes columns from different join operands when the join output
+/// carries both. A NULL constant is not a pin and does not permit pair derivation.
 /// Members are sorted by relation, so adjacent entries suffice for this check.
 fn classify(class: &EquivalenceClass) -> Option<ClassAction<'_>> {
     if class.is_contradictory() {
@@ -148,8 +193,36 @@ impl Plan {
         // Splicing does not read equality facts. Register the inserted nodes
         // afterwards to rebuild each affected class's members only once.
         let mut passthroughs = Vec::new();
-        for (placement, clauses) in grouped {
-            self.materialize_restrictions(placement, clauses, &mut passthroughs)?;
+        // Folds before splices: splicing over a join operand rewrites the
+        // references already in that join's `ON`, so a clause folded into the
+        // `ON` afterwards would keep pointing at the old operand.
+        // Partition preserves the map's iteration order within each kind.
+        let (folds, splices): (Vec<_>, Vec<_>) = grouped.into_iter().partition(|(placement, _)| {
+            matches!(
+                placement,
+                Placement::ExistingSelection(_) | Placement::InnerJoinOn(_)
+            )
+        });
+        // `(owner, clause)` of every derived clause, emitted exactly once.
+        // Splices retarget references in place, so the ids stay valid.
+        #[cfg(debug_assertions)]
+        let mut emitted: Vec<(NodeId, NodeId)> = Vec::new();
+        // Each step keeps the restrictions in step with the tree: later
+        // readers see no missing clause, nor a slot of a replaced child.
+        // Facts stay valid: the classes are unchanged and the inserted nodes
+        // are registered below.
+        for (placement, clauses) in folds.into_iter().chain(splices) {
+            #[cfg(debug_assertions)]
+            let derived: Vec<NodeId> = clauses.iter().map(RestrictInfo::clause).collect();
+            #[cfg_attr(not(debug_assertions), allow(unused_variables))]
+            let rel = self.materialize_restrictions(placement, clauses, &mut passthroughs)?;
+            #[cfg(debug_assertions)]
+            emitted.extend(derived.into_iter().map(|clause| (rel, clause)));
+        }
+        #[cfg(debug_assertions)]
+        {
+            self.debug_assert_restrictions_fresh(top_id);
+            self.debug_assert_emitted_once(&emitted);
         }
         if let Some(facts) = self.facts.as_mut() {
             facts.register_passthroughs(&passthroughs);
@@ -196,6 +269,13 @@ impl Plan {
         // Shared across classes to avoid quadratic scans of wide outputs.
         // Valid only during planning, before the tree changes.
         let mut lift_index: AHashMap<NodeId, AHashMap<RelColumn, usize>> = AHashMap::new();
+        // Each INNER join's stated `ON` pairs, parsed and indexed by class
+        // once per join and shared across classes.
+        // Valid only during planning, before the tree changes.
+        let mut stated_pairs = StatedPairs {
+            facts,
+            by_join: AHashMap::new(),
+        };
         // Two domains pinning the same param to the same value are two distinct
         // checks, so key seen checks by anchor too.
         let mut param_check_seen: AHashSet<(u16, ClassPin<'_>, NodeId)> = AHashSet::new();
@@ -206,9 +286,9 @@ impl Plan {
         for (class, action) in candidates {
             match action {
                 ClassAction::Contradiction => {
-                    if let Some(placement) = self.place_param_check(class.anchor)? {
-                        planned.empty.push(placement);
-                    }
+                    planned
+                        .empty
+                        .push(self.required_domain_check(facts, class, None)?);
                 }
                 ClassAction::Pinned(pin) => {
                     let star = self.plan_class_star(
@@ -222,11 +302,42 @@ impl Plan {
                     planned.stars.extend(star);
                 }
                 ClassAction::Pairs => {
-                    self.plan_class_pairs(class, &parents, &mut lift_index, &mut planned.pairs)?;
+                    self.plan_class_pairs(
+                        class,
+                        &parents,
+                        &mut lift_index,
+                        &mut stated_pairs,
+                        &mut planned.pairs,
+                    )?;
                 }
             }
         }
         Ok(Some(planned))
+    }
+
+    /// Check that emitted clause IDs are unique and occur in restrictions at
+    /// their expected owners. This checks materialization by identity, not
+    /// semantic deduplication; the provenance is local to this debug check.
+    #[cfg(debug_assertions)]
+    fn debug_assert_emitted_once(&self, emitted: &[(NodeId, NodeId)]) {
+        let Some(restrictions) = self.restrictions.as_ref() else {
+            return;
+        };
+        let owners: AHashMap<NodeId, NodeId> = emitted
+            .iter()
+            .map(|&(owner, clause)| (clause, owner))
+            .collect();
+        debug_assert_eq!(owners.len(), emitted.len(), "a clause emitted twice");
+        let mut seen = 0;
+        for (rel_id, restriction) in &restrictions.by_rel {
+            for info in restriction.clauses() {
+                if let Some(owner) = owners.get(&info.clause()) {
+                    debug_assert_eq!(owner, rel_id, "a derived clause left its owner");
+                    seen += 1;
+                }
+            }
+        }
+        debug_assert_eq!(seen, emitted.len(), "a derived clause is no restriction");
     }
 
     /// Build expressions grouped by [`Placement`] without changing relations.
@@ -240,20 +351,26 @@ impl Plan {
             pairs,
             empty,
         }: Enrichment,
-    ) -> Result<AHashMap<Placement, Vec<NodeId>, RepeatableState>, SbroadError> {
-        let mut grouped: AHashMap<Placement, Vec<NodeId>, RepeatableState> =
+    ) -> Result<AHashMap<Placement, Vec<RestrictInfo>, RepeatableState>, SbroadError> {
+        let mut grouped: AHashMap<Placement, Vec<RestrictInfo>, RepeatableState> =
             AHashMap::with_hasher(RepeatableState::default());
         for class in stars {
             // Param checks before column pins, for a stable rendered conjunct order.
             if let Some((placement, params)) = class.params {
                 for (param, param_type) in params {
                     let check_id = self.make_param_check(param, param_type, &class.pin)?;
-                    grouped.entry(placement).or_default().push(check_id);
+                    grouped
+                        .entry(placement)
+                        .or_default()
+                        .push(RestrictInfo::implied(check_id, SmallVec::new()));
                 }
             }
             for &(placement, slot) in &class.cols {
                 let eq_id = self.make_pin_eq(slot.rel_id, slot.pos, &class.pin)?;
-                grouped.entry(placement).or_default().push(eq_id);
+                grouped
+                    .entry(placement)
+                    .or_default()
+                    .push(RestrictInfo::implied(eq_id, smallvec![slot]));
             }
 
             // TODO: here we enrich only filters, but motions can be executed with
@@ -261,29 +378,40 @@ impl Plan {
             // filters in the plan and execute them before the rest.
         }
         for pair in pairs {
-            let eq_id = self.make_col_eq(pair.rel_id, pair.left, pair.right)?;
-            grouped.entry(pair.placement).or_default().push(eq_id);
+            let eq_id = self.make_col_eq(pair.left, pair.right)?;
+            grouped
+                .entry(pair.placement)
+                .or_default()
+                .push(RestrictInfo::implied(
+                    eq_id,
+                    smallvec![pair.left, pair.right],
+                ));
         }
         for placement in empty {
             let false_id = self.add_const(Value::Boolean(false));
-            grouped.entry(placement).or_default().push(false_id);
+            grouped
+                .entry(placement)
+                .or_default()
+                .push(RestrictInfo::implied(false_id, SmallVec::new()));
         }
         Ok(grouped)
     }
 
-    /// Materialize nonempty `clauses` at the planned `placement`: extend an
+    /// Materialize nonempty `derived` at the planned `placement`: extend an
     /// existing filter or INNER JOIN condition, or create the planned filter nodes.
     /// Record each inserted chain in `passthroughs` as `(child, inserted_nodes)`.
+    /// The owner's restriction follows: `derived` is appended. Return the node
+    /// whose filter / condition changed.
     ///
     /// # Errors
     /// - Building the `AND` filter or splicing a node fails.
     fn materialize_restrictions(
         &mut self,
         placement: Placement,
-        clauses: Vec<NodeId>,
+        derived: Vec<RestrictInfo>,
         passthroughs: &mut Vec<(NodeId, SmallVec<[NodeId; 3]>)>,
-    ) -> Result<(), SbroadError> {
-        match placement {
+    ) -> Result<NodeId, SbroadError> {
+        Ok(match placement {
             // Fold onto the existing filter / condition, which stays the AND's base.
             Placement::ExistingSelection(selection) => {
                 let Relational::Selection(Selection { filter, .. }) =
@@ -291,7 +419,7 @@ impl Plan {
                 else {
                     unreachable!("caller checked Selection");
                 };
-                let filter = self.concat_and_fold(*filter, clauses)?;
+                let filter = self.fold_condition(selection, *filter, derived)?;
                 let MutRelational::Selection(Selection {
                     filter: filter_id, ..
                 }) = self.get_mut_relation_node(selection)?
@@ -299,6 +427,7 @@ impl Plan {
                     unreachable!("caller checked Selection");
                 };
                 *filter_id = filter;
+                selection
             }
             // Sound only for an INNER join: its condition filters the output, so a
             // failed check empties the result. An outer join keeps its preserved
@@ -307,7 +436,7 @@ impl Plan {
                 let Relational::Join(Join { condition, .. }) = self.get_relation_node(join)? else {
                     unreachable!("caller checked Join");
                 };
-                let condition = self.concat_and_fold(*condition, clauses)?;
+                let condition = self.fold_condition(join, *condition, derived)?;
                 let MutRelational::Join(Join {
                     condition: condition_id,
                     ..
@@ -316,18 +445,18 @@ impl Plan {
                     unreachable!("caller checked Join");
                 };
                 *condition_id = condition;
+                join
             }
             Placement::NewSelection { parent, child } => {
-                let filter = self.and_of(clauses)?;
-                let new_sel = self.add_select(child, filter)?;
+                let new_sel = self.add_filter_over(child, derived)?;
                 self.splice_over(parent, child, new_sel)?;
                 passthroughs.push((child, smallvec![new_sel]));
+                new_sel
             }
             // A join / set-op operand must be a named relation: wrap `child` in a
             // single-alias subquery that preserves its output columns.
             Placement::NewSubquery { parent, child } => {
-                let filter = self.and_of(clauses)?;
-                let new_sel = self.add_select(child, filter)?;
+                let new_sel = self.add_filter_over(child, derived)?;
                 let alias = self
                     .scan_name(RelColumn::new(child, 0))?
                     .map(smol_str::ToSmolStr::to_smolstr);
@@ -337,12 +466,55 @@ impl Plan {
                 let sub_query = self.add_sub_query(new_proj, alias.as_deref())?;
                 self.splice_over(parent, child, sub_query)?;
                 passthroughs.push((child, smallvec![new_sel, new_proj, sub_query]));
+                new_sel
             }
-        }
-        Ok(())
+        })
     }
 
-    /// Relink `parent` from `child` to `spliced` (the top of the inserted chain).
+    /// A new `Selection` over `child` filtering by `derived`, which become its
+    /// restriction: the owner is this Selection, not a carrier above it.
+    ///
+    /// # Errors
+    /// - Building the `AND` filter or the Selection fails.
+    fn add_filter_over(
+        &mut self,
+        child: NodeId,
+        derived: Vec<RestrictInfo>,
+    ) -> Result<NodeId, SbroadError> {
+        let filter = self.and_of(derived.iter().map(RestrictInfo::clause).collect())?;
+        let new_sel = self.add_select(child, filter)?;
+        if let Some(restrictions) = self.restrictions.as_mut() {
+            restrictions.extend(new_sel, derived);
+        }
+        Ok(new_sel)
+    }
+
+    /// Fold `derived` onto `owner`'s filter / condition `base`. The owner's
+    /// restriction gets the same edit: `derived` is appended, or is the whole
+    /// restriction when the fold replaces a bare `true`.
+    ///
+    /// # Errors
+    /// - Reading an expression or building the `AND` fails.
+    fn fold_condition(
+        &mut self,
+        owner: NodeId,
+        base: NodeId,
+        derived: Vec<RestrictInfo>,
+    ) -> Result<NodeId, SbroadError> {
+        let clauses: Vec<NodeId> = derived.iter().map(RestrictInfo::clause).collect();
+        let (condition, replaced) = self.fold_onto(base, clauses)?;
+        if let Some(restrictions) = self.restrictions.as_mut() {
+            if replaced {
+                restrictions.set(owner, derived);
+            } else {
+                restrictions.extend(owner, derived);
+            }
+        }
+        Ok(condition)
+    }
+
+    /// Relink `parent` from `child` to `spliced` (the top of the inserted chain),
+    /// retargeting the parent's restriction too, even when it gains no clause.
     /// The caller must register the inserted nodes as passthroughs of `child`
     /// in the equality facts so the motion pass can track join keys through them.
     fn splice_over(
@@ -354,7 +526,29 @@ impl Plan {
         // References first (as motion insertion does), then the child pointer.
         self.replace_target_in_relational(parent, child, spliced)?;
         self.change_child(parent, child, spliced)?;
+        if let Some(restrictions) = self.restrictions.as_mut() {
+            restrictions.retarget(parent, child, spliced);
+        }
         Ok(())
+    }
+
+    /// Fold `clauses` onto an existing filter / condition `base`. A bare `true`
+    /// base (a join on `true`) is replaced rather than kept as `true AND ...`;
+    /// the flag tells whether it was.
+    fn fold_onto(
+        &mut self,
+        base: NodeId,
+        clauses: Vec<NodeId>,
+    ) -> Result<(NodeId, bool), SbroadError> {
+        if matches!(
+            self.get_expression_node(base)?,
+            Expression::Constant(Constant {
+                value: Value::Boolean(true)
+            })
+        ) {
+            return Ok((self.and_of(clauses)?, true));
+        }
+        Ok((self.concat_and_fold(base, clauses)?, false))
     }
 
     /// Fold `clauses` together with `AND`, left to right. `clauses` is never empty.
@@ -377,13 +571,13 @@ impl Plan {
         Ok(filter)
     }
 
-    /// Plan equalities to a class's pin. Every lowest column member requires
-    /// a placement; parameter checks without one are skipped.
+    /// Plan equalities to a class's pin. Every lowest column member and every
+    /// parameter check not already planned for this anchor requires a placement.
     /// Return `None` when no predicates are needed.
     ///
     /// # Errors
     /// - Reading an output column fails.
-    /// - A lowest member has no placement.
+    /// - A lowest member or a parameter check has no placement.
     fn plan_class_star<'f>(
         &self,
         facts: &'f EqualityFacts,
@@ -400,29 +594,15 @@ impl Plan {
             if !self.is_lowest_member(member, &member_set)? {
                 continue;
             }
-            let Some((placement, slot)) =
-                self.place_column(member, &member_set, parents, lift_index)?
-            else {
-                // Each lowest member must reach a restricting WHERE or INNER
-                // JOIN ON through same-column members, unless an earlier
-                // insertion is possible.
-                debug_assert!(
-                    false,
-                    "enrich_restrictions: no placement for class member {member:?}"
-                );
-                return Err(SbroadError::Invalid(
-                    Entity::Plan,
-                    Some(smol_str::ToSmolStr::to_smolstr(&format!(
-                        "enrich_restrictions: no placement for class member {member:?}"
-                    ))),
-                ));
-            };
+            let (placement, slot) =
+                self.place_lowest_member(member, &member_set, parents, lift_index)?;
             cols.push((placement, slot));
         }
         // One check per (param, pin, anchor); the pin param itself needs none.
         let mut params: Vec<(u16, DerivedType)> = Vec::new();
         for &param in &class.params {
-            if pin != ClassPin::Param(param) && param_check_seen.insert((param, pin, class.anchor))
+            if pin != ClassPin::Param(param)
+                && !param_check_seen.contains(&(param, pin, class.anchor))
             {
                 params.push((param, facts.param_type(param)));
             }
@@ -430,9 +610,16 @@ impl Plan {
         let checks = if params.is_empty() {
             None
         } else {
-            self.place_param_check(class.anchor)?
-                .map(|placement| (placement, params))
+            let placement = self.required_domain_check(facts, class, Some(pin))?;
+            Some((placement, params))
         };
+        // Record checks as seen only once the whole class is planned, so a
+        // seen key always means a planned check.
+        if let Some((_, params)) = &checks {
+            for &(param, _) in params {
+                param_check_seen.insert((param, pin, class.anchor));
+            }
+        }
         if cols.is_empty() && checks.is_none() {
             return Ok(None);
         }
@@ -447,44 +634,364 @@ impl Plan {
         }))
     }
 
-    /// Pair lowest members that share a relation and placement with the first
-    /// member of their group. Skip members without a valid placement.
+    /// Plan the [`ColPair`]s of an unpinned class: stars within source groups
+    /// and links between groups at joins.
+    ///
+    /// Each lowest member is placed exactly as a pinned class' column. Lowest
+    /// members on one relation form a source group, starred around its first
+    /// column; they must share a placement. Groups follow where columns come
+    /// from, not where their filters land: two groups placed in one `WHERE`
+    /// stay apart, so a shared placement never links them ahead of their join.
+    ///
+    /// Groups merge only at joins, each with one pair per extra side:
+    /// - an INNER join with members on both operands takes `l = r` in its `ON`,
+    ///   preferring an edge the `ON` already states;
+    /// - a join whose own output holds nullable-side copies (the join's own
+    ///   source group) ties them to a carried member where a filter over that
+    ///   output goes ([`Plan::place_column`]), so a pair never enters the
+    ///   nullable side.
+    ///
+    /// Each side is linked inside already (by its group's star or lower joins)
+    /// and the sides hold disjoint groups, so every cross pair links two
+    /// components and `k` groups get exactly `k - 1` cross pairs. The choice
+    /// reads no other join's result, so the join order only orders the output.
+    ///
+    /// Edges an `ON` already states are emitted too: the class must yield a
+    /// full spanning set on its own, independent of the query's conjuncts.
     ///
     /// # Errors
-    /// - Reading an output column fails.
+    /// - Reading an output column or a relational node fails.
+    /// - A lowest member has no placement, or two sides do not share one.
+    /// - Lowest members on one relation land through different placements.
     fn plan_class_pairs(
         &self,
         class: &EquivalenceClass,
         parents: &AHashMap<NodeId, NodeId>,
         lift_index: &mut AHashMap<NodeId, AHashMap<RelColumn, usize>>,
+        stated_pairs: &mut StatedPairs<'_>,
         pairs: &mut Vec<ColPair>,
     ) -> Result<(), SbroadError> {
         let member_set: AHashSet<Slot> = class.members.iter().copied().collect();
-        // Use the first member as each group's centre. Sorted members and
-        // lookup-only map access keep the predicate order deterministic.
-        let mut centres: AHashMap<(Placement, NodeId), usize> = AHashMap::new();
+        let mut lowest_of: AHashMap<Slot, Slot> = AHashMap::with_capacity(member_set.len());
+        // Build groups in member order so each group's first column, used as
+        // its star centre, is stable.
+        let mut groups: Vec<PairGroup> = Vec::new();
+        debug_assert!(
+            class.members.windows(2).all(|w| w[0] <= w[1]),
+            "enrich_restrictions: members of a class are not sorted"
+        );
         for &member in class.members.iter() {
-            if !self.is_lowest_member(member, &member_set)? {
+            if self.lowest_copy(member, &member_set, &mut lowest_of)? != member {
                 continue;
             }
-            let Some((placement, slot)) =
-                self.place_column(member, &member_set, parents, lift_index)?
-            else {
+            let (placement, slot) =
+                self.place_lowest_member(member, &member_set, parents, lift_index)?;
+            // Members are sorted by relation (checked above) and the lowest
+            // keep that order, so one relation's members are adjacent: only
+            // the last group can match.
+            match groups.last_mut().filter(|g| g.source == member.rel_id) {
+                Some(group) if group.placement == placement && group.placed == slot.rel_id => {
+                    group.positions.push(slot.pos);
+                }
+                // Same-relation columns climb the same parents, so this only
+                // means placement depends on more than the relation.
+                Some(_) => {
+                    debug_assert!(
+                        false,
+                        "enrich_restrictions: lowest members on {:?} part ways",
+                        member.rel_id
+                    );
+                    return Err(SbroadError::Invalid(
+                        Entity::Plan,
+                        Some(smol_str::ToSmolStr::to_smolstr(&format!(
+                            "enrich_restrictions: lowest members on {:?} part ways",
+                            member.rel_id
+                        ))),
+                    ));
+                }
+                None => groups.push(PairGroup {
+                    source: member.rel_id,
+                    placement,
+                    placed: slot.rel_id,
+                    positions: smallvec![slot.pos],
+                }),
+            }
+        }
+        for group in &groups {
+            let Some((&left, others)) = group.positions.split_first() else {
                 continue;
             };
-            match centres.entry((placement, slot.rel_id)) {
-                Entry::Occupied(centre) => pairs.push(ColPair {
-                    placement,
-                    rel_id: slot.rel_id,
-                    left: *centre.get(),
-                    right: slot.pos,
-                }),
-                Entry::Vacant(centre) => {
-                    centre.insert(slot.pos);
+            for &right in others {
+                pairs.push(ColPair {
+                    placement: group.placement,
+                    left: Slot::new(group.placed, left),
+                    right: Slot::new(group.placed, right),
+                });
+            }
+        }
+        if groups.len() < 2 {
+            return Ok(());
+        }
+
+        // What each join brings together. Members are sorted, so every side
+        // lists them in a stable order.
+        let mut joins: AHashMap<NodeId, JoinSides> = AHashMap::new();
+        for &member in class.members.iter() {
+            if let Relational::Join(_) = self.get_relation_node(member.rel_id)? {
+                let sides = joins.entry(member.rel_id).or_default();
+                if lowest_of[&member] == member {
+                    sides.own.push(member);
+                } else {
+                    sides.carried.push(member);
+                }
+            }
+            let Some(&parent) = parents.get(&member.rel_id) else {
+                continue;
+            };
+            if let Relational::Join(Join { left, right, .. }) = self.get_relation_node(parent)? {
+                let sides = joins.entry(parent).or_default();
+                if member.rel_id == *left {
+                    sides.left.push(member);
+                } else if member.rel_id == *right {
+                    sides.right.push(member);
                 }
             }
         }
+        // Any order works, each merge is one join; the ids keep it repeatable.
+        let mut order: Vec<NodeId> = joins.keys().copied().collect();
+        order.sort_unstable_by_key(|join| (join.arena_type, join.offset));
+
+        #[cfg(debug_assertions)]
+        let cross_before = pairs.len();
+        for join in order {
+            let sides = &joins[&join];
+            let Relational::Join(Join { kind, .. }) = self.get_relation_node(join)? else {
+                unreachable!("keyed by joins");
+            };
+            if let (Some(&left_rep), Some(&right_rep)) = (sides.left.first(), sides.right.first()) {
+                // An outer join's nullable operand is never linked to the
+                // other side, so its members meet only through `own`.
+                let inner = matches!(kind, JoinKind::Inner);
+                debug_assert!(
+                    inner,
+                    "enrich_restrictions: class spans both operands of outer join {join:?}"
+                );
+                if inner {
+                    // Prefer an edge the `ON` already states: any one will do.
+                    let stated = match stated_pairs.by_join.entry(join) {
+                        Entry::Occupied(entry) => entry.into_mut(),
+                        Entry::Vacant(entry) => {
+                            entry.insert(self.stated_pairs_by_class(stated_pairs.facts, join)?)
+                        }
+                    };
+                    // Any member names the class in the facts.
+                    let class_id = class
+                        .members
+                        .first()
+                        .and_then(|m| stated_pairs.facts.class_of_slot(m.rel_id, m.pos));
+                    let (left, right) = class_id
+                        .and_then(|class_id| stated.get(&class_id))
+                        .copied()
+                        .unwrap_or((left_rep, right_rep));
+                    debug_assert!(
+                        member_set.contains(&left) && member_set.contains(&right),
+                        "enrich_restrictions: stated pair of {join:?} leaves the class"
+                    );
+                    pairs.push(ColPair {
+                        placement: Placement::InnerJoinOn(join),
+                        left,
+                        right,
+                    });
+                }
+            }
+            if let (Some(&carried), Some(&own)) = (sides.carried.first(), sides.own.first()) {
+                pairs.push(self.output_pair(carried, own, &member_set, parents, lift_index)?);
+            }
+        }
+        #[cfg(debug_assertions)]
+        {
+            // Independently validate the structural emission: cross pairs must
+            // connect every source group without cycles. This catches missing
+            // or redundant edges even while the original query predicates
+            // still mask such mistakes. The union-find only checks the chosen
+            // pairs; it never selects them.
+            let group_index: AHashMap<NodeId, usize> = groups
+                .iter()
+                .enumerate()
+                .map(|(index, group)| (group.source, index))
+                .collect();
+            let group = |slot: Slot| group_index[&lowest_of[&slot].rel_id];
+            let mut linked = UnionFind::with_capacity(groups.len());
+            for index in 0..groups.len() {
+                linked.add(index);
+            }
+            // Both sides of every pair are members: placement lifts through
+            // members only.
+            for pair in &pairs[cross_before..] {
+                let (left, right) = (group(pair.left), group(pair.right));
+                debug_assert_ne!(
+                    linked.find(&left),
+                    linked.find(&right),
+                    "enrich_restrictions: cross pairs of {:?} close a cycle",
+                    class.members
+                );
+                linked.union(&left, &right);
+            }
+            debug_assert_eq!(
+                linked.groups_number(),
+                1,
+                "enrich_restrictions: joins do not span the groups of {:?}",
+                class.members
+            );
+        }
         Ok(())
+    }
+
+    /// A pair of two members on one node's output, placed where a filter over
+    /// that output goes. Both climb the same parents, so they share a placement.
+    ///
+    /// # Errors
+    /// - Reading an output column fails.
+    /// - A member has no placement, or the two do not share one.
+    fn output_pair(
+        &self,
+        left: Slot,
+        right: Slot,
+        member_set: &AHashSet<Slot>,
+        parents: &AHashMap<NodeId, NodeId>,
+        lift_index: &mut AHashMap<NodeId, AHashMap<RelColumn, usize>>,
+    ) -> Result<ColPair, SbroadError> {
+        let (placement, left) = self.place_lowest_member(left, member_set, parents, lift_index)?;
+        let (right_placement, right) =
+            self.place_lowest_member(right, member_set, parents, lift_index)?;
+        if right_placement != placement || right.rel_id != left.rel_id {
+            debug_assert!(
+                false,
+                "enrich_restrictions: {left:?} and {right:?} part ways"
+            );
+            return Err(SbroadError::Invalid(
+                Entity::Plan,
+                Some(smol_str::ToSmolStr::to_smolstr(&format!(
+                    "enrich_restrictions: {left:?} and {right:?} part ways"
+                ))),
+            ));
+        }
+        Ok(ColPair {
+            placement,
+            left,
+            right,
+        })
+    }
+
+    /// For each class, the first column equality `join`'s `ON` states between
+    /// its two operands with both ends in that class, as `(left operand column,
+    /// right operand column)`. Read in conjunct order from the join's
+    /// restriction, so a class finds its stated edge without a scan. Empty when
+    /// no pair fits, which still marks the join as parsed.
+    ///
+    /// # Errors
+    /// - The INNER join has no restriction.
+    /// - Reading a node fails.
+    fn stated_pairs_by_class(
+        &self,
+        facts: &EqualityFacts,
+        join: NodeId,
+    ) -> Result<AHashMap<ClassId, (Slot, Slot)>, SbroadError> {
+        let mut first_by_class = AHashMap::new();
+        let Relational::Join(Join { left, right, .. }) = self.get_relation_node(join)? else {
+            return Ok(first_by_class);
+        };
+        let column = |id: NodeId| -> Result<Option<Slot>, SbroadError> {
+            Ok(match self.get_expression_node(id)? {
+                Expression::Reference(Reference {
+                    target: ReferenceTarget::Single(rel),
+                    position,
+                    ..
+                }) => Some(Slot::new(*rel, *position)),
+                _ => None,
+            })
+        };
+        // Slots alone do not tell an equality from an `OR`, a cast or another
+        // term over the same columns: read each clause itself.
+        for info in self.owner_restriction(join)?.clauses() {
+            let Expression::Bool(BoolExpr {
+                op: Bool::Eq,
+                left: l,
+                right: r,
+            }) = self.get_expression_node(info.clause())?
+            else {
+                continue;
+            };
+            let (Some(l), Some(r)) = (column(*l)?, column(*r)?) else {
+                continue;
+            };
+            let (l, r) = if l.rel_id == *left && r.rel_id == *right {
+                (l, r)
+            } else if l.rel_id == *right && r.rel_id == *left {
+                (r, l)
+            } else {
+                continue;
+            };
+            let Some(class_id) = facts.class_of_slot(l.rel_id, l.pos) else {
+                continue;
+            };
+            if facts.class_of_slot(r.rel_id, r.pos) == Some(class_id) {
+                // The first in conjunct order wins.
+                first_by_class.entry(class_id).or_insert((l, r));
+            }
+        }
+        Ok(first_by_class)
+    }
+
+    /// The restriction of `owner`, a `Selection` or INNER join of the
+    /// analyzed subtree; missing one breaks the pass's precondition.
+    ///
+    /// # Errors
+    /// - `owner` has no restriction.
+    fn owner_restriction(&self, owner: NodeId) -> Result<&Restriction, SbroadError> {
+        self.restrictions
+            .as_ref()
+            .and_then(|restrictions| restrictions.for_rel(owner))
+            .ok_or_else(|| {
+                SbroadError::Invalid(
+                    Entity::Plan,
+                    Some(smol_str::ToSmolStr::to_smolstr(&format!(
+                        "enrich_restrictions: no restriction for {owner:?}"
+                    ))),
+                )
+            })
+    }
+
+    /// The lowest copy of `member`'s column in the class: follow each copy's
+    /// source while it is still a member. Memoized in `lowest_of` for every
+    /// copy on the way.
+    ///
+    /// # Errors
+    /// - Reading an output column fails.
+    fn lowest_copy(
+        &self,
+        member: Slot,
+        member_set: &AHashSet<Slot>,
+        lowest_of: &mut AHashMap<Slot, Slot>,
+    ) -> Result<Slot, SbroadError> {
+        let mut chain: SmallVec<[Slot; 4]> = SmallVec::new();
+        let mut current = member;
+        let lowest = loop {
+            if let Some(&lowest) = lowest_of.get(&current) {
+                break lowest;
+            }
+            chain.push(current);
+            match self.column_source(RelColumn::new(current.rel_id, current.pos))? {
+                Some(source) if member_set.contains(&Slot::new(source.rel_id, source.position)) => {
+                    current = Slot::new(source.rel_id, source.position);
+                }
+                _ => break current,
+            }
+        };
+        for slot in chain {
+            lowest_of.insert(slot, lowest);
+        }
+        Ok(lowest)
     }
 
     /// Place `false` in each unsatisfiable Selection filter or INNER JOIN
@@ -524,6 +1031,35 @@ impl Plan {
         Ok(!source.is_some_and(|s| member_set.contains(&Slot::new(s.rel_id, s.position))))
     }
 
+    /// [`Plan::place_column`] for a lowest class member, which always has a
+    /// placement: it is a member only because a restricting WHERE or INNER JOIN
+    /// ON mentions its column, and same-column members lead up to it.
+    ///
+    /// # Errors
+    /// - Reading an output column fails.
+    /// - The member has no placement (a broken invariant).
+    fn place_lowest_member(
+        &self,
+        member: Slot,
+        member_set: &AHashSet<Slot>,
+        parents: &AHashMap<NodeId, NodeId>,
+        lift_index: &mut AHashMap<NodeId, AHashMap<RelColumn, usize>>,
+    ) -> Result<(Placement, Slot), SbroadError> {
+        let placed = self.place_column(member, member_set, parents, lift_index)?;
+        debug_assert!(
+            placed.is_some(),
+            "enrich_restrictions: no placement for class member {member:?}"
+        );
+        placed.ok_or_else(|| {
+            SbroadError::Invalid(
+                Entity::Plan,
+                Some(smol_str::ToSmolStr::to_smolstr(&format!(
+                    "enrich_restrictions: no placement for class member {member:?}"
+                ))),
+            )
+        })
+    }
+
     /// Where a `col = pin` clause for class member `slot` attaches, and the slot it
     /// references. Walks up from the deepest copy: at each level prefer an existing
     /// `WHERE`, then a new filter (plain `Selection` or carrier), then an
@@ -542,6 +1078,16 @@ impl Plan {
             let Some(&parent) = parents.get(&slot.rel_id) else {
                 return Ok(None);
             };
+            // An `IN` / scalar subquery body hangs under the filter using it, but
+            // is its own domain: its output is no column of that filter.
+            if self
+                .get_relation_node(parent)?
+                .subqueries()
+                .iter()
+                .any(|&subquery| subquery == slot.rel_id)
+            {
+                return Ok(None);
+            }
             if matches!(self.get_relation_node(parent)?, Relational::Selection(_)) {
                 return Ok(Some((Placement::ExistingSelection(parent), slot)));
             }
@@ -612,49 +1158,105 @@ impl Plan {
         })
     }
 
-    /// Where a column-less `$p = pin` check attaches within the class's domain
-    /// rooted at `anchor`. Prefers an existing `WHERE`, then a new `Selection`
-    /// under a `Projection`, and only failing both an immediate INNER join's `ON`.
-    /// `None` when there is no such spot. The class's original equalities still
-    /// enforce the omitted check.
+    /// [`Plan::place_domain_check`] for a check the class needs: a `$p = pin`
+    /// check of a pinned class (`pin` is set) or the `false` of a contradictory
+    /// one. Such a class must have a host reachable by the domain-check walk;
+    /// failing to find one is an invariant violation, not a reason to omit it.
+    ///
+    /// # Errors
+    /// - Reading a relational node fails.
+    /// - The check has no placement (a broken invariant).
+    fn required_domain_check(
+        &self,
+        facts: &EqualityFacts,
+        class: &EquivalenceClass,
+        pin: Option<ClassPin<'_>>,
+    ) -> Result<Placement, SbroadError> {
+        if let Some(placement) = self.place_domain_check(facts, class.anchor)? {
+            return Ok(placement);
+        }
+        Err(SbroadError::Invalid(
+            Entity::Plan,
+            Some(smol_str::ToSmolStr::to_smolstr(&format!(
+                "enrich_restrictions: no placement for a check of class at anchor {:?} \
+                 (pin {pin:?}, params {:?}, members {:?})",
+                class.anchor, class.params, class.members
+            ))),
+        ))
+    }
+
+    /// Where a column-less check (`$p = pin`, or the `false` of a
+    /// contradictory class) attaches within the domain rooted at `anchor`.
+    ///
+    /// The contract: a failing check at the chosen node empties the whole
+    /// domain, and a passing one changes nothing. So the walk goes down from
+    /// `anchor` only through edges that carry emptiness up, listed here
+    /// explicitly rather than inferred from the analysis' domains (which only
+    /// back the walk up as a guard):
+    /// - a Selection hosts the check in its filter;
+    /// - an INNER join hosts it in its `ON`;
+    /// - a LEFT JOIN continues to its preserved (left) operand only. Its own
+    ///   `ON` never hosts: a failing check there null-extends the preserved
+    ///   rows instead of removing them. The nullable operand is another domain;
+    /// - a plain Projection (no aggregate, window, `DISTINCT`) hosts in an
+    ///   existing `WHERE` below it, else in a new Selection on its input edge,
+    ///   before any `ON` deeper down;
+    /// - a pass-through subquery continues to its body.
+    ///
+    /// Anything else (an aggregate, a set operation, an expression subquery,
+    /// a CTE body) ends the walk with `None`.
     ///
     /// Binding folds constant checks. A false Selection filter or INNER JOIN
     /// condition allows bucket pruning.
-    fn place_param_check(&self, anchor: NodeId) -> Result<Option<Placement>, SbroadError> {
-        // Step through an optional subquery body, then an optional Projection.
-        let root = match self.get_relation_node(anchor)? {
-            Relational::ScanSubQuery(ScanSubQuery { child, .. }) => *child,
-            _ => anchor,
-        };
-        let (projection, inner) = match self.get_relation_node(root)? {
-            Relational::Projection(Projection {
-                child: Some(child), ..
-            }) => (Some(root), *child),
-            _ => (None, root),
-        };
-        let inner_node = self.get_relation_node(inner)?;
-        // Prefer an existing WHERE to any other spot.
-        if matches!(inner_node, Relational::Selection(Selection { .. })) {
-            return Ok(Some(Placement::ExistingSelection(inner)));
-        }
-        // Then a plain Selection spliced on the Projection's input edge.
-        if let Some(projection) = projection {
-            if let Some(placement) = self.new_filter_placement(projection, inner)? {
-                return Ok(Some(placement));
+    ///
+    /// # Errors
+    /// - Reading a relational node fails.
+    fn place_domain_check(
+        &self,
+        facts: &EqualityFacts,
+        anchor: NodeId,
+    ) -> Result<Option<Placement>, SbroadError> {
+        let mut node = anchor;
+        loop {
+            if !facts.same_domain(anchor, node) {
+                debug_assert!(
+                    false,
+                    "enrich_restrictions: {node:?} left the domain of {anchor:?}"
+                );
+                return Ok(None);
             }
+            node = match self.get_relation_node(node)? {
+                Relational::Selection(_) => return Ok(Some(Placement::ExistingSelection(node))),
+                Relational::Join(Join {
+                    kind: JoinKind::Inner,
+                    ..
+                }) => return Ok(Some(Placement::InnerJoinOn(node))),
+                Relational::Join(Join {
+                    kind: JoinKind::LeftOuter,
+                    left,
+                    ..
+                }) => *left,
+                Relational::Projection(Projection {
+                    child: Some(child),
+                    windows,
+                    is_distinct,
+                    group_by: None,
+                    having: None,
+                    ..
+                }) if windows.is_empty() && !is_distinct => {
+                    if matches!(self.get_relation_node(*child)?, Relational::Selection(_)) {
+                        return Ok(Some(Placement::ExistingSelection(*child)));
+                    }
+                    return self.new_filter_placement(node, *child);
+                }
+                Relational::ScanSubQuery(ScanSubQuery { child, .. })
+                    if facts.same_domain(node, *child) =>
+                {
+                    *child
+                }
+                _ => return Ok(None),
+            };
         }
-        // Only failing both, an immediate INNER JOIN's ON. Reached when no
-        // Projection hosts a new Selection above the join.
-        if matches!(
-            inner_node,
-            Relational::Join(Join {
-                kind: JoinKind::Inner,
-                ..
-            })
-        ) {
-            return Ok(Some(Placement::InnerJoinOn(inner)));
-        }
-        Ok(None)
     }
 
     /// Child -> parent map over the subtree at `top_id`. `rel_iter` visits
@@ -706,26 +1308,21 @@ impl Plan {
         self.add_bool(ref_id, Bool::Eq, pin_id)
     }
 
-    /// Build a detached `Reference(rel, left) = Reference(rel, right)`. Both
-    /// columns sit on the same node; each keeps its own column type.
-    fn make_col_eq(
-        &mut self,
-        rel_id: NodeId,
-        left: usize,
-        right: usize,
-    ) -> Result<NodeId, SbroadError> {
-        let left_type = self.output_col_type(rel_id, left)?;
-        let right_type = self.output_col_type(rel_id, right)?;
+    /// Build a detached `Reference(left) = Reference(right)`: two columns on one
+    /// node, or on the two operands of an INNER join. Each keeps its own type.
+    fn make_col_eq(&mut self, left: Slot, right: Slot) -> Result<NodeId, SbroadError> {
+        let left_type = self.output_col_type(left.rel_id, left.pos)?;
+        let right_type = self.output_col_type(right.rel_id, right.pos)?;
         let left_id = self.nodes.add_ref(
-            ReferenceTarget::Single(rel_id),
-            left,
+            ReferenceTarget::Single(left.rel_id),
+            left.pos,
             left_type,
             None,
             false,
         );
         let right_id = self.nodes.add_ref(
-            ReferenceTarget::Single(rel_id),
-            right,
+            ReferenceTarget::Single(right.rel_id),
+            right.pos,
             right_type,
             None,
             false,

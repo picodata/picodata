@@ -4,7 +4,9 @@ use sql::executor::engine::helpers::table_name;
 use sql::executor::ir::ExecutionPlan;
 use sql::explain::ir::LogicalExplain;
 use sql::helpers::sql_to_ir_without_bind;
-use sql::ir::node::NodeId;
+use sql::ir::node::relational::Relational;
+use sql::ir::node::{Join, NodeId};
+use sql::ir::operator::JoinKind;
 use sql::ir::transformation::Stage;
 use sql::ir::tree::Snapshot;
 use sql::ir::types::{DerivedType, UnrestrictedType};
@@ -17,10 +19,27 @@ use sql::ir::Plan;
 fn run_enrich(query: &str, params: &[DerivedType]) -> Plan {
     let plan = sql_to_ir_without_bind(query, params);
     let top_id = plan.get_top().unwrap();
-    plan.optimize_before(top_id, Stage::EnrichRestrictions)
+    let plan = plan
+        .optimize_before(top_id, Stage::EnrichRestrictions)
         .unwrap()
         .enrich_restrictions_from_facts(top_id)
+        .unwrap();
+    assert_restrictions_match_ir(&plan, top_id, query);
+    plan
+}
+
+/// The restrictions stored after a pass describe the current IR: they equal a
+/// full rebuild over `top_id`, made without the stored cache.
+#[track_caller]
+fn assert_restrictions_match_ir(plan: &Plan, top_id: NodeId, context: &str) {
+    let stored = plan.restrictions.clone();
+    let mut fresh = plan.clone();
+    fresh.restrictions = None;
+    let fresh = fresh
+        .analyze_restrictions_in_subtree(top_id)
         .unwrap()
+        .restrictions;
+    assert_eq!(stored, fresh, "{context}");
 }
 
 /// The plain logical-explain rendering of `plan`.
@@ -216,23 +235,27 @@ fn a_pinned_class_derives_no_pairs() {
 }
 
 #[test]
-fn no_pair_across_two_tables() {
-    // The columns reach different scans, so no pair is derived.
+fn a_join_condition_restates_its_own_pair() {
+    // t.a = t2.e is one unpinned class whose columns meet in the join's ON --
+    // exactly where the query already states the pair. The pair is still
+    // derived (it restates the source conjunct until dedup lands).
     let plan = run_enrich(
         r#"SELECT "t"."a" FROM "t" JOIN "t2" ON "t"."a" = "t2"."e""#,
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      join on (t.a::int = t2.e::int)
+      join on ((t.a::int = t2.e::int and t.a::int = t2.e::int))
         scan t
         scan t2
     ");
 }
 
 #[test]
-fn no_pair_across_two_tables_from_a_where_above_the_join() {
-    // The WHERE equality spans two scans, so no pair is derived.
+fn a_cross_table_pair_from_a_where_moves_into_the_inner_on() {
+    // `l.b = r.f` comes from a WHERE above an INNER join. Its columns first
+    // meet on the join's operands, so the pair goes into the ON, where an
+    // INNER join filters exactly as the WHERE does. The WHERE keeps its own.
     let plan = run_enrich(
         r#"SELECT * FROM "t" AS "l" JOIN "t2" AS "r" ON "l"."a" = "r"."e"
            WHERE "l"."b" = "r"."f""#,
@@ -241,9 +264,304 @@ fn no_pair_across_two_tables_from_a_where_above_the_join() {
     assert_snapshot!(logical(&plan), @r"
     projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, r.e::int -> e, r.f::int -> f, r.g::int -> g, r.h::int -> h)
       selection (l.b::int = r.f::int)
-        join on (l.a::int = r.e::int)
+        join on ((l.a::int = r.e::int and l.a::int = r.e::int and l.b::int = r.f::int))
           scan t -> l
           scan t2 -> r
+    ");
+}
+
+#[test]
+fn a_join_on_true_gets_its_pair_in_the_on() {
+    // A join on `true` (a cross join); the WHERE equality is the only link
+    // between the two, so it becomes the join's condition as well.
+    let plan = run_enrich(
+        r#"SELECT * FROM "t" JOIN "t2" ON true WHERE "t"."a" = "t2"."e""#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
+      selection (t.a::int = t2.e::int)
+        join on (t.a::int = t2.e::int)
+          scan t
+          scan t2
+    ");
+}
+
+#[test]
+fn a_transitive_pair_connects_a_third_table() {
+    // t.a = t2.e and t2.e = x.b are one class over three tables. Both joins get
+    // one edge each: `t.a = t2.e` below, then a single edge from the lower
+    // join's output to `x` above -- not the product of all three.
+    let plan = run_enrich(
+        r#"SELECT * FROM "t" JOIN "t2" ON true JOIN "t" AS "x" ON true
+           WHERE "t"."a" = "t2"."e" AND "t2"."e" = "x"."b""#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, x.a::int -> a, x.b::int -> b, x.c::int -> c, x.d::int -> d)
+      selection ((t.a::int = t2.e::int and t2.e::int = x.b::int))
+        join on (t.a::int = x.b::int)
+          join on (t.a::int = t2.e::int)
+            scan t
+            scan t2
+          scan t -> x
+    ");
+}
+
+#[test]
+fn a_join_prefers_the_edge_its_on_already_states() {
+    // Any edge between the lower join and `x` connects the class; the upper ON
+    // already states `t2.e = x.b`, so that one is picked (restated) instead of
+    // adding `t.a = x.b`.
+    let plan = run_enrich(
+        r#"SELECT * FROM "t" JOIN "t2" ON "t"."a" = "t2"."e"
+           JOIN "t" AS "x" ON "t2"."e" = "x"."b""#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, x.a::int -> a, x.b::int -> b, x.c::int -> c, x.d::int -> d)
+      join on ((t2.e::int = x.b::int and t2.e::int = x.b::int))
+        join on ((t.a::int = t2.e::int and t.a::int = t2.e::int))
+          scan t
+          scan t2
+        scan t -> x
+    ");
+}
+
+#[test]
+fn a_cross_table_pair_stays_above_an_outer_join() {
+    // t2.f is on the nullable side, so the class meets only on the LEFT JOIN's
+    // output: the pair stays in the WHERE above it (restating it there),
+    // never entering the join.
+    let plan = run_enrich(
+        r#"SELECT * FROM "t" LEFT JOIN "t2" ON "t"."a" = "t2"."e"
+           WHERE "t"."b" = "t2"."f""#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
+      selection ((t.b::int = t2.f::int and t.b::int = t2.f::int))
+        left join on (t.a::int = t2.e::int)
+          scan t
+          scan t2
+    ");
+}
+
+#[test]
+fn an_inner_join_above_an_outer_join_takes_the_pair() {
+    // Above the LEFT JOIN, the nullable t2.f and t2.g meet x.b in an INNER ON.
+    // t2.f and t2.g are on the LEFT JOIN's output; x.b is on the other
+    // INNER JOIN operand. The INNER ON gets the edges; t2's scan gets nothing.
+    let plan = run_enrich(
+        r#"SELECT * FROM "t" LEFT JOIN "t2" ON "t"."a" = "t2"."e"
+           JOIN "t" AS "x" ON "t2"."f" = "x"."b" AND "t2"."g" = "x"."b""#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, x.a::int -> a, x.b::int -> b, x.c::int -> c, x.d::int -> d)
+      join on ((t2.f::int = x.b::int and t2.g::int = x.b::int and t2.f::int = t2.g::int and t2.f::int = x.b::int))
+        left join on (t.a::int = t2.e::int)
+          scan t
+          scan t2
+        scan t -> x
+    ");
+}
+
+#[test]
+fn nested_left_joins_emit_a_spanning_set_after_pair_groups_converge() {
+    // r.b and o.b are nullable copies of two different LEFT JOINs that both
+    // climb to the top WHERE. A shared placement does not link them: each join
+    // ties its own copy to the carried l.b, giving l.b = r.b and l.b = o.b,
+    // never a third edge r.b = o.b that would close a cycle. Both derived pairs
+    // belong in the top WHERE, not in either LEFT JOIN ON or on a nullable
+    // input. Source equalities remain until dedup is added.
+    let plan = run_enrich(
+        "SELECT l.a FROM t l \
+         LEFT JOIN t r ON l.a = r.a \
+         LEFT JOIN t o ON l.a = o.a \
+         WHERE l.b = r.b AND r.b = o.b",
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a)
+      selection ((l.b::int = r.b::int and r.b::int = o.b::int and l.b::int = r.b::int and l.b::int = o.b::int))
+        left join on (l.a::int = o.a::int)
+          left join on (l.a::int = r.a::int)
+            scan t -> l
+            scan t -> r
+          scan t -> o
+    ");
+}
+
+#[test]
+fn three_nested_left_joins_star_around_the_preserved_column() {
+    // Three nullable groups converge in one WHERE; each LEFT JOIN adds exactly
+    // one edge from its own copy to the carried l.b.
+    let plan = run_enrich(
+        "SELECT l.a FROM t l \
+         LEFT JOIN t r ON l.a = r.a \
+         LEFT JOIN t o ON l.a = o.a \
+         LEFT JOIN t p ON l.a = p.a \
+         WHERE l.b = r.b AND r.b = o.b AND o.b = p.b",
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a)
+      selection ((l.b::int = r.b::int and r.b::int = o.b::int and o.b::int = p.b::int and l.b::int = r.b::int and l.b::int = o.b::int and l.b::int = p.b::int))
+        left join on (l.a::int = p.a::int)
+          left join on (l.a::int = o.a::int)
+            left join on (l.a::int = r.a::int)
+              scan t -> l
+              scan t -> r
+            scan t -> o
+          scan t -> p
+    ");
+}
+
+#[test]
+fn nullable_groups_star_inside_and_link_once_across() {
+    // Each LEFT JOIN's output carries two nullable members of the class: its
+    // own star links them (r.b = r.c, o.b = o.c), and one cross edge per join
+    // ties the group to l.b.
+    let plan = run_enrich(
+        "SELECT l.a FROM t l \
+         LEFT JOIN t r ON l.a = r.a \
+         LEFT JOIN t o ON l.a = o.a \
+         WHERE l.b = r.b AND r.b = r.c AND r.c = o.b AND o.b = o.c",
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a)
+      selection ((l.b::int = r.b::int and r.b::int = r.c::int and r.c::int = o.b::int and o.b::int = o.c::int and r.b::int = r.c::int and o.b::int = o.c::int and l.b::int = r.b::int and l.b::int = o.b::int))
+        left join on (l.a::int = o.a::int)
+          left join on (l.a::int = r.a::int)
+            scan t -> l
+            scan t -> r
+          scan t -> o
+    ");
+}
+
+#[test]
+fn an_inner_join_links_two_outer_join_subtrees_once() {
+    // Each operand wraps a LEFT JOIN, and the class stops at the operand's
+    // output: each side is one group, starred in its own carrier, and the INNER
+    // JOIN adds the single edge between the sides. Neither nullable input is
+    // entered.
+    let plan = run_enrich(
+        "SELECT x.lb FROM \
+         (SELECT l.b AS lb, r.b AS rb FROM t l LEFT JOIN t r ON l.a = r.a) x \
+         JOIN (SELECT l.b AS lb, r.b AS rb FROM t l LEFT JOIN t r ON l.a = r.a) y \
+         ON x.lb = y.lb \
+         WHERE x.lb = x.rb AND y.lb = y.rb",
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (x.lb::int -> lb)
+      selection ((x.lb::int = x.rb::int and y.lb::int = y.rb::int))
+        join on ((x.lb::int = y.lb::int and x.lb::int = y.lb::int))
+          scan x
+            projection (x.lb::int -> lb, x.rb::int -> rb)
+              selection (x.lb::int = x.rb::int)
+                scan x
+                  projection (l.b::int -> lb, r.b::int -> rb)
+                    left join on (l.a::int = r.a::int)
+                      scan t -> l
+                      scan t -> r
+          scan y
+            projection (y.lb::int -> lb, y.rb::int -> rb)
+              selection (y.lb::int = y.rb::int)
+                scan y
+                  projection (l.b::int -> lb, r.b::int -> rb)
+                    left join on (l.a::int = r.a::int)
+                      scan t -> l
+                      scan t -> r
+    ");
+}
+
+#[test]
+fn aliases_of_one_column_are_one_vertex() {
+    // a and a2 are two passthrough copies of t.a: one source column, so the
+    // class needs only the a = b edge at the scan.
+    let plan = run_enrich(
+        "SELECT * FROM (SELECT a, a AS a2, b FROM t) s WHERE s.a = s.b AND s.a2 = s.b",
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (s.a::int -> a, s.a2::int -> a2, s.b::int -> b)
+      selection ((s.a::int = s.b::int and s.a2::int = s.b::int))
+        scan s
+          projection (t.a::int -> a, t.a::int -> a2, t.b::int -> b)
+            selection (t.a::int = t.b::int)
+              scan t
+    ");
+}
+
+#[test]
+fn a_shared_cte_joined_with_itself_links_its_call_sites_once() {
+    // Both operands scan one CTE body. Each call site is its own source group,
+    // so the INNER JOIN adds one edge and the shared body is not entered twice.
+    let plan = run_enrich(
+        "WITH c AS (SELECT a, b FROM t) \
+         SELECT l.a FROM c l JOIN c r ON l.a = r.a WHERE l.a = r.b AND l.b = r.b",
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a)
+      selection ((l.a::int = r.b::int and l.b::int = r.b::int))
+        join on ((l.a::int = r.a::int and l.a::int = r.a::int))
+          scan l
+            projection (l.a::int -> a, l.b::int -> b)
+              selection (l.a::int = l.b::int)
+                scan cte l($0)
+          scan r
+            projection (r.a::int -> a, r.b::int -> b)
+              selection (r.a::int = r.b::int)
+                scan cte r($0)
+    subquery $0:
+      projection (t.a::int -> a, t.b::int -> b)
+        scan t
+    ");
+}
+
+#[test]
+fn a_shared_cte_on_the_nullable_side_links_through_the_where() {
+    // The nullable call site's copies are the LEFT JOIN's own group; one edge
+    // ties them to the preserved call site above the join.
+    let plan = run_enrich(
+        "WITH c AS (SELECT a, b FROM t) \
+         SELECT l.a FROM c l LEFT JOIN c r ON l.a = r.a WHERE l.b = r.a AND r.a = r.b",
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a)
+      selection ((l.b::int = r.a::int and r.a::int = r.b::int and r.a::int = r.b::int and l.b::int = r.a::int))
+        left join on (l.a::int = r.a::int)
+          scan cte l($0)
+          scan cte r($0)
+    subquery $0:
+      projection (t.a::int -> a, t.b::int -> b)
+        scan t
+    ");
+}
+
+#[test]
+fn a_join_pair_and_an_operand_carrier_share_a_join() {
+    // `t.b = 1` lands in a carrier spliced over t's scan under the join, while
+    // the pair lands in the same join's ON. The ON is extended before the
+    // carrier is spliced, so the pair's reference follows the carrier.
+    let plan = run_enrich(
+        r#"SELECT * FROM "t" JOIN "t2" ON true WHERE "t"."a" = "t2"."e" AND "t"."b" = 1"#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
+      selection ((t.a::int = t2.e::int and t.b::int = 1::int))
+        join on (t.a::int = t2.e::int)
+          scan t
+            projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              selection (t.b::int = 1::int)
+                scan t
+          scan t2
     ");
 }
 
@@ -291,7 +609,7 @@ fn a_pair_crosses_an_inner_join_to_the_other_scan() {
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
       selection (t2.f::int = t2.g::int)
-        join on (t.a::int = t2.e::int)
+        join on ((t.a::int = t2.e::int and t.a::int = t2.e::int))
           scan t
           scan t2
             projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -1379,6 +1697,59 @@ fn nullable_side_filter_stays_above_left_join_in_sql() {
 }
 
 #[test]
+fn a_join_pair_references_the_spliced_carrier() {
+    // The carrier and the scan it wraps share the alias `t`, so no rendering
+    // tells them apart: check the ON's references directly. Every one must
+    // target a current operand of the join, i.e. the carrier, not the old scan.
+    use sql::ir::node::expression::Expression;
+    use sql::ir::node::relational::Relational;
+    use sql::ir::node::{Join, Reference, ReferenceTarget};
+
+    let plan = run_enrich(
+        r#"SELECT * FROM "t" JOIN "t2" ON true WHERE "t"."a" = "t2"."e" AND "t"."b" = 1"#,
+        &[],
+    );
+    let mut join = None;
+    let mut stack = vec![plan.get_top().unwrap()];
+    while let Some(id) = stack.pop() {
+        stack.extend(plan.nodes.rel_iter(id));
+        if let Ok(Relational::Join(Join {
+            left,
+            right,
+            condition,
+            ..
+        })) = plan.get_relation_node(id)
+        {
+            join = Some((*left, *right, *condition));
+        }
+    }
+    let (left, right, condition) = join.expect("the query has a join");
+    let refs = plan.get_refs_from_subtree(condition).unwrap();
+    assert!(!refs.is_empty());
+    for ref_id in refs {
+        let Expression::Reference(Reference {
+            target: ReferenceTarget::Single(target),
+            ..
+        }) = plan.get_expression_node(ref_id).unwrap()
+        else {
+            panic!("a derived ON reference is a single-target column");
+        };
+        assert!(
+            *target == left || *target == right,
+            "ON reference targets {target:?}, not an operand ({left:?}, {right:?})"
+        );
+    }
+}
+
+#[test]
+fn a_join_pair_follows_an_operand_carrier_in_sql() {
+    // The SQL counterpart of `a_join_pair_and_an_operand_carrier_share_a_join`:
+    // the pair in the ON must name the carrier's alias, not the scan it wraps.
+    let sql = optimized_join_sql(r#"SELECT * FROM t JOIN t3 ON true WHERE t.a = t3.b AND t.b = 1"#);
+    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT * FROM "t" WHERE "t"."b" = CAST($1 AS int)) as "t" INNER JOIN "t3" ON "t"."a" = "t3"."b" WHERE ("t"."a", "t"."b") = ("t3"."b", CAST($2 AS int))"#);
+}
+
+#[test]
 fn unique_subquery_output_still_descends_through_a_carrier() {
     // No name clash and a single qualifier: a carrier over the unique-name
     // subquery is sound, so the derived s.c = 1 keeps its deep push-down onto the
@@ -1742,6 +2113,245 @@ fn a_param_gate_stays_inside_its_domain() {
 }
 
 #[test]
+fn a_param_gate_at_a_left_join_anchor_lands_in_the_source_join_on() {
+    // GROUP BY opens a domain rooted at the LEFT JOIN. The class comes from
+    // the INNER JOIN on its preserved side. Column pins reach the scans; the
+    // LEFT JOIN's own ON cannot host $1 = 1 (a failing check would null-extend
+    // instead of filter), so the gate descends to that INNER JOIN's ON.
+    let plan = run_enrich(
+        "SELECT l.a, count(*) FROM t l \
+         JOIN t r ON l.a = r.b AND r.b = $1 AND r.b = 1 \
+         LEFT JOIN t o ON r.a = o.a GROUP BY l.a",
+        &[DerivedType::new(UnrestrictedType::Integer)],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a, count(*)::int -> col_1)
+      group by (l.a::int)
+        left join on (r.a::int = o.a::int)
+          join on ((l.a::int = r.b::int and r.b::int = $1::int and r.b::int = 1::int and $1::int = 1::int))
+            scan l
+              projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, l.bucket_id::int -> bucket_id)
+                selection (l.a::int = 1::int)
+                  scan t -> l
+            scan r
+              projection (r.a::int -> a, r.b::int -> b, r.c::int -> c, r.d::int -> d, r.bucket_id::int -> bucket_id)
+                selection (r.b::int = 1::int)
+                  scan t -> r
+          scan t -> o
+    ");
+}
+
+#[test]
+fn a_parameter_only_class_at_a_left_join_anchor_lands_in_the_source_join_on() {
+    // The parameter-only class shares the LEFT JOIN anchor and has no column
+    // to pin; its $2 = $1 gate descends to the INNER JOIN's ON like any other.
+    let plan = run_enrich(
+        "SELECT l.a, count(*) FROM t l \
+         JOIN t r ON l.a = r.b AND $1 = $2 \
+         LEFT JOIN t o ON r.a = o.a GROUP BY l.a",
+        &[DerivedType::new(UnrestrictedType::Integer); 2],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a, count(*)::int -> col_1)
+      group by (l.a::int)
+        left join on (r.a::int = o.a::int)
+          join on ((l.a::int = r.b::int and $1::int = $2::int and $2::int = $1::int and l.a::int = r.b::int))
+            scan t -> l
+            scan t -> r
+          scan t -> o
+    ");
+}
+
+/// Enrichment's input: `query` optimized up to, but not including, the pass.
+fn before_enrich(query: &str, params: &[DerivedType]) -> Plan {
+    let plan = sql_to_ir_without_bind(query, params);
+    let top_id = plan.get_top().unwrap();
+    plan.optimize_before(top_id, Stage::EnrichRestrictions)
+        .unwrap()
+}
+
+#[test]
+fn a_param_gate_at_a_left_join_anchor_never_enters_the_nullable_side() {
+    // The nullable operand is a subquery with a WHERE of its own: a host the
+    // descent must not take. A false $1 = 1 there would only empty `o`, and the
+    // LEFT JOIN would keep every row with NULLs. The gate goes to the preserved
+    // side's INNER JOIN ON; neither the right WHERE nor the LEFT JOIN ON gets it.
+    let plan = run_enrich(
+        "SELECT l.a, count(*) FROM t l \
+         JOIN t r ON l.a = r.b AND r.b = $1 AND r.b = 1 \
+         LEFT JOIN (SELECT a FROM t WHERE b = 5) o ON r.a = o.a GROUP BY l.a",
+        &[DerivedType::new(UnrestrictedType::Integer)],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a, count(*)::int -> col_1)
+      group by (l.a::int)
+        left join on (r.a::int = o.a::int)
+          join on ((l.a::int = r.b::int and r.b::int = $1::int and r.b::int = 1::int and $1::int = 1::int))
+            scan l
+              projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, l.bucket_id::int -> bucket_id)
+                selection (l.a::int = 1::int)
+                  scan t -> l
+            scan r
+              projection (r.a::int -> a, r.b::int -> b, r.c::int -> c, r.d::int -> d, r.bucket_id::int -> bucket_id)
+                selection (r.b::int = 1::int)
+                  scan t -> r
+          scan o
+            projection (t.a::int -> a)
+              selection ((t.b::int = 5::int and t.b::int = 5::int))
+                scan t
+    ");
+}
+
+#[test]
+fn a_contradiction_at_a_left_join_anchor_lands_in_the_source_join_on() {
+    // l.a = 1 and r.a = 2 come from separate filters; the INNER JOIN merges them
+    // into one contradictory class, anchored at the LEFT JOIN under GROUP BY.
+    // Its `false` descends the preserved side to that INNER JOIN's ON, never
+    // onto the nullable side or above the aggregate.
+    let query = "SELECT l.a, count(*) \
+         FROM (SELECT a FROM t WHERE a = 1) l \
+         JOIN (SELECT a FROM t WHERE a = 2) r ON l.a = r.a \
+         LEFT JOIN t o ON r.a = o.a GROUP BY l.a";
+    let plan = before_enrich(query, &[]);
+    let facts = plan.facts.as_ref().unwrap();
+    let contradictory: Vec<_> = facts
+        .classes
+        .iter()
+        .filter(|class| class.is_contradictory())
+        .collect();
+    assert_eq!(contradictory.len(), 1, "{:?}", facts.classes);
+    assert!(
+        matches!(
+            plan.get_relation_node(contradictory[0].anchor).unwrap(),
+            Relational::Join(Join {
+                kind: JoinKind::LeftOuter,
+                ..
+            })
+        ),
+        "anchor {:?} is no LEFT JOIN",
+        contradictory[0].anchor
+    );
+    let plan = run_enrich(query, &[]);
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a, count(*)::int -> col_1)
+      group by (l.a::int)
+        left join on (r.a::int = o.a::int)
+          join on ((l.a::int = r.a::int and false::bool))
+            scan l
+              projection (t.a::int -> a)
+                selection (t.a::int = 1::int)
+                  scan t
+            scan r
+              projection (t.a::int -> a)
+                selection (t.a::int = 2::int)
+                  scan t
+          scan t -> o
+    ");
+}
+
+#[test]
+fn a_param_gate_descends_a_chain_of_left_joins() {
+    // Anchor -> LEFT JOIN -> LEFT JOIN -> INNER JOIN along the preserved side.
+    // The gate reaches the INNER JOIN and leaves both LEFT JOIN ONs alone.
+    let plan = run_enrich(
+        "SELECT l.a, count(*) FROM t l \
+         JOIN t r ON l.a = r.b AND r.b = $1 AND r.b = 1 \
+         LEFT JOIN t o ON r.a = o.a \
+         LEFT JOIN t p ON r.c = p.c GROUP BY l.a",
+        &[DerivedType::new(UnrestrictedType::Integer)],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (l.a::int -> a, count(*)::int -> col_1)
+      group by (l.a::int)
+        left join on (r.c::int = p.c::int)
+          left join on (r.a::int = o.a::int)
+            join on ((l.a::int = r.b::int and r.b::int = $1::int and r.b::int = 1::int and $1::int = 1::int))
+              scan l
+                projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, l.bucket_id::int -> bucket_id)
+                  selection (l.a::int = 1::int)
+                    scan t -> l
+              scan r
+                projection (r.a::int -> a, r.b::int -> b, r.c::int -> c, r.d::int -> d, r.bucket_id::int -> bucket_id)
+                  selection (r.b::int = 1::int)
+                    scan t -> r
+            scan t -> o
+          scan t -> p
+    ");
+}
+
+#[test]
+fn a_param_gate_in_a_nullable_subquery_stays_in_its_domain() {
+    // The whole construction is the nullable operand of an outer LEFT JOIN.
+    // A false gate empties the inner domain only: `x`'s rows survive with
+    // NULLs. So the gate stays in the inner INNER JOIN ON, never in the outer
+    // query's filters or ON.
+    let plan = run_enrich(
+        "SELECT x.a FROM t x LEFT JOIN \
+         (SELECT l.a, count(*) AS c FROM t l \
+          JOIN t r ON l.a = r.b AND r.b = $1 AND r.b = 1 \
+          LEFT JOIN t o ON r.a = o.a GROUP BY l.a) s \
+         ON x.a = s.a",
+        &[DerivedType::new(UnrestrictedType::Integer)],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (x.a::int -> a)
+      left join on (x.a::int = s.a::int)
+        scan t -> x
+        scan s
+          projection (l.a::int -> a, count(*)::int -> c)
+            group by (l.a::int)
+              left join on (r.a::int = o.a::int)
+                join on ((l.a::int = r.b::int and r.b::int = $1::int and r.b::int = 1::int and $1::int = 1::int))
+                  scan l
+                    projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, l.bucket_id::int -> bucket_id)
+                      selection (l.a::int = 1::int)
+                        scan t -> l
+                  scan r
+                    projection (r.a::int -> a, r.b::int -> b, r.c::int -> c, r.d::int -> d, r.bucket_id::int -> bucket_id)
+                      selection (r.b::int = 1::int)
+                        scan t -> r
+                scan t -> o
+    ");
+}
+
+#[test]
+fn a_required_check_without_placement_is_an_error() {
+    // Synthetic IR, not a reachable SQL counterexample: re-anchor a pinned
+    // class with a parameter at a bare scan, which hosts nothing. The missing
+    // `$1 = 1` must surface as an error, not as a silently dropped check.
+    let mut plan = before_enrich(
+        "SELECT l.a FROM t l JOIN t r ON l.a = r.b AND r.b = $1 AND r.b = 1",
+        &[DerivedType::new(UnrestrictedType::Integer)],
+    );
+    let facts = plan.facts.as_ref().unwrap();
+    let class = facts
+        .classes
+        .iter()
+        .position(|class| !class.params.is_empty())
+        .unwrap();
+    let scan = facts.classes[class]
+        .members
+        .iter()
+        .map(|member| member.rel_id)
+        .find(|&rel| {
+            matches!(
+                plan.get_relation_node(rel).unwrap(),
+                Relational::ScanRelation(_)
+            )
+        })
+        .unwrap();
+    plan.facts.as_mut().unwrap().classes[class].anchor = scan;
+    let top_id = plan.get_top().unwrap();
+    let Err(error) = plan.enrich_restrictions_from_facts(top_id) else {
+        panic!("a check without placement must fail enrichment");
+    };
+    assert!(
+        error.to_string().contains("no placement for a check"),
+        "{error}"
+    );
+}
+
+#[test]
 fn a_param_gate_over_a_join_subquery_prefers_a_new_selection_to_the_on() {
     // The IN subquery body is a bare Projection over an INNER JOIN with no WHERE,
     // so the class {t2.e, t3.b, $1, 7} anchors at the subquery. The `$1 = 7` check
@@ -1868,5 +2478,86 @@ fn an_update_where_pins_the_base_scan() {
       projection (5::int -> col_0, t.b::int -> col_1)
         selection ((t.a::int = t.b::int and t.b::int = 1::int and t.a::int = 1::int and t.b::int = 1::int))
           scan t
+    ");
+}
+
+#[test]
+fn enrich_refreshes_the_restrictions_it_rewrote() {
+    // Later passes must not miss a derived clause or see a slot of a replaced
+    // child: `run_enrich` checks the stored restrictions against a full
+    // rebuild after every enrichment.
+    let int = DerivedType::new(UnrestrictedType::Integer);
+    for (query, params) in [
+        // Clauses added to an existing filter and an INNER ON.
+        (r#"SELECT "a" FROM "t" WHERE "a" = "b" AND "b" = 1"#, 0),
+        (r#"SELECT * FROM "t" AS "l" JOIN "t2" AS "r" ON "l"."a" = "r"."e" WHERE "l"."b" = "r"."f""#, 0),
+        // The carrier over `l` retargets `l.a` in an ON that gains no conjunct.
+        ("SELECT l.a FROM t l JOIN t r ON l.a > r.a WHERE l.b = 1", 0),
+        // Carriers under both join inputs.
+        ("SELECT * FROM t JOIN t2 ON t.a > t2.e WHERE t.b = 1 AND t2.f = 2", 0),
+        // Row and opaque conditions next to a carrier.
+        ("SELECT * FROM t JOIN t2 ON (t.c, t.d) = (t2.g, t2.h) AND CAST(t.a AS string) = '1' WHERE t.b = 1", 0),
+        // A gate inside a nullable subquery.
+        ("SELECT x.a FROM t x LEFT JOIN \
+          (SELECT l.a, count(*) AS c FROM t l \
+           JOIN t r ON l.a = r.b AND r.b = $1 AND r.b = 1 \
+           LEFT JOIN t o ON r.a = o.a GROUP BY l.a) s \
+          ON x.a = s.a", 1),
+        // Both call sites of a shared CTE.
+        ("WITH c AS (SELECT a, b FROM t) \
+          SELECT l.a FROM c l JOIN c r ON l.a > r.a WHERE l.a = r.b AND l.b = 1", 0),
+    ] {
+        run_enrich(query, &vec![int; params]);
+    }
+}
+
+#[test]
+fn enrich_of_a_subtree_keeps_restrictions_outside_it() {
+    // Restrictions cover the whole plan, facts and enrichment only the IN
+    // body. The body is refreshed, the outer filter's entry stays as it was,
+    // and the whole cache still matches a full rebuild.
+    let query = "SELECT a FROM t WHERE b IN (SELECT e FROM t2 WHERE e = f AND f = 1) AND a = c";
+    let plan = before_enrich(query, &[]);
+    let top_id = plan.get_top().unwrap();
+    let Relational::Projection(sql::ir::node::Projection {
+        child: Some(selection),
+        ..
+    }) = plan.get_relation_node(top_id).unwrap()
+    else {
+        panic!("expected a projection on top");
+    };
+    let selection = *selection;
+    let body = plan.get_relation_node(selection).unwrap().subqueries()[0];
+    let outer = plan
+        .restrictions
+        .as_ref()
+        .unwrap()
+        .for_rel(selection)
+        .cloned();
+    assert!(outer.is_some());
+
+    let plan = plan
+        .analyze_equality_facts_in_subtree(body)
+        .unwrap()
+        .enrich_restrictions_from_facts(body)
+        .unwrap();
+    assert_eq!(
+        plan.restrictions
+            .as_ref()
+            .unwrap()
+            .for_rel(selection)
+            .cloned(),
+        outer
+    );
+    assert_restrictions_match_ir(&plan, top_id, query);
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a)
+      selection ((t.b::int in ROW($0) and t.a::int = t.c::int))
+        scan t
+    subquery $0:
+      scan
+        projection (t2.e::int -> e)
+          selection ((t2.e::int = t2.f::int and t2.f::int = 1::int and t2.e::int = 1::int and t2.f::int = 1::int))
+            scan t2
     ");
 }
