@@ -50,7 +50,7 @@ tarantool-patch:
 		echo "${VER_TNT}" > tarantool-sys/VERSION; \
 	fi
 
-# XXX: All targets but build-release-pkg should trigger build-plug-*!
+# XXX: All targets but build-*-pkg should trigger build-plug-*!
 # XXX: We can't use CARGO_FLAGS here since it's a standalone project w/o profile definitions etc.
 .PHONY: build-plug-wrong-version
 build-plug-wrong-version:
@@ -74,6 +74,9 @@ build: tarantool-patch
 		cargo build $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA)
 
 # A template for `build-*` rules.
+# We only use `override` for the mandatory flags, because:
+#  - We want to give user a certain level of control over CARGO_FLAGS.
+#  - At the same time, the package must always include binaries etc.
 override define BUILD_TEMPLATE
 .PHONY: build-$(1)
 build-$(1): override CARGO_FLAGS += $$(ERROR_INJECTION)
@@ -81,6 +84,16 @@ build-$(1): override CARGO_FLAGS += --profile=$(1)
 build-$(1): build
 build-$(1): build-plug-wrong-version
 build-$(1): build-plug-26-1
+
+# Ignore CARGO_FLAGS defaults from the above by using `=` instead of `+=`.
+.PHONY: build-$(1)-pkg
+build-$(1)-pkg: CARGO_FLAGS = # reset the defaults
+build-$(1)-pkg: CARGO_FLAGS += $$(if $$(USE_DYNAMIC_BUILD),--features=dynamic_build)
+build-$(1)-pkg: override CARGO_FLAGS += -p picodata --features=webui
+build-$(1)-pkg: override CARGO_FLAGS += $$(PKG_CARGO_FLAGS_$(1))
+build-$(1)-pkg: override CARGO_FLAGS += --profile=$(1)
+build-$(1)-pkg: override CARGO_FLAGS += $$(LOCKED)
+build-$(1)-pkg: build
 
 .PHONY: coverage-build-$(1)
 coverage-build-$(1): export CARGO_TARGET_DIR = $$(TARGET_DIR_COV)
@@ -91,23 +104,15 @@ coverage-build-$(1):
 	tools/coverage.py run $$(MAKE) build-$(1) CARGO_FLAGS="$$(CARGO_FLAGS) --tests"
 endef
 
-# These build profiles are intended to be used for CI and local development.
-# Still, there are two special cases which stand apart from the generated ones:
+# Extra mandatory cargo flags of the `build-*-pkg` packages for each profile:
 #  - `build-release-pkg` is for the packages we ship as our release artifacts.
+#  - `build-dev-pkg` is a debug counterpart of it, published by CI for plugin
+#    tests: a Debug build of tarantool.
+override PKG_CARGO_FLAGS_dev := --features=debug_tarantool
+
+# These build profiles are intended to be used for CI and local development.
 override BUILD_PROFILES := dev fast-release release
 $(foreach PROFILE,$(BUILD_PROFILES),$(eval $(call BUILD_TEMPLATE,$(PROFILE))))
-
-# Ignore CARGO_FLAGS defaults from the above by using `=` instead of `+=`.
-# We only use `override` for the mandatory flags, because:
-#  - We want to give user a certain level of control over CARGO_FLAGS.
-#  - At the same time, the package must always be optimized, include binaries etc.
-.PHONY: build-release-pkg
-build-release-pkg: CARGO_FLAGS = # reset the defaults
-build-release-pkg: CARGO_FLAGS += $(if $(USE_DYNAMIC_BUILD),--features dynamic_build)
-build-release-pkg: override CARGO_FLAGS += -p picodata --features webui
-build-release-pkg: override CARGO_FLAGS += --profile=release
-build-release-pkg: override CARGO_FLAGS += $(LOCKED)
-build-release-pkg: build
 
 # We have to specify target to disable ASan for proc macros, build.rs, etc.
 # See https://github.com/rust-lang/cargo/issues/6375#issuecomment-444900324.

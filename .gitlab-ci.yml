@@ -1042,6 +1042,47 @@ pack-on-tag-other:
       - BRANCH_TARGET
       - DEPLOY
 
+# A debug picodata (Rust dev profile, Debug tarantool) for every nightly
+# and every tag, so plugins can run their tests with all assertions on.
+# The nightly schedule runs at the same time as the nightly packages in
+# picodata/devops/builder, so the version matches the nightly package.
+pack-debug:
+  stage: pack
+  needs: [clone]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $MAIN_BRANCH && $WITH_ASAN != "1"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG
+  variables:
+    GIT_STRATEGY: none
+    TARGET: debug
+    KUBERNETES_CPU_REQUEST: 6
+    KUBERNETES_MEMORY_REQUEST: "6Gi"
+  cache:
+    - <<: *cache_git
+      policy: pull
+    - <<: *base_cache
+      policy: pull
+    - <<: *cmake_downloads_cache
+      policy: pull
+  script:
+    - tools/ensure_checkout.sh
+    - make build-dev-pkg
+    - |
+      # Same version as the nightly and release packages:
+      # 26.3.0-335-g494b62f05 -> 26.3.0.335
+      VER=$(git describe --long | sed -n 's/^\(.*\)-\([0-9]*\)-g[0-9a-f]*$/\1.\2/p')
+      [ -n "$VER" ]
+      TARBALL=picodata-debug-${VER}.x86_64.tar.gz
+      tar -C target/debug -czf $TARBALL picodata
+      sha256sum $TARBALL > $TARBALL.sha256
+      URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/picodata-debug/${VER}"
+      for FILE in $TARBALL $TARBALL.sha256; do
+        curl --fail --show-error --silent --retry 3 --max-time 1200 \
+          --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+          --upload-file $FILE "${URL}/${FILE}"
+        echo "Uploaded ${URL}/${FILE}"
+      done
+
 .deploy-docker-tmpl:
   stage: docker
   variables:
