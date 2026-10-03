@@ -306,9 +306,21 @@ impl Plan {
             facts,
             by_join: AHashMap::new(),
         };
-        // Two domains pinning the same param to the same value are two distinct
-        // checks, so key seen checks by anchor too.
-        let mut param_check_seen: AHashSet<(u16, ClassPin<'_>, NodeId)> = AHashSet::new();
+        // A param is interned per domain, so it joins one class there, and
+        // each domain has its own root: one check per class never repeats.
+        #[cfg(debug_assertions)]
+        {
+            let mut seen: AHashSet<(u16, NodeId)> = AHashSet::new();
+            for (_, class, _) in &candidates {
+                for &param in &class.params {
+                    debug_assert!(
+                        seen.insert((param, class.anchor)),
+                        "enrich_restrictions: param {param} in two classes at {:?}",
+                        class.anchor
+                    );
+                }
+            }
+        }
         let mut planned = Enrichment {
             empty: self.dead_rel_markers(facts)?,
             ..Enrichment::default()
@@ -327,14 +339,8 @@ impl Plan {
                     continue;
                 }
                 ClassAction::Pinned(pin) => {
-                    let star = self.plan_class_star(
-                        facts,
-                        class,
-                        pin,
-                        &parents,
-                        &mut lift_index,
-                        &mut param_check_seen,
-                    )?;
+                    let star =
+                        self.plan_class_star(facts, class, pin, &parents, &mut lift_index)?;
                     planned.stars.extend(star);
                 }
                 ClassAction::Pairs => {
@@ -717,7 +723,7 @@ impl Plan {
     }
 
     /// Plan equalities to a class's pin. Every lowest column member and every
-    /// parameter check not already planned for this anchor requires a placement.
+    /// parameter check requires a placement.
     /// Return `None` when no predicates are needed.
     ///
     /// # Errors
@@ -730,7 +736,6 @@ impl Plan {
         pin: ClassPin<'f>,
         parents: &AHashMap<NodeId, NodeId>,
         lift_index: &mut AHashMap<NodeId, AHashMap<RelColumn, usize>>,
-        param_check_seen: &mut AHashSet<(u16, ClassPin<'f>, NodeId)>,
     ) -> Result<Option<Star>, SbroadError> {
         let member_set: AHashSet<Slot> = class.members.iter().copied().collect();
         // Distinct lowest members cannot converge: each lifted slot has one source.
@@ -743,28 +748,19 @@ impl Plan {
                 self.place_lowest_member(member, &member_set, parents, lift_index)?;
             cols.push((placement, slot));
         }
-        // One check per (param, pin, anchor); the pin param itself needs none.
-        let mut params: Vec<(u16, DerivedType)> = Vec::new();
-        for &param in &class.params {
-            if pin != ClassPin::Param(param)
-                && !param_check_seen.contains(&(param, pin, class.anchor))
-            {
-                params.push((param, facts.param_type(param)));
-            }
-        }
+        // One check per param; the pin param itself needs none.
+        let params: Vec<(u16, DerivedType)> = class
+            .params
+            .iter()
+            .filter(|&&param| pin != ClassPin::Param(param))
+            .map(|&param| (param, facts.param_type(param)))
+            .collect();
         let checks = if params.is_empty() {
             None
         } else {
             let placement = self.required_domain_check(facts, class, Some(pin))?;
             Some((placement, params))
         };
-        // Record checks as seen only once the whole class is planned, so a
-        // seen key always means a planned check.
-        if let Some((_, params)) = &checks {
-            for &(param, _) in params {
-                param_check_seen.insert((param, pin, class.anchor));
-            }
-        }
         if cols.is_empty() && checks.is_none() {
             return Ok(None);
         }
