@@ -153,6 +153,8 @@ fn do_handle_client(
         PGPROTO_CONNECTIONS_CLOSED_TOTAL.inc();
     }
 
+    client.handle_unknown_options()?;
+
     // Send important parameters to the client.
     client
         .send_parameter("server_version", "15.0")?

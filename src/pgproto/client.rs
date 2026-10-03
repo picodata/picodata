@@ -6,8 +6,9 @@ use super::{
     tls::TlsAcceptor,
 };
 use crate::{storage::Catalog, tlog};
-use pgwire::messages::startup::*;
+use pgwire::messages::{response::NoticeResponse, startup::*};
 use smol_str::format_smolstr;
+use std::collections::{HashMap, HashSet};
 use std::io;
 
 mod auth;
@@ -65,6 +66,54 @@ impl<S: io::Read + io::Write> PgClient<S> {
         let msg = BeMessage::ParameterStatus(ParameterStatus::new(name, value));
         self.stream.write_message_noflush(msg)?;
         Ok(self)
+    }
+
+    pub fn handle_unknown_options(&mut self) -> PgResult<()> {
+        let possible_options = HashSet::from([
+            "pico_query_metadata",
+            "pico_stmt_invalidation",
+            "sql_motion_row_max",
+            "sql_vdbe_opcode_max",
+            "read_preference",
+            "forward",
+        ]);
+        let mut handled_options = HashMap::new();
+        if let Some(opts) = self.backend.params()._rest.get("options") {
+            let mut msg = String::from("Parsed the following unknown options:\n");
+            for opt in opts.split(',') {
+                let mut opt = opt.split('=');
+                // We can unwrap these values because options have already been parsed in
+                // `accept` method inside `handshake` function, and if there were any errors while
+                // parsing, they would have already been propagated to the `do_handle_client` routine
+                let mut name = opt.next().unwrap();
+                let mut val = opt.next().unwrap();
+                if name.is_empty() {
+                    name = "\'empty name\'";
+                }
+
+                if val.is_empty() {
+                    val = "\'empty value\'";
+                }
+                if !possible_options.contains(name) {
+                    handled_options.insert(name, val);
+                }
+            }
+
+            for (name, value) in handled_options.iter() {
+                let end = format!("{name} = {value}\n");
+                msg.push_str(&end);
+            }
+
+            if !handled_options.is_empty() {
+                let msg = BeMessage::NoticeResponse(NoticeResponse::new(Vec::from([
+                    (b'S', "WARNING".to_string()),
+                    (b'C', "01000".to_string()),
+                    (b'M', msg),
+                ])));
+                self.stream.write_message_noflush(msg)?;
+            }
+        }
+        Ok(())
     }
 }
 
