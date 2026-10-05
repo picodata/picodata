@@ -676,6 +676,19 @@ SELECT avg(i) FROM aggr_g WHERE id <> 4;
 -- EXPECTED:
 Decimal('2.6666666666666666666666666666666666667')
 
+-- TEST: test_sum_of_integers_does_not_overflow_setup
+-- SQL:
+DROP TABLE IF EXISTS big_sum;
+CREATE TABLE big_sum (id INT PRIMARY KEY, v INT);
+INSERT INTO big_sum VALUES
+    (1, 9223372036854775807), (2, 9223372036854775807), (3, 9223372036854775807);
+
+-- TEST: test_sum_of_integers_does_not_overflow
+-- SQL:
+SELECT sum(v) FROM big_sum;
+-- EXPECTED:
+Decimal('27670116110564327421')
+
 -- TEST: test_avg_with_groupby
 -- SQL:
 SELECT "a", avg("b"), avg(distinct "b") FROM "arithmetic_space"
