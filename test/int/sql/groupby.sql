@@ -897,6 +897,12 @@ SELECT avg("a"), avg(distinct "id") FROM "arithmetic_space" WHERE "id" <> 2;
 -- EXPECTED:
 Decimal('1.6666666666666666666666666666666666667'), Decimal('2.6666666666666666666666666666666666667')
 
+-- TEST: test_avg_keeps_the_type_of_the_grouped_column
+-- SQL:
+SELECT g, avg(i) FROM aggr_t GROUP BY g;
+-- UNORDERED:
+1, Decimal('2.5'), 2, Decimal('2'), 3, Decimal('2.5')
+
 -- TEST: test_avg_with_groupby
 -- SQL:
 SELECT "a", avg("b"), avg(distinct "b") FROM "arithmetic_space"
@@ -1000,6 +1006,30 @@ SELECT sum("nb") from (
 );
 -- EXPECTED:
 null
+
+-- TEST: test_sum_over_integers_near_the_limit_setup
+-- SQL:
+DROP TABLE IF EXISTS sum_max_t;
+CREATE TABLE sum_max_t (id INT, g INT, i INT, PRIMARY KEY (id, g)) DISTRIBUTED BY (g);
+INSERT INTO sum_max_t VALUES (1, 1, 9223372036854775807), (2, 1, 9223372036854775807);
+
+-- TEST: test_sum_over_integers_near_the_limit
+-- SQL:
+SELECT sum(i), sum(DISTINCT i) FROM sum_max_t;
+-- EXPECTED:
+18446744073709551614, 9223372036854775807
+
+-- TEST: test_sum_over_integers_near_the_limit_on_a_global_table_setup
+-- SQL:
+DROP TABLE IF EXISTS sum_max_g;
+CREATE TABLE sum_max_g (id INT PRIMARY KEY, i INT) DISTRIBUTED GLOBALLY;
+INSERT INTO sum_max_g VALUES (1, 9223372036854775807), (2, 9223372036854775807);
+
+-- TEST: test_sum_over_integers_near_the_limit_on_a_global_table
+-- SQL:
+SELECT sum(i) FROM sum_max_g;
+-- EXPECTED:
+18446744073709551614
 
 -- TEST: test_total_with_groupby
 -- SQL:

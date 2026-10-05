@@ -2384,3 +2384,15 @@ SELECT a, last_value(abs(b) - coalesce(b, 0)) OVER (ORDER BY a) FROM wt ORDER BY
 SELECT sum(CAST(1e39 AS DOUBLE)) OVER (), avg(CAST(1e39 AS DOUBLE)) OVER () FROM (VALUES (1));
 -- EXPECTED:
 1e39, 1e39
+
+-- TEST: window-13-sum-of-integers-near-the-limit-setup
+-- SQL:
+DROP TABLE IF EXISTS wmax;
+CREATE TABLE wmax (id INT PRIMARY KEY, i INT);
+INSERT INTO wmax VALUES (1, 9223372036854775807), (2, 9223372036854775807);
+
+-- TEST: window-13-sum-of-integers-near-the-limit
+-- SQL:
+SELECT DISTINCT sum(i) OVER () FROM wmax;
+-- EXPECTED:
+18446744073709551614
