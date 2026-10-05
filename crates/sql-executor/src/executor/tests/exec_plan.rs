@@ -459,7 +459,7 @@ fn exec_plan_subtree_aggregates() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(sql.params, vec![Value::Integer(2), Value::from("o")]);
-    assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", "COL_1" * CAST($1 AS int) + sum ("COL_5") as "col_2", sum ("COL_4") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "_tmp_0_0136") GROUP BY "COL_1""#);
+    assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", "COL_1" * CAST($1 AS int) + CAST (sum ("COL_5") as int) as "col_2", sum ("COL_4") as "col_3", sum (DISTINCT "COL_2") / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as double)) / sum (CAST ("COL_6" as double)) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "_tmp_0_0136") GROUP BY "COL_1""#);
 }
 
 #[test]
@@ -499,7 +499,7 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT sum (\"COL_2\") as \"col_1\", sum (DISTINCT \"COL_1\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"_tmp_0_0136\")"
+    pattern: "SELECT CAST (sum (\"COL_2\") as int) as \"col_1\", sum (DISTINCT \"COL_1\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"_tmp_0_0136\")"
     params: []
     "#);
 }
@@ -651,7 +651,7 @@ fn exec_plan_subtree_count_asterisk() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT sum (\"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
+    pattern: "SELECT CAST (sum (\"COL_1\") as int) as \"col_1\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
     params: []
     "#);
 }
@@ -703,7 +703,7 @@ fn exec_plan_subtree_having() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" + \"COL_1\" as \"col_1\", sum (\"COL_3\") + count (DISTINCT \"COL_2\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\" HAVING sum (DISTINCT \"COL_2\") > CAST($1 AS int)"
+    pattern: "SELECT \"COL_1\" + \"COL_1\" as \"col_1\", CAST (sum (\"COL_3\") as int) + count (DISTINCT \"COL_2\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\" HAVING sum (DISTINCT \"COL_2\") > CAST($1 AS int)"
     params:
       - Integer: 1
     "#);
@@ -756,7 +756,7 @@ fn exec_plan_subtree_having_without_groupby() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT sum (\"COL_2\") + count (DISTINCT \"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") HAVING sum (DISTINCT \"COL_1\") > CAST($1 AS int)"
+    pattern: "SELECT CAST (sum (\"COL_2\") as int) + count (DISTINCT \"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") HAVING sum (DISTINCT \"COL_1\") > CAST($1 AS int)"
     params:
       - Integer: 1
     "#);

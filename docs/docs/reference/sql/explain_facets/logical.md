@@ -322,7 +322,7 @@ EXPLAIN (LOGICAL) SELECT COUNT(id) FROM warehouse;
 ```
 
 ```sql
-projection (sum(count_1::int)::int -> col_1)
+projection (sum(count_1::int)::int::int -> col_1)
   motion [policy: full, program: ReshardIfNeeded]
     projection (count(warehouse.id::int::int)::int -> count_1)
       scan warehouse

@@ -92,7 +92,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT sum ("COL_0") as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_7555992116866973679_0136" )
+SELECT CAST (sum ("COL_0") as int) as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_3754981227811915253_0136" )
 ''
 plan:
-    [0] SCAN TABLE _tmp_7555992116866973679_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_3754981227811915253_0136 (~1048576 rows)

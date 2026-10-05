@@ -148,12 +148,12 @@ fn segment_motion_key_derived_by_transitivity() {
     on e = b
     group by a
 "#;
-    insta::assert_snapshot!(explain(sql), @r"
+    insta::assert_snapshot!(explain(sql), @"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
-    projection (gr_expr_1::string -> a, sum(count_1::int)::int -> col_1)
+    projection (gr_expr_1::string -> a, sum(count_1::int)::int::int -> col_1)
       group by (gr_expr_1::string)
         motion [policy: full, program: ReshardIfNeeded]
           projection (unnamed_subquery_1.a::string -> gr_expr_1, count(unnamed_subquery_1.b::int::int)::int -> count_1)
@@ -475,12 +475,12 @@ fn prepared_partial_composite_key_keeps_reduce_stage() {
         from "hash_testing"
         where ("identification_number", "product_code") = ($1, trim("product_code"))"#;
     let params = vec![Value::Integer(1)];
-    insta::assert_snapshot!(explain_with_params(sql, params), @r"
+    insta::assert_snapshot!(explain_with_params(sql, params), @"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
-    projection (sum(count_1::int)::int -> col_1)
+    projection (sum(count_1::int)::int::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
           selection (ROW(hash_testing.identification_number::int, hash_testing.product_code::string) = ROW(1::int, TRIM(hash_testing.product_code::string::string)))

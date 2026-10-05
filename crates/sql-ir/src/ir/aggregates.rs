@@ -319,6 +319,13 @@ impl Aggregate {
             is_window: false,
         };
         let aggr_id = plan.nodes.push(final_aggr.into());
+        // Tarantool sum() returns a decimal for an integer argument, as PostgreSQL does. The
+        // reduce stage of COUNT adds the counts of the shards. Thus cast that sum to the
+        // integer of the column. If you do not cast it, the value is a decimal and picodata
+        // cannot decode it.
+        if final_kind == AggregateKind::SUM && *col_type.get() == Some(RelType::Integer) {
+            return plan.add_cast(aggr_id, CastType::Integer);
+        }
         Ok(aggr_id)
     }
 

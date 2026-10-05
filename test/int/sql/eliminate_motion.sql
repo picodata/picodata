@@ -145,7 +145,7 @@ EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 OR a = 2 GROUP BY a;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (sum(count_1::int)::int -> col_1)
+projection (sum(count_1::int)::int::int -> col_1)
   group by (gr_expr_1::int)
     motion [policy: full, program: ReshardIfNeeded]
       projection (t1.a::int -> gr_expr_1, count(*)::int -> count_1)
