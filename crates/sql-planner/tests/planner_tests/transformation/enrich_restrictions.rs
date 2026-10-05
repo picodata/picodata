@@ -2965,8 +2965,11 @@ fn contradiction_in_an_inner_on_empties_the_motion_input() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
-      join on ((t.a::int = s.b::int and ROW(t.c::int, t.c::int) = ROW(2::int, 1::int) and false::bool))
+      join on ((t.a::int = s.b::int and false::bool))
         scan t
+          projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+            selection ((t.c::int = 1::int and t.c::int = 2::int))
+              scan t
         motion [policy: full, program: ReshardIfNeeded]
           projection (s.a::text -> a, s.b::int -> b)
             selection (false::bool)
@@ -2987,7 +2990,7 @@ fn contradictory_class_across_filters_empties_the_motion_input() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
-      selection ((s.a::text = 'y'::text and false::bool))
+      selection (false::bool)
         join on (t.a::int = s.b::int)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
@@ -2995,7 +2998,7 @@ fn contradictory_class_across_filters_empties_the_motion_input() {
               selection (false::bool)
                 scan s
                   projection (t3.a::text -> a, t3.b::int -> b)
-                    selection (t3.a::text = 'x'::text)
+                    selection ((t3.a::text = 'x'::text and t3.a::text = 'y'::text))
                       scan t3
     ");
 }
@@ -3075,9 +3078,12 @@ fn false_replaces_param_checks_on_every_motion_input() {
     let plan = optimized_with_int_params(&empty, 1);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
-      selection ((t.c::int = 1::int and t.c::int = 2::int and $1::int = 1::int and false::bool))
+      selection (($1::int = 1::int and false::bool))
         join on (t.a::int = s.b::int)
           scan t
+            projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              selection ((t.c::int = 1::int and t.c::int = 2::int))
+                scan t
           motion [policy: full, program: ReshardIfNeeded]
             projection (s.a::text -> a, s.b::int -> b)
               selection (false::bool)
@@ -3164,9 +3170,12 @@ fn false_stays_within_its_domain() {
     assert_snapshot!(logical(&plan), @r"
     union all
       projection (t.a::int -> a)
-        selection ((t.c::int = 1::int and t.c::int = 2::int and false::bool))
+        selection (false::bool)
           join on (t.a::int = c.b::int)
             scan t
+              projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+                selection ((t.c::int = 1::int and t.c::int = 2::int))
+                  scan t
             scan cte c($0)
       motion [policy: local, program: SerializeAsEmptyTable(true)]
         projection (c.b::int -> b)

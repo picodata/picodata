@@ -253,6 +253,21 @@ impl Plan {
         Ok(self)
     }
 
+    /// The [`RestrictInfo`] of `clause`, as [`Plan::analyze_restrictions_in_subtree`]
+    /// builds it for a conjunct.
+    ///
+    /// # Errors
+    /// - Malformed expression node encountered while walking the clause.
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(super) fn restrict_info(&self, clause: NodeId) -> Result<RestrictInfo, SbroadError> {
+        let (slots, subqueries) = RestrictionBuilder { plan: self }.clause_sources(clause)?;
+        Ok(RestrictInfo {
+            clause,
+            slots,
+            subqueries,
+        })
+    }
+
     /// Debug check that the stored restrictions describe the current IR of the
     /// subtree at `top_id`: each of its owners has exactly the restriction a
     /// full, independent rebuild gives. Entries outside the subtree are not

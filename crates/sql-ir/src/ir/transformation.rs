@@ -11,6 +11,10 @@ mod enrich_restrictions;
 pub mod equality_facts;
 mod merge_tuples;
 mod not_push_down;
+#[cfg(feature = "enrich_restrictions")]
+mod placement;
+#[cfg(feature = "enrich_restrictions")]
+mod push_down_restrictions;
 pub mod redistribution;
 pub mod restriction;
 mod split_columns;
@@ -281,6 +285,8 @@ pub enum Stage {
     EqualityFacts,
     #[cfg(feature = "enrich_restrictions")]
     EnrichRestrictions,
+    #[cfg(feature = "enrich_restrictions")]
+    PushDownRestrictions,
     Dnf,
     MergeTuples,
     AddMotions,
@@ -434,6 +440,13 @@ impl Plan {
                 plan,
                 Stage::EnrichRestrictions,
                 plan.enrich_restrictions_from_facts(top_id)?
+            );
+            // Move the conjuncts enrichment left in place to the deepest node
+            // that can evaluate them.
+            stage!(
+                plan,
+                Stage::PushDownRestrictions,
+                plan.push_down_restrictions(top_id)?
             );
         }
         stage!(plan, Stage::Dnf, plan.set_dnf_in_subtree(top_id)?);

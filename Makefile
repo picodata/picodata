@@ -165,7 +165,8 @@ test-rs-sql:
 		$(SQL_CRATES)
 	# The `enrich_restrictions` pass is off by default (turning it on crate-wide
 	# would leak into every SQL test's plan via feature unification), so its
-	# whitebox tests run in a second invocation: the feature on, filtered to just
+	# whitebox tests (and those of `push_down_restrictions`, gated with it) run
+	# in a second invocation: the feature on, filtered to just
 	# those tests, under their own nextest profile so the report is separate.
 	# Also test bucket discovery and exec plans with enrichment enabled.
 	cargo nextest run \
@@ -174,7 +175,7 @@ test-rs-sql:
 		--profile sql-enrich \
 		--features enrich_restrictions \
 		-p sql-planner -p sql-executor \
-		-E 'package(sql-planner) & test(/transformation::enrich_restrictions/)' \
+		-E 'package(sql-planner) & test(/transformation::(enrich|push_down)_restrictions/)' \
 		-E 'package(sql-executor) & test(/executor::bucket_discovery/)' \
 		-E 'package(sql-executor) & test(/executor::tests::exec_plan::exec_plan_motion_input/)'
 

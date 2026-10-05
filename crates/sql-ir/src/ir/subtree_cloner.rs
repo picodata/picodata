@@ -13,7 +13,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
-use crate::ir::tree::traversal::PostOrder;
+use crate::ir::tree::traversal::{PostOrder, EXPR_CAPACITY};
 use crate::ir::Plan;
 
 /// Helper struct to clone plan's subtree.
@@ -409,9 +409,8 @@ impl SubtreeCloner {
     /// TODO: Should we return translation map as well? Seems like
     ///       it can simply life sometimes.
     pub fn clone_subtree(plan: &mut Plan, top_id: NodeId) -> Result<NodeId, SbroadError> {
-        let subtree_capacity = top_id.offset as usize;
-        let mut helper = Self::new(subtree_capacity);
-        helper.clone(plan, top_id, subtree_capacity)
+        let mut helper = Self::new(EXPR_CAPACITY);
+        helper.clone(plan, top_id, EXPR_CAPACITY)
     }
 }
 
