@@ -88,13 +88,18 @@ def get_url(url: str, auth_token: Optional[str]) -> Any:
     return get_authorized(url, auth_token)
 
 
-def make_expired_token(token: str, secret: str) -> str:
-    # Stage 1: Split the token and decode its claims.
-    header, encoded_payload, _ = token.split(".")
+def decode_jwt_claims(token: str) -> Dict[str, Any]:
+    _, encoded_payload, _ = token.split(".")
     padding_length = (-len(encoded_payload)) % 4
     padded_payload = encoded_payload + ("=" * padding_length)
     payload_bytes = base64.urlsafe_b64decode(padded_payload)
-    claims = json.loads(payload_bytes)
+    return json.loads(payload_bytes)
+
+
+def make_expired_token(token: str, secret: str) -> str:
+    # Stage 1: Split the token and decode its claims.
+    header = token.split(".")[0]
+    claims = decode_jwt_claims(token)
 
     # Stage 2: Expire the token and re-encode the payload.
     claims["exp"] = 0
@@ -961,6 +966,97 @@ def test_jwt_rejects_expired_token(instance: Instance):
         str(error.value.fp.read(), "utf-8")
         == '{"error":"sessionExpired","errorMessage":"invalid jwt: token has expired"}'
     )
+
+
+def assert_token_lifetime(token: str, expected: int, issued_after: float, issued_before: float):
+    exp = decode_jwt_claims(token)["exp"]
+    # `exp` is truncated to whole seconds.
+    assert int(issued_after) + expected <= exp <= int(issued_before) + expected + 1
+
+
+def test_jwt_token_lifetimes(instance: Instance):
+    set_jwt_enabled(instance, True)
+    http_listen = instance.http_listen
+
+    def login_and_refresh(auth_lifetime: int, refresh_lifetime: int):
+        before = time.time()
+        tokens, status = authorize(instance, USERNAME, PASSWORD)
+        after = time.time()
+        assert status == 200
+        assert_token_lifetime(tokens["auth"], auth_lifetime, before, after)
+        assert_token_lifetime(tokens["refresh"], refresh_lifetime, before, after)
+
+        before = time.time()
+        with get_authorized(f"http://{http_listen}/api/v1/session", tokens["refresh"]) as response:
+            assert response.status == 200
+            tokens = json.loads(response.read().decode())
+        after = time.time()
+        assert_token_lifetime(tokens["auth"], auth_lifetime, before, after)
+        assert_token_lifetime(tokens["refresh"], refresh_lifetime, before, after)
+
+    # Defaults: 30 minutes and 120 hours.
+    login_and_refresh(30 * 60, 120 * 60 * 60)
+
+    instance.sql("ALTER SYSTEM SET jwt_auth_token_lifetime = 120")
+    instance.sql("ALTER SYSTEM SET jwt_refresh_token_lifetime = 600")
+    login_and_refresh(120, 600)
+
+    instance.sql("ALTER SYSTEM RESET jwt_refresh_token_lifetime")
+    instance.sql("ALTER SYSTEM RESET jwt_auth_token_lifetime")
+    login_and_refresh(30 * 60, 120 * 60 * 60)
+
+
+def test_jwt_token_lifetimes_validation(instance: Instance):
+    def read(key: str) -> int:
+        [[value]] = instance.sql("SELECT value FROM _pico_db_config WHERE key = ?", key)
+        return value
+
+    for param in ["jwt_auth_token_lifetime", "jwt_refresh_token_lifetime"]:
+        with pytest.raises(TarantoolError, match=f"invalid value for '{param}': expected unsigned"):
+            instance.sql(f"ALTER SYSTEM SET {param} = -1")
+
+    # The refresh token must outlive the auth token.
+    with pytest.raises(
+        TarantoolError,
+        match="invalid value for 'jwt_auth_token_lifetime': "
+        r"'jwt_refresh_token_lifetime' \(432000\) must be greater than 'jwt_auth_token_lifetime' \(432000\)",
+    ):
+        instance.sql("ALTER SYSTEM SET jwt_auth_token_lifetime = 432000")
+
+    with pytest.raises(
+        TarantoolError,
+        match="invalid value for 'jwt_refresh_token_lifetime': "
+        r"'jwt_refresh_token_lifetime' \(1000\) must be greater than 'jwt_auth_token_lifetime' \(1800\)",
+    ):
+        instance.sql("ALTER SYSTEM SET jwt_refresh_token_lifetime = 1000")
+
+    assert read("jwt_auth_token_lifetime") == 1800
+    assert read("jwt_refresh_token_lifetime") == 432000
+
+    instance.sql("ALTER SYSTEM SET jwt_auth_token_lifetime = 60")
+    instance.sql("ALTER SYSTEM SET jwt_refresh_token_lifetime = 61")
+    assert read("jwt_auth_token_lifetime") == 60
+    assert read("jwt_refresh_token_lifetime") == 61
+
+    # Resetting one parameter to its default is validated as well.
+    with pytest.raises(
+        TarantoolError,
+        match="invalid value for 'jwt_auth_token_lifetime': "
+        r"'jwt_refresh_token_lifetime' \(61\) must be greater than 'jwt_auth_token_lifetime' \(1800\)",
+    ):
+        instance.sql("ALTER SYSTEM RESET jwt_auth_token_lifetime")
+
+    instance.sql("ALTER SYSTEM RESET jwt_refresh_token_lifetime")
+    instance.sql("ALTER SYSTEM RESET jwt_auth_token_lifetime")
+    assert read("jwt_auth_token_lifetime") == 1800
+    assert read("jwt_refresh_token_lifetime") == 432000
+
+    # Defaults are consistent, so resetting everything always works.
+    instance.sql("ALTER SYSTEM SET jwt_auth_token_lifetime = 10")
+    instance.sql("ALTER SYSTEM SET jwt_refresh_token_lifetime = 20")
+    instance.sql("ALTER SYSTEM RESET ALL")
+    assert read("jwt_auth_token_lifetime") == 1800
+    assert read("jwt_refresh_token_lifetime") == 432000
 
 
 @pytest.mark.parametrize("auth_token", ["authorized", "unauthorized"], indirect=True)

@@ -77,6 +77,10 @@ pub const DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION: bool = false;
 pub const DEFAULT_REPLICATION_MODE: ReplicationMode = ReplicationMode::Async;
 pub const DEFAULT_GOVERNOR_DDL_RPC_TIMEOUT: f64 = 30.0;
 pub const DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT: f64 = 7.0;
+/// 30 minutes.
+pub const DEFAULT_JWT_AUTH_TOKEN_LIFETIME: u64 = 30 * 60;
+/// 120 hours.
+pub const DEFAULT_JWT_REFRESH_TOKEN_LIFETIME: u64 = 120 * 60 * 60;
 
 pub use ::sql::ir::types::DomainType as SbroadType;
 pub use tls::{TlsClientMethod, TlsClientSettings, TlsListenerSettings};
@@ -2801,6 +2805,22 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = generate_secure_token())]
     pub jwt_secret: String,
 
+    /// Lifetime in seconds of the HTTP API `auth` token.
+    ///
+    /// Must be less than [`jwt_refresh_token_lifetime`](field@Self::jwt_refresh_token_lifetime).
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = DEFAULT_JWT_AUTH_TOKEN_LIFETIME)]
+    pub jwt_auth_token_lifetime: u64,
+
+    /// Lifetime in seconds of the HTTP API `refresh` token. Each session
+    /// renewal issues a new `refresh` token, so this is effectively the
+    /// maximum duration of an inactive session.
+    ///
+    /// Must be greater than [`jwt_auth_token_lifetime`](field@Self::jwt_auth_token_lifetime).
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = DEFAULT_JWT_REFRESH_TOKEN_LIFETIME)]
+    pub jwt_refresh_token_lifetime: u64,
+
     /// Enables logging of SQL statements.
     #[introspection(sbroad_type = SbroadType::Boolean)]
     #[introspection(config_default = DEFAULT_SQL_LOG)]
@@ -2962,6 +2982,18 @@ impl AlterSystemParameters {
     #[inline]
     pub fn governor_ddl_rpc_timeout(&self) -> std::time::Duration {
         std::time::Duration::from_secs_f64(self.governor_ddl_rpc_timeout)
+    }
+
+    /// See [`jwt_auth_token_lifetime`](field@Self::jwt_auth_token_lifetime).
+    #[inline]
+    pub fn jwt_auth_token_lifetime(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.jwt_auth_token_lifetime)
+    }
+
+    /// See [`jwt_refresh_token_lifetime`](field@Self::jwt_refresh_token_lifetime).
+    #[inline]
+    pub fn jwt_refresh_token_lifetime(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.jwt_refresh_token_lifetime)
     }
 
     /// See [`raft_snapshot_read_view_close_timeout`](field@Self::raft_snapshot_read_view_close_timeout).
@@ -3196,6 +3228,25 @@ pub fn validate_alter_system_parameter_value<'v>(
         }
     }
 
+    if name == system_parameter_name!(jwt_auth_token_lifetime)
+        || name == system_parameter_name!(jwt_refresh_token_lifetime)
+    {
+        let lifetime = casted_value
+            .integer()
+            .expect("unreachable, already casted to unsigned");
+
+        // The upper bound keeps the token expiration time representable.
+        i32::try_from(lifetime)
+            .ok()
+            .filter(|&x| x >= 1)
+            .ok_or_else(|| {
+                Error::other(format!(
+                    "invalid value for '{name}': value must be between 1 and {}",
+                    u64::MAX,
+                ))
+            })?;
+    }
+
     if name == system_parameter_name!(read_preference) {
         if let Value::String(s) = value {
             let _ = options::ReadPreference::from_str(s).map_err(|_| {
@@ -3268,6 +3319,47 @@ pub fn validate_alter_system_parameter_value<'v>(
     }
 
     Ok(casted_value)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// validate_jwt_token_lifetimes
+////////////////////////////////////////////////////////////////////////////////
+
+/// Checks that the `refresh` token outlives the `auth` token when JWT token
+/// lifetime parameter `name` is about to be set to `value`.
+///
+/// Unlike [`validate_alter_system_parameter_value`], this check needs the
+/// current value of the other parameter, so it reads it from `db_config`.
+pub fn validate_jwt_token_lifetimes(
+    db_config: &DbConfig,
+    name: &str,
+    value: u64,
+) -> Result<(), Error> {
+    let auth_name = system_parameter_name!(jwt_auth_token_lifetime);
+    let refresh_name = system_parameter_name!(jwt_refresh_token_lifetime);
+    debug_assert!(name == auth_name || name == refresh_name);
+
+    // The parameters may be missing during a cluster upgrade.
+    let mut auth = db_config
+        .get::<u64>(auth_name, DbConfig::GLOBAL_SCOPE)?
+        .unwrap_or(DEFAULT_JWT_AUTH_TOKEN_LIFETIME);
+    let mut refresh = db_config
+        .get::<u64>(refresh_name, DbConfig::GLOBAL_SCOPE)?
+        .unwrap_or(DEFAULT_JWT_REFRESH_TOKEN_LIFETIME);
+
+    if name == auth_name {
+        auth = value;
+    } else {
+        refresh = value;
+    }
+
+    if refresh <= auth {
+        return Err(Error::other(format!(
+            "invalid value for '{name}': '{refresh_name}' ({refresh}) must be greater than '{auth_name}' ({auth})",
+        )));
+    }
+
+    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

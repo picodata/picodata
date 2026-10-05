@@ -5,6 +5,8 @@ use crate::config::apply_alter_system_parameter;
 use crate::config::DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION;
 use crate::config::DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT;
 use crate::config::DEFAULT_GOVERNOR_DDL_RPC_TIMEOUT;
+use crate::config::DEFAULT_JWT_AUTH_TOKEN_LIFETIME;
+use crate::config::DEFAULT_JWT_REFRESH_TOKEN_LIFETIME;
 use crate::config::DEFAULT_REPLICATION_MODE;
 use crate::storage::schema::ddl_change_format_on_master;
 use crate::storage::{DbConfig, Instances, Plugins, Replicasets, SystemTable, Tiers};
@@ -166,6 +168,10 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_log_level_map"),
             // Adding UI extensions to _pico_plugin
             ("exec_script",InternalScript::AlterPicoPluginAddWebuiField.as_str()),
+            (
+                "exec_script",
+                InternalScript::InsertJwtTokenLifetimesIntoPicoDbConfig.as_str(),
+            ),
         ],
     ),
 ];
@@ -267,6 +273,13 @@ tarantool::define_str_enum! {
         /// ```
         UpdateGovernorCommonRpcTimeoutInPicoDbConfig = "update_governor_common_rpc_timeout_in_pico_db_config",
 
+        /// Global configuration parameters:
+        /// ```ignore
+        /// INSERT INTO _pico_db_config VALUES ('jwt_auth_token_lifetime', '', 1800)
+        /// INSERT INTO _pico_db_config VALUES ('jwt_refresh_token_lifetime', '', 432000)
+        /// ```
+        InsertJwtTokenLifetimesIntoPicoDbConfig = "insert_jwt_token_lifetimes_into_pico_db_config",
+
         /// Drop obsolete versions of internal procedures from `_func`.
         DropObsoleteProcedures = "drop_obsolete_procedures",
 
@@ -337,6 +350,9 @@ crate::define_rpc_request! {
 
             InternalScript::UpdateGovernorCommonRpcTimeoutInPicoDbConfig =>
                 update_governor_common_rpc_timeout_in_pico_db_config(),
+
+            InternalScript::InsertJwtTokenLifetimesIntoPicoDbConfig =>
+                insert_jwt_token_lifetimes_into_pico_db_config(),
 
             InternalScript::DropObsoleteProcedures =>
                 execute_drop_obsolete_procedures(),
@@ -521,6 +537,19 @@ fn insert_governor_ddl_rpc_timeout_into_pico_db_config() -> traft::Result<Respon
     replace_global_parameter(
         system_parameter_name!(governor_ddl_rpc_timeout),
         &DEFAULT_GOVERNOR_DDL_RPC_TIMEOUT,
+    )?;
+
+    Ok(Response {})
+}
+
+fn insert_jwt_token_lifetimes_into_pico_db_config() -> traft::Result<Response> {
+    replace_global_parameter(
+        system_parameter_name!(jwt_auth_token_lifetime),
+        &DEFAULT_JWT_AUTH_TOKEN_LIFETIME,
+    )?;
+    replace_global_parameter(
+        system_parameter_name!(jwt_refresh_token_lifetime),
+        &DEFAULT_JWT_REFRESH_TOKEN_LIFETIME,
     )?;
 
     Ok(Response {})

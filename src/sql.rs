@@ -1525,6 +1525,14 @@ fn alter_system_cluster_ir_node_to_op_or_result(
             }
 
             let casted_value: sql::ir::value::EncodedValue<'_> = crate::config::validate_alter_system_parameter_value(param_name, param_value)?;
+            // Unlike the checks above, this one needs storage to validate
+            // the parameter against the current value of the other one.
+            if param_name == crate::system_parameter_name!(jwt_auth_token_lifetime)
+                || param_name == crate::system_parameter_name!(jwt_refresh_token_lifetime)
+            {
+                let value = casted_value.integer().expect("unreachable, already casted to unsigned");
+                crate::config::validate_jwt_token_lifetimes(&storage.db_config, param_name, value as u64)?;
+            }
 
             ops = make_dmls(&casted_value, param_name, tier_name, storage, current_user)?;
         }
@@ -1535,6 +1543,14 @@ fn alter_system_cluster_ir_node_to_op_or_result(
                     let Some(default_value) = crate::config::get_default_value_of_alter_system_parameter(param_name) else {
                         return Err(Error::other(format!("unknown parameter: '{param_name}'")));
                     };
+                    // Unlike the checks above, this one needs storage to validate
+                    // the parameter against the current value of the other one.
+                    if param_name == crate::system_parameter_name!(jwt_auth_token_lifetime)
+                        || param_name == crate::system_parameter_name!(jwt_refresh_token_lifetime)
+                    {
+                        let value = default_value.as_u64().expect("default is unsigned");
+                        crate::config::validate_jwt_token_lifetimes(&storage.db_config, param_name, value)?;
+                    }
 
                     ops = make_dmls(&default_value, param_name, tier_name, storage, current_user)?;
                 }
@@ -2753,8 +2769,15 @@ pub(crate) fn reenterable_schema_change_request(
             Continue(op) => op,
         };
 
+        // Validation of some parameters depends on the values of others
+        // (see `validate_jwt_token_lifetimes`), so concurrent changes
+        // to `_pico_db_config` must make us revalidate.
+        let mut ranges = cas::schema_change_ranges().to_vec();
+        if let NodeOwned::Ddl(DdlOwned::AlterSystemCluster(_)) = &ir_node {
+            ranges.push(cas::Range::new(DbConfig::TABLE_ID));
+        }
         // TODO: Should look at https://git.picodata.io/picodata/picodata/picodata/-/issues/866.
-        let predicate = cas::Predicate::new(index, cas::schema_change_ranges());
+        let predicate = cas::Predicate::new(index, ranges);
         let req = crate::cas::Request::new(op.clone(), predicate, current_user)?;
         let res = cas::compare_and_swap_and_wait(&req, deadline)?;
         let mut index = match res {

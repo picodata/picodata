@@ -4,9 +4,6 @@ use crate::traft::Result;
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 
-const AUTH_TOKEN_EXPIRY: chrono::Duration = chrono::Duration::hours(24);
-const REFRESH_TOKEN_EXPIRY: chrono::Duration = chrono::Duration::days(365);
-
 #[derive(Debug, Serialize, Deserialize)]
 struct JwtClaims {
     sub: String,
@@ -121,11 +118,20 @@ fn create_jwt_token(
 
     let time_options = jwt_compact::TimeOptions::default();
 
+    let node = crate::traft::node::global().map_err(|e| AuthError::Inner(e.to_string()))?;
     let duration = match token_type {
-        "auth" => AUTH_TOKEN_EXPIRY,
-        "refresh" => REFRESH_TOKEN_EXPIRY,
+        "auth" => node
+            .alter_system_parameters
+            .borrow()
+            .jwt_auth_token_lifetime(),
+        "refresh" => node
+            .alter_system_parameters
+            .borrow()
+            .jwt_refresh_token_lifetime(),
         _ => return Err(AuthError::InvalidType),
     };
+    let duration =
+        chrono::Duration::from_std(duration).map_err(|e| AuthError::Inner(e.to_string()))?;
 
     let claims = JwtClaims {
         sub: username.to_string(),

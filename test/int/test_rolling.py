@@ -809,8 +809,9 @@ def read_parameter(instance: Instance, key: str):
     return res[0][0]
 
 
-# The 26.3.1 catalog upgrade adds `governor_ddl_rpc_timeout` and raises the
-# default of `governor_common_rpc_timeout` from 3.0 to 7.0.
+# The 26.3.1 catalog upgrade adds `governor_ddl_rpc_timeout`, raises the
+# default of `governor_common_rpc_timeout` from 3.0 to 7.0 and adds the JWT
+# token lifetimes.
 @pytest.mark.xdist_group(name="rolling")
 @pytest.mark.required_rolling_versions(
     versions=[
@@ -830,12 +831,16 @@ def test_upgrade_governor_rpc_timeouts(cluster: Cluster, registry: Registry):
     # and holds the old common timeout default.
     assert read_parameter(i1, "governor_ddl_rpc_timeout") is None
     assert read_parameter(i1, "governor_common_rpc_timeout") == 3.0
+    assert read_parameter(i1, "jwt_auth_token_lifetime") is None
+    assert read_parameter(i1, "jwt_refresh_token_lifetime") is None
 
     cluster.change_executable(current)
     i1 = cluster.leader()
 
     assert read_parameter(i1, "governor_ddl_rpc_timeout") == 30.0
     assert read_parameter(i1, "governor_common_rpc_timeout") == 7.0
+    assert read_parameter(i1, "jwt_auth_token_lifetime") == 1800
+    assert read_parameter(i1, "jwt_refresh_token_lifetime") == 432000
 
     # Now the same upgrade on a cluster whose common timeout was tuned away from
     # the old default. Only the exact old default counts as untouched, so the

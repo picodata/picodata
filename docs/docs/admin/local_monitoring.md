@@ -254,7 +254,8 @@ curl -X POST http://127.0.0.1:8081/api/v1/session   -H "Content-Type: applicatio
 }
 ```
 
-Токен `auth` действует в течение 24 часов. Теперь вы можете получить
+Токен `auth` по умолчанию действует в течение 30 минут (см. параметр
+[`jwt_auth_token_lifetime`]). Теперь вы можете получить
 данные о состоянии инстанса, указав токен в заголовке `Authorization:
 Bearer <token>`:
 
@@ -304,9 +305,14 @@ curl -s "http://127.0.0.1:8081/api/v1/health/status"     -H "Authorization: Bear
     }
     ```
 
-Токен `refresh` действует в течение 1 года. Он предназначен для того,
-чтобы обновить auth-токен без предоставления данных авторизации. Пример
-запроса на выдачу новых токенов с помощью refresh-токена:
+Токен `refresh` по умолчанию действует в течение 120 часов (5 суток, см.
+параметр [`jwt_refresh_token_lifetime`]). Он предназначен
+для того, чтобы обновить auth-токен без предоставления данных авторизации.
+В ответ на запрос обновления выдаётся новая пара токенов `auth` и
+`refresh`. Пример запроса на выдачу новых токенов с помощью refresh-токена:
+
+[`jwt_auth_token_lifetime`]: ../reference/db_config.md#jwt_auth_token_lifetime
+[`jwt_refresh_token_lifetime`]: ../reference/db_config.md#jwt_refresh_token_lifetime
 
 ```shell
 curl -s "http://127.0.0.1:8081/api/v1/session"     -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTgwNDk0NzAwNSwidHlwIjoicmVmcmVzaCJ9.gEP-qlJjhlIhzg_05-8ntAaf9MeH4qiFw0ib_DiRM7U" | jq
