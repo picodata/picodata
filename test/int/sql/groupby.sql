@@ -652,6 +652,30 @@ SELECT avg("c"), avg(distinct "c"), avg("b"), avg(distinct "b") from "arithmetic
 -- EXPECTED:
 1, 1, 2.25, 2
 
+-- TEST: test_avg_over_integers_on_a_global_table_setup
+-- SQL:
+DROP TABLE IF EXISTS aggr_g;
+CREATE TABLE aggr_g (id INT PRIMARY KEY, g INT, i INT) DISTRIBUTED GLOBALLY;
+INSERT INTO aggr_g VALUES (1, 1, 1), (2, 1, 2), (3, 2, 5), (4, 2, 6);
+
+-- TEST: test_avg_over_integers_on_a_global_table_is_decimal
+-- SQL:
+SELECT avg(i), avg(DISTINCT i) FROM aggr_g;
+-- EXPECTED:
+Decimal('3.5'), Decimal('3.5')
+
+-- TEST: test_avg_keeps_the_type_of_the_grouped_column_on_a_global_table
+-- SQL:
+SELECT g, avg(i) FROM aggr_g GROUP BY g;
+-- UNORDERED:
+1, Decimal('1.5'), 2, Decimal('5.5')
+
+-- TEST: test_avg_on_a_global_table_is_a_decimal_not_a_double
+-- SQL:
+SELECT avg(i) FROM aggr_g WHERE id <> 4;
+-- EXPECTED:
+Decimal('2.6666666666666666666666666666666666667')
+
 -- TEST: test_avg_with_groupby
 -- SQL:
 SELECT "a", avg("b"), avg(distinct "b") FROM "arithmetic_space"

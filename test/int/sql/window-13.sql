@@ -2333,3 +2333,17 @@ None, None, None, None, None, None, None, None, None, None, None, None, None, No
 None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
 None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
 None, None, None, None, None, None, None, None, None, None, None, None, None
+
+-- TEST: window-13-avg-of-integers-is-decimal
+-- SQL:
+SELECT avg(b) OVER (ORDER BY a ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
+    FROM t2 WHERE a IN (3, 4) ORDER BY 1;
+-- EXPECTED:
+Decimal('41'), Decimal('57.5')
+
+-- TEST: window-13-avg-of-integers-is-a-decimal-not-a-double
+-- SQL:
+SELECT avg(b) OVER (ORDER BY a ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)
+    FROM t2 WHERE a IN (1, 2, 3) ORDER BY 1;
+-- EXPECTED:
+Decimal('0'), Decimal('37'), Decimal('38.333333333333333333333333333333333333')

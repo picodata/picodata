@@ -545,7 +545,7 @@ def test_window_functions(cluster: Cluster):
     # Test integer + avg(integer) -> decimal
     data = i1.sql("""SELECT 1 + avg(x) OVER (ORDER BY x) FROM t7""", strip_metadata=False)
     assert data["metadata"] == [{"name": "col_1", "type": "decimal"}]
-    assert sorted(data["rows"]) == [[2], [2]]
+    assert sorted(data["rows"]) == [[2], [2.5]]
 
     # Test row_number() -> integer
     data = i1.sql("""SELECT 2 + row_number() OVER (ORDER BY x) FROM t7""", strip_metadata=False)
