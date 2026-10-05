@@ -195,6 +195,49 @@ impl std::borrow::Borrow<str> for Uppercase {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// test_rng_seed
+////////////////////////////////////////////////////////////////////////////////
+
+/// Returns the seed for the seeded pseudo-random number generator for use in
+/// tests. **DO NOT USE IN PRODUCTION CODE**.
+///
+/// If the `PICODATA_TEST_SEED` env is set it's value will be returned, which is
+/// useful to reproduce test failures.
+pub fn test_rng_seed() -> u64 {
+    if let Some(seed) = get_env("PICODATA_TEST_SEED") {
+        return seed;
+    }
+
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock is not before the unix epoch");
+
+    // Number of micro seconds since UNIX epoch
+    let seed = (time.as_secs_f64() * 1_000_000.0) as u64;
+
+    seed
+}
+
+/// Get's the value of `name` environment variable and converts it to `T`.
+/// Returns `None` if variable is not set.
+///
+/// # Panicking
+///
+/// Panics if the value fails to convert to the expected type.
+///
+/// This function is mainly for use in test.
+pub fn get_env<T: std::str::FromStr>(name: &str) -> Option<T> {
+    let v = std::env::var(name).ok()?;
+    let Ok(v) = v.parse() else {
+        panic!(
+            "Failed to parse {name}: expected a {}, got '{v}'",
+            std::any::type_name::<T>()
+        );
+    };
+    Some(v)
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Compare string literals at compile time.
 #[allow(dead_code)] // suppress the warning since it's only used at compile time
 pub const fn str_eq(lhs: &str, rhs: &str) -> bool {

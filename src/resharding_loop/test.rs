@@ -33,6 +33,7 @@ use crate::simulation::sharding::second_half;
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::RaftId;
+use crate::util::test_rng_seed;
 use smol_str::SmolStr;
 use std::rc::Rc;
 
@@ -46,10 +47,7 @@ impl ReshardingTestParameters {
     }
 
     fn with_fresh_seed() -> Self {
-        let time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock is not before the unix epoch");
-        let seed = (time.as_secs_f64() * 1_000_000.0) as u64;
+        let seed = test_rng_seed();
         Self { seed }
     }
 }

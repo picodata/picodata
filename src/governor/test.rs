@@ -42,6 +42,7 @@ use crate::traft::op::Dml;
 use crate::traft::op::Op;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::RaftId;
+use crate::util::test_rng_seed;
 use ::tarantool::fiber::r#async::watch;
 use raft::prelude::ConfState;
 use rand::RngExt;
@@ -397,11 +398,7 @@ fn test_governor_loop_proc_before_online_batching_fixed() {
 
 #[tarantool::test]
 fn test_governor_loop_proc_before_online_batching_random() {
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    // And also run with a random seed for chaos
-    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+    let seed = test_rng_seed();
 
     let params = BatchingRpcTestParameters {
         seed,
@@ -617,11 +614,7 @@ fn test_governor_loop_proc_sharding_batching_fixed() {
 
 #[tarantool::test]
 fn test_governor_loop_proc_sharding_batching_random() {
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    // And also run with a random seed for chaos
-    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+    let seed = test_rng_seed();
 
     let params = BatchingRpcTestParameters {
         seed,
@@ -857,11 +850,7 @@ fn test_governor_loop_proc_apply_schema_change_batching_fixed() {
 
 #[tarantool::test]
 fn test_governor_loop_proc_apply_schema_change_batching_random() {
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    // And also run with a random seed for chaos
-    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+    let seed = test_rng_seed();
 
     let params = BatchingRpcTestParameters {
         seed,
@@ -1088,11 +1077,7 @@ fn test_governor_loop_truncate_table_batching_fixed() {
 
 #[tarantool::test]
 fn test_governor_loop_truncate_table_batching_random() {
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    // And also run with a random seed for chaos
-    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+    let seed = test_rng_seed();
 
     let params = BatchingRpcTestParameters {
         seed,
@@ -1456,11 +1441,7 @@ fn test_governor_loop_backup_batching_fixed() {
 
 #[tarantool::test]
 fn test_governor_loop_backup_batching_random() {
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    // And also run with a random seed for chaos
-    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+    let seed = test_rng_seed();
 
     let params = BatchingRpcTestParameters {
         seed,
@@ -1693,11 +1674,7 @@ fn test_governor_loop_create_plugin_batching_fixed() {
 
 #[tarantool::test]
 fn test_governor_loop_create_plugin_batching_random() {
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    // And also run with a random seed for chaos
-    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+    let seed = test_rng_seed();
 
     let params = BatchingRpcTestParameters {
         seed,
@@ -2000,11 +1977,7 @@ fn test_governor_loop_enable_plugin_batching_fixed() {
 
 #[tarantool::test]
 fn test_governor_loop_enable_plugin_batching_random() {
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    // And also run with a random seed for chaos
-    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+    let seed = test_rng_seed();
 
     let params = BatchingRpcTestParameters {
         seed,
@@ -2256,11 +2229,7 @@ fn test_governor_loop_alter_plugin_add_service_to_tier_batching_fixed() {
 
 #[tarantool::test]
 fn test_governor_loop_alter_plugin_add_service_to_tier_batching_random() {
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    // And also run with a random seed for chaos
-    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+    let seed = test_rng_seed();
 
     let params = BatchingRpcTestParameters {
         seed,
@@ -2665,11 +2634,7 @@ fn test_governor_loop_alter_plugin_remove_service_from_tier_batching_fixed() {
 
 #[tarantool::test]
 fn test_governor_loop_alter_plugin_remove_service_from_tier_batching_random() {
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    // And also run with a random seed for chaos
-    let seed = (time.as_secs_f64() * 1000_000.0) as u64;
+    let seed = test_rng_seed();
 
     let params = BatchingRpcTestParameters {
         seed,
