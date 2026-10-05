@@ -387,6 +387,17 @@ impl Service for Service3 {
                 .unwrap();
                 assert_eq!(insert_count, 1);
 
+                let insert_count = picodata_plugin::sql::query(
+                    "INSERT INTO book (id, name, cost, last_buy) VALUES (?, ?, ?, ?)",
+                )
+                .bind(2)
+                .bind("Eugene Onegin")
+                .bind(Decimal::from_str("2.2").unwrap())
+                .bind(Datetime::from(datetime!(2023-11-11 2:03:19.35421 +14)))
+                .execute()
+                .unwrap();
+                assert_eq!(insert_count, 1);
+
                 #[derive(Deserialize, Debug, PartialEq)]
                 struct Book {
                     id: u64,
@@ -394,18 +405,26 @@ impl Service for Service3 {
                     cost: Decimal,
                     last_buy: Datetime,
                 }
-                let books = picodata_plugin::sql::query("SELECT * from book")
+                let books = picodata_plugin::sql::query("SELECT * from book ORDER BY id")
                     .fetch::<Book>()
                     .unwrap();
 
                 assert_eq!(
                     books,
-                    vec![Book {
-                        id: 1,
-                        name: "Ruslan and Ludmila".to_string(),
-                        cost: Decimal::from_str("1.1").unwrap(),
-                        last_buy: Datetime::from(datetime!(2023-11-11 2:03:19.35421 -3)),
-                    }]
+                    vec![
+                        Book {
+                            id: 1,
+                            name: "Ruslan and Ludmila".to_string(),
+                            cost: Decimal::from_str("1.1").unwrap(),
+                            last_buy: Datetime::from(datetime!(2023-11-11 2:03:19.35421 -3)),
+                        },
+                        Book {
+                            id: 2,
+                            name: "Eugene Onegin".to_string(),
+                            cost: Decimal::from_str("2.2").unwrap(),
+                            last_buy: Datetime::from(datetime!(2023-11-11 2:03:19.35421 +14)),
+                        },
+                    ]
                 );
             }
             "log" => {

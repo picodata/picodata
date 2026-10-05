@@ -2944,7 +2944,10 @@ def test_sdk_sql(cluster: Cluster):
         r.pop(1)
         r[3] = str(r[3])
 
-    assert sql_result == [[1, "Ruslan and Ludmila", Decimal("1.1"), "2023-11-11T02:03:19.354210-03:00"]]
+    assert sql_result == [
+        [1, "Ruslan and Ludmila", Decimal("1.1"), "2023-11-11T02:03:19.354210-03:00"],
+        [2, "Eugene Onegin", Decimal("2.2"), "2023-11-11T02:03:19.354210+14:00"],
+    ]
 
 
 def test_sdk_log(cluster: Cluster):

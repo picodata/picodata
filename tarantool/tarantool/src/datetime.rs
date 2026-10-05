@@ -89,7 +89,7 @@ impl Datetime {
 
     #[inline(always)]
     pub fn from_ffi_dt(inner: ffi::datetime) -> Result<Self, Error> {
-        let utc_offset = UtcOffset::from_whole_seconds((inner.tzoffset * 60).into())
+        let utc_offset = UtcOffset::from_whole_seconds(i32::from(inner.tzoffset) * 60)
             .map_err(Error::WrongUtcOffset)?;
         let dt = Inner::from_unix_timestamp(inner.epoch as i64)
             .map_err(Error::WrongUnixTimestamp)?
@@ -341,6 +341,27 @@ mod tests {
         let data = b"\x93{\xd7\x04\x00\xc4Ne\x00\x00\x00\x00\xa6foobar";
         let actual: (i32, Datetime, String) = msgpack::decode(data).unwrap();
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn from_ffi_dt_far_from_utc() {
+        // Offsets beyond ±09:06 used to overflow `i16` when converted to seconds.
+        for (tzoffset, expected) in [
+            (840, datetime!(2023-11-11 2:03:19.35421 +14)),
+            (570, datetime!(2023-11-11 2:03:19.35421 +9:30)),
+            (-570, datetime!(2023-11-11 2:03:19.35421 -9:30)),
+            (-720, datetime!(2023-11-11 2:03:19.35421 -12)),
+        ] {
+            let ffi_datetime = ffi::datetime {
+                epoch: expected.unix_timestamp() as f64,
+                nsec: expected.nanosecond() as i32,
+                tzoffset,
+                tzindex: 0,
+            };
+            let actual = Datetime::from_ffi_dt(ffi_datetime).unwrap().into_inner();
+            assert_eq!(actual, expected);
+            assert_eq!(actual.offset(), expected.offset());
+        }
     }
 }
 
