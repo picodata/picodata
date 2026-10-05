@@ -157,13 +157,10 @@ pub fn pretend_tier_info(name: impl AsRef<str>, tier_bucket_count: u64) -> Tier 
 // timeout verdicts
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Positive proof that a fired [`WaitOutcome::Timeout`] maps to the production
-/// timeout error path and that the loop's ordinary retry recovers from it:
-/// raises `timeout_probability` for a whole initial-distribution run, then
-/// asserts both that a timeout did fire and that the cluster still converges
-/// on what the happy path produces.
-///
-/// [`WaitOutcome::Timeout`]: crate::simulation::fiber::WaitOutcome::Timeout
+/// Injects a timeout error into every single unique timeoutable wait which can
+/// happen during a sharding initialization round and makes sure the simulation
+/// still convergence, meaning that the production code handles those timeout
+/// errors gracefully.
 fn do_simulation_timeout_verdicts_retry(params: ReshardingTestParameters) {
     tlog!(Info, "random seed: {}", params.seed);
 
@@ -184,7 +181,9 @@ fn do_simulation_timeout_verdicts_retry(params: ReshardingTestParameters) {
             ),
         ],
     );
-    cluster.set_timeout_probability(0.5);
+
+    // Set the special flag which enables the "time out each unique wait once" mode
+    cluster.set_timeout_each_wait_once(true);
 
     request_resharding_status(&cluster, red, ReshardingStatus::Initialize);
     request_resharding_status(&cluster, blue, ReshardingStatus::Initialize);

@@ -101,6 +101,10 @@ pub fn do_action(cluster: &PretendCluster, mut action: PretendAction) {
                 fiber.state().is_wait_timeoutable(),
                 "simulation: {state:?} is not a Timeout-candidate"
             );
+            cluster
+                .timed_out_waits
+                .borrow_mut()
+                .insert(fiber.park_fingerprint());
             wake_fiber(cluster, &instance, &fiber, WaitOutcome::Timeout);
         }
 
@@ -189,6 +193,8 @@ pub fn do_action(cluster: &PretendCluster, mut action: PretendAction) {
         }
     }
 
+    crate::tlog!(Info, "do_action({action:?})");
+
     // Save the action to the trace
     cluster.trace.borrow_mut().push(action);
 }
@@ -257,7 +263,9 @@ pub fn determine_potential_actions(cluster: &PretendCluster) -> Vec<PretendActio
             });
         }
 
-        if state.is_wait_timeoutable() {
+        if state.is_wait_timeoutable()
+            && !(cluster.timeout_each_wait_once.get() && cluster.was_wait_timed_out(&fiber))
+        {
             actions.push(PretendAction::TimeoutWait {
                 fiber: fiber.id.clone(),
                 state: state.snapshot(),
@@ -273,9 +281,19 @@ pub fn determine_potential_actions(cluster: &PretendCluster) -> Vec<PretendActio
 ////////////////////////////////////////////////////////////////////////////////
 
 /// One scheduler step: enumerates every enabled action and picks one with
-/// the seeded RNG. Timeout candidates are enumerated unconditionally but
-/// taken only with probability [`PretendCluster::timeout_probability`], so they are
-/// never *picked* unless a fault campaign raised it.
+/// the seeded RNG.
+///
+/// Timeout candidates are handled a bit differently.
+///
+/// If [`PretendCluster::timeout_each_wait_once`] is enabled we only enumerate
+/// waits which haven't already been picked before, and if there are any such
+/// timeouts we pick one of them as an action to perform.
+///
+/// Otherwise all timeouts are enumerated, then we choose if we're going to
+/// perform the TimeoutWait action with probability [`PretendCluster::timeout_probability`]
+/// and if rolled succesfully we pick an action from all enumerated timeouts.
+/// That way the probability of a timeout action is not a function of the number
+/// of enabled actions at any point in time.
 ///
 /// Returns `false` once nothing is enabled.
 ///
@@ -314,19 +332,26 @@ pub fn step_once(cluster: &PretendCluster) -> bool {
     let have_regular = !regular.is_empty();
     let have_timeouts = !timeouts.is_empty();
 
+    let take_timeout =
+        have_timeouts && (cluster.timeout_each_wait_once.get() || cluster.roll_wait_timeout());
+
     let mut candidates;
-    if have_regular && !(have_timeouts && cluster.should_timeout_a_wait()) {
+    if have_regular && !take_timeout {
         candidates = regular;
     } else {
         assert!(have_timeouts);
         assert!(
-            !have_regular || cluster.timeout_probability.get() > 0.0,
+            !have_regular
+                || cluster.timeout_probability.get() > 0.0
+                || cluster.timeout_each_wait_once.get(),
             "simulation: deadlock - every parked fiber can only be resolved by \
              a Timeout, but timeout_probability is 0; registry dump:\n{}\ntrace: {:#?}",
             cluster.dump_fiber_registry(),
             cluster.trace.borrow(),
         );
 
+        // Note: if timeout_each_wait_once is enabled, the `timeouts` only contains
+        // unique timeouts which haven't been picked before.
         candidates = timeouts;
     }
 

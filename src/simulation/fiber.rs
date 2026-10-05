@@ -50,6 +50,9 @@ pub struct PretendFiber {
 
     /// A join handle for the purposes of teardown.
     pub join_handle: RefCell<Option<fiber::JoinHandle<'static, ()>>>,
+
+    /// The fiber's call stack at the moment of the last [`Self::park`].
+    pub last_park_call_stack: RefCell<CallStack>,
 }
 
 /// Uniquely and deterministically identifies a [`PretendFiber`] in the cluster.
@@ -84,6 +87,7 @@ impl PretendFiber {
             csw_at_unpark: Cell::new(0),
             instance: Rc::downgrade(instance),
             join_handle: RefCell::new(None),
+            last_park_call_stack: RefCell::new(CallStack::new()),
         }
     }
 
@@ -171,6 +175,7 @@ impl PretendFiber {
         );
 
         *self.state.borrow_mut() = state;
+        *self.last_park_call_stack.borrow_mut() = capture_call_stack();
         let mut wait_outcome = self.wait_outcome.subscribe();
 
         let expected = self.csw_at_unpark.get();
@@ -199,6 +204,13 @@ impl PretendFiber {
         self.wait_outcome
             .send(wait_outcome)
             .expect("nobody holds a reference to the current wait_outcome");
+    }
+
+    pub fn park_fingerprint(&self) -> (InstanceName, CallStack) {
+        (
+            self.id.instance.clone(),
+            self.last_park_call_stack.borrow().clone(),
+        )
     }
 
     pub fn wait_for_wal_outcome(&self, outcome: &WalOutcomeSlot) -> Result<WalOutcome> {
@@ -394,6 +406,20 @@ impl WaitOutcome {
             WaitOutcome::Cancelled => Err(fiber_was_cancelled()),
         }
     }
+}
+
+/// An array of return addresses recorded from the call stack.
+///
+/// See also [`capture_call_stack`].
+pub type CallStack = Vec<usize>;
+
+pub fn capture_call_stack() -> CallStack {
+    let mut call_stack = Vec::new();
+    backtrace::trace(|frame| {
+        call_stack.push(frame.ip() as usize);
+        true
+    });
+    call_stack
 }
 
 /// Resolves `fiber`'s current park with `wait_outcome`:

@@ -6,6 +6,7 @@ use crate::simulation::action::PretendAction;
 use crate::simulation::catalog::create_pretend_catalog;
 #[allow(unused_imports)]
 use crate::simulation::engine::do_action;
+use crate::simulation::fiber::CallStack;
 use crate::simulation::fiber::FiberState;
 use crate::simulation::fiber::PretendFiber;
 use crate::simulation::instance::PretendInstance;
@@ -23,6 +24,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::BuildHasherDefault;
 use std::rc::Rc;
 use tarantool::fiber;
@@ -50,6 +52,18 @@ pub struct PretendCluster {
     /// timeout one of the waiting fibers.
     pub timeout_probability: Cell<f64>,
 
+    /// When set, [`step_once`](crate::simulation::engine::step_once) times
+    /// out every timeoutable wait the first time a fiber parks on it.
+    ///
+    /// A wait is identified by its instance and the fiber's call stack at the
+    /// park. The unique timed out waits are kept track of in [`Self::timed_out_waits`].
+    pub timeout_each_wait_once: Cell<bool>,
+
+    /// Every wait [`PretendAction::TimeoutWait`] has fired on so far.
+    ///
+    /// See also [`Self::timeout_each_wait_once`].
+    pub timed_out_waits: RefCell<HashSet<(InstanceName, CallStack)>>,
+
     /// The probability that [`PretendAction::CommitWalWrite`] fails a WAL write.
     pub disk_write_fault_probability: Cell<f64>,
 }
@@ -69,6 +83,8 @@ impl PretendCluster {
             trace: RefCell::new(Vec::new()),
             cas_fault_probability: Cell::new(0.0),
             timeout_probability: Cell::new(0.0),
+            timeout_each_wait_once: Cell::new(false),
+            timed_out_waits: RefCell::new(HashSet::new()),
             disk_write_fault_probability: Cell::new(0.0),
         })
     }
@@ -139,7 +155,7 @@ impl PretendCluster {
         self.rng.borrow_mut().random_bool(probability)
     }
 
-    pub fn should_timeout_a_wait(&self) -> bool {
+    pub fn roll_wait_timeout(&self) -> bool {
         self.roll(self.timeout_probability.get())
     }
 
@@ -158,6 +174,17 @@ impl PretendCluster {
     pub fn set_timeout_probability(&self, probability: f64) {
         assert!((0.0..=1.0).contains(&probability));
         self.timeout_probability.set(probability);
+    }
+
+    pub fn set_timeout_each_wait_once(&self, enabled: bool) {
+        self.timeout_each_wait_once.set(enabled);
+    }
+
+    /// Whether `fiber`'s current wait was already timed out once.
+    pub fn was_wait_timed_out(&self, fiber: &PretendFiber) -> bool {
+        self.timed_out_waits
+            .borrow()
+            .contains(&fiber.park_fingerprint())
     }
 
     pub fn set_cas_fault_probability(&self, probability: f64) {

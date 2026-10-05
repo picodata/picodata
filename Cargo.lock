@@ -2725,6 +2725,7 @@ dependencies = [
  "abi_stable",
  "ahash 0.8.12",
  "anyhow",
+ "backtrace",
  "base64 0.22.1",
  "bindgen",
  "bitflags 2.11.1",

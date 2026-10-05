@@ -19,6 +19,7 @@ repository = "https://git.picodata.io/core/picodata"
 [dependencies]
 abi_stable = "0.11"
 ahash = { workspace = true }
+backtrace = "0.3"
 base64 = "0.22"
 bitflags = { workspace = true }
 bytes = "1.8"
