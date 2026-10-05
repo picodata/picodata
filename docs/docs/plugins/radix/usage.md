@@ -24,7 +24,7 @@ redis-cli -p 7301
 
 ```sql
 ALTER PLUGIN radix 1.0.6 DISABLE OPTION(TIMEOUT=30);
-ALTER PLUGIN radix 1.1.1 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 1.1.2 ENABLE OPTION(TIMEOUT=30);
 ```
 
 ### Миграция с помощью radix-cli {: #migrate_with_radix-cli }

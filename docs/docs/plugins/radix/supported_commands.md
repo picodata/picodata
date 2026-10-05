@@ -246,11 +246,6 @@ ACL SAVE
 этой команды необходимо настроить расположение файла `aclfile` задаётся
 в разделе [authorization_mode](radix_settings.md#auth_mode) конфигурации Radix).
 
-!!! warning "Внимание!"
-    Формат ACL-файла в Radix соответствует формату
-    Redis. Перед загрузкой этого файла командой `ACL LOAD` его необходимо
-    предварительно отредактировать. См. [подробнее](configuration.md#migrate_acl).
-
 ### acl setuser {: #acl_setuser }
 
 ```sql
@@ -268,10 +263,9 @@ ACL SETUSER username [rule [rule ...]]
 Пример:
 
 ```sql
-ACL SETUSER virginia on allkeys +set
-ACL SETUSER virginia +get
+ACL SETUSER virginia allkeys
 > ACL LIST
-1) "user virginia on -@allkeys +set +get"
+1) "user virginia on sanitize-payload ~* &* +@all"
 ```
 
 Список доступных правил для работы с данными:
@@ -510,7 +504,7 @@ QUIT
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["quit" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["quit" ] }';
     ```
 
 ### readonly {: #cluster_readonly }
@@ -1361,7 +1355,7 @@ HMSET key field value [field value ...]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["hmset" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["hmset" ] }';
     ```
 
 ### hscan
@@ -2278,7 +2272,7 @@ ZRANGEBYLEX key min max [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
     ```
 
 ### zrangebyscore
@@ -2298,7 +2292,7 @@ ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
     ```
 
 ### zrangestore
@@ -2407,7 +2401,7 @@ ZREVRANGE key start stop [WITHSCORES]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrange" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrange" ] }';
     ```
 
 ### zrevrangebylex
@@ -2427,7 +2421,7 @@ ZREVRANGEBYLEX key max min [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
     ```
 
 ### zrevrangebyscore
@@ -2447,7 +2441,7 @@ ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
     ```
 
 ### zrevrank
@@ -2649,7 +2643,7 @@ BRPOPLPUSH source destination timeout
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["brpoplpush" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["brpoplpush" ] }';
     ```
 
 ### brpop
@@ -3180,7 +3174,7 @@ RPOPLPUSH source destination
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["rpoplpush" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["rpoplpush" ] }';
     ```
 
 ### rpush
@@ -3542,7 +3536,7 @@ PSETEX key milliseconds value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 ### set
@@ -3603,7 +3597,7 @@ SET key value EX seconds
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setex" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setex" ] }';
     ```
 
 Установка некорректного значения вернёт ошибку.
@@ -3626,7 +3620,7 @@ SETNX key value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.1 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setnx" ] }';
+    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setnx" ] }';
     ```
 
 ### strlen
@@ -3652,7 +3646,7 @@ Radix поддерживает необходимый минимум коман�
 включить, используйте запрос:
 
 ```sql
-ALTER PLUGIN radix 1.1.1 SET radix.sentinel_enabled = 'true';
+ALTER PLUGIN radix 1.1.2 SET radix.sentinel_enabled = 'true';
 ```
 <span class="tag">поддерживается с версии 0.10.0</span>
 
@@ -4136,7 +4130,7 @@ INFO [section [section ...]]
     sentinel_simulate_failure_flags:0
 
     # Radix
-    radix_version:1.1.1
+    radix_version:1.1.2
     picodata_version:26.1.6
     picodata_cluster_name:radix-docker-standalone
     picodata_cluster_uuid:9f0005c4-b3f1-42b4-abf0-772299e563be

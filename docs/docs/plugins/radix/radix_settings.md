@@ -89,7 +89,7 @@ redis_git_sha1:78e076758e31fb7ddc2d62b09ae14435868b8f9f
 ... # остальные поля и секции
 
 # Radix
-radix_version:1.1.1
+radix_version:1.1.2
 picodata_version:26.1.6
 picodata_cluster_name:radix-docker-standalone
 picodata_cluster_uuid:9f0005c4-b3f1-42b4-abf0-772299e563be
@@ -284,7 +284,7 @@ RESET`](supported_commands.md#latency_reset).
 Команда `LATENCY HISTOGRAM` строит гистограмму задержек по статистике каждой команды и работает независимо от этого порога.
 
 ```sql
-ALTER PLUGIN radix 1.1.1 SET radix.latency_monitor_threshold_ms = '1';
+ALTER PLUGIN radix 1.1.2 SET radix.latency_monitor_threshold_ms = '1';
 ```
 
 ## slowlog_log_slower_than_us
@@ -300,7 +300,7 @@ ALTER PLUGIN radix 1.1.1 SET radix.latency_monitor_threshold_ms = '1';
 По умолчанию — `10000` (10 миллисекунд).
 
 ```sql
-ALTER PLUGIN radix 1.1.1 SET radix.slowlog_log_slower_than_us = '0';
+ALTER PLUGIN radix 1.1.2 SET radix.slowlog_log_slower_than_us = '0';
 ```
 
 ## slowlog_max_len
@@ -310,7 +310,7 @@ ALTER PLUGIN radix 1.1.1 SET radix.slowlog_log_slower_than_us = '0';
 По умолчанию — `128`.
 
 ```sql
-ALTER PLUGIN radix 1.1.1 SET radix.slowlog_max_len = '256';
+ALTER PLUGIN radix 1.1.2 SET radix.slowlog_max_len = '256';
 ```
 
 ## debug
