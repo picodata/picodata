@@ -641,3 +641,53 @@ SELECT * FROM (SELECT 1) WHERE COALESCE(null, null);
 SELECT * FROM (SELECT COALESCE(null, false) as filter) WHERE filter;
 -- EXPECTED:
 true
+
+-- TEST: float8-is-double-alias
+-- SQL:
+DROP TABLE IF EXISTS tf8;
+CREATE TABLE tf8 (id INT PRIMARY KEY, a FLOAT8, b float8 ARRAY);
+INSERT INTO tf8 VALUES (1, 1.5, ARRAY[0.5, 2.5]);
+
+-- TEST: float8-column-is-double
+-- SQL:
+EXPLAIN (LOGICAL) SELECT a, b FROM tf8;
+-- EXPECTED:
+projection (tf8.a::double -> a, tf8.b::double[] -> b)
+  scan tf8
+
+-- TEST: float8-select
+-- SQL:
+SELECT a, b[1], b[2] FROM tf8;
+-- EXPECTED:
+1.5, 0.5, 2.5
+
+-- TEST: float8-cast
+-- SQL:
+SELECT
+    CAST('1.5' AS float8) = CAST('1.5' AS double),
+    '1.5'::FLOAT8 = '1.5'::double,
+    float8 '1.5' = double '1.5';
+-- EXPECTED:
+true, true, true
+
+-- TEST: float8-array-cast
+-- SQL:
+SELECT
+    (ARRAY[1, 2]::float8[])[2] + 0.5,
+    (CAST(ARRAY['0.5', '1.5'] AS FLOAT8[]))[1],
+    (CAST(ARRAY[1] AS float8 ARRAY))[1] = 1::double;
+-- EXPECTED:
+2.5, 0.5, true
+
+-- TEST: float8-array-cast-is-double-array
+-- SQL:
+EXPLAIN (LOGICAL) SELECT b::float8[] FROM tf8;
+-- EXPECTED:
+projection ("_pico_array_cast"(tf8.b::double[], 'double') -> col_1)
+  scan tf8
+
+-- TEST: float8-glued-is-not-a-type
+-- SQL:
+SELECT 1::float8x;
+-- ERROR:
+rule parsing error

@@ -875,6 +875,13 @@ const SYNTAX_KEYWORDS: &[SyntaxKeyword] = &[
         glued_reads_as: Parses::Not,
     },
     SyntaxKeyword {
+        covers: &["float8"],
+        used: "SELECT a::float8 FROM t",
+        renders: Parses::As("SELECT a::double FROM t"),
+        glued: "SELECT a::float8x FROM t",
+        glued_reads_as: Parses::Not,
+    },
+    SyntaxKeyword {
         covers: &["int"],
         used: "SELECT a::int FROM t",
         renders: Parses::As("SELECT a::int FROM t"),
