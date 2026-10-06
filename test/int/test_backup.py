@@ -3,6 +3,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+import psycopg
 import pytest
 from conftest import (
     Cluster,
@@ -1488,3 +1489,26 @@ cluster:
 # * last_backup_timestamp is updated when two consecutive BACKUPs are executed
 # * BACKUP/RESTORE are executed correctly when backup_dir contains "." and ".." when specified
 #   via ENV, config, cli argument
+
+
+def test_backup_via_pgproto(cluster: Cluster):
+    shared_dir = create_share_dir_in_tmp(cluster)
+    cluster.deploy(instance_count=1, wait_online=False)
+    cluster.set_share_dir(shared_dir)
+    cluster.set_unique_configs_for_instances(init_replication_factor=1, share_dir_path=shared_dir)
+
+    i1, *_ = cluster.wait_online()
+
+    password = "P@ssw0rd"
+    i1.sql(f"ALTER USER \"admin\" WITH PASSWORD '{password}'")
+    dsn = f"user=admin password={password} host={i1.pg_host} port={i1.pg_port} sslmode=disable"
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        # ClientCursor uses the simple query protocol, Cursor uses the extended one.
+        for cur in (psycopg.ClientCursor(conn), conn.cursor()):
+            cur.execute("BACKUP")
+            assert cur.statusmessage == "BACKUP 1"
+            assert cur.description is not None
+            assert [col.name for col in cur.description] == ["backup_dir_name"]
+            # The name comes from the timestamp that BACKUP saves in _pico_property.
+            expected = backup_folder_name_from_timestamp(get_backup_timestamp_finished(i1))
+            assert cur.fetchall() == [(expected,)]

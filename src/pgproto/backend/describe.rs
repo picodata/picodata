@@ -39,6 +39,7 @@ pub enum QueryType {
     Empty = 5,
     Tcl = 6,
     Deallocate = 7,
+    Backup = 8,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize_repr, Serialize_repr)]
@@ -146,8 +147,7 @@ impl CommandTag {
             // Response on an empty query is EmptyQueryResponse with no tag.
             // https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-EMPTYQUERYRESPONSE
             Self::EmptyQuery => "",
-            // TODO: See https://git.picodata.io/core/picodata/-/issues/2181.
-            Self::Backup => "",
+            Self::Backup => "BACKUP",
             Self::AlterSystemLocal => "ALTER SYSTEM LOCAL",
         }
     }
@@ -166,7 +166,6 @@ impl From<CommandTag> for QueryType {
             | CommandTag::RevokeRole => QueryType::Acl,
             CommandTag::DropTable
             | CommandTag::TruncateTable
-            | CommandTag::Backup
             | CommandTag::AlterTable
             | CommandTag::CreateTable
             | CommandTag::CreateProcedure
@@ -194,6 +193,7 @@ impl From<CommandTag> for QueryType {
             | CommandTag::CallProcedure => QueryType::Dml,
             CommandTag::Explain => QueryType::Explain,
             CommandTag::Select => QueryType::Dql,
+            CommandTag::Backup => QueryType::Backup,
             CommandTag::Deallocate | CommandTag::DeallocateAll => QueryType::Deallocate,
             CommandTag::Begin | CommandTag::Commit | CommandTag::Rollback => QueryType::Tcl,
             CommandTag::Do => QueryType::Tcl,
@@ -349,6 +349,11 @@ fn dql_output_format(ir: &Plan) -> PgResult<Vec<MetadataColumn>> {
     Ok(metadata)
 }
 
+/// Get the output format of backup.
+fn backup_output_format() -> Vec<MetadataColumn> {
+    vec![MetadataColumn::new("backup_dir_name".into(), Type::TEXT)]
+}
+
 /// Get the output format of explain message.
 fn explain_output_format() -> Vec<MetadataColumn> {
     vec![MetadataColumn::new("EXPLAIN".into(), Type::TEXT)]
@@ -422,6 +427,7 @@ impl Describe {
             | QueryType::Empty => vec![],
             QueryType::Dql => dql_output_format(plan)?,
             QueryType::Explain => explain_output_format(),
+            QueryType::Backup => backup_output_format(),
         };
 
         Ok(Describe {
@@ -450,7 +456,7 @@ impl Describe {
             | QueryType::Tcl
             | QueryType::Empty => None,
 
-            QueryType::Dql | QueryType::Explain => {
+            QueryType::Dql | QueryType::Explain | QueryType::Backup => {
                 let row_description = self
                     .metadata
                     .iter()
@@ -539,7 +545,7 @@ impl PortalDescribe {
             | QueryType::Deallocate
             | QueryType::Tcl
             | QueryType::Empty => None,
-            QueryType::Dql | QueryType::Explain => {
+            QueryType::Dql | QueryType::Explain | QueryType::Backup => {
                 let metadata = &self.describe.metadata;
                 let output_format = &self.output_format;
                 let row_description = zip(metadata, output_format)

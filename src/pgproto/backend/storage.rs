@@ -605,7 +605,8 @@ impl PortalInner {
                 let tag = self.describe.command_tag();
                 PortalState::ResultReady(ExecuteResult::Dml { row_count, tag })
             }
-            QueryType::Dql => PortalState::StreamingRows(RowSource::dql(port)),
+            // The port of BACKUP has the same layout as the port of DQL.
+            QueryType::Dql | QueryType::Backup => PortalState::StreamingRows(RowSource::dql(port)),
             QueryType::Explain => PortalState::StreamingRows(RowSource::explain(ExplainIter::new(
                 port.port_c().iter(),
             ))),
