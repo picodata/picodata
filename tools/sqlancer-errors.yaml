@@ -69,13 +69,6 @@ errors:
   - pattern: "Length of the result cannot be less than 0"
     repro: SELECT SUBSTR('abc', 1, -1);
 
-  # A computed UNSIGNED above i64::MAX, of which the domain only accepts the lower half on the way in.
-  - pattern: "couldn't encode DECIMAL value"
-    repro: |
-      CREATE TABLE bg (k INT PRIMARY KEY, u UNSIGNED);
-      INSERT INTO bg VALUES (1, 9223372036854775807), (2, 9223372036854775807);
-      SELECT SUM(u) OVER () FROM bg;
-
   # SQLancer picks primary keys at random rather than tracking which ones are taken.
   - pattern: "Duplicate key exists in unique index"
     repro: |
@@ -191,29 +184,6 @@ errors:
   - pattern: "invalid utf-8 sequence"
     issue: https://git.picodata.io/core/picodata/-/work_items/3213
 
-  # The reduce stage of a sharded aggregate keeps the value's own type while the plan declares the
-  # aggregate's, and an ORDER BY with a LIMIT, a DISTINCT or a GROUP BY then rejects the value.
-  - pattern: "type does not match one required by operation: expected decimal"
-    issue: https://git.picodata.io/core/picodata/-/work_items/3209
-    repro: |
-      CREATE TABLE gg (a INT PRIMARY KEY, b INT, c DOUBLE);
-      INSERT INTO gg VALUES (1, 1, 1.5), (2, 1, 2.5), (3, 2, 3.5);
-      SELECT b, COUNT(a) FROM gg GROUP BY b ORDER BY 2 LIMIT 8;
-  # The same, as a DISTINCT over the aggregate sees it.
-  - pattern: "index part type: expected decimal"
-    issue: https://git.picodata.io/core/picodata/-/work_items/3209
-    repro: |
-      CREATE TABLE gg (a INT PRIMARY KEY, b INT, c DOUBLE);
-      INSERT INTO gg VALUES (1, 1, 1.5), (2, 1, 2.5), (3, 2, 3.5);
-      SELECT DISTINCT COUNT(a) FROM gg GROUP BY b;
-  # The same seen from Tarantool, where the reduce stage's sum() is handed a column of no type.
-  - pattern: "wrong arguments for function SUM()"
-    issue: https://git.picodata.io/core/picodata/-/work_items/3209
-    repro: |
-      CREATE TABLE gg (a INT PRIMARY KEY, b INT, c DOUBLE);
-      INSERT INTO gg VALUES (1, 1, 1.5), (2, 1, 2.5), (3, 2, 3.5);
-      SELECT b FROM gg GROUP BY b HAVING SUM(DISTINCT NULL) <= 0.4;
-
   # A window over a table sharded by two columns, with a subquery on the left of an IN whose list
   # covers that key: the motion key has more targets than the subquery's virtual table has columns.
   - pattern: "failed to find a distribution key column"
@@ -249,16 +219,6 @@ errors:
     issue: https://git.picodata.io/core/picodata/-/work_items/3255
     repro: |
       SELECT * FROM (VALUES (1)) WHERE EXISTS (VALUES (1));
-
-  # A window aggregate encodes its argument as a decimal, so a double beyond the 38 digits a
-  # decimal holds fails. The same expression outside a window keeps the double and succeeds. It
-  # takes a decimal to reach the aggregate: COALESCE over a double and a decimal literal is what
-  # the fuzzer keeps finding.
-  - pattern: "cannot be represented using 38 digits"
-    repro: |
-      CREATE TABLE wd (c0 INT PRIMARY KEY);
-      INSERT INTO wd VALUES (1);
-      SELECT AVG(COALESCE(1.0e39, 0.43)) OVER () FROM wd;
 
 suppress:
 
