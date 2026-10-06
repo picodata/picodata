@@ -59,12 +59,22 @@ pub fn log_version() {
     );
 }
 
-/// Describe the allocator which serves `malloc` for the whole process,
-/// e.g. `jemalloc 5.3.0 (libjemalloc.so.2)` or `glibc 2.39 (libc.so.6)`.
+/// Describe the memory allocators of the process, e.g.
+/// `jemalloc 5.3.0 (libjemalloc.so.2)` or `glibc 2.39 (libc.so.6)`.
+pub fn allocator() -> String {
+    let malloc = malloc_allocator();
+    // The built-in jemalloc replaces `malloc` only on Linux.
+    if cfg!(feature = "jemalloc") && !malloc.starts_with("jemalloc") {
+        return format!("{malloc}, Rust jemalloc");
+    }
+    malloc
+}
+
+/// Describe the allocator which serves `malloc` for the whole process.
 ///
 /// The check is done at run time because `LD_PRELOAD` can replace
-/// the allocator of the process.
-pub fn allocator() -> String {
+/// the allocator which was chosen at build time.
+fn malloc_allocator() -> String {
     let symbol = |name: &std::ffi::CStr| unsafe { libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr()) };
     let provider = object_name(symbol(c"malloc"));
 

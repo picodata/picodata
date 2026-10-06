@@ -14,7 +14,8 @@ from conftest import (
     assert_starts_with,
     log_crawler,
 )
-from framework.util.build import Executable
+from framework.util.build import Executable, cargo_features
+from framework.util.path import project_root_path
 from inline_snapshot import snapshot
 from tarantool.error import (  # type: ignore
     NetworkError,
@@ -999,6 +1000,35 @@ def test_picodata_version(cluster: Cluster):
     assert_starts_with(next(lines), b"allocator ")
 
 
+def test_picodata_version_reports_builtin_allocator(cluster: Cluster):
+    picodata_executable = Executable.current()
+    if "jemalloc" not in cargo_features(picodata_executable.command):
+        pytest.skip("picodata is built with the system allocator")
+
+    stdout = subprocess.check_output([picodata_executable.command, "--version"])
+    allocator = stdout.splitlines()[2]
+    # `static` means that `malloc` of the whole process comes from the binary.
+    assert_starts_with(allocator, b"allocator jemalloc ")
+    assert allocator.endswith(b"(static)")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="checks ELF symbol tables")
+def test_allocator_api_is_exported(cluster: Cluster):
+    # Shared libraries and plugins must get all allocator functions from
+    # the executable, including those which the linker does not export
+    # without the list (e.g. `mallctl`, `free_sized`).
+    executable = Executable.current().command
+    if "jemalloc" not in cargo_features(executable):
+        pytest.skip("picodata is built with the system allocator")
+
+    with open(project_root_path() / "exports_jemalloc") as f:
+        expected = {line.strip() for line in f if line.strip() and not line.startswith("#")}
+
+    stdout = subprocess.check_output(["nm", "--dynamic", "--defined-only", executable], text=True)
+    exported = {line.split()[2] for line in stdout.splitlines() if len(line.split()) == 3}
+    assert expected - exported == set()
+
+
 def test_picodata_version_reports_asan_allocator(cluster: Cluster):
     picodata_executable = Executable.current()
     info = yaml.safe_load(subprocess.check_output([picodata_executable.command, "-VV"]))
@@ -1015,6 +1045,9 @@ def test_picodata_version_reports_preloaded_allocator(cluster: Cluster):
         pytest.skip("libjemalloc is not installed")
 
     picodata_executable = Executable.current()
+    # `malloc` of the executable takes precedence over a preloaded library.
+    if "jemalloc" in cargo_features(picodata_executable.command):
+        pytest.skip("picodata is built with its own allocator")
 
     env = dict(os.environ, LD_PRELOAD=jemalloc)
     stdout = subprocess.check_output([picodata_executable.command, "--version"], env=env)

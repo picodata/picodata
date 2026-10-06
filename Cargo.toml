@@ -96,6 +96,7 @@ symbolic-demangle = { version = "13.2", default-features = false, features = ["r
 tempfile = "3.8"
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "macros"] }
+tikv-jemallocator = { version = "0.7", optional = true, features = ["stats", "unprefixed_malloc_on_supported_platforms"] }
 tokio = { version = "1.52.3", default-features = false, features = [
     "rt-multi-thread",
     "macros",
@@ -188,11 +189,12 @@ thiserror = "2"
 time = "0.3"
 
 [features]
-default = []
+default = ["jemalloc"]
 debug_tarantool = []
 demo = ["dep:picodata-pike"]
 dynamic_build = []
 error_injection = []
+jemalloc = ["dep:tikv-jemallocator"]
 load_test = []
 webui = []
 

@@ -4,6 +4,11 @@ use picodata::cli::{
     args::{Command, Picodata},
 };
 
+// jemalloc also replaces `malloc` for the C code (see build.rs).
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 fn main() -> ! {
     // Initialize the panic hook asap.
     picodata_plugin::internal::set_panic_hook();

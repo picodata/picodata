@@ -1,4 +1,5 @@
 use crate::config::PicodataConfig;
+use crate::info;
 use crate::pgproto;
 use crate::tlog;
 use crate::traft::node;
@@ -60,6 +61,7 @@ fn print_ready_banner(name: &str) {
     let socket = config.instance.admin_socket();
     let admin = std::fs::canonicalize(socket).unwrap_or_else(|_| socket.into());
     let admin = admin.display();
+    let allocator = info::allocator();
 
     tlog!(
         Info,
@@ -74,6 +76,7 @@ fn print_ready_banner(name: &str) {
          iproto:    {iproto}
          http:      {http}
          admin:     {admin}
+         allocator: {allocator}
         "#
     );
 }

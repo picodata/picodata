@@ -151,6 +151,17 @@ The resulting binaries should appear under the `target` subdirectory.
 >
 > Dynamic linking requires for additional dependencies to be installed on the system. For example see [Dynamic build](#dynamic-build). For full list see [Dockerfile](docker-build-base/Dockerfile).
 
+> NOTE:<br>
+> Picodata links jemalloc statically (default feature `jemalloc`). On Linux it replaces `malloc` for the whole process: Rust code, Tarantool, shared libraries and plugins. To use the system allocator instead:
+>
+> ```bash
+> cargo build --no-default-features
+> ```
+>
+> ASan builds require the system allocator, thus `make asan-build-dev` disables the default features.
+>
+> `picodata --version` shows the allocator in use.
+
 ## Integration testing with pytest
 The following relates to all OSs and contains common `uv` commands.
 

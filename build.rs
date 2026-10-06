@@ -168,7 +168,22 @@ fn export_public_symbols() {
     // Secondly, so that plugins (cdylibs) built with ASan
     // could resolve them from the main binary.
     if rustflags::have_asan() {
+        // ASan must intercept `malloc` itself.
+        if cargo::get_feature("jemalloc") {
+            panic!("ASan build requires the system allocator, use `--no-default-features`");
+        }
         symbols.insert("__asan_*".into());
+    }
+
+    // Export the whole API of the statically linked jemalloc, so that shared
+    // libraries and plugins (cdylibs) resolve it from the main binary. The
+    // linker itself exports only the functions which a library on the link
+    // line also defines or uses (e.g. `malloc` from libc), not `mallctl` or
+    // `free_sized`, which glibc 2.39 does not have.
+    let jemalloc_exports = "exports_jemalloc";
+    cargo::rerun_if_changed(jemalloc_exports);
+    if cargo::get_feature("jemalloc") && cfg!(target_os = "linux") {
+        build_rs_helpers::exports::read_file(jemalloc_exports, &mut symbols).unwrap();
     }
 
     // Sorted symbols file is much easier to navigate.
