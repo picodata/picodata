@@ -1,7 +1,7 @@
 use crate::{
     cli::{args, tarantool::main_cb},
     config::{PicodataConfig, DEFAULT_CONFIG_FILE_NAME, GLOBAL_CONFIG},
-    static_ref, tlog,
+    info, static_ref, tlog,
     traft::Result,
 };
 use std::path::PathBuf;
@@ -57,9 +57,7 @@ pub fn main(args: args::Restore) -> ! {
             }
         };
 
-        let info = crate::info::VersionInfo::current();
-        #[rustfmt::skip]
-        tlog!(Info, "Picodata {} {} {}", info.picodata_version, info.build_type, info.build_profile);
+        info::log_version();
 
         config.log_config_params();
 

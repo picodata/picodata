@@ -1,6 +1,7 @@
 use crate::{
     cli::{args, tarantool::main_cb_no_exit},
     config::PicodataConfig,
+    info,
     ipc::{self, check_return_code},
     start, tlog,
     traft::Result,
@@ -62,9 +63,7 @@ pub fn main(mut args: args::Run) -> ! {
         // as the OS will cleanup all the resources anyway, but this is a different story altogether)
         let config = PicodataConfig::init(args)?;
 
-        let info = crate::info::VersionInfo::current();
-        #[rustfmt::skip]
-        tlog!(Info, "Picodata {} {} {}", info.picodata_version, info.build_type, info.build_profile);
+        info::log_version();
 
         config.log_config_params();
 

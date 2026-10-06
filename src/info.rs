@@ -5,6 +5,7 @@ use crate::instance::State;
 use crate::replicaset::ReplicasetName;
 use crate::sentinel::ActionKind;
 use crate::sentinel::FailStreakInfo;
+use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::error::IdOfInstance;
@@ -31,13 +32,157 @@ const REDIRECT_RPC_TIMEOUT: Duration = Duration::from_secs(10);
 /// Render a message for `picodata -v`.
 pub fn render_version() -> String {
     format!(
-        "picodata {}, {}, {}\ntarantool {}, {}\n",
-        PICODATA_VERSION,
-        env!("PICO_LINKAGE"),
-        env!("PICO_BUILD_PROFILE"),
-        crate::tarantool::version(),
-        env!("TNT_BUILD_PROFILE"),
+        "picodata {version}, {linkage}, {profile}\n\
+         tarantool {tarantool_version}, {tarantool_profile}\n\
+         allocator {allocator}\n",
+        version = PICODATA_VERSION,
+        linkage = env!("PICO_LINKAGE"),
+        profile = env!("PICO_BUILD_PROFILE"),
+        tarantool_version = crate::tarantool::version(),
+        tarantool_profile = env!("TNT_BUILD_PROFILE"),
+        allocator = allocator(),
     )
+}
+
+/// Log the picodata version and the memory allocator at startup.
+pub fn log_version() {
+    let info = VersionInfo::current();
+    let version = &info.picodata_version;
+    let build_type = &info.build_type;
+    let build_profile = &info.build_profile;
+    let allocator = allocator();
+    // slog reads `name = value` arguments as key-value pairs, not as named
+    // format arguments, thus the format string uses the local variables.
+    tlog!(
+        Info,
+        "Picodata {version} {build_type} {build_profile}, allocator {allocator}"
+    );
+}
+
+/// Describe the allocator which serves `malloc` for the whole process,
+/// e.g. `jemalloc 5.3.0 (libjemalloc.so.2)` or `glibc 2.39 (libc.so.6)`.
+///
+/// The check is done at run time because `LD_PRELOAD` can replace
+/// the allocator of the process.
+pub fn allocator() -> String {
+    let symbol = |name: &std::ffi::CStr| unsafe { libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr()) };
+    let provider = object_name(symbol(c"malloc"));
+
+    // Each allocator is recognized by a function which only it exports.
+    // ASan exports `__asan_init` from the executable (see build.rs).
+    if !symbol(c"__asan_init").is_null() {
+        return format!("asan ({provider})");
+    }
+
+    let mallctl = symbol(c"mallctl");
+    if !mallctl.is_null() {
+        type Mallctl = unsafe extern "C" fn(
+            *const libc::c_char,
+            *mut libc::c_void,
+            *mut libc::size_t,
+            *mut libc::c_void,
+            libc::size_t,
+        ) -> libc::c_int;
+        // SAFETY: `mallctl` is exported by jemalloc, with this signature.
+        let mallctl: Mallctl = unsafe { std::mem::transmute(mallctl) };
+        let mut version: *const libc::c_char = std::ptr::null();
+        let mut len = std::mem::size_of_val(&version);
+        let rc = unsafe {
+            mallctl(
+                c"version".as_ptr(),
+                (&raw mut version).cast(),
+                &mut len,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        if rc == 0 && !version.is_null() {
+            let version = unsafe { std::ffi::CStr::from_ptr(version) }.to_string_lossy();
+            // jemalloc reports e.g. "5.3.0-0-g54eaed1d8b56b1aa528be3bdd1877e59c56fa90c".
+            let version = version.split('-').next().unwrap_or_default();
+            return format!("jemalloc {version} ({provider})");
+        }
+        return format!("jemalloc ({provider})");
+    }
+
+    let mi_version = symbol(c"mi_version");
+    if !mi_version.is_null() {
+        // SAFETY: `mi_version` is exported by mimalloc, with this signature.
+        let mi_version: unsafe extern "C" fn() -> libc::c_int =
+            unsafe { std::mem::transmute(mi_version) };
+        // mimalloc encodes version 2.1.2 as 212, but 3.3.2 as 30302
+        // (since 2.2.x and 3.x the minor and patch have two digits).
+        let v = unsafe { mi_version() };
+        let (major, minor, patch) = if v >= 10000 {
+            (v / 10000, v / 100 % 100, v % 100)
+        } else {
+            (v / 100, v / 10 % 10, v % 10)
+        };
+        return format!("mimalloc {major}.{minor}.{patch} ({provider})");
+    }
+
+    let tc_version = symbol(c"tc_version");
+    if !tc_version.is_null() {
+        type TcVersion = unsafe extern "C" fn(
+            *mut libc::c_int,
+            *mut libc::c_int,
+            *mut *const libc::c_char,
+        ) -> *const libc::c_char;
+        // SAFETY: `tc_version` is exported by gperftools tcmalloc, with this
+        // signature. It accepts null output pointers.
+        let tc_version: TcVersion = unsafe { std::mem::transmute(tc_version) };
+        let version = unsafe {
+            std::ffi::CStr::from_ptr(tc_version(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            ))
+        };
+        // gperftools reports e.g. "gperftools 2.15".
+        let version = version.to_string_lossy();
+        let version = version.strip_prefix("gperftools ").unwrap_or(&version);
+        return format!("tcmalloc {version} ({provider})");
+    }
+
+    if !symbol(c"scalable_malloc").is_null() {
+        return format!("tbbmalloc ({provider})");
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    if provider.starts_with("libc.") {
+        let version = unsafe { std::ffi::CStr::from_ptr(libc::gnu_get_libc_version()) };
+        return format!("glibc {} ({provider})", version.to_string_lossy());
+    }
+
+    provider
+}
+
+/// Return the file name of the loaded object which contains `addr`,
+/// or `static` if it is the picodata executable itself.
+fn object_name(addr: *const libc::c_void) -> String {
+    fn dl_info(addr: *const libc::c_void) -> Option<libc::Dl_info> {
+        let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
+        if addr.is_null() || unsafe { libc::dladdr(addr, &mut info) } == 0 {
+            return None;
+        }
+        Some(info)
+    }
+
+    let Some(info) = dl_info(addr) else {
+        return "unknown".into();
+    };
+    let this = dl_info(object_name as *const libc::c_void);
+    if this.is_some_and(|this| this.dli_fbase == info.dli_fbase) {
+        return "static".into();
+    }
+    if info.dli_fname.is_null() {
+        return "unknown".into();
+    }
+    let path = unsafe { std::ffi::CStr::from_ptr(info.dli_fname) }.to_string_lossy();
+    match path.rsplit_once('/') {
+        Some((_, name)) => name.into(),
+        None => path.into(),
+    }
 }
 
 /// Render a message for `picodata -VV`.
@@ -49,6 +194,7 @@ pub fn render_long_version() -> String {
         cargo_features: serde_json::Value,
         rustflags: serde_json::Value,
         linkage: &'static str,
+        allocator: String,
         tarantool: serde_json::Value,
         picodata: serde_json::Value,
     }
@@ -60,6 +206,7 @@ pub fn render_long_version() -> String {
         rustflags: serde_json::from_str(include_str!(env!("RUSTFLAGS_FILE")))
             .expect("file contents controlled in build.rs"),
         linkage: env!("PICO_LINKAGE"),
+        allocator: allocator(),
         tarantool: serde_json::json!({
             "build_profile": env!("TNT_BUILD_PROFILE"),
             "version": crate::tarantool::version(),

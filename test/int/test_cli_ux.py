@@ -1,3 +1,4 @@
+import ctypes.util
 import os
 import subprocess
 import sys
@@ -995,6 +996,31 @@ def test_picodata_version(cluster: Cluster):
     lines = iter(stdout.splitlines())
     assert_starts_with(next(lines), b"picodata ")
     assert_starts_with(next(lines), b"tarantool ")
+    assert_starts_with(next(lines), b"allocator ")
+
+
+def test_picodata_version_reports_asan_allocator(cluster: Cluster):
+    picodata_executable = Executable.current()
+    info = yaml.safe_load(subprocess.check_output([picodata_executable.command, "-VV"]))
+    if not any("sanitizer=address" in flag for flag in info["rustflags"]):
+        pytest.skip("picodata is built without ASan")
+
+    stdout = subprocess.check_output([picodata_executable.command, "--version"])
+    assert_starts_with(stdout.splitlines()[2], b"allocator asan ")
+
+
+def test_picodata_version_reports_preloaded_allocator(cluster: Cluster):
+    jemalloc = ctypes.util.find_library("jemalloc")
+    if jemalloc is None:
+        pytest.skip("libjemalloc is not installed")
+
+    picodata_executable = Executable.current()
+
+    env = dict(os.environ, LD_PRELOAD=jemalloc)
+    stdout = subprocess.check_output([picodata_executable.command, "--version"], env=env)
+    allocator = stdout.splitlines()[2]
+    assert_starts_with(allocator, b"allocator jemalloc ")
+    assert jemalloc.encode() in allocator
 
 
 def test_picodata_long_version(cluster: Cluster):
@@ -1004,6 +1030,7 @@ def test_picodata_long_version(cluster: Cluster):
     info = yaml.safe_load(stdout)
 
     assert "linkage" in info
+    assert "allocator" in info
 
     assert "picodata" in info
     info_picodata = info["picodata"]
