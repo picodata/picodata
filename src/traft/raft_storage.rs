@@ -29,7 +29,7 @@ impl RaftSpaceAccess {
     pub const SPACE_ID_RAFT_LOG: SpaceId = 518;
     pub const SPACE_RAFT_STATE: &'static str = "_raft_state";
     const SPACE_ID_RAFT_STATE: SpaceId = 519;
-    const FIELD_STATE_VALUE: u32 = 1;
+    pub const FIELD_STATE_VALUE: u32 = 1;
     const FIELD_ENTRY_INDEX: u32 = 1;
     const FIELD_ENTRY_TERM: u32 = 2;
 

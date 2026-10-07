@@ -16,6 +16,7 @@ use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::config::apply_alter_system_parameter;
 use crate::config::AlterSystemParametersRef;
 use crate::error_code::ErrorCode;
+use crate::exit_if_expelled;
 use crate::governor;
 use crate::has_states;
 use crate::instance::Instance;
@@ -3578,11 +3579,15 @@ impl MainLoop {
         }
 
         if let Some(me) = node_impl.topology_cache.get().try_this_instance() {
-            if has_states!(me, Expelled -> *) {
-                tlog!(Critical, "current instance is expelled from the cluster");
-                tlog!(Info, "expelled, shutting down");
-                crate::tarantool::exit(1);
-            }
+            // Postpone the exit until the deletion of our row from `_cluster`
+            // is replicated to us, so that the following restart has to deal
+            // with an instance which isn't registered in `_cluster`.
+            crate::error_injection!("EXPELLED_INSTANCE_EXITS_AFTER_REMOVAL_FROM_SYS_CLUSTER" => {
+                if !exit_if_expelled::am_expelled_and_not_in_cluster(me) {
+                    return ControlFlow::Continue(());
+                }
+            });
+            exit_if_expelled::exit_if_expelled(me);
         }
 
         drop(node_impl);

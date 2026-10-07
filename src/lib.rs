@@ -80,6 +80,7 @@ mod demangle;
 pub mod discovery;
 pub mod error_code;
 pub mod error_injection;
+mod exit_if_expelled;
 pub mod failure_domain;
 pub mod governor;
 pub mod http_server;
@@ -1217,6 +1218,9 @@ fn init_common(
 
     let effective_iproto_tls = &config.instance.iproto.tls;
     iproto::tls_init_once(effective_iproto_tls)?;
+
+    // See doc comments of this function for explanation.
+    exit_if_expelled::set_on_recovery_state_expelled_check()?;
 
     if let Err(e) = tarantool::set_cfg(cfg) {
         // Tarantool error is taken separately as in `set_cfg`

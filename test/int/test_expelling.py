@@ -30,6 +30,11 @@ def test_expel_follower(cluster: Cluster):
 
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
+    # Make i3 stay alive until its row is deleted from `_cluster`, so that the
+    # restart below always finds itself unregistered in `_cluster`. That way we
+    # test the problematic case.
+    i3.call("pico._inject_error", "EXPELLED_INSTANCE_EXITS_AFTER_REMOVAL_FROM_SYS_CLUSTER", True)
+
     picodata_expel(peer=i1, target=i3, force=True, password_file=cluster.service_password_file)
 
     cluster.wait_has_states(i3, "Expelled", "Expelled")
