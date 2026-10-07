@@ -15,76 +15,29 @@ hide:
 - [настройки СУБД и локальные параметры](#sql_settings), управляемые через SQL-запросы
 
 <style>
-.md-typeset .admonition.abstract {
-    border-color: #9e9e9e;
-}
-
-.md-typeset .abstract > .admonition-title {
-    background-color: #9e9e9e1a;
-}
-
-.md-typeset .abstract > .admonition-title::before {
-    background-color: #9e9e9e;
-}
-
-.link {
-    color:rgb(0, 0, 0) !important;
+.md-typeset table.sortable a.link {
+    color: #000;
     text-decoration: none;
 }
 
-.sortable table  {
-
-}
-
-td {
-    align-content: center;
-    padding: 0.75em 0.5em !important;
+table.sortable td,
+table.legend td {
+    vertical-align: middle;
+    padding: 0.75em 0.5em;
     line-height: 1.3;
 }
 
-td.td3 {
-    white-space: nowrap;
-}
-
-td.td3 ul {
-    list-style-type: none;
-}
-
-.td3 ul,
-.td3 ul > li {
-    margin-left: 0 !important;
-    word-break: break-all !important;
-}
-
-.tr-header td {
-    font-size: 1.25em;
-}
-
-.tr-header > td > span {
-    font-family: revert;
-}
-
-.tr-header > td.td3 {
-    font-size: revert;
-}
-
-.center {
-    text-align: center !important;
-    width: auto;
-}
-
-.heading {
-    text-align: center !important;
+table.sortable th.heading {
+    text-align: center;
 }
 
 .legend-id {
     line-height: 2.5em;
     margin-left: 0.5em;
-    width: 87em;
 }
 
 .legend-dash {
-    margin: 0.5em; markdown="span"
+    margin: 0 0.5em;
 }
 
 .instance,
@@ -99,10 +52,6 @@ td.td3 ul {
 
 .instance {
     background-color: #d9ead3;
-}
-
-.absent {
-    background-color: #f4cccc;
 }
 
 .cluster {
@@ -121,72 +70,89 @@ td.td3 ul {
     background-color: #ff758a;
 }
 
-.fill-width {
-    width: 1000px;
-}
-
-.basic table {
-    width: 100% !important;
-    white-space: nowrap;
-    table-layout: fixed !important;
-    display: table;
-    overflow: auto;
-    overflow-x: hidden !important;
-    font-size: .64rem;
-    max-width: 100%;
-    touch-action: auto;
-}
-
-.basic th, td {
-    overflow-x: hidden !important;
-    word-break: break-word;
-
-}
-
 /* Sortable tables */
 table.sortable thead {
-    background-color:#eee;
-    color:#666666;
-    cursor: default;
-    margin:0;
-    margin-bottom:.5em;
-    padding:0 .8rem;
+    background-color: #eee;
+    color: #666;
     white-space: nowrap;
-    table-layout: fixed !important;
-    overflow: auto;
-    font-size: .64rem;
-    overflow: auto !important;
-    overflow-x: visible !important;
 }
 
 table.sortable {
-    border-width: 0.1em !important;
-    border-style: solid;
     width: 87em;
+}
+
+table.sortable th,
+table.sortable td {
+    font-size: .64rem;
+}
+
+table.sortable th {
+    vertical-align: middle;
+}
+
+table.sortable td {
+    overflow-wrap: anywhere;
+}
+
+table.sortable th + th,
+table.sortable td + td {
+    border-left: 1px solid #ccc;
+}
+
+table.sortable tbody td {
+    border-top: 1px solid #ccc;
 }
 
 table.sortable tbody tr:nth-child(2n) td {
-    font-size: .64rem;
-    background-color:var(--md-typeset-table-color--light);
+    background-color: var(--md-typeset-table-color--light);
 }
 
 table.sortable tbody tr:nth-child(2n+1) td {
-    font-size: .64rem;
-    background-color:var(--md-default-bg-color);
+    background-color: var(--md-default-bg-color);
 }
 
-.container{
-  display: block;
-  overflow-x: auto;
+.settings-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    border: 1px solid #9e9e9e;
+    border-radius: 10px;
+    overflow-x: auto;
 }
 
 table.legend {
-    border-collapse:separate;
-    border:solid #9e9e9e 1px;
-    border-radius:10px;
-    width: 87em;
+    border-collapse: separate;
+    border: 1px solid #9e9e9e;
+    border-radius: 10px;
+    width: 100%;
 }
 
+.settings-copy {
+    cursor: copy;
+    font: inherit;
+    color: inherit;
+    text-align: inherit;
+    white-space: inherit;
+}
+
+.settings-copy:hover,
+.settings-copy:focus-visible {
+    outline: 1px dashed var(--md-accent-fg-color);
+    outline-offset: 2px;
+}
+
+.settings-copy-status {
+    position: fixed;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    padding: 0.5rem 1rem;
+    border-radius: 0.2rem;
+    color: var(--md-default-bg-color);
+    background: var(--md-default-fg-color);
+    font-size: 0.7rem;
+}
 </style>
 
 ## Настройки запуска Picodata {: #picodata_start_settings }
@@ -198,16 +164,16 @@ table.legend {
     <span class="cluster legend-id">cluster-name</span><span class="legend-dash">—</span>настройка применима ко всему кластеру<br>
 </td></tr></table>
 <br>
-<div markdown="span" class="container">
+<div markdown="span" class="settings-table-scroll" role="region" aria-label="Настройки запуска Picodata" tabindex="0">
 <table markdown="span" class="sortable">
     <thead>
         <tr>
             <th class="heading" style="width:15%"><button>Название</button></th>
-            <th class="heading" style="width:20%"><button>Описание</button></th>
-            <th class="heading" style="width:5%"><button>Значение <br> по умолчанию</button></th>
-            <th class="heading" style="width:20%"><button>CLI</button></th>
+            <th class="heading" style="width:15%"><button>Описание</button></th>
+            <th class="heading" style="width:10%"><button>Значение <br> по умолчанию</button></th>
+            <th class="heading" style="width:25%"><button>CLI</button></th>
             <th class="heading"><button>Файл конфигурации</button></th>
-            <th class="heading" style="width:20%"><button>Переменная</button></th>
+            <th class="heading" style="width:20%" data-copy-column><button>Переменная</button></th>
         </tr>
     </thead>
     <tbody>
@@ -822,14 +788,14 @@ table.legend {
 </td></tr></table>
 <br>
 
-<div markdown="span" class="container">
+<div markdown="span" class="settings-table-scroll" role="region" aria-label="Настройки СУБД и локальные параметры" tabindex="0">
 <table markdown="span" class="sortable">
     <thead>
         <tr>
             <th style="width:30%"><button>Название</button></th>
             <th style="width:30%"><button>Описание</button></th>
             <th style="width:10%"><button>Значение <br> по умолчанию</button></th>
-            <th style="width:10%"><button>Пример SQL-команды</button></th>
+            <th style="width:10%" data-copy-column><button>Пример SQL-команды</button></th>
         </tr>
     </thead>
     <tbody>

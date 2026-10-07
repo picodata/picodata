@@ -394,10 +394,11 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - md_in_html
 
-## Дополнительный Javascript для навигации, сортировки в таблицах и рендеринга формул:
+## Дополнительный Javascript для навигации, сортировки и копирования в таблицах, рендеринга формул:
 extra_javascript:
   - assets/js/navigation.js
   - assets/js/sorttable.js
+  - assets/js/settings-copy.js
   - assets/js/tex-mml-chtml.js
 
 # Валидация ссылок
