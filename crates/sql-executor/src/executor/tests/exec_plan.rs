@@ -1749,6 +1749,36 @@ fn check_parentheses() {
     "#);
 }
 
+/// PG binds IN and LIKE tighter than ordering comparisons, Tarantool looser, so the
+/// generated SQL must keep the parentheses on both nestings.
+#[test]
+fn check_parentheses_comparison_and_in() {
+    let mut patterns = Vec::new();
+    for query in [
+        r#"SELECT "id" FROM "test_space" WHERE ("id" = 1) >= ("sysFrom" IN (SELECT "a" FROM "global_t"))"#,
+        r#"SELECT "id" FROM "test_space" WHERE ("id" >= 1) IN (SELECT "a" = 2 FROM "global_t")"#,
+        r#"SELECT "id" FROM "test_space" WHERE ("id" = 1) < ("FIRST_NAME" LIKE 'a')"#,
+    ] {
+        let rt = RouterRuntimeMock::new();
+        let mut query = ExecutingQuery::from_text_and_params(&rt, query, vec![]).unwrap();
+        let plan = query.get_exec_plan().get_ir_plan();
+        let top_id = plan.get_top().unwrap();
+
+        let sql = get_sql_from_execution_plan(
+            query.get_mut_exec_plan(),
+            top_id,
+            Snapshot::Oldest,
+            TEMPLATE,
+        );
+        patterns.push(sql.pattern);
+    }
+    assert_snapshot!(patterns.join("\n"), @r#"
+    SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."id" = $1::int) >= ("test_space"."sysFrom" in (SELECT "global_t"."a" FROM "global_t"))
+    SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."id" >= $1::int) in (SELECT "global_t"."a" = $2::int as "col_1" FROM "global_t")
+    SELECT "test_space"."id" FROM "test_space" WHERE ("test_space"."id" = $1::int) < ("test_space"."FIRST_NAME"::text LIKE $2::text ESCAPE $3::text)
+    "#);
+}
+
 #[test]
 fn subtree_hash3() {
     check_subtree_plan_ids_are_equal(

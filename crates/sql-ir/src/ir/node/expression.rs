@@ -662,34 +662,42 @@ impl Expression<'_> {
                 op: Unary::IsNull, ..
             }) => 4,
 
-            Expression::Bool(BoolExpr {
-                op: Bool::Eq | Bool::NotEq | Bool::Lt | Bool::LtEq | Bool::Gt | Bool::GtEq,
-                ..
-            }) => 5,
-
+            // PG binds IN, BETWEEN and LIKE tighter than comparisons. Tarantool
+            // groups them with equality, below ordering comparisons: `a >= b IN (s)`
+            // is `a >= (b IN (s))` in PG but `(a >= b) IN (s)` in Tarantool.
+            // One shared level makes either nesting parenthesized, so the
+            // generated SQL means the same in both grammars.
             Expression::Like(_)
             | Expression::Bool(BoolExpr {
-                op: Bool::In | Bool::Between,
+                op:
+                    Bool::Eq
+                    | Bool::NotEq
+                    | Bool::Lt
+                    | Bool::LtEq
+                    | Bool::Gt
+                    | Bool::GtEq
+                    | Bool::In
+                    | Bool::Between,
                 ..
-            }) => 6,
+            }) => 5,
 
             // "Any other operator" per the link above, meaning that
             // anything not explicitly listed in PG's operator
             // precedence table should go here.
-            Expression::Concat(_) => 7,
+            Expression::Concat(_) => 6,
 
             Expression::Arithmetic(ArithmeticExpr {
                 op: Arithmetic::Add | Arithmetic::Subtract,
                 ..
-            }) => 8,
+            }) => 7,
 
             Expression::Arithmetic(ArithmeticExpr {
                 op: Arithmetic::Multiply | Arithmetic::Divide | Arithmetic::Modulo,
                 ..
-            }) => 9,
+            }) => 8,
 
-            Expression::Index(_) => 10,
-            Expression::Cast(_) => 11,
+            Expression::Index(_) => 9,
+            Expression::Cast(_) => 10,
         }
     }
 
