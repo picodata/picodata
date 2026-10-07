@@ -1,7 +1,6 @@
 use super::constant_pair_rejects_eq;
 use crate::ir::node::NodeId;
 use crate::ir::types::DerivedType;
-use crate::ir::value::double::Double;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
@@ -31,8 +30,7 @@ fn null_constants() {
 #[test]
 fn mixed_numeric_constants_are_undecided() {
     let int = Value::from(9_007_199_254_740_993_i64);
-    // `Value::from(f64)` turns a whole double into an integer.
-    let double = Value::Double(Double::from(9_007_199_254_740_992.0));
+    let double = Value::from(9_007_199_254_740_992.0);
     assert!(!constant_pair_rejects_eq(&int, &double));
     assert!(!constant_pair_rejects_eq(&double, &int));
     assert!(!constant_pair_rejects_eq(

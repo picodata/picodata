@@ -311,3 +311,16 @@ SELECT * FROM "double_t";
 -- TEST: test_double_conversion-3
 -- SQL:
 DELETE FROM "double_t";
+
+-- TEST: insert-nan-double-sharding-key
+-- SQL:
+DROP TABLE IF EXISTS nan_t;
+CREATE TABLE nan_t ("x" DOUBLE NOT NULL PRIMARY KEY, "v" INT);
+
+-- TEST: insert-nan-double-sharding-key-1
+-- SQL:
+INSERT INTO nan_t VALUES ($1, $2);
+-- PARAMS:
+nan, 1
+-- ERROR:
+expected double, got nil

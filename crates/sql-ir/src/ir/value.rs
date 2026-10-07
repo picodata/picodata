@@ -308,14 +308,12 @@ impl From<&str> for Value {
 
 impl From<f64> for Value {
     fn from(v: f64) -> Self {
+        // A NaN that skips local SQL, e.g. in a sharding key, would be stored
+        // as is, and SQL reads it back as NULL.
         if v.is_nan() {
             return Value::Null;
         }
-        if v.is_subnormal() || v.is_infinite() || v.is_finite() && v.fract().abs() >= f64::EPSILON {
-            Value::Double(v.into())
-        } else {
-            Value::Integer(v as i64)
-        }
+        Value::Double(v.into())
     }
 }
 

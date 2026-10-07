@@ -1241,3 +1241,51 @@ SELECT string_col::text || int_col::text FROM arithmetic_space;
 SELECT 'x' || int_col::int FROM arithmetic_space;
 -- UNORDERED:
 'x1', 'x2', 'x3'
+
+-- TEST: integral-double-param-stays-double
+-- SQL:
+SELECT $1 / 2;
+-- PARAMS:
+3.0
+-- EXPECTED:
+1.5
+
+-- TEST: double-param-stays-double-tiny
+-- SQL:
+SELECT $1;
+-- PARAMS:
+1e-300
+-- EXPECTED:
+1e-300
+
+-- TEST: double-param-stays-double-large
+-- SQL:
+SELECT $1;
+-- PARAMS:
+1e20
+-- EXPECTED:
+1e20
+
+-- TEST: double-param-stays-double-subnormal
+-- SQL:
+SELECT $1;
+-- PARAMS:
+5e-324
+-- EXPECTED:
+5e-324
+
+-- TEST: double-param-stays-double-inf
+-- SQL:
+SELECT $1;
+-- PARAMS:
+inf
+-- EXPECTED:
+inf
+
+-- TEST: double-param-stays-double-neg-inf
+-- SQL:
+SELECT $1;
+-- PARAMS:
+-inf
+-- EXPECTED:
+-inf

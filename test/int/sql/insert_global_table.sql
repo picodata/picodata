@@ -82,3 +82,26 @@ Duplicate key exists in unique index
 SELECT * FROM "t";
 -- UNORDERED:
 1, 1, 2, 2
+
+-- TEST: insert-global-table-double-param-gl-3279
+-- SQL:
+DROP TABLE IF EXISTS m;
+CREATE TABLE m ("k" TEXT PRIMARY KEY, "x" DOUBLE) DISTRIBUTED GLOBALLY;
+
+-- TEST: insert-global-table-double-param-gl-3279-1
+-- SQL:
+INSERT INTO m VALUES ($1, $2);
+-- PARAMS:
+'a', 3.0
+
+-- TEST: insert-global-table-double-param-gl-3279-2
+-- SQL:
+INSERT INTO m VALUES ($1, $2);
+-- PARAMS:
+'b', 0.5
+
+-- TEST: insert-global-table-double-param-gl-3279-3
+-- SQL:
+SELECT "k", CAST("x" AS TEXT) FROM m ORDER BY "k";
+-- EXPECTED:
+'a', '3.0', 'b', '0.5'

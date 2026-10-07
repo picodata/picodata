@@ -97,6 +97,29 @@ fn double() {
 }
 
 #[test]
+fn double_from_f64() {
+    for v in [
+        3.0,
+        -3.0,
+        0.0,
+        // Fraction below `f64::EPSILON`.
+        1e-300,
+        // Out of the `i64` range.
+        1e20,
+        -1e20,
+        // Subnormal.
+        5e-324,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+    ] {
+        let Value::Double(d) = Value::from(v) else {
+            panic!("{v:e} is not converted to a double");
+        };
+        assert_eq!(d.value.to_bits(), v.to_bits());
+    }
+}
+
+#[test]
 fn integer() {
     assert_eq!(Value::Integer(0), Value::from(0_i64));
     assert_eq!(
