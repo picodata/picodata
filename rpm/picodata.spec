@@ -31,6 +31,12 @@ Group: Databases
 Url: http://picodata.io
 Source0: %name-%version.tar.gz
 
+BuildRequires: cmake
+BuildRequires: autoconf
+BuildRequires: automake
+BuildRequires: libtool
+BuildRequires: patch
+
 %if %use_cmake3
 BuildRequires: cmake3
 %endif
@@ -61,11 +67,13 @@ BuildRequires: libstdc++-devel
 
 BuildRequires: libunwind-devel
 %else
-%if 0%{?rhel} == 8 || 0%{?redos} > 0 || 0%{?fedora} >= 33
+%if 0%{?rhel} >= 8 || 0%{?redos} > 0 || 0%{?fedora} >= 33
 BuildRequires: libstdc++-static
 %endif
+%if "%{?_build_vendor}" == "alt"
+BuildRequires: libstdc++-devel-static
 %endif
-
+%endif
 
 %if "%{?mandriva_os}" == "linux"
 BuildRequires: lib64luajit-5.1-devel
