@@ -161,7 +161,7 @@ test-rs-sql:
 	# would leak into every SQL test's plan via feature unification), so its
 	# whitebox tests run in a second invocation: the feature on, filtered to just
 	# those tests, under their own nextest profile so the report is separate.
-	# Also test bucket discovery with enrichment enabled.
+	# Also test bucket discovery and exec plans with enrichment enabled.
 	cargo nextest run \
 		$(if $(MAKE_JOBSERVER_ARGS),--test-threads $(MAKE_JOBSERVER_ARGS)) \
 		$(subst --profile,--cargo-profile,$(CARGO_FLAGS_EXTRA)) \
@@ -169,7 +169,8 @@ test-rs-sql:
 		--features enrich_restrictions \
 		-p sql-planner -p sql-executor \
 		-E 'package(sql-planner) & test(/transformation::enrich_restrictions/)' \
-		-E 'package(sql-executor) & test(/executor::bucket_discovery/)'
+		-E 'package(sql-executor) & test(/executor::bucket_discovery/)' \
+		-E 'package(sql-executor) & test(/executor::tests::exec_plan::exec_plan_motion_input/)'
 
 .PHONY: bench-sql-check
 bench-sql-check:

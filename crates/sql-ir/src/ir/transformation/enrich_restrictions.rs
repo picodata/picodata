@@ -12,6 +12,13 @@
 //! must have a valid placement; a missing one is an error, never a silently
 //! dropped predicate.
 //!
+//! Parameter checks and the `false` markers below are also recorded as
+//! [`DomainCheck`]s of their domain for redistribution: each is necessary for
+//! any row of the domain's result, so a FALSE one means the domain is empty.
+//! That pass repeats checks on eligible Motion inputs in the same domain
+//! when their hosts are outside the input query. The original hosts keep
+//! the checks; the records are discarded with the equality facts.
+//!
 //! An unpinned class derives equalities between columns with the same relation
 //! and placement, each paired with the first. Columns of different relations
 //! are linked where their branches meet: an INNER join gets a pair between
@@ -50,7 +57,8 @@ use crate::ir::operator::{Bool, JoinKind};
 #[cfg(debug_assertions)]
 use crate::ir::transformation::equality_facts::UnionFind;
 use crate::ir::transformation::equality_facts::{
-    ClassId, ClassPin, EqualityFacts, EquivalenceClass, Slot, SourceEquality,
+    ClassId, ClassPin, DomainCheck, DomainCheckKind, EqualityFacts, EquivalenceClass, Pin, Slot,
+    SourceEquality,
 };
 use crate::ir::transformation::restriction::{RestrictInfo, Restriction};
 use crate::ir::tree::traversal::REL_CAPACITY;
@@ -60,11 +68,6 @@ use crate::ir::Plan;
 use ahash::{AHashMap, AHashSet};
 use smallvec::{smallvec, SmallVec};
 use std::collections::hash_map::Entry;
-
-enum Pin {
-    Const(Value),
-    Param(u16, DerivedType),
-}
 
 /// Where derived predicates attach to the tree. Chosen during planning and
 /// consumed by `materialize_restrictions` without repeating the placement search.
@@ -126,6 +129,8 @@ struct JoinSides {
 /// Stores the operands and placements; `build_predicates` creates the expressions.
 /// Every lowest column member and every needed parameter check has a placement.
 struct Star {
+    /// The root of the class's domain.
+    anchor: NodeId,
     pin: Pin,
     cols: Vec<(Placement, Slot)>,
     /// Parameters to compare with the pin, with a shared placement for the checks.
@@ -174,13 +179,25 @@ fn classify(class: &EquivalenceClass) -> Option<ClassAction<'_>> {
 struct Enrichment {
     stars: Vec<Star>,
     pairs: Vec<ColPair>,
-    empty: Vec<Placement>,
+    /// Each `false` marker's placement and a node of the domain it empties.
+    empty: Vec<(Placement, NodeId)>,
     /// Source conjuncts to drop, keyed by the fold placement of their owner.
     replaced: Replaced,
 }
 
 /// The [`SourceEquality`] conjuncts each existing filter or INNER `ON` loses.
 type Replaced = AHashMap<Placement, AHashSet<NodeId>>;
+
+/// Built predicates by placement, in a repeatable order.
+type Grouped = AHashMap<Placement, Vec<RestrictInfo>, RepeatableState>;
+
+/// A check of the domain `domain_node` belongs to, planned at `placement`;
+/// it becomes a [`DomainCheck`] once that placement has a node.
+struct PlacedCheck {
+    domain_node: NodeId,
+    placement: Placement,
+    kind: DomainCheckKind,
+}
 
 impl Plan {
     /// Add implied equalities and false markers from analyzed facts.
@@ -206,7 +223,7 @@ impl Plan {
             return Ok(self);
         };
         let mut replaced = std::mem::take(&mut planned.replaced);
-        let mut grouped = self.build_predicates(planned)?;
+        let (mut grouped, checks) = self.build_predicates(planned)?;
         // An owner that only loses sources is rebuilt too.
         for &placement in replaced.keys() {
             grouped.entry(placement).or_default();
@@ -228,6 +245,8 @@ impl Plan {
         // Splices retarget references in place, so the ids stay valid.
         #[cfg(debug_assertions)]
         let mut emitted: Vec<(NodeId, NodeId)> = Vec::new();
+        // The node each placement materialized as: the host of its checks.
+        let mut hosts: AHashMap<Placement, NodeId> = AHashMap::new();
         // Each step keeps the restrictions in step with the tree: later
         // readers see no dropped or missing clause, nor a slot of a replaced
         // child. Facts stay valid: the classes are unchanged and the inserted
@@ -236,13 +255,13 @@ impl Plan {
             let dropped = replaced.remove(&placement);
             #[cfg(debug_assertions)]
             let derived: Vec<NodeId> = clauses.iter().map(RestrictInfo::clause).collect();
-            #[cfg_attr(not(debug_assertions), allow(unused_variables))]
             let rel = self.materialize_restrictions(
                 placement,
                 clauses,
                 dropped.as_ref(),
                 &mut passthroughs,
             )?;
+            hosts.insert(placement, rel);
             #[cfg(debug_assertions)]
             emitted.extend(derived.into_iter().map(|clause| (rel, clause)));
         }
@@ -255,6 +274,22 @@ impl Plan {
             facts.register_passthroughs(&passthroughs);
             // The conditions they name are rewritten now.
             facts.clear_source_equalities();
+            // Save checks and their hosts for redistribution.
+            facts.set_domain_checks(
+                checks
+                    .into_iter()
+                    .map(|check| {
+                        let host = hosts[&check.placement];
+                        (
+                            check.domain_node,
+                            DomainCheck {
+                                kind: check.kind,
+                                host,
+                            },
+                        )
+                    })
+                    .collect(),
+            );
         }
         Ok(self)
     }
@@ -333,9 +368,8 @@ impl Plan {
                 // Its sources stay: the `false` alone would also do, but its
                 // placement is not proven to cover every source yet.
                 ClassAction::Contradiction => {
-                    planned
-                        .empty
-                        .push(self.required_domain_check(facts, class, None)?);
+                    let placement = self.required_domain_check(facts, class, None)?;
+                    planned.empty.push((placement, class.anchor));
                     continue;
                 }
                 ClassAction::Pinned(pin) => {
@@ -434,9 +468,9 @@ impl Plan {
             empty,
             replaced: _,
         }: Enrichment,
-    ) -> Result<AHashMap<Placement, Vec<RestrictInfo>, RepeatableState>, SbroadError> {
-        let mut grouped: AHashMap<Placement, Vec<RestrictInfo>, RepeatableState> =
-            AHashMap::with_hasher(RepeatableState::default());
+    ) -> Result<(Grouped, Vec<PlacedCheck>), SbroadError> {
+        let mut grouped: Grouped = AHashMap::with_hasher(RepeatableState);
+        let mut checks: Vec<PlacedCheck> = Vec::new();
         for class in stars {
             // Param checks before column pins, for a stable rendered conjunct order.
             if let Some((placement, params)) = class.params {
@@ -446,6 +480,15 @@ impl Plan {
                         .entry(placement)
                         .or_default()
                         .push(RestrictInfo::implied(check_id, SmallVec::new()));
+                    checks.push(PlacedCheck {
+                        domain_node: class.anchor,
+                        placement,
+                        kind: DomainCheckKind::ParamEq {
+                            param,
+                            param_type,
+                            pin: class.pin.clone(),
+                        },
+                    });
                 }
             }
             for &(placement, slot) in &class.cols {
@@ -455,10 +498,6 @@ impl Plan {
                     .or_default()
                     .push(RestrictInfo::implied(eq_id, smallvec![slot]));
             }
-
-            // TODO: here we enrich only filters, but motions can be executed with
-            // one-time filter violation. One way to prevent it is to store one-time
-            // filters in the plan and execute them before the rest.
         }
         for pair in pairs {
             let eq_id = self.make_col_eq(pair.left, pair.right)?;
@@ -470,14 +509,19 @@ impl Plan {
                     smallvec![pair.left, pair.right],
                 ));
         }
-        for placement in empty {
+        for (placement, domain_node) in empty {
             let false_id = self.add_const(Value::Boolean(false));
             grouped
                 .entry(placement)
                 .or_default()
                 .push(RestrictInfo::implied(false_id, SmallVec::new()));
+            checks.push(PlacedCheck {
+                domain_node,
+                placement,
+                kind: DomainCheckKind::AlwaysFalse,
+            });
         }
-        Ok(grouped)
+        Ok((grouped, checks))
     }
 
     /// Materialize `derived` at the planned `placement`: extend an existing
@@ -769,6 +813,7 @@ impl Plan {
             ClassPin::Param(idx) => Pin::Param(idx, facts.param_type(idx)),
         };
         Ok(Some(Star {
+            anchor: class.anchor,
             pin,
             cols,
             params: checks,
@@ -1132,20 +1177,26 @@ impl Plan {
     }
 
     /// Place `false` in each unsatisfiable Selection filter or INNER JOIN
-    /// condition. Class-level contradictions are handled by `plan_enrichment`.
+    /// condition, with the relation itself as the node of the domain it
+    /// empties: the relation's output is empty, and an empty node of a domain
+    /// empties its root (see `EqualityFacts::same_domain`); never a parent
+    /// domain. Class-level contradictions are handled by `plan_enrichment`.
     ///
     /// # Errors
     /// - Reading a relational node fails.
-    fn dead_rel_markers(&self, facts: &EqualityFacts) -> Result<Vec<Placement>, SbroadError> {
+    fn dead_rel_markers(
+        &self,
+        facts: &EqualityFacts,
+    ) -> Result<Vec<(Placement, NodeId)>, SbroadError> {
         let dead = facts.dead_rels();
-        let mut empty: Vec<Placement> = Vec::with_capacity(dead.len());
+        let mut empty: Vec<(Placement, NodeId)> = Vec::with_capacity(dead.len());
         for &rel in dead {
             match self.get_relation_node(rel)? {
-                Relational::Selection(_) => empty.push(Placement::ExistingSelection(rel)),
+                Relational::Selection(_) => empty.push((Placement::ExistingSelection(rel), rel)),
                 Relational::Join(Join {
                     kind: JoinKind::Inner,
                     ..
-                }) => empty.push(Placement::InnerJoinOn(rel)),
+                }) => empty.push((Placement::InnerJoinOn(rel), rel)),
                 // `apply_expr_facts` runs only for these two.
                 _ => debug_assert!(false, "dead rel {rel:?} is no Selection or INNER Join"),
             }
@@ -1423,13 +1474,6 @@ impl Plan {
         Ok(self.column_at(RelColumn::new(rel, pos))?.r#type)
     }
 
-    fn make_pin(&mut self, pin: &Pin) -> NodeId {
-        match pin {
-            Pin::Const(value) => self.add_const(value.clone()),
-            Pin::Param(index, ty) => self.add_param(*index, *ty),
-        }
-    }
-
     fn make_pin_eq(
         &mut self,
         rel_id: NodeId,
@@ -1465,17 +1509,5 @@ impl Plan {
             false,
         );
         self.add_bool(left_id, Bool::Eq, right_id)
-    }
-
-    /// Build `Parameter($param) = <pin>` as a detached, column-less SQL conjunct.
-    fn make_param_check(
-        &mut self,
-        param: u16,
-        param_type: DerivedType,
-        pin: &Pin,
-    ) -> Result<NodeId, SbroadError> {
-        let pin_id = self.make_pin(pin);
-        let param_id = self.add_param(param, param_type);
-        self.add_bool(param_id, Bool::Eq, pin_id)
     }
 }

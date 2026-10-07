@@ -111,6 +111,9 @@
 //!   still describes, for consumers that must key something without a column to
 //!   key it by)
 //! - `rel -> domain` (one domain per rel by construction — see above)
+//! - `domain -> derived column-less checks` ([`DomainCheck`]: parameter
+//!   equalities or a proven `false`, filled in by enrichment for motion
+//!   planning)
 //!
 //! It does not keep provenance, derivation trees, or an explicit list of class
 //! members. The intended consumers only need fast answers to planner questions
@@ -413,6 +416,38 @@ pub enum ClassPin<'a> {
     Param(u16),
 }
 
+/// An owned [`ClassPin`] with the type a synthesized parameter needs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Pin {
+    Const(Value),
+    Param(u16, DerivedType),
+}
+
+/// What a [`DomainCheck`] states.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DomainCheckKind {
+    /// `$param = pin`, derived from an equality class.
+    ParamEq {
+        param: u16,
+        param_type: DerivedType,
+        pin: Pin,
+    },
+    /// `false`: the domain is proven empty at planning time, by a
+    /// contradictory class or an unsatisfiable condition.
+    AlwaysFalse,
+}
+
+/// A column-less condition necessary for any row of a domain's result:
+/// when it is FALSE (or UNKNOWN), the domain is empty. Enrichment places it
+/// at `host`, which keeps the domain empty on its own. Redistribution may
+/// repeat it on Motion inputs of the same domain whose query lacks `host`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DomainCheck {
+    pub kind: DomainCheckKind,
+    /// The `Selection` or INNER `Join` whose condition holds the check.
+    pub host: NodeId,
+}
+
 impl EquivalenceClass {
     /// The value this class is pinned to, if any.
     ///
@@ -532,6 +567,10 @@ pub struct EqualityFacts {
     /// as analyzed: enrichment clears them once it rewrites those conditions,
     /// so they are never read as a list of current clauses.
     source_equalities: Box<[SourceEquality]>,
+    /// Derived [`DomainCheck`]s of each domain, normalized by
+    /// `EqualityFacts::set_domain_checks`. Set by enrichment once the
+    /// checks are placed; empty otherwise.
+    domain_checks: AHashMap<DomainId, Box<[DomainCheck]>>,
 }
 
 /// Raw cross-side equalities collected for a LEFT JOIN during `analyze`.
@@ -784,6 +823,65 @@ impl EqualityFacts {
     #[cfg(feature = "enrich_restrictions")]
     pub(super) fn clear_source_equalities(&mut self) {
         self.source_equalities = Box::default();
+    }
+
+    /// Group checks by the domain of their class anchor or unsatisfiable relation.
+    /// Keep only AlwaysFalse checks when present, sorted and deduplicated by host.
+    /// Otherwise, sort and deduplicate parameter checks by parameter.
+    /// This normalizes redistribution metadata without changing tree predicates.
+    #[cfg(feature = "enrich_restrictions")]
+    pub(super) fn set_domain_checks(&mut self, checks: Vec<(NodeId, DomainCheck)>) {
+        let mut by_domain: AHashMap<DomainId, Vec<DomainCheck>> = AHashMap::new();
+        for (node, check) in checks {
+            let domain = *self
+                .domains
+                .get(&node)
+                .expect("a domain check names an analyzed node");
+            by_domain.entry(domain).or_default().push(check);
+        }
+        self.domain_checks = by_domain
+            .into_iter()
+            .map(|(domain, mut checks)| {
+                if checks
+                    .iter()
+                    .any(|check| check.kind == DomainCheckKind::AlwaysFalse)
+                {
+                    checks.retain(|check| check.kind == DomainCheckKind::AlwaysFalse);
+                    checks.sort_by_key(|check| (check.host.arena_type, check.host.offset));
+                    checks.dedup_by_key(|check| check.host);
+                } else {
+                    let param = |check: &DomainCheck| match check.kind {
+                        DomainCheckKind::ParamEq { param, .. } => param,
+                        DomainCheckKind::AlwaysFalse => unreachable!("no false check here"),
+                    };
+                    checks.sort_by_key(param);
+                    checks.dedup_by_key(|check| param(check));
+                }
+                (domain, checks.into_boxed_slice())
+            })
+            .collect();
+    }
+
+    /// Whether any domain has a derived [`DomainCheck`].
+    #[must_use]
+    pub fn has_domain_checks(&self) -> bool {
+        !self.domain_checks.is_empty()
+    }
+
+    /// Whether the analysis assigned `rel` a domain.
+    #[must_use]
+    pub fn is_analyzed(&self, rel: NodeId) -> bool {
+        self.domains.contains_key(&rel)
+    }
+
+    /// The derived checks of the domain `rel` belongs to; empty for a node
+    /// outside the analysis (see [`EqualityFacts::is_analyzed`]).
+    #[must_use]
+    pub fn domain_checks_of(&self, rel: NodeId) -> &[DomainCheck] {
+        self.domains
+            .get(&rel)
+            .and_then(|domain| self.domain_checks.get(domain))
+            .map_or(&[], |checks| checks)
     }
 
     /// The subtree root these facts were analyzed for. Every
@@ -1332,6 +1430,7 @@ impl EqualityFactsBuilder {
             analyzed_top: self.domain_roots[0],
             dead_rels: dead_rels.into_boxed_slice(),
             source_equalities,
+            domain_checks: AHashMap::new(),
         }
     }
 }

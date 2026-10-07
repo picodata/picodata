@@ -2734,3 +2734,446 @@ fn replaced_join_equalities_keep_the_motions() {
                   scan t3
     ");
 }
+
+/// Optimize through motion planning with unbound integer parameters.
+fn optimized_with_int_params(query: &str, params: usize) -> Plan {
+    let types = vec![DerivedType::new(UnrestrictedType::Integer); params];
+    let plan = sql_to_ir_without_bind(query, &types);
+    let top_id = plan.get_top().unwrap();
+    plan.optimize_before(top_id, Stage::End).unwrap()
+}
+
+#[test]
+fn param_check_moved_above_a_join_repeats_on_the_motion_input() {
+    // Enrichment moves the source check above the join. Redistribution
+    // restores a check on the Motion input.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT a, b FROM t3 WHERE $1 = 1) s ON t.a = s.b"#,
+        1,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      selection ($1::int = 1::int)
+        join on (t.a::int = s.b::int)
+          scan t
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (s.a::string -> a, s.b::int -> b)
+              selection ($1::int = 1::int)
+                scan s
+                  projection (t3.a::string -> a, t3.b::int -> b)
+                    selection (true::bool)
+                      scan t3
+    ");
+}
+
+#[test]
+fn param_check_from_the_outer_where_prunes_a_motion_input() {
+    // The outer check adds a pruning point absent from the original input.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT a, b FROM t3) s ON t.a = s.b WHERE $1 = 1"#,
+        1,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      selection ($1::int = 1::int)
+        join on (t.a::int = s.b::int)
+          scan t
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (s.a::string -> a, s.b::int -> b)
+              selection ($1::int = 1::int)
+                scan s
+                  projection (t3.a::string -> a, t3.b::int -> b)
+                    scan t3
+    ");
+}
+
+#[test]
+fn param_check_of_a_class_with_columns_repeats_on_the_motion_input() {
+    // Parameter checks also propagate when their class contains columns.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT a, b FROM t3 WHERE b = $1 AND $1 = 1) s ON t.a = s.b"#,
+        1,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      selection ($1::int = 1::int)
+        join on (true::bool)
+          scan t
+            projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              selection (t.a::int = 1::int)
+                scan t
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (s.a::string -> a, s.b::int -> b)
+              selection ($1::int = 1::int)
+                scan s
+                  projection (t3.a::string -> a, t3.b::int -> b)
+                    selection (t3.b::int = 1::int)
+                      scan t3
+    ");
+}
+
+#[test]
+fn param_to_param_check_repeats_on_the_motion_input() {
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT a, b FROM t3 WHERE $1 = $2) s ON t.a = s.b"#,
+        2,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      selection ($2::int = $1::int)
+        join on (t.a::int = s.b::int)
+          scan t
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (s.a::string -> a, s.b::int -> b)
+              selection ($2::int = $1::int)
+                scan s
+                  projection (t3.a::string -> a, t3.b::int -> b)
+                    selection (true::bool)
+                      scan t3
+    ");
+}
+
+#[test]
+fn every_motion_input_of_the_domain_gets_the_check() {
+    // Both nested Motion inputs belong to the outer domain.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT x.a, x.b FROM t3 x JOIN t3 y ON x.b = y.b) s
+           ON t.a = s.b WHERE $1 = 1"#,
+        1,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      selection ($1::int = 1::int)
+        join on (t.a::int = s.b::int)
+          scan t
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (s.a::string -> a, s.b::int -> b)
+              selection ($1::int = 1::int)
+                scan s
+                  projection (x.a::string -> a, x.b::int -> b)
+                    join on (x.b::int = y.b::int)
+                      scan t3 -> x
+                      motion [policy: full, program: ReshardIfNeeded]
+                        projection (y.bucket_id::int -> bucket_id, y.a::string -> a, y.b::int -> b)
+                          selection ($1::int = 1::int)
+                            scan t3 -> y
+    ");
+}
+
+#[test]
+fn a_motion_input_holding_the_check_is_not_wrapped() {
+    // The NOT IN subquery has its own domain. Its Motion input already
+    // contains the check, so no wrapper is added.
+    let plan = optimized_with_int_params(
+        r#"SELECT a FROM t WHERE a NOT IN (SELECT b FROM t3 WHERE $1 = 1)"#,
+        1,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a)
+      selection (not t.a::int in ROW($0))
+        scan t
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t3.b::int -> b)
+            selection ($1::int = 1::int)
+              scan t3
+    ");
+
+    // The nullable subquery's check stays in its own domain.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t LEFT JOIN (SELECT a, b FROM t3 WHERE $1 = 1) s ON t.a = s.b"#,
+        1,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      left join on (t.a::int = s.b::int)
+        scan t
+        motion [policy: full, program: ReshardIfNeeded]
+          scan s
+            projection (t3.a::string -> a, t3.b::int -> b)
+              selection ($1::int = 1::int)
+                scan t3
+    ");
+}
+
+#[test]
+fn a_check_below_an_aggregate_stays_below_it() {
+    // count(*) produces a row for empty input. Its input check must not
+    // become a filter on either aggregate stage's output.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT count(*) AS c FROM t3 WHERE $1 = 1) s ON t.a = s.c"#,
+        1,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.c::int -> c)
+      join on (t.a::int = s.c::int)
+        scan t
+        motion [policy: full, program: ReshardIfNeeded]
+          scan s
+            projection (sum(count_1::int::int)::int::int -> c)
+              motion [policy: full, program: ReshardIfNeeded]
+                projection (count(*)::int -> count_1)
+                  selection ($1::int = 1::int)
+                    scan t3
+    ");
+}
+
+#[test]
+fn a_consumer_check_never_enters_a_shared_cte() {
+    // The consumer's check must not enter the shared CTE's domain.
+    let plan = optimized_with_int_params(
+        r#"WITH c AS (SELECT a, b FROM t3)
+           SELECT t.a FROM t JOIN c ON t.a = c.b WHERE $1 = 1
+           UNION ALL SELECT b FROM c"#,
+        1,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    union all
+      projection (t.a::int -> a)
+        selection ($1::int = 1::int)
+          join on (t.a::int = c.b::int)
+            scan t
+            scan cte c($0)
+      motion [policy: local, program: SerializeAsEmptyTable(true)]
+        projection (c.b::int -> b)
+          scan cte c($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (t3.a::string -> a, t3.b::int -> b)
+          scan t3
+    ");
+}
+
+#[test]
+fn domain_checks_are_planning_only() {
+    let plan = sql_to_ir_without_bind(
+        r#"SELECT * FROM t JOIN (SELECT a, b FROM t3) s ON t.a = s.b WHERE $1 = 1"#,
+        &[DerivedType::new(UnrestrictedType::Integer)],
+    );
+    let plan = plan.optimize().unwrap();
+    assert!(plan.facts.is_none());
+}
+
+#[test]
+fn contradiction_in_an_inner_on_empties_the_motion_input() {
+    // The ON is unsatisfiable: its `false` stays there, and the motion
+    // under the join gets one too, so its input is pruned before it runs.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT a, b FROM t3) s ON t.a = s.b AND t.c = 1 AND t.c = 2"#,
+        0,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      join on ((t.a::int = s.b::int and ROW(t.c::int, t.c::int) = ROW(2::int, 1::int) and false::bool))
+        scan t
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (s.a::string -> a, s.b::int -> b)
+            selection (false::bool)
+              scan s
+                projection (t3.a::string -> a, t3.b::int -> b)
+                  scan t3
+    ");
+}
+
+#[test]
+fn contradictory_class_across_filters_empties_the_motion_input() {
+    // `s.a` is 'x' inside the subquery and 'y' above the join: the class's
+    // `false` lands above the join, and the motion input gets it as well.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT a, b FROM t3 WHERE a = 'x') s ON t.a = s.b
+           WHERE s.a = 'y'"#,
+        0,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      selection ((s.a::string = 'y'::string and false::bool))
+        join on (t.a::int = s.b::int)
+          scan t
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (s.a::string -> a, s.b::int -> b)
+              selection (false::bool)
+                scan s
+                  projection (t3.a::string -> a, t3.b::int -> b)
+                    selection (t3.a::string = 'x'::string)
+                      scan t3
+    ");
+}
+
+#[test]
+fn explicit_false_where_empties_the_motion_input() {
+    // The explicit false marks the domain empty without a contradictory class.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT a, b FROM t3) s ON t.a = s.b WHERE false"#,
+        0,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      selection ((false::bool and false::bool))
+        join on (t.a::int = s.b::int)
+          scan t
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (s.a::string -> a, s.b::int -> b)
+              selection (false::bool)
+                scan s
+                  projection (t3.a::string -> a, t3.b::int -> b)
+                    scan t3
+    ");
+
+    // A `false` already in the motion's own query is not repeated.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT a, b FROM t3 WHERE false) s ON t.a = s.b"#,
+        0,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      join on (t.a::int = s.b::int)
+        scan t
+        motion [policy: full, program: ReshardIfNeeded]
+          scan s
+            projection (t3.a::string -> a, t3.b::int -> b)
+              selection ((false::bool and false::bool))
+                scan t3
+    ");
+}
+
+#[test]
+fn false_replaces_param_checks_on_every_motion_input() {
+    use sql::ir::transformation::equality_facts::DomainCheckKind;
+
+    // `$1 = 1` sits in a lower filter of the domain, the contradiction in the
+    // top one, so the analysis derives both a parameter check and a `false`.
+    let query = |top: &str| {
+        format!(
+            r#"SELECT * FROM t JOIN (SELECT x.a, x.b FROM t3 x JOIN t3 y ON x.b = y.b
+               WHERE $1 = 1) s ON t.a = s.b WHERE {top}"#
+        )
+    };
+    let empty = query("t.c = 1 AND t.c = 2");
+
+    // Before motions: the parameter check is placed in the tree, yet the
+    // domain records only its `false` for redistribution.
+    let plan = sql_to_ir_without_bind(&empty, &[DerivedType::new(UnrestrictedType::Integer)]);
+    let top_id = plan.get_top().unwrap();
+    let plan = plan.optimize_before(top_id, Stage::AddMotions).unwrap();
+    assert!(
+        logical(&plan).contains("$1::int = 1::int"),
+        "{}",
+        logical(&plan)
+    );
+    let checks = plan.facts.as_ref().unwrap().domain_checks_of(top_id);
+    assert!(!checks.is_empty());
+    assert!(
+        checks
+            .iter()
+            .all(|check| check.kind == DomainCheckKind::AlwaysFalse),
+        "{checks:?}"
+    );
+
+    // Both motions, the inner one run first, get a single `false` and no
+    // `$1 = 1`; the domain's own filters keep everything.
+    let plan = optimized_with_int_params(&empty, 1);
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      selection ((t.c::int = 1::int and t.c::int = 2::int and $1::int = 1::int and false::bool))
+        join on (t.a::int = s.b::int)
+          scan t
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (s.a::string -> a, s.b::int -> b)
+              selection (false::bool)
+                scan s
+                  projection (x.a::string -> a, x.b::int -> b)
+                    selection (true::bool)
+                      join on (x.b::int = y.b::int)
+                        scan t3 -> x
+                        motion [policy: full, program: ReshardIfNeeded]
+                          projection (y.bucket_id::int -> bucket_id, y.a::string -> a, y.b::int -> b)
+                            selection (false::bool)
+                              scan t3 -> y
+    ");
+
+    // Without the contradiction the same motions repeat `$1 = 1`.
+    let plan = optimized_with_int_params(&query("t.c = 1"), 1);
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      selection ($1::int = 1::int)
+        join on (t.a::int = s.b::int)
+          scan t
+            projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
+              selection (t.c::int = 1::int)
+                scan t
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (s.a::string -> a, s.b::int -> b)
+              selection ($1::int = 1::int)
+                scan s
+                  projection (x.a::string -> a, x.b::int -> b)
+                    selection (true::bool)
+                      join on (x.b::int = y.b::int)
+                        scan t3 -> x
+                        motion [policy: full, program: ReshardIfNeeded]
+                          projection (y.bucket_id::int -> bucket_id, y.a::string -> a, y.b::int -> b)
+                            selection ($1::int = 1::int)
+                              scan t3 -> y
+    ");
+}
+
+#[test]
+fn false_stays_within_its_domain() {
+    // count(*) produces a row with 0 for empty input. No input-domain check
+    // is added above the aggregate.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t JOIN (SELECT count(*) AS c FROM t3 WHERE false) s ON t.a = s.c"#,
+        0,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.c::int -> c)
+      join on (t.a::int = s.c::int)
+        scan t
+        motion [policy: full, program: ReshardIfNeeded]
+          scan s
+            projection (sum(count_1::int::int)::int::int -> c)
+              motion [policy: full, program: ReshardIfNeeded]
+                projection (count(*)::int -> count_1)
+                  selection ((false::bool and false::bool))
+                    scan t3
+    ");
+
+    // A false `ON` of a LEFT JOIN proves no emptiness: the preserved rows
+    // stay, and no motion input is filtered.
+    let plan = optimized_with_int_params(
+        r#"SELECT * FROM t LEFT JOIN (SELECT a, b FROM t3) s ON t.a = s.b AND false"#,
+        0,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+      left join on (false::bool)
+        scan t
+        motion [policy: full, program: ReshardIfNeeded]
+          scan s
+            projection (t3.a::string -> a, t3.b::int -> b)
+              scan t3
+    ");
+
+    // One consumer's contradiction never empties a shared CTE.
+    let plan = optimized_with_int_params(
+        r#"WITH c AS (SELECT a, b FROM t3)
+           SELECT t.a FROM t JOIN c ON t.a = c.b WHERE t.c = 1 AND t.c = 2
+           UNION ALL SELECT b FROM c"#,
+        0,
+    );
+    assert_snapshot!(logical(&plan), @r"
+    union all
+      projection (t.a::int -> a)
+        selection ((t.c::int = 1::int and t.c::int = 2::int and false::bool))
+          join on (t.a::int = c.b::int)
+            scan t
+            scan cte c($0)
+      motion [policy: local, program: SerializeAsEmptyTable(true)]
+        projection (c.b::int -> b)
+          scan cte c($0)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (t3.a::string -> a, t3.b::int -> b)
+          scan t3
+    ");
+}

@@ -2184,3 +2184,140 @@ fn serialize_as_empty_overlay_is_cleared_after_dispatch() {
         "the serialize-as-empty overlay must not outlive its dispatch"
     );
 }
+
+/// The Motion input SQL includes the folded check, and its consumer uses
+/// the original alias to read the virtual table.
+#[cfg(feature = "enrich_restrictions")]
+#[test]
+fn exec_plan_motion_input_with_a_param_check() {
+    let sql = r#"SELECT t."id" FROM "test_space" AS t
+        JOIN (SELECT "sysFrom" FROM "test_space_hist") AS s
+        ON t."id" = s."sysFrom" WHERE $1 = 1"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut query =
+        ExecutingQuery::from_text_and_params(&coordinator, sql, vec![Value::from(2)]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let Relational::Motion(Motion { alias, .. }) = query
+        .get_exec_plan()
+        .get_ir_plan()
+        .get_relation_node(motion_id)
+        .unwrap()
+    else {
+        panic!("expected a motion");
+    };
+    assert_eq!(alias.as_deref(), Some("s"));
+    let mut virtual_table = virtual_table_23(Some("s"));
+    reshard_vtable(&query, motion_id, &mut virtual_table);
+    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    vtables.insert(motion_id, Rc::new(virtual_table));
+
+    let exec_plan = query.get_mut_exec_plan();
+    exec_plan.set_vtables(vtables);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let motion_child_id = exec_plan
+        .get_ir_plan()
+        .get_motion_subtree_root(motion_id)
+        .unwrap();
+
+    let sql = get_sql_from_execution_plan(exec_plan, motion_child_id, Snapshot::Oldest, TEMPLATE);
+    // The bound check is folded to `false`.
+    assert_eq!(sql.params, vec![Value::Boolean(false)]);
+    assert_snapshot!(
+        sql.pattern,
+        @r#"SELECT * FROM (SELECT "test_space_hist"."sysFrom" FROM "test_space_hist") as "s" WHERE CAST($1 AS bool)"#,
+    );
+
+    let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
+    assert_snapshot!(
+        sql.pattern,
+        @r#"SELECT "t"."id" FROM "test_space" as "t" INNER JOIN (SELECT "COL_1" FROM "_tmp_0_0136") as "s" ON "t"."id" = "s"."COL_1" WHERE CAST($1 AS bool)"#,
+    );
+}
+
+/// The wrapper preserves duplicate column names with SELECT * and prunes
+/// buckets when the parameter check fails.
+#[cfg(feature = "enrich_restrictions")]
+#[test]
+fn exec_plan_motion_input_check_keeps_duplicate_names_apart() {
+    let sql = r#"SELECT * FROM "test_space" AS t
+        JOIN (SELECT "id" AS x, "sys_op" AS x, "sysFrom" FROM "test_space_hist") AS s
+        ON t."id" = s."sysFrom" WHERE $1 = 1"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut patterns = Vec::new();
+    for (param, buckets) in [(1, Buckets::All), (2, Buckets::new_empty())] {
+        let mut query =
+            ExecutingQuery::from_text_and_params(&coordinator, sql, vec![Value::from(param)])
+                .unwrap();
+        let motion_id = query.get_motion_id(0, 0);
+        let plan = query.get_exec_plan().get_ir_plan();
+        let root = plan.get_motion_subtree_root(motion_id).unwrap();
+        // The wrapper preserves column names, types and system flags in order.
+        let Relational::Projection(Projection { child, .. }) =
+            plan.get_relation_node(root).unwrap()
+        else {
+            panic!("expected the carrier projection");
+        };
+        let input = plan.get_first_rel_child(child.unwrap()).unwrap();
+        let columns = |id| {
+            plan.columns_of(id)
+                .unwrap()
+                .map(|column| {
+                    let column = column.unwrap();
+                    (column.name.into_owned(), column.r#type, column.is_system)
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(columns(input), columns(motion_id));
+        assert_eq!(buckets, query.bucket_discovery(root).unwrap());
+
+        let sql =
+            get_sql_from_execution_plan(query.get_exec_plan(), root, Snapshot::Oldest, TEMPLATE);
+        assert_eq!(sql.params, vec![Value::Boolean(param == 1)]);
+        patterns.push(sql.pattern);
+    }
+    // The bound check only changes the folded parameter.
+    assert_eq!(patterns[0], patterns[1]);
+    assert_snapshot!(
+        patterns[0],
+        @r#"SELECT * FROM (SELECT "test_space_hist"."id" as "x", "test_space_hist"."sys_op" as "x", "test_space_hist"."sysFrom" FROM "test_space_hist") as "s" WHERE CAST($1 AS bool)"#,
+    );
+}
+
+/// The query of a Motion input in a domain proven empty: `false` without
+/// parameters, no buckets to read, and the virtual table keeps the
+/// Motion's schema for the query above.
+#[cfg(feature = "enrich_restrictions")]
+#[test]
+fn exec_plan_motion_input_of_an_empty_domain() {
+    use crate::executor::engine::helpers::vtable_columns;
+
+    let sql = r#"SELECT t."id" FROM "test_space" AS t
+        JOIN (SELECT "id", "sysFrom" FROM "test_space_hist") AS s
+        ON t."id" = s."sysFrom" WHERE t."sys_op" = 1 AND t."sys_op" = 2"#;
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let plan = query.get_exec_plan().get_ir_plan();
+    let root = plan.get_motion_subtree_root(motion_id).unwrap();
+    let vtable_types: Vec<_> = vtable_columns(plan, root)
+        .unwrap()
+        .into_iter()
+        .map(|column| column.r#type)
+        .collect();
+    let motion_types: Vec<_> = plan
+        .columns_of(motion_id)
+        .unwrap()
+        .map(|column| column.unwrap().r#type)
+        .collect();
+    assert_eq!(motion_types, vtable_types);
+    assert_eq!(Buckets::new_empty(), query.bucket_discovery(root).unwrap());
+
+    let sql = get_sql_from_execution_plan(query.get_exec_plan(), root, Snapshot::Oldest, TEMPLATE);
+    assert_eq!(sql.params, vec![Value::Boolean(false)]);
+    assert_snapshot!(
+        sql.pattern,
+        @r#"SELECT * FROM (SELECT "test_space_hist"."id", "test_space_hist"."sysFrom" FROM "test_space_hist") as "s" WHERE CAST($1 AS bool)"#,
+    );
+}

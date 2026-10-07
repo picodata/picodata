@@ -36,6 +36,7 @@ use crate::ir::value::Value;
 use crate::ir::{Node, Plan};
 
 pub(crate) mod dml;
+mod domain_checks;
 pub(crate) mod facts_join;
 pub(crate) mod groupby;
 pub(crate) mod left_join;
@@ -827,7 +828,7 @@ impl Plan {
             }
 
             let program = std::mem::take(program);
-            let motion_id = self.add_motion(*child, policy, program)?;
+            let motion_id = self.add_motion_with_domain_checks(*child, policy, program)?;
             if let Some(alias_hint) = strategy.children_alias_hints.get(child) {
                 if let MutRelational::Motion(Motion {
                     alias: motion_alias,
@@ -858,7 +859,7 @@ impl Plan {
             }
 
             let program = std::mem::take(program);
-            let motion_id = self.add_motion(*sq, policy, program)?;
+            let motion_id = self.add_motion_with_domain_checks(*sq, policy, program)?;
             self.replace_target_in_relational(parent_id, *sq, motion_id)?;
             *sq = motion_id;
         }
@@ -2233,6 +2234,7 @@ impl Plan {
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);
         let post_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
         let nodes = post_tree.traverse_into_vec(top_id);
+        self.check_motion_inputs_analyzed(&nodes)?;
         let mut cte_ref_counts: AHashMap<CteChildId, usize> = AHashMap::with_capacity(CTE_CAPACITY);
         let mut counted_cte_refs = AHashSet::with_capacity(nodes.len());
         for id in &nodes {
@@ -2529,7 +2531,7 @@ impl Plan {
                     let strategy = self.resolve_union_conflicts(id)?;
                     self.insert_motion_nodes(strategy)?;
                     self.set_rel_output_distribution(id)?;
-                    let new_top_id = self.add_motion(
+                    let new_top_id = self.add_motion_with_domain_checks(
                         id,
                         &MotionPolicy::Full,
                         Program::new(vec![MotionOpcode::RemoveDuplicates]),

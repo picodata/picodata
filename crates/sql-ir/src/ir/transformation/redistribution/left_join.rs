@@ -66,8 +66,11 @@ impl Plan {
             }
 
             if motion_child_id.is_none() {
-                let motion_id =
-                    self.add_motion(outer_id, &MotionPolicy::Full, Program::default())?;
+                let motion_id = self.add_motion_with_domain_checks(
+                    outer_id,
+                    &MotionPolicy::Full,
+                    Program::default(),
+                )?;
                 self.change_child(join_id, outer_id, motion_id)?;
                 self.replace_target_in_relational(join_id, outer_id, motion_id)?;
                 motion_child_id = Some(motion_id);

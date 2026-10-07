@@ -1174,7 +1174,7 @@ fn column_eq_null_param_in_row() {
 /// derives.
 #[cfg(feature = "enrich_restrictions")]
 mod enrich_markers {
-    use super::{discover, join_buckets};
+    use super::{discover, join_buckets, motion_input_buckets};
     use crate::ir::bucket::Buckets;
     use crate::ir::value::Value;
     use pretty_assertions::assert_eq;
@@ -1186,6 +1186,39 @@ mod enrich_markers {
         let sql = r#"SELECT a."id" FROM "test_space" AS a JOIN "test_space_hist" AS b
             ON a."id" = b."id" AND $1 = 1"#;
         assert_eq!(Buckets::new_empty(), discover(sql, vec![Value::from(2)]));
+    }
+
+    /// The outer check prunes a Motion input that had no parameter filter.
+    #[test]
+    fn outer_param_check_prunes_a_motion_input() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT "id", "sysFrom" FROM "test_space_hist") AS s
+            ON t."id" = s."sysFrom" WHERE $1 = 1"#;
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(sql, vec![Value::from(2)])
+        );
+        assert_eq!(
+            vec![Buckets::All],
+            motion_input_buckets(sql, vec![Value::from(1)])
+        );
+    }
+
+    /// Both nested Motion inputs receive the domain's check.
+    #[test]
+    fn outer_param_check_prunes_nested_motion_inputs() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT x."id", x."sysFrom" FROM "test_space_hist" AS x
+                  JOIN "test_space_hist" AS y ON x."sysFrom" = y."sys_op") AS s
+            ON t."id" = s."sysFrom" WHERE $1 = 1"#;
+        let buckets = motion_input_buckets(sql, vec![Value::from(2)]);
+        assert!(buckets.len() >= 2, "{buckets:?}");
+        assert!(
+            buckets.iter().all(|b| *b == Buckets::new_empty()),
+            "{buckets:?}"
+        );
+        let buckets = motion_input_buckets(sql, vec![Value::from(1)]);
+        assert!(buckets.iter().all(|b| *b == Buckets::All), "{buckets:?}");
     }
 
     /// A LEFT join's `ON` is no restriction: its parameter check stays there,
@@ -1271,5 +1304,319 @@ mod enrich_markers {
             UNION ALL
             SELECT "id" FROM "test_space_hist""#;
         assert_eq!(Buckets::All, discover(query, vec![]));
+    }
+}
+
+/// Discover buckets for each Motion input on the bound plan, in postorder.
+/// This helper does not materialize virtual tables between discoveries.
+fn motion_input_buckets(sql: &str, params: Vec<Value>) -> Vec<Buckets> {
+    let coordinator = RouterRuntimeMock::new();
+    let query = ExecutingQuery::from_text_and_params(&coordinator, sql, params).unwrap();
+    motion_input_buckets_of(query)
+}
+
+/// [`motion_input_buckets`] of a query without parameters, optimized but
+/// never bound: nothing folds the plan after motions are added.
+#[cfg(feature = "enrich_restrictions")]
+fn unbound_motion_input_buckets(sql: &str) -> Vec<Buckets> {
+    use crate::executor::engine::Router;
+    use crate::utils::MutexLike;
+    use sql_frontend::frontend::sql::transform_into_plan;
+
+    let coordinator = RouterRuntimeMock::new();
+    let plan = {
+        let metadata = coordinator.metadata().lock();
+        transform_into_plan(sql, &[], &*metadata).unwrap()
+    };
+    let plan = plan.optimize_statement().unwrap();
+    motion_input_buckets_of(ExecutingQuery::from_plan(&coordinator, plan).unwrap())
+}
+
+fn motion_input_buckets_of(mut query: ExecutingQuery<'_, RouterRuntimeMock>) -> Vec<Buckets> {
+    use crate::ir::node::relational::Relational;
+    use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top = plan.get_top().unwrap();
+    let tree = PostOrderWithFilter::new(
+        |node| plan.nodes.rel_iter(node),
+        |node| matches!(plan.get_relation_node(node), Ok(Relational::Motion(_))),
+        REL_CAPACITY,
+    );
+    let roots: Vec<_> = tree
+        .traverse_into_vec(top)
+        .into_iter()
+        .map(|motion| plan.get_motion_subtree_root(motion).unwrap())
+        .collect();
+    roots
+        .into_iter()
+        .map(|root| query.bucket_discovery(root).unwrap())
+        .collect()
+}
+
+/// Parameter checks must prune Motion inputs with and without enrichment.
+/// A check moved above a join must be repeated below its Motion.
+mod param_checks_on_motion_inputs {
+    use super::{discover, motion_input_buckets};
+    use crate::ir::bucket::Buckets;
+    use crate::ir::value::Value;
+    use pretty_assertions::assert_eq;
+
+    /// `t` and `s` are sharded by `id`, the join is on `s."sysFrom"`, so `s`
+    /// is resharded through a Motion.
+    const JOIN: &str = r#"SELECT t."id" FROM "test_space" AS t
+        JOIN (SELECT "id", "sysFrom" FROM "test_space_hist" WHERE $1 = 1) AS s
+        ON t."id" = s."sysFrom""#;
+
+    #[test]
+    fn param_check_prunes_the_motion_input() {
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(JOIN, vec![Value::from(2)])
+        );
+        assert_eq!(
+            vec![Buckets::All],
+            motion_input_buckets(JOIN, vec![Value::from(1)])
+        );
+        // `NULL = 1` is UNKNOWN, which a filter drops like FALSE.
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(JOIN, vec![Value::Null])
+        );
+    }
+
+    #[test]
+    fn param_to_param_check_prunes_the_motion_input() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT "id", "sysFrom" FROM "test_space_hist" WHERE $1 = $2) AS s
+            ON t."id" = s."sysFrom""#;
+        let buckets = |l: Value, r: Value| motion_input_buckets(sql, vec![l, r]);
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            buckets(Value::from(1), Value::from(2))
+        );
+        assert_eq!(vec![Buckets::All], buckets(Value::from(1), Value::from(1)));
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            buckets(Value::Null, Value::from(1))
+        );
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            buckets(Value::Null, Value::Null)
+        );
+    }
+
+    /// `$1 = 1` shares its class with `"sysFrom"`.
+    #[test]
+    fn param_check_of_a_class_with_columns_prunes_the_motion_input() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT "id", "sysFrom" FROM "test_space_hist"
+                  WHERE "sysFrom" = $1 AND $1 = 1) AS s
+            ON t."id" = s."sysFrom""#;
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(sql, vec![Value::from(2)])
+        );
+        assert_eq!(
+            vec![Buckets::All],
+            motion_input_buckets(sql, vec![Value::from(1)])
+        );
+    }
+
+    /// A false NOT IN subquery check prunes its Motion input without pruning
+    /// the outer query's buckets.
+    #[test]
+    fn not_in_subquery_check_keeps_the_outer_rows() {
+        let sql = r#"SELECT "id" FROM "test_space"
+            WHERE "id" NOT IN (SELECT "sysFrom" FROM "test_space_hist" WHERE $1 = 1)"#;
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(sql, vec![Value::from(2)])
+        );
+        assert_eq!(Buckets::All, discover(sql, vec![Value::from(2)]));
+    }
+
+    /// A false check in the nullable subquery prunes its Motion input.
+    #[test]
+    fn left_join_nullable_side_check_prunes_its_motion_input_only() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            LEFT JOIN (SELECT "id", "sysFrom" FROM "test_space_hist" WHERE $1 = 1) AS s
+            ON t."id" = s."sysFrom""#;
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(sql, vec![Value::from(2)])
+        );
+    }
+
+    /// The input check prunes buckets for the local count stage, but not
+    /// for the final aggregate's Motion.
+    #[test]
+    fn check_below_count_does_not_prune_the_aggregate_result() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT count(*) AS c FROM "test_space_hist" WHERE $1 = 1) AS s
+            ON t."id" = s.c"#;
+        let buckets = motion_input_buckets(sql, vec![Value::from(2)]);
+        // The final stage consumes the local aggregate's result.
+        assert_eq!(2, buckets.len(), "{buckets:?}");
+        assert_eq!(Buckets::new_empty(), buckets[0]);
+        assert_ne!(Buckets::new_empty(), buckets[1]);
+    }
+
+    /// A consumer's check does not prune the shared CTE's buckets.
+    #[test]
+    fn consumer_check_does_not_prune_a_shared_cte() {
+        let sql = r#"WITH c AS (SELECT "id", "sysFrom" FROM "test_space_hist")
+            SELECT t."id" FROM "test_space" AS t JOIN c ON t."id" = c."sysFrom" WHERE $1 = 1
+            UNION ALL SELECT "sysFrom" FROM c"#;
+        let buckets = motion_input_buckets(sql, vec![Value::from(2)]);
+        assert!(!buckets.is_empty());
+        assert!(
+            buckets.iter().all(|b| *b != Buckets::new_empty()),
+            "{buckets:?}"
+        );
+    }
+}
+
+/// Proven false checks prune eligible Motion inputs without parameter binding.
+/// A check is added only when the input query lacks a false host from its domain.
+#[cfg(feature = "enrich_restrictions")]
+mod false_on_motion_inputs {
+    use super::{discover, motion_input_buckets, unbound_motion_input_buckets};
+    use crate::ir::bucket::Buckets;
+    use crate::ir::value::Value;
+    use pretty_assertions::assert_eq;
+
+    /// Both bound and unbound plans prune the single Motion input.
+    fn assert_motion_input_pruned(sql: &str) {
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            unbound_motion_input_buckets(sql),
+            "{sql}"
+        );
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(sql, vec![]),
+            "{sql}"
+        );
+    }
+
+    #[test]
+    fn contradiction_in_an_inner_on_prunes_the_motion_input() {
+        assert_motion_input_pruned(
+            r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT "id", "sysFrom" FROM "test_space_hist") AS s
+            ON t."id" = s."sysFrom" AND t."sys_op" = 1 AND t."sys_op" = 2"#,
+        );
+    }
+
+    /// The class's `false` lands above the join, out of the Motion's query.
+    #[test]
+    fn contradictory_class_across_filters_prunes_the_motion_input() {
+        assert_motion_input_pruned(
+            r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT "id", "sysFrom" FROM "test_space_hist" WHERE "sysFrom" = 1) AS s
+            ON t."id" = s."id" + 1 WHERE s."sysFrom" = 2"#,
+        );
+    }
+
+    #[test]
+    fn explicit_false_where_prunes_the_motion_input() {
+        assert_motion_input_pruned(
+            r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT "id", "sysFrom" FROM "test_space_hist") AS s
+            ON t."id" = s."sysFrom" WHERE false"#,
+        );
+    }
+
+    /// The inner Motion runs first and is pruned too.
+    #[test]
+    fn false_prunes_nested_motion_inputs() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT x."id", x."sysFrom" FROM "test_space_hist" AS x
+                  JOIN "test_space_hist" AS y ON x."sysFrom" = y."sys_op") AS s
+            ON t."id" = s."sysFrom" WHERE false"#;
+        for buckets in [
+            unbound_motion_input_buckets(sql),
+            motion_input_buckets(sql, vec![]),
+        ] {
+            assert!(buckets.len() >= 2, "{buckets:?}");
+            assert!(
+                buckets.iter().all(|b| *b == Buckets::new_empty()),
+                "{buckets:?}"
+            );
+        }
+    }
+
+    /// `false` makes a passing parameter check irrelevant.
+    #[test]
+    fn false_with_a_passing_param_check_prunes_the_motion_input() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT "id", "sysFrom" FROM "test_space_hist") AS s
+            ON t."id" = s."sysFrom" WHERE t."sys_op" = 1 AND t."sys_op" = 2 AND $1 = 1"#;
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(sql, vec![Value::from(1)])
+        );
+    }
+
+    /// An empty NOT IN subquery leaves the outer query whole.
+    #[test]
+    fn false_not_in_subquery_keeps_the_outer_rows() {
+        let sql = r#"SELECT "id" FROM "test_space"
+            WHERE "id" NOT IN (SELECT "sysFrom" FROM "test_space_hist" WHERE false)"#;
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(sql, vec![])
+        );
+        assert_eq!(Buckets::All, discover(sql, vec![]));
+    }
+
+    /// An empty nullable side prunes its own Motion input only.
+    #[test]
+    fn false_left_join_nullable_side_prunes_its_motion_input_only() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            LEFT JOIN (SELECT "id", "sysFrom" FROM "test_space_hist" WHERE false) AS s
+            ON t."id" = s."sysFrom""#;
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(sql, vec![])
+        );
+    }
+
+    /// A false LEFT JOIN `ON` proves no emptiness.
+    #[test]
+    fn false_left_join_on_prunes_nothing() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            LEFT JOIN (SELECT "id", "sysFrom" FROM "test_space_hist") AS s
+            ON t."id" = s."sysFrom" AND false"#;
+        assert_eq!(vec![Buckets::All], motion_input_buckets(sql, vec![]));
+    }
+
+    /// `count(*)` of an empty input is a row: only the local stage, which
+    /// reads the input, is pruned.
+    #[test]
+    fn false_below_count_keeps_the_aggregate_result() {
+        let sql = r#"SELECT t."id" FROM "test_space" AS t
+            JOIN (SELECT count(*) AS c FROM "test_space_hist" WHERE false) AS s
+            ON t."id" = s.c"#;
+        let buckets = motion_input_buckets(sql, vec![]);
+        assert_eq!(2, buckets.len(), "{buckets:?}");
+        assert_eq!(Buckets::new_empty(), buckets[0]);
+        assert_ne!(Buckets::new_empty(), buckets[1]);
+    }
+
+    /// One consumer's contradiction never empties a CTE another one reads.
+    #[test]
+    fn false_of_one_consumer_keeps_a_shared_cte() {
+        let sql = r#"WITH c AS (SELECT "id", "sysFrom" FROM "test_space_hist")
+            SELECT t."id" FROM "test_space" AS t JOIN c ON t."id" = c."sysFrom"
+            WHERE t."sys_op" = 1 AND t."sys_op" = 2
+            UNION ALL SELECT "sysFrom" FROM c"#;
+        let buckets = motion_input_buckets(sql, vec![]);
+        assert!(!buckets.is_empty());
+        assert!(
+            buckets.iter().all(|b| *b != Buckets::new_empty()),
+            "{buckets:?}"
+        );
     }
 }

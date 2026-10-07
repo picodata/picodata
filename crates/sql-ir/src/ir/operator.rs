@@ -979,9 +979,16 @@ impl Plan {
             return Ok(child_id);
         }
 
-        let child_rel_node = self.get_relation_node(child_id)?;
+        let alias = self.motion_alias(child_id)?;
+        self.add_motion_with_alias(child_id, alias, policy, program)
+    }
 
-        let alias = match child_rel_node {
+    /// Return the child's scan alias, or generate an alias for a join.
+    ///
+    /// # Errors
+    /// - `child_id` is not a relational node.
+    pub fn motion_alias(&mut self, child_id: NodeId) -> Result<Option<SmolStr>, SbroadError> {
+        Ok(match self.get_relation_node(child_id)? {
             Relational::ScanSubQuery(ScanSubQuery { alias, .. }) => alias.clone(),
             Relational::ScanRelation(ScanRelation {
                 alias, relation, ..
@@ -989,7 +996,29 @@ impl Plan {
             Relational::ScanCte(ScanCte { alias, .. }) => Some(alias.clone()),
             Relational::Join(Join { .. }) => Some(self.context_mut().get_unnamed_join_name()),
             _ => None,
-        };
+        })
+    }
+
+    /// Add a Motion with an explicit alias. The child must not be a Motion.
+    ///
+    /// # Errors
+    /// - Unable to get node.
+    ///
+    /// # Panics
+    /// - Child node is not relational.
+    /// - Child output tuple is invalid.
+    pub fn add_motion_with_alias(
+        &mut self,
+        child_id: NodeId,
+        alias: Option<SmolStr>,
+        policy: &MotionPolicy,
+        program: Program,
+    ) -> Result<NodeId, SbroadError> {
+        let child_rel_node = self.get_relation_node(child_id)?;
+        debug_assert!(
+            !matches!(child_rel_node, Relational::Motion(_)),
+            "a Motion over a Motion is squashed by add_motion"
+        );
 
         let child_id = if matches!(
             child_rel_node,
