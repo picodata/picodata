@@ -6,17 +6,19 @@ use crate::{
     traft::Result,
     Entrypoint,
 };
-use std::{
-    ffi::OsString,
-    io::{Read, Write},
-    os::unix::process::CommandExt,
-};
+use std::ffi::OsString;
+use std::io::Read;
+use std::os::unix::process::CommandExt;
+use std::path::Path;
 use tarantool::error::Error as TntError;
 
 #[cfg(feature = "error_injection")]
 use crate::error_injection;
 
 pub const PICODATA_COOKIE: &'static str = ".picodata-cookie";
+
+/// See [`write_entrypoint_to_file`].
+const ENTRYPOINT_FILE: &'static str = ".entrypoint";
 
 pub fn main(mut args: args::Run) -> ! {
     // Used to handle parent death in `Demo`.
@@ -40,8 +42,8 @@ pub fn main(mut args: args::Run) -> ! {
         }
     }
 
-    let input_entrypoint_pipe = args.entrypoint_fd.take();
-    let mut output_entrypoint_pipe = None;
+    let input_entrypoint_fd = args.entrypoint_fd.take();
+    let mut output_entrypoint_fd = None;
 
     let rc = main_cb_no_exit(&tt_args, || -> Result<()> {
         #[cfg(feature = "error_injection")]
@@ -71,7 +73,7 @@ pub fn main(mut args: args::Run) -> ! {
             crate::pico_service::read_pico_service_password_from_file(cookie_path)?;
         }
 
-        let entrypoint = maybe_read_entrypoint_from_pipe(input_entrypoint_pipe)?;
+        let entrypoint = maybe_read_entrypoint_from_fd(input_entrypoint_fd)?;
 
         // Note that we don't really need to pass the `config` here,
         // because it's stored in the global variable which we can
@@ -86,8 +88,8 @@ pub fn main(mut args: args::Run) -> ! {
             // logical error on bootstraping cluster members.
             debug_assert!(!matches!(next_entrypoint, Entrypoint::StartDiscover));
 
-            let pipe = write_entrypoint_to_pipe(next_entrypoint)?;
-            let _ = output_entrypoint_pipe.insert(pipe);
+            let fd = write_entrypoint_to_file(next_entrypoint, config.instance.instance_dir())?;
+            output_entrypoint_fd = Some(fd);
 
             // Blocks with iproto already listening and the re-exec still
             // pending, so a test can open a connection, lift the injection and
@@ -109,7 +111,7 @@ pub fn main(mut args: args::Run) -> ! {
         Ok(())
     });
 
-    if let Some(fd) = output_entrypoint_pipe {
+    if let Some(fd) = output_entrypoint_fd {
         // SIGALRM may interrupt the restart via execvp, so we disable it.
         disable_clock_signal();
 
@@ -139,7 +141,7 @@ pub fn main(mut args: args::Run) -> ! {
         let new_entrypoint_fd_arg = format!("--entrypoint-fd={}", *fd).into();
         argv.push(new_entrypoint_fd_arg);
 
-        // Disable the destructor, so that the read half of the pipe is not closed yet
+        // Disable the destructor, so that the fd is not closed yet
         std::mem::forget(fd);
 
         restart_current_process(&argv);
@@ -148,9 +150,9 @@ pub fn main(mut args: args::Run) -> ! {
     std::process::exit(rc);
 }
 
-/// Reads the entrypoint from the `fd` pipe.
+/// Reads the entrypoint from the `fd` written by [`write_entrypoint_to_file`].
 /// Returns `StartDiscover` if `fd` is `None`.
-fn maybe_read_entrypoint_from_pipe(fd: Option<u32>) -> Result<Entrypoint, TntError> {
+fn maybe_read_entrypoint_from_fd(fd: Option<u32>) -> Result<Entrypoint, TntError> {
     let Some(fd) = fd else {
         // No fd, means it's the initial invocation
         return Ok(Entrypoint::StartDiscover);
@@ -161,31 +163,50 @@ fn maybe_read_entrypoint_from_pipe(fd: Option<u32>) -> Result<Entrypoint, TntErr
     let mut data = vec![];
     fd.read_to_end(&mut data)?;
     let entrypoint = rmp_serde::from_slice(&data)?;
-    tlog!(Info, "read entrypoint {entrypoint:?} from pipe '{fd:?}'");
+    tlog!(Info, "read entrypoint {entrypoint:?} from '{fd:?}'");
 
-    // The read half of the pipe is closed here
+    // The fd is closed here, which frees the unlinked file
     drop(fd);
 
     Ok(entrypoint)
 }
 
-/// Opens a pipe and writes the `entrypoint` into it.
-/// Returns the output pipe fd.
-fn write_entrypoint_to_pipe(entrypoint: &Entrypoint) -> Result<ipc::Fd, TntError> {
-    let (rx, mut tx) = ipc::pipe()?;
-
+/// Creates an unlinked file and writes the `entrypoint` into it.
+/// Returns a read-only fd of the file to pass into the self-exec.
+///
+/// Note that file is opened without O_CLOEXEC so that it survives the self-exec.
+/// The file is also unlinked immediately after creation so the data lives until
+/// the file is closed explicitly or process exits.
+///
+/// Note also that we used to use a self-pipe for the purpose of passing the
+/// `entrypoint` during self-exec. But that approach had a limitation of the
+/// pipe size, when trying to write a payload which exceeded the pipe's buffer
+/// size the process would simply deadlock forever.
+///
+/// By default on linux the pipe buffer size is just 64K and will also drop to
+/// 8K in case the current system user has exceeded it's
+/// `/proc/sys/fs/pipe-user-pages-soft` limit. We were observing this in our CI
+/// as flaked tests.
+///
+/// Using a file allows us to have a pretty much unlimitted size of the
+/// `entrypoint` payload.
+fn write_entrypoint_to_file(
+    entrypoint: &Entrypoint,
+    instance_dir: &Path,
+) -> Result<ipc::Fd, TntError> {
     let data = rmp_serde::to_vec(entrypoint)?;
     let encoded_size = data.len();
 
+    let path = instance_dir.join(ENTRYPOINT_FILE);
+
     #[rustfmt::skip]
-    tlog!(Info, "saving entrypoint (encoded size: {encoded_size}) {entrypoint:?} to pipe '{tx:?}'");
+    tlog!(Info, "saving entrypoint (encoded size: {encoded_size}) {entrypoint:?} to file '{}'", path.display());
 
-    tx.write_all(&data)?;
+    std::fs::write(&path, &data)?;
+    let fd = ipc::open_read_only_inheritable(&path)?;
+    std::fs::remove_file(&path)?;
 
-    // The write half of the pipe is closed here
-    drop(tx);
-
-    Ok(rx)
+    Ok(fd)
 }
 
 /// Calls execvp with the current process' argc & argv.

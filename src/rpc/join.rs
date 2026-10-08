@@ -668,7 +668,7 @@ pub fn compress_join_response(join_response: &Response) -> Result<Vec<u8>> {
         Ok(v) => v,
         Err(e) => {
             return Err(Error::other(format!(
-                "failed to encode proc_raft_join response for the self-pipe message: {e}"
+                "failed to encode proc_raft_join response for the entrypoint: {e}"
             )));
         }
     };
@@ -684,7 +684,7 @@ pub fn decompress_join_response(compressed: &[u8]) -> Result<Response> {
         Ok(v) => v,
         Err(e) => {
             return Err(Error::other(format!(
-                "failed to decode proc_raft_join response from the self-pipe message: {e}"
+                "failed to decode proc_raft_join response from the entrypoint: {e}"
             )));
         }
     };

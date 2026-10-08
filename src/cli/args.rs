@@ -344,7 +344,7 @@ pub struct Run {
     pub memtx_max_tuple_size: Option<ByteSize>,
 
     #[clap(hide = true, long = "entrypoint-fd")]
-    /// A pipe file descriptor from which picodata reads the entrypoint info
+    /// A file descriptor from which picodata reads the entrypoint info
     /// when doing a rebootstrap during the cluster initialization.
     ///
     /// This option is for internal use only hence it's marked hidden.

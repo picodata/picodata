@@ -75,6 +75,23 @@ pub fn pipe() -> std::io::Result<(Fd, Fd)> {
     Ok((Fd(fds[0]), Fd(fds[1])))
 }
 
+/// Opens `path` for reading. Unlike [`std::fs::File::open`] doesn't set
+/// `O_CLOEXEC`, so the returned fd survives `execvp`.
+pub fn open_read_only_inheritable(path: &std::path::Path) -> std::io::Result<Fd> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let path = std::ffi::CString::new(path.as_os_str().as_bytes())?;
+
+    // SAFETY: safe because `path` is a valid nul-terminated string
+    let fd = unsafe { libc::open(path.as_ptr(), libc::O_RDONLY) };
+
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    Ok(Fd(fd))
+}
+
 pub fn check_return_code(rc: i32) -> std::io::Result<()> {
     if rc != 0 {
         return Err(std::io::Error::last_os_error());

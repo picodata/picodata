@@ -743,10 +743,10 @@ def test_membership_inconsistency_at_raft_rejoin(cluster: Cluster):
 
 
 @pytest.mark.skip_asan("Instance startup timeout (10s) is too short under ASan overhead")
-def test_self_pipe_message_size(cluster: Cluster):
+def test_entrypoint_message_size(cluster: Cluster):
     leader = cluster.add_instance(wait_online=True)
 
-    N = 5000
+    N = 100000
 
     # Simulate having a huge cluster of 5000 instances
     leader.eval(
@@ -761,25 +761,33 @@ def test_self_pipe_message_size(cluster: Cluster):
     )
 
     # When a new instance is joined we send it the whole dump of
-    # _pico_peer_address table. That response is then written into the self-pipe
-    # and used after we restart with a clean slate. From this follows that if
-    # the _pico_peer_address becomes large enough we will stop fitting into the
-    # OS buffer of the unnamed pipe and the process will simply block trying to
-    # write to the pipe.
+    # _pico_peer_address table. That response is then written into a file
+    # and used after we restart with a clean slate. This means that we can have
+    # a very very large number of instances in the cluster before the entrypoint
+    # file becomes the bottleneck.
     #
     # This test checks that we can handle at least `N` entries in _pico_peer_address.
     #
     # However we really should just stop dumping the whole _pico_peer_address
-    # into the self-pipe. See https://git.picodata.io/core/picodata/-/issues/2349
+    # on join. See https://git.picodata.io/core/picodata/-/issues/2349
     joiner = cluster.add_instance(wait_online=True)
 
     # Sanity check
-    # NOTE: using tarantool SQL (box.execute) instead of picodata SQL because
-    # data was inserted circumventing picodata's SQL engine
-    response = joiner.call(
-        "box.execute", 'SELECT COUNT(*) FROM "_pico_peer_address" WHERE "connection_type" = \'iproto\''
+    # NOTE: using LUA because because data was inserted circumventing picodata's
+    # SQL engine, and using tarantool's SQL we get a "Reached a limit on max
+    # executed vdbe opcodes" error.
+    count = joiner.eval(
+        """
+        local N = 0
+        for _, tuple in box.space._pico_peer_address:pairs() do
+            if tuple.connection_type == 'iproto' then
+                N = N + 1
+            end
+        end
+        return N
+        """
     )
-    assert response["rows"] == [[5000]]
+    assert count == N
 
 
 def test_increase_replication_factor(cluster: Cluster):
