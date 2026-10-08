@@ -3075,3 +3075,26 @@ SELECT id, v FROM tp ORDER BY id;
 -- EXPECTED:
 1, 8,
 2, 51
+
+-- TEST: cached-block-schema-change-init
+-- SQL:
+DROP TABLE IF EXISTS tc;
+CREATE TABLE tc (pk INT PRIMARY KEY, a INT);
+INSERT INTO tc VALUES (1, 10);
+
+-- TEST: cached-block-schema-change-before
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT * FROM tc WHERE pk = 1; END $$;
+-- EXPECTED:
+1, 10
+
+-- TEST: cached-block-schema-change-alter
+-- SQL:
+ALTER TABLE tc ADD COLUMN b INT;
+UPDATE tc SET b = 100 WHERE pk = 1;
+
+-- TEST: cached-block-schema-change-after
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT * FROM tc WHERE pk = 1; END $$;
+-- EXPECTED:
+1, 10, 100

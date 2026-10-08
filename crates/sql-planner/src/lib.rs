@@ -104,11 +104,14 @@ impl PreparedStatement {
 
         let new_plan = Rc::new(new_plan);
 
-        // Only DQL and DML is cached, because it is on the hot path
-        // other types of queries are much less likely to be queried again
+        // Only DQL, DML and transactional blocks are cached, because they are
+        // on the hot path, other types of queries are much less likely to be
+        // queried again
         //
         // EXPLAIN (RAW) queries contain DQL and DML, we don't want them to be cached
-        if new_plan.is_dql_or_dml()? && !new_plan.is_raw_explain() {
+        if (new_plan.is_dql_or_dml()? || new_plan.is_anonymous_block()?)
+            && !new_plan.is_raw_explain()
+        {
             cache.put(cache_key, new_plan.clone())?;
         }
 

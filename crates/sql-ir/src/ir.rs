@@ -1524,6 +1524,13 @@ impl Plan {
         Ok(matches!(maybe_top, Ok(Node::Block(_))))
     }
 
+    /// Checks that plan is a transactional block (`DO $$ ... END $$`).
+    pub fn is_anonymous_block(&self) -> Result<bool, SbroadError> {
+        let maybe_top_id = self.get_top();
+        let maybe_top = maybe_top_id.and_then(|top_id| self.get_node(top_id));
+        Ok(matches!(maybe_top, Ok(Node::Block(Block::Anonymous(_)))))
+    }
+
     /// Checks that plan is a dml query on global table.
     ///
     /// # Errors

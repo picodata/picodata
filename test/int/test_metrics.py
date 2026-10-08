@@ -841,6 +841,38 @@ def test_router_block_pattern_cache_insert_do_update_params_raw_explain(instance
     assert metric_total(added) == base_added
 
 
+def test_router_cache_caches_blocks(instance: Instance):
+    instance.sql("CREATE TABLE rc_block (pk INT PRIMARY KEY, a INT)")
+    instance.sql("INSERT INTO rc_block VALUES (1, 10), (2, 20)")
+
+    def metric_total(name: str) -> float:
+        family = instance.get_metrics().get(name)
+        return sum(s.value for s in family.samples) if family else 0
+
+    hits = "pico_router_cache_hits"
+    added = "pico_router_cache_statements_added"
+    base_hits = metric_total(hits)
+    base_added = metric_total(added)
+
+    block = "DO $$ BEGIN RETURN QUERY SELECT a FROM rc_block WHERE pk = $1; END $$;"
+
+    # The first execution plans the block and caches the plan on the router.
+    assert instance.sql(block, 1) == [[10]]
+    assert metric_total(hits) == base_hits
+    assert metric_total(added) == base_added + 1
+
+    # The next one reuses the cached plan with another parameter value.
+    assert instance.sql(block, 2) == [[20]]
+    assert metric_total(hits) == base_hits + 1
+    assert metric_total(added) == base_added + 1
+
+    # EXPLAIN (RAW) of a block is not cached, as for DQL and DML.
+    instance.sql("EXPLAIN (RAW) " + block, 1)
+    instance.sql("EXPLAIN (RAW) " + block, 1)
+    assert metric_total(hits) == base_hits + 1
+    assert metric_total(added) == base_added + 1
+
+
 def test_temp_table_lock_metrics(instance: Instance) -> None:
     instance.sql("CREATE TABLE temp_metrics (id INTEGER PRIMARY KEY, name TEXT)")
     instance.sql("INSERT INTO temp_metrics VALUES (1, 'one')")
