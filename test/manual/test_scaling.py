@@ -1,4 +1,4 @@
-# mypy: disable-error-code="import"
+# mypy: disable-error-code="import-not-found"
 import funcy  # type: ignore
 import time
 from matplotlib import pyplot
