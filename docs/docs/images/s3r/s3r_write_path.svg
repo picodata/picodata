@@ -25,7 +25,7 @@
 <text x="367" y="109" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#000000">полоса 3</text>
 <rect x="56" y="86" width="89" height="36" rx="4" fill="none" stroke="#ed453a" stroke-width="2.5"/>
 <text x="428" y="101" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">объект разбит на полосы</text>
-<text x="428" y="117" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">размером stripe_bytes</text>
+<text x="428" y="117" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">размером stripe_size</text>
 <circle cx="24" cy="184" r="12" fill="#ed453a" stroke="none"/>
 <text x="24" y="189" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">3</text>
 <path d="M 100 122 L 100 144 M 110 144 L 350 144" fill="none" stroke="#000000" stroke-width="1"/>
@@ -74,7 +74,7 @@
 <text x="428" y="329" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">приняты 3 фрагмента: не меньше</text>
 <text x="428" y="345" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">k + m − write_tolerance и не меньше k</text>
 <text x="428" y="367" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">фрагмент P2 перестроит владелец группы</text>
-<text x="428" y="383" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">на ближайшем проходе repair</text>
+<text x="428" y="383" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#444444">при ближайшем сканировании resync</text>
 <circle cx="24" cy="440" r="12" fill="#ed453a" stroke="none"/>
 <text x="24" y="445" font-family="HelveticaNeueCyr, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">6</text>
 <rect x="56" y="420" width="356" height="40" rx="6" fill="#c8eeee" stroke="#000000" stroke-width="1"/>
