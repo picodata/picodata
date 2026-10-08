@@ -11,15 +11,14 @@ use std::hash::{Hash, Hasher};
 use twox_hash::XxHash3_64;
 
 use crate::errors::{Action, Entity, SbroadError};
-// Planner tests import this module with a glob and reach the pipeline's
-// `Stage` through it; keep the re-export so `redistribution::*` exposes it.
-use crate::ir::bucket::{value_to_bucket_id, Buckets, BucketsResolver};
+use crate::ir::bucket::{value_to_bucket_id, BucketSet, Buckets, BucketsResolver};
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::expression::ColumnPositionMap;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::operator::{Bool, JoinKind, OrderByEntity, Unary, UpdateStrategy};
 use crate::ir::subtree_cloner::SubtreeCloner;
+// Planner tests access `Stage` through `redistribution::*`.
 pub use crate::ir::transformation::Stage;
 use std::io::Write;
 use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
@@ -590,9 +589,21 @@ impl Plan {
         }
     }
 
-    /// Recursively traverses to the first `Selection` node and
-    /// tries to prove that we will end up in a single bucket.
+    /// Looks for selection constraints that restrict input rows to at most one
+    /// bucket, following unary nodes and the applicable join inputs. Stops at motions.
+    /// This does not pin execution to that bucket: a parent can expand the set of
+    /// execution nodes.
     pub(crate) fn is_single_node_subtree(&self, rel_id: NodeId) -> Result<bool, SbroadError> {
+        Ok(self.single_node_buckets(rel_id)?.is_some())
+    }
+
+    /// The buckets that prove [`Self::is_single_node_subtree`], if it holds.
+    ///
+    /// Exact sets contain XxHash3 fingerprints of sharding key values, not
+    /// bucket ids. Matching fingerprints are treated as matching keys; hash
+    /// collisions are not checked. Different fingerprints may route to the
+    /// same bucket, so this check can miss single-bucket joins.
+    fn single_node_buckets(&self, rel_id: NodeId) -> Result<Option<Buckets>, SbroadError> {
         struct StaticResolver;
 
         impl BucketsResolver for StaticResolver {
@@ -637,12 +648,12 @@ impl Plan {
             | Relational::OrderBy(_)
             | Relational::Limit(_) => {
                 let child_id = self.get_first_rel_child(rel_id)?;
-                self.is_single_node_subtree(child_id)
+                self.single_node_buckets(child_id)
             }
             Relational::Selection(sel) => {
                 let child_dist = self.rel_distr_ref(sel.child)?;
                 if !matches!(child_dist, Distribution::Segment { .. }) {
-                    return Ok(false);
+                    return Ok(None);
                 }
                 let buckets = self.get_expression_tree_buckets(
                     sel.filter,
@@ -651,11 +662,44 @@ impl Plan {
                     &StaticResolver {},
                 )?;
                 if buckets.is_single_node() {
-                    return Ok(true);
+                    return Ok(Some(buckets));
                 }
-                self.is_single_node_subtree(sel.child)
+                self.single_node_buckets(sel.child)
             }
-            _ => Ok(false),
+            // A left join inherits the left input's proof. For an inner join
+            // without a global input, require exact sets whose union has at
+            // most one fingerprint. Two unknown single-bucket sets may differ.
+            // Do not follow motions: they can change placement.
+            Relational::Join(join) => match join.kind {
+                JoinKind::LeftOuter => self.single_node_buckets(join.left),
+                JoinKind::Inner => {
+                    // A global input is available on every node. Any keeps a
+                    // nonempty bucket set, but Any union empty remains Any.
+                    for (side, other) in [(join.left, join.right), (join.right, join.left)] {
+                        if matches!(self.rel_distr_ref(side)?, Distribution::Global) {
+                            let Some(buckets) = self.single_node_buckets(other)? else {
+                                return Ok(None);
+                            };
+                            let buckets = Buckets::Any.disjunct(&buckets);
+                            return Ok(buckets.is_single_node().then_some(buckets));
+                        }
+                    }
+                    let Some(left) = self.single_node_buckets(join.left)? else {
+                        return Ok(None);
+                    };
+                    let Some(right) = self.single_node_buckets(join.right)? else {
+                        return Ok(None);
+                    };
+                    if !matches!(left, Buckets::Filtered(BucketSet::Exact(_)))
+                        || !matches!(right, Buckets::Filtered(BucketSet::Exact(_)))
+                    {
+                        return Ok(None);
+                    }
+                    let buckets = left.disjunct(&right);
+                    Ok(buckets.is_single_node().then_some(buckets))
+                }
+            },
+            _ => Ok(None),
         }
     }
 

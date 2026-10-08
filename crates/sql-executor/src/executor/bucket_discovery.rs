@@ -577,7 +577,14 @@ where
                                 .disjunct(&outer_buckets)
                                 .conjunct(&filter_buckets)
                         }
-                        JoinKind::LeftOuter => inner_buckets.disjunct(&outer_buckets),
+                        // Preserve the left input's buckets, including rows that do
+                        // not match ON: neither the right input nor ON may prune them.
+                        // If the left input is Any, use the right input's routing
+                        // requirements, falling back to Any when the right is empty.
+                        JoinKind::LeftOuter => match inner_buckets {
+                            Buckets::Any => inner_buckets.disjunct(&outer_buckets),
+                            _ => inner_buckets,
+                        },
                     };
                     self.bucket_map.insert(node_id, join_buckets);
                 }

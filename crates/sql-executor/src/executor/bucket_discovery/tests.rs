@@ -1620,3 +1620,66 @@ mod false_on_motion_inputs {
         );
     }
 }
+
+/// A left join yields rows only where its left side has them, whatever the right
+/// side's buckets: matching rows of a co-located join share a bucket, and a
+/// non-co-located side is moved next to the left one by a motion first.
+/// An inner join runs on the union of its sides' buckets, narrowed by ON.
+#[test]
+fn join_buckets_left_follow_driving_side_inner_take_union() {
+    let s1 = r#"(select "a", "b" from "t5" where "a" = 1) as s"#;
+    let r2 = r#"(select "a" from "t5" where "a" = 2) as r"#;
+    let coordinator = RouterRuntimeMock::new();
+    let buckets = |vs: &[i64]| {
+        let set: HashSet<_, _> = vs
+            .iter()
+            .map(|v| {
+                coordinator
+                    .determine_bucket_id(&[&Value::from(*v)])
+                    .unwrap()
+            })
+            .collect();
+        Buckets::new_filtered(set)
+    };
+    let cases = [
+        (
+            format!(r#"{s1} left join "t5" on s."a" = "t5"."a""#),
+            buckets(&[1]),
+        ),
+        (
+            format!(r#"{s1} left join {r2} on s."a" = r."a""#),
+            buckets(&[1]),
+        ),
+        (
+            format!(r#"{s1} left join "t5" on s."b" = "t5"."b""#),
+            buckets(&[1]),
+        ),
+        // Enrichment derives `"t5"."a" = 2`, pinning the unrestricted side too.
+        (
+            format!(r#""t5" join {r2} on "t5"."a" = r."a""#),
+            if cfg!(feature = "enrich_restrictions") {
+                buckets(&[2])
+            } else {
+                Buckets::All
+            },
+        ),
+        (
+            format!(r#"{s1} join {r2} on s."a" = r."a""#),
+            // Enrichment sees `a = 1 and a = 2` and empties both sides.
+            if cfg!(feature = "enrich_restrictions") {
+                Buckets::new_empty()
+            } else {
+                buckets(&[1, 2])
+            },
+        ),
+        // Not co-located: the other side is broadcast (Any), so s's buckets remain.
+        (
+            format!(r#"{s1} join "t5" on s."b" = "t5"."b""#),
+            buckets(&[1]),
+        ),
+    ];
+    for (from, expected) in cases {
+        let sql = format!("select * from {from}");
+        assert_eq!(expected, discover(&sql, vec![]), "{sql}");
+    }
+}

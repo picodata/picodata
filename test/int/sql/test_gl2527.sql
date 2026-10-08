@@ -62,6 +62,7 @@ LEFT JOIN t g
 1
 
 -- TEST: query-3
+-- SKIP_FOR: 1rsX1
 -- SQL:
 explain (raw) WITH fa AS (
   SELECT id, parent, sharding
@@ -77,22 +78,41 @@ LEFT JOIN t g
   ON g.id = p.parent
  AND g.sharding = p.sharding;
 -- EXPECTED:
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/2) │
+╰────────────────────────────────────────╯
 ''
-SELECT count (*) as "count_1" FROM ( SELECT "t"."id", "t"."parent", "t"."sharding" FROM "t" WHERE "t"."sharding" = 1::int ) as "fa" LEFT JOIN "t" as "p" ON "p"."id" = "fa"."parent" and "p"."sharding" = "fa"."sharding" LEFT JOIN "t" as "g" ON "g"."id" = "p"."parent" and "g"."sharding" = "p"."sharding"
+SELECT count (*) as "col_1" FROM ( SELECT "t"."id", "t"."parent", "t"."sharding" FROM "t" WHERE "t"."sharding" = 1::int ) as "fa" LEFT JOIN "t" as "p" ON "p"."id" = "fa"."parent" and "p"."sharding" = "fa"."sharding" LEFT JOIN "t" as "g" ON "g"."id" = "p"."parent" and "g"."sharding" = "p"."sharding"
 ''
 plan:
     [0] SCAN TABLE t (~262144 rows)
         [0] SEARCH TABLE t AS p USING PRIMARY KEY (id=? AND sharding=?) (~1 row)
             [0] SEARCH TABLE t AS g USING PRIMARY KEY (id=? AND sharding=?) (~1 row)
+
+-- TEST: query-3-single-replicaset
+-- SKIP_FOR: 2rsX1
+-- SQL:
+explain (raw) WITH fa AS (
+  SELECT id, parent, sharding
+  FROM t
+  WHERE sharding = 1
+)
+SELECT count(*)
+FROM fa
+LEFT JOIN t p
+  ON p.id = fa.parent
+ AND p.sharding = fa.sharding
+LEFT JOIN t g
+  ON g.id = p.parent
+ AND g.sharding = p.sharding;
+-- EXPECTED:
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT sum ("COL_0"::int)::int as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_5505886818427594379_0136" )
+SELECT count (*) as "col_1" FROM ( SELECT "t"."id", "t"."parent", "t"."sharding" FROM "t" WHERE "t"."sharding" = 1::int ) as "fa" LEFT JOIN "t" as "p" ON "p"."id" = "fa"."parent" and "p"."sharding" = "fa"."sharding" LEFT JOIN "t" as "g" ON "g"."id" = "p"."parent" and "g"."sharding" = "p"."sharding"
 ''
 plan:
-    [0] SCAN TABLE _tmp_5505886818427594379_0136 (~1048576 rows)
+    [0] SCAN TABLE t (~262144 rows)
+        [0] SEARCH TABLE t AS p USING PRIMARY KEY (id=? AND sharding=?) (~1 row)
+            [0] SEARCH TABLE t AS g USING PRIMARY KEY (id=? AND sharding=?) (~1 row)

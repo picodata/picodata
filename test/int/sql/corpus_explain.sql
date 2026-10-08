@@ -2128,9 +2128,9 @@ subquery $4:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "t0"."ag",
@@ -2175,7 +2175,7 @@ plan:
     [0] SCAN SUBQUERY 1 AS t0 (~1 row)
         [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
 ''
-buckets <= [1-3000]
+buckets = [1222]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -2750,9 +2750,9 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "t0"."ag",
@@ -2797,7 +2797,7 @@ plan:
     [0] SCAN SUBQUERY 1 AS t0 (~1 row)
         [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
 ''
-buckets <= [1-3000]
+buckets = [1222]
 ''
 ╭──────────────────────────╮
 │ 2. Query (WHOLE STORAGE) │
@@ -7377,9 +7377,9 @@ subquery $4:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "t0"."ag",
@@ -7424,7 +7424,7 @@ plan:
     [0] SCAN SUBQUERY 1 AS t0 (~1 row)
         [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
 ''
-buckets <= [1-3000]
+buckets = [874]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -7971,9 +7971,9 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "t0"."ag",
@@ -8018,7 +8018,7 @@ plan:
     [0] SCAN SUBQUERY 1 AS t0 (~1 row)
         [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
 ''
-buckets <= [1-3000]
+buckets = [874]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -8475,9 +8475,9 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "t0"."ag",
@@ -8522,7 +8522,7 @@ plan:
     [0] SCAN SUBQUERY 1 AS t0 (~1 row)
         [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
 ''
-buckets <= [1-3000]
+buckets = [874]
 ''
 ╭──────────────────────────╮
 │ 2. Query (WHOLE STORAGE) │
@@ -11967,9 +11967,9 @@ subquery $4:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "t0"."ag",
@@ -12014,7 +12014,7 @@ plan:
     [0] SCAN SUBQUERY 1 AS t0 (~1 row)
         [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
 ''
-buckets <= [1-3000]
+buckets = [874]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -12963,9 +12963,9 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "t0"."ag",
@@ -13010,7 +13010,7 @@ plan:
     [0] SCAN SUBQUERY 1 AS t0 (~1 row)
         [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
 ''
-buckets <= [1-3000]
+buckets = [874]
 ''
 ╭──────────────────────────╮
 │ 2. Query (WHOLE STORAGE) │
@@ -14234,9 +14234,9 @@ subquery $4:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "t0"."ag",
@@ -14281,7 +14281,7 @@ plan:
     [0] SCAN SUBQUERY 1 AS t0 (~1 row)
         [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
 ''
-buckets <= [1-3000]
+buckets = [1222]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -14818,9 +14818,9 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "t0"."ag",
@@ -14865,7 +14865,7 @@ plan:
     [0] SCAN SUBQUERY 1 AS t0 (~1 row)
         [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
 ''
-buckets <= [1-3000]
+buckets = [874]
 ''
 ╭───────────────────╮
 │ 2. Query (ROUTER) │
@@ -15312,9 +15312,9 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭──────────────────────────╮
-│ 1. Query (WHOLE STORAGE) │
-╰──────────────────────────╯
+╭────────────────────────────────────────╮
+│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
+╰────────────────────────────────────────╯
 ''
 SELECT
   "t0"."ag",
@@ -15359,7 +15359,7 @@ plan:
     [0] SCAN SUBQUERY 1 AS t0 (~1 row)
         [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
 ''
-buckets <= [1-3000]
+buckets = [874]
 ''
 ╭──────────────────────────╮
 │ 2. Query (WHOLE STORAGE) │

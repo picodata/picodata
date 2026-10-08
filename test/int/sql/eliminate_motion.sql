@@ -611,16 +611,12 @@ ORDER BY c1.id LIMIT 1;
 limit 1
   projection (id::int, a::int, b::int, id::int, a::int, b::int)
     order by (id::int)
-      motion [policy: full, program: ReshardIfNeeded]
-        limit 1
-          projection (id::int, a::int, b::int, id::int, a::int, b::int)
-            order by (id::int)
-              scan
-                projection (c1.id::int -> id, c1.a::int -> a, c1.b::int -> b, c2.id::int -> id, c2.a::int -> a, c2.b::int -> b)
-                  join on (c1.b::int = c2.b::int)
-                    scan cte c1($0)
-                    motion [policy: full, program: ReshardIfNeeded]
-                      scan cte c2($0)
+      scan
+        projection (c1.id::int -> id, c1.a::int -> a, c1.b::int -> b, c2.id::int -> id, c2.a::int -> a, c2.b::int -> b)
+          join on (c1.b::int = c2.b::int)
+            scan cte c1($0)
+            motion [policy: full, program: ReshardIfNeeded]
+              scan cte c2($0)
 subquery $0:
   projection (t.id::int -> id, t.a::int -> a, t.b::int -> b)
     selection (t.a::int = 1::int)

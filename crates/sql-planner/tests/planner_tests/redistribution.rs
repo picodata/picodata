@@ -1089,3 +1089,71 @@ mod between;
 mod except;
 mod not_in;
 mod segment;
+
+/// With GROUP BY an empty input yields no groups, so a single-shard input
+/// keeps skipping the reduce stage, also behind an inner join whose both sides
+/// are on that shard.
+#[test]
+fn grouped_aggregate_on_single_shard_behind_join_stays_single_node() {
+    let query = r#"SELECT l."b", count(*) FROM (SELECT "a", "b" FROM "t5" WHERE "a" = 1) AS l
+        JOIN (SELECT "a" FROM "t5" WHERE "a" = 1) AS r ON l."a" = r."a"
+        GROUP BY l."b""#;
+
+    let plan = sql_to_optimized_ir(query, vec![]);
+
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+/// Both sides of the inner join are on the same single shard.
+#[test]
+fn inner_join_on_same_shard_stays_single_node() {
+    let query = r#"SELECT count(*) FROM (SELECT "a" FROM "t5" WHERE "a" = 1) AS l
+        JOIN (SELECT "a" FROM "t5" WHERE "a" = 1) AS r ON l."a" = r."a""#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    assert_eq!(*plan.slices(), Slices::empty());
+}
+
+/// An inner join runs on the union of its inputs' buckets: restricting one side
+/// does not pin it.
+/// Enrichment derives `l.a = 1`, pinning both sides: then no reduce is right.
+#[cfg(not(feature = "enrich_restrictions"))]
+#[test]
+fn inner_join_with_one_restricted_side_keeps_reduce() {
+    let query = r#"explain (logical) SELECT count(*) FROM "t5" AS l
+        JOIN (SELECT "a" FROM "t5" WHERE "a" = 1) AS r ON l."a" = r."a""#;
+    let plan = explain_logical(&sql_to_optimized_ir(query, vec![])).unwrap();
+    assert!(plan.contains("sum(count_"), "{plan}");
+}
+
+/// A global table is on every node, so an inner join with it stays on the other
+/// side's single shard; with that side unrestricted the reduce stays.
+#[test]
+fn inner_join_with_global_side_follows_other_side() {
+    let single = [
+        r#"SELECT count(*) FROM (SELECT "a" FROM "t5" WHERE "a" = 1) AS l
+        JOIN "global_t" AS g ON l."a" = g."b""#,
+        r#"SELECT count(*) FROM "global_t" AS g
+        JOIN (SELECT "a" FROM "t5" WHERE "a" = 1) AS l ON l."a" = g."b""#,
+    ];
+    for query in single {
+        let plan = sql_to_optimized_ir(query, vec![]);
+        assert_eq!(*plan.slices(), Slices::empty(), "{query}");
+    }
+    let query = r#"explain (logical) SELECT count(*) FROM "t5" AS l
+        JOIN "global_t" AS g ON l."a" = g."b""#;
+    let plan = explain_logical(&sql_to_optimized_ir(query, vec![])).unwrap();
+    assert!(plan.contains("sum(count_"), "{plan}");
+}
+
+/// Different sharding keys do not prove that both inputs use the same shard.
+/// Keep the reduce stage: if they use different shards, a local `count(*)`
+/// would emit a separate zero on each. Enrichment is disabled here because
+/// it turns `a = 1 and a = 2` into `false`.
+#[cfg(not(feature = "enrich_restrictions"))]
+#[test]
+fn inner_join_with_differently_restricted_sides_keeps_reduce() {
+    let query = r#"explain (logical) SELECT count(*) FROM (SELECT "a" FROM "t5" WHERE "a" = 1) AS l
+        JOIN (SELECT "a" FROM "t5" WHERE "a" = 2) AS r ON l."a" = r."a""#;
+    let plan = explain_logical(&sql_to_optimized_ir(query, vec![])).unwrap();
+    assert!(plan.contains("sum(count_"), "{plan}");
+}
