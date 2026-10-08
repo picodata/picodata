@@ -8,6 +8,14 @@ use std::io::{self, ErrorKind::UnexpectedEof, Write};
 // Public re-exports.
 pub use pgwire::messages::{PgWireBackendMessage as BeMessage, PgWireFrontendMessage as FeMessage};
 
+const INITIAL_BUF_SIZE: usize = 8192;
+
+/// Send buffer size that triggers a flush. It is equal to `PQ_SEND_BUFFER_SIZE` in PostgreSQL:
+/// <https://github.com/postgres/postgres/blob/REL_17_0/src/backend/libpq/pqcomm.c#L118>.
+/// The protocol permits a flush at any message boundary, so a large result set is sent in parts
+/// and the send buffer does not hold all of it.
+const FLUSH_THRESHOLD: usize = 8192;
+
 fn read_into_buf(reader: &mut impl io::Read, buf: &mut impl BufMut) -> io::Result<usize> {
     // TODO: check if it's empty (+ resize).
     let slice = buf.chunk_mut();
@@ -70,7 +78,6 @@ pub struct PgStream<S> {
 
 impl<S> PgStream<S> {
     pub fn new(raw: S) -> PgStream<S> {
-        const INITIAL_BUF_SIZE: usize = 8192;
         PgStream {
             socket: PgSocket::Plain(raw),
             ibuf: BytesMut::with_capacity(INITIAL_BUF_SIZE),
@@ -198,9 +205,12 @@ impl<S: io::Read + io::Write> PgStream<S> {
         Ok(self)
     }
 
-    /// Put the message into the output buffer, but don't flush just yet.
+    /// Put the message into the output buffer. Flush only if the buffer is full.
     pub fn write_message_noflush(&mut self, message: BeMessage) -> io::Result<&mut Self> {
         message.encode(&mut self.obuf).map_err(io::Error::other)?;
+        if self.obuf.len() >= FLUSH_THRESHOLD {
+            self.flush()?;
+        }
         Ok(self)
     }
 
@@ -223,5 +233,24 @@ impl<S: io::Read + io::Write> PgStream<S> {
         };
 
         Ok(stream)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pgwire::messages::data::DataRow;
+
+    #[test]
+    fn write_message_noflush_flushes_full_buffer() {
+        let mut stream = PgStream::new(io::Cursor::new(Vec::new()));
+        let row = DataRow::new(BytesMut::from(&[0u8; 100][..]), 1);
+        for _ in 0..(2 * FLUSH_THRESHOLD / 100) {
+            stream
+                .write_message_noflush(BeMessage::DataRow(row.clone()))
+                .unwrap();
+            assert!(stream.obuf.len() < FLUSH_THRESHOLD);
+        }
+        assert!(!stream.as_ref().get_ref().is_empty());
     }
 }
