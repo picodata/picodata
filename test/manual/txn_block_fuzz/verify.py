@@ -5,8 +5,9 @@ import time
 from conftest import Cluster, Instance, Retriable
 
 from . import config
+from .history import History
 from .stats import Anomaly, Stats
-from .workload import check_bank
+from .workload import APPEND_TABLE, KeyPool, check_bank, parse_list
 
 
 def read_accounts(instance: Instance, sql: str) -> list[tuple]:
@@ -64,3 +65,23 @@ def final_check(cluster: Cluster, stats: Stats):
                     SHARDED_READ.format(grp=grp),
                 )
             )
+
+
+def final_append_read(cluster: Cluster, pool: KeyPool, history: History, stats: Stats):
+    """Read every key that was ever handed out, on the quiet cluster.
+
+    This exposes the order of appends no worker read afterwards. A key whose
+    row is gone is reported and left out of the read: an UPDATE of a missing
+    row succeeds, so Elle alone would never see the loss."""
+    admin = cluster.instances[0]
+    admin.raft_read_index()
+    for group in pool.groups:
+        sql = f"DO $$ BEGIN RETURN QUERY SELECT k, v FROM {APPEND_TABLE} WHERE grp = {group.grp}; END $$;"
+        lists = {row[0]: parse_list(row[1]) for row in read_accounts(admin, sql)}
+        issued = group.keys[: group.issued]
+        missing = [key for key in issued if key not in lists]
+        if missing:
+            detail = f"{len(missing)} of {len(issued)} pre-created rows are gone, first {missing[:10]}"
+            stats.record_anomaly(Anomaly("lost-row", f"{APPEND_TABLE} grp={group.grp}", detail, admin.name or "?", sql))
+        value = [["r", key, lists[key]] for key in issued if key in lists]
+        history.record_read(config.WORKERS, value, admin.name or "?")

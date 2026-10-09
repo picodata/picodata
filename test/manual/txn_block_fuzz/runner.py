@@ -15,8 +15,9 @@ from conftest import Cluster, Instance, ProcessDead
 from framework.log import log
 
 from . import config
+from .history import History, outcome_of
 from .stats import Anomaly, Stats
-from .workload import build_op
+from .workload import Append, KeyPool, KeyPoolExhausted, build_op
 
 
 def run_worker(
@@ -25,6 +26,8 @@ def run_worker(
     seed: int,
     stop: threading.Event,
     stats: Stats,
+    pool: KeyPool | None,
+    history: History | None,
 ):
     """One client: pick a coordinator, run blocks against it, reconnect when it dies."""
     rng = random.Random(seed)
@@ -41,15 +44,29 @@ def run_worker(
                 stop.wait(0.2)
                 continue
 
-        op = build_op(rng)
+        try:
+            op = build_op(rng, pool)
+        except KeyPoolExhausted as e:
+            # The run cannot go on as configured; stop it and say so.
+            stats.record_stop(str(e))
+            stop.set()
+            break
+        if isinstance(op, Append):
+            assert history is not None
+            if not history.begin(process, op, node):
+                break
         try:
             with conn.cursor() as cur:
                 broken = op.run(cur)
+            if isinstance(op, Append):
+                history.finish(process, "ok", op.completed)  # type: ignore[union-attr]
             stats.record_ok(op.name)
             for detail in broken:
                 stats.record_anomaly(Anomaly("invariant", op.name, detail, node, op.sql, op.params))
         except (psycopg.OperationalError, psycopg.InterfaceError) as e:
             # The connection is gone -- reconnect, maybe to a different node.
+            if isinstance(op, Append):
+                history.finish(process, outcome_of(e), op.invoke_value())  # type: ignore[union-attr]
             stats.record_error(op.name, e, node, op.sql, op.params)
             try:
                 conn.close()
@@ -57,6 +74,8 @@ def run_worker(
                 pass
             conn = None
         except Exception as e:
+            if isinstance(op, Append):
+                history.finish(process, outcome_of(e), op.invoke_value())  # type: ignore[union-attr]
             stats.record_error(op.name, e, node, op.sql, op.params)
 
     if conn is not None:
@@ -144,18 +163,20 @@ def run_nemesis(
     faults: list[str],
     stop: threading.Event,
     stats: Stats,
+    history: History | None,
     faults_log: Path,
 ):
-    """Apply faults one at a time. Each is written to faults_log with its
-    timestamp, so an anomaly can be placed against the fault that preceded it.
-    The file belongs to this thread: the main thread stops waiting for a fault
-    that hangs, and must not close the file under it."""
+    """Apply faults one at a time. Each is written to faults_log with the number
+    of history records so far, so an anomaly can be placed against the fault
+    that preceded it. The file belongs to this thread: the main thread stops
+    waiting for a fault that hangs, and must not close the file under it."""
     rng = random.Random(config.SEED ^ 0x5EED)
 
     with faults_log.open("w") as out:
 
         def note(fault: str, phase: str, target: str = ""):
             record = {"time": time.monotonic_ns(), "fault": fault, "phase": phase, "target": target}
+            record["history_records"] = history.size() if history is not None else None
             out.write(json.dumps(record) + "\n")
             out.flush()
 

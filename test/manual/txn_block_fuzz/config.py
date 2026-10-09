@@ -6,6 +6,7 @@ test/manual/README.md.
 
 import os
 import random
+from pathlib import Path
 
 
 def _env_int(name: str, default: int) -> int:
@@ -18,8 +19,16 @@ INSTANCES = _env_int("FUZZ_INSTANCES", 3)
 RF = _env_int("FUZZ_RF", 3)
 ACCOUNTS = _env_int("FUZZ_ACCOUNTS", 6)
 GROUPS = _env_int("FUZZ_GROUPS", 3)
+MAX_WRITES_PER_KEY = _env_int("FUZZ_MAX_WRITES_PER_KEY", 64)
+# Enough keys for the run: on an append-only run without faults eight workers
+# retire about nine keys per second and group, and a pool that runs dry stops
+# the run (see KeyPool).
+KEYS = _env_int("FUZZ_KEYS", max(1000, 16 * DURATION))
 SEED = _env_int("FUZZ_SEED", random.randrange(2**31))
 NEMESIS_PERIOD = float(os.getenv("FUZZ_NEMESIS_PERIOD") or 5)
+ELLE_CLI_JAR = os.getenv("ELLE_CLI_JAR") or ""
+ELLE_CLI_CACHE = Path(os.getenv("XDG_CACHE_HOME") or Path.home() / ".cache") / "elle-cli"
+ELLE_HEAP = os.getenv("FUZZ_ELLE_HEAP") or "4g"
 
 ALL_FAULTS = ["kill", "pause", "restart", "leader", "compact"]
 
@@ -45,6 +54,7 @@ def parse_faults() -> list[str]:
 
 OPS_BY_WORKLOAD = {
     "bank": [("sharded_transfer", 70), ("sharded_read", 30)],
+    "append": [("append_sharded", 100)],
 }
 
 

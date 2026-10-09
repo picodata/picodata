@@ -18,7 +18,8 @@ CI=1 uv run pytest test/manual/test_txn_block_fuzz.py -s
 `CI=1` reuses the binary already in `target/`; drop it to rebuild first.
 `-s` shows the report as it is printed -- without it pytest captures the
 output and shows it only when the run fails. Deploying the cluster and the
-final checks add a few seconds on top of `FUZZ_DURATION`.
+final checks add a few seconds on top of `FUZZ_DURATION`; checking a
+history with Elle adds considerably more, and grows with its length.
 
 Every knob is an environment variable, listed with its default in the
 module docstring. The ones worth knowing: `FUZZ_DURATION`, `FUZZ_WORKLOAD`,
@@ -33,6 +34,22 @@ can be replayed.
   invariants against the rows it saw: money is conserved, no account is
   negative, none is missing. That catches a half-applied block and nothing
   that leaves the total intact.
+- **append** is Jepsen's list-append. A block reads some lists and appends
+  unique elements to others; the history is checked for serializability,
+  which also catches write skew, read skew, and duplicated or aborted
+  appends.
+
+### Checking the append history
+
+The check runs through [elle-cli], a standalone jar that needs Java 21. The
+jar is downloaded on first use into `~/.cache/elle-cli` (or
+`$XDG_CACHE_HOME/elle-cli`) and verified against a pinned checksum;
+`ELLE_CLI_JAR` points at a jar of your own instead. Without `java` the
+history is still written, and the report says `elle: skipped, java not found`.
+
+```
+FUZZ_WORKLOAD=append CI=1 uv run pytest test/manual/test_txn_block_fuzz.py -s
+```
 
 ### Faults
 
@@ -41,7 +58,7 @@ list of `kill`, `pause`, `restart`, `leader` and `compact`, one applied
 every `FUZZ_NEMESIS_PERIOD` seconds. A long run under every fault:
 
 ```
-FUZZ_NEMESIS=all FUZZ_DURATION=900 \
+FUZZ_WORKLOAD=bank,append FUZZ_NEMESIS=all FUZZ_DURATION=900 \
     CI=1 uv run pytest test/manual/test_txn_block_fuzz.py -s
 ```
 
@@ -55,10 +72,14 @@ violation still fails the run, and without a nemesis the same state fails too.
 The report ends with `valid? False` when a consistency anomaly or an
 unexpected error was recorded, and each one is printed with the block that
 produced it and the instance it ran against. The run directory, printed at
-the start, keeps the faults the nemesis applied with their timestamps, one JSON object per line.
+the start, keeps the history, the faults the nemesis applied with their
+timestamps (one JSON object per line), and Elle's own explanation of every
+anomaly it found.
 
 The workload stops at the first anomaly, so the report shows the finding
 rather than the errors it would go on to cause. An anomaly is still not
 automatically a database bug -- a crash can come from the machine, the OOM
 killer or a full disk, and an error can be misclassified -- so place it
 against the fault log and replay it with the same `FUZZ_SEED`.
+
+[elle-cli]: https://github.com/ligurio/elle-cli

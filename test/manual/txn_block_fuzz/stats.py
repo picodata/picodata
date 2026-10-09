@@ -67,6 +67,7 @@ class Stats:
     # wind down, so a finding is reported instead of the errors it goes on to
     # cause. The checks made afterwards do not consult it and still run.
     stop: threading.Event = field(default_factory=threading.Event)
+    stopped_early: str | None = None
 
     def record_ok(self, op: str):
         with self.lock:
@@ -87,6 +88,11 @@ class Stats:
             self.anomalies.append(anomaly)
         self.stop.set()
         log.error(f"ANOMALY {anomaly}")
+
+    def record_stop(self, reason: str):
+        with self.lock:
+            if self.stopped_early is None:
+                self.stopped_early = reason
 
     def record_not_healed(self, reason: str):
         with self.lock:

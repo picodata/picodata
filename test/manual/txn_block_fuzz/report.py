@@ -26,6 +26,8 @@ def report(stats: Stats, faults: list[str], elapsed: float, history_lines: list[
         line(f"cluster did not come back: {stats.not_healed}")
     if stats.faults:
         line("faults: " + ", ".join(f"{name}x{count}" for name, count in sorted(stats.faults.items())))
+    if stats.stopped_early:
+        line(f"stopped early: {stats.stopped_early}")
     line()
 
     for text in history_lines:
@@ -43,6 +45,6 @@ def report(stats: Stats, faults: list[str], elapsed: float, history_lines: list[
     # it says so: the blocks that ran were consistent, the rest went unchecked.
     incomplete = ""
     if stats.not_healed:
-        incomplete = " (incomplete: the cluster did not come back, so the final checks did not run)"
+        incomplete = " (incomplete: the cluster did not come back, so the final checks and Elle did not run)"
     line(f"valid? {valid}{incomplete}")
     line("=" * 72)
