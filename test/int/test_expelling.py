@@ -206,7 +206,20 @@ def test_expel_timeout(cluster: Cluster):
     if sys.platform == "darwin":
         cli.expect_exact(f"{common_error_part}: No route to host (os error 65)")
     else:
-        cli.expect_exact(f"{common_error_part}: connect timeout")
+        cli.expect_exact(
+            [
+                f"{common_error_part}: connect timeout",
+                # The test relies on using a random-ish ip address getting a
+                # connection timeout error due to nobody actually listenning on
+                # that address. There's a problem with that approach as it
+                # exposes us to real network configuration issues. For example
+                # some configurations may reject the connection to certain
+                # addresses. We observe this behaviour in our CI as flaky tests.
+                # To workaround this we also allow the connect rejection error
+                # here.
+                "No route to host",
+            ]
+        )
 
     cli.expect_exact(pexpect.EOF)
 
