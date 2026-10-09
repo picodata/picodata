@@ -451,6 +451,10 @@ cluster:
     data = router_instance_1.sql("""INSERT INTO "global_table_via_router" VALUES(2) """)
     assert data["row_count"] == 1
 
+    # Unlike with DDL such as CREATE TABLE, global DML doesn't have implicit
+    # WAIT APPLIED GLOBALLY semantics, so we have to synchronize explicitly
+    cluster.raft_wait_index(router_instance_1.raft_get_index())
+
     # ensure that tables is filled up
     for instance in [
         storage_instance_1,
