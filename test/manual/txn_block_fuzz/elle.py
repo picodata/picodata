@@ -1,4 +1,4 @@
-"""Checking an append history for serializability."""
+"""Checking an append history for serializability, and checking the checker."""
 
 import hashlib
 import io
@@ -8,10 +8,12 @@ import subprocess
 import urllib.request
 import zipfile
 from pathlib import Path
+from typing import Callable
 
 from framework.log import log
 
 from . import config
+from .history import unread
 from .stats import Anomaly, Stats
 
 # Elle is a Clojure library without a CLI; elle-cli is the prebuilt wrapper.
@@ -89,6 +91,57 @@ def run_elle(history_path: Path, out_dir: Path, jar: Path) -> dict:
     return verdict
 
 
+def corrupt_duplicate(history: list[dict]) -> bool:
+    """Repeat the last element of one read."""
+    for record in history:
+        if record["type"] == "ok":
+            for mop in record["value"]:
+                if mop[0] == "r" and mop[2]:
+                    mop[2].append(mop[2][-1])
+                    return True
+    return False
+
+
+def corrupt_order(history: list[dict]) -> bool:
+    """Swap the first two elements of the second read of a key read at length >= 2 twice."""
+    seen: set[int] = set()
+    for record in history:
+        if record["type"] == "ok":
+            for mop in record["value"]:
+                if mop[0] == "r" and mop[2] and len(mop[2]) >= 2:
+                    if mop[1] in seen:
+                        mop[2][0], mop[2][1] = mop[2][1], mop[2][0]
+                        return True
+                    seen.add(mop[1])
+    return False
+
+
+def corrupt_aborted(history: list[dict]) -> bool:
+    """Mark a committed transaction failed although a later read saw its append."""
+    writers: dict[tuple[int, int], dict] = {}
+    for record in history:
+        if record["type"] != "ok":
+            continue
+        for mop in record["value"]:
+            if mop[0] == "r" and mop[2]:
+                for element in mop[2]:
+                    writer = writers.get((mop[1], element))
+                    if writer is not None and writer is not record:
+                        writer["type"] = "fail"
+                        writer["value"] = unread(writer["value"])
+                        return True
+            elif mop[0] == "append":
+                writers[(mop[1], mop[2])] = record
+    return False
+
+
+NEGATIVE_CONTROLS: list[tuple[str, Callable[[list[dict]], bool]]] = [
+    ("duplicate-elements", corrupt_duplicate),
+    ("incompatible-order", corrupt_order),
+    ("G1a", corrupt_aborted),
+]
+
+
 def check_history(history_path: Path, run_dir: Path, stats: Stats, jar: Path | None) -> list[str]:
     if jar is None:
         return ["elle: skipped, java not found"]
@@ -103,4 +156,21 @@ def check_history(history_path: Path, run_dir: Path, stats: Stats, jar: Path | N
         )
         stats.record_anomaly(Anomaly("elle", "list-append", detail, "-", str(history_path)))
 
+    for anomaly_type, corrupt in NEGATIVE_CONTROLS:
+        with history_path.open() as f:
+            history = json.load(f)
+        if not corrupt(history):
+            detail = "no transaction in the history to corrupt, so the check went unverified"
+            stats.record_anomaly(Anomaly("negative-control", anomaly_type, detail, "-", str(history_path)))
+            lines.append(f"negative control {anomaly_type}: not constructible")
+            continue
+        control_path = run_dir / f"control-{anomaly_type}.json"
+        with control_path.open("w") as f:
+            json.dump(history, f)
+        control = run_elle(control_path, run_dir / f"control-{anomaly_type}", jar)
+        flagged = control.get("valid?") is False and anomaly_type in (control.get("anomaly-types") or [])
+        lines.append(f"negative control {anomaly_type}: {'flagged' if flagged else 'NOT flagged'}")
+        if not flagged:
+            detail = f"a corrupted history was not flagged: {control}"
+            stats.record_anomaly(Anomaly("negative-control", anomaly_type, detail, "-", str(control_path)))
     return lines

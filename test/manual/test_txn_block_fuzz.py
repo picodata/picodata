@@ -26,7 +26,7 @@ This file is the orchestration only; the pieces live in `txn_block_fuzz/`:
     runner    the client threads and the nemesis
     schema    cluster bring-up and the synchronous-tier check
     verify    what is checked once the cluster is quiet again
-    elle      the serializability check
+    elle      the serializability check and its negative controls
     stats     counters, anomalies, expected vs unexpected errors
     report    the summary printed at the end
 
@@ -50,7 +50,9 @@ Two workloads, selected with FUZZ_WORKLOAD:
 The history is checked by elle-cli (https://github.com/ligurio/elle-cli), a
 standalone jar that runs Elle. It is downloaded on first use into
 ~/.cache/elle-cli and needs Java 21; ELLE_CLI_JAR points at a jar of your own
-instead. Without java the check is skipped.
+instead. Without java the check is skipped. Three corrupted copies of every
+history are checked as well, and the run fails unless each is flagged -- a
+check that silently stopped working would otherwise look exactly like a pass.
 
 CI does not run this file: test/manual is outside the pytest.ini testpaths.
 Run it by hand:

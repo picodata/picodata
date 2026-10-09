@@ -51,6 +51,17 @@ history is still written, and the report says `elle: skipped, java not found`.
 FUZZ_WORKLOAD=append CI=1 uv run pytest test/manual/test_txn_block_fuzz.py -s
 ```
 
+Three deliberately corrupted copies of the history are checked too, and the
+run fails unless each one is flagged -- a checker that silently stopped
+working would otherwise look exactly like a pass:
+
+```
+elle list-append serializable: valid? True
+negative control duplicate-elements: flagged
+negative control incompatible-order: flagged
+negative control G1a: flagged
+```
+
 ### Faults
 
 `FUZZ_NEMESIS` is `none` by default. It takes `all`, or a comma separated
