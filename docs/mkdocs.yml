@@ -418,6 +418,7 @@ hooks:
   - ./hooks/check_padding.py
   - ./hooks/check_svg_attrs.py
   - ./hooks/check_unused_svg.py
+  - ./hooks/replace_git_ref.py
   - ./hooks/check_links.py
   - ./hooks/check_sorting.py
   - ./hooks/validate_system_tables.py

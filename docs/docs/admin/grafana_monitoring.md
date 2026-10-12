@@ -111,7 +111,7 @@ scrape_configs:
 [Docker]: https://www.docker.com
 [Grafana]: https://grafana.com
 [Prometheus]: https://prometheus.io
-[Picodata.json]: https://git.picodata.io/core/picodata/-/tree/master/monitoring/dashboard
+[Picodata.json]: https://git.picodata.io/core/picodata/-/tree/{{ git_ref }}/monitoring/dashboard
 [instance.http.listen]: ../reference/config.md#instance_http_listen
 [файла конфигурации]: ../reference/config.md#config_file_description
 [исходного кода]: ../tutorial/install.md#getting_sources

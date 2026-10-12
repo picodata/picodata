@@ -72,6 +72,16 @@ pipenv run build
 
 С помощью этой команды сайт документации будет собран [в «строгом» режиме](https://www.mkdocs.org/user-guide/cli/#mkdocs-build) — с флагом `-s` / `--strict`
 
+Хук `hooks/replace_git_ref.py` подставляет имя ветки вместо `{{ git_ref }}`
+в Markdown на основе `PICODATA_DOC_VER`. В CI эта переменная задаётся
+в `.gitlab-ci.yml`: версия документации `devel` соответствует ветке `master`,
+остальные значения используются без изменений. Если переменная не задана
+или пуста, используется `master`. Для локальной сборки конкретной версии:
+
+``` shell
+PICODATA_DOC_VER=26.2 pipenv run build
+```
+
 Полученную сборку можно запустить, например, с помощью модуля [http.server](https://docs.python.org/3/library/http.server.html). Введите команду:
 
 ``` shell
