@@ -547,9 +547,9 @@ fn parse_function_invocation<'q>(
 }
 
 /// The (already normalized) name denotes a built-in aggregate.
-/// [`AggregateKind::from_norm_name`] matches case-sensitively.
+/// [`AggregateKind::from_name`] matches case-sensitively.
 fn is_aggregate_function(name: &Ident) -> bool {
-    AggregateKind::from_norm_name(name.as_str()).is_some()
+    AggregateKind::from_name(name.as_str()).is_some()
 }
 
 /// Build the parameter node, assigning the index: `?` takes the position of

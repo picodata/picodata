@@ -2,11 +2,11 @@ use core::panic;
 use pest::iterators::{Pair, Pairs};
 use pest::pratt_parser::PrattParser;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql_ir::ir::function::get_real_function_name;
 use std::cell::RefCell;
 
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ast::Rule;
-use crate::frontend::sql::get_real_function_name;
 use crate::frontend::sql::ir::SubtreeCloner;
 use crate::frontend::sql::type_system::{self, get_parameter_derived_types, TypeAnalyzer};
 use crate::ir::columns::RelColumn;
@@ -20,7 +20,7 @@ use crate::ir::operator::{Arithmetic, Bool, OrderByElement, OrderByEntity, Order
 use crate::ir::types::{CastType, DerivedType, NestedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
-use crate::utils::normalize_name_from_sql;
+use crate::utils::normalize_ident;
 use sql_type_system::error::Error as TypeSystemError;
 use sql_type_system::expr::Type;
 
@@ -531,7 +531,7 @@ fn parse_substring<M: Metadata>(
             )?;
 
             Ok(ParseExpression::Function {
-                name: "substring".to_string(),
+                name: "substring".into(),
                 args: vec![string_expr, from_expr, for_expr],
                 feature: Some(FunctionFeature::Substring(Substring::FromFor)),
             })
@@ -565,7 +565,7 @@ fn parse_substring<M: Metadata>(
             )?;
 
             Ok(ParseExpression::Function {
-                name: "substring".to_string(),
+                name: "substring".into(),
                 args: vec![string_expr, from_expr, for_expr],
                 feature: Some(FunctionFeature::Substring(Substring::Regular)),
             })
@@ -595,7 +595,7 @@ fn parse_substring<M: Metadata>(
             let for_id = for_expr.populate_plan(plan, worker)?;
 
             Ok(ParseExpression::Function {
-                name: "substr".to_string(),
+                name: "substr".into(),
                 args: vec![
                     ParseExpression::PlanId { plan_id: string_id },
                     ParseExpression::PlanId {
@@ -627,7 +627,7 @@ fn parse_substring<M: Metadata>(
             )?;
 
             Ok(ParseExpression::Function {
-                name: "substring".to_string(),
+                name: "substring".into(),
                 args: vec![string_expr, from_expr],
                 feature: Some(FunctionFeature::Substring(Substring::From)),
             })
@@ -679,7 +679,7 @@ fn parse_substring<M: Metadata>(
             }
 
             Ok(ParseExpression::Function {
-                name: "substring".to_string(),
+                name: "substring".into(),
                 args,
                 feature: Some(FunctionFeature::Substring(Substring::Similar)),
             })
@@ -757,8 +757,8 @@ where
                         "Identifier expected under IdentifierWithOptionalContinuation"
                     ).as_str();
 
-                    let mut scan_name = None;
-                    let mut col_name = normalize_name_from_sql(first_identifier);
+                    let mut tbl_name = None;
+                    let mut norm_ident = normalize_ident(first_identifier);
 
 					// simple id, without reference continuation or function invocation continuation
 					let is_simple_id = inner_pairs.is_empty();
@@ -769,13 +769,12 @@ where
                             Rule::ReferenceContinuation => {
                                 let col_name_pair = continuation.into_inner()
                                     .next().expect("Reference continuation must contain an Identifier");
-                                let second_identifier = normalize_name_from_sql(col_name_pair.as_str());
-                                scan_name = Some(col_name);
-                                col_name = second_identifier;
+
+                                tbl_name = Some(std::mem::replace(&mut norm_ident, normalize_ident(col_name_pair.as_str())));
                             }
                             Rule::FunctionInvocationContinuation => {
                                 // Handle function invocation case.
-                                let mut function_name = String::from(first_identifier);
+                                let mut norm_fn_name = norm_ident;
                                 let mut args_pairs = continuation.into_inner();
                                 let mut feature = None;
                                 let mut parse_exprs_args = Vec::new();
@@ -783,12 +782,11 @@ where
                                 if let Some(function_args) = function_args {
                                     match function_args.as_rule() {
                                         Rule::CountAsterisk => {
-                                            let normalized_name = function_name.to_lowercase();
-                                            if "count" != normalized_name.as_str() {
+                                            if "count" != norm_fn_name.as_str() {
                                                 return Err(SbroadError::Invalid(
                                                     Entity::Query,
                                                     Some(format_smolstr!(
-                                                        "\"*\" is allowed only inside \"count\" aggregate function. Got: {normalized_name}",
+                                                        "\"*\" is allowed only inside \"count\" aggregate function. Got: {norm_fn_name}",
                                                     ))
                                                 ));
                                             }
@@ -802,8 +800,8 @@ where
 
                                             // Exposed by picodata scalar function name should be
                                             // transformed to real name of representing it stored procedure.
-                                            if let Some(name) = get_real_function_name(&function_name) {
-                                                function_name = name.to_string();
+                                            if let Some(name) = get_real_function_name(&norm_fn_name) {
+                                                norm_fn_name = SmolStr::new(name);
                                             }
 
                                             // We should not through an error here as while performing
@@ -814,7 +812,7 @@ where
                                             // metadata, we lose meaningful aggregate error diagnostics.
                                             // Metadata will be checked again during full parsing,
                                             // where a correct "function not found" error can be produced.
-                                            if let Ok(f) = worker.metadata.function(&function_name) {
+                                            if let Ok(f) = worker.metadata.function(&norm_fn_name) {
                                                 volatile = f.is_volatile();
                                             }
 
@@ -862,7 +860,7 @@ where
                                     }
                                 }
                                 return Ok(ParseExpression::Function {
-                                    name: function_name,
+                                    name: norm_fn_name,
                                     args: parse_exprs_args,
                                     feature,
                                 })
@@ -875,33 +873,33 @@ where
                     // — qualified `t.x` always refers to a column. If the LET scope has the name we also
                     // probe the relation columns to detect ambiguity: a column with the same name shadowing
                     // a LET would be surprising, so we report the conflict instead of silently picking one.
-                    let is_bare_ident = is_simple_id && scan_name.is_none();
+                    let is_bare_ident = is_simple_id && tbl_name.is_none();
                     if is_bare_ident {
-                        match worker.let_scope.resolve_by_name(&col_name) {
+                        match worker.let_scope.resolve_by_name(&norm_ident) {
                             LetVarLookup::Live(decl) => {
                                 let var_type = decl.ty;
-                                let is_column = worker.resolves_to_column(plan, referred_relation_ids, &col_name);
+                                let is_column = worker.resolves_to_column(plan, referred_relation_ids, &norm_ident);
                                 if is_column {
                                     return Err(SbroadError::Other(format_smolstr!(
-                                        "column reference \"{col_name}\" is ambiguous: it could \
+                                        "column reference \"{norm_ident}\" is ambiguous: it could \
                                          refer to either a LET variable or a table column"
                                     )));
                                 }
-                                worker.let_scope.mark_as_used(&col_name);
+                                worker.let_scope.mark_as_used(&norm_ident);
                                 let plan_id = plan.nodes.push(
                                     LetVarRef {
-                                        name: col_name.clone(),
+                                        name: norm_ident.clone(),
                                         var_type,
                                     }
                                     .into(),
                                 );
-                                worker.reference_to_name_map.insert(plan_id, col_name);
+                                worker.reference_to_name_map.insert(plan_id, norm_ident);
                                 return Ok(ParseExpression::PlanId { plan_id });
                             }
                             LetVarLookup::OutOfScope => {
-                                let is_column = worker.resolves_to_column(plan, referred_relation_ids, &col_name);
+                                let is_column = worker.resolves_to_column(plan, referred_relation_ids, &norm_ident);
                                 if !is_column {
-                                    return Err(LetVarScope::out_of_scope_error(&col_name));
+                                    return Err(LetVarScope::out_of_scope_error(&norm_ident));
                                 }
                             },
                             LetVarLookup::Unknown => (),
@@ -923,13 +921,13 @@ where
 
                     worker.build_columns_map(plan, *plan_left_id)?;
 
-                    let left_child_col_position = worker.columns_map_get_positions(*plan_left_id, &col_name, scan_name.as_deref());
+                    let left_child_col_position = worker.columns_map_get_positions(*plan_left_id, &norm_ident, tbl_name.as_deref());
 
                     let plan_right_id = referred_relation_ids.get(1);
                     if let Some(plan_right_id) = plan_right_id {
                         // Referencing Join node.
                         worker.build_columns_map(plan, *plan_right_id)?;
-                        let right_child_col_position = worker.columns_map_get_positions(*plan_right_id, &col_name, scan_name.as_deref());
+                        let right_child_col_position = worker.columns_map_get_positions(*plan_right_id, &norm_ident, tbl_name.as_deref());
 
                         let present_in_left = left_child_col_position.is_ok();
                         let present_in_right = right_child_col_position.is_ok();
@@ -938,18 +936,18 @@ where
                             return Err(SbroadError::Invalid(
                                 Entity::Column,
                                 Some(format_smolstr!(
-                                    "column name '{col_name}' is present in both join children",
+                                    "column name '{norm_ident}' is present in both join children",
                                 )),
                             ));
                         } else if present_in_left {
-                            let col_with_scan = ColumnWithScan::new(&col_name, scan_name.as_deref());
+                            let col_with_scan = ColumnWithScan::new(&norm_ident, tbl_name.as_deref());
                             plan.add_ref_from_left_branch(
                                 *plan_left_id,
                                 *plan_right_id,
                                 col_with_scan,
                             )?
                         } else if present_in_right {
-                            let col_with_scan = ColumnWithScan::new(&col_name, scan_name.as_deref());
+                            let col_with_scan = ColumnWithScan::new(&norm_ident, tbl_name.as_deref());
                             plan.add_ref_from_right_branch(
                                 *plan_left_id,
                                 *plan_right_id,
@@ -958,10 +956,10 @@ where
                         } else {
                             return Err(SbroadError::NotFound(
                                 Entity::Column,
-                                format_smolstr!("'{col_name}' in the join children",),
+                                format_smolstr!("'{norm_ident}' in the join children",),
                             ));
                         };
-                        worker.reference_to_name_map.insert(ref_id, col_name);
+                        worker.reference_to_name_map.insert(ref_id, norm_ident);
 						ParseExpression::PlanId { plan_id: ref_id }
                     } else {
                         // Referencing single node.
@@ -977,13 +975,13 @@ where
 									col_type,
 									None,
 									false);
-								worker.reference_to_name_map.insert(ref_id, col_name);
+								worker.reference_to_name_map.insert(ref_id, norm_ident);
 								ParseExpression::PlanId { plan_id: ref_id }
 							}
                             Err(e) => {
 								if is_simple_id && worker.inside_grouping_expression {
 									let ref_id = plan.nodes.add_ref(ReferenceTarget::Leaf, 0, DerivedType::unknown(), None, false);
-									let alias_id = plan.nodes.add_alias(&col_name, ref_id)?;
+									let alias_id = plan.nodes.add_alias(&norm_ident, ref_id)?;
 									ParseExpression::PlanId { plan_id: alias_id }
 								} else {
 									return Err(e);

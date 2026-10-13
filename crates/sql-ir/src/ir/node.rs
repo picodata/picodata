@@ -514,7 +514,7 @@ impl From<Parameter> for NodeAligned {
 /// statement contains a `LetVarRef { name: "v", ... }` for the `v` operand.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct LetVarRef {
-    /// LET variable name (already passed through `normalize_name_from_sql`).
+    /// LET variable name (already passed through `normalize_ident`).
     pub name: SmolStr,
     /// Type of the LET RHS, taken from the RHS's projection at declaration time.
     pub var_type: DerivedType,

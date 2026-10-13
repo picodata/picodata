@@ -5,7 +5,6 @@ use crate::ir::node::{Cast, NodeId, ScalarFunction};
 use crate::ir::node::{Node32, Node96};
 use crate::ir::types::CastType;
 use crate::ir::Plan;
-use crate::utils::normalize_name_from_sql;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -409,12 +408,10 @@ pub const FUNCTION_NAME_MAPPINGS: &[FunctionNameMapping] = &[
     },
 ];
 
-/// Maps (maybe quoted or uppercased) name from user to real procedure name in tarantool.
-/// Real name stands for name in _func space.
-pub fn get_real_function_name(name_from_sql: &str) -> Option<&'static str> {
-    let normalized_name = normalize_name_from_sql(name_from_sql);
+/// Maps normalized name to real procedure name in tarantool.
+pub fn get_real_function_name(name: &str) -> Option<&'static str> {
     FUNCTION_NAME_MAPPINGS
         .iter()
-        .find(|&mapping| mapping.sql == normalized_name)
+        .find(|&mapping| mapping.sql == name)
         .map(|mapping| mapping.tarantool_symbol)
 }

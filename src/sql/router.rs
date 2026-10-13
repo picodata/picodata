@@ -36,7 +36,6 @@ use crate::preemption::scheduler_options;
 use crate::schema::{Distribution, ShardingFn, TableDef, ADMIN_ID};
 use crate::storage::{self, Catalog};
 
-use sql::executor::engine::helpers::normalize_name_from_sql;
 use sql::executor::engine::Metadata;
 use sql::executor::Port;
 use sql::ir::function::Function;
@@ -910,10 +909,12 @@ impl Metadata for RouterMetadata {
     }
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
-        let name = normalize_name_from_sql(fn_name);
-        match self.functions.get(&name) {
+        match self.functions.get(fn_name) {
             Some(v) => Ok(v),
-            None => Err(SbroadError::NotFound(Entity::SQLFunction, name)),
+            None => Err(SbroadError::NotFound(
+                Entity::SQLFunction,
+                SmolStr::new(fn_name),
+            )),
         }
     }
 

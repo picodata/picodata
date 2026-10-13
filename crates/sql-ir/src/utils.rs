@@ -16,7 +16,7 @@ use tarantool::fiber::Mutex as TMutex;
 /// * AbC   -> abc (lowercased, unquoted)
 /// ```
 #[must_use]
-pub fn normalize_name_from_sql(s: &str) -> SmolStr {
+pub fn normalize_ident(s: &str) -> SmolStr {
     if let (Some('"'), Some('"')) = (s.chars().next(), s.chars().last()) {
         return SmolStr::from(&s[1..s.len() - 1]);
     }

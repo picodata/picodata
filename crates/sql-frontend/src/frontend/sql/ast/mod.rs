@@ -755,10 +755,7 @@ fn build_scan_table_ir(
         .children
         .first()
         .expect("could not find first child id in scan table node");
-    let scan_id = plan.add_scan(
-        parse_normalized_identifier(ast, *ast_table_id)?.as_str(),
-        None,
-    )?;
+    let scan_id = plan.add_scan(parse_identifier(ast, *ast_table_id)?.as_str(), None)?;
     map.add(node_id, scan_id);
     Ok(())
 }
@@ -1172,7 +1169,7 @@ where
             .get(1)
             .expect("Expression expected as second child of UpdateItem");
 
-        let col_name = parse_normalized_identifier(ast, *ast_column_id)?;
+        let col_name = parse_identifier(ast, *ast_column_id)?;
         let &(col, pos) = columns
             .get(col_name.as_str())
             .ok_or_else(|| SbroadError::NotFound(Entity::Column, col_name.clone()))?;

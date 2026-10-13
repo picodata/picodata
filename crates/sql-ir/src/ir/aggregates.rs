@@ -1,5 +1,5 @@
 use ahash::AHashMap;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use smol_str::{format_smolstr, ToSmolStr};
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::helpers::RepeatableState;
@@ -55,18 +55,10 @@ impl Display for AggregateKind {
 impl AggregateKind {
     /// Returns None in case passed function name is not aggregate.
     ///
-    /// The name may be in any case: callers that must reject a quoted, case-preserved
-    /// spelling like `"SUM"` check fold invariance themselves.
+    /// Expects a normalized name: a quoted `"SUM"` stays uppercase and is no aggregate.
     #[must_use]
     pub fn from_name(func_name: &str) -> Option<AggregateKind> {
-        let normalized: SmolStr = func_name.chars().flat_map(char::to_lowercase).collect();
-        Self::from_norm_name(normalized.as_str())
-    }
-
-    /// Similar to [`AggregateKind::from_name`] but expects normalized name.
-    #[must_use]
-    pub fn from_norm_name(fn_norm_name: &str) -> Option<AggregateKind> {
-        let kind = match fn_norm_name {
+        let kind = match func_name {
             "count" => AggregateKind::COUNT,
             "sum" => AggregateKind::SUM,
             "avg" => AggregateKind::AVG,

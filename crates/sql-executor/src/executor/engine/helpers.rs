@@ -64,7 +64,7 @@ use tarantool::msgpack::{Encode, EncodeError};
 
 pub mod vshard;
 
-pub use crate::utils::{normalize_name_from_sql, to_user};
+pub use crate::utils::{normalize_ident, to_user};
 
 fn xx_hash(s: &str) -> SmolStr {
     #[cfg(feature = "mock")]

@@ -36,7 +36,7 @@ use std::rc::Rc;
 use tarantool::space::SpaceId;
 
 use super::helpers::vshard::prepare_rs_to_ir_map;
-use super::helpers::{dispatch_impl, normalize_name_from_sql, table_name};
+use super::helpers::{dispatch_impl, table_name};
 use super::{get_builtin_functions, BlockExecData, Metadata, QueryCache};
 use crate::executor::result::MetadataColumn;
 use crate::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
@@ -159,10 +159,12 @@ impl Metadata for RouterConfigurationMock {
     }
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
-        let name = normalize_name_from_sql(fn_name);
-        match self.functions.get(&name) {
+        match self.functions.get(fn_name) {
             Some(v) => Ok(v),
-            None => Err(SbroadError::NotFound(Entity::SQLFunction, name)),
+            None => Err(SbroadError::NotFound(
+                Entity::SQLFunction,
+                SmolStr::new(fn_name),
+            )),
         }
     }
 
@@ -311,13 +313,13 @@ impl RouterConfigurationMock {
     #[allow(clippy::too_many_lines)]
     #[must_use]
     pub fn new() -> Self {
-        let name_func = normalize_name_from_sql("func");
+        let name_func = SmolStr::new("func");
         let fn_func = Function::new_stable(
             name_func.clone(),
             DerivedType::new(UnrestrictedType::Integer),
             false,
         );
-        let name_trim = normalize_name_from_sql("trim");
+        let name_trim = SmolStr::new("trim");
         let trim_func = Function::new_stable(
             name_trim.clone(),
             DerivedType::new(UnrestrictedType::String),

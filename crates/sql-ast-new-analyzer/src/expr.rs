@@ -546,7 +546,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
             ExprInner::FunctionCall(call) => {
                 let (name, args) = call.into_parts();
 
-                let is_aggr_func = AggregateKind::from_norm_name(name.as_str()).is_some();
+                let is_aggr_func = AggregateKind::from_name(name.as_str()).is_some();
 
                 // A window-only function without OVER.
                 if !is_aggr_func

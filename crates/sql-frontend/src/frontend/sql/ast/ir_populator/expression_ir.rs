@@ -74,7 +74,7 @@ pub(in crate::frontend::sql) enum ParseExpression {
         right: Box<ParseExpression>,
     },
     Function {
-        name: String,
+        name: SmolStr,
         args: Vec<ParseExpression>,
         feature: Option<FunctionFeature>,
     },

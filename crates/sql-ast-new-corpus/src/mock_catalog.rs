@@ -23,7 +23,6 @@ use sql_ir::ir::function::Function;
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
 use sql_ir::ir::types::{DerivedType, UnrestrictedType};
-use sql_ir::utils::normalize_name_from_sql;
 
 /// A user column given as `(name, type, is_nullable)` — what a `CREATE TABLE`
 /// statement would list, without the hidden `bucket_id` sharding column.
@@ -256,10 +255,10 @@ impl Metadata for MockCatalog {
     }
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
-        let name = normalize_name_from_sql(fn_name);
-        self.functions
-            .get(&name)
-            .ok_or(SbroadError::NotFound(Entity::SQLFunction, name))
+        self.functions.get(fn_name).ok_or(SbroadError::NotFound(
+            Entity::SQLFunction,
+            SmolStr::new(fn_name),
+        ))
     }
 
     fn waiting_timeout(&self) -> Duration {

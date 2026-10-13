@@ -15,7 +15,7 @@ use crate::ir::Plan;
 use crate::utils::to_user;
 use sql_type_system::expr::Type as SqlType;
 
-use super::ast::core::{parse_normalized_identifier, AstCore};
+use super::ast::core::{parse_identifier, AstCore};
 use super::ast::ir_populator::{parse_param_with_positions, LetVarLookup, LetVarScope};
 use super::ast::{ParseNode, ParsingPairsMap, Rule};
 use super::error::{InsertConflictError as ConflictError, Result, SqlFrontendError};
@@ -63,9 +63,9 @@ fn parse_update_literal(
 fn parse_unqualified_update_identifier(ast: &AstCore, node_id: usize) -> Result<Option<SmolStr>> {
     let node = ast.nodes.get_node(node_id)?;
     match node.rule {
-        Rule::Identifier => Ok(Some(parse_normalized_identifier(ast, node_id)?)),
+        Rule::Identifier => Ok(Some(parse_identifier(ast, node_id)?)),
         Rule::IdentifierWithOptionalContinuation => match node.children.as_slice() {
-            [identifier_id] => Ok(Some(parse_normalized_identifier(ast, *identifier_id)?)),
+            [identifier_id] => Ok(Some(parse_identifier(ast, *identifier_id)?)),
             _ => Ok(None),
         },
         _ => Ok(None),
@@ -253,8 +253,8 @@ fn is_target_column(
     let node = ast.nodes.get_node(node_id)?;
     match node.rule {
         Rule::DoUpdateColumnRef => {
-            let table_name = parse_normalized_identifier(ast, node.child_n(0))?;
-            let column_name = parse_normalized_identifier(ast, node.child_n(1))?;
+            let table_name = parse_identifier(ast, node.child_n(0))?;
+            let column_name = parse_identifier(ast, node.child_n(1))?;
             Ok(table_name == relation.name && column_name == *target_column_name)
         }
         Rule::IdentifierWithOptionalContinuation => match node.children.as_slice() {
@@ -269,8 +269,8 @@ fn is_target_column(
                         continuation.children.len()
                     )));
                 };
-                let table_name = parse_normalized_identifier(ast, *table_id)?;
-                let column_name = parse_normalized_identifier(ast, *column_id)?;
+                let table_name = parse_identifier(ast, *table_id)?;
+                let column_name = parse_identifier(ast, *column_id)?;
                 Ok(table_name == relation.name && column_name == *target_column_name)
             }
             _ => Ok(false),
@@ -396,7 +396,7 @@ fn parse_do_update_items(
                 ast_column.rule
             )));
         }
-        let col_name = parse_normalized_identifier(ast, *ast_column_id)?;
+        let col_name = parse_identifier(ast, *ast_column_id)?;
         let (col_def, col_pos) = find_column(relation, &col_name)?;
         if distribution_columns.contains(&col_pos) {
             return Err(ConflictError::ForbiddenColumnUpdate {
@@ -544,7 +544,7 @@ fn parse_insert_conflict_target(
     let mut positions = Vec::with_capacity(node.children.len());
     let mut seen = AHashSet::with_capacity(node.children.len());
     for child_id in &node.children {
-        let col_name = parse_normalized_identifier(ast, *child_id)?;
+        let col_name = parse_identifier(ast, *child_id)?;
         let (_, position) = find_column(relation, &col_name)?;
         if !seen.insert(position) {
             return Err(ConflictError::DuplicateColumn {

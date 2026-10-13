@@ -153,7 +153,7 @@ pub(crate) fn bind_win_fn<'q, M: Metadata>(
         )));
     }
 
-    let aggr = AggregateKind::from_norm_name(name.as_str());
+    let aggr = AggregateKind::from_name(name.as_str());
     if filter.is_some() && !aggr.is_some() {
         return Err(semantic_err(format_smolstr!(
             "FILTER is not implemented for non-aggregate window functions"

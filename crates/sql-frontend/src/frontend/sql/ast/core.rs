@@ -34,7 +34,7 @@ use crate::errors::Entity::AST;
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::{error, insert_conflict};
 use crate::ir::metadata::Metadata;
-use crate::utils::{normalize_name_from_sql, to_user};
+use crate::utils::{normalize_ident, to_user};
 
 use crate::frontend::sql::ir::Translation;
 
@@ -296,7 +296,7 @@ impl AstCore {
                         let scan_table_id = child.children.first().expect("must exist");
                         let scan_table = self.nodes.get_node(*scan_table_id)?;
                         let table_id = scan_table.children.first().expect("must exist");
-                        Some(parse_normalized_identifier(self, *table_id)?)
+                        Some(parse_identifier(self, *table_id)?)
                     }
                     _ => None,
                 };
@@ -325,10 +325,10 @@ impl AstCore {
             .get(1)
             .filter(|id| matches!(self.nodes.get_node(**id), Ok(n) if n.rule == Rule::Identifier));
         if let Some(alias_id) = alias_id {
-            return Ok(Some(parse_normalized_identifier(self, *alias_id)?));
+            return Ok(Some(parse_identifier(self, *alias_id)?));
         }
         if self.nodes.get_node(source_id)?.rule == Rule::ScanCteOrTable {
-            return Ok(Some(parse_normalized_identifier(self, source_id)?));
+            return Ok(Some(parse_identifier(self, source_id)?));
         }
         Ok(None)
     }
@@ -800,7 +800,7 @@ impl AstCore {
 
                     let alias_name: SmolStr =
                         if let Some(alias_ast_node_id) = ast_column.children.get(1) {
-                            parse_normalized_identifier(self, *alias_ast_node_id)?
+                            parse_identifier(self, *alias_ast_node_id)?
                         } else {
                             // We don't use `get_expression_node` here, because we may encounter a `Parameter`.
                             if let Node::Expression(Expression::Reference(_)) =
@@ -823,7 +823,7 @@ impl AstCore {
                 Rule::Asterisk => {
                     let table_name_id = ast_column.children.first();
                     let plan_asterisk_id = if let Some(table_name_id) = table_name_id {
-                        let table_name = parse_normalized_identifier(self, *table_name_id)?;
+                        let table_name = parse_identifier(self, *table_name_id)?;
 
                         // The position map borrows the plan's column names,
                         // so it is gone before the new row is added.
@@ -958,7 +958,7 @@ impl AstCore {
                         true,
                     )?;
                     let alias_name = if let Some(alias_ast_node_id) = ast_column.children.get(1) {
-                        parse_normalized_identifier(self, *alias_ast_node_id)?
+                        parse_identifier(self, *alias_ast_node_id)?
                     } else {
                         // We don't use `get_expression_node` here, because we may encounter a `Parameter`.
                         if let Node::Expression(Expression::Reference(_)) =
@@ -2059,9 +2059,7 @@ pub(in crate::frontend::sql) fn parse_identifier(
     ast: &AstCore,
     node_id: usize,
 ) -> Result<SmolStr, SbroadError> {
-    Ok(normalize_name_from_sql(parse_string_value_node(
-        ast, node_id,
-    )?))
+    Ok(normalize_ident(parse_string_value_node(ast, node_id)?))
 }
 
 fn parse_sort_order(ast: &AstCore, node_id: usize) -> Result<SortOrder, SbroadError> {
@@ -2098,7 +2096,7 @@ pub(in crate::frontend::sql) fn parse_optional_identifier(
 ) -> Result<Option<SmolStr>, SbroadError> {
     let string_value = parse_string_value(ast, node_id)?;
 
-    Ok(string_value.map(|val| normalize_name_from_sql(val)))
+    Ok(string_value.map(|val| normalize_ident(val)))
 }
 
 pub(in crate::frontend::sql) fn parse_indexed_by_expr(
@@ -2113,15 +2111,6 @@ pub(in crate::frontend::sql) fn parse_indexed_by_expr(
         .expect("Child must exists");
 
     parse_optional_identifier(ast, *child_id)
-}
-
-pub(in crate::frontend::sql) fn parse_normalized_identifier(
-    ast: &AstCore,
-    node_id: usize,
-) -> Result<SmolStr, SbroadError> {
-    Ok(normalize_name_from_sql(parse_string_value_node(
-        ast, node_id,
-    )?))
 }
 
 /// Common logic for parsing GRANT/REVOKE queries.
@@ -4089,7 +4078,7 @@ where
 {
     let node = ast.nodes.get_node(node_id)?;
     assert_eq!(node.rule, Rule::ScanCteOrTable);
-    let scan_name = parse_normalized_identifier(ast, node_id)?;
+    let scan_name = parse_identifier(ast, node_id)?;
     // First we try to find CTE with the given name, cause CTE should have higher precedence
     // over table with the same name
     if let Some(child_id) = ctes.get(&scan_name) {
@@ -4135,10 +4124,10 @@ pub(in crate::frontend::sql) fn parse_cte<M: Metadata>(
         let child_node = ast.nodes.get_node(*child_id)?;
         match child_node.rule {
             Rule::Identifier => {
-                name = Some(parse_normalized_identifier(ast, *child_id)?);
+                name = Some(parse_identifier(ast, *child_id)?);
             }
             Rule::CteColumn => {
-                let column_name = parse_normalized_identifier(ast, *child_id)?;
+                let column_name = parse_identifier(ast, *child_id)?;
                 columns.push(column_name);
             }
             Rule::Values => {
@@ -4187,7 +4176,7 @@ pub(in crate::frontend::sql) fn parse_insert<'a, M: Metadata>(
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
     let ast_table_id = node.children.first().expect("Insert has no children.");
-    let relation = parse_normalized_identifier(ast, *ast_table_id)?;
+    let relation = parse_identifier(ast, *ast_table_id)?;
 
     let ast_child_id = node
         .children
@@ -4207,7 +4196,7 @@ pub(in crate::frontend::sql) fn parse_insert<'a, M: Metadata>(
             // insert into t (a, b, c) ...
             let mut selected_col_names: Vec<SmolStr> = Vec::with_capacity(ast_child.children.len());
             for col_id in &ast_child.children {
-                selected_col_names.push(parse_normalized_identifier(ast, *col_id)?.to_smolstr());
+                selected_col_names.push(parse_identifier(ast, *col_id)?.to_smolstr());
             }
 
             if selected_col_names.len() > 1 {
