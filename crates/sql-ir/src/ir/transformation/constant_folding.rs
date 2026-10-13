@@ -114,22 +114,10 @@ impl Plan {
     ) -> Result<Option<Value>, SbroadError> {
         let res = match op {
             Bool::Eq => Some(Value::from(lhs.eq(rhs))),
-            Bool::Gt => {
-                let ordering = lhs.partial_cmp(rhs).expect("type checked before");
-                Some(handle_gt(ordering))
-            }
-            Bool::GtEq => {
-                let ordering = lhs.partial_cmp(rhs).expect("type checked before");
-                Some(handle_gte(ordering))
-            }
-            Bool::Lt => {
-                let ordering = lhs.partial_cmp(rhs).expect("type checked before");
-                Some(handle_lt(ordering))
-            }
-            Bool::LtEq => {
-                let ordering = lhs.partial_cmp(rhs).expect("type checked before");
-                Some(handle_lte(ordering))
-            }
+            Bool::Gt => lhs.partial_cmp(rhs).map(handle_gt),
+            Bool::GtEq => lhs.partial_cmp(rhs).map(handle_gte),
+            Bool::Lt => lhs.partial_cmp(rhs).map(handle_lt),
+            Bool::LtEq => lhs.partial_cmp(rhs).map(handle_lte),
             Bool::NotEq => {
                 let trivalent = lhs.eq(rhs);
                 Some(handle_ne(trivalent))

@@ -371,6 +371,40 @@ select "i" from "testing_space" inner join
 -- EXPECTED:
 1
 
+-- TEST: test_fold_double_out_of_decimal_range-1
+-- SQL:
+SELECT id FROM many_columns WHERE 1.7976931348623157E308 > 0.5;
+-- EXPECTED:
+1
+
+-- TEST: test_fold_double_out_of_decimal_range-2
+-- SQL:
+SELECT id FROM many_columns WHERE 1.7976931348623157E308 <= 0.5;
+-- EXPECTED:
+
+-- TEST: test_fold_double_out_of_decimal_range-3
+-- SQL:
+SELECT id FROM many_columns WHERE 0.5 < 1.7976931348623157E308;
+-- EXPECTED:
+1
+
+-- TEST: test_fold_double_out_of_decimal_range-4
+-- SQL:
+SELECT id FROM many_columns WHERE 0.5 >= 1.7976931348623157E308;
+-- EXPECTED:
+
+-- TEST: test_fold_double_out_of_decimal_range-5
+-- SQL:
+SELECT id FROM many_columns WHERE 1 < 1.7976931348623157E308;
+-- EXPECTED:
+1
+
+-- TEST: test_fold_double_out_of_decimal_range-6
+-- SQL:
+SELECT (SELECT 1 FROM t JOIN many_columns ON 1.7976931348623157E308 BETWEEN 0.05107603543946437 AND 92233720356174968941.237278914E9);
+-- EXPECTED:
+null
+
 -- TEST: test_cmp_double_out_of_decimal_range-1
 -- SQL:
 SELECT id FROM many_columns WHERE -1.7976931348623157E308 >= 1;
