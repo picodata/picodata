@@ -28,8 +28,8 @@ use sql_ast_new_nodes::error::{AstErr, AstResult};
 use sql_ast_new_nodes::expr::{
     ArithmeticOp, ArrayLiteral, Between, BinaryOp, BinaryOperation, BooleanOp, Case, Cast,
     CastSyntax, CmpOp, Exists, Expr, ExprInner, FunctionCall, FunctionCallArgs, InExpr, IndexExpr,
-    IsExpr, IsValue, Like, Literal, LiteralKind, RawVar, Similar, Substring, TimeFunction, Trim,
-    UnaryOp, UnaryOperation, ValuesRow,
+    IsExpr, IsValue, Like, Literal, LiteralKind, RawVar, ResolvedFn, Similar, Substring,
+    TimeFunction, Trim, UnaryOp, UnaryOperation, ValuesRow,
 };
 use sql_ast_new_nodes::scope::{Depth, Scope};
 use sql_ast_new_nodes::table_expression::{BoundJoinUsingVar, BoundVar, ColumnRoute};
@@ -551,21 +551,23 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                 bind_win_fn(*window_function, curr_id, meta)?
             }
             ExprInner::FunctionCall(call) => {
-                let (name, args) = call.into_parts();
+                let (name, args, ()) = call.into_parts();
 
                 // A table function gives rows, so it is a source in FROM
                 // only. The binding of that call sets the flag; a call in an
                 // expression, also in the arguments of a table function, is
                 // an error.
                 let is_table_function = std::mem::take(&mut meta.binder.binding_table_function);
-                if !is_table_function && find_table_function(name.as_str()).is_some() {
+                let table_fn = find_table_function(name.as_str());
+                if !is_table_function && table_fn.is_some() {
                     return Err(semantic_err(format_smolstr!(
                         r#"table function "{}" can only be used in FROM"#,
                         name.as_str()
                     )));
                 }
 
-                let is_aggr_func = AggregateKind::from_name(name.as_str()).is_some();
+                let aggr_kind = AggregateKind::from_name(name.as_str());
+                let is_aggr_func = aggr_kind.is_some();
 
                 // A window-only function without OVER.
                 if !is_aggr_func
@@ -588,10 +590,17 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                     .frames
                     .iter()
                     .any(|frame| matches!(frame.stage, Stage::FunctionInFrom));
-                if in_function_in_from && meta.is_volatile_function(name.as_str()) {
-                    return Err(semantic_err(format_smolstr!(
-                        "volatile functions are not allowed in functions in FROM"
-                    )));
+                if meta.is_volatile_function(name.as_str()) {
+                    if in_function_in_from {
+                        return Err(semantic_err(format_smolstr!(
+                            "volatile functions are not allowed in functions in FROM"
+                        )));
+                    }
+                    if !meta.binder.top_frame_ref()?.volatile_allowed {
+                        return Err(semantic_err(format_smolstr!(
+                            "volatile functions are not allowed in this expression"
+                        )));
+                    }
                 }
 
                 if is_aggr_func {
@@ -611,6 +620,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                             ExprInner::FunctionCall(FunctionCall::from_parts(
                                 name,
                                 FunctionCallArgs::CountAsterisk,
+                                ResolvedFn::Aggregate(AggregateKind::COUNT),
                             )),
                             AstTypeExpr::new(
                                 curr_id,
@@ -624,6 +634,23 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                             .map(|expr| expr.bind(meta))
                             .collect::<AstResult<(Vec<_>, Vec<_>)>>()?;
 
+                        // Resolved after the arguments, so an error inside them is reported first.
+                        let resolved_fn = match aggr_kind {
+                            Some(kind) => ResolvedFn::Aggregate(kind),
+                            None => match table_fn {
+                                Some(table_fn) => ResolvedFn::Table(table_fn),
+                                None => ResolvedFn::Scalar(meta.function(&name)?),
+                            },
+                        };
+
+                        // A scalar is typed under its catalog name: the
+                        // names picodata exposes for its procedures
+                        // (`version`, `pico_*`) are registered under the
+                        // procedures' own (old-pipeline parity).
+                        let typed_name = match &resolved_fn {
+                            ResolvedFn::Scalar(function) => function.name.as_str(),
+                            ResolvedFn::Aggregate(_) | ResolvedFn::Table(_) => name.as_str(),
+                        };
                         // COALESCE and JSON_EXTRACT_PATH are not registry
                         // functions, and UNNEST is a table function: they
                         // map to dedicated type-expression kinds
@@ -633,7 +660,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                             "coalesce" => AstTypeExprKind::Coalesce(arg_t_exprs),
                             "json_extract_path" => AstTypeExprKind::JsonExtractPath(arg_t_exprs),
                             "unnest" => AstTypeExprKind::Unnest(arg_t_exprs),
-                            _ => AstTypeExprKind::Function(name.as_str().to_string(), arg_t_exprs),
+                            _ => AstTypeExprKind::Function(typed_name.to_string(), arg_t_exprs),
                         };
                         (
                             ExprInner::FunctionCall(FunctionCall::from_parts(
@@ -642,6 +669,7 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                                     distinct,
                                     exprs: bound_args,
                                 },
+                                resolved_fn,
                             )),
                             AstTypeExpr::new(curr_id, t_expr_kind),
                         )
@@ -853,7 +881,8 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                 };
                 let mut analyzed_when_blocks = Vec::with_capacity(when_blocks.len());
                 for (condition, result) in when_blocks {
-                    let (condition, condition_t_expr) = condition.bind(meta)?;
+                    let (condition, condition_t_expr) =
+                        condition.bind_with_volatility(meta, false)?;
                     let (result, result_t_expr) = result.bind(meta)?;
                     when_t_exprs.push(condition_t_expr);
                     result_t_exprs.push(result_t_expr);

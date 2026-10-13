@@ -11,7 +11,7 @@ use crate::{unexpected_rule_error, ExpectedRules, ParseCtx};
 use sql_ast_new_grammar::Rule;
 use sql_ast_new_nodes::expr::{Expr, ExprInner, Literal, LiteralKind, RawVar, UnaryOp};
 use sql_ast_new_nodes::table_expression::{
-    From, FromEntry, GroupBy, JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem,
+    From, FromEntry, GroupBy, IndexedBy, JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem,
     TableExpression, TableFactor, TableFactorInner, TableFunction,
 };
 use sql_ast_new_nodes::window::NamedWindows;
@@ -100,7 +100,7 @@ fn parse_table_factor<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Tab
 
     let mut inner = Option::<TableFactorInner<'q, Raw>>::default();
     let mut alias = Option::<Ident>::default();
-    let mut indexed_by = Option::<Ident>::default();
+    let mut indexed_by = Option::<IndexedBy<'q, Raw>>::default();
 
     for pair in pair.into_inner() {
         match pair.as_rule() {
@@ -116,7 +116,10 @@ fn parse_table_factor<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Tab
                     .ok_or_else(|| parser_err(format_smolstr!("expected to find index name")))?;
                 debug_assert_eq!(idx_name_pair.as_rule(), Rule::Identifier);
 
-                indexed_by = Some(Ident::from_sql(idx_name_pair.as_str()));
+                indexed_by = Some(IndexedBy {
+                    name: Ident::from_sql(idx_name_pair.as_str()),
+                    index_id: (),
+                });
 
                 debug_assert!(inner_pairs.count() == 1)
             }

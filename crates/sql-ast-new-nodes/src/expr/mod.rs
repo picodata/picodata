@@ -48,6 +48,9 @@ pub(super) mod render;
 mod structural_eq;
 
 use smol_str::format_smolstr;
+use sql_ir::ir::aggregates::AggregateKind;
+use sql_ir::ir::function::Function;
+use sql_ir::ir::table_function::TableFunction;
 
 use crate::error::{ast_err, AstResult};
 use crate::multiset::MultisetStmt;
@@ -328,6 +331,18 @@ pub enum LiteralKind {
 pub struct FunctionCall<'q, State: AstState<'q>> {
     name: Ident,
     args: FunctionCallArgs<'q, State>,
+    resolved_fn: State::FnCallT,
+}
+
+/// What an analyzed [`FunctionCall`] calls.
+#[derive(PartialEq, Eq)]
+pub enum ResolvedFn {
+    /// An aggregate, recognized by name: aggregates have no catalog entry.
+    Aggregate(AggregateKind),
+    /// The catalog function the call names.
+    Scalar(Function),
+    /// A table function in FROM: table functions have no catalog entry.
+    Table(&'static TableFunction),
 }
 
 pub enum FunctionCallArgs<'q, State: AstState<'q>> {
@@ -554,7 +569,11 @@ impl<'q> RawExpr<'q> {
     }
 
     pub fn function_call(name: Ident, args: FunctionCallArgs<'q, Raw>) -> Self {
-        Self::new(ExprInner::FunctionCall(FunctionCall { name, args }))
+        Self::new(ExprInner::FunctionCall(FunctionCall {
+            name,
+            args,
+            resolved_fn: (),
+        }))
     }
 
     pub fn parameter(parameter: Parameter) -> Self {
@@ -805,8 +824,8 @@ impl<'q> UnaryOperation<'q, Analyzed> {
 }
 
 impl<'q, State: AstState<'q>> FunctionCall<'q, State> {
-    pub fn into_parts(self) -> (Ident, FunctionCallArgs<'q, State>) {
-        (self.name, self.args)
+    pub fn into_parts(self) -> (Ident, FunctionCallArgs<'q, State>, State::FnCallT) {
+        (self.name, self.args, self.resolved_fn)
     }
 
     pub fn name(&self) -> &str {
@@ -819,8 +838,20 @@ impl<'q, State: AstState<'q>> FunctionCall<'q, State> {
 }
 
 impl<'q> FunctionCall<'q, Analyzed> {
-    pub fn from_parts(name: Ident, args: FunctionCallArgs<'q, Analyzed>) -> Self {
-        Self { name, args }
+    pub fn from_parts(
+        name: Ident,
+        args: FunctionCallArgs<'q, Analyzed>,
+        resolved_fn: ResolvedFn,
+    ) -> Self {
+        Self {
+            name,
+            args,
+            resolved_fn,
+        }
+    }
+
+    pub fn resolved_fn(&self) -> &ResolvedFn {
+        &self.resolved_fn
     }
 }
 

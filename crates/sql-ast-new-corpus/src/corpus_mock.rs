@@ -1,5 +1,5 @@
 //! The schema `sql-ast-new-corpus`'s queries bind against: the anonymized corpus
-//! tables, registered on the [`MockCatalog`] builder.
+//! tables and indexes, registered on the [`MockCatalog`] builder.
 //!
 //! The tables mirror the production ones the corpus was captured from, down to
 //! the storage they live on — Vinyl, on the `default` tier — since a bound
@@ -11,7 +11,7 @@ use sql_ir::ir::types::UnrestrictedType;
 use crate::mock_catalog::MockCatalog;
 
 /// A [`Metadata`](sql_ir::ir::metadata::Metadata) catalog with the obfuscated
-/// corpus tables and the builtin functions.
+/// corpus tables and indexes, and the builtin functions.
 #[must_use]
 pub fn corpus_catalog() -> MockCatalog {
     use UnrestrictedType::{Boolean, Datetime, Decimal, Integer, String};
@@ -510,6 +510,20 @@ pub fn corpus_catalog() -> MockCatalog {
         &["cv"],
         &["cv", "ay"],
     );
+
+    // The indexes the corpus names in `INDEXED BY`. Only the names come from
+    // the corpus; the columns are inferred from the predicates at each hint
+    // site, and every corpus query has run against them on a live instance.
+    // `ix_d`, `ix_h` and `ix_i` duplicate their table's primary key.
+    catalog.add_index("ix_a", "a", &["cv", "aw", "a"]);
+    catalog.add_index("ix_b", "a", &["cv", "aw", "bm", "bk", "cq"]);
+    catalog.add_index("ix_c", "a", &["cv", "aw", "a", "cq"]);
+    catalog.add_index("ix_d", "l", &["ag"]);
+    catalog.add_index("ix_e", "n", &["h"]);
+    catalog.add_index("ix_f", "v", &["b"]);
+    catalog.add_index("ix_g", "w", &["x"]);
+    catalog.add_index("ix_h", "x", &["b"]);
+    catalog.add_index("ix_i", "y", &["ag"]);
 
     catalog
 }

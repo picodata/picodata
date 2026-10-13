@@ -2,20 +2,21 @@
 //! benchmark binds its queries against.
 //!
 //! Tables are given the way `CREATE TABLE` gives them (columns, sharding key,
-//! primary key); everything a catalog needs but a DDL statement never spells —
-//! space ids, the hidden `bucket_id` column, the builtin functions — the
-//! builder supplies. [`corpus_catalog`](crate::corpus_catalog) is one instance
-//! of it, a suite's own fixture schema another.
+//! primary key), indexes the way `CREATE INDEX` does; everything a catalog
+//! needs but a DDL statement never spells — space and index ids, the hidden
+//! `bucket_id` column, the builtin functions — the builder supplies.
+//! [`corpus_catalog`](crate::corpus_catalog) is one instance of it, a suite's
+//! own fixture schema another.
 //!
-//! [`MockCatalog::ddl`] renders the registered tables back as the statements
-//! they stand in for, so a suite can pin its fixture schema with a snapshot
-//! instead of restating it in a comment that goes stale.
+//! [`MockCatalog::ddl`] renders the registered tables and indexes back as the
+//! statements they stand in for, so a suite can pin its fixture schema with a
+//! snapshot instead of restating it in a comment that goes stale.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::time::Duration;
 
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use sql_executor::executor::engine::get_builtin_functions;
 use sql_ir::errors::{Entity, SbroadError};
@@ -38,14 +39,24 @@ fn user_columns(columns: &[ColumnSpec]) -> Vec<Column> {
         .collect()
 }
 
-/// A [`Metadata`] implementation over the tables registered on it, plus the
-/// builtin functions.
+/// An index registered by [`MockCatalog::add_index`].
+struct MockIndex {
+    name: SmolStr,
+    table: SmolStr,
+    id: u32,
+    columns: Vec<SmolStr>,
+}
+
+/// A [`Metadata`] implementation over the tables and indexes registered on it,
+/// plus the builtin functions.
 ///
-/// Each `add_*` assigns the next sequential space id and keys the table by its
-/// own name.
+/// Each table `add_*` assigns the next sequential space id and keys the table
+/// by its own name.
 pub struct MockCatalog {
     functions: HashMap<SmolStr, Function>,
     tables: HashMap<SmolStr, Table>,
+    /// In registration order, which is also each table's index id order.
+    indexes: Vec<MockIndex>,
     /// Registration order, so [`ddl`](Self::ddl) renders the schema in the
     /// order it was written rather than in `tables`' hash order.
     order: Vec<SmolStr>,
@@ -75,6 +86,7 @@ impl MockCatalog {
         Self {
             functions,
             tables: HashMap::new(),
+            indexes: Vec::new(),
             order: Vec::new(),
             next_id: 1000,
             engine: SpaceEngine::Memtx,
@@ -158,17 +170,77 @@ impl MockCatalog {
         self.register(table);
     }
 
-    /// The whole catalog as the `CREATE TABLE` statements it stands in for, in
-    /// registration order, one blank line apart.
+    /// Register an index on a registered table.
     ///
-    /// Rendered from the tables themselves, so a snapshot of it documents the
+    /// Index names are global, as in picodata, and ids count per table past the
+    /// implicit indexes a default `CREATE TABLE` creates: 0 for the primary key,
+    /// and 1 for `bucket_id` on a sharded table.
+    ///
+    /// # Panics
+    /// - the table is not registered, `columns` is empty, or a column is absent
+    ///   from the table;
+    /// - the index name is already registered, on any table.
+    pub fn add_index(&mut self, name: &str, table: &str, columns: &[&str]) {
+        let table = self
+            .tables
+            .get(table)
+            .unwrap_or_else(|| panic!("table '{table}' is not registered"));
+        assert!(!columns.is_empty(), "index '{name}' has no columns");
+        for column in columns {
+            assert!(
+                table.columns.iter().any(|c| c.name == *column),
+                "index '{name}' column '{column}' is absent from table '{}'",
+                table.name
+            );
+        }
+        assert!(
+            self.indexes.iter().all(|index| index.name != name),
+            "index '{name}' is already registered"
+        );
+
+        let implicit = if table.get_sk().is_ok() { 2 } else { 1 };
+        let registered = self
+            .indexes
+            .iter()
+            .filter(|index| index.table == table.name)
+            .count();
+        let id = implicit + u32::try_from(registered).expect("index count must fit u32");
+        self.indexes.push(MockIndex {
+            name: name.to_smolstr(),
+            table: table.name.clone(),
+            id,
+            columns: columns.iter().map(|c| c.to_smolstr()).collect(),
+        });
+    }
+
+    /// The whole catalog as the `CREATE TABLE` statements it stands in for, in
+    /// registration order, one blank line apart; each followed by the
+    /// `CREATE INDEX` statements of its indexes.
+    ///
+    /// Rendered from the catalog itself, so a snapshot of it documents the
     /// fixture schema without being able to drift from it — including for a
-    /// table added later.
+    /// table or an index added later.
     #[must_use]
     pub fn ddl(&self) -> String {
         self.order
             .iter()
-            .map(|name| self.table_ddl(name))
+            .map(|name| {
+                let mut ddl = self.table_ddl(name);
+                for index in self.indexes.iter().filter(|index| index.table == *name) {
+                    let columns = index
+                        .columns
+                        .iter()
+                        .map(|column| format!("\"{column}\""))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let _ = write!(
+                        ddl,
+                        "\nCREATE INDEX \"{}\" ON \"{}\" ({columns});",
+                        index.name, index.table
+                    );
+                }
+                ddl
+            })
             .collect::<Vec<_>>()
             .join("\n\n")
     }
@@ -249,9 +321,21 @@ impl Metadata for MockCatalog {
             .ok_or_else(|| SbroadError::NotFound(Entity::Space, table_name.to_smolstr()))
     }
 
-    fn get_index_id(&self, _index_name: &str, _table_name: &str) -> Result<u32, SbroadError> {
-        // here can be any index_id for optimize it doesn't matter
-        Ok(42)
+    /// Answers as picodata's catalog does: by the global index name, then
+    /// checked against the table.
+    fn get_index_id(&self, index_name: &str, table_name: &str) -> Result<u32, SbroadError> {
+        let index = self
+            .indexes
+            .iter()
+            .find(|index| index.name == index_name)
+            .ok_or_else(|| SbroadError::NotFound(Entity::Index, index_name.to_smolstr()))?;
+        if index.table != table_name {
+            return Err(SbroadError::NotFound(
+                Entity::Index,
+                format_smolstr!("'{index_name}' for table '{table_name}'"),
+            ));
+        }
+        Ok(index.id)
     }
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
@@ -279,11 +363,12 @@ impl Metadata for MockCatalog {
 
 #[cfg(test)]
 mod tests {
-    use super::{MockCatalog, SpaceEngine, UnrestrictedType};
+    use super::{Metadata, MockCatalog, SpaceEngine, UnrestrictedType};
 
     /// The DDL a table renders back to has to be the statement it stands in
     /// for: the hidden `bucket_id` is not part of it, and the storage clause
-    /// follows whichever `add_*` registered the table.
+    /// follows whichever `add_*` registered the table. Its indexes follow it,
+    /// whenever they were registered.
     #[test]
     fn ddl_renders_registration_order_and_storage() {
         use UnrestrictedType::{Integer, String};
@@ -296,6 +381,8 @@ mod tests {
             &["id"],
         );
         catalog.add_global("global", &[("id", Integer, false)], &["id"]);
+        catalog.add_index("global_id", "global", &["id"]);
+        catalog.add_index("sharded_payload_id", "sharded", &["payload", "id"]);
 
         assert_eq!(
             catalog.ddl(),
@@ -304,12 +391,74 @@ mod tests {
     "payload" text NULL,
     PRIMARY KEY ("id")
 ) USING VINYL DISTRIBUTED BY ("id") IN TIER "default";
+CREATE INDEX "sharded_payload_id" ON "sharded" ("payload", "id");
 
 CREATE TABLE "global" (
     "id" int NOT NULL,
     PRIMARY KEY ("id")
-) DISTRIBUTED GLOBALLY;"#
+) DISTRIBUTED GLOBALLY;
+CREATE INDEX "global_id" ON "global" ("id");"#
         );
+    }
+
+    /// Two tables, one of each kind, with indexes registered interleaved.
+    fn indexed_catalog() -> MockCatalog {
+        use UnrestrictedType::Integer;
+
+        let mut catalog = MockCatalog::new();
+        catalog.add_sharded(
+            "sharded",
+            &[("a", Integer, false), ("b", Integer, true)],
+            &["a"],
+            &["a"],
+        );
+        catalog.add_global("global", &[("a", Integer, false)], &["a"]);
+        catalog.add_index("sharded_a", "sharded", &["a"]);
+        catalog.add_index("global_a", "global", &["a"]);
+        catalog.add_index("sharded_b", "sharded", &["b"]);
+        catalog
+    }
+
+    /// Ids count per table, past the primary key (0) and, on a sharded table,
+    /// the `bucket_id` index (1) — the ids picodata gives the same DDL.
+    #[test]
+    fn index_ids_count_per_table_past_implicit_indexes() {
+        let catalog = indexed_catalog();
+        let id = |index, table| catalog.get_index_id(index, table).unwrap();
+
+        assert_eq!(id("sharded_a", "sharded"), 2);
+        assert_eq!(id("sharded_b", "sharded"), 3);
+        assert_eq!(id("global_a", "global"), 1);
+    }
+
+    /// The same errors picodata's catalog gives: an unknown name, and a known
+    /// name on another table.
+    #[test]
+    fn unresolved_index_errors() {
+        let catalog = indexed_catalog();
+        let err = |index, table| catalog.get_index_id(index, table).unwrap_err().to_string();
+
+        assert_eq!(err("nope", "sharded"), "index nope not found");
+        assert_eq!(
+            err("global_a", "sharded"),
+            "index 'global_a' for table 'sharded' not found"
+        );
+    }
+
+    /// Index names are global: the same name on another table is still taken.
+    #[test]
+    #[should_panic(expected = "index 'dup' is already registered")]
+    fn duplicate_index_name_panics() {
+        let mut catalog = indexed_catalog();
+        catalog.add_index("dup", "sharded", &["a"]);
+        catalog.add_index("dup", "global", &["a"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "index 'ix' column 'b' is absent from table 'global'")]
+    fn index_on_absent_column_panics() {
+        let mut catalog = indexed_catalog();
+        catalog.add_index("ix", "global", &["b"]);
     }
 
     /// Registering the same name twice would leave the catalog answering with

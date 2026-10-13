@@ -1,8 +1,14 @@
 //! Window functions and the named `WINDOW` clause.
 
+use sql_ast_new_nodes::expr::ExprInner;
+use sql_ast_new_nodes::multiset::MultisetInner;
+use sql_ast_new_nodes::window::ResolvedWindowFn;
+use sql_ast_new_nodes::{AbstractSyntaxTree, Node};
+use sql_frontend::frontend::sql::Ast;
+use sql_ir::ir::aggregates::AggregateKind;
 use sql_ir::ir::types::{DerivedType, UnrestrictedType};
 
-use super::{analyze_error, analyzed};
+use super::{analyze_error, analyzed, catalog};
 
 // ------------- Placement -------------
 
@@ -1663,6 +1669,88 @@ fn unknown_window_function_error() {
         analyze_error("SELECT rank() OVER () FROM t1", &[]),
         @"window function rank does not exist"
     );
+}
+
+#[test]
+fn window_functions_carry_resolved_identity() {
+    let catalog = catalog();
+    let ast = AbstractSyntaxTree::new(
+        "SELECT sum(a) FILTER (WHERE g) OVER w, count(*) OVER (), \
+         string_agg(e, ',') OVER (), group_concat(e, ',') OVER (), \
+         row_number() OVER (), last_value(e) OVER () \
+         FROM t1 WINDOW w AS (ORDER BY b)",
+    )
+    .unwrap()
+    .analyze(&catalog, &[])
+    .unwrap();
+    let Node::DqlStmt(dql) = &ast.root else {
+        panic!("expected a DQL statement");
+    };
+    let MultisetInner::Select(select) = &dql.stmt.inner else {
+        panic!("expected a SELECT");
+    };
+    let resolved: Vec<_> = select
+        .select_list()
+        .0
+        .iter()
+        .map(|projection| {
+            let ExprInner::WindowFunction(call) = projection.expr_ref().inner_ref() else {
+                panic!("expected a window function");
+            };
+            call.resolved_fn
+        })
+        .collect();
+    assert_eq!(
+        resolved,
+        [
+            ResolvedWindowFn::Aggregate(AggregateKind::SUM),
+            ResolvedWindowFn::Aggregate(AggregateKind::COUNT),
+            ResolvedWindowFn::Aggregate(AggregateKind::GRCONCAT),
+            ResolvedWindowFn::Aggregate(AggregateKind::GRCONCAT),
+            ResolvedWindowFn::RowNumber,
+            ResolvedWindowFn::LastValue,
+        ]
+    );
+}
+
+#[test]
+fn window_function_resolution_errors() {
+    for (query, expected) in [
+        (
+            "SELECT a FROM t1 WHERE foo() OVER () = 1",
+            "semantic error: window functions are not allowed in WHERE",
+        ),
+        (
+            "SELECT foo(nosuch) OVER () FROM t1",
+            "semantic error: cannot resolve column reference 'nosuch'",
+        ),
+        (
+            "SELECT foo() FILTER (WHERE true) OVER ()",
+            "semantic error: FILTER is not implemented for non-aggregate window functions",
+        ),
+        (
+            "SELECT foo() OVER nosuch",
+            "semantic error: window \"nosuch\" does not exist",
+        ),
+        (
+            "SELECT row_number(1) OVER ()",
+            "could not resolve window function overload for row_number(int)",
+        ),
+        (
+            "SELECT lower(e) OVER () FROM t1",
+            "could not resolve window function overload for lower(text)",
+        ),
+        (
+            "SELECT sum(e) OVER () FROM t1",
+            "could not resolve window function overload for sum(text)",
+        ),
+        (
+            r#"SELECT "ROW_NUMBER"() OVER ()"#,
+            "window function ROW_NUMBER does not exist",
+        ),
+    ] {
+        assert_eq!(analyze_error(query, &[]), expected, "{query}");
+    }
 }
 
 /// Literals in a window's ORDER BY and PARTITION BY are constants,

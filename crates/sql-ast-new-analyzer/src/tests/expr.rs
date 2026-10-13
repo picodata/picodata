@@ -12,7 +12,11 @@
 //! an expression accepted at the wrong type fails as loudly as one rejected
 //! outright.
 
-use super::{analyze_error, analyzed};
+use super::{analyze_error, analyzed, catalog};
+use sql_ast_new_nodes::expr::{ExprInner, ResolvedFn};
+use sql_ast_new_nodes::multiset::MultisetInner;
+use sql_ast_new_nodes::{AbstractSyntaxTree, Node};
+use sql_frontend::frontend::sql::Ast;
 use sql_ir::ir::types::{DerivedType, UnrestrictedType};
 
 // ------------- Column references -------------
@@ -1233,7 +1237,7 @@ fn coalesce_unmatched_types_error() {
 fn unknown_function_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT foo(1)", &[]),
-        @"function foo does not exist"
+        @"SQL function foo not found"
     );
 }
 
@@ -1242,5 +1246,256 @@ fn scalar_fn_overload_error() {
     insta::assert_snapshot!(
         analyze_error("SELECT lower(b) FROM t1", &[]),
         @"could not resolve function overload for lower(int)"
+    );
+}
+
+// ------------- Function resolution -------------
+
+#[test]
+fn volatile_functions_rejected_in_restricted_expressions() {
+    let catalog = catalog();
+    for query in [
+        "SELECT a FROM t1 WHERE pico_instance_uuid() = 'x'",
+        "SELECT a FROM t1 WHERE lower(pico_instance_uuid()) = 'x'",
+        "SELECT a FROM t1 WHERE coalesce(pico_instance_uuid(), 'x') = 'x'",
+        "SELECT count(*) FROM t1 HAVING pico_instance_uuid() = 'x'",
+        "SELECT t1.a FROM t1 JOIN t2 ON pico_instance_uuid() = 'x'",
+        "SELECT count(*) FROM t1 GROUP BY pico_instance_uuid()",
+        "SELECT a FROM t1 ORDER BY pico_instance_uuid()",
+        "SELECT CASE WHEN pico_instance_uuid() = 'x' THEN 1 ELSE 2 END",
+        "SELECT CASE 'x' WHEN pico_instance_uuid() THEN 1 ELSE 2 END",
+        "SELECT count(*) FILTER (WHERE pico_instance_uuid() = 'x') OVER () FROM t1",
+        "SELECT count(*) OVER (PARTITION BY pico_instance_uuid()) FROM t1",
+        "SELECT count(*) OVER (ORDER BY pico_instance_uuid()) FROM t1",
+        "SELECT count(*) OVER w FROM t1 WINDOW w AS (PARTITION BY pico_instance_uuid())",
+        "SELECT count(*) OVER w FROM t1 WINDOW w AS (ORDER BY pico_instance_uuid())",
+        "SELECT a FROM t1 WHERE (SELECT a FROM t1 WHERE pico_instance_uuid() = 'x') = 1",
+        "SELECT CASE WHEN (SELECT pico_instance_uuid()) = pico_instance_uuid() THEN 1 ELSE 2 END",
+        "SELECT CASE WHEN CASE WHEN true THEN true ELSE false END AND pico_instance_uuid() = 'x' THEN 1 ELSE 2 END",
+    ] {
+        assert_eq!(
+            analyze_error(query, &[]),
+            "semantic error: volatile functions are not allowed in this expression",
+            "{query}"
+        );
+        assert!(
+            sql_frontend::frontend::sql::transform_into_plan_old(query, &[], &catalog).is_err(),
+            "old pipeline accepts {query}"
+        );
+    }
+}
+
+#[test]
+fn volatile_functions_allowed_in_projection_and_subqueries() {
+    let catalog = catalog();
+    for query in [
+        "SELECT pico_instance_uuid()",
+        "SELECT lower(pico_instance_uuid())",
+        "VALUES (pico_instance_uuid())",
+        "SELECT pico_instance_uuid() FROM t1 GROUP BY 1",
+        "SELECT pico_instance_uuid() AS x FROM t1 GROUP BY x",
+        "SELECT pico_instance_uuid() FROM t1 ORDER BY 1",
+        "SELECT pico_instance_uuid() AS x FROM t1 ORDER BY x",
+        "SELECT CASE pico_instance_uuid() WHEN 'x' THEN 1 ELSE 2 END",
+        "SELECT CASE WHEN true THEN pico_instance_uuid() ELSE 'x' END",
+        "SELECT CASE WHEN false THEN 'x' ELSE pico_instance_uuid() END",
+        "SELECT a FROM t1 WHERE (SELECT pico_instance_uuid()) = 'x'",
+        "SELECT count(*) FROM t1 HAVING (SELECT pico_instance_uuid()) = 'x'",
+        "SELECT t1.a FROM t1 JOIN t2 ON (SELECT pico_instance_uuid()) = 'x'",
+        "SELECT a FROM t1 ORDER BY (SELECT pico_instance_uuid())",
+        "SELECT count(*) FROM t1 GROUP BY (SELECT pico_instance_uuid())",
+        "SELECT CASE WHEN (SELECT pico_instance_uuid()) = 'x' THEN 1 ELSE 2 END",
+        "SELECT x FROM (SELECT pico_instance_uuid() AS x) s WHERE x = 'x'",
+        "SELECT count(pico_instance_uuid()) OVER () FROM t1",
+        "SELECT count(pico_instance_uuid()) OVER () AS x FROM t1 ORDER BY x",
+        "SELECT count(pico_instance_uuid()) OVER () FROM t1 ORDER BY 1",
+        "SELECT CASE WHEN true THEN count(pico_instance_uuid()) OVER () ELSE 0 END FROM t1",
+        "SELECT count(*) FILTER (WHERE (SELECT pico_instance_uuid()) = 'x') OVER () FROM t1",
+        "SELECT count(*) OVER (PARTITION BY (SELECT pico_instance_uuid())) FROM t1",
+        "SELECT count(*) OVER (ORDER BY (SELECT pico_instance_uuid())) FROM t1",
+        "SELECT count(*) OVER (ROWS (SELECT pico_raft_leader_id()) PRECEDING) FROM t1",
+        "SELECT a FROM t1 ORDER BY count((SELECT pico_instance_uuid())) OVER (ORDER BY a)",
+        "SELECT count(*) OVER (ROWS 1 PRECEDING), pico_instance_uuid() FROM t1",
+    ] {
+        analyzed(query, &[]);
+        assert!(
+            sql_frontend::frontend::sql::transform_into_plan_old(query, &[], &catalog).is_ok(),
+            "old pipeline rejects {query}"
+        );
+    }
+}
+
+/// The old window parser enables volatile calls even inside restricted expressions.
+#[test]
+fn volatile_functions_in_windows_diverge_from_old() {
+    let catalog = catalog();
+    for query in [
+        // Window arguments inherit the restriction from ORDER BY or CASE WHEN.
+        "SELECT a FROM t1 ORDER BY count(pico_instance_uuid()) OVER (ORDER BY a)",
+        "SELECT CASE WHEN count(pico_instance_uuid()) OVER () > 0 THEN 1 ELSE 2 END FROM t1",
+        "SELECT CASE 0 WHEN count(pico_instance_uuid()) OVER () THEN 1 ELSE 2 END FROM t1",
+        // Frame offsets are restricted in inline and named windows, for either frame type.
+        "SELECT count(*) OVER (ROWS pico_raft_leader_id() PRECEDING) FROM t1",
+        "SELECT count(*) OVER (ROWS BETWEEN CURRENT ROW AND pico_raft_leader_id() FOLLOWING) FROM t1",
+        "SELECT count(*) OVER (ORDER BY a RANGE pico_raft_leader_id() PRECEDING) FROM t1",
+        "SELECT count(*) OVER w FROM t1 WINDOW w AS (ORDER BY a RANGE BETWEEN CURRENT ROW AND pico_raft_leader_id() FOLLOWING)",
+        "SELECT a FROM t1 ORDER BY count(*) OVER (ORDER BY a ROWS pico_raft_leader_id() PRECEDING)",
+        "SELECT CASE WHEN count(*) OVER (ROWS pico_raft_leader_id() PRECEDING) > 0 THEN 1 ELSE 2 END FROM t1",
+    ] {
+        assert_eq!(
+            analyze_error(query, &[]),
+            "semantic error: volatile functions are not allowed in this expression",
+            "{query}"
+        );
+        assert!(
+            sql_frontend::frontend::sql::transform_into_plan_old(query, &[], &catalog).is_ok(),
+            "old pipeline rejects {query}"
+        );
+    }
+}
+
+/// Old TRIM/SUBSTRING helpers reset the volatility restriction inside filters.
+#[test]
+fn volatile_functions_in_special_syntax_diverge_from_old() {
+    let catalog = catalog();
+    for query in [
+        "SELECT a FROM t1 WHERE TRIM(pico_instance_uuid()) = 'x'",
+        "SELECT a FROM t1 WHERE SUBSTRING(pico_instance_uuid() FROM 1) = 'x'",
+    ] {
+        assert_eq!(
+            analyze_error(query, &[]),
+            "semantic error: volatile functions are not allowed in this expression"
+        );
+        assert!(sql_frontend::frontend::sql::transform_into_plan_old(query, &[], &catalog).is_ok());
+    }
+}
+
+/// What the call the first projection consists of resolved to. Rendering
+/// does not show it, so read it off the bound node.
+fn resolved_fn(query: &str) -> String {
+    let catalog = catalog();
+    let ast = AbstractSyntaxTree::new(query)
+        .expect("expected to build AST")
+        .analyze(&catalog, &[])
+        .expect("expected to analyze AST");
+    let Node::DqlStmt(dql) = &ast.root else {
+        panic!("expected a DQL statement");
+    };
+    let MultisetInner::Select(select) = &dql.stmt.inner else {
+        panic!("expected a SELECT");
+    };
+    let ExprInner::FunctionCall(call) = select.select_list().0[0].expr_ref().inner_ref() else {
+        panic!("expected a function call");
+    };
+    match call.resolved_fn() {
+        ResolvedFn::Aggregate(kind) => format!("aggregate {kind}"),
+        ResolvedFn::Scalar(function) => format!(
+            "scalar {}, {:?}, is_system: {}",
+            function.name, function.volatility, function.is_system
+        ),
+        ResolvedFn::Table(function) => format!("table {}", function.name),
+    }
+}
+
+#[test]
+fn scalar_fn_resolves_to_catalog_function() {
+    insta::assert_snapshot!(
+        resolved_fn("SELECT lower(e) FROM t1"),
+        @"scalar lower, Stable, is_system: true"
+    );
+}
+
+#[test]
+fn aggregate_resolves_by_name() {
+    insta::assert_snapshot!(resolved_fn("SELECT count(*) FROM t1"), @"aggregate count");
+    insta::assert_snapshot!(resolved_fn("SELECT count(DISTINCT a) FROM t1"), @"aggregate count");
+    insta::assert_snapshot!(resolved_fn("SELECT sum(a) FROM t1"), @"aggregate sum");
+    insta::assert_snapshot!(resolved_fn("SELECT string_agg(e, ',') FROM t1"), @"aggregate group_concat");
+}
+
+/// A name picodata exposes for one of its procedures resolves to, and types
+/// as, that procedure; the node keeps the name the query wrote.
+#[test]
+fn exposed_fn_resolves_to_procedure() {
+    insta::assert_snapshot!(
+        resolved_fn("SELECT version()"),
+        @"scalar .proc_picodata_version, Stable, is_system: false"
+    );
+    insta::assert_snapshot!(analyzed("SELECT version()", &[]), @"SELECT version()::text");
+}
+
+#[test]
+fn function_identity_structural_comparison() {
+    let catalog = catalog();
+    for (query, equal) in [
+        (r#"SELECT version(), ".proc_picodata_version"()"#, true),
+        (
+            "SELECT group_concat(e, ','), string_agg(e, ',') FROM t1",
+            true,
+        ),
+        ("SELECT lower(e), upper(e) FROM t1", false),
+        ("SELECT sum(a), avg(a) FROM t1", false),
+        ("SELECT lower(e), lower(f) FROM t1", false),
+        ("SELECT count(a), count(DISTINCT a) FROM t1", false),
+        ("SELECT count(*), count(a) FROM t1", false),
+    ] {
+        let analyzed = AbstractSyntaxTree::new(query)
+            .unwrap()
+            .analyze(&catalog, &[])
+            .unwrap();
+        let Node::DqlStmt(dql) = &analyzed.root else {
+            panic!("expected a DQL statement");
+        };
+        let MultisetInner::Select(select) = &dql.stmt.inner else {
+            panic!("expected a SELECT");
+        };
+        let exprs = &select.select_list().0;
+        assert_eq!(
+            exprs[0].expr_ref().structural_eq(exprs[1].expr_ref()),
+            equal,
+            "{query}"
+        );
+    }
+}
+
+#[test]
+fn function_identity_grouping_keys() {
+    insta::assert_snapshot!(
+        analyzed(r#"SELECT coalesce(e, version()) FROM t1 GROUP BY coalesce(e, ".proc_picodata_version"())"#, &[]),
+        @r#"SELECT coalesce(t1.e::text, version()::text)::text FROM t1 GROUP BY coalesce(t1.e::text, ".proc_picodata_version"()::text)::text"#
+    );
+    insta::assert_snapshot!(
+        analyze_error(r#"SELECT coalesce(f, version()) FROM t1 GROUP BY coalesce(e, ".proc_picodata_version"())"#, &[]),
+        @r#"semantic error: column "t1.f" must appear in the GROUP BY clause or be used in an aggregate function"#
+    );
+}
+
+/// A delimited function name is matched as written, aggregates included.
+#[test]
+fn quoted_fn_name_is_case_sensitive() {
+    insta::assert_snapshot!(
+        resolved_fn(r#"SELECT "lower"(e) FROM t1"#),
+        @"scalar lower, Stable, is_system: true"
+    );
+    insta::assert_snapshot!(
+        analyze_error(r#"SELECT "LOWER"(e) FROM t1"#, &[]),
+        @"SQL function LOWER not found"
+    );
+    insta::assert_snapshot!(
+        analyze_error(r#"SELECT "VERSION"()"#, &[]),
+        @"SQL function VERSION not found"
+    );
+    insta::assert_snapshot!(
+        analyze_error(r#"SELECT "COUNT"(a) FROM t1"#, &[]),
+        @"SQL function COUNT not found"
+    );
+}
+
+/// The arguments are bound before the function is looked up.
+#[test]
+fn unknown_fn_argument_error_comes_first() {
+    insta::assert_snapshot!(
+        analyze_error("SELECT foo(nosuch) FROM t1", &[]),
+        @"semantic error: cannot resolve column reference 'nosuch'"
     );
 }

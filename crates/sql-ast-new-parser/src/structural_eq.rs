@@ -130,6 +130,12 @@ fn group_by_positions_are_not_literals() {
 }
 
 #[test]
+fn function_aliases_preserve_spelling() {
+    assert_differs("SELECT version()", r#"SELECT ".proc_picodata_version"()"#);
+    assert_differs("SELECT group_concat(e, ',')", "SELECT string_agg(e, ',')");
+}
+
+#[test]
 fn window_functions_discriminate() {
     let counting = "SELECT count(*) OVER () FROM t1";
     assert_differs(counting, "SELECT count(a) OVER () FROM t1");

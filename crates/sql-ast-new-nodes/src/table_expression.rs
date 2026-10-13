@@ -416,18 +416,24 @@ pub struct TableFactor<'q, State: AstState<'q>> {
     /// Read by the analyzer's asterisk expansion.
     pub alias: Option<Ident>,
     /// Written by the parser, which builds the factor field by field.
-    pub indexed_by: Option<Ident>,
+    pub indexed_by: Option<IndexedBy<'q, State>>,
 }
 
 impl<'q, State: AstState<'q>> TableFactor<'q, State> {
-    pub fn into_parts(self) -> (TableFactorInner<'q, State>, Option<Ident>, Option<Ident>) {
+    pub fn into_parts(
+        self,
+    ) -> (
+        TableFactorInner<'q, State>,
+        Option<Ident>,
+        Option<IndexedBy<'q, State>>,
+    ) {
         (self.inner, self.alias, self.indexed_by)
     }
 
     pub fn from_parts(
         inner: TableFactorInner<'q, State>,
         alias: Option<Ident>,
-        indexed_by: Option<Ident>,
+        indexed_by: Option<IndexedBy<'q, State>>,
     ) -> Self {
         Self {
             inner,
@@ -504,11 +510,18 @@ impl<'q, State: AstState<'q>> Render<'q, State> for TableFactor<'q, State> {
         self.alias
             .as_ref()
             .map_or(Ok(()), |alias| write!(f, " AS {}", alias))?;
-        self.indexed_by
-            .as_ref()
-            .map_or(Ok(()), |indexed_by| write!(f, " INDEXED BY {}", indexed_by))?;
+        self.indexed_by.as_ref().map_or(Ok(()), |indexed_by| {
+            write!(f, " INDEXED BY {}", indexed_by.name)
+        })?;
         Ok(())
     }
+}
+
+/// `INDEXED BY <name>` on a table factor. Analysis allows it on a table only,
+/// and resolves the name to that table's index.
+pub struct IndexedBy<'q, State: AstState<'q>> {
+    pub name: Ident,
+    pub index_id: State::IndexIdT,
 }
 
 pub enum TableFactorInner<'q, State: AstState<'q>> {
@@ -1137,8 +1150,15 @@ mod structural_eq {
     impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for TableFactor<'q, S> {
         fn eq_with(&self, other: &Self, scope: &mut S::EqScope) -> bool {
             self.alias == other.alias
-                && self.indexed_by == other.indexed_by
+                && self.indexed_by.eq_with(&other.indexed_by, scope)
                 && self.inner.eq_with(&other.inner, scope)
+        }
+    }
+
+    /// The name alone: within one table it determines the index id.
+    impl<'q, S: AstState<'q>> StructuralEq<S::EqScope> for IndexedBy<'q, S> {
+        fn eq_with(&self, other: &Self, _scope: &mut S::EqScope) -> bool {
+            self.name == other.name
         }
     }
 

@@ -473,7 +473,7 @@ impl<'q> Binder<'q> for OrderBy<'q, Raw> {
                             )))
                         }
                         None => {
-                            let (bound_expr, t_expr) = expr.bind(meta)?;
+                            let (bound_expr, t_expr) = expr.bind_with_volatility(meta, false)?;
 
                             meta.type_system.add_rest(t_expr);
 

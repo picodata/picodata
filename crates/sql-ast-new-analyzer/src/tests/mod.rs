@@ -125,6 +125,8 @@ fn catalog() -> MockCatalog {
         &["k1"],
         &["k1", "k2"],
     );
+    catalog.add_index("t1_idx", "t1", &["a"]);
+    catalog.add_index("t2_idx", "t2", &["c"]);
     catalog
 }
 
@@ -143,6 +145,7 @@ fn mocked_tables_reference() {
         "g" bool NULL,
         PRIMARY KEY ("b")
     ) USING MEMTX DISTRIBUTED BY ("a", "b");
+    CREATE INDEX "t1_idx" ON "t1" ("a");
 
     CREATE TABLE "t2" (
         "a" double NULL,
@@ -154,6 +157,7 @@ fn mocked_tables_reference() {
         "g" text NULL,
         PRIMARY KEY ("b")
     ) USING MEMTX DISTRIBUTED BY ("c", "d");
+    CREATE INDEX "t2_idx" ON "t2" ("c");
 
     CREATE TABLE "t3" (
         "a" int NULL,

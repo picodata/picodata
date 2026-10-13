@@ -25,7 +25,10 @@
 //! condition pins that boundary from both directions: what a subquery inside ON
 //! can see, and what it must not.
 
-use super::{analyze_error, analyzed};
+use sql_ast_new_nodes::{AbstractSyntaxTree, Node};
+use sql_frontend::frontend::sql::Ast;
+
+use super::{analyze_error, analyzed, catalog};
 use sql_ir::ir::types::{DerivedType, UnrestrictedType};
 
 // ------------- Table factors -------------
@@ -52,6 +55,82 @@ fn column_reference_to_unnamed_subquery_result_column() {
 fn qualified_column_reference_to_unnamed_subquery_result_column() {
     let query = "SELECT s.a FROM (SELECT a FROM t1) AS s";
     insta::assert_snapshot!(analyzed(query, &[]), @"SELECT s.a::int FROM (SELECT t1.a::int FROM t1) AS s");
+}
+
+// ------------- INDEXED BY -------------
+
+#[test]
+fn indexed_by_table() {
+    let query = "SELECT a FROM t1 INDEXED BY t1_idx";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int FROM t1 INDEXED BY t1_idx");
+}
+
+/// The index is looked up on the table's catalog name, not on its alias.
+#[test]
+fn indexed_by_aliased_table() {
+    let query = "SELECT x.a FROM t1 AS x INDEXED BY t1_idx";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT x.a::int FROM t1 AS x INDEXED BY t1_idx");
+}
+
+#[test]
+fn indexed_by_joined_table() {
+    let query = "SELECT t1.a FROM t1 INNER JOIN t2 INDEXED BY t2_idx ON t1.a = t2.c";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int FROM t1 INNER JOIN t2 INDEXED BY t2_idx ON (t1.a::int = t2.c::int)::bool");
+}
+
+#[test]
+fn indexed_by_unknown_index() {
+    let query = "SELECT a FROM t1 INDEXED BY nope";
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: index nope not found");
+}
+
+/// Index names are global: one of another table does not resolve.
+#[test]
+fn indexed_by_other_tables_index() {
+    let query = "SELECT a FROM t1 INDEXED BY t2_idx";
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: index 't2_idx' for table 't1' not found");
+}
+
+/// Rendering does not show the index id, so read it off the bound factor:
+/// `t1_idx` is the first index of sharded `t1`, after the primary key (0) and
+/// `bucket_id` (1).
+#[test]
+fn indexed_by_table_carries_index_id() {
+    let catalog = catalog();
+    let ast = AbstractSyntaxTree::new("SELECT a FROM t1 INDEXED BY t1_idx")
+        .expect("expected to build AST")
+        .analyze(&catalog, &[])
+        .expect("expected to analyze AST");
+    let Node::DqlStmt(dql) = &ast.root else {
+        panic!("expected a DQL statement");
+    };
+    let from = dql.stmt.from_ref().expect("expected a FROM clause");
+    let index_id = from.entries()[0]
+        .tbl_factor()
+        .indexed_by
+        .as_ref()
+        .map(|indexed_by| indexed_by.index_id);
+    assert_eq!(index_id, Some(2));
+}
+
+#[test]
+fn indexed_by_subquery() {
+    let query = "SELECT a FROM (SELECT a FROM t1) AS s INDEXED BY t1_idx";
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: INDEXED BY clause is only supported for tables");
+}
+
+#[test]
+fn indexed_by_cte() {
+    let query = "WITH c AS (SELECT 1 AS a) SELECT a FROM c INDEXED BY t1_idx";
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: INDEXED BY clause is only supported for tables");
+}
+
+/// The CTE wins name resolution over the same-named table, so there is no
+/// table for the index to belong to — though `t1_idx` does exist on `t1`.
+#[test]
+fn indexed_by_cte_shadowing_table() {
+    let query = "WITH t1 AS (SELECT 1 AS a) SELECT a FROM t1 INDEXED BY t1_idx";
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: INDEXED BY clause is only supported for tables");
 }
 
 // ------------- JOIN -------------
@@ -1322,9 +1401,11 @@ fn group_by_flatten_row_value() {
         analyze_error("SELECT a, b FROM t1 GROUP BY (a, b) + 1;", &[]),
         @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
     );
+    // There is no `ROW(...)` constructor in the grammar: this calls a
+    // function named `row`, which does not exist (as in the old pipeline).
     insta::assert_snapshot!(
         analyze_error("SELECT a, b FROM t1 GROUP BY ROW(a, b);", &[]),
-        @r#"semantic error: column "t1.a" must appear in the GROUP BY clause or be used in an aggregate function"#
+        @"SQL function row not found"
     );
 }
 

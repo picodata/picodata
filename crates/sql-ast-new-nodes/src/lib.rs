@@ -108,11 +108,11 @@ use crate::table_expression::{BoundJoinUsingVar, JoinUsingColumn};
 pub use crate::structural_eq::StructuralEq;
 
 use self::expr::render::Precedence;
-use self::expr::{Expr, ExprInner, Parameter, RawVar};
+use self::expr::{Expr, ExprInner, FunctionCall, Parameter, RawVar, ResolvedFn};
 use self::multiset::MultisetStmt;
 use self::select::{ProjectionExpr, SelectListElem};
 use self::table_expression::{AnalyzedCteOrTable, BoundVar};
-use self::window::{NamedWindow, WindowFunction};
+use self::window::{NamedWindow, ResolvedWindowFn, WindowFunction};
 
 /// A normalized SQL identifier — the single identifier representation used
 /// throughout `ast_new` (table, column, alias, CTE and window names).
@@ -234,6 +234,18 @@ pub trait AstState<'q>: Sized {
 
     type CteOrTableT: NamedEntity + Render<'q, Self> + StructuralEq<Self::EqScope>;
 
+    /// The catalog id of the index an `INDEXED BY` names: nothing in [`Raw`];
+    /// in [`Analyzed`] the id resolved against the factor's table.
+    type IndexIdT;
+
+    /// What a function call resolves to: nothing in [`Raw`]; in [`Analyzed`]
+    /// the aggregate kind or the catalog function, see [`ResolvedFn`].
+    type FnCallT;
+
+    /// What a window call resolves to: nothing in [`Raw`]; in [`Analyzed`]
+    /// an aggregate or a window-only builtin, see [`ResolvedWindowFn`].
+    type WindowFnT;
+
     type ExprMeta: ExprMetaT;
 
     type VarType: Render<'q, Self> + StructuralEq<Self::EqScope>;
@@ -255,6 +267,12 @@ pub trait AstState<'q>: Sized {
     /// bare column and its no-op cast are the same grouping key.
     fn eq_subject<'e>(expr: &'e Expr<'q, Self>) -> &'e Expr<'q, Self> {
         expr
+    }
+
+    /// Compare the called function, separately from its arguments: its written
+    /// name in [`Raw`], its resolved identity in [`Analyzed`].
+    fn function_eq(left: &FunctionCall<'q, Self>, right: &FunctionCall<'q, Self>) -> bool {
+        left.name() == right.name()
     }
 
     /// State-specific comparison of two window functions.
@@ -326,6 +344,9 @@ impl<'q> AstState<'q> for Raw {
     type ProjNameT = ();
     type JoinUsingColumnT = JoinUsingColumn;
     type CteOrTableT = Ident;
+    type IndexIdT = ();
+    type FnCallT = ();
+    type WindowFnT = ();
 
     type ExprMeta = RawExprMeta;
     type VarType = RawVar;
@@ -392,6 +413,9 @@ impl<'q> AstState<'q> for Analyzed {
     type ProjNameT = Option<Ident>;
     type JoinUsingColumnT = BoundJoinUsingVar;
     type CteOrTableT = AnalyzedCteOrTable;
+    type IndexIdT = u32;
+    type FnCallT = ResolvedFn;
+    type WindowFnT = ResolvedWindowFn;
 
     type ExprMeta = AnalyzedExprMeta;
     /// A position in an enclosing FROM clause. See [`BoundVar`].
@@ -415,6 +439,10 @@ impl<'q> AstState<'q> for Analyzed {
             }
         }
         expr
+    }
+
+    fn function_eq(left: &FunctionCall<'q, Self>, right: &FunctionCall<'q, Self>) -> bool {
+        left.resolved_fn() == right.resolved_fn()
     }
 
     /// A window function is conservatively never equal to another: it cannot

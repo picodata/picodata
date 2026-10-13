@@ -35,8 +35,8 @@ use sql_ast_new_nodes::expr::{Expr, ExprInner};
 use sql_ast_new_nodes::multiset::{OrderBy, OrderByElement};
 use sql_ast_new_nodes::table_expression::OrdrByGrpByElem;
 use sql_ast_new_nodes::window::{
-    FrameBound, FrameBounds, FrameType, NamedWindow, NamedWindows, WindowFrame, WindowFunction,
-    WindowFunctionArgs, WindowRef, WindowSpec,
+    FrameBound, FrameBounds, FrameType, NamedWindow, NamedWindows, ResolvedWindowFn, WindowFrame,
+    WindowFunction, WindowFunctionArgs, WindowRef, WindowSpec,
 };
 use sql_ast_new_nodes::{Analyzed, AstNodeId, Raw};
 use sql_ir::ir::aggregates::AggregateKind;
@@ -124,6 +124,7 @@ pub(crate) fn bind_win_fn<'q, M: Metadata>(
 ) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
     let WindowFunction {
         name,
+        resolved_fn: (),
         args,
         filter,
         window,
@@ -193,7 +194,7 @@ pub(crate) fn bind_win_fn<'q, M: Metadata>(
         None => None,
         Some(filter) => {
             let prev_stage = meta.binder.top_frame_mut()?.set_stage(Stage::WindowFilter);
-            let (bound_expr, t_expr) = filter.bind(meta)?;
+            let (bound_expr, t_expr) = filter.bind_with_volatility(meta, false)?;
             meta.binder.top_frame_mut()?.set_stage(prev_stage);
             filter_t_expr = Some(t_expr);
             Some(bound_expr)
@@ -227,9 +228,26 @@ pub(crate) fn bind_win_fn<'q, M: Metadata>(
         },
     );
 
+    let resolved_fn = match aggr {
+        Some(kind) => ResolvedWindowFn::Aggregate(kind),
+        None => match name.as_str() {
+            "row_number" => ResolvedWindowFn::RowNumber,
+            "last_value" => ResolvedWindowFn::LastValue,
+            _ => {
+                // Keep the type system's unknown-name and overload diagnostics.
+                meta.type_system.analyzer.analyze(&t_expr, None)?;
+                return Err(analyze_err(format_smolstr!(
+                    "window function {} has no resolved AST kind",
+                    name.as_str()
+                )));
+            }
+        },
+    };
+
     Ok((
         ExprInner::WindowFunction(Box::new(WindowFunction {
             name,
+            resolved_fn,
             args: bound_args,
             filter: bound_filter,
             window: bound_window,
@@ -316,7 +334,7 @@ fn bind_window_spec<'q, M: Metadata>(
     let mut bound_partition_by = Vec::with_capacity(partition_by.len());
     let mut partition_by_t_exprs = Vec::with_capacity(partition_by.len());
     for expr in partition_by {
-        let (bound_expr, t_expr) = expr.bind(meta)?;
+        let (bound_expr, t_expr) = expr.bind_with_volatility(meta, false)?;
         bound_partition_by.push(bound_expr);
         partition_by_t_exprs.push(t_expr);
     }
@@ -337,7 +355,7 @@ fn bind_window_spec<'q, M: Metadata>(
                     }
                     OrdrByGrpByElem::Expr(expr) => expr,
                 };
-                let (bound_expr, t_expr) = expr.bind(meta)?;
+                let (bound_expr, t_expr) = expr.bind_with_volatility(meta, false)?;
                 bound_elems.push(OrderByElement::from_parts(
                     OrdrByGrpByElem::Expr(bound_expr),
                     direction,
@@ -548,7 +566,7 @@ fn bind_frame_offset<'q, M: Metadata>(
         .top_frame_mut()?
         .set_stage(Stage::WindowFrameOffset(ty));
 
-    let (bound_expr, t_expr) = offset.bind(meta)?;
+    let (bound_expr, t_expr) = offset.bind_with_volatility(meta, false)?;
 
     meta.binder.top_frame_mut()?.set_stage(prev_stage);
 

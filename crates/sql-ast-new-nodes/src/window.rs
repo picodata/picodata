@@ -39,6 +39,8 @@
 
 use std::fmt::{Display, Error, Formatter};
 
+use sql_ir::ir::aggregates::AggregateKind;
+
 use crate::expr::Expr;
 use crate::multiset::OrderBy;
 use crate::rendering::{raw_display, Render};
@@ -47,9 +49,18 @@ use crate::{Analyzed, AstState, Ident, Raw};
 /// Window function invocation: `name(args) [FILTER (WHERE expr)] OVER window`.
 pub struct WindowFunction<'q, State: AstState<'q>> {
     pub name: Ident,
+    pub resolved_fn: State::WindowFnT,
     pub args: WindowFunctionArgs<'q, State>,
     pub filter: Option<Expr<'q, State>>,
     pub window: WindowRef<'q, State>,
+}
+
+/// What an analyzed [`WindowFunction`] calls.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResolvedWindowFn {
+    Aggregate(AggregateKind),
+    RowNumber,
+    LastValue,
 }
 
 impl<'q, State: AstState<'q>> Render<'q, State> for WindowFunction<'q, State> {

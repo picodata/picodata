@@ -41,6 +41,8 @@ pub(crate) struct Stmt<'q> {
     pub(crate) from: From<'q, Analyzed>,
     /// What is the stage of statement binding. For instance `WHERE`, `GROUP BY` etc.
     pub(crate) stage: Stage,
+    /// Independent of stage: grouped projection items and CASE WHEN keep their stage.
+    pub(crate) volatile_allowed: bool,
     /// One of
     /// - Raw select list for consulting while GROUP BY discovery
     /// - Bound select list for grouping expressions validation (GROUP BY ordinals utilze it)
@@ -72,6 +74,7 @@ impl<'q> Stmt<'q> {
             ctes: Ctes::default(),
             from: From::empty(),
             stage: Stage::Projection,
+            volatile_allowed: true,
             sel_lst: None,
             bound_grby: None,
             grby_ctx: GroupByCtx::default(),

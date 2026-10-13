@@ -86,7 +86,7 @@ impl<'q> Binder<'q> for SelectStmt<'q, Raw> {
             Some(selection) => {
                 meta.binder.top_frame_mut()?.set_stage(Stage::Where);
 
-                let (expr, t_expr) = selection.bind(meta)?;
+                let (expr, t_expr) = selection.bind_with_volatility(meta, false)?;
 
                 meta.type_system.add_filter(t_expr);
 
@@ -121,7 +121,7 @@ impl<'q> Binder<'q> for SelectStmt<'q, Raw> {
         let having = match having {
             None => None,
             Some(having) => {
-                let (expr, t_expr) = having.bind(meta)?;
+                let (expr, t_expr) = having.bind_with_volatility(meta, false)?;
 
                 meta.type_system.add_filter(t_expr);
 

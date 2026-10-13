@@ -2,7 +2,7 @@
 //!
 //! The walk is generic over the state; the arms where [`Raw`] and [`Analyzed`]
 //! genuinely diverge go through the hooks on [`AstState`] (the comparison
-//! subject, casts, window functions) and through the per-state impls of the
+//! subject, casts, functions) and through the per-state impls of the
 //! state-swapped payloads (column references). Everything else is the plain
 //! syntactic payload, identical in both states: [`Raw`] metadata is empty, and
 //! [`crate::AnalyzedExprMeta`] takes no part either - the `id` is minted fresh
@@ -21,10 +21,10 @@
 //! That is the intended reading of "structural": what the query said, not what
 //! it denotes. The one exception is what analysis itself adds: [`Analyzed`]
 //! ignores cast spelling and the identity casts wrapped around resolved
-//! columns, and compares a column reference as the column it resolved to
-//! rather than the name it was written with. Two spellings that resolve to one
-//! column are equal; one spelling that resolves to two different columns is
-//! not.
+//! columns, and compares column references and function calls by what they
+//! resolved to rather than their written names. Two spellings that resolve to
+//! one column or function are equal; one spelling that resolves to different
+//! columns or functions is not.
 
 use super::*;
 use crate::structural_eq::StructuralEq;
@@ -77,7 +77,7 @@ impl<'q, State: AstState<'q>> StructuralEq<State::EqScope> for Expr<'q, State> {
                 State::window_fn_eq(x, y, scope)
             }
             (ExprInner::FunctionCall(x), ExprInner::FunctionCall(y)) => {
-                x.name == y.name && x.args.eq_with(&y.args, scope)
+                State::function_eq(x, y) && x.args.eq_with(&y.args, scope)
             }
             (ExprInner::Parameter(x), ExprInner::Parameter(y)) => x == y,
             (ExprInner::Cast(x), ExprInner::Cast(y)) => {

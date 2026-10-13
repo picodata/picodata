@@ -30,8 +30,8 @@ use sql_ast_new_nodes::expr::{Expr, ExprInner, FunctionCallArgs};
 use sql_ast_new_nodes::scope::CteRef;
 use sql_ast_new_nodes::table_expression::{
     route_column, AnalyzedCteOrTable, BoundJoinUsingVar, ColumnRoute, From, FromEntry, GroupBy,
-    JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem, TableFactor, TableFactorInner,
-    TableFunction,
+    IndexedBy, JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem, TableFactor,
+    TableFactorInner, TableFunction,
 };
 use sql_ast_new_nodes::{Analyzed, Ident, NamedEntity, Raw};
 use sql_ir::ir::metadata::Metadata;
@@ -159,6 +159,21 @@ impl<'q> Binder<'q> for TableFactor<'q, Raw> {
             }
             TableFactorInner::Function(func) => {
                 TableFactorInner::Function(bind_table_function(func, meta)?)
+            }
+        };
+        let indexed_by = match (indexed_by, &inner) {
+            (None, _) => None,
+            (
+                Some(IndexedBy { name, .. }),
+                TableFactorInner::CteOrTable(AnalyzedCteOrTable::Table(table)),
+            ) => {
+                let index_id = meta.index_id(name.as_str(), &table.name)?;
+                Some(IndexedBy { name, index_id })
+            }
+            (Some(_), _) => {
+                return Err(semantic_err(format_smolstr!(
+                    "INDEXED BY clause is only supported for tables"
+                )))
             }
         };
         Ok(Self::BoundNode::from_parts(inner, alias, indexed_by))
@@ -308,7 +323,7 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
         let analyzed_cond = match condition {
             None => None,
             Some(cond) => {
-                let (bound_expr, t_expr) = cond.bind(meta)?;
+                let (bound_expr, t_expr) = cond.bind_with_volatility(meta, false)?;
                 meta.type_system.add_filter(t_expr);
                 Some(bound_expr)
             }
@@ -498,7 +513,7 @@ impl<'q, M: Metadata> Discoverer<'q, M> for GroupBy<'q, Raw> {
 
                         raw_elems.push(OrdrByGrpByElem::Ordinal(pos));
                     } else {
-                        let (bound, t_expr) = expr.bind(meta)?;
+                        let (bound, t_expr) = expr.bind_with_volatility(meta, false)?;
                         meta.type_system.add_rest(t_expr);
 
                         raw_elems.push(OrdrByGrpByElem::Expr(Expr::default()));

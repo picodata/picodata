@@ -127,12 +127,12 @@ use sql_ast_new_nodes::multiset::MultisetInner;
 use sql_ast_new_nodes::scope::{Depth, EqDepths, FrameView, Scope};
 use sql_ast_new_nodes::table_expression::{AttributeView, BoundVar, From};
 use sql_ast_new_nodes::{
-    Analyzed, AnalyzedAst, AstNodeId, DqlStmt, NamedEntity, Node, Raw, RawAst,
+    Analyzed, AnalyzedAst, AstNodeId, DqlStmt, Ident, NamedEntity, Node, Raw, RawAst,
 };
 
 use frame::{GroupingKeyMark, Stage, Stmt};
 
-use sql_ir::ir::function::get_real_function_name;
+use sql_ir::ir::function::{get_real_function_name, Function};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::relation::Table;
 use sql_ir::ir::types::DerivedType;
@@ -215,6 +215,22 @@ impl<'q, M: Metadata> AnalyzerCtx<'q, M> {
         self.metadata
             .function(name)
             .is_ok_and(|function| function.is_volatile())
+    }
+
+    pub(crate) fn index_id(&self, index_name: &str, table_name: &str) -> AstResult<u32> {
+        self.metadata
+            .get_index_id(index_name, table_name)
+            .map_err(|err| semantic_err(format_smolstr!("{err}")))
+    }
+
+    /// The catalog function `name` calls. A name picodata exposes for
+    /// one of its procedures (`version`, `pico_*`) resolves to that procedure.
+    pub(crate) fn function(&self, name: &Ident) -> AstResult<Function> {
+        let fn_name = get_real_function_name(name.as_str()).unwrap_or(name.as_str());
+        self.metadata
+            .function(fn_name)
+            .cloned()
+            .map_err(AstErr::from)
     }
 }
 
@@ -828,6 +844,23 @@ pub(crate) trait Binder<'q> {
     where
         M: Metadata,
         Self: Sized;
+
+    /// Restrict this expression's calls without changing aggregate/window placement rules.
+    /// Subqueries start their own frame; functions in FROM keep their cross-frame check.
+    fn bind_with_volatility<M>(
+        self,
+        meta: &mut AnalyzerCtx<'q, M>,
+        allowed: bool,
+    ) -> AstResult<Self::BoundNode>
+    where
+        M: Metadata,
+        Self: Sized,
+    {
+        let saved = std::mem::replace(&mut meta.binder.top_frame_mut()?.volatile_allowed, allowed);
+        let bound = self.bind(meta)?;
+        meta.binder.top_frame_mut()?.volatile_allowed = saved;
+        Ok(bound)
+    }
 }
 
 pub(crate) trait TypeDeriver {
