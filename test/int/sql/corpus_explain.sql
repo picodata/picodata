@@ -1896,49 +1896,48 @@ limit 10
 subquery $0:
   projection (ag::int, au::int, cv::int)
     order by (ag::int)
-      motion [policy: full, program: ReshardIfNeeded]
-        scan
-          projection (
-            t0.ag::int -> ag,
-            t0.au::int -> au,
-            t0.cv::int -> cv
-          )
-            selection (t1.b::int is null)
-              left join on (
-                ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
-              )
-                scan t0
-                  union all
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
-                    )
-                      selection (
-                        (
-                          l.cv::int = 3023424::int
-                          and l.cs::datetime >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
-                          and l.cs::datetime < '2023-04-29 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+      scan
+        projection (
+          t0.ag::int -> ag,
+          t0.au::int -> au,
+          t0.cv::int -> cv
+        )
+          selection (t1.b::int is null)
+            left join on (
+              ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
+            )
+              scan t0
+                union all
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 3023424::int
+                        and l.cs::datetime >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+                        and l.cs::datetime < '2023-04-29 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
                     )
-                      selection (
-                        (
-                          l.cv::int = 3023424::int
-                          and l.cs::datetime is null
-                          and l.a::datetime >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
-                          and l.a::datetime < '2023-04-29 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+                      scan l
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 3023424::int
+                        and l.cs::datetime is null
+                        and l.a::datetime >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+                        and l.a::datetime < '2023-04-29 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                scan x -> t1
+                    )
+                      scan l
+              scan x -> t1
 subquery $1:
   motion [policy: full, program: ReshardIfNeeded]
     projection (
@@ -1994,8 +1993,7 @@ subquery $1:
                   join on (
                     ROW(t2.au::int, t2.cv::int) = ROW(t3.ag::int, t3.cv::int)
                   )
-                    motion [policy: segment([ref(cv)]), program: ReshardIfNeeded]
-                      scan cte t2($0)
+                    scan cte t2($0)
                     scan y -> t3 (indexed by ix_i)
                   scan v -> t4 (indexed by ix_f)
                 scan w -> t5 (indexed by ix_g)
@@ -2128,84 +2126,9 @@ subquery $4:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."au",
-  "t0"."cv"
-FROM
-  (
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 3023424::int
-      and "l"."cs" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
-      and "l"."cs" < '2023-04-29 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-    UNION ALL
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 3023424::int
-      and "l"."cs" is null
-      and "l"."a" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
-      and "l"."a" < '2023-04-29 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-  ) as "t0"
-  LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."b" is null
-''
-plan:
-    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
-    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
-    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
-    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
-        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-''
-buckets = [1222]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT
-  "COL_0" as "ag",
-  "COL_1" as "au",
-  "COL_2" as "cv"
-FROM
-  (
-    SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
-    FROM
-      "_tmp_877372333083973691_1136"
-  )
-ORDER BY
-  "COL_0"
-''
-plan:
-    [0] SCAN TABLE _tmp_877372333083973691_1136 (~1048576 rows)
-    [0] USE TEMP B-TREE FOR ORDER BY
-''
-buckets = any
-''
-╭─────────────────────────────────╮
-│ 3. Query (DYN-FILTERED STORAGE) │
-╰─────────────────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT
   "t6"."cv",
@@ -2230,15 +2153,53 @@ SELECT
 FROM
   (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
+      "ag",
+      "au",
+      "cv"
     FROM
-      "_tmp_18309399111922391115_2136"
+      (
+        SELECT
+          "t0"."ag",
+          "t0"."au",
+          "t0"."cv"
+        FROM
+          (
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 3023424::int
+              and "l"."cs" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+              and "l"."cs" < '2023-04-29 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+            UNION ALL
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 3023424::int
+              and "l"."cs" is null
+              and "l"."a" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+              and "l"."a" < '2023-04-29 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+          ) as "t0"
+          LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
+          and "t1"."cv" = "t0"."cv"
+        WHERE
+          "t1"."b" is null
+      )
+    ORDER BY
+      "ag"
   ) as "t2"
-  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."COL_1"
-  and "t3"."cv" = "t2"."COL_2"
-  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
+  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."au"
+  and "t3"."cv" = "t2"."cv"
+  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
   and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
@@ -2257,18 +2218,23 @@ WHERE
   and "t3"."cq" = 22::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_18309399111922391115_2136 (~1048576 rows)
-        [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~7 rows)
+    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
+    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
+    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
+    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
+        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
             [0] SEARCH TABLE v AS t4 USING COVERING INDEX ix_f (b=? AND cv=?) (~8 rows)
-                [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
-                    [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
-                        [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-                            [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+                [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~6 rows)
+                    [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
+                        [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
+                            [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
+                                [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+    [0] USE TEMP B-TREE FOR ORDER BY
 ''
 buckets <= [1-3000]
 ''
 ╭────────────────────────────────────────╮
-│ 4. Query (CONST-FILTERED STORAGE, 1/1) │
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
 SELECT
@@ -2288,7 +2254,7 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_5092332724665672962_3136"
+      "_tmp_5092332724665672962_1136"
   ) as "cte1"
 UNION ALL
 SELECT
@@ -2335,7 +2301,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_5092332724665672962_3136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_5092332724665672962_1136 (~1048576 rows)
     [2] SEARCH TABLE n AS t9 USING COVERING INDEX ix_al (cv=?) (~9 rows)
         [2] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [2] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
@@ -2346,7 +2312,7 @@ plan:
 buckets = [1222]
 ''
 ╭──────────────────────────╮
-│ 5. Query (WHOLE STORAGE) │
+│ 3. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
 SELECT
@@ -2380,19 +2346,19 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_6654303618351556102_5136"
+      "_tmp_13977457052491705481_3136"
   ) as "cte3"
   INNER JOIN "ad" as "t12" ON "t12"."cv" = "cte3"."COL_0"
   and "t12"."ay" = "cte3"."COL_2"
 ''
 plan:
-    [0] SCAN TABLE _tmp_6654303618351556102_5136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13977457052491705481_3136 (~1048576 rows)
         [0] SEARCH TABLE ad AS t12 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
 ''
 buckets <= [1-3000]
 ''
 ╭───────────────────╮
-│ 6. Query (ROUTER) │
+│ 4. Query (ROUTER) │
 ╰───────────────────╯
 ''
 SELECT
@@ -2434,7 +2400,7 @@ FROM
           "COL_13",
           "COL_14"
         FROM
-          "_tmp_6219172643915444872_6136"
+          "_tmp_17091119308357786393_4136"
       ) as "unnamed_join"
   ) as "cte4"
 WHERE
@@ -2443,7 +2409,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_6219172643915444872_6136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_17091119308357786393_4136 (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte4 (~1 row)
@@ -2591,48 +2557,47 @@ union all
   )
     scan cte cte2($2)
 subquery $0:
-  motion [policy: full, program: ReshardIfNeeded]
-    projection (
-      t0.ag::int -> ag,
-      t0.au::int -> au,
-      t0.cv::int -> cv
-    )
-      selection (t1.b::int is null)
-        left join on (
-          ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
-        )
-          scan t0
-            union all
-              projection (
-                l.ag::int -> ag,
-                l.au::int -> au,
-                l.cv::int -> cv
-              )
-                selection (
-                  (
-                    l.cv::int = 3023424::int
-                    and l.cs::datetime >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
-                    and l.cs::datetime < '2023-04-28 0:00:00.0 +00:00:00'::datetime
-                    and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                  )
+  projection (
+    t0.ag::int -> ag,
+    t0.au::int -> au,
+    t0.cv::int -> cv
+  )
+    selection (t1.b::int is null)
+      left join on (
+        ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
+      )
+        scan t0
+          union all
+            projection (
+              l.ag::int -> ag,
+              l.au::int -> au,
+              l.cv::int -> cv
+            )
+              selection (
+                (
+                  l.cv::int = 3023424::int
+                  and l.cs::datetime >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+                  and l.cs::datetime < '2023-04-28 0:00:00.0 +00:00:00'::datetime
+                  and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                 )
-                  scan l
-              projection (
-                l.ag::int -> ag,
-                l.au::int -> au,
-                l.cv::int -> cv
               )
-                selection (
-                  (
-                    l.cv::int = 3023424::int
-                    and l.cs::datetime is null
-                    and l.a::datetime >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
-                    and l.a::datetime < '2023-04-28 0:00:00.0 +00:00:00'::datetime
-                    and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                  )
+                scan l
+            projection (
+              l.ag::int -> ag,
+              l.au::int -> au,
+              l.cv::int -> cv
+            )
+              selection (
+                (
+                  l.cv::int = 3023424::int
+                  and l.cs::datetime is null
+                  and l.a::datetime >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+                  and l.a::datetime < '2023-04-28 0:00:00.0 +00:00:00'::datetime
+                  and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                 )
-                  scan l
-          scan x -> t1
+              )
+                scan l
+        scan x -> t1
 subquery $1:
   projection (
     gr_expr_1::int -> cv,
@@ -2750,57 +2715,8 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."au",
-  "t0"."cv"
-FROM
-  (
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 3023424::int
-      and "l"."cs" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
-      and "l"."cs" < '2023-04-28 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-    UNION ALL
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 3023424::int
-      and "l"."cs" is null
-      and "l"."a" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
-      and "l"."a" < '2023-04-28 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-  ) as "t0"
-  LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."b" is null
-''
-plan:
-    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
-    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
-    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
-    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
-        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-''
-buckets = [1222]
-''
 ╭──────────────────────────╮
-│ 2. Query (WHOLE STORAGE) │
+│ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
 SELECT
@@ -2813,15 +2729,44 @@ SELECT
 FROM
   (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
+      "t0"."ag",
+      "t0"."au",
+      "t0"."cv"
     FROM
-      "_tmp_5930600967966593789_0136"
+      (
+        SELECT
+          "l"."ag",
+          "l"."au",
+          "l"."cv"
+        FROM
+          "l"
+        WHERE
+          "l"."cv" = 3023424::int
+          and "l"."cs" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+          and "l"."cs" < '2023-04-28 0:00:00.0 +00:00:00'::datetime
+          and coalesce ("l"."bb"::int, 0::int) <> 1::int
+        UNION ALL
+        SELECT
+          "l"."ag",
+          "l"."au",
+          "l"."cv"
+        FROM
+          "l"
+        WHERE
+          "l"."cv" = 3023424::int
+          and "l"."cs" is null
+          and "l"."a" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+          and "l"."a" < '2023-04-28 0:00:00.0 +00:00:00'::datetime
+          and coalesce ("l"."bb"::int, 0::int) <> 1::int
+      ) as "t0"
+      LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
+      and "t1"."cv" = "t0"."cv"
+    WHERE
+      "t1"."b" is null
   ) as "t2"
-  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."COL_1"
-  and "t3"."cv" = "t2"."COL_2"
-  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
+  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."au"
+  and "t3"."cv" = "t2"."cv"
+  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
   and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
@@ -2847,19 +2792,23 @@ GROUP BY
   "t8"."cx"
 ''
 plan:
-    [0] SCAN TABLE _tmp_5930600967966593789_0136 (~1048576 rows)
-        [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~7 rows)
+    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
+    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
+    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
+    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
+        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
             [0] SEARCH TABLE v AS t4 USING COVERING INDEX ix_f (b=? AND cv=?) (~8 rows)
-                [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
-                    [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
-                        [0] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
-                            [0] SEARCH TABLE ad AS t8 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
+                [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~6 rows)
+                    [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
+                        [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
+                            [0] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
+                                [0] SEARCH TABLE ad AS t8 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets <= [1-3000]
 ''
 ╭───────────────────╮
-│ 3. Query (ROUTER) │
+│ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
 SELECT
@@ -2883,7 +2832,7 @@ FROM
           "COL_4",
           "COL_5"
         FROM
-          "_tmp_2630807218819645061_1136"
+          "_tmp_13508558781324554210_0136"
       )
     GROUP BY
       "COL_0",
@@ -2895,7 +2844,7 @@ FROM
   ) as "cte1"
 ''
 plan:
-    [1] SCAN TABLE _tmp_2630807218819645061_1136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_13508558781324554210_0136 (~1048576 rows)
     [1] USE TEMP B-TREE FOR GROUP BY
     [1] USE TEMP B-TREE FOR DISTINCT
     [0] SCAN SUBQUERY 1 AS cte1 (~1 row)
@@ -2903,7 +2852,7 @@ plan:
 buckets = any
 ''
 ╭─────────────────────────────────────────╮
-│ 4. Query (DYN-FILTERED STORAGE, <= 1/1) │
+│ 3. Query (DYN-FILTERED STORAGE, <= 1/1) │
 ╰─────────────────────────────────────────╯
 ''
 SELECT
@@ -2914,7 +2863,7 @@ SELECT
   "COL_4",
   "COL_5"
 FROM
-  "_tmp_6144964650535932087_2136"
+  "_tmp_3458985635243533169_1136"
 UNION ALL
 SELECT
   *
@@ -2946,7 +2895,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_6144964650535932087_2136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_3458985635243533169_1136 (~1048576 rows)
     [3] SEARCH TABLE n AS t9 USING COVERING INDEX ix_ao (cv=?) (~9 rows)
         [3] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [3] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
@@ -7145,49 +7094,48 @@ limit 10
 subquery $0:
   projection (ag::int, au::int, cv::int)
     order by (ag::int)
-      motion [policy: full, program: ReshardIfNeeded]
-        scan
-          projection (
-            t0.ag::int -> ag,
-            t0.au::int -> au,
-            t0.cv::int -> cv
-          )
-            selection (t1.b::int is null)
-              left join on (
-                ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
-              )
-                scan t0
-                  union all
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
-                    )
-                      selection (
-                        (
-                          l.cv::int = 4797271::int
-                          and l.cs::datetime >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
-                          and l.cs::datetime < '2022-11-01 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+      scan
+        projection (
+          t0.ag::int -> ag,
+          t0.au::int -> au,
+          t0.cv::int -> cv
+        )
+          selection (t1.b::int is null)
+            left join on (
+              ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
+            )
+              scan t0
+                union all
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 4797271::int
+                        and l.cs::datetime >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+                        and l.cs::datetime < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
                     )
-                      selection (
-                        (
-                          l.cv::int = 4797271::int
-                          and l.cs::datetime is null
-                          and l.a::datetime >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
-                          and l.a::datetime < '2022-11-01 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+                      scan l
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 4797271::int
+                        and l.cs::datetime is null
+                        and l.a::datetime >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+                        and l.a::datetime < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                scan x -> t1
+                    )
+                      scan l
+              scan x -> t1
 subquery $1:
   motion [policy: full, program: ReshardIfNeeded]
     projection (
@@ -7243,8 +7191,7 @@ subquery $1:
                   join on (
                     ROW(t2.au::int, t2.cv::int) = ROW(t3.ag::int, t3.cv::int)
                   )
-                    motion [policy: segment([ref(cv)]), program: ReshardIfNeeded]
-                      scan cte t2($0)
+                    scan cte t2($0)
                     scan y -> t3 (indexed by ix_i)
                   scan v -> t4 (indexed by ix_f)
                 scan w -> t5 (indexed by ix_g)
@@ -7377,84 +7324,9 @@ subquery $4:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."au",
-  "t0"."cv"
-FROM
-  (
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
-      and "l"."cs" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-    UNION ALL
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" is null
-      and "l"."a" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
-      and "l"."a" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-  ) as "t0"
-  LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."b" is null
-''
-plan:
-    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
-    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
-    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
-    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
-        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-''
-buckets = [874]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT
-  "COL_0" as "ag",
-  "COL_1" as "au",
-  "COL_2" as "cv"
-FROM
-  (
-    SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
-    FROM
-      "_tmp_877372333083973691_1136"
-  )
-ORDER BY
-  "COL_0"
-''
-plan:
-    [0] SCAN TABLE _tmp_877372333083973691_1136 (~1048576 rows)
-    [0] USE TEMP B-TREE FOR ORDER BY
-''
-buckets = any
-''
-╭─────────────────────────────────╮
-│ 3. Query (DYN-FILTERED STORAGE) │
-╰─────────────────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT
   "t6"."cv",
@@ -7479,15 +7351,53 @@ SELECT
 FROM
   (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
+      "ag",
+      "au",
+      "cv"
     FROM
-      "_tmp_18309399111922391115_2136"
+      (
+        SELECT
+          "t0"."ag",
+          "t0"."au",
+          "t0"."cv"
+        FROM
+          (
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 4797271::int
+              and "l"."cs" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+              and "l"."cs" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+            UNION ALL
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 4797271::int
+              and "l"."cs" is null
+              and "l"."a" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+              and "l"."a" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+          ) as "t0"
+          LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
+          and "t1"."cv" = "t0"."cv"
+        WHERE
+          "t1"."b" is null
+      )
+    ORDER BY
+      "ag"
   ) as "t2"
-  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."COL_1"
-  and "t3"."cv" = "t2"."COL_2"
-  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
+  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."au"
+  and "t3"."cv" = "t2"."cv"
+  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
   and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
@@ -7506,18 +7416,23 @@ WHERE
   and "t3"."cq" = 6::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_18309399111922391115_2136 (~1048576 rows)
-        [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~7 rows)
+    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
+    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
+    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
+    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
+        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
             [0] SEARCH TABLE v AS t4 USING COVERING INDEX ix_f (b=? AND cv=?) (~8 rows)
-                [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
-                    [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
-                        [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-                            [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+                [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~6 rows)
+                    [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
+                        [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
+                            [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
+                                [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+    [0] USE TEMP B-TREE FOR ORDER BY
 ''
 buckets <= [1-3000]
 ''
 ╭────────────────────────────────────────╮
-│ 4. Query (CONST-FILTERED STORAGE, 1/1) │
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
 SELECT
@@ -7537,7 +7452,7 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_5092332724665672962_3136"
+      "_tmp_5092332724665672962_1136"
   ) as "cte1"
 UNION ALL
 SELECT
@@ -7584,7 +7499,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_5092332724665672962_3136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_5092332724665672962_1136 (~1048576 rows)
     [2] SEARCH TABLE n AS t9 USING COVERING INDEX ix_al (cv=?) (~9 rows)
         [2] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [2] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
@@ -7595,7 +7510,7 @@ plan:
 buckets = [874]
 ''
 ╭──────────────────────────╮
-│ 5. Query (WHOLE STORAGE) │
+│ 3. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
 SELECT
@@ -7629,19 +7544,19 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_6654303618351556102_5136"
+      "_tmp_13977457052491705481_3136"
   ) as "cte3"
   INNER JOIN "ad" as "t12" ON "t12"."cv" = "cte3"."COL_0"
   and "t12"."ay" = "cte3"."COL_2"
 ''
 plan:
-    [0] SCAN TABLE _tmp_6654303618351556102_5136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13977457052491705481_3136 (~1048576 rows)
         [0] SEARCH TABLE ad AS t12 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
 ''
 buckets <= [1-3000]
 ''
 ╭───────────────────╮
-│ 6. Query (ROUTER) │
+│ 4. Query (ROUTER) │
 ╰───────────────────╯
 ''
 SELECT
@@ -7683,7 +7598,7 @@ FROM
           "COL_13",
           "COL_14"
         FROM
-          "_tmp_6219172643915444872_6136"
+          "_tmp_17091119308357786393_4136"
       ) as "unnamed_join"
   ) as "cte4"
 WHERE
@@ -7692,7 +7607,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_6219172643915444872_6136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_17091119308357786393_4136 (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte4 (~1 row)
@@ -7842,49 +7757,48 @@ projection (
 subquery $0:
   projection (ag::int, au::int, cv::int)
     order by (ag::int)
-      motion [policy: full, program: ReshardIfNeeded]
-        scan
-          projection (
-            t0.ag::int -> ag,
-            t0.au::int -> au,
-            t0.cv::int -> cv
-          )
-            selection (t1.b::int is null)
-              left join on (
-                ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
-              )
-                scan t0
-                  union all
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
-                    )
-                      selection (
-                        (
-                          l.cv::int = 4797271::int
-                          and l.cs::datetime >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
-                          and l.cs::datetime < '2022-11-01 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+      scan
+        projection (
+          t0.ag::int -> ag,
+          t0.au::int -> au,
+          t0.cv::int -> cv
+        )
+          selection (t1.b::int is null)
+            left join on (
+              ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
+            )
+              scan t0
+                union all
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 4797271::int
+                        and l.cs::datetime >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+                        and l.cs::datetime < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
                     )
-                      selection (
-                        (
-                          l.cv::int = 4797271::int
-                          and l.cs::datetime is null
-                          and l.a::datetime >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
-                          and l.a::datetime < '2022-11-01 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+                      scan l
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 4797271::int
+                        and l.cs::datetime is null
+                        and l.a::datetime >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+                        and l.a::datetime < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                scan x -> t1
+                    )
+                      scan l
+              scan x -> t1
 subquery $1:
   motion [policy: full, program: ReshardIfNeeded]
     projection (t5.d::decimal -> d)
@@ -7921,8 +7835,7 @@ subquery $1:
                   join on (
                     ROW(t2.au::int, t2.cv::int) = ROW(t3.ag::int, t3.cv::int)
                   )
-                    motion [policy: segment([ref(cv)]), program: ReshardIfNeeded]
-                      scan cte t2($0)
+                    scan cte t2($0)
                     scan y -> t3 (indexed by ix_i)
                   scan v -> t4 (indexed by ix_f)
                 scan w -> t5 (indexed by ix_g)
@@ -7971,99 +7884,62 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."au",
-  "t0"."cv"
-FROM
-  (
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
-      and "l"."cs" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-    UNION ALL
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" is null
-      and "l"."a" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
-      and "l"."a" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-  ) as "t0"
-  LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."b" is null
-''
-plan:
-    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
-    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
-    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
-    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
-        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-''
-buckets = [874]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT
-  "COL_0" as "ag",
-  "COL_1" as "au",
-  "COL_2" as "cv"
-FROM
-  (
-    SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
-    FROM
-      "_tmp_8641021163966270088_0136"
-  )
-ORDER BY
-  "COL_0"
-''
-plan:
-    [0] SCAN TABLE _tmp_8641021163966270088_0136 (~1048576 rows)
-    [0] USE TEMP B-TREE FOR ORDER BY
-''
-buckets = any
-''
-╭─────────────────────────────────╮
-│ 3. Query (DYN-FILTERED STORAGE) │
-╰─────────────────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT
   "t5"."d"
 FROM
   (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
+      "ag",
+      "au",
+      "cv"
     FROM
-      "_tmp_2465481866393360794_1136"
+      (
+        SELECT
+          "t0"."ag",
+          "t0"."au",
+          "t0"."cv"
+        FROM
+          (
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 4797271::int
+              and "l"."cs" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+              and "l"."cs" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+            UNION ALL
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 4797271::int
+              and "l"."cs" is null
+              and "l"."a" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+              and "l"."a" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+          ) as "t0"
+          LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
+          and "t1"."cv" = "t0"."cv"
+        WHERE
+          "t1"."b" is null
+      )
+    ORDER BY
+      "ag"
   ) as "t2"
-  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."COL_1"
-  and "t3"."cv" = "t2"."COL_2"
-  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
+  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."au"
+  and "t3"."cv" = "t2"."cv"
+  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
   and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
@@ -8082,18 +7958,23 @@ WHERE
   and "t3"."cq" = 6::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_2465481866393360794_1136 (~1048576 rows)
-        [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~7 rows)
+    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
+    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
+    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
+    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
+        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
             [0] SEARCH TABLE v AS t4 USING COVERING INDEX ix_f (b=? AND cv=?) (~8 rows)
-                [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
-                    [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
-                        [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-                            [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+                [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~6 rows)
+                    [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
+                        [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
+                            [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
+                                [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+    [0] USE TEMP B-TREE FOR ORDER BY
 ''
 buckets <= [1-3000]
 ''
 ╭────────────────────────────────────────╮
-│ 4. Query (CONST-FILTERED STORAGE, 1/1) │
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
 SELECT
@@ -8108,7 +7989,7 @@ FROM
         SELECT
           "COL_0"
         FROM
-          "_tmp_5746341004775003441_2136"
+          "_tmp_5746341004775003441_0136"
       ) as "cte1"
     UNION ALL
     SELECT
@@ -8143,7 +8024,7 @@ FROM
   ) as "t12"
 ''
 plan:
-    [2] SCAN TABLE _tmp_5746341004775003441_2136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_5746341004775003441_0136 (~1048576 rows)
     [3] SEARCH TABLE n AS t9 USING COVERING INDEX ix_al (cv=?) (~9 rows)
         [3] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [3] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
@@ -8155,7 +8036,7 @@ plan:
 buckets = [874]
 ''
 ╭───────────────────╮
-│ 5. Query (ROUTER) │
+│ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
 SELECT
@@ -8167,11 +8048,11 @@ FROM
       "COL_0",
       "COL_1"
     FROM
-      "_tmp_17257311967805472214_4136"
+      "_tmp_13121145912930815082_2136"
   )
 ''
 plan:
-    [0] SCAN TABLE _tmp_17257311967805472214_4136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13121145912930815082_2136 (~1048576 rows)
 ''
 buckets = any
 ''
@@ -8316,48 +8197,47 @@ union all
   )
     scan cte cte2($2)
 subquery $0:
-  motion [policy: full, program: ReshardIfNeeded]
-    projection (
-      t0.ag::int -> ag,
-      t0.au::int -> au,
-      t0.cv::int -> cv
-    )
-      selection (t1.b::int is null)
-        left join on (
-          ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
-        )
-          scan t0
-            union all
-              projection (
-                l.ag::int -> ag,
-                l.au::int -> au,
-                l.cv::int -> cv
-              )
-                selection (
-                  (
-                    l.cv::int = 4797271::int
-                    and l.cs::datetime >= '2024-04-02 0:00:00.0 +00:00:00'::datetime
-                    and l.cs::datetime < '2024-04-03 0:00:00.0 +00:00:00'::datetime
-                    and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                  )
+  projection (
+    t0.ag::int -> ag,
+    t0.au::int -> au,
+    t0.cv::int -> cv
+  )
+    selection (t1.b::int is null)
+      left join on (
+        ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
+      )
+        scan t0
+          union all
+            projection (
+              l.ag::int -> ag,
+              l.au::int -> au,
+              l.cv::int -> cv
+            )
+              selection (
+                (
+                  l.cv::int = 4797271::int
+                  and l.cs::datetime >= '2024-04-02 0:00:00.0 +00:00:00'::datetime
+                  and l.cs::datetime < '2024-04-03 0:00:00.0 +00:00:00'::datetime
+                  and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                 )
-                  scan l
-              projection (
-                l.ag::int -> ag,
-                l.au::int -> au,
-                l.cv::int -> cv
               )
-                selection (
-                  (
-                    l.cv::int = 4797271::int
-                    and l.cs::datetime is null
-                    and l.a::datetime >= '2024-04-02 0:00:00.0 +00:00:00'::datetime
-                    and l.a::datetime < '2024-04-03 0:00:00.0 +00:00:00'::datetime
-                    and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                  )
+                scan l
+            projection (
+              l.ag::int -> ag,
+              l.au::int -> au,
+              l.cv::int -> cv
+            )
+              selection (
+                (
+                  l.cv::int = 4797271::int
+                  and l.cs::datetime is null
+                  and l.a::datetime >= '2024-04-02 0:00:00.0 +00:00:00'::datetime
+                  and l.a::datetime < '2024-04-03 0:00:00.0 +00:00:00'::datetime
+                  and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                 )
-                  scan l
-          scan x -> t1
+              )
+                scan l
+        scan x -> t1
 subquery $1:
   projection (
     gr_expr_1::int -> cv,
@@ -8475,57 +8355,8 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."au",
-  "t0"."cv"
-FROM
-  (
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" >= '2024-04-02 0:00:00.0 +00:00:00'::datetime
-      and "l"."cs" < '2024-04-03 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-    UNION ALL
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" is null
-      and "l"."a" >= '2024-04-02 0:00:00.0 +00:00:00'::datetime
-      and "l"."a" < '2024-04-03 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-  ) as "t0"
-  LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."b" is null
-''
-plan:
-    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
-    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
-    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
-    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
-        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-''
-buckets = [874]
-''
 ╭──────────────────────────╮
-│ 2. Query (WHOLE STORAGE) │
+│ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
 SELECT
@@ -8538,15 +8369,44 @@ SELECT
 FROM
   (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
+      "t0"."ag",
+      "t0"."au",
+      "t0"."cv"
     FROM
-      "_tmp_5930600967966593789_0136"
+      (
+        SELECT
+          "l"."ag",
+          "l"."au",
+          "l"."cv"
+        FROM
+          "l"
+        WHERE
+          "l"."cv" = 4797271::int
+          and "l"."cs" >= '2024-04-02 0:00:00.0 +00:00:00'::datetime
+          and "l"."cs" < '2024-04-03 0:00:00.0 +00:00:00'::datetime
+          and coalesce ("l"."bb"::int, 0::int) <> 1::int
+        UNION ALL
+        SELECT
+          "l"."ag",
+          "l"."au",
+          "l"."cv"
+        FROM
+          "l"
+        WHERE
+          "l"."cv" = 4797271::int
+          and "l"."cs" is null
+          and "l"."a" >= '2024-04-02 0:00:00.0 +00:00:00'::datetime
+          and "l"."a" < '2024-04-03 0:00:00.0 +00:00:00'::datetime
+          and coalesce ("l"."bb"::int, 0::int) <> 1::int
+      ) as "t0"
+      LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
+      and "t1"."cv" = "t0"."cv"
+    WHERE
+      "t1"."b" is null
   ) as "t2"
-  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."COL_1"
-  and "t3"."cv" = "t2"."COL_2"
-  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
+  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."au"
+  and "t3"."cv" = "t2"."cv"
+  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
   and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
@@ -8572,19 +8432,23 @@ GROUP BY
   "t8"."cx"
 ''
 plan:
-    [0] SCAN TABLE _tmp_5930600967966593789_0136 (~1048576 rows)
-        [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~7 rows)
+    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
+    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
+    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
+    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
+        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
             [0] SEARCH TABLE v AS t4 USING COVERING INDEX ix_f (b=? AND cv=?) (~8 rows)
-                [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
-                    [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
-                        [0] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
-                            [0] SEARCH TABLE ad AS t8 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
+                [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~6 rows)
+                    [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
+                        [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
+                            [0] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
+                                [0] SEARCH TABLE ad AS t8 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets <= [1-3000]
 ''
 ╭───────────────────╮
-│ 3. Query (ROUTER) │
+│ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
 SELECT
@@ -8608,7 +8472,7 @@ FROM
           "COL_4",
           "COL_5"
         FROM
-          "_tmp_2630807218819645061_1136"
+          "_tmp_13508558781324554210_0136"
       )
     GROUP BY
       "COL_0",
@@ -8620,7 +8484,7 @@ FROM
   ) as "cte1"
 ''
 plan:
-    [1] SCAN TABLE _tmp_2630807218819645061_1136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_13508558781324554210_0136 (~1048576 rows)
     [1] USE TEMP B-TREE FOR GROUP BY
     [1] USE TEMP B-TREE FOR DISTINCT
     [0] SCAN SUBQUERY 1 AS cte1 (~1 row)
@@ -8628,7 +8492,7 @@ plan:
 buckets = any
 ''
 ╭─────────────────────────────────────────╮
-│ 4. Query (DYN-FILTERED STORAGE, <= 1/1) │
+│ 3. Query (DYN-FILTERED STORAGE, <= 1/1) │
 ╰─────────────────────────────────────────╯
 ''
 SELECT
@@ -8639,7 +8503,7 @@ SELECT
   "COL_4",
   "COL_5"
 FROM
-  "_tmp_6144964650535932087_2136"
+  "_tmp_3458985635243533169_1136"
 UNION ALL
 SELECT
   *
@@ -8671,7 +8535,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_6144964650535932087_2136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_3458985635243533169_1136 (~1048576 rows)
     [3] SEARCH TABLE n AS t9 USING COVERING INDEX ix_ao (cv=?) (~9 rows)
         [3] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [3] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
@@ -11735,49 +11599,48 @@ limit 10
 subquery $0:
   projection (ag::int, au::int, cv::int)
     order by (ag::int)
-      motion [policy: full, program: ReshardIfNeeded]
-        scan
-          projection (
-            t0.ag::int -> ag,
-            t0.au::int -> au,
-            t0.cv::int -> cv
-          )
-            selection (t1.b::int is null)
-              left join on (
-                ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
-              )
-                scan t0
-                  union all
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
-                    )
-                      selection (
-                        (
-                          l.cv::int = 4797271::int
-                          and l.cs::datetime >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
-                          and l.cs::datetime < '2023-02-18 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+      scan
+        projection (
+          t0.ag::int -> ag,
+          t0.au::int -> au,
+          t0.cv::int -> cv
+        )
+          selection (t1.b::int is null)
+            left join on (
+              ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
+            )
+              scan t0
+                union all
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 4797271::int
+                        and l.cs::datetime >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+                        and l.cs::datetime < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
                     )
-                      selection (
-                        (
-                          l.cv::int = 4797271::int
-                          and l.cs::datetime is null
-                          and l.a::datetime >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
-                          and l.a::datetime < '2023-02-18 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+                      scan l
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 4797271::int
+                        and l.cs::datetime is null
+                        and l.a::datetime >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+                        and l.a::datetime < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                scan x -> t1
+                    )
+                      scan l
+              scan x -> t1
 subquery $1:
   motion [policy: full, program: ReshardIfNeeded]
     projection (
@@ -11833,8 +11696,7 @@ subquery $1:
                   join on (
                     ROW(t2.au::int, t2.cv::int) = ROW(t3.ag::int, t3.cv::int)
                   )
-                    motion [policy: segment([ref(cv)]), program: ReshardIfNeeded]
-                      scan cte t2($0)
+                    scan cte t2($0)
                     scan y -> t3 (indexed by ix_i)
                   scan v -> t4 (indexed by ix_f)
                 scan w -> t5 (indexed by ix_g)
@@ -11967,84 +11829,9 @@ subquery $4:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."au",
-  "t0"."cv"
-FROM
-  (
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
-      and "l"."cs" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-    UNION ALL
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" is null
-      and "l"."a" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
-      and "l"."a" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-  ) as "t0"
-  LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."b" is null
-''
-plan:
-    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
-    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
-    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
-    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
-        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-''
-buckets = [874]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT
-  "COL_0" as "ag",
-  "COL_1" as "au",
-  "COL_2" as "cv"
-FROM
-  (
-    SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
-    FROM
-      "_tmp_877372333083973691_1136"
-  )
-ORDER BY
-  "COL_0"
-''
-plan:
-    [0] SCAN TABLE _tmp_877372333083973691_1136 (~1048576 rows)
-    [0] USE TEMP B-TREE FOR ORDER BY
-''
-buckets = any
-''
-╭─────────────────────────────────╮
-│ 3. Query (DYN-FILTERED STORAGE) │
-╰─────────────────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT
   "t6"."cv",
@@ -12069,15 +11856,53 @@ SELECT
 FROM
   (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
+      "ag",
+      "au",
+      "cv"
     FROM
-      "_tmp_18309399111922391115_2136"
+      (
+        SELECT
+          "t0"."ag",
+          "t0"."au",
+          "t0"."cv"
+        FROM
+          (
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 4797271::int
+              and "l"."cs" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+              and "l"."cs" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+            UNION ALL
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 4797271::int
+              and "l"."cs" is null
+              and "l"."a" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+              and "l"."a" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+          ) as "t0"
+          LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
+          and "t1"."cv" = "t0"."cv"
+        WHERE
+          "t1"."b" is null
+      )
+    ORDER BY
+      "ag"
   ) as "t2"
-  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."COL_1"
-  and "t3"."cv" = "t2"."COL_2"
-  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
+  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."au"
+  and "t3"."cv" = "t2"."cv"
+  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
   and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
@@ -12096,18 +11921,23 @@ WHERE
   and "t3"."cq" = 4::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_18309399111922391115_2136 (~1048576 rows)
-        [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~7 rows)
+    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
+    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
+    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
+    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
+        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
             [0] SEARCH TABLE v AS t4 USING COVERING INDEX ix_f (b=? AND cv=?) (~8 rows)
-                [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
-                    [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
-                        [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-                            [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+                [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~6 rows)
+                    [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
+                        [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
+                            [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
+                                [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+    [0] USE TEMP B-TREE FOR ORDER BY
 ''
 buckets <= [1-3000]
 ''
 ╭────────────────────────────────────────╮
-│ 4. Query (CONST-FILTERED STORAGE, 1/1) │
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
 SELECT
@@ -12127,7 +11957,7 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_5092332724665672962_3136"
+      "_tmp_5092332724665672962_1136"
   ) as "cte1"
 UNION ALL
 SELECT
@@ -12174,7 +12004,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_5092332724665672962_3136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_5092332724665672962_1136 (~1048576 rows)
     [2] SEARCH TABLE n AS t9 USING COVERING INDEX ix_al (cv=?) (~9 rows)
         [2] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [2] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
@@ -12185,7 +12015,7 @@ plan:
 buckets = [874]
 ''
 ╭──────────────────────────╮
-│ 5. Query (WHOLE STORAGE) │
+│ 3. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
 SELECT
@@ -12219,19 +12049,19 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_6654303618351556102_5136"
+      "_tmp_13977457052491705481_3136"
   ) as "cte3"
   INNER JOIN "ad" as "t12" ON "t12"."cv" = "cte3"."COL_0"
   and "t12"."ay" = "cte3"."COL_2"
 ''
 plan:
-    [0] SCAN TABLE _tmp_6654303618351556102_5136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13977457052491705481_3136 (~1048576 rows)
         [0] SEARCH TABLE ad AS t12 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
 ''
 buckets <= [1-3000]
 ''
 ╭───────────────────╮
-│ 6. Query (ROUTER) │
+│ 4. Query (ROUTER) │
 ╰───────────────────╯
 ''
 SELECT
@@ -12273,7 +12103,7 @@ FROM
           "COL_13",
           "COL_14"
         FROM
-          "_tmp_6219172643915444872_6136"
+          "_tmp_17091119308357786393_4136"
       ) as "unnamed_join"
   ) as "cte4"
 WHERE
@@ -12282,7 +12112,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_6219172643915444872_6136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_17091119308357786393_4136 (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte4 (~1 row)
@@ -12804,48 +12634,47 @@ union all
   )
     scan cte cte2($2)
 subquery $0:
-  motion [policy: full, program: ReshardIfNeeded]
-    projection (
-      t0.ag::int -> ag,
-      t0.au::int -> au,
-      t0.cv::int -> cv
-    )
-      selection (t1.b::int is null)
-        left join on (
-          ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
-        )
-          scan t0
-            union all
-              projection (
-                l.ag::int -> ag,
-                l.au::int -> au,
-                l.cv::int -> cv
-              )
-                selection (
-                  (
-                    l.cv::int = 4797271::int
-                    and l.cs::datetime >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
-                    and l.cs::datetime < '2023-02-18 0:00:00.0 +00:00:00'::datetime
-                    and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                  )
+  projection (
+    t0.ag::int -> ag,
+    t0.au::int -> au,
+    t0.cv::int -> cv
+  )
+    selection (t1.b::int is null)
+      left join on (
+        ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
+      )
+        scan t0
+          union all
+            projection (
+              l.ag::int -> ag,
+              l.au::int -> au,
+              l.cv::int -> cv
+            )
+              selection (
+                (
+                  l.cv::int = 4797271::int
+                  and l.cs::datetime >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+                  and l.cs::datetime < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+                  and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                 )
-                  scan l
-              projection (
-                l.ag::int -> ag,
-                l.au::int -> au,
-                l.cv::int -> cv
               )
-                selection (
-                  (
-                    l.cv::int = 4797271::int
-                    and l.cs::datetime is null
-                    and l.a::datetime >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
-                    and l.a::datetime < '2023-02-18 0:00:00.0 +00:00:00'::datetime
-                    and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                  )
+                scan l
+            projection (
+              l.ag::int -> ag,
+              l.au::int -> au,
+              l.cv::int -> cv
+            )
+              selection (
+                (
+                  l.cv::int = 4797271::int
+                  and l.cs::datetime is null
+                  and l.a::datetime >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+                  and l.a::datetime < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+                  and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                 )
-                  scan l
-          scan x -> t1
+              )
+                scan l
+        scan x -> t1
 subquery $1:
   projection (
     gr_expr_1::int -> cv,
@@ -12963,57 +12792,8 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."au",
-  "t0"."cv"
-FROM
-  (
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
-      and "l"."cs" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-    UNION ALL
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" is null
-      and "l"."a" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
-      and "l"."a" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-  ) as "t0"
-  LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."b" is null
-''
-plan:
-    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
-    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
-    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
-    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
-        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-''
-buckets = [874]
-''
 ╭──────────────────────────╮
-│ 2. Query (WHOLE STORAGE) │
+│ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
 SELECT
@@ -13026,15 +12806,44 @@ SELECT
 FROM
   (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
+      "t0"."ag",
+      "t0"."au",
+      "t0"."cv"
     FROM
-      "_tmp_5930600967966593789_0136"
+      (
+        SELECT
+          "l"."ag",
+          "l"."au",
+          "l"."cv"
+        FROM
+          "l"
+        WHERE
+          "l"."cv" = 4797271::int
+          and "l"."cs" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+          and "l"."cs" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+          and coalesce ("l"."bb"::int, 0::int) <> 1::int
+        UNION ALL
+        SELECT
+          "l"."ag",
+          "l"."au",
+          "l"."cv"
+        FROM
+          "l"
+        WHERE
+          "l"."cv" = 4797271::int
+          and "l"."cs" is null
+          and "l"."a" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+          and "l"."a" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+          and coalesce ("l"."bb"::int, 0::int) <> 1::int
+      ) as "t0"
+      LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
+      and "t1"."cv" = "t0"."cv"
+    WHERE
+      "t1"."b" is null
   ) as "t2"
-  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."COL_1"
-  and "t3"."cv" = "t2"."COL_2"
-  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
+  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."au"
+  and "t3"."cv" = "t2"."cv"
+  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
   and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
@@ -13060,19 +12869,23 @@ GROUP BY
   "t8"."cx"
 ''
 plan:
-    [0] SCAN TABLE _tmp_5930600967966593789_0136 (~1048576 rows)
-        [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~7 rows)
+    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
+    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
+    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
+    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
+        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
             [0] SEARCH TABLE v AS t4 USING COVERING INDEX ix_f (b=? AND cv=?) (~8 rows)
-                [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
-                    [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
-                        [0] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
-                            [0] SEARCH TABLE ad AS t8 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
+                [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~6 rows)
+                    [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
+                        [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
+                            [0] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
+                                [0] SEARCH TABLE ad AS t8 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets <= [1-3000]
 ''
 ╭───────────────────╮
-│ 3. Query (ROUTER) │
+│ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
 SELECT
@@ -13096,7 +12909,7 @@ FROM
           "COL_4",
           "COL_5"
         FROM
-          "_tmp_2630807218819645061_1136"
+          "_tmp_13508558781324554210_0136"
       )
     GROUP BY
       "COL_0",
@@ -13108,7 +12921,7 @@ FROM
   ) as "cte1"
 ''
 plan:
-    [1] SCAN TABLE _tmp_2630807218819645061_1136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_13508558781324554210_0136 (~1048576 rows)
     [1] USE TEMP B-TREE FOR GROUP BY
     [1] USE TEMP B-TREE FOR DISTINCT
     [0] SCAN SUBQUERY 1 AS cte1 (~1 row)
@@ -13116,7 +12929,7 @@ plan:
 buckets = any
 ''
 ╭─────────────────────────────────────────╮
-│ 4. Query (DYN-FILTERED STORAGE, <= 1/1) │
+│ 3. Query (DYN-FILTERED STORAGE, <= 1/1) │
 ╰─────────────────────────────────────────╯
 ''
 SELECT
@@ -13127,7 +12940,7 @@ SELECT
   "COL_4",
   "COL_5"
 FROM
-  "_tmp_6144964650535932087_2136"
+  "_tmp_3458985635243533169_1136"
 UNION ALL
 SELECT
   *
@@ -13159,7 +12972,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_6144964650535932087_2136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_3458985635243533169_1136 (~1048576 rows)
     [3] SEARCH TABLE n AS t9 USING COVERING INDEX ix_ao (cv=?) (~9 rows)
         [3] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [3] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
@@ -14004,49 +13817,48 @@ limit 10
 subquery $0:
   projection (ag::int, au::int, cv::int)
     order by (ag::int)
-      motion [policy: full, program: ReshardIfNeeded]
-        scan
-          projection (
-            t0.ag::int -> ag,
-            t0.au::int -> au,
-            t0.cv::int -> cv
-          )
-            selection (t1.b::int is null)
-              left join on (
-                ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
-              )
-                scan t0
-                  union all
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
-                    )
-                      selection (
-                        (
-                          l.cv::int = 3023424::int
-                          and l.cs::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-                          and l.cs::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+      scan
+        projection (
+          t0.ag::int -> ag,
+          t0.au::int -> au,
+          t0.cv::int -> cv
+        )
+          selection (t1.b::int is null)
+            left join on (
+              ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
+            )
+              scan t0
+                union all
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 3023424::int
+                        and l.cs::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+                        and l.cs::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
                     )
-                      selection (
-                        (
-                          l.cv::int = 3023424::int
-                          and l.cs::datetime is null
-                          and l.a::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-                          and l.a::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+                      scan l
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 3023424::int
+                        and l.cs::datetime is null
+                        and l.a::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+                        and l.a::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                scan x -> t1
+                    )
+                      scan l
+              scan x -> t1
 subquery $1:
   motion [policy: full, program: ReshardIfNeeded]
     projection (
@@ -14101,8 +13913,7 @@ subquery $1:
                   join on (
                     ROW(t2.au::int, t2.cv::int) = ROW(t3.ag::int, t3.cv::int)
                   )
-                    motion [policy: segment([ref(cv)]), program: ReshardIfNeeded]
-                      scan cte t2($0)
+                    scan cte t2($0)
                     scan y -> t3 (indexed by ix_i)
                   scan v -> t4 (indexed by ix_f)
                 scan w -> t5 (indexed by ix_g)
@@ -14234,84 +14045,9 @@ subquery $4:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."au",
-  "t0"."cv"
-FROM
-  (
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 3023424::int
-      and "l"."cs" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-      and "l"."cs" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-    UNION ALL
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 3023424::int
-      and "l"."cs" is null
-      and "l"."a" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-      and "l"."a" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-  ) as "t0"
-  LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."b" is null
-''
-plan:
-    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
-    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
-    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
-    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
-        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-''
-buckets = [1222]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT
-  "COL_0" as "ag",
-  "COL_1" as "au",
-  "COL_2" as "cv"
-FROM
-  (
-    SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
-    FROM
-      "_tmp_877372333083973691_1136"
-  )
-ORDER BY
-  "COL_0"
-''
-plan:
-    [0] SCAN TABLE _tmp_877372333083973691_1136 (~1048576 rows)
-    [0] USE TEMP B-TREE FOR ORDER BY
-''
-buckets = any
-''
-╭─────────────────────────────────╮
-│ 3. Query (DYN-FILTERED STORAGE) │
-╰─────────────────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT
   "t6"."cv",
@@ -14336,15 +14072,53 @@ SELECT
 FROM
   (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
+      "ag",
+      "au",
+      "cv"
     FROM
-      "_tmp_9249821361873699528_2136"
+      (
+        SELECT
+          "t0"."ag",
+          "t0"."au",
+          "t0"."cv"
+        FROM
+          (
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 3023424::int
+              and "l"."cs" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+              and "l"."cs" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+            UNION ALL
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 3023424::int
+              and "l"."cs" is null
+              and "l"."a" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+              and "l"."a" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+          ) as "t0"
+          LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
+          and "t1"."cv" = "t0"."cv"
+        WHERE
+          "t1"."b" is null
+      )
+    ORDER BY
+      "ag"
   ) as "t2"
-  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."COL_1"
-  and "t3"."cv" = "t2"."COL_2"
-  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
+  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."au"
+  and "t3"."cv" = "t2"."cv"
+  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
   and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
@@ -14362,18 +14136,23 @@ WHERE
   and "t3"."aw" in (42::int, 45::int)
 ''
 plan:
-    [0] SCAN TABLE _tmp_9249821361873699528_2136 (~1048576 rows)
-        [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
+    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
+    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
+    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
+    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
+        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
             [0] SEARCH TABLE v AS t4 USING COVERING INDEX ix_f (b=? AND cv=?) (~8 rows)
-                [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
-                    [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
-                        [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-                            [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+                [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~7 rows)
+                    [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
+                        [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
+                            [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
+                                [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+    [0] USE TEMP B-TREE FOR ORDER BY
 ''
 buckets <= [1-3000]
 ''
 ╭────────────────────────────────────────╮
-│ 4. Query (CONST-FILTERED STORAGE, 1/1) │
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
 SELECT
@@ -14393,7 +14172,7 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_12210160973438973025_3136"
+      "_tmp_12210160973438973025_1136"
   ) as "cte1"
 UNION ALL
 SELECT
@@ -14439,7 +14218,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_12210160973438973025_3136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_12210160973438973025_1136 (~1048576 rows)
     [2] SEARCH TABLE n AS t9 USING COVERING INDEX ix_al (cv=?) (~9 rows)
         [2] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [2] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
@@ -14450,7 +14229,7 @@ plan:
 buckets = [1222]
 ''
 ╭──────────────────────────╮
-│ 5. Query (WHOLE STORAGE) │
+│ 3. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
 SELECT
@@ -14484,19 +14263,19 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_6654303618351556102_5136"
+      "_tmp_13977457052491705481_3136"
   ) as "cte3"
   INNER JOIN "ad" as "t12" ON "t12"."cv" = "cte3"."COL_0"
   and "t12"."ay" = "cte3"."COL_2"
 ''
 plan:
-    [0] SCAN TABLE _tmp_6654303618351556102_5136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13977457052491705481_3136 (~1048576 rows)
         [0] SEARCH TABLE ad AS t12 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
 ''
 buckets <= [1-3000]
 ''
 ╭───────────────────╮
-│ 6. Query (ROUTER) │
+│ 4. Query (ROUTER) │
 ╰───────────────────╯
 ''
 SELECT
@@ -14538,7 +14317,7 @@ FROM
           "COL_13",
           "COL_14"
         FROM
-          "_tmp_6219172643915444872_6136"
+          "_tmp_17091119308357786393_4136"
       ) as "unnamed_join"
   ) as "cte4"
 WHERE
@@ -14547,7 +14326,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_6219172643915444872_6136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_17091119308357786393_4136 (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte4 (~1 row)
@@ -14691,49 +14470,48 @@ projection (
 subquery $0:
   projection (ag::int, au::int, cv::int)
     order by (ag::int)
-      motion [policy: full, program: ReshardIfNeeded]
-        scan
-          projection (
-            t0.ag::int -> ag,
-            t0.au::int -> au,
-            t0.cv::int -> cv
-          )
-            selection (t1.b::int is null)
-              left join on (
-                ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
-              )
-                scan t0
-                  union all
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
-                    )
-                      selection (
-                        (
-                          l.cv::int = 4797271::int
-                          and l.cs::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-                          and l.cs::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+      scan
+        projection (
+          t0.ag::int -> ag,
+          t0.au::int -> au,
+          t0.cv::int -> cv
+        )
+          selection (t1.b::int is null)
+            left join on (
+              ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
+            )
+              scan t0
+                union all
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 4797271::int
+                        and l.cs::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+                        and l.cs::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                    projection (
-                      l.ag::int -> ag,
-                      l.au::int -> au,
-                      l.cv::int -> cv
                     )
-                      selection (
-                        (
-                          l.cv::int = 4797271::int
-                          and l.cs::datetime is null
-                          and l.a::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-                          and l.a::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-                          and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                        )
+                      scan l
+                  projection (
+                    l.ag::int -> ag,
+                    l.au::int -> au,
+                    l.cv::int -> cv
+                  )
+                    selection (
+                      (
+                        l.cv::int = 4797271::int
+                        and l.cs::datetime is null
+                        and l.a::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+                        and l.a::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+                        and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                       )
-                        scan l
-                scan x -> t1
+                    )
+                      scan l
+              scan x -> t1
 subquery $1:
   motion [policy: full, program: ReshardIfNeeded]
     projection (t5.d::decimal -> d)
@@ -14769,8 +14547,7 @@ subquery $1:
                   join on (
                     ROW(t2.au::int, t2.cv::int) = ROW(t3.ag::int, t3.cv::int)
                   )
-                    motion [policy: segment([ref(cv)]), program: ReshardIfNeeded]
-                      scan cte t2($0)
+                    scan cte t2($0)
                     scan y -> t3 (indexed by ix_i)
                   scan v -> t4 (indexed by ix_f)
                 scan w -> t5 (indexed by ix_g)
@@ -14818,99 +14595,62 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."au",
-  "t0"."cv"
-FROM
-  (
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-      and "l"."cs" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-    UNION ALL
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" is null
-      and "l"."a" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-      and "l"."a" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-  ) as "t0"
-  LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."b" is null
-''
-plan:
-    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
-    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
-    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
-    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
-        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-''
-buckets = [874]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT
-  "COL_0" as "ag",
-  "COL_1" as "au",
-  "COL_2" as "cv"
-FROM
-  (
-    SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
-    FROM
-      "_tmp_8641021163966270088_0136"
-  )
-ORDER BY
-  "COL_0"
-''
-plan:
-    [0] SCAN TABLE _tmp_8641021163966270088_0136 (~1048576 rows)
-    [0] USE TEMP B-TREE FOR ORDER BY
-''
-buckets = any
-''
-╭─────────────────────────────────╮
-│ 3. Query (DYN-FILTERED STORAGE) │
-╰─────────────────────────────────╯
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
 ''
 SELECT
   "t5"."d"
 FROM
   (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
+      "ag",
+      "au",
+      "cv"
     FROM
-      "_tmp_361463343318768109_1136"
+      (
+        SELECT
+          "t0"."ag",
+          "t0"."au",
+          "t0"."cv"
+        FROM
+          (
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 4797271::int
+              and "l"."cs" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+              and "l"."cs" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+            UNION ALL
+            SELECT
+              "l"."ag",
+              "l"."au",
+              "l"."cv"
+            FROM
+              "l"
+            WHERE
+              "l"."cv" = 4797271::int
+              and "l"."cs" is null
+              and "l"."a" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+              and "l"."a" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("l"."bb"::int, 0::int) <> 1::int
+          ) as "t0"
+          LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
+          and "t1"."cv" = "t0"."cv"
+        WHERE
+          "t1"."b" is null
+      )
+    ORDER BY
+      "ag"
   ) as "t2"
-  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."COL_1"
-  and "t3"."cv" = "t2"."COL_2"
-  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
+  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."au"
+  and "t3"."cv" = "t2"."cv"
+  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
   and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
@@ -14928,18 +14668,23 @@ WHERE
   and "t3"."aw" in (42::int, 45::int)
 ''
 plan:
-    [0] SCAN TABLE _tmp_361463343318768109_1136 (~1048576 rows)
-        [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
+    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
+    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
+    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
+    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
+        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
             [0] SEARCH TABLE v AS t4 USING COVERING INDEX ix_f (b=? AND cv=?) (~8 rows)
-                [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
-                    [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
-                        [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-                            [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+                [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~7 rows)
+                    [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
+                        [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
+                            [0] SEARCH TABLE x AS t7 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
+                                [0] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
+    [0] USE TEMP B-TREE FOR ORDER BY
 ''
 buckets <= [1-3000]
 ''
 ╭────────────────────────────────────────╮
-│ 4. Query (CONST-FILTERED STORAGE, 1/1) │
+│ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
 SELECT
@@ -14954,7 +14699,7 @@ FROM
         SELECT
           "COL_0"
         FROM
-          "_tmp_5243388994332312857_2136"
+          "_tmp_5243388994332312857_0136"
       ) as "cte1"
     UNION ALL
     SELECT
@@ -14988,7 +14733,7 @@ FROM
   ) as "t12"
 ''
 plan:
-    [2] SCAN TABLE _tmp_5243388994332312857_2136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_5243388994332312857_0136 (~1048576 rows)
     [3] SEARCH TABLE n AS t9 USING COVERING INDEX ix_al (cv=?) (~9 rows)
         [3] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [3] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
@@ -15000,7 +14745,7 @@ plan:
 buckets = [874]
 ''
 ╭───────────────────╮
-│ 5. Query (ROUTER) │
+│ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
 SELECT
@@ -15012,11 +14757,11 @@ FROM
       "COL_0",
       "COL_1"
     FROM
-      "_tmp_17257311967805472214_4136"
+      "_tmp_13121145912930815082_2136"
   )
 ''
 plan:
-    [0] SCAN TABLE _tmp_17257311967805472214_4136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13121145912930815082_2136 (~1048576 rows)
 ''
 buckets = any
 ''
@@ -15155,48 +14900,47 @@ union all
   )
     scan cte cte2($2)
 subquery $0:
-  motion [policy: full, program: ReshardIfNeeded]
-    projection (
-      t0.ag::int -> ag,
-      t0.au::int -> au,
-      t0.cv::int -> cv
-    )
-      selection (t1.b::int is null)
-        left join on (
-          ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
-        )
-          scan t0
-            union all
-              projection (
-                l.ag::int -> ag,
-                l.au::int -> au,
-                l.cv::int -> cv
-              )
-                selection (
-                  (
-                    l.cv::int = 4797271::int
-                    and l.cs::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-                    and l.cs::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-                    and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                  )
+  projection (
+    t0.ag::int -> ag,
+    t0.au::int -> au,
+    t0.cv::int -> cv
+  )
+    selection (t1.b::int is null)
+      left join on (
+        ROW(t0.ag::int, t0.cv::int) = ROW(t1.b::int, t1.cv::int)
+      )
+        scan t0
+          union all
+            projection (
+              l.ag::int -> ag,
+              l.au::int -> au,
+              l.cv::int -> cv
+            )
+              selection (
+                (
+                  l.cv::int = 4797271::int
+                  and l.cs::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+                  and l.cs::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+                  and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                 )
-                  scan l
-              projection (
-                l.ag::int -> ag,
-                l.au::int -> au,
-                l.cv::int -> cv
               )
-                selection (
-                  (
-                    l.cv::int = 4797271::int
-                    and l.cs::datetime is null
-                    and l.a::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-                    and l.a::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-                    and coalesce(l.bb::int::int, 0::int)::int <> 1::int
-                  )
+                scan l
+            projection (
+              l.ag::int -> ag,
+              l.au::int -> au,
+              l.cv::int -> cv
+            )
+              selection (
+                (
+                  l.cv::int = 4797271::int
+                  and l.cs::datetime is null
+                  and l.a::datetime >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+                  and l.a::datetime < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+                  and coalesce(l.bb::int::int, 0::int)::int <> 1::int
                 )
-                  scan l
-          scan x -> t1
+              )
+                scan l
+        scan x -> t1
 subquery $1:
   projection (
     gr_expr_1::int -> cv,
@@ -15312,57 +15056,8 @@ subquery $2:
  # Raw plan                                                           
 ──────────────────────────────────────────────────────────────────────
 ''
-╭────────────────────────────────────────╮
-│ 1. Query (CONST-FILTERED STORAGE, 1/1) │
-╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."au",
-  "t0"."cv"
-FROM
-  (
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-      and "l"."cs" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-    UNION ALL
-    SELECT
-      "l"."ag",
-      "l"."au",
-      "l"."cv"
-    FROM
-      "l"
-    WHERE
-      "l"."cv" = 4797271::int
-      and "l"."cs" is null
-      and "l"."a" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
-      and "l"."a" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("l"."bb"::int, 0::int) <> 1::int
-  ) as "t0"
-  LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."b" is null
-''
-plan:
-    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
-    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
-    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
-    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
-        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
-''
-buckets = [874]
-''
 ╭──────────────────────────╮
-│ 2. Query (WHOLE STORAGE) │
+│ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
 SELECT
@@ -15375,15 +15070,44 @@ SELECT
 FROM
   (
     SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
+      "t0"."ag",
+      "t0"."au",
+      "t0"."cv"
     FROM
-      "_tmp_9304316427558608414_0136"
+      (
+        SELECT
+          "l"."ag",
+          "l"."au",
+          "l"."cv"
+        FROM
+          "l"
+        WHERE
+          "l"."cv" = 4797271::int
+          and "l"."cs" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+          and "l"."cs" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+          and coalesce ("l"."bb"::int, 0::int) <> 1::int
+        UNION ALL
+        SELECT
+          "l"."ag",
+          "l"."au",
+          "l"."cv"
+        FROM
+          "l"
+        WHERE
+          "l"."cv" = 4797271::int
+          and "l"."cs" is null
+          and "l"."a" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+          and "l"."a" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+          and coalesce ("l"."bb"::int, 0::int) <> 1::int
+      ) as "t0"
+      LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
+      and "t1"."cv" = "t0"."cv"
+    WHERE
+      "t1"."b" is null
   ) as "t2"
-  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."COL_1"
-  and "t3"."cv" = "t2"."COL_2"
-  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
+  INNER JOIN "y" as "t3" INDEXED BY "ix_i" ON "t3"."ag" = "t2"."au"
+  and "t3"."cv" = "t2"."cv"
+  INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
   and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
@@ -15408,19 +15132,23 @@ GROUP BY
   "t8"."cx"
 ''
 plan:
-    [0] SCAN TABLE _tmp_9304316427558608414_0136 (~1048576 rows)
-        [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
+    [2] SEARCH TABLE l USING COVERING INDEX ix_z (cv=? AND cs>? AND cs<?) (~1 row)
+    [3] SEARCH TABLE l USING COVERING INDEX ix_aa (cv=? AND a>? AND a<?) (~1 row)
+    [1] COMPOUND SUBQUERIES 2 AND 3 (UNION ALL)
+    [0] SCAN SUBQUERY 1 AS t0 (~1 row)
+        [0] SEARCH TABLE x AS t1 USING COVERING INDEX ix_h (cv=? AND b=?) (~1 row)
             [0] SEARCH TABLE v AS t4 USING COVERING INDEX ix_f (b=? AND cv=?) (~8 rows)
-                [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
-                    [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
-                        [0] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
-                            [0] SEARCH TABLE ad AS t8 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
+                [0] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~7 rows)
+                    [0] SEARCH TABLE w AS t5 USING COVERING INDEX ix_g (x=? AND cv=?) (~7 rows)
+                        [0] SEARCH TABLE l AS t6 USING COVERING INDEX ix_d (cv=? AND ag=?) (~8 rows)
+                            [0] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)
+                                [0] SEARCH TABLE ad AS t8 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets <= [1-3000]
 ''
 ╭───────────────────╮
-│ 3. Query (ROUTER) │
+│ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
 SELECT
@@ -15444,7 +15172,7 @@ FROM
           "COL_4",
           "COL_5"
         FROM
-          "_tmp_2630807218819645061_1136"
+          "_tmp_13508558781324554210_0136"
       )
     GROUP BY
       "COL_0",
@@ -15456,7 +15184,7 @@ FROM
   ) as "cte1"
 ''
 plan:
-    [1] SCAN TABLE _tmp_2630807218819645061_1136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_13508558781324554210_0136 (~1048576 rows)
     [1] USE TEMP B-TREE FOR GROUP BY
     [1] USE TEMP B-TREE FOR DISTINCT
     [0] SCAN SUBQUERY 1 AS cte1 (~1 row)
@@ -15464,7 +15192,7 @@ plan:
 buckets = any
 ''
 ╭─────────────────────────────────────────╮
-│ 4. Query (DYN-FILTERED STORAGE, <= 1/1) │
+│ 3. Query (DYN-FILTERED STORAGE, <= 1/1) │
 ╰─────────────────────────────────────────╯
 ''
 SELECT
@@ -15475,7 +15203,7 @@ SELECT
   "COL_4",
   "COL_5"
 FROM
-  "_tmp_10757321093052108077_2136"
+  "_tmp_12378728690352880567_1136"
 UNION ALL
 SELECT
   *
@@ -15506,7 +15234,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_10757321093052108077_2136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_12378728690352880567_1136 (~1048576 rows)
     [3] SEARCH TABLE n AS t9 USING COVERING INDEX ix_ao (cv=?) (~9 rows)
         [3] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [3] SEARCH TABLE f AS t7 USING PRIMARY KEY (cw=?) (~1 row)

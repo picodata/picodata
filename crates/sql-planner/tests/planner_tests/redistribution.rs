@@ -1157,3 +1157,295 @@ fn inner_join_with_differently_restricted_sides_keeps_reduce() {
     let plan = explain_logical(&sql_to_optimized_ir(query, vec![])).unwrap();
     assert!(plan.contains("sum(count_"), "{plan}");
 }
+
+/// A one-stage scalar aggregate must run on exactly one node, even when its
+/// input is empty. UNION ALL dispatches the statement to the shards of both
+/// sides, so the branch with the one-stage aggregate gets a stage of its own:
+/// a motion over it, whose buckets are discovered from `a = 1`. Without it the
+/// shard with `a = 4` returns an extra `count = 0` row.
+#[test]
+fn scalar_aggregate_on_single_shard_under_union_all() {
+    let query = r#"explain (logical) SELECT count(*) AS n FROM "t5" WHERE "a" = 1
+        UNION ALL SELECT "a" FROM "t5" WHERE "a" = 4"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
+        projection (count(*)::int -> n)
+          selection (t5.a::int = 1::int)
+            scan t5
+      projection (t5.a::int -> a)
+        selection (t5.a::int = 4::int)
+          scan t5
+    ");
+}
+
+/// Same as `scalar_aggregate_on_single_shard_under_union_all`, with the
+/// single-shard proof coming from an inner join of two sides on that shard.
+#[test]
+fn scalar_aggregate_on_single_shard_join_under_union_all() {
+    let query = r#"explain (logical) SELECT count(*) AS n
+        FROM (SELECT "a" FROM "t5" WHERE "a" = 1) AS l
+        JOIN (SELECT "a" FROM "t5" WHERE "a" = 1) AS r ON l."a" = r."a"
+        UNION ALL SELECT "a" FROM "t5" WHERE "a" = 4"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    #[cfg(not(feature = "enrich_restrictions"))]
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
+        projection (count(*)::int -> n)
+          join on (l.a::int = r.a::int)
+            scan l
+              projection (t5.a::int -> a)
+                selection (t5.a::int = 1::int)
+                  scan t5
+            scan r
+              projection (t5.a::int -> a)
+                selection (t5.a::int = 1::int)
+                  scan t5
+      projection (t5.a::int -> a)
+        selection (t5.a::int = 4::int)
+          scan t5
+    ");
+    // Enrichment folds the join condition implied by both filters.
+    #[cfg(feature = "enrich_restrictions")]
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
+        projection (count(*)::int -> n)
+          join on (true::bool)
+            scan l
+              projection (t5.a::int -> a)
+                selection (t5.a::int = 1::int)
+                  scan t5
+            scan r
+              projection (t5.a::int -> a)
+                selection (t5.a::int = 1::int)
+                  scan t5
+      projection (t5.a::int -> a)
+        selection (t5.a::int = 4::int)
+          scan t5
+    ");
+}
+
+/// The inner UNION ALL keeps both branches on `a = 1` and needs no motion.
+/// The outer one widens the shards, so it isolates the whole inner branch.
+#[test]
+fn scalar_aggregate_on_single_shard_under_nested_union_all() {
+    let query = r#"explain (logical) SELECT count(*) AS n FROM "t5" WHERE "a" = 1
+        UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1
+        UNION ALL SELECT "a" FROM "t5" WHERE "a" <> 1"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
+        union all
+          projection (count(*)::int -> n)
+            selection (t5.a::int = 1::int)
+              scan t5
+          projection (t5.a::int -> a)
+            selection (t5.a::int = 1::int)
+              scan t5
+      projection (t5.a::int -> a)
+        selection (t5.a::int <> 1::int)
+          scan t5
+    ");
+}
+
+/// The motion protects the consumer edge; the CTE body stays one-stage.
+#[test]
+fn scalar_aggregate_on_single_shard_in_reused_cte() {
+    let query = r#"explain (logical) WITH c(n) AS (SELECT count(*) FROM "t5" WHERE "a" = 1)
+        SELECT n FROM c UNION ALL SELECT n FROM c
+        UNION ALL SELECT "a" FROM "t5" WHERE "a" = 4"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
+        union all
+          projection (c.n::int -> n)
+            scan cte c($0)
+          projection (c.n::int -> n)
+            scan cte c($0)
+      projection (t5.a::int -> a)
+        selection (t5.a::int = 4::int)
+          scan t5
+    subquery $0:
+      projection (count(*)::int -> n)
+        selection (t5.a::int = 1::int)
+          scan t5
+    ");
+}
+
+/// Single-input nodes above the aggregate keep the statement on its shard.
+#[test]
+fn scalar_aggregate_on_single_shard_under_order_by_limit() {
+    let query = r#"explain (logical) SELECT count(*) AS n FROM "t5" WHERE "a" = 1
+        ORDER BY 1 LIMIT 1"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    limit 1
+      projection (n::int)
+        order by (1)
+          scan
+            projection (count(*)::int -> n)
+              selection (t5.a::int = 1::int)
+                scan t5
+    ");
+}
+
+/// An empty input does not empty a scalar aggregate: no `false` domain check
+/// is repeated above it, so the union still gets the `count = 0` row.
+#[test]
+fn scalar_aggregate_over_false_under_union_all() {
+    let query = r#"explain (logical) SELECT count(*) AS n FROM "t5" WHERE false
+        UNION ALL SELECT "a" FROM "t5" WHERE "a" <> 1"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    #[cfg(not(feature = "enrich_restrictions"))]
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
+        projection (sum(count_1::int::int)::int::int -> n)
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (count(*)::int -> count_1)
+              selection (false::bool)
+                scan t5
+      projection (t5.a::int -> a)
+        selection (t5.a::int <> 1::int)
+          scan t5
+    ");
+    // Enrichment repeats `false`; the aggregate then runs in two stages.
+    #[cfg(feature = "enrich_restrictions")]
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
+        projection (sum(count_1::int::int)::int::int -> n)
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (count(*)::int -> count_1)
+              selection ((false::bool and false::bool))
+                scan t5
+      projection (t5.a::int -> a)
+        selection (t5.a::int <> 1::int)
+          scan t5
+    ");
+}
+
+/// Both branches are proven to run on the bucket of `a = 1`, so the union
+/// does not widen the shards of the aggregate.
+#[test]
+fn scalar_aggregate_on_single_shard_union_all_same_bucket() {
+    let query = r#"explain (logical) SELECT count(*) AS n FROM "t5" WHERE "a" = 1
+        UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      projection (count(*)::int -> n)
+        selection (t5.a::int = 1::int)
+          scan t5
+      projection (t5.a::int -> a)
+        selection (t5.a::int = 1::int)
+          scan t5
+    ");
+}
+
+#[test]
+fn scalar_aggregates_on_single_shards_in_both_union_all_branches() {
+    let query = r#"explain (logical) SELECT count(*) AS n FROM "t5" WHERE "a" = 1
+        UNION ALL SELECT sum("a") FROM "t5" WHERE "a" = 4"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
+        projection (count(*)::int -> n)
+          selection (t5.a::int = 1::int)
+            scan t5
+      motion [policy: segment([ref(col_1)]), program: ReshardIfNeeded]
+        projection (sum(t5.a::int::int)::decimal -> col_1)
+          selection (t5.a::int = 4::int)
+            scan t5
+    ");
+}
+
+/// A GROUP BY yields no rows on empty input, so extra shards are harmless.
+#[test]
+fn group_by_aggregate_on_single_shard_under_union_all() {
+    let query = r#"explain (logical) SELECT count(*) AS n FROM "t5" WHERE "a" = 1 GROUP BY "a"
+        UNION ALL SELECT "a" FROM "t5" WHERE "a" = 4"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      projection (count(*)::int -> n)
+        group by (t5.a::int)
+          selection (t5.a::int = 1::int)
+            scan t5
+      projection (t5.a::int -> a)
+        selection (t5.a::int = 4::int)
+          scan t5
+    ");
+}
+
+#[test]
+fn scalar_aggregate_on_single_shard_under_union() {
+    let query = r#"explain (logical) SELECT count(*) AS n FROM "t5" WHERE "a" = 1
+        UNION SELECT "a" FROM "t5" WHERE "a" = 4"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    motion [policy: full, program: RemoveDuplicates]
+      union
+        motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
+          projection (count(*)::int -> n)
+            selection (t5.a::int = 1::int)
+              scan t5
+        projection (t5.a::int -> a)
+          selection (t5.a::int = 4::int)
+            scan t5
+    ");
+}
+
+/// `add_motions` memoizes bucket proofs and union verdicts; in debug builds
+/// every cache hit is checked against a recomputation from the current plan.
+/// Run shapes where processed subtrees are rewritten or read again.
+#[test]
+fn motions_cache_matches_recomputation() {
+    for query in [
+        // Nested UNION ALL with the same and with different buckets.
+        r#"SELECT count(*) AS n FROM "t5" WHERE "a" = 1
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" <> 1"#,
+        r#"SELECT count(*) AS n FROM "t5" WHERE "a" = 1
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" = 4
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" <> 1"#,
+        // UNION DISTINCT and the Full motion above it.
+        r#"SELECT count(*) AS n FROM "t5" WHERE "a" = 1
+            UNION SELECT "a" FROM "t5" WHERE "a" = 1
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" <> 1"#,
+        // A CTE read by a UNION ALL and by an IN subquery.
+        r#"WITH c(n) AS (SELECT count(*) FROM "t5" WHERE "a" = 1)
+            SELECT n FROM c UNION ALL SELECT n FROM c
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" IN (SELECT n FROM c)"#,
+        // Two-stage aggregation with GROUP BY and HAVING under a union.
+        r#"SELECT count(*) AS n FROM "t5" GROUP BY "b" HAVING count(*) > 1
+            UNION ALL SELECT count(*) FROM "t5" WHERE "a" = 1 HAVING count(*) > 0
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1"#,
+        // Expression subqueries around unions.
+        r#"SELECT "a" FROM "t5" WHERE "a" IN (
+            SELECT count(*) FROM "t5" WHERE "a" = 1
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1)
+            UNION ALL SELECT (SELECT count(*) FROM "t5" WHERE "a" = 1) FROM "t5""#,
+        // ORDER BY / LIMIT over and inside unions.
+        r#"SELECT * FROM (SELECT count(*) AS n FROM "t5" WHERE "a" = 1
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" <> 1) ORDER BY 1 LIMIT 3"#,
+        r#"SELECT "a" FROM "t5" WHERE "a" = (
+            SELECT count(*) FROM "t5" WHERE "a" = 1 ORDER BY 1 LIMIT 1)
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" = 4"#,
+        // Joins over single-shard inputs under a union.
+        r#"SELECT count(*) AS n FROM (SELECT "a" FROM "t5" WHERE "a" = 1) AS l
+            JOIN (SELECT "a" FROM "t5" WHERE "a" = 1) AS r ON l."a" = r."a"
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" = 4"#,
+    ] {
+        let _ = sql_to_optimized_ir(query, vec![]);
+    }
+}

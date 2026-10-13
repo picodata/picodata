@@ -1594,13 +1594,21 @@ impl<'p> EqualityAnalysis<'p> {
         match rel {
             Relational::Projection(Projection {
                 child,
+                output,
                 windows,
                 is_distinct,
                 group_by,
                 having,
                 ..
             }) => {
-                if windows.is_empty() && !is_distinct && group_by.is_none() && having.is_none() {
+                // A scalar aggregate (no GROUP BY) yields a row on empty input,
+                // so emptiness below it does not empty it.
+                if windows.is_empty()
+                    && !is_distinct
+                    && group_by.is_none()
+                    && having.is_none()
+                    && !self.plan.contains_aggregates(*output, true)?
+                {
                     let Some(child_id) = child else {
                         unreachable!("Projection must have a child");
                     };

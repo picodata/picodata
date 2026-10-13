@@ -322,6 +322,23 @@ struct Strategy {
     children_alias_hints: HashMap<ChildId, SmolStr>,
 }
 
+/// Answers memoized during one `add_motions` pass to avoid repeated subtree walks.
+/// Post-order traversal alone does not make entries immutable: later rewrites
+/// can change processed descendants. Reuse requires that those rewrites preserve
+/// the cached answer; otherwise affected entries must be invalidated before reuse.
+#[derive(Default)]
+struct MotionsCache {
+    /// Single-node bucket proofs, including `None` when no proof was found.
+    single_node: AHashMap<NodeId, Option<Buckets>>,
+    /// Whether a union will still expose a one-stage scalar aggregate on the
+    /// storages after the strategy returned by `resolve_union_conflicts` is applied.
+    union_aggregates: AHashMap<NodeId, bool>,
+    /// Set on the fresh cache of a debug recheck, so that the recheck does
+    /// not start nested rechecks: shared CTE subtrees would make them exponential.
+    #[cfg(debug_assertions)]
+    rechecking: bool,
+}
+
 impl Strategy {
     fn new(parent_id: NodeId) -> Self {
         Self {
@@ -593,8 +610,12 @@ impl Plan {
     /// bucket, following unary nodes and the applicable join inputs. Stops at motions.
     /// This does not pin execution to that bucket: a parent can expand the set of
     /// execution nodes.
-    pub(crate) fn is_single_node_subtree(&self, rel_id: NodeId) -> Result<bool, SbroadError> {
-        Ok(self.single_node_buckets(rel_id)?.is_some())
+    fn is_single_node_subtree(
+        &self,
+        rel_id: NodeId,
+        cache: &mut MotionsCache,
+    ) -> Result<bool, SbroadError> {
+        Ok(self.single_node_buckets(rel_id, cache)?.is_some())
     }
 
     /// The buckets that prove [`Self::is_single_node_subtree`], if it holds.
@@ -603,7 +624,38 @@ impl Plan {
     /// bucket ids. Matching fingerprints are treated as matching keys; hash
     /// collisions are not checked. Different fingerprints may route to the
     /// same bucket, so this check can miss single-bucket joins.
-    fn single_node_buckets(&self, rel_id: NodeId) -> Result<Option<Buckets>, SbroadError> {
+    fn single_node_buckets(
+        &self,
+        rel_id: NodeId,
+        cache: &mut MotionsCache,
+    ) -> Result<Option<Buckets>, SbroadError> {
+        if let Some(buckets) = cache.single_node.get(&rel_id) {
+            // The cache must not change decisions: recompute from the current
+            // plan without reading any entry of the pass's cache.
+            #[cfg(debug_assertions)]
+            if !cache.rechecking {
+                let mut fresh_cache = MotionsCache {
+                    rechecking: true,
+                    ..MotionsCache::default()
+                };
+                let fresh = self.compute_single_node_buckets(rel_id, &mut fresh_cache)?;
+                debug_assert_eq!(
+                    buckets, &fresh,
+                    "stale single-node buckets cached for {rel_id:?}"
+                );
+            }
+            return Ok(buckets.clone());
+        }
+        let buckets = self.compute_single_node_buckets(rel_id, cache)?;
+        cache.single_node.insert(rel_id, buckets.clone());
+        Ok(buckets)
+    }
+
+    fn compute_single_node_buckets(
+        &self,
+        rel_id: NodeId,
+        cache: &mut MotionsCache,
+    ) -> Result<Option<Buckets>, SbroadError> {
         struct StaticResolver;
 
         impl BucketsResolver for StaticResolver {
@@ -648,7 +700,7 @@ impl Plan {
             | Relational::OrderBy(_)
             | Relational::Limit(_) => {
                 let child_id = self.get_first_rel_child(rel_id)?;
-                self.single_node_buckets(child_id)
+                self.single_node_buckets(child_id, cache)
             }
             Relational::Selection(sel) => {
                 let child_dist = self.rel_distr_ref(sel.child)?;
@@ -664,30 +716,30 @@ impl Plan {
                 if buckets.is_single_node() {
                     return Ok(Some(buckets));
                 }
-                self.single_node_buckets(sel.child)
+                self.single_node_buckets(sel.child, cache)
             }
             // A left join inherits the left input's proof. For an inner join
             // without a global input, require exact sets whose union has at
             // most one fingerprint. Two unknown single-bucket sets may differ.
             // Do not follow motions: they can change placement.
             Relational::Join(join) => match join.kind {
-                JoinKind::LeftOuter => self.single_node_buckets(join.left),
+                JoinKind::LeftOuter => self.single_node_buckets(join.left, cache),
                 JoinKind::Inner => {
                     // A global input is available on every node. Any keeps a
                     // nonempty bucket set, but Any union empty remains Any.
                     for (side, other) in [(join.left, join.right), (join.right, join.left)] {
                         if matches!(self.rel_distr_ref(side)?, Distribution::Global) {
-                            let Some(buckets) = self.single_node_buckets(other)? else {
+                            let Some(buckets) = self.single_node_buckets(other, cache)? else {
                                 return Ok(None);
                             };
                             let buckets = Buckets::Any.disjunct(&buckets);
                             return Ok(buckets.is_single_node().then_some(buckets));
                         }
                     }
-                    let Some(left) = self.single_node_buckets(join.left)? else {
+                    let Some(left) = self.single_node_buckets(join.left, cache)? else {
                         return Ok(None);
                     };
-                    let Some(right) = self.single_node_buckets(join.right)? else {
+                    let Some(right) = self.single_node_buckets(join.right, cache)? else {
                         return Ok(None);
                     };
                     if !matches!(left, Buckets::Filtered(BucketSet::Exact(_)))
@@ -699,6 +751,24 @@ impl Plan {
                     Ok(buckets.is_single_node().then_some(buckets))
                 }
             },
+            // Both branches run in one stage: require exact sets whose union
+            // has at most one fingerprint, as for an inner join.
+            Relational::UnionAll(UnionAll { left, right, .. }) => {
+                let (left, right) = (*left, *right);
+                let Some(left) = self.single_node_buckets(left, cache)? else {
+                    return Ok(None);
+                };
+                let Some(right) = self.single_node_buckets(right, cache)? else {
+                    return Ok(None);
+                };
+                if !matches!(left, Buckets::Filtered(BucketSet::Exact(_)))
+                    || !matches!(right, Buckets::Filtered(BucketSet::Exact(_)))
+                {
+                    return Ok(None);
+                }
+                let buckets = left.disjunct(&right);
+                Ok(buckets.is_single_node().then_some(buckets))
+            }
             _ => Ok(None),
         }
     }
@@ -2108,7 +2178,11 @@ impl Plan {
         Ok(true)
     }
 
-    fn resolve_union_conflicts(&mut self, rel_id: NodeId) -> Result<Strategy, SbroadError> {
+    fn resolve_union_conflicts(
+        &mut self,
+        rel_id: NodeId,
+        cache: &mut MotionsCache,
+    ) -> Result<Strategy, SbroadError> {
         if !matches!(
             self.get_relation_node(rel_id)?,
             Relational::UnionAll(_) | Relational::Union(_)
@@ -2173,7 +2247,113 @@ impl Plan {
             }
             (_, _) => {}
         }
+
+        // The branches run on the union of their buckets. A one-stage scalar
+        // aggregate yields a row even on empty input, so it needs a stage of
+        // its own unless both branches are proven to share a single bucket.
+        let mut exposed = Vec::with_capacity(2);
+        for side in [left_id, right_id] {
+            if !map.children_policy.contains_key(&side)
+                && self.has_shard_scalar_aggregate(side, cache)?
+            {
+                exposed.push(side);
+            }
+        }
+        let shares_one_bucket =
+            !exposed.is_empty() && self.union_shares_one_bucket(left_id, right_id, cache)?;
+        if !shares_one_bucket {
+            for side in exposed {
+                map.upsert_child(
+                    side,
+                    MotionPolicy::Segment(MotionKey {
+                        targets: vec![Target::Reference(0)],
+                    }),
+                    Program::default(),
+                );
+            }
+        }
+        cache.union_aggregates.insert(rel_id, shares_one_bucket);
         Ok(map)
+    }
+
+    /// Whether both union branches are proven to run on one and the same
+    /// nonempty bucket. Fingerprints are not bucket ids: different ones may
+    /// share a bucket, which only costs an extra motion.
+    fn union_shares_one_bucket(
+        &self,
+        left: NodeId,
+        right: NodeId,
+        cache: &mut MotionsCache,
+    ) -> Result<bool, SbroadError> {
+        let exact = |buckets: &Buckets| matches!(buckets, Buckets::Filtered(BucketSet::Exact(set)) if !set.is_empty());
+        Ok(
+            match (
+                self.single_node_buckets(left, cache)?,
+                self.single_node_buckets(right, cache)?,
+            ) {
+                (Some(left), Some(right)) if exact(&left) && exact(&right) => {
+                    left.disjunct(&right).is_single_node()
+                }
+                _ => false,
+            },
+        )
+    }
+
+    /// Whether the stage computing `rel_id` also computes a scalar aggregate
+    /// (no GROUP BY) one-stage on the storages. Such an aggregate yields a row
+    /// on a shard with empty input. Stops at nodes computed elsewhere: the
+    /// inputs of Segment / Full motions and Single / Global subtrees. A union
+    /// already resolved answers from the cache.
+    fn has_shard_scalar_aggregate(
+        &self,
+        rel_id: NodeId,
+        cache: &MotionsCache,
+    ) -> Result<bool, SbroadError> {
+        let mut stack = vec![rel_id];
+        // CTE subtrees are shared: visit each node once.
+        let mut seen = AHashSet::new();
+        while let Some(id) = stack.pop() {
+            if !seen.insert(id) {
+                continue;
+            }
+            if let Some(&exposed) = cache.union_aggregates.get(&id) {
+                // Recompute the verdict from the union's current subtree,
+                // after its strategy was applied, without the cache.
+                #[cfg(debug_assertions)]
+                debug_assert_eq!(
+                    exposed,
+                    self.has_shard_scalar_aggregate(id, &MotionsCache::default())?,
+                    "stale union aggregate verdict cached for {id:?}"
+                );
+                if exposed {
+                    return Ok(true);
+                }
+                continue;
+            }
+            if matches!(
+                self.rel_distr_ref(id),
+                Ok(Distribution::Single | Distribution::Global)
+            ) {
+                continue;
+            }
+            match self.get_relation_node(id)? {
+                Relational::Motion(Motion {
+                    policy: MotionPolicy::Segment(_) | MotionPolicy::Full,
+                    ..
+                }) => continue,
+                Relational::Projection(Projection {
+                    group_by: None,
+                    having,
+                    output,
+                    ..
+                }) if having.is_some() || self.contains_aggregates(*output, true)? => {
+                    return Ok(true);
+                }
+                _ => {}
+            }
+            stack.extend(self.nodes.rel_iter(id));
+        }
+        Ok(false)
     }
 
     /// Set the distribution improved by subqueries or derive it from the output.
@@ -2297,6 +2477,7 @@ impl Plan {
         // used to fix Union nodes.
         let mut old_new: AHashMap<NodeId, NodeId> = AHashMap::new();
         let mut values_covered = AHashSet::new();
+        let mut cache = MotionsCache::default();
         for id in nodes {
             if visited.contains(&id) {
                 continue;
@@ -2358,7 +2539,7 @@ impl Plan {
                             self.pushdown_limit(id)?;
                         }
                         Distribution::Any | Distribution::Segment { .. }
-                            if self.is_single_node_subtree(rel_child_id)? =>
+                            if self.is_single_node_subtree(rel_child_id, &mut cache)? =>
                         {
                             // All data is on a single shard, no motion needed.
                             self.set_rel_distr(id, child_dist)?;
@@ -2442,7 +2623,7 @@ impl Plan {
                             self.set_rel_distr(id, Distribution::Single)?
                         }
                         Distribution::Any | Distribution::Segment { .. }
-                            if self.is_single_node_subtree(rel_child_id)? =>
+                            if self.is_single_node_subtree(rel_child_id, &mut cache)? =>
                         {
                             // We don't need any motion, since all data is located in a single shard.
                             self.set_rel_distr(id, child_dist.clone())?;
@@ -2523,7 +2704,7 @@ impl Plan {
                     }
 
                     if windows.is_empty()
-                        && !self.is_single_node_subtree(target_dist_node)?
+                        && !self.is_single_node_subtree(target_dist_node, &mut cache)?
                         && self.add_two_stage_aggregation(id)?
                     {
                         // We have successfully added two stage aggregation.
@@ -2572,7 +2753,7 @@ impl Plan {
                     self.set_rel_output_distribution(id)?;
                 }
                 RelOwned::Union(Union { .. }) => {
-                    let strategy = self.resolve_union_conflicts(id)?;
+                    let strategy = self.resolve_union_conflicts(id, &mut cache)?;
                     self.insert_motion_nodes(strategy)?;
                     self.set_rel_output_distribution(id)?;
                     let new_top_id = self.add_motion_with_domain_checks(
@@ -2583,7 +2764,7 @@ impl Plan {
                     old_new.insert(id, new_top_id);
                 }
                 RelOwned::UnionAll(UnionAll { .. }) => {
-                    let strategy = self.resolve_union_conflicts(id)?;
+                    let strategy = self.resolve_union_conflicts(id, &mut cache)?;
                     self.insert_motion_nodes(strategy)?;
                     self.set_rel_output_distribution(id)?;
                 }
@@ -2593,7 +2774,7 @@ impl Plan {
                     if let Some(motion_id) = cte_motions.get(&child) {
                         self.set_relational_children(id, vec![*motion_id]);
                     } else {
-                        let is_single_node = self.is_single_node_subtree(child)?;
+                        let is_single_node = self.is_single_node_subtree(child, &mut cache)?;
                         let is_reused = cte_ref_counts.get(&child).copied().unwrap_or(0) > 1;
                         if !is_single_node {
                             let strategy = self.resolve_cte_conflicts(id, is_reused)?;

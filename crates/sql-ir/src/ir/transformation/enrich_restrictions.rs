@@ -1077,12 +1077,16 @@ impl Plan {
                 }) => *left,
                 Relational::Projection(Projection {
                     child: Some(child),
+                    output,
                     windows,
                     is_distinct,
                     group_by: None,
                     having: None,
                     ..
-                }) if windows.is_empty() && !is_distinct => {
+                }) if windows.is_empty()
+                    && !is_distinct
+                    && !self.contains_aggregates(*output, true)? =>
+                {
                     if matches!(self.get_relation_node(*child)?, Relational::Selection(_)) {
                         return Ok(Some(Placement::ExistingSelection(*child)));
                     }
