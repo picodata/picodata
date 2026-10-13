@@ -1,4 +1,5 @@
 use smol_str::{SmolStr, ToSmolStr};
+use sql_ir::ir::node::block::BlockOwned;
 use std::collections::HashSet;
 use std::ops::Not;
 
@@ -9,11 +10,11 @@ use crate::executor::ExecutingQuery;
 use crate::ir::bucket::{value_to_bucket_id, Buckets, BucketsResolver};
 use crate::ir::distribution::Distribution;
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::expression::Expression;
+use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Constant, Delete, Except, Intersect, Join, Motion, Node, NodeId, ScanRelation, Selection,
-    Union, UnionAll, Values,
+    BlockEntries, Constant, Delete, Except, Insert, Intersect, Join, Motion, Node, NodeId,
+    ScanRelation, Selection, Union, UnionAll, Values,
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
@@ -31,6 +32,24 @@ fn is_false_or_null(plan: &Plan, expr_id: NodeId) -> Result<bool, SbroadError> {
             value: Value::Boolean(false) | Value::Null,
         })
     ))
+}
+
+/// The rows of a block INSERT and the position of their `bucket_id` cell
+/// (see `Plan::optimize_block`).
+fn get_block_insert_rows(
+    plan: &Plan,
+    insert_id: NodeId,
+) -> Result<Option<(&[NodeId], usize)>, SbroadError> {
+    let Relational::Insert(Insert { child, .. }) = plan.get_relation_node(insert_id)? else {
+        return Ok(None);
+    };
+    let Relational::Values(Values { rows, .. }) = plan.get_relation_node(*child)? else {
+        return Ok(None);
+    };
+    let Some(bucket_id_pos) = plan.get_bucket_id_position(insert_id)? else {
+        return Ok(None);
+    };
+    Ok(Some((rows, bucket_id_pos)))
 }
 
 struct ExecutorBucketsResolver<'p, C: Router> {
@@ -193,22 +212,67 @@ where
         self.try_buckets_from_values_rows(child, motion_key)
     }
 
-    /// Compute buckets for a block-optimized INSERT whose Motion node has been
-    /// eliminated, leaving Values directly under Insert. Sharding-key cells in
-    /// each value row are guaranteed (by the block optimizer) to be Constants
-    /// after parameter binding.
-    fn insert_buckets_from_values(
-        &self,
-        insert_id: NodeId,
-        values_id: NodeId,
-    ) -> Result<Buckets, SbroadError> {
-        let motion_key = self.exec_plan.get_ir_plan().insert_motion_key(insert_id)?;
-        self.try_buckets_from_values_rows(values_id, &motion_key)?
-            .ok_or_else(|| {
-                SbroadError::other(
-                    "INSERT in transaction requires constant or parameter values for sharding-key columns",
-                )
-            })
+    /// Write the bucket of each block INSERT row to its `bucket_id` cell.
+    pub(crate) fn bind_block_insert_buckets(&mut self) -> Result<(), SbroadError> {
+        let plan = self.exec_plan.get_ir_plan();
+        let Ok(BlockOwned::Anonymous(block)) = plan
+            .get_top()
+            .and_then(|top_id| plan.get_owned_block_node(top_id))
+        else {
+            return Ok(());
+        };
+        for entry in BlockEntries::new(&block.statements) {
+            entry.with(|query_id| self.bind_insert_buckets(*query_id))?;
+        }
+        Ok(())
+    }
+
+    fn bind_insert_buckets(&mut self, query_id: NodeId) -> Result<(), SbroadError> {
+        let plan = self.exec_plan.get_ir_plan();
+        let Some((rows, bucket_id_pos)) = get_block_insert_rows(plan, query_id)? else {
+            return Ok(());
+        };
+        let motion_key = plan.insert_motion_key(query_id)?;
+        let mut bucket_cells = Vec::with_capacity(rows.len());
+        for row_id in rows {
+            let row_list = plan.get_row_list(*row_id)?;
+            let bucket_id = self
+                .try_calculate_values_row_bucket_id(row_list, &motion_key)?
+                .ok_or_else(|| {
+                    SbroadError::other(
+                        "INSERT in transaction requires constant or parameter values for sharding-key columns",
+                    )
+                })?;
+            bucket_cells.push((row_list[bucket_id_pos], bucket_id));
+        }
+
+        let plan = self.exec_plan.get_mut_ir_plan();
+        for (cell_id, bucket_id) in bucket_cells {
+            let MutExpression::Constant(Constant { value }) =
+                plan.get_mut_expression_node(cell_id)?
+            else {
+                panic!("expected bucket_id Constant, got {cell_id:?}");
+            };
+            *value = Value::Integer(bucket_id as i64);
+        }
+        Ok(())
+    }
+
+    /// The buckets of a block INSERT, read from its `bucket_id` cells.
+    fn get_block_insert_buckets(&self, insert_id: NodeId) -> Result<Option<Buckets>, SbroadError> {
+        let plan = self.exec_plan.get_ir_plan();
+        let Some((rows, bucket_id_pos)) = get_block_insert_rows(plan, insert_id)? else {
+            return Ok(None);
+        };
+        let mut bucket_set = HashSet::with_hasher(RepeatableState);
+        for row_id in rows {
+            let cell_id = plan.get_row_list(*row_id)?[bucket_id_pos];
+            let Value::Integer(bucket_id) = plan.as_const_value_ref(cell_id)? else {
+                panic!("expected bucket_id Integer, got {cell_id:?}");
+            };
+            bucket_set.insert(*bucket_id as u64);
+        }
+        Ok(Some(Buckets::new_filtered(bucket_set)))
     }
 
     /// Whether the execution subtree reads or writes data placed by buckets:
@@ -249,6 +313,10 @@ where
     /// - Relational nodes contain invalid children.
     #[allow(clippy::too_many_lines)]
     pub fn bucket_discovery(&mut self, top_id: NodeId) -> Result<Buckets, SbroadError> {
+        if let Some(buckets) = self.get_block_insert_buckets(top_id)? {
+            return Ok(buckets);
+        }
+
         let ir_plan = self.exec_plan.get_ir_plan();
         // Global tables have no buckets, so a statement that touches only
         // them runs on any node whatever its filter (e.g. `WHERE false`).
@@ -385,16 +453,6 @@ where
                 | Relational::Insert(_)
                 | Relational::Update(_) => {
                     let child_id = ir_plan.get_first_rel_child(node_id)?;
-                    // Block-optimized INSERTs sit directly on top of a Values node (the
-                    // motion got eliminated). Compute concrete buckets from the rows so
-                    // the block dispatcher can route the transaction to a single bucket.
-                    if matches!(rel, Relational::Insert(_))
-                        && matches!(ir_plan.get_relation_node(child_id)?, Relational::Values(_))
-                    {
-                        let buckets = self.insert_buckets_from_values(node_id, child_id)?;
-                        self.bucket_map.insert(node_id, buckets);
-                        continue;
-                    }
                     let child_buckets = self
                         .bucket_map
                         .get(&child_id)

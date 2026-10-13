@@ -731,15 +731,10 @@ pub fn flush_block_pattern_cache() -> Result<usize, SbroadError> {
 fn generate_params_for_block_query(
     plan: &ExecutionPlan,
     query_id: NodeId,
-    bucket_id: Option<u64>,
 ) -> Result<Vec<Value>, SbroadError> {
     let sql_params = plan.block_sql_params(query_id)?;
     let (_, mut params) = sql_params.into_parts();
     if let Relational::Insert(insert) = plan.get_ir_plan().get_relation_node(query_id)? {
-        let bucket_id = bucket_id.ok_or_else(|| {
-            SbroadError::Other("INSERT in transaction requires a known target bucket".into())
-        })?;
-        push_block_param(&mut params, Value::Integer(bucket_id as i64))?;
         append_iocdu_param_values(plan, insert, &mut params, true)?;
     }
     Ok(params)
@@ -752,12 +747,6 @@ fn next_block_param_index(params_len: usize) -> Result<u16, SbroadError> {
             "too many parameters in block query: {index}"
         ))
     })?;
-    Ok(index)
-}
-
-fn push_block_param(params: &mut Vec<Value>, value: Value) -> Result<u16, SbroadError> {
-    let index = next_block_param_index(params.len())?;
-    params.push(value);
     Ok(index)
 }
 
@@ -792,14 +781,11 @@ fn append_iocdu_param_values(
         // Build indexes for the block-local parameter list, not for the original SQL
         // placeholders. Key by the RHS node: each `$N` occurrence gets its own NodeId
         // when parsed, and parameter binding rewrites that node in place.
-        let index = if bind_values {
-            let value = plan.get_ir_plan().as_const_value_ref(param_node)?.clone();
-            push_block_param(params, value)?
-        } else {
-            let index = next_block_param_index(next_param_len)?;
-            next_param_len += 1;
-            index
-        };
+        let index = next_block_param_index(next_param_len)?;
+        next_param_len += 1;
+        if bind_values {
+            params.push(plan.get_ir_plan().as_const_value_ref(param_node)?.clone());
+        }
         parameter_indexes.insert(param_node, index);
     }
 
@@ -913,7 +899,7 @@ fn explain_iocdu_value(
     Ok(res)
 }
 
-fn explain_column_name(
+fn quoted_column_name(
     relation: &crate::ir::relation::Table,
     position: usize,
 ) -> Result<SmolStr, SbroadError> {
@@ -939,7 +925,7 @@ fn explain_iocdu_hook(
         .target
         .columns()
         .iter()
-        .map(|pos| explain_column_name(relation, *pos))
+        .map(|pos| quoted_column_name(relation, *pos))
         .collect::<Result<Vec<_>, _>>()?
         .join(", ");
 
@@ -948,7 +934,7 @@ fn explain_iocdu_hook(
         .iter()
         .zip(&payload.items)
         .map(|(item, source_item)| {
-            let column = explain_column_name(relation, item.column)?;
+            let column = quoted_column_name(relation, item.column)?;
             let value = explain_iocdu_value(plan, &item.value, source_item)?;
             Ok::<_, SbroadError>(format!("{column} {} {value}", item.op))
         })
@@ -966,7 +952,6 @@ fn explain_iocdu_hook(
 pub fn generate_pattern_with_params_for_block(
     plan: &ExecutionPlan,
     query_id: NodeId,
-    bucket_id: Option<u64>,
     use_colon_params: bool,
 ) -> Result<(BlockQuery, Vec<Value>), SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
@@ -1068,16 +1053,12 @@ pub fn generate_pattern_with_params_for_block(
     // Values node, so we render the Values subtree and prepend an
     // `INSERT [OR REPLACE|IGNORE] INTO "t" ("c1", ...)` envelope.
     if let Relational::Insert(_) = plan.get_ir_plan().get_relation_node(query_id)? {
-        let bucket_id = bucket_id.ok_or_else(|| {
-            SbroadError::Other("INSERT in transaction requires a known target bucket".into())
-        })?;
         return generate_insert_pattern_for_block(
             plan,
             query_id,
             plan_id,
             constant_ids,
             params,
-            bucket_id,
             use_colon_params,
         );
     }
@@ -1174,14 +1155,12 @@ pub fn generate_pattern_with_params_for_block(
 /// The motion above Insert has already been eliminated by `optimize_block`, so the
 /// child is a Values node. We render the Values subtree via `SyntaxPlan` and prepend
 /// an `INSERT [OR REPLACE|IGNORE] INTO "t" ("c1", ...)` envelope inline.
-#[allow(clippy::too_many_arguments)]
 fn generate_insert_pattern_for_block(
     plan: &ExecutionPlan,
     insert_id: NodeId,
     plan_id: u64,
     constant_ids: Vec<NodeId>,
     mut params: Vec<Value>,
-    bucket_id: u64,
     use_colon_params: bool,
 ) -> Result<(BlockQuery, Vec<Value>), SbroadError> {
     use crate::backend::sql::tree::SyntaxData;
@@ -1204,23 +1183,6 @@ fn generate_insert_pattern_for_block(
             )
         })?;
 
-    // Find the bucket_id (Sharding-role) column on the table — local Tarantool
-    // SQL won't compute it for us, so we have to provide its value explicitly.
-    let bucket_col_name = relation
-        .columns
-        .iter()
-        .find(|c| c.role == ColumnRole::Sharding)
-        .map(|c| c.name.clone())
-        .ok_or_else(|| {
-            SbroadError::Invalid(
-                Entity::Table,
-                Some(format_smolstr!(
-                    "sharded table {} has no bucket_id column",
-                    insert.relation
-                )),
-            )
-        })?;
-
     let mut envelope = String::new();
     let mut hooks = Vec::new();
     envelope.push_str(match &insert.conflict_strategy {
@@ -1232,24 +1194,13 @@ fn generate_insert_pattern_for_block(
     envelope.push('"');
     envelope.push_str(&insert.relation);
     envelope.push_str("\" (");
-    for col_pos in &insert.columns {
-        let col_name = &relation
-            .columns
-            .get(*col_pos)
-            .ok_or_else(|| {
-                SbroadError::NotFound(
-                    Entity::Column,
-                    format_smolstr!("at position {col_pos} in {}", insert.relation),
-                )
-            })?
-            .name;
-        envelope.push('"');
-        envelope.push_str(col_name);
-        envelope.push_str("\", ");
-    }
-    envelope.push('"');
-    envelope.push_str(&bucket_col_name);
-    envelope.push_str("\")");
+    let columns = insert
+        .columns
+        .iter()
+        .map(|pos| quoted_column_name(relation, *pos))
+        .collect::<Result<Vec<_>, _>>()?;
+    envelope.push_str(&columns.join(", "));
+    envelope.push(')');
 
     let sp = SyntaxPlan::new(plan, insert.child, Snapshot::Oldest)?;
     let mut on = OrderedSyntaxNodes::try_from(sp)?;
@@ -1257,15 +1208,6 @@ fn generate_insert_pattern_for_block(
         on.render_params_with_colon();
     }
     let values_nodes = on.to_syntax_data()?;
-
-    // Append the bucket_id value to the params array once and reference it via
-    // the same `$N` placeholder appended to every row's tuple.
-    let bucket_param_idx = push_block_param(&mut params, Value::Integer(bucket_id as i64))?;
-    let bucket_placeholder = if use_colon_params {
-        format_smolstr!(", :{bucket_param_idx}")
-    } else {
-        format_smolstr!(", ${bucket_param_idx}")
-    };
 
     let bind_iocdu_params = !plan.get_ir_plan().is_raw_explain();
     let parameter_indexes =
@@ -1279,28 +1221,8 @@ fn generate_insert_pattern_for_block(
         )?);
     }
 
-    // The Values syntax data renders as `VALUES (<row1>),(<row2>),...`. Track
-    // parenthesis depth so we inject the bucket placeholder only at the row's
-    // outer closing `)`, not inside nested function calls or sub-expressions.
-    let mut nodes: Vec<SyntaxData> = Vec::with_capacity(values_nodes.len() + 1);
-    nodes.push(SyntaxData::Inline(SmolStr::from(envelope)));
-    let mut depth: i32 = 0;
-    for data in values_nodes.iter() {
-        match data {
-            SyntaxData::OpenParenthesis => {
-                depth += 1;
-                nodes.push(SyntaxData::clone(*data));
-            }
-            SyntaxData::CloseParenthesis => {
-                if depth == 1 {
-                    nodes.push(SyntaxData::Inline(bucket_placeholder.clone()));
-                }
-                depth -= 1;
-                nodes.push(SyntaxData::clone(*data));
-            }
-            _ => nodes.push(SyntaxData::clone(*data)),
-        }
-    }
+    let envelope = SyntaxData::Inline(SmolStr::from(envelope));
+    let nodes: Vec<&SyntaxData> = std::iter::once(&envelope).chain(values_nodes).collect();
 
     let pattern = plan.generate_sql(&nodes, plan_id, table_name, Some(constant_ids.as_slice()))?;
     Ok((BlockQuery { pattern, hooks }, params))
@@ -1342,17 +1264,6 @@ pub fn dispatch_impl<'p>(
             .map(|(name, ty)| MetadataColumn::of_type(name.to_string(), ty))
             .collect();
 
-        // For INSERT statements we need the concrete bucket id to populate the
-        // bucket_id column. The block dispatcher already enforces that all
-        // statements target a single bucket; extract it here.
-        let block_bucket_id = match buckets {
-            Buckets::Filtered(crate::ir::bucket::BucketSet::Exact(set)) => {
-                assert!(set.len() == 1);
-                set.iter().copied().next()
-            }
-            _ => None,
-        };
-
         let use_colon_params = !plan.get_ir_plan().is_raw_explain();
         let cache_key: Option<u64> = if use_colon_params {
             Some(block_pattern_key(plan, &block.statements)?)
@@ -1375,44 +1286,39 @@ pub fn dispatch_impl<'p>(
         };
 
         let mut params: Vec<Vec<Value>> = Vec::new();
-        let statements: Vec<BlockStatement<BlockQuery>> = if let Some((_, cached)) =
-            &cached_patterns
-        {
-            for entry in BlockEntries::new(&block.statements) {
-                entry.with(|id| {
-                    let query_params = generate_params_for_block_query(plan, *id, block_bucket_id)?;
-                    params.push(query_params);
-                    Ok(())
-                })?
-            }
-            (**cached).clone()
-        } else {
-            let mut statements = Vec::with_capacity(block.statements.len());
-            // FIXME: add error location tracing,
-            // (e.g. Statement 1 (RETURN QUERY): some shit happened)
-            for stmt in block.statements {
-                let mapped = stmt.try_map(|id| -> Result<BlockQuery, SbroadError> {
-                    let (query, stmt_params) = generate_pattern_with_params_for_block(
-                        plan,
-                        id,
-                        block_bucket_id,
-                        use_colon_params,
-                    )?;
-                    params.push(stmt_params);
-                    Ok(query)
-                })?;
-                statements.push(mapped);
-            }
-            if let Some(key) = cache_key {
-                let cached = Rc::new(statements.clone());
-                BLOCK_PATTERN_CACHE.with(|c| -> Result<(), SbroadError> {
-                    c.borrow_mut().put(key, cached)?;
-                    Ok(())
-                })?;
-                fire_block_pattern_cache_hook(|h| h.on_added);
-            }
-            statements
-        };
+        let statements: Vec<BlockStatement<BlockQuery>> =
+            if let Some((_, cached)) = &cached_patterns {
+                for entry in BlockEntries::new(&block.statements) {
+                    entry.with(|id| {
+                        let query_params = generate_params_for_block_query(plan, *id)?;
+                        params.push(query_params);
+                        Ok(())
+                    })?
+                }
+                (**cached).clone()
+            } else {
+                let mut statements = Vec::with_capacity(block.statements.len());
+                // FIXME: add error location tracing,
+                // (e.g. Statement 1 (RETURN QUERY): some shit happened)
+                for stmt in block.statements {
+                    let mapped = stmt.try_map(|id| -> Result<BlockQuery, SbroadError> {
+                        let (query, stmt_params) =
+                            generate_pattern_with_params_for_block(plan, id, use_colon_params)?;
+                        params.push(stmt_params);
+                        Ok(query)
+                    })?;
+                    statements.push(mapped);
+                }
+                if let Some(key) = cache_key {
+                    let cached = Rc::new(statements.clone());
+                    BLOCK_PATTERN_CACHE.with(|c| -> Result<(), SbroadError> {
+                        c.borrow_mut().put(key, cached)?;
+                        Ok(())
+                    })?;
+                    fire_block_pattern_cache_hook(|h| h.on_added);
+                }
+                statements
+            };
 
         let vdbe_max_steps = plan.get_ir_plan().effective_options.sql_vdbe_opcode_max as _;
         let table_versions = std::mem::take(&mut plan.get_mut_ir_plan().table_version_map);

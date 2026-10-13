@@ -990,21 +990,21 @@ projection (:var_1::int = 300::int -> cond)
 │ 2.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-INSERT INTO "tt" ("d", "bucket_id") VALUES (42::int, 2426)
+INSERT INTO "tt" ("d", "bucket_id") VALUES (42::int, 2426::int)
 ''
 insert into tt on conflict: fail
   values
-    value ROW(42::int)
+    value ROW(42::int, 2426::int)
 ''
 ╭────────────────────────────────────────╮
 │ 3. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "tt" ("d", "bucket_id") VALUES (42::int, 2426)
+INSERT INTO "tt" ("d", "bucket_id") VALUES (42::int, 2426::int)
 ''
 insert into tt on conflict: fail
   values
-    value ROW(42::int)
+    value ROW(42::int, 2426::int)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Forward                                                            
@@ -1100,11 +1100,11 @@ projection (:a1::int = -1::int -> cond)
 │ 5.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-INSERT INTO "t" ("a", "c", "bucket_id") VALUES (42::int, 'kek'::text, 2873)
+INSERT INTO "t" ("a", "c", "bucket_id") VALUES (42::int, 'kek'::text, 2873::int)
 ''
 insert into t on conflict: fail
   values
-    value ROW(42::int, 'kek'::text)
+    value ROW(42::int, 'kek'::text, 2873::int)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -1168,7 +1168,7 @@ plan:
 │ 5.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-INSERT INTO "t" ("a", "c", "bucket_id") VALUES (42::int, 'kek'::text, 2873)
+INSERT INTO "t" ("a", "c", "bucket_id") VALUES (42::int, 'kek'::text, 2873::int)
 ''
 plan:
     [0] TRIVIAL
@@ -1250,11 +1250,11 @@ delete from t
 INSERT INTO
   "t" ("a", "b", "c", "bucket_id")
 VALUES
-  (42::int, 2.5::decimal, 'lol'::text, 739)
+  (42::int, 2.5::decimal, 'lol'::text, 739::int)
 ''
 insert into t on conflict: fail
   values
-    value ROW(42::int, 2.5::decimal, 'lol'::text)
+    value ROW(42::int, 2.5::decimal, 'lol'::text, 739::int)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -1291,7 +1291,7 @@ plan:
 INSERT INTO
   "t" ("a", "b", "c", "bucket_id")
 VALUES
-  (42::int, 2.5::decimal, 'lol'::text, 739)
+  (42::int, 2.5::decimal, 'lol'::text, 739::int)
 ''
 plan:
     [0] TRIVIAL
@@ -1386,11 +1386,11 @@ delete from t
 │ 6. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES (42::int, 2.5::decimal, 'lol'::text, 739)
+INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES (42::int, 2.5::decimal, 'lol'::text, 739::int)
 ''
 insert into t on conflict: fail
   values
-    value ROW(42::int, 2.5::decimal, 'lol'::text)
+    value ROW(42::int, 2.5::decimal, 'lol'::text, 739::int)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -1445,7 +1445,7 @@ plan:
 │ 6. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES (42::int, 2.5::decimal, 'lol'::text, 739)
+INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES (42::int, 2.5::decimal, 'lol'::text, 739::int)
 ''
 plan:
     [0] TRIVIAL

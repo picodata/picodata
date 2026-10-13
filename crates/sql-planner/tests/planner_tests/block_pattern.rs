@@ -90,7 +90,7 @@ fn raw_explain_block_bind_insert_do_update_param_rhs() {
     };
 
     let (query, params) =
-        generate_pattern_with_params_for_block(exec_plan, query_id, Some(1), false).unwrap();
+        generate_pattern_with_params_for_block(exec_plan, query_id, false).unwrap();
 
     assert_eq!(query.hooks.len(), 1);
     let BlockRuntimeHook::IdxInsertOnConflictDoUpdate {

@@ -516,6 +516,11 @@ impl Plan {
         // Each value row cell at a sharding-key position must be a Constant or Parameter
         // (parameters become constants after binding). Other cells may hold arbitrary
         // expressions — they will be evaluated by the storage's local SQL.
+        //
+        // The local SQL must write `bucket_id`, so also add a `bucket_id` cell to
+        // each row and the column to the INSERT columns. After bind, nodes can
+        // only change in place, so `ExecutingQuery::from_plan` overwrites each
+        // cell with the bucket of its row.
         fn eliminate_insert_motion(plan: &mut Plan, insert_id: NodeId) -> Result<(), SbroadError> {
             // INSERT into a global table gets MotionPolicy::Full and is not supported in blocks;
             // leave the motion in place so the block optimizer reports it.
@@ -577,11 +582,23 @@ impl Plan {
                 }
             }
 
+            let bucket_id_pos = plan
+                .dml_node_table(insert_id)?
+                .get_bucket_id_position()?
+                .expect("sharded table must have a bucket_id column");
+            for row_id in rows.clone() {
+                let cell_id = plan.add_const(Value::Integer(0));
+                plan.get_mut_expression_node(row_id)?
+                    .get_row_list_mut()?
+                    .push(cell_id);
+            }
+
             // Re-point Insert's child directly to Values, dropping the Motion node.
-            if let MutRelational::Insert(Insert { child, .. }) =
+            if let MutRelational::Insert(Insert { child, columns, .. }) =
                 plan.get_mut_relation_node(insert_id)?
             {
                 *child = values_id;
+                columns.push(bucket_id_pos);
             }
 
             Ok(())

@@ -11,7 +11,7 @@ use sql_executor::executor::engine::{BlockQuery, Router};
 use sql_executor::executor::ExecutingQuery;
 use sql_executor::executor::Port;
 use sql_ir::errors::SbroadError;
-use sql_ir::ir::bucket::{BucketSet, Buckets};
+use sql_ir::ir::bucket::Buckets;
 use sql_ir::ir::node::block::{Block, BlockOwned};
 use sql_ir::ir::node::{AnonymousBlock, BlockEntries, BlockStatement};
 use sql_ir::ir::options::OptionKind;
@@ -94,7 +94,7 @@ where
 
             let mut_exec_query = &mut self.inner;
             let buckets = mut_exec_query.calculate_block_buckets(&block)?;
-            let block_statements = self.generate_block_patterns(block, &buckets)?;
+            let block_statements = self.generate_block_patterns(block)?;
 
             let exec_query = &self.inner;
             let explain_options = exec_query.get_exec_plan().get_ir_plan().explain_options;
@@ -240,22 +240,13 @@ where
     fn generate_block_patterns(
         &self,
         block: AnonymousBlock,
-        buckets: &Buckets,
     ) -> Result<Vec<BlockStatement<(BlockQuery, Vec<Value>)>>, SbroadError> {
-        let block_bucket = match buckets {
-            Buckets::Filtered(BucketSet::Exact(set)) => {
-                assert!(set.len() == 1);
-                set.iter().copied().next()
-            }
-            _ => None,
-        };
-
         let exec_plan = self.inner.get_exec_plan();
         let mut statements = Vec::with_capacity(block.statements.len());
         for stmt in block.statements {
-            statements.push(stmt.try_map(|id| {
-                generate_pattern_with_params_for_block(exec_plan, id, block_bucket, false)
-            })?);
+            statements.push(
+                stmt.try_map(|id| generate_pattern_with_params_for_block(exec_plan, id, false))?,
+            );
         }
 
         Ok(statements)

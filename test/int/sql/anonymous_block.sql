@@ -491,7 +491,7 @@ END $$;
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES (1::int, 0::int, 0::int, 1934)
+INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES (1::int, 0::int, 0::int, 1934::int)
 ''
 plan:
     [0] picodata: ON CONFLICT ("pk") UPDATE "a" += 1
@@ -513,7 +513,7 @@ END $$;
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES (1::int, 0::int, 0::int, 1934)
+INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES (1::int, 0::int, 0::int, 1934::int)
 ''
 plan:
     [0] picodata: ON CONFLICT ("pk") UPDATE "a" += 1
@@ -522,7 +522,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES (1::int, 0::int, 0::int, 1934)
+INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES (1::int, 0::int, 0::int, 1934::int)
 ''
 plan:
     [0] picodata: ON CONFLICT ("pk") UPDATE "a" += 1
@@ -1021,7 +1021,7 @@ END $$;
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "t" ("pk", "a", "b", "bucket_id") VALUES ( 400::int, 99::int + 1::int, 1::int + 1::int, 590 )
+INSERT INTO "t" ("pk", "a", "b", "bucket_id") VALUES ( 400::int, 99::int + 1::int, 1::int + 1::int, 590::int )
 ''
 plan:
     [0] TRIVIAL

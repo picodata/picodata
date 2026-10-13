@@ -219,11 +219,11 @@ projection (:a::int = 5::int -> cond)
 │ 2.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-INSERT INTO "tt" ("d", "bucket_id") VALUES (2::int, 1410)
+INSERT INTO "tt" ("d", "bucket_id") VALUES (2::int, 1410::int)
 ''
 insert into tt on conflict: fail
   values
-    value ROW(2::int)
+    value ROW(2::int, 1410::int)
 ''
 ╭────────────────────────────────────────╮
 │ 3. Query (CONST-FILTERED STORAGE, 1/1) │
@@ -326,11 +326,11 @@ projection (:a::int = 5::int -> cond)
 │ 3.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-INSERT INTO "tt" ("d", "bucket_id") VALUES (2::int, 1410)
+INSERT INTO "tt" ("d", "bucket_id") VALUES (2::int, 1410::int)
 ''
 insert into tt on conflict: fail
   values
-    value ROW(2::int)
+    value ROW(2::int, 1410::int)
 
 -- TEST: block-unused-let-return
 -- SKIP_FOR: 2rsX1
