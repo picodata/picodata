@@ -7,7 +7,8 @@
 
 Значение *format* должно соответствовать спецификации [strftime]. Если в
 качестве *format* передана пустая строка `''`, строка *expression*
-разбирается так же, как при приведении к типу [DATETIME].
+разбирается так же, как при приведении к типу [DATETIME]
+(см. [Форматы даты и времени]).
 
 !!! note "Примечания"
     Функция `TO_DATE` всегда возвращает начало дня — `00:00:00`, даже если
@@ -54,5 +55,6 @@ sql> VALUES
 
 [TEXT]: ../sql_types.md#text
 [DATETIME]: ../sql_types.md#datetime
+[Форматы даты и времени]: datetime_formats.md
 [strftime]: https://man.freebsd.org/cgi/man.cgi?query=strftime
 [строгой]: ../../overview/glossary.md#strict_function

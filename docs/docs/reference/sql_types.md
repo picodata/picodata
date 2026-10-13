@@ -123,6 +123,9 @@
 Не поддерживаются значения `infinity` и `-infinity`, а также значения,
 зависящие от текущего времени: `now`, `today`, `tomorrow` и `yesterday`.
 
+Полный список допустимых форматов приведен в разделе
+[Форматы даты и времени](sql/datetime_formats.md).
+
 [от -12 до +14]: https://ru.wikipedia.org/wiki/Всемирное_координированное_время#Использование
 [pg-datetime-input]: https://www.postgresql.org/docs/current/datatype-datetime.html#DATATYPE-DATETIME-INPUT
 [RFC-3339]: https://datatracker.ietf.org/doc/html/rfc3339
