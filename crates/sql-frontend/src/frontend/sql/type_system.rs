@@ -15,8 +15,8 @@ use ahash::AHashMap;
 use smol_str::format_smolstr;
 use sql_type_system::error::Error as TypeSystemError;
 use sql_type_system::expr::{
-    ComparisonOperator, Expr as GenericExpr, ExprKind as GenericExprKind, FrameKind,
-    FrameOffsetRule, Type, UnaryOperator, WindowFrame as GenericWindowFrame,
+    ComparisonOperator, Expr as GenericExpr, ExprKind as GenericExprKind, FrameKind, Type,
+    UnaryOperator, WindowFrame as GenericWindowFrame,
 };
 use sql_type_system::type_system::{Function, TypeAnalyzer as GenericTypeAnalyzer};
 use sql_type_system::{TypeReport as GenericTypeReport, TypeSystem};
@@ -90,12 +90,11 @@ fn new_window_frame(
         }
     }
 
-    Ok(WindowFrame {
+    // The legacy pipeline keeps its integer-only offsets: widening them to
+    // PostgreSQL's rules would change what reaches execution.
+    Ok(WindowFrame::IntOnly {
         kind,
-        bound_offsets,
-        // The legacy pipeline keeps its integer-only offsets: widening them to
-        // PostgreSQL's rules would change what reaches execution.
-        rule: FrameOffsetRule::IntOnly,
+        offsets: bound_offsets,
     })
 }
 

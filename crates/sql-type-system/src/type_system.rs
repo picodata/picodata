@@ -1,7 +1,6 @@
 use crate::error::Error;
 use crate::expr::{
-    ComparisonOperator, Expr, ExprKind, FrameKind, FrameOffsetRule, NestedType, Type,
-    UnaryOperator, WindowFrame,
+    ComparisonOperator, Expr, ExprKind, FrameKind, NestedType, Type, UnaryOperator, WindowFrame,
 };
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -360,34 +359,51 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         Some(report.clone())
     }
 
-    /// Type a window frame's offsets.
-    fn analyze_win_frame_offsets(
+    /// Type frame offsets as `int`. `castable` allows `numeric` and `double`
+    /// offsets with a cast, else an offset must have type `int` exactly.
+    fn analyze_int_offsets(
         &mut self,
-        frame: &WindowFrame<Id>,
-        order_col_type: Option<Type>,
+        kind: FrameKind,
+        offsets: &[Expr<Id>],
+        castable: bool,
     ) -> Result<TypeReport<Id>, Error> {
-        let (desired, accepted): (Type, Option<&[Type]>) = if matches!(frame.kind, FrameKind::Range)
-        {
-            // The offset types `in_range` support accepts for this ORDER BY column type.
-            // `None` when the column type supports no RANGE offset frame at all.
-            match order_col_type {
-                Some(Type::Integer) => (Type::Integer, Some(&[Type::Integer])),
-                Some(Type::Numeric) => (Type::Numeric, Some(&[Type::Integer, Type::Numeric])),
-                Some(Type::Double) => (
-                    Type::Double,
-                    Some(&[Type::Integer, Type::Numeric, Type::Double]),
-                ),
-                // PostgreSQL pairs a datetime column with `interval`
-                // offsets, a type we do not have.
-                Some(Type::Datetime) => (Type::Integer, Some(&[])),
-                _else => (Type::Integer, None),
+        let mut report = TypeReport::new();
+        for offset in offsets {
+            // TODO: ensure no variables, otherwise return
+            // "argument of ROWS must not contain variables" error
+            let offset_report = self.analyze(offset, Type::Integer)?;
+            let offset_type = offset_report.get_type(&offset.id);
+            report.extend(offset_report);
+            match offset_type {
+                Type::Integer => {}
+                Type::Numeric | Type::Double if castable => report.cast(&offset.id, Type::Integer),
+                _else => return Err(Error::IncorrectFrameArgumentType(kind, offset_type)),
             }
-        } else {
-            (Type::Integer, None)
+        }
+        Ok(report)
+    }
+
+    /// Type the offsets of a RANGE frame against its ORDER BY column.
+    fn analyze_range_offsets(
+        &mut self,
+        order_col: &Expr<Id>,
+        offsets: &[Expr<Id>],
+    ) -> Result<TypeReport<Id>, Error> {
+        let mut report = self.analyze(order_col, Type::Text)?;
+        let col_type = report.get_type(&order_col.id);
+
+        // The offset types `in_range` support accepts for this ORDER BY column type.
+        let (desired, accepted): (Type, &[Type]) = match col_type {
+            Type::Integer => (Type::Integer, &[Type::Integer]),
+            Type::Numeric => (Type::Numeric, &[Type::Integer, Type::Numeric]),
+            Type::Double => (Type::Double, &[Type::Integer, Type::Numeric, Type::Double]),
+            // PostgreSQL pairs a datetime column with `interval`
+            // offsets, a type we do not have.
+            Type::Datetime => (Type::Integer, &[]),
+            _else => return Err(Error::RangeFrameUnsupportedColumnType(col_type)),
         };
 
-        let mut report = TypeReport::new();
-        for offset in &frame.bound_offsets {
+        for offset in offsets {
             // Typing for `int` finds the own type: nothing coerces to `int`,
             // and what has no type yet, like an untyped parameter inside an
             // expression, becomes `int`, which every column type above with
@@ -404,42 +420,16 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             let offset_type = offset_report.get_type(&offset.id);
             report.extend(offset_report);
 
-            match frame.kind {
-                FrameKind::Rows => match offset_type {
-                    Type::Integer => {}
-                    Type::Numeric | Type::Double => report.cast(&offset.id, Type::Integer),
-                    _else => {
-                        return Err(Error::IncorrectFrameArgumentType(frame.kind, offset_type))
-                    }
-                },
-                FrameKind::Range => {
-                    match (order_col_type, accepted) {
-                        // No single typed ORDER BY column: the caller broke the
-                        // `FrameOffsetRule::Castable` contract, as a RANGE offset
-                        // frame always has exactly one ORDER BY column.
-                        (None, _) => {
-                            return Err(Error::Other(
-                                "RANGE offset frame has no single ORDER BY column type".into(),
-                            ))
-                        }
-                        (Some(col_type), None) => {
-                            return Err(Error::RangeFrameUnsupportedColumnType(col_type))
-                        }
-                        (Some(col_type), Some(accepted)) => {
-                            if !accepted.contains(&offset_type) {
-                                return Err(Error::RangeFrameUnsupportedOffsetType(
-                                    col_type,
-                                    offset_type,
-                                ));
-                            }
-                            // The offset is added to the column value, so it is
-                            // used as the column type.
-                            if offset_type != col_type {
-                                report.cast(&offset.id, col_type);
-                            }
-                        }
-                    }
-                }
+            if !accepted.contains(&offset_type) {
+                return Err(Error::RangeFrameUnsupportedOffsetType(
+                    col_type,
+                    offset_type,
+                ));
+            }
+            // The offset is added to the column value, so it is
+            // used as the column type.
+            if offset_type != col_type {
+                report.cast(&offset.id, col_type);
             }
         }
         Ok(report)
@@ -580,37 +570,18 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 report.extend(partition_by_report);
 
                 if let Some(frame) = frame {
-                    if frame.bound_offsets.len() > 2 {
-                        return Err(Error::Other(format!(
-                            "invalid boud offsets number: {}",
-                            frame.bound_offsets.len()
-                        )));
-                    }
-                    match frame.rule {
-                        FrameOffsetRule::IntOnly => {
-                            for offset in &frame.bound_offsets {
-                                // TODO: ensure no variables, otherwise return
-                                // "argument of ROWS must not contain variables" error
-                                let offset_report = self.analyze(offset, Type::Integer)?;
-                                if offset_report.get_type(&offset.id) != Type::Integer {
-                                    return Err(Error::IncorrectFrameArgumentType(
-                                        frame.kind,
-                                        offset_report.get_type(&offset.id),
-                                    ));
-                                }
-                                report.extend(offset_report);
-                            }
+                    let frame_report = match frame {
+                        WindowFrame::IntOnly { kind, offsets } => {
+                            self.analyze_int_offsets(*kind, offsets, false)?
                         }
-                        FrameOffsetRule::Castable => {
-                            let order_col_type = match order_by.as_slice() {
-                                [col] => report.try_get_type(&col.id),
-                                _else => None,
-                            };
-                            let frame_report =
-                                self.analyze_win_frame_offsets(frame, order_col_type)?;
-                            report.extend(frame_report);
+                        WindowFrame::Rows(offsets) => {
+                            self.analyze_int_offsets(FrameKind::Rows, offsets, true)?
                         }
-                    }
+                        WindowFrame::Range { order_col, offsets } => {
+                            self.analyze_range_offsets(order_col, offsets)?
+                        }
+                    };
+                    report.extend(frame_report);
                 }
 
                 Ok(report)

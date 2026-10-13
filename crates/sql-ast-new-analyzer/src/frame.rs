@@ -313,9 +313,9 @@ pub(crate) struct BoundWindow<'q> {
     /// A copy of the type mirror of the single ORDER BY expression this
     /// window uses, whether declared here or inherited from a base window.
     ///
-    /// When another window inherits this ORDER BY and adds a frame, the copy
-    /// goes into that window's own `Window` mirror. The type checker needs
-    /// the ORDER BY expression and RANGE offsets in the same `Window` node to
+    /// A RANGE frame with offsets, here or in a window that inherits this
+    /// ORDER BY, gets the copy in its type mirror. The type checker needs
+    /// the ORDER BY expression and the RANGE offsets in the same frame to
     /// check that their types are compatible.
     ///
     /// For example, for `w1 AS (ORDER BY price), w2 AS (w1)`, both windows

@@ -15,11 +15,10 @@
 //! the chain — ORDER BY presence travels, a frame never does (copying a framed
 //! base is an error), and PARTITION BY is the base's alone (overriding it is
 //! an error too).
-//! One mirror goes against that grain: a frame whose effective ORDER BY is
-//! inherited gets a copy of the ORDER BY's type mirror next to its own (see
-//! [`BoundWindow::order_t_expr`]), as Postgres copies the base's ORDER BY
-//! clause, because the type system checks a RANGE offset against the ORDER BY
-//! column's type.
+//! One mirror goes against that grain: a RANGE frame with offsets gets a copy
+//! of its effective ORDER BY's type mirror (see [`BoundWindow::order_t_expr`]),
+//! as Postgres copies the base's ORDER BY clause, because the type system
+//! checks a RANGE offset against the ORDER BY column's type.
 //!
 //! # The grouping stance
 //! A window function is evaluated after grouping, per output row. That single
@@ -42,7 +41,7 @@ use sql_ast_new_nodes::window::{
 use sql_ast_new_nodes::{Analyzed, AstNodeId, Raw};
 use sql_ir::ir::aggregates::AggregateKind;
 use sql_ir::ir::metadata::Metadata;
-use sql_type_system::expr::{FrameKind, FrameOffsetRule, WindowFrame as TypeWindowFrame};
+use sql_type_system::expr::WindowFrame as TypeWindowFrame;
 
 use crate::frame::{BoundWindow, Stage};
 use crate::{
@@ -52,13 +51,6 @@ use crate::{
 
 fn window_does_not_exist(name: &str) -> AstErr {
     semantic_err(format_smolstr!(r#"window "{name}" does not exist"#))
-}
-
-fn into_frame_kind(ty: FrameType) -> FrameKind {
-    match ty {
-        FrameType::Rows => FrameKind::Rows,
-        FrameType::Range => FrameKind::Range,
-    }
 }
 
 /// The mirror of a window carrying no expressions of its own: what a
@@ -251,10 +243,9 @@ struct BoundSpec<'q> {
     spec: WindowSpec<'q, Analyzed>,
     /// `Window` mirror of the specification's *own* expressions, on a
     /// synthetic id. Inherited parts are absent by design: the base bound its
-    /// expressions at its definition. One exception — a frame over an
-    /// inherited ORDER BY gets a copy of its mirror (see
-    /// [`BoundWindow::order_t_expr`]), so that RANGE offsets are typed
-    /// against it here, as in a specification declaring that ORDER BY.
+    /// expressions at its definition. One exception — a RANGE frame with
+    /// offsets gets a copy of its effective ORDER BY mirror (see
+    /// [`BoundWindow::order_t_expr`]), so that the offsets are typed against it.
     over_t_expr: AstTypeExpr,
     effective_order_by_len: usize,
     /// [`BoundWindow::order_t_expr`] of a named definition with this body.
@@ -358,28 +349,21 @@ fn bind_window_spec<'q, M: Metadata>(
         }
     };
 
-    let (bound_frame, frame_t) = match frame {
-        None => (None, None),
-        Some(frame) => {
-            let (bound_frame, frame_t) = bind_window_frame(frame, meta)?;
-            (Some(bound_frame), Some(frame_t))
-        }
-    };
-
-    meta.binder.top_frame_mut()?.set_stage(prev_stage);
-
     let order_t_expr = match (&bound_order_by, order_by_t_exprs.as_slice()) {
         (Some(_), [own]) => Some(own.clone()),
         (Some(_), _) => None,
         (None, _) => base_order_t_expr,
     };
 
-    // A frame checks its RANGE offsets against the *effective* ORDER BY
-    // column, so when that ORDER BY is inherited, the frame is typed against
-    // a copy of its mirror.
-    if bound_order_by.is_none() && frame_t.is_some() {
-        order_by_t_exprs.extend(order_t_expr.clone());
-    }
+    let (bound_frame, frame_t) = match frame {
+        None => (None, None),
+        Some(frame) => {
+            let (bound_frame, frame_t) = bind_window_frame(frame, order_t_expr.as_ref(), meta)?;
+            (Some(bound_frame), frame_t)
+        }
+    };
+
+    meta.binder.top_frame_mut()?.set_stage(prev_stage);
 
     let over_id = meta.type_system.inc_expr_id();
     let over_t_expr = AstTypeExpr::new(
@@ -475,10 +459,15 @@ fn is_offset_bound(bound: &FrameBound<'_, Raw>) -> bool {
     matches!(bound, FrameBound::Preceding(_) | FrameBound::Following(_))
 }
 
+/// The type mirror is `None` for a frame without offsets: it has nothing to type.
 fn bind_window_frame<'q, M: Metadata>(
     frame: WindowFrame<'q, Raw>,
+    order_t_expr: Option<&AstTypeExpr>,
     meta: &mut AnalyzerCtx<'q, M>,
-) -> AstResult<(WindowFrame<'q, Analyzed>, TypeWindowFrame<AstNodeId>)> {
+) -> AstResult<(
+    WindowFrame<'q, Analyzed>,
+    Option<TypeWindowFrame<AstNodeId>>,
+)> {
     let WindowFrame { ty, bounds } = frame;
     let mut bound_offsets = Vec::new();
 
@@ -492,14 +481,27 @@ fn bind_window_frame<'q, M: Metadata>(
         ),
     };
 
-    Ok((
-        WindowFrame { ty, bounds },
-        TypeWindowFrame {
-            kind: into_frame_kind(ty),
-            bound_offsets,
-            rule: FrameOffsetRule::Castable,
-        },
-    ))
+    if bound_offsets.is_empty() {
+        return Ok((WindowFrame { ty, bounds }, None));
+    }
+    let frame_t = match ty {
+        FrameType::Rows => TypeWindowFrame::Rows(bound_offsets),
+        FrameType::Range => {
+            // `validate_range_frame` has checked that the effective ORDER BY
+            // has exactly one column.
+            let order_col = order_t_expr.ok_or_else(|| {
+                analyze_err(format_smolstr!(
+                    "RANGE offset frame without a single ORDER BY column"
+                ))
+            })?;
+            TypeWindowFrame::Range {
+                order_col: Box::new(order_col.clone()),
+                offsets: bound_offsets,
+            }
+        }
+    };
+
+    Ok((WindowFrame { ty, bounds }, Some(frame_t)))
 }
 
 fn bind_frame_bound<'q, M: Metadata>(

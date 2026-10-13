@@ -304,28 +304,25 @@ impl Display for FrameKind {
     }
 }
 
-/// How the types of a frame's offset expressions are checked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FrameOffsetRule {
+/// The offset expressions of a window frame (`2` in `ROWS 2 PRECEDING`)
+/// and what their types are checked against.
+#[derive(Debug, Clone)]
+pub enum WindowFrame<Id> {
     /// An offset must have type `int` exactly (untyped literals and parameters
     /// are still nudged towards it). The rule of the legacy IR pipeline.
-    IntOnly,
-    /// A ROWS offset takes anything assignment-castable to
-    /// `int` — `numeric` and `double` get a cast. A RANGE offset is checked
-    /// against the type of the window's single effective ORDER BY column,
-    /// which the caller must place in the same [`ExprKind::Window`]'s `order_by`
-    /// — a copy of the base window's ORDER BY when it is inherited.
-    Castable,
-}
-
-#[derive(Debug, Clone)]
-pub struct WindowFrame<Id> {
-    /// ROWS or RANGE
-    pub kind: FrameKind,
-    /// Specific offset expression of preceding or following bound (PRECEDING 2).
-    pub bound_offsets: Vec<Expr<Id>>,
-    /// How `bound_offsets` types are checked.
-    pub rule: FrameOffsetRule,
+    IntOnly {
+        kind: FrameKind,
+        offsets: Vec<Expr<Id>>,
+    },
+    /// An offset takes anything assignment-castable to `int`:
+    /// `numeric` and `double` get a cast.
+    Rows(Vec<Expr<Id>>),
+    /// An offset is checked against the type of the window's single
+    /// effective ORDER BY column, inherited from a base window or not.
+    Range {
+        order_col: Box<Expr<Id>>,
+        offsets: Vec<Expr<Id>>,
+    },
 }
 
 /// Type expression consists of expression kind and id.
