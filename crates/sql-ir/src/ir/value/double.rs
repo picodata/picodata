@@ -10,7 +10,6 @@ use std::str::FromStr;
 use crate::errors::{Entity, SbroadError};
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
-use tarantool::decimal::Decimal;
 use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
 use tarantool::tlua;
 
@@ -64,9 +63,10 @@ impl Ord for Double {
                 Ordering::Less
             }
         } else {
-            let self_decimal = Decimal::try_from(self_value).unwrap();
-            let other_decimal = Decimal::try_from(other_value).unwrap();
-            self_decimal.cmp(&other_decimal)
+            debug_assert!(!self_is_special && !other_is_special);
+            self_value
+                .partial_cmp(&other_value)
+                .expect("finite floats are ordered")
         }
     }
 }

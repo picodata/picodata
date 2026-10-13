@@ -370,3 +370,14 @@ select "i" from "testing_space" inner join
     on "id" = "i";
 -- EXPECTED:
 1
+
+-- TEST: test_cmp_double_out_of_decimal_range-1
+-- SQL:
+SELECT id FROM many_columns WHERE -1.7976931348623157E308 >= 1;
+-- EXPECTED:
+
+-- TEST: test_cmp_double_out_of_decimal_range-2
+-- SQL:
+SELECT id FROM many_columns WHERE 1.7976931348623157E308 > 1E307;
+-- EXPECTED:
+1
