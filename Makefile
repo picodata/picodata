@@ -106,8 +106,9 @@ endef
 
 # Extra mandatory cargo flags of the `build-*-pkg` packages for each profile:
 #  - `build-release-pkg` is for the packages we ship as our release artifacts.
-#  - `build-dev-pkg` is a debug counterpart of it, published by CI for plugin
-#    tests: a Debug build of tarantool.
+#  - `build-dev-pkg` is a debug counterpart of it for plugin tests: a Debug
+#    build of tarantool. It is built and published by
+#    picodata/devops/builder for every nightly and every tag.
 override PKG_CARGO_FLAGS_dev := --features=debug_tarantool
 
 # These build profiles are intended to be used for CI and local development.
