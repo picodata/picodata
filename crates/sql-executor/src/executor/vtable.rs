@@ -615,25 +615,12 @@ impl VirtualTable {
         Ok(())
     }
 
-    /// Removes duplicates from virtual table, the order
-    /// of rows is changed.
+    /// Removes duplicate rows. The rows come out sorted, so the input order is not kept.
+    ///
+    /// WARNING: does not update the bucket index. Call it only before the index is built.
     pub fn remove_duplicates(&mut self) {
-        // O(1) extra space and O(n*log n) time implementation
-
         self.tuples.sort_unstable();
-        let mut unique_cnt = 0;
-        let len = self.tuples.len();
-        for idx in 1..len {
-            if self.tuples[idx] != self.tuples[idx - 1] {
-                self.tuples.swap(unique_cnt, idx - 1);
-                unique_cnt += 1;
-            }
-        }
-        if len > 0 {
-            self.tuples.swap(unique_cnt, len - 1);
-            unique_cnt += 1;
-        }
-        self.tuples.truncate(unique_cnt);
+        self.tuples.dedup();
     }
 
     pub fn dump_mp<'alias, 'port>(
