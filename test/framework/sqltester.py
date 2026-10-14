@@ -734,10 +734,11 @@ class SqlFile(pytest.File):
 
                 yield item
 
-    def _make_items(self, name: str):
+    def _make_items(self, config: str):
         """
         Build the item(s) for one spec, using `pytest_generate_tests`.
         """
+        name = self.path.stem
         definition = FunctionDefinition.from_parent(self, name=name, callobj=run_sql_file)
         fixtureinfo = definition._fixtureinfo
         metafunc = Metafunc(
@@ -752,14 +753,20 @@ class SqlFile(pytest.File):
 
         # No plugin asked for extra parametrization.
         if not metafunc._calls:
-            yield pytest.Function.from_parent(self, name=name, fixtureinfo=fixtureinfo, callobj=run_sql_file)
+            yield pytest.Function.from_parent(
+                self,
+                name=f"{name}[{config}]",
+                fixtureinfo=fixtureinfo,
+                originalname=name,
+                callobj=run_sql_file,
+            )
             return
 
         fixtureinfo.prune_dependency_tree()
         for callspec in metafunc._calls:
             yield pytest.Function.from_parent(
                 self,
-                name=f"{name}[{callspec.id}]",
+                name=f"{name}[{config}-{callspec.id}]",
                 callspec=callspec,
                 fixtureinfo=fixtureinfo,
                 keywords={callspec.id: True},

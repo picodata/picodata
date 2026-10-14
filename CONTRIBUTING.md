@@ -216,9 +216,9 @@ uv run pytest test/int/sql/window-7.sql
 ```
 
 ```
-test/int/sql/window-7.sql::pgproto-1rsX1 PASSED
-test/int/sql/window-7.sql::pgproto-2rsX1 PASSED
-test/int/sql/window-7.sql::iproto-2rsX1  PASSED
+test/int/sql/window-7.sql::window-7[pgproto-1rsX1] PASSED
+test/int/sql/window-7.sql::window-7[pgproto-2rsX1] PASSED
+test/int/sql/window-7.sql::window-7[iproto-2rsX1]  PASSED
 ```
 
 To add a test, drop a `.sql` file in the directory. Every file must open with a
@@ -275,7 +275,7 @@ share whatever state they create, so the run stops at the first failing block.
 The failure names the file, the line and the block:
 
 ```
-FAILED test/int/sql/window-7.sql::iproto-2rsX1 - SqlTestFailure: window-7.sql:33: -- TEST: window7-4.3
+FAILED test/int/sql/window-7.sql::window-7[iproto-2rsX1] - SqlTestFailure: window-7.sql:33: -- TEST: window7-4.3
 ```
 
 The exception is `--update-sql-snapshots` (see below), which runs every block so
@@ -326,7 +326,7 @@ When working with code, sometimes we need to change the output of certain tests.
 This may look something like this:
 
 ```
-FAILED test/int/sql/eliminate_motion.sql::pgproto-2rsX1 - SqlTestFailure: eliminate_motion.sql:12: -- TEST: group-by-1-explain
+FAILED test/int/sql/eliminate_motion.sql::eliminate_motion[pgproto-2rsX1] - SqlTestFailure: eliminate_motion.sql:12: -- TEST: group-by-1-explain
 
     EXPLAIN SELECT count(*) FROM t1 WHERE a = 1 GROUP BY a;
 
