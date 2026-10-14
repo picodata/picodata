@@ -64,6 +64,7 @@ declare module "@mui/material/styles" {
         };
       };
       variables: {
+        fontFamily: string;
         transitionNormal: string;
         dropdownOffset: string;
         elevation1: string;
@@ -140,6 +141,7 @@ declare module "@mui/material/styles" {
         };
       };
       variables?: {
+        fontFamily?: string;
         transitionNormal?: string;
         dropdownOffset?: string;
         elevation1?: string;

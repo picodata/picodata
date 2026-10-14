@@ -1,12 +1,13 @@
-import { sessionStore } from "shared/session/store";
-import { refreshCurrentSession } from "shared/entity/session/refresh";
+import { version } from "@picodata/ui-kit/package.json";
 
-import {
+import type {
   Unsubscribe,
   WebuiSdk,
   WebuiTheme,
   WebuiSessionErrorCode,
-} from "./types";
+} from "@picodata/ui-kit";
+import { sessionStore } from "shared/session/store";
+import { refreshCurrentSession } from "shared/entity/session/refresh";
 
 type Listener<T> = (value: T) => void;
 
@@ -46,7 +47,7 @@ export function createWebuiSdk(
     });
   };
   const sdk: WebuiSdk = {
-    version: "0.1.0",
+    version,
     apiBaseUrl: "",
     get theme() {
       return theme;

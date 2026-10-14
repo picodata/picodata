@@ -3,9 +3,9 @@ import {
   GlobalStylesProps,
 } from "@mui/material";
 
-const globalStyles: GlobalStylesProps["styles"] = () => ({
+const globalStyles: GlobalStylesProps["styles"] = (theme) => ({
   "#root": {
-    fontFamily: "Montserrat, sans-serif",
+    fontFamily: theme.common.variables.fontFamily,
     lineHeight: 1.5,
     fontWeight: 400,
     height: "100%",

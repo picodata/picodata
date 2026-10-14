@@ -348,9 +348,18 @@ pub fn build_webui(build_root: &Path) {
     for entry in std::fs::read_dir(&src_dir).unwrap() {
         // Do not rerun for generated files changes
         let entry = entry.unwrap();
-        let ignored_files = ["node_modules", ".husky"].map(OsString::from);
+        let ignored_files = ["node_modules", ".husky", "packages"].map(OsString::from);
         if !ignored_files.contains(&entry.file_name()) {
             cargo::rerun_if_changed(entry.path());
+        }
+    }
+
+    for package in std::fs::read_dir(src_dir.join("packages")).unwrap() {
+        for entry in std::fs::read_dir(package.unwrap().path()).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_name() != "dist" {
+                cargo::rerun_if_changed(entry.path());
+            }
         }
     }
 

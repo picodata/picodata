@@ -1161,6 +1161,12 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@picodata/ui-kit@workspace:*, @picodata/ui-kit@workspace:packages/ui-kit":
+  version: 0.0.0-use.local
+  resolution: "@picodata/ui-kit@workspace:packages/ui-kit"
+  languageName: unknown
+  linkType: soft
+
 "@popperjs/core@npm:^2.11.8":
   version: 2.11.8
   resolution: "@popperjs/core@npm:2.11.8"
@@ -5011,6 +5017,7 @@ __metadata:
     "@mui/icons-material": "npm:^7.3.7"
     "@mui/material": "npm:^7.3.7"
     "@mui/system": "npm:^7.3.8"
+    "@picodata/ui-kit": "workspace:*"
     "@types/node": "npm:^20.6.0"
     "@types/react": "npm:^18.0.28"
     "@types/react-dom": "npm:^18.0.11"
@@ -5051,6 +5058,7 @@ __metadata:
     react-transition-group: "npm:^4.4.5"
     react-virtuoso: "npm:^4.18.1"
     sass: "npm:^1.69.5"
+    tar: "npm:^7.5.15"
     typescript: "npm:^4.9.3"
     uuid: "npm:^13.0.0"
     vite: "npm:6.4.2"
@@ -6020,6 +6028,19 @@ __metadata:
   version: 2.0.4
   resolution: "svg-parser@npm:2.0.4"
   checksum: 10c0/02f6cb155dd7b63ebc2f44f36365bc294543bebb81b614b7628f1af3c54ab64f7e1cec20f06e252bf95bdde78441ae295a412c68ad1678f16a6907d924512b7a
+  languageName: node
+  linkType: hard
+
+"tar@npm:^7.5.15":
+  version: 7.5.22
+  resolution: "tar@npm:7.5.22"
+  dependencies:
+    "@isaacs/fs-minipass": "npm:^4.0.0"
+    chownr: "npm:^3.0.0"
+    minipass: "npm:^7.1.2"
+    minizlib: "npm:^3.1.0"
+    yallist: "npm:^5.0.0"
+  checksum: 10c0/1311f6be85a8157ac4c9147bae43e13923d2a1aae15e4aa1bd5239e4e03d2cf53cfe103dde7f35832fbb4c938b042856bc8e9a0afd29abd05e2d1608788c4fea
   languageName: node
   linkType: hard
 

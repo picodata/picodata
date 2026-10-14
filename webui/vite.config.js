@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import svgr from "vite-plugin-svgr";
 import debug from "debug";
 import { defineConfig, loadEnv } from "vite";
+import { buildUiKit } from "./scripts/build-ui-kit.mjs";
 
 const currentDir = "./picodata-ui";
 
@@ -62,7 +63,8 @@ const generateBuildFolder = (currentNamespace = "") => {
 };
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
+  await buildUiKit();
   const env = loadEnv(mode, process.cwd(), "");
   const proxyPaths = [
     "/api/",
@@ -77,7 +79,23 @@ export default defineConfig(({ mode }) => {
     build: {
       target: "esnext",
     },
-    plugins: [react(), generateBuildFolder(), svgr()],
+    plugins: [
+      react(),
+      generateBuildFolder(),
+      svgr(),
+      {
+        name: "ui-kit-tokens",
+        async handleHotUpdate({ file }) {
+          const normalized = file.replaceAll("\\", "/");
+          if (
+            normalized.endsWith("/src/shared/theme/theme.ts") ||
+            normalized.includes("/src/assets/fonts/")
+          ) {
+            await buildUiKit();
+          }
+        },
+      },
+    ],
     resolve: {
       alias: {
         modules: "/src/modules",

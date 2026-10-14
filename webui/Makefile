@@ -31,7 +31,7 @@ lint: yarn-install
 
 .PHONY: clean
 clean:
-	rm -rf node_modules dist dist-ssr
+	rm -rf node_modules dist dist-ssr packages/ui-kit/dist
 
 # Useful to keep in mind while debugging the setup.
 .PHONY: corepack-cache-clean

@@ -3,7 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
+    "check:ui-kit": "node scripts/check-ui-kit.mjs",
+    "publish:ui-kit": "node scripts/publish-ui-kit.mjs",
+    "test:ui-kit": "yarn build:ui-kit && tsc -p packages/ui-kit/tsconfig.json && node --test scripts/build-ui-kit.test.mjs scripts/check-ui-kit.test.mjs scripts/publish-ui-kit.test.mjs scripts/ui-kit-publication.test.mjs",
     "start": "vite --config vite.config.js",
     "build": "vite build && rimraf ./build/**/*.js.map",
     "test": "jest --watchAll=false",
@@ -13,7 +19,8 @@
     "lint:fix": "eslint --fix src",
     "type-check:watch": "tsc -w --pretty",
     "type-check": "tsc --noEmit",
-    "sbom": "yarn cyclonedx --prod --gather-license-texts --output-reproducible -o webui_sbom.json"
+    "sbom": "yarn cyclonedx --prod --gather-license-texts --output-reproducible -o webui_sbom.json",
+    "build:ui-kit": "node scripts/build-ui-kit.mjs"
   },
   "lint-staged": {
     "*.ts": "yarn tsc --noEmit",
@@ -28,6 +35,7 @@
     "@mui/icons-material": "^7.3.7",
     "@mui/material": "^7.3.7",
     "@mui/system": "^7.3.8",
+    "@picodata/ui-kit": "workspace:*",
     "axios": "^1.15.0",
     "classnames": "^2.3.2",
     "follow-redirects": "^1.16.0",
@@ -75,6 +83,7 @@
     "postcss": "^8.4.31",
     "prettier": "^2.8.7",
     "sass": "^1.69.5",
+    "tar": "^7.5.15",
     "typescript": "^4.9.3",
     "vite": "6.4.2",
     "vite-plugin-svgr": "^4.3.0"

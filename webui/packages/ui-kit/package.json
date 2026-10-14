@@ -1,0 +1,41 @@
+{
+  "name": "@picodata/ui-kit",
+  "version": "0.1.0",
+  "description": "SDK types and design tokens for Picodata WebUI plugins",
+  "license": "BSD-2-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://git.picodata.io/core/picodata.git",
+    "directory": "webui/packages/ui-kit"
+  },
+  "types": "./index.d.ts",
+  "typesVersions": {
+    "*": {
+      "tokens": [
+        "dist/tokens.d.ts"
+      ]
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    },
+    "./package.json": "./package.json",
+    "./tokens": {
+      "types": "./dist/tokens.d.ts",
+      "default": "./dist/tokens.js"
+    },
+    "./tokens.css": "./dist/tokens.css",
+    "./tokens.json": "./dist/tokens.json",
+    "./tokens.ts": "./dist/tokens.ts"
+  },
+  "files": [
+    "index.d.ts",
+    "AUTHORS",
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ]
+}

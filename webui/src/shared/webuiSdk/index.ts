@@ -5,4 +5,4 @@ export type {
   WebuiTheme,
   WebuiSessionError,
   WebuiSessionErrorCode,
-} from "./types";
+} from "@picodata/ui-kit";
