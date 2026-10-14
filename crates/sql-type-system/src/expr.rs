@@ -273,7 +273,7 @@ pub enum ExprKind<Id> {
     Window {
         order_by: Vec<Expr<Id>>,
         partition_by: Vec<Expr<Id>>,
-        frame: Option<WindowFrame<Id>>,
+        frame: Option<Box<WindowFrame<Id>>>,
     },
     /// Json extract expression.
     /// Examples: `json_extract_path(field, 'key', 'subkey')`.

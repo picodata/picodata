@@ -371,7 +371,7 @@ fn bind_window_spec<'q, M: Metadata>(
         AstTypeExprKind::Window {
             order_by: order_by_t_exprs,
             partition_by: partition_by_t_exprs,
-            frame: frame_t,
+            frame: frame_t.map(Box::new),
         },
     );
 

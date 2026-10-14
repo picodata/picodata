@@ -570,7 +570,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 report.extend(partition_by_report);
 
                 if let Some(frame) = frame {
-                    let frame_report = match frame {
+                    let frame_report = match &**frame {
                         WindowFrame::IntOnly { kind, offsets } => {
                             self.analyze_int_offsets(*kind, offsets, false)?
                         }

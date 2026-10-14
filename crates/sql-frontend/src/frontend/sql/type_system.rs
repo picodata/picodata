@@ -296,7 +296,7 @@ pub fn to_type_expr(
             let order_by = order_by_to_type_expr(ordering, plan, subquery_map)?;
             let frame = frame
                 .as_ref()
-                .map(|f| new_window_frame(f, plan, subquery_map))
+                .map(|f| new_window_frame(f, plan, subquery_map).map(Box::new))
                 .transpose()?;
             let kind = TypeExprKind::Window {
                 order_by,
