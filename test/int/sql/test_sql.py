@@ -660,6 +660,8 @@ def test_read_from_system_tables(cluster: Cluster):
         "raft_wal_size_max",
         "read_preference",
         "replication_mode",
+        "resharding_bucket_count_max",
+        "resharding_chunk_size_max",
         "shredding",
         "sql_ddl_timeout",
         "sql_log",

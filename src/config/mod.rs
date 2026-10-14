@@ -2627,6 +2627,23 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 16 * 1024)]
     pub raft_wal_count_max: u64,
 
+    /// When doing bucket rebalancing the table data will be transferred between
+    /// replicasets in chunks. This parameter controls the maximum size (give or
+    /// take) of the chunk.
+    ///
+    /// **NOT IMPLEMENTED YET**
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 16 * 1024 * 1024)]
+    pub resharding_chunk_size_max: u64,
+
+    /// The number of buckets of sharded data which are allowed to be
+    /// transferred at the same time during bucket rebalancing.
+    ///
+    /// **NOT IMPLEMENTED YET**
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 100)]
+    pub resharding_bucket_count_max: u64,
+
     /// Number of seconds to wait before automatically changing an
     /// unresponsive instance's state to Offline.
     #[introspection(sbroad_type = SbroadType::Double)]
