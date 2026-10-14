@@ -253,7 +253,7 @@ buckets <= [1-3000]
 │ 1.2. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰──────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" UNION ALL select cast(null as int) as "a", cast(null as int) as "b" where false
+SELECT "t"."a", "t"."b" FROM "t" UNION ALL select null::int as "a", null::int as "b" where false
 ''
 plan:
     [1] SCAN TABLE t (~1048576 rows)
@@ -281,7 +281,7 @@ SELECT * FROM t WHERE a = 1 UNION ALL SELECT * FROM g;
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" = CAST(1 AS int) UNION ALL SELECT * FROM "g"
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" = 1::int UNION ALL SELECT * FROM "g"
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~1 row)
@@ -310,7 +310,7 @@ SELECT * FROM t WHERE a = 1 and a = 2 UNION ALL SELECT * FROM g;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" = CAST(1 AS int) and "t"."a" = CAST(2 AS int) UNION ALL SELECT * FROM "g"
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" = 1::int and "t"."a" = 2::int UNION ALL SELECT * FROM "g"
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~1 row)
@@ -339,7 +339,7 @@ SELECT * FROM t WHERE a in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10) UNION ALL SELECT * FR
 │ 1.1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰──────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( CAST(1 AS int), CAST(2 AS int), CAST(3 AS int), CAST(4 AS int), CAST(5 AS int), CAST(6 AS int), CAST(7 AS int), CAST(8 AS int), CAST(9 AS int), CAST(10 AS int) ) UNION ALL SELECT * FROM "g"
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( 1::int, 2::int, 3::int, 4::int, 5::int, 6::int, 7::int, 8::int, 9::int, 10::int ) UNION ALL SELECT * FROM "g"
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~10 rows)
@@ -353,7 +353,7 @@ buckets <= [1-3000]
 │ 1.2. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰──────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( CAST(1 AS int), CAST(2 AS int), CAST(3 AS int), CAST(4 AS int), CAST(5 AS int), CAST(6 AS int), CAST(7 AS int), CAST(8 AS int), CAST(9 AS int), CAST(10 AS int) ) UNION ALL select cast(null as int) as "a", cast(null as int) as "b" where false
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( 1::int, 2::int, 3::int, 4::int, 5::int, 6::int, 7::int, 8::int, 9::int, 10::int ) UNION ALL select null::int as "a", null::int as "b" where false
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~10 rows)
@@ -382,7 +382,7 @@ SELECT * FROM t WHERE a IN (SELECT MIN(a) FROM t) UNION ALL SELECT * FROM g;
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT min (CAST ("t"."a" as int)) as "min_1" FROM "t"
+SELECT min ("t"."a"::int) as "min_1" FROM "t"
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
@@ -419,7 +419,7 @@ buckets <= [1-3000]
 │ 3.2. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰──────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( SELECT "COL_0" FROM "_tmp_12659176807661966104_1136" ) UNION ALL select cast(null as int) as "a", cast(null as int) as "b" where false
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" in ( SELECT "COL_0" FROM "_tmp_12659176807661966104_1136" ) UNION ALL select null::int as "a", null::int as "b" where false
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~24 rows)
@@ -449,7 +449,7 @@ SELECT * FROM t WHERE a = 5 and a IN (SELECT MIN(a) FROM t) UNION ALL SELECT * F
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT min (CAST ("t"."a" as int)) as "min_1" FROM "t"
+SELECT min ("t"."a"::int) as "min_1" FROM "t"
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
@@ -471,7 +471,7 @@ buckets = any
 │ 3. Query (DYN-FILTERED STORAGE, <= 1/2) │
 ╰─────────────────────────────────────────╯
 ''
-SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" = CAST(5 AS int) and "t"."a" in ( SELECT "COL_0" FROM "_tmp_3518943485138420375_1136" ) UNION ALL SELECT * FROM "g"
+SELECT "t"."a", "t"."b" FROM "t" WHERE "t"."a" = 5::int and "t"."a" in ( SELECT "COL_0" FROM "_tmp_3518943485138420375_1136" ) UNION ALL SELECT * FROM "g"
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (a=?) (~1 row)

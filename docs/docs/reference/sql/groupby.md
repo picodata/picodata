@@ -203,11 +203,11 @@ SELECT COUNT(DISTINCT amount) FROM customers;
     SELECT
       "customers"."amount" as "gr_expr_1",
       "customers"."name" as "gr_expr_2",
-      sum (CAST ("customers"."amount" as int)) as "sum_1"
+      sum ("customers"."amount"::int) as "sum_1"
     FROM
       "customers"
     WHERE
-      "customers"."id" <> CAST(3 AS int)
+      "customers"."id" <> 3::int
     GROUP BY
       "customers"."amount",
       "customers"."name"
@@ -241,7 +241,7 @@ SELECT COUNT(DISTINCT amount) FROM customers;
           "COL_0",
           "COL_1"
         HAVING
-          sum ("COL_2") > CAST(100 AS int)
+          sum ("COL_2"::decimal) > 100::int
       )
     ORDER BY
       "name"

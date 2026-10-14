@@ -6,7 +6,7 @@ fn explicit_cast_and_literal_operands_test() {
     let info = get_broadcast(r#"SELECT CAST('1' as string) || 'hello' FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS text) || CAST($2 AS text) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::text || $2::text as \"col_1\" FROM \"t1\""
       - - String: "1"
         - String: hello
     "#);
@@ -17,7 +17,7 @@ fn scalar_function_and_explicit_cast_operands_test() {
     let info = get_broadcast(r#"SELECT trim('hello') || CAST(42 as string) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (TRIM (CAST($1 AS text)) as text) || CAST (CAST($2 AS int) as text) as \"col_1\" FROM \"t1\""
+      - "SELECT TRIM ($1::text)::text || $2::int::text as \"col_1\" FROM \"t1\""
       - - String: hello
         - Integer: 42
     "#);
@@ -28,7 +28,7 @@ fn two_string_literal_operands_test() {
     let info = get_broadcast(r#"SELECT 'a' || 'b' FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS text) || CAST($2 AS text) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::text || $2::text as \"col_1\" FROM \"t1\""
       - - String: a
         - String: b
     "#);
@@ -41,7 +41,7 @@ fn column_operand_and_chained_concat_without_parens_test() {
     );
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT \"t1\".\"a\" FROM \"t1\" WHERE CAST (\"t1\".\"a\" as text) || CAST($1 AS text) = CAST ((CAST (CAST($2 AS int) as text) || CAST (TRIM (CAST($3 AS text)) as text)) as text) || CAST($4 AS text)"
+      - "SELECT \"t1\".\"a\" FROM \"t1\" WHERE \"t1\".\"a\"::text || $1::text = ($2::int::text || TRIM ($3::text)::text)::text || $4::text"
       - - String: a
         - Integer: 42
         - String: b
@@ -56,7 +56,7 @@ fn explicitly_casted_operands_test() {
     let info = get_broadcast(r#"SELECT "a"::text || "b"::text FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (\"t1\".\"a\" as text) || CAST (\"t1\".\"b\" as text) as \"col_1\" FROM \"t1\""
+      - "SELECT \"t1\".\"a\"::text || \"t1\".\"b\"::text as \"col_1\" FROM \"t1\""
       - []
     "#);
 }
@@ -67,7 +67,7 @@ fn operand_casted_to_non_text_test() {
     let info = get_broadcast(r#"SELECT "a" || "b"::int FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (\"t1\".\"a\" as text) || CAST (CAST (\"t1\".\"b\" as int) as text) as \"col_1\" FROM \"t1\""
+      - "SELECT \"t1\".\"a\"::text || \"t1\".\"b\"::int::text as \"col_1\" FROM \"t1\""
       - []
     "#);
 }
@@ -114,7 +114,7 @@ fn boolean_column_operand_is_cast_to_string_test() {
     let info = get_broadcast(r#"SELECT 'x' || "b" FROM "bool_sharded""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS text) || CAST (\"bool_sharded\".\"b\" as text) as \"col_1\" FROM \"bool_sharded\""
+      - "SELECT $1::text || \"bool_sharded\".\"b\"::text as \"col_1\" FROM \"bool_sharded\""
       - - String: x
     "#);
 }
@@ -137,7 +137,7 @@ fn untyped_null_parameter_resolves_concat_as_text_test() {
     let info = port.decode();
     assert_yaml_snapshot!(info, @r#"
     - All:
-        - "SELECT CAST($1 AS text) || $2 as \"col_1\" FROM \"t1\""
+        - "SELECT $1::text || $2 as \"col_1\" FROM \"t1\""
         - - String: x
           - "Null"
     "#);

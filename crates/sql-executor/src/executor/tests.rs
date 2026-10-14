@@ -42,7 +42,7 @@ fn shard_query() {
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" = CAST($1 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" = $1::int"#);
     let param1 = Value::from(1);
     let bucket = coordinator.determine_bucket_id(&[&param1]).unwrap();
     assert_eq!(params, &[param1]);
@@ -75,7 +75,7 @@ fn shard_union_query() {
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sys_op" = CAST($1 AS int) UNION ALL SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sys_op" > CAST($2 AS int)) as "t3" WHERE "t3"."id" = CAST($3 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sys_op" = $1::int UNION ALL SELECT "test_space"."id" FROM "test_space" WHERE "test_space"."sys_op" > $2::int) as "t3" WHERE "t3"."id" = $3::int"#);
     assert_eq!(params, &[Value::from(1), Value::from(1), Value::from(1)]);
 
     let param1 = Value::from(1);
@@ -102,7 +102,7 @@ fn map_reduce_query() {
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT "hash_testing"."product_code" FROM "hash_testing" WHERE "hash_testing"."identification_number" = CAST($1 AS int) and "hash_testing"."product_code" = CAST($2 AS text)"#);
+    assert_snapshot!(sql, @r#"SELECT "hash_testing"."product_code" FROM "hash_testing" WHERE "hash_testing"."identification_number" = $1::int and "hash_testing"."product_code" = $2::text"#);
     let param1 = Value::from(1);
     let param457 = Value::from("457");
     let bucket = query
@@ -197,7 +197,7 @@ fn union_linker_test() {
     assert_eq!(1, filtered.len());
 
     let (sql, params, _, ref mut buckets) = filtered.get_mut(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id", "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."sys_op" < CAST($1 AS int) UNION ALL SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME" FROM "test_space_hist" WHERE "test_space_hist"."sys_op" > CAST($2 AS int)) as "t1" WHERE "t1"."id" in (SELECT "COL_1" FROM "_tmp_0_0136")"#);
+    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id", "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."sys_op" < $1::int UNION ALL SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME" FROM "test_space_hist" WHERE "test_space_hist"."sys_op" > $2::int) as "t1" WHERE "t1"."id" in (SELECT "COL_1" FROM "_tmp_0_0136")"#);
     assert_eq!(params, &vec![Value::from(0), Value::from(0)]);
     let param3 = Value::from(3);
     let bucket3 = query
@@ -261,7 +261,7 @@ WHERE "t3"."id" = 2 AND "t8"."identification_number" = 2"#;
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id", "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."sys_op" < CAST($1 AS int) and "test_space"."sysFrom" >= CAST($2 AS int) UNION ALL SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME" FROM "test_space_hist" WHERE "test_space_hist"."sysFrom" <= CAST($3 AS int)) as "t3" INNER JOIN (SELECT "COL_1" FROM "_tmp_0_0136") as "t8" ON "t3"."id" = "t8"."COL_1" WHERE "t3"."id" = CAST($4 AS int) and "t8"."COL_1" = CAST($5 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id", "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."sys_op" < $1::int and "test_space"."sysFrom" >= $2::int UNION ALL SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME" FROM "test_space_hist" WHERE "test_space_hist"."sysFrom" <= $3::int) as "t3" INNER JOIN (SELECT "COL_1" FROM "_tmp_0_0136") as "t8" ON "t3"."id" = "t8"."COL_1" WHERE "t3"."id" = $4::int and "t8"."COL_1" = $5::int"#);
     assert_eq!(
         params,
         &[
@@ -317,7 +317,7 @@ fn join_linker2_test() {
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT "t1"."id" FROM "test_space" as "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "_tmp_0_0136") as "t2" ON "t1"."id" = CAST($1 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "t1"."id" FROM "test_space" as "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "_tmp_0_0136") as "t2" ON "t1"."id" = $1::int"#);
     let param1 = Value::from(1);
     let bucket1 = query
         .get_coordinator()
@@ -358,7 +358,7 @@ fn join_linker3_test() {
     let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
         panic!("Expected a single dispatch on all replicasets");
     };
-    assert_snapshot!(sql, @r#"SELECT "t2"."COL_1" as "id1" FROM (SELECT "test_space"."id" FROM "test_space") as "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "_tmp_0_0136") as "t2" ON "t2"."COL_1" = CAST($1 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "t2"."COL_1" as "id1" FROM (SELECT "test_space"."id" FROM "test_space") as "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "_tmp_0_0136") as "t2" ON "t2"."COL_1" = $1::int"#);
     assert_eq!(params, &[Value::from(1)]);
 }
 
@@ -578,7 +578,7 @@ fn sharding_column1_test() {
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op" FROM "test_space" WHERE "test_space"."id" = CAST($1 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op" FROM "test_space" WHERE "test_space"."id" = $1::int"#);
     let param1 = Value::from(1);
     let bucket = query
         .get_coordinator()
@@ -603,7 +603,7 @@ fn sharding_column2_test() {
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op", "test_space"."bucket_id" FROM "test_space" WHERE "test_space"."id" = CAST($1 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "test_space"."id", "test_space"."sysFrom", "test_space"."FIRST_NAME", "test_space"."sys_op", "test_space"."bucket_id" FROM "test_space" WHERE "test_space"."id" = $1::int"#);
     let param1 = Value::from(1);
     let bucket = query
         .get_coordinator()

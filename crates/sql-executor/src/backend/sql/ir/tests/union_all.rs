@@ -14,7 +14,7 @@ fn union_all1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int) UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS text)"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = $1::int UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = $2::text"
     params:
       - Integer: 1
       - String: a
@@ -22,7 +22,7 @@ fn union_all1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int) UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS text)"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = $1::int UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = $2::text"
     params:
       - Integer: 1
       - String: a

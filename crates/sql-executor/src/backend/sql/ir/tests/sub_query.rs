@@ -12,7 +12,7 @@ fn sub_query1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($2 AS text)"
+    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = $1::int) as \"t1\" WHERE \"t1\".\"product_code\" = $2::text"
     params:
       - Integer: 1
       - String: a
@@ -20,7 +20,7 @@ fn sub_query1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($2 AS text)"
+    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = $1::int) as \"t1\" WHERE \"t1\".\"product_code\" = $2::text"
     params:
       - Integer: 1
       - String: a
@@ -41,7 +41,7 @@ fn sub_query2() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int) UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS text)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($3 AS text)"
+    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = $1::int UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = $2::text) as \"t1\" WHERE \"t1\".\"product_code\" = $3::text"
     params:
       - Integer: 1
       - String: a
@@ -50,7 +50,7 @@ fn sub_query2() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int) UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS text)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($3 AS text)"
+    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = $1::int UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = $2::text) as \"t1\" WHERE \"t1\".\"product_code\" = $3::text"
     params:
       - Integer: 1
       - String: a
@@ -65,14 +65,14 @@ fn sub_query_exists() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"test_space\".\"FIRST_NAME\" FROM \"test_space\" WHERE exists (SELECT CAST($1 AS int) as \"col_1\" FROM \"hash_testing\")"
+    pattern: "SELECT \"test_space\".\"FIRST_NAME\" FROM \"test_space\" WHERE exists (SELECT $1::int as \"col_1\" FROM \"hash_testing\")"
     params:
       - Integer: 0
     "#);
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"test_space\".\"FIRST_NAME\" FROM \"test_space\" WHERE exists (SELECT CAST($1 AS int) as \"col_1\" FROM \"hash_testing\")"
+    pattern: "SELECT \"test_space\".\"FIRST_NAME\" FROM \"test_space\" WHERE exists (SELECT $1::int as \"col_1\" FROM \"hash_testing\")"
     params:
       - Integer: 0
     "#);

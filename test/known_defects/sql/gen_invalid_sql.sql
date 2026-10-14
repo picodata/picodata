@@ -20,7 +20,7 @@ EXPLAIN (RAW) SELECT max(id) FROM g HAVING true UNION SELECT 1;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT max (CAST ("g"."id" as int)) as "col_1" FROM "g" HAVING CAST(true AS bool) UNION SELECT CAST(1 AS int) as "col_1"
+SELECT max ("g"."id"::int) as "col_1" FROM "g" HAVING true::bool UNION SELECT 1::int as "col_1"
 ''
 plan:
 Failed to compile SQL statement: LIMIT clause should come after UNION not before
@@ -39,7 +39,7 @@ EXPLAIN (RAW) SELECT * FROM g WHERE MAX(id) = 5;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT * FROM "g" WHERE max (CAST ("g"."id" as int)) = CAST(5 AS int)
+SELECT * FROM "g" WHERE max ("g"."id"::int) = 5::int
 ''
 plan:
 Failed to compile SQL statement: misuse of aggregate function MAX()
@@ -58,7 +58,7 @@ EXPLAIN (RAW) WITH a AS (SELECT 1 FROM t limit 1) SELECT 1 FROM t JOIN a ON (val
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" LIMIT 1
+SELECT 1::int as "col_1" FROM "t" LIMIT 1
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
@@ -67,7 +67,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES (CAST(true AS bool))
+VALUES (true::bool)
 ''
 plan:
     [0] TRIVIAL
@@ -94,7 +94,7 @@ Failed to compile SQL statement: Failed to execute an empty SQL statement
 │ 5. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "_tmp_8236824207247852844_2136" ) as "a" ON ( SELECT "COL_0" FROM "_tmp_8236824207247852844_3136" )
+SELECT 1::int as "col_1" FROM "t" INNER JOIN ( SELECT "COL_0" FROM "_tmp_8236824207247852844_2136" ) as "a" ON ( SELECT "COL_0" FROM "_tmp_8236824207247852844_3136" )
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)

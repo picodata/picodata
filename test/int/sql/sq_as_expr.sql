@@ -866,7 +866,7 @@ explain (raw, buckets) SELECT "id" + (SELECT 1) FROM testing_space GROUP BY "id"
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."id" + ( SELECT CAST(1 AS int) as "col_1") as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT CAST(1 AS int) as "col_1")
+SELECT "testing_space"."id" + ( SELECT 1::int as "col_1") as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT 1::int as "col_1")
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
@@ -906,7 +906,7 @@ explain (raw, buckets) SELECT "id" + (SELECT 1) FROM testing_space GROUP BY "id"
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."id" + ( SELECT CAST(1 AS int) as "col_1") as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT CAST(1 AS int) as "col_1")
+SELECT "testing_space"."id" + ( SELECT 1::int as "col_1") as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT 1::int as "col_1")
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
@@ -920,7 +920,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_16030938614314968465_0136" ) GROUP BY "COL_0" HAVING "COL_0" > CAST(3 AS int)
+SELECT "COL_0" as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_16030938614314968465_0136" ) GROUP BY "COL_0" HAVING "COL_0" > 3::int
 ''
 plan:
     [0] SCAN TABLE _tmp_16030938614314968465_0136 (~1048576 rows)
@@ -1010,7 +1010,7 @@ buckets <= [1-3000]
 │ 2. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT sum (CAST ("x"."a" as int)) as "sum_1" FROM "gt" as "x" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2" FROM "_tmp_14160769180283890498_0136" ) as "y" ON "x"."a" = "y"."COL_2"
+SELECT sum ("x"."a"::int) as "sum_1" FROM "gt" as "x" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2" FROM "_tmp_14160769180283890498_0136" ) as "y" ON "x"."a" = "y"."COL_2"
 ''
 plan:
     [0] SCAN TABLE _tmp_14160769180283890498_0136 (~1048576 rows)
@@ -1022,7 +1022,7 @@ buckets <= [1-3000]
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT CAST (sum (CAST ("COL_0" as decimal)) as int) as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_17621510721798107379_1136" )
+SELECT sum ("COL_0"::decimal)::int as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_17621510721798107379_1136" )
 ''
 plan:
     [0] SCAN TABLE _tmp_17621510721798107379_1136 (~1048576 rows)
@@ -1075,7 +1075,7 @@ explain (raw, buckets) SELECT "id" + (SELECT 1), (SELECT 2) FROM testing_space G
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."id" + ( SELECT CAST(1 AS int) as "col_1") as "gr_expr_1", ( SELECT CAST(2 AS int) as "col_1") as "gr_expr_2" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT CAST(1 AS int) as "col_1"), ( SELECT CAST(2 AS int) as "col_1")
+SELECT "testing_space"."id" + ( SELECT 1::int as "col_1") as "gr_expr_1", ( SELECT 2::int as "col_1") as "gr_expr_2" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT 1::int as "col_1"), ( SELECT 2::int as "col_1")
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
@@ -1117,7 +1117,7 @@ explain (raw, buckets) SELECT "id" + (SELECT (SELECT 1)) FROM testing_space GROU
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."id" + ( SELECT ( SELECT CAST(1 AS int) as "col_1") as "col_1" ) as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT ( SELECT CAST(1 AS int) as "col_1") as "col_1" )
+SELECT "testing_space"."id" + ( SELECT ( SELECT 1::int as "col_1") as "col_1") as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT ( SELECT 1::int as "col_1") as "col_1")
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
@@ -1160,7 +1160,7 @@ explain (raw, buckets) SELECT "id" + (SELECT 1) FROM testing_space WHERE "id" = 
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "testing_space"."id" + ( SELECT CAST(1 AS int) as "col_1") as "col_1" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) GROUP BY "testing_space"."id" + ( SELECT CAST(1 AS int) as "col_1")
+SELECT "testing_space"."id" + ( SELECT 1::int as "col_1") as "col_1" FROM "testing_space" WHERE "testing_space"."id" = 1::int GROUP BY "testing_space"."id" + ( SELECT 1::int as "col_1")
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
@@ -1187,7 +1187,7 @@ explain (raw, buckets) SELECT "name", sum("id" + (SELECT 1))::int FROM testing_s
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."name" as "gr_expr_1", sum ( CAST ( ( "testing_space"."id" + ( SELECT CAST(1 AS int) as "col_1") ) as int ) ) as "sum_1" FROM "testing_space" GROUP BY "testing_space"."name"
+SELECT "testing_space"."name" as "gr_expr_1", sum ( ( "testing_space"."id" + ( SELECT 1::int as "col_1") )::int ) as "sum_1" FROM "testing_space" GROUP BY "testing_space"."name"
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
@@ -1200,7 +1200,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "name", CAST (sum (CAST ("COL_1" as decimal)) as int) as "col_1" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_5358045835402968887_0136" ) GROUP BY "COL_0"
+SELECT "COL_0" as "name", sum ("COL_1"::decimal)::int as "col_1" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_5358045835402968887_0136" ) GROUP BY "COL_0"
 ''
 plan:
     [0] SCAN TABLE _tmp_5358045835402968887_0136 (~1048576 rows)

@@ -183,30 +183,26 @@ SELECT
   "lineitem"."l_returnflag" as "gr_expr_1",
   "lineitem"."l_linestatus" as "gr_expr_2",
   sum (
-    CAST (
-      (
-        "lineitem"."l_extendedprice" * (CAST(1 AS int) - "lineitem"."l_discount") * (CAST(1 AS int) + "lineitem"."l_tax")
-      ) as double
-    )
+    (
+      "lineitem"."l_extendedprice" * (1::int - "lineitem"."l_discount") * (1::int + "lineitem"."l_tax")
+    )::double
   ) as "sum_4",
-  sum (CAST ("lineitem"."l_extendedprice" as double)) as "sum_2",
-  sum (CAST ("lineitem"."l_quantity" as double)) as "sum_1",
-  count (CAST ("lineitem"."l_discount" as double)) as "avg_8",
-  count (CAST ("lineitem"."l_quantity" as double)) as "avg_5",
+  sum ("lineitem"."l_extendedprice"::double) as "sum_2",
+  sum ("lineitem"."l_quantity"::double) as "sum_1",
+  count ("lineitem"."l_discount"::double) as "avg_8",
+  count ("lineitem"."l_quantity"::double) as "avg_5",
   count (*) as "count_9",
-  sum (CAST ("lineitem"."l_discount" as double)) as "avg_7",
-  count (CAST ("lineitem"."l_extendedprice" as double)) as "avg_6",
+  sum ("lineitem"."l_discount"::double) as "avg_7",
+  count ("lineitem"."l_extendedprice"::double) as "avg_6",
   sum (
-    CAST (
-      (
-        "lineitem"."l_extendedprice" * (CAST(1 AS int) - "lineitem"."l_discount")
-      ) as double
-    )
+    (
+      "lineitem"."l_extendedprice" * (1::int - "lineitem"."l_discount")
+    )::double
   ) as "sum_3"
 FROM
   "lineitem"
 WHERE
-  "lineitem"."l_shipdate" <= "to_date" (CAST('1998-09-02' AS text), CAST('%Y-%m-%d' AS text))
+  "lineitem"."l_shipdate" <= "to_date" ('1998-09-02'::text, '%Y-%m-%d'::text)
 GROUP BY
   "lineitem"."l_returnflag",
   "lineitem"."l_linestatus"
@@ -237,14 +233,14 @@ FROM
     SELECT
       "COL_0" as "l_returnflag",
       "COL_1" as "l_linestatus",
-      sum (CAST ("COL_4" as double)) as "sum_qty",
-      sum (CAST ("COL_3" as double)) as "sum_base_price",
-      sum (CAST ("COL_10" as double)) as "sum_disc_price",
-      sum (CAST ("COL_2" as double)) as "sum_charge",
-      sum (CAST ("COL_4" as double)) / CAST (sum (CAST ("COL_6" as int)) as int) as "avg_qty",
-      sum (CAST ("COL_3" as double)) / CAST (sum (CAST ("COL_9" as int)) as int) as "avg_price",
-      sum (CAST ("COL_8" as double)) / CAST (sum (CAST ("COL_5" as int)) as int) as "avg_disc",
-      CAST (sum (CAST ("COL_7" as int)) as int) as "count_order"
+      sum ("COL_4"::double) as "sum_qty",
+      sum ("COL_3"::double) as "sum_base_price",
+      sum ("COL_10"::double) as "sum_disc_price",
+      sum ("COL_2"::double) as "sum_charge",
+      sum ("COL_4"::double) / sum ("COL_6"::int)::int as "avg_qty",
+      sum ("COL_3"::double) / sum ("COL_9"::int)::int as "avg_price",
+      sum ("COL_8"::double) / sum ("COL_5"::int)::int as "avg_disc",
+      sum ("COL_7"::int)::int as "count_order"
     FROM
       (
         SELECT
@@ -464,11 +460,9 @@ SELECT
   "orders"."COL_5" as "gr_expr_2",
   "orders"."COL_8" as "gr_expr_3",
   sum (
-    CAST (
-      (
-        "lineitem"."COL_6" * (CAST(1 AS int) - "lineitem"."COL_7")
-      ) as double
-    )
+    (
+      "lineitem"."COL_6" * (1::int - "lineitem"."COL_7")
+    )::double
   ) as "sum_1"
 FROM
   "customer"
@@ -486,7 +480,7 @@ FROM
       "COL_9"
     FROM
       "_tmp_5667582682556364960_0136"
-  ) as "orders" ON CAST(true AS bool)
+  ) as "orders" ON true::bool
   INNER JOIN (
     SELECT
       "COL_0",
@@ -508,13 +502,13 @@ FROM
       "COL_16"
     FROM
       "_tmp_5667582682556364960_1136"
-  ) as "lineitem" ON CAST(true AS bool)
+  ) as "lineitem" ON true::bool
 WHERE
-  "customer"."c_mktsegment" = CAST('BUILDING' AS text)
+  "customer"."c_mktsegment" = 'BUILDING'::text
   and "customer"."c_custkey" = "orders"."COL_2"
   and "lineitem"."COL_0" = "orders"."COL_0"
-  and "orders"."COL_5" < CAST('1995-03-15 0:00:00.0 +00:00:00' AS datetime)
-  and "lineitem"."COL_11" > CAST('1995-03-15 0:00:00.0 +00:00:00' AS datetime)
+  and "orders"."COL_5" < '1995-03-15 0:00:00.0 +00:00:00'::datetime
+  and "lineitem"."COL_11" > '1995-03-15 0:00:00.0 +00:00:00'::datetime
 GROUP BY
   "lineitem"."COL_0",
   "orders"."COL_5",
@@ -541,7 +535,7 @@ FROM
   (
     SELECT
       "COL_0" as "l_orderkey",
-      sum (CAST ("COL_3" as double)) as "revenue",
+      sum ("COL_3"::double) as "revenue",
       "COL_1" as "o_orderdate",
       "COL_2" as "o_shippriority"
     FROM
@@ -832,11 +826,9 @@ buckets <= [1-3000]
 SELECT
   "nation"."COL_2" as "gr_expr_1",
   sum (
-    CAST (
-      (
-        "lineitem"."COL_6" * (CAST(1 AS int) - "lineitem"."COL_7")
-      ) as double
-    )
+    (
+      "lineitem"."COL_6" * (1::int - "lineitem"."COL_7")
+    )::double
   ) as "sum_1"
 FROM
   "customer"
@@ -854,7 +846,7 @@ FROM
       "COL_9"
     FROM
       "_tmp_16147029196218747141_0136"
-  ) as "orders" ON CAST(true AS bool)
+  ) as "orders" ON true::bool
   INNER JOIN (
     SELECT
       "COL_0",
@@ -876,7 +868,7 @@ FROM
       "COL_16"
     FROM
       "_tmp_16147029196218747141_1136"
-  ) as "lineitem" ON CAST(true AS bool)
+  ) as "lineitem" ON true::bool
   INNER JOIN (
     SELECT
       "COL_0",
@@ -889,7 +881,7 @@ FROM
       "COL_7"
     FROM
       "_tmp_16147029196218747141_2136"
-  ) as "supplier" ON CAST(true AS bool)
+  ) as "supplier" ON true::bool
   INNER JOIN (
     SELECT
       "COL_0",
@@ -899,7 +891,7 @@ FROM
       "COL_4"
     FROM
       "_tmp_16147029196218747141_3136"
-  ) as "nation" ON CAST(true AS bool)
+  ) as "nation" ON true::bool
   INNER JOIN (
     SELECT
       "COL_0",
@@ -908,7 +900,7 @@ FROM
       "COL_3"
     FROM
       "_tmp_16147029196218747141_4136"
-  ) as "region" ON CAST(true AS bool)
+  ) as "region" ON true::bool
 WHERE
   "customer"."c_custkey" = "orders"."COL_2"
   and "lineitem"."COL_0" = "orders"."COL_0"
@@ -916,9 +908,9 @@ WHERE
   and "customer"."c_nationkey" = "supplier"."COL_4"
   and "supplier"."COL_4" = "nation"."COL_0"
   and "nation"."COL_3" = "region"."COL_0"
-  and "region"."COL_2" = CAST('ASIA' AS text)
-  and "orders"."COL_5" >= CAST('1994-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "orders"."COL_5" < CAST('1995-01-01 0:00:00.0 +00:00:00' AS datetime)
+  and "region"."COL_2" = 'ASIA'::text
+  and "orders"."COL_5" >= '1994-01-01 0:00:00.0 +00:00:00'::datetime
+  and "orders"."COL_5" < '1995-01-01 0:00:00.0 +00:00:00'::datetime
 GROUP BY
   "nation"."COL_2"
 ''
@@ -956,7 +948,7 @@ FROM
   (
     SELECT
       "COL_0" as "n_name",
-      sum (CAST ("COL_1" as double)) as "revenue"
+      sum ("COL_1"::double) as "revenue"
     FROM
       (
         SELECT
@@ -1292,17 +1284,14 @@ SELECT
   "shipping"."supp_nation" as "gr_expr_1",
   "shipping"."cust_nation" as "gr_expr_2",
   "shipping"."l_year" as "gr_expr_3",
-  sum (CAST ("shipping"."volume" as double)) as "sum_1"
+  sum ("shipping"."volume"::double) as "sum_1"
 FROM
   (
     SELECT
       "n1"."COL_2" as "supp_nation",
       "n2"."COL_2" as "cust_nation",
-      "to_char" (
-        CAST ("lineitem"."COL_11" as datetime),
-        CAST('%Y' AS text)
-      ) as "l_year",
-      "lineitem"."COL_6" * (CAST(1 AS int) - "lineitem"."COL_7") as "volume"
+      "to_char" ("lineitem"."COL_11"::datetime, '%Y'::text) as "l_year",
+      "lineitem"."COL_6" * (1::int - "lineitem"."COL_7") as "volume"
     FROM
       "supplier"
       INNER JOIN (
@@ -1326,7 +1315,7 @@ FROM
           "COL_16"
         FROM
           "_tmp_8287534967795779098_0136"
-      ) as "lineitem" ON CAST(true AS bool)
+      ) as "lineitem" ON true::bool
       INNER JOIN (
         SELECT
           "COL_0",
@@ -1341,7 +1330,7 @@ FROM
           "COL_9"
         FROM
           "_tmp_8287534967795779098_1136"
-      ) as "orders" ON CAST(true AS bool)
+      ) as "orders" ON true::bool
       INNER JOIN (
         SELECT
           "COL_0",
@@ -1355,7 +1344,7 @@ FROM
           "COL_8"
         FROM
           "_tmp_8287534967795779098_2136"
-      ) as "customer" ON CAST(true AS bool)
+      ) as "customer" ON true::bool
       INNER JOIN (
         SELECT
           "COL_0",
@@ -1365,7 +1354,7 @@ FROM
           "COL_4"
         FROM
           "_tmp_8287534967795779098_3136"
-      ) as "n1" ON CAST(true AS bool)
+      ) as "n1" ON true::bool
       INNER JOIN (
         SELECT
           "COL_0",
@@ -1375,7 +1364,7 @@ FROM
           "COL_4"
         FROM
           "_tmp_8287534967795779098_4136"
-      ) as "n2" ON CAST(true AS bool)
+      ) as "n2" ON true::bool
     WHERE
       "supplier"."s_suppkey" = "lineitem"."COL_2"
       and "orders"."COL_0" = "lineitem"."COL_0"
@@ -1383,13 +1372,13 @@ FROM
       and "supplier"."s_nationkey" = "n1"."COL_0"
       and "customer"."COL_4" = "n2"."COL_0"
       and (
-        "n1"."COL_2" = CAST('FRANCE' AS text)
-        and "n2"."COL_2" = CAST('GERMANY' AS text)
-        or "n1"."COL_2" = CAST('GERMANY' AS text)
-        and "n2"."COL_2" = CAST('FRANCE' AS text)
+        "n1"."COL_2" = 'FRANCE'::text
+        and "n2"."COL_2" = 'GERMANY'::text
+        or "n1"."COL_2" = 'GERMANY'::text
+        and "n2"."COL_2" = 'FRANCE'::text
       )
-      and "lineitem"."COL_11" >= CAST('1995-01-01 0:00:00.0 +00:00:00' AS datetime)
-      and "lineitem"."COL_11" <= CAST('1996-12-31 0:00:00.0 +00:00:00' AS datetime)
+      and "lineitem"."COL_11" >= '1995-01-01 0:00:00.0 +00:00:00'::datetime
+      and "lineitem"."COL_11" <= '1996-12-31 0:00:00.0 +00:00:00'::datetime
   ) as "shipping"
 GROUP BY
   "shipping"."supp_nation",
@@ -1434,7 +1423,7 @@ FROM
       "COL_0" as "supp_nation",
       "COL_1" as "cust_nation",
       "COL_2" as "l_year",
-      sum (CAST ("COL_3" as double)) as "revenue"
+      sum ("COL_3"::double) as "revenue"
     FROM
       (
         SELECT
@@ -1811,22 +1800,17 @@ buckets <= [1-3000]
 SELECT
   "all_nations"."o_year" as "gr_expr_1",
   sum (
-    CAST (
-      CASE
-        WHEN "all_nations"."nation" = CAST('BRAZIL' AS text) THEN "all_nations"."volume"
-        ELSE CAST(0 AS int)
-      END as double
-    )
+    CASE
+      WHEN "all_nations"."nation" = 'BRAZIL'::text THEN "all_nations"."volume"
+      ELSE 0::int
+    END::double
   ) as "sum_1",
-  sum (CAST ("all_nations"."volume" as double)) as "sum_2"
+  sum ("all_nations"."volume"::double) as "sum_2"
 FROM
   (
     SELECT
-      "to_char" (
-        CAST ("orders"."COL_5" as datetime),
-        CAST('%Y' AS text)
-      ) as "o_year",
-      "lineitem"."COL_6" * (CAST(1 AS int) - "lineitem"."COL_7") as "volume",
+      "to_char" ("orders"."COL_5"::datetime, '%Y'::text) as "o_year",
+      "lineitem"."COL_6" * (1::int - "lineitem"."COL_7") as "volume",
       "n2"."COL_2" as "nation"
     FROM
       "part"
@@ -1842,7 +1826,7 @@ FROM
           "COL_7"
         FROM
           "_tmp_16404978828759991003_0136"
-      ) as "supplier" ON CAST(true AS bool)
+      ) as "supplier" ON true::bool
       INNER JOIN (
         SELECT
           "COL_0",
@@ -1864,7 +1848,7 @@ FROM
           "COL_16"
         FROM
           "_tmp_16404978828759991003_1136"
-      ) as "lineitem" ON CAST(true AS bool)
+      ) as "lineitem" ON true::bool
       INNER JOIN (
         SELECT
           "COL_0",
@@ -1879,7 +1863,7 @@ FROM
           "COL_9"
         FROM
           "_tmp_16404978828759991003_2136"
-      ) as "orders" ON CAST(true AS bool)
+      ) as "orders" ON true::bool
       INNER JOIN (
         SELECT
           "COL_0",
@@ -1893,7 +1877,7 @@ FROM
           "COL_8"
         FROM
           "_tmp_16404978828759991003_3136"
-      ) as "customer" ON CAST(true AS bool)
+      ) as "customer" ON true::bool
       INNER JOIN (
         SELECT
           "COL_0",
@@ -1903,7 +1887,7 @@ FROM
           "COL_4"
         FROM
           "_tmp_16404978828759991003_4136"
-      ) as "n1" ON CAST(true AS bool)
+      ) as "n1" ON true::bool
       INNER JOIN (
         SELECT
           "COL_0",
@@ -1913,7 +1897,7 @@ FROM
           "COL_4"
         FROM
           "_tmp_16404978828759991003_5136"
-      ) as "n2" ON CAST(true AS bool)
+      ) as "n2" ON true::bool
       INNER JOIN (
         SELECT
           "COL_0",
@@ -1922,7 +1906,7 @@ FROM
           "COL_3"
         FROM
           "_tmp_16404978828759991003_6136"
-      ) as "region" ON CAST(true AS bool)
+      ) as "region" ON true::bool
     WHERE
       "part"."p_partkey" = "lineitem"."COL_1"
       and "supplier"."COL_0" = "lineitem"."COL_2"
@@ -1930,11 +1914,11 @@ FROM
       and "orders"."COL_2" = "customer"."COL_0"
       and "customer"."COL_4" = "n1"."COL_0"
       and "n1"."COL_3" = "region"."COL_0"
-      and "region"."COL_2" = CAST('AMERICA' AS text)
+      and "region"."COL_2" = 'AMERICA'::text
       and "supplier"."COL_4" = "n2"."COL_0"
-      and "orders"."COL_5" >= CAST('1995-01-01 0:00:00.0 +00:00:00' AS datetime)
-      and "orders"."COL_5" <= CAST('1996-12-31 0:00:00.0 +00:00:00' AS datetime)
-      and "part"."p_type" = CAST('ECONOMY ANODIZED STEEL' AS text)
+      and "orders"."COL_5" >= '1995-01-01 0:00:00.0 +00:00:00'::datetime
+      and "orders"."COL_5" <= '1996-12-31 0:00:00.0 +00:00:00'::datetime
+      and "part"."p_type" = 'ECONOMY ANODIZED STEEL'::text
   ) as "all_nations"
 GROUP BY
   "all_nations"."o_year"
@@ -1981,7 +1965,7 @@ FROM
   (
     SELECT
       "COL_0" as "o_year",
-      sum (CAST ("COL_1" as double)) / sum (CAST ("COL_2" as double)) as "mkt_share"
+      sum ("COL_1"::double) / sum ("COL_2"::double) as "mkt_share"
     FROM
       (
         SELECT
@@ -2252,11 +2236,9 @@ SELECT
   "customer"."c_address" as "gr_expr_6",
   "customer"."c_comment" as "gr_expr_7",
   sum (
-    CAST (
-      (
-        "lineitem"."COL_6" * (CAST(1 AS int) - "lineitem"."COL_7")
-      ) as double
-    )
+    (
+      "lineitem"."COL_6" * (1::int - "lineitem"."COL_7")
+    )::double
   ) as "sum_1"
 FROM
   "customer"
@@ -2274,7 +2256,7 @@ FROM
       "COL_9"
     FROM
       "_tmp_6752974385567748145_0136"
-  ) as "orders" ON CAST(true AS bool)
+  ) as "orders" ON true::bool
   INNER JOIN (
     SELECT
       "COL_0",
@@ -2296,7 +2278,7 @@ FROM
       "COL_16"
     FROM
       "_tmp_6752974385567748145_1136"
-  ) as "lineitem" ON CAST(true AS bool)
+  ) as "lineitem" ON true::bool
   INNER JOIN (
     SELECT
       "COL_0",
@@ -2306,13 +2288,13 @@ FROM
       "COL_4"
     FROM
       "_tmp_6752974385567748145_2136"
-  ) as "nation" ON CAST(true AS bool)
+  ) as "nation" ON true::bool
 WHERE
   "customer"."c_custkey" = "orders"."COL_2"
   and "lineitem"."COL_0" = "orders"."COL_0"
-  and "orders"."COL_5" >= CAST('1993-10-01 0:00:00.0 +00:00:00' AS datetime)
-  and "orders"."COL_5" < CAST('1994-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "lineitem"."COL_9" = CAST('R' AS text)
+  and "orders"."COL_5" >= '1993-10-01 0:00:00.0 +00:00:00'::datetime
+  and "orders"."COL_5" < '1994-01-01 0:00:00.0 +00:00:00'::datetime
+  and "lineitem"."COL_9" = 'R'::text
   and "customer"."c_nationkey" = "nation"."COL_0"
 GROUP BY
   "customer"."c_custkey",
@@ -2356,7 +2338,7 @@ FROM
     SELECT
       "COL_0" as "c_custkey",
       "COL_1" as "c_name",
-      sum (CAST ("COL_7" as double)) as "revenue",
+      sum ("COL_7"::double) as "revenue",
       "COL_2" as "c_acctbal",
       "COL_4" as "n_name",
       "COL_5" as "c_address",
@@ -2623,11 +2605,9 @@ buckets <= [1-3000]
 SELECT
   "partsupp"."ps_partkey" as "gr_expr_1",
   sum (
-    CAST (
-      (
-        "partsupp"."ps_supplycost" * "partsupp"."ps_availqty"
-      ) as double
-    )
+    (
+      "partsupp"."ps_supplycost" * "partsupp"."ps_availqty"
+    )::double
   ) as "sum_1"
 FROM
   "partsupp"
@@ -2643,7 +2623,7 @@ FROM
       "COL_7"
     FROM
       "_tmp_17389738504606850982_0136"
-  ) as "supplier" ON CAST(true AS bool)
+  ) as "supplier" ON true::bool
   INNER JOIN (
     SELECT
       "COL_0",
@@ -2653,11 +2633,11 @@ FROM
       "COL_4"
     FROM
       "_tmp_17389738504606850982_1136"
-  ) as "nation" ON CAST(true AS bool)
+  ) as "nation" ON true::bool
 WHERE
   "partsupp"."ps_suppkey" = "supplier"."COL_0"
   and "supplier"."COL_4" = "nation"."COL_0"
-  and "nation"."COL_2" = CAST('GERMANY' AS text)
+  and "nation"."COL_2" = 'GERMANY'::text
 GROUP BY
   "partsupp"."ps_partkey"
 ''
@@ -2677,11 +2657,9 @@ buckets <= [1-3000]
 ''
 SELECT
   sum (
-    CAST (
-      (
-        "partsupp"."ps_supplycost" * "partsupp"."ps_availqty"
-      ) as double
-    )
+    (
+      "partsupp"."ps_supplycost" * "partsupp"."ps_availqty"
+    )::double
   ) as "sum_1"
 FROM
   "partsupp"
@@ -2697,7 +2675,7 @@ FROM
       "COL_7"
     FROM
       "_tmp_17869557022914879301_2136"
-  ) as "supplier" ON CAST(true AS bool)
+  ) as "supplier" ON true::bool
   INNER JOIN (
     SELECT
       "COL_0",
@@ -2707,11 +2685,11 @@ FROM
       "COL_4"
     FROM
       "_tmp_17869557022914879301_3136"
-  ) as "nation" ON CAST(true AS bool)
+  ) as "nation" ON true::bool
 WHERE
   "partsupp"."ps_suppkey" = "supplier"."COL_0"
   and "supplier"."COL_4" = "nation"."COL_0"
-  and "nation"."COL_2" = CAST('GERMANY' AS text)
+  and "nation"."COL_2" = 'GERMANY'::text
 ''
 plan:
     [0] SCAN TABLE _tmp_17869557022914879301_3136 (~262144 rows)
@@ -2728,7 +2706,7 @@ buckets <= [1-3000]
 ╰───────────────────╯
 ''
 SELECT
-  sum (CAST ("COL_0" as double)) * CAST(0.0001 AS decimal) as "col_1"
+  sum ("COL_0"::double) * 0.0001::decimal as "col_1"
 FROM
   (
     SELECT
@@ -2753,7 +2731,7 @@ FROM
   (
     SELECT
       "COL_0" as "ps_partkey",
-      sum (CAST ("COL_1" as double)) as "value"
+      sum ("COL_1"::double) as "value"
     FROM
       (
         SELECT
@@ -2765,7 +2743,7 @@ FROM
     GROUP BY
       "COL_0"
     HAVING
-      sum (CAST ("COL_1" as double)) > (
+      sum ("COL_1"::double) > (
         SELECT
           "COL_0"
         FROM
@@ -2923,22 +2901,18 @@ buckets <= [1-3000]
 SELECT
   "lineitem"."l_shipmode" as "gr_expr_1",
   sum (
-    CAST (
-      CASE
-        WHEN "orders"."COL_6" = CAST('1-URGENT' AS text)
-        or "orders"."COL_6" = CAST('2-HIGH' AS text) THEN CAST(1 AS int)
-        ELSE CAST(0 AS int)
-      END as int
-    )
+    CASE
+      WHEN "orders"."COL_6" = '1-URGENT'::text
+      or "orders"."COL_6" = '2-HIGH'::text THEN 1::int
+      ELSE 0::int
+    END::int
   ) as "sum_1",
   sum (
-    CAST (
-      CASE
-        WHEN "orders"."COL_6" <> CAST('1-URGENT' AS text)
-        and "orders"."COL_6" <> CAST('2-HIGH' AS text) THEN CAST(1 AS int)
-        ELSE CAST(0 AS int)
-      END as int
-    )
+    CASE
+      WHEN "orders"."COL_6" <> '1-URGENT'::text
+      and "orders"."COL_6" <> '2-HIGH'::text THEN 1::int
+      ELSE 0::int
+    END::int
   ) as "sum_2"
 FROM
   "lineitem"
@@ -2958,11 +2932,11 @@ FROM
       "_tmp_16541552721638505593_0136"
   ) as "orders" ON "lineitem"."l_orderkey" = "orders"."COL_0"
 WHERE
-  "lineitem"."l_shipmode" in (CAST('MAIL' AS text), CAST('SHIP' AS text))
+  "lineitem"."l_shipmode" in ('MAIL'::text, 'SHIP'::text)
   and "lineitem"."l_commitdate" < "lineitem"."l_receiptdate"
   and "lineitem"."l_shipdate" < "lineitem"."l_commitdate"
-  and "lineitem"."l_receiptdate" >= CAST('1994-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "lineitem"."l_receiptdate" < CAST('1995-01-01 0:00:00.0 +00:00:00' AS datetime)
+  and "lineitem"."l_receiptdate" >= '1994-01-01 0:00:00.0 +00:00:00'::datetime
+  and "lineitem"."l_receiptdate" < '1995-01-01 0:00:00.0 +00:00:00'::datetime
 GROUP BY
   "lineitem"."l_shipmode"
 ''
@@ -2985,8 +2959,8 @@ FROM
   (
     SELECT
       "COL_0" as "l_shipmode",
-      sum (CAST ("COL_1" as decimal)) as "high_line_count",
-      sum (CAST ("COL_2" as decimal)) as "low_line_count"
+      sum ("COL_1"::decimal) as "high_line_count",
+      sum ("COL_2"::decimal) as "low_line_count"
     FROM
       (
         SELECT
@@ -3117,7 +3091,7 @@ buckets <= [1-3000]
 ''
 SELECT
   "customer"."c_custkey" as "gr_expr_1",
-  count (CAST ("orders"."COL_0" as int)) as "count_1"
+  count ("orders"."COL_0"::int) as "count_1"
 FROM
   "customer"
   LEFT JOIN (
@@ -3135,7 +3109,7 @@ FROM
     FROM
       "_tmp_2853321084796073973_0136"
   ) as "orders" ON "customer"."c_custkey" = "orders"."COL_2"
-  and not CAST ("orders"."COL_9" as text) LIKE CAST('%special%requests%' AS text) ESCAPE CAST('\' AS text)
+  and not "orders"."COL_9"::text LIKE '%special%requests%'::text ESCAPE '\'::text
 GROUP BY
   "customer"."c_custkey"
 ''
@@ -3162,7 +3136,7 @@ FROM
       (
         SELECT
           "COL_0" as "c_custkey",
-          CAST (sum (CAST ("COL_1" as int)) as int) as "c_count"
+          sum ("COL_1"::int)::int as "c_count"
         FROM
           (
             SELECT
@@ -3293,19 +3267,15 @@ buckets <= [1-3000]
 ''
 SELECT
   sum (
-    CAST (
-      (
-        "lineitem"."l_extendedprice" * (CAST(1 AS int) - "lineitem"."l_discount")
-      ) as double
-    )
+    (
+      "lineitem"."l_extendedprice" * (1::int - "lineitem"."l_discount")
+    )::double
   ) as "sum_2",
   sum (
-    CAST (
-      CASE
-        WHEN CAST ("part"."COL_5" as text) LIKE CAST('PROMO%' AS text) ESCAPE CAST('\' AS text) THEN "lineitem"."l_extendedprice" * (CAST(1 AS int) - "lineitem"."l_discount")
-        ELSE CAST(0 AS int)
-      END as double
-    )
+    CASE
+      WHEN "part"."COL_5"::text LIKE 'PROMO%'::text ESCAPE '\'::text THEN "lineitem"."l_extendedprice" * (1::int - "lineitem"."l_discount")
+      ELSE 0::int
+    END::double
   ) as "sum_1"
 FROM
   "lineitem"
@@ -3323,11 +3293,11 @@ FROM
       "COL_9"
     FROM
       "_tmp_4254979314961859233_0136"
-  ) as "part" ON CAST(true AS bool)
+  ) as "part" ON true::bool
 WHERE
   "lineitem"."l_partkey" = "part"."COL_0"
-  and "lineitem"."l_shipdate" >= CAST('1995-09-01 0:00:00.0 +00:00:00' AS datetime)
-  and "lineitem"."l_shipdate" < CAST('1995-10-01 0:00:00.0 +00:00:00' AS datetime)
+  and "lineitem"."l_shipdate" >= '1995-09-01 0:00:00.0 +00:00:00'::datetime
+  and "lineitem"."l_shipdate" < '1995-10-01 0:00:00.0 +00:00:00'::datetime
 ''
 plan:
     [0] SCAN TABLE lineitem (~917504 rows)
@@ -3340,9 +3310,7 @@ buckets <= [1-3000]
 ╰───────────────────╯
 ''
 SELECT
-  (
-    CAST(100.00 AS decimal) * sum (CAST ("COL_1" as double))
-  ) / sum (CAST ("COL_0" as double)) as "promo_revenue"
+  (100.00::decimal * sum ("COL_1"::double)) / sum ("COL_0"::double) as "promo_revenue"
 FROM
   (
     SELECT
@@ -3517,7 +3485,7 @@ SELECT
 FROM
   "supplier"
 WHERE
-  CAST ("supplier"."s_comment" as text) LIKE CAST('%Customer%Complaints%' AS text) ESCAPE CAST('\' AS text)
+  "supplier"."s_comment"::text LIKE '%Customer%Complaints%'::text ESCAPE '\'::text
 ''
 plan:
     [0] SCAN TABLE supplier (~983040 rows)
@@ -3532,7 +3500,7 @@ SELECT
   "part"."COL_4" as "gr_expr_1",
   "part"."COL_5" as "gr_expr_2",
   "part"."COL_6" as "gr_expr_3",
-  CAST ("partsupp"."ps_suppkey" as int) as "gr_expr_4"
+  "partsupp"."ps_suppkey"::int as "gr_expr_4"
 FROM
   "partsupp"
   INNER JOIN (
@@ -3549,20 +3517,20 @@ FROM
       "COL_9"
     FROM
       "_tmp_14149410492156322724_0136"
-  ) as "part" ON CAST(true AS bool)
+  ) as "part" ON true::bool
 WHERE
   "part"."COL_0" = "partsupp"."ps_partkey"
-  and "part"."COL_4" <> CAST('Brand#45' AS text)
-  and not CAST ("part"."COL_5" as text) LIKE CAST('MEDIUM POLISHED%' AS text) ESCAPE CAST('\' AS text)
+  and "part"."COL_4" <> 'Brand#45'::text
+  and not "part"."COL_5"::text LIKE 'MEDIUM POLISHED%'::text ESCAPE '\'::text
   and "part"."COL_6" in (
-    CAST(49 AS int),
-    CAST(14 AS int),
-    CAST(23 AS int),
-    CAST(45 AS int),
-    CAST(19 AS int),
-    CAST(3 AS int),
-    CAST(36 AS int),
-    CAST(9 AS int)
+    49::int,
+    14::int,
+    23::int,
+    45::int,
+    19::int,
+    3::int,
+    36::int,
+    9::int
   )
   and not "partsupp"."ps_suppkey" in (
     SELECT
@@ -3574,7 +3542,7 @@ GROUP BY
   "part"."COL_4",
   "part"."COL_5",
   "part"."COL_6",
-  CAST ("partsupp"."ps_suppkey" as int)
+  "partsupp"."ps_suppkey"::int
 ''
 plan:
     [0] SCAN TABLE _tmp_14149410492156322724_0136 (~851968 rows)
@@ -3844,7 +3812,7 @@ buckets <= [1-3000]
 ''
 SELECT
   "lineitem"."l_orderkey" as "gr_expr_1",
-  sum (CAST ("lineitem"."l_quantity" as double)) as "sum_1"
+  sum ("lineitem"."l_quantity"::double) as "sum_1"
 FROM
   "lineitem"
 GROUP BY
@@ -3872,7 +3840,7 @@ FROM
 GROUP BY
   "COL_0"
 HAVING
-  sum (CAST ("COL_1" as double)) > CAST(300 AS int)
+  sum ("COL_1"::double) > 300::int
 ''
 plan:
     [0] SCAN TABLE _tmp_5240946567730125004_2136 (~1048576 rows)
@@ -3890,7 +3858,7 @@ SELECT
   "orders"."COL_0" as "gr_expr_3",
   "orders"."COL_5" as "gr_expr_4",
   "orders"."COL_4" as "gr_expr_5",
-  sum (CAST ("lineitem"."COL_5" as double)) as "sum_1"
+  sum ("lineitem"."COL_5"::double) as "sum_1"
 FROM
   "customer"
   INNER JOIN (
@@ -3907,7 +3875,7 @@ FROM
       "COL_9"
     FROM
       "_tmp_9932753425948525886_0136"
-  ) as "orders" ON CAST(true AS bool)
+  ) as "orders" ON true::bool
   INNER JOIN (
     SELECT
       "COL_0",
@@ -3929,7 +3897,7 @@ FROM
       "COL_16"
     FROM
       "_tmp_9932753425948525886_1136"
-  ) as "lineitem" ON CAST(true AS bool)
+  ) as "lineitem" ON true::bool
 WHERE
   "orders"."COL_0" in (
     SELECT
@@ -3975,7 +3943,7 @@ FROM
       "COL_2" as "o_orderkey",
       "COL_3" as "o_orderdate",
       "COL_4" as "o_totalprice",
-      sum (CAST ("COL_5" as double)) as "col_1"
+      sum ("COL_5"::double) as "col_1"
     FROM
       (
         SELECT
@@ -4164,11 +4132,9 @@ buckets <= [1-3000]
 ''
 SELECT
   sum (
-    CAST (
-      (
-        "lineitem"."l_extendedprice" * (CAST(1 AS int) - "lineitem"."l_discount")
-      ) as double
-    )
+    (
+      "lineitem"."l_extendedprice" * (1::int - "lineitem"."l_discount")
+    )::double
   ) as "sum_1"
 FROM
   "lineitem"
@@ -4186,50 +4152,35 @@ FROM
       "COL_9"
     FROM
       "_tmp_11521773992601555350_0136"
-  ) as "part" ON CAST(true AS bool)
+  ) as "part" ON true::bool
 WHERE
   "part"."COL_0" = "lineitem"."l_partkey"
-  and "part"."COL_4" = CAST('Brand#12' AS text)
-  and "part"."COL_7" in (
-    CAST('SM CASE' AS text),
-    CAST('SM BOX' AS text),
-    CAST('SM PACK' AS text),
-    CAST('SM PKG' AS text)
-  )
-  and "lineitem"."l_quantity" >= CAST(1 AS int)
-  and "lineitem"."l_quantity" <= CAST(1 AS int) + CAST(10 AS int)
-  and "part"."COL_6" >= CAST(1 AS int)
-  and "part"."COL_6" <= CAST(5 AS int)
-  and "lineitem"."l_shipmode" in (CAST('AIR' AS text), CAST('AIR REG' AS text))
-  and "lineitem"."l_shipinstruct" = CAST('DELIVER IN PERSON' AS text)
+  and "part"."COL_4" = 'Brand#12'::text
+  and "part"."COL_7" in ('SM CASE'::text, 'SM BOX'::text, 'SM PACK'::text, 'SM PKG'::text)
+  and "lineitem"."l_quantity" >= 1::int
+  and "lineitem"."l_quantity" <= 1::int + 10::int
+  and "part"."COL_6" >= 1::int
+  and "part"."COL_6" <= 5::int
+  and "lineitem"."l_shipmode" in ('AIR'::text, 'AIR REG'::text)
+  and "lineitem"."l_shipinstruct" = 'DELIVER IN PERSON'::text
   or "part"."COL_0" = "lineitem"."l_partkey"
-  and "part"."COL_4" = CAST('Brand#23' AS text)
-  and "part"."COL_7" in (
-    CAST('MED BAG' AS text),
-    CAST('MED BOX' AS text),
-    CAST('MED PKG' AS text),
-    CAST('MED PACK' AS text)
-  )
-  and "lineitem"."l_quantity" >= CAST(10 AS int)
-  and "lineitem"."l_quantity" <= CAST(10 AS int) + CAST(10 AS int)
-  and "part"."COL_6" >= CAST(1 AS int)
-  and "part"."COL_6" <= CAST(10 AS int)
-  and "lineitem"."l_shipmode" in (CAST('AIR' AS text), CAST('AIR REG' AS text))
-  and "lineitem"."l_shipinstruct" = CAST('DELIVER IN PERSON' AS text)
+  and "part"."COL_4" = 'Brand#23'::text
+  and "part"."COL_7" in ('MED BAG'::text, 'MED BOX'::text, 'MED PKG'::text, 'MED PACK'::text)
+  and "lineitem"."l_quantity" >= 10::int
+  and "lineitem"."l_quantity" <= 10::int + 10::int
+  and "part"."COL_6" >= 1::int
+  and "part"."COL_6" <= 10::int
+  and "lineitem"."l_shipmode" in ('AIR'::text, 'AIR REG'::text)
+  and "lineitem"."l_shipinstruct" = 'DELIVER IN PERSON'::text
   or "part"."COL_0" = "lineitem"."l_partkey"
-  and "part"."COL_4" = CAST('Brand#34' AS text)
-  and "part"."COL_7" in (
-    CAST('LG CASE' AS text),
-    CAST('LG BOX' AS text),
-    CAST('LG PACK' AS text),
-    CAST('LG PKG' AS text)
-  )
-  and "lineitem"."l_quantity" >= CAST(20 AS int)
-  and "lineitem"."l_quantity" <= CAST(20 AS int) + CAST(10 AS int)
-  and "part"."COL_6" >= CAST(1 AS int)
-  and "part"."COL_6" <= CAST(15 AS int)
-  and "lineitem"."l_shipmode" in (CAST('AIR' AS text), CAST('AIR REG' AS text))
-  and "lineitem"."l_shipinstruct" = CAST('DELIVER IN PERSON' AS text)
+  and "part"."COL_4" = 'Brand#34'::text
+  and "part"."COL_7" in ('LG CASE'::text, 'LG BOX'::text, 'LG PACK'::text, 'LG PKG'::text)
+  and "lineitem"."l_quantity" >= 20::int
+  and "lineitem"."l_quantity" <= 20::int + 10::int
+  and "part"."COL_6" >= 1::int
+  and "part"."COL_6" <= 15::int
+  and "lineitem"."l_shipmode" in ('AIR'::text, 'AIR REG'::text)
+  and "lineitem"."l_shipinstruct" = 'DELIVER IN PERSON'::text
 ''
 plan:
     [0] SCAN TABLE lineitem (~1048576 rows)
@@ -4245,7 +4196,7 @@ buckets <= [1-3000]
 ╰───────────────────╯
 ''
 SELECT
-  sum (CAST ("COL_0" as double)) as "revenue"
+  sum ("COL_0"::double) as "revenue"
 FROM
   (
     SELECT

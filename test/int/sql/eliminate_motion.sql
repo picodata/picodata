@@ -876,7 +876,7 @@ EXPLAIN (RAW) SELECT DISTINCT b FROM t0 WHERE a = 1;
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-SELECT DISTINCT "t0"."b" FROM "t0" WHERE "t0"."a" = CAST(1 AS int)
+SELECT DISTINCT "t0"."b" FROM "t0" WHERE "t0"."a" = 1::int
 ''
 plan:
     [0] SCAN TABLE t0 (~262144 rows)

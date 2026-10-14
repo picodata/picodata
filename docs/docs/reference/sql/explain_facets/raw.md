@@ -120,7 +120,7 @@ EXPLAIN (RAW) SELECT * FROM warehouse WHERE id = 42;
 │ 1. Query (CONST-FILTERED STORAGE, 1/4) │
 ╰────────────────────────────────────────╯
 
-SELECT "warehouse"."id", "warehouse"."item", "warehouse"."type" FROM "warehouse" WHERE "warehouse"."id" = CAST(42 AS int)
+SELECT "warehouse"."id", "warehouse"."item", "warehouse"."type" FROM "warehouse" WHERE "warehouse"."id" = 42::int
 
 plan:
     [0] SEARCH TABLE warehouse USING PRIMARY KEY (id=?) (~1 row)
@@ -141,7 +141,7 @@ EXPLAIN (RAW) SELECT * FROM warehouse WHERE item = 'kek';
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 
-SELECT "warehouse"."id", "warehouse"."item", "warehouse"."type" FROM "warehouse" WHERE "warehouse"."item" = CAST('kek' AS text)
+SELECT "warehouse"."id", "warehouse"."item", "warehouse"."type" FROM "warehouse" WHERE "warehouse"."item" = 'kek'::text
 
 plan:
     [0] SEARCH TABLE warehouse USING COVERING INDEX item_idx (item=?) (~10 rows)
@@ -220,7 +220,7 @@ END $$;
 │ 1. Let "a" (CONST-FILTERED STORAGE, 1/4) │
 ╰──────────────────────────────────────────╯
 
-SELECT "foo"."id" FROM "foo" WHERE "foo"."id" = CAST(42 AS int)
+SELECT "foo"."id" FROM "foo" WHERE "foo"."id" = 42::int
 
 plan:
     [0] SEARCH TABLE foo USING PRIMARY KEY (id=?) (~1 row)
@@ -229,7 +229,7 @@ plan:
 │ 2. If cond (CONST-FILTERED STORAGE, 1/4) │
 ╰──────────────────────────────────────────╯
 
-SELECT CAST(:a AS int) > CAST(5 AS int) as "cond"
+SELECT :a::int > 5::int as "cond"
 
 plan:
     [0] TRIVIAL
@@ -238,7 +238,7 @@ plan:
 │ 3. If body (CONST-FILTERED STORAGE, 1/4) │
 ╰──────────────────────────────────────────╯
 
-UPDATE "foo" SET "val" = CAST('kek' AS text) WHERE "foo"."id" = CAST(42 AS int)
+UPDATE "foo" SET "val" = 'kek'::text WHERE "foo"."id" = 42::int
 
 plan:
     [0] SEARCH TABLE foo USING PRIMARY KEY (id=?) (~1 row)
@@ -260,7 +260,7 @@ END $$;
 │ 1. **Unused** let "a" (CONST-FILTERED STORAGE, 1/4) │
 ╰─────────────────────────────────────────────────────╯
 
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 
 plan:
     [0] TRIVIAL
@@ -269,7 +269,7 @@ plan:
 │ 2. Let "a" (CONST-FILTERED STORAGE, 1/4) │
 ╰──────────────────────────────────────────╯
 
-SELECT "foo"."id" FROM "foo" WHERE "foo"."id" = CAST(42 AS int)
+SELECT "foo"."id" FROM "foo" WHERE "foo"."id" = 42::int
 
 plan:
     [0] SEARCH TABLE foo USING PRIMARY KEY (id=?) (~1 row)
@@ -278,7 +278,7 @@ plan:
 │ 3. Return query (CONST-FILTERED STORAGE, 1/4) │
 ╰───────────────────────────────────────────────╯
 
-SELECT CAST(:a AS int) as "col_1"
+SELECT :a::int as "col_1"
 
 plan:
     [0] TRIVIAL

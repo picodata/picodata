@@ -124,7 +124,7 @@ EXPLAIN (RAW) SELECT name, id FROM _pico_table WHERE MAX(id) = 5;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 
-SELECT "_pico_table"."name", "_pico_table"."id" FROM "_pico_table" WHERE max (CAST ("_pico_table"."id" as int)) = CAST(5 AS int)
+SELECT "_pico_table"."name", "_pico_table"."id" FROM "_pico_table" WHERE max ("_pico_table"."id"::int) = 5::int
 
 plan:
 Failed to compile SQL statement: misuse of aggregate function MAX()

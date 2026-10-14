@@ -3,6 +3,7 @@
 //! Suites are named after the facet they test:
 //! - `logical`: the LOGICAL facet;
 //! - `buckets`: the BUCKETS facet, both estimation and rendering;
+//! - `raw`: the SQL text of the RAW facet;
 //! - `explain`: facet dispatch and tests combining several facets.
 //!
 //! EXPLAIN options such as `FMT` are tested in the suite of the facet they
@@ -18,6 +19,7 @@ use sql_ir::ir::value::Value;
 mod buckets;
 mod explain;
 mod logical;
+mod raw;
 
 fn explain(sql: &str) -> String {
     explain_with_params(sql, vec![])

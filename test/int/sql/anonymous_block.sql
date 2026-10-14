@@ -491,7 +491,7 @@ END $$;
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES ( CAST(1 AS int), CAST(0 AS int), CAST(0 AS int), 1934 )
+INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES (1::int, 0::int, 0::int, 1934)
 ''
 plan:
     [0] picodata: ON CONFLICT ("pk") UPDATE "a" += 1
@@ -513,7 +513,7 @@ END $$;
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES ( CAST(1 AS int), CAST(0 AS int), CAST(0 AS int), 1934 )
+INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES (1::int, 0::int, 0::int, 1934)
 ''
 plan:
     [0] picodata: ON CONFLICT ("pk") UPDATE "a" += 1
@@ -522,7 +522,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES ( CAST(1 AS int), CAST(0 AS int), CAST(0 AS int), 1934 )
+INSERT INTO "iocdu" ("pk", "a", "b", "bucket_id") VALUES (1::int, 0::int, 0::int, 1934)
 ''
 plan:
     [0] picodata: ON CONFLICT ("pk") UPDATE "a" += 1
@@ -1021,7 +1021,7 @@ END $$;
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "t" ("pk", "a", "b", "bucket_id") VALUES ( CAST(400 AS int), CAST(99 AS int) + CAST(1 AS int), CAST(1 AS int) + CAST(1 AS int), 590 )
+INSERT INTO "t" ("pk", "a", "b", "bucket_id") VALUES ( 400::int, 99::int + 1::int, 1::int + 1::int, 590 )
 ''
 plan:
     [0] TRIVIAL
@@ -1173,7 +1173,7 @@ END $$;
 │ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(2 AS int)
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 2::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1182,7 +1182,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-DELETE FROM "t" WHERE "t"."pk" = CAST(2 AS int)
+DELETE FROM "t" WHERE "t"."pk" = 2::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1206,7 +1206,7 @@ END $$;
 │ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1215,7 +1215,7 @@ plan:
 │ 2. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1233,7 +1233,7 @@ END $$;
 │ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1242,7 +1242,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-DELETE FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+DELETE FROM "t" WHERE "t"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1887,7 +1887,7 @@ DO $$ BEGIN IF true THEN END IF; END $$;
 │ 1.1. If cond (ROUTER) │
 ╰───────────────────────╯
 ''
-SELECT CAST(true AS bool) as "cond"
+SELECT true::bool as "cond"
 ''
 projection (true::bool -> cond)
 ''
@@ -1899,7 +1899,7 @@ projection (true::bool -> cond)
 │ 1.1. If cond (ROUTER) │
 ╰───────────────────────╯
 ''
-SELECT CAST(true AS bool) as "cond"
+SELECT true::bool as "cond"
 ''
 plan:
     [0] TRIVIAL
@@ -1961,7 +1961,7 @@ END $$;
 │ 1. **Unused** let "a" (ROUTER) │
 ╰────────────────────────────────╯
 ''
-SELECT CAST('hello' AS text) as "col_1"
+SELECT 'hello'::text as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -1970,7 +1970,7 @@ plan:
 │ 2.1. If cond (ROUTER) │
 ╰───────────────────────╯
 ''
-SELECT CAST(true AS bool) as "cond"
+SELECT true::bool as "cond"
 ''
 plan:
     [0] TRIVIAL
@@ -1979,7 +1979,7 @@ plan:
 │ 2.2. If body: **Unused** let "x" (ROUTER) │
 ╰───────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -1988,7 +1988,7 @@ plan:
 │ 2.3. If body: **Unused** let "y" (ROUTER) │
 ╰───────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -2012,7 +2012,7 @@ END $$;
 │ 1. **Unused** let "a" (ROUTER) │
 ╰────────────────────────────────╯
 ''
-SELECT CAST('hello' AS text) as "col_1"
+SELECT 'hello'::text as "col_1"
 ''
 projection ('hello'::text -> col_1)
 ''
@@ -2020,7 +2020,7 @@ projection ('hello'::text -> col_1)
 │ 2.1. If cond (ROUTER) │
 ╰───────────────────────╯
 ''
-SELECT CAST(true AS bool) as "cond"
+SELECT true::bool as "cond"
 ''
 projection (true::bool -> cond)
 ''
@@ -2028,7 +2028,7 @@ projection (true::bool -> cond)
 │ 2.2. If body: **Unused** let "x" (ROUTER) │
 ╰───────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 ''
 projection (1::int -> col_1)
 ''
@@ -2036,7 +2036,7 @@ projection (1::int -> col_1)
 │ 2.3. If body: **Unused** let "y" (ROUTER) │
 ╰───────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 ''
 projection (1::int -> col_1)
 ''
@@ -2066,7 +2066,7 @@ END $$;
 │ 1. Let "v" (CONST-FILTERED STORAGE, 1/1) │
 ╰──────────────────────────────────────────╯
 ''
-SELECT "t4"."a" FROM "t4" WHERE "t4"."pk" = CAST(1 AS int)
+SELECT "t4"."a" FROM "t4" WHERE "t4"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t4 USING PRIMARY KEY (pk=?) (~1 row)
@@ -2075,7 +2075,7 @@ plan:
 │ 2.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(:v AS int) > CAST(0 AS int) as "cond"
+SELECT :v::int > 0::int as "cond"
 ''
 plan:
     [0] TRIVIAL
@@ -2084,7 +2084,7 @@ plan:
 │ 2.2. If body: Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰──────────────────────────────────────────────────────────╯
 ''
-SELECT CAST(:v AS int) as "col_1"
+SELECT :v::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -2093,7 +2093,7 @@ plan:
 │ 2.3.1. If body: If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────────╯
 ''
-SELECT CAST(:v AS int) > CAST(1 AS int) as "cond"
+SELECT :v::int > 1::int as "cond"
 ''
 plan:
     [0] TRIVIAL
@@ -2102,7 +2102,7 @@ plan:
 │ 2.3.2. If body: If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰──────────────────────────────────────────────────────────────╯
 ''
-UPDATE "t4" SET "a" = CAST(:v AS int) + CAST(1 AS int) WHERE "t4"."pk" = CAST(1 AS int)
+UPDATE "t4" SET "a" = :v::int + 1::int WHERE "t4"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t4 USING PRIMARY KEY (pk=?) (~1 row)
@@ -2111,7 +2111,7 @@ plan:
 │ 2.4. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-UPDATE "t4" SET "a" = CAST(:v AS int) + CAST(2 AS int) WHERE "t4"."pk" = CAST(1 AS int)
+UPDATE "t4" SET "a" = :v::int + 2::int WHERE "t4"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t4 USING PRIMARY KEY (pk=?) (~1 row)
@@ -2132,7 +2132,7 @@ END $$;
 │ 1.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(true AS bool) as "cond"
+SELECT true::bool as "cond"
 ''
 plan:
     [0] TRIVIAL
@@ -2141,7 +2141,7 @@ plan:
 │ 1.2. If body: Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰──────────────────────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -2150,7 +2150,7 @@ plan:
 │ 1.3. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-UPDATE "t4" SET "a" = "t4"."a" WHERE "t4"."pk" = CAST(1 AS int)
+UPDATE "t4" SET "a" = "t4"."a" WHERE "t4"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t4 USING PRIMARY KEY (pk=?) (~1 row)
@@ -2609,7 +2609,7 @@ END $$;
 │ 1.1. If cond (ROUTER) │
 ╰───────────────────────╯
 ''
-SELECT CAST(true AS bool) as "cond"
+SELECT true::bool as "cond"
 ''
 plan:
     [0] TRIVIAL
@@ -2618,7 +2618,7 @@ plan:
 │ 1.2. If body: **Unused** let "x" (ROUTER) │
 ╰───────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -2627,7 +2627,7 @@ plan:
 │ 1.3. Else body: **Unused** let "y" (ROUTER) │
 ╰─────────────────────────────────────────────╯
 ''
-SELECT CAST(2 AS int) as "col_1"
+SELECT 2::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -2682,7 +2682,7 @@ END $$;
 │ 1.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(true AS bool) as "cond"
+SELECT true::bool as "cond"
 ''
 plan:
     [0] TRIVIAL
@@ -2691,7 +2691,7 @@ plan:
 │ 1.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-UPDATE "t2" SET "b" = CAST(1234 AS int) WHERE "t2"."pk" = CAST(1 AS int)
+UPDATE "t2" SET "b" = 1234::int WHERE "t2"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t2 USING PRIMARY KEY (pk=?) (~1 row)
@@ -2700,7 +2700,7 @@ plan:
 │ 1.3. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-UPDATE "t3" SET "b" = CAST(5678 AS int) WHERE "t3"."pk" = CAST(1 AS int)
+UPDATE "t3" SET "b" = 5678::int WHERE "t3"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t3 USING PRIMARY KEY (pk=?) (~1 row)

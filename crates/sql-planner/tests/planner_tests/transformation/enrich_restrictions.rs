@@ -1596,7 +1596,7 @@ fn a_derived_clause_lifts_through_nested_left_joins_into_the_inner_on() {
          LEFT JOIN t v ON l.a = v.a \
          JOIN t3 ON r.b = t3.b AND t3.b = 1",
     );
-    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."b" FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."a" LEFT JOIN "t" as "v" ON "l"."a" = "v"."a" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = CAST($2 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."b" FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."a" LEFT JOIN "t" as "v" ON "l"."a" = "v"."a" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = $1::int) as "t3" ON "r"."b" = $2::int"#);
 }
 
 /// Output column names of the plan's top relational node, in order.
@@ -1664,7 +1664,7 @@ fn preserved_side_filter_stays_below_left_join_in_sql() {
     // above the LEFT JOIN, which is left as `true`.
     let sql =
         optimized_join_sql("SELECT l.a, r.a FROM t l LEFT JOIN t r ON l.a = r.b WHERE l.a = 1");
-    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."a" FROM (SELECT * FROM "t" as "l" WHERE "l"."a" = CAST($1 AS int)) as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" WHERE CAST($2 AS bool)"#);
+    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."a" FROM (SELECT * FROM "t" as "l" WHERE "l"."a" = $1::int) as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" WHERE $2::bool"#);
 }
 
 #[test]
@@ -1673,7 +1673,7 @@ fn nullable_side_filter_stays_above_left_join_in_sql() {
     // equality, so it is stated once.
     let sql =
         optimized_join_sql("SELECT l.a, r.a FROM t l LEFT JOIN t r ON l.a = r.b WHERE r.b = 1");
-    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."a" FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" WHERE "r"."b" = CAST($1 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "l"."a", "r"."a" FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" WHERE "r"."b" = $1::int"#);
 }
 
 #[test]
@@ -1726,7 +1726,7 @@ fn a_join_pair_follows_an_operand_carrier_in_sql() {
     // The SQL counterpart of `a_join_pair_and_an_operand_carrier_share_a_join`:
     // the pair in the ON must name the carrier's alias, not the scan it wraps.
     let sql = optimized_join_sql(r#"SELECT * FROM t JOIN t3 ON true WHERE t.a = t3.b AND t.b = 1"#);
-    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT * FROM "t" WHERE "t"."b" = CAST($1 AS int)) as "t" INNER JOIN "t3" ON "t"."a" = "t3"."b" WHERE CAST($2 AS bool)"#);
+    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT * FROM "t" WHERE "t"."b" = $1::int) as "t" INNER JOIN "t3" ON "t"."a" = "t3"."b" WHERE $2::bool"#);
 }
 
 #[test]
@@ -1749,8 +1749,8 @@ fn unique_subquery_output_still_descends_through_a_carrier() {
         rendered.push_str(&format!("{}\n", join_sql(&ex_plan, top, snapshot)));
     }
     assert_snapshot!(rendered, @r#"
-    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "y", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."col_0" = CAST($2 AS int)) as "t3" ON CAST($3 AS bool)
-    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "y", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."col_0" = CAST($2 AS int)) as "t3" ON CAST($3 AS bool)
+    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "y", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = $1::int) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."col_0" = $2::int) as "t3" ON $3::bool
+    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "y", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = $1::int) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."col_0" = $2::int) as "t3" ON $3::bool
     "#);
 }
 
@@ -1790,25 +1790,25 @@ fn duplicate_names_carry_only_when_the_filter_column_is_unique() {
 
     assert_snapshot!(rendered, @r#"
     SELECT * FROM t l LEFT JOIN t r ON l.a = r.b JOIN t3 ON r.b = t3.b AND t3.b = 1
-    SELECT * FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = CAST($2 AS int)
+    SELECT * FROM "t" as "l" LEFT JOIN "t" as "r" ON "l"."a" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = $1::int) as "t3" ON "r"."b" = $2::int
 
     SELECT * FROM (SELECT DISTINCT a AS x, b AS x, col_0 AS c FROM t) s JOIN t3 ON s.c = t3.b AND t3.b = 1
-    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($2 AS int)) as "t3" ON CAST($3 AS bool)
+    SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = $1::int) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = $2::int) as "t3" ON $3::bool
 
     SELECT * FROM (SELECT DISTINCT a AS x, b AS x, col_0 AS c FROM t) s LEFT JOIN t r ON s.c = r.b JOIN t3 ON r.b = t3.b AND t3.b = 1
-    SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" LEFT JOIN "t" as "r" ON "s"."c" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = CAST($2 AS int)
+    SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" LEFT JOIN "t" as "r" ON "s"."c" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = $1::int) as "t3" ON "r"."b" = $2::int
 
     SELECT * FROM t l LEFT JOIN (SELECT DISTINCT a AS x, b AS x, col_0 AS c FROM t) s ON l.col_0 = s.c JOIN t3 ON s.c = t3.b AND t3.b = 1
-    SELECT * FROM "t" as "l" LEFT JOIN (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" ON "l"."col_0" = "s"."c" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "s"."c" = CAST($2 AS int)
+    SELECT * FROM "t" as "l" LEFT JOIN (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" ON "l"."col_0" = "s"."c" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = $1::int) as "t3" ON "s"."c" = $2::int
 
     SELECT * FROM (SELECT a AS x, b AS x, col_0 AS c FROM t LIMIT 10) s JOIN t3 ON s.c = t3.b AND t3.b = 1
-    SELECT * FROM (SELECT * FROM (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($2 AS int)) as "t3" ON CAST($3 AS bool)
+    SELECT * FROM (SELECT * FROM (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" WHERE "s"."c" = $1::int) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = $2::int) as "t3" ON $3::bool
 
     SELECT * FROM (SELECT a AS x, b AS x, col_0 AS c FROM t LIMIT 10) s LEFT JOIN t r ON s.c = r.b JOIN t3 ON r.b = t3.b AND t3.b = 1
-    SELECT * FROM (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" LEFT JOIN "t" as "r" ON "s"."c" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."b" = CAST($2 AS int)
+    SELECT * FROM (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" LEFT JOIN "t" as "r" ON "s"."c" = "r"."b" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = $1::int) as "t3" ON "r"."b" = $2::int
 
     SELECT * FROM t l LEFT JOIN (SELECT a AS x, b AS x, col_0 AS c FROM t LIMIT 10) s ON l.col_0 = s.c JOIN t3 ON s.c = t3.b AND t3.b = 1
-    SELECT * FROM "t" as "l" LEFT JOIN (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" ON "l"."col_0" = "s"."c" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "s"."c" = CAST($2 AS int)
+    SELECT * FROM "t" as "l" LEFT JOIN (SELECT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t" LIMIT 10) as "s" ON "l"."col_0" = "s"."c" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = $1::int) as "t3" ON "s"."c" = $2::int
     "#);
 }
 
@@ -1823,7 +1823,7 @@ fn duplicate_names_with_unique_filter_column_render_a_star_carrier() {
         "SELECT * FROM (SELECT DISTINCT a AS x, b AS x, col_0 AS c FROM t) s \
          JOIN t3 ON s.c = t3.b AND t3.b = 1",
     );
-    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = CAST($1 AS int)) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($2 AS int)) as "t3" ON CAST($3 AS bool)"#);
+    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT * FROM (SELECT DISTINCT "t"."a" as "x", "t"."b" as "x", "t"."col_0" as "c" FROM "t") as "s" WHERE "s"."c" = $1::int) as "s" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = $2::int) as "t3" ON $3::bool"#);
 }
 
 #[test]
@@ -2023,7 +2023,7 @@ fn a_carrier_is_not_built_over_a_join_with_unique_names() {
     let sql = optimized_join_sql(
         "SELECT l.* FROM u l LEFT JOIN v r ON l.x = r.y JOIN t3 ON r.y = t3.b AND t3.b = 1",
     );
-    assert_snapshot!(sql, @r#"SELECT "l".* FROM "u" as "l" LEFT JOIN "v" as "r" ON "l"."x" = "r"."y" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = CAST($1 AS int)) as "t3" ON "r"."y" = CAST($2 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "l".* FROM "u" as "l" LEFT JOIN "v" as "r" ON "l"."x" = "r"."y" INNER JOIN (SELECT * FROM "t3" WHERE "t3"."b" = $1::int) as "t3" ON "r"."y" = $2::int"#);
 }
 
 #[test]

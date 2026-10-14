@@ -32,10 +32,8 @@ pub enum SyntaxData {
     Alias(SmolStr),
     /// "*" or "table.*"
     Asterisk(Option<SmolStr>),
-    /// "as type"
+    /// "::type"
     CastType(SmolStr),
-    /// "cast"
-    Cast,
     // "case"
     Case,
     // "escape"
@@ -209,14 +207,6 @@ impl SyntaxNode {
     fn new_cast_type(name: SmolStr) -> Self {
         SyntaxNode {
             data: SyntaxData::CastType(name),
-            left: None,
-            right: Vec::new(),
-        }
-    }
-
-    fn new_cast() -> Self {
-        SyntaxNode {
-            data: SyntaxData::Cast,
             left: None,
             right: Vec::new(),
         }
@@ -1362,7 +1352,7 @@ impl<'p> SyntaxPlan<'p> {
                 for column in columns {
                     let column = column.expect("motion column");
                     let null_expr = if let Some(col_type) = column.r#type.get() {
-                        format_smolstr!("cast(null as {col_type})")
+                        format_smolstr!("null::{col_type}")
                     } else {
                         SmolStr::from("null")
                     };
@@ -1877,7 +1867,7 @@ impl<'p> SyntaxPlan<'p> {
         };
         let child = *child;
         let indexes = indexes.clone();
-        // We must wrap an index expression with an explicit cast, since Tarantool arrays store any.
+        // We must cast an index expression explicitly, since Tarantool arrays store any.
         let cast_type = (*cast_to.get())
             .as_ref()
             .and_then(|ty| CastType::try_from(ty).ok());
@@ -1890,27 +1880,19 @@ impl<'p> SyntaxPlan<'p> {
         let child_sn_id = self.pop_expr_from_stack(child, id);
 
         let arena = &mut self.nodes;
-        // Render the whole chain `child[idx0][idx1]...` wrapped once in the cast.
-        let mut index_children = Vec::with_capacity(index_sn_ids.len() * 3 + 1);
+        // Render the whole chain `child[idx0][idx1]...` followed once by the cast.
+        let mut index_children = Vec::with_capacity(index_sn_ids.len() * 3 + 2);
         index_children.push(child_sn_id);
         for idx_sn_id in index_sn_ids {
             index_children.push(arena.push_sn_non_plan(SyntaxNode::new_lbracket()));
             index_children.push(idx_sn_id);
             index_children.push(arena.push_sn_non_plan(SyntaxNode::new_rbracket()));
         }
-        let sn = match cast_type {
-            Some(to) => {
-                let to_alias = to.to_smolstr();
-                let mut children = Vec::with_capacity(index_children.len() + 3);
-                children.push(arena.push_sn_non_plan(SyntaxNode::new_lparen()));
-                children.extend(index_children);
-                children.push(arena.push_sn_non_plan(SyntaxNode::new_cast_type(to_alias)));
-                children.push(arena.push_sn_non_plan(SyntaxNode::new_rparen()));
-                let cast_sn_id = arena.push_sn_non_plan(SyntaxNode::new_cast());
-                SyntaxNode::new_pointer(id, Some(cast_sn_id), children)
-            }
-            None => SyntaxNode::new_pointer(id, None, index_children),
-        };
+        if let Some(to) = cast_type {
+            let to = to.to_smolstr();
+            index_children.push(arena.push_sn_non_plan(SyntaxNode::new_cast_type(to)));
+        }
+        let sn = SyntaxNode::new_pointer(id, None, index_children);
         arena.push_sn_plan(sn);
     }
 
@@ -1925,7 +1907,7 @@ impl<'p> SyntaxPlan<'p> {
         let child_sn_id = self.pop_expr_from_stack(child_plan_id, id);
         let arena = &mut self.nodes;
 
-        // An array cast has no Tarantool `CAST(x AS int[])` form, so emit the eager
+        // An array cast has no Tarantool `x::int[]` form, so emit the eager
         // `_pico_array_cast(child, 'marker')` builtin function instead.
         if let CastType::Array(nested) = to {
             let name_sn_id = arena.push_sn_non_plan(SyntaxNode::new_inline("\"_pico_array_cast\""));
@@ -1942,15 +1924,11 @@ impl<'p> SyntaxPlan<'p> {
             return;
         }
 
-        let to_alias = to.to_smolstr();
-        let children = vec![
-            arena.push_sn_non_plan(SyntaxNode::new_lparen()),
-            child_sn_id,
-            arena.push_sn_non_plan(SyntaxNode::new_cast_type(to_alias)),
-            arena.push_sn_non_plan(SyntaxNode::new_rparen()),
-        ];
-        let cast_sn_id = arena.push_sn_non_plan(SyntaxNode::new_cast());
-        let sn = SyntaxNode::new_pointer(id, Some(cast_sn_id), children);
+        // `pop_expr_from_stack` puts any child but a primary expression in
+        // parentheses, so `::` applies to the whole child.
+        let to = to.to_smolstr();
+        let cast_type_sn_id = arena.push_sn_non_plan(SyntaxNode::new_cast_type(to));
+        let sn = SyntaxNode::new_pointer(id, None, vec![child_sn_id, cast_type_sn_id]);
         arena.push_sn_plan(sn);
     }
 

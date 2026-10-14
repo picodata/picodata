@@ -35,7 +35,7 @@ explain (raw) SELECT a FROM t INDEXED BY aaa WHERE true;
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "t"."a" FROM "t" INDEXED BY "aaa" WHERE CAST(true AS bool)
+SELECT "t"."a" FROM "t" INDEXED BY "aaa" WHERE true::bool
 ''
 plan:
     [0] SCAN TABLE t USING COVERING INDEX aaa (~1048576 rows)
@@ -48,7 +48,7 @@ explain (raw) SELECT a FROM t WHERE true;
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "t"."a" FROM "t" WHERE CAST(true AS bool)
+SELECT "t"."a" FROM "t" WHERE true::bool
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
@@ -61,7 +61,7 @@ explain (raw) SELECT a FROM t INDEXED BY aaa WHERE a > 10 UNION SELECT d from s 
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "t"."a" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > CAST(10 AS int) UNION SELECT "s"."d" FROM "s" INDEXED BY "bbb" WHERE "s"."f" < CAST(-5 AS int)
+SELECT "t"."a" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > 10::int UNION SELECT "s"."d" FROM "s" INDEXED BY "bbb" WHERE "s"."f" < (-5)::int
 ''
 plan:
     [1] SEARCH TABLE t USING COVERING INDEX aaa (a>?) (~262144 rows)
@@ -76,7 +76,7 @@ explain (raw) SELECT * FROM (SELECT * FROM t INDEXED BY aaa WHERE a > 10) JOIN (
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "s"."d" FROM "s" INDEXED BY "bbb" WHERE "s"."f" < CAST(-5 AS int)
+SELECT "s"."d" FROM "s" INDEXED BY "bbb" WHERE "s"."f" < (-5)::int
 ''
 plan:
     [0] SCAN TABLE s USING COVERING INDEX bbb (~983040 rows)
@@ -85,7 +85,7 @@ plan:
 │ 2. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT * FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > CAST(10 AS int) ) as "unnamed_subquery" INNER JOIN ( SELECT "COL_0" FROM "_tmp_15051660749727515452_0136" ) as "unnamed_subquery_1" ON CAST(true AS bool)
+SELECT * FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > 10::int ) as "unnamed_subquery" INNER JOIN ( SELECT "COL_0" FROM "_tmp_15051660749727515452_0136" ) as "unnamed_subquery_1" ON true::bool
 ''
 plan:
     [0] SEARCH TABLE t USING COVERING INDEX aaa (a>?) (~262144 rows)

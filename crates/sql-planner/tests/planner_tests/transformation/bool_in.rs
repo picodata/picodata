@@ -18,7 +18,7 @@ fn bool_in1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int) or "t"."a" = CAST($2 AS int) or "t"."a" = CAST($3 AS int)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = $1::int or "t"."a" = $2::int or "t"."a" = $3::int"#
     );
 }
 
@@ -33,7 +33,7 @@ fn bool_in3() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a" = CAST($1 AS int) or "t"."a" = CAST($2 AS int)) and "t"."b" = CAST($3 AS int)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a" = $1::int or "t"."a" = $2::int) and "t"."b" = $3::int"#
     );
 }
 
@@ -54,7 +54,7 @@ fn bool_in4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE CAST (("t"."a" = CAST($1 AS int) or "t"."a" = CAST($2 AS int)) as int) - CAST($3 AS int) = CAST($4 AS int)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a" = $1::int or "t"."a" = $2::int)::int - $3::int = $4::int"#
     );
 }
 
@@ -70,6 +70,6 @@ fn bool_in5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE TRIM (CAST (("t"."a" = CAST($1 AS int) or "t"."a" = CAST($2 AS int)) as text)) < CAST($3 AS text)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE TRIM (("t"."a" = $1::int or "t"."a" = $2::int)::text) < $3::text"#
     );
 }

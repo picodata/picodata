@@ -65,7 +65,7 @@ fn dnf1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int) and "t"."b" = CAST($2 AS int) and "t"."c" = CAST($3 AS int) or "t"."a" = CAST($4 AS int) and "t"."c" = CAST($3 AS int)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = $1::int and "t"."b" = $2::int and "t"."c" = $3::int or "t"."a" = $4::int and "t"."c" = $3::int"#
     );
 }
 
@@ -86,7 +86,7 @@ fn dnf2() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int) and "t"."a" = CAST($2 AS int) or "t"."c" = CAST($3 AS int) and "t"."a" = CAST($2 AS int) or "t"."a" = CAST($1 AS int) and "t"."b" = CAST($4 AS int) or "t"."c" = CAST($3 AS int) and "t"."b" = CAST($4 AS int)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = $1::int and "t"."a" = $2::int or "t"."c" = $3::int and "t"."a" = $2::int or "t"."a" = $1::int and "t"."b" = $4::int or "t"."c" = $3::int and "t"."b" = $4::int"#
     );
 }
 
@@ -102,7 +102,7 @@ fn dnf3() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int) and $2 or "t"."b" = CAST($3 AS int) and $2"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = $1::int and $2 or "t"."b" = $3::int and $2"#
     );
 }
 
@@ -118,7 +118,7 @@ fn dnf4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int) and CAST($2 AS bool) or "t"."b" = CAST($3 AS int) and CAST($2 AS bool)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = $1::int and $2::bool or "t"."b" = $3::int and $2::bool"#
     );
 }
 
@@ -134,7 +134,7 @@ fn dnf5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int) and CAST($2 AS bool) or "t"."b" = CAST($3 AS int) and CAST($2 AS bool)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = $1::int and $2::bool or "t"."b" = $3::int and $2::bool"#
     );
 }
 
@@ -150,6 +150,6 @@ fn dnf6() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int) and "t"."c" = CAST($2 AS int) or "t"."b" = CAST($3 AS int)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = $1::int and "t"."c" = $2::int or "t"."b" = $3::int"#
     );
 }

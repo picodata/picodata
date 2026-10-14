@@ -69,7 +69,7 @@ EXPLAIN (RAW) SELECT a FROM t WHERE bucket_id = 1934;
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "t"."a" FROM "t" WHERE "t"."bucket_id" = CAST(1934 AS int)
+SELECT "t"."a" FROM "t" WHERE "t"."bucket_id" = 1934::int
 ''
 plan:
     [0] SEARCH TABLE t USING COVERING INDEX bucket_id (bucket_id=?) (~10 rows)

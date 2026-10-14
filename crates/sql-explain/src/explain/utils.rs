@@ -22,10 +22,39 @@ pub fn format_sql(explain: &str, params: &[impl ToString], should_fmt: bool) -> 
         fmt_options.inline = false;
     }
 
-    let params = params.iter().map(|p| p.to_string()).collect();
+    // A value replaces `$N` as text, and `::` binds tighter than the
+    // unary minus: `$1::int` with -1 reads `(-1)::int`, not `-(1::int)`.
+    let mut params: Vec<String> = params.iter().map(ToString::to_string).collect();
+    parenthesize_cast_negatives(sql, &mut params);
     let indexed_params = sqlformat::QueryParams::Indexed(params);
 
     sqlformat::format(sql, &indexed_params, &fmt_options)
+}
+
+/// Puts the negative values of the placeholders `$N` that `::` follows
+/// in `sql` in parentheses. Quoted identifiers and string literals are skipped.
+fn parenthesize_cast_negatives(sql: &str, params: &mut [String]) {
+    let mut rest = sql;
+    while let Some(at) = rest.find(['\'', '"', '$']) {
+        let (mark, tail) = rest[at..].split_at(1);
+        rest = if mark == "$" {
+            let end = tail
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(tail.len());
+            let (number, after) = tail.split_at(end);
+            let param = number
+                .parse::<usize>()
+                .ok()
+                .and_then(|n| params.get_mut(n.checked_sub(1)?));
+            if let Some(p) = param.filter(|p| after.starts_with("::") && p.starts_with('-')) {
+                *p = format!("({p})");
+            }
+            after
+        } else {
+            // A doubled quote inside a literal closes and reopens it.
+            tail.split_once(mark).map_or("", |(_, after)| after)
+        };
+    }
 }
 
 pub const INDENT: &str = "  ";

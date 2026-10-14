@@ -6,7 +6,7 @@ fn like1_test() {
     let info = get_broadcast(r#"SELECT a || 'a' like 'ab' FROM t1"#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST ((CAST (\"t1\".\"a\" as text) || CAST($1 AS text)) as text) LIKE CAST($2 AS text) ESCAPE CAST($3 AS text) as \"col_1\" FROM \"t1\""
+      - "SELECT (\"t1\".\"a\"::text || $1::text)::text LIKE $2::text ESCAPE $3::text as \"col_1\" FROM \"t1\""
       - - String: a
         - String: ab
         - String: "\\"
@@ -18,7 +18,7 @@ fn like2_test() {
     let info = get_broadcast(r#"SELECT a like a escape 'x' FROM t1"#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (\"t1\".\"a\" as text) LIKE CAST (\"t1\".\"a\" as text) ESCAPE CAST($1 AS text) as \"col_1\" FROM \"t1\""
+      - "SELECT \"t1\".\"a\"::text LIKE \"t1\".\"a\"::text ESCAPE $1::text as \"col_1\" FROM \"t1\""
       - - String: x
     "#);
 }
@@ -28,7 +28,7 @@ fn ilike_test() {
     let info = get_broadcast(r#"SELECT a ilike a escape 'x' FROM t1"#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (lower (CAST (\"t1\".\"a\" as text)) as text) LIKE CAST (lower (CAST (\"t1\".\"a\" as text)) as text) ESCAPE CAST($1 AS text) as \"col_1\" FROM \"t1\""
+      - "SELECT lower (\"t1\".\"a\"::text)::text LIKE lower (\"t1\".\"a\"::text)::text ESCAPE $1::text as \"col_1\" FROM \"t1\""
       - - String: x
     "#);
 }

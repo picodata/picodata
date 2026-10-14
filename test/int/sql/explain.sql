@@ -389,7 +389,7 @@ EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1;
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int)
+SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = 1::int
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
@@ -403,7 +403,7 @@ EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 ORDER BY 1 LIMIT 1;
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) ) ORDER BY 1 LIMIT 1
+SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = 1::int ) ORDER BY 1 LIMIT 1
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
@@ -417,7 +417,7 @@ EXPLAIN (RAW) SELECT * from testing_space WHERE "id" = 1 GROUP BY 1, 2, 3 ORDER 
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(1 AS int) GROUP BY "testing_space"."id", "testing_space"."name", "testing_space"."product_units" ) ORDER BY 1 LIMIT 1
+SELECT "id", "name", "product_units" FROM ( SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = 1::int GROUP BY "testing_space"."id", "testing_space"."name", "testing_space"."product_units" ) ORDER BY 1 LIMIT 1
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
@@ -472,7 +472,7 @@ FROM
           "COL_3"
         FROM
           "_tmp_4030661933660288186_0136"
-      ) as "ts2" ON CAST(true AS bool)
+      ) as "ts2" ON true::bool
     GROUP BY
       "testing_space"."id",
       "testing_space"."name",
@@ -550,7 +550,7 @@ EXPLAIN (RAW) INSERT INTO testing_space VALUES (1, '1', 1);
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES ( CAST(1 AS int), CAST('1' AS text), CAST(1 AS int) )
+VALUES (1::int, '1'::text, 1::int)
 ''
 plan:
     [0] TRIVIAL
@@ -563,7 +563,7 @@ EXPLAIN (RAW) DELETE FROM testing_space WHERE "product_units" < 10 AND "name" = 
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" < CAST(10 AS int) and "testing_space"."name" = CAST('beluga' AS text)
+SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" < 10::int and "testing_space"."name" = 'beluga'::text
 ''
 plan:
     [0] SCAN TABLE testing_space (~262144 rows)
@@ -576,7 +576,7 @@ EXPLAIN (RAW) DELETE FROM testing_space WHERE "name" IN (SELECT "name" FROM test
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space_hist"."name" FROM "testing_space_hist" WHERE "testing_space_hist"."product_units" > CAST(10 AS int)
+SELECT "testing_space_hist"."name" FROM "testing_space_hist" WHERE "testing_space_hist"."product_units" > 10::int
 ''
 plan:
     [0] SCAN TABLE testing_space_hist (~983040 rows)
@@ -606,7 +606,7 @@ EXPLAIN (RAW) DELETE FROM testing_space WHERE id IN ( SELECT id FROM testing_spa
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space_hist"."id" as "gr_expr_1", sum ( CAST ("testing_space_hist"."product_units" as int) ) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
+SELECT "testing_space_hist"."id" as "gr_expr_1", sum ("testing_space_hist"."product_units"::int) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
 ''
 plan:
     [0] SCAN TABLE testing_space_hist (~1048576 rows)
@@ -615,7 +615,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_1879919115115793640_0136" ) GROUP BY "COL_0" HAVING sum (CAST ("COL_1" as decimal)) = CAST(0 AS int)
+SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_1879919115115793640_0136" ) GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
 ''
 plan:
     [0] SCAN TABLE _tmp_1879919115115793640_0136 (~1048576 rows)
@@ -640,7 +640,7 @@ EXPLAIN (RAW) UPDATE testing_space SET product_units = 0 WHERE id IN ( SELECT id
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT CAST(0 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "testing_space_hist"."id" FROM "testing_space_hist" WHERE "testing_space_hist"."product_units" < CAST(0 AS int) )
+SELECT 0::int as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "testing_space_hist"."id" FROM "testing_space_hist" WHERE "testing_space_hist"."product_units" < 0::int )
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows)
@@ -655,7 +655,7 @@ EXPLAIN (RAW) UPDATE testing_space SET product_units = -1 WHERE id IN ( SELECT i
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space_hist"."id" as "gr_expr_1", sum ( CAST ("testing_space_hist"."product_units" as int) ) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
+SELECT "testing_space_hist"."id" as "gr_expr_1", sum ("testing_space_hist"."product_units"::int) as "sum_1" FROM "testing_space_hist" GROUP BY "testing_space_hist"."id"
 ''
 plan:
     [0] SCAN TABLE testing_space_hist (~1048576 rows)
@@ -664,7 +664,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_8118577962894911439_1136" ) GROUP BY "COL_0" HAVING sum (CAST ("COL_1" as decimal)) = CAST(0 AS int)
+SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_8118577962894911439_1136" ) GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
 ''
 plan:
     [0] SCAN TABLE _tmp_8118577962894911439_1136 (~1048576 rows)
@@ -674,7 +674,7 @@ plan:
 │ 3. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT CAST(-1 AS int) as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "_tmp_13929232135089140622_2136" )
+SELECT (-1)::int as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "_tmp_13929232135089140622_2136" )
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows)
@@ -690,7 +690,7 @@ EXPLAIN (RAW) INSERT INTO testing_space SELECT * FROM testing_space WHERE id = 4
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = CAST(42 AS int)
+SELECT "testing_space"."id", "testing_space"."name", "testing_space"."product_units" FROM "testing_space" WHERE "testing_space"."id" = 42::int
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
@@ -711,7 +711,7 @@ SELECT
 FROM
   "testing_space"
 WHERE
-  "testing_space"."id" = CAST(42 AS int)
+  "testing_space"."id" = 42::int
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
@@ -724,7 +724,7 @@ EXPLAIN (RAW) INSERT INTO testing_space VALUES (42, 'beluga', (SELECT 1000));
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES ( CAST(42 AS int), CAST('beluga' AS text), ( SELECT CAST(1000 AS int) as "col_1") )
+VALUES (42::int, 'beluga'::text, ( SELECT 1000::int as "col_1"))
 ''
 plan:
     [0] EXECUTE SCALAR SUBQUERY 1
@@ -783,7 +783,7 @@ EXPLAIN (RAW) INSERT INTO testing_space SELECT 1, '1', 1;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1", CAST('1' AS text) as "col_2", CAST(1 AS int) as "col_3"
+SELECT 1::int as "col_1", '1'::text as "col_2", 1::int as "col_3"
 ''
 plan:
     [0] TRIVIAL
@@ -796,7 +796,7 @@ EXPLAIN (RAW) SELECT * FROM testing_space_global WHERE (product_units > 10 AND n
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global" WHERE "testing_space_global"."product_units" > CAST(10 AS int) and CAST ("testing_space_global"."name" as text) LIKE CAST('sosisky_' AS text) ESCAPE CAST('\' AS text) ) ORDER BY "product_units" DESC LIMIT 10
+SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global" WHERE "testing_space_global"."product_units" > 10::int and "testing_space_global"."name"::text LIKE 'sosisky_'::text ESCAPE '\'::text ) ORDER BY "product_units" DESC LIMIT 10
 ''
 plan:
     [0] SCAN TABLE testing_space_global (~917504 rows)
@@ -810,7 +810,7 @@ EXPLAIN (RAW) SELECT g.name, COUNT(*) AS global_rows, SUM(g.product_units) AS gl
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "g"."name" as "gr_expr_1", count (*) as "count_1", sum (CAST ("l"."product_units" as int)) as "sum_3", sum (CAST ("g"."product_units" as int)) as "sum_2" FROM "testing_space_global" as "g" INNER JOIN "testing_space" as "l" ON "g"."name" = "l"."name" WHERE "g"."product_units" > CAST(5 AS int) GROUP BY "g"."name"
+SELECT "g"."name" as "gr_expr_1", count (*) as "count_1", sum ("l"."product_units"::int) as "sum_3", sum ("g"."product_units"::int) as "sum_2" FROM "testing_space_global" as "g" INNER JOIN "testing_space" as "l" ON "g"."name" = "l"."name" WHERE "g"."product_units" > 5::int GROUP BY "g"."name"
 ''
 plan:
     [0] SCAN TABLE testing_space_global AS g (~983040 rows)
@@ -821,7 +821,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", CAST (sum (CAST ("COL_1" as int)) as int) as "global_rows", sum (CAST ("COL_3" as decimal)) as "global_units", sum (CAST ("COL_2" as decimal)) as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_11484464996825375076_0136" ) GROUP BY "COL_0" HAVING sum (CAST ("COL_2" as decimal)) > sum (CAST ("COL_3" as decimal)) ) ORDER BY "global_units" DESC LIMIT 10
+SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1"::int)::int as "global_rows", sum ("COL_3"::decimal) as "global_units", sum ("COL_2"::decimal) as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_11484464996825375076_0136" ) GROUP BY "COL_0" HAVING sum ("COL_2"::decimal) > sum ("COL_3"::decimal) ) ORDER BY "global_units" DESC LIMIT 10
 ''
 plan:
     [0] SCAN TABLE _tmp_11484464996825375076_0136 (~1048576 rows)
@@ -841,8 +841,8 @@ SELECT
 FROM
   "testing_space_global"
 WHERE
-  "testing_space_global"."id" = CAST(15 AS int)
-  or "testing_space_global"."product_units" < CAST(10 AS int)
+  "testing_space_global"."id" = 15::int
+  or "testing_space_global"."product_units" < 10::int
 ''
 plan:
     [0] SCAN TABLE testing_space_global (~983040 rows)
@@ -875,7 +875,7 @@ plan:
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES ( ( SELECT CAST(1 AS int) as "col_1"), ( SELECT "COL_0" FROM "_tmp_1700972641187614971_1136" ), CAST(42 AS int) + CAST(67 AS int) )
+VALUES ( ( SELECT 1::int as "col_1"), ( SELECT "COL_0" FROM "_tmp_1700972641187614971_1136" ), 42::int + 67::int )
 ''
 plan:
     [0] EXECUTE SCALAR SUBQUERY 1
@@ -890,7 +890,7 @@ EXPLAIN (RAW) UPDATE testing_space_global SET name = upper(name);
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT upper (CAST ("testing_space_global"."name" as text)) as "col_0", "testing_space_global"."id" as "col_1" FROM "testing_space_global"
+SELECT upper ("testing_space_global"."name"::text) as "col_0", "testing_space_global"."id" as "col_1" FROM "testing_space_global"
 ''
 plan:
     [0] SCAN TABLE testing_space_global (~1048576 rows)
@@ -933,7 +933,7 @@ SELECT
 FROM
   "testing_space"
 WHERE
-  "testing_space"."id" = CAST(1 AS int)
+  "testing_space"."id" = 1::int
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~1 row)
@@ -958,7 +958,7 @@ END $$;
 │ 1. Return query (CONST-FILTERED STORAGE, 1/2) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "t"."a" + CAST(1 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+SELECT "t"."a" + 1::int as "col_1" FROM "t" WHERE "t"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -967,7 +967,7 @@ plan:
 │ 2. Return query (CONST-FILTERED STORAGE, 1/2) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+SELECT "t"."b" + 2::int as "col_1" FROM "t" WHERE "t"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -984,7 +984,7 @@ END $$;
 │ 1. Return query (ROUTER) │
 ╰──────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1", CAST(2 AS int) as "col_2" UNION ALL SELECT CAST(1 AS int) as "col_1", CAST(2 AS int) as "col_2"
+SELECT 1::int as "col_1", 2::int as "col_2" UNION ALL SELECT 1::int as "col_1", 2::int as "col_2"
 ''
 plan:
     [0] COMPOUND SUBQUERIES 1 AND 2 (UNION ALL)
@@ -1002,7 +1002,7 @@ END $$;
 │ 1. Return query (ROUTER) │
 ╰──────────────────────────╯
 ''
-VALUES (CAST(1 AS int), CAST(2 AS int)), (CAST(2 AS int), CAST(3 AS int))
+VALUES (1::int, 2::int), (2::int, 3::int)
 ''
 plan:
     [0] TRIVIAL
@@ -1011,7 +1011,7 @@ plan:
 │ 2. Return query (ROUTER) │
 ╰──────────────────────────╯
 ''
-SELECT CAST(3 AS int) as "col_1", CAST(4 AS int) as "col_2"
+SELECT 3::int as "col_1", 4::int as "col_2"
 ''
 plan:
     [0] TRIVIAL
@@ -1031,7 +1031,7 @@ END $$;
 │ 1. Return query (CONST-FILTERED STORAGE, 1/2) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT CAST(2 AS int) as "col_1"
+SELECT 2::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -1040,7 +1040,7 @@ plan:
 │ 2. Return query (CONST-FILTERED STORAGE, 1/2) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "t"."b" + CAST(2 AS int) as "col_1" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+SELECT "t"."b" + 2::int as "col_1" FROM "t" WHERE "t"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1049,7 +1049,7 @@ plan:
 │ 3. Return query (CONST-FILTERED STORAGE, 1/2) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT CAST(4 AS int) as "col_1"
+SELECT 4::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -1069,7 +1069,7 @@ END $$;
 │ 1. Return query (CONST-FILTERED STORAGE, 1/2) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(1 AS int)
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1078,7 +1078,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
+UPDATE "t" SET "a" = "t"."a" + 1::int WHERE "t"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1087,7 +1087,7 @@ plan:
 │ 3. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(1 AS int)
+UPDATE "t" SET "a" = "t"."a" + 1::int WHERE "t"."pk" = 1::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1107,7 +1107,7 @@ END $$;
 │ 1. Return query (CONST-FILTERED STORAGE, 1/2) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = CAST(2 AS int)
+SELECT "t"."pk", "t"."a", "t"."b" FROM "t" WHERE "t"."pk" = 2::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1116,7 +1116,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(2 AS int)
+UPDATE "t" SET "a" = "t"."a" + 1::int WHERE "t"."pk" = 2::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1125,7 +1125,7 @@ plan:
 │ 3. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(2 AS int)
+UPDATE "t" SET "a" = "t"."a" * 2::int WHERE "t"."pk" = 2::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1143,7 +1143,7 @@ END $$;
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-UPDATE "t" SET "a" = "t"."a" + CAST(1 AS int) WHERE "t"."pk" = CAST(3 AS int)
+UPDATE "t" SET "a" = "t"."a" + 1::int WHERE "t"."pk" = 3::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1152,7 +1152,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 ''
-UPDATE "t" SET "a" = "t"."a" * CAST(2 AS int) WHERE "t"."pk" = CAST(3 AS int)
+UPDATE "t" SET "a" = "t"."a" * 2::int WHERE "t"."pk" = 3::int
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (pk=?) (~1 row)
@@ -1200,7 +1200,7 @@ SELECT * FROM cte JOIN cte t2 ON true;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES (CAST(1 AS int))
+VALUES (1::int)
 ''
 plan:
     [0] TRIVIAL
@@ -1209,7 +1209,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT * FROM ( SELECT "COL_0" FROM "_tmp_13849385474960940815_0136" ) as "cte" INNER JOIN ( SELECT "COL_0" FROM "_tmp_13849385474960940815_0136" ) as "t2" ON CAST(true AS bool)
+SELECT * FROM ( SELECT "COL_0" FROM "_tmp_13849385474960940815_0136" ) as "cte" INNER JOIN ( SELECT "COL_0" FROM "_tmp_13849385474960940815_0136" ) as "t2" ON true::bool
 ''
 plan:
     [0] SCAN TABLE _tmp_13849385474960940815_0136 (~1048576 rows)

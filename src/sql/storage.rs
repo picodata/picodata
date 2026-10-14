@@ -729,7 +729,7 @@ impl Vshard for StorageRuntime {
                 //
                 // to one random replicaset. The query
                 //
-                // `SELECT "t"."a" FROM "t" UNION ALL select cast(null as int) as "b" where false`
+                // `SELECT "t"."a" FROM "t" UNION ALL select null::int as "b" where false`
                 //
                 // is executed on all remaining replicasets. The purpose of the code below is
                 // to reflect these caveats in EXPLAIN (RAW).

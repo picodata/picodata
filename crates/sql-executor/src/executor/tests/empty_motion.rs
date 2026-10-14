@@ -52,7 +52,7 @@ fn empty_motion1_test() {
     let info = info.get(0).unwrap();
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT * FROM (SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"_tmp_0_0136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = CAST($1 AS int) EXCEPT SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"_tmp_0_1136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = CAST($2 AS int)) as \"Q\""
+      - "SELECT * FROM (SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"_tmp_0_0136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = $1::int EXCEPT SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"_tmp_0_1136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = $2::int) as \"Q\""
       - - Integer: 0
         - Integer: 1
     "#);
@@ -100,7 +100,7 @@ fn empty_buckets_with_segment_motion_test() {
     let info = info.get(0).unwrap();
     assert_yaml_snapshot!(info, @r#"
     Any:
-      - "SELECT CAST($1 AS int) as \"col_1\" UNION ALL SELECT \"t5\".\"a\" FROM \"t5\" WHERE \"t5\".\"a\" = CAST($2 AS int) and \"t5\".\"a\" = CAST($3 AS int) and \"t5\".\"a\" in (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
+      - "SELECT $1::int as \"col_1\" UNION ALL SELECT \"t5\".\"a\" FROM \"t5\" WHERE \"t5\".\"a\" = $2::int and \"t5\".\"a\" = $3::int and \"t5\".\"a\" in (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
       - - Integer: 1
         - Integer: 1
         - Integer: 2

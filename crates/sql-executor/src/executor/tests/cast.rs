@@ -6,7 +6,7 @@ fn cast1_test() {
     let info = get_broadcast(r#"SELECT CAST('1' as string) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS text) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::text as \"col_1\" FROM \"t1\""
       - - String: "1"
     "#);
 }
@@ -16,7 +16,7 @@ fn cast2_test() {
     let info = get_broadcast(r#"SELECT CAST(true as bool) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS bool) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::bool as \"col_1\" FROM \"t1\""
       - - Boolean: true
     "#);
 }
@@ -26,7 +26,7 @@ fn cast3_test() {
     let info = get_broadcast(r#"SELECT CAST(false as bool) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS bool) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::bool as \"col_1\" FROM \"t1\""
       - - Boolean: false
     "#);
 }
@@ -36,7 +36,7 @@ fn cast4_test() {
     let info = get_broadcast(r#"SELECT CAST('1.0' as decimal) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS decimal) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::decimal as \"col_1\" FROM \"t1\""
       - - Decimal:
             - 1
             - - 1
@@ -50,7 +50,7 @@ fn cast5_test() {
     let info = get_broadcast(r#"SELECT CAST('1.0' as double) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS double) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::double as \"col_1\" FROM \"t1\""
       - - Double: 1
     "#);
 }
@@ -60,7 +60,7 @@ fn cast6_test() {
     let info = get_broadcast(r#"SELECT CAST('1' as int) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS int) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::int as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -70,7 +70,7 @@ fn cast7_test() {
     let info = get_broadcast(r#"SELECT CAST('1' as int) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS int) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::int as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -80,7 +80,7 @@ fn cast8_test() {
     let info = get_broadcast(r#"SELECT CAST(1 as string) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (CAST($1 AS int) as text) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::int::text as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -90,7 +90,7 @@ fn cast9_test() {
     let info = get_broadcast(r#"SELECT CAST(1 as text) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (CAST($1 AS int) as text) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::int::text as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -100,7 +100,7 @@ fn cast10_test() {
     let info = get_broadcast(r#"SELECT CAST('1' as int) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS int) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::int as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -110,7 +110,7 @@ fn cast11_test() {
     let info = get_broadcast(r#"SELECT CAST(1 as varchar(10)) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (CAST($1 AS int) as text) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::int::text as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -120,7 +120,7 @@ fn cast12_test() {
     let info = get_broadcast(r#"SELECT CAST(trim("a") as varchar(100)) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (TRIM (CAST (\"t1\".\"a\" as text)) as text) as \"col_1\" FROM \"t1\""
+      - "SELECT TRIM (\"t1\".\"a\"::text)::text as \"col_1\" FROM \"t1\""
       - []
     "#);
 }
@@ -130,7 +130,7 @@ fn pgcast1_test() {
     let info = get_broadcast(r#"SELECT true::bool FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS bool) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::bool as \"col_1\" FROM \"t1\""
       - - Boolean: true
     "#);
 }
@@ -140,7 +140,7 @@ fn pgcast2_test() {
     let info = get_broadcast(r#"SELECT false::bool FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS bool) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::bool as \"col_1\" FROM \"t1\""
       - - Boolean: false
     "#);
 }
@@ -150,7 +150,7 @@ fn pgcast3_test() {
     let info = get_broadcast(r#"SELECT '1.0'::decimal FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS decimal) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::decimal as \"col_1\" FROM \"t1\""
       - - Decimal:
             - 1
             - - 1
@@ -164,7 +164,7 @@ fn pgcast4_test() {
     let info = get_broadcast(r#"SELECT '1.0'::double FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS double) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::double as \"col_1\" FROM \"t1\""
       - - Double: 1
     "#);
 }
@@ -174,7 +174,7 @@ fn pgcast5_test() {
     let info = get_broadcast(r#"SELECT '1'::int FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS int) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::int as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -184,7 +184,7 @@ fn pgcast6_test() {
     let info = get_broadcast(r#"SELECT '1'::int FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS int) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::int as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -194,7 +194,7 @@ fn pgcast7_test() {
     let info = get_broadcast(r#"SELECT 1::string FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (CAST($1 AS int) as text) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::int::text as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -204,7 +204,7 @@ fn pgcast8_test() {
     let info = get_broadcast(r#"SELECT 1::text FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (CAST($1 AS int) as text) as \"col_1\" FROM \"t1\""
+      - "SELECT $1::int::text as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }

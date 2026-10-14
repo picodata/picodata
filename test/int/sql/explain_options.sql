@@ -63,7 +63,7 @@ buckets <= [1-3000]
 │ 2. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3", "gr_expr_4", "gr_expr_5", "gr_expr_6" FROM ( SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2", "t"."c" as "gr_expr_3", "t2"."COL_0" as "gr_expr_4", "t2"."COL_1" as "gr_expr_5", "t2"."COL_2" as "gr_expr_6" FROM "t" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_13837325007437510382_0136" ) as "t2" ON CAST(true AS bool) GROUP BY "t"."a", "t"."b", "t"."c", "t2"."COL_0", "t2"."COL_1", "t2"."COL_2" ) ORDER BY 4 LIMIT 5
+SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3", "gr_expr_4", "gr_expr_5", "gr_expr_6" FROM ( SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2", "t"."c" as "gr_expr_3", "t2"."COL_0" as "gr_expr_4", "t2"."COL_1" as "gr_expr_5", "t2"."COL_2" as "gr_expr_6" FROM "t" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_13837325007437510382_0136" ) as "t2" ON true::bool GROUP BY "t"."a", "t"."b", "t"."c", "t2"."COL_0", "t2"."COL_1", "t2"."COL_2" ) ORDER BY 4 LIMIT 5
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
@@ -241,8 +241,8 @@ SELECT
 FROM
   "t"
 WHERE
-  "t"."a" = CAST(5 AS int)
-  and "t"."c" = CAST('lol' AS text)
+  "t"."a" = 5::int
+  and "t"."c" = 'lol'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -269,14 +269,14 @@ explain (buckets, raw, fmt) update t set b = b + 1 where a = 42 and c = 'kek';
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "t"."b" + CAST(1 AS int) as "col_0",
+  "t"."b" + 1::int as "col_0",
   "t"."c" as "col_1",
   "t"."a" as "col_2"
 FROM
   "t"
 WHERE
-  "t"."a" = CAST(42 AS int)
-  and "t"."c" = CAST('kek' AS text)
+  "t"."a" = 42::int
+  and "t"."c" = 'kek'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -319,14 +319,14 @@ update t (b = col_0)
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "t"."b" + CAST(1 AS int) as "col_0",
+  "t"."b" + 1::int as "col_0",
   "t"."c" as "col_1",
   "t"."a" as "col_2"
 FROM
   "t"
 WHERE
-  "t"."a" = CAST(42 AS int)
-  and "t"."c" = CAST('kek' AS text)
+  "t"."a" = 42::int
+  and "t"."c" = 'kek'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -370,8 +370,8 @@ SELECT
 FROM
   "t"
 WHERE
-  "t"."a" = CAST(5 AS int)
-  and "t"."c" = CAST('lol' AS text)
+  "t"."a" = 5::int
+  and "t"."c" = 'lol'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -405,7 +405,7 @@ insert into t on conflict: fail
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES ( CAST(2 AS int), CAST(2 AS int), CAST('2' AS text) )
+VALUES (2::int, 2::int, '2'::text)
 ''
 plan:
     [0] TRIVIAL
@@ -800,7 +800,7 @@ explain (raw, forward) delete from t where a = 1 and c = '2' or a in (1, 2, 3);
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "t"."c" as "pk_col_0", "t"."a" as "pk_col_1" FROM "t" WHERE "t"."a" = CAST(1 AS int) and "t"."c" = CAST('2' AS text) or "t"."a" in ( CAST(1 AS int), CAST(2 AS int), CAST(3 AS int) )
+SELECT "t"."c" as "pk_col_0", "t"."a" as "pk_col_1" FROM "t" WHERE "t"."a" = 1::int and "t"."c" = '2'::text or "t"."a" in (1::int, 2::int, 3::int)
 ''
 plan:
     [0] SCAN TABLE t (~983040 rows)
@@ -826,7 +826,7 @@ explain (raw, forward) select a from t where a = 1 and c = '2' union select id::
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST(1 AS int) and "t"."c" = CAST('2' AS text) UNION SELECT CAST ("_pico_table"."id" as int) as "col_1" FROM "_pico_table"
+SELECT "t"."a" FROM "t" WHERE "t"."a" = 1::int and "t"."c" = '2'::text UNION SELECT "_pico_table"."id"::int as "col_1" FROM "_pico_table"
 ''
 plan:
     [1] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -852,7 +852,7 @@ explain (raw, forward, context) select id from _pico_table where id = 1;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "_pico_table"."id" FROM "_pico_table" WHERE "_pico_table"."id" = CAST(1 AS int)
+SELECT "_pico_table"."id" FROM "_pico_table" WHERE "_pico_table"."id" = 1::int
 ''
 plan:
     [0] SEARCH TABLE _pico_table USING PRIMARY KEY (id=?) (~1 row)
@@ -930,7 +930,7 @@ END $$;
 │ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(42 AS int)
+SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = 42::int
 ''
 plan:
     [0] SEARCH TABLE tt USING PRIMARY KEY (d=?) (~1 row)
@@ -939,7 +939,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-DELETE FROM "tt" WHERE "tt"."d" = CAST(42 AS int)
+DELETE FROM "tt" WHERE "tt"."d" = 42::int
 ''
 plan:
     [0] SEARCH TABLE tt USING PRIMARY KEY (d=?) (~1 row)
@@ -972,7 +972,7 @@ END $$;
 │ 1. Let "var_1" (CONST-FILTERED STORAGE, 1/1) │
 ╰──────────────────────────────────────────────╯
 ''
-SELECT CAST ("g"."c" as int) as "col_1" FROM "g" WHERE CAST(true AS bool)
+SELECT "g"."c"::int as "col_1" FROM "g" WHERE true::bool
 ''
 projection (g.c::text::int -> col_1)
   selection (true::bool)
@@ -982,7 +982,7 @@ projection (g.c::text::int -> col_1)
 │ 2.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(:var_1 AS int) = CAST(300 AS int) as "cond"
+SELECT :var_1::int = 300::int as "cond"
 ''
 projection (:var_1::int = 300::int -> cond)
 ''
@@ -990,7 +990,7 @@ projection (:var_1::int = 300::int -> cond)
 │ 2.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(42 AS int), 2426)
+INSERT INTO "tt" ("d", "bucket_id") VALUES (42::int, 2426)
 ''
 insert into tt on conflict: fail
   values
@@ -1000,7 +1000,7 @@ insert into tt on conflict: fail
 │ 3. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(42 AS int), 2426)
+INSERT INTO "tt" ("d", "bucket_id") VALUES (42::int, 2426)
 ''
 insert into tt on conflict: fail
   values
@@ -1040,7 +1040,7 @@ END $$;
 │ 1. Let "a1" (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────╯
 ''
-SELECT "g"."a" FROM "g" WHERE "g"."b" = CAST(2.5 AS decimal)
+SELECT "g"."a" FROM "g" WHERE "g"."b" = 2.5::decimal
 ''
 projection (g.a::int -> a)
   selection (g.b::double = 2.5::decimal)
@@ -1050,7 +1050,7 @@ projection (g.a::int -> a)
 │ 2. Let "a2" (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────╯
 ''
-SELECT "b" FROM ( SELECT "t"."b" FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('kek' AS text) ) ORDER BY 1 DESC LIMIT 1
+SELECT "b" FROM ( SELECT "t"."b" FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 'kek'::text ) ORDER BY 1 DESC LIMIT 1
 ''
 limit 1
   projection (b::double)
@@ -1073,7 +1073,7 @@ projection (g.a::int -> a)
 │ 4.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(:a2 AS double) = CAST(:a1 AS int) as "cond"
+SELECT :a2::double = :a1::int as "cond"
 ''
 projection (:a2::double = :a1::int -> cond)
 ''
@@ -1081,7 +1081,7 @@ projection (:a2::double = :a1::int -> cond)
 │ 4.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-UPDATE "t" SET "b" = CAST(5.5 AS decimal) WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('kek' AS text)
+UPDATE "t" SET "b" = 5.5::decimal WHERE "t"."a" = 42::int and "t"."c" = 'kek'::text
 ''
 update t (b = col_0)
   projection (5.5::decimal -> col_0, t.c::text -> col_1, t.a::int -> col_2)
@@ -1092,7 +1092,7 @@ update t (b = col_0)
 │ 5.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(:a1 AS int) = CAST(-1 AS int) as "cond"
+SELECT :a1::int = (-1)::int as "cond"
 ''
 projection (:a1::int = -1::int -> cond)
 ''
@@ -1100,7 +1100,7 @@ projection (:a1::int = -1::int -> cond)
 │ 5.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-INSERT INTO "t" ("a", "c", "bucket_id") VALUES (CAST(42 AS int), CAST('kek' AS text), 2873)
+INSERT INTO "t" ("a", "c", "bucket_id") VALUES (42::int, 'kek'::text, 2873)
 ''
 insert into t on conflict: fail
   values
@@ -1114,7 +1114,7 @@ insert into t on conflict: fail
 │ 1. Let "a1" (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────╯
 ''
-SELECT "g"."a" FROM "g" WHERE "g"."b" = CAST(2.5 AS decimal)
+SELECT "g"."a" FROM "g" WHERE "g"."b" = 2.5::decimal
 ''
 plan:
     [0] SCAN TABLE g (~262144 rows)
@@ -1123,7 +1123,7 @@ plan:
 │ 2. Let "a2" (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────╯
 ''
-SELECT "b" FROM ( SELECT "t"."b" FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('kek' AS text) ) ORDER BY 1 DESC LIMIT 1
+SELECT "b" FROM ( SELECT "t"."b" FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 'kek'::text ) ORDER BY 1 DESC LIMIT 1
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -1141,7 +1141,7 @@ plan:
 │ 4.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(:a2 AS double) = CAST(:a1 AS int) as "cond"
+SELECT :a2::double = :a1::int as "cond"
 ''
 plan:
     [0] TRIVIAL
@@ -1150,7 +1150,7 @@ plan:
 │ 4.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-UPDATE "t" SET "b" = CAST(5.5 AS decimal) WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('kek' AS text)
+UPDATE "t" SET "b" = 5.5::decimal WHERE "t"."a" = 42::int and "t"."c" = 'kek'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -1159,7 +1159,7 @@ plan:
 │ 5.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(:a1 AS int) = CAST(-1 AS int) as "cond"
+SELECT :a1::int = (-1)::int as "cond"
 ''
 plan:
     [0] TRIVIAL
@@ -1168,7 +1168,7 @@ plan:
 │ 5.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-INSERT INTO "t" ("a", "c", "bucket_id") VALUES (CAST(42 AS int), CAST('kek' AS text), 2873)
+INSERT INTO "t" ("a", "c", "bucket_id") VALUES (42::int, 'kek'::text, 2873)
 ''
 plan:
     [0] TRIVIAL
@@ -1214,10 +1214,10 @@ END $$;
 UPDATE
   "t"
 SET
-  "b" = CAST(2.0 AS decimal)
+  "b" = 2.0::decimal
 WHERE
-  "t"."a" = CAST(42 AS int)
-  and "t"."c" = CAST('lol' AS text)
+  "t"."a" = 42::int
+  and "t"."c" = 'lol'::text
 ''
 update t (b = col_0)
   projection (
@@ -1234,7 +1234,7 @@ update t (b = col_0)
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-DELETE FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS text)
+DELETE FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 'lol'::text
 ''
 delete from t
   projection (t.c::text -> pk_col_0, t.a::int -> pk_col_1)
@@ -1250,12 +1250,7 @@ delete from t
 INSERT INTO
   "t" ("a", "b", "c", "bucket_id")
 VALUES
-  (
-    CAST(42 AS int),
-    CAST(2.5 AS decimal),
-    CAST('lol' AS text),
-    739
-  )
+  (42::int, 2.5::decimal, 'lol'::text, 739)
 ''
 insert into t on conflict: fail
   values
@@ -1272,10 +1267,10 @@ insert into t on conflict: fail
 UPDATE
   "t"
 SET
-  "b" = CAST(2.0 AS decimal)
+  "b" = 2.0::decimal
 WHERE
-  "t"."a" = CAST(42 AS int)
-  and "t"."c" = CAST('lol' AS text)
+  "t"."a" = 42::int
+  and "t"."c" = 'lol'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -1284,7 +1279,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-DELETE FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS text)
+DELETE FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 'lol'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -1296,12 +1291,7 @@ plan:
 INSERT INTO
   "t" ("a", "b", "c", "bucket_id")
 VALUES
-  (
-    CAST(42 AS int),
-    CAST(2.5 AS decimal),
-    CAST('lol' AS text),
-    739
-  )
+  (42::int, 2.5::decimal, 'lol'::text, 739)
 ''
 plan:
     [0] TRIVIAL
@@ -1348,7 +1338,7 @@ END $$;
 │ 1. **Unused** let "var" (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 ''
 projection (1::int -> col_1)
 ''
@@ -1356,7 +1346,7 @@ projection (1::int -> col_1)
 │ 2. Let "var" (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS text)
+SELECT "t"."a" FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 'lol'::text
 ''
 projection (t.a::int -> a)
   selection ((t.a::int = 42::int and t.c::text = 'lol'::text))
@@ -1366,7 +1356,7 @@ projection (t.a::int -> a)
 │ 3. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT CAST(:var AS int) as "col_1"
+SELECT :var::int as "col_1"
 ''
 projection (:var::int -> col_1)
 ''
@@ -1374,7 +1364,7 @@ projection (:var::int -> col_1)
 │ 4. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-UPDATE "t" SET "b" = CAST(2.0 AS decimal) WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS text)
+UPDATE "t" SET "b" = 2.0::decimal WHERE "t"."a" = 42::int and "t"."c" = 'lol'::text
 ''
 update t (b = col_0)
   projection (2.0::decimal -> col_0, t.c::text -> col_1, t.a::int -> col_2)
@@ -1385,7 +1375,7 @@ update t (b = col_0)
 │ 5. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-DELETE FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS text)
+DELETE FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 'lol'::text
 ''
 delete from t
   projection (t.c::text -> pk_col_0, t.a::int -> pk_col_1)
@@ -1396,7 +1386,7 @@ delete from t
 │ 6. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES ( CAST(42 AS int), CAST(2.5 AS decimal), CAST('lol' AS text), 739 )
+INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES (42::int, 2.5::decimal, 'lol'::text, 739)
 ''
 insert into t on conflict: fail
   values
@@ -1410,7 +1400,7 @@ insert into t on conflict: fail
 │ 1. **Unused** let "var" (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -1419,7 +1409,7 @@ plan:
 │ 2. Let "var" (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS text)
+SELECT "t"."a" FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 'lol'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -1428,7 +1418,7 @@ plan:
 │ 3. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT CAST(:var AS int) as "col_1"
+SELECT :var::int as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -1437,7 +1427,7 @@ plan:
 │ 4. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-UPDATE "t" SET "b" = CAST(2.0 AS decimal) WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS text)
+UPDATE "t" SET "b" = 2.0::decimal WHERE "t"."a" = 42::int and "t"."c" = 'lol'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -1446,7 +1436,7 @@ plan:
 │ 5. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-DELETE FROM "t" WHERE "t"."a" = CAST(42 AS int) and "t"."c" = CAST('lol' AS text)
+DELETE FROM "t" WHERE "t"."a" = 42::int and "t"."c" = 'lol'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -1455,7 +1445,7 @@ plan:
 │ 6. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES ( CAST(42 AS int), CAST(2.5 AS decimal), CAST('lol' AS text), 739 )
+INSERT INTO "t" ("a", "b", "c", "bucket_id") VALUES (42::int, 2.5::decimal, 'lol'::text, 739)
 ''
 plan:
     [0] TRIVIAL
@@ -1510,7 +1500,7 @@ explain (raw, buckets) select * from t join g on t.a = g.a and g.c = 'lol';
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "t"."a", "t"."b", "t"."c", "g".* FROM "t" INNER JOIN "g" ON "t"."a" = "g"."a" and "g"."c" = CAST('lol' AS text)
+SELECT "t"."a", "t"."b", "t"."c", "g".* FROM "t" INNER JOIN "g" ON "t"."a" = "g"."a" and "g"."c" = 'lol'::text
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
@@ -1555,7 +1545,7 @@ FROM
     FROM
       "t"
       INNER JOIN "g" ON "t"."a" = "g"."a"
-      and "g"."c" = CAST('lol' AS text)
+      and "g"."c" = 'lol'::text
     GROUP BY
       "t"."a",
       "t"."b",
@@ -1661,7 +1651,7 @@ subquery $0:
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "c"."val" FROM "c" WHERE "c"."id" = CAST(5 AS int)
+SELECT "c"."val" FROM "c" WHERE "c"."id" = 5::int
 ''
 plan:
     [0] SEARCH TABLE c USING PRIMARY KEY (id=?) (~1 row)
@@ -1705,7 +1695,7 @@ end $$;
 │ 1.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(true AS bool) as "cond"
+SELECT true::bool as "cond"
 ''
 plan:
     [0] TRIVIAL
@@ -1714,7 +1704,7 @@ plan:
 │ 1.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-UPDATE "b" SET "val" = "b"."id" WHERE "b"."id" = CAST(1 AS int)
+UPDATE "b" SET "val" = "b"."id" WHERE "b"."id" = 1::int
 ''
 plan:
     [0] SEARCH TABLE b USING PRIMARY KEY (id=?) (~1 row)
@@ -1843,13 +1833,7 @@ subquery $0:
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT
-  "t"."a"
-FROM
-  "t"
-WHERE
-  "t"."a" = CAST(5 AS int)
-  and "t"."c" = CAST('lol' AS text)
+SELECT "t"."a" FROM "t" WHERE "t"."a" = 5::int and "t"."c" = 'lol'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -1920,13 +1904,7 @@ subquery $0:
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT
-  "t"."a"
-FROM
-  "t"
-WHERE
-  "t"."a" = CAST(5 AS int)
-  and "t"."c" = CAST('lol' AS text)
+SELECT "t"."a" FROM "t" WHERE "t"."a" = 5::int and "t"."c" = 'lol'::text
 ''
 plan:
     [0] SEARCH TABLE t USING PRIMARY KEY (c=? AND a=?) (~1 row)
@@ -2013,7 +1991,7 @@ FROM
         FROM
           "tt"
         WHERE
-          "tt"."d" = CAST(1 AS int)
+          "tt"."d" = 1::int
       ) as "cte1"
     UNION ALL
     SELECT
@@ -2021,7 +1999,7 @@ FROM
     FROM
       "tt"
     WHERE
-      "tt"."d" = CAST(2 AS int)
+      "tt"."d" = 2::int
   ) as "cte2"
 ''
 plan:
@@ -2090,7 +2068,7 @@ subquery $0:
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT min (CAST ("tt"."d" as int)) as "min_1" FROM "tt"
+SELECT min ("tt"."d"::int) as "min_1" FROM "tt"
 ''
 plan:
     [0] SCAN TABLE tt (~1048576 rows)
@@ -2125,11 +2103,7 @@ SELECT
 FROM
   "tt"
 WHERE
-  "tt"."d" in (
-    CAST(1 AS int),
-    CAST(2 AS int),
-    CAST(3 AS int)
-  )
+  "tt"."d" in (1::int, 2::int, 3::int)
   and "tt"."d" = (
     SELECT
       "COL_0"
@@ -2186,7 +2160,7 @@ subquery $0:
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT min (CAST ("tt"."d" as int)) as "min_1" FROM "tt"
+SELECT min ("tt"."d"::int) as "min_1" FROM "tt"
 ''
 plan:
     [0] SCAN TABLE tt (~1048576 rows)
@@ -2221,8 +2195,8 @@ SELECT
 FROM
   "tt"
 WHERE
-  "tt"."d" = CAST(1 AS int)
-  and "tt"."d" = CAST(2 AS int)
+  "tt"."d" = 1::int
+  and "tt"."d" = 2::int
   and "tt"."d" = (
     SELECT
       "COL_0"
@@ -2264,7 +2238,7 @@ projection (tt.d::int -> d)
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(1 AS int) and "tt"."d" = CAST(2 AS int)
+SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = 1::int and "tt"."d" = 2::int
 ''
 plan:
     [0] SEARCH TABLE tt USING PRIMARY KEY (d=?) (~1 row)
@@ -2295,11 +2269,7 @@ SELECT
 FROM
   "testing_space"
 WHERE
-  "testing_space"."id" in (
-    CAST(10 AS int),
-    CAST(15 AS int),
-    CAST(42 AS int)
-  )
+  "testing_space"."id" in (10::int, 15::int, 42::int)
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~3 rows)
@@ -2327,16 +2297,12 @@ EXPLAIN (RAW, FMT, BUCKETS) UPDATE testing_space SET product_units = product_uni
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "testing_space"."product_units" + CAST(10 AS int) as "col_0",
+  "testing_space"."product_units" + 10::int as "col_0",
   "testing_space"."id" as "col_1"
 FROM
   "testing_space"
 WHERE
-  "testing_space"."id" in (
-    CAST(10 AS int),
-    CAST(15 AS int),
-    CAST(42 AS int)
-  )
+  "testing_space"."id" in (10::int, 15::int, 42::int)
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~3 rows)
@@ -2359,7 +2325,7 @@ SELECT * FROM (VALUES (1)) ORDER BY 1;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES (CAST(1 AS int))
+VALUES (1::int)
 ''
 plan:
     [0] TRIVIAL
@@ -2401,7 +2367,7 @@ SELECT 'inf'::double;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT CAST(inf AS double) as "col_1"
+SELECT inf::double as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -2415,7 +2381,7 @@ SELECT 'nan'::double;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT CAST(NaN AS double) as "col_1"
+SELECT NaN::double as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -2441,29 +2407,29 @@ FROM
   "tt"
 WHERE
   "tt"."d" in (
-    CAST(1 AS int),
-    CAST(2 AS int),
-    CAST(3 AS int),
-    CAST(4 AS int),
-    CAST(5 AS int),
-    CAST(6 AS int),
-    CAST(7 AS int),
-    CAST(8 AS int),
-    CAST(9 AS int),
-    CAST(10 AS int),
-    CAST(11 AS int),
-    CAST(12 AS int),
-    CAST(13 AS int),
-    CAST(14 AS int),
-    CAST(15 AS int),
-    CAST(16 AS int),
-    CAST(17 AS int),
-    CAST(18 AS int),
-    CAST(19 AS int),
-    CAST(20 AS int),
-    CAST(21 AS int),
-    CAST(22 AS int),
-    CAST(23 AS int)
+    1::int,
+    2::int,
+    3::int,
+    4::int,
+    5::int,
+    6::int,
+    7::int,
+    8::int,
+    9::int,
+    10::int,
+    11::int,
+    12::int,
+    13::int,
+    14::int,
+    15::int,
+    16::int,
+    17::int,
+    18::int,
+    19::int,
+    20::int,
+    21::int,
+    22::int,
+    23::int
   )
 ''
 plan:
@@ -2509,29 +2475,29 @@ FROM
   "tt"
 WHERE
   "tt"."d" in (
-    CAST(1 AS int),
-    CAST(2 AS int),
-    CAST(3 AS int),
-    CAST(4 AS int),
-    CAST(5 AS int),
-    CAST(6 AS int),
-    CAST(7 AS int),
-    CAST(8 AS int),
-    CAST(9 AS int),
-    CAST(10 AS int),
-    CAST(11 AS int),
-    CAST(12 AS int),
-    CAST(13 AS int),
-    CAST(14 AS int),
-    CAST(15 AS int),
-    CAST(16 AS int),
-    CAST(17 AS int),
-    CAST(18 AS int),
-    CAST(19 AS int),
-    CAST(20 AS int),
-    CAST(21 AS int),
-    CAST(22 AS int),
-    CAST(23 AS int)
+    1::int,
+    2::int,
+    3::int,
+    4::int,
+    5::int,
+    6::int,
+    7::int,
+    8::int,
+    9::int,
+    10::int,
+    11::int,
+    12::int,
+    13::int,
+    14::int,
+    15::int,
+    16::int,
+    17::int,
+    18::int,
+    19::int,
+    20::int,
+    21::int,
+    22::int,
+    23::int
   )
 ''
 plan:

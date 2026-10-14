@@ -20,7 +20,7 @@ fn split_columns1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int) and CAST($2 AS int) = "t"."b""#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = $1::int and $2::int = "t"."b""#
     );
 }
 
@@ -32,7 +32,7 @@ fn split_columns2() {
     assert_eq!(actual_pattern_params.params, vec![Value::from(1)]);
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = CAST($1 AS int)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" = $1::int"#
     );
 }
 
@@ -59,7 +59,7 @@ fn split_columns4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" in (CAST($1 AS int), CAST($2 AS int))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" in ($1::int, $2::int)"#
     );
 }
 
@@ -74,7 +74,7 @@ fn split_columns5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" < CAST($1 AS int) and CAST($2 AS int) < "t"."b" and "t"."a" > CAST($3 AS int)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" < $1::int and $2::int < "t"."b" and "t"."a" > $3::int"#
     );
 }
 
@@ -89,7 +89,7 @@ fn split_columns6() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (SELECT "t"."a", "t"."b" FROM "t") = (CAST($1 AS int), CAST($2 AS int))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE (SELECT "t"."a", "t"."b" FROM "t") = ($1::int, $2::int)"#
     );
 
     let input = r#"SELECT "a" FROM "t" WHERE (1, 2) = (SELECT a, b FROM t)"#;
@@ -101,6 +101,6 @@ fn split_columns6() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE (CAST($1 AS int), CAST($2 AS int)) = (SELECT "t"."a", "t"."b" FROM "t")"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ($1::int, $2::int) = (SELECT "t"."a", "t"."b" FROM "t")"#
     );
 }

@@ -167,7 +167,7 @@ EXPLAIN (RAW, BUCKETS) SELECT 1 UNION ALL SELECT a FROM t WHERE false;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" UNION ALL SELECT "t"."a" FROM "t" WHERE CAST(false AS bool)
+SELECT 1::int as "col_1" UNION ALL SELECT "t"."a" FROM "t" WHERE false::bool
 ''
 plan:
     [2] SCAN TABLE t (~1048576 rows)
@@ -193,7 +193,7 @@ EXPLAIN (RAW, BUCKETS) SELECT a FROM g UNION ALL SELECT a FROM t WHERE false;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "g"."a" FROM "g" UNION ALL SELECT "t"."a" FROM "t" WHERE CAST(false AS bool)
+SELECT "g"."a" FROM "g" UNION ALL SELECT "t"."a" FROM "t" WHERE false::bool
 ''
 plan:
     [1] SCAN TABLE g (~1048576 rows)
@@ -234,7 +234,7 @@ buckets <= [1-3000]
 │ 1.2. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰──────────────────────────────────────────╯
 ''
-select cast(null as int) as "a" where false UNION ALL SELECT "t"."a" FROM "t"
+select null::int as "a" where false UNION ALL SELECT "t"."a" FROM "t"
 ''
 plan:
     [2] SCAN TABLE t (~1048576 rows)
@@ -260,7 +260,7 @@ EXPLAIN (RAW, BUCKETS) SELECT s.a,g.a FROM g JOIN (SELECT a FROM t WHERE false) 
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "s"."a", "g"."a" FROM "g" INNER JOIN ( SELECT "t"."a" FROM "t" WHERE CAST(false AS bool) ) as "s" ON "g"."a" = "s"."a"
+SELECT "s"."a", "g"."a" FROM "g" INNER JOIN ( SELECT "t"."a" FROM "t" WHERE false::bool ) as "s" ON "g"."a" = "s"."a"
 ''
 plan:
     [0] SCAN TABLE g (~1048576 rows)
@@ -286,7 +286,7 @@ EXPLAIN (RAW, BUCKETS) SELECT s.a,g.a FROM g JOIN (SELECT a FROM t WHERE false) 
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "s"."a", "g"."a" FROM "g" INNER JOIN ( SELECT "t"."a" FROM "t" WHERE CAST(false AS bool) ) as "s" ON "s"."a" = "g"."a"
+SELECT "s"."a", "g"."a" FROM "g" INNER JOIN ( SELECT "t"."a" FROM "t" WHERE false::bool ) as "s" ON "s"."a" = "g"."a"
 ''
 plan:
     [0] SCAN TABLE g (~1048576 rows)
@@ -312,7 +312,7 @@ EXPLAIN (RAW, BUCKETS) SELECT * FROM g JOIN (SELECT * FROM t WHERE false) t ON g
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT * FROM "g" INNER JOIN ( SELECT "t"."a", "t"."b" FROM "t" WHERE CAST(false AS bool) ) as "t" ON "g"."a" = "g"."a"
+SELECT * FROM "g" INNER JOIN ( SELECT "t"."a", "t"."b" FROM "t" WHERE false::bool ) as "t" ON "g"."a" = "g"."a"
 ''
 plan:
     [0] SCAN TABLE g (~983040 rows)
@@ -338,7 +338,7 @@ EXPLAIN (RAW, BUCKETS) SELECT * FROM g JOIN (SELECT * FROM t WHERE false) t ON t
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT * FROM "g" INNER JOIN ( SELECT "t"."a", "t"."b" FROM "t" WHERE CAST(false AS bool) ) as "t" ON "t"."a" = "t"."a"
+SELECT * FROM "g" INNER JOIN ( SELECT "t"."a", "t"."b" FROM "t" WHERE false::bool ) as "t" ON "t"."a" = "t"."a"
 ''
 plan:
     [0] SCAN TABLE t (~983040 rows)

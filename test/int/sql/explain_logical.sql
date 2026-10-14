@@ -154,7 +154,7 @@ END $$;
 │ 1. Let "a" (CONST-FILTERED STORAGE, 1/1) │
 ╰──────────────────────────────────────────╯
 ''
-SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(42 AS int)
+SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = 42::int
 ''
 projection (tt.d::int -> d)
   selection (tt.d::int = 42::int)
@@ -164,7 +164,7 @@ projection (tt.d::int -> d)
 │ 2. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT CAST(:a AS int) as "col_1"
+SELECT :a::int as "col_1"
 ''
 projection (:a::int -> col_1)
 ''
@@ -172,7 +172,7 @@ projection (:a::int -> col_1)
 │ 3. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-DELETE FROM "tt" WHERE "tt"."d" = CAST(42 AS int)
+DELETE FROM "tt" WHERE "tt"."d" = 42::int
 ''
 delete from tt
   projection (tt.d::int -> pk_col_0)
@@ -197,7 +197,7 @@ END $$;
 │ 1. Let "a" (CONST-FILTERED STORAGE, 1/1) │
 ╰──────────────────────────────────────────╯
 ''
-SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(2 AS int) ) ORDER BY 1 LIMIT 1
+SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = 2::int ) ORDER BY 1 LIMIT 1
 ''
 limit 1
   projection (d::int)
@@ -211,7 +211,7 @@ limit 1
 │ 2.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(:a AS int) = CAST(5 AS int) as "cond"
+SELECT :a::int = 5::int as "cond"
 ''
 projection (:a::int = 5::int -> cond)
 ''
@@ -219,7 +219,7 @@ projection (:a::int = 5::int -> cond)
 │ 2.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(2 AS int), 1410)
+INSERT INTO "tt" ("d", "bucket_id") VALUES (2::int, 1410)
 ''
 insert into tt on conflict: fail
   values
@@ -229,7 +229,7 @@ insert into tt on conflict: fail
 │ 3. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-DELETE FROM "tt" WHERE "tt"."d" = CAST(2 AS int)
+DELETE FROM "tt" WHERE "tt"."d" = 2::int
 ''
 delete from tt
   projection (tt.d::int -> pk_col_0)
@@ -250,7 +250,7 @@ END $$;
 │ 1. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "g"."a" FROM "g" INNER JOIN ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(42 AS int) ) as "ttt" ON CAST(true AS bool)
+SELECT "g"."a" FROM "g" INNER JOIN ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = 42::int ) as "ttt" ON true::bool
 ''
 projection (g.a::int -> a)
   join on (true::bool)
@@ -264,7 +264,7 @@ projection (g.a::int -> a)
 │ 2. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(42 AS int)
+SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = 42::int
 ''
 projection (tt.d::int -> d)
   selection (tt.d::int = 42::int)
@@ -296,7 +296,7 @@ END $$;
 │ 1. **Unused** let "a" (CONST-FILTERED STORAGE, 1/1) │
 ╰─────────────────────────────────────────────────────╯
 ''
-SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(2 AS int) ) ORDER BY 1 LIMIT 1
+SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = 2::int ) ORDER BY 1 LIMIT 1
 ''
 limit 1
   projection (d::int)
@@ -310,7 +310,7 @@ limit 1
 │ 2. Let "a" (CONST-FILTERED STORAGE, 1/1) │
 ╰──────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 ''
 projection (1::int -> col_1)
 ''
@@ -318,7 +318,7 @@ projection (1::int -> col_1)
 │ 3.1. If cond (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────────╯
 ''
-SELECT CAST(:a AS int) = CAST(5 AS int) as "cond"
+SELECT :a::int = 5::int as "cond"
 ''
 projection (:a::int = 5::int -> cond)
 ''
@@ -326,7 +326,7 @@ projection (:a::int = 5::int -> cond)
 │ 3.2. If body: Query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────────╯
 ''
-INSERT INTO "tt" ("d", "bucket_id") VALUES (CAST(2 AS int), 1410)
+INSERT INTO "tt" ("d", "bucket_id") VALUES (2::int, 1410)
 ''
 insert into tt on conflict: fail
   values
@@ -346,7 +346,7 @@ END $$;
 │ 1. **Unused** let "a" (CONST-FILTERED STORAGE, 1/1) │
 ╰─────────────────────────────────────────────────────╯
 ''
-SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = CAST(2 AS int) ) ORDER BY 1 LIMIT 1
+SELECT "d" FROM ( SELECT "tt"."d" FROM "tt" WHERE "tt"."d" = 2::int ) ORDER BY 1 LIMIT 1
 ''
 limit 1
   projection (d::int)
@@ -360,7 +360,7 @@ limit 1
 │ 2. Let "a" (CONST-FILTERED STORAGE, 1/1) │
 ╰──────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1"
+SELECT 1::int as "col_1"
 ''
 projection (1::int -> col_1)
 ''
@@ -368,7 +368,7 @@ projection (1::int -> col_1)
 │ 3. Return query (CONST-FILTERED STORAGE, 1/1) │
 ╰───────────────────────────────────────────────╯
 ''
-SELECT CAST(:a AS int) as "col_1"
+SELECT :a::int as "col_1"
 ''
 projection (:a::int -> col_1)
 

@@ -58,7 +58,7 @@ fn local_sql_params_do_not_mutate_constants() {
         .generate_sql(&nodes, 0, table_name, Some(params.constant_ids().to_vec()))
         .unwrap();
 
-    assert!(sql.contains("CAST($1 AS int)"));
+    assert!(sql.contains("$1::int"));
     for id in params.constant_ids() {
         assert!(matches!(
             ex_plan.get_ir_plan().get_node(*id).unwrap(),

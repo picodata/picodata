@@ -615,7 +615,7 @@ EXPLAIN (RAW) SELECT ARRAY[1.1]::int[];
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "_pico_array_cast" ([ CAST(1.1 AS decimal) ], 'int') as "col_1"
+SELECT "_pico_array_cast" ([ 1.1::decimal ], 'int') as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -662,7 +662,7 @@ explain (raw) select distribution['ShardedImplicitly'] from _pico_table;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "_pico_table"."distribution" [ CAST('ShardedImplicitly' AS text) ] as "col_1" FROM "_pico_table"
+SELECT "_pico_table"."distribution" [ 'ShardedImplicitly'::text ] as "col_1" FROM "_pico_table"
 ''
 plan:
     [0] SCAN TABLE _pico_table (~1048576 rows)

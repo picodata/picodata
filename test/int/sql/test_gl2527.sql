@@ -81,7 +81,7 @@ LEFT JOIN t g
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT count (*) as "count_1" FROM ( SELECT "t"."id", "t"."parent", "t"."sharding" FROM "t" WHERE "t"."sharding" = CAST(1 AS int) ) as "fa" LEFT JOIN "t" as "p" ON "p"."id" = "fa"."parent" and "p"."sharding" = "fa"."sharding" LEFT JOIN "t" as "g" ON "g"."id" = "p"."parent" and "g"."sharding" = "p"."sharding"
+SELECT count (*) as "count_1" FROM ( SELECT "t"."id", "t"."parent", "t"."sharding" FROM "t" WHERE "t"."sharding" = 1::int ) as "fa" LEFT JOIN "t" as "p" ON "p"."id" = "fa"."parent" and "p"."sharding" = "fa"."sharding" LEFT JOIN "t" as "g" ON "g"."id" = "p"."parent" and "g"."sharding" = "p"."sharding"
 ''
 plan:
     [0] SCAN TABLE t (~262144 rows)
@@ -92,7 +92,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT CAST (sum (CAST ("COL_0" as int)) as int) as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_5505886818427594379_0136" )
+SELECT sum ("COL_0"::int)::int as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_5505886818427594379_0136" )
 ''
 plan:
     [0] SCAN TABLE _tmp_5505886818427594379_0136 (~1048576 rows)

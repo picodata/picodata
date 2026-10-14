@@ -23,7 +23,7 @@ fn merge_tuples1() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b") = (CAST($1 AS int), CAST($2 AS int)) and "t"."c" < CAST($3 AS int) and CAST($4 AS int) < "t"."a""#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b") = ($1::int, $2::int) and "t"."c" < $3::int and $4::int < "t"."a""#
     );
 }
 
@@ -47,7 +47,7 @@ fn merge_tuples2() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."b", "t"."a") = (CAST($1 AS int), CAST($2 AS int)) and $3 or "t"."c" >= CAST($4 AS int) and CAST($5 AS bool) and CAST($6 AS int) <= "t"."a""#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."b", "t"."a") = ($1::int, $2::int) and $3 or "t"."c" >= $4::int and $5::bool and $6::int <= "t"."a""#
     );
 }
 
@@ -59,7 +59,7 @@ fn merge_tuples3() {
     assert_eq!(actual_pattern_params.params, vec![Value::Boolean(true)]);
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE CAST($1 AS bool)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE $1::bool"#
     );
 }
 
@@ -74,7 +74,7 @@ fn merge_tuples4() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b", "t"."c") = (CAST($1 AS int), CAST($2 AS int), CAST($3 AS int))"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b", "t"."c") = ($1::int, $2::int, $3::int)"#
     );
 }
 
@@ -89,7 +89,7 @@ fn merge_tuples5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b") > (CAST($1 AS int), CAST($2 AS int)) and CAST($3 AS int) < "t"."c""#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", "t"."b") > ($1::int, $2::int) and $3::int < "t"."c""#
     );
 }
 
@@ -104,7 +104,7 @@ fn merge_tuples6() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."b" <> CAST($1 AS int) and "t"."a" <> CAST($2 AS int)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE "t"."b" <> $1::int and "t"."a" <> $2::int"#
     );
 }
 

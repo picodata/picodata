@@ -99,7 +99,7 @@ plan:
 │ 3. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT "e"."a" as "gr_expr_1", "t2"."COL_2" as "gr_expr_2" FROM "t" as "e" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_1924403061113006734_0136" ) as "t" ON "e"."a" = "t"."COL_2" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_1924403061113006734_1136" ) as "t2" ON CAST(true AS bool) GROUP BY "e"."a", "t2"."COL_2"
+SELECT "e"."a" as "gr_expr_1", "t2"."COL_2" as "gr_expr_2" FROM "t" as "e" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_1924403061113006734_0136" ) as "t" ON "e"."a" = "t"."COL_2" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_1924403061113006734_1136" ) as "t2" ON true::bool GROUP BY "e"."a", "t2"."COL_2"
 ''
 plan:
     [0] SCAN TABLE _tmp_1924403061113006734_0136 (~1048576 rows)
@@ -111,7 +111,7 @@ plan:
 │ 4. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT CAST(4 AS int) as "col_1" FROM ( SELECT "COL_1" as "b", "COL_0" as "a" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_6693516139701489356_2136" ) GROUP BY "COL_0", "COL_1" ) as "f"
+SELECT 4::int as "col_1" FROM ( SELECT "COL_1" as "b", "COL_0" as "a" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_6693516139701489356_2136" ) GROUP BY "COL_0", "COL_1" ) as "f"
 ''
 plan:
     [0] SCAN TABLE _tmp_6693516139701489356_2136 (~1048576 rows)
@@ -145,7 +145,7 @@ plan:
 │ 7. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "COL_0" FROM "_tmp_15810855721639095655_11136" INTERSECT SELECT CAST(7 AS int) as "col_1" FROM "t2"
+SELECT "COL_0" FROM "_tmp_15810855721639095655_11136" INTERSECT SELECT 7::int as "col_1" FROM "t2"
 ''
 plan:
     [1] SCAN TABLE _tmp_15810855721639095655_11136 (~1048576 rows)
@@ -173,7 +173,7 @@ EXPLAIN (RAW) SELECT 1 from t UNION SELECT 0 EXCEPT SELECT 1 from t;
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" UNION SELECT CAST(0 AS int) as "col_1"
+SELECT 1::int as "col_1" FROM "t" UNION SELECT 0::int as "col_1"
 ''
 plan:
     [1] SCAN TABLE t (~1048576 rows)
@@ -183,7 +183,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" UNION SELECT CAST(0 AS int) as "col_1"
+SELECT 1::int as "col_1" FROM "t" UNION SELECT 0::int as "col_1"
 ''
 plan:
     [1] SCAN TABLE t (~1048576 rows)
@@ -193,7 +193,7 @@ plan:
 │ 3. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "COL_0" FROM "_tmp_17843715661314931633_3136" INTERSECT SELECT CAST(1 AS int) as "col_1" FROM "t"
+SELECT "COL_0" FROM "_tmp_17843715661314931633_3136" INTERSECT SELECT 1::int as "col_1" FROM "t"
 ''
 plan:
     [1] SCAN TABLE _tmp_17843715661314931633_3136 (~1048576 rows)
@@ -220,7 +220,7 @@ EXPLAIN (RAW) SELECT 1 from t UNION SELECT 0 EXCEPT SELECT 1 from t;
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" UNION SELECT CAST(0 AS int) as "col_1"
+SELECT 1::int as "col_1" FROM "t" UNION SELECT 0::int as "col_1"
 ''
 plan:
     [1] SCAN TABLE t (~1048576 rows)
@@ -230,7 +230,7 @@ plan:
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1" FROM "t" UNION SELECT CAST(0 AS int) as "col_1"
+SELECT 1::int as "col_1" FROM "t" UNION SELECT 0::int as "col_1"
 ''
 plan:
     [1] SCAN TABLE t (~1048576 rows)
@@ -240,7 +240,7 @@ plan:
 │ 3. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "COL_0" FROM "_tmp_17843715661314931633_3136" INTERSECT SELECT CAST(1 AS int) as "col_1" FROM "t"
+SELECT "COL_0" FROM "_tmp_17843715661314931633_3136" INTERSECT SELECT 1::int as "col_1" FROM "t"
 ''
 plan:
     [1] SCAN TABLE _tmp_17843715661314931633_3136 (~1048576 rows)

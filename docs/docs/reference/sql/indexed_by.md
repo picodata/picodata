@@ -26,7 +26,7 @@ UPDATE table_name INDEXED BY index_name SET column2 = 1
 ```sql
 EXPLAIN (RAW) SELECT column1, column2 FROM table_name INDEXED BY index_name WHERE TRUE;
 1. Query (STORAGE):
-SELECT "table_name"."column1", "table_name"."column2" FROM "table_name" INDEXED BY "index_name" WHERE CAST(true AS bool)
+SELECT "table_name"."column1", "table_name"."column2" FROM "table_name" INDEXED BY "index_name" WHERE true::bool
 +----------+-------+------+-----------------------------------------------------------------------+
 | selectid | order | from | detail                                                                |
 +=================================================================================================+
@@ -38,7 +38,7 @@ SELECT "table_name"."column1", "table_name"."column2" FROM "table_name" INDEXED 
 ```sql
 EXPLAIN (RAW) SELECT column1, column2 FROM table_name WHERE TRUE;
 1. Query (STORAGE):
-SELECT "table_name"."column1", "table_name"."column2" FROM "table_name" WHERE CAST(true AS bool)
+SELECT "table_name"."column1", "table_name"."column2" FROM "table_name" WHERE true::bool
 +----------+-------+------+---------------------------------------+
 | selectid | order | from | detail                                |
 +=================================================================+

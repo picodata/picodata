@@ -112,7 +112,7 @@ fn unnamed_subquery_name_conflict3_test() {
             "{} {} {}",
             "SELECT * FROM",
             r#"(SELECT "t"."a", "t"."b", "t"."c", "t"."d" FROM "t") as "unnamed_subquery_1""#,
-            r#"INNER JOIN "unnamed_subquery" ON CAST($1 AS bool)"#,
+            r#"INNER JOIN "unnamed_subquery" ON $1::bool"#,
         ),
     );
     assert_eq!(params, &vec![Value::Boolean(true)]);

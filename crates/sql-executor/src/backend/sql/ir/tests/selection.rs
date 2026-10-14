@@ -10,14 +10,14 @@ fn selection_column_from_values() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"unnamed_subquery\".\"COLUMN_1\" FROM (VALUES (CAST($1 AS int))) as \"unnamed_subquery\""
+    pattern: "SELECT \"unnamed_subquery\".\"COLUMN_1\" FROM (VALUES ($1::int)) as \"unnamed_subquery\""
     params:
       - Integer: 1
     "#);
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"unnamed_subquery\".\"COLUMN_1\" FROM (VALUES (CAST($1 AS int))) as \"unnamed_subquery\""
+    pattern: "SELECT \"unnamed_subquery\".\"COLUMN_1\" FROM (VALUES ($1::int)) as \"unnamed_subquery\""
     params:
       - Integer: 1
     "#);
@@ -31,7 +31,7 @@ fn selection1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"product_code\" < CAST($1 AS text) and \"hash_testing\".\"identification_number\" in (SELECT \"hash_testing_hist\".\"identification_number\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS text))"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"product_code\" < $1::text and \"hash_testing\".\"identification_number\" in (SELECT \"hash_testing_hist\".\"identification_number\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = $2::text)"
     params:
       - String: a
       - String: b
@@ -39,7 +39,7 @@ fn selection1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" in (SELECT \"hash_testing_hist\".\"identification_number\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($1 AS text)) and \"hash_testing\".\"product_code\" < CAST($2 AS text)"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" in (SELECT \"hash_testing_hist\".\"identification_number\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = $1::text) and \"hash_testing\".\"product_code\" < $2::text"
     params:
       - String: b
       - String: a
@@ -55,7 +55,7 @@ fn selection2() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE (\"hash_testing\".\"product_units\", \"hash_testing\".\"identification_number\") = (CAST($1 AS bool), CAST($2 AS int)) and \"hash_testing\".\"product_units\" or (\"hash_testing\".\"product_units\", \"hash_testing\".\"identification_number\") = (CAST($1 AS bool), CAST($2 AS int)) and \"hash_testing\".\"product_units\" is null"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE (\"hash_testing\".\"product_units\", \"hash_testing\".\"identification_number\") = ($1::bool, $2::int) and \"hash_testing\".\"product_units\" or (\"hash_testing\".\"product_units\", \"hash_testing\".\"identification_number\") = ($1::bool, $2::int) and \"hash_testing\".\"product_units\" is null"
     params:
       - Boolean: true
       - Integer: 1
@@ -63,7 +63,7 @@ fn selection2() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" in (CAST($1 AS int)) and \"hash_testing\".\"product_units\" = CAST($2 AS bool) and (\"hash_testing\".\"product_units\" or \"hash_testing\".\"product_units\" is null)"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" in ($1::int) and \"hash_testing\".\"product_units\" = $2::bool and (\"hash_testing\".\"product_units\" or \"hash_testing\".\"product_units\" is null)"
     params:
       - Integer: 1
       - Boolean: true

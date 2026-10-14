@@ -516,12 +516,12 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  sum (CAST ("t0"."cp" as decimal)) as "c3"
+  sum ("t0"."cp"::decimal) as "c3"
 FROM
   "ac" as "t0"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and "t0"."cp" > CAST(0 AS int)
+  "t0"."cv" = 3023424::int
+  and "t0"."cp" > 0::int
 ''
 plan:
     [0] SEARCH TABLE ac AS t0 USING PRIMARY KEY (cv=?) (~1 row)
@@ -534,15 +534,10 @@ buckets = [1222]
 ''
 SELECT
   CASE
-    WHEN "t1"."c2" > CAST(0 AS int) THEN CAST(true AS bool)
-    ELSE CAST(false AS bool)
+    WHEN "t1"."c2" > 0::int THEN true::bool
+    ELSE false::bool
   END as "c0",
-  CAST (
-    coalesce (
-      CAST (("t2"."COL_0" * CAST(-1 AS int)) as decimal),
-      CAST(0.0 AS decimal)
-    ) as decimal
-  ) as "c1"
+  coalesce (("t2"."COL_0" * (-1)::int)::decimal, 0.0::decimal)::decimal as "c1"
 FROM
   (
     SELECT
@@ -550,14 +545,14 @@ FROM
     FROM
       "z" as "t0"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
+      "t0"."cv" = 3023424::int
   ) as "t1"
   LEFT JOIN (
     SELECT
       "COL_0"
     FROM
       "_tmp_3883115281032213722_0136"
-  ) as "t2" ON CAST(true AS bool)
+  ) as "t2" ON true::bool
 ''
 plan:
     [1] SEARCH TABLE z AS t0 USING PRIMARY KEY (cv=?) (~1 row)
@@ -625,18 +620,18 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS text)) as "c0",
-  sum (CAST ("a"."f" as decimal)) as "c1",
-  sum (CAST ("a"."e" as decimal)) as "c2",
-  sum (CAST ("a"."g" as decimal)) as "c3"
+  "to_char" ("a"."a"::datetime, '%Y-%m-%d'::text) as "c0",
+  sum ("a"."f"::decimal) as "c1",
+  sum ("a"."e"::decimal) as "c2",
+  sum ("a"."g"::decimal) as "c3"
 FROM
   "a"
 WHERE
-  "a"."cv" = CAST(3023424 AS int)
-  and "a"."aw" = CAST(0 AS int)
-  and "a"."cq" = CAST(22 AS int)
-  and "a"."bm" = CAST(2023 AS int)
-  and "a"."bk" = CAST(7 AS int)
+  "a"."cv" = 3023424::int
+  and "a"."aw" = 0::int
+  and "a"."cq" = 22::int
+  and "a"."bm" = 2023::int
+  and "a"."bk" = 7::int
 GROUP BY
   "a"."a"
 ''
@@ -768,25 +763,17 @@ subquery $0:
 ''
 SELECT
   "cte0"."c0",
-  coalesce (
-    CAST (sum (CAST ("cte0"."c1" as decimal)) as decimal),
-    CAST(0.0 AS decimal)
-  ) as "c1"
+  coalesce (sum ("cte0"."c1"::decimal)::decimal, 0.0::decimal) as "c1"
 FROM
   (
     SELECT
       "to_char" (
-        CAST (
-          coalesce (
-            CAST ("t0"."cs" as datetime),
-            CAST ("t0"."a" as datetime)
-          ) as datetime
-        ),
-        CAST('%Y-%m-%d' AS text)
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%Y-%m-%d'::text
       ) as "c0",
-      "t0"."d" * coalesce (CAST ("t3"."cj" as decimal), CAST(0 AS decimal)) * CASE
-        WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-        ELSE CAST(1 AS int)
+      "t0"."d" * coalesce ("t3"."cj"::decimal, 0::decimal) * CASE
+        WHEN not "t0"."h" is null THEN (-1)::int
+        ELSE 1::int
       END as "c1"
     FROM
       "n" as "t0"
@@ -797,35 +784,21 @@ FROM
       LEFT JOIN "f" as "t3" ON "t0"."cw" = "t3"."cw"
       LEFT JOIN "h" as "t4" ON "t0"."cu" = "t4"."cu"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and coalesce (CAST ("t1"."aw" as int), CAST ("t0"."bf" as int)) = CAST(0 AS int)
-      and CAST (
-        "to_char" (
-          CAST (
-            coalesce (
-              CAST ("t0"."cs" as datetime),
-              CAST ("t0"."a" as datetime)
-            ) as datetime
-          ),
-          CAST('%Y' AS text)
-        ) as int
-      ) = CAST(2023 AS int)
-      and CAST (
-        "to_char" (
-          CAST (
-            coalesce (
-              CAST ("t0"."cs" as datetime),
-              CAST ("t0"."a" as datetime)
-            ) as datetime
-          ),
-          CAST('%m' AS text)
-        ) as int
-      ) = CAST(7 AS int)
-      and coalesce (CAST ("t1"."cq" as int), CAST ("t4"."cq" as int)) = CAST(22 AS int)
+      "t0"."cv" = 3023424::int
+      and coalesce ("t1"."aw"::int, "t0"."bf"::int) = 0::int
+      and "to_char" (
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%Y'::text
+      )::int = 2023::int
+      and "to_char" (
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%m'::text
+      )::int = 7::int
+      and coalesce ("t1"."cq"::int, "t4"."cq"::int) = 22::int
       and "t2"."ag" is null
       and (
         "t0"."h" is null
-        or "t0"."h" = CAST(-1 AS int)
+        or "t0"."h" = (-1)::int
       )
   ) as "cte0"
 GROUP BY
@@ -981,22 +954,16 @@ FROM
   LEFT JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
   and "t0"."ay" = "t1"."ay"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and "t0"."aw" = CAST(0 AS int)
-  and "t0"."bm" = CAST(2023 AS int)
-  and "t0"."bk" = CAST(7 AS int)
-  and "t0"."cq" = CAST(22 AS int)
+  "t0"."cv" = 3023424::int
+  and "t0"."aw" = 0::int
+  and "t0"."bm" = 2023::int
+  and "t0"."bk" = 7::int
+  and "t0"."cq" = 22::int
 UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
-  coalesce (
-    CAST ("t4"."bg" as text),
-    CAST ("t2"."bg" as text)
-  ) as "c1",
-  coalesce (
-    CAST ("t4"."ah" as text),
-    CAST ("t2"."ah" as text)
-  ) as "c2",
+  coalesce ("t4"."bg"::text, "t2"."bg"::text) as "c1",
+  coalesce ("t4"."ah"::text, "t2"."ah"::text) as "c2",
   "t1"."cx" as "c3"
 FROM
   "n" as "t2"
@@ -1009,31 +976,17 @@ FROM
   and "t2"."ay" = "t1"."ay"
   LEFT JOIN "h" as "t6" ON "t2"."cu" = "t6"."cu"
 WHERE
-  "t2"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t4"."aw" as int), CAST ("t2"."bf" as int)) = CAST(0 AS int)
-  and CAST (
-    "to_char" (
-      CAST (
-        coalesce (
-          CAST ("t2"."cs" as datetime),
-          CAST ("t2"."a" as datetime)
-        ) as datetime
-      ),
-      CAST('%Y' AS text)
-    ) as int
-  ) = CAST(2023 AS int)
-  and CAST (
-    "to_char" (
-      CAST (
-        coalesce (
-          CAST ("t2"."cs" as datetime),
-          CAST ("t2"."a" as datetime)
-        ) as datetime
-      ),
-      CAST('%m' AS text)
-    ) as int
-  ) = CAST(7 AS int)
-  and coalesce (CAST ("t4"."cq" as int), CAST ("t6"."cq" as int)) = CAST(22 AS int)
+  "t2"."cv" = 3023424::int
+  and coalesce ("t4"."aw"::int, "t2"."bf"::int) = 0::int
+  and "to_char" (
+    coalesce ("t2"."cs"::datetime, "t2"."a"::datetime)::datetime,
+    '%Y'::text
+  )::int = 2023::int
+  and "to_char" (
+    coalesce ("t2"."cs"::datetime, "t2"."a"::datetime)::datetime,
+    '%m'::text
+  )::int = 7::int
+  and coalesce ("t4"."cq"::int, "t6"."cq"::int) = 22::int
 ''
 plan:
     [1] SEARCH TABLE a AS t0 
@@ -1108,16 +1061,16 @@ projection (
 ''
 SELECT
   "a"."z" as "c0",
-  sum (CAST ("a"."f" as decimal)) as "c1",
-  sum (CAST ("a"."e" as decimal)) as "c2",
-  sum (CAST ("a"."g" as decimal)) as "c3"
+  sum ("a"."f"::decimal) as "c1",
+  sum ("a"."e"::decimal) as "c2",
+  sum ("a"."g"::decimal) as "c3"
 FROM
   "a"
 WHERE
-  "a"."cv" = CAST(3023424 AS int)
-  and "a"."aw" = CAST(0 AS int)
-  and "a"."cq" = CAST(22 AS int)
-  and "a"."a" = CAST('2023-07-28 0:00:00.0 +00:00:00' AS datetime)
+  "a"."cv" = 3023424::int
+  and "a"."aw" = 0::int
+  and "a"."cq" = 22::int
+  and "a"."a" = '2023-07-28 0:00:00.0 +00:00:00'::datetime
 GROUP BY
   "a"."z"
 ''
@@ -1230,19 +1183,15 @@ projection (
 SELECT
   "t2"."z" as "c0",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          (
-            "t0"."d" * coalesce (CAST ("t2"."cj" as decimal), CAST(0 AS decimal)) * CASE
-              WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      (
+        "t0"."d" * coalesce ("t2"."cj"::decimal, 0::decimal) * CASE
+          WHEN not "t0"."h" is null THEN (-1)::int
+          ELSE 1::int
+        END
+      )::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c1"
 FROM
   "n" as "t0"
@@ -1253,17 +1202,14 @@ FROM
   LEFT JOIN "n" as "t4" ON "t4"."h" = "t0"."ag"
   and "t4"."cv" = "t0"."cv"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t1"."aw" as int), CAST ("t0"."bf" as int)) = CAST(0 AS int)
-  and coalesce (CAST ("t1"."cq" as int), CAST ("t3"."cq" as int)) = CAST(22 AS int)
-  and coalesce (
-    CAST ("t0"."cs" as datetime),
-    CAST ("t0"."a" as datetime)
-  ) = CAST('2023-07-28 0:00:00.0 +00:00:00' AS datetime)
+  "t0"."cv" = 3023424::int
+  and coalesce ("t1"."aw"::int, "t0"."bf"::int) = 0::int
+  and coalesce ("t1"."cq"::int, "t3"."cq"::int) = 22::int
+  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2023-07-28 0:00:00.0 +00:00:00'::datetime
   and "t4"."ag" is null
   and (
     "t0"."h" is null
-    or "t0"."h" = CAST(-1 AS int)
+    or "t0"."h" = (-1)::int
   )
 GROUP BY
   "t2"."z"
@@ -1405,21 +1351,15 @@ FROM
   LEFT JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
   and "t0"."ay" = "t1"."ay"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and "t0"."aw" = CAST(0 AS int)
-  and "t0"."a" = CAST('2023-07-28 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."cq" = CAST(22 AS int)
+  "t0"."cv" = 3023424::int
+  and "t0"."aw" = 0::int
+  and "t0"."a" = '2023-07-28 0:00:00.0 +00:00:00'::datetime
+  and "t0"."cq" = 22::int
 UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
-  coalesce (
-    CAST ("t4"."bg" as text),
-    CAST ("t2"."bg" as text)
-  ) as "c1",
-  coalesce (
-    CAST ("t4"."ah" as text),
-    CAST ("t2"."ah" as text)
-  ) as "c2",
+  coalesce ("t4"."bg"::text, "t2"."bg"::text) as "c1",
+  coalesce ("t4"."ah"::text, "t2"."ah"::text) as "c2",
   "t1"."cx" as "c3"
 FROM
   "n" as "t2"
@@ -1432,13 +1372,10 @@ FROM
   and "t2"."ay" = "t1"."ay"
   LEFT JOIN "h" as "t6" ON "t2"."cu" = "t6"."cu"
 WHERE
-  "t2"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t4"."aw" as int), CAST ("t2"."bf" as int)) = CAST(0 AS int)
-  and coalesce (
-    CAST ("t2"."cs" as datetime),
-    CAST ("t2"."a" as datetime)
-  ) = CAST('2023-07-28 0:00:00.0 +00:00:00' AS datetime)
-  and coalesce (CAST ("t4"."cq" as int), CAST ("t6"."cq" as int)) = CAST(22 AS int)
+  "t2"."cv" = 3023424::int
+  and coalesce ("t4"."aw"::int, "t2"."bf"::int) = 0::int
+  and coalesce ("t2"."cs"::datetime, "t2"."a"::datetime) = '2023-07-28 0:00:00.0 +00:00:00'::datetime
+  and coalesce ("t4"."cq"::int, "t6"."cq"::int) = 22::int
 ''
 plan:
     [1] SEARCH TABLE a AS t0 
@@ -1536,29 +1473,29 @@ SELECT
   "t0"."ag" as "c0",
   "t0"."cv" as "c1",
   CASE
-    WHEN CAST(0 AS int) > "t0"."bx" THEN "t0"."bx"
-    ELSE CAST(0.0 AS decimal)
+    WHEN 0::int > "t0"."bx" THEN "t0"."bx"
+    ELSE 0.0::decimal
   END as "c2",
   CASE
-    WHEN CAST(0 AS int) > "t0"."bz" THEN "t0"."bz"
-    ELSE CAST(0.0 AS decimal)
+    WHEN 0::int > "t0"."bz" THEN "t0"."bz"
+    ELSE 0.0::decimal
   END as "c3",
   CASE
-    WHEN CAST(0 AS int) > coalesce (CAST ("t0"."cd" as decimal), CAST(0.0 AS decimal)) + coalesce (CAST ("t0"."cc" as decimal), CAST(0.0 AS decimal)) THEN coalesce (CAST ("t0"."cd" as decimal), CAST(0.0 AS decimal)) + coalesce (CAST ("t0"."cc" as decimal), CAST(0.0 AS decimal))
-    ELSE CAST(0.0 AS decimal)
+    WHEN 0::int > coalesce ("t0"."cd"::decimal, 0.0::decimal) + coalesce ("t0"."cc"::decimal, 0.0::decimal) THEN coalesce ("t0"."cd"::decimal, 0.0::decimal) + coalesce ("t0"."cc"::decimal, 0.0::decimal)
+    ELSE 0.0::decimal
   END as "c4",
   CASE
-    WHEN CAST(0 AS int) > "t0"."ca" THEN "t0"."ca"
-    ELSE CAST(0.0 AS decimal)
+    WHEN 0::int > "t0"."ca" THEN "t0"."ca"
+    ELSE 0.0::decimal
   END as "c5",
   CASE
-    WHEN CAST(0 AS int) > "t0"."cg" THEN "t0"."cg"
-    ELSE CAST(0.0 AS decimal)
+    WHEN 0::int > "t0"."cg" THEN "t0"."cg"
+    ELSE 0.0::decimal
   END as "c6"
 FROM
   "s" as "t0"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
 ''
 plan:
     [0] SEARCH TABLE s AS t0 USING COVERING INDEX ix_be (cv=?) (~10 rows)
@@ -1656,22 +1593,17 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  coalesce (CAST ("t2"."aw" as int), CAST ("t0"."bf" as int)) as "c0",
-  coalesce (CAST ("t2"."cq" as int), CAST ("t4"."cq" as int)) as "c1",
+  coalesce ("t2"."aw"::int, "t0"."bf"::int) as "c0",
+  coalesce ("t2"."cq"::int, "t4"."cq"::int) as "c1",
+  coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) as "c2",
   coalesce (
-    CAST ("t0"."cs" as datetime),
-    CAST ("t0"."a" as datetime)
-  ) as "c2",
-  coalesce (
-    CAST (
-      (
-        "t0"."d" * coalesce (CAST ("t3"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-          WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-          ELSE CAST(1 AS int)
-        END
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    (
+      "t0"."d" * coalesce ("t3"."cj"::decimal, 0.0::decimal) * CASE
+        WHEN not "t0"."h" is null THEN (-1)::int
+        ELSE 1::int
+      END
+    )::decimal,
+    0.0::decimal
   ) as "c3"
 FROM
   "n" as "t0"
@@ -1682,11 +1614,11 @@ FROM
   LEFT JOIN "f" as "t3" ON "t0"."cw" = "t3"."cw"
   LEFT JOIN "h" as "t4" ON "t0"."cu" = "t4"."cu"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
   and "t1"."ag" is null
   and (
     "t0"."h" is null
-    or "t0"."h" = CAST(-1 AS int)
+    or "t0"."h" = (-1)::int
   )
 ''
 plan:
@@ -1746,17 +1678,13 @@ projection (
 ''
 SELECT
   sum (
-    CAST (
-      (
-        CAST (("t0"."p" * CAST(100 AS int)) as int) / CAST(100.0 AS decimal)
-      ) as decimal
-    )
+    (("t0"."p" * 100::int)::int / 100.0::decimal)::decimal
   ) as "c0"
 FROM
   "t" as "t0"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and "t0"."p" < CAST(0 AS int)
+  "t0"."cv" = 3023424::int
+  and "t0"."p" < 0::int
 ''
 plan:
     [0] SEARCH TABLE t AS t0 USING COVERING INDEX ix_bg (cv=?) (~9 rows)
@@ -2217,10 +2145,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(3023424 AS int)
-      and "l"."cs" >= CAST('2023-04-28 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2023-04-29 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 3023424::int
+      and "l"."cs" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2023-04-29 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -2229,11 +2157,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(3023424 AS int)
+      "l"."cv" = 3023424::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2023-04-28 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2023-04-29 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2023-04-29 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -2286,21 +2214,17 @@ SELECT
   "t3"."bg",
   "t6"."cu",
   "t6"."cw",
-  coalesce (
-    CAST ("t6"."co" as int),
-    CAST ("t6"."cm" as int),
-    CAST(0 AS int)
-  ) as "ac",
+  coalesce ("t6"."co"::int, "t6"."cm"::int, 0::int) as "ac",
   CASE
     WHEN not "t6"."co" is null
     or not "t6"."cm" is null THEN "t6"."cn"
-    ELSE CAST('0000' AS text)
+    ELSE '0000'::text
   END as "ae",
-  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
+  "to_char" ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
   CASE
-    WHEN not "t6"."co" is null THEN CAST(0 AS int)
-    WHEN not "t6"."cm" is null THEN CAST(1 AS int)
-    ELSE CAST(2 AS int)
+    WHEN not "t6"."co" is null THEN 0::int
+    WHEN not "t6"."cm" is null THEN 1::int
+    ELSE 2::int
   END as "c9",
   "t5"."d"
 FROM
@@ -2316,21 +2240,21 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."cv" = "t4"."cv"
   and "t5"."db" is null
   and "t5"."da" is null
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "x" as "t7" ON "t7"."b" = "t6"."ag"
   and "t7"."cv" = "t6"."cv"
   LEFT JOIN "f" as "t8" ON "t8"."cw" = "t6"."cw"
 WHERE
-  "t8"."z" = CAST(7 AS int)
-  and "t3"."aw" = CAST(0 AS int)
-  and "t3"."cq" = CAST(22 AS int)
+  "t8"."z" = 7::int
+  and "t3"."aw" = 0::int
+  and "t3"."cq" = 22::int
 ''
 plan:
     [0] SCAN TABLE _tmp_18309399111922391115_2136 (~1048576 rows)
@@ -2375,33 +2299,24 @@ FROM
       "t9"."cv",
       "t9"."ag" as "b",
       "t9"."ay",
-      coalesce (
-        CAST ("t3"."bg" as text),
-        CAST ("t9"."bg" as text)
-      ) as "bg",
-      coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
+      coalesce ("t3"."bg"::text, "t9"."bg"::text) as "bg",
+      coalesce ("t3"."cu"::int, "t9"."cu"::int) as "cu",
       "t9"."cw",
-      coalesce (
-        CAST ("t9"."co" as int),
-        CAST ("t9"."cm" as int),
-        CAST(0 AS int)
-      ) as "ac",
+      coalesce ("t9"."co"::int, "t9"."cm"::int, 0::int) as "ac",
       "t9"."cn" as "ae",
-      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
+      "to_char" ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
       CASE
-        WHEN not "t9"."co" is null THEN CAST(0 AS int)
-        ELSE CAST(1 AS int)
+        WHEN not "t9"."co" is null THEN 0::int
+        ELSE 1::int
       END as "c9",
       coalesce (
-        CAST (
-          (
-            "t9"."d" * coalesce (CAST ("t8"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-              WHEN not "t9"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        ),
-        CAST(0.0 AS decimal)
+        (
+          "t9"."d" * coalesce ("t8"."cj"::decimal, 0.0::decimal) * CASE
+            WHEN not "t9"."h" is null THEN (-1)::int
+            ELSE 1::int
+          END
+        )::decimal,
+        0.0::decimal
       ) as "d"
     FROM
       "n" as "t9"
@@ -2412,17 +2327,11 @@ FROM
       and "t10"."cv" = "t3"."cv"
       LEFT JOIN "h" as "t11" ON "t9"."cu" = "t11"."cu"
     WHERE
-      "t9"."cv" = CAST(3023424 AS int)
-      and coalesce (
-        CAST ("t9"."cs" as datetime),
-        CAST ("t9"."a" as datetime)
-      ) = CAST('2023-04-28 0:00:00.0 +00:00:00' AS datetime)
-      and "t8"."z" = CAST(7 AS int)
-      and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) = CAST(0 AS int)
-      and coalesce (
-        CAST ("t3"."cq" as int),
-        CAST ("t11"."cq" as int)
-      ) = CAST(22 AS int)
+      "t9"."cv" = 3023424::int
+      and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2023-04-28 0:00:00.0 +00:00:00'::datetime
+      and "t8"."z" = 7::int
+      and coalesce ("t3"."aw"::int, "t9"."bf"::int) = 0::int
+      and coalesce ("t3"."cq"::int, "t11"."cq"::int) = 22::int
   ) as "cte2"
 ''
 plan:
@@ -2529,7 +2438,7 @@ FROM
       ) as "unnamed_join"
   ) as "cte4"
 WHERE
-  "cte4"."c11" > CAST(0 AS int)
+  "cte4"."c11" > 0::int
 LIMIT
   10
 ''
@@ -2858,10 +2767,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(3023424 AS int)
-      and "l"."cs" >= CAST('2023-04-28 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2023-04-28 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 3023424::int
+      and "l"."cs" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2023-04-28 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -2870,11 +2779,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(3023424 AS int)
+      "l"."cv" = 3023424::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2023-04-28 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2023-04-28 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2023-04-28 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2023-04-28 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -2914,21 +2823,21 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."db" is null
   and "t5"."da" is null
   and "t5"."cv" = "t4"."cv"
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "f" as "t7" ON "t7"."cw" = "t6"."cw"
   LEFT JOIN "ad" as "t8" ON "t8"."cv" = "t3"."cv"
   and "t8"."ay" = "t3"."ay"
 WHERE
-  "t7"."z" = CAST(7 AS int)
-  and "t3"."aw" = CAST(0 AS int)
-  and "t3"."cq" = CAST(22 AS int)
+  "t7"."z" = 7::int
+  and "t3"."aw" = 0::int
+  and "t3"."cq" = 22::int
 GROUP BY
   "t6"."cv",
   "t3"."ay",
@@ -3014,15 +2923,9 @@ FROM
     SELECT DISTINCT
       "t9"."cv",
       "t9"."ay",
-      coalesce (
-        CAST ("t3"."bg" as text),
-        CAST ("t9"."bg" as text)
-      ) as "bg",
-      coalesce (
-        CAST ("t3"."ah" as text),
-        CAST ("t9"."ah" as text)
-      ) as "ah",
-      coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
+      coalesce ("t3"."bg"::text, "t9"."bg"::text) as "bg",
+      coalesce ("t3"."ah"::text, "t9"."ah"::text) as "ah",
+      coalesce ("t3"."cu"::int, "t9"."cu"::int) as "cu",
       "t8"."cx"
     FROM
       "n" as "t9"
@@ -3035,17 +2938,11 @@ FROM
       LEFT JOIN "ad" as "t8" ON "t8"."cv" = "t3"."cv"
       and "t8"."ay" = "t3"."ay"
     WHERE
-      "t9"."cv" = CAST(3023424 AS int)
-      and coalesce (
-        CAST ("t9"."cs" as datetime),
-        CAST ("t9"."a" as datetime)
-      ) = CAST('2023-04-28 0:00:00.0 +00:00:00' AS datetime)
-      and "t7"."z" = CAST(7 AS int)
-      and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) = CAST(0 AS int)
-      and coalesce (
-        CAST ("t3"."cq" as int),
-        CAST ("t11"."cq" as int)
-      ) = CAST(22 AS int)
+      "t9"."cv" = 3023424::int
+      and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2023-04-28 0:00:00.0 +00:00:00'::datetime
+      and "t7"."z" = 7::int
+      and coalesce ("t3"."aw"::int, "t9"."bf"::int) = 0::int
+      and coalesce ("t3"."cq"::int, "t11"."cq"::int) = 22::int
   ) as "cte2"
 ''
 plan:
@@ -3134,20 +3031,20 @@ SELECT
   "b"."bk" as "c1",
   "b"."bl" as "c2",
   "b"."bm" as "c3",
-  sum (CAST ("b"."f" as decimal)) as "c4",
-  sum (CAST ("b"."e" as decimal)) as "c5"
+  sum ("b"."f"::decimal) as "c4",
+  sum ("b"."e"::decimal) as "c5"
 FROM
   "b"
 WHERE
-  "b"."cv" = CAST(3023424 AS int)
-  and "b"."aw" = CAST(0 AS int)
+  "b"."cv" = 3023424::int
+  and "b"."aw" = 0::int
   and "b"."bm" in (
-    CAST(2024 AS int),
-    CAST(2023 AS int),
-    CAST(2021 AS int),
-    CAST(2022 AS int),
-    CAST(2019 AS int),
-    CAST(2018 AS int)
+    2024::int,
+    2023::int,
+    2021::int,
+    2022::int,
+    2019::int,
+    2018::int
   )
 GROUP BY
   "b"."cq",
@@ -3305,65 +3202,35 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  coalesce (CAST ("t1"."cq" as int), CAST ("t4"."cq" as int)) as "c0",
-  CAST (
-    "to_char" (
-      CAST (
-        coalesce (
-          CAST ("t0"."cs" as datetime),
-          CAST ("t0"."a" as datetime)
-        ) as datetime
-      ),
-      CAST('%Y' AS text)
-    ) as int
-  ) as "c1",
-  CAST (
-    (
-      (
-        CAST (
-          "to_char" (
-            CAST (
-              coalesce (
-                CAST ("t0"."cs" as datetime),
-                CAST ("t0"."a" as datetime)
-              ) as datetime
-            ),
-            CAST('%m' AS text)
-          ) as int
-        ) - CAST(1 AS int)
-      ) / CAST(3 AS int) + CAST(1 AS int)
-    ) as int
-  ) as "c2",
-  CAST (
-    "to_char" (
-      CAST (
-        coalesce (
-          CAST ("t0"."cs" as datetime),
-          CAST ("t0"."a" as datetime)
-        ) as datetime
-      ),
-      CAST('%m' AS text)
-    ) as int
-  ) as "c3",
+  coalesce ("t1"."cq"::int, "t4"."cq"::int) as "c0",
   "to_char" (
-    CAST (
-      coalesce (
-        CAST ("t0"."cs" as datetime),
-        CAST ("t0"."a" as datetime)
-      ) as datetime
-    ),
-    CAST('%Y-%m-%d' AS text)
+    coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+    '%Y'::text
+  )::int as "c1",
+  (
+    (
+      "to_char" (
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%m'::text
+      )::int - 1::int
+    ) / 3::int + 1::int
+  )::int as "c2",
+  "to_char" (
+    coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+    '%m'::text
+  )::int as "c3",
+  "to_char" (
+    coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+    '%Y-%m-%d'::text
   ) as "c4",
   coalesce (
-    CAST (
-      (
-        "t0"."d" * coalesce (CAST ("t3"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-          WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-          ELSE CAST(1 AS int)
-        END
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    (
+      "t0"."d" * coalesce ("t3"."cj"::decimal, 0.0::decimal) * CASE
+        WHEN not "t0"."h" is null THEN (-1)::int
+        ELSE 1::int
+      END
+    )::decimal,
+    0.0::decimal
   ) as "c5"
 FROM
   "n" as "t0"
@@ -3375,30 +3242,23 @@ FROM
   LEFT JOIN "n" as "t5" ON "t5"."h" = "t0"."ag"
   and "t5"."cv" = "t0"."cv"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t1"."aw" as int), CAST ("t0"."bf" as int)) = CAST(0 AS int)
-  and CAST (
-    "to_char" (
-      CAST (
-        coalesce (
-          CAST ("t0"."cs" as datetime),
-          CAST ("t0"."a" as datetime)
-        ) as datetime
-      ),
-      CAST('%Y' AS text)
-    ) as int
-  ) in (
-    CAST(2024 AS int),
-    CAST(2023 AS int),
-    CAST(2021 AS int),
-    CAST(2022 AS int),
-    CAST(2019 AS int),
-    CAST(2018 AS int)
+  "t0"."cv" = 3023424::int
+  and coalesce ("t1"."aw"::int, "t0"."bf"::int) = 0::int
+  and "to_char" (
+    coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+    '%Y'::text
+  )::int in (
+    2024::int,
+    2023::int,
+    2021::int,
+    2022::int,
+    2019::int,
+    2018::int
   )
   and "t5"."ag" is null
   and (
     "t0"."h" is null
-    or "t0"."h" = CAST(-1 AS int)
+    or "t0"."h" = (-1)::int
   )
 ''
 plan:
@@ -3520,38 +3380,38 @@ SELECT
   "e"."bk" as "c1",
   "e"."bl" as "c2",
   "e"."bm" as "c3",
-  sum (CAST ("e"."g" as decimal)) as "c4"
+  sum ("e"."g"::decimal) as "c4"
 FROM
   "e"
 WHERE
-  "e"."cv" = CAST(3023424 AS int)
-  and "e"."g" > CAST(0 AS int)
+  "e"."cv" = 3023424::int
+  and "e"."g" > 0::int
   and "e"."cq" in (
-    CAST(1 AS int),
-    CAST(97 AS int),
-    CAST(3 AS int),
-    CAST(35 AS int),
-    CAST(4 AS int),
-    CAST(100 AS int),
-    CAST(5 AS int),
-    CAST(41 AS int),
-    CAST(43 AS int),
-    CAST(10 AS int),
-    CAST(11 AS int),
-    CAST(12 AS int),
-    CAST(13 AS int),
-    CAST(14 AS int),
-    CAST(19 AS int),
-    CAST(22 AS int),
-    CAST(29 AS int)
+    1::int,
+    97::int,
+    3::int,
+    35::int,
+    4::int,
+    100::int,
+    5::int,
+    41::int,
+    43::int,
+    10::int,
+    11::int,
+    12::int,
+    13::int,
+    14::int,
+    19::int,
+    22::int,
+    29::int
   )
   and "e"."bm" in (
-    CAST(2024 AS int),
-    CAST(2023 AS int),
-    CAST(2021 AS int),
-    CAST(2022 AS int),
-    CAST(2019 AS int),
-    CAST(2018 AS int)
+    2024::int,
+    2023::int,
+    2021::int,
+    2022::int,
+    2019::int,
+    2018::int
   )
 GROUP BY
   "e"."cq",
@@ -3785,19 +3645,19 @@ FROM
       "cte0"."ag" as "c1",
       "cte0"."r" as "c2",
       "cte0"."s" as "c3",
-      "to_char" (CAST ("cte0"."q" as datetime), CAST('%Y-%m-%d' AS text)) as "c4",
+      "to_char" ("cte0"."q"::datetime, '%Y-%m-%d'::text) as "c4",
       "cte0"."bn",
       "cte0"."m" as "c6"
     FROM
       "o" as "cte0"
     WHERE
-      "cte0"."cv" = CAST(4797271 AS int)
-      and "cte0"."s" in (CAST(1 AS int), CAST(2 AS int))
+      "cte0"."cv" = 4797271::int
+      and "cte0"."s" in (1::int, 2::int)
   ) as "cte0"
   INNER JOIN "p" as "cte1" ON "cte0"."c1" = "cte1"."l"
   and "cte0"."cv" = "cte1"."cv"
 WHERE
-  "cte1"."af" <> CAST(0 AS int)
+  "cte1"."af" <> 0::int
 ''
 plan:
     [0] SEARCH TABLE p AS cte1 USING COVERING INDEX ix_av (cv=?) (~9 rows)
@@ -3860,11 +3720,8 @@ SELECT
   "cte2"."COL_7" as "aw",
   "cte2"."COL_8" as "cu",
   "cte3"."ci",
-  coalesce (
-    CAST ("cte3"."y" as decimal),
-    CAST(0.0 AS decimal)
-  ) as "y",
-  "to_char" (CAST ("cte3"."ch" as datetime), CAST('%Y-%m-%d' AS text)) as "ch"
+  coalesce ("cte3"."y"::decimal, 0.0::decimal) as "y",
+  "to_char" ("cte3"."ch"::datetime, '%Y-%m-%d'::text) as "ch"
 FROM
   (
     SELECT
@@ -3884,8 +3741,8 @@ FROM
   INNER JOIN "r" as "cte3" ON "cte2"."COL_9" = "cte3"."k"
   and "cte2"."COL_0" = "cte3"."cv"
 WHERE
-  "cte3"."o" = "to_date" (CAST('3000-01-01' AS text), CAST('%Y-%m-%d' AS text))
-  and "cte3"."an" = CAST(0 AS int)
+  "cte3"."o" = "to_date" ('3000-01-01'::text, '%Y-%m-%d'::text)
+  and "cte3"."an" = 0::int
 ''
 plan:
     [0] SCAN TABLE _tmp_6458289239517524612_1136 (~1048576 rows)
@@ -4443,74 +4300,65 @@ FROM
     SELECT
       "t0"."ag" as "c0",
       "t5"."ag" as "c1",
-      CAST(1 AS int) as "ck",
+      1::int as "ck",
       "t4"."al" as "c3",
       "t0"."cv",
       "t0"."w" as "a",
-      coalesce (
-        CAST ("t5"."ay" as text),
-        CAST ("t0"."ay" as text)
-      ) as "ay",
-      coalesce (
-        CAST ("t5"."bg" as text),
-        CAST ("t0"."bg" as text)
-      ) as "bh",
+      coalesce ("t5"."ay"::text, "t0"."ay"::text) as "ay",
+      coalesce ("t5"."bg"::text, "t0"."bg"::text) as "bh",
       "t0"."cw",
       "t1"."z",
-      coalesce (CAST ("t6"."bj" as int), CAST ("t0"."bj" as int)) as "bj",
+      coalesce ("t6"."bj"::int, "t0"."bj"::int) as "bj",
       "t5"."bm" as "c11",
-      coalesce (CAST ("t5"."cu" as int), CAST ("t0"."cu" as int)) as "cu",
+      coalesce ("t5"."cu"::int, "t0"."cu"::int) as "cu",
       "t0"."aa",
       coalesce (
-        CAST ("t5"."co" as decimal),
-        CAST ("t5"."cm" as decimal),
-        CAST ("t0"."ac" as decimal)
+        "t5"."co"::decimal,
+        "t5"."cm"::decimal,
+        "t0"."ac"::decimal
       ) as "ac",
       CASE
-        WHEN not "t5"."co" is null THEN CAST(0 AS int)
-        WHEN not "t5"."cm" is null THEN CAST(1 AS int)
+        WHEN not "t5"."co" is null THEN 0::int
+        WHEN not "t5"."cm" is null THEN 1::int
         ELSE "t0"."ad"
       END as "ad",
-      coalesce (
-        CAST ("t5"."cl" as datetime),
-        CAST ("t0"."ab" as datetime)
-      ) as "ab",
+      coalesce ("t5"."cl"::datetime, "t0"."ab"::datetime) as "ab",
       CASE
         WHEN not "t5"."co" is null
         or not "t5"."cm" is null THEN "t5"."cn"
         ELSE "t0"."ae"
       END as "ae",
       CASE
-        WHEN not "t0"."h" is null THEN CAST(true AS bool)
-        ELSE CAST(false AS bool)
+        WHEN not "t0"."h" is null THEN true::bool
+        ELSE false::bool
       END as "c18"
     FROM
       "m" as "t0"
       INNER JOIN "f" as "t1" ON "t1"."cw" = "t0"."cw"
       LEFT JOIN "w" as "t2" ON "t2"."bs" = "t0"."ag"
-      and "t2"."cv" = CAST(3023424 AS int)
-      and "t2"."al" = CAST(0 AS int)
-      and "t0"."cr" = CAST(0 AS int)
+      and "t2"."cv" = 3023424::int
+      and "t2"."al" = 0::int
+      and "t0"."cr" = 0::int
       and "t2"."cv" = "t0"."cv"
       LEFT JOIN "w" as "t3" ON "t2"."bt" = "t3"."ag"
-      and "t3"."cv" = CAST(3023424 AS int)
+      and "t3"."cv" = 3023424::int
       and "t3"."cv" = "t0"."cv"
       LEFT JOIN "w" as "t4" ON "t3"."x" = "t4"."x"
-      and "t4"."cv" = CAST(3023424 AS int)
-      and "t4"."al" = CAST(0 AS int)
+      and "t4"."cv" = 3023424::int
+      and "t4"."al" = 0::int
       and "t4"."cv" = "t0"."cv"
       LEFT JOIN "l" as "t5" ON "t4"."bs" = "t5"."ag"
-      and "t5"."cv" = CAST(3023424 AS int)
+      and "t5"."cv" = 3023424::int
       and "t5"."cv" = "t0"."cv"
       LEFT JOIN "k" as "t6" ON "t6"."bi" = "t5"."bi"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and "t0"."aw" = CAST(1 AS int)
-      and "t0"."w" = CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-      and "t1"."z" = CAST(11 AS int)
-      and "t0"."cr" = CAST(0 AS int)
+      "t0"."cv" = 3023424::int
+      and "t0"."aw" = 1::int
+      and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+      and "t1"."z" = 11::int
+      and "t0"."cr" = 0::int
       and "t0"."h" is null
-      and "t1"."cj" > CAST(0 AS int)
+      and "t1"."cj" > 0::int
   ) as "cte0"
 UNION
 SELECT
@@ -4520,73 +4368,64 @@ FROM
     SELECT
       "t0"."ag" as "c0",
       "t5"."ag" as "c1",
-      CAST(1 AS int) as "ck",
+      1::int as "ck",
       "t3"."al" as "c3",
       "t0"."cv",
       "t0"."w" as "a",
-      coalesce (
-        CAST ("t5"."ay" as text),
-        CAST ("t0"."ay" as text)
-      ) as "ay",
-      coalesce (
-        CAST ("t5"."bg" as text),
-        CAST ("t0"."bg" as text)
-      ) as "bh",
+      coalesce ("t5"."ay"::text, "t0"."ay"::text) as "ay",
+      coalesce ("t5"."bg"::text, "t0"."bg"::text) as "bh",
       "t0"."cw",
       "t1"."z",
-      coalesce (CAST ("t6"."bj" as int), CAST ("t0"."bj" as int)) as "bj",
+      coalesce ("t6"."bj"::int, "t0"."bj"::int) as "bj",
       "t5"."bm" as "c11",
-      coalesce (CAST ("t5"."cu" as int), CAST ("t0"."cu" as int)) as "cu",
+      coalesce ("t5"."cu"::int, "t0"."cu"::int) as "cu",
       "t0"."aa",
       coalesce (
-        CAST ("t5"."co" as decimal),
-        CAST ("t5"."cm" as decimal),
-        CAST ("t0"."ac" as decimal)
+        "t5"."co"::decimal,
+        "t5"."cm"::decimal,
+        "t0"."ac"::decimal
       ) as "ac",
       CASE
-        WHEN not "t5"."co" is null THEN CAST(0 AS int)
-        WHEN not "t5"."cm" is null THEN CAST(1 AS int)
+        WHEN not "t5"."co" is null THEN 0::int
+        WHEN not "t5"."cm" is null THEN 1::int
         ELSE "t0"."ad"
       END as "ad",
-      coalesce (
-        CAST ("t5"."cl" as datetime),
-        CAST ("t0"."ab" as datetime)
-      ) as "ab",
+      coalesce ("t5"."cl"::datetime, "t0"."ab"::datetime) as "ab",
       CASE
         WHEN not "t5"."co" is null
         or not "t5"."cm" is null THEN "t5"."cn"
         ELSE "t0"."ae"
       END as "ae",
       CASE
-        WHEN not "t0"."h" is null THEN CAST(true AS bool)
-        ELSE CAST(false AS bool)
+        WHEN not "t0"."h" is null THEN true::bool
+        ELSE false::bool
       END as "c18"
     FROM
       "m" as "t0"
       INNER JOIN "f" as "t1" ON "t1"."cw" = "t0"."cw"
       LEFT JOIN "w" as "t2" ON "t2"."bs" = "t0"."ag"
-      and "t2"."cv" = CAST(3023424 AS int)
-      and "t2"."al" = CAST(0 AS int)
-      and "t0"."cr" = CAST(0 AS int)
+      and "t2"."cv" = 3023424::int
+      and "t2"."al" = 0::int
+      and "t0"."cr" = 0::int
       and "t2"."cv" = "t0"."cv"
       LEFT JOIN "w" as "t3" ON "t2"."bt" = "t3"."x"
-      and "t3"."cv" = CAST(3023424 AS int)
-      and "t3"."al" <> CAST(0 AS int)
+      and "t3"."cv" = 3023424::int
+      and "t3"."al" <> 0::int
       and "t3"."db" is null
       and "t3"."da" is null
       and "t3"."cv" = "t0"."cv"
       LEFT JOIN "l" as "t5" ON "t3"."bs" = "t5"."ag"
-      and "t5"."cv" = CAST(3023424 AS int)
+      and "t5"."cv" = 3023424::int
       and "t5"."cv" = "t0"."cv"
       LEFT JOIN "k" as "t6" ON "t6"."bi" = "t5"."bi"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and "t0"."aw" = CAST(1 AS int)
-      and "t0"."w" = CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-      and "t1"."z" = CAST(11 AS int)
-      and "t0"."cr" = CAST(0 AS int)
+      "t0"."cv" = 3023424::int
+      and "t0"."aw" = 1::int
+      and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+      and "t1"."z" = 11::int
+      and "t0"."cr" = 0::int
       and "t0"."h" is null
-      and "t1"."cj" < CAST(0 AS int)
+      and "t1"."cj" < 0::int
   ) as "cte1"
 UNION
 SELECT
@@ -4596,33 +4435,27 @@ FROM
     SELECT
       "t0"."ag" as "c0",
       "t5"."ag" as "c1",
-      CAST(2 AS int) as "ck",
+      2::int as "ck",
       "t2"."al" as "c3",
       "t0"."cv",
       "t0"."w" as "a",
-      coalesce (
-        CAST ("t5"."ay" as text),
-        CAST ("t0"."ay" as text)
-      ) as "ay",
-      coalesce (
-        CAST ("t5"."bg" as text),
-        CAST ("t0"."bg" as text)
-      ) as "bh",
+      coalesce ("t5"."ay"::text, "t0"."ay"::text) as "ay",
+      coalesce ("t5"."bg"::text, "t0"."bg"::text) as "bh",
       "t0"."cw",
       "t1"."z",
-      coalesce (CAST ("t6"."bj" as int), CAST ("t0"."bj" as int)) as "bj",
+      coalesce ("t6"."bj"::int, "t0"."bj"::int) as "bj",
       "t5"."bm" as "c11",
-      coalesce (CAST ("t5"."cu" as int), CAST ("t0"."cu" as int)) as "cu",
+      coalesce ("t5"."cu"::int, "t0"."cu"::int) as "cu",
       "t0"."aa",
       coalesce (
-        CAST ("t5"."co" as decimal),
-        CAST ("t5"."cm" as decimal),
-        CAST ("t0"."ac" as decimal)
+        "t5"."co"::decimal,
+        "t5"."cm"::decimal,
+        "t0"."ac"::decimal
       ) as "ac",
       CASE
-        WHEN not "t5"."co" is null THEN CAST(0 AS int)
-        WHEN not "t5"."cm" is null THEN CAST(1 AS int)
-        ELSE CAST(2 AS int)
+        WHEN not "t5"."co" is null THEN 0::int
+        WHEN not "t5"."cm" is null THEN 1::int
+        ELSE 2::int
       END as "ad",
       "t5"."cl" as "ab",
       CASE
@@ -4631,28 +4464,28 @@ FROM
         ELSE "t0"."ae"
       END as "ae",
       CASE
-        WHEN not "t0"."h" is null THEN CAST(true AS bool)
-        ELSE CAST(false AS bool)
+        WHEN not "t0"."h" is null THEN true::bool
+        ELSE false::bool
       END as "c18"
     FROM
       "m" as "t0"
       INNER JOIN "f" as "t1" ON "t1"."cw" = "t0"."cw"
       LEFT JOIN "w" as "t2" ON "t2"."c" = "t0"."ag"
-      and "t2"."cv" = CAST(3023424 AS int)
-      and "t0"."cr" = CAST(1 AS int)
+      and "t2"."cv" = 3023424::int
+      and "t0"."cr" = 1::int
       and "t2"."cv" = "t0"."cv"
       LEFT JOIN "l" as "t5" ON "t5"."ag" = "t2"."bs"
-      and "t5"."cv" = CAST(3023424 AS int)
+      and "t5"."cv" = 3023424::int
       and "t5"."cv" = "t0"."cv"
       LEFT JOIN "k" as "t6" ON "t6"."bi" = "t5"."bi"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and "t0"."aw" = CAST(1 AS int)
-      and "t0"."w" = CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-      and "t1"."z" = CAST(11 AS int)
-      and "t0"."cr" = CAST(1 AS int)
+      "t0"."cv" = 3023424::int
+      and "t0"."aw" = 1::int
+      and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+      and "t1"."z" = 11::int
+      and "t0"."cr" = 1::int
       and "t0"."h" is null
-      and "t1"."cj" < CAST(0 AS int)
+      and "t1"."cj" < 0::int
   ) as "cte2"
 ''
 plan:
@@ -5034,42 +4867,42 @@ SELECT
 FROM
   (
     SELECT
-      coalesce (CAST ("t6"."bj" as int), CAST ("t0"."bj" as int)) as "bj",
+      coalesce ("t6"."bj"::int, "t0"."bj"::int) as "bj",
       "t5"."bm" as "c1",
-      coalesce (CAST ("t5"."cu" as int), CAST ("t0"."cu" as int)) as "cu",
+      coalesce ("t5"."cu"::int, "t0"."cu"::int) as "cu",
       CASE
-        WHEN not "t5"."co" is null THEN CAST(0 AS int)
-        WHEN not "t5"."cm" is null THEN CAST(1 AS int)
+        WHEN not "t5"."co" is null THEN 0::int
+        WHEN not "t5"."cm" is null THEN 1::int
         ELSE "t0"."ad"
       END as "ad",
       coalesce (
-        CAST ("t5"."co" as decimal),
-        CAST ("t5"."cm" as decimal),
-        CAST ("t0"."ac" as decimal)
+        "t5"."co"::decimal,
+        "t5"."cm"::decimal,
+        "t0"."ac"::decimal
       ) as "ac"
     FROM
       "m" as "t0"
       INNER JOIN "f" as "t1" ON "t1"."cw" = "t0"."cw"
       LEFT JOIN "w" as "t2" ON "t2"."bs" = "t0"."ag"
-      and "t2"."al" = CAST(0 AS int)
-      and "t0"."cr" = CAST(0 AS int)
+      and "t2"."al" = 0::int
+      and "t0"."cr" = 0::int
       and "t2"."cv" = "t0"."cv"
       LEFT JOIN "w" as "t3" ON "t2"."bt" = "t3"."ag"
       and "t3"."cv" = "t2"."cv"
       LEFT JOIN "w" as "t4" ON "t3"."x" = "t4"."x"
       and "t4"."cv" = "t3"."cv"
-      and "t4"."al" = CAST(0 AS int)
+      and "t4"."al" = 0::int
       LEFT JOIN "l" as "t5" ON "t4"."bs" = "t5"."ag"
       and "t5"."cv" = "t4"."cv"
       LEFT JOIN "k" as "t6" ON "t6"."bi" = "t5"."bi"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and "t0"."aw" = CAST(1 AS int)
-      and "t0"."w" = CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-      and "t1"."z" = CAST(11 AS int)
-      and "t0"."cr" = CAST(0 AS int)
+      "t0"."cv" = 3023424::int
+      and "t0"."aw" = 1::int
+      and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+      and "t1"."z" = 11::int
+      and "t0"."cr" = 0::int
       and not (not "t0"."h" is null)
-      and "t1"."cj" > CAST(0 AS int)
+      and "t1"."cj" > 0::int
   ) as "cte0"
 UNION
 SELECT
@@ -5077,42 +4910,42 @@ SELECT
 FROM
   (
     SELECT
-      coalesce (CAST ("t6"."bj" as int), CAST ("t0"."bj" as int)) as "bj",
+      coalesce ("t6"."bj"::int, "t0"."bj"::int) as "bj",
       "t5"."bm" as "c1",
-      coalesce (CAST ("t5"."cu" as int), CAST ("t0"."cu" as int)) as "cu",
+      coalesce ("t5"."cu"::int, "t0"."cu"::int) as "cu",
       CASE
-        WHEN not "t5"."co" is null THEN CAST(0 AS int)
-        WHEN not "t5"."cm" is null THEN CAST(1 AS int)
+        WHEN not "t5"."co" is null THEN 0::int
+        WHEN not "t5"."cm" is null THEN 1::int
         ELSE "t0"."ad"
       END as "ad",
       coalesce (
-        CAST ("t5"."co" as decimal),
-        CAST ("t5"."cm" as decimal),
-        CAST ("t0"."ac" as decimal)
+        "t5"."co"::decimal,
+        "t5"."cm"::decimal,
+        "t0"."ac"::decimal
       ) as "ac"
     FROM
       "m" as "t0"
       INNER JOIN "f" as "t1" ON "t1"."cw" = "t0"."cw"
       LEFT JOIN "w" as "t2" ON "t2"."bs" = "t0"."ag"
       and "t2"."cv" = "t0"."cv"
-      and "t2"."al" = CAST(0 AS int)
-      and "t0"."cr" = CAST(0 AS int)
+      and "t2"."al" = 0::int
+      and "t0"."cr" = 0::int
       LEFT JOIN "w" as "t3" ON "t2"."x" = "t3"."x"
       and "t3"."cv" = "t2"."cv"
-      and "t3"."al" <> CAST(0 AS int)
+      and "t3"."al" <> 0::int
       and "t3"."db" is null
       and "t3"."da" is null
       LEFT JOIN "l" as "t5" ON "t3"."bs" = "t5"."ag"
       and "t5"."cv" = "t3"."cv"
       LEFT JOIN "k" as "t6" ON "t6"."bi" = "t5"."bi"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and "t0"."aw" = CAST(1 AS int)
-      and "t0"."w" = CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-      and "t1"."z" = CAST(11 AS int)
-      and "t0"."cr" = CAST(0 AS int)
+      "t0"."cv" = 3023424::int
+      and "t0"."aw" = 1::int
+      and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+      and "t1"."z" = 11::int
+      and "t0"."cr" = 0::int
       and not (not "t0"."h" is null)
-      and "t1"."cj" < CAST(0 AS int)
+      and "t1"."cj" < 0::int
   ) as "cte1"
 UNION
 SELECT
@@ -5120,36 +4953,36 @@ SELECT
 FROM
   (
     SELECT
-      coalesce (CAST ("t6"."bj" as int), CAST ("t0"."bj" as int)) as "bj",
+      coalesce ("t6"."bj"::int, "t0"."bj"::int) as "bj",
       "t5"."bm" as "c1",
-      coalesce (CAST ("t5"."cu" as int), CAST ("t0"."cu" as int)) as "cu",
+      coalesce ("t5"."cu"::int, "t0"."cu"::int) as "cu",
       CASE
-        WHEN not "t5"."co" is null THEN CAST(0 AS int)
-        WHEN not "t5"."cm" is null THEN CAST(1 AS int)
-        ELSE CAST(2 AS int)
+        WHEN not "t5"."co" is null THEN 0::int
+        WHEN not "t5"."cm" is null THEN 1::int
+        ELSE 2::int
       END as "ad",
       coalesce (
-        CAST ("t5"."co" as decimal),
-        CAST ("t5"."cm" as decimal),
-        CAST ("t0"."ac" as decimal)
+        "t5"."co"::decimal,
+        "t5"."cm"::decimal,
+        "t0"."ac"::decimal
       ) as "ac"
     FROM
       "m" as "t0"
       INNER JOIN "f" as "t1" ON "t1"."cw" = "t0"."cw"
       LEFT JOIN "w" as "t2" ON "t2"."c" = "t0"."ag"
       and "t2"."cv" = "t0"."cv"
-      and "t0"."cr" = CAST(1 AS int)
+      and "t0"."cr" = 1::int
       LEFT JOIN "l" as "t5" ON "t5"."ag" = "t2"."bs"
       and "t5"."cv" = "t2"."cv"
       LEFT JOIN "k" as "t6" ON "t6"."bi" = "t5"."bi"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and "t0"."aw" = CAST(1 AS int)
-      and "t0"."w" = CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-      and "t1"."z" = CAST(11 AS int)
-      and "t0"."cr" = CAST(1 AS int)
+      "t0"."cv" = 3023424::int
+      and "t0"."aw" = 1::int
+      and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+      and "t1"."z" = 11::int
+      and "t0"."cr" = 1::int
       and not (not "t0"."h" is null)
-      and "t1"."cj" < CAST(0 AS int)
+      and "t1"."cj" < 0::int
   ) as "cte2"
 ''
 plan:
@@ -5316,20 +5149,16 @@ subquery $0:
 ''
 SELECT
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."aa" > CAST(0 AS int) THEN "t0"."aa"
-        ELSE CAST(0 AS int)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."aa" > 0::int THEN "t0"."aa"
+      ELSE 0::int
+    END::decimal
   ) as "c2",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."aa" < CAST(0 AS int) THEN "t0"."aa"
-        ELSE CAST(0 AS int)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."aa" < 0::int THEN "t0"."aa"
+      ELSE 0::int
+    END::decimal
   ) as "c3",
   NULL as "c4",
   "t0"."z" as "c0",
@@ -5340,16 +5169,16 @@ FROM
       "t0"."aa",
       "t0"."z",
       CASE
-        WHEN not "t0"."h" is null THEN CAST(true AS bool)
-        ELSE CAST(false AS bool)
+        WHEN not "t0"."h" is null THEN true::bool
+        ELSE false::bool
       END as "c1"
     FROM
       "m" as "t0"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and "t0"."w" = CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-      and "t0"."aw" = CAST(1 AS int)
-      and "t0"."aa" <> CAST(0 AS int)
+      "t0"."cv" = 3023424::int
+      and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+      and "t0"."aw" = 1::int
+      and "t0"."aa" <> 0::int
   ) as "t0"
 GROUP BY
   "t0"."z",
@@ -5495,9 +5324,9 @@ FROM
       LEFT JOIN "s" as "t1" ON "t0"."v" = "t1"."ag"
       and "t0"."cv" = "t1"."cv"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and "t0"."ar" <= CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-      and not coalesce (CAST ("t0"."aq" as bool), CAST(false AS bool))
+      "t0"."cv" = 3023424::int
+      and "t0"."ar" <= '2024-02-28 0:00:00.0 +00:00:00'::datetime
+      and not coalesce ("t0"."aq"::bool, false::bool)
   )
 ORDER BY
   "c0" DESC
@@ -5645,18 +5474,16 @@ SELECT
 FROM
   (
     SELECT
-      CAST (
-        "to_char" (CAST ("t0"."w" as datetime), CAST('%Y-%m-%d' AS text)) as text
-      ) as "c0",
+      "to_char" ("t0"."w"::datetime, '%Y-%m-%d'::text)::text as "c0",
       "t0"."aa"
     FROM
       "m" as "t0"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and "t0"."w" >= CAST('2023-01-01 0:00:00.0 +00:00:00' AS datetime)
-      and "t0"."w" <= CAST('2023-05-01 0:00:00.0 +00:00:00' AS datetime)
-      and "t0"."aw" = CAST(1 AS int)
-      and "t0"."aa" <> CAST(0 AS int)
+      "t0"."cv" = 3023424::int
+      and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+      and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+      and "t0"."aw" = 1::int
+      and "t0"."aa" <> 0::int
   ) as "cte0"
 ''
 plan:
@@ -5686,22 +5513,18 @@ FROM
         SELECT
           "cte0"."COL_0" as "c0",
           sum (
-            CAST (
-              CASE
-                WHEN "cte0"."COL_1" > CAST(0 AS int) THEN "cte0"."COL_1"
-                ELSE CAST(0 AS int)
-              END as decimal
-            )
+            CASE
+              WHEN "cte0"."COL_1" > 0::int THEN "cte0"."COL_1"
+              ELSE 0::int
+            END::decimal
           ) as "c1",
           sum (
-            CAST (
-              CASE
-                WHEN "cte0"."COL_1" < CAST(0 AS int) THEN "cte0"."COL_1"
-                ELSE CAST(0 AS int)
-              END as decimal
-            )
+            CASE
+              WHEN "cte0"."COL_1" < 0::int THEN "cte0"."COL_1"
+              ELSE 0::int
+            END::decimal
           ) as "c2",
-          CAST(0 AS int) as "c3",
+          0::int as "c3",
           row_number () OVER (
             ORDER BY
               "cte0"."COL_0" DESC) as "c4"
@@ -5720,7 +5543,7 @@ FROM
       "c0" DESC
   ) as "cte1"
 WHERE
-  "cte1"."c4" > CAST(0 AS int)
+  "cte1"."c4" > 0::int
 LIMIT
   10
 ''
@@ -5840,37 +5663,31 @@ FROM
     SELECT
       "cte0"."c0",
       sum (
-        CAST (
-          CASE
-            WHEN "cte0"."aa" > CAST(0 AS int) THEN "cte0"."aa"
-            ELSE CAST(0 AS int)
-          END as decimal
-        )
+        CASE
+          WHEN "cte0"."aa" > 0::int THEN "cte0"."aa"
+          ELSE 0::int
+        END::decimal
       ) as "c1",
       sum (
-        CAST (
-          CASE
-            WHEN "cte0"."aa" < CAST(0 AS int) THEN "cte0"."aa"
-            ELSE CAST(0 AS int)
-          END as decimal
-        )
+        CASE
+          WHEN "cte0"."aa" < 0::int THEN "cte0"."aa"
+          ELSE 0::int
+        END::decimal
       ) as "c2",
-      CAST(0 AS int) as "c3"
+      0::int as "c3"
     FROM
       (
         SELECT
-          CAST (
-            "to_char" (CAST ("t0"."w" as datetime), CAST('%Y-%m-%d' AS text)) as text
-          ) as "c0",
+          "to_char" ("t0"."w"::datetime, '%Y-%m-%d'::text)::text as "c0",
           "t0"."aa"
         FROM
           "m" as "t0"
         WHERE
-          "t0"."cv" = CAST(3023424 AS int)
-          and "t0"."w" >= CAST('2023-01-01 0:00:00.0 +00:00:00' AS datetime)
-          and "t0"."w" <= CAST('2023-05-01 0:00:00.0 +00:00:00' AS datetime)
-          and "t0"."aw" = CAST(1 AS int)
-          and "t0"."aa" <> CAST(0 AS int)
+          "t0"."cv" = 3023424::int
+          and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+          and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+          and "t0"."aw" = 1::int
+          and "t0"."aa" <> 0::int
       ) as "cte0"
     GROUP BY
       "cte0"."c0"
@@ -6090,12 +5907,10 @@ FROM
           LEFT JOIN "s" as "t1" ON "t0"."v" = "t1"."ag"
           and "t0"."cv" = "t1"."cv"
         WHERE
-          "t0"."cv" = CAST(3023424 AS int)
-          and not coalesce (CAST ("t0"."aq" as bool), CAST(false AS bool))
-          and CAST (
-            "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS text)) as datetime
-          ) > CAST('2020-01-02 0:00:00.0 +00:00:00' AS datetime)
-          and "t0"."ar" < CAST('2023-01-01 0:00:00.0 +00:00:00' AS datetime)
+          "t0"."cv" = 3023424::int
+          and not coalesce ("t0"."aq"::bool, false::bool)
+          and "to_char" ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+          and "t0"."ar" < '2023-01-01 0:00:00.0 +00:00:00'::datetime
       )
     ORDER BY
       "ar" DESC
@@ -6123,13 +5938,11 @@ FROM
   LEFT JOIN "s" as "t1" ON "t0"."v" = "t1"."ag"
   and "t0"."cv" = "t1"."cv"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and not coalesce (CAST ("t0"."aq" as bool), CAST(false AS bool))
-  and CAST (
-    "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS text)) as datetime
-  ) > CAST('2020-01-02 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."ar" >= CAST('2023-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."ar" <= CAST('2023-05-01 0:00:00.0 +00:00:00' AS datetime)
+  "t0"."cv" = 3023424::int
+  and not coalesce ("t0"."aq"::bool, false::bool)
+  and "to_char" ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+  and "t0"."ar" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+  and "t0"."ar" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
 ''
 plan:
     [2] SEARCH TABLE u AS t0 USING COVERING INDEX ix_bi (cv=? AND ar<?) (~2 rows)
@@ -6286,36 +6099,23 @@ FROM
     SELECT
       "t0"."cu",
       "t0"."d",
-      CAST (
-        "to_char" (
-          CAST (
-            coalesce (
-              CAST ("t0"."cs" as datetime),
-              CAST ("t0"."a" as datetime)
-            ) as datetime
-          ),
-          CAST('%Y-%m-%d' AS text)
-        ) as text
-      ) as "a"
+      "to_char" (
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%Y-%m-%d'::text
+      )::text as "a"
     FROM
       "l" as "t0"
       LEFT JOIN "l" as "t1" ON "t1"."h" = "t0"."ag"
       and "t1"."cv" = "t0"."cv"
     WHERE
       "t1"."ag" is null
-      and "t0"."cv" = CAST(4797271 AS int)
-      and "t0"."cw" = CAST(1415 AS int)
-      and coalesce (
-        CAST ("t0"."cs" as datetime),
-        CAST ("t0"."a" as datetime)
-      ) >= CAST('2010-01-01 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (
-        CAST ("t0"."cs" as datetime),
-        CAST ("t0"."a" as datetime)
-      ) <= CAST('2025-10-20 0:00:00.0 +00:00:00' AS datetime)
-      and "t0"."cu" = CAST(1333 AS int)
+      and "t0"."cv" = 4797271::int
+      and "t0"."cw" = 1415::int
+      and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) <= '2025-10-20 0:00:00.0 +00:00:00'::datetime
+      and "t0"."cu" = 1333::int
       and "t0"."h" is null
-      and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and coalesce ("t0"."bb"::int, 0::int) <> 1::int
   ) as "cte0"
 ''
 plan:
@@ -6342,7 +6142,7 @@ FROM
         SELECT
           "cte0"."COL_0" as "cu",
           "cte0"."COL_2" as "a",
-          sum (CAST ("cte0"."COL_1" as decimal)) as "d",
+          sum ("cte0"."COL_1"::decimal) as "d",
           row_number () OVER (
             ORDER BY
               "cte0"."COL_2" DESC) as "c3"
@@ -6363,7 +6163,7 @@ FROM
       "a" DESC
   ) as "cte1"
 WHERE
-  "cte1"."c3" > CAST(0 AS int)
+  "cte1"."c3" > 0::int
 LIMIT
   10
 ''
@@ -6541,19 +6341,16 @@ SELECT
 FROM
   "l" as "t0"
   LEFT JOIN "l" as "t1" ON "t1"."h" = "t0"."ag"
-  and "t1"."cv" = CAST(8397725 AS int)
+  and "t1"."cv" = 8397725::int
   and "t1"."cv" = "t0"."cv"
 WHERE
   "t1"."ag" is null
-  and "t0"."cv" = CAST(8397725 AS int)
-  and "t0"."cw" = CAST(1415 AS int)
-  and coalesce (
-    CAST ("t0"."cs" as datetime),
-    CAST ("t0"."a" as datetime)
-  ) = CAST('2024-07-30 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."cu" = CAST(1333 AS int)
+  and "t0"."cv" = 8397725::int
+  and "t0"."cw" = 1415::int
+  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2024-07-30 0:00:00.0 +00:00:00'::datetime
+  and "t0"."cu" = 1333::int
   and "t0"."h" is null
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
 ''
 plan:
     [0] SEARCH TABLE l AS t0 USING COVERING INDEX ix_ab (cv=? AND cw=?) (~6 rows)
@@ -6586,24 +6383,20 @@ FROM
           "COL_0" as "b",
           "COL_1" as "cw",
           "COL_2" as "cu",
-          coalesce (
-            CAST ("COL_7" as int),
-            CAST ("COL_4" as int),
-            CAST(0 AS int)
-          ) as "ac",
+          coalesce ("COL_7"::int, "COL_4"::int, 0::int) as "ac",
           CASE
             WHEN not "COL_7" is null
             or not "COL_4" is null THEN "COL_5"
-            ELSE CAST('0000' AS text)
+            ELSE '0000'::text
           END as "ae",
-          "to_char" (CAST ("COL_6" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
+          "to_char" ("COL_6"::datetime, '%Y-%m-%d'::text) as "ab",
           CASE
-            WHEN not "COL_7" is null THEN CAST(0 AS int)
-            WHEN not "COL_4" is null THEN CAST(1 AS int)
-            ELSE CAST(2 AS int)
+            WHEN not "COL_7" is null THEN 0::int
+            WHEN not "COL_4" is null THEN 1::int
+            ELSE 2::int
           END as "ad",
           "COL_3" as "d",
-          CAST(0 AS int) as "c8",
+          0::int as "c8",
           row_number () OVER (
             ORDER BY
               "COL_0" DESC) as "c9"
@@ -6626,7 +6419,7 @@ FROM
       "b" DESC
   ) as "t2"
 WHERE
-  "t2"."c9" > CAST(0 AS int)
+  "t2"."c9" > 0::int
 LIMIT
   10
 ''
@@ -6808,19 +6601,16 @@ SELECT
 FROM
   "l" as "t0"
   LEFT JOIN "l" as "t1" ON "t1"."h" = "t0"."ag"
-  and "t1"."cv" = CAST(8397725 AS int)
+  and "t1"."cv" = 8397725::int
   and "t1"."cv" = "t0"."cv"
 WHERE
   "t1"."ag" is null
-  and "t0"."cv" = CAST(8397725 AS int)
-  and "t0"."cw" = CAST(1415 AS int)
-  and coalesce (
-    CAST ("t0"."cs" as datetime),
-    CAST ("t0"."a" as datetime)
-  ) = CAST('2024-07-30 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."cu" = CAST(1333 AS int)
+  and "t0"."cv" = 8397725::int
+  and "t0"."cw" = 1415::int
+  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2024-07-30 0:00:00.0 +00:00:00'::datetime
+  and "t0"."cu" = 1333::int
   and "t0"."h" is null
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
 ''
 plan:
     [0] SEARCH TABLE l AS t0 USING COVERING INDEX ix_ab (cv=? AND cw=?) (~6 rows)
@@ -6834,7 +6624,7 @@ buckets = [2739]
 ''
 SELECT
   count (*) as "c0",
-  sum (CAST ("t3"."d" as decimal)) as "c1"
+  sum ("t3"."d"::decimal) as "c1"
 FROM
   (
     SELECT
@@ -6858,24 +6648,20 @@ FROM
               "COL_0" as "b",
               "COL_1" as "cw",
               "COL_2" as "cu",
-              coalesce (
-                CAST ("COL_7" as int),
-                CAST ("COL_4" as int),
-                CAST(0 AS int)
-              ) as "ac",
+              coalesce ("COL_7"::int, "COL_4"::int, 0::int) as "ac",
               CASE
                 WHEN not "COL_7" is null
                 or not "COL_4" is null THEN "COL_5"
-                ELSE CAST('0000' AS text)
+                ELSE '0000'::text
               END as "ae",
-              "to_char" (CAST ("COL_6" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
+              "to_char" ("COL_6"::datetime, '%Y-%m-%d'::text) as "ab",
               CASE
-                WHEN not "COL_7" is null THEN CAST(0 AS int)
-                WHEN not "COL_4" is null THEN CAST(1 AS int)
-                ELSE CAST(2 AS int)
+                WHEN not "COL_7" is null THEN 0::int
+                WHEN not "COL_4" is null THEN 1::int
+                ELSE 2::int
               END as "ad",
               "COL_3" as "d",
-              CAST(0 AS int) as "c10",
+              0::int as "c10",
               row_number () OVER (
                 ORDER BY
                   "COL_0" DESC) as "c11"
@@ -6986,13 +6772,8 @@ SELECT
   "t0"."d" as "c0",
   "t0"."cu" as "c1",
   "to_char" (
-    CAST (
-      coalesce (
-        CAST ("t0"."cs" as datetime),
-        CAST ("t0"."a" as datetime)
-      ) as datetime
-    ),
-    CAST('%Y-%m-%d' AS text)
+    coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+    '%Y-%m-%d'::text
   ) as "c2"
 FROM
   "l" as "t0"
@@ -7000,18 +6781,12 @@ FROM
   and "t1"."cv" = "t0"."cv"
 WHERE
   "t1"."ag" is null
-  and "t0"."cv" = CAST(8397725 AS int)
-  and "t0"."cw" = CAST(1415 AS int)
-  and coalesce (
-    CAST ("t0"."cs" as datetime),
-    CAST ("t0"."a" as datetime)
-  ) >= CAST('2010-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and coalesce (
-    CAST ("t0"."cs" as datetime),
-    CAST ("t0"."a" as datetime)
-  ) <= CAST('2025-11-04 0:00:00.0 +00:00:00' AS datetime)
+  and "t0"."cv" = 8397725::int
+  and "t0"."cw" = 1415::int
+  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) <= '2025-11-04 0:00:00.0 +00:00:00'::datetime
   and "t0"."h" is null
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
 ''
 plan:
     [0] SEARCH TABLE l AS t0 USING COVERING INDEX ix_ab (cv=? AND cw=?) (~6 rows)
@@ -7111,21 +6886,21 @@ subquery $1:
 ''
 SELECT
   "cte0"."v",
-  sum (CAST ("cte0"."c1" as decimal)) as "c2"
+  sum ("cte0"."c1"::decimal) as "c2"
 FROM
   (
     SELECT
       "t0"."v",
       CASE
-        WHEN "t0"."bx" > CAST(0 AS int)
-        and "t1"."cw" = CAST(3 AS int) THEN "t0"."bx"
-        ELSE CAST(0 AS int)
+        WHEN "t0"."bx" > 0::int
+        and "t1"."cw" = 3::int THEN "t0"."bx"
+        ELSE 0::int
       END as "c1"
     FROM
       "y" as "t0"
       LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
+      "t0"."cv" = 3023424::int
   ) as "cte0"
 GROUP BY
   "cte0"."v"
@@ -7144,8 +6919,8 @@ buckets = [1222]
 SELECT
   "t0"."ce" as "c3",
   "cte1"."COL_1" as "c2",
-  CAST(0 AS int) as "c4",
-  CAST(0 AS int) as "c5"
+  0::int as "c4",
+  0::int as "c5"
 FROM
   "s" as "t0"
   LEFT JOIN (
@@ -7156,7 +6931,7 @@ FROM
       "_tmp_7837470984463317261_0136"
   ) as "cte1" ON "cte1"."COL_0" = "t0"."ag"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
 ''
 plan:
     [1] SCAN TABLE _tmp_7837470984463317261_0136 (~1048576 rows)
@@ -7619,10 +7394,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
-      and "l"."cs" >= CAST('2022-10-31 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2022-11-01 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 4797271::int
+      and "l"."cs" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -7631,11 +7406,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
+      "l"."cv" = 4797271::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2022-10-31 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2022-11-01 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -7688,21 +7463,17 @@ SELECT
   "t3"."bg",
   "t6"."cu",
   "t6"."cw",
-  coalesce (
-    CAST ("t6"."co" as int),
-    CAST ("t6"."cm" as int),
-    CAST(0 AS int)
-  ) as "ac",
+  coalesce ("t6"."co"::int, "t6"."cm"::int, 0::int) as "ac",
   CASE
     WHEN not "t6"."co" is null
     or not "t6"."cm" is null THEN "t6"."cn"
-    ELSE CAST('0000' AS text)
+    ELSE '0000'::text
   END as "ae",
-  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
+  "to_char" ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
   CASE
-    WHEN not "t6"."co" is null THEN CAST(0 AS int)
-    WHEN not "t6"."cm" is null THEN CAST(1 AS int)
-    ELSE CAST(2 AS int)
+    WHEN not "t6"."co" is null THEN 0::int
+    WHEN not "t6"."cm" is null THEN 1::int
+    ELSE 2::int
   END as "c9",
   "t5"."d"
 FROM
@@ -7718,21 +7489,21 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."cv" = "t4"."cv"
   and "t5"."db" is null
   and "t5"."da" is null
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "x" as "t7" ON "t7"."b" = "t6"."ag"
   and "t7"."cv" = "t6"."cv"
   LEFT JOIN "f" as "t8" ON "t8"."cw" = "t6"."cw"
 WHERE
-  "t8"."z" = CAST(7 AS int)
-  and "t3"."aw" = CAST(11 AS int)
-  and "t3"."cq" = CAST(6 AS int)
+  "t8"."z" = 7::int
+  and "t3"."aw" = 11::int
+  and "t3"."cq" = 6::int
 ''
 plan:
     [0] SCAN TABLE _tmp_18309399111922391115_2136 (~1048576 rows)
@@ -7777,33 +7548,24 @@ FROM
       "t9"."cv",
       "t9"."ag" as "b",
       "t9"."ay",
-      coalesce (
-        CAST ("t3"."bg" as text),
-        CAST ("t9"."bg" as text)
-      ) as "bg",
-      coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
+      coalesce ("t3"."bg"::text, "t9"."bg"::text) as "bg",
+      coalesce ("t3"."cu"::int, "t9"."cu"::int) as "cu",
       "t9"."cw",
-      coalesce (
-        CAST ("t9"."co" as int),
-        CAST ("t9"."cm" as int),
-        CAST(0 AS int)
-      ) as "ac",
+      coalesce ("t9"."co"::int, "t9"."cm"::int, 0::int) as "ac",
       "t9"."cn" as "ae",
-      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
+      "to_char" ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
       CASE
-        WHEN not "t9"."co" is null THEN CAST(0 AS int)
-        ELSE CAST(1 AS int)
+        WHEN not "t9"."co" is null THEN 0::int
+        ELSE 1::int
       END as "c9",
       coalesce (
-        CAST (
-          (
-            "t9"."d" * coalesce (CAST ("t8"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-              WHEN not "t9"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        ),
-        CAST(0.0 AS decimal)
+        (
+          "t9"."d" * coalesce ("t8"."cj"::decimal, 0.0::decimal) * CASE
+            WHEN not "t9"."h" is null THEN (-1)::int
+            ELSE 1::int
+          END
+        )::decimal,
+        0.0::decimal
       ) as "d"
     FROM
       "n" as "t9"
@@ -7814,17 +7576,11 @@ FROM
       and "t10"."cv" = "t3"."cv"
       LEFT JOIN "h" as "t11" ON "t9"."cu" = "t11"."cu"
     WHERE
-      "t9"."cv" = CAST(4797271 AS int)
-      and coalesce (
-        CAST ("t9"."cs" as datetime),
-        CAST ("t9"."a" as datetime)
-      ) = CAST('2022-10-31 0:00:00.0 +00:00:00' AS datetime)
-      and "t8"."z" = CAST(7 AS int)
-      and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) = CAST(11 AS int)
-      and coalesce (
-        CAST ("t3"."cq" as int),
-        CAST ("t11"."cq" as int)
-      ) = CAST(6 AS int)
+      "t9"."cv" = 4797271::int
+      and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2022-10-31 0:00:00.0 +00:00:00'::datetime
+      and "t8"."z" = 7::int
+      and coalesce ("t3"."aw"::int, "t9"."bf"::int) = 11::int
+      and coalesce ("t3"."cq"::int, "t11"."cq"::int) = 6::int
   ) as "cte2"
 ''
 plan:
@@ -7931,7 +7687,7 @@ FROM
       ) as "unnamed_join"
   ) as "cte4"
 WHERE
-  "cte4"."c11" > CAST(0 AS int)
+  "cte4"."c11" > 0::int
 LIMIT
   10
 ''
@@ -8232,10 +7988,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
-      and "l"."cs" >= CAST('2022-10-31 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2022-11-01 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 4797271::int
+      and "l"."cs" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -8244,11 +8000,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
+      "l"."cv" = 4797271::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2022-10-31 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2022-11-01 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2022-10-31 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2022-11-01 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -8309,21 +8065,21 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."cv" = "t4"."cv"
   and "t5"."db" is null
   and "t5"."da" is null
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "x" as "t7" ON "t7"."b" = "t6"."ag"
   and "t7"."cv" = "t6"."cv"
   LEFT JOIN "f" as "t8" ON "t8"."cw" = "t6"."cw"
 WHERE
-  "t8"."z" = CAST(7 AS int)
-  and "t3"."aw" = CAST(11 AS int)
-  and "t3"."cq" = CAST(6 AS int)
+  "t8"."z" = 7::int
+  and "t3"."aw" = 11::int
+  and "t3"."cq" = 6::int
 ''
 plan:
     [0] SCAN TABLE _tmp_2465481866393360794_1136 (~1048576 rows)
@@ -8342,7 +8098,7 @@ buckets <= [1-3000]
 ''
 SELECT
   count (*) as "count_1",
-  sum (CAST ("t12"."COL_0" as decimal)) as "sum_2"
+  sum ("t12"."COL_0"::decimal) as "sum_2"
 FROM
   (
     SELECT
@@ -8361,15 +8117,13 @@ FROM
       (
         SELECT
           coalesce (
-            CAST (
-              (
-                "t9"."d" * coalesce (CAST ("t8"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-                  WHEN not "t9"."h" is null THEN CAST(-1 AS int)
-                  ELSE CAST(1 AS int)
-                END
-              ) as decimal
-            ),
-            CAST(0.0 AS decimal)
+            (
+              "t9"."d" * coalesce ("t8"."cj"::decimal, 0.0::decimal) * CASE
+                WHEN not "t9"."h" is null THEN (-1)::int
+                ELSE 1::int
+              END
+            )::decimal,
+            0.0::decimal
           ) as "d"
         FROM
           "n" as "t9"
@@ -8380,17 +8134,11 @@ FROM
           and "t10"."cv" = "t3"."cv"
           LEFT JOIN "h" as "t11" ON "t9"."cu" = "t11"."cu"
         WHERE
-          "t9"."cv" = CAST(4797271 AS int)
-          and coalesce (
-            CAST ("t9"."cs" as datetime),
-            CAST ("t9"."a" as datetime)
-          ) = CAST('2022-10-31 0:00:00.0 +00:00:00' AS datetime)
-          and "t8"."z" = CAST(7 AS int)
-          and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) = CAST(11 AS int)
-          and coalesce (
-            CAST ("t3"."cq" as int),
-            CAST ("t11"."cq" as int)
-          ) = CAST(6 AS int)
+          "t9"."cv" = 4797271::int
+          and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2022-10-31 0:00:00.0 +00:00:00'::datetime
+          and "t8"."z" = 7::int
+          and coalesce ("t3"."aw"::int, "t9"."bf"::int) = 11::int
+          and coalesce ("t3"."cq"::int, "t11"."cq"::int) = 6::int
       ) as "cte2"
   ) as "t12"
 ''
@@ -8411,8 +8159,8 @@ buckets = [874]
 ╰───────────────────╯
 ''
 SELECT
-  CAST (sum (CAST ("COL_0" as int)) as int) as "c1",
-  sum (CAST ("COL_1" as decimal)) as "c2"
+  sum ("COL_0"::int)::int as "c1",
+  sum ("COL_1"::decimal) as "c2"
 FROM
   (
     SELECT
@@ -8744,10 +8492,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
-      and "l"."cs" >= CAST('2024-04-02 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2024-04-03 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 4797271::int
+      and "l"."cs" >= '2024-04-02 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2024-04-03 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -8756,11 +8504,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
+      "l"."cv" = 4797271::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2024-04-02 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2024-04-03 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2024-04-02 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2024-04-03 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -8800,21 +8548,21 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."db" is null
   and "t5"."da" is null
   and "t5"."cv" = "t4"."cv"
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "f" as "t7" ON "t7"."cw" = "t6"."cw"
   LEFT JOIN "ad" as "t8" ON "t8"."cv" = "t3"."cv"
   and "t8"."ay" = "t3"."ay"
 WHERE
-  "t7"."z" = CAST(7 AS int)
-  and "t3"."aw" = CAST(11 AS int)
-  and "t3"."cq" = CAST(6 AS int)
+  "t7"."z" = 7::int
+  and "t3"."aw" = 11::int
+  and "t3"."cq" = 6::int
 GROUP BY
   "t6"."cv",
   "t3"."ay",
@@ -8900,15 +8648,9 @@ FROM
     SELECT DISTINCT
       "t9"."cv",
       "t9"."ay",
-      coalesce (
-        CAST ("t3"."bg" as text),
-        CAST ("t9"."bg" as text)
-      ) as "bg",
-      coalesce (
-        CAST ("t3"."ah" as text),
-        CAST ("t9"."ah" as text)
-      ) as "ah",
-      coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
+      coalesce ("t3"."bg"::text, "t9"."bg"::text) as "bg",
+      coalesce ("t3"."ah"::text, "t9"."ah"::text) as "ah",
+      coalesce ("t3"."cu"::int, "t9"."cu"::int) as "cu",
       "t8"."cx"
     FROM
       "n" as "t9"
@@ -8921,17 +8663,11 @@ FROM
       LEFT JOIN "ad" as "t8" ON "t8"."cv" = "t3"."cv"
       and "t8"."ay" = "t3"."ay"
     WHERE
-      "t9"."cv" = CAST(4797271 AS int)
-      and coalesce (
-        CAST ("t9"."cs" as datetime),
-        CAST ("t9"."a" as datetime)
-      ) = CAST('2024-04-02 0:00:00.0 +00:00:00' AS datetime)
-      and "t7"."z" = CAST(7 AS int)
-      and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) = CAST(11 AS int)
-      and coalesce (
-        CAST ("t3"."cq" as int),
-        CAST ("t11"."cq" as int)
-      ) = CAST(6 AS int)
+      "t9"."cv" = 4797271::int
+      and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2024-04-02 0:00:00.0 +00:00:00'::datetime
+      and "t7"."z" = 7::int
+      and coalesce ("t3"."aw"::int, "t9"."bf"::int) = 11::int
+      and coalesce ("t3"."cq"::int, "t11"."cq"::int) = 6::int
   ) as "cte2"
 ''
 plan:
@@ -9085,37 +8821,33 @@ union all
 ''
 SELECT
   "a"."z" as "c0",
-  sum (CAST ("a"."f" as decimal)) as "c1",
-  sum (CAST ("a"."e" as decimal)) as "c2",
-  CAST(0 AS int) as "c3"
+  sum ("a"."f"::decimal) as "c1",
+  sum ("a"."e"::decimal) as "c2",
+  0::int as "c3"
 FROM
   "a"
 WHERE
-  "a"."cv" = CAST(3023424 AS int)
-  and "a"."aw" = CAST(11 AS int)
-  and "a"."cq" = CAST(6 AS int)
-  and "a"."a" = CAST('2022-10-12 0:00:00.0 +00:00:00' AS datetime)
+  "a"."cv" = 3023424::int
+  and "a"."aw" = 11::int
+  and "a"."cq" = 6::int
+  and "a"."a" = '2022-10-12 0:00:00.0 +00:00:00'::datetime
 GROUP BY
   "a"."z"
 UNION ALL
 SELECT
   "t3"."z" as "c0",
-  CAST(0 AS int) as "c1",
-  CAST(0 AS int) as "c2",
+  0::int as "c1",
+  0::int as "c2",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          (
-            "t0"."d" * coalesce (CAST ("t3"."cj" as decimal), CAST(0 AS decimal)) * CASE
-              WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      (
+        "t0"."d" * coalesce ("t3"."cj"::decimal, 0::decimal) * CASE
+          WHEN not "t0"."h" is null THEN (-1)::int
+          ELSE 1::int
+        END
+      )::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c3"
 FROM
   "n" as "t0"
@@ -9126,17 +8858,14 @@ FROM
   LEFT JOIN "f" as "t3" ON "t0"."cw" = "t3"."cw"
   LEFT JOIN "h" as "t4" ON "t0"."cu" = "t4"."cu"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t2"."aw" as int), CAST ("t0"."bf" as int)) = CAST(11 AS int)
-  and coalesce (CAST ("t2"."cq" as int), CAST ("t4"."cq" as int)) = CAST(6 AS int)
-  and coalesce (
-    CAST ("t0"."cs" as datetime),
-    CAST ("t0"."a" as datetime)
-  ) = CAST('2022-10-12 0:00:00.0 +00:00:00' AS datetime)
+  "t0"."cv" = 3023424::int
+  and coalesce ("t2"."aw"::int, "t0"."bf"::int) = 11::int
+  and coalesce ("t2"."cq"::int, "t4"."cq"::int) = 6::int
+  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2022-10-12 0:00:00.0 +00:00:00'::datetime
   and "t1"."ag" is null
   and (
     "t0"."h" is null
-    or "t0"."h" = CAST(-1 AS int)
+    or "t0"."h" = (-1)::int
   )
 GROUP BY
   "t3"."z"
@@ -9284,21 +9013,15 @@ FROM
   LEFT JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
   and "t0"."ay" = "t1"."ay"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and "t0"."aw" = CAST(11 AS int)
-  and "t0"."a" = CAST('2022-10-12 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."cq" = CAST(6 AS int)
+  "t0"."cv" = 3023424::int
+  and "t0"."aw" = 11::int
+  and "t0"."a" = '2022-10-12 0:00:00.0 +00:00:00'::datetime
+  and "t0"."cq" = 6::int
 UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
-  coalesce (
-    CAST ("t4"."bg" as text),
-    CAST ("t2"."bg" as text)
-  ) as "c1",
-  coalesce (
-    CAST ("t4"."ah" as text),
-    CAST ("t2"."ah" as text)
-  ) as "c2",
+  coalesce ("t4"."bg"::text, "t2"."bg"::text) as "c1",
+  coalesce ("t4"."ah"::text, "t2"."ah"::text) as "c2",
   "t1"."cx" as "c3"
 FROM
   "n" as "t2"
@@ -9311,13 +9034,10 @@ FROM
   and "t2"."ay" = "t1"."ay"
   LEFT JOIN "h" as "t6" ON "t2"."cu" = "t6"."cu"
 WHERE
-  "t2"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t4"."aw" as int), CAST ("t2"."bf" as int)) = CAST(11 AS int)
-  and coalesce (
-    CAST ("t2"."cs" as datetime),
-    CAST ("t2"."a" as datetime)
-  ) = CAST('2022-10-12 0:00:00.0 +00:00:00' AS datetime)
-  and coalesce (CAST ("t4"."cq" as int), CAST ("t6"."cq" as int)) = CAST(6 AS int)
+  "t2"."cv" = 3023424::int
+  and coalesce ("t4"."aw"::int, "t2"."bf"::int) = 11::int
+  and coalesce ("t2"."cs"::datetime, "t2"."a"::datetime) = '2022-10-12 0:00:00.0 +00:00:00'::datetime
+  and coalesce ("t4"."cq"::int, "t6"."cq"::int) = 6::int
 ''
 plan:
     [1] SEARCH TABLE a AS t0 
@@ -9505,20 +9225,16 @@ subquery $0:
 ''
 SELECT
   "a"."cq" as "c0",
-  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS text)) as "c1",
-  sum (CAST ("a"."f" as decimal)) as "c3",
-  sum (CAST ("a"."e" as decimal)) as "c4",
-  CAST(0.0 AS decimal) as "c5"
+  "to_char" ("a"."a"::datetime, '%Y-%m-%d'::text) as "c1",
+  sum ("a"."f"::decimal) as "c3",
+  sum ("a"."e"::decimal) as "c4",
+  0.0::decimal as "c5"
 FROM
   "a"
 WHERE
-  "a"."cv" = CAST(3023424 AS int)
-  and "a"."aw" = CAST(11 AS int)
-  and "a"."bm" in (
-    CAST(2024 AS int),
-    CAST(2023 AS int),
-    CAST(2022 AS int)
-  )
+  "a"."cv" = 3023424::int
+  and "a"."aw" = 11::int
+  and "a"."bm" in (2024::int, 2023::int, 2022::int)
 GROUP BY
   "a"."a",
   "a"."cq"
@@ -9526,38 +9242,29 @@ UNION ALL
 SELECT
   "cte0"."cq",
   "cte0"."a",
-  CAST(0 AS int) as "c3",
-  CAST(0 AS int) as "c4",
+  0::int as "c3",
+  0::int as "c4",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          (
-            "cte0"."d" * "cte0"."cj" * CASE
-              WHEN not "cte0"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      (
+        "cte0"."d" * "cte0"."cj" * CASE
+          WHEN not "cte0"."h" is null THEN (-1)::int
+          ELSE 1::int
+        END
+      )::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c5"
 FROM
   (
     SELECT
-      coalesce (CAST ("t2"."cq" as int), CAST ("t4"."cq" as int)) as "cq",
+      coalesce ("t2"."cq"::int, "t4"."cq"::int) as "cq",
       "to_char" (
-        CAST (
-          coalesce (
-            CAST ("t0"."cs" as datetime),
-            CAST ("t0"."a" as datetime)
-          ) as datetime
-        ),
-        CAST('%Y-%m-%d' AS text)
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%Y-%m-%d'::text
       ) as "a",
       "t0"."d",
-      coalesce (CAST ("t3"."cj" as int), CAST(0 AS int)) as "cj",
+      coalesce ("t3"."cj"::int, 0::int) as "cj",
       "t0"."h"
     FROM
       "n" as "t0"
@@ -9568,28 +9275,17 @@ FROM
       LEFT JOIN "f" as "t3" ON "t0"."cw" = "t3"."cw"
       LEFT JOIN "h" as "t4" ON "t0"."cu" = "t4"."cu"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
-      and coalesce (CAST ("t2"."aw" as int), CAST ("t0"."bf" as int)) = CAST(11 AS int)
+      "t0"."cv" = 3023424::int
+      and coalesce ("t2"."aw"::int, "t0"."bf"::int) = 11::int
       and "t1"."ag" is null
       and (
         "t0"."h" is null
-        or "t0"."h" = CAST(-1 AS int)
+        or "t0"."h" = (-1)::int
       )
-      and CAST (
-        "to_char" (
-          CAST (
-            coalesce (
-              CAST ("t0"."cs" as datetime),
-              CAST ("t0"."a" as datetime)
-            ) as datetime
-          ),
-          CAST('%Y' AS text)
-        ) as int
-      ) in (
-        CAST(2024 AS int),
-        CAST(2023 AS int),
-        CAST(2022 AS int)
-      )
+      and "to_char" (
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%Y'::text
+      )::int in (2024::int, 2023::int, 2022::int)
   ) as "cte0"
 GROUP BY
   "cte0"."cq",
@@ -9755,12 +9451,12 @@ FROM
   LEFT JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
   and "t0"."ay" = "t1"."ay"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
-  and "t0"."w" = CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."cu" = CAST(3465 AS int)
+  "t0"."cv" = 3023424::int
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+  and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+  and "t0"."cu" = 3465::int
   and "t0"."bj" is null
-  and "t0"."z" = CAST(11 AS int)
+  and "t0"."z" = 11::int
 ''
 plan:
     [0] SEARCH TABLE m AS t0 USING COVERING INDEX ix_af (cv=? AND w=?) (~6 rows)
@@ -9787,7 +9483,7 @@ FROM
       "COL_9" as "ad",
       "COL_7" as "ae",
       "COL_8" as "ab",
-      CAST(0 AS int) as "c10",
+      0::int as "c10",
       "COL_10" as "h",
       "COL_11" as "cx",
       row_number () OVER () as "c13"
@@ -9811,7 +9507,7 @@ FROM
       )
   ) as "cte0"
 WHERE
-  "cte0"."c13" > CAST(0 AS int)
+  "cte0"."c13" > 0::int
 LIMIT
   10
 ''
@@ -9875,17 +9571,17 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  sum (CAST ("t0"."aa" as decimal)) as "c0",
+  sum ("t0"."aa"::decimal) as "c0",
   count (*) as "c1"
 FROM
   "m" as "t0"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
-  and "t0"."w" = CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."cu" = CAST(3465 AS int)
+  "t0"."cv" = 3023424::int
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+  and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+  and "t0"."cu" = 3465::int
   and "t0"."bj" is null
-  and "t0"."z" = CAST(11 AS int)
+  and "t0"."z" = 11::int
 ''
 plan:
     [0] SEARCH TABLE m AS t0 USING COVERING INDEX ix_af (cv=? AND w=?) (~6 rows)
@@ -9972,11 +9668,11 @@ FROM
   LEFT JOIN "ad" as "t2" ON "t0"."cv" = "t2"."cv"
   and "t0"."ay" = "t2"."ay"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
-  and "t0"."w" = CAST('2024-02-28 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."cu" = CAST(3465 AS int)
-  and "t0"."z" = CAST(11 AS int)
+  "t0"."cv" = 3023424::int
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+  and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+  and "t0"."cu" = 3465::int
+  and "t0"."z" = 11::int
 ''
 plan:
     [0] SEARCH TABLE m AS t0 USING COVERING INDEX ix_af (cv=? AND w=?) (~7 rows)
@@ -10203,11 +9899,11 @@ FROM
   "m" as "t0"
   LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
-  and "t0"."w" >= CAST('2023-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."w" <= CAST('2023-05-01 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."aw" <> CAST(2 AS int)
+  "t0"."cv" = 3023424::int
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+  and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+  and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+  and "t0"."aw" <> 2::int
 ''
 plan:
     [0] SEARCH TABLE m AS t0 USING COVERING INDEX ix_af (cv=? AND w>? AND w<?) (~1 row)
@@ -10224,46 +9920,38 @@ SELECT
 FROM
   (
     SELECT
-      "to_char" (CAST ("COL_4" as datetime), CAST('%Y-%m-%d' AS text)) as "a",
+      "to_char" ("COL_4"::datetime, '%Y-%m-%d'::text) as "a",
       "COL_5" as "z",
       "COL_6" as "cu",
       "COL_7" as "bj",
       sum (
-        CAST (
-          CASE
-            WHEN "COL_10" > CAST(0 AS int)
-            and not "COL_11" THEN "COL_10"
-            ELSE CAST(0 AS int)
-          END as decimal
-        )
+        CASE
+          WHEN "COL_10" > 0::int
+          and not "COL_11" THEN "COL_10"
+          ELSE 0::int
+        END::decimal
       ) as "c4",
       sum (
-        CAST (
-          CASE
-            WHEN "COL_10" < CAST(0 AS int)
-            and not "COL_11" THEN "COL_10"
-            ELSE CAST(0 AS int)
-          END as decimal
-        )
+        CASE
+          WHEN "COL_10" < 0::int
+          and not "COL_11" THEN "COL_10"
+          ELSE 0::int
+        END::decimal
       ) as "f",
       sum (
-        CAST (
-          CASE
-            WHEN "COL_10" > CAST(0 AS int)
-            and "COL_11" THEN "COL_10"
-            ELSE CAST(0 AS int)
-          END as decimal
-        )
+        CASE
+          WHEN "COL_10" > 0::int
+          and "COL_11" THEN "COL_10"
+          ELSE 0::int
+        END::decimal
       ) as "g",
       sum (
-        CAST (
-          CASE
-            WHEN "COL_9" = CAST(2 AS int) THEN "COL_10"
-            ELSE CAST(0 AS int)
-          END as decimal
-        )
+        CASE
+          WHEN "COL_9" = 2::int THEN "COL_10"
+          ELSE 0::int
+        END::decimal
       ) as "c7",
-      CAST(0 AS int) as "c8",
+      0::int as "c8",
       row_number () OVER (
         ORDER BY
           "COL_4" DESC,
@@ -10311,7 +9999,7 @@ FROM
       "COL_5"
   ) as "cte0"
 WHERE
-  "cte0"."c9" > CAST(0 AS int)
+  "cte0"."c9" > 0::int
 LIMIT
   10
 ''
@@ -10425,7 +10113,7 @@ FROM
     FROM
       (
         SELECT
-          "to_char" (CAST ("t0"."w" as datetime), CAST('%Y-%m-%d' AS text)) as "a",
+          "to_char" ("t0"."w"::datetime, '%Y-%m-%d'::text) as "a",
           "t0"."bj",
           "t0"."cu",
           "t0"."z"
@@ -10433,11 +10121,11 @@ FROM
           "m" as "t0"
           LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
         WHERE
-          "t0"."cv" = CAST(3023424 AS int)
-          and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
-          and "t0"."w" >= CAST('2023-01-01 0:00:00.0 +00:00:00' AS datetime)
-          and "t0"."w" <= CAST('2023-05-01 0:00:00.0 +00:00:00' AS datetime)
-          and "t0"."aw" <> CAST(2 AS int)
+          "t0"."cv" = 3023424::int
+          and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+          and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+          and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+          and "t0"."aw" <> 2::int
       ) as "cte0"
     GROUP BY
       "cte0"."a",
@@ -10533,11 +10221,11 @@ FROM
   LEFT JOIN "ad" as "t2" ON "t0"."cv" = "t2"."cv"
   and "t0"."ay" = "t2"."ay"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
-  and "t0"."w" >= CAST('2010-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."w" <= CAST('2026-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."aw" <> CAST(2 AS int)
+  "t0"."cv" = 3023424::int
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+  and "t0"."w" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+  and "t0"."w" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  and "t0"."aw" <> 2::int
 ''
 plan:
     [0] SEARCH TABLE m AS t0 USING COVERING INDEX ix_af (cv=? AND w>? AND w<?) (~1 row)
@@ -10751,12 +10439,10 @@ FROM
           LEFT JOIN "s" as "t1" ON "t0"."v" = "t1"."ag"
           and "t0"."cv" = "t1"."cv"
         WHERE
-          "t0"."cv" = CAST(3023424 AS int)
-          and not coalesce (CAST ("t0"."aq" as bool), CAST(false AS bool))
-          and CAST (
-            "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS text)) as datetime
-          ) > CAST('2020-01-02 0:00:00.0 +00:00:00' AS datetime)
-          and "t0"."ar" < CAST('2010-01-01 0:00:00.0 +00:00:00' AS datetime)
+          "t0"."cv" = 3023424::int
+          and not coalesce ("t0"."aq"::bool, false::bool)
+          and "to_char" ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+          and "t0"."ar" < '2010-01-01 0:00:00.0 +00:00:00'::datetime
       )
     ORDER BY
       "ar" DESC
@@ -10784,13 +10470,11 @@ FROM
   LEFT JOIN "s" as "t1" ON "t0"."v" = "t1"."ag"
   and "t0"."cv" = "t1"."cv"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and not coalesce (CAST ("t0"."aq" as bool), CAST(false AS bool))
-  and CAST (
-    "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS text)) as datetime
-  ) > CAST('2020-01-02 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."ar" >= CAST('2010-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."ar" <= CAST('2026-01-01 0:00:00.0 +00:00:00' AS datetime)
+  "t0"."cv" = 3023424::int
+  and not coalesce ("t0"."aq"::bool, false::bool)
+  and "to_char" ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+  and "t0"."ar" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+  and "t0"."ar" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
 ''
 plan:
     [2] SEARCH TABLE u AS t0 USING COVERING INDEX ix_bi (cv=? AND ar<?) (~2 rows)
@@ -10875,28 +10559,24 @@ projection (
 ''
 SELECT
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          CASE
-            WHEN "t0"."aa" is null THEN CAST(0.0 AS decimal)
-            ELSE "t0"."aa"
-          END as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      CASE
+        WHEN "t0"."aa" is null THEN 0.0::decimal
+        ELSE "t0"."aa"
+      END::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c0"
 FROM
   "m" as "t0"
   LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
-  and "t0"."w" >= CAST('2010-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."w" <= CAST('2026-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."aw" = CAST(2 AS int)
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  "t0"."cv" = 3023424::int
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+  and "t0"."w" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+  and "t0"."w" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  and "t0"."aw" = 2::int
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
 ''
 plan:
     [0] SEARCH TABLE m AS t0 
@@ -10979,29 +10659,25 @@ projection (
 ''
 SELECT
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          CASE
-            WHEN "t0"."aa" is null THEN CAST(0.0 AS decimal)
-            ELSE "t0"."aa"
-          END as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      CASE
+        WHEN "t0"."aa" is null THEN 0.0::decimal
+        ELSE "t0"."aa"
+      END::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c0"
 FROM
   "m" as "t0"
   LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
-  and "t0"."w" >= CAST('2010-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."w" <= CAST('2026-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."aw" <> CAST(2 AS int)
-  and "t0"."aw" = CAST(2 AS int)
-  and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  "t0"."cv" = 3023424::int
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+  and "t0"."w" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+  and "t0"."w" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  and "t0"."aw" <> 2::int
+  and "t0"."aw" = 2::int
+  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
 ''
 plan:
     [0] SEARCH TABLE m AS t0 
@@ -11071,7 +10747,7 @@ FROM
   LEFT JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
   and "t0"."ay" = "t1"."ay"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
 ''
 plan:
     [0] SEARCH TABLE c AS t0 USING PRIMARY KEY (cv=?) (~10 rows)
@@ -11153,17 +10829,10 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT DISTINCT
-  CAST (
-    "to_char" (
-      CAST (
-        coalesce (
-          CAST ("t0"."cs" as datetime),
-          CAST ("t0"."a" as datetime)
-        ) as datetime
-      ),
-      CAST('%Y' AS text)
-    ) as int
-  ) as "c0",
+  "to_char" (
+    coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+    '%Y'::text
+  )::int as "c0",
   "t0"."bg" as "c1",
   "t0"."ah" as "c2",
   "t0"."ay" as "c3",
@@ -11175,11 +10844,11 @@ FROM
   LEFT JOIN "ad" as "t2" ON "t0"."cv" = "t2"."cv"
   and "t0"."ay" = "t2"."ay"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
   and "t1"."ag" is null
   and (
     "t0"."h" is null
-    or "t0"."h" = CAST(-1 AS int)
+    or "t0"."h" = (-1)::int
   )
 ''
 plan:
@@ -11270,13 +10939,10 @@ projection (
 SELECT
   "t1"."cq" as "c0",
   CASE
-    WHEN not min (CAST ("t2"."u" as datetime)) is null THEN "to_char" (
-      CAST (min (CAST ("t2"."u" as datetime)) as datetime),
-      CAST('%Y-%m-%d' AS text)
-    )
+    WHEN not min ("t2"."u"::datetime) is null THEN "to_char" (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
     ELSE NULL
   END as "c1",
-  sum (CAST ("t0"."az" as decimal)) as "c2"
+  sum ("t0"."az"::decimal) as "c2"
 FROM
   "v" as "t0"
   INNER JOIN "y" as "t1" ON "t0"."au" = "t1"."ag"
@@ -11285,16 +10951,10 @@ FROM
   and "t0"."cv" = "t2"."cv"
   LEFT JOIN "i" as "t3" ON "t1"."cu" = "t3"."br"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and "t1"."aw" in (
-    CAST(0 AS int),
-    CAST(3 AS int),
-    CAST(42 AS int),
-    CAST(45 AS int),
-    CAST(11 AS int)
-  )
+  "t0"."cv" = 3023424::int
+  and "t1"."aw" in (0::int, 3::int, 42::int, 45::int, 11::int)
   and not "t3"."ap"
-  and "t0"."az" > CAST(0 AS int)
+  and "t0"."az" > 0::int
 GROUP BY
   "t1"."cq"
 ''
@@ -11499,80 +11159,80 @@ projection (
 SELECT
   "t0"."aw" as "c0",
   CASE
-    WHEN "t1"."cw" = CAST(3 AS int) THEN CAST(true AS bool)
-    ELSE CAST(false AS bool)
+    WHEN "t1"."cw" = 3::int THEN true::bool
+    ELSE false::bool
   END as "c1",
   "t0"."ay" as "c2",
   "t0"."cu" as "c3",
   "t0"."bg" as "c4",
   "t0"."ah" as "c5",
   CASE
-    WHEN "t0"."aw" = CAST(0 AS int)
+    WHEN "t0"."aw" = 0::int
     and (
       "t1"."cw" is null
-      or "t1"."cw" <> CAST(3 AS int)
+      or "t1"."cw" <> 3::int
     ) THEN CASE
-      WHEN "t0"."bx" < CAST(0 AS int) THEN "t0"."bx"
-      ELSE CAST(0.0 AS decimal)
+      WHEN "t0"."bx" < 0::int THEN "t0"."bx"
+      ELSE 0.0::decimal
     END
-    ELSE CAST(0.0 AS decimal)
+    ELSE 0.0::decimal
   END as "c6",
   CASE
-    WHEN "t0"."aw" = CAST(3 AS int) THEN CASE
-      WHEN "t0"."ca" < CAST(0 AS int) THEN "t0"."ca"
-      ELSE CAST(0.0 AS decimal)
+    WHEN "t0"."aw" = 3::int THEN CASE
+      WHEN "t0"."ca" < 0::int THEN "t0"."ca"
+      ELSE 0.0::decimal
     END
-    ELSE CAST(0.0 AS decimal)
+    ELSE 0.0::decimal
   END as "c7",
   CASE
-    WHEN "t0"."aw" = CAST(0 AS int)
+    WHEN "t0"."aw" = 0::int
     and not "t1"."cw" is null
-    and "t1"."cw" = CAST(3 AS int) THEN CASE
-      WHEN "t0"."bx" < CAST(0 AS int) THEN "t0"."bx"
-      ELSE CAST(0.0 AS decimal)
+    and "t1"."cw" = 3::int THEN CASE
+      WHEN "t0"."bx" < 0::int THEN "t0"."bx"
+      ELSE 0.0::decimal
     END
-    ELSE CAST(0.0 AS decimal)
+    ELSE 0.0::decimal
   END as "c8",
   CASE
-    WHEN "t0"."aw" = CAST(11 AS int) THEN CASE
-      WHEN "t0"."cg" < CAST(0 AS int) THEN "t0"."cg"
-      ELSE CAST(0.0 AS decimal)
+    WHEN "t0"."aw" = 11::int THEN CASE
+      WHEN "t0"."cg" < 0::int THEN "t0"."cg"
+      ELSE 0.0::decimal
     END
-    ELSE CAST(0.0 AS decimal)
+    ELSE 0.0::decimal
   END as "c9",
   CASE
-    WHEN "t0"."aw" in (CAST(42 AS int), CAST(45 AS int)) THEN CASE
-      WHEN "t0"."cd" < CAST(0 AS int) THEN "t0"."cd"
-      ELSE CAST(0.0 AS decimal)
+    WHEN "t0"."aw" in (42::int, 45::int) THEN CASE
+      WHEN "t0"."cd" < 0::int THEN "t0"."cd"
+      ELSE 0.0::decimal
     END + CASE
-      WHEN "t0"."cc" < CAST(0 AS int) THEN "t0"."cc"
-      ELSE CAST(0.0 AS decimal)
+      WHEN "t0"."cc" < 0::int THEN "t0"."cc"
+      ELSE 0.0::decimal
     END
-    ELSE CAST(0.0 AS decimal)
+    ELSE 0.0::decimal
   END as "c10",
   CASE
-    WHEN "t0"."aw" = CAST(2 AS int) THEN CASE
-      WHEN "t0"."bz" < CAST(0 AS int) THEN "t0"."bz"
-      ELSE CAST(0.0 AS decimal)
+    WHEN "t0"."aw" = 2::int THEN CASE
+      WHEN "t0"."bz" < 0::int THEN "t0"."bz"
+      ELSE 0.0::decimal
     END
-    ELSE CAST(0.0 AS decimal)
+    ELSE 0.0::decimal
   END as "c11",
   CASE
-    WHEN "t1"."cw" = CAST(3 AS int)
-    and "t0"."bx" > CAST(0 AS int) THEN "t0"."bx"
-    ELSE CAST(0.0 AS decimal)
+    WHEN "t1"."cw" = 3::int
+    and "t0"."bx" > 0::int THEN "t0"."bx"
+    ELSE 0.0::decimal
   END as "c12",
   CASE
-    WHEN "t0"."aw" = CAST(1 AS int)
-    and "t0"."bx" > CAST(0 AS int) THEN "t0"."bx"
-    ELSE CAST(0.0 AS decimal)
+    WHEN "t0"."aw" = 1::int
+    and "t0"."bx" > 0::int THEN "t0"."bx"
+    ELSE 0.0::decimal
   END as "c13",
   NULL as "c14"
 FROM
   "y" as "t0"
   LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
 ''
 plan:
     [0] SEARCH TABLE y AS t0 USING COVERING INDEX ix_bv (cv=?) (~10 rows)
@@ -11786,49 +11446,44 @@ SELECT
   "t0"."bg" as "c5",
   "t0"."ah" as "c6",
   CASE
-    WHEN "t0"."aw" = CAST(0 AS int)
+    WHEN "t0"."aw" = 0::int
     and not "t0"."ap" THEN "t0"."aa"
-    ELSE CAST(0.0 AS decimal)
+    ELSE 0.0::decimal
   END as "c7",
   CASE
-    WHEN "t0"."aw" = CAST(3 AS int) THEN "t0"."aa"
-    ELSE CAST(0.0 AS decimal)
+    WHEN "t0"."aw" = 3::int THEN "t0"."aa"
+    ELSE 0.0::decimal
   END as "c8",
   CASE
-    WHEN "t0"."aw" = CAST(0 AS int)
+    WHEN "t0"."aw" = 0::int
     and "t0"."ap" THEN "t0"."aa"
-    ELSE CAST(0.0 AS decimal)
+    ELSE 0.0::decimal
   END as "c9",
   CASE
-    WHEN "t0"."aw" = CAST(11 AS int) THEN "t0"."aa"
-    ELSE CAST(0.0 AS decimal)
+    WHEN "t0"."aw" = 11::int THEN "t0"."aa"
+    ELSE 0.0::decimal
   END as "c10",
   CASE
-    WHEN "t0"."aw" in (CAST(42 AS int), CAST(45 AS int)) THEN "t0"."aa"
-    ELSE CAST(0.0 AS decimal)
+    WHEN "t0"."aw" in (42::int, 45::int) THEN "t0"."aa"
+    ELSE 0.0::decimal
   END as "c11",
   CASE
-    WHEN "t0"."aw" = CAST(2 AS int) THEN "t0"."aa"
-    ELSE CAST(0.0 AS decimal)
+    WHEN "t0"."aw" = 2::int THEN "t0"."aa"
+    ELSE 0.0::decimal
   END as "c12",
-  CAST(0 AS int) as "c13",
-  CAST(0 AS int) as "c14",
+  0::int as "c13",
+  0::int as "c14",
   "to_char" (
-    CAST (
-      coalesce (
-        CAST ("t0"."cs" as datetime),
-        CAST ("t0"."a" as datetime)
-      ) as datetime
-    ),
-    CAST('%Y-%m-%d' AS text)
+    coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+    '%Y-%m-%d'::text
   ) as "c15"
 FROM
   (
     SELECT
       "t0"."ag",
-      coalesce (CAST ("t1"."aw" as int), CAST ("t0"."bf" as int)) as "aw",
+      coalesce ("t1"."aw"::int, "t0"."bf"::int) as "aw",
       "t0"."ay",
-      coalesce (CAST ("t1"."cu" as int), CAST ("t0"."cu" as int)) as "cu",
+      coalesce ("t1"."cu"::int, "t0"."cu"::int) as "cu",
       "t0"."bg",
       "t0"."ah",
       "t0"."cs",
@@ -11836,38 +11491,33 @@ FROM
       "t0"."h",
       "t0"."cv",
       coalesce (
-        CAST (
-          (
-            "t0"."d" * coalesce (
-              CAST ("t3"."cj" as decimal),
-              CAST(0.0 AS decimal)
-            ) * CASE
-              WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        ),
-        CAST(0.0 AS decimal)
+        (
+          "t0"."d" * coalesce ("t3"."cj"::decimal, 0.0::decimal) * CASE
+            WHEN not "t0"."h" is null THEN (-1)::int
+            ELSE 1::int
+          END
+        )::decimal,
+        0.0::decimal
       ) as "aa",
       CASE
         WHEN not "t2"."cw" is null
-        and "t2"."cw" = CAST(3 AS int) THEN CAST(true AS bool)
-        ELSE CAST(false AS bool)
+        and "t2"."cw" = 3::int THEN true::bool
+        ELSE false::bool
       END as "ap"
     FROM
       "n" as "t0"
       LEFT JOIN "y" as "t1" ON "t0"."au" = "t1"."ag"
       and "t0"."cv" = "t1"."cv"
-      LEFT JOIN "g" as "t2" ON coalesce (CAST ("t1"."cu" as int), CAST ("t0"."cu" as int)) = "t2"."cu"
+      LEFT JOIN "g" as "t2" ON coalesce ("t1"."cu"::int, "t0"."cu"::int) = "t2"."cu"
       LEFT JOIN "f" as "t3" ON "t0"."cw" = "t3"."cw"
       LEFT JOIN "n" as "t4" ON "t4"."h" = "t0"."ag"
       and "t4"."cv" = "t0"."cv"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
+      "t0"."cv" = 3023424::int
       and "t4"."ag" is null
       and (
         "t0"."h" is null
-        or "t0"."h" = CAST(-1 AS int)
+        or "t0"."h" = (-1)::int
       )
   ) as "t0"
 ''
@@ -12334,10 +11984,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
-      and "l"."cs" >= CAST('2023-02-17 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2023-02-18 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 4797271::int
+      and "l"."cs" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -12346,11 +11996,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
+      "l"."cv" = 4797271::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2023-02-17 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2023-02-18 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -12403,21 +12053,17 @@ SELECT
   "t3"."bg",
   "t6"."cu",
   "t6"."cw",
-  coalesce (
-    CAST ("t6"."co" as int),
-    CAST ("t6"."cm" as int),
-    CAST(0 AS int)
-  ) as "ac",
+  coalesce ("t6"."co"::int, "t6"."cm"::int, 0::int) as "ac",
   CASE
     WHEN not "t6"."co" is null
     or not "t6"."cm" is null THEN "t6"."cn"
-    ELSE CAST('0000' AS text)
+    ELSE '0000'::text
   END as "ae",
-  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
+  "to_char" ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
   CASE
-    WHEN not "t6"."co" is null THEN CAST(0 AS int)
-    WHEN not "t6"."cm" is null THEN CAST(1 AS int)
-    ELSE CAST(2 AS int)
+    WHEN not "t6"."co" is null THEN 0::int
+    WHEN not "t6"."cm" is null THEN 1::int
+    ELSE 2::int
   END as "c9",
   "t5"."d"
 FROM
@@ -12433,21 +12079,21 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."cv" = "t4"."cv"
   and "t5"."db" is null
   and "t5"."da" is null
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "x" as "t7" ON "t7"."b" = "t6"."ag"
   and "t7"."cv" = "t6"."cv"
   LEFT JOIN "f" as "t8" ON "t8"."cw" = "t6"."cw"
 WHERE
-  "t8"."z" = CAST(4 AS int)
-  and "t3"."aw" = CAST(3 AS int)
-  and "t3"."cq" = CAST(4 AS int)
+  "t8"."z" = 4::int
+  and "t3"."aw" = 3::int
+  and "t3"."cq" = 4::int
 ''
 plan:
     [0] SCAN TABLE _tmp_18309399111922391115_2136 (~1048576 rows)
@@ -12492,33 +12138,24 @@ FROM
       "t9"."cv",
       "t9"."ag" as "b",
       "t9"."ay",
-      coalesce (
-        CAST ("t3"."bg" as text),
-        CAST ("t9"."bg" as text)
-      ) as "bg",
-      coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
+      coalesce ("t3"."bg"::text, "t9"."bg"::text) as "bg",
+      coalesce ("t3"."cu"::int, "t9"."cu"::int) as "cu",
       "t9"."cw",
-      coalesce (
-        CAST ("t9"."co" as int),
-        CAST ("t9"."cm" as int),
-        CAST(0 AS int)
-      ) as "ac",
+      coalesce ("t9"."co"::int, "t9"."cm"::int, 0::int) as "ac",
       "t9"."cn" as "ae",
-      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
+      "to_char" ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
       CASE
-        WHEN not "t9"."co" is null THEN CAST(0 AS int)
-        ELSE CAST(1 AS int)
+        WHEN not "t9"."co" is null THEN 0::int
+        ELSE 1::int
       END as "c9",
       coalesce (
-        CAST (
-          (
-            "t9"."d" * coalesce (CAST ("t8"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-              WHEN not "t9"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        ),
-        CAST(0.0 AS decimal)
+        (
+          "t9"."d" * coalesce ("t8"."cj"::decimal, 0.0::decimal) * CASE
+            WHEN not "t9"."h" is null THEN (-1)::int
+            ELSE 1::int
+          END
+        )::decimal,
+        0.0::decimal
       ) as "d"
     FROM
       "n" as "t9"
@@ -12529,17 +12166,11 @@ FROM
       and "t10"."cv" = "t3"."cv"
       LEFT JOIN "h" as "t11" ON "t9"."cu" = "t11"."cu"
     WHERE
-      "t9"."cv" = CAST(4797271 AS int)
-      and coalesce (
-        CAST ("t9"."cs" as datetime),
-        CAST ("t9"."a" as datetime)
-      ) = CAST('2023-02-17 0:00:00.0 +00:00:00' AS datetime)
-      and "t8"."z" = CAST(4 AS int)
-      and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) = CAST(3 AS int)
-      and coalesce (
-        CAST ("t3"."cq" as int),
-        CAST ("t11"."cq" as int)
-      ) = CAST(4 AS int)
+      "t9"."cv" = 4797271::int
+      and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2023-02-17 0:00:00.0 +00:00:00'::datetime
+      and "t8"."z" = 4::int
+      and coalesce ("t3"."aw"::int, "t9"."bf"::int) = 3::int
+      and coalesce ("t3"."cq"::int, "t11"."cq"::int) = 4::int
   ) as "cte2"
 ''
 plan:
@@ -12646,7 +12277,7 @@ FROM
       ) as "unnamed_join"
   ) as "cte4"
 WHERE
-  "cte4"."c11" > CAST(0 AS int)
+  "cte4"."c11" > 0::int
 LIMIT
   10
 ''
@@ -12909,12 +12540,9 @@ FROM
           LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
           and "t1"."cv" = "t0"."cv"
         WHERE
-          "t0"."cv" = CAST(4797271 AS int)
-          and coalesce (
-            CAST ("t0"."cs" as datetime),
-            CAST ("t0"."a" as datetime)
-          ) = CAST('2023-02-13 0:00:00.0 +00:00:00' AS datetime)
-          and coalesce (CAST ("t0"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+          "t0"."cv" = 4797271::int
+          and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2023-02-13 0:00:00.0 +00:00:00'::datetime
+          and coalesce ("t0"."bb"::int, 0::int) <> 1::int
           and "t1"."b" is null
       )
     ORDER BY
@@ -12924,21 +12552,21 @@ FROM
   and "t3"."cv" = "t2"."cv"
   INNER JOIN "v" as "t4" ON "t4"."b" = "t2"."ag"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."cv" = "t4"."cv"
   and "t5"."db" is null
   and "t5"."da" is null
   INNER JOIN "l" as "t6" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "x" as "t7" ON "t7"."b" = "t6"."ag"
   and "t7"."cv" = "t6"."cv"
   LEFT JOIN "f" as "t8" ON "t8"."cw" = "t6"."cw"
 WHERE
-  "t8"."z" = CAST(4 AS int)
-  and "t3"."aw" = CAST(3 AS int)
-  and "t3"."cq" = CAST(4 AS int)
+  "t8"."z" = 4::int
+  and "t3"."aw" = 3::int
+  and "t3"."cq" = 4::int
 ''
 plan:
     [0] SEARCH TABLE l AS t0 USING COVERING INDEX ix_d (cv=?) (~8 rows)
@@ -12958,7 +12586,7 @@ buckets <= [1-3000]
 ''
 SELECT
   count (*) as "count_1",
-  sum (CAST ("t12"."COL_0" as decimal)) as "sum_2"
+  sum ("t12"."COL_0"::decimal) as "sum_2"
 FROM
   (
     SELECT
@@ -12977,15 +12605,13 @@ FROM
       (
         SELECT
           coalesce (
-            CAST (
-              (
-                "t9"."d" * coalesce (CAST ("t8"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-                  WHEN not "t9"."h" is null THEN CAST(-1 AS int)
-                  ELSE CAST(1 AS int)
-                END
-              ) as decimal
-            ),
-            CAST(0.0 AS decimal)
+            (
+              "t9"."d" * coalesce ("t8"."cj"::decimal, 0.0::decimal) * CASE
+                WHEN not "t9"."h" is null THEN (-1)::int
+                ELSE 1::int
+              END
+            )::decimal,
+            0.0::decimal
           ) as "d"
         FROM
           "n" as "t9"
@@ -12996,17 +12622,11 @@ FROM
           and "t10"."cv" = "t3"."cv"
           LEFT JOIN "h" as "t11" ON "t9"."cu" = "t11"."cu"
         WHERE
-          "t9"."cv" = CAST(4797271 AS int)
-          and coalesce (
-            CAST ("t9"."cs" as datetime),
-            CAST ("t9"."a" as datetime)
-          ) = CAST('2024-12-28 0:00:00.0 +00:00:00' AS datetime)
-          and "t8"."z" = CAST(4 AS int)
-          and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) = CAST(3 AS int)
-          and coalesce (
-            CAST ("t3"."cq" as int),
-            CAST ("t11"."cq" as int)
-          ) = CAST(4 AS int)
+          "t9"."cv" = 4797271::int
+          and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2024-12-28 0:00:00.0 +00:00:00'::datetime
+          and "t8"."z" = 4::int
+          and coalesce ("t3"."aw"::int, "t9"."bf"::int) = 3::int
+          and coalesce ("t3"."cq"::int, "t11"."cq"::int) = 4::int
       ) as "cte2"
   ) as "t12"
 ''
@@ -13027,8 +12647,8 @@ buckets = [874]
 ╰───────────────────╯
 ''
 SELECT
-  CAST (sum (CAST ("COL_0" as int)) as int) as "c1",
-  sum (CAST ("COL_1" as decimal)) as "c2"
+  sum ("COL_0"::int)::int as "c1",
+  sum ("COL_1"::decimal) as "c2"
 FROM
   (
     SELECT
@@ -13360,10 +12980,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
-      and "l"."cs" >= CAST('2023-02-17 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2023-02-18 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 4797271::int
+      and "l"."cs" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -13372,11 +12992,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
+      "l"."cv" = 4797271::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2023-02-17 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2023-02-18 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2023-02-17 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2023-02-18 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -13416,21 +13036,21 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."db" is null
   and "t5"."da" is null
   and "t5"."cv" = "t4"."cv"
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "f" as "t7" ON "t7"."cw" = "t6"."cw"
   LEFT JOIN "ad" as "t8" ON "t8"."cv" = "t3"."cv"
   and "t8"."ay" = "t3"."ay"
 WHERE
-  "t7"."z" = CAST(4 AS int)
-  and "t3"."aw" = CAST(3 AS int)
-  and "t3"."cq" = CAST(4 AS int)
+  "t7"."z" = 4::int
+  and "t3"."aw" = 3::int
+  and "t3"."cq" = 4::int
 GROUP BY
   "t6"."cv",
   "t3"."ay",
@@ -13516,15 +13136,9 @@ FROM
     SELECT DISTINCT
       "t9"."cv",
       "t9"."ay",
-      coalesce (
-        CAST ("t3"."bg" as text),
-        CAST ("t9"."bg" as text)
-      ) as "bg",
-      coalesce (
-        CAST ("t3"."ah" as text),
-        CAST ("t9"."ah" as text)
-      ) as "ah",
-      coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
+      coalesce ("t3"."bg"::text, "t9"."bg"::text) as "bg",
+      coalesce ("t3"."ah"::text, "t9"."ah"::text) as "ah",
+      coalesce ("t3"."cu"::int, "t9"."cu"::int) as "cu",
       "t8"."cx"
     FROM
       "n" as "t9"
@@ -13537,17 +13151,11 @@ FROM
       LEFT JOIN "ad" as "t8" ON "t8"."cv" = "t3"."cv"
       and "t8"."ay" = "t3"."ay"
     WHERE
-      "t9"."cv" = CAST(4797271 AS int)
-      and coalesce (
-        CAST ("t9"."cs" as datetime),
-        CAST ("t9"."a" as datetime)
-      ) = CAST('2023-02-17 0:00:00.0 +00:00:00' AS datetime)
-      and "t7"."z" = CAST(4 AS int)
-      and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) = CAST(3 AS int)
-      and coalesce (
-        CAST ("t3"."cq" as int),
-        CAST ("t11"."cq" as int)
-      ) = CAST(4 AS int)
+      "t9"."cv" = 4797271::int
+      and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2023-02-17 0:00:00.0 +00:00:00'::datetime
+      and "t7"."z" = 4::int
+      and coalesce ("t3"."aw"::int, "t9"."bf"::int) = 3::int
+      and coalesce ("t3"."cq"::int, "t11"."cq"::int) = 4::int
   ) as "cte2"
 ''
 plan:
@@ -13701,37 +13309,33 @@ union all
 ''
 SELECT
   "a"."z" as "c0",
-  sum (CAST ("a"."f" as decimal)) as "c1",
-  sum (CAST ("a"."e" as decimal)) as "c2",
-  CAST(0 AS int) as "c3"
+  sum ("a"."f"::decimal) as "c1",
+  sum ("a"."e"::decimal) as "c2",
+  0::int as "c3"
 FROM
   "a"
 WHERE
-  "a"."cv" = CAST(4797271 AS int)
-  and "a"."aw" = CAST(3 AS int)
-  and "a"."cq" = CAST(4 AS int)
-  and "a"."a" = CAST('2023-02-17 0:00:00.0 +00:00:00' AS datetime)
+  "a"."cv" = 4797271::int
+  and "a"."aw" = 3::int
+  and "a"."cq" = 4::int
+  and "a"."a" = '2023-02-17 0:00:00.0 +00:00:00'::datetime
 GROUP BY
   "a"."z"
 UNION ALL
 SELECT
   "t3"."z" as "c0",
-  CAST(0 AS int) as "c1",
-  CAST(0 AS int) as "c2",
+  0::int as "c1",
+  0::int as "c2",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          (
-            "t0"."d" * coalesce (CAST ("t3"."cj" as decimal), CAST(0 AS decimal)) * CASE
-              WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      (
+        "t0"."d" * coalesce ("t3"."cj"::decimal, 0::decimal) * CASE
+          WHEN not "t0"."h" is null THEN (-1)::int
+          ELSE 1::int
+        END
+      )::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c3"
 FROM
   "n" as "t0"
@@ -13742,17 +13346,14 @@ FROM
   LEFT JOIN "f" as "t3" ON "t0"."cw" = "t3"."cw"
   LEFT JOIN "h" as "t4" ON "t0"."cu" = "t4"."cu"
 WHERE
-  "t0"."cv" = CAST(4797271 AS int)
-  and coalesce (CAST ("t2"."aw" as int), CAST ("t0"."bf" as int)) = CAST(3 AS int)
-  and coalesce (CAST ("t2"."cq" as int), CAST ("t4"."cq" as int)) = CAST(4 AS int)
-  and coalesce (
-    CAST ("t0"."cs" as datetime),
-    CAST ("t0"."a" as datetime)
-  ) = CAST('2023-02-17 0:00:00.0 +00:00:00' AS datetime)
+  "t0"."cv" = 4797271::int
+  and coalesce ("t2"."aw"::int, "t0"."bf"::int) = 3::int
+  and coalesce ("t2"."cq"::int, "t4"."cq"::int) = 4::int
+  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2023-02-17 0:00:00.0 +00:00:00'::datetime
   and "t1"."ag" is null
   and (
     "t0"."h" is null
-    or "t0"."h" = CAST(-1 AS int)
+    or "t0"."h" = (-1)::int
   )
 GROUP BY
   "t3"."z"
@@ -13900,21 +13501,15 @@ FROM
   LEFT JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
   and "t0"."ay" = "t1"."ay"
 WHERE
-  "t0"."cv" = CAST(4797271 AS int)
-  and "t0"."aw" = CAST(3 AS int)
-  and "t0"."a" = CAST('2023-02-17 0:00:00.0 +00:00:00' AS datetime)
-  and "t0"."cq" = CAST(4 AS int)
+  "t0"."cv" = 4797271::int
+  and "t0"."aw" = 3::int
+  and "t0"."a" = '2023-02-17 0:00:00.0 +00:00:00'::datetime
+  and "t0"."cq" = 4::int
 UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
-  coalesce (
-    CAST ("t4"."bg" as text),
-    CAST ("t2"."bg" as text)
-  ) as "c1",
-  coalesce (
-    CAST ("t4"."ah" as text),
-    CAST ("t2"."ah" as text)
-  ) as "c2",
+  coalesce ("t4"."bg"::text, "t2"."bg"::text) as "c1",
+  coalesce ("t4"."ah"::text, "t2"."ah"::text) as "c2",
   "t1"."cx" as "c3"
 FROM
   "n" as "t2"
@@ -13927,13 +13522,10 @@ FROM
   and "t2"."ay" = "t1"."ay"
   LEFT JOIN "h" as "t6" ON "t2"."cu" = "t6"."cu"
 WHERE
-  "t2"."cv" = CAST(4797271 AS int)
-  and coalesce (CAST ("t4"."aw" as int), CAST ("t2"."bf" as int)) = CAST(3 AS int)
-  and coalesce (
-    CAST ("t2"."cs" as datetime),
-    CAST ("t2"."a" as datetime)
-  ) = CAST('2023-02-17 0:00:00.0 +00:00:00' AS datetime)
-  and coalesce (CAST ("t4"."cq" as int), CAST ("t6"."cq" as int)) = CAST(4 AS int)
+  "t2"."cv" = 4797271::int
+  and coalesce ("t4"."aw"::int, "t2"."bf"::int) = 3::int
+  and coalesce ("t2"."cs"::datetime, "t2"."a"::datetime) = '2023-02-17 0:00:00.0 +00:00:00'::datetime
+  and coalesce ("t4"."cq"::int, "t6"."cq"::int) = 4::int
 ''
 plan:
     [1] SEARCH TABLE a AS t0 
@@ -14133,22 +13725,16 @@ subquery $0:
 ''
 SELECT
   "a"."cq" as "c0",
-  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS text)) as "c1",
-  sum (CAST ("a"."f" as decimal)) as "c3",
-  sum (CAST ("a"."e" as decimal)) as "c4",
-  CAST(0.0 AS decimal) as "c5"
+  "to_char" ("a"."a"::datetime, '%Y-%m-%d'::text) as "c1",
+  sum ("a"."f"::decimal) as "c3",
+  sum ("a"."e"::decimal) as "c4",
+  0.0::decimal as "c5"
 FROM
   "a"
 WHERE
-  "a"."cv" = CAST(4797271 AS int)
-  and "a"."aw" = CAST(3 AS int)
-  and "a"."bm" in (
-    CAST(2025 AS int),
-    CAST(2024 AS int),
-    CAST(2023 AS int),
-    CAST(2022 AS int),
-    CAST(2021 AS int)
-  )
+  "a"."cv" = 4797271::int
+  and "a"."aw" = 3::int
+  and "a"."bm" in (2025::int, 2024::int, 2023::int, 2022::int, 2021::int)
 GROUP BY
   "a"."a",
   "a"."cq"
@@ -14156,38 +13742,29 @@ UNION ALL
 SELECT
   "cte0"."cq",
   "cte0"."a",
-  CAST(0 AS int) as "c3",
-  CAST(0 AS int) as "c4",
+  0::int as "c3",
+  0::int as "c4",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          (
-            "cte0"."d" * "cte0"."cj" * CASE
-              WHEN not "cte0"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      (
+        "cte0"."d" * "cte0"."cj" * CASE
+          WHEN not "cte0"."h" is null THEN (-1)::int
+          ELSE 1::int
+        END
+      )::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c5"
 FROM
   (
     SELECT
-      coalesce (CAST ("t2"."cq" as int), CAST ("t4"."cq" as int)) as "cq",
+      coalesce ("t2"."cq"::int, "t4"."cq"::int) as "cq",
       "to_char" (
-        CAST (
-          coalesce (
-            CAST ("t0"."cs" as datetime),
-            CAST ("t0"."a" as datetime)
-          ) as datetime
-        ),
-        CAST('%Y-%m-%d' AS text)
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%Y-%m-%d'::text
       ) as "a",
       "t0"."d",
-      coalesce (CAST ("t3"."cj" as int), CAST(0 AS int)) as "cj",
+      coalesce ("t3"."cj"::int, 0::int) as "cj",
       "t0"."h"
     FROM
       "n" as "t0"
@@ -14198,30 +13775,17 @@ FROM
       LEFT JOIN "f" as "t3" ON "t0"."cw" = "t3"."cw"
       LEFT JOIN "h" as "t4" ON "t0"."cu" = "t4"."cu"
     WHERE
-      "t0"."cv" = CAST(4797271 AS int)
-      and coalesce (CAST ("t2"."aw" as int), CAST ("t0"."bf" as int)) = CAST(3 AS int)
+      "t0"."cv" = 4797271::int
+      and coalesce ("t2"."aw"::int, "t0"."bf"::int) = 3::int
       and "t1"."ag" is null
       and (
         "t0"."h" is null
-        or "t0"."h" = CAST(-1 AS int)
+        or "t0"."h" = (-1)::int
       )
-      and CAST (
-        "to_char" (
-          CAST (
-            coalesce (
-              CAST ("t0"."cs" as datetime),
-              CAST ("t0"."a" as datetime)
-            ) as datetime
-          ),
-          CAST('%Y' AS text)
-        ) as int
-      ) in (
-        CAST(2025 AS int),
-        CAST(2024 AS int),
-        CAST(2023 AS int),
-        CAST(2022 AS int),
-        CAST(2021 AS int)
-      )
+      and "to_char" (
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%Y'::text
+      )::int in (2025::int, 2024::int, 2023::int, 2022::int, 2021::int)
   ) as "cte0"
 GROUP BY
   "cte0"."cq",
@@ -14687,10 +14251,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(3023424 AS int)
-      and "l"."cs" >= CAST('2024-08-14 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2024-08-15 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 3023424::int
+      and "l"."cs" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -14699,11 +14263,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(3023424 AS int)
+      "l"."cv" = 3023424::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2024-08-14 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2024-08-15 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -14756,21 +14320,17 @@ SELECT
   "t3"."bg",
   "t6"."cu",
   "t6"."cw",
-  coalesce (
-    CAST ("t6"."co" as int),
-    CAST ("t6"."cm" as int),
-    CAST(0 AS int)
-  ) as "ac",
+  coalesce ("t6"."co"::int, "t6"."cm"::int, 0::int) as "ac",
   CASE
     WHEN not "t6"."co" is null
     or not "t6"."cm" is null THEN "t6"."cn"
-    ELSE CAST('0000' AS text)
+    ELSE '0000'::text
   END as "ae",
-  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
+  "to_char" ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
   CASE
-    WHEN not "t6"."co" is null THEN CAST(0 AS int)
-    WHEN not "t6"."cm" is null THEN CAST(1 AS int)
-    ELSE CAST(2 AS int)
+    WHEN not "t6"."co" is null THEN 0::int
+    WHEN not "t6"."cm" is null THEN 1::int
+    ELSE 2::int
   END as "c9",
   "t5"."d"
 FROM
@@ -14786,20 +14346,20 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."cv" = "t4"."cv"
   and "t5"."db" is null
   and "t5"."da" is null
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "x" as "t7" ON "t7"."b" = "t6"."ag"
   and "t7"."cv" = "t6"."cv"
   LEFT JOIN "f" as "t8" ON "t8"."cw" = "t6"."cw"
 WHERE
-  "t8"."z" = CAST(8 AS int)
-  and "t3"."aw" in (CAST(42 AS int), CAST(45 AS int))
+  "t8"."z" = 8::int
+  and "t3"."aw" in (42::int, 45::int)
 ''
 plan:
     [0] SCAN TABLE _tmp_9249821361873699528_2136 (~1048576 rows)
@@ -14844,33 +14404,24 @@ FROM
       "t9"."cv",
       "t9"."ag" as "b",
       "t9"."ay",
-      coalesce (
-        CAST ("t3"."bg" as text),
-        CAST ("t9"."bg" as text)
-      ) as "bg",
-      coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
+      coalesce ("t3"."bg"::text, "t9"."bg"::text) as "bg",
+      coalesce ("t3"."cu"::int, "t9"."cu"::int) as "cu",
       "t9"."cw",
-      coalesce (
-        CAST ("t9"."co" as int),
-        CAST ("t9"."cm" as int),
-        CAST(0 AS int)
-      ) as "ac",
+      coalesce ("t9"."co"::int, "t9"."cm"::int, 0::int) as "ac",
       "t9"."cn" as "ae",
-      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
+      "to_char" ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
       CASE
-        WHEN not "t9"."co" is null THEN CAST(0 AS int)
-        ELSE CAST(1 AS int)
+        WHEN not "t9"."co" is null THEN 0::int
+        ELSE 1::int
       END as "c9",
       coalesce (
-        CAST (
-          (
-            "t9"."d" * coalesce (CAST ("t8"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-              WHEN not "t9"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        ),
-        CAST(0.0 AS decimal)
+        (
+          "t9"."d" * coalesce ("t8"."cj"::decimal, 0.0::decimal) * CASE
+            WHEN not "t9"."h" is null THEN (-1)::int
+            ELSE 1::int
+          END
+        )::decimal,
+        0.0::decimal
       ) as "d"
     FROM
       "n" as "t9"
@@ -14881,13 +14432,10 @@ FROM
       and "t10"."cv" = "t3"."cv"
       LEFT JOIN "h" as "t11" ON "t9"."cu" = "t11"."cu"
     WHERE
-      "t9"."cv" = CAST(3023424 AS int)
-      and coalesce (
-        CAST ("t9"."cs" as datetime),
-        CAST ("t9"."a" as datetime)
-      ) = CAST('2024-08-14 0:00:00.0 +00:00:00' AS datetime)
-      and "t8"."z" = CAST(8 AS int)
-      and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) in (CAST(42 AS int), CAST(45 AS int))
+      "t9"."cv" = 3023424::int
+      and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2024-08-14 0:00:00.0 +00:00:00'::datetime
+      and "t8"."z" = 8::int
+      and coalesce ("t3"."aw"::int, "t9"."bf"::int) in (42::int, 45::int)
   ) as "cte2"
 ''
 plan:
@@ -14994,7 +14542,7 @@ FROM
       ) as "unnamed_join"
   ) as "cte4"
 WHERE
-  "cte4"."c11" > CAST(0 AS int)
+  "cte4"."c11" > 0::int
 LIMIT
   10
 ''
@@ -15287,10 +14835,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
-      and "l"."cs" >= CAST('2024-08-14 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2024-08-15 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 4797271::int
+      and "l"."cs" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -15299,11 +14847,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
+      "l"."cv" = 4797271::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2024-08-14 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2024-08-15 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -15364,20 +14912,20 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."cv" = "t4"."cv"
   and "t5"."db" is null
   and "t5"."da" is null
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "x" as "t7" ON "t7"."b" = "t6"."ag"
   and "t7"."cv" = "t6"."cv"
   LEFT JOIN "f" as "t8" ON "t8"."cw" = "t6"."cw"
 WHERE
-  "t8"."z" = CAST(8 AS int)
-  and "t3"."aw" in (CAST(42 AS int), CAST(45 AS int))
+  "t8"."z" = 8::int
+  and "t3"."aw" in (42::int, 45::int)
 ''
 plan:
     [0] SCAN TABLE _tmp_361463343318768109_1136 (~1048576 rows)
@@ -15396,7 +14944,7 @@ buckets <= [1-3000]
 ''
 SELECT
   count (*) as "count_1",
-  sum (CAST ("t12"."COL_0" as decimal)) as "sum_2"
+  sum ("t12"."COL_0"::decimal) as "sum_2"
 FROM
   (
     SELECT
@@ -15415,15 +14963,13 @@ FROM
       (
         SELECT
           coalesce (
-            CAST (
-              (
-                "t9"."d" * coalesce (CAST ("t8"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-                  WHEN not "t9"."h" is null THEN CAST(-1 AS int)
-                  ELSE CAST(1 AS int)
-                END
-              ) as decimal
-            ),
-            CAST(0.0 AS decimal)
+            (
+              "t9"."d" * coalesce ("t8"."cj"::decimal, 0.0::decimal) * CASE
+                WHEN not "t9"."h" is null THEN (-1)::int
+                ELSE 1::int
+              END
+            )::decimal,
+            0.0::decimal
           ) as "d"
         FROM
           "n" as "t9"
@@ -15434,13 +14980,10 @@ FROM
           and "t10"."cv" = "t3"."cv"
           LEFT JOIN "h" as "t11" ON "t9"."cu" = "t11"."cu"
         WHERE
-          "t9"."cv" = CAST(4797271 AS int)
-          and coalesce (
-            CAST ("t9"."cs" as datetime),
-            CAST ("t9"."a" as datetime)
-          ) = CAST('2024-08-14 0:00:00.0 +00:00:00' AS datetime)
-          and "t8"."z" = CAST(8 AS int)
-          and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) in (CAST(42 AS int), CAST(45 AS int))
+          "t9"."cv" = 4797271::int
+          and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2024-08-14 0:00:00.0 +00:00:00'::datetime
+          and "t8"."z" = 8::int
+          and coalesce ("t3"."aw"::int, "t9"."bf"::int) in (42::int, 45::int)
       ) as "cte2"
   ) as "t12"
 ''
@@ -15461,8 +15004,8 @@ buckets = [874]
 ╰───────────────────╯
 ''
 SELECT
-  CAST (sum (CAST ("COL_0" as int)) as int) as "c1",
-  sum (CAST ("COL_1" as decimal)) as "c2"
+  sum ("COL_0"::int)::int as "c1",
+  sum ("COL_1"::decimal) as "c2"
 FROM
   (
     SELECT
@@ -15786,10 +15329,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
-      and "l"."cs" >= CAST('2024-08-14 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2024-08-15 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 4797271::int
+      and "l"."cs" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -15798,11 +15341,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
+      "l"."cv" = 4797271::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2024-08-14 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2024-08-15 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2024-08-14 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2024-08-15 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   LEFT JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -15842,20 +15385,20 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" < CAST(0 AS int)
+  and "t4"."ai" < 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."db" is null
   and "t5"."da" is null
   and "t5"."cv" = "t4"."cv"
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "f" as "t7" ON "t7"."cw" = "t6"."cw"
   LEFT JOIN "ad" as "t8" ON "t8"."cv" = "t3"."cv"
   and "t8"."ay" = "t3"."ay"
 WHERE
-  "t7"."z" = CAST(8 AS int)
-  and "t3"."aw" in (CAST(42 AS int), CAST(45 AS int))
+  "t7"."z" = 8::int
+  and "t3"."aw" in (42::int, 45::int)
 GROUP BY
   "t6"."cv",
   "t3"."ay",
@@ -15941,15 +15484,9 @@ FROM
     SELECT DISTINCT
       "t9"."cv",
       "t9"."ay",
-      coalesce (
-        CAST ("t3"."bg" as text),
-        CAST ("t9"."bg" as text)
-      ) as "bg",
-      coalesce (
-        CAST ("t3"."ah" as text),
-        CAST ("t9"."ah" as text)
-      ) as "ah",
-      coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
+      coalesce ("t3"."bg"::text, "t9"."bg"::text) as "bg",
+      coalesce ("t3"."ah"::text, "t9"."ah"::text) as "ah",
+      coalesce ("t3"."cu"::int, "t9"."cu"::int) as "cu",
       "t8"."cx"
     FROM
       "n" as "t9"
@@ -15962,13 +15499,10 @@ FROM
       LEFT JOIN "ad" as "t8" ON "t8"."cv" = "t3"."cv"
       and "t8"."ay" = "t3"."ay"
     WHERE
-      "t9"."cv" = CAST(4797271 AS int)
-      and coalesce (
-        CAST ("t9"."cs" as datetime),
-        CAST ("t9"."a" as datetime)
-      ) = CAST('2024-08-14 0:00:00.0 +00:00:00' AS datetime)
-      and "t7"."z" = CAST(8 AS int)
-      and coalesce (CAST ("t3"."aw" as int), CAST ("t9"."bf" as int)) in (CAST(42 AS int), CAST(45 AS int))
+      "t9"."cv" = 4797271::int
+      and coalesce ("t9"."cs"::datetime, "t9"."a"::datetime) = '2024-08-14 0:00:00.0 +00:00:00'::datetime
+      and "t7"."z" = 8::int
+      and coalesce ("t3"."aw"::int, "t9"."bf"::int) in (42::int, 45::int)
   ) as "cte2"
 ''
 plan:
@@ -16153,53 +15687,44 @@ subquery $0:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS text)) as "c0",
-  sum (CAST ("a"."f" as decimal)) as "c2",
-  sum (CAST ("a"."e" as decimal)) as "c3",
-  CAST(0 AS int) as "c4"
+  "to_char" ("a"."a"::datetime, '%Y-%m-%d'::text) as "c0",
+  sum ("a"."f"::decimal) as "c2",
+  sum ("a"."e"::decimal) as "c3",
+  0::int as "c4"
 FROM
   "a"
 WHERE
-  "a"."cv" = CAST(4797271 AS int)
-  and "a"."aw" in (CAST(42 AS int), CAST(45 AS int))
-  and "a"."bm" = CAST(2023 AS int)
-  and "a"."bk" = CAST(9 AS int)
+  "a"."cv" = 4797271::int
+  and "a"."aw" in (42::int, 45::int)
+  and "a"."bm" = 2023::int
+  and "a"."bk" = 9::int
 GROUP BY
   "a"."a"
 UNION ALL
 SELECT
   "cte0"."a",
-  CAST(0 AS int) as "c2",
-  CAST(0 AS int) as "c3",
+  0::int as "c2",
+  0::int as "c3",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          (
-            "cte0"."d" * "cte0"."cj" * CASE
-              WHEN not "cte0"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      (
+        "cte0"."d" * "cte0"."cj" * CASE
+          WHEN not "cte0"."h" is null THEN (-1)::int
+          ELSE 1::int
+        END
+      )::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c4"
 FROM
   (
     SELECT
       "to_char" (
-        CAST (
-          coalesce (
-            CAST ("t0"."cs" as datetime),
-            CAST ("t0"."a" as datetime)
-          ) as datetime
-        ),
-        CAST('%Y-%m-%d' AS text)
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%Y-%m-%d'::text
       ) as "a",
       "t0"."d",
-      coalesce (CAST ("t3"."cj" as int), CAST(0 AS int)) as "cj",
+      coalesce ("t3"."cj"::int, 0::int) as "cj",
       "t0"."h"
     FROM
       "n" as "t0"
@@ -16209,35 +15734,21 @@ FROM
       and "t0"."cv" = "t2"."cv"
       LEFT JOIN "f" as "t3" ON "t0"."cw" = "t3"."cw"
     WHERE
-      "t0"."cv" = CAST(4797271 AS int)
-      and coalesce (CAST ("t2"."aw" as int), CAST ("t0"."bf" as int)) in (CAST(42 AS int), CAST(45 AS int))
+      "t0"."cv" = 4797271::int
+      and coalesce ("t2"."aw"::int, "t0"."bf"::int) in (42::int, 45::int)
       and "t1"."ag" is null
       and (
         "t0"."h" is null
-        or "t0"."h" = CAST(-1 AS int)
+        or "t0"."h" = (-1)::int
       )
-      and CAST (
-        "to_char" (
-          CAST (
-            coalesce (
-              CAST ("t0"."cs" as datetime),
-              CAST ("t0"."a" as datetime)
-            ) as datetime
-          ),
-          CAST('%Y' AS text)
-        ) as int
-      ) = CAST(2023 AS int)
-      and CAST (
-        "to_char" (
-          CAST (
-            coalesce (
-              CAST ("t0"."cs" as datetime),
-              CAST ("t0"."a" as datetime)
-            ) as datetime
-          ),
-          CAST('%m' AS text)
-        ) as int
-      ) = CAST(9 AS int)
+      and "to_char" (
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%Y'::text
+      )::int = 2023::int
+      and "to_char" (
+        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+        '%m'::text
+      )::int = 9::int
   ) as "cte0"
 GROUP BY
   "cte0"."a"
@@ -16389,21 +15900,15 @@ FROM
   LEFT JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
   and "t0"."ay" = "t1"."ay"
 WHERE
-  "t0"."cv" = CAST(4797271 AS int)
-  and "t0"."aw" in (CAST(42 AS int), CAST(45 AS int))
-  and "t0"."bm" = CAST(2023 AS int)
-  and "t0"."bk" = CAST(9 AS int)
+  "t0"."cv" = 4797271::int
+  and "t0"."aw" in (42::int, 45::int)
+  and "t0"."bm" = 2023::int
+  and "t0"."bk" = 9::int
 UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
-  coalesce (
-    CAST ("t4"."bg" as text),
-    CAST ("t2"."bg" as text)
-  ) as "c1",
-  coalesce (
-    CAST ("t4"."ah" as text),
-    CAST ("t2"."ah" as text)
-  ) as "c2",
+  coalesce ("t4"."bg"::text, "t2"."bg"::text) as "c1",
+  coalesce ("t4"."ah"::text, "t2"."ah"::text) as "c2",
   "t1"."cx" as "c3"
 FROM
   "n" as "t2"
@@ -16416,30 +15921,16 @@ FROM
   and "t2"."ay" = "t1"."ay"
   LEFT JOIN "h" as "t6" ON "t2"."cu" = "t6"."cu"
 WHERE
-  "t2"."cv" = CAST(4797271 AS int)
-  and coalesce (CAST ("t4"."aw" as int), CAST ("t2"."bf" as int)) in (CAST(42 AS int), CAST(45 AS int))
-  and CAST (
-    "to_char" (
-      CAST (
-        coalesce (
-          CAST ("t2"."cs" as datetime),
-          CAST ("t2"."a" as datetime)
-        ) as datetime
-      ),
-      CAST('%Y' AS text)
-    ) as int
-  ) = CAST(2023 AS int)
-  and CAST (
-    "to_char" (
-      CAST (
-        coalesce (
-          CAST ("t2"."cs" as datetime),
-          CAST ("t2"."a" as datetime)
-        ) as datetime
-      ),
-      CAST('%m' AS text)
-    ) as int
-  ) = CAST(9 AS int)
+  "t2"."cv" = 4797271::int
+  and coalesce ("t4"."aw"::int, "t2"."bf"::int) in (42::int, 45::int)
+  and "to_char" (
+    coalesce ("t2"."cs"::datetime, "t2"."a"::datetime)::datetime,
+    '%Y'::text
+  )::int = 2023::int
+  and "to_char" (
+    coalesce ("t2"."cs"::datetime, "t2"."a"::datetime)::datetime,
+    '%m'::text
+  )::int = 9::int
 ''
 plan:
     [1] SEARCH TABLE a AS t0 
@@ -16591,36 +16082,32 @@ union all
 ''
 SELECT
   "a"."z" as "c0",
-  sum (CAST ("a"."f" as decimal)) as "c1",
-  sum (CAST ("a"."e" as decimal)) as "c2",
-  CAST(0 AS int) as "c3"
+  sum ("a"."f"::decimal) as "c1",
+  sum ("a"."e"::decimal) as "c2",
+  0::int as "c3"
 FROM
   "a"
 WHERE
-  "a"."cv" = CAST(4797271 AS int)
-  and "a"."aw" in (CAST(42 AS int), CAST(45 AS int))
-  and "a"."a" = CAST('2023-09-25 0:00:00.0 +00:00:00' AS datetime)
+  "a"."cv" = 4797271::int
+  and "a"."aw" in (42::int, 45::int)
+  and "a"."a" = '2023-09-25 0:00:00.0 +00:00:00'::datetime
 GROUP BY
   "a"."z"
 UNION ALL
 SELECT
   "t3"."z" as "c0",
-  CAST(0 AS int) as "c1",
-  CAST(0 AS int) as "c2",
+  0::int as "c1",
+  0::int as "c2",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          (
-            "t0"."d" * coalesce (CAST ("t3"."cj" as decimal), CAST(0 AS decimal)) * CASE
-              WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      (
+        "t0"."d" * coalesce ("t3"."cj"::decimal, 0::decimal) * CASE
+          WHEN not "t0"."h" is null THEN (-1)::int
+          ELSE 1::int
+        END
+      )::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c3"
 FROM
   "n" as "t0"
@@ -16631,16 +16118,13 @@ FROM
   LEFT JOIN "f" as "t3" ON "t0"."cw" = "t3"."cw"
   LEFT JOIN "h" as "t4" ON "t0"."cu" = "t4"."cu"
 WHERE
-  "t0"."cv" = CAST(4797271 AS int)
-  and coalesce (CAST ("t2"."aw" as int), CAST ("t0"."bf" as int)) in (CAST(42 AS int), CAST(45 AS int))
-  and coalesce (
-    CAST ("t0"."cs" as datetime),
-    CAST ("t0"."a" as datetime)
-  ) = CAST('2023-09-25 0:00:00.0 +00:00:00' AS datetime)
+  "t0"."cv" = 4797271::int
+  and coalesce ("t2"."aw"::int, "t0"."bf"::int) in (42::int, 45::int)
+  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2023-09-25 0:00:00.0 +00:00:00'::datetime
   and "t1"."ag" is null
   and (
     "t0"."h" is null
-    or "t0"."h" = CAST(-1 AS int)
+    or "t0"."h" = (-1)::int
   )
 GROUP BY
   "t3"."z"
@@ -16782,20 +16266,14 @@ FROM
   LEFT JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
   and "t0"."ay" = "t1"."ay"
 WHERE
-  "t0"."cv" = CAST(4797271 AS int)
-  and "t0"."aw" in (CAST(42 AS int), CAST(45 AS int))
-  and "t0"."a" = CAST('2023-09-25 0:00:00.0 +00:00:00' AS datetime)
+  "t0"."cv" = 4797271::int
+  and "t0"."aw" in (42::int, 45::int)
+  and "t0"."a" = '2023-09-25 0:00:00.0 +00:00:00'::datetime
 UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
-  coalesce (
-    CAST ("t4"."bg" as text),
-    CAST ("t2"."bg" as text)
-  ) as "c1",
-  coalesce (
-    CAST ("t4"."ah" as text),
-    CAST ("t2"."ah" as text)
-  ) as "c2",
+  coalesce ("t4"."bg"::text, "t2"."bg"::text) as "c1",
+  coalesce ("t4"."ah"::text, "t2"."ah"::text) as "c2",
   "t1"."cx" as "c3"
 FROM
   "n" as "t2"
@@ -16808,12 +16286,9 @@ FROM
   and "t2"."ay" = "t1"."ay"
   LEFT JOIN "h" as "t6" ON "t2"."cu" = "t6"."cu"
 WHERE
-  "t2"."cv" = CAST(4797271 AS int)
-  and coalesce (CAST ("t4"."aw" as int), CAST ("t2"."bf" as int)) in (CAST(42 AS int), CAST(45 AS int))
-  and coalesce (
-    CAST ("t2"."cs" as datetime),
-    CAST ("t2"."a" as datetime)
-  ) = CAST('2023-09-25 0:00:00.0 +00:00:00' AS datetime)
+  "t2"."cv" = 4797271::int
+  and coalesce ("t4"."aw"::int, "t2"."bf"::int) in (42::int, 45::int)
+  and coalesce ("t2"."cs"::datetime, "t2"."a"::datetime) = '2023-09-25 0:00:00.0 +00:00:00'::datetime
 ''
 plan:
     [1] SEARCH TABLE a AS t0 USING COVERING INDEX ix_a (cv=? AND aw=? AND a=?) (~7 rows)
@@ -17057,19 +16532,15 @@ FROM
       "a"."bm",
       "a"."bl",
       "a"."bk",
-      sum (CAST ("a"."f" as decimal)) as "f",
-      sum (CAST ("a"."e" as decimal)) as "e",
-      CAST(0 AS int) as "c2"
+      sum ("a"."f"::decimal) as "f",
+      sum ("a"."e"::decimal) as "e",
+      0::int as "c2"
     FROM
       "a"
     WHERE
-      "a"."cv" = CAST(4797271 AS int)
-      and "a"."aw" in (CAST(42 AS int), CAST(45 AS int))
-      and "a"."bm" in (
-        CAST(2025 AS int),
-        CAST(2024 AS int),
-        CAST(2023 AS int)
-      )
+      "a"."cv" = 4797271::int
+      and "a"."aw" in (42::int, 45::int)
+      and "a"."bm" in (2025::int, 2024::int, 2023::int)
     GROUP BY
       "a"."bm",
       "a"."bl",
@@ -17084,64 +16555,36 @@ FROM
       "cte1"."bm",
       "cte1"."bl",
       "cte1"."bk",
-      CAST(0 AS int) as "f",
-      CAST(0 AS int) as "e",
-      sum (CAST ("cte1"."c6" as decimal)) as "c2"
+      0::int as "f",
+      0::int as "e",
+      sum ("cte1"."c6"::decimal) as "c2"
     FROM
       (
         SELECT
-          CAST (
-            "to_char" (
-              CAST (
-                coalesce (
-                  CAST ("t0"."cs" as datetime),
-                  CAST ("t0"."a" as datetime)
-                ) as datetime
-              ),
-              CAST('%Y' AS text)
-            ) as int
-          ) as "bm",
-          CAST (
+          "to_char" (
+            coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+            '%Y'::text
+          )::int as "bm",
+          (
             (
-              (
-                CAST (
-                  "to_char" (
-                    CAST (
-                      coalesce (
-                        CAST ("t0"."cs" as datetime),
-                        CAST ("t0"."a" as datetime)
-                      ) as datetime
-                    ),
-                    CAST('%m' AS text)
-                  ) as int
-                ) - CAST(1 AS int)
-              ) / CAST(3 AS int) + CAST(1 AS int)
-            ) as int
-          ) as "bl",
-          CAST (
-            "to_char" (
-              CAST (
-                coalesce (
-                  CAST ("t0"."cs" as datetime),
-                  CAST ("t0"."a" as datetime)
-                ) as datetime
-              ),
-              CAST('%m' AS text)
-            ) as int
-          ) as "bk",
+              "to_char" (
+                coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+                '%m'::text
+              )::int - 1::int
+            ) / 3::int + 1::int
+          )::int as "bl",
+          "to_char" (
+            coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+            '%m'::text
+          )::int as "bk",
           coalesce (
-            CAST (
-              (
-                "t0"."d" * coalesce (
-                  CAST ("t3"."cj" as decimal),
-                  CAST(0.0 AS decimal)
-                ) * CASE
-                  WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-                  ELSE CAST(1 AS int)
-                END
-              ) as decimal
-            ),
-            CAST(0.0 AS decimal)
+            (
+              "t0"."d" * coalesce ("t3"."cj"::decimal, 0.0::decimal) * CASE
+                WHEN not "t0"."h" is null THEN (-1)::int
+                ELSE 1::int
+              END
+            )::decimal,
+            0.0::decimal
           ) as "c6"
         FROM
           "n" as "t0"
@@ -17152,28 +16595,17 @@ FROM
           LEFT JOIN "f" as "t3" ON "t0"."cw" = "t3"."cw"
           LEFT JOIN "h" as "t4" ON "t0"."cu" = "t4"."cu"
         WHERE
-          "t0"."cv" = CAST(4797271 AS int)
-          and coalesce (CAST ("t2"."aw" as int), CAST ("t0"."bf" as int)) in (CAST(42 AS int), CAST(45 AS int))
+          "t0"."cv" = 4797271::int
+          and coalesce ("t2"."aw"::int, "t0"."bf"::int) in (42::int, 45::int)
           and "t1"."ag" is null
           and (
             "t0"."h" is null
-            or "t0"."h" = CAST(-1 AS int)
+            or "t0"."h" = (-1)::int
           )
-          and CAST (
-            "to_char" (
-              CAST (
-                coalesce (
-                  CAST ("t0"."cs" as datetime),
-                  CAST ("t0"."a" as datetime)
-                ) as datetime
-              ),
-              CAST('%Y' AS text)
-            ) as int
-          ) in (
-            CAST(2025 AS int),
-            CAST(2024 AS int),
-            CAST(2023 AS int)
-          )
+          and "to_char" (
+            coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+            '%Y'::text
+          )::int in (2025::int, 2024::int, 2023::int)
       ) as "cte1"
     GROUP BY
       "cte1"."bm",
@@ -17283,35 +16715,29 @@ SELECT
   "t0"."cf" as "c2",
   "t0"."ce" as "c3",
   CASE
-    WHEN CAST(0 AS int) > "t0"."bx" THEN "t0"."bx"
-    ELSE CAST(0.0 AS decimal)
+    WHEN 0::int > "t0"."bx" THEN "t0"."bx"
+    ELSE 0.0::decimal
   END as "c4",
   CASE
-    WHEN CAST(0 AS int) > "t0"."bz" THEN "t0"."bz"
-    ELSE CAST(0.0 AS decimal)
+    WHEN 0::int > "t0"."bz" THEN "t0"."bz"
+    ELSE 0.0::decimal
   END as "c5",
   CASE
-    WHEN CAST(0 AS int) > "t0"."ca" THEN "t0"."ca"
-    ELSE CAST(0.0 AS decimal)
+    WHEN 0::int > "t0"."ca" THEN "t0"."ca"
+    ELSE 0.0::decimal
   END as "c6",
   CASE
-    WHEN CAST(0 AS int) > coalesce (CAST ("t0"."cd" as decimal), CAST(0.0 AS decimal)) + coalesce (CAST ("t0"."cc" as decimal), CAST(0.0 AS decimal)) THEN coalesce (
-      CAST ("t0"."cd" as decimal),
-      CAST(0.0 AS decimal)
-    ) + coalesce (
-      CAST ("t0"."cc" as decimal),
-      CAST(0.0 AS decimal)
-    )
-    ELSE CAST(0.0 AS decimal)
+    WHEN 0::int > coalesce ("t0"."cd"::decimal, 0.0::decimal) + coalesce ("t0"."cc"::decimal, 0.0::decimal) THEN coalesce ("t0"."cd"::decimal, 0.0::decimal) + coalesce ("t0"."cc"::decimal, 0.0::decimal)
+    ELSE 0.0::decimal
   END as "c7",
   CASE
-    WHEN CAST(0 AS int) > "t0"."cg" THEN "t0"."cg"
-    ELSE CAST(0.0 AS decimal)
+    WHEN 0::int > "t0"."cg" THEN "t0"."cg"
+    ELSE 0.0::decimal
   END as "c8"
 FROM
   "s" as "t0"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
 ''
 plan:
     [0] SEARCH TABLE s AS t0 USING COVERING INDEX ix_be (cv=?) (~10 rows)
@@ -17396,13 +16822,10 @@ projection (
 SELECT
   "t1"."cq" as "c0",
   CASE
-    WHEN not min (CAST ("t2"."u" as datetime)) is null THEN "to_char" (
-      CAST (min (CAST ("t2"."u" as datetime)) as datetime),
-      CAST('%Y-%m-%d' AS text)
-    )
+    WHEN not min ("t2"."u"::datetime) is null THEN "to_char" (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
     ELSE NULL
   END as "c1",
-  sum (CAST ("t0"."az" as decimal)) as "c2"
+  sum ("t0"."az"::decimal) as "c2"
 FROM
   "v" as "t0"
   INNER JOIN "y" as "t1" ON "t0"."au" = "t1"."ag"
@@ -17411,9 +16834,9 @@ FROM
   and "t0"."cv" = "t2"."cv"
   LEFT JOIN "i" as "t3" ON "t1"."cu" = "t3"."br"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
   and not "t3"."ap"
-  and "t0"."az" > CAST(0 AS int)
+  and "t0"."az" > 0::int
 GROUP BY
   "t1"."cq"
 ''
@@ -17651,139 +17074,95 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  CAST('KNO' AS text) as "c0",
+  'KNO'::text as "c0",
   "t0"."cu" as "c1",
   "t0"."ah" as "c2",
   "t0"."bg" as "c3",
   CASE
     WHEN not "t1"."cw" is null
-    and "t1"."cw" = CAST(3 AS int) THEN CAST(1 AS int)
-    ELSE CAST(0 AS int)
+    and "t1"."cw" = 3::int THEN 1::int
+    ELSE 0::int
   END as "c4",
   "t0"."ay" as "c5",
   sum (
-    CAST (
-      (
-        CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."bx" > CAST(0 AS int)
-            and "t0"."aw" <> CAST(1 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (CAST ("t0"."bx" as decimal), CAST(0.0 AS decimal))
-          END as decimal
-        ) + CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."bz" > CAST(0 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (
-              CAST ("t0"."bz" as decimal),
-              CAST(0.0 AS decimal)
-            )
-          END as decimal
-        ) + CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."ca" > CAST(0 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (
-              CAST ("t0"."ca" as decimal),
-              CAST(0.0 AS decimal)
-            )
-          END as decimal
-        ) + CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."cd" > CAST(0 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (
-              CAST ("t0"."cd" as decimal),
-              CAST(0.0 AS decimal)
-            )
-          END as decimal
-        ) + CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."cc" > CAST(0 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (
-              CAST ("t0"."cc" as decimal),
-              CAST(0.0 AS decimal)
-            )
-          END as decimal
-        ) + CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."cg" > CAST(0 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (
-              CAST ("t0"."cg" as decimal),
-              CAST(0.0 AS decimal)
-            )
-          END as decimal
+    (
+      CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
         )
-      ) as decimal
-    )
+        and "t0"."bx" > 0::int
+        and "t0"."aw" <> 1::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."bx"::decimal, 0.0::decimal)
+      END::decimal + CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
+        )
+        and "t0"."bz" > 0::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."bz"::decimal, 0.0::decimal)
+      END::decimal + CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
+        )
+        and "t0"."ca" > 0::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."ca"::decimal, 0.0::decimal)
+      END::decimal + CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
+        )
+        and "t0"."cd" > 0::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."cd"::decimal, 0.0::decimal)
+      END::decimal + CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
+        )
+        and "t0"."cc" > 0::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."cc"::decimal, 0.0::decimal)
+      END::decimal + CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
+        )
+        and "t0"."cg" > 0::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."cg"::decimal, 0.0::decimal)
+      END::decimal
+    )::decimal
   ) as "c6",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."aw" = CAST(2 AS int) THEN coalesce (
-          CAST ("t0"."bz" as decimal),
-          CAST(0.0 AS decimal)
-        )
-        ELSE CAST(0.0 AS decimal)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."aw" = 2::int THEN coalesce ("t0"."bz"::decimal, 0.0::decimal)
+      ELSE 0.0::decimal
+    END::decimal
   ) as "c7",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."aw" = CAST(3 AS int) THEN coalesce (
-          CAST ("t0"."ca" as decimal),
-          CAST(0.0 AS decimal)
-        )
-        ELSE CAST(0.0 AS decimal)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."aw" = 3::int THEN coalesce ("t0"."ca"::decimal, 0.0::decimal)
+      ELSE 0.0::decimal
+    END::decimal
   ) as "c8",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."aw" in (CAST(42 AS int), CAST(45 AS int)) THEN coalesce (
-          CAST ("t0"."bz" as decimal),
-          CAST(0.0 AS decimal)
-        )
-        ELSE CAST(0.0 AS decimal)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."aw" in (42::int, 45::int) THEN coalesce ("t0"."bz"::decimal, 0.0::decimal)
+      ELSE 0.0::decimal
+    END::decimal
   ) as "c9"
 FROM
   "y" as "t0"
   LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
 GROUP BY
   "t0"."cu",
   "t0"."ah",
   "t0"."bg",
   CASE
     WHEN not "t1"."cw" is null
-    and "t1"."cw" = CAST(3 AS int) THEN CAST(1 AS int)
-    ELSE CAST(0 AS int)
+    and "t1"."cw" = 3::int THEN 1::int
+    ELSE 0::int
   END,
   "t0"."ay"
 ''
@@ -17991,54 +17370,39 @@ subquery $0:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  CAST('BUF' AS text) as "c7",
+  'BUF'::text as "c7",
   "cte0"."cu",
   "cte0"."ah",
   "cte0"."bg",
   "cte0"."c4",
   "cte0"."ay",
+  coalesce (sum ("cte0"."aa"::decimal)::decimal, 0.0::decimal) as "c8",
   coalesce (
-    CAST (sum (CAST ("cte0"."aa" as decimal)) as decimal),
-    CAST(0.0 AS decimal)
-  ) as "c8",
-  coalesce (
-    CAST (
-      sum (
-        CAST (
-          CASE
-            WHEN "cte0"."aw" = CAST(2 AS int) THEN "cte0"."aa"
-            ELSE CAST(0.0 AS decimal)
-          END as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      CASE
+        WHEN "cte0"."aw" = 2::int THEN "cte0"."aa"
+        ELSE 0.0::decimal
+      END::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c9",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          CASE
-            WHEN "cte0"."aw" = CAST(3 AS int) THEN "cte0"."aa"
-            ELSE CAST(0.0 AS decimal)
-          END as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      CASE
+        WHEN "cte0"."aw" = 3::int THEN "cte0"."aa"
+        ELSE 0.0::decimal
+      END::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c10",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          CASE
-            WHEN "cte0"."aw" in (CAST(42 AS int), CAST(45 AS int)) THEN "cte0"."aa"
-            ELSE CAST(0.0 AS decimal)
-          END as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      CASE
+        WHEN "cte0"."aw" in (42::int, 45::int) THEN "cte0"."aa"
+        ELSE 0.0::decimal
+      END::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c11"
 FROM
   (
@@ -18049,22 +17413,17 @@ FROM
       "t0"."ay",
       CASE
         WHEN not "t2"."cw" is null
-        and "t2"."cw" = CAST(3 AS int) THEN CAST(1 AS int)
-        ELSE CAST(0 AS int)
+        and "t2"."cw" = 3::int THEN 1::int
+        ELSE 0::int
       END as "c4",
       coalesce (
-        CAST (
-          (
-            "t0"."d" * coalesce (
-              CAST ("t3"."cj" as decimal),
-              CAST(0 AS decimal)
-            ) * CASE
-              WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        ),
-        CAST(0.0 AS decimal)
+        (
+          "t0"."d" * coalesce ("t3"."cj"::decimal, 0::decimal) * CASE
+            WHEN not "t0"."h" is null THEN (-1)::int
+            ELSE 1::int
+          END
+        )::decimal,
+        0.0::decimal
       ) as "aa",
       "t4"."aw"
     FROM
@@ -18076,11 +17435,11 @@ FROM
       LEFT JOIN "y" as "t4" ON "t0"."au" = "t4"."ag"
       and "t0"."cv" = "t4"."cv"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
+      "t0"."cv" = 3023424::int
       and "t1"."ag" is null
       and (
         "t0"."h" is null
-        or "t0"."h" = CAST(-1 AS int)
+        or "t0"."h" = (-1)::int
       )
   ) as "cte0"
 GROUP BY
@@ -18196,24 +17555,17 @@ projection (
 SELECT
   "t1"."cq" as "c0",
   "to_char" (
-    CAST (
-      coalesce (
-        CAST ("t0"."cs" as datetime),
-        CAST ("t0"."a" as datetime)
-      ) as datetime
-    ),
-    CAST('%Y-%m-%d' AS text)
+    coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+    '%Y-%m-%d'::text
   ) as "c1",
   coalesce (
-    CAST (
-      (
-        "t0"."d" * coalesce (CAST ("t3"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-          WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-          ELSE CAST(1 AS int)
-        END
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    (
+      "t0"."d" * coalesce ("t3"."cj"::decimal, 0.0::decimal) * CASE
+        WHEN not "t0"."h" is null THEN (-1)::int
+        ELSE 1::int
+      END
+    )::decimal,
+    0.0::decimal
   ) as "c2"
 FROM
   "n" as "t0"
@@ -18223,15 +17575,15 @@ FROM
   LEFT JOIN "n" as "t4" ON "t4"."h" = "t0"."ag"
   and "t4"."cv" = "t0"."cv"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
   and "t4"."ag" is null
   and (
     "t0"."h" is null
-    or "t0"."h" = CAST(-1 AS int)
+    or "t0"."h" = (-1)::int
   )
   and (
     "t2"."cw" is null
-    or "t2"."cw" <> CAST(3 AS int)
+    or "t2"."cw" <> 3::int
   )
 ''
 plan:
@@ -18361,28 +17713,21 @@ SELECT
   "t0"."bg" as "c3",
   CASE
     WHEN not "t2"."cw" is null
-    and "t2"."cw" = CAST(3 AS int) THEN CAST(1 AS int)
-    ELSE CAST(0 AS int)
+    and "t2"."cw" = 3::int THEN 1::int
+    ELSE 0::int
   END as "c4",
   "to_char" (
-    CAST (
-      coalesce (
-        CAST ("t0"."cs" as datetime),
-        CAST ("t0"."a" as datetime)
-      ) as datetime
-    ),
-    CAST('%Y-%m-%d' AS text)
+    coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+    '%Y-%m-%d'::text
   ) as "c5",
   coalesce (
-    CAST (
-      (
-        "t0"."d" * coalesce (CAST ("t3"."cj" as decimal), CAST(0.0 AS decimal)) * CASE
-          WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-          ELSE CAST(1 AS int)
-        END
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    (
+      "t0"."d" * coalesce ("t3"."cj"::decimal, 0.0::decimal) * CASE
+        WHEN not "t0"."h" is null THEN (-1)::int
+        ELSE 1::int
+      END
+    )::decimal,
+    0.0::decimal
   ) as "c6"
 FROM
   "n" as "t0"
@@ -18392,14 +17737,14 @@ FROM
   LEFT JOIN "n" as "t4" ON "t4"."h" = "t0"."ag"
   and "t4"."cv" = "t0"."cv"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
   and "t4"."ag" is null
   and (
     "t0"."h" is null
-    or "t0"."h" = CAST(-1 AS int)
+    or "t0"."h" = (-1)::int
   )
   and not "t2"."cw" is null
-  and "t2"."cw" = CAST(3 AS int)
+  and "t2"."cw" = 3::int
 ''
 plan:
     [0] SEARCH TABLE n AS t0 USING COVERING INDEX ix_al (cv=?) (~9 rows)
@@ -18519,42 +17864,33 @@ projection (
 SELECT
   "t0"."cq" as "c0",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."bx" < CAST(0 AS int) THEN coalesce (CAST ("t0"."bx" as decimal), CAST(0 AS decimal))
-        ELSE CAST(0 AS int)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."bx" < 0::int THEN coalesce ("t0"."bx"::decimal, 0::decimal)
+      ELSE 0::int
+    END::decimal
   ) as "c1",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."bx" < CAST(0 AS int)
-        and not "t1"."cw" is null
-        and "t1"."cw" = CAST(3 AS int) THEN coalesce (CAST ("t0"."bx" as decimal), CAST(0 AS decimal))
-        ELSE CAST(0 AS int)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."bx" < 0::int
+      and not "t1"."cw" is null
+      and "t1"."cw" = 3::int THEN coalesce ("t0"."bx"::decimal, 0::decimal)
+      ELSE 0::int
+    END::decimal
   ) as "c2",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."bx" > CAST(0 AS int)
-        and not "t1"."cw" is null
-        and "t1"."cw" = CAST(3 AS int) THEN coalesce (
-          CAST ("t0"."bx" as decimal),
-          CAST(0 AS decimal)
-        )
-        ELSE CAST(0 AS int)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."bx" > 0::int
+      and not "t1"."cw" is null
+      and "t1"."cw" = 3::int THEN coalesce ("t0"."bx"::decimal, 0::decimal)
+      ELSE 0::int
+    END::decimal
   ) as "c3"
 FROM
   "y" as "t0"
   LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
-  and "t0"."bx" <> CAST(0 AS int)
+  "t0"."cv" = 3023424::int
+  and "t0"."bx" <> 0::int
 GROUP BY
   "t0"."cq"
 ''
@@ -18682,41 +18018,32 @@ SELECT
   "t0"."bg" as "c2",
   "t0"."ay" as "c3",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."bx" < CAST(0 AS int) THEN coalesce (CAST ("t0"."bx" as decimal), CAST(0 AS decimal))
-        ELSE CAST(0 AS int)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."bx" < 0::int THEN coalesce ("t0"."bx"::decimal, 0::decimal)
+      ELSE 0::int
+    END::decimal
   ) as "c4",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."bx" < CAST(0 AS int)
-        and not "t1"."cw" is null
-        and "t1"."cw" = CAST(3 AS int) THEN coalesce (CAST ("t0"."bx" as decimal), CAST(0 AS decimal))
-        ELSE CAST(0 AS int)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."bx" < 0::int
+      and not "t1"."cw" is null
+      and "t1"."cw" = 3::int THEN coalesce ("t0"."bx"::decimal, 0::decimal)
+      ELSE 0::int
+    END::decimal
   ) as "c5",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."bx" > CAST(0 AS int)
-        and not "t1"."cw" is null
-        and "t1"."cw" = CAST(3 AS int) THEN coalesce (
-          CAST ("t0"."bx" as decimal),
-          CAST(0 AS decimal)
-        )
-        ELSE CAST(0 AS int)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."bx" > 0::int
+      and not "t1"."cw" is null
+      and "t1"."cw" = 3::int THEN coalesce ("t0"."bx"::decimal, 0::decimal)
+      ELSE 0::int
+    END::decimal
   ) as "c6"
 FROM
   "y" as "t0"
   LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
 GROUP BY
   "t0"."cu",
   "t0"."ah",
@@ -18808,13 +18135,10 @@ projection (
 SELECT
   "t1"."cq" as "c0",
   CASE
-    WHEN not min (CAST ("t2"."u" as datetime)) is null THEN "to_char" (
-      CAST (min (CAST ("t2"."u" as datetime)) as datetime),
-      CAST('%Y-%m-%d' AS text)
-    )
+    WHEN not min ("t2"."u"::datetime) is null THEN "to_char" (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
     ELSE NULL
   END as "c1",
-  sum (CAST ("t0"."az" as decimal)) as "c2"
+  sum ("t0"."az"::decimal) as "c2"
 FROM
   "v" as "t0"
   INNER JOIN "y" as "t1" ON "t0"."au" = "t1"."ag"
@@ -18823,9 +18147,9 @@ FROM
   and "t0"."cv" = "t2"."cv"
   LEFT JOIN "i" as "t3" ON "t1"."cu" = "t3"."br"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
   and not "t3"."ap"
-  and "t0"."az" > CAST(0 AS int)
+  and "t0"."az" > 0::int
 GROUP BY
   "t1"."cq"
 ''
@@ -18891,14 +18215,14 @@ projection (
 ''
 SELECT
   "d"."z" as "c0",
-  sum (CAST ("d"."f" as decimal)) as "c1",
-  sum (CAST ("d"."e" as decimal)) as "c2"
+  sum ("d"."f"::decimal) as "c1",
+  sum ("d"."e"::decimal) as "c2"
 FROM
   "d"
 WHERE
-  "d"."cv" = CAST(4797271 AS int)
-  and "d"."cq" = CAST(4 AS int)
-  and "d"."a" = CAST('2025-08-27 0:00:00.0 +00:00:00' AS datetime)
+  "d"."cv" = 4797271::int
+  and "d"."cq" = 4::int
+  and "d"."a" = '2025-08-27 0:00:00.0 +00:00:00'::datetime
 GROUP BY
   "d"."z"
 ''
@@ -19208,10 +18532,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
-      and "l"."cs" >= CAST('2025-08-27 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2025-08-28 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 4797271::int
+      and "l"."cs" >= '2025-08-27 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2025-08-28 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -19220,11 +18544,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
+      "l"."cv" = 4797271::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2025-08-27 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2025-08-28 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2025-08-27 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2025-08-28 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   INNER JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -19249,21 +18573,17 @@ SELECT
   "t3"."bg",
   "t6"."cu",
   "t6"."cw",
-  coalesce (
-    CAST ("t6"."co" as int),
-    CAST ("t6"."cm" as int),
-    CAST(0 AS int)
-  ) as "ac",
+  coalesce ("t6"."co"::int, "t6"."cm"::int, 0::int) as "ac",
   CASE
     WHEN not "t6"."co" is null
     or not "t6"."cm" is null THEN "t6"."cn"
-    ELSE CAST('0000' AS text)
+    ELSE '0000'::text
   END as "ae",
   "t6"."cl" as "ab",
   CASE
-    WHEN not "t6"."co" is null THEN CAST(0 AS int)
-    WHEN not "t6"."cm" is null THEN CAST(1 AS int)
-    ELSE CAST(2 AS int)
+    WHEN not "t6"."co" is null THEN 0::int
+    WHEN not "t6"."cm" is null THEN 1::int
+    ELSE 2::int
   END as "c9",
   "t5"."d"
 FROM
@@ -19279,20 +18599,20 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" > CAST(0 AS int)
+  and "t4"."ai" > 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."cv" = "t4"."cv"
   and "t5"."db" is null
   and "t5"."da" is null
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "x" as "t7" INDEXED BY "ix_h" ON "t7"."b" = "t6"."ag"
   and "t7"."cv" = "t6"."cv"
   LEFT JOIN "f" as "t8" ON "t8"."cw" = "t6"."cw"
 WHERE
-  "t8"."z" = CAST(6 AS int)
-  and "t3"."cq" = CAST(4 AS int)
+  "t8"."z" = 6::int
+  and "t3"."cq" = 4::int
 ''
 plan:
     [0] SCAN TABLE _tmp_8725203292501515120_1136 (~1048576 rows)
@@ -19398,7 +18718,7 @@ FROM
       ) as "unnamed_join"
   ) as "cte2"
 WHERE
-  "cte2"."c11" > CAST(0 AS int)
+  "cte2"."c11" > 0::int
 LIMIT
   10
 ''
@@ -19603,10 +18923,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
-      and "l"."cs" >= CAST('2025-08-27 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2025-08-28 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 4797271::int
+      and "l"."cs" >= '2025-08-27 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2025-08-28 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -19615,11 +18935,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
+      "l"."cv" = 4797271::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2025-08-27 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2025-08-28 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2025-08-27 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2025-08-28 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   INNER JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -19639,8 +18959,8 @@ buckets <= [1-3000]
 ''
 SELECT
   "t6"."d" * "t8"."cj" * CASE
-    WHEN "t6"."h" is null THEN CAST(1 AS int)
-    ELSE CAST(-1 AS int)
+    WHEN "t6"."h" is null THEN 1::int
+    ELSE (-1)::int
   END as "d"
 FROM
   (
@@ -19655,20 +18975,20 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t4"."cv" = "t3"."cv"
-  and "t4"."ai" > CAST(0 AS int)
+  and "t4"."ai" > 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."cv" = "t4"."cv"
   and "t5"."db" is null
   and "t5"."da" is null
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "x" as "t7" INDEXED BY "ix_h" ON "t7"."b" = "t6"."ag"
   and "t7"."cv" = "t6"."cv"
   LEFT JOIN "f" as "t8" ON "t8"."cw" = "t6"."cw"
 WHERE
-  "t8"."z" = CAST(6 AS int)
-  and "t3"."cq" = CAST(4 AS int)
+  "t8"."z" = 6::int
+  and "t3"."cq" = 4::int
 ''
 plan:
     [0] SCAN TABLE _tmp_5906582692487102708_0136 (~1048576 rows)
@@ -19687,7 +19007,7 @@ buckets <= [1-3000]
 ''
 SELECT
   count (*) as "c1",
-  sum (CAST ("cte1"."COL_0" as decimal)) as "c2"
+  sum ("cte1"."COL_0"::decimal) as "c2"
 FROM
   (
     SELECT
@@ -19936,10 +19256,10 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
-      and "l"."cs" >= CAST('2025-08-27 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."cs" < CAST('2025-08-28 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      "l"."cv" = 4797271::int
+      and "l"."cs" >= '2025-08-27 0:00:00.0 +00:00:00'::datetime
+      and "l"."cs" < '2025-08-28 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
     UNION ALL
     SELECT
       "l"."ag",
@@ -19948,11 +19268,11 @@ FROM
     FROM
       "l"
     WHERE
-      "l"."cv" = CAST(4797271 AS int)
+      "l"."cv" = 4797271::int
       and "l"."cs" is null
-      and "l"."a" >= CAST('2025-08-27 0:00:00.0 +00:00:00' AS datetime)
-      and "l"."a" < CAST('2025-08-28 0:00:00.0 +00:00:00' AS datetime)
-      and coalesce (CAST ("l"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+      and "l"."a" >= '2025-08-27 0:00:00.0 +00:00:00'::datetime
+      and "l"."a" < '2025-08-28 0:00:00.0 +00:00:00'::datetime
+      and coalesce ("l"."bb"::int, 0::int) <> 1::int
   ) as "t0"
   INNER JOIN "x" as "t1" ON "t1"."b" = "t0"."ag"
   and "t1"."cv" = "t0"."cv"
@@ -19990,22 +19310,22 @@ FROM
   and "t3"."cv" = "t2"."COL_2"
   INNER JOIN "v" as "t4" INDEXED BY "ix_f" ON "t4"."b" = "t2"."COL_0"
   and "t3"."cv" = "t4"."cv"
-  and "t4"."ai" > CAST(0 AS int)
+  and "t4"."ai" > 0::int
   INNER JOIN "w" as "t5" INDEXED BY "ix_g" ON "t5"."x" = "t4"."ag"
   and "t5"."cv" = "t4"."cv"
   and "t5"."db" is null
   and "t5"."da" is null
   INNER JOIN "l" as "t6" INDEXED BY "ix_d" ON "t6"."ag" = "t5"."bs"
   and "t6"."cv" = "t5"."cv"
-  and coalesce (CAST ("t6"."bb" as int), CAST(0 AS int)) <> CAST(1 AS int)
+  and coalesce ("t6"."bb"::int, 0::int) <> 1::int
   LEFT JOIN "x" as "t7" INDEXED BY "ix_h" ON "t7"."b" = "t6"."ag"
   and "t7"."cv" = "t6"."cv"
   LEFT JOIN "f" as "t8" ON "t8"."cw" = "t6"."cw"
   LEFT JOIN "ad" as "t9" ON "t9"."cv" = "t3"."cv"
   and "t9"."ay" = "t3"."ay"
 WHERE
-  "t8"."z" = CAST(6 AS int)
-  and "t3"."cq" = CAST(4 AS int)
+  "t8"."z" = 6::int
+  and "t3"."cq" = 4::int
 GROUP BY
   "t6"."cv",
   "t3"."ay",
@@ -20142,16 +19462,16 @@ SELECT
 FROM
   (
     SELECT
-      "to_char" (CAST ("d"."a" as datetime), CAST('%Y-%m-%d' AS text)) as "c0",
-      sum (CAST ("d"."f" as decimal)) as "c1",
-      sum (CAST ("d"."e" as decimal)) as "c2"
+      "to_char" ("d"."a"::datetime, '%Y-%m-%d'::text) as "c0",
+      sum ("d"."f"::decimal) as "c1",
+      sum ("d"."e"::decimal) as "c2"
     FROM
       "d"
     WHERE
-      "d"."cv" = CAST(4797271 AS int)
-      and "d"."cq" = CAST(4 AS int)
-      and "d"."bm" = CAST(2025 AS int)
-      and "d"."bk" = CAST(8 AS int)
+      "d"."cv" = 4797271::int
+      and "d"."cq" = 4::int
+      and "d"."bm" = 2025::int
+      and "d"."bk" = 8::int
     GROUP BY
       "d"."cv",
       "d"."a"
@@ -20220,12 +19540,12 @@ SELECT
   "e"."bl" as "c1",
   "e"."bm" as "c2",
   "e"."cq" as "c3",
-  sum (CAST ("e"."f" as decimal)) as "c4",
-  sum (CAST ("e"."e" as decimal)) as "c5"
+  sum ("e"."f"::decimal) as "c4",
+  sum ("e"."e"::decimal) as "c5"
 FROM
   "e"
 WHERE
-  "e"."cv" = CAST(4797271 AS int)
+  "e"."cv" = 4797271::int
 GROUP BY
   "e"."cq",
   "e"."bk",
@@ -20296,7 +19616,7 @@ FROM
     FROM
       "s" as "t0"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
+      "t0"."cv" = 3023424::int
   )
 ORDER BY
   "ag"
@@ -20387,13 +19707,10 @@ projection (
 SELECT
   "t1"."cq" as "c0",
   CASE
-    WHEN not min (CAST ("t2"."u" as datetime)) is null THEN "to_char" (
-      CAST (min (CAST ("t2"."u" as datetime)) as datetime),
-      CAST('%Y-%m-%d' AS text)
-    )
+    WHEN not min ("t2"."u"::datetime) is null THEN "to_char" (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
     ELSE NULL
   END as "c1",
-  sum (CAST ("t0"."az" as decimal)) as "c2"
+  sum ("t0"."az"::decimal) as "c2"
 FROM
   "v" as "t0"
   INNER JOIN "y" as "t1" ON "t0"."au" = "t1"."ag"
@@ -20402,9 +19719,9 @@ FROM
   and "t0"."cv" = "t2"."cv"
   LEFT JOIN "i" as "t3" ON "t1"."cu" = "t3"."br"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
   and not "t3"."ap"
-  and "t0"."az" > CAST(0 AS int)
+  and "t0"."az" > 0::int
 GROUP BY
   "t1"."cq"
 ''
@@ -20642,139 +19959,95 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  CAST('KNO' AS text) as "c0",
+  'KNO'::text as "c0",
   "t0"."cu" as "c1",
   "t0"."ah" as "c2",
   "t0"."bg" as "c3",
   CASE
     WHEN not "t1"."cw" is null
-    and "t1"."cw" = CAST(3 AS int) THEN CAST(1 AS int)
-    ELSE CAST(0 AS int)
+    and "t1"."cw" = 3::int THEN 1::int
+    ELSE 0::int
   END as "c4",
   "t0"."ay" as "c5",
   sum (
-    CAST (
-      (
-        CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."bx" > CAST(0 AS int)
-            and "t0"."aw" <> CAST(1 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (CAST ("t0"."bx" as decimal), CAST(0.0 AS decimal))
-          END as decimal
-        ) + CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."bz" > CAST(0 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (
-              CAST ("t0"."bz" as decimal),
-              CAST(0.0 AS decimal)
-            )
-          END as decimal
-        ) + CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."ca" > CAST(0 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (
-              CAST ("t0"."ca" as decimal),
-              CAST(0.0 AS decimal)
-            )
-          END as decimal
-        ) + CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."cd" > CAST(0 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (
-              CAST ("t0"."cd" as decimal),
-              CAST(0.0 AS decimal)
-            )
-          END as decimal
-        ) + CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."cc" > CAST(0 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (
-              CAST ("t0"."cc" as decimal),
-              CAST(0.0 AS decimal)
-            )
-          END as decimal
-        ) + CAST (
-          CASE
-            WHEN (
-              "t1"."cw" is null
-              or "t1"."cw" <> CAST(3 AS int)
-            )
-            and "t0"."cg" > CAST(0 AS int) THEN CAST(0.0 AS decimal)
-            ELSE coalesce (
-              CAST ("t0"."cg" as decimal),
-              CAST(0.0 AS decimal)
-            )
-          END as decimal
+    (
+      CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
         )
-      ) as decimal
-    )
+        and "t0"."bx" > 0::int
+        and "t0"."aw" <> 1::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."bx"::decimal, 0.0::decimal)
+      END::decimal + CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
+        )
+        and "t0"."bz" > 0::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."bz"::decimal, 0.0::decimal)
+      END::decimal + CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
+        )
+        and "t0"."ca" > 0::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."ca"::decimal, 0.0::decimal)
+      END::decimal + CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
+        )
+        and "t0"."cd" > 0::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."cd"::decimal, 0.0::decimal)
+      END::decimal + CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
+        )
+        and "t0"."cc" > 0::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."cc"::decimal, 0.0::decimal)
+      END::decimal + CASE
+        WHEN (
+          "t1"."cw" is null
+          or "t1"."cw" <> 3::int
+        )
+        and "t0"."cg" > 0::int THEN 0.0::decimal
+        ELSE coalesce ("t0"."cg"::decimal, 0.0::decimal)
+      END::decimal
+    )::decimal
   ) as "c6",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."aw" = CAST(2 AS int) THEN coalesce (
-          CAST ("t0"."bz" as decimal),
-          CAST(0.0 AS decimal)
-        )
-        ELSE CAST(0.0 AS decimal)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."aw" = 2::int THEN coalesce ("t0"."bz"::decimal, 0.0::decimal)
+      ELSE 0.0::decimal
+    END::decimal
   ) as "c7",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."aw" = CAST(3 AS int) THEN coalesce (
-          CAST ("t0"."ca" as decimal),
-          CAST(0.0 AS decimal)
-        )
-        ELSE CAST(0.0 AS decimal)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."aw" = 3::int THEN coalesce ("t0"."ca"::decimal, 0.0::decimal)
+      ELSE 0.0::decimal
+    END::decimal
   ) as "c8",
   sum (
-    CAST (
-      CASE
-        WHEN "t0"."aw" in (CAST(42 AS int), CAST(45 AS int)) THEN coalesce (
-          CAST ("t0"."bz" as decimal),
-          CAST(0.0 AS decimal)
-        )
-        ELSE CAST(0.0 AS decimal)
-      END as decimal
-    )
+    CASE
+      WHEN "t0"."aw" in (42::int, 45::int) THEN coalesce ("t0"."bz"::decimal, 0.0::decimal)
+      ELSE 0.0::decimal
+    END::decimal
   ) as "c9"
 FROM
   "y" as "t0"
   LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
 GROUP BY
   "t0"."cu",
   "t0"."ah",
   "t0"."bg",
   CASE
     WHEN not "t1"."cw" is null
-    and "t1"."cw" = CAST(3 AS int) THEN CAST(1 AS int)
-    ELSE CAST(0 AS int)
+    and "t1"."cw" = 3::int THEN 1::int
+    ELSE 0::int
   END,
   "t0"."ay"
 ''
@@ -20984,55 +20257,40 @@ subquery $0:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  CAST('BUF' AS text) as "c7",
+  'BUF'::text as "c7",
   "cte0"."cu",
   "cte0"."cu",
   "cte0"."ah",
   "cte0"."bg",
   "cte0"."c4",
   "cte0"."ay",
+  coalesce (sum ("cte0"."aa"::decimal)::decimal, 0.0::decimal) as "c8",
   coalesce (
-    CAST (sum (CAST ("cte0"."aa" as decimal)) as decimal),
-    CAST(0.0 AS decimal)
-  ) as "c8",
-  coalesce (
-    CAST (
-      sum (
-        CAST (
-          CASE
-            WHEN "cte0"."aw" = CAST(2 AS int) THEN "cte0"."aa"
-            ELSE CAST(0.0 AS decimal)
-          END as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      CASE
+        WHEN "cte0"."aw" = 2::int THEN "cte0"."aa"
+        ELSE 0.0::decimal
+      END::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c9",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          CASE
-            WHEN "cte0"."aw" = CAST(3 AS int) THEN "cte0"."aa"
-            ELSE CAST(0.0 AS decimal)
-          END as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      CASE
+        WHEN "cte0"."aw" = 3::int THEN "cte0"."aa"
+        ELSE 0.0::decimal
+      END::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c10",
   coalesce (
-    CAST (
-      sum (
-        CAST (
-          CASE
-            WHEN "cte0"."aw" in (CAST(42 AS int), CAST(45 AS int)) THEN "cte0"."aa"
-            ELSE CAST(0.0 AS decimal)
-          END as decimal
-        )
-      ) as decimal
-    ),
-    CAST(0.0 AS decimal)
+    sum (
+      CASE
+        WHEN "cte0"."aw" in (42::int, 45::int) THEN "cte0"."aa"
+        ELSE 0.0::decimal
+      END::decimal
+    )::decimal,
+    0.0::decimal
   ) as "c11"
 FROM
   (
@@ -21043,22 +20301,17 @@ FROM
       "t0"."ay",
       CASE
         WHEN not "t2"."cw" is null
-        and "t2"."cw" = CAST(3 AS int) THEN CAST(1 AS int)
-        ELSE CAST(0 AS int)
+        and "t2"."cw" = 3::int THEN 1::int
+        ELSE 0::int
       END as "c4",
       coalesce (
-        CAST (
-          (
-            "t0"."d" * coalesce (
-              CAST ("t3"."cj" as decimal),
-              CAST(0 AS decimal)
-            ) * CASE
-              WHEN not "t0"."h" is null THEN CAST(-1 AS int)
-              ELSE CAST(1 AS int)
-            END
-          ) as decimal
-        ),
-        CAST(0.0 AS decimal)
+        (
+          "t0"."d" * coalesce ("t3"."cj"::decimal, 0::decimal) * CASE
+            WHEN not "t0"."h" is null THEN (-1)::int
+            ELSE 1::int
+          END
+        )::decimal,
+        0.0::decimal
       ) as "aa",
       "t4"."aw"
     FROM
@@ -21070,11 +20323,11 @@ FROM
       LEFT JOIN "y" as "t4" ON "t0"."au" = "t4"."ag"
       and "t0"."cv" = "t4"."cv"
     WHERE
-      "t0"."cv" = CAST(3023424 AS int)
+      "t0"."cv" = 3023424::int
       and "t1"."ag" is null
       and (
         "t0"."h" is null
-        or "t0"."h" = CAST(-1 AS int)
+        or "t0"."h" = (-1)::int
       )
   ) as "cte0"
 GROUP BY
@@ -21145,8 +20398,8 @@ FROM
   INNER JOIN "x" as "t1" ON "t0"."b" = "t1"."b"
   and "t0"."cv" = "t1"."cv"
 WHERE
-  "t0"."cv" = CAST(2466827 AS int)
-  and "t0"."az" > CAST(0 AS int)
+  "t0"."cv" = 2466827::int
+  and "t0"."az" > 0::int
 ''
 plan:
     [0] SEARCH TABLE v AS t0 USING COVERING INDEX ix_bk (cv=?) (~9 rows)
@@ -21248,13 +20501,9 @@ FROM
       LEFT JOIN "ab" as "t2" ON "t0"."cv" = "t2"."cv"
       and "t0"."ay" = "t2"."ay"
     WHERE
-      "t0"."cv" = CAST(2466827 AS int)
-      and "t0"."ag" in (
-        CAST(126412759 AS int),
-        CAST(126412766 AS int),
-        CAST(566228222 AS int)
-      )
-      and "t0"."cq" = CAST(4 AS int)
+      "t0"."cv" = 2466827::int
+      and "t0"."ag" in (126412759::int, 126412766::int, 566228222::int)
+      and "t0"."cq" = 4::int
   ) as "unnamed_subquery"
 ''
 plan:
@@ -21460,29 +20709,21 @@ FROM
       "t2"."aj",
       "t2"."am",
       coalesce (
-        CAST (
-          sum (
-            CAST (
-              (
-                "t0"."bx" + "t0"."bz" + "t0"."ca" + "t0"."cd" + "t0"."cc" + "t0"."cg"
-              ) as decimal
-            )
-          ) as decimal
-        ),
-        CAST(0.0 AS decimal)
+        sum (
+          (
+            "t0"."bx" + "t0"."bz" + "t0"."ca" + "t0"."cd" + "t0"."cc" + "t0"."cg"
+          )::decimal
+        )::decimal,
+        0.0::decimal
       ) as "bv"
     FROM
       "y" as "t0"
       LEFT JOIN "i" as "t1" ON "t0"."cu" = "t1"."br"
       LEFT JOIN "ab" as "t2" ON "t0"."cv" = "t2"."cv"
     WHERE
-      "t0"."cv" = CAST(2466827 AS int)
-      and "t0"."ag" in (
-        CAST(126412759 AS int),
-        CAST(126412766 AS int),
-        CAST(566228222 AS int)
-      )
-      and "t0"."cq" = CAST(4 AS int)
+      "t0"."cv" = 2466827::int
+      and "t0"."ag" in (126412759::int, 126412766::int, 566228222::int)
+      and "t0"."cq" = 4::int
     GROUP BY
       "t0"."cq",
       "t2"."aj",
@@ -21549,7 +20790,7 @@ FROM
       "COL_8"
   ) as "cte1"
 WHERE
-  "cte1"."c9" > CAST(0 AS int)
+  "cte1"."c9" > 0::int
 LIMIT
   10
 ''
@@ -21841,16 +21082,13 @@ FROM
       "cte0"."n",
       "cte0"."q",
       "cte0"."ak",
-      coalesce (
-        CAST ("cte0"."t" as decimal),
-        CAST(0.0 AS decimal)
-      ) as "t"
+      coalesce ("cte0"."t"::decimal, 0.0::decimal) as "t"
     FROM
       "o" as "cte0"
     WHERE
-      "cte0"."cv" = CAST(4797271 AS int)
-      and "cte0"."s" = CAST(2 AS int)
-      and "cte0"."n" in (CAST(1 AS int), CAST(2 AS int))
+      "cte0"."cv" = 4797271::int
+      and "cte0"."s" = 2::int
+      and "cte0"."n" in (1::int, 2::int)
   ) as "cte0"
   INNER JOIN "p" as "cte1" ON "cte0"."c1" = "cte1"."l"
   and "cte0"."cv" = "cte1"."cv"
@@ -21911,9 +21149,9 @@ SELECT
   "cte2"."COL_4" as "q",
   "cte2"."COL_5" as "ah",
   "cte2"."COL_7" + CASE
-    WHEN "cte2"."COL_6" in (CAST(42 AS int), CAST(45 AS int))
+    WHEN "cte2"."COL_6" in (42::int, 45::int)
     and not "cte3"."ci" is null THEN "cte3"."ci"
-    ELSE CAST(0 AS int)
+    ELSE 0::int
   END as "c11",
   "cte3"."y"
 FROM
@@ -21963,19 +21201,16 @@ FROM
           "cte3"."COL_1" as "c1",
           "cte3"."COL_2" as "r",
           CASE
-            WHEN "cte3"."COL_3" = CAST(1 AS int) THEN CAST('installment' AS text)
-            WHEN "cte3"."COL_3" = CAST(2 AS int) THEN CAST('deferral' AS text)
-            WHEN "cte3"."COL_3" = CAST(4 AS int) THEN CAST('ink' AS text)
-            WHEN "cte3"."COL_3" = CAST(5 AS int) THEN CAST('restructurisation' AS text)
+            WHEN "cte3"."COL_3" = 1::int THEN 'installment'::text
+            WHEN "cte3"."COL_3" = 2::int THEN 'deferral'::text
+            WHEN "cte3"."COL_3" = 4::int THEN 'ink'::text
+            WHEN "cte3"."COL_3" = 5::int THEN 'restructurisation'::text
             ELSE NULL
           END as "c13",
-          "to_char" (
-            CAST ("cte3"."COL_4" as datetime),
-            CAST('%Y-%m-%d' AS text)
-          ) as "q",
+          "to_char" ("cte3"."COL_4"::datetime, '%Y-%m-%d'::text) as "q",
           "cte3"."COL_5" as "ah",
-          sum (CAST ("cte3"."COL_6" as decimal)) as "cp",
-          sum (CAST ("cte3"."COL_7" as decimal)) as "c15",
+          sum ("cte3"."COL_6"::decimal) as "cp",
+          sum ("cte3"."COL_7"::decimal) as "c15",
           row_number () OVER (
             ORDER BY
               "cte3"."COL_4" ASC, "cte3"."COL_1" ASC) as "c16"
@@ -22005,7 +21240,7 @@ FROM
       "c1"
   ) as "cte4"
 WHERE
-  "cte4"."c16" > CAST(0 AS int)
+  "cte4"."c16" > 0::int
 LIMIT
   10
 ''
@@ -22062,13 +21297,13 @@ projection (count(t0.ag::int::int)::int -> c0)
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  count (CAST ("t0"."ag" as int)) as "c0"
+  count ("t0"."ag"::int) as "c0"
 FROM
   "o" as "t0"
 WHERE
-  "t0"."cv" = CAST(4797271 AS int)
-  and "t0"."s" = CAST(2 AS int)
-  and "t0"."n" in (CAST(1 AS int), CAST(2 AS int))
+  "t0"."cv" = 4797271::int
+  and "t0"."s" = 2::int
+  and "t0"."n" in (1::int, 2::int)
 ''
 plan:
     [0] SEARCH TABLE o AS t0 USING COVERING INDEX ix_au (cv=? AND s=?) (~8 rows)
@@ -22123,7 +21358,7 @@ SELECT
 FROM
   "i" as "t0"
 WHERE
-  "t0"."ax" = CAST('18201061201010000510' AS text)
+  "t0"."ax" = '18201061201010000510'::text
 ''
 plan:
     [0] SCAN TABLE i AS t0 (~262144 rows)
@@ -22245,11 +21480,11 @@ FROM
   INNER JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
   and "t0"."ay" = "t1"."ay"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
   and (
-    CAST (lower (CAST ("t0"."ay" as text)) as text) LIKE CAST('%013%' AS text) ESCAPE CAST('\' AS text)
-    or CAST (lower (CAST ("t1"."cx" as text)) as text) LIKE CAST('%
-013%' AS text) ESCAPE CAST('\' AS text)
+    lower ("t0"."ay"::text)::text LIKE '%013%'::text ESCAPE '\'::text
+    or lower ("t1"."cx"::text)::text LIKE '%
+013%'::text ESCAPE '\'::text
   )
 LIMIT
   2147483647
@@ -22307,7 +21542,7 @@ FROM
   "y" as "t0"
   INNER JOIN "j" as "t1" ON "t0"."bg" = "t1"."bg"
 WHERE
-  "t0"."cv" = CAST(3023424 AS int)
+  "t0"."cv" = 3023424::int
 LIMIT
   20
 ''
@@ -22443,8 +21678,8 @@ FROM
   LEFT JOIN "h" as "t1" ON "t0"."cu" = "t1"."cu"
   LEFT JOIN "i" as "t2" ON "t0"."cu" = "t2"."br"
 WHERE
-  "t0"."cv" = CAST(2337497 AS int)
-  and "t1"."cq" = CAST(4 AS int)
+  "t0"."cv" = 2337497::int
+  and "t1"."cq" = 4::int
 ''
 plan:
     [0] SCAN TABLE aa AS t0 (~262144 rows)
@@ -22491,7 +21726,7 @@ FROM
       )
   ) as "cte0"
 WHERE
-  "cte0"."c10" > CAST(0 AS int)
+  "cte0"."c10" > 0::int
 LIMIT
   20
 ''

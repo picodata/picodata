@@ -1122,7 +1122,7 @@ fn sql_append_bucket_filter<V: SqlExecutionView + ?Sized>(
         }
         let index = first_bucket_param + pos;
         match param_type.get() {
-            Some(ty) => sql.push_str(&format_smolstr!("CAST(${index} AS {ty})")),
+            Some(ty) => sql.push_str(&format_smolstr!("${index}::{ty}")),
             None => sql.push_str(&format_smolstr!("${index}")),
         }
         params_idx.insert(index);
@@ -1157,7 +1157,7 @@ where
                 result = false;
             }
         }
-        if let Some(SyntaxData::Comma | SyntaxData::CloseParenthesis) =
+        if let Some(SyntaxData::Comma | SyntaxData::CloseParenthesis | SyntaxData::CastType(_)) =
             nodes.get(id).map(|n| n.as_ref())
         {
             result = false;
@@ -1253,10 +1253,9 @@ where
                 push_identifier(&mut sql, name);
             }
             SyntaxData::CastType(s) => {
-                sql.push_str("as ");
+                sql.push_str("::");
                 sql.push_str(s);
             }
-            SyntaxData::Cast => sql.push_str("CAST"),
             SyntaxData::Case => sql.push_str("CASE"),
             SyntaxData::When => sql.push_str("WHEN"),
             SyntaxData::Then => sql.push_str("THEN"),
@@ -1452,8 +1451,8 @@ where
                 }
             }
             SyntaxData::LetVarRef(id, name) => {
-                // Render LET-variable reference as `:<name>`; wrap in a
-                // CAST when type is known, mirroring the param path.
+                // Render LET-variable reference as `:<name>`; follow it with
+                // a cast when type is known, mirroring the param path.
                 let var_type = match ir.get_node(*id) {
                     Ok(Node::Expression(Expression::LetVarRef(let_var_ref))) => {
                         let_var_ref.var_type
@@ -1461,7 +1460,7 @@ where
                     node => panic!("let var ref node points to {node:?}"),
                 };
                 match var_type.get() {
-                    Some(ty) => sql.push_str(&format_smolstr!("CAST(:{name} AS {ty})")),
+                    Some(ty) => sql.push_str(&format_smolstr!(":{name}::{ty}")),
                     None => sql.push_str(&format_smolstr!(":{name}")),
                 }
             }
@@ -1500,7 +1499,7 @@ where
                 };
 
                 match param_type.get() {
-                    Some(ty) => sql.push_str(&format_smolstr!("CAST({prefix}{index} AS {ty})")),
+                    Some(ty) => sql.push_str(&format_smolstr!("{prefix}{index}::{ty}")),
                     None => sql.push_str(&format_smolstr!("{prefix}{index}")),
                 }
 

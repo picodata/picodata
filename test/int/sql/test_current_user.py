@@ -108,7 +108,7 @@ def test_current_user_in_raw_explain(cluster: Cluster):
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 
-SELECT CAST('alice' AS text) as "col_1"
+SELECT 'alice'::text as "col_1"
 
 plan:
     [0] TRIVIAL\
@@ -122,7 +122,7 @@ plan:
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 
-SELECT "notes"."note" FROM "notes" WHERE "notes"."owner" = CAST('alice' AS text)
+SELECT "notes"."note" FROM "notes" WHERE "notes"."owner" = 'alice'::text
 
 plan:
     [0] SEARCH TABLE notes USING PRIMARY KEY (owner=?) (~1 row)\
@@ -132,7 +132,7 @@ plan:
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 
-SELECT "notes"."note" FROM "notes" WHERE "notes"."owner" = CAST('bob' AS text)
+SELECT "notes"."note" FROM "notes" WHERE "notes"."owner" = 'bob'::text
 
 plan:
     [0] SEARCH TABLE notes USING PRIMARY KEY (owner=?) (~1 row)\
