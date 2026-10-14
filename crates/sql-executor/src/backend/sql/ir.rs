@@ -498,6 +498,8 @@ fn hash_plan_id_part<T: Serialize + ?Sized>(
     hasher: &mut XxHash3_64,
     value: &T,
 ) -> Result<(), SbroadError> {
+    // FIXME This is the only place we use bincode in picodata, and it should be removed
+    // See: https://git.picodata.io/core/picodata/-/work_items/3297
     bincode::serialize_into(PlanIdHashWriter(hasher), value).map_err(|e| {
         SbroadError::FailedTo(
             Action::Serialize,
