@@ -37,7 +37,7 @@ fn front_sql1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
+    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code)
       selection (hash_testing.identification_number::int = 1::int)
         scan hash_testing
     ");
@@ -52,8 +52,8 @@ fn front_sql2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
-      selection ((hash_testing.identification_number::int = 1::int and hash_testing.product_code::string = '1'::string) or (hash_testing.identification_number::int = 2::int and hash_testing.product_code::string = '2'::string))
+    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code)
+      selection ((hash_testing.identification_number::int = 1::int and hash_testing.product_code::text = '1'::text) or (hash_testing.identification_number::int = 2::int and hash_testing.product_code::text = '2'::text))
         scan hash_testing
     ");
 }
@@ -73,14 +73,14 @@ fn front_sql3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t3.identification_number::int -> identification_number, t3.product_code::string -> product_code)
+    projection (t3.identification_number::int -> identification_number, t3.product_code::text -> product_code)
       selection (t3.identification_number::int = 1::int)
         scan t3
           union all
-            projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
+            projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code)
               selection (hash_testing.sys_op::int = 1::int)
                 scan hash_testing
-            projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::string -> product_code)
+            projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::text -> product_code)
               selection (hash_testing_hist.sys_op::int > 1::int)
                 scan hash_testing_hist
     ");
@@ -105,14 +105,14 @@ fn front_sql4() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t3.identification_number::int -> identification_number, t3.product_code::string -> product_code)
-      selection (((t3.identification_number::int = 1::int or t3.identification_number::int = 2::int or t3.identification_number::int = 3::int) and (t3.product_code::string = '1'::string or t3.product_code::string = '2'::string)))
+    projection (t3.identification_number::int -> identification_number, t3.product_code::text -> product_code)
+      selection (((t3.identification_number::int = 1::int or t3.identification_number::int = 2::int or t3.identification_number::int = 3::int) and (t3.product_code::text = '1'::text or t3.product_code::text = '2'::text)))
         scan t3
           union all
-            projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
+            projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code)
               selection (hash_testing.sys_op::int = 1::int)
                 scan hash_testing
-            projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::string -> product_code)
+            projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::text -> product_code)
               selection (hash_testing_hist.sys_op::int > 1::int)
                 scan hash_testing_hist
     ");
@@ -127,14 +127,14 @@ fn front_sql5() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
+    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code)
       selection (hash_testing.identification_number::int in ROW($0))
         scan hash_testing
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
           projection (hash_testing_hist.identification_number::int -> identification_number)
-            selection (hash_testing_hist.product_code::string = 'a'::string)
+            selection (hash_testing_hist.product_code::text = 'a'::text)
               scan hash_testing_hist
     ");
 }
@@ -150,7 +150,7 @@ fn front_sql6() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.id::int -> id, hash_testing.product_units::bool -> product_units)
-      selection ((hash_testing.identification_number::int = 5::int and hash_testing.product_code::string = '123'::string))
+      selection ((hash_testing.identification_number::int = 5::int and hash_testing.product_code::text = '123'::text))
         join on (hash_testing.identification_number::int = t.id::int)
           scan hash_testing
           motion [policy: full, program: ReshardIfNeeded]
@@ -168,7 +168,7 @@ fn front_sql8() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t.identification_number::int -> identification_number, t.product_code::string -> product_code)
+    projection (t.identification_number::int -> identification_number, t.product_code::text -> product_code)
       selection (t.identification_number::int = 1::int)
         scan hash_testing -> t
     ");
@@ -200,24 +200,24 @@ fn front_sql9() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t3.id::int -> id, t3."FIRST_NAME"::string -> "FIRST_NAME", t8.identification_number::int -> identification_number, t8.product_code::string -> product_code)
-      selection ((t3.id::int = 1::int and t8.identification_number::int = 1::int and t8.product_code::string = '123'::string))
+    projection (t3.id::int -> id, t3."FIRST_NAME"::text -> "FIRST_NAME", t8.identification_number::int -> identification_number, t8.product_code::text -> product_code)
+      selection ((t3.id::int = 1::int and t8.identification_number::int = 1::int and t8.product_code::text = '123'::text))
         join on (t3.id::int = t8.identification_number::int)
           scan t3
             union all
-              projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
+              projection (test_space.id::int -> id, test_space."FIRST_NAME"::text -> "FIRST_NAME")
                 selection ((test_space.sys_op::int < 0::int and test_space."sysFrom"::int >= 0::int))
                   scan test_space
-              projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::string -> "FIRST_NAME")
+              projection (test_space_hist.id::int -> id, test_space_hist."FIRST_NAME"::text -> "FIRST_NAME")
                 selection (test_space_hist."sysFrom"::int <= 0::int)
                   scan test_space_hist
           motion [policy: segment([ref(identification_number)]), program: ReshardIfNeeded]
             scan t8
               union all
-                projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::string -> product_code)
+                projection (hash_testing_hist.identification_number::int -> identification_number, hash_testing_hist.product_code::text -> product_code)
                   selection (hash_testing_hist.sys_op::int > 0::int)
                     scan hash_testing_hist
-                projection (hash_single_testing_hist.identification_number::int -> identification_number, hash_single_testing_hist.product_code::string -> product_code)
+                projection (hash_single_testing_hist.identification_number::int -> identification_number, hash_single_testing_hist.product_code::text -> product_code)
                   selection (hash_single_testing_hist.sys_op::int <= 0::int)
                     scan hash_single_testing_hist
     "#);
@@ -274,8 +274,8 @@ fn front_sql16() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
-      selection (hash_testing.product_code::string = 'кириллица'::string)
+    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code)
+      selection (hash_testing.product_code::text = 'кириллица'::text)
         scan hash_testing
     ");
 }
@@ -289,7 +289,7 @@ fn front_sql17() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number)
-      selection (hash_testing.product_code::string is null)
+      selection (hash_testing.product_code::text is null)
         scan hash_testing
     ");
 }
@@ -302,8 +302,8 @@ fn front_sql18() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (hash_testing.product_code::string -> product_code)
-      selection ((hash_testing.product_code::string >= '1'::string and hash_testing.product_code::string <= '2'::string))
+    projection (hash_testing.product_code::text -> product_code)
+      selection ((hash_testing.product_code::text >= '1'::text and hash_testing.product_code::text <= '2'::text))
         scan hash_testing
     ");
 }
@@ -317,7 +317,7 @@ fn front_sql19() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number)
-      selection (not hash_testing.product_code::string is null)
+      selection (not hash_testing.product_code::text is null)
         scan hash_testing
     ");
 }
@@ -478,7 +478,7 @@ fn front_sql_check_arbitrary_utf_in_single_quote_strings() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.identification_number::int -> identification_number)
-      selection (hash_testing.product_code::string = '«123»§#*&%@/// / // \\ ƵǖḘỺʥ ͑ ͑  ͕ΆΨѮښ ۞ܤ'::string)
+      selection (hash_testing.product_code::text = '«123»§#*&%@/// / // \\ ƵǖḘỺʥ ͑ ͑  ͕ΆΨѮښ ۞ܤ'::text)
         scan hash_testing
     ");
 }
@@ -488,7 +488,7 @@ fn front_sql_check_single_quotes_are_escaped() {
     let input = "explain (logical) select '', '''', 'left''right', '''center'''";
     let plan = sql_to_optimized_ir(input, vec![]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (''::string -> col_1, '''::string -> col_2, 'left'right'::string -> col_3, ''center''::string -> col_4)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (''::text -> col_1, '''::text -> col_2, 'left'right'::text -> col_3, ''center''::text -> col_4)");
 }
 
 #[test]
@@ -527,7 +527,7 @@ fn front_projection_with_scan_specification_under_scan() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
+    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
       scan hash_testing
     ");
 }
@@ -539,11 +539,11 @@ fn front_projection_with_scan_specification_under_join() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
+    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
       join on (true::bool)
         scan hash_testing
         motion [policy: full, program: ReshardIfNeeded]
-          projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
+          projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::text -> "FIRST_NAME", test_space.sys_op::int -> sys_op, test_space.bucket_id::int -> bucket_id)
             scan test_space
     "#);
 }
@@ -556,12 +556,12 @@ fn front_projection_with_scan_specification_under_join_of_subqueries() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (ts_sq.id::int -> id, ts_sq."sysFrom"::int -> "sysFrom", ts_sq."FIRST_NAME"::string -> "FIRST_NAME", ts_sq.sys_op::int -> sys_op, hs.identification_number::int -> identification_number, hs.product_code::string -> product_code, hs.product_units::bool -> product_units, hs.sys_op::int -> sys_op)
+    projection (ts_sq.id::int -> id, ts_sq."sysFrom"::int -> "sysFrom", ts_sq."FIRST_NAME"::text -> "FIRST_NAME", ts_sq.sys_op::int -> sys_op, hs.identification_number::int -> identification_number, hs.product_code::text -> product_code, hs.product_units::bool -> product_units, hs.sys_op::int -> sys_op)
       join on (true::bool)
         scan hash_testing -> hs
         motion [policy: full, program: ReshardIfNeeded]
           scan ts_sq
-            projection (ts.id::int -> id, ts."sysFrom"::int -> "sysFrom", ts."FIRST_NAME"::string -> "FIRST_NAME", ts.sys_op::int -> sys_op)
+            projection (ts.id::int -> id, ts."sysFrom"::int -> "sysFrom", ts."FIRST_NAME"::text -> "FIRST_NAME", ts.sys_op::int -> sys_op)
               scan test_space -> ts
     "#);
 }
@@ -573,11 +573,11 @@ fn front_order_by_with_simple_select() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (id::int, "sysFrom"::int, "FIRST_NAME"::string, sys_op::int)
+    projection (id::int, "sysFrom"::int, "FIRST_NAME"::text, sys_op::int)
       order by (id::int)
         motion [policy: full, program: ReshardIfNeeded]
           scan
-            projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op)
+            projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::text -> "FIRST_NAME", test_space.sys_op::int -> sys_op)
               scan test_space
     "#);
 }
@@ -621,11 +621,11 @@ fn front_order_by_with_order_type_specification() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (id::int, "sysFrom"::int, "FIRST_NAME"::string, sys_op::int)
+    projection (id::int, "sysFrom"::int, "FIRST_NAME"::text, sys_op::int)
       order by (id::int desc, "sysFrom"::int asc)
         motion [policy: full, program: ReshardIfNeeded]
           scan
-            projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op)
+            projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::text -> "FIRST_NAME", test_space.sys_op::int -> sys_op)
               scan test_space
     "#);
 }
@@ -637,11 +637,11 @@ fn front_order_by_with_indices() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (id::int, "sysFrom"::int, "FIRST_NAME"::string, sys_op::int)
+    projection (id::int, "sysFrom"::int, "FIRST_NAME"::text, sys_op::int)
       order by (2, 1 desc)
         motion [policy: full, program: ReshardIfNeeded]
           scan
-            projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op)
+            projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::text -> "FIRST_NAME", test_space.sys_op::int -> sys_op)
               scan test_space
     "#);
 }
@@ -730,7 +730,7 @@ fn front_join_with_vtable_ambiguous_column_name() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::string -> "FIRST_NAME", test_space.sys_op::int -> sys_op, unnamed_subquery.id::int -> id, unnamed_subquery.id::int -> id)
+    projection (test_space.id::int -> id, test_space."sysFrom"::int -> "sysFrom", test_space."FIRST_NAME"::text -> "FIRST_NAME", test_space.sys_op::int -> sys_op, unnamed_subquery.id::int -> id, unnamed_subquery.id::int -> id)
       join on (true::bool)
         scan test_space
         motion [policy: full, program: ReshardIfNeeded]
@@ -776,7 +776,7 @@ fn front_case_simple() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (case when true::bool = true::bool then 'Moscow'::string when (1::int <> 2::int and 4::int < 5::int) then '42'::string else 'false'::string end -> case_result)
+    projection (case when true::bool = true::bool then 'Moscow'::text when (1::int <> 2::int and 4::int < 5::int) then '42'::text else 'false'::text end -> case_result)
       scan test_space
     ");
 }
@@ -1143,11 +1143,11 @@ fn front_sql_groupby() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (gr_expr_1::int -> identification_number, gr_expr_2::string -> product_code)
-      group by (gr_expr_1::int, gr_expr_2::string)
+    projection (gr_expr_1::int -> identification_number, gr_expr_2::text -> product_code)
+      group by (gr_expr_1::int, gr_expr_2::text)
         motion [policy: full, program: ReshardIfNeeded]
-          projection (hash_testing.identification_number::int -> gr_expr_1, hash_testing.product_code::string -> gr_expr_2)
-            group by (hash_testing.identification_number::int, hash_testing.product_code::string)
+          projection (hash_testing.identification_number::int -> gr_expr_1, hash_testing.product_code::text -> gr_expr_2)
+            group by (hash_testing.identification_number::int, hash_testing.product_code::text)
               scan hash_testing
     ");
 }
@@ -1234,14 +1234,14 @@ fn front_sql_groupby_join_1() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (gr_expr_1::string -> product_code, gr_expr_2::bool -> product_units)
-      group by (gr_expr_1::string, gr_expr_2::bool)
+    projection (gr_expr_1::text -> product_code, gr_expr_2::bool -> product_units)
+      group by (gr_expr_1::text, gr_expr_2::bool)
         motion [policy: full, program: ReshardIfNeeded]
-          projection (t2.product_code::string -> gr_expr_1, t2.product_units::bool -> gr_expr_2)
-            group by (t2.product_code::string, t2.product_units::bool)
+          projection (t2.product_code::text -> gr_expr_1, t2.product_units::bool -> gr_expr_2)
+            group by (t2.product_code::text, t2.product_units::bool)
               join on (t2.identification_number::int = t.id::int)
                 scan t2
-                  projection (hash_testing.product_units::bool -> product_units, hash_testing.product_code::string -> product_code, hash_testing.identification_number::int -> identification_number)
+                  projection (hash_testing.product_units::bool -> product_units, hash_testing.product_code::text -> product_code, hash_testing.identification_number::int -> identification_number)
                     scan hash_testing
                 motion [policy: full, program: ReshardIfNeeded]
                   scan t
@@ -1273,10 +1273,10 @@ fn front_sql_join() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t2.product_code::string -> product_code, t2.product_units::bool -> product_units)
+    projection (t2.product_code::text -> product_code, t2.product_units::bool -> product_units)
       join on ((t2.identification_number::int = t.id::int and not t.id::int is null))
         scan t2
-          projection (hash_testing.product_units::bool -> product_units, hash_testing.product_code::string -> product_code, hash_testing.identification_number::int -> identification_number)
+          projection (hash_testing.product_units::bool -> product_units, hash_testing.product_code::text -> product_code, hash_testing.identification_number::int -> identification_number)
             scan hash_testing
         motion [policy: full, program: ReshardIfNeeded]
           scan t
@@ -1294,10 +1294,10 @@ fn front_sql_join() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t1.product_code::string -> product_code, t1.product_units::bool -> product_units)
+    projection (t1.product_code::text -> product_code, t1.product_units::bool -> product_units)
       join on ((t1.identification_number::int = t2.id::int and not t2.id::int is null))
         scan t1
-          projection (hash_single_testing.product_units::bool -> product_units, hash_single_testing.product_code::string -> product_code, hash_single_testing.identification_number::int -> identification_number)
+          projection (hash_single_testing.product_units::bool -> product_units, hash_single_testing.product_code::text -> product_code, hash_single_testing.identification_number::int -> identification_number)
             scan hash_single_testing
         scan t2
           projection (test_space.id::int -> id)
@@ -1314,10 +1314,10 @@ fn front_sql_join() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
-    projection (t1.product_code::string -> product_code, t1.product_units::bool -> product_units)
+    projection (t1.product_code::text -> product_code, t1.product_units::bool -> product_units)
       join on ((t1.identification_number::int = t2.id::decimal and not t2.id::decimal is null))
         scan t1
-          projection (hash_single_testing.product_units::bool -> product_units, hash_single_testing.product_code::string -> product_code, hash_single_testing.identification_number::int -> identification_number)
+          projection (hash_single_testing.product_units::bool -> product_units, hash_single_testing.product_code::text -> product_code, hash_single_testing.identification_number::int -> identification_number)
             scan hash_single_testing
         motion [policy: full, program: ReshardIfNeeded]
           scan t2
@@ -1479,10 +1479,10 @@ fn front_sql_group_concat_aggregate() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (group_concat(group_concat_1::string)::string -> col_1, group_concat(distinct gr_expr_1::string)::string -> col_2)
+    projection (group_concat(group_concat_1::text)::text -> col_1, group_concat(distinct gr_expr_1::text)::text -> col_2)
       motion [policy: full, program: ReshardIfNeeded]
-        projection (test_space."FIRST_NAME"::string::string -> gr_expr_1, group_concat(test_space."FIRST_NAME"::string::string)::string -> group_concat_1)
-          group by (test_space."FIRST_NAME"::string::string)
+        projection (test_space."FIRST_NAME"::text::text -> gr_expr_1, group_concat(test_space."FIRST_NAME"::text::text)::text -> group_concat_1)
+          group by (test_space."FIRST_NAME"::text::text)
             scan test_space
     "#);
 }
@@ -1494,10 +1494,10 @@ fn front_sql_group_concat_aggregate2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (group_concat(group_concat_1::string, ' '::string)::string -> col_1, group_concat(distinct gr_expr_1::string)::string -> col_2)
+    projection (group_concat(group_concat_1::text, ' '::text)::text -> col_1, group_concat(distinct gr_expr_1::text)::text -> col_2)
       motion [policy: full, program: ReshardIfNeeded]
-        projection (test_space."FIRST_NAME"::string::string -> gr_expr_1, group_concat(test_space."FIRST_NAME"::string::string, ' '::string)::string -> group_concat_1)
-          group by (test_space."FIRST_NAME"::string::string)
+        projection (test_space."FIRST_NAME"::text::text -> gr_expr_1, group_concat(test_space."FIRST_NAME"::text::text, ' '::text)::text -> group_concat_1)
+          group by (test_space."FIRST_NAME"::text::text)
             scan test_space
     "#);
 }
@@ -1508,9 +1508,9 @@ fn front_sql_string_agg_alias_to_group_concat() {
     let input = r#"explain (logical) SELECT string_agg("FIRST_NAME", ',') FROM "test_space""#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (group_concat(group_concat_1::string, ','::string)::string -> col_1)
+    projection (group_concat(group_concat_1::text, ','::text)::text -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
-        projection (group_concat(test_space."FIRST_NAME"::string::string, ','::string)::string -> group_concat_1)
+        projection (group_concat(test_space."FIRST_NAME"::text::text, ','::text)::text -> group_concat_1)
           scan test_space
     "#);
 
@@ -1518,10 +1518,10 @@ fn front_sql_string_agg_alias_to_group_concat() {
     let input = r#"explain (logical) SELECT "id", string_agg("FIRST_NAME", ',') FROM "test_space" GROUP BY "id""#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (gr_expr_1::int -> id, group_concat(group_concat_1::string, ','::string)::string -> col_1)
+    projection (gr_expr_1::int -> id, group_concat(group_concat_1::text, ','::text)::text -> col_1)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
-          projection (test_space.id::int -> gr_expr_1, group_concat(test_space."FIRST_NAME"::string::string, ','::string)::string -> group_concat_1)
+          projection (test_space.id::int -> gr_expr_1, group_concat(test_space."FIRST_NAME"::text::text, ','::text)::text -> group_concat_1)
             group by (test_space.id::int)
               scan test_space
     "#);
@@ -1583,7 +1583,7 @@ fn front_sql_aggregates_with_subexpressions() {
     projection (gr_expr_1::int -> b, sum(count_1::int::int)::int::int -> col_1, sum(count_2::int::int)::int::int -> col_2)
       group by (gr_expr_1::int)
         motion [policy: full, program: ReshardIfNeeded]
-          projection (t.b::int -> gr_expr_1, count(TRIM(t.a::int::string)::string)::int -> count_2, count((t.a::int * t.b::int + 1::int)::int)::int -> count_1)
+          projection (t.b::int -> gr_expr_1, count(TRIM(t.a::int::text)::text)::int -> count_2, count((t.a::int * t.b::int + 1::int)::int)::int -> count_1)
             group by (t.b::int)
               scan t
     ");
@@ -1701,7 +1701,7 @@ fn front_sql_pg_style_params1() {
         vec![Value::Integer(1000), Value::String("hi".into())],
     );
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (1000::int -> col_1, 'hi'::string -> col_2, 1000::int -> col_3)
+    projection (1000::int -> col_1, 'hi'::text -> col_2, 1000::int -> col_3)
       scan t
     ");
 }
@@ -1715,7 +1715,7 @@ fn front_sql_pg_style_params2() {
         vec![Value::Integer(1000), Value::String("hi".into())],
     );
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (1000::int -> col_1, 'hi'::string -> col_2, 1000::int -> col_3)
+    projection (1000::int -> col_1, 'hi'::text -> col_2, 1000::int -> col_3)
       scan t
     ");
 }
@@ -3010,13 +3010,13 @@ fn front_sql_nested_subqueries() {
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
-          projection (t1.b::int::string -> col_1)
+          projection (t1.b::int::text -> col_1)
             scan t1
     subquery $1:
       motion [policy: full, program: ReshardIfNeeded]
         scan
-          projection (t1.a::string::int -> col_1)
-            selection (t1.a::string in ROW($0))
+          projection (t1.a::text::int -> col_1)
+            selection (t1.a::text in ROW($0))
               scan t1
     ");
 }
@@ -3243,11 +3243,11 @@ ON "t3"."a" = "ij"."id"
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t3.a::int -> a, t3.b::int -> b, ij.identification_number::int -> identification_number, ij.product_code::string -> product_code, ij.product_units::bool -> product_units, ij.sys_op::int -> sys_op, ij.id::int -> id)
+    projection (t3.a::int -> a, t3.b::int -> b, ij.identification_number::int -> identification_number, ij.product_code::text -> product_code, ij.product_units::bool -> product_units, ij.sys_op::int -> sys_op, ij.id::int -> id)
       join on (t3.a::int = ij.id::int)
         scan t5 -> t3
         scan ij
-          projection (hash_single_testing.identification_number::int -> identification_number, hash_single_testing.product_code::string -> product_code, hash_single_testing.product_units::bool -> product_units, hash_single_testing.sys_op::int -> sys_op, ts.id::int -> id)
+          projection (hash_single_testing.identification_number::int -> identification_number, hash_single_testing.product_code::text -> product_code, hash_single_testing.product_units::bool -> product_units, hash_single_testing.sys_op::int -> sys_op, ts.id::int -> id)
             join on (hash_single_testing.identification_number::int = ts.id::int)
               scan hash_single_testing
               scan ts
@@ -3687,7 +3687,7 @@ fn front_sql_insert_8() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     insert into hash_testing on conflict: fail
       motion [policy: segment([ref(identification_number), ref(product_code)]), program: ReshardIfNeeded]
-        projection (hash_single_testing.identification_number::int -> identification_number, hash_single_testing.product_code::string -> product_code, hash_single_testing.product_units::bool -> product_units, hash_single_testing.sys_op::int -> sys_op)
+        projection (hash_single_testing.identification_number::int -> identification_number, hash_single_testing.product_code::text -> product_code, hash_single_testing.product_units::bool -> product_units, hash_single_testing.sys_op::int -> sys_op)
           scan hash_single_testing
     ");
 }
@@ -3776,7 +3776,7 @@ fn front_sql_update4() {
             scan t
             motion [policy: full, program: ReshardIfNeeded]
               scan unnamed_subquery
-                projection (t1.a::string -> a1, t1.b::int -> b1)
+                projection (t1.a::text -> a1, t1.b::int -> b1)
                   scan t1
     ");
 }
@@ -3810,7 +3810,7 @@ fn front_sql_update6() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
     update t3 (b = col_0)
       motion [policy: local, program: ReshardIfNeeded]
-        projection (2::int -> col_0, t3.a::string -> col_1)
+        projection (2::int -> col_0, t3.a::text -> col_1)
           selection (t3.b::int in ROW($0))
             scan t3
     subquery $0:
@@ -3831,7 +3831,7 @@ fn front_sql_update7() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     update t3 (b = col_0)
       motion [policy: local, program: ReshardIfNeeded]
-        projection (1::int -> col_0, t3.a::string -> col_1)
+        projection (1::int -> col_0, t3.a::text -> col_1)
           scan t3
     ");
 }
@@ -3844,7 +3844,7 @@ fn front_sql_update8() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     update t3 (b = col_0)
       motion [policy: local, program: ReshardIfNeeded]
-        projection (1::int + 1::int -> col_0, t3.a::string -> col_1)
+        projection (1::int + 1::int -> col_0, t3.a::text -> col_1)
           scan t3
     ");
 }
@@ -4048,11 +4048,11 @@ fn front_sql_to_date() {
         r#"explain (logical) SELECT to_date("COLUMN_1", '%Y/%d/%m') FROM (values ('2010/10/10'))"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (to_date(unnamed_subquery."COLUMN_1"::string::string, '%Y/%d/%m'::string)::datetime -> col_1)
+    projection (to_date(unnamed_subquery."COLUMN_1"::text::text, '%Y/%d/%m'::text)::datetime -> col_1)
       scan unnamed_subquery
         motion [policy: full, program: ReshardIfNeeded]
           values
-            value ROW('2010/10/10'::string)
+            value ROW('2010/10/10'::text)
     "#);
 }
 
@@ -4069,11 +4069,11 @@ fn front_sql_current_date() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let expected_explain = format!(
         r#"projection ('{today}'::datetime -> col_1)
-  selection (to_date('2010/10/10'::string, '%Y/%d/%m'::string)::datetime < '{today}'::datetime)
+  selection (to_date('2010/10/10'::text, '%Y/%d/%m'::text)::datetime < '{today}'::datetime)
     scan unnamed_subquery
       motion [policy: full, program: ReshardIfNeeded]
         values
-          value ROW('2010/10/10'::string)"#
+          value ROW('2010/10/10'::text)"#
     );
 
     assert_eq!(expected_explain, explain_logical(&plan).unwrap());
@@ -4094,8 +4094,8 @@ fn front_sql_current_user() {
     WHERE CURRENT_USER = 'admin'"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection ('admin'::string -> col_1)
-      selection ('admin'::string = 'admin'::string)
+    projection ('admin'::text -> col_1)
+      selection ('admin'::text = 'admin'::text)
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
@@ -4109,8 +4109,8 @@ fn front_sql_current_user_in_group_by() {
     GROUP BY current_user"#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection ('admin'::string -> col_1, count(*)::int -> col_2)
-      group by ('admin'::string)
+    projection ('admin'::text -> col_1, count(*)::int -> col_2)
+      group by ('admin'::text)
         scan unnamed_subquery
           motion [policy: full, program: ReshardIfNeeded]
             values
@@ -4653,7 +4653,7 @@ fn front_sql_check_concat_with_parameters() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     values
-      value ROW('a'::string || 'b'::string)
+      value ROW('a'::text || 'b'::text)
     ");
 }
 

@@ -53,7 +53,7 @@ impl NestedType {
             NestedType::Integer => "int",
             NestedType::Double => "double",
             NestedType::Numeric => "decimal",
-            NestedType::Text => "string",
+            NestedType::Text => "text",
             NestedType::Boolean => "bool",
             NestedType::Datetime => "datetime",
             NestedType::Uuid => "uuid",
@@ -64,6 +64,9 @@ impl NestedType {
 
     /// Inverse of [`NestedType::as_marker`].
     ///
+    /// Also accepts `string`, the tag older routers send for `text`, so
+    /// storages keep serving them during a rolling upgrade.
+    ///
     /// # Errors
     /// - `marker` is not a recognized element-type tag.
     pub fn from_marker(marker: &str) -> Result<Self, SbroadError> {
@@ -71,7 +74,7 @@ impl NestedType {
             "int" => NestedType::Integer,
             "double" => NestedType::Double,
             "decimal" => NestedType::Numeric,
-            "string" => NestedType::Text,
+            "text" | "string" => NestedType::Text,
             "bool" => NestedType::Boolean,
             "datetime" => NestedType::Datetime,
             "uuid" => NestedType::Uuid,
@@ -196,7 +199,7 @@ impl fmt::Display for DomainType {
             DomainType::Datetime => write!(f, "datetime"),
             DomainType::Double => write!(f, "double"),
             DomainType::Integer => write!(f, "int"),
-            DomainType::String => write!(f, "string"),
+            DomainType::String => write!(f, "text"),
             DomainType::Uuid => write!(f, "uuid"),
             DomainType::Json => write!(f, "json"),
             DomainType::Unsigned => write!(f, "unsigned"),
@@ -286,7 +289,7 @@ impl fmt::Display for CastType {
             CastType::Datetime => write!(f, "datetime"),
             CastType::Double => write!(f, "double"),
             CastType::Integer => write!(f, "int"),
-            CastType::String => write!(f, "string"),
+            CastType::String => write!(f, "text"),
             CastType::Uuid => write!(f, "uuid"),
             CastType::Json => write!(f, "map"),
             CastType::Array(elem) => write!(f, "{}[]", UnrestrictedType::from(*elem)),
@@ -579,7 +582,7 @@ impl fmt::Display for UnrestrictedType {
             UnrestrictedType::Datetime => write!(f, "datetime"),
             UnrestrictedType::Double => write!(f, "double"),
             UnrestrictedType::Integer => write!(f, "int"),
-            UnrestrictedType::String => write!(f, "string"),
+            UnrestrictedType::String => write!(f, "text"),
             UnrestrictedType::Uuid => write!(f, "uuid"),
             UnrestrictedType::Map => write!(f, "map"),
             UnrestrictedType::Array(NestedType::Any) => write!(f, "array"),
@@ -851,6 +854,7 @@ mod tests {
         ] {
             assert_eq!(NestedType::from_marker(nested.as_marker()).unwrap(), nested);
         }
+        assert_eq!(NestedType::from_marker("string").unwrap(), NestedType::Text);
         assert!(NestedType::from_marker("bogus").is_err());
     }
 }

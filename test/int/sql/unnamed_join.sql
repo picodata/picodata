@@ -106,18 +106,18 @@ from r9_mdm;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
+projection (r9_mdm.mdm_id_first::text -> mdm_id_first, r9_mdm.client_id::text -> client_id, r9_mdm.client_id::text -> client_id, r9_mdm.src_system::text -> src_system, r9_mdm.mdm_id_first::text -> mdm_id_first, r9_mdm.client_id::text -> client_id)
   scan cte r9_mdm($1)
 subquery $0:
   motion [policy: full, program: ReshardIfNeeded]
-    projection ('clientMdmId'::string -> mdm_id_first, cd_corporate_account.client_id::string -> client_id)
+    projection ('clientMdmId'::text -> mdm_id_first, cd_corporate_account.client_id::text -> client_id)
       scan cd_corporate_account
 subquery $1:
-  projection (unnamed_join.mdm_id_first::string -> mdm_id_first, unnamed_join.client_id::string -> client_id, unnamed_join.client_id::string -> client_id, unnamed_join.src_system::string -> src_system, m_f.mdm_id_first::string -> mdm_id_first, m_f.client_id::string -> client_id)
-    left join on (unnamed_join.mdm_id_first::string = m_f.mdm_id_first::string)
+  projection (unnamed_join.mdm_id_first::text -> mdm_id_first, unnamed_join.client_id::text -> client_id, unnamed_join.client_id::text -> client_id, unnamed_join.src_system::text -> src_system, m_f.mdm_id_first::text -> mdm_id_first, m_f.client_id::text -> client_id)
+    left join on (unnamed_join.mdm_id_first::text = m_f.mdm_id_first::text)
       motion [policy: full, program: AddMissingRowsForLeftJoin]
-        projection (r9.mdm_id_first::string -> mdm_id_first, r9.client_id::string -> client_id, m.client_id::string -> client_id, m.src_system::string -> src_system, m.bucket_id::int -> bucket_id)
-          join on (r9.client_id::string = m.client_id::string)
+        projection (r9.mdm_id_first::text -> mdm_id_first, r9.client_id::text -> client_id, m.client_id::text -> client_id, m.src_system::text -> src_system, m.bucket_id::int -> bucket_id)
+          join on (r9.client_id::text = m.client_id::text)
             scan cte r9($0)
             scan a_cd_corporate_client -> m
       scan cte m_f($0)
@@ -144,18 +144,18 @@ from r9_mdm;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
+projection (r9_mdm.mdm_id_first::text -> mdm_id_first, r9_mdm.client_id::text -> client_id, r9_mdm.client_id::text -> client_id, r9_mdm.src_system::text -> src_system, r9_mdm.mdm_id_first::text -> mdm_id_first, r9_mdm.client_id::text -> client_id)
   scan cte r9_mdm($1)
 subquery $0:
   motion [policy: full, program: ReshardIfNeeded]
-    projection ('clientMdmId'::string -> mdm_id_first, cd_corporate_account.client_id::string -> client_id)
+    projection ('clientMdmId'::text -> mdm_id_first, cd_corporate_account.client_id::text -> client_id)
       scan cd_corporate_account
 subquery $1:
-  projection (unnamed_join_1.mdm_id_first::string -> mdm_id_first, unnamed_join_1.client_id::string -> client_id, unnamed_join_1.client_id::string -> client_id, unnamed_join_1.src_system::string -> src_system, m_f.mdm_id_first::string -> mdm_id_first, m_f.client_id::string -> client_id)
-    left join on (unnamed_join_1.mdm_id_first::string = m_f.mdm_id_first::string)
+  projection (unnamed_join_1.mdm_id_first::text -> mdm_id_first, unnamed_join_1.client_id::text -> client_id, unnamed_join_1.client_id::text -> client_id, unnamed_join_1.src_system::text -> src_system, m_f.mdm_id_first::text -> mdm_id_first, m_f.client_id::text -> client_id)
+    left join on (unnamed_join_1.mdm_id_first::text = m_f.mdm_id_first::text)
       motion [policy: full, program: AddMissingRowsForLeftJoin]
-        projection (unnamed_join.mdm_id_first::string -> mdm_id_first, unnamed_join.client_id::string -> client_id, m.client_id::string -> client_id, m.src_system::string -> src_system, m.bucket_id::int -> bucket_id)
-          join on (unnamed_join.client_id::string = m.client_id::string)
+        projection (unnamed_join.mdm_id_first::text -> mdm_id_first, unnamed_join.client_id::text -> client_id, m.client_id::text -> client_id, m.src_system::text -> src_system, m.bucket_id::int -> bucket_id)
+          join on (unnamed_join.client_id::text = m.client_id::text)
             scan cte unnamed_join($0)
             scan a_cd_corporate_client -> m
       scan cte m_f($0)
@@ -182,18 +182,18 @@ from r9_mdm;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
+projection (r9_mdm.mdm_id_first::text -> mdm_id_first, r9_mdm.client_id::text -> client_id, r9_mdm.client_id::text -> client_id, r9_mdm.src_system::text -> src_system, r9_mdm.mdm_id_first::text -> mdm_id_first, r9_mdm.client_id::text -> client_id)
   scan cte r9_mdm($1)
 subquery $0:
   motion [policy: full, program: ReshardIfNeeded]
-    projection ('clientMdmId'::string -> mdm_id_first, cd_corporate_account.client_id::string -> client_id)
+    projection ('clientMdmId'::text -> mdm_id_first, cd_corporate_account.client_id::text -> client_id)
       scan cd_corporate_account
 subquery $1:
-  projection (unnamed_join_3.mdm_id_first::string -> mdm_id_first, unnamed_join_3.client_id::string -> client_id, unnamed_join_3.client_id::string -> client_id, unnamed_join_3.src_system::string -> src_system, unnamed_join_1.mdm_id_first::string -> mdm_id_first, unnamed_join_1.client_id::string -> client_id)
-    left join on (unnamed_join_3.mdm_id_first::string = unnamed_join_1.mdm_id_first::string)
+  projection (unnamed_join_3.mdm_id_first::text -> mdm_id_first, unnamed_join_3.client_id::text -> client_id, unnamed_join_3.client_id::text -> client_id, unnamed_join_3.src_system::text -> src_system, unnamed_join_1.mdm_id_first::text -> mdm_id_first, unnamed_join_1.client_id::text -> client_id)
+    left join on (unnamed_join_3.mdm_id_first::text = unnamed_join_1.mdm_id_first::text)
       motion [policy: full, program: AddMissingRowsForLeftJoin]
-        projection (unnamed_join.mdm_id_first::string -> mdm_id_first, unnamed_join.client_id::string -> client_id, unnamed_join_2.client_id::string -> client_id, unnamed_join_2.src_system::string -> src_system, unnamed_join_2.bucket_id::int -> bucket_id)
-          join on (unnamed_join.client_id::string = unnamed_join_2.client_id::string)
+        projection (unnamed_join.mdm_id_first::text -> mdm_id_first, unnamed_join.client_id::text -> client_id, unnamed_join_2.client_id::text -> client_id, unnamed_join_2.src_system::text -> src_system, unnamed_join_2.bucket_id::int -> bucket_id)
+          join on (unnamed_join.client_id::text = unnamed_join_2.client_id::text)
             scan cte unnamed_join($0)
             scan a_cd_corporate_client -> unnamed_join_2
       scan cte unnamed_join_1($0)
@@ -231,18 +231,18 @@ from r9_mdm;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id, r9_mdm.client_id::string -> client_id, r9_mdm.src_system::string -> src_system, r9_mdm.mdm_id_first::string -> mdm_id_first, r9_mdm.client_id::string -> client_id)
+projection (r9_mdm.mdm_id_first::text -> mdm_id_first, r9_mdm.client_id::text -> client_id, r9_mdm.client_id::text -> client_id, r9_mdm.src_system::text -> src_system, r9_mdm.mdm_id_first::text -> mdm_id_first, r9_mdm.client_id::text -> client_id)
   scan cte r9_mdm($1)
 subquery $0:
   motion [policy: full, program: ReshardIfNeeded]
-    projection ('clientMdmId'::string -> mdm_id_first, cd_corporate_account.client_id::string -> client_id)
+    projection ('clientMdmId'::text -> mdm_id_first, cd_corporate_account.client_id::text -> client_id)
       scan cd_corporate_account
 subquery $1:
-  projection (unnamed_join_1.mdm_id_first::string -> mdm_id_first, unnamed_join_1.client_id::string -> client_id, unnamed_join_1.client_id::string -> client_id, unnamed_join_1.src_system::string -> src_system, m_f.mdm_id_first::string -> mdm_id_first, m_f.client_id::string -> client_id)
-    left join on (unnamed_join_1.mdm_id_first::string = m_f.mdm_id_first::string)
+  projection (unnamed_join_1.mdm_id_first::text -> mdm_id_first, unnamed_join_1.client_id::text -> client_id, unnamed_join_1.client_id::text -> client_id, unnamed_join_1.src_system::text -> src_system, m_f.mdm_id_first::text -> mdm_id_first, m_f.client_id::text -> client_id)
+    left join on (unnamed_join_1.mdm_id_first::text = m_f.mdm_id_first::text)
       motion [policy: full, program: AddMissingRowsForLeftJoin]
-        projection (r9.mdm_id_first::string -> mdm_id_first, r9.client_id::string -> client_id, m.client_id::string -> client_id, m.src_system::string -> src_system, m.bucket_id::int -> bucket_id)
-          join on (r9.client_id::string = m.client_id::string)
+        projection (r9.mdm_id_first::text -> mdm_id_first, r9.client_id::text -> client_id, m.client_id::text -> client_id, m.src_system::text -> src_system, m.bucket_id::int -> bucket_id)
+          join on (r9.client_id::text = m.client_id::text)
             scan cte r9($0)
             scan unnamed_join -> m
       scan cte m_f($0)

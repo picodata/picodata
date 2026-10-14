@@ -31,7 +31,7 @@ fn selection1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"product_code\" < CAST($1 AS string) and \"hash_testing\".\"identification_number\" in (SELECT \"hash_testing_hist\".\"identification_number\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS string))"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"product_code\" < CAST($1 AS text) and \"hash_testing\".\"identification_number\" in (SELECT \"hash_testing_hist\".\"identification_number\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS text))"
     params:
       - String: a
       - String: b
@@ -39,7 +39,7 @@ fn selection1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" in (SELECT \"hash_testing_hist\".\"identification_number\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($1 AS string)) and \"hash_testing\".\"product_code\" < CAST($2 AS string)"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" in (SELECT \"hash_testing_hist\".\"identification_number\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($1 AS text)) and \"hash_testing\".\"product_code\" < CAST($2 AS text)"
     params:
       - String: b
       - String: a

@@ -34,7 +34,7 @@ fn not_eq1_test() {
     let info = info.get(0).unwrap();
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE \"t\".\"identification_number\" <> CAST($1 AS int) and \"t\".\"product_code\" <> CAST($2 AS string)"
+      - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE \"t\".\"identification_number\" <> CAST($1 AS int) and \"t\".\"product_code\" <> CAST($2 AS text)"
       - - Integer: 1
         - String: "2"
     "#);

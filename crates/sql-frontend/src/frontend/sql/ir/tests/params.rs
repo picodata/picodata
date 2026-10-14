@@ -49,7 +49,7 @@ fn front_params1() {
     let plan = sql_to_optimized_ir(pattern, vec![Value::from(0_i64), Value::from(1_i64)]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (test_space.id::int -> id, test_space."FIRST_NAME"::string -> "FIRST_NAME")
+    projection (test_space.id::int -> id, test_space."FIRST_NAME"::text -> "FIRST_NAME")
       selection ((test_space.sys_op::int = 0::int and test_space."sysFrom"::int > 1::int))
         scan test_space
     "#);
@@ -64,7 +64,7 @@ fn front_params2() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (test_space.id::int -> id)
-      selection ((test_space.sys_op::int = NULL::unknown and test_space."FIRST_NAME"::string = 'hello'::string))
+      selection ((test_space.sys_op::int = NULL::unknown and test_space."FIRST_NAME"::text = 'hello'::text))
         scan test_space
     "#);
 }
@@ -79,7 +79,7 @@ fn front_params3() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (test_space.id::int -> id)
-      selection ((test_space.sys_op::int = NULL::unknown and test_space."FIRST_NAME"::string = 'кириллица'::string))
+      selection ((test_space.sys_op::int = NULL::unknown and test_space."FIRST_NAME"::text = 'кириллица'::text))
         scan test_space
     "#);
 }
@@ -97,7 +97,7 @@ fn front_params4() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     projection (test_space.id::int -> id)
-      selection (test_space."FIRST_NAME"::string = '''± !@#$%^&*()_+=-\/><";:,.`~'::string)
+      selection (test_space."FIRST_NAME"::text = '''± !@#$%^&*()_+=-\/><";:,.`~'::text)
         scan test_space
     "#);
 }

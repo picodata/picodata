@@ -672,7 +672,7 @@ mod tests {
         let query = r#"FROM t1 GROUP BY 1 + 1, 'x' || 'y', CAST('x' AS text), $1"#;
         insta::assert_snapshot!(
             render_table_expr(query),
-            @"FROM t1 GROUP BY 1 + 1, 'x' || 'y', CAST('x' AS string), $1"
+            @"FROM t1 GROUP BY 1 + 1, 'x' || 'y', CAST('x' AS text), $1"
         );
     }
 

@@ -50,7 +50,7 @@ fn bucket2_test() {
         .determine_bucket_id(&[&param1, &param2])
         .unwrap();
 
-    assert_snapshot!(sql, @r#"SELECT "t1"."a", "t1"."bucket_id", "t1"."b" FROM "t1" WHERE "t1"."a" = CAST($1 AS string) and "t1"."b" = CAST($2 AS int)"#);
+    assert_snapshot!(sql, @r#"SELECT "t1"."a", "t1"."bucket_id", "t1"."b" FROM "t1" WHERE "t1"."a" = CAST($1 AS text) and "t1"."b" = CAST($2 AS int)"#);
     assert_eq!(params, &[param1, param2]);
     assert_eq!(buckets, &[bucket]);
 }
@@ -67,7 +67,7 @@ fn bucket3_test() {
     assert_eq!(1, info.len());
     assert_yaml_snapshot!(info, @r#"
     - All:
-        - "SELECT \"t1\".\"a\", \"t1\".\"b\", TRIM (CAST($1 AS string)) as \"col_1\" FROM \"t1\""
+        - "SELECT \"t1\".\"a\", \"t1\".\"b\", TRIM (CAST($1 AS text)) as \"col_1\" FROM \"t1\""
         - - String: "111"
     "#);
 }

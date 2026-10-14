@@ -421,7 +421,7 @@ def test_interactive_portals(pg_client: PgClient):
  # Logical plan                                                       \n\
 ──────────────────────────────────────────────────────────────────────
 
-projection (t.key::int -> key, t.value::string -> value)
+projection (t.key::int -> key, t.value::text -> value)
   scan t
 
 ──────────────────────────────────────────────────────────────────────

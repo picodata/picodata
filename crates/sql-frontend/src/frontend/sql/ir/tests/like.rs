@@ -59,8 +59,8 @@ fn like_explain1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t1.a::string::string LIKE t1.a::string::string ESCAPE '\'::string -> col_1)
-      selection ((t1.a::string::string || 'a'::string)::string LIKE ('a'::string || 'a'::string)::string ESCAPE '\'::string)
+    projection (t1.a::text::text LIKE t1.a::text::text ESCAPE '\'::text -> col_1)
+      selection ((t1.a::text::text || 'a'::text)::text LIKE ('a'::text || 'a'::text)::text ESCAPE '\'::text)
         scan t1
     ");
 }
@@ -72,8 +72,8 @@ fn like_explain2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t1.a::string::string LIKE t1.a::string::string ESCAPE '\'::string -> col_1)
-      selection ((t1.a::string::string || 'a'::string)::string LIKE ('a'::string || 'a'::string)::string ESCAPE 'x'::string)
+    projection (t1.a::text::text LIKE t1.a::text::text ESCAPE '\'::text -> col_1)
+      selection ((t1.a::text::text || 'a'::text)::text LIKE ('a'::text || 'a'::text)::text ESCAPE 'x'::text)
         scan t1
     ");
 }
@@ -88,8 +88,8 @@ fn like_explain3() {
     projection (gr_expr_1::bool -> col_1)
       group by (gr_expr_1::bool)
         motion [policy: full, program: ReshardIfNeeded]
-          projection (t1.a::string::string LIKE t1.a::string::string ESCAPE '\'::string -> gr_expr_1)
-            group by (t1.a::string::string LIKE t1.a::string::string ESCAPE '\'::string)
+          projection (t1.a::text::text LIKE t1.a::text::text ESCAPE '\'::text -> gr_expr_1)
+            group by (t1.a::text::text LIKE t1.a::text::text ESCAPE '\'::text)
               scan t1
     ");
 }
@@ -101,23 +101,23 @@ fn like_explain4() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t1.a::string -> a, t1.b::int -> b)
-      selection (ROW($2)::string LIKE ROW($1)::string ESCAPE ROW($0)::string)
+    projection (t1.a::text -> a, t1.b::int -> b)
+      selection (ROW($2)::text LIKE ROW($1)::text ESCAPE ROW($0)::text)
         scan t1
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
         scan
-          projection ('\'::string -> col_1)
+          projection ('\'::text -> col_1)
             scan t1
     subquery $1:
       motion [policy: full, program: ReshardIfNeeded]
         scan
-          projection ('hi'::string -> col_1)
+          projection ('hi'::text -> col_1)
             scan t1
     subquery $2:
       motion [policy: full, program: ReshardIfNeeded]
         scan
-          projection ('hi'::string -> col_1)
+          projection ('hi'::text -> col_1)
             scan t1
     ");
 }
@@ -133,8 +133,8 @@ fn ilike_explain() {
     projection (gr_expr_1::bool -> col_1)
       group by (gr_expr_1::bool)
         motion [policy: full, program: ReshardIfNeeded]
-          projection (lower(t1.a::string::string)::string::string LIKE lower(t1.a::string::string)::string::string ESCAPE 'x'::string -> gr_expr_1)
-            group by (lower(t1.a::string::string)::string::string LIKE lower(t1.a::string::string)::string::string ESCAPE 'x'::string)
+          projection (lower(t1.a::text::text)::text::text LIKE lower(t1.a::text::text)::text::text ESCAPE 'x'::text -> gr_expr_1)
+            group by (lower(t1.a::text::text)::text::text LIKE lower(t1.a::text::text)::text::text ESCAPE 'x'::text)
               scan t1
     ");
 }

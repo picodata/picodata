@@ -10,7 +10,7 @@ explain (fmt) select id, name from _pico_table;
 ''
 projection (
   _pico_table.id::int -> id,
-  _pico_table.name::string -> name
+  _pico_table.name::text -> name
 )
   scan _pico_table
 ''
@@ -30,14 +30,14 @@ explain (fmt) select * from _pico_table;
 ''
 projection (
   _pico_table.id::int -> id,
-  _pico_table.name::string -> name,
+  _pico_table.name::text -> name,
   _pico_table.distribution::map -> distribution,
   _pico_table.format::array -> format,
   _pico_table.schema_version::int -> schema_version,
   _pico_table.operable::bool -> operable,
-  _pico_table.engine::string -> engine,
+  _pico_table.engine::text -> engine,
   _pico_table.owner::int -> owner,
-  _pico_table.description::string -> description,
+  _pico_table.description::text -> description,
   _pico_table.opts::array -> opts
 )
   scan _pico_table
@@ -90,7 +90,7 @@ projection (
     _pico_table.id::int > 10::int
     and _pico_table.id::int < 10000000::int
   ) -> col_4,
-  'hello'::string -> col_5
+  'hello'::text -> col_5
 )
   scan _pico_table
 ''
@@ -228,17 +228,17 @@ projection (count(*)::int -> col_1)
   selection (
     (
       _pico_table.id::int = 23456::int
-      and _pico_table.name::string = 'foobar'::string
+      and _pico_table.name::text = 'foobar'::text
       and _pico_table.operable::bool = true::bool
-      and not _pico_table.description::string is null
-      and _pico_table.name::string <> ROW($0)
+      and not _pico_table.description::text is null
+      and _pico_table.name::text <> ROW($0)
     )
   )
     scan _pico_table
 subquery $0:
   scan
     projection (
-      min(_pico_table.name::string::string)::string -> col_1
+      min(_pico_table.name::text::text)::text -> col_1
     )
       scan _pico_table
 ''
@@ -292,7 +292,7 @@ select 'hello', case 1 when 1 then 1 when 2 then 2 when 3 then 3 end * 2 + 2000;
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  'hello'::string -> col_1,
+  'hello'::text -> col_1,
   case 1::int 
     when 1::int then 1::int
     when 2::int then 2::int
@@ -316,7 +316,7 @@ select 'hello', case 1 when 1 then 1 when 2 then 2 when 3 then 3 else 4 end * 2 
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  'hello'::string -> col_1,
+  'hello'::text -> col_1,
   case 1::int 
     when 1::int then 1::int
     when 2::int then 2::int
@@ -352,26 +352,26 @@ subquery $0:
     values
       value ROW(
         1::int,
-        'foobar'::string,
+        'foobar'::text,
         NULL::unknown,
         NULL::unknown,
         3.1415::decimal
       )
       value ROW(
         2::int,
-        'foobar'::string,
+        'foobar'::text,
         NULL::unknown,
         NULL::unknown,
         3.1415::decimal
       )
       value ROW(
         3::int,
-        'foobar'::string,
+        'foobar'::text,
         NULL::unknown,
         NULL::unknown,
         3.1415::decimal
       )
-      value ROW(4::int, ''::string, 0::int, 0::int, 0::int)
+      value ROW(4::int, ''::text, 0::int, 0::int, 0::int)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -400,7 +400,7 @@ select
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  'hello'::string -> col_1,
+  'hello'::text -> col_1,
   case 1::int 
     when 1::int then 1::int
     when 2::int then case 1::int 

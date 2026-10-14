@@ -302,7 +302,7 @@ mod tests {
             catalog.ddl(),
             r#"CREATE TABLE "sharded" (
     "id" int NOT NULL,
-    "payload" string NULL,
+    "payload" text NULL,
     PRIMARY KEY ("id")
 ) USING VINYL DISTRIBUTED BY ("id") IN TIER "default";
 

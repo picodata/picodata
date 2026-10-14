@@ -634,6 +634,26 @@ SELECT "_pico_array_cast" ("t1"."b", 'double') as "col_1" FROM "t1"
 plan:
     [0] SCAN TABLE t1 (~1048576 rows)
 
+-- TEST: explain-logical-array-cast-to-text
+-- SQL:
+EXPLAIN (LOGICAL) SELECT b::text[] FROM t1;
+-- EXPECTED:
+projection ("_pico_array_cast"(t1.b::int[], 'text') -> col_1)
+  scan t1
+
+-- TEST: explain-raw-array-cast-to-text
+-- SQL:
+EXPLAIN (RAW) SELECT b::text[] FROM t1;
+-- EXPECTED:
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT "_pico_array_cast" ("t1"."b", 'text') as "col_1" FROM "t1"
+''
+plan:
+    [0] SCAN TABLE t1 (~1048576 rows)
+
 -- TEST: explain-raw-array-index-parameter-substition-gl3006
 -- SQL:
 explain (raw) select distribution['ShardedImplicitly'] from _pico_table;
@@ -642,7 +662,7 @@ explain (raw) select distribution['ShardedImplicitly'] from _pico_table;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "_pico_table"."distribution" [ CAST('ShardedImplicitly' AS string) ] as "col_1" FROM "_pico_table"
+SELECT "_pico_table"."distribution" [ CAST('ShardedImplicitly' AS text) ] as "col_1" FROM "_pico_table"
 ''
 plan:
     [0] SCAN TABLE _pico_table (~1048576 rows)

@@ -14,7 +14,7 @@ fn except1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"sysFrom\" = CAST($1 AS int) EXCEPT SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"FIRST_NAME\" = CAST($2 AS string)"
+    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"sysFrom\" = CAST($1 AS int) EXCEPT SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"FIRST_NAME\" = CAST($2 AS text)"
     params:
       - Integer: 1
       - String: a
@@ -22,7 +22,7 @@ fn except1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"sysFrom\" = CAST($1 AS int) EXCEPT SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"FIRST_NAME\" = CAST($2 AS string)"
+    pattern: "SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"sysFrom\" = CAST($1 AS int) EXCEPT SELECT \"test_space\".\"id\" FROM \"test_space\" WHERE \"test_space\".\"FIRST_NAME\" = CAST($2 AS text)"
     params:
       - Integer: 1
       - String: a

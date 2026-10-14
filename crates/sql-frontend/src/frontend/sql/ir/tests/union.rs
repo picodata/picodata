@@ -16,11 +16,11 @@ fn front_select_chaning_1() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       union all
-        projection (hash_testing.product_code::string -> product_code)
+        projection (hash_testing.product_code::text -> product_code)
           scan hash_testing
-        projection (t2.e::int::string -> col_1)
+        projection (t2.e::int::text -> col_1)
           scan t2
-      projection (t3.a::string -> a)
+      projection (t3.a::text -> a)
         scan t3
     ");
 }
@@ -44,24 +44,24 @@ fn front_select_chaining_2() {
       motion [policy: full, program: RemoveDuplicates]
         union
           union all
-            projection (hash_testing.product_code::string -> product_code)
+            projection (hash_testing.product_code::text -> product_code)
               scan hash_testing
-            projection (t2.e::int::string -> col_1)
+            projection (t2.e::int::text -> col_1)
               scan t2
-          projection (t3.a::string -> a)
+          projection (t3.a::text -> a)
             scan t3
       motion [policy: full, program: ReshardIfNeeded]
         intersect
           motion [policy: full, program: RemoveDuplicates]
             union
               union all
-                projection (hash_testing.product_code::string -> product_code)
+                projection (hash_testing.product_code::text -> product_code)
                   scan hash_testing
-                projection (t2.e::int::string -> col_1)
+                projection (t2.e::int::text -> col_1)
                   scan t2
-              projection (t3.a::string -> a)
+              projection (t3.a::text -> a)
                 scan t3
-          projection (t3.b::int::string -> col_1)
+          projection (t3.b::int::text -> col_1)
             scan t3
     ");
 }
@@ -78,14 +78,14 @@ fn front_select_chaining_3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (product_code::string)
+    projection (product_code::text)
       order by (1)
         motion [policy: full, program: ReshardIfNeeded]
           scan
             union all
-              projection (hash_testing.product_code::string -> product_code)
+              projection (hash_testing.product_code::text -> product_code)
                 scan hash_testing
-              projection (t2.e::int::string -> col_1)
+              projection (t2.e::int::text -> col_1)
                 scan t2
     ");
 }

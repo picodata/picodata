@@ -76,7 +76,7 @@ fn aggregate_in_where_subquery_with_from_error() {
 fn aggregate_in_where_subquery_count_asterisk() {
     insta::assert_snapshot!(
         analyzed("SELECT * FROM t1 WHERE (SELECT count(*) > 0)", &[]),
-        @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool FROM t1 WHERE (SELECT (count(*)::int > 0::int)::bool)::bool"
+        @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool FROM t1 WHERE (SELECT (count(*)::int > 0::int)::bool)::bool"
     );
 }
 

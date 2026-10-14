@@ -1,5 +1,6 @@
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::{TupleBuilderCommand, TupleBuilderPattern};
+use crate::executor::result::metadata_type_name;
 use crate::executor::Vshard;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::NodeId;
@@ -651,7 +652,7 @@ impl VirtualTable {
                 write_str(&mut meta_mp, "name")?;
                 write_str(&mut meta_mp, alias)?;
                 write_str(&mut meta_mp, "type")?;
-                write_str(&mut meta_mp, &col.r#type.to_string())?;
+                write_str(&mut meta_mp, &metadata_type_name(&col.r#type))?;
             }
             port.add_mp(meta_mp.as_slice());
         }

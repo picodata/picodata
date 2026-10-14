@@ -432,12 +432,12 @@ fn cast_postfix() {
 
 #[test]
 fn cast_postfix_parenthesizes_compound_child() {
-    insta::assert_snapshot!(render_expr("(a + b)::text"), @"(a + b)::string");
+    insta::assert_snapshot!(render_expr("(a + b)::string"), @"(a + b)::text");
 }
 
 #[test]
 fn cast_postfix_varchar_with_length() {
-    insta::assert_snapshot!(render_expr("a::varchar(10)"), @"a::string");
+    insta::assert_snapshot!(render_expr("a::varchar(10)"), @"a::text");
 }
 
 #[test]
@@ -453,7 +453,7 @@ fn varchar_len_error_in_array() {
 #[test]
 fn cast_postfix_array() {
     insta::assert_snapshot!(render_expr("a::int[]"), @"a::int[]");
-    insta::assert_snapshot!(render_expr("a::text[ ]"), @"a::string[]");
+    insta::assert_snapshot!(render_expr("a::text[ ]"), @"a::text[]");
 }
 
 #[test]
@@ -493,7 +493,7 @@ fn cast_postfix_array_rejects_multidim() {
 fn cast_op_varchar() {
     insta::assert_snapshot!(
         render_expr("CAST(a AS varchar(10))"),
-        @"CAST(a AS string)"
+        @"CAST(a AS text)"
     );
 }
 
@@ -515,21 +515,21 @@ fn cast_op_array_keyword() {
 
 #[test]
 fn cast_op_array_brackets() {
-    insta::assert_snapshot!(render_expr("CAST(a AS varchar(10)[])"), @"CAST(a AS string[])");
+    insta::assert_snapshot!(render_expr("CAST(a AS varchar(10)[])"), @"CAST(a AS text[])");
 }
 
 #[test]
 fn typed_literal() {
     insta::assert_snapshot!(render_expr("bool 't'"), @"bool 't'");
     insta::assert_snapshot!(render_expr("int'1'"), @"int '1'");
-    insta::assert_snapshot!(render_expr("varchar(10) 'x'"), @"string 'x'");
+    insta::assert_snapshot!(render_expr("varchar(10) 'x'"), @"text 'x'");
     insta::assert_snapshot!(render_expr("numeric(5, 2) '1.5'"), @"decimal '1.5'");
-    insta::assert_snapshot!(render_expr("text 'it''s'"), @"string 'it''s'");
+    insta::assert_snapshot!(render_expr("text 'it''s'"), @"text 'it''s'");
 }
 
 #[test]
 fn typed_literal_composes() {
-    insta::assert_snapshot!(render_expr("int '1'::text"), @"int '1'::string");
+    insta::assert_snapshot!(render_expr("int '1'::text"), @"int '1'::text");
     insta::assert_snapshot!(render_expr("int '1' + 1"), @"int '1' + 1");
     insta::assert_snapshot!(render_expr("-int '1'"), @"- int '1'");
     insta::assert_snapshot!(render_expr("bool 't' IS TRUE"), @"bool 't' IS TRUE");

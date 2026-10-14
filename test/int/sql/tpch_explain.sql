@@ -114,8 +114,8 @@ order by
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  l_returnflag::string,
-  l_linestatus::string,
+  l_returnflag::text,
+  l_linestatus::text,
   sum_qty::double,
   sum_base_price::double,
   sum_disc_price::double,
@@ -125,11 +125,11 @@ projection (
   avg_disc::double,
   count_order::int
 )
-  order by (l_returnflag::string, l_linestatus::string)
+  order by (l_returnflag::text, l_linestatus::text)
     scan
       projection (
-        gr_expr_1::string -> l_returnflag,
-        gr_expr_2::string -> l_linestatus,
+        gr_expr_1::text -> l_returnflag,
+        gr_expr_2::text -> l_linestatus,
         sum(sum_1::double::double)::double -> sum_qty,
         sum(sum_2::double::double)::double -> sum_base_price,
         sum(sum_3::double::double)::double -> sum_disc_price,
@@ -139,11 +139,11 @@ projection (
         sum(avg_7::double::double)::double / sum(avg_8::int::int)::int::int -> avg_disc,
         sum(count_9::int::int)::int::int -> count_order
       )
-        group by (gr_expr_1::string, gr_expr_2::string)
+        group by (gr_expr_1::text, gr_expr_2::text)
           motion [policy: full, program: ReshardIfNeeded]
             projection (
-              lineitem.l_returnflag::string -> gr_expr_1,
-              lineitem.l_linestatus::string -> gr_expr_2,
+              lineitem.l_returnflag::text -> gr_expr_1,
+              lineitem.l_linestatus::text -> gr_expr_2,
               sum(
                 (
                   lineitem.l_extendedprice::double * (1::int - lineitem.l_discount::double) * (1::int + lineitem.l_tax::double)
@@ -163,11 +163,11 @@ projection (
               )::double -> sum_3
             )
               group by (
-                lineitem.l_returnflag::string,
-                lineitem.l_linestatus::string
+                lineitem.l_returnflag::text,
+                lineitem.l_linestatus::text
               )
                 selection (
-                  lineitem.l_shipdate::datetime <= to_date('1998-09-02'::string, '%Y-%m-%d'::string)::datetime
+                  lineitem.l_shipdate::datetime <= to_date('1998-09-02'::text, '%Y-%m-%d'::text)::datetime
                 )
                   scan lineitem
 ''
@@ -206,7 +206,7 @@ SELECT
 FROM
   "lineitem"
 WHERE
-  "lineitem"."l_shipdate" <= "to_date" (CAST('1998-09-02' AS string), CAST('%Y-%m-%d' AS string))
+  "lineitem"."l_shipdate" <= "to_date" (CAST('1998-09-02' AS text), CAST('%Y-%m-%d' AS text))
 GROUP BY
   "lineitem"."l_returnflag",
   "lineitem"."l_linestatus"
@@ -352,7 +352,7 @@ limit 10
                 )
                   selection (
                     (
-                      customer.c_mktsegment::string = 'BUILDING'::string
+                      customer.c_mktsegment::text = 'BUILDING'::text
                       and customer.c_custkey::int = orders.o_custkey::int
                       and lineitem.l_orderkey::int = orders.o_orderkey::int
                       and orders.o_orderdate::datetime < '1995-03-15 0:00:00.0 +00:00:00'::datetime
@@ -367,13 +367,13 @@ limit 10
                             orders.o_orderkey::int -> o_orderkey,
                             orders.bucket_id::int -> bucket_id,
                             orders.o_custkey::int -> o_custkey,
-                            orders.o_orderstatus::string -> o_orderstatus,
+                            orders.o_orderstatus::text -> o_orderstatus,
                             orders.o_totalprice::double -> o_totalprice,
                             orders.o_orderdate::datetime -> o_orderdate,
-                            orders.o_orderpriority::string -> o_orderpriority,
-                            orders.o_clerk::string -> o_clerk,
+                            orders.o_orderpriority::text -> o_orderpriority,
+                            orders.o_clerk::text -> o_clerk,
                             orders.o_shippriority::int -> o_shippriority,
-                            orders.o_comment::string -> o_comment
+                            orders.o_comment::text -> o_comment
                           )
                             scan orders
                       motion [policy: full, program: ReshardIfNeeded]
@@ -387,14 +387,14 @@ limit 10
                           lineitem.l_extendedprice::double -> l_extendedprice,
                           lineitem.l_discount::double -> l_discount,
                           lineitem.l_tax::double -> l_tax,
-                          lineitem.l_returnflag::string -> l_returnflag,
-                          lineitem.l_linestatus::string -> l_linestatus,
+                          lineitem.l_returnflag::text -> l_returnflag,
+                          lineitem.l_linestatus::text -> l_linestatus,
                           lineitem.l_shipdate::datetime -> l_shipdate,
                           lineitem.l_commitdate::datetime -> l_commitdate,
                           lineitem.l_receiptdate::datetime -> l_receiptdate,
-                          lineitem.l_shipinstruct::string -> l_shipinstruct,
-                          lineitem.l_shipmode::string -> l_shipmode,
-                          lineitem.l_comment::string -> l_comment
+                          lineitem.l_shipinstruct::text -> l_shipinstruct,
+                          lineitem.l_shipmode::text -> l_shipmode,
+                          lineitem.l_comment::text -> l_comment
                         )
                           scan lineitem
 ''
@@ -510,7 +510,7 @@ FROM
       "_tmp_5667582682556364960_1136"
   ) as "lineitem" ON CAST(true AS bool)
 WHERE
-  "customer"."c_mktsegment" = CAST('BUILDING' AS string)
+  "customer"."c_mktsegment" = CAST('BUILDING' AS text)
   and "customer"."c_custkey" = "orders"."COL_2"
   and "lineitem"."COL_0" = "orders"."COL_0"
   and "orders"."COL_5" < CAST('1995-03-15 0:00:00.0 +00:00:00' AS datetime)
@@ -610,24 +610,24 @@ order by
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (n_name::string, revenue::double)
+projection (n_name::text, revenue::double)
   order by (revenue::double desc)
     scan
       projection (
-        gr_expr_1::string -> n_name,
+        gr_expr_1::text -> n_name,
         sum(sum_1::double::double)::double -> revenue
       )
-        group by (gr_expr_1::string)
+        group by (gr_expr_1::text)
           motion [policy: full, program: ReshardIfNeeded]
             projection (
-              nation.n_name::string -> gr_expr_1,
+              nation.n_name::text -> gr_expr_1,
               sum(
                 (
                   lineitem.l_extendedprice::double * (1::int - lineitem.l_discount::double)
                 )::double
               )::double -> sum_1
             )
-              group by (nation.n_name::string)
+              group by (nation.n_name::text)
                 selection (
                   (
                     customer.c_custkey::int = orders.o_custkey::int
@@ -636,7 +636,7 @@ projection (n_name::string, revenue::double)
                     and customer.c_nationkey::int = supplier.s_nationkey::int
                     and supplier.s_nationkey::int = nation.n_nationkey::int
                     and nation.n_regionkey::int = region.r_regionkey::int
-                    and region.r_name::string = 'ASIA'::string
+                    and region.r_name::text = 'ASIA'::text
                     and orders.o_orderdate::datetime >= '1994-01-01 0:00:00.0 +00:00:00'::datetime
                     and orders.o_orderdate::datetime < '1995-01-01 0:00:00.0 +00:00:00'::datetime
                   )
@@ -652,13 +652,13 @@ projection (n_name::string, revenue::double)
                                 orders.o_orderkey::int -> o_orderkey,
                                 orders.bucket_id::int -> bucket_id,
                                 orders.o_custkey::int -> o_custkey,
-                                orders.o_orderstatus::string -> o_orderstatus,
+                                orders.o_orderstatus::text -> o_orderstatus,
                                 orders.o_totalprice::double -> o_totalprice,
                                 orders.o_orderdate::datetime -> o_orderdate,
-                                orders.o_orderpriority::string -> o_orderpriority,
-                                orders.o_clerk::string -> o_clerk,
+                                orders.o_orderpriority::text -> o_orderpriority,
+                                orders.o_clerk::text -> o_clerk,
                                 orders.o_shippriority::int -> o_shippriority,
-                                orders.o_comment::string -> o_comment
+                                orders.o_comment::text -> o_comment
                               )
                                 scan orders
                           motion [policy: full, program: ReshardIfNeeded]
@@ -672,43 +672,43 @@ projection (n_name::string, revenue::double)
                               lineitem.l_extendedprice::double -> l_extendedprice,
                               lineitem.l_discount::double -> l_discount,
                               lineitem.l_tax::double -> l_tax,
-                              lineitem.l_returnflag::string -> l_returnflag,
-                              lineitem.l_linestatus::string -> l_linestatus,
+                              lineitem.l_returnflag::text -> l_returnflag,
+                              lineitem.l_linestatus::text -> l_linestatus,
                               lineitem.l_shipdate::datetime -> l_shipdate,
                               lineitem.l_commitdate::datetime -> l_commitdate,
                               lineitem.l_receiptdate::datetime -> l_receiptdate,
-                              lineitem.l_shipinstruct::string -> l_shipinstruct,
-                              lineitem.l_shipmode::string -> l_shipmode,
-                              lineitem.l_comment::string -> l_comment
+                              lineitem.l_shipinstruct::text -> l_shipinstruct,
+                              lineitem.l_shipmode::text -> l_shipmode,
+                              lineitem.l_comment::text -> l_comment
                             )
                               scan lineitem
                         motion [policy: full, program: ReshardIfNeeded]
                           projection (
                             supplier.s_suppkey::int -> s_suppkey,
                             supplier.bucket_id::int -> bucket_id,
-                            supplier.s_name::string -> s_name,
-                            supplier.s_address::string -> s_address,
+                            supplier.s_name::text -> s_name,
+                            supplier.s_address::text -> s_address,
                             supplier.s_nationkey::int -> s_nationkey,
-                            supplier.s_phone::string -> s_phone,
+                            supplier.s_phone::text -> s_phone,
                             supplier.s_acctbal::double -> s_acctbal,
-                            supplier.s_comment::string -> s_comment
+                            supplier.s_comment::text -> s_comment
                           )
                             scan supplier
                       motion [policy: full, program: ReshardIfNeeded]
                         projection (
                           nation.n_nationkey::int -> n_nationkey,
                           nation.bucket_id::int -> bucket_id,
-                          nation.n_name::string -> n_name,
+                          nation.n_name::text -> n_name,
                           nation.n_regionkey::int -> n_regionkey,
-                          nation.n_comment::string -> n_comment
+                          nation.n_comment::text -> n_comment
                         )
                           scan nation
                     motion [policy: full, program: ReshardIfNeeded]
                       projection (
                         region.r_regionkey::int -> r_regionkey,
                         region.bucket_id::int -> bucket_id,
-                        region.r_name::string -> r_name,
-                        region.r_comment::string -> r_comment
+                        region.r_name::text -> r_name,
+                        region.r_comment::text -> r_comment
                       )
                         scan region
 ''
@@ -916,7 +916,7 @@ WHERE
   and "customer"."c_nationkey" = "supplier"."COL_4"
   and "supplier"."COL_4" = "nation"."COL_0"
   and "nation"."COL_3" = "region"."COL_0"
-  and "region"."COL_2" = CAST('ASIA' AS string)
+  and "region"."COL_2" = CAST('ASIA' AS text)
   and "orders"."COL_5" >= CAST('1994-01-01 0:00:00.0 +00:00:00' AS datetime)
   and "orders"."COL_5" < CAST('1995-01-01 0:00:00.0 +00:00:00' AS datetime)
 GROUP BY
@@ -1032,48 +1032,48 @@ order by
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  supp_nation::string,
-  cust_nation::string,
-  l_year::string,
+  supp_nation::text,
+  cust_nation::text,
+  l_year::text,
   revenue::double
 )
   order by (
-    supp_nation::string,
-    cust_nation::string,
-    l_year::string
+    supp_nation::text,
+    cust_nation::text,
+    l_year::text
   )
     scan
       projection (
-        gr_expr_1::string -> supp_nation,
-        gr_expr_2::string -> cust_nation,
-        gr_expr_3::string -> l_year,
+        gr_expr_1::text -> supp_nation,
+        gr_expr_2::text -> cust_nation,
+        gr_expr_3::text -> l_year,
         sum(sum_1::double::double)::double -> revenue
       )
         group by (
-          gr_expr_1::string,
-          gr_expr_2::string,
-          gr_expr_3::string
+          gr_expr_1::text,
+          gr_expr_2::text,
+          gr_expr_3::text
         )
           motion [policy: full, program: ReshardIfNeeded]
             projection (
-              shipping.supp_nation::string -> gr_expr_1,
-              shipping.cust_nation::string -> gr_expr_2,
-              shipping.l_year::string -> gr_expr_3,
+              shipping.supp_nation::text -> gr_expr_1,
+              shipping.cust_nation::text -> gr_expr_2,
+              shipping.l_year::text -> gr_expr_3,
               sum(shipping.volume::double::double)::double -> sum_1
             )
               group by (
-                shipping.supp_nation::string,
-                shipping.cust_nation::string,
-                shipping.l_year::string
+                shipping.supp_nation::text,
+                shipping.cust_nation::text,
+                shipping.l_year::text
               )
                 scan shipping
                   projection (
-                    n1.n_name::string -> supp_nation,
-                    n2.n_name::string -> cust_nation,
+                    n1.n_name::text -> supp_nation,
+                    n2.n_name::text -> cust_nation,
                     to_char(
                       lineitem.l_shipdate::datetime::datetime,
-                      '%Y'::string
-                    )::string -> l_year,
+                      '%Y'::text
+                    )::text -> l_year,
                     lineitem.l_extendedprice::double * (1::int - lineitem.l_discount::double) -> volume
                   )
                     selection (
@@ -1085,11 +1085,11 @@ projection (
                         and customer.c_nationkey::int = n2.n_nationkey::int
                         and (
                           (
-                            n1.n_name::string = 'FRANCE'::string
-                            and n2.n_name::string = 'GERMANY'::string
+                            n1.n_name::text = 'FRANCE'::text
+                            and n2.n_name::text = 'GERMANY'::text
                           ) or (
-                            n1.n_name::string = 'GERMANY'::string
-                            and n2.n_name::string = 'FRANCE'::string
+                            n1.n_name::text = 'GERMANY'::text
+                            and n2.n_name::text = 'FRANCE'::text
                           )
                         )
                         and lineitem.l_shipdate::datetime >= '1995-01-01 0:00:00.0 +00:00:00'::datetime
@@ -1113,14 +1113,14 @@ projection (
                                     lineitem.l_extendedprice::double -> l_extendedprice,
                                     lineitem.l_discount::double -> l_discount,
                                     lineitem.l_tax::double -> l_tax,
-                                    lineitem.l_returnflag::string -> l_returnflag,
-                                    lineitem.l_linestatus::string -> l_linestatus,
+                                    lineitem.l_returnflag::text -> l_returnflag,
+                                    lineitem.l_linestatus::text -> l_linestatus,
                                     lineitem.l_shipdate::datetime -> l_shipdate,
                                     lineitem.l_commitdate::datetime -> l_commitdate,
                                     lineitem.l_receiptdate::datetime -> l_receiptdate,
-                                    lineitem.l_shipinstruct::string -> l_shipinstruct,
-                                    lineitem.l_shipmode::string -> l_shipmode,
-                                    lineitem.l_comment::string -> l_comment
+                                    lineitem.l_shipinstruct::text -> l_shipinstruct,
+                                    lineitem.l_shipmode::text -> l_shipmode,
+                                    lineitem.l_comment::text -> l_comment
                                   )
                                     scan lineitem
                               motion [policy: full, program: ReshardIfNeeded]
@@ -1128,44 +1128,44 @@ projection (
                                   orders.o_orderkey::int -> o_orderkey,
                                   orders.bucket_id::int -> bucket_id,
                                   orders.o_custkey::int -> o_custkey,
-                                  orders.o_orderstatus::string -> o_orderstatus,
+                                  orders.o_orderstatus::text -> o_orderstatus,
                                   orders.o_totalprice::double -> o_totalprice,
                                   orders.o_orderdate::datetime -> o_orderdate,
-                                  orders.o_orderpriority::string -> o_orderpriority,
-                                  orders.o_clerk::string -> o_clerk,
+                                  orders.o_orderpriority::text -> o_orderpriority,
+                                  orders.o_clerk::text -> o_clerk,
                                   orders.o_shippriority::int -> o_shippriority,
-                                  orders.o_comment::string -> o_comment
+                                  orders.o_comment::text -> o_comment
                                 )
                                   scan orders
                             motion [policy: full, program: ReshardIfNeeded]
                               projection (
                                 customer.c_custkey::int -> c_custkey,
                                 customer.bucket_id::int -> bucket_id,
-                                customer.c_name::string -> c_name,
-                                customer.c_address::string -> c_address,
+                                customer.c_name::text -> c_name,
+                                customer.c_address::text -> c_address,
                                 customer.c_nationkey::int -> c_nationkey,
-                                customer.c_phone::string -> c_phone,
+                                customer.c_phone::text -> c_phone,
                                 customer.c_acctbal::double -> c_acctbal,
-                                customer.c_mktsegment::string -> c_mktsegment,
-                                customer.c_comment::string -> c_comment
+                                customer.c_mktsegment::text -> c_mktsegment,
+                                customer.c_comment::text -> c_comment
                               )
                                 scan customer
                           motion [policy: full, program: ReshardIfNeeded]
                             projection (
                               n1.n_nationkey::int -> n_nationkey,
                               n1.bucket_id::int -> bucket_id,
-                              n1.n_name::string -> n_name,
+                              n1.n_name::text -> n_name,
                               n1.n_regionkey::int -> n_regionkey,
-                              n1.n_comment::string -> n_comment
+                              n1.n_comment::text -> n_comment
                             )
                               scan nation -> n1
                         motion [policy: full, program: ReshardIfNeeded]
                           projection (
                             n2.n_nationkey::int -> n_nationkey,
                             n2.bucket_id::int -> bucket_id,
-                            n2.n_name::string -> n_name,
+                            n2.n_name::text -> n_name,
                             n2.n_regionkey::int -> n_regionkey,
-                            n2.n_comment::string -> n_comment
+                            n2.n_comment::text -> n_comment
                           )
                             scan nation -> n2
 ''
@@ -1300,7 +1300,7 @@ FROM
       "n2"."COL_2" as "cust_nation",
       "to_char" (
         CAST ("lineitem"."COL_11" as datetime),
-        CAST('%Y' AS string)
+        CAST('%Y' AS text)
       ) as "l_year",
       "lineitem"."COL_6" * (CAST(1 AS int) - "lineitem"."COL_7") as "volume"
     FROM
@@ -1383,10 +1383,10 @@ FROM
       and "supplier"."s_nationkey" = "n1"."COL_0"
       and "customer"."COL_4" = "n2"."COL_0"
       and (
-        "n1"."COL_2" = CAST('FRANCE' AS string)
-        and "n2"."COL_2" = CAST('GERMANY' AS string)
-        or "n1"."COL_2" = CAST('GERMANY' AS string)
-        and "n2"."COL_2" = CAST('FRANCE' AS string)
+        "n1"."COL_2" = CAST('FRANCE' AS text)
+        and "n2"."COL_2" = CAST('GERMANY' AS text)
+        or "n1"."COL_2" = CAST('GERMANY' AS text)
+        and "n2"."COL_2" = CAST('FRANCE' AS text)
       )
       and "lineitem"."COL_11" >= CAST('1995-01-01 0:00:00.0 +00:00:00' AS datetime)
       and "lineitem"."COL_11" <= CAST('1996-12-31 0:00:00.0 +00:00:00' AS datetime)
@@ -1512,34 +1512,34 @@ order by
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (o_year::string, mkt_share::double)
-  order by (o_year::string)
+projection (o_year::text, mkt_share::double)
+  order by (o_year::text)
     scan
       projection (
-        gr_expr_1::string -> o_year,
+        gr_expr_1::text -> o_year,
         sum(sum_1::double::double)::double / sum(sum_2::double::double)::double -> mkt_share
       )
-        group by (gr_expr_1::string)
+        group by (gr_expr_1::text)
           motion [policy: full, program: ReshardIfNeeded]
             projection (
-              all_nations.o_year::string -> gr_expr_1,
+              all_nations.o_year::text -> gr_expr_1,
               sum(
                 case 
-                  when all_nations.nation::string = 'BRAZIL'::string then all_nations.volume::double
+                  when all_nations.nation::text = 'BRAZIL'::text then all_nations.volume::double
                   else 0::int
                 end::double
               )::double -> sum_1,
               sum(all_nations.volume::double::double)::double -> sum_2
             )
-              group by (all_nations.o_year::string)
+              group by (all_nations.o_year::text)
                 scan all_nations
                   projection (
                     to_char(
                       orders.o_orderdate::datetime::datetime,
-                      '%Y'::string
-                    )::string -> o_year,
+                      '%Y'::text
+                    )::text -> o_year,
                     lineitem.l_extendedprice::double * (1::int - lineitem.l_discount::double) -> volume,
-                    n2.n_name::string -> nation
+                    n2.n_name::text -> nation
                   )
                     selection (
                       (
@@ -1549,11 +1549,11 @@ projection (o_year::string, mkt_share::double)
                         and orders.o_custkey::int = customer.c_custkey::int
                         and customer.c_nationkey::int = n1.n_nationkey::int
                         and n1.n_regionkey::int = region.r_regionkey::int
-                        and region.r_name::string = 'AMERICA'::string
+                        and region.r_name::text = 'AMERICA'::text
                         and supplier.s_nationkey::int = n2.n_nationkey::int
                         and orders.o_orderdate::datetime >= '1995-01-01 0:00:00.0 +00:00:00'::datetime
                         and orders.o_orderdate::datetime <= '1996-12-31 0:00:00.0 +00:00:00'::datetime
-                        and part.p_type::string = 'ECONOMY ANODIZED STEEL'::string
+                        and part.p_type::text = 'ECONOMY ANODIZED STEEL'::text
                       )
                     )
                       join on (true::bool)
@@ -1568,12 +1568,12 @@ projection (o_year::string, mkt_share::double)
                                       projection (
                                         supplier.s_suppkey::int -> s_suppkey,
                                         supplier.bucket_id::int -> bucket_id,
-                                        supplier.s_name::string -> s_name,
-                                        supplier.s_address::string -> s_address,
+                                        supplier.s_name::text -> s_name,
+                                        supplier.s_address::text -> s_address,
                                         supplier.s_nationkey::int -> s_nationkey,
-                                        supplier.s_phone::string -> s_phone,
+                                        supplier.s_phone::text -> s_phone,
                                         supplier.s_acctbal::double -> s_acctbal,
-                                        supplier.s_comment::string -> s_comment
+                                        supplier.s_comment::text -> s_comment
                                       )
                                         scan supplier
                                   motion [policy: segment([ref(l_partkey)]), program: ReshardIfNeeded]
@@ -1587,14 +1587,14 @@ projection (o_year::string, mkt_share::double)
                                       lineitem.l_extendedprice::double -> l_extendedprice,
                                       lineitem.l_discount::double -> l_discount,
                                       lineitem.l_tax::double -> l_tax,
-                                      lineitem.l_returnflag::string -> l_returnflag,
-                                      lineitem.l_linestatus::string -> l_linestatus,
+                                      lineitem.l_returnflag::text -> l_returnflag,
+                                      lineitem.l_linestatus::text -> l_linestatus,
                                       lineitem.l_shipdate::datetime -> l_shipdate,
                                       lineitem.l_commitdate::datetime -> l_commitdate,
                                       lineitem.l_receiptdate::datetime -> l_receiptdate,
-                                      lineitem.l_shipinstruct::string -> l_shipinstruct,
-                                      lineitem.l_shipmode::string -> l_shipmode,
-                                      lineitem.l_comment::string -> l_comment
+                                      lineitem.l_shipinstruct::text -> l_shipinstruct,
+                                      lineitem.l_shipmode::text -> l_shipmode,
+                                      lineitem.l_comment::text -> l_comment
                                     )
                                       scan lineitem
                                 motion [policy: full, program: ReshardIfNeeded]
@@ -1602,52 +1602,52 @@ projection (o_year::string, mkt_share::double)
                                     orders.o_orderkey::int -> o_orderkey,
                                     orders.bucket_id::int -> bucket_id,
                                     orders.o_custkey::int -> o_custkey,
-                                    orders.o_orderstatus::string -> o_orderstatus,
+                                    orders.o_orderstatus::text -> o_orderstatus,
                                     orders.o_totalprice::double -> o_totalprice,
                                     orders.o_orderdate::datetime -> o_orderdate,
-                                    orders.o_orderpriority::string -> o_orderpriority,
-                                    orders.o_clerk::string -> o_clerk,
+                                    orders.o_orderpriority::text -> o_orderpriority,
+                                    orders.o_clerk::text -> o_clerk,
                                     orders.o_shippriority::int -> o_shippriority,
-                                    orders.o_comment::string -> o_comment
+                                    orders.o_comment::text -> o_comment
                                   )
                                     scan orders
                               motion [policy: full, program: ReshardIfNeeded]
                                 projection (
                                   customer.c_custkey::int -> c_custkey,
                                   customer.bucket_id::int -> bucket_id,
-                                  customer.c_name::string -> c_name,
-                                  customer.c_address::string -> c_address,
+                                  customer.c_name::text -> c_name,
+                                  customer.c_address::text -> c_address,
                                   customer.c_nationkey::int -> c_nationkey,
-                                  customer.c_phone::string -> c_phone,
+                                  customer.c_phone::text -> c_phone,
                                   customer.c_acctbal::double -> c_acctbal,
-                                  customer.c_mktsegment::string -> c_mktsegment,
-                                  customer.c_comment::string -> c_comment
+                                  customer.c_mktsegment::text -> c_mktsegment,
+                                  customer.c_comment::text -> c_comment
                                 )
                                   scan customer
                             motion [policy: full, program: ReshardIfNeeded]
                               projection (
                                 n1.n_nationkey::int -> n_nationkey,
                                 n1.bucket_id::int -> bucket_id,
-                                n1.n_name::string -> n_name,
+                                n1.n_name::text -> n_name,
                                 n1.n_regionkey::int -> n_regionkey,
-                                n1.n_comment::string -> n_comment
+                                n1.n_comment::text -> n_comment
                               )
                                 scan nation -> n1
                           motion [policy: full, program: ReshardIfNeeded]
                             projection (
                               n2.n_nationkey::int -> n_nationkey,
                               n2.bucket_id::int -> bucket_id,
-                              n2.n_name::string -> n_name,
+                              n2.n_name::text -> n_name,
                               n2.n_regionkey::int -> n_regionkey,
-                              n2.n_comment::string -> n_comment
+                              n2.n_comment::text -> n_comment
                             )
                               scan nation -> n2
                         motion [policy: full, program: ReshardIfNeeded]
                           projection (
                             region.r_regionkey::int -> r_regionkey,
                             region.bucket_id::int -> bucket_id,
-                            region.r_name::string -> r_name,
-                            region.r_comment::string -> r_comment
+                            region.r_name::text -> r_name,
+                            region.r_comment::text -> r_comment
                           )
                             scan region
 ''
@@ -1813,7 +1813,7 @@ SELECT
   sum (
     CAST (
       CASE
-        WHEN "all_nations"."nation" = CAST('BRAZIL' AS string) THEN "all_nations"."volume"
+        WHEN "all_nations"."nation" = CAST('BRAZIL' AS text) THEN "all_nations"."volume"
         ELSE CAST(0 AS int)
       END as double
     )
@@ -1824,7 +1824,7 @@ FROM
     SELECT
       "to_char" (
         CAST ("orders"."COL_5" as datetime),
-        CAST('%Y' AS string)
+        CAST('%Y' AS text)
       ) as "o_year",
       "lineitem"."COL_6" * (CAST(1 AS int) - "lineitem"."COL_7") as "volume",
       "n2"."COL_2" as "nation"
@@ -1930,11 +1930,11 @@ FROM
       and "orders"."COL_2" = "customer"."COL_0"
       and "customer"."COL_4" = "n1"."COL_0"
       and "n1"."COL_3" = "region"."COL_0"
-      and "region"."COL_2" = CAST('AMERICA' AS string)
+      and "region"."COL_2" = CAST('AMERICA' AS text)
       and "supplier"."COL_4" = "n2"."COL_0"
       and "orders"."COL_5" >= CAST('1995-01-01 0:00:00.0 +00:00:00' AS datetime)
       and "orders"."COL_5" <= CAST('1996-12-31 0:00:00.0 +00:00:00' AS datetime)
-      and "part"."p_type" = CAST('ECONOMY ANODIZED STEEL' AS string)
+      and "part"."p_type" = CAST('ECONOMY ANODIZED STEEL' AS text)
   ) as "all_nations"
 GROUP BY
   "all_nations"."o_year"
@@ -2052,44 +2052,44 @@ limit 20;
 limit 20
   projection (
     c_custkey::int,
-    c_name::string,
+    c_name::text,
     revenue::double,
     c_acctbal::double,
-    n_name::string,
-    c_address::string,
-    c_phone::string,
-    c_comment::string
+    n_name::text,
+    c_address::text,
+    c_phone::text,
+    c_comment::text
   )
     order by (revenue::double desc)
       scan
         projection (
           gr_expr_1::int -> c_custkey,
-          gr_expr_2::string -> c_name,
+          gr_expr_2::text -> c_name,
           sum(sum_1::double::double)::double -> revenue,
           gr_expr_3::double -> c_acctbal,
-          gr_expr_5::string -> n_name,
-          gr_expr_6::string -> c_address,
-          gr_expr_4::string -> c_phone,
-          gr_expr_7::string -> c_comment
+          gr_expr_5::text -> n_name,
+          gr_expr_6::text -> c_address,
+          gr_expr_4::text -> c_phone,
+          gr_expr_7::text -> c_comment
         )
           group by (
             gr_expr_1::int,
-            gr_expr_2::string,
+            gr_expr_2::text,
             gr_expr_3::double,
-            gr_expr_4::string,
-            gr_expr_5::string,
-            gr_expr_6::string,
-            gr_expr_7::string
+            gr_expr_4::text,
+            gr_expr_5::text,
+            gr_expr_6::text,
+            gr_expr_7::text
           )
             motion [policy: full, program: ReshardIfNeeded]
               projection (
                 customer.c_custkey::int -> gr_expr_1,
-                customer.c_name::string -> gr_expr_2,
+                customer.c_name::text -> gr_expr_2,
                 customer.c_acctbal::double -> gr_expr_3,
-                customer.c_phone::string -> gr_expr_4,
-                nation.n_name::string -> gr_expr_5,
-                customer.c_address::string -> gr_expr_6,
-                customer.c_comment::string -> gr_expr_7,
+                customer.c_phone::text -> gr_expr_4,
+                nation.n_name::text -> gr_expr_5,
+                customer.c_address::text -> gr_expr_6,
+                customer.c_comment::text -> gr_expr_7,
                 sum(
                   (
                     lineitem.l_extendedprice::double * (1::int - lineitem.l_discount::double)
@@ -2098,12 +2098,12 @@ limit 20
               )
                 group by (
                   customer.c_custkey::int,
-                  customer.c_name::string,
+                  customer.c_name::text,
                   customer.c_acctbal::double,
-                  customer.c_phone::string,
-                  nation.n_name::string,
-                  customer.c_address::string,
-                  customer.c_comment::string
+                  customer.c_phone::text,
+                  nation.n_name::text,
+                  customer.c_address::text,
+                  customer.c_comment::text
                 )
                   selection (
                     (
@@ -2111,7 +2111,7 @@ limit 20
                       and lineitem.l_orderkey::int = orders.o_orderkey::int
                       and orders.o_orderdate::datetime >= '1993-10-01 0:00:00.0 +00:00:00'::datetime
                       and orders.o_orderdate::datetime < '1994-01-01 0:00:00.0 +00:00:00'::datetime
-                      and lineitem.l_returnflag::string = 'R'::string
+                      and lineitem.l_returnflag::text = 'R'::text
                       and customer.c_nationkey::int = nation.n_nationkey::int
                     )
                   )
@@ -2124,13 +2124,13 @@ limit 20
                               orders.o_orderkey::int -> o_orderkey,
                               orders.bucket_id::int -> bucket_id,
                               orders.o_custkey::int -> o_custkey,
-                              orders.o_orderstatus::string -> o_orderstatus,
+                              orders.o_orderstatus::text -> o_orderstatus,
                               orders.o_totalprice::double -> o_totalprice,
                               orders.o_orderdate::datetime -> o_orderdate,
-                              orders.o_orderpriority::string -> o_orderpriority,
-                              orders.o_clerk::string -> o_clerk,
+                              orders.o_orderpriority::text -> o_orderpriority,
+                              orders.o_clerk::text -> o_clerk,
                               orders.o_shippriority::int -> o_shippriority,
-                              orders.o_comment::string -> o_comment
+                              orders.o_comment::text -> o_comment
                             )
                               scan orders
                         motion [policy: full, program: ReshardIfNeeded]
@@ -2144,23 +2144,23 @@ limit 20
                             lineitem.l_extendedprice::double -> l_extendedprice,
                             lineitem.l_discount::double -> l_discount,
                             lineitem.l_tax::double -> l_tax,
-                            lineitem.l_returnflag::string -> l_returnflag,
-                            lineitem.l_linestatus::string -> l_linestatus,
+                            lineitem.l_returnflag::text -> l_returnflag,
+                            lineitem.l_linestatus::text -> l_linestatus,
                             lineitem.l_shipdate::datetime -> l_shipdate,
                             lineitem.l_commitdate::datetime -> l_commitdate,
                             lineitem.l_receiptdate::datetime -> l_receiptdate,
-                            lineitem.l_shipinstruct::string -> l_shipinstruct,
-                            lineitem.l_shipmode::string -> l_shipmode,
-                            lineitem.l_comment::string -> l_comment
+                            lineitem.l_shipinstruct::text -> l_shipinstruct,
+                            lineitem.l_shipmode::text -> l_shipmode,
+                            lineitem.l_comment::text -> l_comment
                           )
                             scan lineitem
                       motion [policy: full, program: ReshardIfNeeded]
                         projection (
                           nation.n_nationkey::int -> n_nationkey,
                           nation.bucket_id::int -> bucket_id,
-                          nation.n_name::string -> n_name,
+                          nation.n_name::text -> n_name,
                           nation.n_regionkey::int -> n_regionkey,
-                          nation.n_comment::string -> n_comment
+                          nation.n_comment::text -> n_comment
                         )
                           scan nation
 ''
@@ -2312,7 +2312,7 @@ WHERE
   and "lineitem"."COL_0" = "orders"."COL_0"
   and "orders"."COL_5" >= CAST('1993-10-01 0:00:00.0 +00:00:00' AS datetime)
   and "orders"."COL_5" < CAST('1994-01-01 0:00:00.0 +00:00:00' AS datetime)
-  and "lineitem"."COL_9" = CAST('R' AS string)
+  and "lineitem"."COL_9" = CAST('R' AS text)
   and "customer"."c_nationkey" = "nation"."COL_0"
 GROUP BY
   "customer"."c_custkey",
@@ -2461,7 +2461,7 @@ projection (ps_partkey::int, value::double)
                     (
                       partsupp.ps_suppkey::int = supplier.s_suppkey::int
                       and supplier.s_nationkey::int = nation.n_nationkey::int
-                      and nation.n_name::string = 'GERMANY'::string
+                      and nation.n_name::text = 'GERMANY'::text
                     )
                   )
                     join on (true::bool)
@@ -2471,21 +2471,21 @@ projection (ps_partkey::int, value::double)
                           projection (
                             supplier.s_suppkey::int -> s_suppkey,
                             supplier.bucket_id::int -> bucket_id,
-                            supplier.s_name::string -> s_name,
-                            supplier.s_address::string -> s_address,
+                            supplier.s_name::text -> s_name,
+                            supplier.s_address::text -> s_address,
                             supplier.s_nationkey::int -> s_nationkey,
-                            supplier.s_phone::string -> s_phone,
+                            supplier.s_phone::text -> s_phone,
                             supplier.s_acctbal::double -> s_acctbal,
-                            supplier.s_comment::string -> s_comment
+                            supplier.s_comment::text -> s_comment
                           )
                             scan supplier
                       motion [policy: full, program: ReshardIfNeeded]
                         projection (
                           nation.n_nationkey::int -> n_nationkey,
                           nation.bucket_id::int -> bucket_id,
-                          nation.n_name::string -> n_name,
+                          nation.n_name::text -> n_name,
                           nation.n_regionkey::int -> n_regionkey,
-                          nation.n_comment::string -> n_comment
+                          nation.n_comment::text -> n_comment
                         )
                           scan nation
 subquery $0:
@@ -2506,7 +2506,7 @@ subquery $0:
               (
                 partsupp.ps_suppkey::int = supplier.s_suppkey::int
                 and supplier.s_nationkey::int = nation.n_nationkey::int
-                and nation.n_name::string = 'GERMANY'::string
+                and nation.n_name::text = 'GERMANY'::text
               )
             )
               join on (true::bool)
@@ -2516,21 +2516,21 @@ subquery $0:
                     projection (
                       supplier.s_suppkey::int -> s_suppkey,
                       supplier.bucket_id::int -> bucket_id,
-                      supplier.s_name::string -> s_name,
-                      supplier.s_address::string -> s_address,
+                      supplier.s_name::text -> s_name,
+                      supplier.s_address::text -> s_address,
                       supplier.s_nationkey::int -> s_nationkey,
-                      supplier.s_phone::string -> s_phone,
+                      supplier.s_phone::text -> s_phone,
                       supplier.s_acctbal::double -> s_acctbal,
-                      supplier.s_comment::string -> s_comment
+                      supplier.s_comment::text -> s_comment
                     )
                       scan supplier
                 motion [policy: full, program: ReshardIfNeeded]
                   projection (
                     nation.n_nationkey::int -> n_nationkey,
                     nation.bucket_id::int -> bucket_id,
-                    nation.n_name::string -> n_name,
+                    nation.n_name::text -> n_name,
                     nation.n_regionkey::int -> n_regionkey,
-                    nation.n_comment::string -> n_comment
+                    nation.n_comment::text -> n_comment
                   )
                     scan nation
 ''
@@ -2657,7 +2657,7 @@ FROM
 WHERE
   "partsupp"."ps_suppkey" = "supplier"."COL_0"
   and "supplier"."COL_4" = "nation"."COL_0"
-  and "nation"."COL_2" = CAST('GERMANY' AS string)
+  and "nation"."COL_2" = CAST('GERMANY' AS text)
 GROUP BY
   "partsupp"."ps_partkey"
 ''
@@ -2711,7 +2711,7 @@ FROM
 WHERE
   "partsupp"."ps_suppkey" = "supplier"."COL_0"
   and "supplier"."COL_4" = "nation"."COL_0"
-  and "nation"."COL_2" = CAST('GERMANY' AS string)
+  and "nation"."COL_2" = CAST('GERMANY' AS text)
 ''
 plan:
     [0] SCAN TABLE _tmp_17869557022914879301_3136 (~262144 rows)
@@ -2829,41 +2829,41 @@ order by
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  l_shipmode::string,
+  l_shipmode::text,
   high_line_count::decimal,
   low_line_count::decimal
 )
-  order by (l_shipmode::string)
+  order by (l_shipmode::text)
     scan
       projection (
-        gr_expr_1::string -> l_shipmode,
+        gr_expr_1::text -> l_shipmode,
         sum(sum_1::decimal::decimal)::decimal -> high_line_count,
         sum(sum_2::decimal::decimal)::decimal -> low_line_count
       )
-        group by (gr_expr_1::string)
+        group by (gr_expr_1::text)
           motion [policy: full, program: ReshardIfNeeded]
             projection (
-              lineitem.l_shipmode::string -> gr_expr_1,
+              lineitem.l_shipmode::text -> gr_expr_1,
               sum(
                 case 
-                  when orders.o_orderpriority::string = '1-URGENT'::string or orders.o_orderpriority::string = '2-HIGH'::string then 1::int
+                  when orders.o_orderpriority::text = '1-URGENT'::text or orders.o_orderpriority::text = '2-HIGH'::text then 1::int
                   else 0::int
                 end::int
               )::decimal -> sum_1,
               sum(
                 case 
                   when (
-                    orders.o_orderpriority::string <> '1-URGENT'::string
-                    and orders.o_orderpriority::string <> '2-HIGH'::string
+                    orders.o_orderpriority::text <> '1-URGENT'::text
+                    and orders.o_orderpriority::text <> '2-HIGH'::text
                   ) then 1::int
                   else 0::int
                 end::int
               )::decimal -> sum_2
             )
-              group by (lineitem.l_shipmode::string)
+              group by (lineitem.l_shipmode::text)
                 selection (
                   (
-                    lineitem.l_shipmode::string in ROW('MAIL'::string, 'SHIP'::string)
+                    lineitem.l_shipmode::text in ROW('MAIL'::text, 'SHIP'::text)
                     and lineitem.l_commitdate::datetime < lineitem.l_receiptdate::datetime
                     and lineitem.l_shipdate::datetime < lineitem.l_commitdate::datetime
                     and lineitem.l_receiptdate::datetime >= '1994-01-01 0:00:00.0 +00:00:00'::datetime
@@ -2879,13 +2879,13 @@ projection (
                         orders.o_orderkey::int -> o_orderkey,
                         orders.bucket_id::int -> bucket_id,
                         orders.o_custkey::int -> o_custkey,
-                        orders.o_orderstatus::string -> o_orderstatus,
+                        orders.o_orderstatus::text -> o_orderstatus,
                         orders.o_totalprice::double -> o_totalprice,
                         orders.o_orderdate::datetime -> o_orderdate,
-                        orders.o_orderpriority::string -> o_orderpriority,
-                        orders.o_clerk::string -> o_clerk,
+                        orders.o_orderpriority::text -> o_orderpriority,
+                        orders.o_clerk::text -> o_clerk,
                         orders.o_shippriority::int -> o_shippriority,
-                        orders.o_comment::string -> o_comment
+                        orders.o_comment::text -> o_comment
                       )
                         scan orders
 ''
@@ -2925,8 +2925,8 @@ SELECT
   sum (
     CAST (
       CASE
-        WHEN "orders"."COL_6" = CAST('1-URGENT' AS string)
-        or "orders"."COL_6" = CAST('2-HIGH' AS string) THEN CAST(1 AS int)
+        WHEN "orders"."COL_6" = CAST('1-URGENT' AS text)
+        or "orders"."COL_6" = CAST('2-HIGH' AS text) THEN CAST(1 AS int)
         ELSE CAST(0 AS int)
       END as int
     )
@@ -2934,8 +2934,8 @@ SELECT
   sum (
     CAST (
       CASE
-        WHEN "orders"."COL_6" <> CAST('1-URGENT' AS string)
-        and "orders"."COL_6" <> CAST('2-HIGH' AS string) THEN CAST(1 AS int)
+        WHEN "orders"."COL_6" <> CAST('1-URGENT' AS text)
+        and "orders"."COL_6" <> CAST('2-HIGH' AS text) THEN CAST(1 AS int)
         ELSE CAST(0 AS int)
       END as int
     )
@@ -2958,7 +2958,7 @@ FROM
       "_tmp_16541552721638505593_0136"
   ) as "orders" ON "lineitem"."l_orderkey" = "orders"."COL_0"
 WHERE
-  "lineitem"."l_shipmode" in (CAST('MAIL' AS string), CAST('SHIP' AS string))
+  "lineitem"."l_shipmode" in (CAST('MAIL' AS text), CAST('SHIP' AS text))
   and "lineitem"."l_commitdate" < "lineitem"."l_receiptdate"
   and "lineitem"."l_shipdate" < "lineitem"."l_commitdate"
   and "lineitem"."l_receiptdate" >= CAST('1994-01-01 0:00:00.0 +00:00:00' AS datetime)
@@ -3065,7 +3065,7 @@ projection (c_count::int, custdist::int)
                       left join on (
                         (
                           customer.c_custkey::int = orders.o_custkey::int
-                          and not orders.o_comment::string::string LIKE '%special%requests%'::string ESCAPE '\'::string
+                          and not orders.o_comment::text::text LIKE '%special%requests%'::text ESCAPE '\'::text
                         )
                       )
                         scan customer
@@ -3074,13 +3074,13 @@ projection (c_count::int, custdist::int)
                             orders.o_orderkey::int -> o_orderkey,
                             orders.bucket_id::int -> bucket_id,
                             orders.o_custkey::int -> o_custkey,
-                            orders.o_orderstatus::string -> o_orderstatus,
+                            orders.o_orderstatus::text -> o_orderstatus,
                             orders.o_totalprice::double -> o_totalprice,
                             orders.o_orderdate::datetime -> o_orderdate,
-                            orders.o_orderpriority::string -> o_orderpriority,
-                            orders.o_clerk::string -> o_clerk,
+                            orders.o_orderpriority::text -> o_orderpriority,
+                            orders.o_clerk::text -> o_clerk,
                             orders.o_shippriority::int -> o_shippriority,
-                            orders.o_comment::string -> o_comment
+                            orders.o_comment::text -> o_comment
                           )
                             scan orders
 ''
@@ -3135,7 +3135,7 @@ FROM
     FROM
       "_tmp_2853321084796073973_0136"
   ) as "orders" ON "customer"."c_custkey" = "orders"."COL_2"
-  and not CAST ("orders"."COL_9" as string) LIKE CAST('%special%requests%' AS string) ESCAPE CAST('\' AS string)
+  and not CAST ("orders"."COL_9" as text) LIKE CAST('%special%requests%' AS text) ESCAPE CAST('\' AS text)
 GROUP BY
   "customer"."c_custkey"
 ''
@@ -3231,7 +3231,7 @@ projection (
       )::double -> sum_2,
       sum(
         case 
-          when part.p_type::string::string LIKE 'PROMO%'::string ESCAPE '\'::string then lineitem.l_extendedprice::double * (1::int - lineitem.l_discount::double)
+          when part.p_type::text::text LIKE 'PROMO%'::text ESCAPE '\'::text then lineitem.l_extendedprice::double * (1::int - lineitem.l_discount::double)
           else 0::int
         end::double
       )::double -> sum_1
@@ -3249,14 +3249,14 @@ projection (
             projection (
               part.p_partkey::int -> p_partkey,
               part.bucket_id::int -> bucket_id,
-              part.p_name::string -> p_name,
-              part.p_mfgr::string -> p_mfgr,
-              part.p_brand::string -> p_brand,
-              part.p_type::string -> p_type,
+              part.p_name::text -> p_name,
+              part.p_mfgr::text -> p_mfgr,
+              part.p_brand::text -> p_brand,
+              part.p_type::text -> p_type,
               part.p_size::int -> p_size,
-              part.p_container::string -> p_container,
+              part.p_container::text -> p_container,
               part.p_retailprice::double -> p_retailprice,
-              part.p_comment::string -> p_comment
+              part.p_comment::text -> p_comment
             )
               scan part
 ''
@@ -3302,7 +3302,7 @@ SELECT
   sum (
     CAST (
       CASE
-        WHEN CAST ("part"."COL_5" as string) LIKE CAST('PROMO%' AS string) ESCAPE CAST('\' AS string) THEN "lineitem"."l_extendedprice" * (CAST(1 AS int) - "lineitem"."l_discount")
+        WHEN CAST ("part"."COL_5" as text) LIKE CAST('PROMO%' AS text) ESCAPE CAST('\' AS text) THEN "lineitem"."l_extendedprice" * (CAST(1 AS int) - "lineitem"."l_discount")
         ELSE CAST(0 AS int)
       END as double
     )
@@ -3402,47 +3402,47 @@ order by
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  p_brand::string,
-  p_type::string,
+  p_brand::text,
+  p_type::text,
   p_size::int,
   supplier_cnt::int
 )
   order by (
     supplier_cnt::int desc,
-    p_brand::string,
-    p_type::string,
+    p_brand::text,
+    p_type::text,
     p_size::int
   )
     scan
       projection (
-        gr_expr_1::string -> p_brand,
-        gr_expr_2::string -> p_type,
+        gr_expr_1::text -> p_brand,
+        gr_expr_2::text -> p_type,
         gr_expr_3::int -> p_size,
         count(distinct gr_expr_4::int)::int -> supplier_cnt
       )
         group by (
-          gr_expr_1::string,
-          gr_expr_2::string,
+          gr_expr_1::text,
+          gr_expr_2::text,
           gr_expr_3::int
         )
           motion [policy: full, program: ReshardIfNeeded]
             projection (
-              part.p_brand::string -> gr_expr_1,
-              part.p_type::string -> gr_expr_2,
+              part.p_brand::text -> gr_expr_1,
+              part.p_type::text -> gr_expr_2,
               part.p_size::int -> gr_expr_3,
               partsupp.ps_suppkey::int::int -> gr_expr_4
             )
               group by (
-                part.p_brand::string,
-                part.p_type::string,
+                part.p_brand::text,
+                part.p_type::text,
                 part.p_size::int,
                 partsupp.ps_suppkey::int::int
               )
                 selection (
                   (
                     part.p_partkey::int = partsupp.ps_partkey::int
-                    and part.p_brand::string <> 'Brand#45'::string
-                    and not part.p_type::string::string LIKE 'MEDIUM POLISHED%'::string ESCAPE '\'::string
+                    and part.p_brand::text <> 'Brand#45'::text
+                    and not part.p_type::text::text LIKE 'MEDIUM POLISHED%'::text ESCAPE '\'::text
                     and part.p_size::int in ROW(
                       49::int,
                       14::int,
@@ -3462,14 +3462,14 @@ projection (
                       projection (
                         part.p_partkey::int -> p_partkey,
                         part.bucket_id::int -> bucket_id,
-                        part.p_name::string -> p_name,
-                        part.p_mfgr::string -> p_mfgr,
-                        part.p_brand::string -> p_brand,
-                        part.p_type::string -> p_type,
+                        part.p_name::text -> p_name,
+                        part.p_mfgr::text -> p_mfgr,
+                        part.p_brand::text -> p_brand,
+                        part.p_type::text -> p_type,
                         part.p_size::int -> p_size,
-                        part.p_container::string -> p_container,
+                        part.p_container::text -> p_container,
                         part.p_retailprice::double -> p_retailprice,
-                        part.p_comment::string -> p_comment
+                        part.p_comment::text -> p_comment
                       )
                         scan part
 subquery $0:
@@ -3477,7 +3477,7 @@ subquery $0:
     scan
       projection (supplier.s_suppkey::int -> s_suppkey)
         selection (
-          supplier.s_comment::string::string LIKE '%Customer%Complaints%'::string ESCAPE '\'::string
+          supplier.s_comment::text::text LIKE '%Customer%Complaints%'::text ESCAPE '\'::text
         )
           scan supplier
 ''
@@ -3517,7 +3517,7 @@ SELECT
 FROM
   "supplier"
 WHERE
-  CAST ("supplier"."s_comment" as string) LIKE CAST('%Customer%Complaints%' AS string) ESCAPE CAST('\' AS string)
+  CAST ("supplier"."s_comment" as text) LIKE CAST('%Customer%Complaints%' AS text) ESCAPE CAST('\' AS text)
 ''
 plan:
     [0] SCAN TABLE supplier (~983040 rows)
@@ -3552,8 +3552,8 @@ FROM
   ) as "part" ON CAST(true AS bool)
 WHERE
   "part"."COL_0" = "partsupp"."ps_partkey"
-  and "part"."COL_4" <> CAST('Brand#45' AS string)
-  and not CAST ("part"."COL_5" as string) LIKE CAST('MEDIUM POLISHED%' AS string) ESCAPE CAST('\' AS string)
+  and "part"."COL_4" <> CAST('Brand#45' AS text)
+  and not CAST ("part"."COL_5" as text) LIKE CAST('MEDIUM POLISHED%' AS text) ESCAPE CAST('\' AS text)
   and "part"."COL_6" in (
     CAST(49 AS int),
     CAST(14 AS int),
@@ -3679,7 +3679,7 @@ limit 100;
 ''
 limit 100
   projection (
-    c_name::string,
+    c_name::text,
     c_custkey::int,
     o_orderkey::int,
     o_orderdate::datetime,
@@ -3692,7 +3692,7 @@ limit 100
     )
       scan
         projection (
-          gr_expr_1::string -> c_name,
+          gr_expr_1::text -> c_name,
           gr_expr_2::int -> c_custkey,
           gr_expr_3::int -> o_orderkey,
           gr_expr_4::datetime -> o_orderdate,
@@ -3700,7 +3700,7 @@ limit 100
           sum(sum_1::double::double)::double -> col_1
         )
           group by (
-            gr_expr_1::string,
+            gr_expr_1::text,
             gr_expr_2::int,
             gr_expr_3::int,
             gr_expr_4::datetime,
@@ -3708,7 +3708,7 @@ limit 100
           )
             motion [policy: full, program: ReshardIfNeeded]
               projection (
-                customer.c_name::string -> gr_expr_1,
+                customer.c_name::text -> gr_expr_1,
                 customer.c_custkey::int -> gr_expr_2,
                 orders.o_orderkey::int -> gr_expr_3,
                 orders.o_orderdate::datetime -> gr_expr_4,
@@ -3716,7 +3716,7 @@ limit 100
                 sum(lineitem.l_quantity::double::double)::double -> sum_1
               )
                 group by (
-                  customer.c_name::string,
+                  customer.c_name::text,
                   customer.c_custkey::int,
                   orders.o_orderkey::int,
                   orders.o_orderdate::datetime,
@@ -3737,13 +3737,13 @@ limit 100
                             orders.o_orderkey::int -> o_orderkey,
                             orders.bucket_id::int -> bucket_id,
                             orders.o_custkey::int -> o_custkey,
-                            orders.o_orderstatus::string -> o_orderstatus,
+                            orders.o_orderstatus::text -> o_orderstatus,
                             orders.o_totalprice::double -> o_totalprice,
                             orders.o_orderdate::datetime -> o_orderdate,
-                            orders.o_orderpriority::string -> o_orderpriority,
-                            orders.o_clerk::string -> o_clerk,
+                            orders.o_orderpriority::text -> o_orderpriority,
+                            orders.o_clerk::text -> o_clerk,
                             orders.o_shippriority::int -> o_shippriority,
-                            orders.o_comment::string -> o_comment
+                            orders.o_comment::text -> o_comment
                           )
                             scan orders
                       motion [policy: full, program: ReshardIfNeeded]
@@ -3757,14 +3757,14 @@ limit 100
                           lineitem.l_extendedprice::double -> l_extendedprice,
                           lineitem.l_discount::double -> l_discount,
                           lineitem.l_tax::double -> l_tax,
-                          lineitem.l_returnflag::string -> l_returnflag,
-                          lineitem.l_linestatus::string -> l_linestatus,
+                          lineitem.l_returnflag::text -> l_returnflag,
+                          lineitem.l_linestatus::text -> l_linestatus,
                           lineitem.l_shipdate::datetime -> l_shipdate,
                           lineitem.l_commitdate::datetime -> l_commitdate,
                           lineitem.l_receiptdate::datetime -> l_receiptdate,
-                          lineitem.l_shipinstruct::string -> l_shipinstruct,
-                          lineitem.l_shipmode::string -> l_shipmode,
-                          lineitem.l_comment::string -> l_comment
+                          lineitem.l_shipinstruct::text -> l_shipinstruct,
+                          lineitem.l_shipmode::text -> l_shipmode,
+                          lineitem.l_comment::text -> l_comment
                         )
                           scan lineitem
 subquery $0:
@@ -4069,49 +4069,49 @@ projection (sum(sum_1::double::double)::double -> revenue)
       selection (
         (
           part.p_partkey::int = lineitem.l_partkey::int
-          and part.p_brand::string = 'Brand#12'::string
-          and part.p_container::string in ROW(
-            'SM CASE'::string,
-            'SM BOX'::string,
-            'SM PACK'::string,
-            'SM PKG'::string
+          and part.p_brand::text = 'Brand#12'::text
+          and part.p_container::text in ROW(
+            'SM CASE'::text,
+            'SM BOX'::text,
+            'SM PACK'::text,
+            'SM PKG'::text
           )
           and lineitem.l_quantity::double >= 1::int
           and lineitem.l_quantity::double <= 1::int + 10::int
           and part.p_size::int >= 1::int
           and part.p_size::int <= 5::int
-          and lineitem.l_shipmode::string in ROW('AIR'::string, 'AIR REG'::string)
-          and lineitem.l_shipinstruct::string = 'DELIVER IN PERSON'::string
+          and lineitem.l_shipmode::text in ROW('AIR'::text, 'AIR REG'::text)
+          and lineitem.l_shipinstruct::text = 'DELIVER IN PERSON'::text
         ) or (
           part.p_partkey::int = lineitem.l_partkey::int
-          and part.p_brand::string = 'Brand#23'::string
-          and part.p_container::string in ROW(
-            'MED BAG'::string,
-            'MED BOX'::string,
-            'MED PKG'::string,
-            'MED PACK'::string
+          and part.p_brand::text = 'Brand#23'::text
+          and part.p_container::text in ROW(
+            'MED BAG'::text,
+            'MED BOX'::text,
+            'MED PKG'::text,
+            'MED PACK'::text
           )
           and lineitem.l_quantity::double >= 10::int
           and lineitem.l_quantity::double <= 10::int + 10::int
           and part.p_size::int >= 1::int
           and part.p_size::int <= 10::int
-          and lineitem.l_shipmode::string in ROW('AIR'::string, 'AIR REG'::string)
-          and lineitem.l_shipinstruct::string = 'DELIVER IN PERSON'::string
+          and lineitem.l_shipmode::text in ROW('AIR'::text, 'AIR REG'::text)
+          and lineitem.l_shipinstruct::text = 'DELIVER IN PERSON'::text
         ) or (
           part.p_partkey::int = lineitem.l_partkey::int
-          and part.p_brand::string = 'Brand#34'::string
-          and part.p_container::string in ROW(
-            'LG CASE'::string,
-            'LG BOX'::string,
-            'LG PACK'::string,
-            'LG PKG'::string
+          and part.p_brand::text = 'Brand#34'::text
+          and part.p_container::text in ROW(
+            'LG CASE'::text,
+            'LG BOX'::text,
+            'LG PACK'::text,
+            'LG PKG'::text
           )
           and lineitem.l_quantity::double >= 20::int
           and lineitem.l_quantity::double <= 20::int + 10::int
           and part.p_size::int >= 1::int
           and part.p_size::int <= 15::int
-          and lineitem.l_shipmode::string in ROW('AIR'::string, 'AIR REG'::string)
-          and lineitem.l_shipinstruct::string = 'DELIVER IN PERSON'::string
+          and lineitem.l_shipmode::text in ROW('AIR'::text, 'AIR REG'::text)
+          and lineitem.l_shipinstruct::text = 'DELIVER IN PERSON'::text
         )
       )
         join on (true::bool)
@@ -4120,14 +4120,14 @@ projection (sum(sum_1::double::double)::double -> revenue)
             projection (
               part.p_partkey::int -> p_partkey,
               part.bucket_id::int -> bucket_id,
-              part.p_name::string -> p_name,
-              part.p_mfgr::string -> p_mfgr,
-              part.p_brand::string -> p_brand,
-              part.p_type::string -> p_type,
+              part.p_name::text -> p_name,
+              part.p_mfgr::text -> p_mfgr,
+              part.p_brand::text -> p_brand,
+              part.p_type::text -> p_type,
               part.p_size::int -> p_size,
-              part.p_container::string -> p_container,
+              part.p_container::text -> p_container,
               part.p_retailprice::double -> p_retailprice,
-              part.p_comment::string -> p_comment
+              part.p_comment::text -> p_comment
             )
               scan part
 ''
@@ -4189,47 +4189,47 @@ FROM
   ) as "part" ON CAST(true AS bool)
 WHERE
   "part"."COL_0" = "lineitem"."l_partkey"
-  and "part"."COL_4" = CAST('Brand#12' AS string)
+  and "part"."COL_4" = CAST('Brand#12' AS text)
   and "part"."COL_7" in (
-    CAST('SM CASE' AS string),
-    CAST('SM BOX' AS string),
-    CAST('SM PACK' AS string),
-    CAST('SM PKG' AS string)
+    CAST('SM CASE' AS text),
+    CAST('SM BOX' AS text),
+    CAST('SM PACK' AS text),
+    CAST('SM PKG' AS text)
   )
   and "lineitem"."l_quantity" >= CAST(1 AS int)
   and "lineitem"."l_quantity" <= CAST(1 AS int) + CAST(10 AS int)
   and "part"."COL_6" >= CAST(1 AS int)
   and "part"."COL_6" <= CAST(5 AS int)
-  and "lineitem"."l_shipmode" in (CAST('AIR' AS string), CAST('AIR REG' AS string))
-  and "lineitem"."l_shipinstruct" = CAST('DELIVER IN PERSON' AS string)
+  and "lineitem"."l_shipmode" in (CAST('AIR' AS text), CAST('AIR REG' AS text))
+  and "lineitem"."l_shipinstruct" = CAST('DELIVER IN PERSON' AS text)
   or "part"."COL_0" = "lineitem"."l_partkey"
-  and "part"."COL_4" = CAST('Brand#23' AS string)
+  and "part"."COL_4" = CAST('Brand#23' AS text)
   and "part"."COL_7" in (
-    CAST('MED BAG' AS string),
-    CAST('MED BOX' AS string),
-    CAST('MED PKG' AS string),
-    CAST('MED PACK' AS string)
+    CAST('MED BAG' AS text),
+    CAST('MED BOX' AS text),
+    CAST('MED PKG' AS text),
+    CAST('MED PACK' AS text)
   )
   and "lineitem"."l_quantity" >= CAST(10 AS int)
   and "lineitem"."l_quantity" <= CAST(10 AS int) + CAST(10 AS int)
   and "part"."COL_6" >= CAST(1 AS int)
   and "part"."COL_6" <= CAST(10 AS int)
-  and "lineitem"."l_shipmode" in (CAST('AIR' AS string), CAST('AIR REG' AS string))
-  and "lineitem"."l_shipinstruct" = CAST('DELIVER IN PERSON' AS string)
+  and "lineitem"."l_shipmode" in (CAST('AIR' AS text), CAST('AIR REG' AS text))
+  and "lineitem"."l_shipinstruct" = CAST('DELIVER IN PERSON' AS text)
   or "part"."COL_0" = "lineitem"."l_partkey"
-  and "part"."COL_4" = CAST('Brand#34' AS string)
+  and "part"."COL_4" = CAST('Brand#34' AS text)
   and "part"."COL_7" in (
-    CAST('LG CASE' AS string),
-    CAST('LG BOX' AS string),
-    CAST('LG PACK' AS string),
-    CAST('LG PKG' AS string)
+    CAST('LG CASE' AS text),
+    CAST('LG BOX' AS text),
+    CAST('LG PACK' AS text),
+    CAST('LG PKG' AS text)
   )
   and "lineitem"."l_quantity" >= CAST(20 AS int)
   and "lineitem"."l_quantity" <= CAST(20 AS int) + CAST(10 AS int)
   and "part"."COL_6" >= CAST(1 AS int)
   and "part"."COL_6" <= CAST(15 AS int)
-  and "lineitem"."l_shipmode" in (CAST('AIR' AS string), CAST('AIR REG' AS string))
-  and "lineitem"."l_shipinstruct" = CAST('DELIVER IN PERSON' AS string)
+  and "lineitem"."l_shipmode" in (CAST('AIR' AS text), CAST('AIR REG' AS text))
+  and "lineitem"."l_shipinstruct" = CAST('DELIVER IN PERSON' AS text)
 ''
 plan:
     [0] SCAN TABLE lineitem (~1048576 rows)

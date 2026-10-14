@@ -36,7 +36,7 @@ EXPLAIN SELECT "id", "name" FROM "testing_space"
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (testing_space.id::int -> id, testing_space.name::string -> name)
+projection (testing_space.id::int -> id, testing_space.name::text -> name)
   selection (testing_space.id::int in ROW($0))
     scan testing_space
 subquery $0:
@@ -67,15 +67,15 @@ WHERE "t3"."name" = '123';
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (t3.id::int -> id, t3.name::string -> name, t8.tid::int -> tid)
-  selection (t3.name::string = '123'::string)
+projection (t3.id::int -> id, t3.name::text -> name, t8.tid::int -> tid)
+  selection (t3.name::text = '123'::text)
     join on (t3.id::int = t8.tid::int)
       scan t3
         union all
-          projection (space_simple_shard_key.id::int -> id, space_simple_shard_key.name::string -> name)
+          projection (space_simple_shard_key.id::int -> id, space_simple_shard_key.name::text -> name)
             selection (space_simple_shard_key."sysOp"::int < 1::int)
               scan space_simple_shard_key
-          projection (space_simple_shard_key_hist.id::int -> id, space_simple_shard_key_hist.name::string -> name)
+          projection (space_simple_shard_key_hist.id::int -> id, space_simple_shard_key_hist.name::text -> name)
             selection (space_simple_shard_key_hist."sysOp"::int > 0::int)
               scan space_simple_shard_key_hist
       scan t8
@@ -103,14 +103,14 @@ EXPLAIN SELECT * FROM (
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (t1.id::int -> id, t1.name::string -> name)
+projection (t1.id::int -> id, t1.name::text -> name)
   selection (t1.id::int = 1::int)
     scan t1
       union all
-        projection (space_simple_shard_key.id::int -> id, space_simple_shard_key.name::string -> name)
+        projection (space_simple_shard_key.id::int -> id, space_simple_shard_key.name::text -> name)
           selection (space_simple_shard_key."sysOp"::int < 0::int)
             scan space_simple_shard_key
-        projection (space_simple_shard_key_hist.id::int -> id, space_simple_shard_key_hist.name::string -> name)
+        projection (space_simple_shard_key_hist.id::int -> id, space_simple_shard_key_hist.name::text -> name)
           selection (space_simple_shard_key_hist."sysOp"::int > 0::int)
             scan space_simple_shard_key_hist
 ''
@@ -327,13 +327,13 @@ EXPLAIN WITH t(a) AS (SELECT '1') SELECT * FROM t t1 WHERE t1.a = trim('');
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (t1.a::string -> a)
-  selection (t1.a::string = TRIM(''::string))
+projection (t1.a::text -> a)
+  selection (t1.a::text = TRIM(''::text))
     scan cte t1($0)
 subquery $0:
-  projection (t.col_1::string -> a)
+  projection (t.col_1::text -> a)
     scan t
-      projection ('1'::string -> col_1)
+      projection ('1'::text -> col_1)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -349,7 +349,7 @@ EXPLAIN SELECT CASE WHEN TRUE THEN '1' ELSE TRIM('2') END;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (case when true::bool then '1'::string else TRIM('2'::string) end -> col_1)
+projection (case when true::bool then '1'::text else TRIM('2'::text) end -> col_1)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -550,7 +550,7 @@ EXPLAIN (RAW) INSERT INTO testing_space VALUES (1, '1', 1);
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES ( CAST(1 AS int), CAST('1' AS string), CAST(1 AS int) )
+VALUES ( CAST(1 AS int), CAST('1' AS text), CAST(1 AS int) )
 ''
 plan:
     [0] TRIVIAL
@@ -563,7 +563,7 @@ EXPLAIN (RAW) DELETE FROM testing_space WHERE "product_units" < 10 AND "name" = 
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" < CAST(10 AS int) and "testing_space"."name" = CAST('beluga' AS string)
+SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" < CAST(10 AS int) and "testing_space"."name" = CAST('beluga' AS text)
 ''
 plan:
     [0] SCAN TABLE testing_space (~262144 rows)
@@ -724,7 +724,7 @@ EXPLAIN (RAW) INSERT INTO testing_space VALUES (42, 'beluga', (SELECT 1000));
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES ( CAST(42 AS int), CAST('beluga' AS string), ( SELECT CAST(1000 AS int) as "col_1") )
+VALUES ( CAST(42 AS int), CAST('beluga' AS text), ( SELECT CAST(1000 AS int) as "col_1") )
 ''
 plan:
     [0] EXECUTE SCALAR SUBQUERY 1
@@ -783,7 +783,7 @@ EXPLAIN (RAW) INSERT INTO testing_space SELECT 1, '1', 1;
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT CAST(1 AS int) as "col_1", CAST('1' AS string) as "col_2", CAST(1 AS int) as "col_3"
+SELECT CAST(1 AS int) as "col_1", CAST('1' AS text) as "col_2", CAST(1 AS int) as "col_3"
 ''
 plan:
     [0] TRIVIAL
@@ -796,7 +796,7 @@ EXPLAIN (RAW) SELECT * FROM testing_space_global WHERE (product_units > 10 AND n
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global" WHERE "testing_space_global"."product_units" > CAST(10 AS int) and CAST ("testing_space_global"."name" as string) LIKE CAST('sosisky_' AS string) ESCAPE CAST('\' AS string) ) ORDER BY "product_units" DESC LIMIT 10
+SELECT "id", "name", "product_units" FROM ( SELECT * FROM "testing_space_global" WHERE "testing_space_global"."product_units" > CAST(10 AS int) and CAST ("testing_space_global"."name" as text) LIKE CAST('sosisky_' AS text) ESCAPE CAST('\' AS text) ) ORDER BY "product_units" DESC LIMIT 10
 ''
 plan:
     [0] SCAN TABLE testing_space_global (~917504 rows)
@@ -890,7 +890,7 @@ EXPLAIN (RAW) UPDATE testing_space_global SET name = upper(name);
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT upper (CAST ("testing_space_global"."name" as string)) as "col_0", "testing_space_global"."id" as "col_1" FROM "testing_space_global"
+SELECT upper (CAST ("testing_space_global"."name" as text)) as "col_0", "testing_space_global"."id" as "col_1" FROM "testing_space_global"
 ''
 plan:
     [0] SCAN TABLE testing_space_global (~1048576 rows)
@@ -905,7 +905,7 @@ EXPLAIN (FMT) SELECT * FROM testing_space WHERE id = 1;
 ''
 projection (
   testing_space.id::int -> id,
-  testing_space.name::string -> name,
+  testing_space.name::text -> name,
   testing_space.product_units::int -> product_units
 )
   selection (testing_space.id::int = 1::int)
@@ -1235,9 +1235,9 @@ EXPLAIN INSERT INTO t VALUES (1, 1.0, '1'), (2, 2.0, '2'), (3, 3.0, '3');
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value ROW(1::int, 1.0::decimal, '1'::string)
-      value ROW(2::int, 2.0::decimal, '2'::string)
-      value ROW(3::int, 3.0::decimal, '3'::string)
+      value ROW(1::int, 1.0::decimal, '1'::text)
+      value ROW(2::int, 2.0::decimal, '2'::text)
+      value ROW(3::int, 3.0::decimal, '3'::text)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -1253,8 +1253,8 @@ EXPLAIN SELECT * FROM t WHERE a = 1 and c = '1' or a = 2 and c = '2' or a = 3 an
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (t.a::int -> a, t.b::double -> b, t.c::string -> c)
-  selection ((t.a::int = 1::int and t.c::string = '1'::string) or (t.a::int = 2::int and t.c::string = '2'::string) or (t.a::int = 3::int and t.c::string = '3'::string))
+projection (t.a::int -> a, t.b::double -> b, t.c::text -> c)
+  selection ((t.a::int = 1::int and t.c::text = '1'::text) or (t.a::int = 2::int and t.c::text = '2'::text) or (t.a::int = 3::int and t.c::text = '3'::text))
     scan t
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -1274,9 +1274,9 @@ EXPLAIN INSERT INTO t VALUES (1 + 1, 1.0, '1'), (2, 2.0, '2'), (3, 3.0, '3');
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value ROW(1::int + 1::int, 1.0::decimal, '1'::string)
-      value ROW(2::int, 2.0::decimal, '2'::string)
-      value ROW(3::int, 3.0::decimal, '3'::string)
+      value ROW(1::int + 1::int, 1.0::decimal, '1'::text)
+      value ROW(2::int, 2.0::decimal, '2'::text)
+      value ROW(3::int, 3.0::decimal, '3'::text)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -1295,7 +1295,7 @@ EXPLAIN INSERT INTO t VALUES (1, (SELECT d FROM tt LIMIT 1), '2')
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value ROW(1::int, ROW($0), '2'::string)
+      value ROW(1::int, ROW($0), '2'::text)
 subquery $0:
   motion [policy: full, program: ReshardIfNeeded]
     scan
@@ -1322,7 +1322,7 @@ EXPLAIN INSERT INTO t VALUES (1, (SELECT d FROM g LIMIT 1), '2')
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value ROW(1::int, ROW($0), '2'::string)
+      value ROW(1::int, ROW($0), '2'::text)
 subquery $0:
   scan
     limit 1

@@ -7,7 +7,7 @@ fn coalesce_in_projection() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (coalesce(NULL::unknown, test_space."FIRST_NAME"::string::string)::string -> col_1)
+    projection (coalesce(NULL::unknown, test_space."FIRST_NAME"::text::text)::text -> col_1)
       scan test_space
     "#);
 }
@@ -18,8 +18,8 @@ fn coalesce_in_selection() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
-      selection (coalesce(test_space."FIRST_NAME"::string::string, '(none)'::string)::string = '(none)'::string)
+    projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
+      selection (coalesce(test_space."FIRST_NAME"::text::text, '(none)'::text)::text = '(none)'::text)
         scan test_space
     "#);
 }

@@ -96,7 +96,7 @@ fn join_using_duplicate() {
 #[test]
 fn join_multiple_different_using() {
     let query = "WITH cte (ugu) AS (SELECT 1) SELECT ugu, * FROM t1 INNER JOIN (SELECT c a, c ugu FROM t2) t2 USING(a) INNER JOIN cte USING(ugu)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte (ugu) AS (SELECT 1::int) SELECT t2.ugu::int, t2.ugu::int, t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool FROM t1 INNER JOIN (SELECT t2.c::int AS a, t2.c::int AS ugu FROM t2) AS t2 USING (a) INNER JOIN cte USING (ugu)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte (ugu) AS (SELECT 1::int) SELECT t2.ugu::int, t2.ugu::int, t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool FROM t1 INNER JOIN (SELECT t2.c::int AS a, t2.c::int AS ugu FROM t2) AS t2 USING (a) INNER JOIN cte USING (ugu)");
 }
 
 /// No common type between the two inputs: rejected with PostgreSQL's wording,
@@ -124,7 +124,7 @@ fn join_tables_column_using_reduction() {
 #[test]
 fn join_tables_column_using_reduction_multiple() {
     let query = "SELECT * FROM t3 t1 INNER JOIN t3 t2 USING (a) INNER JOIN t3 t3 USING (a)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::string, t2.b::string, t3.b::string FROM t3 AS t1 INNER JOIN t3 AS t2 USING (a) INNER JOIN t3 AS t3 USING (a)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::text, t2.b::text, t3.b::text FROM t3 AS t1 INNER JOIN t3 AS t2 USING (a) INNER JOIN t3 AS t3 USING (a)");
 }
 
 /// The merged column is the left one, and an outer join is where that matters:
@@ -330,13 +330,13 @@ fn join_correlated_subquery_in_join_condition_sees_outer_scope() {
 #[test]
 fn join_on_condition_curr_from_has_lower_priority_then_subquery_from_frame() {
     let query = "SELECT 1 FROM t1 x INNER JOIN t5 z ON (SELECT b FROM t3)::bool";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT 1::int FROM t1 AS x INNER JOIN t5 AS z ON (SELECT t3.b::string FROM t3)::bool");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT 1::int FROM t1 AS x INNER JOIN t5 AS z ON (SELECT t3.b::text FROM t3)::bool");
 }
 
 #[test]
 fn join_on_condition_curr_from_has_lower_priority_then_subquery_from_frame_aliased() {
     let query = "SELECT 1 FROM t1 x INNER JOIN t5 z ON (SELECT x.b FROM t3 x)::bool";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT 1::int FROM t1 AS x INNER JOIN t5 AS z ON (SELECT x.b::string FROM t3 AS x)::bool");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT 1::int FROM t1 AS x INNER JOIN t5 AS z ON (SELECT x.b::text FROM t3 AS x)::bool");
 }
 
 #[test]
@@ -455,7 +455,7 @@ fn group_by_alias_key_covers_later_projections() {
 fn group_by_alias_key_after_an_asterisk() {
     insta::assert_snapshot!(
         analyzed("SELECT *, abs(a) AS x, abs(a) + 1 FROM t3 GROUP BY x, a, b", &[]),
-        @"SELECT t3.a::int, t3.b::string, abs(t3.a::int)::int AS x, (abs(t3.a::int)::int + 1::int)::int FROM t3 GROUP BY 3, t3.a::int, t3.b::string"
+        @"SELECT t3.a::int, t3.b::text, abs(t3.a::int)::int AS x, (abs(t3.a::int)::int + 1::int)::int FROM t3 GROUP BY 3, t3.a::int, t3.b::text"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT *, abs(a) AS x, abs(a) + 1 FROM t3 GROUP BY x", &[]),
@@ -470,15 +470,15 @@ fn group_by_alias_key_after_an_asterisk() {
 fn group_by_output_name_inherited_from_the_expression() {
     insta::assert_snapshot!(
         analyzed("SELECT lower(e) FROM t1 GROUP BY lower", &[]),
-        @"SELECT lower(t1.e::string)::string FROM t1 GROUP BY 1"
+        @"SELECT lower(t1.e::text)::text FROM t1 GROUP BY 1"
     );
     insta::assert_snapshot!(
         analyzed("SELECT lower(e)::text FROM t1 GROUP BY lower", &[]),
-        @"SELECT lower(t1.e::string)::string FROM t1 GROUP BY 1"
+        @"SELECT lower(t1.e::text)::text FROM t1 GROUP BY 1"
     );
     insta::assert_snapshot!(
         analyzed("SELECT CASE WHEN a > 1 THEN 'x' ELSE lower(e) END FROM t1 GROUP BY lower", &[]),
-        @"SELECT CASE WHEN (t1.a::int > 1::int)::bool THEN 'x'::string ELSE lower(t1.e::string)::string END::string FROM t1 GROUP BY 1"
+        @"SELECT CASE WHEN (t1.a::int > 1::int)::bool THEN 'x'::text ELSE lower(t1.e::text)::text END::text FROM t1 GROUP BY 1"
     );
     // Only the ELSE branch names a CASE.
     insta::assert_snapshot!(
@@ -573,7 +573,7 @@ fn group_by_drop_no_op_cast() {
 fn group_by_exprs_diff_cast() {
     insta::assert_snapshot!(
         analyzed("SELECT a::text FROM t1 GROUP BY a::int;", &[]),
-        @"SELECT t1.a::string FROM t1 GROUP BY t1.a::int"
+        @"SELECT t1.a::text FROM t1 GROUP BY t1.a::int"
     );
 }
 
@@ -597,11 +597,11 @@ fn group_by_converting_cast_does_not_group_its_operand() {
 fn group_by_converting_cast_matches_the_same_cast() {
     insta::assert_snapshot!(
         analyzed("SELECT a::text FROM t1 GROUP BY a::text", &[]),
-        @"SELECT t1.a::string FROM t1 GROUP BY t1.a::string"
+        @"SELECT t1.a::text FROM t1 GROUP BY t1.a::text"
     );
     insta::assert_snapshot!(
         analyzed("SELECT count(*) FROM t1 GROUP BY a::text HAVING a::text = 'x'", &[]),
-        @"SELECT count(*)::int FROM t1 GROUP BY t1.a::string HAVING (t1.a::string = 'x'::string)::bool"
+        @"SELECT count(*)::int FROM t1 GROUP BY t1.a::text HAVING (t1.a::text = 'x'::text)::bool"
     );
 }
 
@@ -617,7 +617,7 @@ fn group_by_no_op_cast_keeps_the_functional_dependency() {
     );
     insta::assert_snapshot!(
         analyzed("SELECT a, e FROM t1 GROUP BY b::int", &[]),
-        @"SELECT t1.a::int, t1.e::string FROM t1 GROUP BY t1.b::int"
+        @"SELECT t1.a::int, t1.e::text FROM t1 GROUP BY t1.b::int"
     );
 }
 
@@ -665,7 +665,7 @@ fn group_by_ordinal_out_of_range() {
 fn group_by_ordinal_counts_asterisk_expansion() {
     insta::assert_snapshot!(
         analyzed("SELECT * FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7", &[]),
-        @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7"
+        @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT * FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8", &[]),
@@ -677,7 +677,7 @@ fn group_by_ordinal_counts_asterisk_expansion() {
 fn group_by_ordinal_after_asterisk_reaches_the_aggregate() {
     insta::assert_snapshot!(
         analyzed("SELECT *, sum(a) FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7", &[]),
-        @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool, sum(t1.a::int)::decimal FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7"
+        @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool, sum(t1.a::int)::decimal FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT *, sum(a) FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8", &[]),
@@ -695,7 +695,7 @@ fn group_by_ordinal_before_asterisk() {
     // precedes it.
     insta::assert_snapshot!(
         analyzed("SELECT sum(a), * FROM t1 GROUP BY 2, 3, 4, 5, 6, 7, 8", &[]),
-        @"SELECT sum(t1.a::int)::decimal, t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool FROM t1 GROUP BY 2, 3, 4, 5, 6, 7, 8"
+        @"SELECT sum(t1.a::int)::decimal, t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool FROM t1 GROUP BY 2, 3, 4, 5, 6, 7, 8"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT sum(a), * FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8", &[]),
@@ -707,7 +707,7 @@ fn group_by_ordinal_before_asterisk() {
 fn group_by_ordinal_counts_join_asterisk() {
     insta::assert_snapshot!(
         analyzed("SELECT *, sum(t3.a) FROM t3 INNER JOIN t5 ON t3.a = t5.c GROUP BY 1, 2, 3, 4", &[]),
-        @"SELECT t3.a::int, t3.b::string, t5.c::int, t5.d::string, sum(t3.a::int)::decimal FROM t3 INNER JOIN t5 ON (t3.a::int = t5.c::int)::bool GROUP BY 1, 2, 3, 4"
+        @"SELECT t3.a::int, t3.b::text, t5.c::int, t5.d::text, sum(t3.a::int)::decimal FROM t3 INNER JOIN t5 ON (t3.a::int = t5.c::int)::bool GROUP BY 1, 2, 3, 4"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT *, sum(t3.a) FROM t3 INNER JOIN t5 ON t3.a = t5.c GROUP BY 1, 2, 3, 4, 5", &[]),
@@ -715,7 +715,7 @@ fn group_by_ordinal_counts_join_asterisk() {
     );
     insta::assert_snapshot!(
         analyzed("SELECT *, sum(t3.a) FROM t3 INNER JOIN t4 USING (a) GROUP BY 1, 2, 3", &[]),
-        @"SELECT t3.a::int, t3.b::string, t4.b::string, sum(t3.a::int)::decimal FROM t3 INNER JOIN t4 USING (a) GROUP BY 1, 2, 3"
+        @"SELECT t3.a::int, t3.b::text, t4.b::text, sum(t3.a::int)::decimal FROM t3 INNER JOIN t4 USING (a) GROUP BY 1, 2, 3"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT *, sum(t3.a) FROM t3 INNER JOIN t4 USING (a) GROUP BY 1, 2, 3, 4", &[]),
@@ -799,7 +799,7 @@ fn group_by_alias_beats_an_outer_column() {
     );
     insta::assert_snapshot!(
         analyzed("SELECT (SELECT sum(t5.c) AS d FROM t5 GROUP BY d) FROM t1", &[]),
-        @"SELECT (SELECT sum(t5.c::int)::decimal AS d FROM t5 GROUP BY t5.d::string)::decimal FROM t1"
+        @"SELECT (SELECT sum(t5.c::int)::decimal AS d FROM t5 GROUP BY t5.d::text)::decimal FROM t1"
     );
 }
 
@@ -823,17 +823,17 @@ fn group_by_alias_yields_to_a_derived_table_column() {
 fn group_by_ordinal_counts_the_hoisted_merged_column() {
     insta::assert_snapshot!(
         analyzed("SELECT * FROM t3 INNER JOIN t4 USING (b) GROUP BY 1, 2, 3", &[]),
-        @"SELECT t3.b::string, t3.a::int, t4.a::int FROM t3 INNER JOIN t4 USING (b) GROUP BY 1, 2, 3"
+        @"SELECT t3.b::text, t3.a::int, t4.a::int FROM t3 INNER JOIN t4 USING (b) GROUP BY 1, 2, 3"
     );
     insta::assert_snapshot!(
         analyzed("SELECT * FROM t3 INNER JOIN t4 USING (b) ORDER BY 1", &[]),
-        @"SELECT t3.b::string, t3.a::int, t4.a::int FROM t3 INNER JOIN t4 USING (b) ORDER BY 1 ASC"
+        @"SELECT t3.b::text, t3.a::int, t4.a::int FROM t3 INNER JOIN t4 USING (b) ORDER BY 1 ASC"
     );
     // A chain collapses three `a` columns into one, so the expansion is four
     // wide and a fifth ordinal is out of range.
     insta::assert_snapshot!(
         analyzed("SELECT * FROM t3 t1 INNER JOIN t3 t2 USING (a) INNER JOIN t3 t3 USING (a) GROUP BY 1, 2, 3, 4", &[]),
-        @"SELECT t1.a::int, t1.b::string, t2.b::string, t3.b::string FROM t3 AS t1 INNER JOIN t3 AS t2 USING (a) INNER JOIN t3 AS t3 USING (a) GROUP BY 1, 2, 3, 4"
+        @"SELECT t1.a::int, t1.b::text, t2.b::text, t3.b::text FROM t3 AS t1 INNER JOIN t3 AS t2 USING (a) INNER JOIN t3 AS t3 USING (a) GROUP BY 1, 2, 3, 4"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT * FROM t3 t1 INNER JOIN t3 t2 USING (a) INNER JOIN t3 t3 USING (a) GROUP BY 1, 2, 3, 4, 5", &[]),
@@ -1392,11 +1392,11 @@ fn having_column_covered_only_by_the_whole_primary_key() {
 fn primary_key_grouped_through_a_position_or_alias() {
     insta::assert_snapshot!(
         analyzed("SELECT t3.a, t3.b FROM t3 GROUP BY 1", &[]),
-        @"SELECT t3.a::int, t3.b::string FROM t3 GROUP BY 1"
+        @"SELECT t3.a::int, t3.b::text FROM t3 GROUP BY 1"
     );
     insta::assert_snapshot!(
         analyzed("SELECT t3.a AS x, t3.b FROM t3 GROUP BY x", &[]),
-        @"SELECT t3.a::int AS x, t3.b::string FROM t3 GROUP BY 1"
+        @"SELECT t3.a::int AS x, t3.b::text FROM t3 GROUP BY 1"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t3.b, t3.a FROM t3 GROUP BY 1", &[]),
@@ -1549,7 +1549,7 @@ fn having_over_a_join() {
             "SELECT t3.a FROM t3 INNER JOIN t4 ON t3.a = t4.a GROUP BY t3.a HAVING count(t4.b) > 0",
             &[]
         ),
-        @"SELECT t3.a::int FROM t3 INNER JOIN t4 ON (t3.a::int = t4.a::int)::bool GROUP BY t3.a::int HAVING (count(t4.b::string)::int > 0::int)::bool"
+        @"SELECT t3.a::int FROM t3 INNER JOIN t4 ON (t3.a::int = t4.a::int)::bool GROUP BY t3.a::int HAVING (count(t4.b::text)::int > 0::int)::bool"
     );
     insta::assert_snapshot!(
         analyze_error(
@@ -1621,7 +1621,7 @@ fn having_over_an_expression_grouping_key() {
     // A function call as the key.
     insta::assert_snapshot!(
         analyzed("SELECT 1 FROM t1 GROUP BY upper(t1.e) HAVING upper(t1.e) = 'X'", &[]),
-        @"SELECT 1::int FROM t1 GROUP BY upper(t1.e::string)::string HAVING (upper(t1.e::string)::string = 'X'::string)::bool"
+        @"SELECT 1::int FROM t1 GROUP BY upper(t1.e::text)::text HAVING (upper(t1.e::text)::text = 'X'::text)::bool"
     );
     // Not the root of the predicate: the key is one operand of the comparison.
     insta::assert_snapshot!(
@@ -1834,7 +1834,7 @@ fn select_list_matches_an_expression_key_at_depth() {
     // A function call as the key, under another function call.
     insta::assert_snapshot!(
         analyzed("SELECT lower(upper(t1.e)) FROM t1 GROUP BY upper(t1.e)", &[]),
-        @"SELECT lower(upper(t1.e::string)::string)::string FROM t1 GROUP BY upper(t1.e::string)::string"
+        @"SELECT lower(upper(t1.e::text)::text)::text FROM t1 GROUP BY upper(t1.e::text)::text"
     );
 }
 
@@ -1960,7 +1960,7 @@ fn select_list_aggregate_arguments_need_no_expression_key() {
     );
     insta::assert_snapshot!(
         analyzed("SELECT count(DISTINCT t1.a + t1.c) FROM t1 GROUP BY t1.e", &[]),
-        @"SELECT count(DISTINCT (CAST(t1.a AS double) + t1.c::double)::double)::int FROM t1 GROUP BY t1.e::string"
+        @"SELECT count(DISTINCT (CAST(t1.a AS double) + t1.c::double)::double)::int FROM t1 GROUP BY t1.e::text"
     );
 }
 
@@ -1997,11 +1997,11 @@ fn grouping_keys_reach_into_a_select_list_subquery() {
 fn correlated_aggregate_satisfies_the_level_it_belongs_to() {
     insta::assert_snapshot!(
         analyzed("SELECT (SELECT sum(t1.a) FROM t2) FROM t1 GROUP BY t1.e", &[]),
-        @"SELECT (SELECT sum(t1.a::int)::decimal FROM t2)::decimal FROM t1 GROUP BY t1.e::string"
+        @"SELECT (SELECT sum(t1.a::int)::decimal FROM t2)::decimal FROM t1 GROUP BY t1.e::text"
     );
     insta::assert_snapshot!(
         analyzed("SELECT (SELECT (SELECT sum(t1.a) FROM t5) FROM t2) FROM t1 GROUP BY t1.e", &[]),
-        @"SELECT (SELECT (SELECT sum(t1.a::int)::decimal FROM t5)::decimal FROM t2)::decimal FROM t1 GROUP BY t1.e::string"
+        @"SELECT (SELECT (SELECT sum(t1.a::int)::decimal FROM t5)::decimal FROM t2)::decimal FROM t1 GROUP BY t1.e::text"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT sum(t1.a + t2.c) FROM t2) FROM t1 GROUP BY t1.e", &[]),

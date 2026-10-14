@@ -102,7 +102,7 @@ fn map_reduce_query() {
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT "hash_testing"."product_code" FROM "hash_testing" WHERE "hash_testing"."identification_number" = CAST($1 AS int) and "hash_testing"."product_code" = CAST($2 AS string)"#);
+    assert_snapshot!(sql, @r#"SELECT "hash_testing"."product_code" FROM "hash_testing" WHERE "hash_testing"."identification_number" = CAST($1 AS int) and "hash_testing"."product_code" = CAST($2 AS text)"#);
     let param1 = Value::from(1);
     let param457 = Value::from("457");
     let bucket = query

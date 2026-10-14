@@ -18,7 +18,7 @@ EXPLAIN (LOGICAL) SELECT item FROM warehouse;
 ```
 
 ```sql
-projection (warehouse.item::string -> item)
+projection (warehouse.item::text -> item)
   scan warehouse
 ```
 
@@ -60,9 +60,9 @@ WHERE amount > 1000;
 
 ```sql
 except
-  projection (items.id::int -> id, items.name::string -> name)
+  projection (items.id::int -> id, items.name::text -> name)
     scan items
-  projection (orders.id::int -> id, orders.item::string -> item)
+  projection (orders.id::int -> id, orders.item::text -> item)
     selection (orders.amount::int > 1000::int)
       scan orders
 ```
@@ -180,7 +180,7 @@ EXPLAIN (LOGICAL) INSERT INTO orders (id, item, amount) SELECT * FROM items WHER
 ```sql
 insert into orders on conflict: fail
   motion [policy: local segment([ref(id)]), program: ReshardIfNeeded]
-    projection (items.id::int -> id, items.name::string -> name, items.stock::int -> stock)
+    projection (items.id::int -> id, items.name::text -> name, items.stock::int -> stock)
       selection (items.id::int = 5::int)
         scan items
 ```
@@ -220,7 +220,7 @@ EXPLAIN (LOGICAL) UPDATE warehouse SET type = 'N/A';
 ```sql
 update warehouse (type = col_0)
   motion [policy: local, program: ReshardIfNeeded]
-    projection ('N/A'::string -> col_0, warehouse.id::int -> col_1)
+    projection ('N/A'::text -> col_0, warehouse.id::int -> col_1)
       scan warehouse
 ```
 
@@ -239,7 +239,7 @@ EXPLAIN (LOGICAL) INSERT INTO warehouse VALUES (1, 'bricks', 'heavy');
 insert into warehouse on conflict: fail
   motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value ROW(1::int, 'bricks'::string, 'heavy'::string)
+      value ROW(1::int, 'bricks'::text, 'heavy'::text)
 ```
 
 Пример `JOIN` двух таблиц с разными ключами шардирования:
@@ -253,12 +253,12 @@ ON orders.id=new_table.nmbr;
 ```
 
 ```sql
-projection (orders.id::int -> id, orders.item::string -> item)
+projection (orders.id::int -> id, orders.item::text -> item)
   join on (orders.id::int = new_table.nmbr::int)
     scan orders
     motion [policy: segment([ref(nmbr)]), program: ReshardIfNeeded]
       scan new_table
-        projection (deliveries.nmbr::int -> nmbr, deliveries.product::string -> product)
+        projection (deliveries.nmbr::int -> nmbr, deliveries.product::text -> product)
           scan deliveries
 ```
 
@@ -280,9 +280,9 @@ update deliveries (
     projection (
       deliveries.nmbr::int -> col_0,
       deliveries.bucket_id::int -> col_1,
-      'metals'::string -> col_2,
+      'metals'::text -> col_2,
       4000::int -> col_3,
-      deliveries.product::string -> col_4
+      deliveries.product::text -> col_4
     )
       selection (deliveries.nmbr::int = 1::int)
         scan deliveries
@@ -306,12 +306,12 @@ ON items.name = new_table.item;
 ```
 
 ```sql
-projection (items.name::string -> name)
-  join on (items.name::string = new_table.item::string)
+projection (items.name::text -> name)
+  join on (items.name::text = new_table.item::text)
     scan items
     motion [policy: full, program: ReshardIfNeeded]
       scan new_table
-        projection (orders.item::string -> item)
+        projection (orders.item::text -> item)
           scan orders
 ```
 

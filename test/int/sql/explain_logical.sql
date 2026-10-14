@@ -13,7 +13,7 @@ CREATE TABLE g (a INT PRIMARY KEY, b DOUBLE, c TEXT) DISTRIBUTED GLOBALLY;
 -- SQL:
 explain (logical) select * from _pico_table;
 -- EXPECTED:
-projection (_pico_table.id::int -> id, _pico_table.name::string -> name, _pico_table.distribution::map -> distribution, _pico_table.format::array -> format, _pico_table.schema_version::int -> schema_version, _pico_table.operable::bool -> operable, _pico_table.engine::string -> engine, _pico_table.owner::int -> owner, _pico_table.description::string -> description, _pico_table.opts::array -> opts)
+projection (_pico_table.id::int -> id, _pico_table.name::text -> name, _pico_table.distribution::map -> distribution, _pico_table.format::array -> format, _pico_table.schema_version::int -> schema_version, _pico_table.operable::bool -> operable, _pico_table.engine::text -> engine, _pico_table.owner::int -> owner, _pico_table.description::text -> description, _pico_table.opts::array -> opts)
   scan _pico_table
 
 -- TEST: many-rel-operators
@@ -21,23 +21,23 @@ projection (_pico_table.id::int -> id, _pico_table.name::string -> name, _pico_t
 explain (logical) select * from t join t tt on true where t.b = 3 group by 1, 2, 3, 4, 5, 6 order by 4 limit 2;
 -- EXPECTED:
 limit 2
-  projection (a::int, b::double, c::string, a::int, b::double, c::string)
+  projection (a::int, b::double, c::text, a::int, b::double, c::text)
     order by (4)
       scan
-        projection (gr_expr_1::int -> a, gr_expr_2::double -> b, gr_expr_3::string -> c, gr_expr_4::int -> a, gr_expr_5::double -> b, gr_expr_6::string -> c)
-          group by (gr_expr_1::int, gr_expr_2::double, gr_expr_3::string, gr_expr_4::int, gr_expr_5::double, gr_expr_6::string)
+        projection (gr_expr_1::int -> a, gr_expr_2::double -> b, gr_expr_3::text -> c, gr_expr_4::int -> a, gr_expr_5::double -> b, gr_expr_6::text -> c)
+          group by (gr_expr_1::int, gr_expr_2::double, gr_expr_3::text, gr_expr_4::int, gr_expr_5::double, gr_expr_6::text)
             motion [policy: full, program: ReshardIfNeeded]
               limit 2
-                projection (gr_expr_1::int, gr_expr_2::double, gr_expr_3::string, gr_expr_4::int, gr_expr_5::double, gr_expr_6::string)
+                projection (gr_expr_1::int, gr_expr_2::double, gr_expr_3::text, gr_expr_4::int, gr_expr_5::double, gr_expr_6::text)
                   order by (4)
                     scan
-                      projection (t.a::int -> gr_expr_1, t.b::double -> gr_expr_2, t.c::string -> gr_expr_3, tt.a::int -> gr_expr_4, tt.b::double -> gr_expr_5, tt.c::string -> gr_expr_6)
-                        group by (t.a::int, t.b::double, t.c::string, tt.a::int, tt.b::double, tt.c::string)
+                      projection (t.a::int -> gr_expr_1, t.b::double -> gr_expr_2, t.c::text -> gr_expr_3, tt.a::int -> gr_expr_4, tt.b::double -> gr_expr_5, tt.c::text -> gr_expr_6)
+                        group by (t.a::int, t.b::double, t.c::text, tt.a::int, tt.b::double, tt.c::text)
                           selection (t.b::double = 3::int)
                             join on (true::bool)
                               scan t
                               motion [policy: full, program: ReshardIfNeeded]
-                                projection (tt.a::int -> a, tt.b::double -> b, tt.c::string -> c, tt.bucket_id::int -> bucket_id)
+                                projection (tt.a::int -> a, tt.b::double -> b, tt.c::text -> c, tt.bucket_id::int -> bucket_id)
                                   scan t -> tt
 
 -- TEST: many-rel-operators-fmt
@@ -48,56 +48,56 @@ limit 2
   projection (
     a::int,
     b::double,
-    c::string,
+    c::text,
     a::int,
     b::double,
-    c::string
+    c::text
   )
     order by (4)
       scan
         projection (
           gr_expr_1::int -> a,
           gr_expr_2::double -> b,
-          gr_expr_3::string -> c,
+          gr_expr_3::text -> c,
           gr_expr_4::int -> a,
           gr_expr_5::double -> b,
-          gr_expr_6::string -> c
+          gr_expr_6::text -> c
         )
           group by (
             gr_expr_1::int,
             gr_expr_2::double,
-            gr_expr_3::string,
+            gr_expr_3::text,
             gr_expr_4::int,
             gr_expr_5::double,
-            gr_expr_6::string
+            gr_expr_6::text
           )
             motion [policy: full, program: ReshardIfNeeded]
               limit 2
                 projection (
                   gr_expr_1::int,
                   gr_expr_2::double,
-                  gr_expr_3::string,
+                  gr_expr_3::text,
                   gr_expr_4::int,
                   gr_expr_5::double,
-                  gr_expr_6::string
+                  gr_expr_6::text
                 )
                   order by (4)
                     scan
                       projection (
                         t.a::int -> gr_expr_1,
                         t.b::double -> gr_expr_2,
-                        t.c::string -> gr_expr_3,
+                        t.c::text -> gr_expr_3,
                         tt.a::int -> gr_expr_4,
                         tt.b::double -> gr_expr_5,
-                        tt.c::string -> gr_expr_6
+                        tt.c::text -> gr_expr_6
                       )
                         group by (
                           t.a::int,
                           t.b::double,
-                          t.c::string,
+                          t.c::text,
                           tt.a::int,
                           tt.b::double,
-                          tt.c::string
+                          tt.c::text
                         )
                           selection (t.b::double = 3::int)
                             join on (true::bool)
@@ -106,7 +106,7 @@ limit 2
                                 projection (
                                   tt.a::int -> a,
                                   tt.b::double -> b,
-                                  tt.c::string -> c,
+                                  tt.c::text -> c,
                                   tt.bucket_id::int -> bucket_id
                                 )
                                   scan t -> tt
@@ -118,7 +118,7 @@ explain (logical) insert into t values (1, 1, '1');
 insert into t on conflict: fail
   motion [policy: segment([ref("COLUMN_3"), ref("COLUMN_1")]), program: ReshardIfNeeded]
     values
-      value ROW(1::int, 1::int, '1'::string)
+      value ROW(1::int, 1::int, '1'::text)
 
 -- TEST: delete
 -- SQL:
@@ -126,8 +126,8 @@ explain (logical) delete from t where a = 1 and c = '1';
 -- EXPECTED:
 delete from t
   motion [policy: local, program: [PrimaryKey(0, 1), ReshardIfNeeded]]
-    projection (t.c::string -> pk_col_0, t.a::int -> pk_col_1)
-      selection ((t.a::int = 1::int and t.c::string = '1'::string))
+    projection (t.c::text -> pk_col_0, t.a::int -> pk_col_1)
+      selection ((t.a::int = 1::int and t.c::text = '1'::text))
         scan t
 
 -- TEST: update
@@ -136,7 +136,7 @@ explain (logical) update t set b = b + 1 where a = 1;
 -- EXPECTED:
 update t (b = col_0)
   motion [policy: local, program: ReshardIfNeeded]
-    projection (t.b::double + 1::int -> col_0, t.c::string -> col_1, t.a::int -> col_2)
+    projection (t.b::double + 1::int -> col_0, t.c::text -> col_1, t.a::int -> col_2)
       selection (t.a::int = 1::int)
         scan t
 
@@ -376,12 +376,12 @@ projection (:a::int -> col_1)
 -- SQL:
 explain (logical) select c::text || a::text from t;
 -- EXPECTED:
-projection (t.c::string::string || t.a::int::string -> col_1)
+projection (t.c::text::text || t.a::int::text -> col_1)
   scan t
 
 -- TEST: concat-operand-casted-to-non-text
 -- SQL:
 explain (logical) select c || a::int from t;
 -- EXPECTED:
-projection (t.c::string::string || t.a::int::int::string -> col_1)
+projection (t.c::text::text || t.a::int::int::text -> col_1)
   scan t

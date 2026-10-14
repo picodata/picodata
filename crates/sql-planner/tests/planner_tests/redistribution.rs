@@ -793,7 +793,7 @@ fn join_chain_1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op)
       join on (t3.id::int = 1::int)
         join on (ROW(t1.id::int, t2.id::int) = ROW(1::int, 1::int))
           scan test_space -> t1
@@ -810,7 +810,7 @@ fn join_chain_2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op)
       join on ((t2."sysFrom"::int = t3."sysFrom"::int and t3.id::int = 1::int))
         join on ((t1."sysFrom"::int = t2."sysFrom"::int and ROW(t2.id::int, t1.id::int) = ROW(1::int, 1::int)))
           scan test_space -> t1
@@ -827,13 +827,13 @@ fn join_chain_3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op)
       join on ((t2."sysFrom"::int = t3."sysFrom"::int and t3.id::int = 2::int))
         join on ((t1."sysFrom"::int = t2."sysFrom"::int and ROW(t2.id::int, t1.id::int) = ROW(1::int, 1::int)))
           scan test_space -> t1
           scan test_space -> t2
         motion [policy: full, program: ReshardIfNeeded]
-          projection (t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op, t3.bucket_id::int -> bucket_id)
+          projection (t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op, t3.bucket_id::int -> bucket_id)
             scan test_space -> t3
     "#);
 }
@@ -846,7 +846,7 @@ fn join_chain_4() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op)
       join on ((t2.id::int = t3.id::int and t3."sysFrom"::int = 1::int))
         left join on ((t1.id::int = t2.id::int and t2."sysFrom"::int = 1::int))
           scan test_space -> t1
@@ -863,7 +863,7 @@ fn join_chain_5() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op)
       left join on ((t2.id::int = t3.id::int and t3."sysFrom"::int = 1::int))
         join on ((t1.id::int = t2.id::int and t2."sysFrom"::int = 1::int))
           scan test_space -> t1
@@ -881,7 +881,7 @@ fn join_chain_6() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op, t4.id::int -> id, t4."sysFrom"::int -> "sysFrom", t4."FIRST_NAME"::string -> "FIRST_NAME", t4.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op, t4.id::int -> id, t4."sysFrom"::int -> "sysFrom", t4."FIRST_NAME"::text -> "FIRST_NAME", t4.sys_op::int -> sys_op)
       join on ((t3.id::int = t4.id::int and t4."sysFrom"::int = 1::int))
         left join on ((t2.id::int = t3.id::int and t3."sysFrom"::int = 1::int))
           join on ((t1.id::int = t2.id::int and t2."sysFrom"::int = 1::int))
@@ -901,7 +901,7 @@ fn join_chain_7() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op, t4.id::int -> id, t4."sysFrom"::int -> "sysFrom", t4."FIRST_NAME"::string -> "FIRST_NAME", t4.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op, t4.id::int -> id, t4."sysFrom"::int -> "sysFrom", t4."FIRST_NAME"::text -> "FIRST_NAME", t4.sys_op::int -> sys_op)
       join on ((t3.id::int = t4.id::int and t4."sysFrom"::int = 1::int))
         join on ((t2.id::int = t3.id::int and t3."sysFrom"::int = 1::int))
           left join on ((t1.id::int = t2.id::int and t2."sysFrom"::int = 1::int))
@@ -921,7 +921,7 @@ fn join_chain_8() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op, t4.id::int -> id, t4."sysFrom"::int -> "sysFrom", t4."FIRST_NAME"::string -> "FIRST_NAME", t4.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op, t4.id::int -> id, t4."sysFrom"::int -> "sysFrom", t4."FIRST_NAME"::text -> "FIRST_NAME", t4.sys_op::int -> sys_op)
       left join on ((t3.id::int = t4.id::int and t4."sysFrom"::int = 1::int))
         join on ((t2.id::int = t3.id::int and t3."sysFrom"::int = 1::int))
           join on ((t1.id::int = t2.id::int and t2."sysFrom"::int = 1::int))
@@ -940,7 +940,7 @@ fn join_chain_9() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op)
       left join on ((t2.id::int = t3.id::int and t3."sysFrom"::int = 1::int))
         left join on ((t1.id::int = t2.id::int and t2."sysFrom"::int = 1::int))
           scan test_space -> t1
@@ -963,7 +963,7 @@ fn join_chain_10() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op, t4.id::int -> id, t4."sysFrom"::int -> "sysFrom", t4."FIRST_NAME"::string -> "FIRST_NAME", t4.sys_op::int -> sys_op, t5.id::int -> id, t5."sysFrom"::int -> "sysFrom", t5."FIRST_NAME"::string -> "FIRST_NAME", t5.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op, t4.id::int -> id, t4."sysFrom"::int -> "sysFrom", t4."FIRST_NAME"::text -> "FIRST_NAME", t4.sys_op::int -> sys_op, t5.id::int -> id, t5."sysFrom"::int -> "sysFrom", t5."FIRST_NAME"::text -> "FIRST_NAME", t5.sys_op::int -> sys_op)
       join on ((t4.id::int = t5.id::int and t5."sysFrom"::int = 1::int))
         join on ((t3.id::int = t4.id::int and t4."sysFrom"::int = 1::int))
           left join on ((t2.id::int = t3.id::int and t3."sysFrom"::int = 1::int))
@@ -989,7 +989,7 @@ fn join_bucket_id_eq_in_where() {
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op)
       selection (t1.bucket_id::int = t2.bucket_id::int)
         join on (true::bool)
           scan test_space -> t1
@@ -1007,7 +1007,7 @@ fn join_bucket_id_eq_in_inner_on() {
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op)
       join on (t1.bucket_id::int = t2.bucket_id::int)
         scan test_space -> t1
         scan test_space -> t2
@@ -1025,7 +1025,7 @@ fn left_join_bucket_id_eq_in_on() {
 "#;
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op)
       left join on (t1.bucket_id::int = t2.bucket_id::int)
         scan test_space -> t1
         scan test_space -> t2
@@ -1076,7 +1076,7 @@ fn inner_above_left_join_diagnostic() {
     // next inner join
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::string -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::string -> "FIRST_NAME", t3.sys_op::int -> sys_op)
+    projection (t1.id::int -> id, t1."sysFrom"::int -> "sysFrom", t1."FIRST_NAME"::text -> "FIRST_NAME", t1.sys_op::int -> sys_op, t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t3.id::int -> id, t3."sysFrom"::int -> "sysFrom", t3."FIRST_NAME"::text -> "FIRST_NAME", t3.sys_op::int -> sys_op)
       join on (t2.id::int = t3.id::int)
         left join on (t1.id::int = t2.id::int)
           scan test_space -> t1

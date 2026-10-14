@@ -367,7 +367,7 @@ fn test_bool_folding18() {
     let query_explain = explain_logical(&plan).unwrap();
 
     insta::assert_snapshot!(query_explain, @r"
-    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
+    projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op)
       selection (hash_testing.product_units::bool = true::bool)
         scan hash_testing
     ");

@@ -70,6 +70,6 @@ fn bool_in5() {
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE TRIM (CAST (("t"."a" = CAST($1 AS int) or "t"."a" = CAST($2 AS int)) as string)) < CAST($3 AS string)"#
+        @r#"SELECT "t"."a" FROM "t" WHERE TRIM (CAST (("t"."a" = CAST($1 AS int) or "t"."a" = CAST($2 AS int)) as text)) < CAST($3 AS text)"#
     );
 }

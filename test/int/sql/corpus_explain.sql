@@ -599,7 +599,7 @@ GROUP BY
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  to_char(a.a::datetime::datetime, '%Y-%m-%d'::string)::string -> c0,
+  to_char(a.a::datetime::datetime, '%Y-%m-%d'::text)::text -> c0,
   sum(a.f::decimal::decimal)::decimal -> c1,
   sum(a.e::decimal::decimal)::decimal -> c2,
   sum(a.g::decimal::decimal)::decimal -> c3
@@ -625,7 +625,7 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS string)) as "c0",
+  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS text)) as "c0",
   sum (CAST ("a"."f" as decimal)) as "c1",
   sum (CAST ("a"."e" as decimal)) as "c2",
   sum (CAST ("a"."g" as decimal)) as "c3"
@@ -699,13 +699,13 @@ GROUP BY
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  cte0.c0::string -> c0,
+  cte0.c0::text -> c0,
   coalesce(
     sum(cte0.c1::decimal::decimal)::decimal::decimal,
     0.0::decimal
   )::decimal -> c1
 )
-  group by (cte0.c0::string)
+  group by (cte0.c0::text)
     scan cte cte0($0)
 subquery $0:
   projection (
@@ -714,8 +714,8 @@ subquery $0:
         t0.cs::datetime::datetime,
         t0.a::datetime::datetime
       )::datetime::datetime,
-      '%Y-%m-%d'::string
-    )::string -> c0,
+      '%Y-%m-%d'::text
+    )::text -> c0,
     t0.d::decimal * coalesce(t3.cj::int::decimal, 0::decimal)::decimal * case 
       when not t0.h::int is null then -1::int
       else 1::int
@@ -730,15 +730,15 @@ subquery $0:
             t0.cs::datetime::datetime,
             t0.a::datetime::datetime
           )::datetime::datetime,
-          '%Y'::string
-        )::string::int = 2023::int
+          '%Y'::text
+        )::text::int = 2023::int
         and to_char(
           coalesce(
             t0.cs::datetime::datetime,
             t0.a::datetime::datetime
           )::datetime::datetime,
-          '%m'::string
-        )::string::int = 7::int
+          '%m'::text
+        )::text::int = 7::int
         and coalesce(t1.cq::int::int, t4.cq::int::int)::int = 22::int
         and t2.ag::int is null
         and (t0.h::int is null or t0.h::int = -1::int)
@@ -782,7 +782,7 @@ FROM
             CAST ("t0"."a" as datetime)
           ) as datetime
         ),
-        CAST('%Y-%m-%d' AS string)
+        CAST('%Y-%m-%d' AS text)
       ) as "c0",
       "t0"."d" * coalesce (CAST ("t3"."cj" as decimal), CAST(0 AS decimal)) * CASE
         WHEN not "t0"."h" is null THEN CAST(-1 AS int)
@@ -807,7 +807,7 @@ FROM
               CAST ("t0"."a" as datetime)
             ) as datetime
           ),
-          CAST('%Y' AS string)
+          CAST('%Y' AS text)
         ) as int
       ) = CAST(2023 AS int)
       and CAST (
@@ -818,7 +818,7 @@ FROM
               CAST ("t0"."a" as datetime)
             ) as datetime
           ),
-          CAST('%m' AS string)
+          CAST('%m' AS text)
         ) as int
       ) = CAST(7 AS int)
       and coalesce (CAST ("t1"."cq" as int), CAST ("t4"."cq" as int)) = CAST(22 AS int)
@@ -899,10 +899,10 @@ WHERE
 motion [policy: full, program: RemoveDuplicates]
   union
     projection (
-      t0.ay::string -> ay,
-      t0.bg::string -> bg,
-      t0.ah::string -> ah,
-      t1.cx::string -> cx
+      t0.ay::text -> ay,
+      t0.bg::text -> bg,
+      t0.ah::text -> ah,
+      t1.cx::text -> cx
     )
       selection (
         (
@@ -914,15 +914,15 @@ motion [policy: full, program: RemoveDuplicates]
         )
       )
         left join on (
-          ROW(t0.cv::int, t0.ay::string) = ROW(t1.cv::int, t1.ay::string)
+          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
           scan a -> t0 (indexed by ix_b)
           scan ad -> t1
     projection (
-      t2.ay::string -> c0,
-      coalesce(t4.bg::string::string, t2.bg::string::string)::string -> c1,
-      coalesce(t4.ah::string::string, t2.ah::string::string)::string -> c2,
-      t1.cx::string -> c3
+      t2.ay::text -> c0,
+      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+      t1.cx::text -> c3
     )
       selection (
         (
@@ -933,21 +933,21 @@ motion [policy: full, program: RemoveDuplicates]
               t2.cs::datetime::datetime,
               t2.a::datetime::datetime
             )::datetime::datetime,
-            '%Y'::string
-          )::string::int = 2023::int
+            '%Y'::text
+          )::text::int = 2023::int
           and to_char(
             coalesce(
               t2.cs::datetime::datetime,
               t2.a::datetime::datetime
             )::datetime::datetime,
-            '%m'::string
-          )::string::int = 7::int
+            '%m'::text
+          )::text::int = 7::int
           and coalesce(t4.cq::int::int, t6.cq::int::int)::int = 22::int
         )
       )
         left join on (t2.cu::int = t6.cu::int)
           left join on (
-            ROW(t2.cv::int, t2.ay::string) = ROW(t1.cv::int, t1.ay::string)
+            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
           )
             left join on (t2.cw::int = t5.cw::int)
               left join on (
@@ -990,12 +990,12 @@ UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
   coalesce (
-    CAST ("t4"."bg" as string),
-    CAST ("t2"."bg" as string)
+    CAST ("t4"."bg" as text),
+    CAST ("t2"."bg" as text)
   ) as "c1",
   coalesce (
-    CAST ("t4"."ah" as string),
-    CAST ("t2"."ah" as string)
+    CAST ("t4"."ah" as text),
+    CAST ("t2"."ah" as text)
   ) as "c2",
   "t1"."cx" as "c3"
 FROM
@@ -1019,7 +1019,7 @@ WHERE
           CAST ("t2"."a" as datetime)
         ) as datetime
       ),
-      CAST('%Y' AS string)
+      CAST('%Y' AS text)
     ) as int
   ) = CAST(2023 AS int)
   and CAST (
@@ -1030,7 +1030,7 @@ WHERE
           CAST ("t2"."a" as datetime)
         ) as datetime
       ),
-      CAST('%m' AS string)
+      CAST('%m' AS text)
     ) as int
   ) = CAST(7 AS int)
   and coalesce (CAST ("t4"."cq" as int), CAST ("t6"."cq" as int)) = CAST(22 AS int)
@@ -1334,10 +1334,10 @@ WHERE
 motion [policy: full, program: RemoveDuplicates]
   union
     projection (
-      t0.ay::string -> ay,
-      t0.bg::string -> bg,
-      t0.ah::string -> ah,
-      t1.cx::string -> cx
+      t0.ay::text -> ay,
+      t0.bg::text -> bg,
+      t0.ah::text -> ah,
+      t1.cx::text -> cx
     )
       selection (
         (
@@ -1348,15 +1348,15 @@ motion [policy: full, program: RemoveDuplicates]
         )
       )
         left join on (
-          ROW(t0.cv::int, t0.ay::string) = ROW(t1.cv::int, t1.ay::string)
+          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
           scan a -> t0 (indexed by ix_c)
           scan ad -> t1
     projection (
-      t2.ay::string -> c0,
-      coalesce(t4.bg::string::string, t2.bg::string::string)::string -> c1,
-      coalesce(t4.ah::string::string, t2.ah::string::string)::string -> c2,
-      t1.cx::string -> c3
+      t2.ay::text -> c0,
+      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+      t1.cx::text -> c3
     )
       selection (
         (
@@ -1371,7 +1371,7 @@ motion [policy: full, program: RemoveDuplicates]
       )
         left join on (t2.cu::int = t6.cu::int)
           left join on (
-            ROW(t2.cv::int, t2.ay::string) = ROW(t1.cv::int, t1.ay::string)
+            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
           )
             left join on (t2.cw::int = t5.cw::int)
               left join on (
@@ -1413,12 +1413,12 @@ UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
   coalesce (
-    CAST ("t4"."bg" as string),
-    CAST ("t2"."bg" as string)
+    CAST ("t4"."bg" as text),
+    CAST ("t2"."bg" as text)
   ) as "c1",
   coalesce (
-    CAST ("t4"."ah" as string),
-    CAST ("t2"."ah" as string)
+    CAST ("t4"."ah" as text),
+    CAST ("t2"."ah" as text)
   ) as "c2",
   "t1"."cx" as "c3"
 FROM
@@ -1951,16 +1951,16 @@ limit 10
   projection (
     cte4.cv::int -> cv,
     cte4.b::int -> b,
-    cte4.ay::string -> ay,
-    cte4.bg::string -> bg,
+    cte4.ay::text -> ay,
+    cte4.bg::text -> bg,
     cte4.cu::int -> cu,
     cte4.cw::int -> cw,
     cte4.ac::int -> ac,
-    cte4.ae::string -> ae,
-    cte4.ab::string -> ab,
+    cte4.ae::text -> ae,
+    cte4.ab::text -> ab,
     cte4.c9::int -> c9,
     cte4.d::decimal -> d,
-    cte4.cx::string -> cx,
+    cte4.cx::text -> cx,
     cte4.c11::int -> c11
   )
     selection (cte4.c11::int > 0::int)
@@ -2016,16 +2016,16 @@ subquery $1:
     projection (
       t6.cv::int -> cv,
       t6.ag::int -> b,
-      t3.ay::string -> ay,
-      t3.bg::string -> bg,
+      t3.ay::text -> ay,
+      t3.bg::text -> bg,
       t6.cu::int -> cu,
       t6.cw::int -> cw,
       coalesce(t6.co::int::int, t6.cm::int::int, 0::int)::int -> ac,
       case 
-        when not t6.co::int is null or not t6.cm::int is null then t6.cn::string
-        else '0000'::string
+        when not t6.co::int is null or not t6.cm::int is null then t6.cn::text
+        else '0000'::text
       end -> ae,
-      to_char(t6.cl::datetime::datetime, '%Y-%m-%d'::string)::string -> ab,
+      to_char(t6.cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
       case 
         when not t6.co::int is null then 0::int
         when not t6.cm::int is null then 1::int
@@ -2078,13 +2078,13 @@ subquery $2:
   projection (
     t9.cv::int -> cv,
     t9.ag::int -> b,
-    t9.ay::string -> ay,
-    coalesce(t3.bg::string::string, t9.bg::string::string)::string -> bg,
+    t9.ay::text -> ay,
+    coalesce(t3.bg::text::text, t9.bg::text::text)::text -> bg,
     coalesce(t3.cu::int::int, t9.cu::int::int)::int -> cu,
     t9.cw::int -> cw,
     coalesce(t9.co::int::int, t9.cm::int::int, 0::int)::int -> ac,
-    t9.cn::string -> ae,
-    to_char(t9.cl::datetime::datetime, '%Y-%m-%d'::string)::string -> ab,
+    t9.cn::text -> ae,
+    to_char(t9.cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
     case 
       when not t9.co::int is null then 0::int
       else 1::int
@@ -2131,13 +2131,13 @@ subquery $3:
         projection (
           cte1.cv::int -> cv,
           cte1.b::int -> b,
-          cte1.ay::string -> ay,
-          cte1.bg::string -> bg,
+          cte1.ay::text -> ay,
+          cte1.bg::text -> bg,
           cte1.cu::int -> cu,
           cte1.cw::int -> cw,
           cte1.ac::int -> ac,
-          cte1.ae::string -> ae,
-          cte1.ab::string -> ab,
+          cte1.ae::text -> ae,
+          cte1.ab::text -> ab,
           cte1.c9::int -> c9,
           cte1.d::decimal -> d
         )
@@ -2145,13 +2145,13 @@ subquery $3:
       projection (
         cte2.cv::int -> cv,
         cte2.b::int -> b,
-        cte2.ay::string -> ay,
-        cte2.bg::string -> bg,
+        cte2.ay::text -> ay,
+        cte2.bg::text -> bg,
         cte2.cu::int -> cu,
         cte2.cw::int -> cw,
         cte2.ac::int -> ac,
-        cte2.ae::string -> ae,
-        cte2.ab::string -> ab,
+        cte2.ae::text -> ae,
+        cte2.ab::text -> ab,
         cte2.c9::int -> c9,
         cte2.d::decimal -> d
       )
@@ -2160,38 +2160,38 @@ subquery $4:
   projection (
     unnamed_join.cv::int -> cv,
     unnamed_join.b::int -> b,
-    unnamed_join.ay::string -> ay,
-    unnamed_join.bg::string -> bg,
+    unnamed_join.ay::text -> ay,
+    unnamed_join.bg::text -> bg,
     unnamed_join.cu::int -> cu,
     unnamed_join.cw::int -> cw,
     unnamed_join.ac::int -> ac,
-    unnamed_join.ae::string -> ae,
-    unnamed_join.ab::string -> ab,
+    unnamed_join.ae::text -> ae,
+    unnamed_join.ab::text -> ab,
     unnamed_join.c9::int -> c9,
     unnamed_join.d::decimal -> d,
-    unnamed_join.cx::string -> cx,
+    unnamed_join.cx::text -> cx,
     row_number() over (order by (unnamed_join.b::int desc) ) -> c11
   )
     motion [policy: full, program: AddMissingRowsForLeftJoin]
       projection (
         cte3.cv::int -> cv,
         cte3.b::int -> b,
-        cte3.ay::string -> ay,
-        cte3.bg::string -> bg,
+        cte3.ay::text -> ay,
+        cte3.bg::text -> bg,
         cte3.cu::int -> cu,
         cte3.cw::int -> cw,
         cte3.ac::int -> ac,
-        cte3.ae::string -> ae,
-        cte3.ab::string -> ab,
+        cte3.ae::text -> ae,
+        cte3.ab::text -> ab,
         cte3.c9::int -> c9,
         cte3.d::decimal -> d,
         t12.cv::int -> cv,
-        t12.ay::string -> ay,
+        t12.ay::text -> ay,
         t12.bucket_id::int -> bucket_id,
-        t12.cx::string -> cx
+        t12.cx::text -> cx
       )
         join on (
-          ROW(cte3.cv::int, cte3.ay::string) = ROW(t12.cv::int, t12.ay::string)
+          ROW(cte3.cv::int, cte3.ay::text) = ROW(t12.cv::int, t12.ay::text)
         )
           scan cte cte3($3)
           scan ad -> t12
@@ -2294,9 +2294,9 @@ SELECT
   CASE
     WHEN not "t6"."co" is null
     or not "t6"."cm" is null THEN "t6"."cn"
-    ELSE CAST('0000' AS string)
+    ELSE CAST('0000' AS text)
   END as "ae",
-  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS string)) as "ab",
+  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
   CASE
     WHEN not "t6"."co" is null THEN CAST(0 AS int)
     WHEN not "t6"."cm" is null THEN CAST(1 AS int)
@@ -2376,8 +2376,8 @@ FROM
       "t9"."ag" as "b",
       "t9"."ay",
       coalesce (
-        CAST ("t3"."bg" as string),
-        CAST ("t9"."bg" as string)
+        CAST ("t3"."bg" as text),
+        CAST ("t9"."bg" as text)
       ) as "bg",
       coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
       "t9"."cw",
@@ -2387,7 +2387,7 @@ FROM
         CAST(0 AS int)
       ) as "ac",
       "t9"."cn" as "ae",
-      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS string)) as "ab",
+      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
       CASE
         WHEN not "t9"."co" is null THEN CAST(0 AS int)
         ELSE CAST(1 AS int)
@@ -2665,20 +2665,20 @@ union all
   motion [policy: segment([ref(cv)]), program: ReshardIfNeeded]
     projection (
       cte1.cv::int -> cv,
-      cte1.ay::string -> ay,
-      cte1.bg::string -> bg,
-      cte1.ah::string -> ah,
+      cte1.ay::text -> ay,
+      cte1.bg::text -> bg,
+      cte1.ah::text -> ah,
       cte1.cu::int -> cu,
-      cte1.cx::string -> cx
+      cte1.cx::text -> cx
     )
       scan cte cte1($1)
   projection (
     cte2.cv::int -> cv,
-    cte2.ay::string -> ay,
-    cte2.bg::string -> bg,
-    cte2.ah::string -> ah,
+    cte2.ay::text -> ay,
+    cte2.bg::text -> bg,
+    cte2.ah::text -> ah,
     cte2.cu::int -> cu,
-    cte2.cx::string -> cx
+    cte2.cx::text -> cx
   )
     scan cte cte2($2)
 subquery $0:
@@ -2727,36 +2727,36 @@ subquery $0:
 subquery $1:
   projection (
     gr_expr_1::int -> cv,
-    gr_expr_2::string -> ay,
-    gr_expr_3::string -> bg,
-    gr_expr_4::string -> ah,
+    gr_expr_2::text -> ay,
+    gr_expr_3::text -> bg,
+    gr_expr_4::text -> ah,
     gr_expr_5::int -> cu,
-    gr_expr_6::string -> cx
+    gr_expr_6::text -> cx
   )
     group by (
       gr_expr_1::int,
-      gr_expr_2::string,
-      gr_expr_3::string,
-      gr_expr_4::string,
+      gr_expr_2::text,
+      gr_expr_3::text,
+      gr_expr_4::text,
       gr_expr_5::int,
-      gr_expr_6::string
+      gr_expr_6::text
     )
       motion [policy: full, program: ReshardIfNeeded]
         projection (
           t6.cv::int -> gr_expr_1,
-          t3.ay::string -> gr_expr_2,
-          t3.bg::string -> gr_expr_3,
-          t3.ah::string -> gr_expr_4,
+          t3.ay::text -> gr_expr_2,
+          t3.bg::text -> gr_expr_3,
+          t3.ah::text -> gr_expr_4,
           t6.cu::int -> gr_expr_5,
-          t8.cx::string -> gr_expr_6
+          t8.cx::text -> gr_expr_6
         )
           group by (
             t6.cv::int,
-            t3.ay::string,
-            t3.bg::string,
-            t3.ah::string,
+            t3.ay::text,
+            t3.bg::text,
+            t3.ah::text,
             t6.cu::int,
-            t8.cx::string
+            t8.cx::text
           )
             selection (
               (
@@ -2766,7 +2766,7 @@ subquery $1:
               )
             )
               left join on (
-                ROW(t3.cv::int, t3.ay::string) = ROW(t8.cv::int, t8.ay::string)
+                ROW(t3.cv::int, t3.ay::text) = ROW(t8.cv::int, t8.ay::text)
               )
                 left join on (t7.cw::int = t6.cw::int)
                   join on (
@@ -2801,11 +2801,11 @@ subquery $1:
 subquery $2:
   projection (
     t9.cv::int -> cv,
-    t9.ay::string -> ay,
-    coalesce(t3.bg::string::string, t9.bg::string::string)::string -> bg,
-    coalesce(t3.ah::string::string, t9.ah::string::string)::string -> ah,
+    t9.ay::text -> ay,
+    coalesce(t3.bg::text::text, t9.bg::text::text)::text -> bg,
+    coalesce(t3.ah::text::text, t9.ah::text::text)::text -> ah,
     coalesce(t3.cu::int::int, t9.cu::int::int)::int -> cu,
-    t8.cx::string -> cx
+    t8.cx::text -> cx
   )
     selection (
       (
@@ -2820,7 +2820,7 @@ subquery $2:
       )
     )
       left join on (
-        ROW(t3.cv::int, t3.ay::string) = ROW(t8.cv::int, t8.ay::string)
+        ROW(t3.cv::int, t3.ay::text) = ROW(t8.cv::int, t8.ay::text)
       )
         left join on (t9.cu::int = t11.cu::int)
           left join on (
@@ -3015,12 +3015,12 @@ FROM
       "t9"."cv",
       "t9"."ay",
       coalesce (
-        CAST ("t3"."bg" as string),
-        CAST ("t9"."bg" as string)
+        CAST ("t3"."bg" as text),
+        CAST ("t9"."bg" as text)
       ) as "bg",
       coalesce (
-        CAST ("t3"."ah" as string),
-        CAST ("t9"."ah" as string)
+        CAST ("t3"."ah" as text),
+        CAST ("t9"."ah" as text)
       ) as "ah",
       coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
       "t8"."cx"
@@ -3221,8 +3221,8 @@ projection (
       t0.cs::datetime::datetime,
       t0.a::datetime::datetime
     )::datetime::datetime,
-    '%Y'::string
-  )::string::int -> c1,
+    '%Y'::text
+  )::text::int -> c1,
   (
     (
       to_char(
@@ -3230,8 +3230,8 @@ projection (
           t0.cs::datetime::datetime,
           t0.a::datetime::datetime
         )::datetime::datetime,
-        '%m'::string
-      )::string::int - 1::int
+        '%m'::text
+      )::text::int - 1::int
     ) / 3::int + 1::int
   )::int -> c2,
   to_char(
@@ -3239,15 +3239,15 @@ projection (
       t0.cs::datetime::datetime,
       t0.a::datetime::datetime
     )::datetime::datetime,
-    '%m'::string
-  )::string::int -> c3,
+    '%m'::text
+  )::text::int -> c3,
   to_char(
     coalesce(
       t0.cs::datetime::datetime,
       t0.a::datetime::datetime
     )::datetime::datetime,
-    '%Y-%m-%d'::string
-  )::string -> c4,
+    '%Y-%m-%d'::text
+  )::text -> c4,
   coalesce(
     (
       t0.d::decimal * coalesce(t3.cj::int::decimal, 0.0::decimal)::decimal * case 
@@ -3267,8 +3267,8 @@ projection (
           t0.cs::datetime::datetime,
           t0.a::datetime::datetime
         )::datetime::datetime,
-        '%Y'::string
-      )::string::int in ROW(
+        '%Y'::text
+      )::text::int in ROW(
         2024::int,
         2023::int,
         2021::int,
@@ -3314,7 +3314,7 @@ SELECT
           CAST ("t0"."a" as datetime)
         ) as datetime
       ),
-      CAST('%Y' AS string)
+      CAST('%Y' AS text)
     ) as int
   ) as "c1",
   CAST (
@@ -3328,7 +3328,7 @@ SELECT
                 CAST ("t0"."a" as datetime)
               ) as datetime
             ),
-            CAST('%m' AS string)
+            CAST('%m' AS text)
           ) as int
         ) - CAST(1 AS int)
       ) / CAST(3 AS int) + CAST(1 AS int)
@@ -3342,7 +3342,7 @@ SELECT
           CAST ("t0"."a" as datetime)
         ) as datetime
       ),
-      CAST('%m' AS string)
+      CAST('%m' AS text)
     ) as int
   ) as "c3",
   "to_char" (
@@ -3352,7 +3352,7 @@ SELECT
         CAST ("t0"."a" as datetime)
       ) as datetime
     ),
-    CAST('%Y-%m-%d' AS string)
+    CAST('%Y-%m-%d' AS text)
   ) as "c4",
   coalesce (
     CAST (
@@ -3385,7 +3385,7 @@ WHERE
           CAST ("t0"."a" as datetime)
         ) as datetime
       ),
-      CAST('%Y' AS string)
+      CAST('%Y' AS text)
     ) as int
   ) in (
     CAST(2024 AS int),
@@ -3663,25 +3663,25 @@ FROM
 projection (
   cte3.cv::int -> cv,
   cte3.c1::int -> c1,
-  cte3.c2::string -> c2,
+  cte3.c2::text -> c2,
   cte3.c3::int -> c3,
-  cte3.c4::string -> c4,
+  cte3.c4::text -> c4,
   cte3.bn::int -> bn,
   cte3.c6::int -> c6,
   cte3.aw::int -> aw,
   cte3.cu::int -> cu,
   cte3.ci::decimal -> ci,
   cte3.y::decimal -> y,
-  cte3.ch::string -> ch
+  cte3.ch::text -> ch
 )
   scan cte cte3($3)
 subquery $0:
   projection (
     cte0.cv::int -> cv,
     cte0.ag::int -> c1,
-    cte0.r::string -> c2,
+    cte0.r::text -> c2,
     cte0.s::int -> c3,
-    to_char(cte0.q::datetime::datetime, '%Y-%m-%d'::string)::string -> c4,
+    to_char(cte0.q::datetime::datetime, '%Y-%m-%d'::text)::text -> c4,
     cte0.bn::int -> bn,
     cte0.m::int -> c6
   )
@@ -3697,9 +3697,9 @@ subquery $1:
     projection (
       cte0.cv::int -> cv,
       cte0.c1::int -> c1,
-      cte0.c2::string -> c2,
+      cte0.c2::text -> c2,
       cte0.c3::int -> c3,
-      cte0.c4::string -> c4,
+      cte0.c4::text -> c4,
       cte0.bn::int -> bn,
       cte0.c6::int -> c6,
       cte1.aw::int -> aw,
@@ -3717,9 +3717,9 @@ subquery $2:
     projection (
       cte1.cv::int -> cv,
       cte1.c1::int -> c1,
-      cte1.c2::string -> c2,
+      cte1.c2::text -> c2,
       cte1.c3::int -> c3,
-      cte1.c4::string -> c4,
+      cte1.c4::text -> c4,
       cte1.bn::int -> bn,
       cte1.c6::int -> c6,
       cte1.aw::int -> aw,
@@ -3736,23 +3736,20 @@ subquery $3:
     projection (
       cte2.cv::int -> cv,
       cte2.c1::int -> c1,
-      cte2.c2::string -> c2,
+      cte2.c2::text -> c2,
       cte2.c3::int -> c3,
-      cte2.c4::string -> c4,
+      cte2.c4::text -> c4,
       cte2.bn::int -> bn,
       cte2.c6::int -> c6,
       cte2.aw::int -> aw,
       cte2.cu::int -> cu,
       cte3.ci::decimal -> ci,
       coalesce(cte3.y::decimal::decimal, 0.0::decimal)::decimal -> y,
-      to_char(
-        cte3.ch::datetime::datetime,
-        '%Y-%m-%d'::string
-      )::string -> ch
+      to_char(cte3.ch::datetime::datetime, '%Y-%m-%d'::text)::text -> ch
     )
       selection (
         (
-          cte3.o::datetime = to_date('3000-01-01'::string, '%Y-%m-%d'::string)::datetime
+          cte3.o::datetime = to_date('3000-01-01'::text, '%Y-%m-%d'::text)::datetime
           and cte3.an::int = 0::int
         )
       )
@@ -3788,10 +3785,7 @@ FROM
       "cte0"."ag" as "c1",
       "cte0"."r" as "c2",
       "cte0"."s" as "c3",
-      "to_char" (
-        CAST ("cte0"."q" as datetime),
-        CAST('%Y-%m-%d' AS string)
-      ) as "c4",
+      "to_char" (CAST ("cte0"."q" as datetime), CAST('%Y-%m-%d' AS text)) as "c4",
       "cte0"."bn",
       "cte0"."m" as "c6"
     FROM
@@ -3870,10 +3864,7 @@ SELECT
     CAST ("cte3"."y" as decimal),
     CAST(0.0 AS decimal)
   ) as "y",
-  "to_char" (
-    CAST ("cte3"."ch" as datetime),
-    CAST('%Y-%m-%d' AS string)
-  ) as "ch"
+  "to_char" (CAST ("cte3"."ch" as datetime), CAST('%Y-%m-%d' AS text)) as "ch"
 FROM
   (
     SELECT
@@ -3893,7 +3884,7 @@ FROM
   INNER JOIN "r" as "cte3" ON "cte2"."COL_9" = "cte3"."k"
   and "cte2"."COL_0" = "cte3"."cv"
 WHERE
-  "cte3"."o" = "to_date" (CAST('3000-01-01' AS string), CAST('%Y-%m-%d' AS string))
+  "cte3"."o" = "to_date" (CAST('3000-01-01' AS text), CAST('%Y-%m-%d' AS text))
   and "cte3"."an" = CAST(0 AS int)
 ''
 plan:
@@ -4149,8 +4140,8 @@ motion [policy: full, program: RemoveDuplicates]
           cte0.c3::int -> c3,
           cte0.cv::int -> cv,
           cte0.a::datetime -> a,
-          cte0.ay::string -> ay,
-          cte0.bh::string -> bh,
+          cte0.ay::text -> ay,
+          cte0.bh::text -> bh,
           cte0.cw::int -> cw,
           cte0.z::int -> z,
           cte0.bj::int -> bj,
@@ -4160,7 +4151,7 @@ motion [policy: full, program: RemoveDuplicates]
           cte0.ac::decimal -> ac,
           cte0.ad::int -> ad,
           cte0.ab::datetime -> ab,
-          cte0.ae::string -> ae,
+          cte0.ae::text -> ae,
           cte0.c18::bool -> c18
         )
           scan cte cte0($0)
@@ -4171,8 +4162,8 @@ motion [policy: full, program: RemoveDuplicates]
           cte1.c3::int -> c3,
           cte1.cv::int -> cv,
           cte1.a::datetime -> a,
-          cte1.ay::string -> ay,
-          cte1.bh::string -> bh,
+          cte1.ay::text -> ay,
+          cte1.bh::text -> bh,
           cte1.cw::int -> cw,
           cte1.z::int -> z,
           cte1.bj::int -> bj,
@@ -4182,7 +4173,7 @@ motion [policy: full, program: RemoveDuplicates]
           cte1.ac::decimal -> ac,
           cte1.ad::int -> ad,
           cte1.ab::datetime -> ab,
-          cte1.ae::string -> ae,
+          cte1.ae::text -> ae,
           cte1.c18::bool -> c18
         )
           scan cte cte1($1)
@@ -4193,8 +4184,8 @@ motion [policy: full, program: RemoveDuplicates]
       cte2.c3::int -> c3,
       cte2.cv::int -> cv,
       cte2.a::datetime -> a,
-      cte2.ay::string -> ay,
-      cte2.bh::string -> bh,
+      cte2.ay::text -> ay,
+      cte2.bh::text -> bh,
       cte2.cw::int -> cw,
       cte2.z::int -> z,
       cte2.bj::int -> bj,
@@ -4204,7 +4195,7 @@ motion [policy: full, program: RemoveDuplicates]
       cte2.ac::decimal -> ac,
       cte2.ad::int -> ad,
       cte2.ab::datetime -> ab,
-      cte2.ae::string -> ae,
+      cte2.ae::text -> ae,
       cte2.c18::bool -> c18
     )
       scan cte cte2($2)
@@ -4216,8 +4207,8 @@ subquery $0:
     t4.al::int -> c3,
     t0.cv::int -> cv,
     t0.w::datetime -> a,
-    coalesce(t5.ay::string::string, t0.ay::string::string)::string -> ay,
-    coalesce(t5.bg::string::string, t0.bg::string::string)::string -> bh,
+    coalesce(t5.ay::text::text, t0.ay::text::text)::text -> ay,
+    coalesce(t5.bg::text::text, t0.bg::text::text)::text -> bh,
     t0.cw::int -> cw,
     t1.z::int -> z,
     coalesce(t6.bj::int::int, t0.bj::int::int)::int -> bj,
@@ -4239,8 +4230,8 @@ subquery $0:
       t0.ab::datetime::datetime
     )::datetime -> ab,
     case 
-      when not t5.co::int is null or not t5.cm::int is null then t5.cn::string
-      else t0.ae::string
+      when not t5.co::int is null or not t5.cm::int is null then t5.cn::text
+      else t0.ae::text
     end -> ae,
     case 
       when not t0.h::int is null then true::bool
@@ -4258,7 +4249,7 @@ subquery $0:
         and t1.cj::int > 0::int
       )
     )
-      left join on (t6.bi::string = t5.bi::string)
+      left join on (t6.bi::text = t5.bi::text)
         left join on (
           (
             ROW(t0.cv::int, t4.bs::int) = ROW(t5.cv::int, t5.ag::int)
@@ -4299,8 +4290,8 @@ subquery $1:
     t3.al::int -> c3,
     t0.cv::int -> cv,
     t0.w::datetime -> a,
-    coalesce(t5.ay::string::string, t0.ay::string::string)::string -> ay,
-    coalesce(t5.bg::string::string, t0.bg::string::string)::string -> bh,
+    coalesce(t5.ay::text::text, t0.ay::text::text)::text -> ay,
+    coalesce(t5.bg::text::text, t0.bg::text::text)::text -> bh,
     t0.cw::int -> cw,
     t1.z::int -> z,
     coalesce(t6.bj::int::int, t0.bj::int::int)::int -> bj,
@@ -4322,8 +4313,8 @@ subquery $1:
       t0.ab::datetime::datetime
     )::datetime -> ab,
     case 
-      when not t5.co::int is null or not t5.cm::int is null then t5.cn::string
-      else t0.ae::string
+      when not t5.co::int is null or not t5.cm::int is null then t5.cn::text
+      else t0.ae::text
     end -> ae,
     case 
       when not t0.h::int is null then true::bool
@@ -4341,7 +4332,7 @@ subquery $1:
         and t1.cj::int < 0::int
       )
     )
-      left join on (t6.bi::string = t5.bi::string)
+      left join on (t6.bi::text = t5.bi::text)
         left join on (
           (
             ROW(t0.cv::int, t3.bs::int) = ROW(t5.cv::int, t5.ag::int)
@@ -4378,8 +4369,8 @@ subquery $2:
     t2.al::int -> c3,
     t0.cv::int -> cv,
     t0.w::datetime -> a,
-    coalesce(t5.ay::string::string, t0.ay::string::string)::string -> ay,
-    coalesce(t5.bg::string::string, t0.bg::string::string)::string -> bh,
+    coalesce(t5.ay::text::text, t0.ay::text::text)::text -> ay,
+    coalesce(t5.bg::text::text, t0.bg::text::text)::text -> bh,
     t0.cw::int -> cw,
     t1.z::int -> z,
     coalesce(t6.bj::int::int, t0.bj::int::int)::int -> bj,
@@ -4398,8 +4389,8 @@ subquery $2:
     end -> ad,
     t5.cl::datetime -> ab,
     case 
-      when not t5.co::int is null or not t5.cm::int is null then t5.cn::string
-      else t0.ae::string
+      when not t5.co::int is null or not t5.cm::int is null then t5.cn::text
+      else t0.ae::text
     end -> ae,
     case 
       when not t0.h::int is null then true::bool
@@ -4417,7 +4408,7 @@ subquery $2:
         and t1.cj::int < 0::int
       )
     )
-      left join on (t6.bi::string = t5.bi::string)
+      left join on (t6.bi::text = t5.bi::text)
         left join on (
           (
             ROW(t0.cv::int, t2.bs::int) = ROW(t5.cv::int, t5.ag::int)
@@ -4457,12 +4448,12 @@ FROM
       "t0"."cv",
       "t0"."w" as "a",
       coalesce (
-        CAST ("t5"."ay" as string),
-        CAST ("t0"."ay" as string)
+        CAST ("t5"."ay" as text),
+        CAST ("t0"."ay" as text)
       ) as "ay",
       coalesce (
-        CAST ("t5"."bg" as string),
-        CAST ("t0"."bg" as string)
+        CAST ("t5"."bg" as text),
+        CAST ("t0"."bg" as text)
       ) as "bh",
       "t0"."cw",
       "t1"."z",
@@ -4534,12 +4525,12 @@ FROM
       "t0"."cv",
       "t0"."w" as "a",
       coalesce (
-        CAST ("t5"."ay" as string),
-        CAST ("t0"."ay" as string)
+        CAST ("t5"."ay" as text),
+        CAST ("t0"."ay" as text)
       ) as "ay",
       coalesce (
-        CAST ("t5"."bg" as string),
-        CAST ("t0"."bg" as string)
+        CAST ("t5"."bg" as text),
+        CAST ("t0"."bg" as text)
       ) as "bh",
       "t0"."cw",
       "t1"."z",
@@ -4610,12 +4601,12 @@ FROM
       "t0"."cv",
       "t0"."w" as "a",
       coalesce (
-        CAST ("t5"."ay" as string),
-        CAST ("t0"."ay" as string)
+        CAST ("t5"."ay" as text),
+        CAST ("t0"."ay" as text)
       ) as "ay",
       coalesce (
-        CAST ("t5"."bg" as string),
-        CAST ("t0"."bg" as string)
+        CAST ("t5"."bg" as text),
+        CAST ("t0"."bg" as text)
       ) as "bh",
       "t0"."cw",
       "t1"."z",
@@ -4878,7 +4869,7 @@ subquery $0:
         and t1.cj::int > 0::int
       )
     )
-      left join on (t6.bi::string = t5.bi::string)
+      left join on (t6.bi::text = t5.bi::text)
         left join on (
           ROW(t4.bs::int, t4.cv::int) = ROW(t5.ag::int, t5.cv::int)
         )
@@ -4932,7 +4923,7 @@ subquery $1:
         and t1.cj::int < 0::int
       )
     )
-      left join on (t6.bi::string = t5.bi::string)
+      left join on (t6.bi::text = t5.bi::text)
         left join on (
           ROW(t3.bs::int, t3.cv::int) = ROW(t5.ag::int, t5.cv::int)
         )
@@ -4984,7 +4975,7 @@ subquery $2:
         and t1.cj::int < 0::int
       )
     )
-      left join on (t6.bi::string = t5.bi::string)
+      left join on (t6.bi::text = t5.bi::text)
         left join on (
           ROW(t2.bs::int, t2.cv::int) = ROW(t5.ag::int, t5.cv::int)
         )
@@ -5585,7 +5576,7 @@ LIMIT
 ''
 limit 10
   projection (
-    cte1.c0::string -> c0,
+    cte1.c0::text -> c0,
     cte1.c1::decimal -> c1,
     cte1.c2::decimal -> c2,
     cte1.c3::int -> c3,
@@ -5595,7 +5586,7 @@ limit 10
       scan cte cte1($1)
 subquery $0:
   projection (
-    to_char(t0.w::datetime::datetime, '%Y-%m-%d'::string)::string::string -> c0,
+    to_char(t0.w::datetime::datetime, '%Y-%m-%d'::text)::text::text -> c0,
     t0.aa::decimal -> aa
   )
     selection (
@@ -5610,16 +5601,16 @@ subquery $0:
       scan m -> t0
 subquery $1:
   projection (
-    c0::string,
+    c0::text,
     c1::decimal,
     c2::decimal,
     c3::int,
     c4::int
   )
-    order by (c0::string desc)
+    order by (c0::text desc)
       scan
         projection (
-          cte0.c0::string -> c0,
+          cte0.c0::text -> c0,
           sum(
             case 
               when cte0.aa::decimal > 0::int then cte0.aa::decimal
@@ -5633,11 +5624,11 @@ subquery $1:
             end::decimal
           )::decimal -> c2,
           0::int -> c3,
-          row_number() over (order by (cte0.c0::string desc) ) -> c4
+          row_number() over (order by (cte0.c0::text desc) ) -> c4
         )
-          group by (cte0.c0::string)
+          group by (cte0.c0::text)
             motion [policy: full, program: ReshardIfNeeded]
-              projection (cte0.c0::string -> c0, cte0.aa::decimal -> aa)
+              projection (cte0.c0::text -> c0, cte0.aa::decimal -> aa)
                 scan cte cte0($0)
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -5655,7 +5646,7 @@ FROM
   (
     SELECT
       CAST (
-        "to_char" (CAST ("t0"."w" as datetime), CAST('%Y-%m-%d' AS string)) as string
+        "to_char" (CAST ("t0"."w" as datetime), CAST('%Y-%m-%d' AS text)) as text
       ) as "c0",
       "t0"."aa"
     FROM
@@ -5801,7 +5792,7 @@ projection (count(*)::int -> c4)
   scan cte cte1($1)
 subquery $0:
   projection (
-    to_char(t0.w::datetime::datetime, '%Y-%m-%d'::string)::string::string -> c0,
+    to_char(t0.w::datetime::datetime, '%Y-%m-%d'::text)::text::text -> c0,
     t0.aa::decimal -> aa
   )
     selection (
@@ -5816,7 +5807,7 @@ subquery $0:
       scan m -> t0
 subquery $1:
   projection (
-    cte0.c0::string -> c0,
+    cte0.c0::text -> c0,
     sum(
       case 
         when cte0.aa::decimal > 0::int then cte0.aa::decimal
@@ -5831,7 +5822,7 @@ subquery $1:
     )::decimal -> c2,
     0::int -> c3
   )
-    group by (cte0.c0::string)
+    group by (cte0.c0::text)
       scan cte cte0($0)
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -5869,7 +5860,7 @@ FROM
       (
         SELECT
           CAST (
-            "to_char" (CAST ("t0"."w" as datetime), CAST('%Y-%m-%d' AS string)) as string
+            "to_char" (CAST ("t0"."w" as datetime), CAST('%Y-%m-%d' AS text)) as text
           ) as "c0",
           "t0"."aa"
         FROM
@@ -5990,7 +5981,7 @@ motion [policy: full, program: RemoveDuplicates]
         (
           t0.cv::int = 3023424::int
           and not coalesce(t0.aq::bool::bool, false::bool)::bool
-          and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::string)::string::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+          and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::text)::text::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
           and t0.ar::datetime >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
           and t0.ar::datetime <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
         )
@@ -6040,7 +6031,7 @@ subquery $0:
               (
                 t0.cv::int = 3023424::int
                 and not coalesce(t0.aq::bool::bool, false::bool)::bool
-                and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::string)::string::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+                and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::text)::text::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
                 and t0.ar::datetime < '2023-01-01 0:00:00.0 +00:00:00'::datetime
               )
             )
@@ -6102,7 +6093,7 @@ FROM
           "t0"."cv" = CAST(3023424 AS int)
           and not coalesce (CAST ("t0"."aq" as bool), CAST(false AS bool))
           and CAST (
-            "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS string)) as datetime
+            "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS text)) as datetime
           ) > CAST('2020-01-02 0:00:00.0 +00:00:00' AS datetime)
           and "t0"."ar" < CAST('2023-01-01 0:00:00.0 +00:00:00' AS datetime)
       )
@@ -6135,7 +6126,7 @@ WHERE
   "t0"."cv" = CAST(3023424 AS int)
   and not coalesce (CAST ("t0"."aq" as bool), CAST(false AS bool))
   and CAST (
-    "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS string)) as datetime
+    "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS text)) as datetime
   ) > CAST('2020-01-02 0:00:00.0 +00:00:00' AS datetime)
   and "t0"."ar" >= CAST('2023-01-01 0:00:00.0 +00:00:00' AS datetime)
   and "t0"."ar" <= CAST('2023-05-01 0:00:00.0 +00:00:00' AS datetime)
@@ -6218,7 +6209,7 @@ LIMIT
 limit 10
   projection (
     cte1.cu::int -> cu,
-    cte1.a::string -> a,
+    cte1.a::text -> a,
     cte1.d::decimal -> d,
     cte1.c3::int -> c3
   )
@@ -6233,8 +6224,8 @@ subquery $0:
         t0.cs::datetime::datetime,
         t0.a::datetime::datetime
       )::datetime::datetime,
-      '%Y-%m-%d'::string
-    )::string::string -> a
+      '%Y-%m-%d'::text
+    )::text::text -> a
   )
     selection (
       (
@@ -6260,21 +6251,21 @@ subquery $0:
         scan l -> t0
         scan l -> t1
 subquery $1:
-  projection (cu::int, a::string, d::decimal, c3::int)
-    order by (a::string desc)
+  projection (cu::int, a::text, d::decimal, c3::int)
+    order by (a::text desc)
       scan
         projection (
           cte0.cu::int -> cu,
-          cte0.a::string -> a,
+          cte0.a::text -> a,
           sum(cte0.d::decimal::decimal)::decimal -> d,
-          row_number() over (order by (cte0.a::string desc) ) -> c3
+          row_number() over (order by (cte0.a::text desc) ) -> c3
         )
-          group by (cte0.cu::int, cte0.a::string)
+          group by (cte0.cu::int, cte0.a::text)
             motion [policy: full, program: ReshardIfNeeded]
               projection (
                 cte0.cu::int -> cu,
                 cte0.d::decimal -> d,
-                cte0.a::string -> a
+                cte0.a::text -> a
               )
                 scan cte cte0($0)
 ''
@@ -6303,8 +6294,8 @@ FROM
               CAST ("t0"."a" as datetime)
             ) as datetime
           ),
-          CAST('%Y-%m-%d' AS string)
-        ) as string
+          CAST('%Y-%m-%d' AS text)
+        ) as text
       ) as "a"
     FROM
       "l" as "t0"
@@ -6454,8 +6445,8 @@ limit 10
     t2.cw::int -> cw,
     t2.cu::int -> cu,
     t2.ac::int -> ac,
-    t2.ae::string -> ae,
-    t2.ab::string -> ab,
+    t2.ae::text -> ae,
+    t2.ab::text -> ab,
     t2.ad::int -> ad,
     t2.d::decimal -> d,
     t2.c8::int -> c8,
@@ -6468,8 +6459,8 @@ limit 10
           cw::int,
           cu::int,
           ac::int,
-          ae::string,
-          ab::string,
+          ae::text,
+          ab::text,
           ad::int,
           d::decimal,
           c8::int,
@@ -6483,10 +6474,10 @@ limit 10
                 cu::int,
                 coalesce(co::int::int, cm::int::int, 0::int)::int -> ac,
                 case 
-                  when not co::int is null or not cm::int is null then cn::string
-                  else '0000'::string
+                  when not co::int is null or not cm::int is null then cn::text
+                  else '0000'::text
                 end -> ae,
-                to_char(cl::datetime::datetime, '%Y-%m-%d'::string)::string -> ab,
+                to_char(cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
                 case 
                   when not co::int is null then 0::int
                   when not cm::int is null then 1::int
@@ -6503,7 +6494,7 @@ limit 10
                     t0.cu::int -> cu,
                     t0.d::decimal -> d,
                     t0.cm::int -> cm,
-                    t0.cn::string -> cn,
+                    t0.cn::text -> cn,
                     t0.cl::datetime -> cl,
                     t0.co::int -> co
                   )
@@ -6603,9 +6594,9 @@ FROM
           CASE
             WHEN not "COL_7" is null
             or not "COL_4" is null THEN "COL_5"
-            ELSE CAST('0000' AS string)
+            ELSE CAST('0000' AS text)
           END as "ae",
-          "to_char" (CAST ("COL_6" as datetime), CAST('%Y-%m-%d' AS string)) as "ab",
+          "to_char" (CAST ("COL_6" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
           CASE
             WHEN not "COL_7" is null THEN CAST(0 AS int)
             WHEN not "COL_4" is null THEN CAST(1 AS int)
@@ -6722,8 +6713,8 @@ projection (
       t2.cw::int -> cw,
       t2.cu::int -> cu,
       t2.ac::int -> ac,
-      t2.ae::string -> ae,
-      t2.ab::string -> ab,
+      t2.ae::text -> ae,
+      t2.ab::text -> ab,
       t2.ad::int -> ad,
       t2.d::decimal -> d,
       t2.c10::int -> c10,
@@ -6735,8 +6726,8 @@ projection (
           cw::int,
           cu::int,
           ac::int,
-          ae::string,
-          ab::string,
+          ae::text,
+          ab::text,
           ad::int,
           d::decimal,
           c10::int,
@@ -6750,10 +6741,10 @@ projection (
                 cu::int,
                 coalesce(co::int::int, cm::int::int, 0::int)::int -> ac,
                 case 
-                  when not co::int is null or not cm::int is null then cn::string
-                  else '0000'::string
+                  when not co::int is null or not cm::int is null then cn::text
+                  else '0000'::text
                 end -> ae,
-                to_char(cl::datetime::datetime, '%Y-%m-%d'::string)::string -> ab,
+                to_char(cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
                 case 
                   when not co::int is null then 0::int
                   when not cm::int is null then 1::int
@@ -6770,7 +6761,7 @@ projection (
                     t0.cu::int -> cu,
                     t0.d::decimal -> d,
                     t0.cm::int -> cm,
-                    t0.cn::string -> cn,
+                    t0.cn::text -> cn,
                     t0.cl::datetime -> cl,
                     t0.co::int -> co
                   )
@@ -6875,9 +6866,9 @@ FROM
               CASE
                 WHEN not "COL_7" is null
                 or not "COL_4" is null THEN "COL_5"
-                ELSE CAST('0000' AS string)
+                ELSE CAST('0000' AS text)
               END as "ae",
-              "to_char" (CAST ("COL_6" as datetime), CAST('%Y-%m-%d' AS string)) as "ab",
+              "to_char" (CAST ("COL_6" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
               CASE
                 WHEN not "COL_7" is null THEN CAST(0 AS int)
                 WHEN not "COL_4" is null THEN CAST(1 AS int)
@@ -6957,8 +6948,8 @@ projection (
       t0.cs::datetime::datetime,
       t0.a::datetime::datetime
     )::datetime::datetime,
-    '%Y-%m-%d'::string
-  )::string -> c2
+    '%Y-%m-%d'::text
+  )::text -> c2
 )
   selection (
     (
@@ -7001,7 +6992,7 @@ SELECT
         CAST ("t0"."a" as datetime)
       ) as datetime
     ),
-    CAST('%Y-%m-%d' AS string)
+    CAST('%Y-%m-%d' AS text)
   ) as "c2"
 FROM
   "l" as "t0"
@@ -7362,16 +7353,16 @@ limit 10
   projection (
     cte4.cv::int -> cv,
     cte4.b::int -> b,
-    cte4.ay::string -> ay,
-    cte4.bg::string -> bg,
+    cte4.ay::text -> ay,
+    cte4.bg::text -> bg,
     cte4.cu::int -> cu,
     cte4.cw::int -> cw,
     cte4.ac::int -> ac,
-    cte4.ae::string -> ae,
-    cte4.ab::string -> ab,
+    cte4.ae::text -> ae,
+    cte4.ab::text -> ab,
     cte4.c9::int -> c9,
     cte4.d::decimal -> d,
-    cte4.cx::string -> cx,
+    cte4.cx::text -> cx,
     cte4.c11::int -> c11
   )
     selection (cte4.c11::int > 0::int)
@@ -7427,16 +7418,16 @@ subquery $1:
     projection (
       t6.cv::int -> cv,
       t6.ag::int -> b,
-      t3.ay::string -> ay,
-      t3.bg::string -> bg,
+      t3.ay::text -> ay,
+      t3.bg::text -> bg,
       t6.cu::int -> cu,
       t6.cw::int -> cw,
       coalesce(t6.co::int::int, t6.cm::int::int, 0::int)::int -> ac,
       case 
-        when not t6.co::int is null or not t6.cm::int is null then t6.cn::string
-        else '0000'::string
+        when not t6.co::int is null or not t6.cm::int is null then t6.cn::text
+        else '0000'::text
       end -> ae,
-      to_char(t6.cl::datetime::datetime, '%Y-%m-%d'::string)::string -> ab,
+      to_char(t6.cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
       case 
         when not t6.co::int is null then 0::int
         when not t6.cm::int is null then 1::int
@@ -7489,13 +7480,13 @@ subquery $2:
   projection (
     t9.cv::int -> cv,
     t9.ag::int -> b,
-    t9.ay::string -> ay,
-    coalesce(t3.bg::string::string, t9.bg::string::string)::string -> bg,
+    t9.ay::text -> ay,
+    coalesce(t3.bg::text::text, t9.bg::text::text)::text -> bg,
     coalesce(t3.cu::int::int, t9.cu::int::int)::int -> cu,
     t9.cw::int -> cw,
     coalesce(t9.co::int::int, t9.cm::int::int, 0::int)::int -> ac,
-    t9.cn::string -> ae,
-    to_char(t9.cl::datetime::datetime, '%Y-%m-%d'::string)::string -> ab,
+    t9.cn::text -> ae,
+    to_char(t9.cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
     case 
       when not t9.co::int is null then 0::int
       else 1::int
@@ -7542,13 +7533,13 @@ subquery $3:
         projection (
           cte1.cv::int -> cv,
           cte1.b::int -> b,
-          cte1.ay::string -> ay,
-          cte1.bg::string -> bg,
+          cte1.ay::text -> ay,
+          cte1.bg::text -> bg,
           cte1.cu::int -> cu,
           cte1.cw::int -> cw,
           cte1.ac::int -> ac,
-          cte1.ae::string -> ae,
-          cte1.ab::string -> ab,
+          cte1.ae::text -> ae,
+          cte1.ab::text -> ab,
           cte1.c9::int -> c9,
           cte1.d::decimal -> d
         )
@@ -7556,13 +7547,13 @@ subquery $3:
       projection (
         cte2.cv::int -> cv,
         cte2.b::int -> b,
-        cte2.ay::string -> ay,
-        cte2.bg::string -> bg,
+        cte2.ay::text -> ay,
+        cte2.bg::text -> bg,
         cte2.cu::int -> cu,
         cte2.cw::int -> cw,
         cte2.ac::int -> ac,
-        cte2.ae::string -> ae,
-        cte2.ab::string -> ab,
+        cte2.ae::text -> ae,
+        cte2.ab::text -> ab,
         cte2.c9::int -> c9,
         cte2.d::decimal -> d
       )
@@ -7571,38 +7562,38 @@ subquery $4:
   projection (
     unnamed_join.cv::int -> cv,
     unnamed_join.b::int -> b,
-    unnamed_join.ay::string -> ay,
-    unnamed_join.bg::string -> bg,
+    unnamed_join.ay::text -> ay,
+    unnamed_join.bg::text -> bg,
     unnamed_join.cu::int -> cu,
     unnamed_join.cw::int -> cw,
     unnamed_join.ac::int -> ac,
-    unnamed_join.ae::string -> ae,
-    unnamed_join.ab::string -> ab,
+    unnamed_join.ae::text -> ae,
+    unnamed_join.ab::text -> ab,
     unnamed_join.c9::int -> c9,
     unnamed_join.d::decimal -> d,
-    unnamed_join.cx::string -> cx,
+    unnamed_join.cx::text -> cx,
     row_number() over (order by (unnamed_join.b::int desc) ) -> c11
   )
     motion [policy: full, program: AddMissingRowsForLeftJoin]
       projection (
         cte3.cv::int -> cv,
         cte3.b::int -> b,
-        cte3.ay::string -> ay,
-        cte3.bg::string -> bg,
+        cte3.ay::text -> ay,
+        cte3.bg::text -> bg,
         cte3.cu::int -> cu,
         cte3.cw::int -> cw,
         cte3.ac::int -> ac,
-        cte3.ae::string -> ae,
-        cte3.ab::string -> ab,
+        cte3.ae::text -> ae,
+        cte3.ab::text -> ab,
         cte3.c9::int -> c9,
         cte3.d::decimal -> d,
         t12.cv::int -> cv,
-        t12.ay::string -> ay,
+        t12.ay::text -> ay,
         t12.bucket_id::int -> bucket_id,
-        t12.cx::string -> cx
+        t12.cx::text -> cx
       )
         join on (
-          ROW(cte3.cv::int, cte3.ay::string) = ROW(t12.cv::int, t12.ay::string)
+          ROW(cte3.cv::int, cte3.ay::text) = ROW(t12.cv::int, t12.ay::text)
         )
           scan cte cte3($3)
           scan ad -> t12
@@ -7705,9 +7696,9 @@ SELECT
   CASE
     WHEN not "t6"."co" is null
     or not "t6"."cm" is null THEN "t6"."cn"
-    ELSE CAST('0000' AS string)
+    ELSE CAST('0000' AS text)
   END as "ae",
-  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS string)) as "ab",
+  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
   CASE
     WHEN not "t6"."co" is null THEN CAST(0 AS int)
     WHEN not "t6"."cm" is null THEN CAST(1 AS int)
@@ -7787,8 +7778,8 @@ FROM
       "t9"."ag" as "b",
       "t9"."ay",
       coalesce (
-        CAST ("t3"."bg" as string),
-        CAST ("t9"."bg" as string)
+        CAST ("t3"."bg" as text),
+        CAST ("t9"."bg" as text)
       ) as "bg",
       coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
       "t9"."cw",
@@ -7798,7 +7789,7 @@ FROM
         CAST(0 AS int)
       ) as "ac",
       "t9"."cn" as "ae",
-      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS string)) as "ab",
+      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
       CASE
         WHEN not "t9"."co" is null THEN CAST(0 AS int)
         ELSE CAST(1 AS int)
@@ -8560,20 +8551,20 @@ union all
   motion [policy: segment([ref(cv)]), program: ReshardIfNeeded]
     projection (
       cte1.cv::int -> cv,
-      cte1.ay::string -> ay,
-      cte1.bg::string -> bg,
-      cte1.ah::string -> ah,
+      cte1.ay::text -> ay,
+      cte1.bg::text -> bg,
+      cte1.ah::text -> ah,
       cte1.cu::int -> cu,
-      cte1.cx::string -> cx
+      cte1.cx::text -> cx
     )
       scan cte cte1($1)
   projection (
     cte2.cv::int -> cv,
-    cte2.ay::string -> ay,
-    cte2.bg::string -> bg,
-    cte2.ah::string -> ah,
+    cte2.ay::text -> ay,
+    cte2.bg::text -> bg,
+    cte2.ah::text -> ah,
     cte2.cu::int -> cu,
-    cte2.cx::string -> cx
+    cte2.cx::text -> cx
   )
     scan cte cte2($2)
 subquery $0:
@@ -8622,36 +8613,36 @@ subquery $0:
 subquery $1:
   projection (
     gr_expr_1::int -> cv,
-    gr_expr_2::string -> ay,
-    gr_expr_3::string -> bg,
-    gr_expr_4::string -> ah,
+    gr_expr_2::text -> ay,
+    gr_expr_3::text -> bg,
+    gr_expr_4::text -> ah,
     gr_expr_5::int -> cu,
-    gr_expr_6::string -> cx
+    gr_expr_6::text -> cx
   )
     group by (
       gr_expr_1::int,
-      gr_expr_2::string,
-      gr_expr_3::string,
-      gr_expr_4::string,
+      gr_expr_2::text,
+      gr_expr_3::text,
+      gr_expr_4::text,
       gr_expr_5::int,
-      gr_expr_6::string
+      gr_expr_6::text
     )
       motion [policy: full, program: ReshardIfNeeded]
         projection (
           t6.cv::int -> gr_expr_1,
-          t3.ay::string -> gr_expr_2,
-          t3.bg::string -> gr_expr_3,
-          t3.ah::string -> gr_expr_4,
+          t3.ay::text -> gr_expr_2,
+          t3.bg::text -> gr_expr_3,
+          t3.ah::text -> gr_expr_4,
           t6.cu::int -> gr_expr_5,
-          t8.cx::string -> gr_expr_6
+          t8.cx::text -> gr_expr_6
         )
           group by (
             t6.cv::int,
-            t3.ay::string,
-            t3.bg::string,
-            t3.ah::string,
+            t3.ay::text,
+            t3.bg::text,
+            t3.ah::text,
             t6.cu::int,
-            t8.cx::string
+            t8.cx::text
           )
             selection (
               (
@@ -8661,7 +8652,7 @@ subquery $1:
               )
             )
               left join on (
-                ROW(t3.cv::int, t3.ay::string) = ROW(t8.cv::int, t8.ay::string)
+                ROW(t3.cv::int, t3.ay::text) = ROW(t8.cv::int, t8.ay::text)
               )
                 left join on (t7.cw::int = t6.cw::int)
                   join on (
@@ -8696,11 +8687,11 @@ subquery $1:
 subquery $2:
   projection (
     t9.cv::int -> cv,
-    t9.ay::string -> ay,
-    coalesce(t3.bg::string::string, t9.bg::string::string)::string -> bg,
-    coalesce(t3.ah::string::string, t9.ah::string::string)::string -> ah,
+    t9.ay::text -> ay,
+    coalesce(t3.bg::text::text, t9.bg::text::text)::text -> bg,
+    coalesce(t3.ah::text::text, t9.ah::text::text)::text -> ah,
     coalesce(t3.cu::int::int, t9.cu::int::int)::int -> cu,
-    t8.cx::string -> cx
+    t8.cx::text -> cx
   )
     selection (
       (
@@ -8715,7 +8706,7 @@ subquery $2:
       )
     )
       left join on (
-        ROW(t3.cv::int, t3.ay::string) = ROW(t8.cv::int, t8.ay::string)
+        ROW(t3.cv::int, t3.ay::text) = ROW(t8.cv::int, t8.ay::text)
       )
         left join on (t9.cu::int = t11.cu::int)
           left join on (
@@ -8910,12 +8901,12 @@ FROM
       "t9"."cv",
       "t9"."ay",
       coalesce (
-        CAST ("t3"."bg" as string),
-        CAST ("t9"."bg" as string)
+        CAST ("t3"."bg" as text),
+        CAST ("t9"."bg" as text)
       ) as "bg",
       coalesce (
-        CAST ("t3"."ah" as string),
-        CAST ("t9"."ah" as string)
+        CAST ("t3"."ah" as text),
+        CAST ("t9"."ah" as text)
       ) as "ah",
       coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
       "t8"."cx"
@@ -9222,10 +9213,10 @@ WHERE
 motion [policy: full, program: RemoveDuplicates]
   union
     projection (
-      t0.ay::string -> ay,
-      t0.bg::string -> bg,
-      t0.ah::string -> ah,
-      t1.cx::string -> cx
+      t0.ay::text -> ay,
+      t0.bg::text -> bg,
+      t0.ah::text -> ah,
+      t1.cx::text -> cx
     )
       selection (
         (
@@ -9236,15 +9227,15 @@ motion [policy: full, program: RemoveDuplicates]
         )
       )
         left join on (
-          ROW(t0.cv::int, t0.ay::string) = ROW(t1.cv::int, t1.ay::string)
+          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
           scan a -> t0
           scan ad -> t1
     projection (
-      t2.ay::string -> c0,
-      coalesce(t4.bg::string::string, t2.bg::string::string)::string -> c1,
-      coalesce(t4.ah::string::string, t2.ah::string::string)::string -> c2,
-      t1.cx::string -> c3
+      t2.ay::text -> c0,
+      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+      t1.cx::text -> c3
     )
       selection (
         (
@@ -9259,7 +9250,7 @@ motion [policy: full, program: RemoveDuplicates]
       )
         left join on (t2.cu::int = t6.cu::int)
           left join on (
-            ROW(t2.cv::int, t2.ay::string) = ROW(t1.cv::int, t1.ay::string)
+            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
           )
             left join on (t2.cw::int = t5.cw::int)
               left join on (
@@ -9301,12 +9292,12 @@ UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
   coalesce (
-    CAST ("t4"."bg" as string),
-    CAST ("t2"."bg" as string)
+    CAST ("t4"."bg" as text),
+    CAST ("t2"."bg" as text)
   ) as "c1",
   coalesce (
-    CAST ("t4"."ah" as string),
-    CAST ("t2"."ah" as string)
+    CAST ("t4"."ah" as text),
+    CAST ("t2"."ah" as text)
   ) as "c2",
   "t1"."cx" as "c3"
 FROM
@@ -9428,7 +9419,7 @@ GROUP BY
 union all
   projection (
     a.cq::int -> c0,
-    to_char(a.a::datetime::datetime, '%Y-%m-%d'::string)::string -> c1,
+    to_char(a.a::datetime::datetime, '%Y-%m-%d'::text)::text -> c1,
     sum(a.f::decimal::decimal)::decimal -> c3,
     sum(a.e::decimal::decimal)::decimal -> c4,
     0.0::decimal -> c5
@@ -9444,7 +9435,7 @@ union all
         scan a
   projection (
     cte0.cq::int -> cq,
-    cte0.a::string -> a,
+    cte0.a::text -> a,
     0::int -> c3,
     0::int -> c4,
     coalesce(
@@ -9459,7 +9450,7 @@ union all
       0.0::decimal
     )::decimal -> c5
   )
-    group by (cte0.cq::int, cte0.a::string)
+    group by (cte0.cq::int, cte0.a::text)
       scan cte cte0($0)
 subquery $0:
   projection (
@@ -9469,8 +9460,8 @@ subquery $0:
         t0.cs::datetime::datetime,
         t0.a::datetime::datetime
       )::datetime::datetime,
-      '%Y-%m-%d'::string
-    )::string -> a,
+      '%Y-%m-%d'::text
+    )::text -> a,
     t0.d::decimal -> d,
     coalesce(t3.cj::int::int, 0::int)::int -> cj,
     t0.h::int -> h
@@ -9486,8 +9477,8 @@ subquery $0:
             t0.cs::datetime::datetime,
             t0.a::datetime::datetime
           )::datetime::datetime,
-          '%Y'::string
-        )::string::int in ROW(2024::int, 2023::int, 2022::int)
+          '%Y'::text
+        )::text::int in ROW(2024::int, 2023::int, 2022::int)
       )
     )
       left join on (t0.cu::int = t4.cu::int)
@@ -9514,7 +9505,7 @@ subquery $0:
 ''
 SELECT
   "a"."cq" as "c0",
-  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS string)) as "c1",
+  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS text)) as "c1",
   sum (CAST ("a"."f" as decimal)) as "c3",
   sum (CAST ("a"."e" as decimal)) as "c4",
   CAST(0.0 AS decimal) as "c5"
@@ -9563,7 +9554,7 @@ FROM
             CAST ("t0"."a" as datetime)
           ) as datetime
         ),
-        CAST('%Y-%m-%d' AS string)
+        CAST('%Y-%m-%d' AS text)
       ) as "a",
       "t0"."d",
       coalesce (CAST ("t3"."cj" as int), CAST(0 AS int)) as "cj",
@@ -9592,7 +9583,7 @@ FROM
               CAST ("t0"."a" as datetime)
             ) as datetime
           ),
-          CAST('%Y' AS string)
+          CAST('%Y' AS text)
         ) as int
       ) in (
         CAST(2024 AS int),
@@ -9675,17 +9666,17 @@ limit 10
   projection (
     cte0.z::int -> z,
     cte0.cw::int -> cw,
-    cte0.ay::string -> ay,
-    cte0.bg::string -> bg,
+    cte0.ay::text -> ay,
+    cte0.bg::text -> bg,
     cte0.cu::int -> cu,
     cte0.d::decimal -> d,
     cte0.ac::decimal -> ac,
     cte0.ad::int -> ad,
-    cte0.ae::string -> ae,
+    cte0.ae::text -> ae,
     cte0.ab::datetime -> ab,
     cte0.c10::int -> c10,
     cte0.h::int -> h,
-    cte0.cx::string -> cx,
+    cte0.cx::text -> cx,
     cte0.c13::int -> c13
   )
     selection (cte0.c13::int > 0::int)
@@ -9694,17 +9685,17 @@ subquery $0:
   projection (
     z::int,
     cw::int,
-    ay::string,
-    bg::string,
+    ay::text,
+    bg::text,
     cu::int,
     aa::decimal -> d,
     ac::decimal,
     ad::int,
-    ae::string,
+    ae::text,
     ab::datetime,
     0::int -> c10,
     h::int,
-    cx::string,
+    cx::text,
     row_number() over () -> c13
   )
     motion [policy: full, program: ReshardIfNeeded]
@@ -9712,15 +9703,15 @@ subquery $0:
         t0.z::int -> z,
         t0.cu::int -> cu,
         t0.aa::decimal -> aa,
-        t0.ay::string -> ay,
-        t0.bg::string -> bg,
+        t0.ay::text -> ay,
+        t0.bg::text -> bg,
         t0.cw::int -> cw,
         t0.ac::decimal -> ac,
-        t0.ae::string -> ae,
+        t0.ae::text -> ae,
         t0.ab::datetime -> ab,
         t0.ad::int -> ad,
         t0.h::int -> h,
-        t1.cx::string -> cx
+        t1.cx::text -> cx
       )
         selection (
           (
@@ -9733,7 +9724,7 @@ subquery $0:
           )
         )
           left join on (
-            ROW(t0.cv::int, t0.ay::string) = ROW(t1.cv::int, t1.ay::string)
+            ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
           )
             scan m -> t0
             scan ad -> t1
@@ -9937,11 +9928,11 @@ WHERE
 ''
 projection (
   t0.bm::int -> c0,
-  t0.bg::string -> c1,
+  t0.bg::text -> c1,
   t0.cu::int -> c2,
-  t0.ah::string -> c3,
-  t0.ay::string -> c4,
-  t2.cx::string -> c5
+  t0.ah::text -> c3,
+  t0.ay::text -> c4,
+  t2.cx::text -> c5
 )
   selection (
     (
@@ -9953,7 +9944,7 @@ projection (
     )
   )
     left join on (
-      ROW(t0.cv::int, t0.ay::string) = ROW(t2.cv::int, t2.ay::string)
+      ROW(t0.cv::int, t0.ay::text) = ROW(t2.cv::int, t2.ay::text)
     )
       left join on (t0.cu::int = t1.cu::int)
         scan m -> t0
@@ -10080,7 +10071,7 @@ LIMIT
 ''
 limit 10
   projection (
-    cte0.a::string -> a,
+    cte0.a::text -> a,
     cte0.z::int -> z,
     cte0.cu::int -> cu,
     cte0.bj::int -> bj,
@@ -10095,7 +10086,7 @@ limit 10
       scan cte cte0($0)
 subquery $0:
   projection (
-    to_char(w::datetime::datetime, '%Y-%m-%d'::string)::string -> a,
+    to_char(w::datetime::datetime, '%Y-%m-%d'::text)::text -> a,
     z::int,
     cu::int,
     bj::int,
@@ -10150,12 +10141,12 @@ subquery $0:
           t0.aa::decimal -> aa,
           t0.ao::bool -> ao,
           t0.bb::int -> bb,
-          t0.ay::string -> ay,
-          t0.bg::string -> bg,
-          t0.ah::string -> ah,
+          t0.ay::text -> ay,
+          t0.bg::text -> bg,
+          t0.ah::text -> ah,
           t0.cw::int -> cw,
           t0.ac::decimal -> ac,
-          t0.ae::string -> ae,
+          t0.ae::text -> ae,
           t0.ab::datetime -> ab,
           t0.ad::int -> ad,
           t0.h::int -> h,
@@ -10233,7 +10224,7 @@ SELECT
 FROM
   (
     SELECT
-      "to_char" (CAST ("COL_4" as datetime), CAST('%Y-%m-%d' AS string)) as "a",
+      "to_char" (CAST ("COL_4" as datetime), CAST('%Y-%m-%d' AS text)) as "a",
       "COL_5" as "z",
       "COL_6" as "cu",
       "COL_7" as "bj",
@@ -10385,11 +10376,11 @@ projection (count(*)::int -> c4)
   scan t2
     projection (
       count(*)::int -> c4,
-      cte0.a::string -> a,
+      cte0.a::text -> a,
       cte0.z::int -> z
     )
       group by (
-        cte0.a::string,
+        cte0.a::text,
         cte0.bj::int,
         cte0.cu::int,
         cte0.z::int
@@ -10397,7 +10388,7 @@ projection (count(*)::int -> c4)
         scan cte cte0($0)
 subquery $0:
   projection (
-    to_char(t0.w::datetime::datetime, '%Y-%m-%d'::string)::string -> a,
+    to_char(t0.w::datetime::datetime, '%Y-%m-%d'::text)::text -> a,
     t0.bj::int -> bj,
     t0.cu::int -> cu,
     t0.z::int -> z
@@ -10434,7 +10425,7 @@ FROM
     FROM
       (
         SELECT
-          "to_char" (CAST ("t0"."w" as datetime), CAST('%Y-%m-%d' AS string)) as "a",
+          "to_char" (CAST ("t0"."w" as datetime), CAST('%Y-%m-%d' AS text)) as "a",
           "t0"."bj",
           "t0"."cu",
           "t0"."z"
@@ -10498,11 +10489,11 @@ WHERE
 ''
 projection (
   t0.bm::int -> c0,
-  t0.bg::string -> c1,
+  t0.bg::text -> c1,
   t0.cu::int -> c2,
-  t0.ah::string -> c3,
-  t0.ay::string -> c4,
-  t2.cx::string -> c5
+  t0.ah::text -> c3,
+  t0.ay::text -> c4,
+  t2.cx::text -> c5
 )
   selection (
     (
@@ -10514,7 +10505,7 @@ projection (
     )
   )
     left join on (
-      ROW(t0.cv::int, t0.ay::string) = ROW(t2.cv::int, t2.ay::string)
+      ROW(t0.cv::int, t0.ay::text) = ROW(t2.cv::int, t2.ay::text)
     )
       left join on (t0.cu::int = t1.cu::int)
         scan m -> t0
@@ -10651,7 +10642,7 @@ motion [policy: full, program: RemoveDuplicates]
         (
           t0.cv::int = 3023424::int
           and not coalesce(t0.aq::bool::bool, false::bool)::bool
-          and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::string)::string::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+          and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::text)::text::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
           and t0.ar::datetime >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
           and t0.ar::datetime <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
         )
@@ -10701,7 +10692,7 @@ subquery $0:
               (
                 t0.cv::int = 3023424::int
                 and not coalesce(t0.aq::bool::bool, false::bool)::bool
-                and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::string)::string::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+                and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::text)::text::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
                 and t0.ar::datetime < '2010-01-01 0:00:00.0 +00:00:00'::datetime
               )
             )
@@ -10763,7 +10754,7 @@ FROM
           "t0"."cv" = CAST(3023424 AS int)
           and not coalesce (CAST ("t0"."aq" as bool), CAST(false AS bool))
           and CAST (
-            "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS string)) as datetime
+            "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS text)) as datetime
           ) > CAST('2020-01-02 0:00:00.0 +00:00:00' AS datetime)
           and "t0"."ar" < CAST('2010-01-01 0:00:00.0 +00:00:00' AS datetime)
       )
@@ -10796,7 +10787,7 @@ WHERE
   "t0"."cv" = CAST(3023424 AS int)
   and not coalesce (CAST ("t0"."aq" as bool), CAST(false AS bool))
   and CAST (
-    "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS string)) as datetime
+    "to_char" (CAST ("t0"."ar" as datetime), CAST('%Y-%m-%d' AS text)) as datetime
   ) > CAST('2020-01-02 0:00:00.0 +00:00:00' AS datetime)
   and "t0"."ar" >= CAST('2010-01-01 0:00:00.0 +00:00:00' AS datetime)
   and "t0"."ar" <= CAST('2026-01-01 0:00:00.0 +00:00:00' AS datetime)
@@ -11049,14 +11040,14 @@ WHERE
 ''
 projection (
   t0.bm::int -> c0,
-  t0.bg::string -> c1,
-  t0.ah::string -> c2,
-  t0.ay::string -> c3,
-  t1.cx::string -> c4
+  t0.bg::text -> c1,
+  t0.ah::text -> c2,
+  t0.ay::text -> c3,
+  t1.cx::text -> c4
 )
   selection (t0.cv::int = 3023424::int)
     left join on (
-      ROW(t0.cv::int, t0.ay::string) = ROW(t1.cv::int, t1.ay::string)
+      ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
     )
       scan c -> t0
       scan ad -> t1
@@ -11129,12 +11120,12 @@ projection (
       t0.cs::datetime::datetime,
       t0.a::datetime::datetime
     )::datetime::datetime,
-    '%Y'::string
-  )::string::int -> c0,
-  t0.bg::string -> c1,
-  t0.ah::string -> c2,
-  t0.ay::string -> c3,
-  t2.cx::string -> c4
+    '%Y'::text
+  )::text::int -> c0,
+  t0.bg::text -> c1,
+  t0.ah::text -> c2,
+  t0.ay::text -> c3,
+  t2.cx::text -> c4
 )
   selection (
     (
@@ -11144,7 +11135,7 @@ projection (
     )
   )
     left join on (
-      ROW(t0.cv::int, t0.ay::string) = ROW(t2.cv::int, t2.ay::string)
+      ROW(t0.cv::int, t0.ay::text) = ROW(t2.cv::int, t2.ay::text)
     )
       left join on (
         ROW(t0.ag::int, t0.cv::int) = ROW(t1.h::int, t1.cv::int)
@@ -11170,7 +11161,7 @@ SELECT DISTINCT
           CAST ("t0"."a" as datetime)
         ) as datetime
       ),
-      CAST('%Y' AS string)
+      CAST('%Y' AS text)
     ) as int
   ) as "c0",
   "t0"."bg" as "c1",
@@ -11241,8 +11232,8 @@ projection (
   case 
     when not min(t2.u::datetime::datetime)::datetime is null then to_char(
       min(t2.u::datetime::datetime)::datetime::datetime,
-      '%Y-%m-%d'::string
-    )::string
+      '%Y-%m-%d'::text
+    )::text
     else NULL::unknown
   end -> c1,
   sum(t0.az::decimal::decimal)::decimal -> c2
@@ -11281,7 +11272,7 @@ SELECT
   CASE
     WHEN not min (CAST ("t2"."u" as datetime)) is null THEN "to_char" (
       CAST (min (CAST ("t2"."u" as datetime)) as datetime),
-      CAST('%Y-%m-%d' AS string)
+      CAST('%Y-%m-%d' AS text)
     )
     ELSE NULL
   END as "c1",
@@ -11420,10 +11411,10 @@ projection (
     when t1.cw::int = 3::int then true::bool
     else false::bool
   end -> c1,
-  t0.ay::string -> c2,
+  t0.ay::text -> c2,
   t0.cu::int -> c3,
-  t0.bg::string -> c4,
-  t0.ah::string -> c5,
+  t0.bg::text -> c4,
+  t0.ah::text -> c5,
   case 
     when (
       t0.aw::int = 0::int
@@ -11691,10 +11682,10 @@ FROM
 projection (
   t0.aw::int -> c0,
   t0.ap::bool -> c3,
-  t0.ay::string -> c4,
+  t0.ay::text -> c4,
   t0.cu::int -> c1,
-  t0.bg::string -> c5,
-  t0.ah::string -> c6,
+  t0.bg::text -> c5,
+  t0.ah::text -> c6,
   case 
     when (t0.aw::int = 0::int and not t0.ap::bool) then t0.aa::decimal
     else 0.0::decimal
@@ -11726,18 +11717,18 @@ projection (
       t0.cs::datetime::datetime,
       t0.a::datetime::datetime
     )::datetime::datetime,
-    '%Y-%m-%d'::string
-  )::string -> c15
+    '%Y-%m-%d'::text
+  )::text -> c15
 )
   scan cte t0($0)
 subquery $0:
   projection (
     t0.ag::int -> ag,
     coalesce(t1.aw::int::int, t0.bf::int::int)::int -> aw,
-    t0.ay::string -> ay,
+    t0.ay::text -> ay,
     coalesce(t1.cu::int::int, t0.cu::int::int)::int -> cu,
-    t0.bg::string -> bg,
-    t0.ah::string -> ah,
+    t0.bg::text -> bg,
+    t0.ah::text -> ah,
     t0.cs::datetime -> cs,
     t0.a::datetime -> a,
     t0.h::int -> h,
@@ -11829,7 +11820,7 @@ SELECT
         CAST ("t0"."a" as datetime)
       ) as datetime
     ),
-    CAST('%Y-%m-%d' AS string)
+    CAST('%Y-%m-%d' AS text)
   ) as "c15"
 FROM
   (
@@ -12077,16 +12068,16 @@ limit 10
   projection (
     cte4.cv::int -> cv,
     cte4.b::int -> b,
-    cte4.ay::string -> ay,
-    cte4.bg::string -> bg,
+    cte4.ay::text -> ay,
+    cte4.bg::text -> bg,
     cte4.cu::int -> cu,
     cte4.cw::int -> cw,
     cte4.ac::int -> ac,
-    cte4.ae::string -> ae,
-    cte4.ab::string -> ab,
+    cte4.ae::text -> ae,
+    cte4.ab::text -> ab,
     cte4.c9::int -> c9,
     cte4.d::decimal -> d,
-    cte4.cx::string -> cx,
+    cte4.cx::text -> cx,
     cte4.c11::int -> c11
   )
     selection (cte4.c11::int > 0::int)
@@ -12142,16 +12133,16 @@ subquery $1:
     projection (
       t6.cv::int -> cv,
       t6.ag::int -> b,
-      t3.ay::string -> ay,
-      t3.bg::string -> bg,
+      t3.ay::text -> ay,
+      t3.bg::text -> bg,
       t6.cu::int -> cu,
       t6.cw::int -> cw,
       coalesce(t6.co::int::int, t6.cm::int::int, 0::int)::int -> ac,
       case 
-        when not t6.co::int is null or not t6.cm::int is null then t6.cn::string
-        else '0000'::string
+        when not t6.co::int is null or not t6.cm::int is null then t6.cn::text
+        else '0000'::text
       end -> ae,
-      to_char(t6.cl::datetime::datetime, '%Y-%m-%d'::string)::string -> ab,
+      to_char(t6.cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
       case 
         when not t6.co::int is null then 0::int
         when not t6.cm::int is null then 1::int
@@ -12204,13 +12195,13 @@ subquery $2:
   projection (
     t9.cv::int -> cv,
     t9.ag::int -> b,
-    t9.ay::string -> ay,
-    coalesce(t3.bg::string::string, t9.bg::string::string)::string -> bg,
+    t9.ay::text -> ay,
+    coalesce(t3.bg::text::text, t9.bg::text::text)::text -> bg,
     coalesce(t3.cu::int::int, t9.cu::int::int)::int -> cu,
     t9.cw::int -> cw,
     coalesce(t9.co::int::int, t9.cm::int::int, 0::int)::int -> ac,
-    t9.cn::string -> ae,
-    to_char(t9.cl::datetime::datetime, '%Y-%m-%d'::string)::string -> ab,
+    t9.cn::text -> ae,
+    to_char(t9.cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
     case 
       when not t9.co::int is null then 0::int
       else 1::int
@@ -12257,13 +12248,13 @@ subquery $3:
         projection (
           cte1.cv::int -> cv,
           cte1.b::int -> b,
-          cte1.ay::string -> ay,
-          cte1.bg::string -> bg,
+          cte1.ay::text -> ay,
+          cte1.bg::text -> bg,
           cte1.cu::int -> cu,
           cte1.cw::int -> cw,
           cte1.ac::int -> ac,
-          cte1.ae::string -> ae,
-          cte1.ab::string -> ab,
+          cte1.ae::text -> ae,
+          cte1.ab::text -> ab,
           cte1.c9::int -> c9,
           cte1.d::decimal -> d
         )
@@ -12271,13 +12262,13 @@ subquery $3:
       projection (
         cte2.cv::int -> cv,
         cte2.b::int -> b,
-        cte2.ay::string -> ay,
-        cte2.bg::string -> bg,
+        cte2.ay::text -> ay,
+        cte2.bg::text -> bg,
         cte2.cu::int -> cu,
         cte2.cw::int -> cw,
         cte2.ac::int -> ac,
-        cte2.ae::string -> ae,
-        cte2.ab::string -> ab,
+        cte2.ae::text -> ae,
+        cte2.ab::text -> ab,
         cte2.c9::int -> c9,
         cte2.d::decimal -> d
       )
@@ -12286,38 +12277,38 @@ subquery $4:
   projection (
     unnamed_join.cv::int -> cv,
     unnamed_join.b::int -> b,
-    unnamed_join.ay::string -> ay,
-    unnamed_join.bg::string -> bg,
+    unnamed_join.ay::text -> ay,
+    unnamed_join.bg::text -> bg,
     unnamed_join.cu::int -> cu,
     unnamed_join.cw::int -> cw,
     unnamed_join.ac::int -> ac,
-    unnamed_join.ae::string -> ae,
-    unnamed_join.ab::string -> ab,
+    unnamed_join.ae::text -> ae,
+    unnamed_join.ab::text -> ab,
     unnamed_join.c9::int -> c9,
     unnamed_join.d::decimal -> d,
-    unnamed_join.cx::string -> cx,
+    unnamed_join.cx::text -> cx,
     row_number() over (order by (unnamed_join.b::int desc) ) -> c11
   )
     motion [policy: full, program: AddMissingRowsForLeftJoin]
       projection (
         cte3.cv::int -> cv,
         cte3.b::int -> b,
-        cte3.ay::string -> ay,
-        cte3.bg::string -> bg,
+        cte3.ay::text -> ay,
+        cte3.bg::text -> bg,
         cte3.cu::int -> cu,
         cte3.cw::int -> cw,
         cte3.ac::int -> ac,
-        cte3.ae::string -> ae,
-        cte3.ab::string -> ab,
+        cte3.ae::text -> ae,
+        cte3.ab::text -> ab,
         cte3.c9::int -> c9,
         cte3.d::decimal -> d,
         t12.cv::int -> cv,
-        t12.ay::string -> ay,
+        t12.ay::text -> ay,
         t12.bucket_id::int -> bucket_id,
-        t12.cx::string -> cx
+        t12.cx::text -> cx
       )
         join on (
-          ROW(cte3.cv::int, cte3.ay::string) = ROW(t12.cv::int, t12.ay::string)
+          ROW(cte3.cv::int, cte3.ay::text) = ROW(t12.cv::int, t12.ay::text)
         )
           scan cte cte3($3)
           scan ad -> t12
@@ -12420,9 +12411,9 @@ SELECT
   CASE
     WHEN not "t6"."co" is null
     or not "t6"."cm" is null THEN "t6"."cn"
-    ELSE CAST('0000' AS string)
+    ELSE CAST('0000' AS text)
   END as "ae",
-  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS string)) as "ab",
+  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
   CASE
     WHEN not "t6"."co" is null THEN CAST(0 AS int)
     WHEN not "t6"."cm" is null THEN CAST(1 AS int)
@@ -12502,8 +12493,8 @@ FROM
       "t9"."ag" as "b",
       "t9"."ay",
       coalesce (
-        CAST ("t3"."bg" as string),
-        CAST ("t9"."bg" as string)
+        CAST ("t3"."bg" as text),
+        CAST ("t9"."bg" as text)
       ) as "bg",
       coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
       "t9"."cw",
@@ -12513,7 +12504,7 @@ FROM
         CAST(0 AS int)
       ) as "ac",
       "t9"."cn" as "ae",
-      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS string)) as "ab",
+      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
       CASE
         WHEN not "t9"."co" is null THEN CAST(0 AS int)
         ELSE CAST(1 AS int)
@@ -13176,20 +13167,20 @@ union all
   motion [policy: segment([ref(cv)]), program: ReshardIfNeeded]
     projection (
       cte1.cv::int -> cv,
-      cte1.ay::string -> ay,
-      cte1.bg::string -> bg,
-      cte1.ah::string -> ah,
+      cte1.ay::text -> ay,
+      cte1.bg::text -> bg,
+      cte1.ah::text -> ah,
       cte1.cu::int -> cu,
-      cte1.cx::string -> cx
+      cte1.cx::text -> cx
     )
       scan cte cte1($1)
   projection (
     cte2.cv::int -> cv,
-    cte2.ay::string -> ay,
-    cte2.bg::string -> bg,
-    cte2.ah::string -> ah,
+    cte2.ay::text -> ay,
+    cte2.bg::text -> bg,
+    cte2.ah::text -> ah,
     cte2.cu::int -> cu,
-    cte2.cx::string -> cx
+    cte2.cx::text -> cx
   )
     scan cte cte2($2)
 subquery $0:
@@ -13238,36 +13229,36 @@ subquery $0:
 subquery $1:
   projection (
     gr_expr_1::int -> cv,
-    gr_expr_2::string -> ay,
-    gr_expr_3::string -> bg,
-    gr_expr_4::string -> ah,
+    gr_expr_2::text -> ay,
+    gr_expr_3::text -> bg,
+    gr_expr_4::text -> ah,
     gr_expr_5::int -> cu,
-    gr_expr_6::string -> cx
+    gr_expr_6::text -> cx
   )
     group by (
       gr_expr_1::int,
-      gr_expr_2::string,
-      gr_expr_3::string,
-      gr_expr_4::string,
+      gr_expr_2::text,
+      gr_expr_3::text,
+      gr_expr_4::text,
       gr_expr_5::int,
-      gr_expr_6::string
+      gr_expr_6::text
     )
       motion [policy: full, program: ReshardIfNeeded]
         projection (
           t6.cv::int -> gr_expr_1,
-          t3.ay::string -> gr_expr_2,
-          t3.bg::string -> gr_expr_3,
-          t3.ah::string -> gr_expr_4,
+          t3.ay::text -> gr_expr_2,
+          t3.bg::text -> gr_expr_3,
+          t3.ah::text -> gr_expr_4,
           t6.cu::int -> gr_expr_5,
-          t8.cx::string -> gr_expr_6
+          t8.cx::text -> gr_expr_6
         )
           group by (
             t6.cv::int,
-            t3.ay::string,
-            t3.bg::string,
-            t3.ah::string,
+            t3.ay::text,
+            t3.bg::text,
+            t3.ah::text,
             t6.cu::int,
-            t8.cx::string
+            t8.cx::text
           )
             selection (
               (
@@ -13277,7 +13268,7 @@ subquery $1:
               )
             )
               left join on (
-                ROW(t3.cv::int, t3.ay::string) = ROW(t8.cv::int, t8.ay::string)
+                ROW(t3.cv::int, t3.ay::text) = ROW(t8.cv::int, t8.ay::text)
               )
                 left join on (t7.cw::int = t6.cw::int)
                   join on (
@@ -13312,11 +13303,11 @@ subquery $1:
 subquery $2:
   projection (
     t9.cv::int -> cv,
-    t9.ay::string -> ay,
-    coalesce(t3.bg::string::string, t9.bg::string::string)::string -> bg,
-    coalesce(t3.ah::string::string, t9.ah::string::string)::string -> ah,
+    t9.ay::text -> ay,
+    coalesce(t3.bg::text::text, t9.bg::text::text)::text -> bg,
+    coalesce(t3.ah::text::text, t9.ah::text::text)::text -> ah,
     coalesce(t3.cu::int::int, t9.cu::int::int)::int -> cu,
-    t8.cx::string -> cx
+    t8.cx::text -> cx
   )
     selection (
       (
@@ -13331,7 +13322,7 @@ subquery $2:
       )
     )
       left join on (
-        ROW(t3.cv::int, t3.ay::string) = ROW(t8.cv::int, t8.ay::string)
+        ROW(t3.cv::int, t3.ay::text) = ROW(t8.cv::int, t8.ay::text)
       )
         left join on (t9.cu::int = t11.cu::int)
           left join on (
@@ -13526,12 +13517,12 @@ FROM
       "t9"."cv",
       "t9"."ay",
       coalesce (
-        CAST ("t3"."bg" as string),
-        CAST ("t9"."bg" as string)
+        CAST ("t3"."bg" as text),
+        CAST ("t9"."bg" as text)
       ) as "bg",
       coalesce (
-        CAST ("t3"."ah" as string),
-        CAST ("t9"."ah" as string)
+        CAST ("t3"."ah" as text),
+        CAST ("t9"."ah" as text)
       ) as "ah",
       coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
       "t8"."cx"
@@ -13838,10 +13829,10 @@ WHERE
 motion [policy: full, program: RemoveDuplicates]
   union
     projection (
-      t0.ay::string -> ay,
-      t0.bg::string -> bg,
-      t0.ah::string -> ah,
-      t1.cx::string -> cx
+      t0.ay::text -> ay,
+      t0.bg::text -> bg,
+      t0.ah::text -> ah,
+      t1.cx::text -> cx
     )
       selection (
         (
@@ -13852,15 +13843,15 @@ motion [policy: full, program: RemoveDuplicates]
         )
       )
         left join on (
-          ROW(t0.cv::int, t0.ay::string) = ROW(t1.cv::int, t1.ay::string)
+          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
           scan a -> t0
           scan ad -> t1
     projection (
-      t2.ay::string -> c0,
-      coalesce(t4.bg::string::string, t2.bg::string::string)::string -> c1,
-      coalesce(t4.ah::string::string, t2.ah::string::string)::string -> c2,
-      t1.cx::string -> c3
+      t2.ay::text -> c0,
+      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+      t1.cx::text -> c3
     )
       selection (
         (
@@ -13875,7 +13866,7 @@ motion [policy: full, program: RemoveDuplicates]
       )
         left join on (t2.cu::int = t6.cu::int)
           left join on (
-            ROW(t2.cv::int, t2.ay::string) = ROW(t1.cv::int, t1.ay::string)
+            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
           )
             left join on (t2.cw::int = t5.cw::int)
               left join on (
@@ -13917,12 +13908,12 @@ UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
   coalesce (
-    CAST ("t4"."bg" as string),
-    CAST ("t2"."bg" as string)
+    CAST ("t4"."bg" as text),
+    CAST ("t2"."bg" as text)
   ) as "c1",
   coalesce (
-    CAST ("t4"."ah" as string),
-    CAST ("t2"."ah" as string)
+    CAST ("t4"."ah" as text),
+    CAST ("t2"."ah" as text)
   ) as "c2",
   "t1"."cx" as "c3"
 FROM
@@ -14044,7 +14035,7 @@ GROUP BY
 union all
   projection (
     a.cq::int -> c0,
-    to_char(a.a::datetime::datetime, '%Y-%m-%d'::string)::string -> c1,
+    to_char(a.a::datetime::datetime, '%Y-%m-%d'::text)::text -> c1,
     sum(a.f::decimal::decimal)::decimal -> c3,
     sum(a.e::decimal::decimal)::decimal -> c4,
     0.0::decimal -> c5
@@ -14066,7 +14057,7 @@ union all
         scan a
   projection (
     cte0.cq::int -> cq,
-    cte0.a::string -> a,
+    cte0.a::text -> a,
     0::int -> c3,
     0::int -> c4,
     coalesce(
@@ -14081,7 +14072,7 @@ union all
       0.0::decimal
     )::decimal -> c5
   )
-    group by (cte0.cq::int, cte0.a::string)
+    group by (cte0.cq::int, cte0.a::text)
       scan cte cte0($0)
 subquery $0:
   projection (
@@ -14091,8 +14082,8 @@ subquery $0:
         t0.cs::datetime::datetime,
         t0.a::datetime::datetime
       )::datetime::datetime,
-      '%Y-%m-%d'::string
-    )::string -> a,
+      '%Y-%m-%d'::text
+    )::text -> a,
     t0.d::decimal -> d,
     coalesce(t3.cj::int::int, 0::int)::int -> cj,
     t0.h::int -> h
@@ -14108,8 +14099,8 @@ subquery $0:
             t0.cs::datetime::datetime,
             t0.a::datetime::datetime
           )::datetime::datetime,
-          '%Y'::string
-        )::string::int in ROW(
+          '%Y'::text
+        )::text::int in ROW(
           2025::int,
           2024::int,
           2023::int,
@@ -14142,7 +14133,7 @@ subquery $0:
 ''
 SELECT
   "a"."cq" as "c0",
-  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS string)) as "c1",
+  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS text)) as "c1",
   sum (CAST ("a"."f" as decimal)) as "c3",
   sum (CAST ("a"."e" as decimal)) as "c4",
   CAST(0.0 AS decimal) as "c5"
@@ -14193,7 +14184,7 @@ FROM
             CAST ("t0"."a" as datetime)
           ) as datetime
         ),
-        CAST('%Y-%m-%d' AS string)
+        CAST('%Y-%m-%d' AS text)
       ) as "a",
       "t0"."d",
       coalesce (CAST ("t3"."cj" as int), CAST(0 AS int)) as "cj",
@@ -14222,7 +14213,7 @@ FROM
               CAST ("t0"."a" as datetime)
             ) as datetime
           ),
-          CAST('%Y' AS string)
+          CAST('%Y' AS text)
         ) as int
       ) in (
         CAST(2025 AS int),
@@ -14432,16 +14423,16 @@ limit 10
   projection (
     cte4.cv::int -> cv,
     cte4.b::int -> b,
-    cte4.ay::string -> ay,
-    cte4.bg::string -> bg,
+    cte4.ay::text -> ay,
+    cte4.bg::text -> bg,
     cte4.cu::int -> cu,
     cte4.cw::int -> cw,
     cte4.ac::int -> ac,
-    cte4.ae::string -> ae,
-    cte4.ab::string -> ab,
+    cte4.ae::text -> ae,
+    cte4.ab::text -> ab,
     cte4.c9::int -> c9,
     cte4.d::decimal -> d,
-    cte4.cx::string -> cx,
+    cte4.cx::text -> cx,
     cte4.c11::int -> c11
   )
     selection (cte4.c11::int > 0::int)
@@ -14497,16 +14488,16 @@ subquery $1:
     projection (
       t6.cv::int -> cv,
       t6.ag::int -> b,
-      t3.ay::string -> ay,
-      t3.bg::string -> bg,
+      t3.ay::text -> ay,
+      t3.bg::text -> bg,
       t6.cu::int -> cu,
       t6.cw::int -> cw,
       coalesce(t6.co::int::int, t6.cm::int::int, 0::int)::int -> ac,
       case 
-        when not t6.co::int is null or not t6.cm::int is null then t6.cn::string
-        else '0000'::string
+        when not t6.co::int is null or not t6.cm::int is null then t6.cn::text
+        else '0000'::text
       end -> ae,
-      to_char(t6.cl::datetime::datetime, '%Y-%m-%d'::string)::string -> ab,
+      to_char(t6.cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
       case 
         when not t6.co::int is null then 0::int
         when not t6.cm::int is null then 1::int
@@ -14558,13 +14549,13 @@ subquery $2:
   projection (
     t9.cv::int -> cv,
     t9.ag::int -> b,
-    t9.ay::string -> ay,
-    coalesce(t3.bg::string::string, t9.bg::string::string)::string -> bg,
+    t9.ay::text -> ay,
+    coalesce(t3.bg::text::text, t9.bg::text::text)::text -> bg,
     coalesce(t3.cu::int::int, t9.cu::int::int)::int -> cu,
     t9.cw::int -> cw,
     coalesce(t9.co::int::int, t9.cm::int::int, 0::int)::int -> ac,
-    t9.cn::string -> ae,
-    to_char(t9.cl::datetime::datetime, '%Y-%m-%d'::string)::string -> ab,
+    t9.cn::text -> ae,
+    to_char(t9.cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
     case 
       when not t9.co::int is null then 0::int
       else 1::int
@@ -14610,13 +14601,13 @@ subquery $3:
         projection (
           cte1.cv::int -> cv,
           cte1.b::int -> b,
-          cte1.ay::string -> ay,
-          cte1.bg::string -> bg,
+          cte1.ay::text -> ay,
+          cte1.bg::text -> bg,
           cte1.cu::int -> cu,
           cte1.cw::int -> cw,
           cte1.ac::int -> ac,
-          cte1.ae::string -> ae,
-          cte1.ab::string -> ab,
+          cte1.ae::text -> ae,
+          cte1.ab::text -> ab,
           cte1.c9::int -> c9,
           cte1.d::decimal -> d
         )
@@ -14624,13 +14615,13 @@ subquery $3:
       projection (
         cte2.cv::int -> cv,
         cte2.b::int -> b,
-        cte2.ay::string -> ay,
-        cte2.bg::string -> bg,
+        cte2.ay::text -> ay,
+        cte2.bg::text -> bg,
         cte2.cu::int -> cu,
         cte2.cw::int -> cw,
         cte2.ac::int -> ac,
-        cte2.ae::string -> ae,
-        cte2.ab::string -> ab,
+        cte2.ae::text -> ae,
+        cte2.ab::text -> ab,
         cte2.c9::int -> c9,
         cte2.d::decimal -> d
       )
@@ -14639,38 +14630,38 @@ subquery $4:
   projection (
     unnamed_join.cv::int -> cv,
     unnamed_join.b::int -> b,
-    unnamed_join.ay::string -> ay,
-    unnamed_join.bg::string -> bg,
+    unnamed_join.ay::text -> ay,
+    unnamed_join.bg::text -> bg,
     unnamed_join.cu::int -> cu,
     unnamed_join.cw::int -> cw,
     unnamed_join.ac::int -> ac,
-    unnamed_join.ae::string -> ae,
-    unnamed_join.ab::string -> ab,
+    unnamed_join.ae::text -> ae,
+    unnamed_join.ab::text -> ab,
     unnamed_join.c9::int -> c9,
     unnamed_join.d::decimal -> d,
-    unnamed_join.cx::string -> cx,
+    unnamed_join.cx::text -> cx,
     row_number() over (order by (unnamed_join.b::int desc) ) -> c11
   )
     motion [policy: full, program: AddMissingRowsForLeftJoin]
       projection (
         cte3.cv::int -> cv,
         cte3.b::int -> b,
-        cte3.ay::string -> ay,
-        cte3.bg::string -> bg,
+        cte3.ay::text -> ay,
+        cte3.bg::text -> bg,
         cte3.cu::int -> cu,
         cte3.cw::int -> cw,
         cte3.ac::int -> ac,
-        cte3.ae::string -> ae,
-        cte3.ab::string -> ab,
+        cte3.ae::text -> ae,
+        cte3.ab::text -> ab,
         cte3.c9::int -> c9,
         cte3.d::decimal -> d,
         t12.cv::int -> cv,
-        t12.ay::string -> ay,
+        t12.ay::text -> ay,
         t12.bucket_id::int -> bucket_id,
-        t12.cx::string -> cx
+        t12.cx::text -> cx
       )
         join on (
-          ROW(cte3.cv::int, cte3.ay::string) = ROW(t12.cv::int, t12.ay::string)
+          ROW(cte3.cv::int, cte3.ay::text) = ROW(t12.cv::int, t12.ay::text)
         )
           scan cte cte3($3)
           scan ad -> t12
@@ -14773,9 +14764,9 @@ SELECT
   CASE
     WHEN not "t6"."co" is null
     or not "t6"."cm" is null THEN "t6"."cn"
-    ELSE CAST('0000' AS string)
+    ELSE CAST('0000' AS text)
   END as "ae",
-  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS string)) as "ab",
+  "to_char" (CAST ("t6"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
   CASE
     WHEN not "t6"."co" is null THEN CAST(0 AS int)
     WHEN not "t6"."cm" is null THEN CAST(1 AS int)
@@ -14854,8 +14845,8 @@ FROM
       "t9"."ag" as "b",
       "t9"."ay",
       coalesce (
-        CAST ("t3"."bg" as string),
-        CAST ("t9"."bg" as string)
+        CAST ("t3"."bg" as text),
+        CAST ("t9"."bg" as text)
       ) as "bg",
       coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
       "t9"."cw",
@@ -14865,7 +14856,7 @@ FROM
         CAST(0 AS int)
       ) as "ac",
       "t9"."cn" as "ae",
-      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS string)) as "ab",
+      "to_char" (CAST ("t9"."cl" as datetime), CAST('%Y-%m-%d' AS text)) as "ab",
       CASE
         WHEN not "t9"."co" is null THEN CAST(0 AS int)
         ELSE CAST(1 AS int)
@@ -15604,20 +15595,20 @@ union all
   motion [policy: segment([ref(cv)]), program: ReshardIfNeeded]
     projection (
       cte1.cv::int -> cv,
-      cte1.ay::string -> ay,
-      cte1.bg::string -> bg,
-      cte1.ah::string -> ah,
+      cte1.ay::text -> ay,
+      cte1.bg::text -> bg,
+      cte1.ah::text -> ah,
       cte1.cu::int -> cu,
-      cte1.cx::string -> cx
+      cte1.cx::text -> cx
     )
       scan cte cte1($1)
   projection (
     cte2.cv::int -> cv,
-    cte2.ay::string -> ay,
-    cte2.bg::string -> bg,
-    cte2.ah::string -> ah,
+    cte2.ay::text -> ay,
+    cte2.bg::text -> bg,
+    cte2.ah::text -> ah,
     cte2.cu::int -> cu,
-    cte2.cx::string -> cx
+    cte2.cx::text -> cx
   )
     scan cte cte2($2)
 subquery $0:
@@ -15666,36 +15657,36 @@ subquery $0:
 subquery $1:
   projection (
     gr_expr_1::int -> cv,
-    gr_expr_2::string -> ay,
-    gr_expr_3::string -> bg,
-    gr_expr_4::string -> ah,
+    gr_expr_2::text -> ay,
+    gr_expr_3::text -> bg,
+    gr_expr_4::text -> ah,
     gr_expr_5::int -> cu,
-    gr_expr_6::string -> cx
+    gr_expr_6::text -> cx
   )
     group by (
       gr_expr_1::int,
-      gr_expr_2::string,
-      gr_expr_3::string,
-      gr_expr_4::string,
+      gr_expr_2::text,
+      gr_expr_3::text,
+      gr_expr_4::text,
       gr_expr_5::int,
-      gr_expr_6::string
+      gr_expr_6::text
     )
       motion [policy: full, program: ReshardIfNeeded]
         projection (
           t6.cv::int -> gr_expr_1,
-          t3.ay::string -> gr_expr_2,
-          t3.bg::string -> gr_expr_3,
-          t3.ah::string -> gr_expr_4,
+          t3.ay::text -> gr_expr_2,
+          t3.bg::text -> gr_expr_3,
+          t3.ah::text -> gr_expr_4,
           t6.cu::int -> gr_expr_5,
-          t8.cx::string -> gr_expr_6
+          t8.cx::text -> gr_expr_6
         )
           group by (
             t6.cv::int,
-            t3.ay::string,
-            t3.bg::string,
-            t3.ah::string,
+            t3.ay::text,
+            t3.bg::text,
+            t3.ah::text,
             t6.cu::int,
-            t8.cx::string
+            t8.cx::text
           )
             selection (
               (
@@ -15704,7 +15695,7 @@ subquery $1:
               )
             )
               left join on (
-                ROW(t3.cv::int, t3.ay::string) = ROW(t8.cv::int, t8.ay::string)
+                ROW(t3.cv::int, t3.ay::text) = ROW(t8.cv::int, t8.ay::text)
               )
                 left join on (t7.cw::int = t6.cw::int)
                   join on (
@@ -15739,11 +15730,11 @@ subquery $1:
 subquery $2:
   projection (
     t9.cv::int -> cv,
-    t9.ay::string -> ay,
-    coalesce(t3.bg::string::string, t9.bg::string::string)::string -> bg,
-    coalesce(t3.ah::string::string, t9.ah::string::string)::string -> ah,
+    t9.ay::text -> ay,
+    coalesce(t3.bg::text::text, t9.bg::text::text)::text -> bg,
+    coalesce(t3.ah::text::text, t9.ah::text::text)::text -> ah,
     coalesce(t3.cu::int::int, t9.cu::int::int)::int -> cu,
-    t8.cx::string -> cx
+    t8.cx::text -> cx
   )
     selection (
       (
@@ -15757,7 +15748,7 @@ subquery $2:
       )
     )
       left join on (
-        ROW(t3.cv::int, t3.ay::string) = ROW(t8.cv::int, t8.ay::string)
+        ROW(t3.cv::int, t3.ay::text) = ROW(t8.cv::int, t8.ay::text)
       )
         left join on (t9.cu::int = t11.cu::int)
           left join on (
@@ -15951,12 +15942,12 @@ FROM
       "t9"."cv",
       "t9"."ay",
       coalesce (
-        CAST ("t3"."bg" as string),
-        CAST ("t9"."bg" as string)
+        CAST ("t3"."bg" as text),
+        CAST ("t9"."bg" as text)
       ) as "bg",
       coalesce (
-        CAST ("t3"."ah" as string),
-        CAST ("t9"."ah" as string)
+        CAST ("t3"."ah" as text),
+        CAST ("t9"."ah" as text)
       ) as "ah",
       coalesce (CAST ("t3"."cu" as int), CAST ("t9"."cu" as int)) as "cu",
       "t8"."cx"
@@ -16073,7 +16064,7 @@ GROUP BY
 ''
 union all
   projection (
-    to_char(a.a::datetime::datetime, '%Y-%m-%d'::string)::string -> c0,
+    to_char(a.a::datetime::datetime, '%Y-%m-%d'::text)::text -> c0,
     sum(a.f::decimal::decimal)::decimal -> c2,
     sum(a.e::decimal::decimal)::decimal -> c3,
     0::int -> c4
@@ -16089,7 +16080,7 @@ union all
       )
         scan a
   projection (
-    cte0.a::string -> a,
+    cte0.a::text -> a,
     0::int -> c2,
     0::int -> c3,
     coalesce(
@@ -16104,7 +16095,7 @@ union all
       0.0::decimal
     )::decimal -> c4
   )
-    group by (cte0.a::string)
+    group by (cte0.a::text)
       scan cte cte0($0)
 subquery $0:
   projection (
@@ -16113,8 +16104,8 @@ subquery $0:
         t0.cs::datetime::datetime,
         t0.a::datetime::datetime
       )::datetime::datetime,
-      '%Y-%m-%d'::string
-    )::string -> a,
+      '%Y-%m-%d'::text
+    )::text -> a,
     t0.d::decimal -> d,
     coalesce(t3.cj::int::int, 0::int)::int -> cj,
     t0.h::int -> h
@@ -16130,15 +16121,15 @@ subquery $0:
             t0.cs::datetime::datetime,
             t0.a::datetime::datetime
           )::datetime::datetime,
-          '%Y'::string
-        )::string::int = 2023::int
+          '%Y'::text
+        )::text::int = 2023::int
         and to_char(
           coalesce(
             t0.cs::datetime::datetime,
             t0.a::datetime::datetime
           )::datetime::datetime,
-          '%m'::string
-        )::string::int = 9::int
+          '%m'::text
+        )::text::int = 9::int
       )
     )
       left join on (t0.cw::int = t3.cw::int)
@@ -16162,7 +16153,7 @@ subquery $0:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS string)) as "c0",
+  "to_char" (CAST ("a"."a" as datetime), CAST('%Y-%m-%d' AS text)) as "c0",
   sum (CAST ("a"."f" as decimal)) as "c2",
   sum (CAST ("a"."e" as decimal)) as "c3",
   CAST(0 AS int) as "c4"
@@ -16205,7 +16196,7 @@ FROM
             CAST ("t0"."a" as datetime)
           ) as datetime
         ),
-        CAST('%Y-%m-%d' AS string)
+        CAST('%Y-%m-%d' AS text)
       ) as "a",
       "t0"."d",
       coalesce (CAST ("t3"."cj" as int), CAST(0 AS int)) as "cj",
@@ -16233,7 +16224,7 @@ FROM
               CAST ("t0"."a" as datetime)
             ) as datetime
           ),
-          CAST('%Y' AS string)
+          CAST('%Y' AS text)
         ) as int
       ) = CAST(2023 AS int)
       and CAST (
@@ -16244,7 +16235,7 @@ FROM
               CAST ("t0"."a" as datetime)
             ) as datetime
           ),
-          CAST('%m' AS string)
+          CAST('%m' AS text)
         ) as int
       ) = CAST(9 AS int)
   ) as "cte0"
@@ -16318,10 +16309,10 @@ WHERE
 motion [policy: full, program: RemoveDuplicates]
   union
     projection (
-      t0.ay::string -> ay,
-      t0.bg::string -> bg,
-      t0.ah::string -> ah,
-      t1.cx::string -> cx
+      t0.ay::text -> ay,
+      t0.bg::text -> bg,
+      t0.ah::text -> ah,
+      t1.cx::text -> cx
     )
       selection (
         (
@@ -16332,15 +16323,15 @@ motion [policy: full, program: RemoveDuplicates]
         )
       )
         left join on (
-          ROW(t0.cv::int, t0.ay::string) = ROW(t1.cv::int, t1.ay::string)
+          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
           scan a -> t0 (indexed by ix_b)
           scan ad -> t1
     projection (
-      t2.ay::string -> c0,
-      coalesce(t4.bg::string::string, t2.bg::string::string)::string -> c1,
-      coalesce(t4.ah::string::string, t2.ah::string::string)::string -> c2,
-      t1.cx::string -> c3
+      t2.ay::text -> c0,
+      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+      t1.cx::text -> c3
     )
       selection (
         (
@@ -16351,20 +16342,20 @@ motion [policy: full, program: RemoveDuplicates]
               t2.cs::datetime::datetime,
               t2.a::datetime::datetime
             )::datetime::datetime,
-            '%Y'::string
-          )::string::int = 2023::int
+            '%Y'::text
+          )::text::int = 2023::int
           and to_char(
             coalesce(
               t2.cs::datetime::datetime,
               t2.a::datetime::datetime
             )::datetime::datetime,
-            '%m'::string
-          )::string::int = 9::int
+            '%m'::text
+          )::text::int = 9::int
         )
       )
         left join on (t2.cu::int = t6.cu::int)
           left join on (
-            ROW(t2.cv::int, t2.ay::string) = ROW(t1.cv::int, t1.ay::string)
+            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
           )
             left join on (t2.cw::int = t5.cw::int)
               left join on (
@@ -16406,12 +16397,12 @@ UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
   coalesce (
-    CAST ("t4"."bg" as string),
-    CAST ("t2"."bg" as string)
+    CAST ("t4"."bg" as text),
+    CAST ("t2"."bg" as text)
   ) as "c1",
   coalesce (
-    CAST ("t4"."ah" as string),
-    CAST ("t2"."ah" as string)
+    CAST ("t4"."ah" as text),
+    CAST ("t2"."ah" as text)
   ) as "c2",
   "t1"."cx" as "c3"
 FROM
@@ -16435,7 +16426,7 @@ WHERE
           CAST ("t2"."a" as datetime)
         ) as datetime
       ),
-      CAST('%Y' AS string)
+      CAST('%Y' AS text)
     ) as int
   ) = CAST(2023 AS int)
   and CAST (
@@ -16446,7 +16437,7 @@ WHERE
           CAST ("t2"."a" as datetime)
         ) as datetime
       ),
-      CAST('%m' AS string)
+      CAST('%m' AS text)
     ) as int
   ) = CAST(9 AS int)
 ''
@@ -16722,10 +16713,10 @@ WHERE
 motion [policy: full, program: RemoveDuplicates]
   union
     projection (
-      t0.ay::string -> ay,
-      t0.bg::string -> bg,
-      t0.ah::string -> ah,
-      t1.cx::string -> cx
+      t0.ay::text -> ay,
+      t0.bg::text -> bg,
+      t0.ah::text -> ah,
+      t1.cx::text -> cx
     )
       selection (
         (
@@ -16735,15 +16726,15 @@ motion [policy: full, program: RemoveDuplicates]
         )
       )
         left join on (
-          ROW(t0.cv::int, t0.ay::string) = ROW(t1.cv::int, t1.ay::string)
+          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
           scan a -> t0 (indexed by ix_a)
           scan ad -> t1
     projection (
-      t2.ay::string -> c0,
-      coalesce(t4.bg::string::string, t2.bg::string::string)::string -> c1,
-      coalesce(t4.ah::string::string, t2.ah::string::string)::string -> c2,
-      t1.cx::string -> c3
+      t2.ay::text -> c0,
+      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+      t1.cx::text -> c3
     )
       selection (
         (
@@ -16757,7 +16748,7 @@ motion [policy: full, program: RemoveDuplicates]
       )
         left join on (t2.cu::int = t6.cu::int)
           left join on (
-            ROW(t2.cv::int, t2.ay::string) = ROW(t1.cv::int, t1.ay::string)
+            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
           )
             left join on (t2.cw::int = t5.cw::int)
               left join on (
@@ -16798,12 +16789,12 @@ UNION
 SELECT DISTINCT
   "t2"."ay" as "c0",
   coalesce (
-    CAST ("t4"."bg" as string),
-    CAST ("t2"."bg" as string)
+    CAST ("t4"."bg" as text),
+    CAST ("t2"."bg" as text)
   ) as "c1",
   coalesce (
-    CAST ("t4"."ah" as string),
-    CAST ("t2"."ah" as string)
+    CAST ("t4"."ah" as text),
+    CAST ("t2"."ah" as text)
   ) as "c2",
   "t1"."cx" as "c3"
 FROM
@@ -16980,8 +16971,8 @@ subquery $1:
         t0.cs::datetime::datetime,
         t0.a::datetime::datetime
       )::datetime::datetime,
-      '%Y'::string
-    )::string::int -> bm,
+      '%Y'::text
+    )::text::int -> bm,
     (
       (
         to_char(
@@ -16989,8 +16980,8 @@ subquery $1:
             t0.cs::datetime::datetime,
             t0.a::datetime::datetime
           )::datetime::datetime,
-          '%m'::string
-        )::string::int - 1::int
+          '%m'::text
+        )::text::int - 1::int
       ) / 3::int + 1::int
     )::int -> bl,
     to_char(
@@ -16998,8 +16989,8 @@ subquery $1:
         t0.cs::datetime::datetime,
         t0.a::datetime::datetime
       )::datetime::datetime,
-      '%m'::string
-    )::string::int -> bk,
+      '%m'::text
+    )::text::int -> bk,
     coalesce(
       (
         t0.d::decimal * coalesce(t3.cj::int::decimal, 0.0::decimal)::decimal * case 
@@ -17021,8 +17012,8 @@ subquery $1:
             t0.cs::datetime::datetime,
             t0.a::datetime::datetime
           )::datetime::datetime,
-          '%Y'::string
-        )::string::int in ROW(2025::int, 2024::int, 2023::int)
+          '%Y'::text
+        )::text::int in ROW(2025::int, 2024::int, 2023::int)
       )
     )
       left join on (t0.cu::int = t4.cu::int)
@@ -17107,7 +17098,7 @@ FROM
                   CAST ("t0"."a" as datetime)
                 ) as datetime
               ),
-              CAST('%Y' AS string)
+              CAST('%Y' AS text)
             ) as int
           ) as "bm",
           CAST (
@@ -17121,7 +17112,7 @@ FROM
                         CAST ("t0"."a" as datetime)
                       ) as datetime
                     ),
-                    CAST('%m' AS string)
+                    CAST('%m' AS text)
                   ) as int
                 ) - CAST(1 AS int)
               ) / CAST(3 AS int) + CAST(1 AS int)
@@ -17135,7 +17126,7 @@ FROM
                   CAST ("t0"."a" as datetime)
                 ) as datetime
               ),
-              CAST('%m' AS string)
+              CAST('%m' AS text)
             ) as int
           ) as "bk",
           coalesce (
@@ -17176,7 +17167,7 @@ FROM
                   CAST ("t0"."a" as datetime)
                 ) as datetime
               ),
-              CAST('%Y' AS string)
+              CAST('%Y' AS text)
             ) as int
           ) in (
             CAST(2025 AS int),
@@ -17368,8 +17359,8 @@ projection (
   case 
     when not min(t2.u::datetime::datetime)::datetime is null then to_char(
       min(t2.u::datetime::datetime)::datetime::datetime,
-      '%Y-%m-%d'::string
-    )::string
+      '%Y-%m-%d'::text
+    )::text
     else NULL::unknown
   end -> c1,
   sum(t0.az::decimal::decimal)::decimal -> c2
@@ -17407,7 +17398,7 @@ SELECT
   CASE
     WHEN not min (CAST ("t2"."u" as datetime)) is null THEN "to_char" (
       CAST (min (CAST ("t2"."u" as datetime)) as datetime),
-      CAST('%Y-%m-%d' AS string)
+      CAST('%Y-%m-%d' AS text)
     )
     ELSE NULL
   END as "c1",
@@ -17566,15 +17557,15 @@ GROUP BY
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  'KNO'::string -> c0,
+  'KNO'::text -> c0,
   t0.cu::int -> c1,
-  t0.ah::string -> c2,
-  t0.bg::string -> c3,
+  t0.ah::text -> c2,
+  t0.bg::text -> c3,
   case 
     when (not t1.cw::int is null and t1.cw::int = 3::int) then 1::int
     else 0::int
   end -> c4,
-  t0.ay::string -> c5,
+  t0.ay::text -> c5,
   sum(
     (
       case 
@@ -17638,13 +17629,13 @@ projection (
 )
   group by (
     t0.cu::int,
-    t0.ah::string,
-    t0.bg::string,
+    t0.ah::text,
+    t0.bg::text,
     case 
       when (not t1.cw::int is null and t1.cw::int = 3::int) then 1::int
       else 0::int
     end,
-    t0.ay::string
+    t0.ay::text
   )
     selection (t0.cv::int = 3023424::int)
       left join on (t0.cu::int = t1.cu::int)
@@ -17660,7 +17651,7 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  CAST('KNO' AS string) as "c0",
+  CAST('KNO' AS text) as "c0",
   "t0"."cu" as "c1",
   "t0"."ah" as "c2",
   "t0"."bg" as "c3",
@@ -17903,12 +17894,12 @@ GROUP BY
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  'BUF'::string -> c7,
+  'BUF'::text -> c7,
   cte0.cu::int -> cu,
-  cte0.ah::string -> ah,
-  cte0.bg::string -> bg,
+  cte0.ah::text -> ah,
+  cte0.bg::text -> bg,
   cte0.c4::int -> c4,
-  cte0.ay::string -> ay,
+  cte0.ay::text -> ay,
   coalesce(
     sum(cte0.aa::decimal::decimal)::decimal::decimal,
     0.0::decimal
@@ -17943,18 +17934,18 @@ projection (
 )
   group by (
     cte0.cu::int,
-    cte0.ah::string,
-    cte0.bg::string,
+    cte0.ah::text,
+    cte0.bg::text,
     cte0.c4::int,
-    cte0.ay::string
+    cte0.ay::text
   )
     scan cte cte0($0)
 subquery $0:
   projection (
     t0.cu::int -> cu,
-    t0.ah::string -> ah,
-    t0.bg::string -> bg,
-    t0.ay::string -> ay,
+    t0.ah::text -> ah,
+    t0.bg::text -> bg,
+    t0.ay::text -> ay,
     case 
       when (not t2.cw::int is null and t2.cw::int = 3::int) then 1::int
       else 0::int
@@ -18000,7 +17991,7 @@ subquery $0:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  CAST('BUF' AS string) as "c7",
+  CAST('BUF' AS text) as "c7",
   "cte0"."cu",
   "cte0"."ah",
   "cte0"."bg",
@@ -18162,8 +18153,8 @@ projection (
       t0.cs::datetime::datetime,
       t0.a::datetime::datetime
     )::datetime::datetime,
-    '%Y-%m-%d'::string
-  )::string -> c1,
+    '%Y-%m-%d'::text
+  )::text -> c1,
   coalesce(
     (
       t0.d::decimal * coalesce(t3.cj::int::decimal, 0.0::decimal)::decimal * case 
@@ -18211,7 +18202,7 @@ SELECT
         CAST ("t0"."a" as datetime)
       ) as datetime
     ),
-    CAST('%Y-%m-%d' AS string)
+    CAST('%Y-%m-%d' AS text)
   ) as "c1",
   coalesce (
     CAST (
@@ -18309,10 +18300,10 @@ WHERE
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  t0.ay::string -> c0,
+  t0.ay::text -> c0,
   t0.cu::int -> c1,
-  t0.ah::string -> c2,
-  t0.bg::string -> c3,
+  t0.ah::text -> c2,
+  t0.bg::text -> c3,
   case 
     when (not t2.cw::int is null and t2.cw::int = 3::int) then 1::int
     else 0::int
@@ -18322,8 +18313,8 @@ projection (
       t0.cs::datetime::datetime,
       t0.a::datetime::datetime
     )::datetime::datetime,
-    '%Y-%m-%d'::string
-  )::string -> c5,
+    '%Y-%m-%d'::text
+  )::text -> c5,
   coalesce(
     (
       t0.d::decimal * coalesce(t3.cj::int::decimal, 0.0::decimal)::decimal * case 
@@ -18380,7 +18371,7 @@ SELECT
         CAST ("t0"."a" as datetime)
       ) as datetime
     ),
-    CAST('%Y-%m-%d' AS string)
+    CAST('%Y-%m-%d' AS text)
   ) as "c5",
   coalesce (
     CAST (
@@ -18636,9 +18627,9 @@ GROUP BY
 ''
 projection (
   t0.cu::int -> c0,
-  t0.ah::string -> c1,
-  t0.bg::string -> c2,
-  t0.ay::string -> c3,
+  t0.ah::text -> c1,
+  t0.bg::text -> c2,
+  t0.ay::text -> c3,
   sum(
     case 
       when t0.bx::decimal < 0::int then coalesce(t0.bx::decimal::decimal, 0::decimal)::decimal
@@ -18668,9 +18659,9 @@ projection (
 )
   group by (
     t0.cu::int,
-    t0.ah::string,
-    t0.bg::string,
-    t0.ay::string
+    t0.ah::text,
+    t0.bg::text,
+    t0.ay::text
   )
     selection (t0.cv::int = 3023424::int)
       left join on (t0.cu::int = t1.cu::int)
@@ -18780,8 +18771,8 @@ projection (
   case 
     when not min(t2.u::datetime::datetime)::datetime is null then to_char(
       min(t2.u::datetime::datetime)::datetime::datetime,
-      '%Y-%m-%d'::string
-    )::string
+      '%Y-%m-%d'::text
+    )::text
     else NULL::unknown
   end -> c1,
   sum(t0.az::decimal::decimal)::decimal -> c2
@@ -18819,7 +18810,7 @@ SELECT
   CASE
     WHEN not min (CAST ("t2"."u" as datetime)) is null THEN "to_char" (
       CAST (min (CAST ("t2"."u" as datetime)) as datetime),
-      CAST('%Y-%m-%d' AS string)
+      CAST('%Y-%m-%d' AS text)
     )
     ELSE NULL
   END as "c1",
@@ -19044,17 +19035,17 @@ limit 10
   projection (
     cte2.cv::int -> cv,
     cte2.b::int -> b,
-    cte2.ay::string -> ay,
-    cte2.bg::string -> bg,
+    cte2.ay::text -> ay,
+    cte2.bg::text -> bg,
     cte2.cu::int -> cu,
     cte2.cw::int -> cw,
     cte2.ac::int -> ac,
-    cte2.ae::string -> ae,
+    cte2.ae::text -> ae,
     cte2.ab::datetime -> ab,
     cte2.c9::int -> c9,
     cte2.d::decimal -> d,
     cte2.c11::int -> c11,
-    cte2.cx::string -> cx
+    cte2.cx::text -> cx
   )
     selection (cte2.c11::int > 0::int)
       scan cte cte2($2)
@@ -19105,14 +19096,14 @@ subquery $1:
     projection (
       t6.cv::int -> cv,
       t6.ag::int -> b,
-      t3.ay::string -> ay,
-      t3.bg::string -> bg,
+      t3.ay::text -> ay,
+      t3.bg::text -> bg,
       t6.cu::int -> cu,
       t6.cw::int -> cw,
       coalesce(t6.co::int::int, t6.cm::int::int, 0::int)::int -> ac,
       case 
-        when not t6.co::int is null or not t6.cm::int is null then t6.cn::string
-        else '0000'::string
+        when not t6.co::int is null or not t6.cm::int is null then t6.cn::text
+        else '0000'::text
       end -> ae,
       t6.cl::datetime -> ab,
       case 
@@ -19160,38 +19151,38 @@ subquery $2:
   projection (
     unnamed_join.cv::int -> cv,
     unnamed_join.b::int -> b,
-    unnamed_join.ay::string -> ay,
-    unnamed_join.bg::string -> bg,
+    unnamed_join.ay::text -> ay,
+    unnamed_join.bg::text -> bg,
     unnamed_join.cu::int -> cu,
     unnamed_join.cw::int -> cw,
     unnamed_join.ac::int -> ac,
-    unnamed_join.ae::string -> ae,
+    unnamed_join.ae::text -> ae,
     unnamed_join.ab::datetime -> ab,
     unnamed_join.c9::int -> c9,
     unnamed_join.d::decimal -> d,
     row_number() over (order by (unnamed_join.b::int desc) ) -> c11,
-    unnamed_join.cx::string -> cx
+    unnamed_join.cx::text -> cx
   )
     motion [policy: full, program: AddMissingRowsForLeftJoin]
       projection (
         cte1.cv::int -> cv,
         cte1.b::int -> b,
-        cte1.ay::string -> ay,
-        cte1.bg::string -> bg,
+        cte1.ay::text -> ay,
+        cte1.bg::text -> bg,
         cte1.cu::int -> cu,
         cte1.cw::int -> cw,
         cte1.ac::int -> ac,
-        cte1.ae::string -> ae,
+        cte1.ae::text -> ae,
         cte1.ab::datetime -> ab,
         cte1.c9::int -> c9,
         cte1.d::decimal -> d,
         t9.cv::int -> cv,
-        t9.ay::string -> ay,
+        t9.ay::text -> ay,
         t9.bucket_id::int -> bucket_id,
-        t9.cx::string -> cx
+        t9.cx::text -> cx
       )
         join on (
-          ROW(cte1.cv::int, cte1.ay::string) = ROW(t9.cv::int, t9.ay::string)
+          ROW(cte1.cv::int, cte1.ay::text) = ROW(t9.cv::int, t9.ay::text)
         )
           scan cte cte1($1)
           scan ad -> t9
@@ -19266,7 +19257,7 @@ SELECT
   CASE
     WHEN not "t6"."co" is null
     or not "t6"."cm" is null THEN "t6"."cn"
-    ELSE CAST('0000' AS string)
+    ELSE CAST('0000' AS text)
   END as "ae",
   "t6"."cl" as "ab",
   CASE
@@ -19802,11 +19793,11 @@ FROM
 ''
 projection (
   cte1.cv::int -> cv,
-  cte1.ay::string -> ay,
-  cte1.bg::string -> bg,
-  cte1.ah::string -> ah,
+  cte1.ay::text -> ay,
+  cte1.bg::text -> bg,
+  cte1.ah::text -> ah,
   cte1.cu::int -> cu,
-  cte1.cx::string -> cx
+  cte1.cx::text -> cx
 )
   scan cte cte1($1)
 subquery $0:
@@ -19854,40 +19845,40 @@ subquery $0:
 subquery $1:
   projection (
     gr_expr_1::int -> cv,
-    gr_expr_2::string -> ay,
-    gr_expr_3::string -> bg,
-    gr_expr_4::string -> ah,
+    gr_expr_2::text -> ay,
+    gr_expr_3::text -> bg,
+    gr_expr_4::text -> ah,
     gr_expr_5::int -> cu,
-    gr_expr_6::string -> cx
+    gr_expr_6::text -> cx
   )
     group by (
       gr_expr_1::int,
-      gr_expr_2::string,
-      gr_expr_3::string,
-      gr_expr_4::string,
+      gr_expr_2::text,
+      gr_expr_3::text,
+      gr_expr_4::text,
       gr_expr_5::int,
-      gr_expr_6::string
+      gr_expr_6::text
     )
       motion [policy: full, program: ReshardIfNeeded]
         projection (
           t6.cv::int -> gr_expr_1,
-          t3.ay::string -> gr_expr_2,
-          t3.bg::string -> gr_expr_3,
-          t3.ah::string -> gr_expr_4,
+          t3.ay::text -> gr_expr_2,
+          t3.bg::text -> gr_expr_3,
+          t3.ah::text -> gr_expr_4,
           t6.cu::int -> gr_expr_5,
-          t9.cx::string -> gr_expr_6
+          t9.cx::text -> gr_expr_6
         )
           group by (
             t6.cv::int,
-            t3.ay::string,
-            t3.bg::string,
-            t3.ah::string,
+            t3.ay::text,
+            t3.bg::text,
+            t3.ah::text,
             t6.cu::int,
-            t9.cx::string
+            t9.cx::text
           )
             selection ((t8.z::int = 6::int and t3.cq::int = 4::int))
               left join on (
-                ROW(t3.cv::int, t3.ay::string) = ROW(t9.cv::int, t9.ay::string)
+                ROW(t3.cv::int, t3.ay::text) = ROW(t9.cv::int, t9.ay::text)
               )
                 left join on (t8.cw::int = t6.cw::int)
                   left join on (
@@ -20117,11 +20108,11 @@ ORDER BY
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (c0::string, c1::decimal, c2::decimal)
-  order by (c0::string desc)
+projection (c0::text, c1::decimal, c2::decimal)
+  order by (c0::text desc)
     scan
       projection (
-        to_char(d.a::datetime::datetime, '%Y-%m-%d'::string)::string -> c0,
+        to_char(d.a::datetime::datetime, '%Y-%m-%d'::text)::text -> c0,
         sum(d.f::decimal::decimal)::decimal -> c1,
         sum(d.e::decimal::decimal)::decimal -> c2
       )
@@ -20151,7 +20142,7 @@ SELECT
 FROM
   (
     SELECT
-      "to_char" (CAST ("d"."a" as datetime), CAST('%Y-%m-%d' AS string)) as "c0",
+      "to_char" (CAST ("d"."a" as datetime), CAST('%Y-%m-%d' AS text)) as "c0",
       sum (CAST ("d"."f" as decimal)) as "c1",
       sum (CAST ("d"."e" as decimal)) as "c2"
     FROM
@@ -20359,8 +20350,8 @@ projection (
   case 
     when not min(t2.u::datetime::datetime)::datetime is null then to_char(
       min(t2.u::datetime::datetime)::datetime::datetime,
-      '%Y-%m-%d'::string
-    )::string
+      '%Y-%m-%d'::text
+    )::text
     else NULL::unknown
   end -> c1,
   sum(t0.az::decimal::decimal)::decimal -> c2
@@ -20398,7 +20389,7 @@ SELECT
   CASE
     WHEN not min (CAST ("t2"."u" as datetime)) is null THEN "to_char" (
       CAST (min (CAST ("t2"."u" as datetime)) as datetime),
-      CAST('%Y-%m-%d' AS string)
+      CAST('%Y-%m-%d' AS text)
     )
     ELSE NULL
   END as "c1",
@@ -20557,15 +20548,15 @@ GROUP BY
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  'KNO'::string -> c0,
+  'KNO'::text -> c0,
   t0.cu::int -> c1,
-  t0.ah::string -> c2,
-  t0.bg::string -> c3,
+  t0.ah::text -> c2,
+  t0.bg::text -> c3,
   case 
     when (not t1.cw::int is null and t1.cw::int = 3::int) then 1::int
     else 0::int
   end -> c4,
-  t0.ay::string -> c5,
+  t0.ay::text -> c5,
   sum(
     (
       case 
@@ -20629,13 +20620,13 @@ projection (
 )
   group by (
     t0.cu::int,
-    t0.ah::string,
-    t0.bg::string,
+    t0.ah::text,
+    t0.bg::text,
     case 
       when (not t1.cw::int is null and t1.cw::int = 3::int) then 1::int
       else 0::int
     end,
-    t0.ay::string
+    t0.ay::text
   )
     selection (t0.cv::int = 3023424::int)
       left join on (t0.cu::int = t1.cu::int)
@@ -20651,7 +20642,7 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  CAST('KNO' AS string) as "c0",
+  CAST('KNO' AS text) as "c0",
   "t0"."cu" as "c1",
   "t0"."ah" as "c2",
   "t0"."bg" as "c3",
@@ -20895,13 +20886,13 @@ GROUP BY
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  'BUF'::string -> c7,
+  'BUF'::text -> c7,
   cte0.cu::int -> cu,
   cte0.cu::int -> cu,
-  cte0.ah::string -> ah,
-  cte0.bg::string -> bg,
+  cte0.ah::text -> ah,
+  cte0.bg::text -> bg,
   cte0.c4::int -> c4,
-  cte0.ay::string -> ay,
+  cte0.ay::text -> ay,
   coalesce(
     sum(cte0.aa::decimal::decimal)::decimal::decimal,
     0.0::decimal
@@ -20936,18 +20927,18 @@ projection (
 )
   group by (
     cte0.cu::int,
-    cte0.ah::string,
-    cte0.bg::string,
+    cte0.ah::text,
+    cte0.bg::text,
     cte0.c4::int,
-    cte0.ay::string
+    cte0.ay::text
   )
     scan cte cte0($0)
 subquery $0:
   projection (
     t0.cu::int -> cu,
-    t0.ah::string -> ah,
-    t0.bg::string -> bg,
-    t0.ay::string -> ay,
+    t0.ah::text -> ah,
+    t0.bg::text -> bg,
+    t0.ay::text -> ay,
     case 
       when (not t2.cw::int is null and t2.cw::int = 3::int) then 1::int
       else 0::int
@@ -20993,7 +20984,7 @@ subquery $0:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  CAST('BUF' AS string) as "c7",
+  CAST('BUF' AS text) as "c7",
   "cte0"."cu",
   "cte0"."cu",
   "cte0"."ah",
@@ -21207,12 +21198,12 @@ projection (count(*)::int -> c0)
   scan unnamed_subquery
     projection (
       t0.cq::int -> cq,
-      t2.aj::string -> aj,
+      t2.aj::text -> aj,
       t2.am::int -> am,
       t0.aw::int -> aw,
-      t0.ay::string -> ay,
+      t0.ay::text -> ay,
       t0.cu::int -> cu,
-      t0.bg::string -> bg,
+      t0.bg::text -> bg,
       t1.cz::bool -> cz
     )
       selection (
@@ -21223,7 +21214,7 @@ projection (count(*)::int -> c0)
         )
       )
         left join on (
-          ROW(t0.cv::int, t0.ay::string) = ROW(t2.cv::int, t2.ay::string)
+          ROW(t0.cv::int, t0.ay::text) = ROW(t2.cv::int, t2.ay::text)
         )
           left join on (t0.cu::int = t1.br::int)
             scan y -> t0
@@ -21346,11 +21337,11 @@ limit 10
   projection (
     cte1.cq::int -> cq,
     cte1.aw::int -> aw,
-    cte1.ay::string -> ay,
+    cte1.ay::text -> ay,
     cte1.cu::int -> cu,
-    cte1.bg::string -> bg,
+    cte1.bg::text -> bg,
     cte1.cz::bool -> cz,
-    cte1.aj::string -> aj,
+    cte1.aj::text -> aj,
     cte1.am::int -> am,
     cte1.bv::decimal -> bv,
     cte1.c9::int -> c9
@@ -21361,11 +21352,11 @@ subquery $0:
   projection (
     t0.cq::int -> cq,
     t0.aw::int -> aw,
-    t0.ay::string -> ay,
+    t0.ay::text -> ay,
     t0.cu::int -> cu,
-    t0.bg::string -> bg,
+    t0.bg::text -> bg,
     t1.cz::bool -> cz,
-    t2.aj::string -> aj,
+    t2.aj::text -> aj,
     t2.am::int -> am,
     coalesce(
       sum(
@@ -21378,12 +21369,12 @@ subquery $0:
   )
     group by (
       t0.cq::int,
-      t2.aj::string,
+      t2.aj::text,
       t2.am::int,
       t0.aw::int,
-      t0.ay::string,
+      t0.ay::text,
       t0.cu::int,
-      t0.bg::string,
+      t0.bg::text,
       t1.cz::bool
     )
       selection (
@@ -21402,11 +21393,11 @@ subquery $1:
   projection (
     cq::int,
     aw::int,
-    ay::string,
+    ay::text,
     cu::int,
-    bg::string,
+    bg::text,
     cz::bool,
-    aj::string,
+    aj::text,
     am::int,
     bv::decimal,
     c9::int
@@ -21416,11 +21407,11 @@ subquery $1:
         projection (
           cte0.cq::int -> cq,
           cte0.aw::int -> aw,
-          cte0.ay::string -> ay,
+          cte0.ay::text -> ay,
           cte0.cu::int -> cu,
-          cte0.bg::string -> bg,
+          cte0.bg::text -> bg,
           cte0.cz::bool -> cz,
-          cte0.aj::string -> aj,
+          cte0.aj::text -> aj,
           cte0.am::int -> am,
           cte0.bv::decimal -> bv,
           row_number() over (order by (cte0.bv::decimal asc) ) -> c9
@@ -21429,11 +21420,11 @@ subquery $1:
             projection (
               cte0.cq::int -> cq,
               cte0.aw::int -> aw,
-              cte0.ay::string -> ay,
+              cte0.ay::text -> ay,
               cte0.cu::int -> cu,
-              cte0.bg::string -> bg,
+              cte0.bg::text -> bg,
               cte0.cz::bool -> cz,
-              cte0.aj::string -> aj,
+              cte0.aj::text -> aj,
               cte0.am::int -> am,
               cte0.bv::decimal -> bv
             )
@@ -21698,10 +21689,10 @@ LIMIT
 limit 10
   projection (
     cte4.c1::int -> c1,
-    cte4.r::string -> r,
-    cte4.c13::string -> c13,
-    cte4.q::string -> q,
-    cte4.ah::string -> ah,
+    cte4.r::text -> r,
+    cte4.c13::text -> c13,
+    cte4.q::text -> q,
+    cte4.ah::text -> ah,
     cte4.cp::decimal -> cp,
     cte4.c15::decimal -> c15,
     cte4.c16::int -> c16
@@ -21712,10 +21703,10 @@ subquery $0:
   projection (
     cte0.cv::int -> cv,
     cte0.ag::int -> c1,
-    cte0.r::string -> r,
+    cte0.r::text -> r,
     cte0.n::int -> n,
     cte0.q::datetime -> q,
-    cte0.ak::string -> ak,
+    cte0.ak::text -> ak,
     coalesce(cte0.t::decimal::decimal, 0.0::decimal)::decimal -> t
   )
     selection (
@@ -21732,10 +21723,10 @@ subquery $1:
       cte0.cv::int -> cv,
       cte0.c1::int -> c1,
       cte1.ag::int -> c7,
-      cte0.r::string -> r,
+      cte0.r::text -> r,
       cte0.n::int -> n,
       cte0.q::datetime -> q,
-      cte0.ak::string -> ah,
+      cte0.ak::text -> ah,
       cte1.aw::int -> aw,
       cte0.t::decimal -> t
     )
@@ -21749,10 +21740,10 @@ subquery $2:
     projection (
       cte1.cv::int -> cv,
       cte1.c1::int -> c1,
-      cte1.r::string -> r,
+      cte1.r::text -> r,
       cte1.n::int -> n,
       cte1.q::datetime -> q,
-      cte1.ah::string -> ah,
+      cte1.ah::text -> ah,
       cte1.aw::int -> aw,
       cte1.t::decimal -> t,
       cte2.ag::int -> c10
@@ -21767,10 +21758,10 @@ subquery $3:
     projection (
       cte2.cv::int -> cv,
       cte2.c1::int -> c1,
-      cte2.r::string -> r,
+      cte2.r::text -> r,
       cte2.n::int -> n,
       cte2.q::datetime -> q,
-      cte2.ah::string -> ah,
+      cte2.ah::text -> ah,
       cte2.t::decimal + case 
         when (
           cte2.aw::int in ROW(42::int, 45::int)
@@ -21788,38 +21779,38 @@ subquery $3:
 subquery $4:
   projection (
     c1::int,
-    r::string,
-    c13::string,
-    q::string,
-    ah::string,
+    r::text,
+    c13::text,
+    q::text,
+    ah::text,
     cp::decimal,
     c15::decimal,
     c16::int
   )
-    order by (q::string, c1::int)
+    order by (q::text, c1::int)
       scan
         projection (
           cte3.c1::int -> c1,
-          cte3.r::string -> r,
+          cte3.r::text -> r,
           case 
-            when cte3.n::int = 1::int then 'installment'::string
-            when cte3.n::int = 2::int then 'deferral'::string
-            when cte3.n::int = 4::int then 'ink'::string
-            when cte3.n::int = 5::int then 'restructurisation'::string
+            when cte3.n::int = 1::int then 'installment'::text
+            when cte3.n::int = 2::int then 'deferral'::text
+            when cte3.n::int = 4::int then 'ink'::text
+            when cte3.n::int = 5::int then 'restructurisation'::text
             else NULL::unknown
           end -> c13,
-          to_char(cte3.q::datetime::datetime, '%Y-%m-%d'::string)::string -> q,
-          cte3.ah::string -> ah,
+          to_char(cte3.q::datetime::datetime, '%Y-%m-%d'::text)::text -> q,
+          cte3.ah::text -> ah,
           sum(cte3.c11::decimal::decimal)::decimal -> cp,
           sum(cte3.y::decimal::decimal)::decimal -> c15,
           row_number() over (order by (cte3.q::datetime asc, cte3.c1::int asc) ) -> c16
         )
           group by (
             cte3.c1::int,
-            cte3.r::string,
+            cte3.r::text,
             cte3.n::int,
             cte3.q::datetime,
-            cte3.ah::string
+            cte3.ah::text
           )
             scan cte cte3($3)
 ''
@@ -21972,15 +21963,15 @@ FROM
           "cte3"."COL_1" as "c1",
           "cte3"."COL_2" as "r",
           CASE
-            WHEN "cte3"."COL_3" = CAST(1 AS int) THEN CAST('installment' AS string)
-            WHEN "cte3"."COL_3" = CAST(2 AS int) THEN CAST('deferral' AS string)
-            WHEN "cte3"."COL_3" = CAST(4 AS int) THEN CAST('ink' AS string)
-            WHEN "cte3"."COL_3" = CAST(5 AS int) THEN CAST('restructurisation' AS string)
+            WHEN "cte3"."COL_3" = CAST(1 AS int) THEN CAST('installment' AS text)
+            WHEN "cte3"."COL_3" = CAST(2 AS int) THEN CAST('deferral' AS text)
+            WHEN "cte3"."COL_3" = CAST(4 AS int) THEN CAST('ink' AS text)
+            WHEN "cte3"."COL_3" = CAST(5 AS int) THEN CAST('restructurisation' AS text)
             ELSE NULL
           END as "c13",
           "to_char" (
             CAST ("cte3"."COL_4" as datetime),
-            CAST('%Y-%m-%d' AS string)
+            CAST('%Y-%m-%d' AS text)
           ) as "q",
           "cte3"."COL_5" as "ah",
           sum (CAST ("cte3"."COL_6" as decimal)) as "cp",
@@ -22108,12 +22099,12 @@ WHERE
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  t0.ax::string -> c0,
-  t0.bc::string -> c1,
-  t0.cy::string -> c2,
+  t0.ax::text -> c0,
+  t0.bc::text -> c1,
+  t0.cy::text -> c2,
   t0.ct::bool -> c3
 )
-  selection (t0.ax::string = '18201061201010000510'::string)
+  selection (t0.ax::text = '18201061201010000510'::text)
     scan i -> t0
 ''
 ──────────────────────────────────────────────────────────────────────
@@ -22132,7 +22123,7 @@ SELECT
 FROM
   "i" as "t0"
 WHERE
-  "t0"."ax" = CAST('18201061201010000510' AS string)
+  "t0"."ax" = CAST('18201061201010000510' AS text)
 ''
 plan:
     [0] SCAN TABLE i AS t0 (~262144 rows)
@@ -22161,9 +22152,9 @@ FROM
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (
-  t0.ax::string -> c0,
-  t0.bc::string -> c1,
-  t0.cy::string -> c2,
+  t0.ax::text -> c0,
+  t0.bc::text -> c1,
+  t0.cy::text -> c2,
   t0.ct::bool -> c3
 )
   scan i -> t0
@@ -22222,18 +22213,18 @@ LIMIT
 ──────────────────────────────────────────────────────────────────────
 ''
 limit 2147483647
-  projection (t0.ay::string -> c0, t1.cx::string -> c1)
+  projection (t0.ay::text -> c0, t1.cx::text -> c1)
     selection (
       (
         t0.cv::int = 3023424::int
         and (
-          lower(t0.ay::string::string)::string::string LIKE '%013%'::string ESCAPE '\'::string or lower(t1.cx::string::string)::string::string LIKE '%
-          013%'::string ESCAPE '\'::string
+          lower(t0.ay::text::text)::text::text LIKE '%013%'::text ESCAPE '\'::text or lower(t1.cx::text::text)::text::text LIKE '%
+          013%'::text ESCAPE '\'::text
         )
       )
     )
       join on (
-        ROW(t0.cv::int, t0.ay::string) = ROW(t1.cv::int, t1.ay::string)
+        ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
       )
         scan y -> t0
         scan ad -> t1
@@ -22256,9 +22247,9 @@ FROM
 WHERE
   "t0"."cv" = CAST(3023424 AS int)
   and (
-    CAST (lower (CAST ("t0"."ay" as string)) as string) LIKE CAST('%013%' AS string) ESCAPE CAST('\' AS string)
-    or CAST (lower (CAST ("t1"."cx" as string)) as string) LIKE CAST('%
-013%' AS string) ESCAPE CAST('\' AS string)
+    CAST (lower (CAST ("t0"."ay" as text)) as text) LIKE CAST('%013%' AS text) ESCAPE CAST('\' AS text)
+    or CAST (lower (CAST ("t1"."cx" as text)) as text) LIKE CAST('%
+013%' AS text) ESCAPE CAST('\' AS text)
   )
 LIMIT
   2147483647
@@ -22295,9 +22286,9 @@ LIMIT
 ──────────────────────────────────────────────────────────────────────
 ''
 limit 20
-  projection (t0.bg::string -> c0, t1.bc::string -> c1)
+  projection (t0.bg::text -> c0, t1.bc::text -> c1)
     selection (t0.cv::int = 3023424::int)
-      join on (t0.bg::string = t1.bg::string)
+      join on (t0.bg::text = t1.bg::text)
         scan y -> t0
         scan j -> t1
 ''
@@ -22375,12 +22366,12 @@ LIMIT
 ''
 limit 20
   projection (
-    cte0.ba::string -> ba,
+    cte0.ba::text -> ba,
     cte0.cu::int -> cu,
     cte0.cq::int -> cq,
-    cte0.ay::string -> ay,
-    cte0.bp::string -> bp,
-    cte0.bh::string -> bh,
+    cte0.ay::text -> ay,
+    cte0.bp::text -> bp,
+    cte0.bh::text -> bh,
     cte0.bq::datetime -> bq,
     cte0.bu::datetime -> bu,
     cte0.t::decimal -> t,
@@ -22391,12 +22382,12 @@ limit 20
       scan cte cte0($0)
 subquery $0:
   projection (
-    ba::string,
+    ba::text,
     cu::int,
     cq::int,
-    bo::string -> ay,
-    bp::string,
-    bh::string,
+    bo::text -> ay,
+    bp::text,
+    bh::text,
     bq::datetime,
     bu::datetime,
     t::decimal,
@@ -22407,13 +22398,13 @@ subquery $0:
       projection (
         t0.bq::datetime -> bq,
         t0.t::decimal -> t,
-        t0.bo::string -> bo,
-        t0.bh::string -> bh,
+        t0.bo::text -> bo,
+        t0.bh::text -> bh,
         t0.cu::int -> cu,
         t0.bu::datetime -> bu,
         t0.az::decimal -> az,
-        t0.ba::string -> ba,
-        t0.bp::string -> bp,
+        t0.ba::text -> ba,
+        t0.bp::text -> bp,
         t1.cq::int -> cq
       )
         selection (

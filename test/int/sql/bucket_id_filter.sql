@@ -397,7 +397,7 @@ EXPLAIN SELECT a FROM t WHERE cast(bucket_id as string) = '1934';
 ──────────────────────────────────────────────────────────────────────
 ''
 projection (t.a::int -> a)
-  selection (t.bucket_id::int::string = '1934'::string)
+  selection (t.bucket_id::int::text = '1934'::text)
     scan t
 ''
 ──────────────────────────────────────────────────────────────────────

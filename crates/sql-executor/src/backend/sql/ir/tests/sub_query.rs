@@ -12,7 +12,7 @@ fn sub_query1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($2 AS string)"
+    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($2 AS text)"
     params:
       - Integer: 1
       - String: a
@@ -20,7 +20,7 @@ fn sub_query1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($2 AS string)"
+    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($2 AS text)"
     params:
       - Integer: 1
       - String: a
@@ -41,7 +41,7 @@ fn sub_query2() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int) UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS string)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($3 AS string)"
+    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int) UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS text)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($3 AS text)"
     params:
       - Integer: 1
       - String: a
@@ -50,7 +50,7 @@ fn sub_query2() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int) UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS string)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($3 AS string)"
+    pattern: "SELECT \"t1\".\"product_code\" FROM (SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" WHERE \"hash_testing\".\"identification_number\" = CAST($1 AS int) UNION ALL SELECT \"hash_testing_hist\".\"product_code\" FROM \"hash_testing_hist\" WHERE \"hash_testing_hist\".\"product_code\" = CAST($2 AS text)) as \"t1\" WHERE \"t1\".\"product_code\" = CAST($3 AS text)"
     params:
       - Integer: 1
       - String: a

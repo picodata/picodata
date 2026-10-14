@@ -6,7 +6,7 @@ fn cast1_test() {
     let info = get_broadcast(r#"SELECT CAST('1' as string) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST($1 AS string) as \"col_1\" FROM \"t1\""
+      - "SELECT CAST($1 AS text) as \"col_1\" FROM \"t1\""
       - - String: "1"
     "#);
 }
@@ -80,7 +80,7 @@ fn cast8_test() {
     let info = get_broadcast(r#"SELECT CAST(1 as string) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (CAST($1 AS int) as string) as \"col_1\" FROM \"t1\""
+      - "SELECT CAST (CAST($1 AS int) as text) as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -90,7 +90,7 @@ fn cast9_test() {
     let info = get_broadcast(r#"SELECT CAST(1 as text) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (CAST($1 AS int) as string) as \"col_1\" FROM \"t1\""
+      - "SELECT CAST (CAST($1 AS int) as text) as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -110,7 +110,7 @@ fn cast11_test() {
     let info = get_broadcast(r#"SELECT CAST(1 as varchar(10)) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (CAST($1 AS int) as string) as \"col_1\" FROM \"t1\""
+      - "SELECT CAST (CAST($1 AS int) as text) as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -120,7 +120,7 @@ fn cast12_test() {
     let info = get_broadcast(r#"SELECT CAST(trim("a") as varchar(100)) FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (TRIM (CAST (\"t1\".\"a\" as string)) as string) as \"col_1\" FROM \"t1\""
+      - "SELECT CAST (TRIM (CAST (\"t1\".\"a\" as text)) as text) as \"col_1\" FROM \"t1\""
       - []
     "#);
 }
@@ -194,7 +194,7 @@ fn pgcast7_test() {
     let info = get_broadcast(r#"SELECT 1::string FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (CAST($1 AS int) as string) as \"col_1\" FROM \"t1\""
+      - "SELECT CAST (CAST($1 AS int) as text) as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }
@@ -204,7 +204,7 @@ fn pgcast8_test() {
     let info = get_broadcast(r#"SELECT 1::text FROM "t1""#);
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT CAST (CAST($1 AS int) as string) as \"col_1\" FROM \"t1\""
+      - "SELECT CAST (CAST($1 AS int) as text) as \"col_1\" FROM \"t1\""
       - - Integer: 1
     "#);
 }

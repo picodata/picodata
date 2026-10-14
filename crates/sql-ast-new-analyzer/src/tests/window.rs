@@ -1506,7 +1506,7 @@ fn window_over_grouped_query() {
             HAVING count(*) > 1 ORDER BY sum(count(*)) OVER (ORDER BY e) DESC LIMIT 5",
             &[]
         ),
-        @"SELECT t1.e::string, count(*)::int, sum(count(*)::int) OVER (ORDER BY t1.e::string ASC)::decimal FROM t1 WHERE (t1.a::int > 0::int)::bool GROUP BY t1.e::string HAVING (count(*)::int > 1::int)::bool ORDER BY sum(count(*)::int) OVER (ORDER BY t1.e::string ASC)::decimal DESC LIMIT 5"
+        @"SELECT t1.e::text, count(*)::int, sum(count(*)::int) OVER (ORDER BY t1.e::text ASC)::decimal FROM t1 WHERE (t1.a::int > 0::int)::bool GROUP BY t1.e::text HAVING (count(*)::int > 1::int)::bool ORDER BY sum(count(*)::int) OVER (ORDER BY t1.e::text ASC)::decimal DESC LIMIT 5"
     );
     insta::assert_snapshot!(
         analyzed("SELECT sum(count(*)) OVER () FROM t1", &[]),
@@ -1514,14 +1514,14 @@ fn window_over_grouped_query() {
     );
     insta::assert_snapshot!(
         analyzed("SELECT count(*) OVER (ORDER BY count(*)) FROM t1 GROUP BY e", &[]),
-        @"SELECT count(*) OVER (ORDER BY count(*)::int ASC)::int FROM t1 GROUP BY t1.e::string"
+        @"SELECT count(*) OVER (ORDER BY count(*)::int ASC)::int FROM t1 GROUP BY t1.e::text"
     );
     insta::assert_snapshot!(
         analyzed(
             "SELECT max(sum(a)) OVER (PARTITION BY e ORDER BY max(b)) FROM t1 GROUP BY e",
             &[]
         ),
-        @"SELECT max(sum(t1.a::int)::decimal) OVER (PARTITION BY t1.e::string ORDER BY max(t1.b::int)::int ASC)::decimal FROM t1 GROUP BY t1.e::string"
+        @"SELECT max(sum(t1.a::int)::decimal) OVER (PARTITION BY t1.e::text ORDER BY max(t1.b::int)::int ASC)::decimal FROM t1 GROUP BY t1.e::text"
     );
     insta::assert_snapshot!(
         analyzed(
@@ -1529,7 +1529,7 @@ fn window_over_grouped_query() {
             AS (PARTITION BY e ORDER BY count(*) DESC)",
             &[]
         ),
-        @"SELECT count(*) OVER w::int FROM t1 GROUP BY t1.e::string WINDOW w AS (PARTITION BY t1.e::string ORDER BY count(*)::int DESC)"
+        @"SELECT count(*) OVER w::int FROM t1 GROUP BY t1.e::text WINDOW w AS (PARTITION BY t1.e::text ORDER BY count(*)::int DESC)"
     );
     insta::assert_snapshot!(
         analyzed(
@@ -1537,7 +1537,7 @@ fn window_over_grouped_query() {
             AND UNBOUNDED FOLLOWING) FROM t1 GROUP BY e, b",
             &[]
         ),
-        @"SELECT sum(t1.b::int) OVER (PARTITION BY t1.e::string ORDER BY t1.b::int ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)::decimal FROM t1 GROUP BY t1.e::string, t1.b::int"
+        @"SELECT sum(t1.b::int) OVER (PARTITION BY t1.e::text ORDER BY t1.b::int ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)::decimal FROM t1 GROUP BY t1.e::text, t1.b::int"
     );
 }
 
@@ -1652,7 +1652,7 @@ fn window_function_types() {
             "SELECT row_number() OVER (), last_value(e) OVER (), sum(b) OVER (), count(*) OVER () FROM t1",
             &[]
         ),
-        @"SELECT row_number() OVER ()::int, last_value(t1.e::string) OVER ()::string, sum(t1.b::int) OVER ()::decimal, count(*) OVER ()::int FROM t1"
+        @"SELECT row_number() OVER ()::int, last_value(t1.e::text) OVER ()::text, sum(t1.b::int) OVER ()::decimal, count(*) OVER ()::int FROM t1"
     );
 }
 
@@ -1679,7 +1679,7 @@ fn constant_in_window_order_by() {
     );
     insta::assert_snapshot!(
         analyzed("SELECT count(*) OVER (ORDER BY 'x') FROM t1", &[]),
-        @"SELECT count(*) OVER (ORDER BY 'x'::string ASC)::int FROM t1"
+        @"SELECT count(*) OVER (ORDER BY 'x'::text ASC)::int FROM t1"
     );
 }
 
@@ -1711,7 +1711,7 @@ fn window_output_name() {
     );
     insta::assert_snapshot!(
         analyzed("SELECT x.count FROM (SELECT count(*) OVER (PARTITION BY e) FROM t1) AS x", &[]),
-        @"SELECT x.count::int FROM (SELECT count(*) OVER (PARTITION BY t1.e::string)::int FROM t1) AS x"
+        @"SELECT x.count::int FROM (SELECT count(*) OVER (PARTITION BY t1.e::text)::int FROM t1) AS x"
     );
     insta::assert_snapshot!(
         analyzed("WITH c AS (SELECT row_number() OVER () FROM t1) SELECT row_number FROM c", &[]),
@@ -1735,7 +1735,7 @@ fn window_output_name() {
             FROM t1) AS x",
             &[]
         ),
-        @"SELECT x.sum::decimal, x.count::int, x.last_value::string FROM (SELECT sum(t1.a::int) OVER ()::decimal, count(*) OVER ()::int, last_value(t1.e::string) OVER ()::string FROM t1) AS x"
+        @"SELECT x.sum::decimal, x.count::int, x.last_value::text FROM (SELECT sum(t1.a::int) OVER ()::decimal, count(*) OVER ()::int, last_value(t1.e::text) OVER ()::text FROM t1) AS x"
     );
 }
 
@@ -2009,7 +2009,7 @@ fn window_in_cte_derived_table_and_set_operation() {
             SELECT e, max(r) FROM c GROUP BY e HAVING max(r) > 1",
             &[]
         ),
-        @"WITH c AS (SELECT t1.e::string, row_number() OVER (PARTITION BY t1.e::string ORDER BY t1.a::int ASC)::int AS r FROM t1) SELECT c.e::string, max(c.r::int)::int FROM c GROUP BY c.e::string HAVING (max(c.r::int)::int > 1::int)::bool"
+        @"WITH c AS (SELECT t1.e::text, row_number() OVER (PARTITION BY t1.e::text ORDER BY t1.a::int ASC)::int AS r FROM t1) SELECT c.e::text, max(c.r::int)::int FROM c GROUP BY c.e::text HAVING (max(c.r::int)::int > 1::int)::bool"
     );
     insta::assert_snapshot!(
         analyzed(
@@ -2017,7 +2017,7 @@ fn window_in_cte_derived_table_and_set_operation() {
             FROM t1) AS x",
             &[]
         ),
-        @"SELECT max(x.r::int)::int FROM (SELECT row_number() OVER (PARTITION BY t1.e::string ORDER BY t1.b::int ASC)::int AS r FROM t1) AS x"
+        @"SELECT max(x.r::int)::int FROM (SELECT row_number() OVER (PARTITION BY t1.e::text ORDER BY t1.b::int ASC)::int AS r FROM t1) AS x"
     );
     insta::assert_snapshot!(
         analyzed(
@@ -2049,7 +2049,7 @@ fn window_in_cte_derived_table_and_set_operation() {
             SELECT row_number() OVER w FROM t3 WINDOW w AS (ORDER BY b)",
             &[]
         ),
-        @"(SELECT row_number() OVER w::int FROM t1 WINDOW w AS (ORDER BY t1.a::int ASC)) UNION ALL (SELECT row_number() OVER w::int FROM t3 WINDOW w AS (ORDER BY t3.b::string ASC))"
+        @"(SELECT row_number() OVER w::int FROM t1 WINDOW w AS (ORDER BY t1.a::int ASC)) UNION ALL (SELECT row_number() OVER w::int FROM t3 WINDOW w AS (ORDER BY t3.b::text ASC))"
     );
 }
 
@@ -2167,7 +2167,7 @@ fn several_windows_in_one_query() {
             WINDOW w AS (PARTITION BY e)",
             &[]
         ),
-        @"SELECT t1.b::int, sum(t1.a::int) OVER w::decimal, avg(t1.a::int) OVER (w ORDER BY t1.c::double ASC ROWS BETWEEN 1::int PRECEDING AND 1::int FOLLOWING)::decimal, row_number() OVER (PARTITION BY t1.e::string ORDER BY t1.b::int DESC)::int FROM t1 WINDOW w AS (PARTITION BY t1.e::string)"
+        @"SELECT t1.b::int, sum(t1.a::int) OVER w::decimal, avg(t1.a::int) OVER (w ORDER BY t1.c::double ASC ROWS BETWEEN 1::int PRECEDING AND 1::int FOLLOWING)::decimal, row_number() OVER (PARTITION BY t1.e::text ORDER BY t1.b::int DESC)::int FROM t1 WINDOW w AS (PARTITION BY t1.e::text)"
     );
     insta::assert_snapshot!(
         analyzed(
@@ -2175,7 +2175,7 @@ fn several_windows_in_one_query() {
             AS (w ORDER BY b DESC NULLS LAST ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)",
             &[]
         ),
-        @"SELECT count(*) OVER w2::int FROM t1 WINDOW w AS (PARTITION BY t1.e::string), w2 AS (w ORDER BY t1.b::int DESC NULLS LAST ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
+        @"SELECT count(*) OVER w2::int FROM t1 WINDOW w AS (PARTITION BY t1.e::text), w2 AS (w ORDER BY t1.b::int DESC NULLS LAST ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
     );
 }
 
@@ -2187,7 +2187,7 @@ fn window_over_join() {
             JOIN t4 ON t3.a = t4.a",
             &[]
         ),
-        @"SELECT t3.a::int, count(*) OVER (PARTITION BY t4.b::string ORDER BY t3.a::int ASC)::int FROM t3 INNER JOIN t4 ON (t3.a::int = t4.a::int)::bool"
+        @"SELECT t3.a::int, count(*) OVER (PARTITION BY t4.b::text ORDER BY t3.a::int ASC)::int FROM t3 INNER JOIN t4 ON (t3.a::int = t4.a::int)::bool"
     );
     insta::assert_snapshot!(
         analyzed(
@@ -2195,11 +2195,11 @@ fn window_over_join() {
             AND 0.5 FOLLOWING) FROM t1 JOIN t2 ON t1.a = t2.c",
             &[]
         ),
-        @"SELECT count(*) OVER (PARTITION BY t1.e::string ORDER BY t2.a::double ASC RANGE BETWEEN CAST(0.5 AS double) PRECEDING AND CAST(0.5 AS double) FOLLOWING)::int FROM t1 INNER JOIN t2 ON (t1.a::int = t2.c::int)::bool"
+        @"SELECT count(*) OVER (PARTITION BY t1.e::text ORDER BY t2.a::double ASC RANGE BETWEEN CAST(0.5 AS double) PRECEDING AND CAST(0.5 AS double) FOLLOWING)::int FROM t1 INNER JOIN t2 ON (t1.a::int = t2.c::int)::bool"
     );
     insta::assert_snapshot!(
         analyzed("SELECT row_number() OVER (ORDER BY a), * FROM t3", &[]),
-        @"SELECT row_number() OVER (ORDER BY t3.a::int ASC)::int, t3.a::int, t3.b::string FROM t3"
+        @"SELECT row_number() OVER (ORDER BY t3.a::int ASC)::int, t3.a::int, t3.b::text FROM t3"
     );
 }
 
@@ -2207,15 +2207,15 @@ fn window_over_join() {
 fn window_with_distinct_filter_and_order_by() {
     insta::assert_snapshot!(
         analyzed("SELECT DISTINCT e, count(*) OVER (PARTITION BY e) FROM t1", &[]),
-        @"SELECT DISTINCT t1.e::string, count(*) OVER (PARTITION BY t1.e::string)::int FROM t1"
+        @"SELECT DISTINCT t1.e::text, count(*) OVER (PARTITION BY t1.e::text)::int FROM t1"
     );
     insta::assert_snapshot!(
         analyzed("SELECT sum(a) FILTER (WHERE g) OVER (PARTITION BY e) FROM t1", &[]),
-        @"SELECT sum(t1.a::int) FILTER (WHERE t1.g::bool) OVER (PARTITION BY t1.e::string)::decimal FROM t1"
+        @"SELECT sum(t1.a::int) FILTER (WHERE t1.g::bool) OVER (PARTITION BY t1.e::text)::decimal FROM t1"
     );
     insta::assert_snapshot!(
         analyzed("SELECT a FROM t1 ORDER BY sum(a) OVER (PARTITION BY e), a LIMIT 3", &[]),
-        @"SELECT t1.a::int FROM t1 ORDER BY sum(t1.a::int) OVER (PARTITION BY t1.e::string)::decimal ASC, 1 ASC LIMIT 3"
+        @"SELECT t1.a::int FROM t1 ORDER BY sum(t1.a::int) OVER (PARTITION BY t1.e::text)::decimal ASC, 1 ASC LIMIT 3"
     );
 }
 
@@ -2228,10 +2228,10 @@ fn aggregate_window_function_types() {
             OVER () FROM t1",
             &[]
         ),
-        @"SELECT avg(t1.d::decimal) OVER ()::decimal, sum(t1.d::decimal) OVER ()::decimal, min(t1.e::string) OVER ()::string, max(t1.f::string) OVER ()::string, count(t1.c::double) OVER ()::int FROM t1"
+        @"SELECT avg(t1.d::decimal) OVER ()::decimal, sum(t1.d::decimal) OVER ()::decimal, min(t1.e::text) OVER ()::text, max(t1.f::text) OVER ()::text, count(t1.c::double) OVER ()::int FROM t1"
     );
     insta::assert_snapshot!(
         analyzed("SELECT string_agg(e, ',') OVER (PARTITION BY g ORDER BY b) FROM t1", &[]),
-        @"SELECT string_agg(t1.e::string, ','::string) OVER (PARTITION BY t1.g::bool ORDER BY t1.b::int ASC)::string FROM t1"
+        @"SELECT string_agg(t1.e::text, ','::text) OVER (PARTITION BY t1.g::bool ORDER BY t1.b::int ASC)::text FROM t1"
     );
 }

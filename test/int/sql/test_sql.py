@@ -4069,7 +4069,7 @@ def test_call_procedure(cluster: Cluster):
     with pytest.raises(TarantoolError, match=r"""expected 1 parameter\(s\), got 2"""):
         i2.sql(""" call "proc2"(3, 3) """)
     # Check that procedure returns an error when called with the wrong argument type.
-    error_msg = "expected integer for parameter on position 0, got string"
+    error_msg = "expected integer for parameter on position 0, got text"
     with pytest.raises(TarantoolError, match=error_msg):
         i2.sql(""" call "proc2"('hello') """)
 
@@ -6996,6 +6996,30 @@ def test_varchar_cast(cluster: Cluster):
         strip_metadata=False,
     )
     assert data["metadata"] == [{"name": "col_1", "type": "string"}]
+
+
+def test_metadata_spells_text_as_string(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    i1.sql("create table t (a text not null, primary key (a)) distributed by (a)")
+    i1.sql("insert into t values ('x')")
+
+    # Result metadata keeps the `string` spelling of text on every path
+    # that writes it: a storage result, a motion at the top of the plan
+    # and an empty plan.
+    for query in [
+        "select a from t",
+        "select a from t union select 'y'",
+        "select a from t limit 0",
+    ]:
+        data = i1.sql(query, strip_metadata=False)
+        assert data["metadata"] == [{"name": "a", "type": "string"}], query
+
+    # The union must keep a motion at the top of the plan, or it stops
+    # covering VirtualTable::dump_mp.
+    explain = i1.sql("explain select a from t union select 'y'")
+    assert any(line.startswith("motion [policy: full") for line in explain), explain
 
 
 def test_forbid_order_by_with_array(cluster: Cluster):

@@ -10,14 +10,14 @@ fn inner_join1() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" INNER JOIN \"history\" ON \"hash_testing\".\"identification_number\" = \"history\".\"id\" WHERE \"hash_testing\".\"product_code\" = CAST($1 AS string)"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" INNER JOIN \"history\" ON \"hash_testing\".\"identification_number\" = \"history\".\"id\" WHERE \"hash_testing\".\"product_code\" = CAST($1 AS text)"
     params:
       - String: a
     "#);
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" INNER JOIN \"history\" ON \"hash_testing\".\"identification_number\" = \"history\".\"id\" WHERE \"hash_testing\".\"product_code\" = CAST($1 AS string)"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" INNER JOIN \"history\" ON \"hash_testing\".\"identification_number\" = \"history\".\"id\" WHERE \"hash_testing\".\"product_code\" = CAST($1 AS text)"
     params:
       - String: a
     "#);
@@ -32,7 +32,7 @@ fn inner_join2() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Latest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" INNER JOIN (SELECT \"history\".\"id\" FROM \"history\" WHERE \"history\".\"id\" = CAST($1 AS int)) as \"t\" ON \"hash_testing\".\"identification_number\" = \"t\".\"id\" WHERE \"hash_testing\".\"product_code\" = CAST($2 AS string)"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" INNER JOIN (SELECT \"history\".\"id\" FROM \"history\" WHERE \"history\".\"id\" = CAST($1 AS int)) as \"t\" ON \"hash_testing\".\"identification_number\" = \"t\".\"id\" WHERE \"hash_testing\".\"product_code\" = CAST($2 AS text)"
     params:
       - Integer: 1
       - String: a
@@ -40,7 +40,7 @@ fn inner_join2() {
 
     let output = check_sql_with_snapshot(query, vec![], Snapshot::Oldest);
     assert_yaml_snapshot!(output, @r#"
-    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" INNER JOIN (SELECT \"history\".\"id\" FROM \"history\" WHERE \"history\".\"id\" = CAST($1 AS int)) as \"t\" ON \"hash_testing\".\"identification_number\" = \"t\".\"id\" WHERE \"hash_testing\".\"product_code\" = CAST($2 AS string)"
+    pattern: "SELECT \"hash_testing\".\"product_code\" FROM \"hash_testing\" INNER JOIN (SELECT \"history\".\"id\" FROM \"history\" WHERE \"history\".\"id\" = CAST($1 AS int)) as \"t\" ON \"hash_testing\".\"identification_number\" = \"t\".\"id\" WHERE \"hash_testing\".\"product_code\" = CAST($2 AS text)"
     params:
       - Integer: 1
       - String: a

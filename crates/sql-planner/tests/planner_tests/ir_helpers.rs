@@ -11,7 +11,7 @@ fn simple_select() {
     	Relation: hash_testing
     	Distribution: Segment { keys: KeySet({Key { positions: [0, 1] }}) }
     	[No children]
-    	Columns: [identification_number: int, product_code: string, product_units: bool, sys_op: int, bucket_id: int (system)]
+    	Columns: [identification_number: int, product_code: text, product_units: bool, sys_op: int, bucket_id: int (system)]
     ---------------------------------------------
     ---------------------------------------------
     [id: 296] relation: Projection
@@ -27,7 +27,7 @@ fn simple_select() {
     				Referenced table name (or alias): hash_testing
     				target_id: 096
     				Position: 1
-    				Column type: string
+    				Column type: text
     ---------------------------------------------
     ");
 }
@@ -48,7 +48,7 @@ fn simple_join() {
     	Relation: test_space
     	Distribution: Segment { keys: KeySet({Key { positions: [0] }}) }
     	[No children]
-    	Columns: [id: int, sysFrom: int, FIRST_NAME: string, sys_op: int, bucket_id: int (system)]
+    	Columns: [id: int, sysFrom: int, FIRST_NAME: text, sys_op: int, bucket_id: int (system)]
     ---------------------------------------------
     ---------------------------------------------
     [id: 296] relation: Projection
@@ -79,7 +79,7 @@ fn simple_join() {
     	Relation: hash_testing
     	Distribution: Segment { keys: KeySet({Key { positions: [0, 1] }}) }
     	[No children]
-    	Columns: [identification_number: int, product_code: string, product_units: bool, sys_op: int, bucket_id: int (system)]
+    	Columns: [identification_number: int, product_code: text, product_units: bool, sys_op: int, bucket_id: int (system)]
     ---------------------------------------------
     ---------------------------------------------
     [id: 596] relation: Projection
@@ -188,7 +188,7 @@ fn simple_join_subtree() {
     	Relation: hash_testing
     	Distribution: Segment { keys: KeySet({Key { positions: [0, 1] }}) }
     	[No children]
-    	Columns: [identification_number: int, product_code: string, product_units: bool, sys_op: int, bucket_id: int (system)]
+    	Columns: [identification_number: int, product_code: text, product_units: bool, sys_op: int, bucket_id: int (system)]
     ---------------------------------------------
     ---------------------------------------------
     [id: 596] relation: Projection
@@ -245,7 +245,7 @@ fn simple_aggregation_with_group_by() {
     	Relation: hash_testing
     	Distribution: Segment { keys: KeySet({Key { positions: [0, 1] }}) }
     	[No children]
-    	Columns: [identification_number: int, product_code: string, product_units: bool, sys_op: int, bucket_id: int (system)]
+    	Columns: [identification_number: int, product_code: text, product_units: bool, sys_op: int, bucket_id: int (system)]
     ---------------------------------------------
     ---------------------------------------------
     [id: 296] relation: GroupBy
@@ -255,11 +255,11 @@ fn simple_aggregation_with_group_by() {
     			Referenced table name (or alias): hash_testing
     			target_id: 096
     			Position: 1
-    			Column type: string
+    			Column type: text
     	Distribution: Segment { keys: KeySet({Key { positions: [0, 1] }}) }
     	Children:
     		Child_id = 096
-    	Columns: [identification_number: int, product_code: string, product_units: bool, sys_op: int, bucket_id: int (system)]
+    	Columns: [identification_number: int, product_code: text, product_units: bool, sys_op: int, bucket_id: int (system)]
     ---------------------------------------------
     ---------------------------------------------
     [id: 696] relation: Projection
@@ -274,7 +274,7 @@ fn simple_aggregation_with_group_by() {
     				Referenced table name (or alias): hash_testing
     				target_id: 296
     				Position: 1
-    				Column type: string
+    				Column type: text
     ---------------------------------------------
     ---------------------------------------------
     [id: 0136] relation: Motion [policy = Full, alias = None]
@@ -290,7 +290,7 @@ fn simple_aggregation_with_group_by() {
     				Referenced table name (or alias): hash_testing
     				target_id: 696
     				Position: 0
-    				Column type: string
+    				Column type: text
     ---------------------------------------------
     ---------------------------------------------
     [id: 896] relation: GroupBy
@@ -299,11 +299,11 @@ fn simple_aggregation_with_group_by() {
     			Alias: gr_expr_1
     			target_id: 0136
     			Position: 0
-    			Column type: string
+    			Column type: text
     	Distribution: Single
     	Children:
     		Child_id = 0136
-    	Columns: [gr_expr_1: string]
+    	Columns: [gr_expr_1: text]
     ---------------------------------------------
     ---------------------------------------------
     [id: 496] relation: Projection
@@ -317,7 +317,7 @@ fn simple_aggregation_with_group_by() {
     				Alias: gr_expr_1
     				target_id: 896
     				Position: 0
-    				Column type: string
+    				Column type: text
     ---------------------------------------------
     ");
 }

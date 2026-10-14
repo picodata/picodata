@@ -11,7 +11,7 @@ fn insert1() {
     insert into test_space on conflict: fail
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
-          value ROW(1::int, 'test'::string)
+          value ROW(1::int, 'test'::text)
     "#);
 }
 
@@ -25,7 +25,7 @@ fn insert2() {
     insert into test_space on conflict: fail
       motion [policy: segment([ref("COLUMN_1")]), program: ReshardIfNeeded]
         values
-          value ROW(1::int, 'test'::string)
+          value ROW(1::int, 'test'::text)
     "#);
 }
 

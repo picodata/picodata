@@ -14,7 +14,7 @@ use tarantool::tuple::Encode;
 
 use crate::errors::SbroadError;
 use crate::ir::relation::{Column, ColumnRole};
-use crate::ir::types::{DerivedType, UnrestrictedType};
+use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use crate::ir::value::Value;
 
 pub type ExecutorTuple = Vec<Value>;
@@ -36,6 +36,30 @@ impl MetadataColumn {
     #[must_use]
     pub fn new(name: String, r#type: String) -> Self {
         MetadataColumn { name, r#type }
+    }
+
+    /// Metadata of a column of type `ty`.
+    #[must_use]
+    pub fn of_type(name: String, ty: &DerivedType) -> Self {
+        MetadataColumn {
+            name,
+            r#type: metadata_type_name(ty),
+        }
+    }
+}
+
+/// Name of type `ty` in result metadata.
+///
+/// Type names here are part of the iproto/Lua result format that client
+/// connectors consume, so `text` keeps its historical `string` spelling
+/// even though SQL itself prints the type as `text`. Every writer of
+/// result metadata must name column types with this function.
+#[must_use]
+pub fn metadata_type_name(ty: &DerivedType) -> String {
+    match ty.get() {
+        Some(UnrestrictedType::String) => "string".to_string(),
+        Some(UnrestrictedType::Array(NestedType::Text)) => "string[]".to_string(),
+        _ => ty.to_string(),
     }
 }
 
@@ -114,3 +138,22 @@ impl Serialize for ConsumerResult {
 
 /// This impl allows to convert `ConsumerResult` into `Tuple`, using `Tuple::new` method.
 impl Encode for ConsumerResult {}
+
+#[cfg(test)]
+mod tests {
+    use super::metadata_type_name;
+    use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
+
+    #[test]
+    fn metadata_type_keeps_string_spelling() {
+        let of = |ty| metadata_type_name(&ty);
+
+        assert_eq!(of(DerivedType::new(UnrestrictedType::String)), "string");
+        assert_eq!(
+            of(DerivedType::new(UnrestrictedType::Array(NestedType::Text))),
+            "string[]"
+        );
+        assert_eq!(of(DerivedType::new(UnrestrictedType::Integer)), "int");
+        assert_eq!(of(DerivedType::unknown()), "unknown");
+    }
+}

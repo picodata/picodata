@@ -454,12 +454,12 @@ fn exec_plan_subtree_aggregates() {
         panic!("Expected MotionPolicy::Full for local aggregation stage");
     };
     assert_eq!(sql.params, vec![Value::from("o")]);
-    assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", CAST (("T1"."id" * "T1"."sys_op") as int) as "gr_expr_2", CAST ("T1"."id" as int) as "gr_expr_3", sum (CAST ("T1"."id" as int)) as "sum_2", count (CAST ("T1"."sysFrom" as int)) as "count_1", count (CAST ("T1"."id" as int)) as "avg_4", group_concat (CAST ("T1"."FIRST_NAME" as string), CAST($1 AS string)) as "group_concat_3", max (CAST ("T1"."id" as int)) as "max_7", min (CAST ("T1"."id" as int)) as "min_6", total (CAST ("T1"."id" as int)) as "total_5" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", CAST (("T1"."id" * "T1"."sys_op") as int), CAST ("T1"."id" as int)"#);
+    assert_snapshot!(sql.pattern, @r#"SELECT "T1"."sys_op" as "gr_expr_1", CAST (("T1"."id" * "T1"."sys_op") as int) as "gr_expr_2", CAST ("T1"."id" as int) as "gr_expr_3", sum (CAST ("T1"."id" as int)) as "sum_2", count (CAST ("T1"."sysFrom" as int)) as "count_1", count (CAST ("T1"."id" as int)) as "avg_4", group_concat (CAST ("T1"."FIRST_NAME" as text), CAST($1 AS text)) as "group_concat_3", max (CAST ("T1"."id" as int)) as "max_7", min (CAST ("T1"."id" as int)) as "min_6", total (CAST ("T1"."id" as int)) as "total_5" FROM "test_space" as "T1" GROUP BY "T1"."sys_op", CAST (("T1"."id" * "T1"."sys_op") as int), CAST ("T1"."id" as int)"#);
 
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(sql.params, vec![Value::Integer(2), Value::from("o")]);
-    assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", "COL_1" * CAST($1 AS int) + CAST (sum (CAST ("COL_5" as int)) as int) as "col_2", sum (CAST ("COL_4" as decimal)) as "col_3", sum (DISTINCT CAST ("COL_2" as decimal)) / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS string)) as "col_5", sum (CAST ("COL_4" as decimal)) / CAST (sum (CAST ("COL_6" as int)) as int) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "_tmp_0_0136") GROUP BY "COL_1""#);
+    assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", "COL_1" * CAST($1 AS int) + CAST (sum (CAST ("COL_5" as int)) as int) as "col_2", sum (CAST ("COL_4" as decimal)) as "col_3", sum (DISTINCT CAST ("COL_2" as decimal)) / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", CAST($2 AS text)) as "col_5", sum (CAST ("COL_4" as decimal)) / CAST (sum (CAST ("COL_6" as int)) as int) as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "_tmp_0_0136") GROUP BY "COL_1""#);
 }
 
 #[test]

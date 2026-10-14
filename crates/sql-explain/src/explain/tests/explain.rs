@@ -11,7 +11,7 @@ fn logical_and_buckets_headers() {
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
-    projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
+    projection (t.identification_number::int -> c1, t.product_code::text -> product_code)
       scan hash_testing -> t
 
     ──────────────────────────────────────────────────────────────────────
@@ -92,8 +92,8 @@ fn select_with_contradicting_row_filters() {
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
-    projection (t1.a::string -> a, t1.b::int -> b)
-      selection ((ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int) and ROW(t1.a::string, t1.b::int) = ROW('2'::string, 2::int)))
+    projection (t1.a::text -> a, t1.b::int -> b)
+      selection ((ROW(t1.a::text, t1.b::int) = ROW('1'::text, 1::int) and ROW(t1.a::text, t1.b::int) = ROW('2'::text, 2::int)))
         scan t1
 
     ──────────────────────────────────────────────────────────────────────
@@ -117,9 +117,9 @@ fn union_all() {
     ──────────────────────────────────────────────────────────────────────
 
     union all
-      projection (t.identification_number::int -> c1, t.product_code::string -> product_code)
+      projection (t.identification_number::int -> c1, t.product_code::text -> product_code)
         scan hash_testing -> t
-      projection (t2.identification_number::int -> identification_number, t2.product_code::string -> product_code)
+      projection (t2.identification_number::int -> identification_number, t2.product_code::text -> product_code)
         scan hash_testing_hist -> t2
 
     ──────────────────────────────────────────────────────────────────────
@@ -153,11 +153,11 @@ fn segment_motion_key_derived_by_transitivity() {
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
-    projection (gr_expr_1::string -> a, sum(count_1::int::int)::int::int -> col_1)
-      group by (gr_expr_1::string)
+    projection (gr_expr_1::text -> a, sum(count_1::int::int)::int::int -> col_1)
+      group by (gr_expr_1::text)
         motion [policy: full, program: ReshardIfNeeded]
-          projection (unnamed_subquery_1.a::string -> gr_expr_1, count(unnamed_subquery_1.b::int::int)::int -> count_1)
-            group by (unnamed_subquery_1.a::string)
+          projection (unnamed_subquery_1.a::text -> gr_expr_1, count(unnamed_subquery_1.b::int::int)::int -> count_1)
+            group by (unnamed_subquery_1.a::text)
               join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
                 scan unnamed_subquery
                   projection (t2.e::int -> e, t2.f::int -> f)
@@ -165,8 +165,8 @@ fn segment_motion_key_derived_by_transitivity() {
                       scan t2
                 motion [policy: segment([ref(b), ref(b)]), program: ReshardIfNeeded]
                   scan unnamed_subquery_1
-                    projection (t1.a::string -> a, t1.b::int -> b)
-                      selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
+                    projection (t1.a::text -> a, t1.b::int -> b)
+                      selection (ROW(t1.a::text, t1.b::int) = ROW('20'::text, 20::int))
                         scan t1
 
     ──────────────────────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ fn join_with_full_motion() {
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
-    projection (unnamed_subquery_1.a::string -> a)
+    projection (unnamed_subquery_1.a::text -> a)
       join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
         scan unnamed_subquery
           projection (t2.e::int -> e, t2.f::int -> f)
@@ -204,8 +204,8 @@ fn join_with_full_motion() {
               scan t2
         motion [policy: full, program: ReshardIfNeeded]
           scan unnamed_subquery_1
-            projection (t1.a::string -> a, t1.b::int -> b)
-              selection (ROW(t1.a::string, t1.b::int) = ROW('20'::string, 20::int))
+            projection (t1.a::text -> a, t1.b::int -> b)
+              selection (ROW(t1.a::text, t1.b::int) = ROW('20'::text, 20::int))
                 scan t1
 
     ──────────────────────────────────────────────────────────────────────
@@ -230,7 +230,7 @@ fn insert_select_uses_local_segment_motion() {
 
     insert into t1 on conflict: fail
       motion [policy: local segment([ref(a), ref(b)]), program: ReshardIfNeeded]
-        projection (t1.a::string -> a, t1.b::int -> b)
+        projection (t1.a::text -> a, t1.b::int -> b)
           scan t1
 
     ──────────────────────────────────────────────────────────────────────
@@ -272,8 +272,8 @@ fn insert_select_into_global_table_uses_full_motion() {
 
     insert into global_t on conflict: fail
       motion [policy: full, program: ReshardIfNeeded]
-        projection (t1.a::string -> a, t1.b::int -> b)
-          selection (ROW(t1.a::string, t1.b::int) = ROW('1'::string, 1::int))
+        projection (t1.a::text -> a, t1.b::int -> b)
+          selection (ROW(t1.a::text, t1.b::int) = ROW('1'::text, 1::int))
             scan t1
 
     ──────────────────────────────────────────────────────────────────────
@@ -324,7 +324,7 @@ fn constant_casts_folded_in_insert() {
     insert into t1 on conflict: fail
       motion [policy: segment([ref("COLUMN_1"), ref("COLUMN_2")]), program: ReshardIfNeeded]
         values
-          value ROW('txt'::string, 2::int)
+          value ROW('txt'::text, 2::int)
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
@@ -342,8 +342,8 @@ fn constant_casts_folded_in_select() {
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
 
-    projection (t3.a::string -> a, t3.b::int -> b)
-      selection (t3.a::string = 'kek'::string)
+    projection (t3.a::text -> a, t3.b::int -> b)
+      selection (t3.a::text = 'kek'::text)
         scan t3
 
     ──────────────────────────────────────────────────────────────────────
@@ -483,7 +483,7 @@ fn prepared_partial_composite_key_keeps_reduce_stage() {
     projection (sum(count_1::int::int)::int::int -> col_1)
       motion [policy: full, program: ReshardIfNeeded]
         projection (count(*)::int -> count_1)
-          selection (ROW(hash_testing.identification_number::int, hash_testing.product_code::string) = ROW(1::int, TRIM(hash_testing.product_code::string::string)))
+          selection (ROW(hash_testing.identification_number::int, hash_testing.product_code::text) = ROW(1::int, TRIM(hash_testing.product_code::text::text)))
             scan hash_testing
 
     ──────────────────────────────────────────────────────────────────────

@@ -44,7 +44,7 @@ use crate::{
     errors::{Action, Entity, SbroadError},
     executor::{
         ir::ExecutionPlan,
-        result::MetadataColumn,
+        result::{metadata_type_name, MetadataColumn},
         vtable::{calculate_unified_types, VTableTuple, VirtualTable},
     },
     ir::{
@@ -1339,7 +1339,7 @@ pub fn dispatch_impl<'p>(
         let metadata = block
             .return_columns
             .iter()
-            .map(|(name, ty)| MetadataColumn::new(name.to_string(), ty.to_string()))
+            .map(|(name, ty)| MetadataColumn::of_type(name.to_string(), ty))
             .collect();
 
         // For INSERT statements we need the concrete bucket id to populate the
@@ -2016,9 +2016,9 @@ pub fn try_get_metadata_from_plan_for_top(
     let mut metadata = Vec::with_capacity(columns.len());
     for column in columns {
         let column = column?;
-        metadata.push(MetadataColumn::new(
+        metadata.push(MetadataColumn::of_type(
             column.name.to_string(),
-            column.r#type.to_string(),
+            &column.r#type,
         ));
     }
     Ok(Some(metadata))
@@ -2045,7 +2045,7 @@ fn metadata_write<'p>(
     write_array_len(&mut mp, len).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
     for column in columns {
         let column = column?;
-        let col_type = column.r#type.to_string();
+        let col_type = metadata_type_name(&column.r#type);
 
         write_map_len(&mut mp, 2).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
         write_str(&mut mp, "name").map_err(|e| to_mp_err(format_smolstr!("{e}")))?;

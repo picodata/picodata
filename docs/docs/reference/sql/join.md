@@ -217,7 +217,7 @@ ON items.id = orders.id;
 ```
 
 ```
-projection (items.name::string -> name, items.stock::int -> stock, orders.amount::int -> amount)
+projection (items.name::text -> name, items.stock::int -> stock, orders.amount::int -> amount)
   join on (items.id::int = orders.id::int)
     scan items
     scan orders
@@ -240,12 +240,12 @@ ON orders.id = new_table.nmbr;
 ```
 
 ```sql
-projection (orders.id::int -> id, orders.item::string -> item)
+projection (orders.id::int -> id, orders.item::text -> item)
   join on (orders.id::int = new_table.nmbr::int)
     scan orders
     motion [policy: segment([ref(nmbr)]), program: ReshardIfNeeded]
       scan new_table
-        projection (deliveries.nmbr::int -> nmbr, deliveries.product::string -> product)
+        projection (deliveries.nmbr::int -> nmbr, deliveries.product::text -> product)
           scan deliveries
 ```
 
@@ -268,11 +268,11 @@ ON items.name = orders.item;
 ```
 
 ```sql
-projection (items.name::string -> name, items.stock::int -> stock, orders.amount::int -> amount)
-  join on (items.name::string = orders.item::string)
+projection (items.name::text -> name, items.stock::int -> stock, orders.amount::int -> amount)
+  join on (items.name::text = orders.item::text)
     scan items
     motion [policy: full, program: ReshardIfNeeded]
-      projection (orders.id::int -> id, orders.bucket_id::int -> bucket_id, orders.item::string -> item, orders.amount::int -> amount, orders.since::datetime -> since)
+      projection (orders.id::int -> id, orders.bucket_id::int -> bucket_id, orders.item::text -> item, orders.amount::int -> amount, orders.since::datetime -> since)
         scan orders
 ```
 
@@ -286,11 +286,11 @@ ON items.id > 2;
 ```
 
 ```sql
-projection (items.name::string -> name, items.stock::int -> stock, orders.amount::int -> amount)
+projection (items.name::text -> name, items.stock::int -> stock, orders.amount::int -> amount)
   join on (items.id::int > 2::int)
     scan items
     motion [policy: full, program: ReshardIfNeeded]
-      projection (orders.id::int -> id, orders.bucket_id::int -> bucket_id, orders.item::string -> item, orders.amount::int -> amount, orders.since::datetime -> since)
+      projection (orders.id::int -> id, orders.bucket_id::int -> bucket_id, orders.item::text -> item, orders.amount::int -> amount, orders.since::datetime -> since)
         scan orders
 ```
 
@@ -302,10 +302,10 @@ ON TRUE;
 ```
 
 ```sql
-projection (items.name::string -> name, items.stock::int -> stock, orders.amount::int -> amount)
+projection (items.name::text -> name, items.stock::int -> stock, orders.amount::int -> amount)
   join on (true::bool)
     scan items
     motion [policy: full, program: ReshardIfNeeded]
-      projection (orders.id::int -> id, orders.bucket_id::int -> bucket_id, orders.item::string -> item, orders.amount::int -> amount, orders.since::datetime -> since)
+      projection (orders.id::int -> id, orders.bucket_id::int -> bucket_id, orders.item::text -> item, orders.amount::int -> amount, orders.since::datetime -> since)
         scan orders
 ```

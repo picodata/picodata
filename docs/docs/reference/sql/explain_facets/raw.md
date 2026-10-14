@@ -141,7 +141,7 @@ EXPLAIN (RAW) SELECT * FROM warehouse WHERE item = 'kek';
 │ 1. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 
-SELECT "warehouse"."id", "warehouse"."item", "warehouse"."type" FROM "warehouse" WHERE "warehouse"."item" = CAST('kek' AS string)
+SELECT "warehouse"."id", "warehouse"."item", "warehouse"."type" FROM "warehouse" WHERE "warehouse"."item" = CAST('kek' AS text)
 
 plan:
     [0] SEARCH TABLE warehouse USING COVERING INDEX item_idx (item=?) (~10 rows)
@@ -238,7 +238,7 @@ plan:
 │ 3. If body (CONST-FILTERED STORAGE, 1/4) │
 ╰──────────────────────────────────────────╯
 
-UPDATE "foo" SET "val" = CAST('kek' AS string) WHERE "foo"."id" = CAST(42 AS int)
+UPDATE "foo" SET "val" = CAST('kek' AS text) WHERE "foo"."id" = CAST(42 AS int)
 
 plan:
     [0] SEARCH TABLE foo USING PRIMARY KEY (id=?) (~1 row)

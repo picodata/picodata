@@ -16,12 +16,12 @@ fn multi_join1() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t1.identification_number::int -> identification_number, t1.product_code::string -> product_code, t2.id::int -> id, t3.id::int -> id)
-      selection ((t1.identification_number::int = 5::int and t1.product_code::string = '123'::string))
+    projection (t1.identification_number::int -> identification_number, t1.product_code::text -> product_code, t2.id::int -> id, t3.id::int -> id)
+      selection ((t1.identification_number::int = 5::int and t1.product_code::text = '123'::text))
         left join on (t1.identification_number::int = t3.id::int)
           join on (t1.identification_number::int = t2.id::int)
             scan t1
-              projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code)
+              projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code)
                 scan hash_testing
             motion [policy: full, program: ReshardIfNeeded]
               scan t2
@@ -42,7 +42,7 @@ fn multi_join2() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t1.a::int -> a, t1.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t4.c::string -> c, t4.d::int -> d)
+    projection (t1.a::int -> a, t1.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t4.c::text -> c, t4.d::int -> d)
       left join on (true::bool)
         left join on (t1.a::int = t2.e::int)
           scan t1_2 -> t1
@@ -50,7 +50,7 @@ fn multi_join2() {
             projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
               scan t2
         motion [policy: full, program: ReshardIfNeeded]
-          projection (t4.bucket_id::int -> bucket_id, t4.c::string -> c, t4.d::int -> d)
+          projection (t4.bucket_id::int -> bucket_id, t4.c::text -> c, t4.d::int -> d)
             scan t4
     ");
 }
@@ -63,8 +63,8 @@ fn multi_join3() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t1.a::int -> a, t1.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t3.a::int -> a, t3.b::int -> b, t4.c::string -> c, t4.d::int -> d)
-      join on (t2.f::int = t4.c::string::int)
+    projection (t1.a::int -> a, t1.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t3.a::int -> a, t3.b::int -> b, t4.c::text -> c, t4.d::int -> d)
+      join on (t2.f::int = t4.c::text::int)
         join on (t1.a::int = t3.a::int)
           left join on (t1.a::int = t2.e::int)
             scan t1_2 -> t1
@@ -75,7 +75,7 @@ fn multi_join3() {
             projection (t3.bucket_id::int -> bucket_id, t3.a::int -> a, t3.b::int -> b)
               scan t3_2 -> t3
         motion [policy: full, program: ReshardIfNeeded]
-          projection (t4.bucket_id::int -> bucket_id, t4.c::string -> c, t4.d::int -> d)
+          projection (t4.bucket_id::int -> bucket_id, t4.c::text -> c, t4.d::int -> d)
             scan t4
     ");
 }
@@ -88,15 +88,15 @@ fn multi_join4() {
     let plan = sql_to_optimized_ir(input, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (t1.a::string -> a)
-      join on (t1.a::string = t3.a::string)
-        join on (t1.a::string = t2.a::string)
+    projection (t1.a::text -> a)
+      join on (t1.a::text = t3.a::text)
+        join on (t1.a::text = t2.a::text)
           scan t1
           motion [policy: full, program: ReshardIfNeeded]
-            projection (t2.a::string -> a, t2.bucket_id::int -> bucket_id, t2.b::int -> b)
+            projection (t2.a::text -> a, t2.bucket_id::int -> bucket_id, t2.b::int -> b)
               scan t1 -> t2
         motion [policy: full, program: ReshardIfNeeded]
-          projection (t3.bucket_id::int -> bucket_id, t3.a::string -> a, t3.b::int -> b)
+          projection (t3.bucket_id::int -> bucket_id, t3.a::text -> a, t3.b::int -> b)
             scan t3
     ");
 }

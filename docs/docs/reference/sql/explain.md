@@ -38,7 +38,7 @@ EXPLAIN (LOGICAL, BUCKETS) SELECT name, id FROM _pico_table;
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 
-projection (_pico_table.name::string -> name, _pico_table.id::int -> id)
+projection (_pico_table.name::text -> name, _pico_table.id::int -> id)
   scan _pico_table
 
 ──────────────────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ EXPLAIN (LOGICAL) SELECT id, item FROM warehouse;
 ```
 
 ```sql
-projection (warehouse.id::int -> id, warehouse.item::string -> item)
+projection (warehouse.id::int -> id, warehouse.item::text -> item)
   scan warehouse
 ```
 
@@ -163,7 +163,7 @@ EXPLAIN (LOGICAL, FMT) SELECT id, item FROM warehouse;
 ```sql
 projection (
   warehouse.id::int -> id,
-  warehouse.item::string -> item
+  warehouse.item::text -> item
 )
   scan warehouse
 ```

@@ -307,7 +307,7 @@ impl Display for CastTypeSql {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self.0 {
             CastType::Array(NestedType::Map) => write!(f, "json[]"),
-            CastType::Array(NestedType::Any) => write!(f, "string[]"),
+            CastType::Array(NestedType::Any) => write!(f, "text[]"),
             CastType::Json => write!(f, "json"),
             ty => write!(f, "{ty}"),
         }

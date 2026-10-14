@@ -26,13 +26,13 @@ use sql_frontend::frontend::sql::Ast;
 #[test]
 fn asterisk_from_table() {
     let query = "SELECT * FROM t1";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool FROM t1");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool FROM t1");
 }
 
 #[test]
 fn asterisk_and_exprs_mixed_query() {
     let query = "SELECT *, b * 2 AS a1, *, t1.a FROM t1";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool, (t1.b::int * 2::int)::int AS a1, t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool, t1.a::int FROM t1");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool, (t1.b::int * 2::int)::int AS a1, t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool, t1.a::int FROM t1");
 }
 
 #[test]
@@ -54,13 +54,13 @@ fn asterisk_no_table_expr_query() {
 #[test]
 fn qualified_asterisk_from_table() {
     let query = "SELECT t1.* FROM t1";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool FROM t1");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool FROM t1");
 }
 
 #[test]
 fn qualified_asterisk_by_alias() {
     let query = "SELECT x.* FROM t1 AS x";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT x.a::int, x.b::int, x.c::double, x.d::decimal, x.e::string, x.f::string, x.g::bool FROM t1 AS x");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT x.a::int, x.b::int, x.c::double, x.d::decimal, x.e::text, x.f::text, x.g::bool FROM t1 AS x");
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn asterisk_from_cte_with_column_list_over_table_columns() {
     // column attribute and take the list's names, the same rename a projection
     // gets.
     let query = "WITH cte (c1, c2, c3, c4, c5, c6, c7) AS (SELECT * FROM t1) SELECT * FROM cte";
-    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte (c1, c2, c3, c4, c5, c6, c7) AS (SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool FROM t1) SELECT cte.c1::int, cte.c2::int, cte.c3::double, cte.c4::decimal, cte.c5::string, cte.c6::string, cte.c7::bool FROM cte");
+    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte (c1, c2, c3, c4, c5, c6, c7) AS (SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool FROM t1) SELECT cte.c1::int, cte.c2::int, cte.c3::double, cte.c4::decimal, cte.c5::text, cte.c6::text, cte.c7::bool FROM cte");
 }
 
 #[test]
@@ -191,7 +191,7 @@ fn correlated_subquery_qualified_asterisk_is_checked_against_the_outer_grouping(
 fn correlated_subquery_qualified_asterisk_matches_only_the_outer_expression_keys() {
     insta::assert_snapshot!(
         analyzed("SELECT (SELECT t.* FROM t2 GROUP BY t2.d) FROM (SELECT 1 AS a) t GROUP BY t.a", &[]),
-        @"SELECT (SELECT t.a::int FROM t2 GROUP BY t2.d::string)::int FROM (SELECT 1::int AS a) AS t GROUP BY t.a::int"
+        @"SELECT (SELECT t.a::int FROM t2 GROUP BY t2.d::text)::int FROM (SELECT 1::int AS a) AS t GROUP BY t.a::int"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT (SELECT t.* FROM t2 GROUP BY t2.d) FROM (SELECT 1 AS a) t GROUP BY t.a + 1", &[]),
@@ -219,33 +219,33 @@ fn ambigious_column_reference_asterisk_subquery() {
 fn join_asterisk_unqualified() {
     let query =
         "SELECT * FROM (SELECT a, b FROM t1) t1 INNER JOIN (SELECT c a, d b FROM t2) t2 USING (a)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t2.b::string FROM (SELECT t1.a::int, t1.b::int FROM t1) AS t1 INNER JOIN (SELECT t2.c::int AS a, t2.d::string AS b FROM t2) AS t2 USING (a)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t2.b::text FROM (SELECT t1.a::int, t1.b::int FROM t1) AS t1 INNER JOIN (SELECT t2.c::int AS a, t2.d::text AS b FROM t2) AS t2 USING (a)");
 }
 
 #[test]
 fn join_asterisk_unqualified_cte_and_table() {
     let query =
         "WITH cte (a, b) AS (SELECT 1, 2) SELECT * FROM t1 INNER JOIN (SELECT c a, d b FROM t2) t2 USING (a) INNER JOIN cte USING(a)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte (a, b) AS (SELECT 1::int, 2::int) SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool, t2.b::string, cte.b::int FROM t1 INNER JOIN (SELECT t2.c::int AS a, t2.d::string AS b FROM t2) AS t2 USING (a) INNER JOIN cte USING (a)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte (a, b) AS (SELECT 1::int, 2::int) SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool, t2.b::text, cte.b::int FROM t1 INNER JOIN (SELECT t2.c::int AS a, t2.d::text AS b FROM t2) AS t2 USING (a) INNER JOIN cte USING (a)");
 }
 
 #[test]
 fn join_asterisk_qualified() {
     let query = "SELECT t1.*, t2.*, t3.* FROM (SELECT a, b FROM t1) t1 INNER JOIN (SELECT c, d FROM t2) t2 ON t1.a = t2.c INNER JOIN (SELECT c a, d b FROM t2) t3 USING (a)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t2.c::int, t2.d::string, t3.a::int, t3.b::string FROM (SELECT t1.a::int, t1.b::int FROM t1) AS t1 INNER JOIN (SELECT t2.c::int, t2.d::string FROM t2) AS t2 ON (t1.a::int = t2.c::int)::bool INNER JOIN (SELECT t2.c::int AS a, t2.d::string AS b FROM t2) AS t3 USING (a)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t2.c::int, t2.d::text, t3.a::int, t3.b::text FROM (SELECT t1.a::int, t1.b::int FROM t1) AS t1 INNER JOIN (SELECT t2.c::int, t2.d::text FROM t2) AS t2 ON (t1.a::int = t2.c::int)::bool INNER JOIN (SELECT t2.c::int AS a, t2.d::text AS b FROM t2) AS t3 USING (a)");
 }
 
 #[test]
 fn left_join_asterisk_qualified() {
     let query = "SELECT t1.*, t2.*, t3.* FROM (SELECT a, b FROM t1) t1 LEFT JOIN (SELECT c, d FROM t2) t2 ON t1.a = t2.c LEFT JOIN (SELECT c a, d b FROM t2) t3 USING (a)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t2.c::int, t2.d::string, t3.a::int, t3.b::string FROM (SELECT t1.a::int, t1.b::int FROM t1) AS t1 LEFT OUTER JOIN (SELECT t2.c::int, t2.d::string FROM t2) AS t2 ON (t1.a::int = t2.c::int)::bool LEFT OUTER JOIN (SELECT t2.c::int AS a, t2.d::string AS b FROM t2) AS t3 USING (a)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t2.c::int, t2.d::text, t3.a::int, t3.b::text FROM (SELECT t1.a::int, t1.b::int FROM t1) AS t1 LEFT OUTER JOIN (SELECT t2.c::int, t2.d::text FROM t2) AS t2 ON (t1.a::int = t2.c::int)::bool LEFT OUTER JOIN (SELECT t2.c::int AS a, t2.d::text AS b FROM t2) AS t3 USING (a)");
 }
 
 // ------------- JOIN/USING -------------
 #[test]
 fn join_asterisk_merged_column_leads_the_expansion() {
     let query = "SELECT * FROM t3 INNER JOIN t4 USING (b)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t3.b::string, t3.a::int, t4.a::int FROM t3 INNER JOIN t4 USING (b)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t3.b::text, t3.a::int, t4.a::int FROM t3 INNER JOIN t4 USING (b)");
 }
 
 /// Merged columns follow the USING list, not the table's column order.
@@ -253,11 +253,11 @@ fn join_asterisk_merged_column_leads_the_expansion() {
 fn join_asterisk_merged_columns_follow_the_using_order() {
     insta::assert_snapshot!(
         analyzed("SELECT * FROM t3 INNER JOIN t4 USING (a, b)", &[]),
-        @"SELECT t3.a::int, t3.b::string FROM t3 INNER JOIN t4 USING (a, b)"
+        @"SELECT t3.a::int, t3.b::text FROM t3 INNER JOIN t4 USING (a, b)"
     );
     insta::assert_snapshot!(
         analyzed("SELECT * FROM t3 INNER JOIN t4 USING (b, a)", &[]),
-        @"SELECT t3.b::string, t3.a::int FROM t3 INNER JOIN t4 USING (b, a)"
+        @"SELECT t3.b::text, t3.a::int FROM t3 INNER JOIN t4 USING (b, a)"
     );
 }
 
@@ -266,7 +266,7 @@ fn join_asterisk_merged_columns_follow_the_using_order() {
 #[test]
 fn join_asterisk_merge_keeps_the_left_column() {
     let query = "SELECT * FROM t3 LEFT JOIN t4 USING (a)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t3.a::int, t3.b::string, t4.b::string FROM t3 LEFT OUTER JOIN t4 USING (a)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t3.a::int, t3.b::text, t4.b::text FROM t3 LEFT OUTER JOIN t4 USING (a)");
 }
 
 /// A name merged by every join of a chain is emitted once, and it is the
@@ -274,7 +274,7 @@ fn join_asterisk_merge_keeps_the_left_column() {
 #[test]
 fn join_asterisk_chain_merging_one_name_keeps_the_leftmost() {
     let query = "SELECT * FROM t3 x LEFT JOIN t3 y USING (a) LEFT JOIN t3 z USING (a)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT x.a::int, x.b::string, y.b::string, z.b::string FROM t3 AS x LEFT OUTER JOIN t3 AS y USING (a) LEFT OUTER JOIN t3 AS z USING (a)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT x.a::int, x.b::text, y.b::text, z.b::text FROM t3 AS x LEFT OUTER JOIN t3 AS y USING (a) LEFT OUTER JOIN t3 AS z USING (a)");
 }
 
 /// Two joins merging *different* names: the outer join's merge (`r`) leads the
@@ -305,14 +305,14 @@ fn join_asterisk_partial_merge_orders_the_remainder() {
 #[test]
 fn join_qualified_asterisk_is_not_reduced() {
     let query = "SELECT t4.*, * FROM t3 INNER JOIN t4 USING (b)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t4.a::int, t4.b::string, t3.b::string, t3.a::int, t4.a::int FROM t3 INNER JOIN t4 USING (b)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t4.a::int, t4.b::text, t3.b::text, t3.a::int, t4.a::int FROM t3 INNER JOIN t4 USING (b)");
 }
 
 /// Two asterisks each expand to the whole join output, merge included.
 #[test]
 fn join_asterisk_twice_expands_the_merge_twice() {
     let query = "SELECT *, * FROM t3 INNER JOIN t4 USING (b)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t3.b::string, t3.a::int, t4.a::int, t3.b::string, t3.a::int, t4.a::int FROM t3 INNER JOIN t4 USING (b)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t3.b::text, t3.a::int, t4.a::int, t3.b::text, t3.a::int, t4.a::int FROM t3 INNER JOIN t4 USING (b)");
 }
 
 /// The merge is found by name, not by position: here `p` sits second in the
@@ -320,7 +320,7 @@ fn join_asterisk_twice_expands_the_merge_twice() {
 #[test]
 fn join_asterisk_merge_over_derived_tables_reordering_columns() {
     let query = "SELECT * FROM (SELECT b q, a p FROM t3) x INNER JOIN (SELECT a p, b q FROM t4) y USING (p)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT x.p::int, x.q::string, y.q::string FROM (SELECT t3.b::string AS q, t3.a::int AS p FROM t3) AS x INNER JOIN (SELECT t4.a::int AS p, t4.b::string AS q FROM t4) AS y USING (p)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT x.p::int, x.q::text, y.q::text FROM (SELECT t3.b::text AS q, t3.a::int AS p FROM t3) AS x INNER JOIN (SELECT t4.a::int AS p, t4.b::text AS q FROM t4) AS y USING (p)");
 }
 
 /// A join wrapped in a derived table exposes an ordinary three-column relation:
@@ -328,11 +328,11 @@ fn join_asterisk_merge_over_derived_tables_reordering_columns() {
 #[test]
 fn join_asterisk_over_a_derived_table_holding_the_join() {
     let query = "SELECT * FROM (SELECT * FROM t3 LEFT JOIN t4 USING (a)) z";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT z.a::int, z.b::string, z.b::string FROM (SELECT t3.a::int, t3.b::string, t4.b::string FROM t3 LEFT OUTER JOIN t4 USING (a)) AS z");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT z.a::int, z.b::text, z.b::text FROM (SELECT t3.a::int, t3.b::text, t4.b::text FROM t3 LEFT OUTER JOIN t4 USING (a)) AS z");
 }
 
 #[test]
 fn join_asterisk_mixed() {
     let query = "SELECT *, t2.* FROM (SELECT a, b FROM t1) t1 INNER JOIN (SELECT c a, d b FROM t2) t2 USING (a)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t2.b::string, t2.a::int, t2.b::string FROM (SELECT t1.a::int, t1.b::int FROM t1) AS t1 INNER JOIN (SELECT t2.c::int AS a, t2.d::string AS b FROM t2) AS t2 USING (a)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t2.b::text, t2.a::int, t2.b::text FROM (SELECT t1.a::int, t1.b::int FROM t1) AS t1 INNER JOIN (SELECT t2.c::int AS a, t2.d::text AS b FROM t2) AS t2 USING (a)");
 }

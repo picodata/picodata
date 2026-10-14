@@ -49,7 +49,7 @@ fn preceeding_cte_visible() {
 #[test]
 fn preceeding_cte_visible_nested() {
     let query = "WITH cte1 AS (SELECT 1 AS a), cte2 AS (SELECT a FROM cte1) SELECT (WITH cte2 AS (SELECT 'a' AS a) SELECT * FROM cte2), a FROM cte2";
-    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte1 AS (SELECT 1::int AS a), cte2 AS (SELECT cte1.a::int FROM cte1) SELECT (WITH cte2 AS (SELECT 'a'::string AS a) SELECT cte2.a::string FROM cte2)::string, cte2.a::int FROM cte2");
+    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte1 AS (SELECT 1::int AS a), cte2 AS (SELECT cte1.a::int FROM cte1) SELECT (WITH cte2 AS (SELECT 'a'::text AS a) SELECT cte2.a::text FROM cte2)::text, cte2.a::int FROM cte2");
 }
 
 #[test]
@@ -304,7 +304,7 @@ fn order_by_implicit_output_name_of_function_call() {
 fn order_by_implicit_output_name_through_cast() {
     insta::assert_snapshot!(
         analyzed("SELECT a::text FROM t1 GROUP BY 1 ORDER BY a", &[]),
-        @"SELECT t1.a::string FROM t1 GROUP BY 1 ORDER BY 1 ASC"
+        @"SELECT t1.a::text FROM t1 GROUP BY 1 ORDER BY 1 ASC"
     );
 }
 
@@ -510,7 +510,7 @@ fn limit_unsigned() {
 fn values_single_row() {
     insta::assert_snapshot!(
         analyzed("VALUES (1, 'a', true)", &[]),
-        @"VALUES (1::int, 'a'::string, true::bool)"
+        @"VALUES (1::int, 'a'::text, true::bool)"
     );
 }
 
@@ -534,7 +534,7 @@ fn values_type_mismatch() {
 fn values_of_untyped_nulls() {
     insta::assert_snapshot!(
         analyzed("VALUES (NULL), (NULL)", &[]),
-        @"VALUES (NULL::string), (NULL::string)"
+        @"VALUES (NULL::text), (NULL::text)"
     );
 }
 
@@ -592,7 +592,7 @@ fn values_order_by_ordinal() {
 fn values_order_by_output_name() {
     insta::assert_snapshot!(
         analyzed("VALUES (2, 'b'), (1, 'a') ORDER BY column2 DESC, column1", &[]),
-        @"VALUES (2::int, 'b'::string), (1::int, 'a'::string) ORDER BY 2 DESC, 1 ASC"
+        @"VALUES (2::int, 'b'::text), (1::int, 'a'::text) ORDER BY 2 DESC, 1 ASC"
     );
 }
 
@@ -634,7 +634,7 @@ fn values_limit() {
 fn values_in_from() {
     insta::assert_snapshot!(
         analyzed("SELECT column2, column1 FROM (VALUES (1, 'a'), (2, 'b'))", &[]),
-        @"SELECT column2::string, column1::int FROM (VALUES (1::int, 'a'::string), (2::int, 'b'::string))"
+        @"SELECT column2::text, column1::int FROM (VALUES (1::int, 'a'::text), (2::int, 'b'::text))"
     );
 }
 

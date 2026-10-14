@@ -311,11 +311,11 @@ GROUP BY name;
 
 ??? example "Существенная часть плана"
     ```sql
-    projection (gr_expr_1::string -> name, sum(count_1::int::int)::int::int -> count)
-      group by (gr_expr_1::string)
+    projection (gr_expr_1::text -> name, sum(count_1::int::int)::int::int -> count)
+      group by (gr_expr_1::text)
         motion [policy: full, program: ReshardIfNeeded]
-          projection (customers.name::string -> gr_expr_1, count(*)::int -> count_1)
-            group by (customers.name::string)
+          projection (customers.name::text -> gr_expr_1, count(*)::int -> count_1)
+            group by (customers.name::text)
               selection (customers.id::int <> 3::int)
                 scan customers
     ```

@@ -32,9 +32,9 @@ fn union_all() {
       motion [policy: full, program: ReshardIfNeeded]
         limit 100
           union all
-            projection (hash_testing.product_code::string -> product_code)
+            projection (hash_testing.product_code::text -> product_code)
               scan hash_testing
-            projection (t2.e::int::string -> col_1)
+            projection (t2.e::int::text -> col_1)
               scan t2
     ");
 }
@@ -101,19 +101,19 @@ fn join() {
     limit 128
       motion [policy: full, program: ReshardIfNeeded]
         limit 128
-          projection (t1.a::string -> a, t1.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t3.a::string -> a, t3.b::int -> b, t4.c::string -> c, t4.d::int -> d)
+          projection (t1.a::text -> a, t1.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t3.a::text -> a, t3.b::int -> b, t4.c::text -> c, t4.d::int -> d)
             join on (t2.f::int = t4.d::int)
-              join on (t1.a::string = t3.a::string)
+              join on (t1.a::text = t3.a::text)
                 left join on (t1.b::int = t2.e::int)
                   scan t1
                   motion [policy: full, program: ReshardIfNeeded]
                     projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
                       scan t2
                 motion [policy: full, program: ReshardIfNeeded]
-                  projection (t3.bucket_id::int -> bucket_id, t3.a::string -> a, t3.b::int -> b)
+                  projection (t3.bucket_id::int -> bucket_id, t3.a::text -> a, t3.b::int -> b)
                     scan t3
               motion [policy: full, program: ReshardIfNeeded]
-                projection (t4.bucket_id::int -> bucket_id, t4.c::string -> c, t4.d::int -> d)
+                projection (t4.bucket_id::int -> bucket_id, t4.c::text -> c, t4.d::int -> d)
                   scan t4
     ");
 }

@@ -32,11 +32,11 @@ fn cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (cte.a::string -> a)
+    projection (cte.a::text -> a)
       scan cte cte($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (test_space."FIRST_NAME"::string -> a)
+        projection (test_space."FIRST_NAME"::text -> a)
           scan test_space
     "#);
 }
@@ -65,14 +65,14 @@ fn nested_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (cte2.a::string -> a)
+    projection (cte2.a::text -> a)
       scan cte cte2($1)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (test_space."FIRST_NAME"::string -> a)
+        projection (test_space."FIRST_NAME"::text -> a)
           scan test_space
     subquery $1:
-      projection (cte1.a::string -> a)
+      projection (cte1.a::text -> a)
         scan cte cte1($0)
     "#);
 }
@@ -89,13 +89,13 @@ fn reuse_cte_union_all() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     union all
-      projection (cte.a::string -> a)
+      projection (cte.a::text -> a)
         scan cte cte($0)
-      projection (cte.a::string -> a)
+      projection (cte.a::text -> a)
         scan cte cte($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (test_space."FIRST_NAME"::string -> a)
+        projection (test_space."FIRST_NAME"::text -> a)
           scan test_space
     "#);
 }
@@ -116,13 +116,13 @@ fn reuse_func_in_cte() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     motion [policy: full, program: RemoveDuplicates]
       union
-        projection (cte.col_1::string -> col_1)
+        projection (cte.col_1::text -> col_1)
           scan cte cte($0)
-        projection (cte.col_1::string -> col_1)
+        projection (cte.col_1::text -> col_1)
           scan cte cte($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (TRIM('some'::string) -> col_1)
+        projection (TRIM('some'::text) -> col_1)
     ");
 }
 
@@ -143,18 +143,18 @@ fn reuse_union_in_cte() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     motion [policy: full, program: RemoveDuplicates]
       union
-        projection (cte.a::string -> a)
+        projection (cte.a::text -> a)
           scan cte cte($0)
-        projection (cte.a::string -> a)
+        projection (cte.a::text -> a)
           scan cte cte($0)
     subquery $0:
-      projection (cte."FIRST_NAME"::string -> a)
+      projection (cte."FIRST_NAME"::text -> a)
         scan cte
           motion [policy: full, program: RemoveDuplicates]
             union
-              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+              projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
                 scan test_space
-              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+              projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
                 scan test_space
     "#);
 }
@@ -176,16 +176,16 @@ fn reuse_union_in_cte_without_rename() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     motion [policy: full, program: RemoveDuplicates]
       union
-        projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
+        projection (cte."FIRST_NAME"::text -> "FIRST_NAME")
           scan cte cte($0)
-        projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
+        projection (cte."FIRST_NAME"::text -> "FIRST_NAME")
           scan cte cte($0)
     subquery $0:
       motion [policy: full, program: RemoveDuplicates]
         union
-          projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+          projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
             scan test_space
-          projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+          projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
             scan test_space
     "#);
 }
@@ -210,18 +210,18 @@ fn reuse_union_in_cte_with_projection() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     motion [policy: full, program: RemoveDuplicates]
       union
-        projection (cte.another::string -> another)
+        projection (cte.another::text -> another)
           scan cte cte($0)
-        projection (cte.another::string -> another)
+        projection (cte.another::text -> another)
           scan cte cte($0)
     subquery $0:
-      projection (unnamed_subquery."FIRST_NAME"::string -> another)
+      projection (unnamed_subquery."FIRST_NAME"::text -> another)
         scan unnamed_subquery
           motion [policy: full, program: RemoveDuplicates]
             union
-              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+              projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
                 scan test_space
-              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+              projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
                 scan test_space
     "#);
 }
@@ -301,13 +301,13 @@ fn reuse_cte_values_with_projection_and_function() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
     union all
-      projection (cte.col_1::string -> col_1)
+      projection (cte.col_1::text -> col_1)
         scan cte cte($0)
-      projection (cte.col_1::string -> col_1)
+      projection (cte.col_1::text -> col_1)
         scan cte cte($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (".proc_instance_uuid"()::string -> col_1)
+        projection (".proc_instance_uuid"()::text -> col_1)
           scan s
             motion [policy: full, program: ReshardIfNeeded]
               values
@@ -352,13 +352,13 @@ fn join_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (t."FIRST_NAME"::string -> "FIRST_NAME")
-      join on (t."FIRST_NAME"::string = cte.a::string)
+    projection (t."FIRST_NAME"::text -> "FIRST_NAME")
+      join on (t."FIRST_NAME"::text = cte.a::text)
         scan test_space -> t
         scan cte cte($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (test_space."FIRST_NAME"::string -> a)
+        projection (test_space."FIRST_NAME"::text -> a)
           scan test_space
     "#);
 }
@@ -372,11 +372,11 @@ fn agg_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (count(cte.a::string::string)::int -> col_1)
+    projection (count(cte.a::text::text)::int -> col_1)
       scan cte cte($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (test_space."FIRST_NAME"::string -> a)
+        projection (test_space."FIRST_NAME"::text -> a)
           scan test_space
     "#);
 }
@@ -486,17 +486,17 @@ fn sq_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
-      selection (test_space."FIRST_NAME"::string in ROW($1))
+    projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
+      selection (test_space."FIRST_NAME"::text in ROW($1))
         scan test_space
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (test_space."FIRST_NAME"::string -> a)
-          selection (test_space."FIRST_NAME"::string = 'hi'::string)
+        projection (test_space."FIRST_NAME"::text -> a)
+          selection (test_space."FIRST_NAME"::text = 'hi'::text)
             scan test_space
     subquery $1:
       scan
-        projection (cte.a::string -> a)
+        projection (cte.a::text -> a)
           scan cte cte($0)
     "#);
 }
@@ -510,14 +510,14 @@ fn values_in_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (cte.a::string -> a)
+    projection (cte.a::text -> a)
       scan cte cte($0)
     subquery $0:
-      projection (cte."COLUMN_1"::string -> a)
+      projection (cte."COLUMN_1"::text -> a)
         scan cte
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value ROW('a'::string)
+              value ROW('a'::text)
     "#);
 }
 
@@ -531,20 +531,20 @@ fn union_all_in_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (cte2.a::string -> a)
+    projection (cte2.a::text -> a)
       scan cte cte2($1)
     subquery $0:
-      projection (cte1."COLUMN_1"::string -> a)
+      projection (cte1."COLUMN_1"::text -> a)
         scan cte1
           motion [policy: full, program: ReshardIfNeeded]
             values
-              value ROW('a'::string)
+              value ROW('a'::text)
     subquery $1:
       motion [policy: full, program: ReshardIfNeeded]
         union all
-          projection (cte1.a::string -> a)
+          projection (cte1.a::text -> a)
             scan cte cte1($0)
-          projection (cte1.a::string -> a)
+          projection (cte1.a::text -> a)
             scan cte cte1($0)
     "#);
 }
@@ -561,15 +561,15 @@ fn join_in_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
+    projection (cte."FIRST_NAME"::text -> "FIRST_NAME")
       scan cte cte($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (t1."FIRST_NAME"::string -> "FIRST_NAME")
-          join on (t1."FIRST_NAME"::string = t2.id::int::string)
+        projection (t1."FIRST_NAME"::text -> "FIRST_NAME")
+          join on (t1."FIRST_NAME"::text = t2.id::int::text)
             scan test_space -> t1
             motion [policy: full, program: ReshardIfNeeded]
-              projection (t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::string -> "FIRST_NAME", t2.sys_op::int -> sys_op, t2.bucket_id::int -> bucket_id)
+              projection (t2.id::int -> id, t2."sysFrom"::int -> "sysFrom", t2."FIRST_NAME"::text -> "FIRST_NAME", t2.sys_op::int -> sys_op, t2.bucket_id::int -> bucket_id)
                 scan test_space -> t2
     "#);
 }
@@ -586,14 +586,14 @@ fn order_by_in_cte() {
     let plan = sql_to_optimized_ir(sql, vec![]);
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (cte."FIRST_NAME"::string -> "FIRST_NAME")
+    projection (cte."FIRST_NAME"::text -> "FIRST_NAME")
       scan cte cte($0)
     subquery $0:
-      projection ("FIRST_NAME"::string)
+      projection ("FIRST_NAME"::text)
         order by (1)
           motion [policy: full, program: ReshardIfNeeded]
             scan
-              projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+              projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
                 scan test_space
     "#);
 }
@@ -606,11 +606,11 @@ fn table_name_conflict() {
     "#;
     let plan = sql_to_optimized_ir(sql, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
-    projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+    projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
       scan cte test_space($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (test_space."FIRST_NAME"::string -> "FIRST_NAME")
+        projection (test_space."FIRST_NAME"::text -> "FIRST_NAME")
           scan test_space
     "#);
 }

@@ -138,8 +138,8 @@ fn mocked_tables_reference() {
         "b" int NOT NULL,
         "c" double NULL,
         "d" decimal NULL,
-        "e" string NULL,
-        "f" string NULL,
+        "e" text NULL,
+        "f" text NULL,
         "g" bool NULL,
         PRIMARY KEY ("b")
     ) USING MEMTX DISTRIBUTED BY ("a", "b");
@@ -148,28 +148,28 @@ fn mocked_tables_reference() {
         "a" double NULL,
         "b" decimal NOT NULL,
         "c" int NULL,
-        "d" string NULL,
+        "d" text NULL,
         "e" bool NULL,
         "f" datetime NULL,
-        "g" string NULL,
+        "g" text NULL,
         PRIMARY KEY ("b")
     ) USING MEMTX DISTRIBUTED BY ("c", "d");
 
     CREATE TABLE "t3" (
         "a" int NULL,
-        "b" string NOT NULL,
+        "b" text NOT NULL,
         PRIMARY KEY ("a")
     ) USING MEMTX DISTRIBUTED BY ("a", "b");
 
     CREATE TABLE "t4" (
         "a" int NULL,
-        "b" string NOT NULL,
+        "b" text NOT NULL,
         PRIMARY KEY ("a")
     ) USING MEMTX DISTRIBUTED BY ("a", "b");
 
     CREATE TABLE "t5" (
         "c" int NULL,
-        "d" string NOT NULL,
+        "d" text NOT NULL,
         PRIMARY KEY ("c")
     ) USING MEMTX DISTRIBUTED BY ("c", "d");
 

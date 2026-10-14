@@ -108,7 +108,7 @@ fn where_over_left_join_using_takes_the_left_column() {
     let query = "SELECT b FROM t3 LEFT JOIN t4 USING (b) WHERE b = 'x'";
     insta::assert_snapshot!(
         analyzed(query, &[]),
-        @"SELECT t3.b::string FROM t3 LEFT OUTER JOIN t4 USING (b) WHERE (t3.b::string = 'x'::string)::bool"
+        @"SELECT t3.b::text FROM t3 LEFT OUTER JOIN t4 USING (b) WHERE (t3.b::text = 'x'::text)::bool"
     );
 }
 
@@ -117,7 +117,7 @@ fn where_over_left_join_with_distinct_and_qualified_asterisk() {
     let query = "SELECT DISTINCT t3.* FROM t3 LEFT JOIN t5 ON t3.a = t5.c WHERE t5.d = t3.b";
     insta::assert_snapshot!(
         analyzed(query, &[]),
-        @"SELECT DISTINCT t3.a::int, t3.b::string FROM t3 LEFT OUTER JOIN t5 ON (t3.a::int = t5.c::int)::bool WHERE (t5.d::string = t3.b::string)::bool"
+        @"SELECT DISTINCT t3.a::int, t3.b::text FROM t3 LEFT OUTER JOIN t5 ON (t3.a::int = t5.c::int)::bool WHERE (t5.d::text = t3.b::text)::bool"
     );
 }
 
@@ -128,7 +128,7 @@ fn where_subquery_from_shadows_the_enclosing_alias() {
     let query = "SELECT a FROM t1 x WHERE (SELECT x.b FROM t3 x) = 'q'";
     insta::assert_snapshot!(
         analyzed(query, &[]),
-        @"SELECT x.a::int FROM t1 AS x WHERE ((SELECT x.b::string FROM t3 AS x)::string = 'q'::string)::bool"
+        @"SELECT x.a::int FROM t1 AS x WHERE ((SELECT x.b::text FROM t3 AS x)::text = 'q'::text)::bool"
     );
 }
 
@@ -139,7 +139,7 @@ fn where_subquery_binds_inward_and_correlates_outward() {
     let query = "SELECT a FROM t1 WHERE (SELECT g FROM t3 WHERE b = 'x')";
     insta::assert_snapshot!(
         analyzed(query, &[]),
-        @"SELECT t1.a::int FROM t1 WHERE (SELECT t1.g::bool FROM t3 WHERE (t3.b::string = 'x'::string)::bool)::bool"
+        @"SELECT t1.a::int FROM t1 WHERE (SELECT t1.g::bool FROM t3 WHERE (t3.b::text = 'x'::text)::bool)::bool"
     );
 }
 

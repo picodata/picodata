@@ -46,7 +46,7 @@ def test_current_user_is_resolved_per_session(cluster: Cluster):
  # Logical plan                                                       \n\
 ──────────────────────────────────────────────────────────────────────
 
-projection ('alice'::string -> col_1)
+projection ('alice'::text -> col_1)
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -59,7 +59,7 @@ buckets = any\
  # Logical plan                                                       \n\
 ──────────────────────────────────────────────────────────────────────
 
-projection ('bob'::string -> col_1)
+projection ('bob'::text -> col_1)
 
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            \n\
@@ -108,7 +108,7 @@ def test_current_user_in_raw_explain(cluster: Cluster):
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 
-SELECT CAST('alice' AS string) as "col_1"
+SELECT CAST('alice' AS text) as "col_1"
 
 plan:
     [0] TRIVIAL\
@@ -122,7 +122,7 @@ plan:
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 
-SELECT "notes"."note" FROM "notes" WHERE "notes"."owner" = CAST('alice' AS string)
+SELECT "notes"."note" FROM "notes" WHERE "notes"."owner" = CAST('alice' AS text)
 
 plan:
     [0] SEARCH TABLE notes USING PRIMARY KEY (owner=?) (~1 row)\
@@ -132,7 +132,7 @@ plan:
 │ 1. Query (CONST-FILTERED STORAGE, 1/2) │
 ╰────────────────────────────────────────╯
 
-SELECT "notes"."note" FROM "notes" WHERE "notes"."owner" = CAST('bob' AS string)
+SELECT "notes"."note" FROM "notes" WHERE "notes"."owner" = CAST('bob' AS text)
 
 plan:
     [0] SEARCH TABLE notes USING PRIMARY KEY (owner=?) (~1 row)\

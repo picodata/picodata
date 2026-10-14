@@ -4,31 +4,31 @@
 -- SQL:
 select array[1]::text[];
 -- ERROR:
-invalid value: Failed to cast 1 to string
+invalid value: Failed to cast 1 to text
 
 -- TEST: cast-array-of-bool-to-array-of-text
 -- SQL:
 select array[true,false]::text[];
 -- ERROR:
-invalid value: Failed to cast true to string
+invalid value: Failed to cast true to text
 
 -- TEST: cast-array-of-decimal-to-array-of-text
 -- SQL:
 select array[1.0]::text[];
 -- ERROR:
-invalid value: Failed to cast 1.0 to string
+invalid value: Failed to cast 1.0 to text
 
 -- TEST: cast-array-of-double-to-array-of-text
 -- SQL:
 select array[1.0::double]::text[];
 -- ERROR:
-invalid value: Failed to cast 1 to string
+invalid value: Failed to cast 1 to text
 
 -- TEST: cast-array-of-uuid-to-array-of-text
 -- SQL:
 select array['556ac82a-0099-4a99-bb5c-afa0017f9692'::uuid]::text[];
 -- ERROR:
-invalid value: Failed to cast 556ac82a-0099-4a99-bb5c-afa0017f9692 to string
+invalid value: Failed to cast 556ac82a-0099-4a99-bb5c-afa0017f9692 to text
 
 -- TEST: cast-magic-array-to-array-of-text
 -- SQL:
@@ -58,4 +58,4 @@ Failed to cast '\{1,2\}' to int\[\]
 -- SQL:
 select '{}'::text[];
 -- ERROR:
-Failed to cast '\{}\' to string\[\]
+Failed to cast '\{}\' to text\[\]

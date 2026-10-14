@@ -215,15 +215,15 @@ fn front_sql_global_tbl_sq4() {
 
     let plan = sql_to_optimized_ir(input, vec![]);
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    projection (hash_testing.product_code::string -> product_code)
-      join on ((t.a::int = hash_testing.identification_number::int and hash_testing.product_code::string in ROW($0)))
+    projection (hash_testing.product_code::text -> product_code)
+      join on ((t.a::int = hash_testing.identification_number::int and hash_testing.product_code::text in ROW($0)))
         scan t
         motion [policy: full, program: ReshardIfNeeded]
-          projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::string -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
+          projection (hash_testing.identification_number::int -> identification_number, hash_testing.product_code::text -> product_code, hash_testing.product_units::bool -> product_units, hash_testing.sys_op::int -> sys_op, hash_testing.bucket_id::int -> bucket_id)
             scan hash_testing
     subquery $0:
       scan
-        projection (global_t.a::int::string -> a1)
+        projection (global_t.a::int::text -> a1)
           scan global_t
     ");
 }

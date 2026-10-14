@@ -79,7 +79,7 @@ fn resolve_relation_in_scalar_subquery_after() {
 #[test]
 fn resolve_relation_in_scalar_subquery_among() {
     let query = "SELECT *, (SELECT e FROM t2), * FROM t1";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool, (SELECT t2.e::bool FROM t2)::bool, t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::string, t1.f::string, t1.g::bool FROM t1");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool, (SELECT t2.e::bool FROM t2)::bool, t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool FROM t1");
 }
 
 #[test]
@@ -293,7 +293,7 @@ fn text_literal_that_cannot_be_rewritten_keeps_its_cast() {
         analyzed("SELECT '00000000-0000-0000-0000-000000000000'::uuid", &[]),
         @"SELECT CAST('00000000-0000-0000-0000-000000000000' AS uuid)"
     );
-    insta::assert_snapshot!(analyzed("SELECT 'x'::string", &[]), @"SELECT 'x'::string");
+    insta::assert_snapshot!(analyzed("SELECT 'x'::string", &[]), @"SELECT 'x'::text");
 }
 
 // ------------- Scalar subquery -------------
@@ -354,7 +354,7 @@ fn parameter_types_from_client_are_positional() {
     ];
     insta::assert_snapshot!(
         analyzed(query, &param_types),
-        @"SELECT $2::string, $1::int"
+        @"SELECT $2::text, $1::int"
     );
 }
 
@@ -365,7 +365,7 @@ fn parameter_type_inferred_from_operand() {
     let query = "SELECT b = $1, e = $2 FROM t1";
     insta::assert_snapshot!(
         analyzed(query, &[]),
-        @"SELECT (t1.b::int = $1::int)::bool, (t1.e::string = $2::string)::bool FROM t1"
+        @"SELECT (t1.b::int = $1::int)::bool, (t1.e::text = $2::text)::bool FROM t1"
     );
 }
 
@@ -377,7 +377,7 @@ fn parameter_type_unknown_defaults_to_text() {
     let query = "SELECT $1, $2";
     insta::assert_snapshot!(
         analyzed(query, &[DerivedType::unknown()]),
-        @"SELECT $1::string, $2::string"
+        @"SELECT $1::text, $2::text"
     );
 }
 
@@ -428,13 +428,13 @@ fn array_literal_string_literal_coerces_to_peer() {
 #[test]
 fn array_literal_null_element() {
     let query = "SELECT ARRAY[NULL]";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT ARRAY[NULL::string]::string[]");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT ARRAY[NULL::text]::text[]");
 }
 
 #[test]
 fn array_literal_empty_defaults_to_text() {
     let query = "SELECT ARRAY[]";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT ARRAY[]::string[]");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT ARRAY[]::text[]");
 }
 
 #[test]
@@ -452,7 +452,7 @@ fn array_literal_of_column_refs() {
 #[test]
 fn array_literal_of_text_column() {
     let query = "SELECT ARRAY[e] FROM t1";
-    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT ARRAY[t1.e::string]::string[] FROM t1");
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT ARRAY[t1.e::text]::text[] FROM t1");
 }
 
 #[test]
@@ -748,7 +748,7 @@ fn null_is_null() {
     // The untyped NULL operand follows the text-defaulting rule.
     insta::assert_snapshot!(
         analyzed("SELECT NULL IS NULL", &[]),
-        @"SELECT (NULL::string IS NULL)::bool"
+        @"SELECT (NULL::text IS NULL)::bool"
     );
 }
 
@@ -767,7 +767,7 @@ fn is_unknown_non_bool_arg_error() {
 fn like_escape_type() {
     insta::assert_snapshot!(
         analyzed("SELECT e LIKE 'a!%' ESCAPE '!' FROM t1", &[]),
-        @"SELECT (t1.e::string LIKE 'a!%'::string ESCAPE '!'::string)::bool FROM t1"
+        @"SELECT (t1.e::text LIKE 'a!%'::text ESCAPE '!'::text)::bool FROM t1"
     );
 }
 
@@ -776,7 +776,7 @@ fn like_or_ilike() {
     // ILIKE must survive analysis: case-folding is the planner's concern.
     insta::assert_snapshot!(
         analyzed("SELECT e LIKE 'x' OR e ILIKE 'y' FROM t1", &[]),
-        @"SELECT ((t1.e::string LIKE 'x'::string)::bool OR (t1.e::string ILIKE 'y'::string)::bool)::bool FROM t1"
+        @"SELECT ((t1.e::text LIKE 'x'::text)::bool OR (t1.e::text ILIKE 'y'::text)::bool)::bool FROM t1"
     );
 }
 
@@ -784,7 +784,7 @@ fn like_or_ilike() {
 fn is_and_like() {
     insta::assert_snapshot!(
         analyzed("SELECT (b > 1) IS TRUE AND e LIKE 'y' ESCAPE 'z' FROM t1", &[]),
-        @"SELECT (((t1.b::int > 1::int)::bool IS TRUE)::bool AND (t1.e::string LIKE 'y'::string ESCAPE 'z'::string)::bool)::bool FROM t1"
+        @"SELECT (((t1.b::int > 1::int)::bool IS TRUE)::bool AND (t1.e::text LIKE 'y'::text ESCAPE 'z'::text)::bool)::bool FROM t1"
     );
 }
 
@@ -809,7 +809,7 @@ fn like_non_text_escape_error() {
 fn similar_type() {
     insta::assert_snapshot!(
         analyzed("SELECT e SIMILAR 'a_' ESCAPE 'x' FROM t1", &[]),
-        @"SELECT (t1.e::string SIMILAR 'a_'::string ESCAPE 'x'::string)::bool FROM t1"
+        @"SELECT (t1.e::text SIMILAR 'a_'::text ESCAPE 'x'::text)::bool FROM t1"
     );
 }
 
@@ -819,7 +819,7 @@ fn not_similar_default_escape() {
     // rendered SQL keeps no ESCAPE clause.
     insta::assert_snapshot!(
         analyzed("SELECT e NOT SIMILAR 'a' FROM t1", &[]),
-        @"SELECT (t1.e::string NOT SIMILAR 'a'::string)::bool FROM t1"
+        @"SELECT (t1.e::text NOT SIMILAR 'a'::text)::bool FROM t1"
     );
 }
 
@@ -931,7 +931,7 @@ fn not_exists_multi_column() {
     // No single-column restriction, as in Postgres.
     insta::assert_snapshot!(
         analyzed("SELECT NOT EXISTS (SELECT a, b FROM t3)", &[]),
-        @"SELECT (NOT EXISTS (SELECT t3.a::int, t3.b::string FROM t3)::bool)::bool"
+        @"SELECT (NOT EXISTS (SELECT t3.a::int, t3.b::text FROM t3)::bool)::bool"
     );
 }
 
@@ -965,7 +965,7 @@ fn exists_over_set_operation() {
 fn exists_is_subquery_boundary() {
     insta::assert_snapshot!(
         analyzed("SELECT a FROM t1 GROUP BY a HAVING EXISTS (SELECT t2.a, t2.d FROM t2);", &[]),
-        @"SELECT t1.a::int FROM t1 GROUP BY t1.a::int HAVING EXISTS (SELECT t2.a::double, t2.d::string FROM t2)::bool"
+        @"SELECT t1.a::int FROM t1 GROUP BY t1.a::int HAVING EXISTS (SELECT t2.a::double, t2.d::text FROM t2)::bool"
     );
 }
 
@@ -983,7 +983,7 @@ fn case_searched_type() {
 fn case_simple_type() {
     insta::assert_snapshot!(
         analyzed("SELECT CASE b WHEN 1 THEN 'one' ELSE 'other' END FROM t1", &[]),
-        @"SELECT CASE t1.b::int WHEN 1::int THEN 'one'::string ELSE 'other'::string END::string FROM t1"
+        @"SELECT CASE t1.b::int WHEN 1::int THEN 'one'::text ELSE 'other'::text END::text FROM t1"
     );
 }
 
@@ -1001,7 +1001,7 @@ fn case_all_null_branches() {
     // The untyped NULL branch follows the text-defaulting rule.
     insta::assert_snapshot!(
         analyzed("SELECT CASE WHEN g THEN NULL END FROM t1", &[]),
-        @"SELECT CASE WHEN t1.g::bool THEN NULL::string END::string FROM t1"
+        @"SELECT CASE WHEN t1.g::bool THEN NULL::text END::text FROM t1"
     );
 }
 
@@ -1037,7 +1037,7 @@ fn case_simple_when_type_mismatch_error() {
 fn trim_type() {
     insta::assert_snapshot!(
         analyzed("SELECT TRIM(e) FROM t1", &[]),
-        @"SELECT TRIM(t1.e::string)::string FROM t1"
+        @"SELECT TRIM(t1.e::text)::text FROM t1"
     );
 }
 
@@ -1045,7 +1045,7 @@ fn trim_type() {
 fn trim_pattern_type() {
     insta::assert_snapshot!(
         analyzed("SELECT TRIM(LEADING 'x' FROM e) FROM t1", &[]),
-        @"SELECT TRIM(LEADING 'x'::string FROM t1.e::string)::string FROM t1"
+        @"SELECT TRIM(LEADING 'x'::text FROM t1.e::text)::text FROM t1"
     );
 }
 
@@ -1053,7 +1053,7 @@ fn trim_pattern_type() {
 fn trim_kind_without_pattern() {
     insta::assert_snapshot!(
         analyzed("SELECT TRIM(BOTH FROM e) FROM t1", &[]),
-        @"SELECT TRIM(BOTH FROM t1.e::string)::string FROM t1"
+        @"SELECT TRIM(BOTH FROM t1.e::text)::text FROM t1"
     );
 }
 
@@ -1071,7 +1071,7 @@ fn trim_non_text_type_error() {
 fn substring_regular_type() {
     insta::assert_snapshot!(
         analyzed("SELECT SUBSTRING(e, 1, 2) FROM t1", &[]),
-        @"SELECT SUBSTRING(t1.e::string, 1::int, 2::int)::string FROM t1"
+        @"SELECT SUBSTRING(t1.e::text, 1::int, 2::int)::text FROM t1"
     );
 }
 
@@ -1079,7 +1079,7 @@ fn substring_regular_type() {
 fn substring_from_for_type() {
     insta::assert_snapshot!(
         analyzed("SELECT SUBSTRING(e FROM 1 FOR 2) FROM t1", &[]),
-        @"SELECT SUBSTRING(t1.e::string FROM 1::int FOR 2::int)::string FROM t1"
+        @"SELECT SUBSTRING(t1.e::text FROM 1::int FOR 2::int)::text FROM t1"
     );
 }
 
@@ -1087,7 +1087,7 @@ fn substring_from_for_type() {
 fn substring_from_type() {
     insta::assert_snapshot!(
         analyzed("SELECT SUBSTRING(e, 2) FROM t1", &[]),
-        @"SELECT SUBSTRING(t1.e::string FROM 2::int)::string FROM t1"
+        @"SELECT SUBSTRING(t1.e::text FROM 2::int)::text FROM t1"
     );
 }
 
@@ -1095,7 +1095,7 @@ fn substring_from_type() {
 fn substring_for_type() {
     insta::assert_snapshot!(
         analyzed("SELECT SUBSTRING(e FOR 2) FROM t1", &[]),
-        @"SELECT SUBSTRING(t1.e::string FOR 2::int)::string FROM t1"
+        @"SELECT SUBSTRING(t1.e::text FOR 2::int)::text FROM t1"
     );
 }
 
@@ -1105,7 +1105,7 @@ fn substring_regex_positions() {
     // escape, the same as `SUBSTRING(... SIMILAR ... ESCAPE ...)` below.
     insta::assert_snapshot!(
         analyzed("SELECT SUBSTRING(e, 'a', 'b') FROM t1", &[]),
-        @"SELECT SUBSTRING(t1.e::string, 'a'::string, 'b'::string)::string FROM t1"
+        @"SELECT SUBSTRING(t1.e::text, 'a'::text, 'b'::text)::text FROM t1"
     );
 }
 
@@ -1113,7 +1113,7 @@ fn substring_regex_positions() {
 fn substring_similar_type() {
     insta::assert_snapshot!(
         analyzed("SELECT SUBSTRING(e SIMILAR 'a' ESCAPE 'x') FROM t1", &[]),
-        @"SELECT SUBSTRING(t1.e::string SIMILAR 'a'::string ESCAPE 'x'::string)::string FROM t1"
+        @"SELECT SUBSTRING(t1.e::text SIMILAR 'a'::text ESCAPE 'x'::text)::text FROM t1"
     );
 }
 
@@ -1217,7 +1217,7 @@ fn scalar_fn_and_coalesce_type() {
     // COALESCE is not a registry function: it types as a homogeneous group.
     insta::assert_snapshot!(
         analyzed("SELECT lower(e), coalesce(a, 1) FROM t1", &[]),
-        @"SELECT lower(t1.e::string)::string, coalesce(t1.a::int, 1::int)::int FROM t1"
+        @"SELECT lower(t1.e::text)::text, coalesce(t1.a::int, 1::int)::int FROM t1"
     );
 }
 

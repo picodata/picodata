@@ -1545,13 +1545,13 @@ fn name_clash_folds_into_the_inner_on_others_still_descend() {
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, r.a::int -> a, r.b::int -> b, r.c::int -> c, r.d::int -> d, t3.a::string -> a, t3.b::int -> b)
+    projection (l.a::int -> a, l.b::int -> b, l.c::int -> c, l.d::int -> d, r.a::int -> a, r.b::int -> b, r.c::int -> c, r.d::int -> d, t3.a::text -> a, t3.b::int -> b)
       join on (r.b::int = 1::int)
         left join on (l.a::int = r.b::int)
           scan t -> l
           scan t -> r
         scan t3
-          projection (t3.bucket_id::int -> bucket_id, t3.a::string -> a, t3.b::int -> b)
+          projection (t3.bucket_id::int -> bucket_id, t3.a::text -> a, t3.b::int -> b)
             selection (t3.b::int = 1::int)
               scan t3
     ");
@@ -1583,7 +1583,7 @@ fn a_derived_clause_lifts_through_nested_left_joins_into_the_inner_on() {
             scan t -> r
           scan t -> v
         scan t3
-          projection (t3.bucket_id::int -> bucket_id, t3.a::string -> a, t3.b::int -> b)
+          projection (t3.bucket_id::int -> bucket_id, t3.a::text -> a, t3.b::int -> b)
             selection (t3.b::int = 1::int)
               scan t3
     ");
@@ -2373,7 +2373,7 @@ fn a_param_gate_over_a_join_subquery_prefers_a_new_selection_to_the_on() {
                   selection (t2.e::int = 7::int)
                     scan t2
               scan t3
-                projection (t3.bucket_id::int -> bucket_id, t3.a::string -> a, t3.b::int -> b)
+                projection (t3.bucket_id::int -> bucket_id, t3.a::text -> a, t3.b::int -> b)
                   selection (t3.b::int = 7::int)
                     scan t3
     ");
@@ -2417,7 +2417,7 @@ fn a_column_predicate_folds_into_an_inner_join_on_under_group_by() {
             scan t -> l
             scan t -> r
           scan t3
-            projection (t3.bucket_id::int -> bucket_id, t3.a::string -> a, t3.b::int -> b)
+            projection (t3.bucket_id::int -> bucket_id, t3.a::text -> a, t3.b::int -> b)
               selection (t3.b::int = 1::int)
                 scan t3
     ");
@@ -2445,7 +2445,7 @@ fn a_const_crosses_three_inner_joins_to_every_scan() {
                 selection (t2.e::int = 1::int)
                   scan t2
           scan t3
-            projection (t3.bucket_id::int -> bucket_id, t3.a::string -> a, t3.b::int -> b)
+            projection (t3.bucket_id::int -> bucket_id, t3.a::text -> a, t3.b::int -> b)
               selection (t3.b::int = 1::int)
                 scan t3
     ");
@@ -2533,7 +2533,7 @@ fn unsupported_equalities_stay_untouched() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection (((t.a::int = 1::int or t.c::int = 2::int) and t.a::int::string = '1'::string and t.d::int = 1.5::decimal))
+      selection (((t.a::int = 1::int or t.c::int = 2::int) and t.a::int::text = '1'::text and t.d::int = 1.5::decimal))
         left join on (t.a::int = t2.e::int)
           scan t
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -2752,15 +2752,15 @@ fn param_check_moved_above_a_join_repeats_on_the_motion_input() {
         1,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       selection ($1::int = 1::int)
         join on (t.a::int = s.b::int)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
-            projection (s.a::string -> a, s.b::int -> b)
+            projection (s.a::text -> a, s.b::int -> b)
               selection ($1::int = 1::int)
                 scan s
-                  projection (t3.a::string -> a, t3.b::int -> b)
+                  projection (t3.a::text -> a, t3.b::int -> b)
                     selection (true::bool)
                       scan t3
     ");
@@ -2774,15 +2774,15 @@ fn param_check_from_the_outer_where_prunes_a_motion_input() {
         1,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       selection ($1::int = 1::int)
         join on (t.a::int = s.b::int)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
-            projection (s.a::string -> a, s.b::int -> b)
+            projection (s.a::text -> a, s.b::int -> b)
               selection ($1::int = 1::int)
                 scan s
-                  projection (t3.a::string -> a, t3.b::int -> b)
+                  projection (t3.a::text -> a, t3.b::int -> b)
                     scan t3
     ");
 }
@@ -2795,7 +2795,7 @@ fn param_check_of_a_class_with_columns_repeats_on_the_motion_input() {
         1,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       selection ($1::int = 1::int)
         join on (true::bool)
           scan t
@@ -2803,10 +2803,10 @@ fn param_check_of_a_class_with_columns_repeats_on_the_motion_input() {
               selection (t.a::int = 1::int)
                 scan t
           motion [policy: full, program: ReshardIfNeeded]
-            projection (s.a::string -> a, s.b::int -> b)
+            projection (s.a::text -> a, s.b::int -> b)
               selection ($1::int = 1::int)
                 scan s
-                  projection (t3.a::string -> a, t3.b::int -> b)
+                  projection (t3.a::text -> a, t3.b::int -> b)
                     selection (t3.b::int = 1::int)
                       scan t3
     ");
@@ -2819,15 +2819,15 @@ fn param_to_param_check_repeats_on_the_motion_input() {
         2,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       selection ($2::int = $1::int)
         join on (t.a::int = s.b::int)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
-            projection (s.a::string -> a, s.b::int -> b)
+            projection (s.a::text -> a, s.b::int -> b)
               selection ($2::int = $1::int)
                 scan s
-                  projection (t3.a::string -> a, t3.b::int -> b)
+                  projection (t3.a::text -> a, t3.b::int -> b)
                     selection (true::bool)
                       scan t3
     ");
@@ -2842,19 +2842,19 @@ fn every_motion_input_of_the_domain_gets_the_check() {
         1,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       selection ($1::int = 1::int)
         join on (t.a::int = s.b::int)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
-            projection (s.a::string -> a, s.b::int -> b)
+            projection (s.a::text -> a, s.b::int -> b)
               selection ($1::int = 1::int)
                 scan s
-                  projection (x.a::string -> a, x.b::int -> b)
+                  projection (x.a::text -> a, x.b::int -> b)
                     join on (x.b::int = y.b::int)
                       scan t3 -> x
                       motion [policy: full, program: ReshardIfNeeded]
-                        projection (y.bucket_id::int -> bucket_id, y.a::string -> a, y.b::int -> b)
+                        projection (y.bucket_id::int -> bucket_id, y.a::text -> a, y.b::int -> b)
                           selection ($1::int = 1::int)
                             scan t3 -> y
     ");
@@ -2886,12 +2886,12 @@ fn a_motion_input_holding_the_check_is_not_wrapped() {
         1,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       left join on (t.a::int = s.b::int)
         scan t
         motion [policy: full, program: ReshardIfNeeded]
           scan s
-            projection (t3.a::string -> a, t3.b::int -> b)
+            projection (t3.a::text -> a, t3.b::int -> b)
               selection ($1::int = 1::int)
                 scan t3
     ");
@@ -2940,7 +2940,7 @@ fn a_consumer_check_never_enters_a_shared_cte() {
           scan cte c($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (t3.a::string -> a, t3.b::int -> b)
+        projection (t3.a::text -> a, t3.b::int -> b)
           scan t3
     ");
 }
@@ -2964,14 +2964,14 @@ fn contradiction_in_an_inner_on_empties_the_motion_input() {
         0,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       join on ((t.a::int = s.b::int and ROW(t.c::int, t.c::int) = ROW(2::int, 1::int) and false::bool))
         scan t
         motion [policy: full, program: ReshardIfNeeded]
-          projection (s.a::string -> a, s.b::int -> b)
+          projection (s.a::text -> a, s.b::int -> b)
             selection (false::bool)
               scan s
-                projection (t3.a::string -> a, t3.b::int -> b)
+                projection (t3.a::text -> a, t3.b::int -> b)
                   scan t3
     ");
 }
@@ -2986,16 +2986,16 @@ fn contradictory_class_across_filters_empties_the_motion_input() {
         0,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
-      selection ((s.a::string = 'y'::string and false::bool))
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
+      selection ((s.a::text = 'y'::text and false::bool))
         join on (t.a::int = s.b::int)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
-            projection (s.a::string -> a, s.b::int -> b)
+            projection (s.a::text -> a, s.b::int -> b)
               selection (false::bool)
                 scan s
-                  projection (t3.a::string -> a, t3.b::int -> b)
-                    selection (t3.a::string = 'x'::string)
+                  projection (t3.a::text -> a, t3.b::int -> b)
+                    selection (t3.a::text = 'x'::text)
                       scan t3
     ");
 }
@@ -3008,15 +3008,15 @@ fn explicit_false_where_empties_the_motion_input() {
         0,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       selection ((false::bool and false::bool))
         join on (t.a::int = s.b::int)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
-            projection (s.a::string -> a, s.b::int -> b)
+            projection (s.a::text -> a, s.b::int -> b)
               selection (false::bool)
                 scan s
-                  projection (t3.a::string -> a, t3.b::int -> b)
+                  projection (t3.a::text -> a, t3.b::int -> b)
                     scan t3
     ");
 
@@ -3026,12 +3026,12 @@ fn explicit_false_where_empties_the_motion_input() {
         0,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       join on (t.a::int = s.b::int)
         scan t
         motion [policy: full, program: ReshardIfNeeded]
           scan s
-            projection (t3.a::string -> a, t3.b::int -> b)
+            projection (t3.a::text -> a, t3.b::int -> b)
               selection ((false::bool and false::bool))
                 scan t3
     ");
@@ -3074,20 +3074,20 @@ fn false_replaces_param_checks_on_every_motion_input() {
     // `$1 = 1`; the domain's own filters keep everything.
     let plan = optimized_with_int_params(&empty, 1);
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       selection ((t.c::int = 1::int and t.c::int = 2::int and $1::int = 1::int and false::bool))
         join on (t.a::int = s.b::int)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
-            projection (s.a::string -> a, s.b::int -> b)
+            projection (s.a::text -> a, s.b::int -> b)
               selection (false::bool)
                 scan s
-                  projection (x.a::string -> a, x.b::int -> b)
+                  projection (x.a::text -> a, x.b::int -> b)
                     selection (true::bool)
                       join on (x.b::int = y.b::int)
                         scan t3 -> x
                         motion [policy: full, program: ReshardIfNeeded]
-                          projection (y.bucket_id::int -> bucket_id, y.a::string -> a, y.b::int -> b)
+                          projection (y.bucket_id::int -> bucket_id, y.a::text -> a, y.b::int -> b)
                             selection (false::bool)
                               scan t3 -> y
     ");
@@ -3095,7 +3095,7 @@ fn false_replaces_param_checks_on_every_motion_input() {
     // Without the contradiction the same motions repeat `$1 = 1`.
     let plan = optimized_with_int_params(&query("t.c = 1"), 1);
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       selection ($1::int = 1::int)
         join on (t.a::int = s.b::int)
           scan t
@@ -3103,15 +3103,15 @@ fn false_replaces_param_checks_on_every_motion_input() {
               selection (t.c::int = 1::int)
                 scan t
           motion [policy: full, program: ReshardIfNeeded]
-            projection (s.a::string -> a, s.b::int -> b)
+            projection (s.a::text -> a, s.b::int -> b)
               selection ($1::int = 1::int)
                 scan s
-                  projection (x.a::string -> a, x.b::int -> b)
+                  projection (x.a::text -> a, x.b::int -> b)
                     selection (true::bool)
                       join on (x.b::int = y.b::int)
                         scan t3 -> x
                         motion [policy: full, program: ReshardIfNeeded]
-                          projection (y.bucket_id::int -> bucket_id, y.a::string -> a, y.b::int -> b)
+                          projection (y.bucket_id::int -> bucket_id, y.a::text -> a, y.b::int -> b)
                             selection ($1::int = 1::int)
                               scan t3 -> y
     ");
@@ -3145,12 +3145,12 @@ fn false_stays_within_its_domain() {
         0,
     );
     assert_snapshot!(logical(&plan), @r"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::string -> a, s.b::int -> b)
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
       left join on (false::bool)
         scan t
         motion [policy: full, program: ReshardIfNeeded]
           scan s
-            projection (t3.a::string -> a, t3.b::int -> b)
+            projection (t3.a::text -> a, t3.b::int -> b)
               scan t3
     ");
 
@@ -3173,7 +3173,7 @@ fn false_stays_within_its_domain() {
           scan cte c($0)
     subquery $0:
       motion [policy: full, program: ReshardIfNeeded]
-        projection (t3.a::string -> a, t3.b::int -> b)
+        projection (t3.a::text -> a, t3.b::int -> b)
           scan t3
     ");
 }

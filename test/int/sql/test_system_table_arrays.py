@@ -187,7 +187,7 @@ def test_whole_array_cast_errors(cluster: Cluster):
             f"SELECT services::int[] FROM _pico_plugin WHERE name = '{_PLUGIN}'",
             r"Failed to cast 'testservice_1' to int",
         ),
-        ("SELECT current_state::text[] FROM _pico_instance", r"Failed to cast 1 to string"),
+        ("SELECT current_state::text[] FROM _pico_instance", r"Failed to cast 1 to text"),
         ("SELECT current_state::int[] FROM _pico_instance", r"Failed to cast 'Online' to int"),
         ("SELECT format::text[] FROM _pico_table WHERE name = 't1'", r"msgpack decode error"),
         (f"SELECT parts::text[] FROM _pico_index WHERE {_INDEX_WHERE}", r"Failed to cast"),

@@ -266,7 +266,7 @@ DO $$ BEGIN
   RETURN QUERY SELECT '1';
 END $$;
 -- ERROR:
-RETURN QUERY types cannot be matched \(\[int\] and \[string\]\)
+RETURN QUERY types cannot be matched \(\[int\] and \[text\]\)
 
 -- TEST: return-query-types-cannot-be-matched-2
 -- SQL:
@@ -275,7 +275,7 @@ DO $$ BEGIN
   RETURN QUERY SELECT '1', null;
 END $$;
 -- ERROR:
-RETURN QUERY types cannot be matched \(\[int\] and \[string\, unknown]\)
+RETURN QUERY types cannot be matched \(\[int\] and \[text\, unknown]\)
 
 -- TEST: can-read-system-table
 -- SQL:
@@ -1961,7 +1961,7 @@ END $$;
 │ 1. **Unused** let "a" (ROUTER) │
 ╰────────────────────────────────╯
 ''
-SELECT CAST('hello' AS string) as "col_1"
+SELECT CAST('hello' AS text) as "col_1"
 ''
 plan:
     [0] TRIVIAL
@@ -2012,9 +2012,9 @@ END $$;
 │ 1. **Unused** let "a" (ROUTER) │
 ╰────────────────────────────────╯
 ''
-SELECT CAST('hello' AS string) as "col_1"
+SELECT CAST('hello' AS text) as "col_1"
 ''
-projection ('hello'::string -> col_1)
+projection ('hello'::text -> col_1)
 ''
 ╭───────────────────────╮
 │ 2.1. If cond (ROUTER) │

@@ -428,7 +428,7 @@ impl<'q> AstState<'q> for Analyzed {
             None | Some(UnrestrictedType::Any) => Ok(()),
             Some(UnrestrictedType::Map) => write!(f, "::json"),
             Some(UnrestrictedType::Array(NestedType::Map)) => write!(f, "::json[]"),
-            Some(UnrestrictedType::Array(NestedType::Any)) => write!(f, "::string[]"),
+            Some(UnrestrictedType::Array(NestedType::Any)) => write!(f, "::text[]"),
             Some(ty) => write!(f, "::{ty}"),
         }
     }

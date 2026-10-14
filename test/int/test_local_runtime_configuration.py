@@ -111,20 +111,20 @@ def test_alter_system_local_log_level_invalid_values(cluster: Cluster):
     # The log level is expected to be a string.
     with pytest.raises(
         TarantoolError,
-        match=r"invalid value for 'log_level': expected string, got integer",
+        match=r"invalid value for 'log_level': expected text, got integer",
     ):
         instance.sql("ALTER SYSTEM SET LOCAL log_level = 1")
 
     with pytest.raises(
         TarantoolError,
-        match=r"invalid value for 'log_level': expected string, got boolean",
+        match=r"invalid value for 'log_level': expected text, got boolean",
     ):
         instance.sql("ALTER SYSTEM SET LOCAL log_level = true")
 
     # A non-string literal that can't be cast to a string.
     with pytest.raises(
         TarantoolError,
-        match=r"invalid value for 'log_level': expected string, got decimal",
+        match=r"invalid value for 'log_level': expected text, got decimal",
     ):
         instance.sql("ALTER SYSTEM SET LOCAL log_level = 1.5")
 
@@ -140,7 +140,7 @@ def test_alter_system_local_log_level_invalid_values(cluster: Cluster):
     # NULL is not a valid log level.
     with pytest.raises(
         TarantoolError,
-        match=r"invalid value for 'log_level': expected string, got null",
+        match=r"invalid value for 'log_level': expected text, got null",
     ):
         instance.sql("ALTER SYSTEM SET LOCAL log_level = NULL")
 
