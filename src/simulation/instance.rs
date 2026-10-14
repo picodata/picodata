@@ -20,12 +20,14 @@ use crate::simulation::sharded_wal::write_sharded_entry;
 use crate::simulation::sharded_wal::ShardedEntry;
 use crate::simulation::sharded_wal::ShardedWal;
 use crate::simulation::sharded_wal::WalWrite;
+use crate::storage::index_by_ids_unchecked;
 use crate::storage::Catalog;
 use crate::topology_cache::TopologyCache;
 use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::traft::RaftIndex;
 use crate::util::NoYieldsRefCell;
+use crate::vshard::BucketRef;
 use crate::vshard::VshardBucketRecord;
 use crate::vshard::VshardBucketState;
 use crate::Result;
@@ -37,8 +39,15 @@ use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::Duration;
+use tarantool::error::BoxError;
+use tarantool::error::TarantoolErrorCode;
+use tarantool::index::IndexId;
+use tarantool::index::IteratorType;
+use tarantool::index::TuplePosition;
+use tarantool::space::SpaceId;
 #[allow(unused_imports)]
 use tarantool::space::SpaceType;
+use tarantool::tuple::Tuple;
 
 /// One simulated instance: its state, its fibers, and the [`Platform`] impl.
 ///
@@ -115,6 +124,28 @@ pub struct PretendInstance {
     pub resharding_loop_fiber_id: Cell<Option<FiberId>>,
 
     pub loop_state: Rc<NoYieldsRefCell<ReshardingLoopState>>,
+
+    ////////////////////////////////////////////////////////////////////////////
+    // buckets
+    ////////////////////////////////////////////////////////////////////////////
+    /// vshard's per-bucket ref counts and locks. No SQL traffic is simulated,
+    /// so `rw`/`ro` never become nonzero on their own — a test sets a ref
+    /// by writing to this map directly. `ro_lock`/`rw_lock` aren't simulated
+    /// yet.
+    pub bucket_refs: RefCell<BTreeMap<u64, BucketRef>>,
+
+    ////////////////////////////////////////////////////////////////////////////
+    // schema
+    ////////////////////////////////////////////////////////////////////////////
+    /// Tarantool's `box_schema_version`. No DDL is simulated, so it only
+    /// changes when a test bumps it directly.
+    pub box_schema_version: Cell<u64>,
+
+    /// Fault injection: an iterator returned from
+    /// [`Platform::index_bucket_id_select_after`] for the given
+    /// `(space_id, bucket_id)` yields an error after this many tuples.
+    /// The count starts from the `after` position, i.e. it's per iterator.
+    pub index_select_error_after: RefCell<BTreeMap<(SpaceId, u64), usize>>,
 }
 
 impl PretendInstance {
@@ -129,6 +160,9 @@ impl PretendInstance {
             parameters: AlterSystemParameters::for_tests(),
             local_buckets: RefCell::new(BTreeMap::new()),
             applied_index: Cell::new(0),
+            bucket_refs: RefCell::new(BTreeMap::new()),
+            box_schema_version: Cell::new(1),
+            index_select_error_after: RefCell::new(BTreeMap::new()),
             sharded_wal,
             sharded_lsn: Cell::new(0),
             sharded_replication_paused: Cell::new(false),
@@ -431,6 +465,60 @@ impl Platform for PretendInstance {
             self.name
         );
         write_sharded_entry(self, ShardedEntry::WriteBuckets { recs })
+    }
+
+    fn box_schema_version(&self) -> u64 {
+        self.box_schema_version.get()
+    }
+
+    fn index_bucket_id_select_after(
+        &self,
+        space_id: SpaceId,
+        index_id: IndexId,
+        bucket_id: u64,
+        after: &TuplePosition,
+    ) -> Result<impl Iterator<Item = Result<Tuple, BoxError>> + use<>> {
+        let index = index_by_ids_unchecked(space_id, index_id);
+        let mut iter = index.select_after_v2(IteratorType::Eq, &[bucket_id], after)?;
+
+        let error_after = self
+            .index_select_error_after
+            .borrow()
+            .get(&(space_id, bucket_id))
+            .copied();
+        let mut tuples_returned = 0;
+        let mut error_returned = false;
+        Ok(std::iter::from_fn(move || {
+            if error_returned {
+                return None;
+            }
+            if error_after == Some(tuples_returned) {
+                error_returned = true;
+                let message =
+                    format!("injected iterator error in space #{space_id} bucket #{bucket_id}");
+                return Some(Err(BoxError::new(TarantoolErrorCode::MemoryIssue, message)));
+            }
+            let next = iter.next();
+            if next.is_some() {
+                tuples_returned += 1;
+            }
+            next
+        }))
+    }
+
+    unsafe fn tuple_position(
+        &self,
+        space_id: SpaceId,
+        index_id: IndexId,
+        tuple_data: &[u8],
+    ) -> Result<TuplePosition> {
+        let index = index_by_ids_unchecked(space_id, index_id);
+        // SAFETY: guaranteed by the caller.
+        Ok(unsafe { index.tuple_position_unchecked(tuple_data)? })
+    }
+
+    fn get_bucket_ref(&self, bucket_id: u64) -> Result<Option<BucketRef>> {
+        Ok(self.bucket_refs.borrow().get(&bucket_id).copied())
     }
 
     fn wait_router_discovery_complete(&self, _tier: &str, _timeout: Duration) -> Result<()> {

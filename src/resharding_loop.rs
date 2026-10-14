@@ -27,9 +27,9 @@ mod find_sharded_bucket_updates;
 mod initialize;
 pub mod local_bucket;
 mod plan;
+mod sharded_tables;
 pub mod test;
-
-pub use action::ReshardingActionKind;
+mod walk_sharded_data;
 
 ////////////////////////////////////////////////////////////////////////////////
 // ReshardingLoop

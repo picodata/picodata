@@ -205,6 +205,7 @@ impl std::borrow::Borrow<str> for Uppercase {
 /// useful to reproduce test failures.
 pub fn test_rng_seed() -> u64 {
     if let Some(seed) = get_env("PICODATA_TEST_SEED") {
+        crate::tlog!(Info, "test_rng_seed: seed={seed} (env PICODATA_TEST_SEED)");
         return seed;
     }
 
@@ -214,6 +215,8 @@ pub fn test_rng_seed() -> u64 {
 
     // Number of micro seconds since UNIX epoch
     let seed = (time.as_secs_f64() * 1_000_000.0) as u64;
+
+    crate::tlog!(Info, "test_rng_seed: seed={seed}");
 
     seed
 }

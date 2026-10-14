@@ -2,6 +2,7 @@ use crate::debug_assert_action_kind;
 use crate::resharding_loop::action::ReshardingAction;
 use crate::resharding_loop::action::*;
 use crate::resharding_loop::initialize::initialize_sharded_states;
+use crate::resharding_loop::sharded_tables::ShardedTableInfo;
 use crate::resharding_loop::ReshardingLoopState;
 use crate::resharding_loop::ReshardingStatus;
 use crate::resharding_loop::RESHARDING_LOOP_LONG_SLEEP;
@@ -9,6 +10,14 @@ use crate::simulation::platform::Platform;
 use crate::tlog;
 use crate::util::NoYieldsRefCell;
 use crate::Result;
+
+/// A helper struct which stores data necessary to plan a resharding action
+/// during a resharding_loop iteration.
+pub struct ReshardingPlanContext<'a> {
+    pub sharded_tables: &'a [ShardedTableInfo],
+    pub resharding_chunk_size_max: u64,
+    pub resharding_bucket_count_max: u64,
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // plan_resharding_action

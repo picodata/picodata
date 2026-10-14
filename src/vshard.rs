@@ -606,6 +606,36 @@ pub fn init_lua_helpers() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// BucketRef
+////////////////////////////////////////////////////////////////////////////////
+
+/// This is a copy of `struct bucket_ref` definition from `vshard/storage/init.lua`.
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BucketRef {
+    pub ro: u32,
+    pub rw: u32,
+    pub rw_lock: bool,
+    pub ro_lock: bool,
+}
+
+impl BucketRef {
+    /// Check if bucket can transition into the new `state` if it has references
+    /// described by `self`.
+    ///
+    /// Logic is taken from `bucket_prepare_update` from `vshard/storage/init.lua`.
+    pub fn allows_state(&self, state: VshardBucketState) -> bool {
+        match state {
+            VshardBucketState::Active | VshardBucketState::Pinned => true,
+            VshardBucketState::Sending | VshardBucketState::Sent => self.rw == 0,
+            VshardBucketState::Receiving | VshardBucketState::Garbage => {
+                self.rw == 0 && self.ro == 0
+            }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // vshard discovery handling
 ////////////////////////////////////////////////////////////////////////////////
 
