@@ -4,6 +4,7 @@
 
 use crate::config::AlterSystemParametersRef;
 use crate::resharding_loop;
+use crate::resharding_loop::local_bucket;
 use crate::resharding_loop::ReshardingStatus;
 use crate::topology_cache::TopologyCache;
 use crate::traft::node;
@@ -71,12 +72,12 @@ pub trait Platform {
 
     /// Read all local `_bucket` records with id in `start..=end`.
     ///
-    /// Real implementation redirects to [`resharding_loop::read_local_buckets`].
+    /// Real implementation redirects to [`local_bucket::read_local_buckets`].
     fn read_local_buckets(&self, start: u64, end: u64) -> Result<Vec<VshardBucketRecord>>;
 
     /// Write records into the local `_bucket` space in a transaction.
     ///
-    /// Real implementation redirects to [`resharding_loop::write_local_buckets`].
+    /// Real implementation redirects to [`local_bucket::write_local_buckets`].
     fn write_local_buckets(&self, v: Vec<VshardBucketRecord>) -> Result<()>;
 
     //
@@ -126,11 +127,11 @@ impl Platform for node::Node {
     }
 
     fn read_local_buckets(&self, start: u64, end: u64) -> Result<Vec<VshardBucketRecord>> {
-        resharding_loop::read_local_buckets(start, end)
+        local_bucket::read_local_buckets(start, end)
     }
 
     fn write_local_buckets(&self, v: Vec<VshardBucketRecord>) -> Result<()> {
-        resharding_loop::write_local_buckets(v)
+        local_bucket::write_local_buckets(v)
     }
 
     fn wait_router_discovery_complete(&self, tier: &str, timeout: Duration) -> Result<()> {

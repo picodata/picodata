@@ -1,7 +1,7 @@
 use crate::column_name;
 use crate::instance::InstanceName;
 use crate::replicaset::Replicaset;
-use crate::resharding_loop::ReshardingActionKind;
+use crate::resharding_loop::action::ReshardingActionKind;
 use crate::resharding_loop::ReshardingStatus;
 use crate::simulation::action::PretendAction;
 use crate::simulation::cluster::PretendCluster;

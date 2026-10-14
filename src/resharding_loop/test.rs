@@ -5,7 +5,7 @@ use crate::catalog::pico_bucket::BucketIdRange;
 use crate::catalog::pico_bucket::BucketRecord;
 use crate::instance::Instance;
 use crate::replicaset::Replicaset;
-use crate::resharding_loop::ReshardingActionKind;
+use crate::resharding_loop::action::ReshardingActionKind;
 use crate::resharding_loop::ReshardingStatus;
 use crate::simulation::action::PretendAction;
 use crate::simulation::action_helpers::catch_up_on_raft_log;
