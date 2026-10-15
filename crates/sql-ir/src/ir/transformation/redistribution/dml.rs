@@ -115,16 +115,6 @@ impl Plan {
         ))
     }
 
-    /// Return the position of `bucket_id` among the `Insert` columns. Only a
-    /// block `Insert` writes it (see `optimize_block`).
-    pub fn get_bucket_id_position(&self, insert_id: NodeId) -> Result<Option<usize>, SbroadError> {
-        let Some(bucket_id_pos) = self.dml_node_table(insert_id)?.get_bucket_id_position()? else {
-            return Ok(None);
-        };
-        let columns = self.insert_columns(insert_id)?;
-        Ok(columns.iter().position(|pos| *pos == bucket_id_pos))
-    }
-
     /// Return the table for given `Insert` node
     pub fn dml_node_table(&self, node_id: NodeId) -> Result<&Table, SbroadError> {
         let node = self.get_relation_node(node_id)?;

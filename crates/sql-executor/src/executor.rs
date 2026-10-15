@@ -137,20 +137,17 @@ where
     ///
     /// `CURRENT_USER` is resolved here rather than on bind, so that it
     /// returns the user that executes the query (see [`Router::get_user_name`]).
-    /// The buckets of block INSERT rows are also written here.
     ///
     /// # Errors
     /// - The user name can't be determined.
     pub fn from_plan(runtime: &'a C, plan: Plan) -> Result<Self, SbroadError> {
         let plan = plan.update_current_user(C::get_user_name)?;
-        let mut query = Self {
+        Ok(Self {
             exec_plan: ExecutionPlan::new(plan),
             coordinator: runtime,
             bucket_map: HashMap::new(),
             exec_ctx: ExecutionContext::default(),
-        };
-        query.bind_block_insert_buckets()?;
-        Ok(query)
+        })
     }
 
     /// Get the execution plan of the query.
@@ -287,7 +284,10 @@ where
         let mut block_buckets: Option<(StatementLocation, Buckets)> = None;
         for entry in BlockEntries::new(&block.statements) {
             let buckets = entry.with(|query_id| {
-                let buckets = self.bucket_discovery(*query_id)?;
+                let buckets = match self.bind_block_insert_buckets(*query_id)? {
+                    Some(buckets) => buckets,
+                    None => self.bucket_discovery(*query_id)?,
+                };
                 match &buckets {
                     Buckets::All => {
                         return Err(SbroadError::Other(

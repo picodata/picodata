@@ -519,7 +519,7 @@ impl Plan {
         //
         // The local SQL must write `bucket_id`, so also add a `bucket_id` cell to
         // each row and the column to the INSERT columns. After bind, nodes can
-        // only change in place, so `ExecutingQuery::from_plan` overwrites each
+        // only change in place, so `calculate_block_buckets` overwrites each
         // cell with the bucket of its row.
         fn eliminate_insert_motion(plan: &mut Plan, insert_id: NodeId) -> Result<(), SbroadError> {
             // INSERT into a global table gets MotionPolicy::Full and is not supported in blocks;

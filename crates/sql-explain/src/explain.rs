@@ -90,10 +90,10 @@ where
                 unreachable!("exec_query.is_block() returned true, but top is {block:?}")
             };
 
-            let logical_explains = self.get_block_logical(&block)?;
-
+            // Write the bucket_id cells of INSERT rows before the logical plan is made.
             let mut_exec_query = &mut self.inner;
             let buckets = mut_exec_query.calculate_block_buckets(&block)?;
+            let logical_explains = self.get_block_logical(&block)?;
             let block_statements = self.generate_block_patterns(block)?;
 
             let exec_query = &self.inner;
