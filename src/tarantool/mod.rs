@@ -1241,6 +1241,26 @@ pub fn box_is_ro() -> bool {
 /// Wait until the instance becomes read-write or timeout expires.
 /// Returns `Ok(())` on success, `Err` on timeout or fiber cancellation.
 pub fn box_wait_rw(timeout: f64) -> Result<(), ::tarantool::error::Error> {
+    wait_ro(false, timeout)
+}
+
+/// Wait until the instance becomes read-only or timeout expires.
+///
+/// Also waits until every write submitted before the switch to read-only has
+/// reached WAL, so that [`Vclock::current`] includes it on return. A write
+/// that fails and is rolled back is not waited for. The timeout does not bound
+/// this wait for WAL.
+///
+/// Returns `Ok(())` on success, `Err` on timeout, fiber cancellation or WAL
+/// error. A failed wait for WAL leaves the instance read-only, so the call can
+/// be retried.
+///
+/// [`Vclock::current`]: ::tarantool::vclock::Vclock::current
+pub fn box_wait_ro(timeout: f64) -> Result<(), ::tarantool::error::Error> {
+    wait_ro(true, timeout)
+}
+
+fn wait_ro(ro: bool, timeout: f64) -> Result<(), ::tarantool::error::Error> {
     mod ffi {
         extern "C" {
             pub fn box_wait_ro(ro: bool, timeout: f64) -> i32;
@@ -1248,7 +1268,7 @@ pub fn box_wait_rw(timeout: f64) -> Result<(), ::tarantool::error::Error> {
     }
 
     // SAFETY: always safe, may yield
-    let rc = unsafe { ffi::box_wait_ro(false, timeout) };
+    let rc = unsafe { ffi::box_wait_ro(ro, timeout) };
     if rc != 0 {
         return Err(::tarantool::error::Error::Tarantool(
             ::tarantool::error::BoxError::last(),

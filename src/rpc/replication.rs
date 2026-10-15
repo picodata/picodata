@@ -45,7 +45,7 @@ use crate::luamod::lua_function;
 use crate::rpc;
 use crate::sync::wait_vclock;
 use crate::sync_replication::get_this_tier_replication_mode_and_factor;
-use crate::tarantool::{box_promote, box_ro_reason, set_cfg_field, ListenConfig};
+use crate::tarantool::{box_promote, box_ro_reason, box_wait_ro, set_cfg_field, ListenConfig};
 use crate::tlog;
 use crate::traft::error::Error;
 #[allow(unused_imports)]
@@ -410,6 +410,7 @@ crate::define_rpc_request! {
     ///
     /// Returns errors in the following cases:
     /// 1. Lua error during call to `box.cfg`
+    /// 2. WAL error while waiting for the writes submitted before the switch
     fn proc_replication_demote(req: DemoteRequest) -> Result<DemoteResponse> {
         let _ = req;
 
@@ -419,6 +420,13 @@ crate::define_rpc_request! {
         node.status().check_term(req.term)?;
 
         set_read_only(true)?;
+
+        // Local transactions which called commit before the switch to
+        // read-only may still be on their way to WAL. Wait for them, so that
+        // the returned vclock includes them, otherwise the new master may be
+        // promoted without them. The instance is already read-only here, so
+        // only the wait for WAL is left, and the timeout doesn't bound it.
+        box_wait_ro(0.0)?;
 
         let vclock = Vclock::current();
         let vclock = vclock.ignore_zero();
