@@ -319,6 +319,7 @@ impl SubtreeCloner {
         plan: &mut Plan,
         top_id: NodeId,
         capacity: usize,
+        mut map_reference: impl FnMut(&mut Reference) -> Result<(), SbroadError>,
     ) -> Result<NodeId, SbroadError> {
         // We don't copy the subquery's children because otherwise it would create a new subquery.
         // All references would then point to the same subquery.
@@ -340,18 +341,19 @@ impl SubtreeCloner {
                 Node::Relational(_) => self.clone_relational(plan, id)?.into(),
                 Node::Expression(expr) => {
                     let mut node = self.clone_expression(&expr)?;
-                    if let ExprOwned::Reference(Reference { target, .. }) = &mut node {
-                        match target {
+                    if let ExprOwned::Reference(reference) = &mut node {
+                        match &mut reference.target {
                             ReferenceTarget::Leaf => {}
                             ReferenceTarget::Single(node_id) => {
                                 match self.old_new_map.get(node_id) {
                                     Some(node) => {
-                                        *target = ReferenceTarget::Single(*node);
+                                        *node_id = *node;
                                     }
                                     None => invalid_refs.push(*node_id),
                                 }
                             }
                         }
+                        map_reference(reference)?;
                     }
                     node.into()
                 }
@@ -409,8 +411,19 @@ impl SubtreeCloner {
     /// TODO: Should we return translation map as well? Seems like
     ///       it can simply life sometimes.
     pub fn clone_subtree(plan: &mut Plan, top_id: NodeId) -> Result<NodeId, SbroadError> {
+        Self::clone_subtree_with_refs(plan, top_id, |_| Ok(()))
+    }
+
+    /// Clone a subtree, mapping each copied reference once after rebinding its
+    /// target within the subtree. Shared references are mapped only once;
+    /// original nodes and subquery bodies remain unchanged.
+    pub(crate) fn clone_subtree_with_refs(
+        plan: &mut Plan,
+        top_id: NodeId,
+        map_reference: impl FnMut(&mut Reference) -> Result<(), SbroadError>,
+    ) -> Result<NodeId, SbroadError> {
         let mut helper = Self::new(EXPR_CAPACITY);
-        helper.clone(plan, top_id, EXPR_CAPACITY)
+        helper.clone(plan, top_id, EXPR_CAPACITY, map_reference)
     }
 }
 

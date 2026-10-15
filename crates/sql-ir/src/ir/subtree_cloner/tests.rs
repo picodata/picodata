@@ -28,7 +28,7 @@ fn test_clone_dag() {
     let row_id = plan.nodes.add_row(vec![foo_id, bar_id]);
 
     let mut cloner = SubtreeCloner::new(0);
-    let new_row_id = cloner.clone(&mut plan, row_id, 0).unwrap();
+    let new_row_id = cloner.clone(&mut plan, row_id, 0, |_| Ok(())).unwrap();
 
     let new_ids: Vec<NodeId> = {
         let dfs = PostOrder::new(|x| plan.subtree_iter(x), 0);
@@ -103,7 +103,7 @@ fn subtree_external_links() {
     let output = plan.get_relational_output(proj).unwrap();
 
     let mut cloner = SubtreeCloner::new(0);
-    let new_output = cloner.clone(&mut plan, output, 0).unwrap();
+    let new_output = cloner.clone(&mut plan, output, 0, |_| Ok(())).unwrap();
 
     let new_ids: Vec<NodeId> = {
         let dfs = PostOrder::new(|x| plan.subtree_iter(x), 0);

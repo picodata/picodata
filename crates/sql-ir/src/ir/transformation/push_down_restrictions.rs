@@ -38,8 +38,9 @@
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::columns::RelColumn;
+use crate::ir::expression::VolatilityType;
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::expression::{Expression, MutExpression};
+use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Join, NodeId, Projection, Reference, ReferenceTarget, ScanSubQuery, Selection,
@@ -49,8 +50,8 @@ use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::equality_facts::{EqualityFacts, Slot};
 use crate::ir::transformation::placement::{Dropped, Grouped, Placement};
 use crate::ir::transformation::restriction::RestrictInfo;
-use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
-use crate::ir::{Node, Plan};
+use crate::ir::tree::traversal::REL_CAPACITY;
+use crate::ir::Plan;
 use ahash::{AHashMap, AHashSet};
 use smallvec::SmallVec;
 
@@ -389,17 +390,24 @@ impl Plan {
     /// # Errors
     /// - Reading an expression fails.
     fn is_movable_clause(&self, clause: NodeId) -> Result<bool, SbroadError> {
-        if self.contains_volatile(clause, true)? || self.contains_aggregates(clause, true)? {
-            return Ok(false);
-        }
-        for id in self.clause_references(clause) {
-            if let Expression::Reference(Reference {
-                target: ReferenceTarget::Leaf,
-                ..
-            }) = self.get_expression_node(id)?
-            {
-                return Ok(false);
+        let mut stack: SmallVec<[NodeId; 8]> = smallvec::smallvec![clause];
+        while let Some(id) = stack.pop() {
+            let expr = self.get_expression_node(id)?;
+            match expr {
+                Expression::ScalarFunction(function)
+                    if matches!(function.volatility_type, VolatilityType::Volatile)
+                        || Expression::is_aggregate_name(&function.name) =>
+                {
+                    return Ok(false);
+                }
+                Expression::Reference(Reference {
+                    target: ReferenceTarget::Leaf,
+                    ..
+                }) => return Ok(false),
+                _ => {}
             }
+            // Subquery references have no expression children; their bodies stay opaque.
+            stack.extend(expr.expr_children());
         }
         Ok(true)
     }
@@ -414,23 +422,14 @@ impl Plan {
         clause: NodeId,
         columns: &AHashMap<Slot, Slot>,
     ) -> Result<NodeId, SbroadError> {
-        let copy = SubtreeCloner::clone_subtree(self, clause)?;
-        // A clause may share one reference node between several parents
-        // (e.g. the needle of an expanded `IN` list), and the copy keeps that
-        // sharing: rewrite each node once, or its second visit reads the
-        // already relocated target.
-        let mut relocated: AHashSet<NodeId> = AHashSet::new();
-        for id in self.clause_references(copy) {
-            if !relocated.insert(id) {
-                continue;
-            }
-            let MutExpression::Reference(Reference {
+        SubtreeCloner::clone_subtree_with_refs(self, clause, |reference| {
+            let Reference {
                 target: ReferenceTarget::Single(target),
                 position,
                 ..
-            }) = self.get_mut_expression_node(id)?
+            } = reference
             else {
-                continue;
+                return Ok(());
             };
             let from = Slot::new(*target, *position);
             let Some(&to) = columns.get(&from) else {
@@ -443,23 +442,8 @@ impl Plan {
             };
             *target = to.rel_id;
             *position = to.pos;
-        }
-        Ok(copy)
-    }
-
-    /// The `Reference` nodes of `clause`, not entering subqueries.
-    fn clause_references(&self, clause: NodeId) -> Vec<NodeId> {
-        PostOrderWithFilter::new(
-            |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::Reference(_)))
-                )
-            },
-            EXPR_CAPACITY,
-        )
-        .traverse_into_vec(clause)
+            Ok(())
+        })
     }
 
     /// Number of distinct parents of each relational node under `top_id`,
@@ -484,5 +468,108 @@ impl Plan {
             }
         }
         fan_in
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::function::Function;
+    use crate::ir::types::{DerivedType, UnrestrictedType};
+    use crate::ir::value::Value;
+
+    #[test]
+    fn is_movable_clause_checks_expressions_without_entering_subqueries() {
+        let mut plan = Plan::new();
+        let ty = DerivedType::new(UnrestrictedType::Integer);
+        let value = plan.add_const(Value::Integer(1));
+        let volatile = plan
+            .add_volatile_function(
+                &Function::new_volatile("volatile".into(), ty, false),
+                vec![value],
+                None,
+            )
+            .unwrap();
+        let aggregate = plan
+            .add_stable_function(
+                &Function::new_stable("max".into(), ty, true),
+                vec![value],
+                None,
+            )
+            .unwrap();
+        let alias = plan.nodes.add_alias("a", aggregate).unwrap();
+        let volatile_alias = plan.nodes.add_alias("b", volatile).unwrap();
+        let body = plan
+            .add_select_without_scan(&[alias, volatile_alias])
+            .unwrap();
+        let subquery = plan.nodes.add_sq_ref(RelColumn::new(body, 0), ty);
+        let reference = plan
+            .nodes
+            .add_ref(ReferenceTarget::Single(body), 0, ty, None, false);
+        let leaf = plan
+            .nodes
+            .add_ref(ReferenceTarget::Leaf, 0, ty, None, false);
+        let stable = plan
+            .add_stable_function(
+                &Function::new_stable("abs".into(), ty, true),
+                vec![reference],
+                None,
+            )
+            .unwrap();
+        for (expr, movable) in [
+            (value, true),
+            (reference, true),
+            (stable, true),
+            (subquery, true),
+            (volatile, false),
+            (aggregate, false),
+            (leaf, false),
+        ] {
+            assert_eq!(plan.is_movable_clause(expr).unwrap(), movable);
+            let row = plan.nodes.add_row(vec![value, expr]);
+            assert_eq!(plan.is_movable_clause(row).unwrap(), movable);
+        }
+        let wide = plan.nodes.add_row(vec![stable; 16]);
+        assert!(plan.is_movable_clause(wide).unwrap());
+        assert!(plan.is_movable_clause(body).is_err());
+    }
+
+    #[test]
+    fn relocate_clause_preserves_sharing_and_subquery_targets() {
+        let mut plan = Plan::new();
+        let value = plan.add_const(Value::Integer(1));
+        let a = plan.nodes.add_alias("a", value).unwrap();
+        let b = plan.nodes.add_alias("b", value).unwrap();
+        let source = plan.add_select_without_scan(&[a, b]).unwrap();
+        let destination = plan
+            .add_proj(source, vec![], &["b", "a"], false, false)
+            .unwrap();
+        let ty = DerivedType::new(UnrestrictedType::Integer);
+        let reference = plan
+            .nodes
+            .add_ref(ReferenceTarget::Single(source), 0, ty, None, false);
+        let subquery = plan.nodes.add_sq_ref(RelColumn::new(source, 0), ty);
+        let clause = plan.nodes.add_row(vec![reference, reference, subquery]);
+        let columns = AHashMap::from_iter([(Slot::new(source, 0), Slot::new(destination, 1))]);
+
+        let copy = plan.relocate_clause(clause, &columns).unwrap();
+        let [left, right, copied_subquery] = plan.get_row_list(copy).unwrap()[..] else {
+            panic!("expected three children");
+        };
+        assert_eq!(left, right);
+        assert_ne!(left, reference);
+        let moved = plan.get_reference(left).unwrap();
+        assert_eq!(moved.target, ReferenceTarget::Single(destination));
+        assert_eq!(moved.position, 1);
+        let original = plan.get_reference(reference).unwrap();
+        assert_eq!(original.target, ReferenceTarget::Single(source));
+        assert_eq!(original.position, 0);
+        assert_ne!(copied_subquery, subquery);
+        assert_eq!(
+            plan.get_expression_node(copied_subquery).unwrap(),
+            plan.get_expression_node(subquery).unwrap(),
+        );
+        let error = plan.relocate_clause(clause, &AHashMap::new()).unwrap_err();
+        assert!(error.to_string().contains("no new place for column"));
     }
 }
