@@ -88,16 +88,19 @@ Picodata с включённым плагином Ouroboros. В этом кла�
 
 ```
 └── ouroboros
-    └── 2.0.1
-        ├── deps.toml                     # файл со списком зависимостей плагина
-        ├── libouroboros.so               # основная часть плагина, разделяемая библиотека
-        ├── manifest.yaml                 # манифест, задающий исходную конфигурацию плагина
-        ├── migrations                    # файлы миграций плагина
+    └── 2.1.0
+        ├── deps.toml                                   # файл со списком зависимостей плагина
+        ├── libouroboros.so                             # основная часть плагина, разделяемая библиотека
+        ├── manifest.yaml                               # манифест, задающий исходную конфигурацию плагина
+        ├── migrations                                  # файлы миграций плагина
         │   ├── 0001_state.db
         │   ├── 0002_ouroboros_state.db
         │   ├── 0003_ouroboros_bucket.db
-        |   └── 0004_new_state_buckets.db
-        └── ouroboros-cli                 # сверяет количество записей между кластерами по таблицам и бакетам
+        │   └── 0004_new_state_buckets.db
+        ├── observability                               # дашборды для Grafana
+        │   ├── dashboard.grafana.json
+        │   └── dashboard.multi-prometheus.grafana.json
+        └── ouroboros-cli                               # сверяет количество записей между кластерами по таблицам и бакетам
 ```
 
 ## Конфигурация плагина {: #config }
@@ -117,7 +120,7 @@ Picodata с включённым плагином Ouroboros. В этом кла�
     ```yaml
     description: Plugin tnt clusters replication
     name: ouroboros
-    version: 2.0.1
+    version: 2.1.0
     services:
       - name: ouroboros
         description: ouroboros descr
@@ -135,8 +138,8 @@ Picodata с включённым плагином Ouroboros. В этом кла�
               cluster_name: right
               address:
                 - localhost:3321
-              username: superadmin
-              password: Pa55w0rd
+              username: superman
+              password: Secret55
               disabled_replicasets: ["group1-s3"]
           enabled_groups: ["group1","group2"]
           disabled_spaces: []
@@ -145,9 +148,9 @@ Picodata с включённым плагином Ouroboros. В этом кла�
           reader_buffer_size: 10000
           writer_buffer_size: 1000
           skip_ddl_replication: true
-          small_packet_max_size: 1024
-          small_packets_pool_size: 5000
-          large_packets_pool_size: 500
+          write_batch_size_bytes: 65536
+          flush_batch_timeout: 10
+          readview_pool_size: 200
           debug:
             state: Off
 
@@ -235,11 +238,11 @@ picodata run --share-dir=<SHARE-DIR> ...
 следующих SQL-команд (пример для тира `default`):
 
 ```sql
-CREATE PLUGIN ouroboros 2.0.1;
-ALTER PLUGIN ouroboros 2.0.1 SET migration_context.tier='default';
-ALTER PLUGIN ouroboros MIGRATE TO 2.0.1;
-ALTER PLUGIN ouroboros 2.0.1 ADD SERVICE ouroboros TO TIER default;
-ALTER PLUGIN ouroboros 2.0.1 ENABLE;
+CREATE PLUGIN ouroboros 2.1.0;
+ALTER PLUGIN ouroboros 2.1.0 SET migration_context.tier='default';
+ALTER PLUGIN ouroboros MIGRATE TO 2.1.0;
+ALTER PLUGIN ouroboros 2.1.0 ADD SERVICE ouroboros TO TIER default;
+ALTER PLUGIN ouroboros 2.1.0 ENABLE;
 ```
 
 [административной консоли]: ../tutorial/connecting.md#admin_console
@@ -301,7 +304,7 @@ all:
 
     plugins:
       ouroboros:
-        path: "ouroboros_2.0.1.tar.gz"
+        path: "ouroboros_2.1.0.tar.gz"
         services:
           tiers:
             - default
@@ -309,6 +312,7 @@ all:
     tiers:                          # описание тиров
       arbiter:                      # имя тира
         replicaset_count: 1         # количество репликасетов
+        can_vote: true              # признак того, что тир является голосующим в Raft-кворуме
         replication_factor: 1       # фактор репликации
         config:
           memtx:
@@ -318,6 +322,7 @@ all:
 
       default:                      # имя тира
         replicaset_count: 3         # количество репликасетов
+        can_vote: false             # признак того, что тир является не голосующим в Raft-кворуме
         replication_factor: 3       # фактор репликации
         bucket_count: 16384         # количество бакетов в тире
         config:
@@ -405,25 +410,36 @@ ouroboros-cli --host localhost --port 15001 --user superadmin --password Pa55w0r
 ## Мониторинг показателей плагина {: #grafana_board}
 
 Процесс работы плагина Ouroboros удобно отслеживать в графическом
-интерфейсе [Grafana], для которого Picodata поставляет файл
-конфигурации (dashboard).
+интерфейсе [Grafana], для которого в поставке плагина имеются два варианта файла
+конфигурации (дашборда):
 
-Для настройки мониторинга импортируйте dashboard с данными Ouroboros. Для
-этого понадобится файл [dashboard.grafana.json], который следует
-добавить в меню `Dashboards` > `New` > `Import`:
+1. `observability/dashboard.grafana.json` (дашборд «Ouroboros 2.0») —
+   если метрики Ouroboros, источника и приёмника хранятся в одном
+   Prometheus. У него тот же uid, что и у прежнего дашборда, поэтому
+   повторный импорт обновит уже установленный дашборд.
+2. `observability/dashboard.multi-prometheus.grafana.json` (дашборд
+   «Ouroboros 2.0 (multi-Prometheus)») — если метрики источника,
+   Ouroboros и приёмника собирают разные Prometheus. Это отдельный
+   дашборд со своим uid, его можно импортировать рядом с первым.
+
+Панели в обоих дашбордах одинаковые, отличаются только переключатели источников данных.
+
+Импортируйте нужный дашборд через в меню `Dashboards` > `New` > `Import`:
 
 ![Import Ouroboros dashboard](../images/grafana/import_dashboard.png)
 
-Панель dashboard для плагина Ouroboros отображает ряд графиков, на
+Панель мониторинга для плагина Ouroboros отображает ряд графиков, на
 которых отражена пропускная способность кластера с Ouroboros, статистика
 по скопированным пакетам, а также данные по количеству записей в
 кластере-источнике и кластере-приёмнике.
 
-Внешний вид dashboard для Ouroboros показан ниже:
+Внешний вид дашборда «Ouroboros 2.0»:
+![Ouroboros dashboard](../images/grafana/ouroboros-1.png)
 
-![Ouroboros dashboard](../images/grafana/uroboros.png)
+Внешний вид дашборда «Ouroboros 2.0 (multi-Prometheus)»:
+![Ouroboros dashboard multi](../images/grafana/ouroboros-2.png)
 
-Для настройки dashboard используйте параметры в верхней части экрана:
+Для настройки дашбордов используйте параметры в верхней части экрана:
 
 - **Источник данных** — по умолчанию `Prometheus`
 - **Кластер уробороса** — имя кластера с Ouroboros
@@ -433,7 +449,6 @@ ouroboros-cli --host localhost --port 15001 --user superadmin --password Pa55w0r
 - **Игнорируемые спейсы** — список таблиц (спейсов), данные которых не будут скопированы
 
 [Grafana]: ../admin/grafana_monitoring.md
-[dashboard.grafana.json]: https://git.picodata.io/picodata/plugin/uroboros/-/raw/master/observability/dashboard.grafana.json
 
 См. также:
 
