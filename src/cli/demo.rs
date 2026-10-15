@@ -274,7 +274,7 @@ fn main_impl(args: Demo) -> Result<()> {
     std::env::set_var("PICODATA_DEMO_CHILD", "yes");
 
     println!("Initializing cluster start...\n");
-    let cluster_nodes = builder::run(&parameters)?;
+    let cluster_nodes = builder::run(parameters)?;
 
     println!("Cluster started successfully:");
     println!("  - replicaset count: {}", args.replicaset_count);
