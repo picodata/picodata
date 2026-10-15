@@ -10,7 +10,23 @@
 ;(function () {
   "use strict";
 
+  function initHeaderOffset() {
+    var header = document.querySelector(".md-header");
+    if (!header) return;
+
+    function updateHeaderHeight() {
+      document.documentElement.style.setProperty(
+        "--pd-header-height", header.getBoundingClientRect().height + "px"
+      );
+    }
+
+    updateHeaderHeight();
+    new ResizeObserver(updateHeaderHeight).observe(header);
+  }
+
   function init() {
+    initHeaderOffset();
+
     var hamburger = document.querySelector(".picodata-header .hamburger");
     var drawer = document.getElementById("site-drawer");
     var closeBtn = document.querySelector(".picodata-header .drawer-close");

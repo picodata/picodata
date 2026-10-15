@@ -72,6 +72,11 @@ h6 {
   margin-bottom: 1rem;
 }
 
+/* Account for both header rows and leave a small gap above anchor targets. */
+.md-typeset :target {
+  scroll-margin-top: calc(var(--pd-header-height, 8rem) + 1rem);
+}
+
 .md-header {
   width: 100%;
   background-color: var(--md-default-bg-color);
