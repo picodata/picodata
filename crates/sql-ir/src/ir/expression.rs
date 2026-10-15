@@ -2357,7 +2357,10 @@ impl Plan {
             let node = self.get_mut_expression_node(id)?;
             if let MutExpression::Reference(Reference { target, .. }) = node {
                 if !matches!(target, ReferenceTarget::Single(_)) {
-                    panic!("try to change to single")
+                    return Err(SbroadError::Invalid(
+                        Entity::Expression,
+                        Some("cannot retarget a leaf reference".into()),
+                    ));
                 }
                 *target = ReferenceTarget::Single(rel_id);
             }

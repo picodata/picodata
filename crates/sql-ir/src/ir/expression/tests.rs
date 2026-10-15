@@ -1,4 +1,5 @@
 use crate::ir::columns::RelColumn;
+use crate::ir::node::ReferenceTarget;
 use crate::ir::operator::Arithmetic;
 use crate::ir::test_fixtures::{column_integer_user_non_null, sharding_column};
 use pretty_assertions::assert_eq;
@@ -171,5 +172,41 @@ fn derive_expr_type() {
     assert_eq!(
         expr.calculate_type(&plan).unwrap().get().unwrap(),
         UnrestrictedType::Double
+    );
+}
+
+#[test]
+fn set_target_in_subtree_rejects_leaf_reference() {
+    // t(a int) [a]
+    let mut plan = Plan::default();
+    let t = Table::new_sharded(
+        random(),
+        "t",
+        vec![column_integer_user_non_null(SmolStr::from("a"))],
+        &["a"],
+        &["a"],
+        SpaceEngine::Memtx,
+    )
+    .unwrap();
+    plan.add_rel(t);
+    let scan_id = plan.add_scan("t", None).unwrap();
+
+    // A GROUP BY alias placeholder: a reference without a target relation.
+    let leaf_id = plan.nodes.add_ref(
+        ReferenceTarget::Leaf,
+        0,
+        DerivedType::new(UnrestrictedType::Integer),
+        None,
+        false,
+    );
+    let one_id = plan.nodes.add_const(Value::from(1_i64));
+    let sum_id = plan
+        .add_arithmetic_to_plan(leaf_id, Arithmetic::Add, one_id)
+        .unwrap();
+
+    let err = plan.set_target_in_subtree(sum_id, scan_id).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "invalid expression: cannot retarget a leaf reference"
     );
 }

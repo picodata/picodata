@@ -1426,15 +1426,16 @@ impl Plan {
             // E.g. `select a as a_1 from t group by a_1`
             // Warning: cases like this one `select a as a_1 from t group by a_1 * 1` is not handled there
             {
-                let mut gr_aliases = HashMap::new();
+                // Each occurrence needs its own copy of the aliased expression.
+                let mut gr_aliases = Vec::new();
                 for (idx, gr_expr_id) in gr_exprs.iter().enumerate() {
                     let gr_expr = self.get_expression_node(*gr_expr_id)?;
                     if let Expression::Alias(Alias { name, .. }) = gr_expr {
-                        gr_aliases.insert(name.clone(), idx);
+                        gr_aliases.push((name.clone(), idx));
                     }
                 }
 
-                let mut idx_to_new_child = HashMap::new();
+                let mut idx_to_new_child = Vec::with_capacity(gr_aliases.len());
                 for (name, idx) in gr_aliases {
                     if let Some(alias_child) = col_aliases.get(&name) {
                         let new_top_id = SubtreeCloner::clone_subtree(self, *alias_child)?;
@@ -1449,7 +1450,7 @@ impl Plan {
                             groupby_target_rel,
                         )?;
 
-                        idx_to_new_child.insert(idx, new_top_id);
+                        idx_to_new_child.push((idx, new_top_id));
                     } else {
                         return Err(SbroadError::NotFound(
                             Entity::Column,
@@ -1476,8 +1477,8 @@ impl Plan {
                     unreachable!("expected GroupBy node");
                 };
 
-                // Mapping from alias_name to its parent_id and alias_id
-                let mut gr_alias_mappings = HashMap::<SmolStr, (NodeId, NodeId)>::new();
+                // Every alias occurrence with its parent_id and alias_id, in query order.
+                let mut gr_alias_mappings = Vec::<(SmolStr, (NodeId, NodeId))>::new();
 
                 // Any Expression::Alias in gr_expr[i] subtree is the alias from projection.
                 // We retrieve it to replace with corresponding original subtree body.
@@ -1511,7 +1512,7 @@ impl Plan {
                             if let Ok(Node::Expression(Expression::Alias(Alias { name, .. }))) =
                                 self.get_node(child)
                             {
-                                gr_alias_mappings.insert(name.clone(), (alias_parent_id, child));
+                                gr_alias_mappings.push((name.clone(), (alias_parent_id, child)));
                             }
                         }
                     }
@@ -1551,6 +1552,30 @@ impl Plan {
                     // We do this for consistency of the IR presentation logic.
                     _ = self.replace_with_stub(*child);
                     _ = self.replace_with_stub(alias_id);
+                }
+            }
+
+            // A grouping expression never holds a leaf reference.
+            let gr_exprs = self.get_grouping_exprs(group_by_id)?;
+            for gr_expr_id in gr_exprs {
+                let dft = PostOrderWithFilter::new(
+                    |node| self.nodes.expr_iter(node, false),
+                    |node| {
+                        matches!(
+                            self.get_node(node),
+                            Ok(Node::Expression(Expression::Reference(Reference {
+                                target: ReferenceTarget::Leaf,
+                                ..
+                            })))
+                        )
+                    },
+                    EXPR_CAPACITY,
+                );
+                if !dft.traverse_into_vec(*gr_expr_id).is_empty() {
+                    return Err(SbroadError::Invalid(
+                        Entity::Expression,
+                        Some("unresolved alias in GROUP BY".into()),
+                    ));
                 }
             }
         }

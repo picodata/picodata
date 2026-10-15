@@ -2021,19 +2021,22 @@ impl Plan {
     ///
     /// # Errors
     /// - node doesn't exist in the plan
-    /// - node is neither `Reference` nor `SubQueryReference`
+    /// - reference has no target relation
     /// - invalid references between nodes
     ///
     /// # Panics
-    /// - Plan is in invalid state
+    /// - node is neither `Reference` nor `SubQueryReference`
     pub fn get_alias_from_reference_node(&self, node: &Expression) -> Result<SmolStr, SbroadError> {
         let (ref_node_target_child, position) = match node {
             Expression::Reference(Reference {
                 target, position, ..
             }) => (
-                target
-                    .first()
-                    .expect("Expected at least one node in reference"),
+                target.first().ok_or_else(|| {
+                    SbroadError::Invalid(
+                        Entity::Expression,
+                        Some("reference without a target relation".into()),
+                    )
+                })?,
                 position,
             ),
             Expression::SubQueryReference(SubQueryReference {

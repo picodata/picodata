@@ -1365,6 +1365,116 @@ select a as dd from t_alias_arg group by dd, abs(dd) order by dd;
 -- EXPECTED:
 1, 2, 3
 
+-- TEST: test_repeated_alias_inside_groupby-1.0
+-- SQL:
+DROP TABLE IF EXISTS gb_alias;
+CREATE TABLE gb_alias (a INT PRIMARY KEY, b INT, c INT);
+INSERT INTO gb_alias VALUES (1, 1, 1), (2, 1, 2), (3, 2, 2);
+
+-- TEST: test_repeated_alias_inside_groupby-1.1
+-- SQL:
+SELECT 1 c1 FROM gb_alias GROUP BY c1, c1;
+-- EXPECTED:
+1
+
+-- TEST: test_repeated_alias_inside_groupby-1.2
+-- SQL:
+SELECT 1 c2 FROM gb_alias GROUP BY c2 + c2;
+-- EXPECTED:
+1
+
+-- TEST: test_repeated_alias_inside_groupby-1.3
+-- SQL:
+SELECT 1 c2 FROM (SELECT 1) GROUP BY c2 + c2;
+-- EXPECTED:
+1
+
+-- TEST: test_repeated_alias_inside_groupby-1.4
+-- SQL:
+WITH cte(a) AS (VALUES (1))
+SELECT DISTINCT a AS b FROM cte GROUP BY a, b, b, a;
+-- EXPECTED:
+1
+
+-- TEST: test_repeated_alias_inside_groupby-1.5
+-- SQL:
+SELECT b x, count(*) FROM gb_alias GROUP BY x, x ORDER BY x;
+-- EXPECTED:
+1, 2,
+2, 1
+
+-- TEST: test_repeated_alias_inside_groupby-1.6
+-- SQL:
+SELECT b x, c y FROM gb_alias GROUP BY y, x, y, x ORDER BY x, y;
+-- EXPECTED:
+1, 1,
+1, 2,
+2, 2
+
+-- TEST: test_repeated_alias_inside_groupby-1.7
+-- SQL:
+SELECT 1 x FROM gb_alias GROUP BY x BETWEEN 0 AND 2;
+-- EXPECTED:
+1
+
+-- TEST: test_repeated_alias_inside_groupby-1.8
+-- SQL:
+SELECT b x FROM gb_alias GROUP BY 1, x, 1, x ORDER BY x;
+-- EXPECTED:
+1, 2
+
+-- TEST: test_repeated_alias_inside_groupby-1.9
+-- SQL:
+SELECT a FROM gb_alias WHERE a IN (SELECT b x FROM gb_alias GROUP BY x, x) ORDER BY a;
+-- EXPECTED:
+1, 2
+
+-- TEST: test_repeated_alias_inside_groupby-1.10
+-- SQL:
+SELECT a, (SELECT 1 x FROM gb_alias GROUP BY x, x, x) FROM gb_alias ORDER BY a;
+-- EXPECTED:
+1, 1,
+2, 1,
+3, 1
+
+-- TEST: test_repeated_alias_inside_groupby-1.11
+-- SQL:
+WITH cte AS (SELECT b x FROM gb_alias GROUP BY x, x)
+SELECT x FROM cte ORDER BY x;
+-- EXPECTED:
+1, 2
+
+-- TEST: test_repeated_alias_inside_groupby-1.12
+-- SQL:
+SELECT b x FROM gb_alias GROUP BY x, x
+UNION ALL
+SELECT a FROM gb_alias;
+-- UNORDERED:
+1, 2, 1, 2, 3
+
+-- TEST: test_repeated_alias_inside_groupby-1.13
+-- SQL:
+SELECT b x FROM gb_alias GROUP BY x + x;
+-- ERROR:
+invalid query: column "b" is not found in grouping expressions!
+
+-- TEST: test_repeated_alias_inside_groupby-1.14
+-- SQL:
+INSERT INTO gb_alias SELECT a + 10, b x, 0 FROM gb_alias GROUP BY a, x, x;
+
+-- TEST: test_repeated_alias_inside_groupby-1.15
+-- SQL:
+SELECT count(*) FROM gb_alias;
+-- EXPECTED:
+6
+
+-- TEST: test_repeated_alias_inside_groupby-1.16
+-- SQL:
+SELECT b x, count(*) OVER () FROM gb_alias GROUP BY x, x ORDER BY x;
+-- EXPECTED:
+1, 2,
+2, 2
+
 -- TEST: test_groupby_current_date
 -- SQL:
 SELECT count(*) FROM "arithmetic_space" GROUP BY current_date;

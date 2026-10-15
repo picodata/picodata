@@ -2,7 +2,7 @@ use crate::errors::SbroadError;
 use crate::frontend::sql::ast::{ParseTree, ParsingPairsMap};
 use crate::frontend::sql::transform_into_plan;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::NodeId;
+use crate::ir::node::{NodeId, ReferenceTarget};
 use crate::ir::options::Options;
 use crate::ir::transformation::Stage;
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter};
@@ -14,7 +14,9 @@ use itertools::Itertools;
 use pest::Parser;
 use pretty_assertions::assert_eq;
 use sql_executor::executor::engine::mock::RouterConfigurationMock;
-use sql_executor::test_helpers::{expect_sql_to_ir_error, sql_to_optimized_ir};
+use sql_executor::test_helpers::{
+    expect_sql_to_ir_error, sql_to_ir_without_bind, sql_to_optimized_ir,
+};
 use sql_explain::explain::explain_logical;
 use std::collections::HashMap;
 
@@ -2865,6 +2867,407 @@ fn front_sql_groupby_having_in_sq() {
           projection (t2.e::int -> e)
             scan t2
     ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias() {
+    let input = r#"explain (logical) SELECT 1 c1 FROM "t1" GROUP BY c1, c1"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::int -> c1)
+      group by (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (1::int -> gr_expr_1)
+            group by (1::int)
+              scan t1
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_with_aggregate() {
+    let input = r#"explain (logical) SELECT "b" x, count(*) FROM "t5" GROUP BY x, x, x"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::int -> x, sum(count_1::int::int)::int::int -> col_1)
+      group by (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.b::int -> gr_expr_1, count(*)::int -> count_1)
+            group by (t5.b::int)
+              scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_in_parentheses() {
+    let input = r#"explain (logical) SELECT "b" x FROM "t5" GROUP BY x, (x)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::int -> x)
+      group by (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.b::int -> gr_expr_1)
+            group by (t5.b::int)
+              scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_with_ordinals() {
+    let input = r#"explain (logical) SELECT "b" x FROM "t5" GROUP BY 1, x, 1, x"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::int -> x)
+      group by (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.b::int -> gr_expr_1)
+            group by (t5.b::int)
+              scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_two_repeated_aliases() {
+    let input = r#"explain (logical) SELECT "b" x, "a" y FROM "t5" GROUP BY y, x, y, x"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_2::int -> x, gr_expr_1::int -> y)
+      group by (gr_expr_1::int, gr_expr_2::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.a::int -> gr_expr_1, t5.b::int -> gr_expr_2)
+            group by (t5.a::int, t5.b::int)
+              scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_inside_expression() {
+    let input = r#"explain (logical) SELECT 1 c2 FROM "t1" GROUP BY c2 + c2"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (1::int -> c2)
+      group by (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (1::int + 1::int -> gr_expr_1)
+            group by (1::int + 1::int)
+              scan t1
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_inside_expression_without_motion() {
+    let input = r#"explain (logical) SELECT 1 c2 FROM (SELECT 1) GROUP BY c2 + c2"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (1::int -> c2)
+      group by (1::int + 1::int)
+        scan unnamed_subquery
+          projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_alias_in_between() {
+    // `BETWEEN` copies its left operand, so the alias occurs twice.
+    let input = r#"explain (logical) SELECT 1 x FROM "t1" GROUP BY x BETWEEN 0 AND 2"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (1::int -> x)
+      group by (gr_expr_1::bool)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection ((1::int >= 0::int and 1::int <= 2::int) -> gr_expr_1)
+            group by ((1::int >= 0::int and 1::int <= 2::int))
+              scan t1
+    ");
+}
+
+#[test]
+fn front_sql_groupby_alias_and_alias_in_between() {
+    let input = r#"explain (logical) SELECT "b" x FROM "t5" GROUP BY x, x BETWEEN 0 AND 2"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::int -> x)
+      group by (gr_expr_1::int, gr_expr_2::bool)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.b::int -> gr_expr_1, (t5.b::int >= 0::int and t5.b::int <= 2::int) -> gr_expr_2)
+            group by (t5.b::int, (t5.b::int >= 0::int and t5.b::int <= 2::int))
+              scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_over_cte() {
+    let input = r#"explain (logical) WITH cte(a) AS (VALUES (1))
+        SELECT DISTINCT a AS b FROM cte GROUP BY a, b, b, a"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
+    projection (cte.a::int -> b)
+      group by (cte.a::int, cte.a::int, cte.a::int, cte.a::int)
+        scan cte cte($0)
+    subquery $0:
+      projection (cte."COLUMN_1"::int -> a)
+        scan cte
+          motion [policy: full, program: ReshardIfNeeded]
+            values
+              value ROW(1::int)
+    "#);
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_in_in_subquery() {
+    let input = r#"explain (logical) SELECT "a" FROM "t5"
+        WHERE "a" IN (SELECT "b" x FROM "t5" GROUP BY x, x)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (t5.a::int -> a)
+      selection (t5.a::int in ROW($0))
+        scan t5
+    subquery $0:
+      motion [policy: segment([ref(x)]), program: ReshardIfNeeded]
+        scan
+          projection (gr_expr_1::int -> x)
+            group by (gr_expr_1::int)
+              motion [policy: full, program: ReshardIfNeeded]
+                projection (t5.b::int -> gr_expr_1)
+                  group by (t5.b::int)
+                    scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_in_scalar_subquery() {
+    let input =
+        r#"explain (logical) SELECT "a", (SELECT 1 x FROM "t1" GROUP BY x, x, x) FROM "t5""#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (t5.a::int -> a, ROW($0) -> col_1)
+      scan t5
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (gr_expr_1::int -> x)
+            group by (gr_expr_1::int)
+              motion [policy: full, program: ReshardIfNeeded]
+                projection (1::int -> gr_expr_1)
+                  group by (1::int)
+                    scan t1
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_in_cte() {
+    let input = r#"explain (logical) WITH c AS (SELECT "b" x FROM "t5" GROUP BY x, x)
+        SELECT x FROM c"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (c.x::int -> x)
+      scan cte c($0)
+    subquery $0:
+      projection (gr_expr_1::int -> x)
+        group by (gr_expr_1::int)
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (t5.b::int -> gr_expr_1)
+              group by (t5.b::int)
+                scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_in_derived_table() {
+    let input = r#"explain (logical) SELECT x FROM (SELECT "b" x FROM "t5" GROUP BY x, x)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (unnamed_subquery.x::int -> x)
+      scan unnamed_subquery
+        projection (gr_expr_1::int -> x)
+          group by (gr_expr_1::int)
+            motion [policy: full, program: ReshardIfNeeded]
+              projection (t5.b::int -> gr_expr_1)
+                group by (t5.b::int)
+                  scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_in_union_all() {
+    let input = r#"explain (logical) SELECT "b" x FROM "t5" GROUP BY x, x
+        UNION ALL SELECT "a" FROM "t5""#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      motion [policy: segment([ref(x)]), program: ReshardIfNeeded]
+        projection (gr_expr_1::int -> x)
+          group by (gr_expr_1::int)
+            motion [policy: full, program: ReshardIfNeeded]
+              projection (t5.b::int -> gr_expr_1)
+                group by (t5.b::int)
+                  scan t5
+      projection (t5.a::int -> a)
+        scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_in_insert() {
+    let input = r#"explain (logical) INSERT INTO "t5" ("a", "b")
+        SELECT "a", "b" x FROM "t5" GROUP BY "a", x, x"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    insert into t5 on conflict: fail
+      motion [policy: segment([ref(a)]), program: ReshardIfNeeded]
+        projection (gr_expr_1::int -> a, gr_expr_2::int -> x)
+          group by (gr_expr_1::int, gr_expr_2::int)
+            motion [policy: full, program: ReshardIfNeeded]
+              projection (t5.a::int -> gr_expr_1, t5.b::int -> gr_expr_2)
+                group by (t5.a::int, t5.b::int)
+                  scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_over_join() {
+    let input = r#"explain (logical) SELECT "t5"."b" x FROM "t5"
+        JOIN "t1" ON "t5"."b" = "t1"."b" GROUP BY x, x"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::int -> x)
+      group by (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.b::int -> gr_expr_1)
+            group by (t5.b::int)
+              join on (t5.b::int = t1.b::int)
+                scan t5
+                motion [policy: full, program: ReshardIfNeeded]
+                  projection (t1.a::text -> a, t1.bucket_id::int -> bucket_id, t1.b::int -> b)
+                    scan t1
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_with_having_and_order_by() {
+    let input = r#"explain (logical) SELECT "b" x, count(*) FROM "t5" GROUP BY x, x
+        HAVING count(*) > 1 ORDER BY x"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (x::int, col_1::int)
+      order by (x::int)
+        scan
+          projection (gr_expr_1::int -> x, sum(count_1::int::int)::int::int -> col_1)
+            having (sum(count_1::int::int)::int::int > 1::int)
+              group by (gr_expr_1::int)
+                motion [policy: full, program: ReshardIfNeeded]
+                  projection (t5.b::int -> gr_expr_1, count(*)::int -> count_1)
+                    group by (t5.b::int)
+                      scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_with_distinct() {
+    let input = r#"explain (logical) SELECT DISTINCT "b" x FROM "t5" GROUP BY x, x"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::int -> x)
+      group by (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.b::int -> gr_expr_1)
+            group by (t5.b::int)
+              scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_inside_expression_over_ungrouped_column() {
+    // Each query fails like its single-alias form `GROUP BY x + 1`.
+    for input in [
+        r#"SELECT "b" x FROM "t5" GROUP BY x + x"#,
+        r#"SELECT "b" x FROM "t5" GROUP BY x + 1, x + 2"#,
+        r#"SELECT "b" x FROM "t5" GROUP BY abs(x), abs(x)"#,
+    ] {
+        let err = sql_to_optimized_ir_add_motions_err(input);
+        assert_eq!(
+            err.to_string(),
+            r#"invalid query: column "b" is not found in grouping expressions!"#,
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn front_sql_groupby_single_alias_inside_expression() {
+    let input = r#"explain (logical) SELECT "b" x FROM "t5" GROUP BY x, x + 1"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::int -> x)
+      group by (gr_expr_1::int, gr_expr_2::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.b::int -> gr_expr_1, t5.b::int + 1::int -> gr_expr_2)
+            group by (t5.b::int, t5.b::int + 1::int)
+              scan t5
+    ");
+
+    let input = r#"explain (logical) SELECT 1 c2 FROM "t1" GROUP BY c2 + 1"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (1::int -> c2)
+      group by (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (1::int + 1::int -> gr_expr_1)
+            group by (1::int + 1::int)
+              scan t1
+    ");
+}
+
+#[test]
+fn front_sql_groupby_unresolved_alias_fails_the_statement() {
+    let mut plan = sql_to_ir_without_bind(r#"SELECT "b" x FROM "t1" GROUP BY x"#, &[]);
+    let top = plan.get_top().unwrap();
+    let dfs = PostOrderWithFilter::new(
+        |x| plan.nodes.rel_iter(x),
+        |x| matches!(plan.get_relation_node(x), Ok(Relational::GroupBy(_))),
+        10,
+    );
+    let [group_by_id] = dfs.traverse_into_vec(top)[..] else {
+        panic!("expected one GroupBy");
+    };
+
+    // Simulate a placeholder that an earlier pass left without its `Alias`.
+    let leaf_id = plan.nodes.add_ref(
+        ReferenceTarget::Leaf,
+        0,
+        DerivedType::new(Type::Integer),
+        None,
+        false,
+    );
+    let mut gr_exprs = plan.get_grouping_exprs(group_by_id).unwrap().to_vec();
+    gr_exprs.push(leaf_id);
+    plan.set_grouping_exprs(group_by_id, gr_exprs).unwrap();
+
+    let err = plan.fix_groupby_aliases().unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "invalid expression: unresolved alias in GROUP BY"
+    );
 }
 
 #[test]

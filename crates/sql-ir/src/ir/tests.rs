@@ -48,4 +48,23 @@ fn get_node_oor() {
     );
 }
 
+#[test]
+fn get_alias_from_leaf_reference() {
+    let mut plan = Plan::default();
+    // A GROUP BY alias placeholder: a reference without a target relation.
+    let leaf_id = plan.nodes.add_ref(
+        ReferenceTarget::Leaf,
+        0,
+        DerivedType::new(UnrestrictedType::Integer),
+        None,
+        false,
+    );
+    let leaf = plan.get_expression_node(leaf_id).unwrap();
+    let err = plan.get_alias_from_reference_node(&leaf).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "invalid expression: reference without a target relation"
+    );
+}
+
 //TODO: add relation test

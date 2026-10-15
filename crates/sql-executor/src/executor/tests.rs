@@ -726,6 +726,7 @@ mod concat;
 mod empty_motion;
 mod exec_plan;
 mod frontend;
+mod groupby_alias;
 mod like;
 mod not_eq;
 mod not_in;
