@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr};
 
+mod proof;
+pub(crate) use proof::{BucketProof, StaticResolver};
+
 /// Memoizes `bucket_id` position lookups within a single expression.
 type ShardPositionsCache = SmallVec<[(NodeId, Option<Positions>); 4]>;
 
@@ -227,15 +230,52 @@ impl Display for Buckets {
     }
 }
 
+/// Operations shared by expression discovery, with distinct routing and proof results.
+pub trait BucketAlgebra: Clone {
+    fn all() -> Self;
+    fn any() -> Self;
+    fn new_empty() -> Self;
+    fn new_estimated(count: usize) -> Self;
+    fn new_at_most_one() -> Self;
+    fn conjunct(&self, other: &Self) -> Self;
+    fn disjunct(&self, other: &Self) -> Self;
+}
+
+impl BucketAlgebra for Buckets {
+    fn all() -> Self {
+        Self::All
+    }
+    fn any() -> Self {
+        Self::Any
+    }
+    fn new_empty() -> Self {
+        Self::new_empty()
+    }
+    fn new_estimated(count: usize) -> Self {
+        Self::new_estimated(count)
+    }
+    fn new_at_most_one() -> Self {
+        Self::new_at_most_one()
+    }
+    fn conjunct(&self, other: &Self) -> Self {
+        self.conjunct(other)
+    }
+    fn disjunct(&self, other: &Self) -> Self {
+        self.disjunct(other)
+    }
+}
+
 pub trait BucketsResolver {
+    type Buckets: BucketAlgebra;
+
     /// `None` means that buckets cannot be determined.
-    fn buckets_from_motion(&self, motion_id: NodeId) -> Result<Option<Buckets>, SbroadError>;
+    fn buckets_from_motion(&self, motion_id: NodeId) -> Result<Option<Self::Buckets>, SbroadError>;
 
     fn buckets_from_values(
         &self,
         values: &[&Value],
         tier: Option<&SmolStr>,
-    ) -> Result<Buckets, SbroadError>;
+    ) -> Result<Self::Buckets, SbroadError>;
 
     /// Buckets implied by an explicit `bucket_id = <value>` predicate.
     ///
@@ -245,7 +285,7 @@ pub trait BucketsResolver {
         &self,
         value: &Value,
         tier: Option<&SmolStr>,
-    ) -> Result<Buckets, SbroadError>;
+    ) -> Result<Self::Buckets, SbroadError>;
 }
 
 /// Whether `l = r` is provably not `TRUE`: `NULL` on either side, or two values
@@ -263,7 +303,7 @@ fn constant_pair_rejects_eq(l: &Value, r: &Value) -> bool {
 }
 
 /// Accumulate `other` into a conjunction with `acc`.
-fn conjunct_into(acc: &mut Option<Buckets>, other: Buckets) {
+fn conjunct_into<B: BucketAlgebra>(acc: &mut Option<B>, other: B) {
     *acc = Some(match acc.take() {
         Some(acc) => acc.conjunct(&other),
         None => other,
@@ -317,13 +357,13 @@ impl Plan {
 
     /// Collect buckets from an `Eq` whose operands pin the `bucket_id` system
     /// column to a constant or a parameter.
-    fn collect_buckets_from_bucket_id_eq(
+    fn collect_buckets_from_bucket_id_eq<R: BucketsResolver>(
         &self,
         left_id: NodeId,
         right_id: NodeId,
-        resolver: &impl BucketsResolver,
+        resolver: &R,
         tier: Option<&SmolStr>,
-        buckets: &mut Option<Buckets>,
+        buckets: &mut Option<R::Buckets>,
     ) -> Result<(), SbroadError> {
         let operands = |id: NodeId| -> Result<SmallVec<[NodeId; 4]>, SbroadError> {
             match self.get_expression_node(id)? {
@@ -359,7 +399,7 @@ impl Plan {
                 let value_buckets = match value {
                     Some(value) => resolver.buckets_from_bucket_id(value, tier)?,
                     // The binding has not yet occurred.
-                    None => Buckets::new_at_most_one(),
+                    None => R::Buckets::new_at_most_one(),
                 };
                 conjunct_into(buckets, value_buckets);
             }
@@ -407,11 +447,11 @@ impl Plan {
     /// In general it returns `Buckets::All`, but in some cases (e.g. `Eq` and `In` operators) it
     /// will return `Buckets::Filtered` (if such a result is met in SELECT or JOIN filter, it means
     /// that we can execute the query only on some of the replicasets).
-    fn get_buckets_from_expr(
+    fn get_buckets_from_expr<R: BucketsResolver>(
         &self,
         expr_id: NodeId,
-        resolver: &impl BucketsResolver,
-    ) -> Result<Option<Buckets>, SbroadError> {
+        resolver: &R,
+    ) -> Result<Option<R::Buckets>, SbroadError> {
         // Conjunction of everything collected for this expression.
         // The only case several `Buckets` are conjuncted here is `Eq`.
         // See the logic of its handling below.
@@ -429,7 +469,7 @@ impl Plan {
             // The expression is a conjunct of a DNF chain, so a `FALSE` or `NULL`
             // comparison of constants rejects every row of the chain.
             if self.constants_reject_eq(*left, *right)? {
-                return Ok(Some(Buckets::new_empty()));
+                return Ok(Some(R::Buckets::new_empty()));
             }
             // Try to collect buckets from an explicit `bucket_id = value` predicate.
             self.collect_buckets_from_bucket_id_eq(*left, *right, resolver, tier, &mut buckets)?;
@@ -553,7 +593,7 @@ impl Plan {
                             continue;
                         }
                         if has_parameter {
-                            conjunct_into(&mut buckets, Buckets::new_estimated(1));
+                            conjunct_into(&mut buckets, R::Buckets::new_estimated(1));
                         } else if !values.is_empty() {
                             let values_buckets = resolver.buckets_from_values(&values, tier)?;
                             conjunct_into(&mut buckets, values_buckets);
@@ -573,13 +613,23 @@ impl Plan {
     /// chain subexpression, later disjuncting results.
     ///
     /// In case there is just one expression (not `ANDed`) `chains` will remain empty.
-    pub fn get_expression_tree_buckets(
+    pub fn get_expression_tree_buckets<R: BucketsResolver>(
         &self,
         expr_id: NodeId,
         rel_children: &[NodeId],
         subqueries: &[NodeId],
-        resolver: &impl BucketsResolver,
-    ) -> Result<Buckets, SbroadError> {
+        resolver: &R,
+    ) -> Result<R::Buckets, SbroadError> {
+        // Only the whole filter is handled here. A false conjunct follows the
+        // expression-discovery rules below, just as it does during execution.
+        if matches!(
+            self.get_expression_node(expr_id)?,
+            Expression::Constant(Constant {
+                value: Value::Boolean(false) | Value::Null,
+            })
+        ) {
+            return Ok(R::Buckets::new_empty());
+        }
         // When we can't extract buckets from expression,
         // we use default buckets for that expression with
         // idea that expression does not influence the result
@@ -599,11 +649,11 @@ impl Plan {
         // executed on several nodes, we must use Buckets::All,
         // otherwise we should use Buckets::Any.
         let default_buckets = {
-            let mut default_buckets = Buckets::Any;
+            let mut default_buckets = R::Buckets::any();
             for child_id in rel_children.iter().chain(subqueries) {
                 let child_dist = self.rel_distr_ref(*child_id)?;
                 if matches!(child_dist, Distribution::Any | Distribution::Segment { .. }) {
-                    default_buckets = Buckets::All;
+                    default_buckets = R::Buckets::all();
                     break;
                 }
             }
@@ -634,7 +684,7 @@ impl Plan {
             return Ok(first.clone());
         }
 
-        Ok(Buckets::All)
+        Ok(R::Buckets::all())
     }
 }
 

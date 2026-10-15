@@ -316,6 +316,27 @@ fn reuse_cte_values_with_projection_and_function() {
 }
 
 #[test]
+fn reused_cte_materialization_respects_distribution() {
+    for (body, expected_motions) in [
+        ("SELECT a FROM global_t", 1),
+        ("SELECT 1 AS a", 1),
+        ("SELECT a FROM t WHERE (a, b) = (1, 2) LIMIT 1", 0),
+    ] {
+        let sql = format!(
+            "EXPLAIN (LOGICAL) WITH cte AS ({body}) \
+             SELECT * FROM cte UNION ALL SELECT * FROM cte"
+        );
+        let plan = sql_to_optimized_ir(&sql, vec![]);
+        assert_eq!(
+            full_motion_count(&plan),
+            expected_motions,
+            "{sql}\n{}",
+            explain_logical(&plan).unwrap()
+        );
+    }
+}
+
+#[test]
 fn reuse_single_node_cte_does_not_materialize() {
     let sql = r#"
         explain (logical) WITH cte (a) AS (

@@ -13,6 +13,55 @@ import pg8000.native as pg  # type: ignore
 from pg8000.exceptions import DatabaseError  # type: ignore
 
 
+def test_static_bucket_proof_collisions_and_rebinding(postgres: Postgres):
+    postgres.cluster.add_instance(wait_online=True)
+    postgres.cluster.wait_until_buckets_balanced()
+    instance = postgres.instance
+    instance.sql("CREATE TABLE t (a INT PRIMARY KEY) DISTRIBUTED BY (a)")
+    instance.sql("INSERT INTO t VALUES (1), (10208)")
+    assert instance.sql("SELECT a, bucket_id FROM t ORDER BY a") == [[1, 1934], [10208, 1934]]
+    # Without distinct owners the original bug also returns the correct count,
+    # so pick a key whose bucket lives on another replicaset than bucket 1934.
+    instance.sql(f"INSERT INTO t VALUES {', '.join(f'({a})' for a in range(2, 100))}")
+    buckets = dict(instance.sql("SELECT a, bucket_id FROM t WHERE a BETWEEN 2 AND 99"))
+    owners = instance.eval(
+        """
+        local router = pico.router.default
+        assert(router:bucket_count() == 3000)
+        local owners = {}
+        for _, b in ipairs({...}) do owners[tostring(b)] = router:route(b).uuid end
+        return owners
+        """,
+        [1934, *buckets.values()],
+    )
+    other = next(a for a, b in buckets.items() if owners[str(b)] != owners["1934"])
+    instance.sql("DELETE FROM t WHERE a <> ?", other)
+    assert instance.sql(f"""
+        SELECT count(*) FROM (
+            SELECT a FROM t WHERE a = 1 AND a = 10208
+            UNION ALL SELECT a FROM t WHERE a = {other}
+        ) u
+    """) == [[1]]
+    assert instance.sql(f"SELECT count(*) FROM t WHERE (a = 1 AND a = 10208) OR a = {other}") == [[1]]
+    assert instance.sql(f"""
+        SELECT count(*)
+        FROM (SELECT a FROM t WHERE a = 1 AND a = 10208) l
+        JOIN (SELECT a FROM t WHERE a = {other}) r ON l.a = r.a
+    """) == [[0]]
+
+    instance.sql("ALTER USER admin WITH PASSWORD 'P@ssw0rd'")
+    conn = pg.Connection("admin", password="P@ssw0rd", host=postgres.host, port=postgres.port)
+    try:
+        statement = conn.prepare("SELECT count(*) FROM t WHERE a = :x OR a = :y")
+        assert statement.run(x=1, y=1) == [[0]]
+        assert statement.run(x=1, y=other) == [[1]]
+        assert statement.run(x=None, y=other) == [[1]]
+        assert statement.run(x=None, y=None) == [[0]]
+        statement.close()
+    finally:
+        conn.close()
+
+
 def test_extended_query(postgres: Postgres):
     user = "admin"
     password = "P@ssw0rd"

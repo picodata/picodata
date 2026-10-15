@@ -336,3 +336,120 @@ SELECT a FROM t WHERE a <> 1;
 6,
 7,
 8
+
+-- TEST: bucket-proof-init
+-- SQL:
+DELETE FROM t;
+INSERT INTO t VALUES (1), (2), (10208);
+DELETE FROM g;
+INSERT INTO g VALUES (2);
+
+-- TEST: bucket-proof-real-hash
+-- SQL:
+SELECT a, bucket_id FROM t ORDER BY a;
+-- EXPECTED:
+1, 1934,
+2, 1410,
+10208, 1934
+
+-- TEST: bucket-proof-data
+-- SQL:
+DELETE FROM t WHERE a <> 2;
+
+-- TEST: bucket-proof-contradictory-union
+-- SQL:
+SELECT count(*) FROM (
+    SELECT a FROM t WHERE a = 1 AND a = 10208
+    UNION ALL
+    SELECT a FROM t WHERE a = 2
+) u;
+-- EXPECTED:
+1
+
+-- TEST: bucket-proof-contradictory-or
+-- SQL:
+SELECT count(*) FROM t WHERE (a = 1 AND a = 10208) OR a = 2;
+-- EXPECTED:
+1
+
+-- TEST: bucket-proof-contradictory-join
+-- SQL:
+SELECT count(*)
+FROM (SELECT a FROM t WHERE a = 1 AND a = 10208) l
+JOIN (SELECT a FROM t WHERE a = 2) r ON l.a = r.a;
+-- EXPECTED:
+0
+
+-- TEST: bucket-proof-false-conjunct
+-- SQL:
+SELECT count(*) FROM t
+WHERE (a = 1 AND a = 10208 AND false) OR a = 2;
+-- EXPECTED:
+1
+
+-- TEST: bucket-proof-common-key
+-- SQL:
+SELECT count(*) FROM t WHERE (a = 1 AND a = 10208) OR a = 1;
+-- EXPECTED:
+0
+
+-- TEST: bucket-proof-empty-count
+-- SQL:
+SELECT count(*) FROM t WHERE false UNION ALL SELECT a FROM t;
+-- UNORDERED:
+0,
+2
+
+-- TEST: bucket-proof-empty-sum
+-- SQL:
+SELECT sum(a) FROM t WHERE false UNION ALL SELECT a FROM t;
+-- UNORDERED:
+NULL,
+2
+
+-- TEST: bucket-proof-global-false
+-- SQL:
+SELECT count(*)
+FROM (SELECT a FROM t WHERE false) l
+JOIN g ON l.a = g.a
+UNION ALL
+SELECT a FROM t WHERE a = 2;
+-- UNORDERED:
+0,
+2
+
+-- TEST: bucket-proof-global-contradiction
+-- SQL:
+SELECT count(*)
+FROM (SELECT a FROM t WHERE a = 1 AND a = 10208) l
+JOIN g ON l.a = g.a
+UNION ALL
+SELECT a FROM t WHERE a = 2;
+-- UNORDERED:
+0,
+2
+
+-- TEST: bucket-proof-composite-init
+-- SQL:
+CREATE TABLE composite (a INT, b INT, PRIMARY KEY (a, b))
+DISTRIBUTED BY (a, b);
+INSERT INTO composite VALUES (1, 2);
+
+-- TEST: bucket-proof-composite-union
+-- SQL:
+SELECT count(*) FROM (
+    SELECT a FROM composite WHERE (a, b) = (1, 2)
+    UNION ALL
+    SELECT a FROM composite WHERE (a, b) = (1, 2)
+) u;
+-- EXPECTED:
+2
+
+-- TEST: bucket-proof-composite-join
+-- SQL:
+SELECT count(*)
+FROM (SELECT a, b FROM composite WHERE (a, b) = (1, 2)) l
+JOIN (SELECT a, b FROM composite WHERE (a, b) = (1, 2)) r
+ON (l.a, l.b) = (r.a, r.b);
+-- EXPECTED:
+1

@@ -1090,6 +1090,91 @@ mod except;
 mod not_in;
 mod segment;
 
+/// Enrichment may add a routing predicate that safely narrows these queries.
+/// Their results with either setting are covered by integration tests.
+#[cfg(not(feature = "enrich_restrictions"))]
+#[test]
+fn static_bucket_proofs_keep_reduce_for_colliding_contradictions() {
+    let inputs = [
+        "SELECT a FROM t5 WHERE (a = 1 AND a = 10208) OR a = 2",
+        "SELECT a FROM t5 WHERE a = 1 AND a = 10208 \
+         UNION ALL SELECT a FROM t5 WHERE a = 2",
+        "SELECT l.a FROM (SELECT a FROM t5 WHERE a = 1 AND a = 10208) l \
+         JOIN (SELECT a FROM t5 WHERE a = 2) r ON l.a = r.a",
+    ];
+    for input in inputs {
+        let query = format!("EXPLAIN (LOGICAL) SELECT count(*) FROM ({input}) u");
+        let plan = sql_to_optimized_ir(&query, vec![]);
+        let explain = explain_logical(&plan).unwrap();
+        assert!(explain.contains("sum(count_"), "{query}\n{explain}");
+    }
+}
+
+#[test]
+fn static_bucket_proofs_preserve_shared_keys() {
+    let inputs = [
+        "SELECT a FROM t5 WHERE (a = 1 AND a = 10208) OR a = 1",
+        "SELECT a FROM t5 WHERE a = 1 UNION ALL SELECT a FROM t5 WHERE a = 1",
+        "SELECT a FROM t WHERE (a, b) = (1, 2) \
+         UNION ALL SELECT a FROM t WHERE (a, b) = (1, 2)",
+        "SELECT l.a FROM (SELECT a, b FROM t WHERE (a, b) = (1, 2)) l \
+         JOIN (SELECT a, b FROM t WHERE (a, b) = (1, 2)) r \
+         ON (l.a, l.b) = (r.a, r.b)",
+    ];
+    for input in inputs {
+        let query = format!("EXPLAIN (LOGICAL) SELECT count(*) FROM ({input}) u");
+        let plan = sql_to_optimized_ir(&query, vec![]);
+        assert_eq!(*plan.slices(), Slices::empty(), "{query}");
+    }
+}
+
+/// The full motion under the join is Global: it must not hide the CTE's key.
+#[test]
+fn static_bucket_proofs_keep_key_across_full_motion_join() {
+    let query = "EXPLAIN (LOGICAL) WITH cte AS (SELECT a, b FROM t5 WHERE a = 1) \
+                 SELECT c1.a FROM cte c1 JOIN cte c2 ON c1.b = c2.b \
+                 ORDER BY c1.a LIMIT 1";
+    let plan = sql_to_optimized_ir(query, vec![]);
+    let explain = explain_logical(&plan).unwrap();
+    assert_eq!(explain.matches("motion [").count(), 1, "{explain}");
+}
+
+#[test]
+fn static_bucket_proofs_isolate_empty_global_join_aggregates() {
+    for filter in ["false", "a = 1 AND a = 10208"] {
+        let query = format!(
+            "EXPLAIN (LOGICAL) SELECT count(*) FROM (SELECT a FROM t5 WHERE {filter}) l \
+             JOIN global_t g ON l.a = g.b \
+             UNION ALL SELECT a FROM t5 WHERE a = 2"
+        );
+        let plan = sql_to_optimized_ir(&query, vec![]);
+        let explain = explain_logical(&plan).unwrap();
+        assert!(explain.contains("motion [policy: segment"), "{explain}");
+    }
+}
+
+#[test]
+fn static_bucket_proofs_do_not_assume_parameters_stay_equal() {
+    use sql::ir::options::Options;
+    use sql::ir::value::Value;
+
+    let prepared = prepared_optimized_ir(
+        "EXPLAIN (LOGICAL) SELECT count(*) FROM t5 WHERE a = $1 OR a = $2",
+        &[DerivedType::unknown(); 2],
+    );
+    for values in [vec![1, 1], vec![1, 2]] {
+        let bound = prepared
+            .clone()
+            .bind_statement(
+                values.into_iter().map(Value::from).collect(),
+                Options::default(),
+            )
+            .unwrap();
+        let explain = explain_logical(&bound).unwrap();
+        assert!(explain.contains("sum(count_"), "{explain}");
+    }
+}
+
 /// With GROUP BY an empty input yields no groups, so a single-shard input
 /// keeps skipping the reduce stage, also behind an inner join whose both sides
 /// are on that shard.
@@ -1305,11 +1390,9 @@ fn scalar_aggregate_over_false_under_union_all() {
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
-        projection (sum(count_1::int::int)::int::int -> n)
-          motion [policy: full, program: ReshardIfNeeded]
-            projection (count(*)::int -> count_1)
-              selection (false::bool)
-                scan t5
+        projection (count(*)::int -> n)
+          selection (false::bool)
+            scan t5
       projection (t5.a::int -> a)
         selection (t5.a::int <> 1::int)
           scan t5

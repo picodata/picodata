@@ -7,11 +7,9 @@ use smol_str::{format_smolstr, SmolStr};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
-use std::hash::{Hash, Hasher};
-use twox_hash::XxHash3_64;
 
 use crate::errors::{Action, Entity, SbroadError};
-use crate::ir::bucket::{value_to_bucket_id, BucketSet, Buckets, BucketsResolver};
+use crate::ir::bucket::{BucketAlgebra, BucketProof, StaticResolver};
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::expression::ColumnPositionMap;
 use crate::ir::node::expression::Expression;
@@ -328,8 +326,8 @@ struct Strategy {
 /// the cached answer; otherwise affected entries must be invalidated before reuse.
 #[derive(Default)]
 struct MotionsCache {
-    /// Single-node bucket proofs, including `None` when no proof was found.
-    single_node: AHashMap<NodeId, Option<Buckets>>,
+    /// Routing proofs, including unknown placement at a motion boundary.
+    single_node: AHashMap<NodeId, BucketProof>,
     /// Whether a union will still expose a one-stage scalar aggregate on the
     /// storages after the strategy returned by `resolve_union_conflicts` is applied.
     union_aggregates: AHashMap<NodeId, bool>,
@@ -615,20 +613,15 @@ impl Plan {
         rel_id: NodeId,
         cache: &mut MotionsCache,
     ) -> Result<bool, SbroadError> {
-        Ok(self.single_node_buckets(rel_id, cache)?.is_some())
+        Ok(self.single_node_buckets(rel_id, cache)?.is_single_node())
     }
 
-    /// The buckets that prove [`Self::is_single_node_subtree`], if it holds.
-    ///
-    /// Exact sets contain XxHash3 fingerprints of sharding key values, not
-    /// bucket ids. Matching fingerprints are treated as matching keys; hash
-    /// collisions are not checked. Different fingerprints may route to the
-    /// same bucket, so this check can miss single-bucket joins.
+    /// Routing bounds used to prove [`Self::is_single_node_subtree`].
     fn single_node_buckets(
         &self,
         rel_id: NodeId,
         cache: &mut MotionsCache,
-    ) -> Result<Option<Buckets>, SbroadError> {
+    ) -> Result<BucketProof, SbroadError> {
         if let Some(buckets) = cache.single_node.get(&rel_id) {
             // The cache must not change decisions: recompute from the current
             // plan without reading any entry of the pass's cache.
@@ -655,43 +648,24 @@ impl Plan {
         &self,
         rel_id: NodeId,
         cache: &mut MotionsCache,
-    ) -> Result<Option<Buckets>, SbroadError> {
-        struct StaticResolver;
-
-        impl BucketsResolver for StaticResolver {
-            fn buckets_from_motion(
-                &self,
-                _motion_id: NodeId,
-            ) -> Result<Option<Buckets>, SbroadError> {
-                Ok(None)
-            }
-
-            fn buckets_from_values(
-                &self,
-                values: &[&Value],
-                _tier: Option<&SmolStr>,
-            ) -> Result<Buckets, SbroadError> {
-                let mut hasher = XxHash3_64::new();
-                values.iter().for_each(|value| value.hash(&mut hasher));
-                let hash = hasher.finish();
-                Ok(Buckets::new_filtered(HashSet::from_iter([hash])))
-            }
-
-            fn buckets_from_bucket_id(
-                &self,
-                value: &Value,
-                _tier: Option<&SmolStr>,
-            ) -> Result<Buckets, SbroadError> {
-                let buckets = match value_to_bucket_id(value) {
-                    Some(id) if id >= 1 => Buckets::new_at_most_one(),
-                    _ => Buckets::new_empty(),
-                };
-                Ok(buckets)
-            }
+    ) -> Result<BucketProof, SbroadError> {
+        // A Single subtree can be executed as Any at a stage boundary. Do not
+        // carry a key across that change of routing mode, or across a motion.
+        match self.rel_distr_ref(rel_id) {
+            Ok(Distribution::Single) => return Ok(BucketProof::Unknown),
+            // Replicated on every node (e.g. a full motion): no key, any node will do.
+            Ok(Distribution::Global) => return Ok(BucketProof::Any),
+            _ => {}
         }
-
         let rel = self.get_relation_node(rel_id)?;
         match rel {
+            Relational::ScanRelation(scan) => {
+                Ok(if self.get_relation_or_error(&scan.relation)?.is_global() {
+                    BucketProof::Any
+                } else {
+                    BucketProof::All
+                })
+            }
             Relational::Projection(_)
             | Relational::ScanSubQuery(_)
             | Relational::ScanCte(_)
@@ -703,73 +677,41 @@ impl Plan {
                 self.single_node_buckets(child_id, cache)
             }
             Relational::Selection(sel) => {
-                let child_dist = self.rel_distr_ref(sel.child)?;
-                if !matches!(child_dist, Distribution::Segment { .. }) {
-                    return Ok(None);
-                }
-                let buckets = self.get_expression_tree_buckets(
+                let child = self.single_node_buckets(sel.child, cache)?;
+                let filter = self.get_expression_tree_buckets(
                     sel.filter,
                     &[sel.child],
                     &sel.subqueries,
-                    &StaticResolver {},
+                    &StaticResolver,
                 )?;
-                if buckets.is_single_node() {
-                    return Ok(Some(buckets));
-                }
-                self.single_node_buckets(sel.child, cache)
+                Ok(child.conjunct(&filter))
             }
-            // A left join inherits the left input's proof. For an inner join
-            // without a global input, require exact sets whose union has at
-            // most one fingerprint. Two unknown single-bucket sets may differ.
-            // Do not follow motions: they can change placement.
-            Relational::Join(join) => match join.kind {
-                JoinKind::LeftOuter => self.single_node_buckets(join.left, cache),
-                JoinKind::Inner => {
-                    // A global input is available on every node. Any keeps a
-                    // nonempty bucket set, but Any union empty remains Any.
-                    for (side, other) in [(join.left, join.right), (join.right, join.left)] {
-                        if matches!(self.rel_distr_ref(side)?, Distribution::Global) {
-                            let Some(buckets) = self.single_node_buckets(other, cache)? else {
-                                return Ok(None);
-                            };
-                            let buckets = Buckets::Any.disjunct(&buckets);
-                            return Ok(buckets.is_single_node().then_some(buckets));
-                        }
+            Relational::Join(join) => {
+                let left = self.single_node_buckets(join.left, cache)?;
+                let right = self.single_node_buckets(join.right, cache)?;
+                match join.kind {
+                    JoinKind::LeftOuter => Ok(match left {
+                        BucketProof::Any => left.disjunct(&right),
+                        _ => left,
+                    }),
+                    JoinKind::Inner => {
+                        let filter = self.get_expression_tree_buckets(
+                            join.condition,
+                            &[join.left, join.right],
+                            &join.subqueries,
+                            &StaticResolver,
+                        )?;
+                        Ok(left.disjunct(&right).conjunct(&filter))
                     }
-                    let Some(left) = self.single_node_buckets(join.left, cache)? else {
-                        return Ok(None);
-                    };
-                    let Some(right) = self.single_node_buckets(join.right, cache)? else {
-                        return Ok(None);
-                    };
-                    if !matches!(left, Buckets::Filtered(BucketSet::Exact(_)))
-                        || !matches!(right, Buckets::Filtered(BucketSet::Exact(_)))
-                    {
-                        return Ok(None);
-                    }
-                    let buckets = left.disjunct(&right);
-                    Ok(buckets.is_single_node().then_some(buckets))
                 }
-            },
-            // Both branches run in one stage: require exact sets whose union
-            // has at most one fingerprint, as for an inner join.
+            }
             Relational::UnionAll(UnionAll { left, right, .. }) => {
-                let (left, right) = (*left, *right);
-                let Some(left) = self.single_node_buckets(left, cache)? else {
-                    return Ok(None);
-                };
-                let Some(right) = self.single_node_buckets(right, cache)? else {
-                    return Ok(None);
-                };
-                if !matches!(left, Buckets::Filtered(BucketSet::Exact(_)))
-                    || !matches!(right, Buckets::Filtered(BucketSet::Exact(_)))
-                {
-                    return Ok(None);
-                }
-                let buckets = left.disjunct(&right);
-                Ok(buckets.is_single_node().then_some(buckets))
+                let left = self.single_node_buckets(*left, cache)?;
+                let right = self.single_node_buckets(*right, cache)?;
+                Ok(left.disjunct(&right))
             }
-            _ => Ok(None),
+            Relational::Values(_) | Relational::SelectWithoutScan(_) => Ok(BucketProof::Any),
+            _ => Ok(BucketProof::Unknown),
         }
     }
 
@@ -2276,27 +2218,19 @@ impl Plan {
         Ok(map)
     }
 
-    /// Whether both union branches are proven to run on one and the same
-    /// nonempty bucket. Fingerprints are not bucket ids: different ones may
-    /// share a bucket, which only costs an extra motion.
+    /// Whether both branches select the same nonempty bucket. A possibly empty
+    /// input cannot pin a scalar aggregate, which emits a row even without input.
     fn union_shares_one_bucket(
         &self,
         left: NodeId,
         right: NodeId,
         cache: &mut MotionsCache,
     ) -> Result<bool, SbroadError> {
-        let exact = |buckets: &Buckets| matches!(buckets, Buckets::Filtered(BucketSet::Exact(set)) if !set.is_empty());
-        Ok(
-            match (
-                self.single_node_buckets(left, cache)?,
-                self.single_node_buckets(right, cache)?,
-            ) {
-                (Some(left), Some(right)) if exact(&left) && exact(&right) => {
-                    left.disjunct(&right).is_single_node()
-                }
-                _ => false,
-            },
-        )
+        let left = self.single_node_buckets(left, cache)?;
+        let right = self.single_node_buckets(right, cache)?;
+        Ok(left.is_nonempty_filtered()
+            && right.is_nonempty_filtered()
+            && left.disjunct(&right).is_single_node())
     }
 
     /// Whether the stage computing `rel_id` also computes a scalar aggregate
@@ -2776,7 +2710,10 @@ impl Plan {
                     } else {
                         let is_single_node = self.is_single_node_subtree(child, &mut cache)?;
                         let is_reused = cte_ref_counts.get(&child).copied().unwrap_or(0) > 1;
-                        if !is_single_node {
+                        // Global CTEs still need VALUES and reuse materialization checks.
+                        if !is_single_node
+                            || matches!(self.rel_distr_ref(child)?, Distribution::Global)
+                        {
                             let strategy = self.resolve_cte_conflicts(id, is_reused)?;
                             self.insert_motion_nodes(strategy)?;
                             let new_child_id = self.get_first_rel_child(id)?;

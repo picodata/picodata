@@ -4039,7 +4039,6 @@ dependencies = [
  "sql-type-system",
  "tarantool",
  "time",
- "twox-hash",
  "uuid 1.23.1",
 ]
 
