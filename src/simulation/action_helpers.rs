@@ -15,29 +15,73 @@ use crate::simulation::raft::PretendCasOutcome;
 use crate::simulation::raft::PretendCasRequest;
 use crate::storage::Replicasets;
 use crate::storage::SystemTable;
+use crate::traft::op::Dml;
 use ::tarantool::space::UpdateOps;
 use std::cell::Cell;
 use std::rc::Rc;
 
 pub fn crash_instance(cluster: &PretendCluster, instance_name: &str) {
-    let instance = cluster.instance(instance_name);
     do_action(
         cluster,
         PretendAction::CrashInstance {
-            instance: instance.name.clone(),
+            instance: instance_name.into(),
         },
     );
 }
 
 pub fn restart_instance(cluster: &PretendCluster, instance_name: &str) {
-    let instance = cluster.instance(instance_name);
     do_action(
         cluster,
         PretendAction::RestartInstance {
-            instance: instance.name.clone(),
+            instance: instance_name.into(),
         },
     );
     cluster.run_to_next_park();
+}
+
+pub fn commit_governor_dmls(cluster: &PretendCluster, what: &str, dmls: Vec<Dml>) {
+    assert_eq!(
+        cluster.cas_fault_probability.get(),
+        0.0,
+        "{what} would be proposed into a CAS-faulting run, where a single \
+         attempt isn't enough — commit governor decisions with the knob off",
+    );
+
+    // The proposal has to be the head of the outbox, since that's the one
+    // `ResolveCasRequest` decides — a decision resolved behind somebody
+    // else's proposal is not the one this asked for.
+    let leader = cluster.most_applied_instance();
+    assert_eq!(leader.applied_index.get(), cluster.raft_log.last_index());
+    assert!(
+        leader.cas_outbox.borrow().is_empty(),
+        "[{}] stands in for the leader, so it must be free to propose {what}, \
+         but it has a proposal of its own outstanding",
+        leader.name,
+    );
+
+    let outcome: CasOutcomeSlot = Rc::new(Cell::new(None));
+    leader.cas_outbox.borrow_mut().push_back(PretendCasRequest {
+        index: leader.applied_index.get(),
+        dmls,
+        outcome: outcome.clone(),
+    });
+
+    do_action(
+        cluster,
+        PretendAction::ResolveCasRequest {
+            instance: leader.name.clone(),
+            outcome: None,
+        },
+    );
+
+    // Must land in a single attempt.
+    let decided = outcome.get().expect("just resolved");
+
+    assert!(
+        matches!(decided, PretendCasOutcome::Committed { .. }),
+        "{what} got {decided:?} instead of committing; trace: {:#?}",
+        cluster.trace.borrow(),
+    );
 }
 
 /// World action: proposes the DML batch a real governor's promotion would
@@ -74,24 +118,19 @@ pub fn commit_master_switchover(cluster: &PretendCluster, replicaset_name: &str,
 
     // The proposal has to be the head of the outbox.
     let leader = cluster.most_applied_instance();
-    assert!(
-        leader.cas_outbox.borrow().is_empty(),
-        "[{}] stands in for the leader, so it must be free to propose the promotion, \
-         but it has a proposal of its own outstanding",
-        leader.name,
-    );
+    let topology_ref = leader.topology.get();
 
-    let counter = {
-        let topology_ref = leader.topology.get();
-        topology_ref
-            .replicaset_by_name(&replicaset.name)
-            .expect("must exist")
-            .master_change_counter
-    };
-    let outcome: CasOutcomeSlot = Rc::new(Cell::new(None));
-    leader.cas_outbox.borrow_mut().push_back(PretendCasRequest {
-        index: leader.applied_index.get(),
-        dmls: vec![Replicasets::dml_update(
+    let master_change_counter = topology_ref
+        .replicaset_by_name(&replicaset.name)
+        .expect("must exist")
+        .master_change_counter;
+
+    drop(topology_ref);
+
+    commit_governor_dmls(
+        cluster,
+        &format!("the promotion of {new_master_name}"),
+        vec![Replicasets::dml_update(
             &[&*replicaset.name],
             UpdateOps::new()
                 .into_assign(
@@ -104,27 +143,12 @@ pub fn commit_master_switchover(cluster: &PretendCluster, replicaset_name: &str,
                     new_master_name.clone(),
                 )
                 .expect("valid update op")
-                .into_assign(column_name!(Replicaset, master_change_counter), counter + 1)
+                .into_assign(
+                    column_name!(Replicaset, master_change_counter),
+                    master_change_counter + 1,
+                )
                 .expect("valid update op"),
         )],
-        outcome: outcome.clone(),
-    });
-
-    do_action(
-        cluster,
-        PretendAction::ResolveCasRequest {
-            instance: leader.name.clone(),
-            outcome: None,
-        },
-    );
-
-    // Must land in a single attempt.
-    let decided = outcome.get().expect("just resolved");
-    assert!(
-        matches!(decided, PretendCasOutcome::Committed { .. }),
-        "the promotion of {new_master_name} got {decided:?} instead of committing; \
-         trace: {:#?}",
-        cluster.trace.borrow(),
     );
 }
 
@@ -141,7 +165,7 @@ pub fn drop_next_cas_request(cluster: &PretendCluster, instance_name: &str) {
 }
 
 /// World action: times out the `instance`'s first CAS request in the queue.
-pub fn expire_cas_wait(cluster: &PretendCluster, instance_name: &str) {
+pub fn timeout_cas_wait(cluster: &PretendCluster, instance_name: &str) {
     let instance = cluster.instance(instance_name);
     let fiber = instance.resharding_loop_fiber();
     let state = fiber.state();
@@ -188,13 +212,12 @@ pub fn run_until_last_action(
 /// Applies every committed global entry to every instance's applied index
 /// *without* waking anyone.
 pub fn catch_up_on_raft_log(cluster: &PretendCluster) {
-    for name in cluster.instance_names() {
-        let instance = cluster.instance(&name);
+    for instance in cluster.instances() {
         while instance.applied_index.get() < cluster.raft_log.last_index() {
             do_action(
                 cluster,
                 PretendAction::AdvanceGlobal {
-                    instance: name.clone(),
+                    instance: instance.name.clone(),
                     index: instance.applied_index.get() + 1,
                     dmls: None,
                 },

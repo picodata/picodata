@@ -14,12 +14,12 @@ use crate::simulation::action_helpers::catch_up_on_sharded_wal;
 use crate::simulation::action_helpers::commit_master_switchover;
 use crate::simulation::action_helpers::crash_instance;
 use crate::simulation::action_helpers::drop_next_cas_request;
-use crate::simulation::action_helpers::expire_cas_wait;
 use crate::simulation::action_helpers::request_resharding_status;
 use crate::simulation::action_helpers::restart_instance;
 use crate::simulation::action_helpers::run_until_cas_request_is_outstanding;
 use crate::simulation::action_helpers::run_until_last_action;
 use crate::simulation::action_helpers::set_sharded_replication_paused;
+use crate::simulation::action_helpers::timeout_cas_wait;
 use crate::simulation::cluster::PretendCluster;
 use crate::simulation::engine::run_until;
 use crate::simulation::engine::run_until_converged;
@@ -275,7 +275,7 @@ fn do_simulation_cas_committed_after_timeout(params: ReshardingTestParameters) {
 
     request_resharding_status(&cluster, name, ReshardingStatus::Initialize);
     run_until_cas_request_is_outstanding(&cluster, name);
-    expire_cas_wait(&cluster, name);
+    timeout_cas_wait(&cluster, name);
     run_until_converged(&cluster);
 
     assert!(
