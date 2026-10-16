@@ -40,9 +40,8 @@ pub fn spawn_resharding_loop_fiber(instance: &Rc<PretendInstance>) {
 
     let instance = instance.clone();
     let fiber_copy = fiber.clone();
-    let fiber_name = format!("{}/{}", instance.name, fiber.id.name);
     let join_handle = fiber::Builder::new()
-        .name(fiber_name)
+        .name(fiber.id.to_string())
         .func_async(async move {
             loop {
                 // The only check outside a park: `resharding_loop` can return

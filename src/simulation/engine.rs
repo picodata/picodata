@@ -14,6 +14,7 @@ use crate::simulation::sharded_wal::undo_sharded_statement;
 use crate::simulation::sharded_wal::WalOutcome;
 use crate::simulation::sharding::is_governor_poke_enabled;
 use crate::simulation::sharding::spawn_resharding_loop_fiber;
+use crate::tlog;
 use rand::RngExt;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -193,8 +194,7 @@ pub fn do_action(cluster: &PretendCluster, mut action: PretendAction) {
         }
     }
 
-    crate::tlog!(Info, "do_action({action:?})");
-
+    tlog!(Info, "PretendCluster::do_action({action:?})");
     // Save the action to the trace
     cluster.trace.borrow_mut().push(action);
 }

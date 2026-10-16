@@ -71,8 +71,6 @@ pub struct PretendInstance {
     /// system tables.
     pub catalog: Catalog,
 
-    pub local_buckets: RefCell<BTreeMap<u64, VshardBucketRecord>>,
-
     ////////////////////////////////////////////////////////////////////////////
     // CAS/raft
     ////////////////////////////////////////////////////////////////////////////
@@ -128,6 +126,8 @@ pub struct PretendInstance {
     ////////////////////////////////////////////////////////////////////////////
     // buckets
     ////////////////////////////////////////////////////////////////////////////
+    pub local_buckets: RefCell<BTreeMap<u64, VshardBucketRecord>>,
+
     /// vshard's per-bucket ref counts and locks. No SQL traffic is simulated,
     /// so `rw`/`ro` never become nonzero on their own — a test sets a ref
     /// by writing to this map directly. `ro_lock`/`rw_lock` aren't simulated
@@ -193,7 +193,7 @@ impl PretendInstance {
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // wait_index
+    // raft
     ////////////////////////////////////////////////////////////////////////////
 
     /// Parks the calling fiber until this instance's `applied_index` reaches
@@ -455,7 +455,7 @@ impl Platform for PretendInstance {
             .collect())
     }
 
-    fn write_local_buckets(&self, recs: Vec<VshardBucketRecord>) -> Result<()> {
+    fn write_local_buckets(&self, buckets: Vec<VshardBucketRecord>) -> Result<()> {
         // A replica getting here means the loop's own
         // `i_am_replicaset_master` check was somehow bypassed. See
         // `write_sharded_entry` for which races this does and doesn't catch.
@@ -464,7 +464,7 @@ impl Platform for PretendInstance {
             "[{}] sharded write from a non-master",
             self.name
         );
-        write_sharded_entry(self, ShardedEntry::WriteBuckets { recs })
+        write_sharded_entry(self, ShardedEntry::WriteBuckets { buckets })
     }
 
     fn box_schema_version(&self) -> u64 {

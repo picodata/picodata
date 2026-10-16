@@ -141,20 +141,6 @@ impl PretendFiber {
         join_handle.join();
     }
 
-    /// This function is only needed after the initial fiber start.
-    /// After that fibers are always parked in between engine actions.
-    pub fn wait_parked(&self) {
-        // Note: there's only one running fiber at any moment, so ideally we
-        // only reschedule once like this:
-        // `scheduler -(yield)-> running_fiber -(yield)-> scheduler`,
-        // but because there could be other fibers from tarantool's runtime, we
-        // could potentially yield to them and back several times, so we have to
-        // loop until we get exactly what we want.
-        while self.is_running() {
-            fiber::reschedule();
-        }
-    }
-
     /// Registers `state` as this fiber's current park and blocks until the
     /// scheduler resolves it, returning its [`WaitOutcome`].
     pub fn park(&self, state: FiberState) -> WaitOutcome {

@@ -14,12 +14,6 @@ pub struct ShardedWal {
 }
 
 impl ShardedWal {
-    pub fn new() -> Self {
-        Self {
-            entries: RefCell::new(Vec::new()),
-        }
-    }
-
     pub fn push(&self, entry: ShardedEntry) {
         self.entries.borrow_mut().push(entry);
     }
@@ -37,7 +31,7 @@ impl ShardedWal {
 /// its replicaset's [`ShardedWal`].
 #[derive(Clone, Debug)]
 pub enum ShardedEntry {
-    WriteBuckets { recs: Vec<VshardBucketRecord> },
+    WriteBuckets { buckets: Vec<VshardBucketRecord> },
 }
 
 /// One transaction an instance has applied to its own memory and whose WAL
@@ -168,19 +162,21 @@ pub fn apply_next_sharded_entry(instance: &PretendInstance) {
 /// Returns what it takes to put the local state back, for the WAL-failure
 /// path.
 pub fn apply_sharded_statement(instance: &PretendInstance, entry: &ShardedEntry) -> WalUndo {
-    let mut buckets = instance.local_buckets.borrow_mut();
-    let mut undo = WalUndo {
-        buckets: Vec::new(),
-    };
+    let mut old_buckets = vec![];
+
+    let mut local_buckets = instance.local_buckets.borrow_mut();
     match entry {
-        ShardedEntry::WriteBuckets { recs } => {
-            for rec in recs {
-                let pre_image = buckets.insert(rec.bucket_id, rec.clone());
-                undo.buckets.push((rec.bucket_id, pre_image));
+        ShardedEntry::WriteBuckets { buckets } => {
+            for record in buckets {
+                let old = local_buckets.insert(record.bucket_id, record.clone());
+                old_buckets.push((record.bucket_id, old));
             }
         }
     }
-    undo
+
+    WalUndo {
+        buckets: old_buckets,
+    }
 }
 
 /// Loses every transaction which hadn't reached the disk, rolling back
@@ -198,10 +194,11 @@ pub fn lose_unstable_wal(instance: &PretendInstance) {
 
 pub fn undo_sharded_statement(instance: &PretendInstance, undo: WalUndo) {
     let mut buckets = instance.local_buckets.borrow_mut();
-    for (bucket_id, pre_image) in undo.buckets.into_iter().rev() {
-        match pre_image {
-            Some(rec) => buckets.insert(bucket_id, rec),
+    for (bucket_id, old_bucket) in undo.buckets.into_iter().rev() {
+        match old_bucket {
+            Some(old_bucket) => buckets.insert(bucket_id, old_bucket),
             None => buckets.remove(&bucket_id),
         };
     }
+    // TODO: run vshard's on_rollback trigger
 }
