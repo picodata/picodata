@@ -9,6 +9,7 @@ use crate::simulation::cluster::PretendCluster;
 use crate::simulation::fiber::simulation_fiber_is_stopped;
 use crate::simulation::fiber::FiberState;
 use crate::simulation::fiber::PretendFiber;
+use crate::simulation::fiber::PretendFiberId;
 use crate::simulation::fiber::WaitOutcome;
 use crate::simulation::platform::Platform;
 use crate::simulation::raft::CasOutcomeSlot;
@@ -354,6 +355,44 @@ impl PretendInstance {
     pub fn last_requested_resharding_status(&self) -> ReshardingStatus {
         self.requested_status_tx.borrow().get().0
     }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // diagnostics
+    ////////////////////////////////////////////////////////////////////////////
+
+    pub fn fingerprint(&self) -> InstanceFingerprint {
+        InstanceFingerprint {
+            name: self.name.clone(),
+
+            applied: self.applied_index.get(),
+
+            cas_outbox_len: self.cas_outbox.borrow().len(),
+
+            sharded_wal_len: self.sharded_wal.len(),
+            sharded_lsn: self.sharded_lsn.get(),
+            sharded_replication_paused: self.sharded_replication_paused.get(),
+            unstable_wal_len: self.unstable_wal.borrow().len(),
+
+            local_bucket_count: self.local_buckets.borrow().len(),
+
+            bucket_refs: self.bucket_refs.borrow().values().copied().collect(),
+
+            resharding_loop_requested_status: self.requested_status_tx.borrow().get(),
+
+            next_fiber_id: self.next_fiber_id.get(),
+            fiber_states: self
+                .fibers
+                .borrow()
+                .values()
+                .map(|fiber| {
+                    (
+                        fiber.id.clone(),
+                        std::mem::discriminant(&*fiber.state.borrow()),
+                    )
+                })
+                .collect(),
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -505,4 +544,31 @@ impl Platform for PretendInstance {
         // Nothing to discover: the simulation has no vshard router.
         Ok(())
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// InstanceFingerprint
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstanceFingerprint {
+    pub name: InstanceName,
+
+    pub applied: RaftIndex,
+
+    pub cas_outbox_len: usize,
+
+    pub sharded_wal_len: usize,
+    pub sharded_lsn: usize,
+    pub sharded_replication_paused: bool,
+    pub unstable_wal_len: usize,
+
+    pub local_bucket_count: usize,
+
+    pub bucket_refs: Vec<BucketRef>,
+
+    pub resharding_loop_requested_status: (ReshardingStatus, u64),
+
+    pub next_fiber_id: FiberId,
+    pub fiber_states: Vec<(PretendFiberId, std::mem::Discriminant<FiberState>)>,
 }

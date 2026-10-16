@@ -8,6 +8,7 @@ use crate::simulation::catalog::create_pretend_catalog;
 use crate::simulation::engine::do_action;
 use crate::simulation::fiber::CallStack;
 use crate::simulation::fiber::PretendFiber;
+use crate::simulation::instance::InstanceFingerprint;
 use crate::simulation::instance::PretendInstance;
 use crate::simulation::raft::PretendRaftLog;
 use crate::simulation::sharded_wal::ShardedWal;
@@ -16,6 +17,7 @@ use crate::simulation::sharding::spawn_resharding_loop_fiber;
 use crate::storage::Catalog;
 use crate::tier::Tier;
 use crate::topology_cache::TopologyCache;
+use crate::traft::RaftIndex;
 use rand::rngs::StdRng;
 use rand::RngExt;
 use rand::SeedableRng;
@@ -74,6 +76,14 @@ pub struct PretendCluster {
 
     /// The probability that [`PretendAction::CommitWalWrite`] fails a WAL write.
     pub disk_write_fault_probability: Cell<f64>,
+
+    /// Used to detect a live-locked cluster, i.e. cluster which performs actions
+    /// with no changes to the state.
+    ///
+    /// See also [`Self::fingerprint`].
+    pub last_fingerprint: Cell<Option<ClusterFingerprint>>,
+    pub steps_without_progress: Cell<usize>,
+    pub expect_no_progress: Cell<bool>,
 }
 
 /// A collection of all instances in a [`PretendCluster`].
@@ -96,6 +106,9 @@ impl PretendCluster {
             timeout_each_wait_once: Cell::new(false),
             timed_out_waits: RefCell::new(HashSet::new()),
             disk_write_fault_probability: Cell::new(0.0),
+            last_fingerprint: Cell::new(None),
+            steps_without_progress: Cell::new(0),
+            expect_no_progress: Cell::new(false),
         })
     }
 
@@ -202,6 +215,17 @@ impl PretendCluster {
         self.cas_fault_probability.set(probability);
     }
 
+    pub fn set_expect_no_progress(&self, on: bool) {
+        if on {
+            let old = self.expect_no_progress.replace(true);
+            assert!(!old, "already inside an expect_no_progress scope");
+        } else {
+            self.expect_no_progress.set(false);
+            self.steps_without_progress.set(0);
+            self.last_fingerprint.set(None);
+        }
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     // instances
     ////////////////////////////////////////////////////////////////////////////
@@ -265,6 +289,17 @@ impl PretendCluster {
         }
 
         None
+    }
+
+    pub fn fingerprint(&self) -> ClusterFingerprint {
+        ClusterFingerprint {
+            raft_last_index: self.raft_log.last_index(),
+            instances: self
+                .instances()
+                .into_iter()
+                .map(|instance| instance.fingerprint())
+                .collect(),
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -385,4 +420,10 @@ impl Drop for PretendCluster {
             instance.cancel_all_fibers();
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterFingerprint {
+    pub raft_last_index: RaftIndex,
+    pub instances: Vec<InstanceFingerprint>,
 }

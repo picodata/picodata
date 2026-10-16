@@ -318,48 +318,47 @@ pub fn determine_potential_actions(cluster: &PretendCluster) -> Vec<PretendActio
 /// Panics with a registry dump if the *only* thing enabled is a timeout if
 /// timeout probability is 0.
 pub fn step_once(cluster: &PretendCluster) -> bool {
-    cluster.prune_finished_fibers();
-
     let actions = determine_potential_actions(cluster);
     if actions.is_empty() {
         // No more actions, simulation converged
         return false;
     }
 
-    if actions.iter().all(|action| {
-        matches!(
-            action,
-            PretendAction::TimeoutWait {
-                state,
-                ..
-            } if state.is_idle_wait()
-        )
-    }) {
-        // Only idle waits remain, simulation converged
-        return false;
+    // Timeouts are drawn from a pool of their own: a step
+    // first decides *whether* it times something out, and only then which wait,
+    // that way the injected timeout rate doesn't depend on how many fibers
+    // happen to be parked right now.
+    let mut regular = vec![];
+    let mut timeouts = vec![];
+    let mut have_non_idle_timeouts = false;
+    for action in actions {
+        match &action {
+            PretendAction::TimeoutWait { state, .. } => {
+                if !state.is_idle_wait() {
+                    have_non_idle_timeouts = true;
+                }
+                timeouts.push(action);
+            }
+            _ => regular.push(action),
+        }
     }
-
-    // Timeouts are drawn from a pool of their own: a step first decides
-    // *whether* it times something out, and only then which wait, that way
-    // the injected timeout rate doesn't depend on how many fibers happen to be
-    // parked right now.
-    let (timeouts, regular): (Vec<_>, Vec<_>) = actions
-        .into_iter()
-        .partition(|action| matches!(action, PretendAction::TimeoutWait { .. }));
 
     let have_regular = !regular.is_empty();
     let have_timeouts = !timeouts.is_empty();
+
+    if !have_regular && !have_non_idle_timeouts {
+        // Only idle waits remain, simulation converged
+        return false;
+    }
 
     let take_timeout =
         have_timeouts && (cluster.timeout_each_wait_once.get() || cluster.roll_wait_timeout());
 
     let mut candidates;
-    if have_regular && !take_timeout {
-        candidates = regular;
-    } else {
+    if take_timeout || !have_regular {
         assert!(have_timeouts);
         assert!(
-            !have_regular
+            have_regular
                 || cluster.timeout_probability.get() > 0.0
                 || cluster.timeout_each_wait_once.get(),
             "simulation: deadlock - every parked fiber can only be resolved by \
@@ -370,6 +369,8 @@ pub fn step_once(cluster: &PretendCluster) -> bool {
         // Note: if timeout_each_wait_once is enabled, the `timeouts` only contains
         // unique timeouts which haven't been picked before.
         candidates = timeouts;
+    } else {
+        candidates = regular;
     }
 
     // Pick a random action
@@ -381,6 +382,8 @@ pub fn step_once(cluster: &PretendCluster) -> bool {
 
     // The action could have unparked a fiber, now we need to wait until it parks
     cluster.run_to_next_park();
+    cluster.prune_finished_fibers();
+    assert_step_was_not_a_livelock(cluster);
 
     true
 }
@@ -392,6 +395,13 @@ pub fn step_once(cluster: &PretendCluster) -> bool {
 /// An upper bound on the number of iterations for [`run_until_converged`].
 /// This is needed to detect live locks and other infinite loops.
 pub const MAX_SAFE_ITERATIONS: usize = 50_000;
+
+/// Simulation considered to be live-locked after this many iterations with no
+/// change in any state.
+const MAX_STEPS_WITHOUT_PROGRESS: usize = 20;
+
+/// How many trailing trace entries a livelock report prints.
+const LIVELOCK_TRACE_TAIL: usize = 200;
 
 /// Run the `cluster` simulation until cluster is resting.
 pub fn run_until_converged(cluster: &PretendCluster) {
@@ -594,4 +604,32 @@ pub fn assert_converged(instance: &PretendInstance) {
             ))
         );
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// assert_step_was_not_a_livelock
+////////////////////////////////////////////////////////////////////////////////
+
+fn assert_step_was_not_a_livelock(cluster: &PretendCluster) {
+    if cluster.expect_no_progress.get() {
+        return;
+    }
+
+    let fingerprint = cluster.fingerprint();
+    let last_fingerprint = cluster.last_fingerprint.take();
+    if last_fingerprint.as_ref() != Some(&fingerprint) {
+        cluster.last_fingerprint.set(Some(fingerprint));
+        cluster.steps_without_progress.set(0);
+        return;
+    } else {
+        cluster.last_fingerprint.set(last_fingerprint);
+    }
+
+    let steps = cluster.steps_without_progress.get() + 1;
+    cluster.steps_without_progress.set(steps);
+    assert!(
+        steps < MAX_STEPS_WITHOUT_PROGRESS,
+        "simulation: livelock — {steps} steps in a row changed nothing about the world\n{}",
+        cluster.dump_state_with_trace_tail(LIVELOCK_TRACE_TAIL),
+    );
 }
