@@ -196,8 +196,8 @@ fn do_simulation_timeout_verdicts_retry(params: ReshardingTestParameters) {
         .any(|e| matches!(e, PretendAction::TimeoutWait { .. }));
     assert!(
         fired_timeout,
-        "no fiber waits were timed out during the run\ntrace: {:#?}",
-        cluster.trace.borrow(),
+        "no fiber waits were timed out during the run\n{}",
+        cluster.dump_state(),
     );
 }
 
@@ -307,7 +307,8 @@ fn do_simulation_cas_committed_after_timeout(params: ReshardingTestParameters) {
     });
     assert!(
         committed_after,
-        "the abandoned proposal never committed; trace: {trace:#?}",
+        "the abandoned proposal never committed\n{}",
+        cluster.dump_state(),
     );
 }
 
@@ -352,20 +353,24 @@ fn do_simulation_replica_sharded_lag(params: ReshardingTestParameters) {
     let mut steps = 0;
     while step_once(&cluster) {
         steps += 1;
-        assert!(steps < MAX_SAFE_ITERATIONS);
+        assert!(
+            steps < MAX_SAFE_ITERATIONS,
+            "simulation: gave up after {MAX_SAFE_ITERATIONS} steps\n{}",
+            cluster.dump_state(),
+        );
     }
 
     let master = cluster.instance(master_name);
     let replica = cluster.instance(replica_name);
     assert!(
         !master.local_buckets.borrow().is_empty(),
-        "the master wrote nothing, so there is no lag to observe; trace: {:#?}",
-        cluster.trace.borrow(),
+        "the master wrote nothing, so there is no lag to observe\n{}",
+        cluster.dump_state(),
     );
     assert!(
         replica.local_buckets.borrow().is_empty(),
-        "a replica with a paused stream must not have applied anything; trace: {:#?}",
-        cluster.trace.borrow(),
+        "a replica with a paused stream must not have applied anything\n{}",
+        cluster.dump_state(),
     );
     assert!(replica.sharded_lsn.get() < replica.sharded_wal.len());
 
@@ -532,13 +537,21 @@ fn do_simulation_fault_campaign(params: ReshardingTestParameters) {
             )
         })
         .count();
-    assert!(cas_faults > 0, "the CAS half of the campaign never fired");
+    assert!(
+        cas_faults > 0,
+        "the CAS half of the campaign never fired\n{}",
+        cluster.dump_state(),
+    );
 
     let timeouts = trace
         .iter()
         .filter(|action| matches!(action, PretendAction::TimeoutWait { .. }))
         .count();
-    assert!(timeouts > 0, "the timeout half of the campaign never fired");
+    assert!(
+        timeouts > 0,
+        "the timeout half of the campaign never fired\n{}",
+        cluster.dump_state(),
+    );
 }
 
 #[::tarantool::test]

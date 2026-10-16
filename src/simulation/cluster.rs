@@ -25,6 +25,7 @@ use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::hash::BuildHasherDefault;
 use std::rc::Rc;
 use tarantool::fiber;
@@ -32,6 +33,9 @@ use tarantool::fiber::FiberId;
 
 /// State of a single simulated cluster.
 pub struct PretendCluster {
+    /// Random seed used to initialize the [`Self::rng`].
+    pub seed: u64,
+
     /// Single random number generator per simulation. Seeded once at the start.
     pub rng: RefCell<StdRng>,
 
@@ -79,6 +83,7 @@ impl PretendCluster {
         Rc::new(Self {
             pretend_instances: RefCell::new(InstanceMap::default()),
             raft_log: PretendRaftLog::new(),
+            seed,
             rng: RefCell::new(StdRng::seed_from_u64(seed)),
             trace: RefCell::new(Vec::new()),
             cas_fault_probability: Cell::new(0.0),
@@ -323,16 +328,43 @@ impl PretendCluster {
         fiber
     }
 
-    /// Diagnostic dump of every currently parked fiber.
-    pub fn dump_fiber_registry(&self) -> String {
-        let mut lines = Vec::new();
+    ////////////////////////////////////////////////////////////////////////////
+    // diagnostics
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// Dumps diagnostics info for the panic messages.
+    pub fn dump_state(&self) -> String {
+        self.dump_state_with_trace_tail(usize::MAX)
+    }
+
+    /// Dumps diagnostics info for the panic messages.
+    pub fn dump_state_with_trace_tail(&self, tail_len: usize) -> String {
+        let mut result = String::new();
+        writeln!(result, "seed: {}", self.seed).expect("appending to String");
+
         for (_, fiber) in self.all_fibers() {
             let state = fiber.state();
             if state.is_parked() {
-                lines.push(format!("fiber {}: waiting {state:?}", fiber.id));
+                writeln!(result, "fiber {}: waiting {state:?}", fiber.id)
+                    .expect("appending to String");
             }
         }
-        lines.join("\n")
+
+        let trace = self.trace.borrow();
+        let shown = trace.len().min(tail_len);
+        let tail = &trace[trace.len() - shown..];
+        if shown == trace.len() {
+            writeln!(result, "trace ({shown} entries): {tail:#?}")
+        } else {
+            writeln!(
+                result,
+                "trace (last {shown} of {} entries): {tail:#?}",
+                trace.len(),
+            )
+        }
+        .expect("appending to String");
+
+        result
     }
 
     ////////////////////////////////////////////////////////////////////////////

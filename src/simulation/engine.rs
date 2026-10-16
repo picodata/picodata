@@ -361,9 +361,8 @@ pub fn step_once(cluster: &PretendCluster) -> bool {
                 || cluster.timeout_probability.get() > 0.0
                 || cluster.timeout_each_wait_once.get(),
             "simulation: deadlock - every parked fiber can only be resolved by \
-             a Timeout, but timeout_probability is 0; registry dump:\n{}\ntrace: {:#?}",
-            cluster.dump_fiber_registry(),
-            cluster.trace.borrow(),
+             a Timeout, but timeout_probability is 0\n{}",
+            cluster.dump_state(),
         );
 
         // Note: if timeout_each_wait_once is enabled, the `timeouts` only contains
@@ -409,10 +408,8 @@ pub fn run_until_converged(cluster: &PretendCluster) {
     }
 
     panic!(
-        "simulation did not converge after {MAX_SAFE_ITERATIONS} iterations; \
-         registry dump:\n{}\ntrace: {:#?}",
-        cluster.dump_fiber_registry(),
-        cluster.trace.borrow()
+        "simulation did not converge after {MAX_SAFE_ITERATIONS} iterations\n{}",
+        cluster.dump_state(),
     );
 }
 
@@ -424,19 +421,13 @@ pub fn run_until(cluster: &PretendCluster, exit_condition: impl Fn() -> bool, pa
         }
 
         let running = step_once(cluster);
-        assert!(
-            running,
-            "{panic_message};\ntrace: {:#?}",
-            cluster.trace.borrow(),
-        );
+        assert!(running, "{panic_message}\n{}", cluster.dump_state(),);
 
         steps += 1;
         if steps >= MAX_SAFE_ITERATIONS {
             panic!(
-                "simulation did not converge after {MAX_SAFE_ITERATIONS} iterations\n\
-                registry dump:{}\ntrace: {:#?}",
-                cluster.dump_fiber_registry(),
-                cluster.trace.borrow(),
+                "simulation did not converge after {MAX_SAFE_ITERATIONS} iterations\n{}",
+                cluster.dump_state(),
             );
         }
     }
