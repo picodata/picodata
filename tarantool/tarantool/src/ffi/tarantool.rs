@@ -1596,6 +1596,16 @@ extern "C" {
         object_type: u32,
         access: u16,
     ) -> c_int;
+    /// Check that one more user can be created, with room for
+    /// `reserved` more users after it. A caller can keep the room for
+    /// the users that it creates later. Roles do not count towards
+    /// the limit. The users created or dropped by the transactions
+    /// that are not committed yet are counted too.
+    ///
+    /// Returns:
+    /// - `0` - one more user can be created
+    /// - `-1` - the limit is reached, `ER_USER_MAX` is set (check `box_error_last()`)
+    pub fn box_user_check_limit(reserved: u32) -> c_int;
 }
 
 // Cord.

@@ -55,6 +55,19 @@ pub fn box_access_check_space(space_id: SpaceId, user_access: PrivType) -> crate
     }
 }
 
+/// This function is a wrapper around similarly named one in tarantool.
+/// It checks that one more user can be created, with room for `reserved`
+/// more users after it. Roles do not count towards the limit.
+/// Returns an `ER_USER_MAX` error when the limit is reached.
+pub fn box_user_check_limit(reserved: u32) -> crate::Result<()> {
+    let ret = unsafe { ffi::box_user_check_limit(reserved) };
+    if ret == -1 {
+        Err(error::Error::Tarantool(error::TarantoolError::last()))
+    } else {
+        Ok(())
+    }
+}
+
 /// This is a direct translation of `box_schema_object_type` enum from `schema_def.h`
 #[repr(u32)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
