@@ -5,6 +5,7 @@ use crate::mailbox::Mailbox;
 use crate::metrics;
 use crate::proc_name;
 use crate::schema::IndexOption;
+use crate::schema::PICO_SERVICE_ID;
 use crate::static_ref;
 use crate::storage;
 use crate::storage::Catalog;
@@ -24,6 +25,7 @@ use ::raft::GetEntriesContext;
 use ::raft::StorageError;
 use smol_str::SmolStr;
 use sql::ir::operator::ConflictStrategy;
+use tarantool::access_control::box_user_check_limit;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
@@ -107,12 +109,24 @@ pub fn check_dml_prohibited(storage: &Catalog, dml: &Dml) -> traft::Result<()> {
     Ok(())
 }
 
-pub fn check_acl_limits(storage: &Catalog, acl: &Acl) -> traft::Result<()> {
-    if matches!(acl, Acl::CreateUser { .. } | Acl::CreateRole { .. }) {
-        storage.users.check_user_limit()
+/// Checks that the user with `id` can be created. A token is kept for each
+/// free ID that is kept for the system users and roles, so that a later
+/// version can always create them, see [`storage::Users::free_reserved_ids`].
+pub fn check_user_limit(storage: &Catalog, id: UserId) -> traft::Result<()> {
+    let reserved = if id <= PICO_SERVICE_ID {
+        0
     } else {
-        Ok(())
+        storage.users.free_reserved_ids()?
+    };
+    box_user_check_limit(reserved)?;
+    Ok(())
+}
+
+pub fn check_acl_limits(storage: &Catalog, acl: &Acl) -> traft::Result<()> {
+    if let Acl::CreateUser { user_def } = acl {
+        check_user_limit(storage, user_def.id)?;
     }
+    Ok(())
 }
 
 /// Performs a clusterwide compare and swap operation. Waits until the
@@ -2686,5 +2700,86 @@ mod tests {
                 )
             );
         }
+    }
+
+    #[::tarantool::test]
+    fn user_limit_keeps_tokens_for_reserved_ids() {
+        use crate::access_control::UserMetadataKind;
+        use crate::schema::UserDef;
+        use crate::storage::schema::acl::on_master_create_user;
+        use tarantool::auth::{AuthData, AuthDef, AuthMethod};
+        use tarantool::index::IteratorType;
+        use tarantool::space::SystemSpace;
+
+        // BOX_USER_MAX in tarantool.
+        const MAX_USERS: usize = 512;
+        let storage = Catalog::for_tests();
+        let sys_user = Space::from(SystemSpace::User);
+        let tarantool_users = || -> Vec<(UserId, SmolStr, String)> {
+            let iter = sys_user.select(IteratorType::All, &()).unwrap();
+            iter.map(|t| (t.get(0).unwrap(), t.get(2).unwrap(), t.get(3).unwrap()))
+                .collect()
+        };
+        let user_count = || {
+            let users = tarantool_users();
+            users.iter().filter(|(_, _, ty)| ty == "user").count()
+        };
+        let user_def = |id: UserId| UserDef {
+            id,
+            name: format!("user{id}").into(),
+            schema_version: 0,
+            auth: Some(AuthDef::new(
+                AuthMethod::Md5,
+                AuthData::new(&AuthMethod::Md5, "", "").into_string(),
+            )),
+            owner: ADMIN_ID,
+            ty: UserMetadataKind::User,
+        };
+
+        // Put the system users and roles of tarantool into _pico_user.
+        let mut reserved: Vec<UserId> = (0..=PICO_SERVICE_ID).collect();
+        for (id, name, ty) in tarantool_users() {
+            if id > PICO_SERVICE_ID {
+                continue;
+            }
+            reserved.retain(|&r| r != id);
+            let is_user = ty == "user";
+            let def = UserDef {
+                name,
+                auth: if is_user { user_def(id).auth } else { None },
+                ty: if is_user {
+                    UserMetadataKind::User
+                } else {
+                    UserMetadataKind::Role
+                },
+                ..user_def(id)
+            };
+            storage.users.insert(&def).unwrap();
+        }
+        let free = storage.users.free_reserved_ids().unwrap();
+        assert_eq!(free as usize, reserved.len());
+
+        // Create other users until the limit stops them.
+        let mut id = 1000;
+        while check_user_limit(&storage, id).is_ok() {
+            on_master_create_user(&user_def(id), false).unwrap();
+            id += 1;
+        }
+        assert_eq!(user_count() + reserved.len(), MAX_USERS);
+        let err = check_user_limit(&storage, id).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("limit on the total number of users"));
+
+        // Each free reserved ID still gets a token.
+        for &sys_id in &reserved {
+            check_user_limit(&storage, sys_id).unwrap();
+            let def = user_def(sys_id);
+            on_master_create_user(&def, false).unwrap();
+            storage.users.insert(&def).unwrap();
+            check_user_limit(&storage, id).unwrap_err();
+        }
+        assert_eq!(user_count(), MAX_USERS);
+        assert_eq!(storage.users.free_reserved_ids().unwrap(), 0);
     }
 }

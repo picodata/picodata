@@ -863,6 +863,11 @@ impl TryFrom<&SqlPrivilege> for PrivilegeType {
 impl TraftNode {
     /// Helper method to retrieve next id for newly created user/role.
     fn get_next_grantee_id(&self) -> traft::Result<UserId> {
+        // Lets a test create a system user or role, as an upgrade does.
+        crate::error_injection!("NEXT_GRANTEE_ID" => |id| {
+            return Ok(id.parse().expect("injected id must be a number"));
+        });
+
         let storage = &self.storage;
         let max_user_id = storage.users.max_user_id()?;
         if let Some(max_user_id) = max_user_id {
@@ -1242,7 +1247,6 @@ fn acl_ir_node_to_op_or_result(
             ..
         }) => {
             check_name_emptyness(name)?;
-            storage.users.check_user_limit()?;
 
             let sys_user = Space::from(SystemSpace::User)
                 .index("name")
@@ -1278,7 +1282,6 @@ fn acl_ir_node_to_op_or_result(
             ..
         }) => {
             check_name_emptyness(name)?;
-            storage.users.check_user_limit()?;
 
             validate_password(password, auth_method, &node.alter_system_parameters)?;
             let data = AuthData::new(auth_method, name, password);
@@ -1294,8 +1297,8 @@ fn acl_ir_node_to_op_or_result(
                 }
                 return Err(error::AlreadyExists::User(name.clone()).into());
             }
-
             let id = node.get_next_grantee_id()?;
+            crate::cas::check_user_limit(storage, id)?;
             let user_def = UserDef {
                 id,
                 name: name.clone(),

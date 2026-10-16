@@ -20,6 +20,7 @@ use crate::schema::ServiceDef;
 use crate::schema::ServiceRouteItem;
 use crate::schema::ServiceRouteKey;
 use crate::schema::ADMIN_ID;
+use crate::schema::PICO_SERVICE_ID;
 use crate::schema::{IndexDef, IndexOption};
 use crate::schema::{MigrationContextRecord, PluginConfigRecord};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
@@ -1825,9 +1826,6 @@ impl<T, const MP: MpImpl> std::fmt::Debug for EntryIter<T, MP> {
 // Users
 ////////////////////////////////////////////////////////////////////////////////
 
-/// The hard upper bound (128) for max users comes from tarantool BOX_USER_MAX
-const MAX_USERS: usize = 128;
-
 /// A struct for accessing info of all the picodata users.
 #[derive(Debug, Clone)]
 pub struct Users {
@@ -1936,6 +1934,18 @@ impl Users {
         }
     }
 
+    /// The number of the IDs from 0 to [`PICO_SERVICE_ID`] that no user and no
+    /// role has. These IDs are kept for the system users and roles of later
+    /// versions, so a token is kept for each of them, see
+    /// [`crate::cas::check_user_limit`].
+    pub fn free_reserved_ids(&self) -> tarantool::Result<u32> {
+        let used = self
+            .index_id
+            .select(IteratorType::LE, &[PICO_SERVICE_ID])?
+            .count() as u32;
+        Ok(PICO_SERVICE_ID + 1 - used)
+    }
+
     #[inline]
     pub fn replace(&self, user_def: &UserDef) -> tarantool::Result<()> {
         self.space.replace(user_def)?;
@@ -1967,17 +1977,6 @@ impl Users {
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(column_name!(UserDef, auth), auth)?;
         self.space.update(&[user_id], ops)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn check_user_limit(&self) -> traft::Result<()> {
-        if self.space.len()? >= MAX_USERS {
-            return Err(Error::Other(
-                format!("a limit on the total number of users has been reached: {MAX_USERS}")
-                    .into(),
-            ));
-        }
         Ok(())
     }
 }
