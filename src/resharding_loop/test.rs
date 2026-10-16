@@ -8,6 +8,7 @@ use crate::replicaset::Replicaset;
 use crate::resharding_loop::action::ReshardingActionKind;
 use crate::resharding_loop::ReshardingStatus;
 use crate::simulation::action::PretendAction;
+use crate::simulation::action_helpers::assert_bucket_partition;
 use crate::simulation::action_helpers::catch_up_on_raft_log;
 use crate::simulation::action_helpers::catch_up_on_sharded_wal;
 use crate::simulation::action_helpers::commit_master_switchover;
@@ -25,8 +26,6 @@ use crate::simulation::engine::run_until_converged;
 use crate::simulation::engine::step_once;
 use crate::simulation::engine::MAX_SAFE_ITERATIONS;
 use crate::simulation::raft::PretendCasOutcome;
-use crate::simulation::sharding::assert_bucket_partition;
-use crate::simulation::sharding::assert_replicas_match_masters;
 use crate::simulation::sharding::first_half;
 use crate::simulation::sharding::full_range;
 use crate::simulation::sharding::second_half;
@@ -377,8 +376,6 @@ fn do_simulation_replica_sharded_lag(params: ReshardingTestParameters) {
     // Put the stream back and let it replay.
     set_sharded_replication_paused(&cluster, replica_name, false);
     run_until_converged(&cluster);
-
-    assert_replicas_match_masters(&cluster);
 }
 
 #[::tarantool::test]
@@ -631,7 +628,6 @@ fn do_simulation_master_switchover(params: ReshardingTestParameters) {
     run_until_converged(&cluster);
 
     assert_bucket_partition(&cluster, tier, bucket_count);
-    assert_replicas_match_masters(&cluster);
     assert!(
         cluster.instance(new_master).is_master(),
         "{new_master} must be red_1's master now"

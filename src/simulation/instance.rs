@@ -29,7 +29,6 @@ use crate::traft::RaftIndex;
 use crate::util::NoYieldsRefCell;
 use crate::vshard::BucketRef;
 use crate::vshard::VshardBucketRecord;
-use crate::vshard::VshardBucketState;
 use crate::Result;
 use ::tarantool::fiber::r#async::watch;
 use ::tarantool::fiber::FiberId;
@@ -354,50 +353,6 @@ impl PretendInstance {
 
     pub fn last_requested_resharding_status(&self) -> ReshardingStatus {
         self.requested_status_tx.borrow().get().0
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // assert_converged
-    ////////////////////////////////////////////////////////////////////////////
-
-    pub fn assert_converged(&self) {
-        let topology_ref = self.topology.get();
-        let this_replicaset = topology_ref.this_replicaset();
-        assert_eq!(
-            this_replicaset.current_bucket_state_version,
-            this_replicaset.target_bucket_state_version,
-            "[{}] replicaset '{}' bucket_state_version not actualized",
-            self.name,
-            this_replicaset.name
-        );
-
-        let mut expected_bucket_count = 0u64;
-        for range in topology_ref
-            .buckets_info(&this_replicaset.tier)
-            .expect("tier must exist")
-            .ranges
-            .iter()
-        {
-            if this_replicaset.name == range.current_replicaset_name && range.state.is_active() {
-                expected_bucket_count += range.count();
-            }
-        }
-        drop(topology_ref);
-
-        let buckets = self.local_buckets.borrow();
-        assert_eq!(
-            buckets.len() as u64,
-            expected_bucket_count,
-            "[{}] local bucket count doesn't match owned _pico_bucket ranges: {buckets:?}",
-            self.name
-        );
-        assert!(
-            buckets
-                .values()
-                .all(|b| b.state == VshardBucketState::Active),
-            "[{}] not all local buckets are Active: {buckets:?}",
-            self.name
-        );
     }
 }
 

@@ -291,3 +291,27 @@ pub fn settle_pending_writes(cluster: &PretendCluster, instance_name: &str) {
         cluster.trace.borrow(),
     );
 }
+
+/// Asserts that every bucket id in `1..=bucket_count` is owned, locally,
+/// by exactly one *replicaset*, no bucket counted twice or zero times.
+///
+/// Only masters are counted: a replica holds a *copy* of its master's
+/// buckets, which [`assert_converged`](crate::simulation::engine::assert_converged)
+/// checks.
+pub fn assert_bucket_partition(cluster: &PretendCluster, tier_name: &str, bucket_count: u64) {
+    let mut all_ids: Vec<u64> = Vec::new();
+    for instance in cluster.instances() {
+        if !instance.is_master() {
+            continue;
+        }
+        all_ids.extend(instance.local_buckets.borrow().keys().copied());
+    }
+    all_ids.sort_unstable();
+    let expected: Vec<u64> = crate::simulation::sharding::full_range(bucket_count).collect();
+    assert_eq!(
+        all_ids,
+        expected,
+        "bucket ids must partition tier '{tier_name}''s full range exactly once each; trace: {:#?}",
+        cluster.trace.borrow()
+    );
+}

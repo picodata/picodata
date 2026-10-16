@@ -3,7 +3,6 @@ use crate::catalog::pico_bucket::BUCKET_ID_MIN;
 use crate::resharding_loop::resharding_loop;
 use crate::resharding_loop::ReshardingLoopState;
 use crate::resharding_loop::ReshardingStatus;
-use crate::simulation::cluster::PretendCluster;
 use crate::simulation::fiber::is_wait_satisfiable;
 use crate::simulation::fiber::FiberState;
 use crate::simulation::fiber::PretendFiber;
@@ -116,56 +115,6 @@ pub fn is_governor_poke_enabled(instance: &PretendInstance) -> bool {
     }
 
     true
-}
-
-/// Asserts that every bucket id in `1..=bucket_count` is owned, locally,
-/// by exactly one *replicaset*, no bucket counted twice or zero times.
-///
-/// Only masters are counted: a replica holds a *copy* of its master's
-/// buckets, which is [`assert_replicas_match_masters`]'s business.
-pub fn assert_bucket_partition(cluster: &PretendCluster, tier_name: &str, bucket_count: u64) {
-    let mut all_ids: Vec<u64> = Vec::new();
-    for instance in cluster.instances() {
-        if !instance.is_master() {
-            continue;
-        }
-        all_ids.extend(instance.local_buckets.borrow().keys().copied());
-    }
-    all_ids.sort_unstable();
-    let expected: Vec<u64> = full_range(bucket_count).collect();
-    assert_eq!(
-        all_ids,
-        expected,
-        "bucket ids must partition tier '{tier_name}''s full range exactly once each; trace: {:#?}",
-        cluster.trace.borrow()
-    );
-}
-
-/// Asserts every replica's local `_bucket` matches its master's exactly,
-/// i.e. it has applied its replicaset's [`ShardedWal`](crate::simulation::sharded_wal::ShardedWal) to the end and the
-/// replay converged on the state the master built directly.
-pub fn assert_replicas_match_masters(cluster: &PretendCluster) {
-    for instance in cluster.instances() {
-        if instance.is_master() {
-            continue;
-        }
-        let replicaset_name = instance.topology.my_replicaset_name();
-        let master = cluster
-            .instances()
-            .into_iter()
-            .find(|i| i.topology.my_replicaset_name() == replicaset_name && i.is_master());
-        let Some(master) = master else {
-            panic!("replicaset '{replicaset_name}' has no master instance in the simulation");
-        };
-        assert_eq!(
-            *instance.local_buckets.borrow(),
-            *master.local_buckets.borrow(),
-            "[{}] replica's local _bucket diverged from its master's ({}); trace: {:#?}",
-            instance.name,
-            master.name,
-            cluster.trace.borrow(),
-        );
-    }
 }
 
 pub fn full_range(bucket_count: u64) -> BucketIdRange {

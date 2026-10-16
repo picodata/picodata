@@ -5,6 +5,7 @@ use crate::simulation::fiber::is_wait_satisfiable;
 use crate::simulation::fiber::wake_fiber;
 use crate::simulation::fiber::FiberState;
 use crate::simulation::fiber::WaitOutcome;
+use crate::simulation::instance::PretendInstance;
 use crate::simulation::raft::resolve_cas_request;
 use crate::simulation::raft::PretendCasOutcome;
 use crate::simulation::sharded_wal::apply_next_sharded_entry;
@@ -15,6 +16,7 @@ use crate::simulation::sharded_wal::WalOutcome;
 use crate::simulation::sharding::is_governor_poke_enabled;
 use crate::simulation::sharding::spawn_resharding_loop_fiber;
 use crate::tlog;
+use crate::vshard::VshardBucketState;
 use rand::RngExt;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -393,24 +395,25 @@ pub const MAX_SAFE_ITERATIONS: usize = 50_000;
 
 /// Run the `cluster` simulation until cluster is resting.
 pub fn run_until_converged(cluster: &PretendCluster) {
-    for _ in 0..MAX_SAFE_ITERATIONS {
-        let done_something = step_once(cluster);
+    let mut steps = 0;
+    loop {
+        let running = step_once(cluster);
+        if !running {
+            break;
+        }
 
-        if !done_something {
-            cluster.assert_resting();
-
-            for instance in cluster.instances() {
-                instance.assert_converged();
-            }
-
-            return;
+        steps += 1;
+        if steps >= MAX_SAFE_ITERATIONS {
+            panic!(
+                "simulation did not converge after {MAX_SAFE_ITERATIONS} iterations\n{}",
+                cluster.dump_state(),
+            );
         }
     }
 
-    panic!(
-        "simulation did not converge after {MAX_SAFE_ITERATIONS} iterations\n{}",
-        cluster.dump_state(),
-    );
+    for instance in cluster.instances() {
+        assert_converged(&instance);
+    }
 }
 
 pub fn run_until(cluster: &PretendCluster, exit_condition: impl Fn() -> bool, panic_message: &str) {
@@ -430,5 +433,165 @@ pub fn run_until(cluster: &PretendCluster, exit_condition: impl Fn() -> bool, pa
                 cluster.dump_state(),
             );
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// assert_converged
+////////////////////////////////////////////////////////////////////////////////
+
+pub fn assert_converged(instance: &PretendInstance) {
+    instance.prune_finished_fibers();
+
+    let instance_name = &instance.name;
+    let cluster = instance
+        .cluster()
+        .expect("assert_converged called during teardown");
+    let topology_ref = instance.topology.get();
+
+    let panic_message = |message: &str| -> String {
+        format!("[{instance_name}] {message}\n{}", cluster.dump_state())
+    };
+
+    assert!(
+        !instance.is_down(),
+        "{}",
+        panic_message("converged while still down")
+    );
+
+    let live_fibers: Vec<_> = instance
+        .fibers
+        .borrow()
+        .values()
+        .map(|fiber| fiber.id.clone())
+        .collect();
+    let resharding_loop_fiber = instance.resharding_loop_fiber().id.clone();
+    assert_eq!(
+        live_fibers,
+        [resharding_loop_fiber],
+        "{}",
+        panic_message(&format!(
+            "converged with fibers other than its runner ({live_fibers:?})"
+        )),
+    );
+
+    assert_eq!(
+        instance.sharded_lsn.get(),
+        instance.sharded_wal.len(),
+        "{}",
+        panic_message("converged with an unapplied sharded-replication WAL tail"),
+    );
+
+    assert!(
+        instance.cas_outbox.borrow().is_empty(),
+        "{}",
+        panic_message("converged with an undecided CAS proposal"),
+    );
+
+    assert!(
+        instance.unstable_wal.borrow().is_empty(),
+        "{}",
+        panic_message("converged with an unpersisted WAL write"),
+    );
+
+    assert_eq!(
+        instance.applied_index.get(),
+        cluster.raft_log.last_index(),
+        "{}",
+        panic_message("converged with an unapplied raft log tail"),
+    );
+
+    // The resting wait differs by role: a master rests in `Idle`; a
+    // non-master that was ever driven rests in the not-a-master
+    // branch's `wait_index_change`, waiting for an entry which
+    // doesn't exist yet and so unsatisfiable at convergence. A
+    // never-driven non-master never left its initial `Idle` park,
+    // which is equally at rest.
+    let fiber_state = instance.resharding_loop_fiber().state();
+    assert!(
+        fiber_state.is_idle_wait(),
+        "{}",
+        panic_message(&format!(
+            "resharding_loop is not in idle state: {fiber_state:?}"
+        )),
+    );
+
+    let this_replicaset = topology_ref.this_replicaset();
+    assert_eq!(
+        this_replicaset.current_bucket_state_version,
+        this_replicaset.target_bucket_state_version,
+        "{}",
+        panic_message(&format!(
+            "replicaset '{}' bucket_state_version not actualized",
+            this_replicaset.name
+        )),
+    );
+
+    let mut expected_bucket_count = 0u64;
+    for range in topology_ref
+        .buckets_info(&this_replicaset.tier)
+        .expect("tier must exist")
+        .ranges
+        .iter()
+    {
+        if this_replicaset.name == range.current_replicaset_name && range.state.is_active() {
+            expected_bucket_count += range.count();
+        }
+    }
+
+    let buckets = instance.local_buckets.borrow();
+    assert_eq!(
+        buckets.len() as u64,
+        expected_bucket_count,
+        "{}",
+        panic_message(&format!(
+            "local bucket count doesn't match owned _pico_bucket ranges: {buckets:?}"
+        )),
+    );
+
+    assert!(
+        buckets
+            .values()
+            .all(|b| b.state == VshardBucketState::Active),
+        "{}",
+        panic_message(&format!("not all local buckets are Active: {buckets:?}")),
+    );
+
+    let bucket_refs: Vec<_> = instance
+        .bucket_refs
+        .borrow()
+        .iter()
+        .filter(|(_, bucket_ref)| bucket_ref.ro != 0 || bucket_ref.rw != 0)
+        .map(|(&bucket_id, &bucket_ref)| (bucket_id, bucket_ref))
+        .collect();
+    assert_eq!(
+        bucket_refs,
+        [],
+        "{}",
+        panic_message(&format!("unresolved bucket refs remain: {bucket_refs:?}")),
+    );
+
+    if !instance.is_master() {
+        let replicaset = topology_ref.this_replicaset();
+        let Some(master_name) = replicaset.effective_master_name() else {
+            panic!(
+                "{}",
+                panic_message(&format!(
+                    "replicaset {} is in master switchover",
+                    replicaset.name
+                ))
+            );
+        };
+
+        let master = cluster.instance(master_name);
+
+        assert_eq!(
+            *instance.local_buckets.borrow(),
+            *master.local_buckets.borrow(),
+            "{}",
+            panic_message(&format!(
+                "replica's local _bucket diverged from its master's ({master_name})"
+            ))
+        );
     }
 }

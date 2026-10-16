@@ -7,7 +7,6 @@ use crate::simulation::catalog::create_pretend_catalog;
 #[allow(unused_imports)]
 use crate::simulation::engine::do_action;
 use crate::simulation::fiber::CallStack;
-use crate::simulation::fiber::FiberState;
 use crate::simulation::fiber::PretendFiber;
 use crate::simulation::instance::PretendInstance;
 use crate::simulation::raft::PretendRaftLog;
@@ -376,90 +375,6 @@ impl PretendCluster {
         .expect("appending to String");
 
         result
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // assert_resting
-    ////////////////////////////////////////////////////////////////////////////
-
-    pub fn assert_resting(&self) {
-        self.prune_finished_fibers();
-
-        for instance in self.instances() {
-            assert!(
-                !instance.is_down(),
-                "[{}] converged while still down; trace: {:#?}",
-                instance.name,
-                self.trace.borrow(),
-            );
-            let live_fibers = instance.all_fibers();
-            assert_eq!(
-                live_fibers.len(),
-                1,
-                "[{}] converged with fibers other than its runner ({:?}); trace: {:#?}",
-                instance.name,
-                live_fibers.iter().map(|f| f.id.id).collect::<Vec<_>>(),
-                self.trace.borrow(),
-            );
-            assert_eq!(
-                instance.sharded_lsn.get(),
-                instance.sharded_wal.len(),
-                "[{}] converged with an unapplied sharded-replication WAL tail; trace: {:#?}",
-                instance.name,
-                self.trace.borrow(),
-            );
-            assert!(
-                instance.cas_outbox.borrow().is_empty(),
-                "[{}] converged with an undecided CAS proposal; trace: {:#?}",
-                instance.name,
-                self.trace.borrow(),
-            );
-            assert!(
-                instance.unstable_wal.borrow().is_empty(),
-                "[{}] converged with an unpersisted WAL write; trace: {:#?}",
-                instance.name,
-                self.trace.borrow(),
-            );
-            assert_eq!(
-                instance.applied_index.get(),
-                self.raft_log.last_index(),
-                "[{}] converged with an unapplied global stream tail; trace: {:#?}",
-                instance.name,
-                self.trace.borrow(),
-            );
-
-            // The resting wait differs by role: a master rests in `Idle`; a
-            // non-master that was ever driven rests in the not-a-master
-            // branch's `wait_index_change`, waiting for an entry which
-            // doesn't exist yet and so unsatisfiable at convergence. A
-            // never-driven non-master never left its initial `Idle` park,
-            // which is equally at rest.
-            let wait = instance.resharding_loop_fiber().state();
-            if instance.is_master() {
-                assert_eq!(
-                    wait,
-                    FiberState::WaitIdle,
-                    "[{}] nothing left to do but the loop fiber is not resting \
-                     (parked on {wait:?} with nothing left to wake it); trace: {:#?}",
-                    instance.name,
-                    self.trace.borrow(),
-                );
-            } else {
-                let expected_needed = self.raft_log.next_index();
-                let resting = match wait {
-                    FiberState::WaitUntilMaster { next_index, .. } => next_index == expected_needed,
-                    FiberState::WaitIdle => true,
-                    _ => false,
-                };
-                assert!(
-                    resting,
-                    "[{}] nothing left to do but the non-master loop fiber is not resting \
-                     (parked on {wait:?}, expected NotAMaster {{ needed: {expected_needed}, .. }} or Idle); trace: {:#?}",
-                    instance.name,
-                    self.trace.borrow(),
-                );
-            }
-        }
     }
 }
 
