@@ -28,6 +28,7 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::hash::BuildHasherDefault;
 use std::rc::Rc;
+use std::rc::Weak;
 use tarantool::fiber;
 use tarantool::fiber::FiberId;
 
@@ -38,6 +39,10 @@ pub struct PretendCluster {
 
     /// Single random number generator per simulation. Seeded once at the start.
     pub rng: RefCell<StdRng>,
+
+    /// Handed to every [`PretendInstance`] so it can route messages back
+    /// through the cluster.
+    pub me: Weak<PretendCluster>,
 
     /// Every instance of the cluster, keyed by its name .
     pub pretend_instances: RefCell<InstanceMap>,
@@ -80,7 +85,8 @@ pub type InstanceMap =
 
 impl PretendCluster {
     pub fn new(seed: u64) -> Rc<Self> {
-        Rc::new(Self {
+        Rc::new_cyclic(|me| Self {
+            me: me.clone(),
             pretend_instances: RefCell::new(InstanceMap::default()),
             raft_log: PretendRaftLog::new(),
             seed,
@@ -205,7 +211,12 @@ impl PretendCluster {
         let sharded_wal = self
             .sharded_wal_of_replicaset(topology.my_replicaset_name())
             .unwrap_or_default();
-        let pretend_instance = Rc::new(PretendInstance::new(catalog, topology, sharded_wal));
+        let pretend_instance = Rc::new(PretendInstance::new(
+            self.me.clone(),
+            catalog,
+            topology,
+            sharded_wal,
+        ));
         let name = pretend_instance.name.clone();
 
         spawn_resharding_loop_fiber(&pretend_instance);

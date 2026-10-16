@@ -38,6 +38,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::rc::Rc;
+use std::rc::Weak;
 use std::time::Duration;
 use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
@@ -63,6 +64,15 @@ use tarantool::tuple::Tuple;
 /// Several fibers can act for one instance: each is in [`Self::fibers`], and
 /// [`Self::current_fiber_id`] says which of them the scheduler switched to.
 pub struct PretendInstance {
+    /// The cluster this instance belongs to, and the only way it can reach
+    /// another instance: it never holds (or looks up) a peer itself, it asks
+    /// the cluster, which owns every instance.
+    ///
+    /// `Weak`, because the cluster owns this instance: a strong reference back
+    /// would be a cycle, and [`PretendCluster::drop`] (which stops and joins
+    /// every fiber) would never run.
+    pub cluster: Weak<PretendCluster>,
+
     pub name: InstanceName,
     pub topology: TopologyCache,
     pub parameters: AlterSystemParametersRef,
@@ -149,7 +159,12 @@ pub struct PretendInstance {
 }
 
 impl PretendInstance {
-    pub fn new(catalog: Catalog, topology: TopologyCache, sharded_wal: Rc<ShardedWal>) -> Self {
+    pub fn new(
+        cluster: Weak<PretendCluster>,
+        catalog: Catalog,
+        topology: TopologyCache,
+        sharded_wal: Rc<ShardedWal>,
+    ) -> Self {
         let (requested_status_tx, _) = watch::channel((ReshardingStatus::Idle, 0));
         let (_, actual_status_rx) = watch::channel((ReshardingStatus::Idle, 0));
 
@@ -157,6 +172,7 @@ impl PretendInstance {
             name: topology.my_instance_name().into(),
             catalog,
             topology,
+            cluster,
             parameters: AlterSystemParameters::for_tests(),
             local_buckets: RefCell::new(BTreeMap::new()),
             applied_index: Cell::new(0),
@@ -190,6 +206,15 @@ impl PretendInstance {
 
     pub fn is_down(&self) -> bool {
         self.resharding_loop_fiber_id.get().is_none()
+    }
+
+    /// Return the cluster this instance belongs to.
+    ///
+    /// Returns `Err` if called during teardown.
+    pub fn cluster(&self) -> Result<Rc<PretendCluster>> {
+        self.cluster
+            .upgrade()
+            .ok_or_else(simulation_fiber_is_stopped)
     }
 
     ////////////////////////////////////////////////////////////////////////////
