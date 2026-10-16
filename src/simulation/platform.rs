@@ -106,6 +106,11 @@ pub trait Platform {
     /// Real implementation redirects to [`local_bucket::read_local_buckets`].
     fn read_local_buckets(&self, start: u64, end: u64) -> Result<Vec<VshardBucketRecord>>;
 
+    /// Lookup a given record in local `_bucket`.
+    ///
+    /// Real implementation redirects to [`local_bucket::lookup_local_bucket`].
+    fn lookup_local_bucket(&self, bucket_id: u64) -> Result<Option<VshardBucketRecord>>;
+
     /// Write records into the local `_bucket` space in a transaction.
     ///
     /// Real implementation redirects to [`local_bucket::write_local_buckets`].
@@ -225,6 +230,10 @@ impl Platform for node::Node {
 
     fn read_local_buckets(&self, start: u64, end: u64) -> Result<Vec<VshardBucketRecord>> {
         local_bucket::read_local_buckets(start, end)
+    }
+
+    fn lookup_local_bucket(&self, bucket_id: u64) -> Result<Option<VshardBucketRecord>> {
+        local_bucket::lookup_local_bucket(bucket_id)
     }
 
     fn write_local_buckets(&self, v: Vec<VshardBucketRecord>) -> Result<()> {

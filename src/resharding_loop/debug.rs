@@ -1,4 +1,5 @@
 use crate::catalog_cache::CatalogCacheRef;
+use crate::resharding_loop::local_bucket::read_all_local_buckets;
 use crate::simulation::platform::Platform;
 use crate::tlog;
 use crate::vshard::VshardBucketRecord;
@@ -93,12 +94,6 @@ pub fn inspect_vshard_bucket_range(
     tlog!(Debug, "_bucket:{prefix} [{range}, {state:?}{peer}]");
 
     Ok(())
-}
-
-/// Reads the whole local `_bucket` space. Only used by the debugging helpers
-/// below, which report on all of it.
-fn read_all_local_buckets(platform: &impl Platform) -> Result<Vec<VshardBucketRecord>> {
-    platform.read_local_buckets(0, u64::MAX)
 }
 
 pub fn assert_all_buckets_rw(platform: &impl Platform) -> Result<()> {

@@ -50,8 +50,7 @@ pub struct ReshardingStateRecord {
     /// If `r#type` == [`LeftToTransfer`], then this is the number of buckets
     /// `current_replicaset_name` needs to send to `target_replicaset_name`.
     ///
-    /// Otherwise it marks the end of the bucket it range starting at
-    /// `bucket_id_start`.
+    /// Otherwise it marks the end of the bucket range starting at `bucket_id_start`.
     ///
     /// [`LeftToTransfer`]: ReshardingStateRecordType::LeftToTransfer
     pub bucket_count: u64,
@@ -74,12 +73,29 @@ impl ReshardingStateRecord {
     }
 
     #[inline]
+    pub fn primary_key(
+        tier_name: SmolStr,
+        r#type: ReshardingStateRecordType,
+        current_replicaset_name: SmolStr,
+        target_replicaset_name: SmolStr,
+    ) -> ReshardingStatePrimaryKey {
+        (
+            tier_name,
+            r#type,
+            current_replicaset_name,
+            target_replicaset_name,
+        )
+    }
+
+    #[inline]
     pub fn bucket_ids(&self) -> Option<BucketIdRange> {
         let bucket_id_start = self.bucket_id_start?;
         let bucket_id_end = bucket_id_start + self.bucket_count - 1;
         Some(bucket_id_start..=bucket_id_end)
     }
 }
+
+pub type ReshardingStatePrimaryKey = (SmolStr, ReshardingStateRecordType, SmolStr, SmolStr);
 
 ////////////////////////////////////////////////////////////////////////////////
 // PicoReshardingState
@@ -181,9 +197,6 @@ impl ToEntryIter<MP_SERDE> for PicoReshardingState {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReshardingStateRecordType {
     LeftToTransfer,
-    LockForSending,
-    LockForDeletion,
-    Cleanup,
     /// For future compatibility
     Unknown(SmolStr),
 }
@@ -199,9 +212,6 @@ impl ReshardingStateRecordType {
     pub fn as_str(&self) -> &str {
         match self {
             Self::LeftToTransfer => "left-to-transfer",
-            Self::LockForSending => "lock-for-sending",
-            Self::LockForDeletion => "lock-for-deletion",
-            Self::Cleanup => "cleanup",
             Self::Unknown(s) => s,
         }
     }
@@ -212,9 +222,6 @@ impl From<ReshardingStateRecordType> for SmolStr {
         type T = ReshardingStateRecordType;
         match state {
             T::LeftToTransfer => SmolStr::new_static("left-to-transfer"),
-            T::LockForSending => SmolStr::new_static("lock-for-sending"),
-            T::LockForDeletion => SmolStr::new_static("lock-for-deletion"),
-            T::Cleanup => SmolStr::new_static("cleanup"),
             T::Unknown(s) => s,
         }
     }
@@ -226,9 +233,6 @@ impl std::str::FromStr for ReshardingStateRecordType {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let res = match s {
             "left-to-transfer" => Self::LeftToTransfer,
-            "lock-for-sending" => Self::LockForSending,
-            "lock-for-deletion" => Self::LockForDeletion,
-            "cleanup" => Self::Cleanup,
             unknown => Self::Unknown(unknown.into()),
         };
         Ok(res)

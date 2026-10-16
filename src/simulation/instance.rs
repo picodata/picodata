@@ -506,6 +506,10 @@ impl Platform for PretendInstance {
             .collect())
     }
 
+    fn lookup_local_bucket(&self, bucket_id: u64) -> Result<Option<VshardBucketRecord>> {
+        Ok(self.local_buckets.borrow().get(&bucket_id).cloned())
+    }
+
     fn write_local_buckets(&self, buckets: Vec<VshardBucketRecord>) -> Result<()> {
         // A replica getting here means the loop's own
         // `i_am_replicaset_master` check was somehow bypassed. See

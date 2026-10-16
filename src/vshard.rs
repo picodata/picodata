@@ -18,6 +18,7 @@ use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::traft::SystemConnectionType;
 use ::tarantool::msgpack::ViaMsgpack;
+use picodata_plugin::util::DisplayAsHexBytesLimitted;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use sql::executor::engine::Vshard;
@@ -468,6 +469,9 @@ pub const SPACE_BUCKET: Space = unsafe { Space::from_id_unchecked(TABLE_ID_BUCKE
 pub struct VshardBucketRecord {
     pub bucket_id: u64,
     pub state: VshardBucketState,
+    /// Vshard doesn't store the last field in case `peer` is not needed.
+    /// serde(default) allows us to deserialize tuples with just 2 first fields.
+    #[serde(default)]
     pub peer: Option<SmolStr>,
 }
 
@@ -495,6 +499,23 @@ tarantool::define_str_enum! {
         Sent = "sent",
         Receiving = "receiving",
         Garbage = "garbage",
+    }
+}
+
+impl VshardBucketState {
+    /// Ported from `vshard/storage/init.lua` `bucket_status_is_writable`
+    pub fn is_writable(&self) -> bool {
+        matches!(self, Self::Active | Self::Pinned)
+    }
+
+    /// Ported from `vshard/storage/init.lua` `bucket_status_is_readable`
+    pub fn is_readable(&self) -> bool {
+        self.is_writable() || self == &Self::Sending
+    }
+
+    /// Ported from `vshard/storage/init.lua` `bucket_status_is_transfer_in_progress`
+    pub fn is_transfer_in_progress(&self) -> bool {
+        matches!(self, Self::Sending | Self::Receiving)
     }
 }
 
