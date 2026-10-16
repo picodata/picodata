@@ -17,6 +17,7 @@ use crate::simulation::raft::PretendCasOutcome;
 use crate::simulation::raft::PretendCasRequest;
 #[allow(unused_imports)]
 use crate::simulation::raft::PretendRaftLog;
+use crate::simulation::sharded_wal::lose_unstable_wal;
 use crate::simulation::sharded_wal::write_sharded_entry;
 use crate::simulation::sharded_wal::ShardedEntry;
 use crate::simulation::sharded_wal::ShardedWal;
@@ -354,6 +355,18 @@ impl PretendInstance {
 
     pub fn last_requested_resharding_status(&self) -> ReshardingStatus {
         self.requested_status_tx.borrow().get().0
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // fault injection
+    ////////////////////////////////////////////////////////////////////////////
+
+    pub fn lose_process_state(&self) {
+        lose_unstable_wal(self);
+
+        self.bucket_refs.borrow_mut().clear();
+
+        self.cas_outbox.borrow_mut().clear();
     }
 
     ////////////////////////////////////////////////////////////////////////////

@@ -10,7 +10,6 @@ use crate::simulation::raft::resolve_cas_request;
 use crate::simulation::raft::PretendCasOutcome;
 use crate::simulation::sharded_wal::apply_next_sharded_entry;
 use crate::simulation::sharded_wal::commit_sharded_entry;
-use crate::simulation::sharded_wal::lose_unstable_wal;
 use crate::simulation::sharded_wal::undo_sharded_statement;
 use crate::simulation::sharded_wal::WalOutcome;
 use crate::simulation::sharding::is_governor_poke_enabled;
@@ -185,7 +184,7 @@ pub fn do_action(cluster: &PretendCluster, mut action: PretendAction) {
         PretendAction::CrashInstance { instance } => {
             let instance = cluster.instance(instance);
             instance.cancel_all_fibers();
-            lose_unstable_wal(&instance);
+            instance.lose_process_state();
         }
 
         PretendAction::RestartInstance { instance } => {
@@ -226,18 +225,15 @@ pub fn determine_potential_actions(cluster: &PretendCluster) -> Vec<PretendActio
     let mut actions = Vec::new();
 
     for (name, instance) in cluster.pretend_instances.borrow().iter() {
-        // A CAS proposal outlives its proposer: it sits at the leader,
-        // which decides it whether or not the instance is still there.
+        if instance.is_down() {
+            continue;
+        }
+
         if !instance.cas_outbox.borrow().is_empty() {
             actions.push(PretendAction::ResolveCasRequest {
                 instance: name.clone(),
                 outcome: None,
             });
-        }
-
-        if instance.is_down() {
-            // Nothing else is a dead process's to do.
-            continue;
         }
 
         let applied = instance.applied_index.get();
