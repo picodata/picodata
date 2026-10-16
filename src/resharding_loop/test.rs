@@ -51,7 +51,7 @@ impl ReshardingTestParameters {
     }
 }
 
-pub fn pretend_buckets_range(
+fn pretend_buckets_range(
     range: BucketIdRange,
     tier: &Tier,
     replicaset: &Replicaset,
@@ -96,11 +96,16 @@ pub fn setup_by_spec(seed: u64, tier_specs: &[PretendTierSpec<'_>]) -> Rc<Preten
                 instances.push(pretend_instance_info(*raft_id, name, &replicaset));
             }
 
-            bucket_records.push(pretend_buckets_range(
-                initial_buckets.clone(),
-                &tier,
-                &replicaset,
-            ));
+            // An empty range means the replicaset joins the topology owning
+            // nothing — there is no such thing as an empty `_pico_bucket`
+            // record, so it simply gets none.
+            if !initial_buckets.is_empty() {
+                bucket_records.push(pretend_buckets_range(
+                    initial_buckets.clone(),
+                    &tier,
+                    &replicaset,
+                ));
+            }
             replicasets.push(replicaset);
         }
 
@@ -163,20 +168,26 @@ pub fn pretend_tier_info(name: impl AsRef<str>, tier_bucket_count: u64) -> Tier 
 fn do_simulation_timeout_verdicts_retry(params: ReshardingTestParameters) {
     tlog!(Info, "random seed: {}", params.seed);
 
-    let (red, red_count) = ("red_1_1", 3000);
-    let (blue, blue_count) = ("blue_1_1", 1500);
+    let (red_tier, red_replicaset, red_master, red_count) = ("red", "red_1", "red_1_1", 3000);
+    let (blue_tier, blue_replicaset, blue_master, blue_count) =
+        ("blue", "blue_1", "blue_1_1", 1500);
     let cluster = setup_by_spec(
         params.seed,
         &[
             (
-                "red",
+                red_tier,
                 red_count,
-                &[("red_1", (2, red), &[], full_range(red_count))],
+                &[(red_replicaset, (2, red_master), &[], full_range(red_count))],
             ),
             (
-                "blue",
+                blue_tier,
                 blue_count,
-                &[("blue_1", (3, blue), &[], full_range(blue_count))],
+                &[(
+                    blue_replicaset,
+                    (3, blue_master),
+                    &[],
+                    full_range(blue_count),
+                )],
             ),
         ],
     );
@@ -184,8 +195,8 @@ fn do_simulation_timeout_verdicts_retry(params: ReshardingTestParameters) {
     // Set the special flag which enables the "time out each unique wait once" mode
     cluster.set_timeout_each_wait_once(true);
 
-    request_resharding_status(&cluster, red, ReshardingStatus::Initialize);
-    request_resharding_status(&cluster, blue, ReshardingStatus::Initialize);
+    request_resharding_status(&cluster, red_master, ReshardingStatus::Initialize);
+    request_resharding_status(&cluster, blue_master, ReshardingStatus::Initialize);
     run_until_converged(&cluster);
 
     let fired_timeout = cluster
@@ -219,24 +230,24 @@ fn simulation_timeout_verdicts_retry_random() {
 fn do_simulation_cas_proposal_dropped(params: ReshardingTestParameters) {
     tlog!(Info, "random seed: {}", params.seed);
 
-    let (name, bucket_count) = ("red_1_1", 3000);
+    let (tier, replicaset, master, bucket_count) = ("red", "red_1", "red_1_1", 3000);
     let cluster = setup_by_spec(
         params.seed,
         &[(
-            "red",
+            tier,
             bucket_count,
-            &[("red_1", (2, name), &[], full_range(bucket_count))],
+            &[(replicaset, (2, master), &[], full_range(bucket_count))],
         )],
     );
 
-    request_resharding_status(&cluster, name, ReshardingStatus::Initialize);
-    run_until_cas_request_is_outstanding(&cluster, name);
-    drop_next_cas_request(&cluster, name);
+    request_resharding_status(&cluster, master, ReshardingStatus::Initialize);
+    run_until_cas_request_is_outstanding(&cluster, master);
+    drop_next_cas_request(&cluster, master);
     run_until_converged(&cluster);
 
     assert!(
         cluster
-            .instance(name)
+            .instance(master)
             .loop_state
             .borrow()
             .last_error
@@ -253,8 +264,7 @@ fn simulation_cas_proposal_dropped_fixed() {
 
 #[::tarantool::test]
 fn simulation_cas_proposal_dropped_random() {
-    let params = ReshardingTestParameters::with_fresh_seed();
-    do_simulation_cas_proposal_dropped(params);
+    do_simulation_cas_proposal_dropped(ReshardingTestParameters::with_fresh_seed());
 }
 
 /// Check that even if a CAS request succeeds, but response doesn't arrive to
@@ -263,24 +273,24 @@ fn do_simulation_cas_committed_after_timeout(params: ReshardingTestParameters) {
     tlog!(Info, "random seed: {}", params.seed);
 
     let bucket_count = 3000;
-    let name = "red_1_1";
+    let (tier, replicaset, master) = ("red", "red_1", "red_1_1");
     let cluster = setup_by_spec(
         params.seed,
         &[(
-            "red",
+            tier,
             bucket_count,
-            &[("red_1", (2, name), &[], full_range(bucket_count))],
+            &[(replicaset, (2, master), &[], full_range(bucket_count))],
         )],
     );
 
-    request_resharding_status(&cluster, name, ReshardingStatus::Initialize);
-    run_until_cas_request_is_outstanding(&cluster, name);
-    timeout_cas_wait(&cluster, name);
+    request_resharding_status(&cluster, master, ReshardingStatus::Initialize);
+    run_until_cas_request_is_outstanding(&cluster, master);
+    timeout_cas_wait(&cluster, master);
     run_until_converged(&cluster);
 
     assert!(
         cluster
-            .instance(name)
+            .instance(master)
             .loop_state
             .borrow()
             .last_error
@@ -319,8 +329,7 @@ fn simulation_cas_committed_after_timeout_fixed() {
 
 #[::tarantool::test]
 fn simulation_cas_committed_after_timeout_random() {
-    let params = ReshardingTestParameters::with_fresh_seed();
-    do_simulation_cas_committed_after_timeout(params);
+    do_simulation_cas_committed_after_timeout(ReshardingTestParameters::with_fresh_seed());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -331,13 +340,14 @@ fn simulation_cas_committed_after_timeout_random() {
 fn do_simulation_replica_sharded_lag(params: ReshardingTestParameters) {
     tlog!(Info, "random seed: {}", params.seed);
 
+    let (tier, replicaset) = ("red", "red_1");
     let (master_name, replica_name) = ("red_1_1", "red_1_2");
     let cluster = setup_by_spec(
         params.seed,
         &[(
-            "red",
+            tier,
             3000,
-            &[("red_1", (2, master_name), &[(3, replica_name)], 1..=300)],
+            &[(replicaset, (2, master_name), &[(3, replica_name)], 1..=300)],
         )],
     );
 
@@ -380,14 +390,15 @@ fn do_simulation_replica_sharded_lag(params: ReshardingTestParameters) {
 
 #[::tarantool::test]
 fn simulation_replica_sharded_lag_fixed() {
-    let params = ReshardingTestParameters::with_seed(1770229753053187);
+    let params = ReshardingTestParameters {
+        seed: 1770229753053187,
+    };
     do_simulation_replica_sharded_lag(params);
 }
 
 #[::tarantool::test]
 fn simulation_replica_sharded_lag_random() {
-    let params = ReshardingTestParameters::with_fresh_seed();
-    do_simulation_replica_sharded_lag(params);
+    do_simulation_replica_sharded_lag(ReshardingTestParameters::with_fresh_seed());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -414,6 +425,7 @@ fn do_simulation_crash_restart(params: ReshardingTestParameters, checkpoint: Cra
     );
 
     let (tier, bucket_count) = ("red", 3000);
+    let (crashed_replicaset, peer_replicaset) = ("red_1", "red_2");
     let (crashed, peer) = ("red_1_1", "red_2_1");
     // Both replicasets own half of the tier's buckets, so both have real
     // work to do and the crashed one is crashed with a peer still running.
@@ -423,8 +435,13 @@ fn do_simulation_crash_restart(params: ReshardingTestParameters, checkpoint: Cra
             tier,
             bucket_count,
             &[
-                ("red_1", (2, crashed), &[], first_half(bucket_count)),
-                ("red_2", (3, peer), &[], second_half(bucket_count)),
+                (
+                    crashed_replicaset,
+                    (2, crashed),
+                    &[],
+                    first_half(bucket_count),
+                ),
+                (peer_replicaset, (3, peer), &[], second_half(bucket_count)),
             ],
         )],
     );
@@ -475,7 +492,8 @@ fn simulation_crash_restart_actualize_bucket_state_version_fixed() {
 #[::tarantool::test]
 fn simulation_crash_restart_random() {
     let params = ReshardingTestParameters::with_fresh_seed();
-    let checkpoint = match params.seed % 2 {
+    let seed = params.seed;
+    let checkpoint = match seed % 2 {
         0 => CrashCheckpoint::ActualizeShardedState,
         _ => CrashCheckpoint::ActualizeBucketStateVersion,
     };
@@ -493,15 +511,26 @@ fn do_simulation_fault_campaign(params: ReshardingTestParameters) {
     tlog!(Info, "random seed: {}", params.seed);
 
     let (tier, bucket_count) = ("red", 3000);
-    let (rs1_master, rs2_master) = ("red_1_1", "red_2_1");
+    let (first_replicaset, second_replicaset) = ("red_1", "red_2");
+    let (first_master, second_master) = ("red_1_1", "red_2_1");
     let cluster = setup_by_spec(
         params.seed,
         &[(
             tier,
             bucket_count,
             &[
-                ("red_1", (2, rs1_master), &[], first_half(bucket_count)),
-                ("red_2", (3, rs2_master), &[], second_half(bucket_count)),
+                (
+                    first_replicaset,
+                    (2, first_master),
+                    &[],
+                    first_half(bucket_count),
+                ),
+                (
+                    second_replicaset,
+                    (3, second_master),
+                    &[],
+                    second_half(bucket_count),
+                ),
             ],
         )],
     );
@@ -509,8 +538,8 @@ fn do_simulation_fault_campaign(params: ReshardingTestParameters) {
     // CAS fault probability needs to be higher, because they're more rare.
     cluster.set_cas_fault_probability(0.9);
     cluster.set_timeout_probability(0.5);
-    request_resharding_status(&cluster, rs1_master, ReshardingStatus::Initialize);
-    request_resharding_status(&cluster, rs2_master, ReshardingStatus::Initialize);
+    request_resharding_status(&cluster, first_master, ReshardingStatus::Initialize);
+    request_resharding_status(&cluster, second_master, ReshardingStatus::Initialize);
     run_until_converged(&cluster);
 
     // Off before the final settle, so the assertions below are about a
@@ -559,8 +588,7 @@ fn simulation_fault_campaign_fixed() {
 
 #[::tarantool::test]
 fn simulation_fault_campaign_random() {
-    let params = ReshardingTestParameters::with_fresh_seed();
-    do_simulation_fault_campaign(params);
+    do_simulation_fault_campaign(ReshardingTestParameters::with_fresh_seed());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -572,25 +600,27 @@ fn do_simulation_master_switchover(params: ReshardingTestParameters) {
     tlog!(Info, "random seed: {}", params.seed);
 
     let (tier, bucket_count) = ("red", 3000);
-    let (old_master, new_master) = ("i1", "i2");
+    let (switching_replicaset, other_replicaset) = ("red_1", "red_2");
+    let (old_master, new_master) = ("red_1_1", "red_1_2");
+    let (other_master, other_replica) = ("red_2_1", "red_2_2");
     let cluster = setup_by_spec(
         params.seed,
         &[(
             tier,
             bucket_count,
             &[
-                // red_1: a master and a replica, owning the first half of the tier.
+                // A master and a replica, owning the first half of the tier.
                 (
-                    "red_1",
+                    switching_replicaset,
                     (2, old_master),
                     &[(3, new_master)],
                     first_half(bucket_count),
                 ),
-                // red_2 owns the second half, and just gets on with it.
+                // The other replicaset owns the second half, and just gets on with it.
                 (
-                    "red_2",
-                    (4, "red_2_1"),
-                    &[(5, "red_2_2")],
+                    other_replicaset,
+                    (4, other_master),
+                    &[(5, other_replica)],
                     second_half(bucket_count),
                 ),
             ],
@@ -622,7 +652,7 @@ fn do_simulation_master_switchover(params: ReshardingTestParameters) {
     // request lands, the promoted replica would (re-)run the stale
     // `requested_status` instead.
     catch_up_on_sharded_wal(&cluster, new_master);
-    commit_master_switchover(&cluster, "red_1", new_master);
+    commit_master_switchover(&cluster, switching_replicaset, new_master);
     request_resharding_status(&cluster, new_master, ReshardingStatus::Initialize);
     catch_up_on_raft_log(&cluster);
     run_until_converged(&cluster);
@@ -630,7 +660,7 @@ fn do_simulation_master_switchover(params: ReshardingTestParameters) {
     assert_bucket_partition(&cluster, tier, bucket_count);
     assert!(
         cluster.instance(new_master).is_master(),
-        "{new_master} must be red_1's master now"
+        "{new_master} must be {switching_replicaset}'s master now"
     );
     assert!(
         !cluster.instance(old_master).is_master(),
@@ -646,8 +676,7 @@ fn simulation_master_switchover_fixed() {
 
 #[::tarantool::test]
 fn simulation_master_switchover_random() {
-    let params = ReshardingTestParameters::with_fresh_seed();
-    do_simulation_master_switchover(params);
+    do_simulation_master_switchover(ReshardingTestParameters::with_fresh_seed());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -664,7 +693,8 @@ pub fn simulation_trace_is_deterministic() {
     {
         let seed = 1770229753053178;
         let (red_count, blue_count) = (3000, 1500);
-        let (tier_1_master, tier_2_master) = ("red_1_1", "blue_1_1");
+        let (red_tier, red_replicaset, red_master) = ("red", "red_1", "red_1_1");
+        let (blue_tier, blue_replicaset, blue_master) = ("blue", "blue_1", "blue_1_1");
         let mut traces = Vec::with_capacity(RERUNS);
         let mut final_states = Vec::with_capacity(RERUNS);
 
@@ -673,34 +703,31 @@ pub fn simulation_trace_is_deterministic() {
                 seed,
                 &[
                     (
-                        "red",
+                        red_tier,
                         red_count,
-                        &[("red_1", (2, tier_1_master), &[], full_range(red_count))],
+                        &[(red_replicaset, (2, red_master), &[], full_range(red_count))],
                     ),
                     (
-                        "blue",
+                        blue_tier,
                         blue_count,
-                        &[("blue_1", (3, tier_2_master), &[], full_range(blue_count))],
+                        &[(
+                            blue_replicaset,
+                            (3, blue_master),
+                            &[],
+                            full_range(blue_count),
+                        )],
                     ),
                 ],
             );
 
-            request_resharding_status(&cluster, tier_1_master, ReshardingStatus::Initialize);
-            request_resharding_status(&cluster, tier_2_master, ReshardingStatus::Initialize);
+            request_resharding_status(&cluster, red_master, ReshardingStatus::Initialize);
+            request_resharding_status(&cluster, blue_master, ReshardingStatus::Initialize);
             run_until_converged(&cluster);
 
             traces.push(cluster.trace.borrow().clone());
             final_states.push((
-                cluster
-                    .instance(tier_1_master)
-                    .local_buckets
-                    .borrow()
-                    .clone(),
-                cluster
-                    .instance(tier_2_master)
-                    .local_buckets
-                    .borrow()
-                    .clone(),
+                cluster.instance(red_master).local_buckets.borrow().clone(),
+                cluster.instance(blue_master).local_buckets.borrow().clone(),
             ));
         }
 
@@ -719,6 +746,10 @@ pub fn simulation_trace_is_deterministic() {
     {
         let seed = 1770229753053180;
         let bucket_count = 3000;
+        let tier = "red";
+        let (first_replicaset, second_replicaset) = ("red_1", "red_2");
+        let (first_master, first_replica) = ("red_1_1", "red_1_2");
+        let (second_master, second_replica) = ("red_2_1", "red_2_2");
         let mut traces = Vec::with_capacity(RERUNS);
         let mut final_states = Vec::with_capacity(RERUNS);
 
@@ -726,19 +757,19 @@ pub fn simulation_trace_is_deterministic() {
             let cluster = setup_by_spec(
                 seed,
                 &[(
-                    "red",
+                    tier,
                     bucket_count,
                     &[
                         (
-                            "red_1",
-                            (2, "red_1_1"),
-                            &[(3, "red_1_2")],
+                            first_replicaset,
+                            (2, first_master),
+                            &[(3, first_replica)],
                             first_half(bucket_count),
                         ),
                         (
-                            "red_2",
-                            (4, "red_2_1"),
-                            &[(5, "red_2_2")],
+                            second_replicaset,
+                            (4, second_master),
+                            &[(5, second_replica)],
                             second_half(bucket_count),
                         ),
                     ],
