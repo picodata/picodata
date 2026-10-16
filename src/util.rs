@@ -463,6 +463,16 @@ impl<T> NoYieldsRefCell<T> {
     {
         f(&*self.borrow())
     }
+
+    #[inline]
+    #[track_caller]
+    pub fn with_mut<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut T) -> R,
+        R: 'static,
+    {
+        f(&mut *self.borrow_mut())
+    }
 }
 
 pub struct NoYieldsRef<'a, T> {

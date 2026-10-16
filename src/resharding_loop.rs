@@ -1,4 +1,5 @@
 use crate::cas;
+use crate::resharding_loop::action::ReshardingActionKind;
 use crate::schema::ADMIN_ID;
 use crate::simulation::platform::Platform;
 use crate::tlog;
@@ -236,7 +237,9 @@ impl ReshardingStatus {
 
 #[derive(Default, Debug)]
 pub struct ReshardingLoopState {
-    pub last_action: Option<action::ReshardingActionKind>,
+    /// A pair: kind of last action performed and the value of fiber::csw when
+    /// that action was planned. CSW is used for debugging to avoid infinite loops.
+    pub last_action: Option<(ReshardingActionKind, u64)>,
 
     /// If resharding_loop's iteration resulted in an error, it's value is
     /// stored here.

@@ -10,6 +10,7 @@ use crate::util::NoYieldsRefCell;
 use crate::Result;
 use ::tarantool::fiber::r#async::watch;
 use std::rc::Rc;
+use tarantool::fiber;
 
 pub async fn do_action(
     platform: &impl Platform,
@@ -29,7 +30,15 @@ pub async fn do_action(
         .governor_raft_op_timeout();
 
     let action_kind = action.kind();
-    state.borrow_mut().last_action = Some(action_kind);
+    let csw = fiber::csw();
+
+    state.with_mut(|state| {
+        // Guard against inifinite loops
+        if let Some((last_action, last_csw)) = state.last_action {
+            debug_assert_ne!((last_action, last_csw), (action_kind, csw));
+        }
+        state.last_action = Some((action_kind, csw));
+    });
 
     type Action = ReshardingAction;
     match action {
