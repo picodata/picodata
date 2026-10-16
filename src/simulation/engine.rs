@@ -207,6 +207,28 @@ pub fn do_action(cluster: &PretendCluster, mut action: PretendAction) {
                 WaitOutcome::Ok,
             );
         }
+
+        PretendAction::RequestStorageRef { instance } => {
+            let instance = cluster.instance(instance);
+            assert!(
+                !instance.move_started.get() && !instance.move_queued.get(),
+                "simulation: [{}] a storage ref was granted while a move was in progress or queued",
+                instance.name,
+            );
+            instance.storage_refs.update(|i| i + 1);
+            instance.storage_refs_granted_count.update(|i| i + 1);
+        }
+
+        PretendAction::DropStorageRef { instance } => {
+            let instance = cluster.instance(instance);
+            let refs = instance.storage_refs.get();
+            assert!(
+                refs > 0,
+                "simulation: [{}] no storage ref to drop",
+                instance.name
+            );
+            instance.storage_refs.set(refs - 1);
+        }
     }
 
     tlog!(Info, "PretendCluster::do_action({action:?})");
@@ -266,6 +288,20 @@ pub fn determine_potential_actions(cluster: &PretendCluster) -> Vec<PretendActio
                 instance: name.clone(),
             });
         }
+
+        if cluster.storage_ref_probability.get() > 0.0 {
+            if !instance.move_started.get() && !instance.move_queued.get() {
+                actions.push(PretendAction::RequestStorageRef {
+                    instance: name.clone(),
+                });
+            }
+
+            if instance.storage_refs.get() > 0 {
+                actions.push(PretendAction::DropStorageRef {
+                    instance: name.clone(),
+                });
+            }
+        }
     }
 
     for (instance, fiber) in cluster.all_fibers() {
@@ -320,12 +356,13 @@ pub fn step_once(cluster: &PretendCluster) -> bool {
         return false;
     }
 
-    // Timeouts are drawn from a pool of their own: a step
+    // Timeouts and storage refs are drawn from pools of their own: a step
     // first decides *whether* it times something out, and only then which wait,
     // that way the injected timeout rate doesn't depend on how many fibers
     // happen to be parked right now.
     let mut regular = vec![];
     let mut timeouts = vec![];
+    let mut storage_refs = vec![];
     let mut have_non_idle_timeouts = false;
     for action in actions {
         match &action {
@@ -335,17 +372,24 @@ pub fn step_once(cluster: &PretendCluster) -> bool {
                 }
                 timeouts.push(action);
             }
+            PretendAction::RequestStorageRef { .. } => storage_refs.push(action),
             _ => regular.push(action),
         }
     }
 
     let have_regular = !regular.is_empty();
     let have_timeouts = !timeouts.is_empty();
+    // RequestStorageRef is a "world" action or a simulated external event, it's
+    // not necessary for convergence, so there's a separate queue for these
+    // events with a lower priority.
+    let have_storage_refs = !storage_refs.is_empty();
 
     if !have_regular && !have_non_idle_timeouts {
         // Only idle waits remain, simulation converged
         return false;
     }
+
+    let p_storage_ref = cluster.storage_ref_probability.get();
 
     let take_timeout =
         have_timeouts && (cluster.timeout_each_wait_once.get() || cluster.roll_wait_timeout());
@@ -365,6 +409,8 @@ pub fn step_once(cluster: &PretendCluster) -> bool {
         // Note: if timeout_each_wait_once is enabled, the `timeouts` only contains
         // unique timeouts which haven't been picked before.
         candidates = timeouts;
+    } else if have_storage_refs && cluster.roll(p_storage_ref) {
+        candidates = storage_refs;
     } else {
         candidates = regular;
     }
@@ -520,6 +566,25 @@ pub fn assert_converged(instance: &PretendInstance) {
         panic_message(&format!(
             "resharding_loop is not in idle state: {fiber_state:?}"
         )),
+    );
+
+    assert!(
+        !instance.move_started.get(),
+        "{}",
+        panic_message("converged while still holding the storage move lock",),
+    );
+
+    assert!(
+        !instance.move_queued.get(),
+        "{}",
+        panic_message("converged while still holding the storage move lock",),
+    );
+
+    assert_eq!(
+        instance.storage_refs.get(),
+        0,
+        "{}",
+        panic_message("converged while still holding the storage refs",),
     );
 
     let this_replicaset = topology_ref.this_replicaset();

@@ -2,7 +2,7 @@ use crate::catalog_cache::CatalogCacheRef;
 use crate::config::AlterSystemParameters;
 use crate::config::PicodataConfig;
 use crate::instance::InstanceName;
-use crate::luamod::lua_function;
+use crate::luamod::{lua_function, luamod};
 use crate::pico_service::pico_service_password;
 use crate::replicaset::{ReplicasetState, Weight};
 use crate::rpc::ddl_apply::Response;
@@ -26,6 +26,7 @@ use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::define_str_enum;
+use tarantool::error::BoxError;
 use tarantool::space::Space;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
@@ -33,6 +34,8 @@ use tarantool::tlua::Call;
 use tarantool::tuple::Encode;
 use tarantool::tuple::ToTupleBuffer;
 use tarantool::tuple::Tuple;
+use tlua::LuaTable;
+use tlua::PushGuard;
 
 /// Returns `true` if `vshard.storage.cfg` hasn't been called on this instance,
 /// which means the whole `vshard.storage.*` API is unusable here: it raises a
@@ -625,6 +628,90 @@ pub fn init_lua_helpers() {
     .expect("loading a file known at compile time")
     .into_call()
     .expect("loading a file known at compile time");
+
+    // Must be called after vshard storage module is loaded
+    init_bucket_ref_ctypeid();
+
+    let default_sched_move_quota: u32 = lua
+        .eval("return require('vshard.consts').DEFAULT_SCHED_MOVE_QUOTA")
+        .unwrap();
+    if default_sched_move_quota != 1 {
+        // We rely on this assumtion in sched_is_move_started
+        crate::warn_or_panic!(
+            "vshard.consts.DEFAULT_SCHED_MOVE_QUOTA is not 1, rebalancing is likely broken!"
+        );
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// bucket_ref handling
+////////////////////////////////////////////////////////////////////////////////
+
+pub type LuaBucketRefsTable =
+    LuaTable<PushGuard<LuaTable<PushGuard<LuaTable<PushGuard<tlua::LuaThread>>>>>>;
+
+pub fn get_bucket_refs() -> Result<LuaBucketRefsTable, Error> {
+    let pico = luamod()?;
+
+    // `pico._vshard_storage_internal` is defined in `src/vshard_helpers.lua`
+    let Ok(t) = pico.into_get("_vshard_storage_internal") else {
+        return Err(Error::other(
+            "cannot find vshard.storage.internal.bucket_refs",
+        ));
+    };
+    let lstorage: tlua::LuaTable<_> = t;
+
+    let Ok(t) = lstorage.into_get("bucket_refs") else {
+        return Err(Error::other(
+            "cannot find vshard.storage.internal.bucket_refs",
+        ));
+    };
+    let bucket_refs: tlua::LuaTable<_> = t;
+
+    Ok(bucket_refs)
+}
+
+pub fn get_bucket_ref(bucket_refs: &LuaBucketRefsTable, bucket_id: u64) -> Option<BucketRef> {
+    let Some(t) = bucket_refs.get(bucket_id) else {
+        // No bucket_ref for this bucket_id
+        return None;
+    };
+
+    let cdata: tlua::CDataOnStack<_> = t;
+    let Some(v) = cdata.try_downcast() else {
+        let expected = <BucketRef as tlua::AsCData>::ctypeid();
+        let actual = cdata.ctypeid();
+        let data = DisplayAsHexBytesLimitted(cdata.data());
+        panic!("ctypeid mismatch {expected} expected, got {actual} ({data})");
+    };
+    let bucket_ref: BucketRef = *v;
+
+    Some(bucket_ref)
+}
+
+pub fn bucket_generation_wait(timeout: Duration) -> Result<()> {
+    let pico = luamod()?;
+
+    // `pico._vshard_storage_internal` is defined in `src/vshard_helpers.lua`
+    let Ok(t) = pico.into_get("_vshard_storage_internal") else {
+        return Err(Error::other("cannot find vshard.storage.internal"));
+    };
+    let lstorage: tlua::LuaTable<_> = t;
+
+    let Ok(t) = lstorage.into_get("bucket_generation_wait") else {
+        return Err(Error::other(
+            "cannot find vshard.storage.internal.bucket_generation_wait",
+        ));
+    };
+    let bucket_generation_wait: tlua::Callable<_> = t;
+
+    if let Err(e) = bucket_generation_wait.call_with::<_, ()>(timeout.as_secs_f64()) {
+        return Err(Error::other(format!(
+            "failed to call `vshard.storage.internal.bucket_generation_wait()`: {e}"
+        )));
+    }
+
+    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -655,6 +742,149 @@ impl BucketRef {
             }
         }
     }
+}
+
+static mut BUCKET_REF_CTYPEID: Option<u32> = None;
+
+pub fn init_bucket_ref_ctypeid() {
+    use tlua::AsLua;
+    let lua = tarantool::lua_state();
+    // SAFETY: safe because lua state is valid
+    let bucket_ref_ctypeid =
+        unsafe { tlua::ffi::luaL_ctypeid(lua.as_lua(), c"struct bucket_ref".as_ptr()) };
+
+    // SAFETY: safe because we only call this from tx thread
+    unsafe {
+        BUCKET_REF_CTYPEID = Some(bucket_ref_ctypeid);
+    }
+}
+
+unsafe impl tlua::AsCData for BucketRef {
+    // SAFETY: safe because we only call this from tx thread
+    fn ctypeid() -> tlua::ffi::CTypeID {
+        let res = unsafe { BUCKET_REF_CTYPEID };
+        res.expect("must be initialized before this is called")
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// vshard move_ref handling
+////////////////////////////////////////////////////////////////////////////////
+
+/// Where we stand in vshard's bucket move scheduler, which shares the storage's
+/// time between moves and storage refs (`vshard/storage/sched.lua`).
+///
+/// The middle state is what makes the loop's dealings with the scheduler
+/// state driven like everything else it does. Waiting for a move's turn can
+/// take as long as the longest outstanding storage ref, and the loop cannot sit
+/// inside one blocking call for that; so it waits in slices, and between them it
+/// is [`MoveState::Enqueued`] — still in the queue, not yet moving, free to
+/// re-decide whether it still wants to move at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveState {
+    /// Not moving and not waiting to.
+    None,
+    /// Waiting for a turn: the storage refs which were out when we asked have
+    /// not all been dropped yet.
+    Enqueued,
+    /// Moving. Storage refs are blocked until [`sched_move_end`].
+    Started,
+}
+
+pub fn sched_move_state() -> Result<MoveState> {
+    let lua = tarantool::lua_state();
+    let pico: tlua::LuaTable<_> = lua
+        .get("pico")
+        .ok_or_else(|| Error::other("pico lua module disappeared"))?;
+
+    // `pico._sched_move_state` is defined in `src/vshard_helpers.lua`
+    let func: tlua::LuaFunction<_> = pico.try_get("_sched_move_state")?;
+    let res = func.call();
+    let (res, e): (String, Option<BoxError>) = res.map_err(Error::from)?;
+    if let Some(e) = e {
+        return Err(e.into());
+    }
+
+    match &*res {
+        "none" => Ok(MoveState::None),
+        "enqueued" => Ok(MoveState::Enqueued),
+        "started" => Ok(MoveState::Started),
+        other => Err(Error::other(format!("unknown vshard move state {other:?}"))),
+    }
+}
+
+static mut BUCKET_SEND_STARTED: bool = false;
+
+/// Enqueue for vshard's move_ref and wait for our turn.
+///
+/// Returns an error if `timeout` is exceeded before our turn. Note that in that
+/// case we are still in the queue and the caller must later call
+/// [`sched_move_dequeue`].
+pub fn sched_move_enqueue_and_wait(timeout: Duration) -> Result<()> {
+    // `pico._sched_move_enqueue` is defined in `src/vshard_helpers.lua`
+    let func = lua_function("_sched_move_enqueue")?;
+    let res: std::result::Result<(), tlua::LuaError> = func.call();
+    res.map_err(Error::from)?;
+
+    // `pico._sched_move_wait` is defined in `src/vshard_helpers.lua`
+    let func = lua_function("_sched_move_wait")?;
+    let res = func.call_with_args(timeout.as_secs_f32());
+    let move_count: i32 = res.map_err(|e| Error::from(tlua::LuaError::from(e)))?;
+
+    if move_count == 0 {
+        // Our turn didn't come in time. The caller should reassess.
+        return Err(Error::timeout());
+    }
+
+    crate::tlog!(Info, "resharding move start");
+    debug_assert_eq!(move_count, 1, "{move_count}");
+
+    // SAFETY: only called from tx thread
+    unsafe { debug_assert!(!BUCKET_SEND_STARTED) };
+    // SAFETY: only called from tx thread
+    unsafe { BUCKET_SEND_STARTED = true };
+
+    Ok(())
+}
+
+/// Give up a place in the move queue without having moved anything. The
+/// counterpart of [`sched_move_end`] for a move which never started.
+pub fn sched_move_dequeue() -> Result<()> {
+    crate::tlog!(Info, "resharding move dequeue");
+
+    // `pico._sched_move_dequeue` is defined in `src/vshard_helpers.lua`
+    let func = lua_function("_sched_move_dequeue")?;
+    let res = func.call();
+    let move_count: u64 = res.map_err(Error::from)?;
+
+    assert_eq!(move_count, 0);
+
+    // SAFETY: only called from tx thread
+    unsafe { debug_assert!(!BUCKET_SEND_STARTED) };
+
+    Ok(())
+}
+
+/// End the successfully acquired move turn.
+pub fn sched_move_end() -> Result<()> {
+    crate::tlog!(Info, "resharding move end");
+
+    // `pico._sched_move_end` is defined in `src/vshard_helpers.lua`
+    let func = lua_function("_sched_move_end")?;
+    let res = func.call();
+    let (move_count, e): (u64, Option<BoxError>) = res.map_err(Error::from)?;
+    if let Some(e) = e {
+        return Err(e.into());
+    }
+
+    assert_eq!(move_count, 0);
+
+    // SAFETY: only called from tx thread
+    unsafe { debug_assert!(BUCKET_SEND_STARTED) };
+    // SAFETY: only called from tx thread
+    unsafe { BUCKET_SEND_STARTED = false };
+
+    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

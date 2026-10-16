@@ -115,6 +115,12 @@ pub enum PretendAction {
 
     /// Simulates a restart of a previously crashed `instance`.
     RestartInstance { instance: InstanceName },
+
+    /// World action: somebody takes a vshard storage ref on `instance`.
+    RequestStorageRef { instance: InstanceName },
+
+    /// World action: a storage ref is dropped.
+    DropStorageRef { instance: InstanceName },
 }
 
 impl std::fmt::Debug for PretendAction {
@@ -171,6 +177,12 @@ impl std::fmt::Debug for PretendAction {
             }
             Self::RestartInstance { instance } => {
                 write!(f, "RestartInstance({instance})")
+            }
+            Self::RequestStorageRef { instance } => {
+                write!(f, "RequestStorageRef({instance})")
+            }
+            Self::DropStorageRef { instance } => {
+                write!(f, "DropStorageRef({instance})")
             }
         }
     }

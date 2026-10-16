@@ -77,6 +77,9 @@ pub struct PretendCluster {
     /// The probability that [`PretendAction::CommitWalWrite`] fails a WAL write.
     pub disk_write_fault_probability: Cell<f64>,
 
+    /// The probability that [`PretendAction::RequestStorageRef`] is performed.
+    pub storage_ref_probability: Cell<f64>,
+
     /// Used to detect a live-locked cluster, i.e. cluster which performs actions
     /// with no changes to the state.
     ///
@@ -106,6 +109,7 @@ impl PretendCluster {
             timeout_each_wait_once: Cell::new(false),
             timed_out_waits: RefCell::new(HashSet::new()),
             disk_write_fault_probability: Cell::new(0.0),
+            storage_ref_probability: Cell::new(0.0),
             last_fingerprint: Cell::new(None),
             steps_without_progress: Cell::new(0),
             expect_no_progress: Cell::new(false),

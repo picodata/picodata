@@ -1,4 +1,5 @@
 use crate::simulation::instance::PretendInstance;
+use crate::simulation::vshard::pretend_vshard_on_commit_trigger;
 use crate::vshard::VshardBucketRecord;
 use crate::Result;
 use std::cell::Cell;
@@ -163,8 +164,10 @@ pub fn commit_sharded_entry(instance: &PretendInstance, entry: ShardedEntry) {
         instance.name
     );
 
+    pretend_vshard_on_commit_trigger(instance, &entry);
+
     instance.sharded_wal.push(entry);
-    instance.sharded_lsn.set(instance.sharded_lsn.get() + 1);
+    instance.sharded_lsn.update(|i| i + 1);
 }
 
 /// Applies the next entry of [`PretendInstance::sharded_wal`] and advances
@@ -186,6 +189,7 @@ pub fn apply_next_sharded_entry(instance: &PretendInstance) -> String {
     let entry = instance.sharded_wal.entry(lsn);
 
     apply_sharded_statement(instance, &entry);
+    pretend_vshard_on_commit_trigger(instance, &entry);
 
     instance.sharded_lsn.set(lsn + 1);
     entry.summary()

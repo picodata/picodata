@@ -59,6 +59,63 @@ function pico._replicaset_uuid_by_bucket_id(tier, bucket_id)
     return replicaset.uuid
 end
 
+local lsched = require('vshard.storage.sched')
+
+-- Whether we are holding a place in vshard's move queue. resharding_loop is the
+-- only thing which moves buckets here and it wants at most one move at a time,
+-- so one flag says it, and it is what makes `pico._sched_move_enqueue`
+-- idempotent: the loop re-decides what to do on every iteration and asks for the
+-- move again each time, and it must not take a second place in the queue for it.
+local move_enqueued = false
+
+function pico._sched_move_enqueue()
+    if not move_enqueued then
+        lsched.move_enqueue()
+        move_enqueued = true
+    end
+end
+
+-- Wait for our turn, for at most `timeout` seconds. Not getting it is an
+-- ordinary outcome and not an error: we keep our place in the queue and the
+-- caller comes back to decide whether it still wants the move.
+function pico._sched_move_wait(timeout)
+    local res = lsched.move_wait(timeout)
+    if res ~= nil then
+        -- Our place in the queue turned into the move itself.
+        move_enqueued = false
+    end
+    return lsched.move_count
+end
+
+function pico._sched_move_dequeue()
+    if move_enqueued then
+        lsched.move_dequeue()
+        move_enqueued = false
+    end
+    return lsched.move_count
+end
+
+function pico._sched_move_end()
+    lsched.move_end(1)
+    return lsched.move_count
+end
+
+-- One of "none", "enqueued", "started".
+function pico._sched_move_state()
+    -- We're assuming that only one move can be started at a time and that only
+    -- we are starting these moves.
+    if lsched.move_count > 0 then
+        return "started"
+    end
+    if move_enqueued then
+        return "enqueued"
+    end
+    return "none"
+end
+
+local lstorage = require('vshard.storage')
+pico._vshard_storage_internal = lstorage.internal
+
 -- Wait for vshard router discovery to complete.
 -- This ensures route_map is up-to-date on the current instance and the
 -- router's part of rebalancing is done.

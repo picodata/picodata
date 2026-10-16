@@ -30,7 +30,9 @@ use crate::traft::op::Dml;
 use crate::traft::RaftIndex;
 use crate::util::NoYieldsRefCell;
 use crate::vshard::BucketRef;
+use crate::vshard::MoveState;
 use crate::vshard::VshardBucketRecord;
+use crate::vshard::VshardBucketState;
 use crate::Result;
 use ::tarantool::fiber::r#async::watch;
 use ::tarantool::fiber::FiberId;
@@ -157,6 +159,41 @@ pub struct PretendInstance {
     /// `(space_id, bucket_id)` yields an error after this many tuples.
     /// The count starts from the `after` position, i.e. it's per iterator.
     pub index_select_error_after: RefCell<BTreeMap<(SpaceId, u64), usize>>,
+
+    ////////////////////////////////////////////////////////////////////////////
+    // storage refs
+    ////////////////////////////////////////////////////////////////////////////
+    /// Set while this instance's loop is inside `sched_move_start` waiting for
+    /// [`Self::storage_refs`] to drain — vshard's `M.move_queue`.
+    pub move_queued: Cell<bool>,
+
+    /// Vshard's move lock
+    ///
+    /// This is a part of the storage/move ref mechanism, which helps serialize
+    /// bucket moves during rebalancing with `vshard.router.map_call` calls.
+    ///
+    /// A flag instead of a count, because this is how resharding_loop sees it.
+    pub move_started: Cell<bool>,
+
+    /// How many times this instance has taken [`Self::move_started`].
+    pub move_lock_acquired_count: Cell<u64>,
+
+    /// How many storage refs this instance has granted over the run.
+    pub storage_refs_granted_count: Cell<u64>,
+
+    /// Vshard's storage refs.
+    ///
+    /// This is a part of the storage/move ref mechanism, which helps serialize
+    /// bucket moves during rebalancing with `vshard.router.map_call` calls.
+    ///
+    /// A count, like vshard's own `M.ref_count`, since a storage can serve
+    /// several broadcasts at once.
+    pub storage_refs: Cell<u64>,
+
+    /// Vshard's bucket_generation counter.
+    ///
+    /// Needed for [`FiberState::WaitBucketGeneration`].
+    pub vshard_bucket_generation: Cell<u64>,
 }
 
 impl PretendInstance {
@@ -177,6 +214,12 @@ impl PretendInstance {
             parameters: AlterSystemParameters::for_tests(),
             local_buckets: RefCell::new(BTreeMap::new()),
             applied_index: Cell::new(0),
+            storage_refs: Cell::new(0),
+            move_started: Cell::new(false),
+            move_queued: Cell::new(false),
+            move_lock_acquired_count: Cell::new(0),
+            storage_refs_granted_count: Cell::new(0),
+            vshard_bucket_generation: Cell::new(0),
             bucket_refs: RefCell::new(BTreeMap::new()),
             box_schema_version: Cell::new(1),
             index_select_error_after: RefCell::new(BTreeMap::new()),
@@ -364,6 +407,9 @@ impl PretendInstance {
     pub fn lose_process_state(&self) {
         lose_unstable_wal(self);
 
+        self.move_started.set(false);
+        self.move_queued.set(false);
+        self.storage_refs.set(0);
         self.bucket_refs.borrow_mut().clear();
 
         self.cas_outbox.borrow_mut().clear();
@@ -389,6 +435,10 @@ impl PretendInstance {
             local_bucket_count: self.local_buckets.borrow().len(),
 
             bucket_refs: self.bucket_refs.borrow().values().copied().collect(),
+
+            move_queued: self.move_queued.get(),
+            move_started: self.move_started.get(),
+            storage_refs: self.storage_refs.get(),
 
             resharding_loop_requested_status: self.requested_status_tx.borrow().get(),
 
@@ -572,8 +622,112 @@ impl Platform for PretendInstance {
         Ok(unsafe { index.tuple_position_unchecked(tuple_data)? })
     }
 
+    fn sched_move_enqueue_and_wait(&self, timeout: Duration) -> Result<()> {
+        // Callers only enqueue if the move is not started yet
+        assert!(
+            !self.move_started.get(),
+            "[{}] took the storage move lock twice without releasing it",
+            self.name,
+        );
+
+        // Enqueue
+        self.move_queued.set(true);
+
+        // Wait for our turn.
+        if self.storage_refs.get() > 0 {
+            let fiber = self.current_fiber()?;
+            fiber
+                .park(FiberState::WaitStorageRefsDrained { timeout })
+                .to_result()?;
+
+            assert_eq!(
+                self.storage_refs.get(),
+                0,
+                "[{}] a move was let through with storage refs still out",
+                self.name,
+            );
+        }
+
+        self.move_queued.set(false);
+        self.move_started.set(true);
+        self.move_lock_acquired_count.update(|i| i + 1);
+        Ok(())
+    }
+
+    fn sched_move_end(&self) -> Result<()> {
+        assert!(
+            self.move_started.get(),
+            "[{}] released a storage move lock it wasn't holding",
+            self.name,
+        );
+
+        // Resharding loop ends moves in 2 scenarios:
+        // - on master when the bucket transfer is complete
+        // - on non-master after another replica is promoted in it's place
+        //
+        // In the first case we also check the invariant, that bucket transfer
+        // is over, so every bucket must be active. In the second case we can't
+        // enforce that invariant as it's the new master's responsibility to
+        // finish any ongoing transfers.
+        if self.is_master() {
+            let non_active: Vec<_> = self
+                .local_buckets
+                .borrow()
+                .values()
+                .filter(|bucket| bucket.state != VshardBucketState::Active)
+                .cloned()
+                .collect();
+            assert!(
+                non_active.is_empty(),
+                "[{}] released the storage move lock while {} of its buckets were \
+                still not active, first one: {:?}",
+                self.name,
+                non_active.len(),
+                non_active[0],
+            );
+        }
+
+        self.move_started.set(false);
+        Ok(())
+    }
+
+    fn sched_move_dequeue(&self) -> Result<()> {
+        assert!(
+            self.move_queued.get(),
+            "[{}] no queued move to give up",
+            self.name
+        );
+        assert!(
+            !self.move_started.get(),
+            "[{}] move dequeue attempt during an ongoing move",
+            self.name,
+        );
+        self.move_queued.set(false);
+        Ok(())
+    }
+
+    fn sched_move_state(&self) -> Result<MoveState> {
+        if self.move_started.get() {
+            assert!(!self.move_queued.get());
+            return Ok(MoveState::Started);
+        }
+
+        if self.move_queued.get() {
+            return Ok(MoveState::Enqueued);
+        }
+
+        Ok(MoveState::None)
+    }
+
     fn get_bucket_ref(&self, bucket_id: u64) -> Result<Option<BucketRef>> {
         Ok(self.bucket_refs.borrow().get(&bucket_id).copied())
+    }
+
+    fn bucket_generation_wait(&self, timeout: Duration) -> Result<()> {
+        let seen = self.vshard_bucket_generation.get();
+        self.current_fiber()?
+            .park(FiberState::WaitBucketGeneration { seen, timeout })
+            .to_result()
     }
 
     fn wait_router_discovery_complete(&self, _tier: &str, _timeout: Duration) -> Result<()> {
@@ -602,6 +756,10 @@ pub struct InstanceFingerprint {
     pub local_bucket_count: usize,
 
     pub bucket_refs: Vec<BucketRef>,
+
+    pub move_queued: bool,
+    pub move_started: bool,
+    pub storage_refs: u64,
 
     pub resharding_loop_requested_status: (ReshardingStatus, u64),
 

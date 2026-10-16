@@ -14,6 +14,7 @@ use crate::traft::op::Dml;
 use crate::traft::RaftIndex;
 use crate::vshard;
 use crate::vshard::BucketRef;
+use crate::vshard::MoveState;
 use crate::vshard::VshardBucketRecord;
 use crate::Result;
 use ::tarantool::fiber::r#async::watch;
@@ -164,11 +165,50 @@ pub trait Platform {
     // vshard refs/locks/router/move
     //
 
+    /// Enqueue for vshard's move_ref and wait for our turn.
+    ///
+    /// Returns an error if `timeout` is exceeded before our turn. Note that in that
+    /// case we are still in the queue and the caller must later call
+    /// [`Self::sched_move_dequeue`].
+    ///
+    /// Real implementation redirects to [`vshard::sched_move_enqueue_and_wait`].
+    fn sched_move_enqueue_and_wait(&self, timeout: Duration) -> Result<()>;
+
+    /// Release the vshard's move_ref.
+    ///
+    /// Must be called only if the move_ref was acquired.
+    ///
+    /// Real implementation redirects to [`vshard::sched_move_end`].
+    fn sched_move_end(&self) -> Result<()>;
+
+    /// Leave the queue for the move_ref.
+    ///
+    /// Must be called only if the move_ref was not yet acquired.
+    ///
+    /// Real implementation redirects to [`vshard::sched_move_dequeue`].
+    fn sched_move_dequeue(&self) -> Result<()>;
+
+    /// Check if we own the move_ref or if are still enqueued for it or none of
+    /// the above.
+    ///
+    /// Real implementation redirects to [`vshard::sched_move_state`].
+    fn sched_move_state(&self) -> Result<MoveState>;
+
     /// Check this bucket's vshard's in-memory bucket refs.
     ///
-    /// Real implementation is not there yet, it will read vshard's
-    /// `bucket_refs` from `vshard/storage/init.lua`.
+    /// Real implementation redirects to [`vshard::get_bucket_ref`].
     fn get_bucket_ref(&self, bucket_id: u64) -> Result<Option<BucketRef>>;
+
+    /// Wait until vshard bumps its bucket generation counter.
+    ///
+    /// Vshard bumps it
+    /// - on every commit to `_bucket`
+    /// - when bucket_unrefro drops the `ro` count to 0 if `ro_lock` is set
+    ///
+    /// The caller must re-check it's condition upon wakeup.
+    ///
+    /// Real implementation redirects to [`vshard::bucket_generation_wait`].
+    fn bucket_generation_wait(&self, timeout: Duration) -> Result<()>;
 
     /// Wait for vshard router discovery to complete on the current instance.
     /// This ensures route_map is up-to-date before bumping the bucket state version.
@@ -244,6 +284,31 @@ impl Platform for node::Node {
         box_schema_version()
     }
 
+    fn sched_move_enqueue_and_wait(&self, timeout: Duration) -> Result<()> {
+        vshard::sched_move_enqueue_and_wait(timeout)
+    }
+
+    fn sched_move_end(&self) -> Result<()> {
+        vshard::sched_move_end()
+    }
+
+    fn sched_move_dequeue(&self) -> Result<()> {
+        vshard::sched_move_dequeue()
+    }
+
+    fn sched_move_state(&self) -> Result<MoveState> {
+        vshard::sched_move_state()
+    }
+
+    fn get_bucket_ref(&self, bucket_id: u64) -> Result<Option<BucketRef>> {
+        let bucket_refs = vshard::get_bucket_refs()?;
+        Ok(vshard::get_bucket_ref(&bucket_refs, bucket_id))
+    }
+
+    fn bucket_generation_wait(&self, timeout: Duration) -> Result<()> {
+        vshard::bucket_generation_wait(timeout)
+    }
+
     fn index_bucket_id_select_after(
         &self,
         space_id: SpaceId,
@@ -268,9 +333,5 @@ impl Platform for node::Node {
 
     fn wait_router_discovery_complete(&self, tier: &str, timeout: Duration) -> Result<()> {
         vshard::wait_router_discovery_complete(tier, timeout)
-    }
-
-    fn get_bucket_ref(&self, _bucket_id: u64) -> Result<Option<BucketRef>> {
-        unimplemented!("coming soon")
     }
 }

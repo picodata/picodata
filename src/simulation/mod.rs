@@ -34,3 +34,4 @@ pub mod platform;
 pub mod raft;
 pub mod sharded_wal;
 pub mod sharding;
+pub mod vshard;

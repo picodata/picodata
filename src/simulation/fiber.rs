@@ -316,6 +316,16 @@ pub enum FiberState {
         timeout: Duration,
     },
 
+    /// Parked inside `sched_move_start`, waiting for our turn to move buckets.
+    WaitStorageRefsDrained { timeout: Duration },
+
+    /// Parked until vshard's bucket generation is bumped.
+    WaitBucketGeneration {
+        /// Bucket generation we've seen at the moment of park.
+        seen: u64,
+        timeout: Duration,
+    },
+
     /// The fiber function has exited.
     Finished,
 }
@@ -334,6 +344,8 @@ impl FiberState {
             FiberState::WaitAppliedIndex { .. }
                 | FiberState::WaitCasOutcome { .. }
                 | FiberState::WaitUntilMaster { .. }
+                | FiberState::WaitStorageRefsDrained { .. }
+                | FiberState::WaitBucketGeneration { .. }
         )
     }
 
@@ -463,6 +475,10 @@ pub fn is_wait_satisfiable(instance: &PretendInstance, state: &FiberState) -> bo
         } => instance.applied_index.get() >= *index,
         FiberState::WaitCasOutcome { outcome, .. } => outcome.get().is_some(),
         FiberState::WaitWalWrite { outcome } => outcome.get().is_some(),
+        FiberState::WaitStorageRefsDrained { .. } => instance.storage_refs.get() == 0,
+        FiberState::WaitBucketGeneration { seen, .. } => {
+            *seen != instance.vshard_bucket_generation.get()
+        }
         // Not parked on anything, so there's no wait to satisfy.
         FiberState::Running | FiberState::Finished => false,
     }
