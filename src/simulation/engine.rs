@@ -51,33 +51,47 @@ pub fn do_action(cluster: &PretendCluster, mut action: PretendAction) {
 
     // Perform the action
     match &mut action {
-        PretendAction::AdvanceGlobal { instance, applied } => {
+        PretendAction::AdvanceGlobal {
+            instance,
+            index,
+            dmls,
+        } => {
             let instance = cluster.instance(instance);
+
             assert_eq!(
-                instance.applied_index.get(),
-                *applied,
+                instance.applied_index.get() + 1,
+                *index,
                 "[{}] stale AdvanceGlobal",
                 instance.name
             );
+            assert!(dmls.is_none(), "must be set here");
+
             let entry = cluster
                 .raft_log
-                .entry(*applied + 1)
+                .entry(*index)
                 .expect("checked non-empty by `enabled_actions`");
             for dml in &*entry.dmls {
                 apply_dml(&instance, dml);
             }
             instance.applied_index.set(entry.index);
+            *dmls = Some(entry.dmls);
         }
 
-        PretendAction::AdvanceSharded { instance, lsn } => {
+        PretendAction::AdvanceSharded {
+            instance,
+            lsn,
+            entry,
+        } => {
             let instance = cluster.instance(instance);
             assert_eq!(
-                instance.sharded_lsn.get(),
+                instance.sharded_lsn.get() + 1,
                 *lsn,
                 "[{}] stale AdvanceSharded",
                 instance.name
             );
-            apply_next_sharded_entry(&instance);
+            assert!(entry.is_none(), "must be set here");
+            let summary = apply_next_sharded_entry(&instance);
+            *entry = Some(summary);
         }
 
         PretendAction::SatisfyWait {
@@ -228,7 +242,8 @@ pub fn determine_potential_actions(cluster: &PretendCluster) -> Vec<PretendActio
         if applied < cluster.raft_log.last_index() {
             actions.push(PretendAction::AdvanceGlobal {
                 instance: name.clone(),
-                applied,
+                index: applied + 1,
+                dmls: None,
             });
         }
 
@@ -236,7 +251,8 @@ pub fn determine_potential_actions(cluster: &PretendCluster) -> Vec<PretendActio
         if lsn < instance.sharded_wal.len() && !instance.sharded_replication_paused.get() {
             actions.push(PretendAction::AdvanceSharded {
                 instance: name.clone(),
-                lsn,
+                lsn: lsn + 1,
+                entry: None,
             });
         }
 

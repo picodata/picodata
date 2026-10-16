@@ -195,7 +195,8 @@ pub fn catch_up_on_raft_log(cluster: &PretendCluster) {
                 cluster,
                 PretendAction::AdvanceGlobal {
                     instance: name.clone(),
-                    applied: instance.applied_index.get(),
+                    index: instance.applied_index.get() + 1,
+                    dmls: None,
                 },
             );
         }
@@ -242,7 +243,8 @@ pub fn catch_up_on_sharded_wal(cluster: &PretendCluster, instance_name: &str) {
             cluster,
             PretendAction::AdvanceSharded {
                 instance: instance.name.clone(),
-                lsn: instance.sharded_lsn.get(),
+                lsn: instance.sharded_lsn.get() + 1,
+                entry: None,
             },
         );
     }

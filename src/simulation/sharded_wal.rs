@@ -3,6 +3,7 @@ use crate::vshard::VshardBucketRecord;
 use crate::Result;
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::fmt::Write as _;
 use std::rc::Rc;
 use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
@@ -32,6 +33,38 @@ impl ShardedWal {
 #[derive(Clone, Debug)]
 pub enum ShardedEntry {
     WriteBuckets { buckets: Vec<VshardBucketRecord> },
+}
+
+impl ShardedEntry {
+    /// Description to store into [`PretendAction::AdvanceSharded`] for
+    /// debugging purposes.
+    ///
+    /// [`PretendAction::AdvanceSharded`]: crate::simulation::action::PretendAction::AdvanceSharded
+    fn summary(&self) -> String {
+        match self {
+            Self::WriteBuckets { buckets } => {
+                let mut summary = String::from("WriteBuckets(");
+                if let Some(first) = buckets.first() {
+                    let last = buckets.last().expect("non-empty, `first` matched");
+                    write!(summary, "{}..={} ", first.bucket_id, last.bucket_id)
+                        .expect("writing to a String cannot fail");
+                }
+                write!(summary, "n={} ", buckets.len()).expect("writing to a String cannot fail");
+
+                let mut states = Vec::new();
+                for bucket in buckets {
+                    if !states.contains(&bucket.state) {
+                        states.push(bucket.state);
+                        write!(summary, " {}", bucket.state)
+                            .expect("writing to a String cannot fail");
+                    }
+                }
+                write!(summary, ")").expect("writing to a String cannot fail");
+
+                summary
+            }
+        }
+    }
 }
 
 /// One transaction an instance has applied to its own memory and whose WAL
@@ -129,6 +162,7 @@ pub fn commit_sharded_entry(instance: &PretendInstance, entry: ShardedEntry) {
         "[{}] master committing while behind its replicaset's sharded WAL",
         instance.name
     );
+
     instance.sharded_wal.push(entry);
     instance.sharded_lsn.set(instance.sharded_lsn.get() + 1);
 }
@@ -139,16 +173,22 @@ pub fn commit_sharded_entry(instance: &PretendInstance, entry: ShardedEntry) {
 ///
 /// Both halves at once, unlike the master. A replica's applier fiber
 /// writes its own WAL too.
-pub fn apply_next_sharded_entry(instance: &PretendInstance) {
+///
+/// Returns the description of the applied entry.
+pub fn apply_next_sharded_entry(instance: &PretendInstance) -> String {
     let lsn = instance.sharded_lsn.get();
     assert!(
         lsn < instance.sharded_wal.len(),
         "[{}] nothing to apply at sharded lsn {lsn}",
         instance.name
     );
+
     let entry = instance.sharded_wal.entry(lsn);
+
     apply_sharded_statement(instance, &entry);
+
     instance.sharded_lsn.set(lsn + 1);
+    entry.summary()
 }
 
 /// Applies the *statement* half of a sharded entry: what memtx does

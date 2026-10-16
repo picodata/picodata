@@ -8,7 +8,10 @@ use crate::simulation::fiber::PretendFiberId;
 use crate::simulation::instance::PretendInstance;
 use crate::simulation::raft::PretendCasOutcome;
 use crate::simulation::sharded_wal::WalOutcome;
+use crate::traft::op::Dml;
+use crate::traft::op::Op;
 use crate::traft::RaftIndex;
+use std::rc::Rc;
 
 /// An enumeration of actions which the simulation engine can perform.
 ///
@@ -27,17 +30,41 @@ pub enum PretendAction {
         status: ReshardingStatus,
     },
 
-    /// `instance` applies a raft entry at index `applied` + 1 to it's local state.
+    /// `instance` applies a raft entry at given `index` to it's local state.
     /// Applies global DML and advances the instance's [`PretendInstance::applied_index`].
     AdvanceGlobal {
         instance: InstanceName,
-        applied: RaftIndex,
+        index: RaftIndex,
+
+        /// Dmls contained in the entry.
+        ///
+        /// This is `None` when returned from [`determine_potential_actions`]
+        /// and is set when the operation is performed in [`do_action`] for
+        /// debugging purposes.
+        ///
+        /// [`determine_potential_actions`]: crate::simulation::engine::determine_potential_actions
+        /// [`do_action`]: crate::simulation::engine::do_action
+        dmls: Option<Rc<[Dml]>>,
     },
 
     /// `instance` applies the sharded WAL entry at given `lsn` to it's local
     /// state. Applies the corresponding WAL entry payload and advances
     /// instance's [`PretendInstance::sharded_lsn`].
-    AdvanceSharded { instance: InstanceName, lsn: usize },
+    AdvanceSharded {
+        instance: InstanceName,
+        lsn: usize,
+
+        /// Payload contained in the entry. Stored as string for simplicity,
+        /// only used for debugging.
+        ///
+        /// This is `None` when returned from [`determine_potential_actions`]
+        /// and is set when the operation is performed in [`do_action`] for
+        /// debugging purposes.
+        ///
+        /// [`determine_potential_actions`]: crate::simulation::engine::determine_potential_actions
+        /// [`do_action`]: crate::simulation::engine::do_action
+        entry: Option<String>,
+    },
 
     /// Resolves the first CAS request in [`PretendInstance::cas_outbox`] of
     /// given `instance`.
@@ -96,11 +123,30 @@ impl std::fmt::Debug for PretendAction {
             Self::RequestReshardingStatus { instance, status } => {
                 write!(f, "RequestReshardingStatus({instance}, {status:?})")
             }
-            Self::AdvanceGlobal { instance, applied } => {
-                write!(f, "AdvanceGlobal({instance}, {applied})")
+            Self::AdvanceGlobal {
+                instance,
+                index,
+                dmls,
+            } => {
+                write!(f, "AdvanceGlobal({instance}, {index}")?;
+                for dml in dmls.iter().flat_map(|dmls| dmls.iter()) {
+                    // Reuse `Op`s pretty Display impl
+                    write!(f, ", {}", Op::Dml(dml.clone()))?;
+                }
+                write!(f, ")")
             }
-            Self::AdvanceSharded { instance, lsn } => {
-                write!(f, "AdvanceSharded({instance}, {lsn})")
+            Self::AdvanceSharded {
+                instance,
+                lsn,
+                entry,
+            } => {
+                write!(f, "AdvanceSharded({instance}, {lsn}")?;
+                if let Some(entry) = entry {
+                    write!(f, ", {entry}")?;
+                } else {
+                    write!(f, ", None")?;
+                }
+                write!(f, ")")
             }
             Self::ResolveCasRequest { instance, outcome } => {
                 write!(f, "ResolveCasRequest({instance}, {outcome:?})")
