@@ -445,9 +445,9 @@ impl<'q, M: Metadata> Discoverer<'q, M> for GroupBy<'q, Raw> {
                                 .from
                                 .column_route(var, &meta.binder)
                             {
-                                ColumnRoute::Ambigious => {
+                                ColumnRoute::Ambiguous => {
                                     return Err(semantic_err(format_smolstr!(
-                                        "column reference '{var}' is ambigious"
+                                        "column reference '{var}' is ambiguous"
                                     )))
                                 }
                                 ColumnRoute::Resolved(_) => false,

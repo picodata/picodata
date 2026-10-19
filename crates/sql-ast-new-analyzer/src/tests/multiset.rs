@@ -95,9 +95,9 @@ fn qualified_column_reference_to_unnamed_cte_result_column() {
 }
 
 #[test]
-fn ambigious_column_reference_cte() {
+fn ambiguous_column_reference_cte() {
     let query = "WITH cte (a, a) AS (SELECT 1, 2) SELECT a FROM cte;";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'a' is ambigious");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'a' is ambiguous");
 }
 
 #[test]

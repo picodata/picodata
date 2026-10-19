@@ -82,18 +82,18 @@ fn where_does_not_see_select_list_alias() {
 }
 
 #[test]
-fn where_ambigious_column_across_join() {
+fn where_ambiguous_column_across_join() {
     let query = "SELECT 1 FROM t3 INNER JOIN t4 ON TRUE WHERE a = 1";
     insta::assert_snapshot!(
         analyze_error(query, &[]),
-        @"semantic error: column reference 'a' is ambigious"
+        @"semantic error: column reference 'a' is ambiguous"
     );
 }
 
 #[test]
 fn where_over_join_using_takes_merged_column() {
     // `USING` merges the two `a`s into one column anchored on the left side,
-    // so the unqualified reference is not ambigious here.
+    // so the unqualified reference is not ambiguous here.
     let query = "SELECT a FROM t3 INNER JOIN t4 USING (a) WHERE a = 1";
     insta::assert_snapshot!(
         analyzed(query, &[]),

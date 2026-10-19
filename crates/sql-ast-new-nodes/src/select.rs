@@ -137,9 +137,9 @@ impl<'q> SelectStmt<'q, Analyzed> {
 
         if routes.len() > 1 {
             // More than 1 entity match.
-            // For example, `SELECT a FROM (SELECT 1 a, 2 b)`.
-            // Column reference a is ambigious.
-            UniqueColumnRoute::Ambigious
+            // For example, `SELECT a FROM (SELECT 1 a, 2 a)`.
+            // Column reference a is ambiguous.
+            UniqueColumnRoute::Ambiguous
         } else {
             routes
                 .into_iter()

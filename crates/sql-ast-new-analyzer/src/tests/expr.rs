@@ -45,15 +45,15 @@ fn qualified_column_resolution_multiple_satisfy() {
 }
 
 #[test]
-fn ambigious_column_reference_subquery() {
+fn ambiguous_column_reference_subquery() {
     let query = "SELECT a FROM (SELECT 1 AS a, 2 AS a)";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'a' is ambigious");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'a' is ambiguous");
 }
 
 #[test]
-fn ambigious_qualified_column_reference_subquery() {
+fn ambiguous_qualified_column_reference_subquery() {
     let query = "SELECT x.a FROM (SELECT 1 AS a, 2 AS a) AS x";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'x.a' is ambigious");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'x.a' is ambiguous");
 }
 
 // ------------- Scopes a subquery sees -------------

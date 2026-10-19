@@ -182,8 +182,8 @@ pub(crate) fn var_from_route<'q, S: Scope<'q> + ?Sized>(
                 .ok_or_else(|| cannot_resolve_err(var))?;
             Ok(BoundVar::new(depth, entry, column_pos, data_type))
         }
-        ColumnRoute::Ambigious => Err(semantic_err(format_smolstr!(
-            "column reference '{var}' is ambigious"
+        ColumnRoute::Ambiguous => Err(semantic_err(format_smolstr!(
+            "column reference '{var}' is ambiguous"
         ))),
     }
 }

@@ -1762,7 +1762,7 @@ fn window_output_name_in_order_and_group_by() {
             OVER (ORDER BY a) FROM t1) AS x",
             &[]
         ),
-        @"semantic error: column reference 'x.row_number' is ambigious"
+        @"semantic error: column reference 'x.row_number' is ambiguous"
     );
 }
 

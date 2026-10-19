@@ -145,7 +145,7 @@ fn asterisk_from_cte_with_column_list_over_table_columns() {
 }
 
 #[test]
-fn ambigious_column_reference_asterisk_cte() {
+fn ambiguous_column_reference_asterisk_cte() {
     let query = "WITH cte (a, a) AS (SELECT 1, 2) SELECT * FROM cte;";
     insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte (a, a) AS (SELECT 1::int, 2::int) SELECT cte.a::int, cte.a::int FROM cte");
 }
@@ -208,7 +208,7 @@ fn correlated_subquery_qualified_asterisk_matches_only_the_outer_expression_keys
 }
 
 #[test]
-fn ambigious_column_reference_asterisk_subquery() {
+fn ambiguous_column_reference_asterisk_subquery() {
     let query = "SELECT * FROM (SELECT 1 AS a, 2 AS a)";
     insta::assert_snapshot!(analyzed(query, &[]), @"SELECT a::int, a::int FROM (SELECT 1::int AS a, 2::int AS a)");
 }

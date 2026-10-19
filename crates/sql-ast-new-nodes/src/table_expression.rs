@@ -263,14 +263,14 @@ pub fn route_column<'q, S: Scope<'q> + ?Sized>(
 
             if column_routes.len() > 1 {
                 // Resolved into more than 1 entity
-                ColumnRoute::Ambigious
+                ColumnRoute::Ambiguous
             } else if column_routes
                 .iter()
-                .any(|route| matches!(route, ColumnRoute::Ambigious))
+                .any(|route| matches!(route, ColumnRoute::Ambiguous))
             {
-                // Any FROM entry has ambigious resolution
-                // For example, query `SELECT a FROM (SELECT 1 AS a, 2 AS a)` has ambigious `a` column.
-                ColumnRoute::Ambigious
+                // Any FROM entry has ambiguous resolution
+                // For example, query `SELECT a FROM (SELECT 1 AS a, 2 AS a)` has ambiguous `a` column.
+                ColumnRoute::Ambiguous
             } else {
                 column_routes
                     .into_iter()
@@ -802,7 +802,7 @@ impl AnalyzedCteOrTable {
                     .count()
                     > 1
                 {
-                    UniqueColumnRoute::Ambigious
+                    UniqueColumnRoute::Ambiguous
                 } else {
                     cte_columns_def
                         .iter()
@@ -1066,8 +1066,8 @@ pub enum ColumnRoute<P> {
     ColumnMissing,
     /// Nothing here matches the reference; the search continues outward.
     NoMatch,
-    /// Ambigious
-    Ambigious,
+    /// Ambiguous
+    Ambiguous,
 }
 
 impl<P> ColumnRoute<P> {
@@ -1076,7 +1076,7 @@ impl<P> ColumnRoute<P> {
             Self::Resolved(route) => ColumnRoute::Resolved(f(route)),
             Self::ColumnMissing => ColumnRoute::ColumnMissing,
             Self::NoMatch => ColumnRoute::NoMatch,
-            Self::Ambigious => ColumnRoute::Ambigious,
+            Self::Ambiguous => ColumnRoute::Ambiguous,
         }
     }
 }
@@ -1088,7 +1088,7 @@ impl<P> ColumnRoute<P> {
 pub enum UniqueColumnRoute<P> {
     Resolved(P),
     ColumnMissing,
-    Ambigious,
+    Ambiguous,
 }
 
 impl<P> UniqueColumnRoute<P> {
@@ -1096,7 +1096,7 @@ impl<P> UniqueColumnRoute<P> {
         match self {
             Self::Resolved(route) => ColumnRoute::Resolved(f(route)),
             Self::ColumnMissing => ColumnRoute::ColumnMissing,
-            Self::Ambigious => ColumnRoute::Ambigious,
+            Self::Ambiguous => ColumnRoute::Ambiguous,
         }
     }
 }

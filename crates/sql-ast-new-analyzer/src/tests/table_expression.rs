@@ -222,9 +222,9 @@ fn join_chain_using_reduction_resolves_to_the_leftmost() {
 /// so a name two earlier entries still expose is ambiguous there - exactly as it
 /// would be in a select list.
 #[test]
-fn join_using_column_ambigious_in_the_left_input() {
+fn join_using_column_ambiguous_in_the_left_input() {
     let query = "SELECT * FROM t6 x INNER JOIN t6 y USING (k1) INNER JOIN t6 z USING (k2)";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'k2' is ambigious");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: column reference 'k2' is ambiguous");
 }
 
 #[test]
@@ -505,7 +505,7 @@ fn group_by_alias() {
 }
 
 #[test]
-fn group_by_alias_ambigious() {
+fn group_by_alias_ambiguous() {
     insta::assert_snapshot!(
         analyze_error("select a a1, b a1 from t1 GROUP BY a1;", &[]),
         @r#"semantic error: GROUP BY "a1" is ambiguous"#
@@ -604,14 +604,14 @@ fn group_by_output_name_inherited_from_the_expression() {
 
 /// An ambiguous FROM name is ambiguous, alias or no alias.
 #[test]
-fn group_by_ambigious_from_name_does_not_fall_back_to_an_alias() {
+fn group_by_ambiguous_from_name_does_not_fall_back_to_an_alias() {
     insta::assert_snapshot!(
         analyze_error("SELECT 1 AS b FROM t3 JOIN t4 ON t3.a = t4.a GROUP BY b", &[]),
-        @"semantic error: column reference 'b' is ambigious"
+        @"semantic error: column reference 'b' is ambiguous"
     );
     insta::assert_snapshot!(
         analyze_error("SELECT t3.b AS a FROM t3 JOIN t4 ON t3.a = t4.a GROUP BY a", &[]),
-        @"semantic error: column reference 'a' is ambigious"
+        @"semantic error: column reference 'a' is ambiguous"
     );
     // A name no relation exposes still reaches the aliases.
     insta::assert_snapshot!(
