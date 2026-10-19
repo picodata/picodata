@@ -178,8 +178,8 @@ table.legend {
     </thead>
     <tbody>
         <tr>
-            <td><span class="instance">—</span></td>
-            <td>Пароль администратора для текущего инстанса</td>
+            <td><span class="cluster">—</span></td>
+            <td>Начальный пароль администратора кластера; применяется при первоначальной инициализации. См. [требования к паролю](../admin/access_control.md#allowed_passwords).</td>
             <td>null</td>
             <td>
             `export PICODATA_ADMIN_PASSWORD='T0psecret'`
