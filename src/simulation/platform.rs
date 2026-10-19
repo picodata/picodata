@@ -19,6 +19,7 @@ use crate::Result;
 use ::tarantool::fiber::r#async::watch;
 use std::time::Duration;
 use tarantool::error::BoxError;
+use tarantool::fiber;
 use tarantool::index::IndexId;
 use tarantool::index::IteratorType;
 use tarantool::index::TuplePosition;
@@ -32,7 +33,11 @@ use tarantool::tuple::Tuple;
 /// Abstractions for all platform interactions in resharding_loop.
 ///
 /// See also module-level doc-comments.
+#[allow(async_fn_in_trait)]
 pub trait Platform {
+    /// Real implementation returns `false`, simulated one return `true`.
+    fn is_simulation(&self) -> bool;
+
     //
     // accessors
     //
@@ -50,10 +55,18 @@ pub trait Platform {
     //
     // requested status
     //
-    async fn wait_action_requested(
+    /// Real implementation simply blocks until `requested_status` is updated.
+    async fn resharding_loop_wait_action_requested(
         &self,
         requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
     ) -> Result<()>;
+
+    /// Requests a resharding action from [`resharding_loop`].
+    ///
+    /// Real implementation redirects to [`ReshardingLoop::request_action`].
+    ///
+    /// [`ReshardingLoop::request_action`]: resharding_loop::ReshardingLoop::request_action
+    fn resharding_loop_request_action(&self, requested_status: ReshardingStatus) -> Result<()>;
 
     //
     // raft / CAS
@@ -74,6 +87,15 @@ pub trait Platform {
     ///
     /// Real implementation redirects to [`node::Node::wait_index_change`].
     fn wait_until_master(&self, timeout: Duration) -> Result<RaftIndex>;
+
+    //
+    // backoff
+    //
+
+    /// Unconditional sleep, used for backoff/poll loops.
+    ///
+    /// Real implementation redirects to [`fiber::sleep`].
+    fn sleep(&self, duration: Duration) -> Result<()>;
 
     //
     // local `_bucket`
@@ -157,6 +179,11 @@ pub trait Platform {
 /// Production implementation of [`Platform`].
 /// See also module-level doc-comments.
 impl Platform for node::Node {
+    #[inline(always)]
+    fn is_simulation(&self) -> bool {
+        false
+    }
+
     fn catalog_cache(&self) -> &CatalogCache {
         &self.catalog_cache
     }
@@ -165,11 +192,16 @@ impl Platform for node::Node {
         &self.alter_system_parameters
     }
 
-    async fn wait_action_requested(
+    async fn resharding_loop_wait_action_requested(
         &self,
         requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
     ) -> Result<()> {
         _ = requested_status.changed().await;
+        Ok(())
+    }
+
+    fn resharding_loop_request_action(&self, requested_status: ReshardingStatus) -> Result<()> {
+        self.resharding_loop.request_action(requested_status);
         Ok(())
     }
 
@@ -183,6 +215,12 @@ impl Platform for node::Node {
 
     fn wait_until_master(&self, timeout: Duration) -> Result<RaftIndex> {
         self.wait_index_change(timeout)
+    }
+
+    fn sleep(&self, duration: Duration) -> Result<()> {
+        fiber::sleep(duration);
+
+        Ok(())
     }
 
     fn read_local_buckets(&self, start: u64, end: u64) -> Result<Vec<VshardBucketRecord>> {

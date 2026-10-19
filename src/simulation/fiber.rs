@@ -279,6 +279,9 @@ pub enum FiberState {
     /// recheck.
     WaitIdle,
 
+    /// Unconditional [`fiber::sleep`] wait.
+    WaitSleep { timeout: Duration },
+
     /// Fiber is waiting until instance applies the raft entry at `needed` index.
     ///
     /// See also [`PretendInstance::wait_index`].
@@ -448,6 +451,7 @@ pub fn wake_fiber(
 /// Whether the wait `state` describes can be satisfied right now.
 pub fn is_wait_satisfiable(instance: &PretendInstance, state: &FiberState) -> bool {
     match state {
+        FiberState::WaitSleep { .. } => true,
         FiberState::WaitIdle => {
             let (want_status, next_version) = instance.requested_status_tx.borrow().get();
             let (_, curr_version) = instance.actual_status_rx.borrow().get();

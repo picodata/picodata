@@ -95,7 +95,9 @@ pub async fn do_action(
             _ = actual_status.send((ReshardingStatus::Idle, next_version));
 
             // Sleep until a resharding action is requested
-            platform.wait_action_requested(requested_status).await?;
+            platform
+                .resharding_loop_wait_action_requested(requested_status)
+                .await?;
         }
     }
 

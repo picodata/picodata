@@ -413,6 +413,10 @@ impl PretendInstance {
 ////////////////////////////////////////////////////////////////////////////////
 
 impl Platform for PretendInstance {
+    fn is_simulation(&self) -> bool {
+        true
+    }
+
     fn catalog_cache(&self) -> &CatalogCache {
         &self.topology
     }
@@ -421,7 +425,7 @@ impl Platform for PretendInstance {
         &self.parameters
     }
 
-    async fn wait_action_requested(
+    async fn resharding_loop_wait_action_requested(
         &self,
         _requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
     ) -> Result<()> {
@@ -432,6 +436,11 @@ impl Platform for PretendInstance {
             "simulation: WaitIdle cannot timeout"
         );
         wait_outcome.to_result()
+    }
+
+    fn resharding_loop_request_action(&self, requested_status: ReshardingStatus) -> Result<()> {
+        self.set_requested_resharding_status(requested_status);
+        Ok(())
     }
 
     fn applied_index(&self) -> RaftIndex {
@@ -476,6 +485,16 @@ impl Platform for PretendInstance {
             },
         )?;
         Ok(self.applied_index.get())
+    }
+
+    fn sleep(&self, timeout: Duration) -> Result<()> {
+        let fiber = self.current_fiber()?;
+        let wait_outcome = fiber.park(FiberState::WaitSleep { timeout });
+        if wait_outcome == WaitOutcome::Cancelled {
+            return wait_outcome.to_result();
+        }
+
+        Ok(())
     }
 
     fn read_local_buckets(&self, start: u64, end: u64) -> Result<Vec<VshardBucketRecord>> {
