@@ -519,14 +519,12 @@ def diff_pico_raft_log_output(actual: str, expected: str) -> str:
         if regular_batch:
             if len(regular_batch) <= 6:
                 output.extend(regular_batch)
-                regular_batch = []
-                continue
+            else:
+                if not start:
+                    output.extend(regular_batch[:context_size])
 
-            if not start:
-                output.extend(regular_batch[:context_size])
-
-            output.append(f"{RESET}  ...\n")
-            output.extend(regular_batch[-context_size:])
+                output.append(f"{RESET}  ...\n")
+                output.extend(regular_batch[-context_size:])
             regular_batch = []
 
         start = False
