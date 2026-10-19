@@ -273,7 +273,7 @@ impl ToSqlText for Timestamptz {
                 "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:6][offset_hour sign:mandatory]:[offset_minute]"
             ),
         };
-        out.put_slice(self.0.into_inner().format(&fmt)?.as_bytes());
+        self.0.into_inner().format_into(&mut out.writer(), &fmt)?;
 
         Ok(IsNull::No)
     }
