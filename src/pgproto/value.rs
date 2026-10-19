@@ -487,10 +487,7 @@ impl PgValue<'static> {
                 if !v.is_str() {
                     return Err(EncodingError::new(format!("couldn't encode string: {v:?}")).into());
                 }
-                let s = v
-                    .into_str()
-                    .expect("Value is checked as string above")
-                    .to_string();
+                let s = v.into_str().expect("Value is checked as string above");
                 Ok(PgValue::Text(s.into()))
             }
             (Value::Ext(1, v), &Type::NUMERIC) => {
