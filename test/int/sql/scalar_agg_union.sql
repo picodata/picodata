@@ -453,3 +453,83 @@ JOIN (SELECT a, b FROM composite WHERE (a, b) = (1, 2)) r
 ON (l.a, l.b) = (r.a, r.b);
 -- EXPECTED:
 1
+
+-- TEST: reset-t
+-- SQL:
+DELETE FROM t;
+INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8);
+
+-- TEST: scalar-agg-under-union-under-union-all
+-- A UNION is materialized by its full motion. Under UNION ALL it must be read
+-- on exactly one shard, whichever holds the bucket of `a = 1`.
+-- SQL:
+SELECT count(*) FROM t WHERE a = 1
+UNION
+SELECT a FROM t WHERE a = 1
+UNION ALL
+SELECT a FROM t;
+-- UNORDERED:
+1,
+1,
+2,
+3,
+4,
+5,
+6,
+7,
+8
+
+-- TEST: scalar-agg-under-union-under-two-union-alls
+-- SQL:
+SELECT count(*) FROM t WHERE a = 1
+UNION
+SELECT a FROM t WHERE a = 1
+UNION ALL
+SELECT a FROM t
+UNION ALL
+SELECT a FROM t;
+-- UNORDERED:
+1,
+1,
+1,
+2,
+2,
+3,
+3,
+4,
+4,
+5,
+5,
+6,
+6,
+7,
+7,
+8,
+8
+
+-- TEST: scalar-agg-over-union-under-union-all
+-- SQL:
+SELECT count(*) FROM (
+    SELECT a FROM t
+    UNION
+    SELECT a FROM t
+    UNION ALL
+    SELECT a FROM t WHERE a = 1
+) AS u;
+-- EXPECTED:
+9
+
+-- TEST: union-under-union-all-swapped-names
+-- UNION branches match by position, not by name: the motion over the UNION
+-- keeps the column order of its first branch.
+-- SQL:
+SELECT a AS p, a + 100 AS q FROM t WHERE a = 1
+UNION
+SELECT a + 100 AS q, a AS p FROM t WHERE a = 1
+UNION ALL
+SELECT a AS q, a + 1000 AS p FROM t WHERE a <= 2;
+-- UNORDERED:
+1, 101,
+101, 1,
+1, 1001,
+2, 1002

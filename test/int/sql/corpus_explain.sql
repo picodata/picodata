@@ -3937,7 +3937,7 @@ FROM
 ''
 motion [policy: full, program: RemoveDuplicates]
   union
-    motion [policy: local, program: [RemoveDuplicates, SerializeAsEmptyTable(true)]]
+    motion [policy: local, program: SerializeAsEmptyTable(true)]
       union
         projection (
           cte0.c0::int -> c0,
@@ -4776,7 +4776,7 @@ subquery $2:
 subquery $3:
   motion [policy: full, program: RemoveDuplicates]
     union
-      motion [policy: local, program: [RemoveDuplicates, SerializeAsEmptyTable(true)]]
+      motion [policy: local, program: SerializeAsEmptyTable(true)]
         union
           projection (
             cte0.bj::int -> bj,
@@ -4988,11 +4988,11 @@ FROM
       "COL_3",
       "COL_4"
     FROM
-      "_tmp_6220259963157982208_1136"
+      "_tmp_14049435262245895543_2136"
   ) as "cte3"
 ''
 plan:
-    [0] SCAN TABLE _tmp_6220259963157982208_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_14049435262245895543_2136 (~1048576 rows)
 ''
 buckets = any
 ''

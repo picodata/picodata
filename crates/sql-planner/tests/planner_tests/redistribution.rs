@@ -1485,6 +1485,88 @@ fn scalar_aggregate_on_single_shard_under_union() {
     ");
 }
 
+/// The inner UNION stays materialized under UNION ALL, and only one shard
+/// reads it, so `count()` needs two stages.
+#[test]
+fn scalar_aggregate_over_union_under_union_all() {
+    let query = r#"explain (logical) SELECT count(*) FROM (SELECT "a" FROM "t5"
+        UNION SELECT "a" FROM "t5"
+        UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1) u"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (sum(count_1::int::int)::int::int -> col_1)
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (count(*)::int -> count_1)
+          scan u
+            union all
+              motion [policy: local, program: SerializeAsEmptyTable(true)]
+                projection (a::int)
+                  motion [policy: full, program: RemoveDuplicates]
+                    union
+                      projection (t5.a::int -> a)
+                        scan t5
+                      projection (t5.a::int -> a)
+                        scan t5
+              projection (t5.a::int -> a)
+                selection (t5.a::int = 1::int)
+                  scan t5
+    ");
+}
+
+/// A scalar aggregate under UNION stays behind the full motion when outer
+/// UNION ALLs widen the shards.
+#[test]
+fn scalar_aggregate_under_union_under_union_all() {
+    let query = r#"explain (logical) SELECT count(*) AS a FROM "t5" WHERE "a" = 1
+        UNION SELECT "a" FROM "t5" WHERE "a" = 1
+        UNION ALL SELECT "a" FROM "t5"
+        UNION ALL SELECT "a" FROM "t5""#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    union all
+      union all
+        motion [policy: local, program: SerializeAsEmptyTable(true)]
+          projection (a::int)
+            motion [policy: full, program: RemoveDuplicates]
+              union
+                projection (count(*)::int -> a)
+                  selection (t5.a::int = 1::int)
+                    scan t5
+                projection (t5.a::int -> a)
+                  selection (t5.a::int = 1::int)
+                    scan t5
+        projection (t5.a::int -> a)
+          scan t5
+      projection (t5.a::int -> a)
+        scan t5
+    ");
+}
+
+/// A UNION read on one shard together with its sibling stays in place under
+/// UNION: the outer stage runs on that shard only.
+#[test]
+fn union_on_one_shard_under_union() {
+    let query = r#"explain (logical) SELECT "a" FROM "t5" WHERE "a" = 1
+        UNION SELECT "a" FROM "t5" WHERE "a" = 1
+        UNION SELECT "a" FROM "t5" WHERE "a" = 1"#;
+    let plan = sql_to_optimized_ir(query, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    motion [policy: full, program: RemoveDuplicates]
+      union
+        motion [policy: local, program: SerializeAsEmptyTable(true)]
+          union
+            projection (t5.a::int -> a)
+              selection (t5.a::int = 1::int)
+                scan t5
+            projection (t5.a::int -> a)
+              selection (t5.a::int = 1::int)
+                scan t5
+        projection (t5.a::int -> a)
+          selection (t5.a::int = 1::int)
+            scan t5
+    ");
+}
+
 /// `add_motions` memoizes bucket proofs and union verdicts; in debug builds
 /// every cache hit is checked against a recomputation from the current plan.
 /// Run shapes where processed subtrees are rewritten or read again.

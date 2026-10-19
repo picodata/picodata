@@ -2150,6 +2150,7 @@ impl Plan {
 
         let left_dist = self.rel_distr_ref(left_id)?;
         let right_dist = self.rel_distr_ref(right_id)?;
+        let mut global_side = None;
         match (left_dist, right_dist) {
             (
                 Distribution::Single | Distribution::Global,
@@ -2174,20 +2175,27 @@ impl Plan {
                 );
             }
             (Distribution::Global, Distribution::Segment { .. } | Distribution::Any) => {
-                map.upsert_child(
-                    left_id,
-                    MotionPolicy::Local,
-                    Program(vec![MotionOpcode::SerializeAsEmptyTable(true)]),
-                );
+                global_side = Some((left_id, right_id));
             }
             (Distribution::Segment { .. } | Distribution::Any, Distribution::Global) => {
-                map.upsert_child(
-                    right_id,
-                    MotionPolicy::Local,
-                    Program(vec![MotionOpcode::SerializeAsEmptyTable(true)]),
-                );
+                global_side = Some((right_id, left_id));
             }
             (_, _) => {}
+        }
+        if let Some((global_id, other_id)) = global_side {
+            // A global branch is read on one node only.
+            let mut read_id = global_id;
+            if matches!(self.get_relation_node(rel_id)?, Relational::Union(_)) {
+                if let Some(union_id) = self.ungathered_union(global_id, other_id, cache)? {
+                    self.change_child(rel_id, global_id, union_id)?;
+                    read_id = union_id;
+                }
+            }
+            map.upsert_child(
+                read_id,
+                MotionPolicy::Local,
+                Program(vec![MotionOpcode::SerializeAsEmptyTable(true)]),
+            );
         }
 
         // The branches run on the union of their buckets. A one-stage scalar
@@ -2216,6 +2224,35 @@ impl Plan {
         }
         cache.union_aggregates.insert(rel_id, shares_one_bucket);
         Ok(map)
+    }
+
+    /// The UNION gathered by the full motion `global_id` when it and `other_id`
+    /// read one node only. The stage of the parent UNION then runs on that
+    /// node, so the UNION can stay in place without the gather.
+    fn ungathered_union(
+        &self,
+        global_id: NodeId,
+        other_id: NodeId,
+        cache: &mut MotionsCache,
+    ) -> Result<Option<NodeId>, SbroadError> {
+        let Relational::Motion(Motion {
+            child: Some(union_id),
+            policy: MotionPolicy::Full,
+            ..
+        }) = self.get_relation_node(global_id)?
+        else {
+            return Ok(None);
+        };
+        let union_id = *union_id;
+        let Relational::Union(Union { left, right, .. }) = self.get_relation_node(union_id)? else {
+            return Ok(None);
+        };
+        let (left, right) = (*left, *right);
+        let proof = self
+            .single_node_buckets(left, cache)?
+            .disjunct(&self.single_node_buckets(right, cache)?)
+            .disjunct(&self.single_node_buckets(other_id, cache)?);
+        Ok(proof.is_single_node().then_some(union_id))
     }
 
     /// Whether both branches select the same nonempty bucket. A possibly empty

@@ -961,15 +961,26 @@ impl Plan {
         policy: &MotionPolicy,
         program: Program,
     ) -> Result<NodeId, SbroadError> {
+        // Local only asks not to move data: keep the movement (and the
+        // materialization) of a child motion below a pass-through projection.
+        if matches!(policy, MotionPolicy::Local)
+            && matches!(self.get_relation_node(child_id)?, Relational::Motion(_))
+        {
+            let proj_id = self.add_proj(child_id, vec![], &[], false, true)?;
+            return self.add_motion_with_alias(proj_id, None, policy, program);
+        }
         // If child is a motion, we can squash multiple motions into one
         let mut_child_node = self.get_mut_relation_node(child_id)?;
         if let MutRelational::Motion(Motion {
             policy: new_policy,
             program: new_program,
+            distribution,
             ..
         }) = mut_child_node
         {
             *new_policy = policy.clone();
+            // The old distribution described the replaced policy.
+            *distribution = Some(Box::new(motion_distribution(policy)));
             // Extend program with new opcodes.
             for opcode in program.0 {
                 if !new_program.0.contains(&opcode) {
@@ -1034,22 +1045,10 @@ impl Plan {
         // child positions.
         let output = self.add_row_for_output(child_id, &[], true, None)?;
 
-        let dist = match policy {
-            MotionPolicy::None => {
-                panic!(
-                    "None policy is not expected for `add_motion` method for child_id: {child_id}."
-                );
-            }
-            MotionPolicy::Segment(key) | MotionPolicy::LocalSegment(key) => {
-                if let Ok(keyset) = KeySet::try_from(key) {
-                    Distribution::Segment { keys: keyset }
-                } else {
-                    Distribution::Any
-                }
-            }
-            MotionPolicy::Full => Distribution::Global,
-            MotionPolicy::Local => Distribution::Any,
-        };
+        if let MotionPolicy::None = policy {
+            panic!("None policy is not expected for `add_motion` method for child_id: {child_id}.");
+        }
+        let dist = motion_distribution(policy);
 
         let motion = Motion {
             alias,
@@ -2273,5 +2272,16 @@ impl From<Bool> for ComparisonOperator {
             Bool::NotEq => ComparisonOperator::NotEq,
             Bool::Or | Bool::Between | Bool::And => panic!("{op} is not a comparison operator"),
         }
+    }
+}
+
+/// Distribution of a motion's output under `policy`.
+fn motion_distribution(policy: &MotionPolicy) -> Distribution {
+    match policy {
+        MotionPolicy::Segment(key) | MotionPolicy::LocalSegment(key) => {
+            KeySet::try_from(key).map_or(Distribution::Any, |keys| Distribution::Segment { keys })
+        }
+        MotionPolicy::Full => Distribution::Global,
+        MotionPolicy::Local | MotionPolicy::None => Distribution::Any,
     }
 }
