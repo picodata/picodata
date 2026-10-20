@@ -78,6 +78,8 @@
 - Dropping a `cbus::sync::tokio::Sender` no longer deadlocks the tokio runtime
   when another task of the same runtime is suspended in `Sender::send`. With
   tokio 1.54.0 and later this happened regularly with several producers.
+- `cbus::sync::tokio::Sender::send` no longer hangs forever when the receiver
+  is dropped while `send` waits for free space in the buffer.
 
 ### Breaking
 

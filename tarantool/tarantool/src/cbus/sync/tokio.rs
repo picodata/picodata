@@ -36,8 +36,9 @@ impl TaskWaker {
         //  If `Notify::notified` happens (called) after `Notify::notify_waiters` then it's not return
         // immediately (instead of situation when `notified` called after `notify_one`). For this case
         // a `timeout` is using, for prevent a deadlock.
-        while (tokio::time::timeout(Duration::from_millis(10), self.notify.notified()).await)
-            .is_err()
+        while !disconnected.load(Ordering::Acquire)
+            && (tokio::time::timeout(Duration::from_millis(10), self.notify.notified()).await)
+                .is_err()
         {}
     }
 
@@ -284,13 +285,15 @@ impl<T> EndpointReceiver<T> {
 
 #[cfg(feature = "internal_test")]
 mod tests {
+    use super::TaskWaker;
     use crate::cbus::sync;
     use crate::cbus::tests::run_cbus_endpoint;
     use crate::cbus::RecvError;
     use crate::fiber;
     use crate::fiber::{check_yield, YieldResult};
     use std::num::NonZeroUsize;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
 
@@ -451,6 +454,46 @@ mod tests {
         tokio_rt.join().unwrap();
 
         assert!(fiber::cancel(cbus_fiber_id));
+    }
+
+    #[crate::test(tarantool = "crate")]
+    pub fn task_waker_wait_returns_on_missed_disconnect() {
+        // Dropping the receiver sets `disconnected` and calls `Notify::notify_waiters`, which
+        // only wakes `Notified` futures that already exist. A sender which is replacing its
+        // `Notified` after a timeout in `TaskWaker::wait` misses the wakeup, so `wait` has to
+        // notice the flag by itself. This window lies within a single poll of the sender and
+        // can't be hit reliably through the channel API, so the flag is set without a wakeup.
+
+        let tokio_rt = thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async move {
+                    let task_waker = TaskWaker::new();
+                    let disconnected = Arc::new(AtomicBool::new(false));
+
+                    let disconnect = tokio::spawn({
+                        let disconnected = disconnected.clone();
+                        async move {
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                            disconnected.store(true, Ordering::Release);
+                        }
+                    });
+                    let wait_result = tokio::time::timeout(
+                        Duration::from_secs(1),
+                        task_waker.wait(&disconnected),
+                    )
+                    .await;
+                    disconnect.await.unwrap();
+                    assert!(
+                        wait_result.is_ok(),
+                        "TaskWaker::wait didn't return after the receiver was disconnected"
+                    );
+                });
+        });
+
+        tokio_rt.join().unwrap();
     }
 
     #[crate::test(tarantool = "crate")]
