@@ -5,8 +5,7 @@ use crate::fiber::Cond;
 use std::cell::RefCell;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Weak};
-use std::thread;
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 use tokio::sync::Notify;
 
@@ -105,7 +104,7 @@ impl<T> Channel<T> {
 pub fn channel<T>(cbus_endpoint: &str, cap: NonZeroUsize) -> (Sender<T>, EndpointReceiver<T>) {
     let chan = Arc::new(Channel::new(cbus_endpoint, cap));
     let waker = Arc::new(CordWaker::new(Cond::new()));
-    let arc_guard = Arc::new(tokio::sync::Mutex::default());
+    let arc_guard = Arc::new(Mutex::default());
     let task_waker = Arc::new(TaskWaker::new());
     let s = Sender {
         inner: Arc::new(SenderInner {
@@ -155,7 +154,10 @@ pub struct Sender<T> {
     /// `Weak<Waker>` reference there is two `Arc<Waker>` in the same moment of time (in this case
     /// `Waker` always dropped at receiver side) or `Weak<Waker>::upgrade` returns `None`. Compliance
     /// with this invariant guarantees that the `Cond` always dropped at receiver (TX thread) side.
-    arc_guard: Arc<tokio::sync::Mutex<()>>,
+    /// Poisoning is fine: the mutex guards no data, and nothing in its critical sections is
+    /// expected to panic. If something does, the invariant above may be broken, so we unwrap
+    /// poisoning errors in `lock().unwrap()` and propagate the panic rather than carry on.
+    arc_guard: Arc<Mutex<()>>,
 }
 
 unsafe impl<T> Send for Sender<T> {}
@@ -164,19 +166,11 @@ unsafe impl<T> Sync for Sender<T> {}
 
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
-        let crit = self.arc_guard.clone();
-        let cord_waker = self.cord_waker.clone();
-        let lcpipe: &mut LCPipe = &mut self.lcpipe.borrow_mut();
+        let _crit_section = self.arc_guard.lock().unwrap();
 
-        // we use a separate thread because blocking_lock will panics if called from tokio runtime
-        thread::scope(move |s| {
-            s.spawn(move || {
-                let _crit_section = crit.blocking_lock();
-                if let Some(waker) = cord_waker.upgrade() {
-                    waker.wakeup(lcpipe);
-                }
-            });
-        });
+        if let Some(waker) = self.cord_waker.upgrade() {
+            waker.wakeup(&mut self.lcpipe.borrow_mut());
+        }
     }
 }
 
@@ -211,7 +205,7 @@ impl<T> Sender<T> {
         // lock of mutex will take the fast path.
 
         loop {
-            let crit_section = self.arc_guard.lock().await;
+            let crit_section = self.arc_guard.lock().unwrap();
             if let Some(waker) = self.cord_waker.upgrade() {
                 let push_result = self.inner.chan.list.push(msg);
                 if let Err(not_accepted_msg) = push_result {
@@ -240,7 +234,7 @@ pub struct EndpointReceiver<T> {
     chan: Arc<Channel<T>>,
     cord_waker: Option<Arc<CordWaker>>,
     task_waker: Arc<TaskWaker>,
-    arc_guard: Arc<tokio::sync::Mutex<()>>,
+    arc_guard: Arc<Mutex<()>>,
 }
 
 // The receiver part can be sent from place to place, so long as it
@@ -251,7 +245,7 @@ impl<T> Drop for EndpointReceiver<T> {
     fn drop(&mut self) {
         self.chan.disconnected.store(true, Ordering::Release);
         self.task_waker.wakeup_all();
-        let _crit_section = self.arc_guard.blocking_lock();
+        let _crit_section = self.arc_guard.lock().unwrap();
         drop(self.cord_waker.take());
     }
 }
@@ -404,6 +398,56 @@ mod tests {
 
         fiber::sleep(Duration::from_secs(1));
         drop(rx);
+        tokio_rt.join().unwrap();
+
+        assert!(fiber::cancel(cbus_fiber_id));
+    }
+
+    #[crate::test(tarantool = "crate")]
+    pub fn drop_tx_while_send_is_pending() {
+        // This test checks that dropping a sender doesn't deadlock the runtime while another task
+        // is suspended inside `send`. Previously the channel lock was a `tokio::sync::Mutex` and
+        // `Sender::drop` blocked the tokio thread until it took the lock. Since tokio 1.54.0
+        // `Mutex::lock` checks the coop budget after taking the lock, so a task which has
+        // exhausted its budget yields from `send` while holding the lock and is never polled
+        // again.
+
+        let cbus_fiber_id = run_cbus_endpoint("tokio_drop_tx_while_send_is_pending");
+        let cap = NonZeroUsize::new(1).unwrap();
+        let (tx, rx) = sync::tokio::channel("tokio_drop_tx_while_send_is_pending", cap);
+
+        let tokio_rt = thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async move {
+                    let sender = tx.clone();
+                    let send = tokio::spawn(async move {
+                        while tokio::task::coop::has_budget_remaining() {
+                            tokio::task::consume_budget().await;
+                        }
+                        sender.send(1).await.is_ok()
+                    });
+                    // let the spawned task run until it yields from `send`
+                    tokio::task::yield_now().await;
+                    drop(tx);
+                    assert!(send.await.unwrap());
+                });
+        });
+
+        let deadline = fiber::clock().saturating_add(Duration::from_secs(5));
+        while !tokio_rt.is_finished() && fiber::clock() < deadline {
+            fiber::sleep(Duration::from_millis(10));
+        }
+        if !tokio_rt.is_finished() {
+            // dropping the receiver would block on the same lock
+            std::mem::forget(rx);
+            panic!("tokio runtime is deadlocked in Sender::drop");
+        }
+
+        assert!(matches!(rx.receive(), Ok(1)));
+        assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
         tokio_rt.join().unwrap();
 
         assert!(fiber::cancel(cbus_fiber_id));

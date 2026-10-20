@@ -73,6 +73,12 @@
 - `CDataOnStack::{data, data_mut, try_as_bytes, try_as_bytes_mut, try_downcast, try_downcast_mut}`
   methods' return values now have a less strict lifetime requirement.
 
+### Fixed (picodata)
+
+- Dropping a `cbus::sync::tokio::Sender` no longer deadlocks the tokio runtime
+  when another task of the same runtime is suspended in `Sender::send`. With
+  tokio 1.54.0 and later this happened regularly with several producers.
+
 ### Breaking
 
 - `index::Metadata::to_key_def`, `index::Metadata::to_key_def_for_key`, and
