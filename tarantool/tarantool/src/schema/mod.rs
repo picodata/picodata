@@ -11,7 +11,6 @@ use crate::error::{TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::index::IteratorType;
 use crate::space::{Space, SystemSpace};
-use crate::tuple::Tuple;
 
 /// Checks that a string is a valid Tarantool identifier.
 #[cfg(feature = "picodata")]
@@ -47,11 +46,14 @@ fn revoke_object_privileges(obj_type: &str, obj_id: u32) -> Result<(), Error> {
     let sys_priv: Space = SystemSpace::Priv.into();
 
     let index_obj = sys_vpriv.index("object").unwrap();
-    let privs: Vec<Tuple> = index_obj
-        .select(IteratorType::Eq, &(obj_type, obj_id))?
-        .collect();
 
-    for t in privs {
+    // NOTE: the tuples are collected before deleting, because deleting from a
+    // system space is DDL, which invalidates all iterators.
+
+    for t in index_obj
+        .select_v2(IteratorType::Eq, &(obj_type, obj_id))?
+        .collect::<Result<Vec<_>, _>>()?
+    {
         let uid = t.field::<u32>(1)?.unwrap();
         sys_priv.delete(&(uid,))?;
     }

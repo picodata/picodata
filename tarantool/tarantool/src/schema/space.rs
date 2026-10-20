@@ -9,7 +9,6 @@ use crate::space::space_id_temporary_min;
 use crate::space::{Metadata, SpaceCreateOptions};
 use crate::space::{Space, SpaceId, SpaceType, SystemSpace};
 use crate::transaction;
-use crate::tuple::Tuple;
 use crate::unwrap_or;
 use crate::util::Value;
 use std::collections::BTreeMap;
@@ -175,18 +174,20 @@ pub fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
         id_range_max = space_id_temporary_min().unwrap_or(space::SPACE_ID_MAX + 1);
     };
 
-    let mut iter = sys_space.select(IteratorType::LT, &[id_range_max])?;
-    let tuple = iter.next().expect("there's always at least system spaces");
+    let mut iter = sys_space.select_v2(IteratorType::LT, &[id_range_max])?;
+    let tuple = iter
+        .next()
+        .expect("there's always at least system spaces")?;
     let mut max_id: SpaceId = tuple
         .field(0)
         .expect("space metadata should decode fine")
         .expect("space id should always be present");
 
     let find_next_unused_id = |start: SpaceId| -> Result<SpaceId, Error> {
-        let iter = sys_space.select(IteratorType::GE, &[start])?;
+        let iter = sys_space.select_v2(IteratorType::GE, &[start])?;
         let mut next_id = start;
         for tuple in iter {
-            let id: SpaceId = tuple
+            let id: SpaceId = tuple?
                 .field(0)
                 .expect("space metadata should decode fine")
                 .expect("space id should always be present");
@@ -234,12 +235,15 @@ pub fn drop_space(space_id: SpaceId) -> Result<(), Error> {
         }
     }
 
+    // NOTE: the tuples are collected before deleting, because deleting from a
+    // system space is DDL, which invalidates all iterators.
+
     // Remove from _trigger.
     let sys_trigger: Space = SystemSpace::Trigger.into();
     let sys_space_idx = sys_trigger.index("space_id").unwrap();
     for t in sys_space_idx
-        .select(IteratorType::Eq, &(space_id,))?
-        .collect::<Vec<Tuple>>()
+        .select_v2(IteratorType::Eq, &(space_id,))?
+        .collect::<Result<Vec<_>, _>>()?
     {
         let name = t.field::<String>(0)?.unwrap();
         sys_trigger.delete(&(name,))?;
@@ -249,8 +253,8 @@ pub fn drop_space(space_id: SpaceId) -> Result<(), Error> {
     let sys_fk_constraint: Space = SystemSpace::FkConstraint.into();
     let sys_space_idx = sys_fk_constraint.index("child_id").unwrap();
     for t in sys_space_idx
-        .select(IteratorType::Eq, &(space_id,))?
-        .collect::<Vec<Tuple>>()
+        .select_v2(IteratorType::Eq, &(space_id,))?
+        .collect::<Result<Vec<_>, _>>()?
     {
         let name = t.field::<String>(0)?.unwrap();
         sys_fk_constraint.delete(&(name, space_id))?;
@@ -260,8 +264,8 @@ pub fn drop_space(space_id: SpaceId) -> Result<(), Error> {
     let sys_ck_constraint: Space = SystemSpace::CkConstraint.into();
     let sys_space_idx = sys_ck_constraint.index("primary").unwrap();
     for t in sys_space_idx
-        .select(IteratorType::Eq, &(space_id,))?
-        .collect::<Vec<Tuple>>()
+        .select_v2(IteratorType::Eq, &(space_id,))?
+        .collect::<Result<Vec<_>, _>>()?
     {
         let name = t.field::<String>(2)?.unwrap();
         sys_ck_constraint.delete(&(space_id, name))?;
@@ -271,8 +275,8 @@ pub fn drop_space(space_id: SpaceId) -> Result<(), Error> {
     let sys_func_index: Space = SystemSpace::FuncIndex.into();
     let sys_space_idx = sys_func_index.index("primary").unwrap();
     for t in sys_space_idx
-        .select(IteratorType::Eq, &(space_id,))?
-        .collect::<Vec<Tuple>>()
+        .select_v2(IteratorType::Eq, &(space_id,))?
+        .collect::<Result<Vec<_>, _>>()?
     {
         let index_id = t.field::<u32>(1)?.unwrap();
         sys_func_index.delete(&(space_id, index_id))?;
@@ -281,12 +285,12 @@ pub fn drop_space(space_id: SpaceId) -> Result<(), Error> {
     // Remove from _index.
     let sys_vindex: Space = SystemSpace::VIndex.into();
     let sys_index: Space = SystemSpace::Index.into();
-    let keys = sys_vindex
-        .select(IteratorType::Eq, &(space_id,))?
-        .collect::<Vec<Tuple>>();
-    for i in 1..keys.len() + 1 {
-        let t_idx = keys.len() - i;
-        let t = &keys[t_idx];
+    // Iterator in descending order, because indexes must be deleted in reverse
+    // order of creation.
+    for t in sys_vindex
+        .select_v2(IteratorType::Req, &(space_id,))?
+        .collect::<Result<Vec<_>, _>>()?
+    {
         let id = t.field::<u32>(0)?.unwrap();
         let iid = t.field::<u32>(1)?.unwrap();
         sys_index.delete(&(id, iid))?;
