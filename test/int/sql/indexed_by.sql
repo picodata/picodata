@@ -65,7 +65,7 @@ SELECT "t"."a" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > 10::int UNION SELECT "s
 ''
 plan:
     [1] SEARCH TABLE t USING COVERING INDEX aaa (a>?) (~262144 rows)
-    [2] SCAN TABLE s USING COVERING INDEX bbb (~983040 rows)
+    [2] SEARCH TABLE s USING COVERING INDEX bbb (ANY(e) AND f<?) (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 2 USING TEMP B-TREE (UNION)
 
 -- TEST: indexed-by-6
@@ -79,7 +79,7 @@ explain (raw) SELECT * FROM (SELECT * FROM t INDEXED BY aaa WHERE a > 10) JOIN (
 SELECT "s"."d" FROM "s" INDEXED BY "bbb" WHERE "s"."f" < (-5)::int
 ''
 plan:
-    [0] SCAN TABLE s USING COVERING INDEX bbb (~983040 rows)
+    [0] SEARCH TABLE s USING COVERING INDEX bbb (ANY(e) AND f<?) (~1048576 rows)
 ''
 ╭──────────────────────────╮
 │ 2. Query (WHOLE STORAGE) │
