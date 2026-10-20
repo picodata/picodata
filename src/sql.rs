@@ -22,7 +22,7 @@ use crate::sql::explain::explain_query;
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::{FullDeleteInfo, StorageRuntime};
 use crate::storage::Catalog;
-use crate::storage::{get_backup_dir_name, space_by_name, DbConfig, SystemTable, ToEntryIter};
+use crate::storage::{get_backup_dir_name, DbConfig, SystemTable, ToEntryIter};
 use crate::sync::wait_for_index_globally;
 use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
@@ -44,7 +44,7 @@ use ::tarantool::error::{BoxError, Error as TarantoolError, TarantoolErrorCode};
 use ::tarantool::index::SortOrder;
 use ::tarantool::schema::function::func_next_reserved_id;
 use ::tarantool::session::{with_su, UserId};
-use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace, UpdateOps};
+use ::tarantool::space::{FieldType, Space, SystemSpace, UpdateOps};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{Decode, FunctionArgs, FunctionCtx, RawByteBuf, ToTupleBuffer, Tuple};
 use ::tarantool::{msgpack, session, set_error};
@@ -171,59 +171,42 @@ fn find_data_access_nodes(plan: &IrPlan) -> impl Iterator<Item = NodeId> + use<'
 }
 
 fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
-    let nodes = find_data_access_nodes(plan);
-
-    // We don't want to switch the user back and forth for each node, so we
-    // collect all space ids and privileges and then check them all at once.
-    let mut space_privs = SmallVec::<[(SpaceId, Privileges); 16]>::new();
-
-    // Switch to admin to get space ids. At the moment we don't use space cache in tarantool
-    // module and can't get space metadata without _space table read permissions.
-    with_su(ADMIN_ID, || -> traft::Result<()> {
-        for node_id in nodes {
-            let rel_node = plan.get_relation_node(node_id)?;
-            let (relation, privileges) = match rel_node {
-                Relational::ScanRelation(ScanRelation { relation, .. }) => {
-                    (relation, Privileges::Read)
-                }
-                Relational::Insert(Insert {
-                    relation,
-                    conflict_strategy,
-                    ..
-                }) => {
-                    let privileges =
-                        if matches!(conflict_strategy, ConflictStrategy::DoUpdate { .. }) {
-                            Privileges::ReadWrite
-                        } else {
-                            Privileges::Write
-                        };
-                    (relation, privileges)
-                }
-                Relational::Delete(Delete { relation, .. })
-                | Relational::Update(Update { relation, .. }) => {
-                    // We check write and read privileges for deletes and updates.
-                    //
-                    // Write: Picodata doesn't support delete and update privileges,
-                    // so we grant write access instead.
-                    //
-                    // Read: SQL standard says that update and delete statements
-                    // should check for read access when they contain a where
-                    // clause (to protect from information leaks). But we don't
-                    // expect that updates and deletes would be used without a
-                    // where clause (long operations are not good for Picodata).
-                    // So, let's make it simple and avoid special cases.
-                    (relation, Privileges::ReadWrite)
-                }
-                // This should never happen as we have filtered out all other plan nodes.
-                _ => unreachable!("internal bug on the table privilege check"),
-            };
-            let space = space_by_name(relation)?;
-            space_privs.push((space.id(), privileges))
-        }
-        Ok(())
-    })??;
-    for (space_id, priviledges) in space_privs {
-        match priviledges {
+    for node_id in find_data_access_nodes(plan) {
+        let rel_node = plan.get_relation_node(node_id)?;
+        let (relation, privileges) = match rel_node {
+            Relational::ScanRelation(ScanRelation { relation, .. }) => (relation, Privileges::Read),
+            Relational::Insert(Insert {
+                relation,
+                conflict_strategy,
+                ..
+            }) => {
+                let privileges = if matches!(conflict_strategy, ConflictStrategy::DoUpdate { .. }) {
+                    Privileges::ReadWrite
+                } else {
+                    Privileges::Write
+                };
+                (relation, privileges)
+            }
+            Relational::Delete(Delete { relation, .. })
+            | Relational::Update(Update { relation, .. }) => {
+                // We check write and read privileges for deletes and updates.
+                //
+                // Write: Picodata doesn't support delete and update privileges,
+                // so we grant write access instead.
+                //
+                // Read: SQL standard says that update and delete statements
+                // should check for read access when they contain a where
+                // clause (to protect from information leaks). But we don't
+                // expect that updates and deletes would be used without a
+                // where clause (long operations are not good for Picodata).
+                // So, let's make it simple and avoid special cases.
+                (relation, Privileges::ReadWrite)
+            }
+            // This should never happen as we have filtered out all other plan nodes.
+            _ => unreachable!("internal bug on the table privilege check"),
+        };
+        let space_id = plan.get_relation_or_error(relation)?.id;
+        match privileges {
             Privileges::Read => {
                 box_access_check_space(space_id, PrivType::Read)?;
             }
