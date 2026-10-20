@@ -1,6 +1,5 @@
 use smol_str::{format_smolstr, SmolStr};
 use std::io;
-use tarantool::error::IntoBoxError;
 use thiserror::Error;
 
 use crate::sasl;
@@ -50,7 +49,6 @@ pub type DynError = dyn std::error::Error + Send + Sync;
 #[derive(Error, Debug)]
 #[error("encoding error: {0}")]
 pub struct EncodingError(Box<DynError>);
-impl IntoBoxError for EncodingError {}
 
 impl EncodingError {
     #[inline(always)]
@@ -64,7 +62,6 @@ impl EncodingError {
 #[derive(Error, Debug)]
 #[error("decoding error: {1}")]
 pub struct DecodingError(PgErrorCode, Box<DynError>);
-impl IntoBoxError for DecodingError {}
 
 impl DecodingError {
     pub fn unknown_oid(oid: u32) -> Self {
@@ -104,7 +101,6 @@ impl DecodingError {
 #[derive(Error, Debug)]
 #[error("{1}")]
 pub struct PedanticError(PgErrorCode, Box<DynError>);
-impl IntoBoxError for PedanticError {}
 
 impl PedanticError {
     #[inline(always)]
@@ -235,8 +231,6 @@ impl From<sasl::Error> for PgError {
         Self::IoError(io::Error::other(e))
     }
 }
-
-impl IntoBoxError for PgError {}
 
 impl PgError {
     /// Convert the error into a corresponding postgres error code.
