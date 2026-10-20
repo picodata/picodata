@@ -290,6 +290,7 @@ create_index ::= 'CREATE' 'UNIQUE'? 'INDEX' ('IF' 'NOT' 'EXISTS')? index 'ON' ta
                          | ('DISTANCE' '=' ('EUCLID' | 'MANHATTAN'))
                          | ('HINT' '=' ('TRUE' | 'FALSE'))
                          | ('COMPRESSION_LEVEL' '=' integer)
+                         | ('COMPRESSION_DICT' '=' ('TRUE' | 'FALSE'))
                      )
                      (
                         ','
@@ -303,6 +304,7 @@ create_index ::= 'CREATE' 'UNIQUE'? 'INDEX' ('IF' 'NOT' 'EXISTS')? index 'ON' ta
                              | ('DISTANCE' '=' ('EUCLID' | 'MANHATTAN'))
                              | ('HINT' '=' ('TRUE' | 'FALSE'))
                              | ('COMPRESSION_LEVEL' '=' integer)
+                             | ('COMPRESSION_DICT' '=' ('TRUE' | 'FALSE'))
                          )
                      )*
                  ')')?
@@ -355,6 +357,7 @@ create_table   ::= 'CREATE' 'UNLOGGED'? 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                          | ('RUN_COUNT_PER_LEVEL' '=' unsigned)
                          | ('RUN_SIZE_RATIO' '=' decimal)
                          | ('COMPRESSION_LEVEL' '=' integer)
+                         | ('COMPRESSION_DICT' '=' ('TRUE' | 'FALSE'))
                      )
                      (
                         ','
@@ -365,6 +368,7 @@ create_table   ::= 'CREATE' 'UNLOGGED'? 'TABLE' ('IF' 'NOT' 'EXISTS')? table
                              | ('RUN_COUNT_PER_LEVEL' '=' unsigned)
                              | ('RUN_SIZE_RATIO' '=' decimal)
                              | ('COMPRESSION_LEVEL' '=' integer)
+                             | ('COMPRESSION_DICT' '=' ('TRUE' | 'FALSE'))
                          )
                      )*
                  ')')?
