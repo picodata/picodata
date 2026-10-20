@@ -44,13 +44,17 @@ Helm-чарты позволяют управлять оператором и к
 
 ### Установка оператора {: #helm_operator }
 
-Установите оператор с помощью Helm:
+Добавьте Helm-репозиторий Picodata и установите оператор:
 
 ```shell
-helm install picodata-operator \
-  https://git.picodata.io/core/picodata-operator/-/archive/stable/chart.tar.gz \
+helm repo add picodata https://binary.picodata.io/repository/helm
+helm repo update
+helm install picodata-operator picodata/picodata-operator \
   -n picodata-operator-system --create-namespace
 ```
+
+Без `--version` устанавливается последний выпуск оператора. Тот же чарт доступен
+в OCI-реестре: `oci://docker-public.binary.picodata.io/charts/picodata-operator`.
 
 Дождитесь готовности:
 
@@ -64,7 +68,7 @@ kubectl rollout status deployment/picodata-operator-controller-manager \
     `helm upgrade`. При обновлении версии оператора применяйте CRD отдельно:
 
     ```shell
-    kubectl apply -f https://git.picodata.io/core/picodata-operator/-/raw/vX.Y.Z/picodata-operator-deploy/crd.yaml
+    kubectl apply -f https://git.picodata.io/core/picodata-operator/-/raw/stable/picodata-operator-deploy/crd.yaml
     ```
 
 ### Развёртывание кластера через Helm {: #helm_cluster }
@@ -98,11 +102,14 @@ tiers:
         memory: "512Mi"
 ```
 
+Секции `cluster` и `tiers` передаются в `spec` ресурса `PicoclusterDB` как есть,
+поэтому через `values.yaml` можно задать любое поле CRD — в том числе `cluster.plugins`,
+`cluster.shareDir`, `service`, `serviceMonitor` и probe-настройки.
+
 Установите кластер:
 
 ```shell
-helm install my-cluster \
-  https://git.picodata.io/core/picodata-operator/-/archive/stable/chart-cluster.tar.gz \
+helm install my-cluster picodata/picodata-cluster \
   -n picodata --create-namespace \
   -f values.yaml
 ```
@@ -118,8 +125,14 @@ kubectl get picoclusterdb -n picodata -w
 Для обновления версии Picodata или изменения конфигурации:
 
 ```shell
-helm upgrade my-cluster ./chart-cluster -n picodata --set image.tag=26.2.0
+helm upgrade my-cluster picodata/picodata-cluster -n picodata --set image.tag=26.2.0
 ```
+
+!!! note "Helm 4 и кластеры, созданные оператором до v0.14.2"
+    Helm 4 применяет манифесты через Server-Side Apply. Если кластер был создан
+    оператором версии ниже v0.14.2, первый `helm upgrade` завершится ошибкой
+    `conflict with "manager" ... .spec.tiers` — выполните его один раз с параметром
+    `--force-conflicts`. В дальнейшем при обновлении использовать этот параметр не нужно.
 
 ### Удаление {: #helm_delete }
 
