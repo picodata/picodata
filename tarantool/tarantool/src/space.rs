@@ -8,7 +8,10 @@
 //! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
 use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
-use crate::index::{Index, IndexIterator, IteratorType};
+#[allow(deprecated)]
+use crate::index::IndexIterator;
+use crate::index::IndexIteratorV2;
+use crate::index::{Index, IteratorType};
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::util::Value;
 use crate::{define_str_enum, msgpack, tuple_from_box_api};
@@ -1017,17 +1020,36 @@ impl Space {
         self.primary_key().get(key)
     }
 
-    /// Search for a tuple or a set of tuples in the given space. This method doesn’t yield
-    /// (for details see [Сooperative multitasking](https://www.tarantool.io/en/doc/latest/book/box/atomic_index/#atomic-cooperative-multitasking)).
+    /// Search for a tuple or a set of tuples in the given space. This method doesn't yield
+    /// (for details see [Cooperative multitasking](https://www.tarantool.io/en/doc/latest/book/box/atomic_index/#atomic-cooperative-multitasking)).
     ///
     /// - `type` - iterator type
     /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
-    #[inline(always)]
+    #[inline]
+    #[deprecated = "Use select_v2 instead."]
+    #[allow(deprecated)]
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
         K: ToTupleBuffer + ?Sized,
     {
         self.primary_key().select(iterator_type, key)
+    }
+
+    /// Search for a tuple or a set of tuples in the given space. This method doesn't yield
+    /// (for details see [Cooperative multitasking](https://www.tarantool.io/en/doc/latest/book/box/atomic_index/#atomic-cooperative-multitasking)).
+    ///
+    /// - `type` - iterator type
+    /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
+    #[inline(always)]
+    pub fn select_v2<K>(
+        &self,
+        iterator_type: IteratorType,
+        key: &K,
+    ) -> Result<IndexIteratorV2, Error>
+    where
+        K: ToTupleBuffer + ?Sized,
+    {
+        self.primary_key().select_v2(iterator_type, key)
     }
 
     /// Return the number of tuples. Compared with [space.len()](#method.len), this method works slower because

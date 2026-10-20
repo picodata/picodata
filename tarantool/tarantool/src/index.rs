@@ -741,7 +741,28 @@ impl Index {
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     #[inline]
+    #[deprecated = "Use select_v2 instead."]
+    #[allow(deprecated)]
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
+    where
+        K: ToTupleBuffer + ?Sized,
+    {
+        self.select_v2(iterator_type, key)
+            .map(|inner| IndexIterator { inner })
+    }
+
+    /// Allocate and initialize iterator for index.
+    ///
+    /// This is an alternative to [space.select()](../space/struct.Space.html#method.select) which goes via a particular
+    /// index and can make use of additional parameter that specify the iterator type.
+    ///
+    /// - `type` - iterator type
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+    pub fn select_v2<K>(
+        &self,
+        iterator_type: IteratorType,
+        key: &K,
+    ) -> Result<IndexIteratorV2, Error>
     where
         K: ToTupleBuffer + ?Sized,
     {
@@ -762,7 +783,7 @@ impl Index {
             return Err(BoxError::last().into());
         }
 
-        Ok(IndexIterator {
+        Ok(IndexIteratorV2 {
             ptr,
             _key_data: key_buf,
         })
@@ -778,12 +799,38 @@ impl Index {
     ///
     /// `tuple_position` must come from a call to [`Self::tuple_position`] of
     /// the same space index, otherwise an error will be returned.
+    #[deprecated = "Use select_after_v2 instead."]
+    #[allow(deprecated)]
+    #[inline]
     pub fn select_after<K>(
         &self,
         iterator_type: IteratorType,
         key: &K,
         tuple_position: &TuplePosition,
     ) -> Result<IndexIterator, Error>
+    where
+        K: ToTupleBuffer + ?Sized,
+    {
+        self.select_after_v2(iterator_type, key, tuple_position)
+            .map(|inner| IndexIterator { inner })
+    }
+
+    /// Allocate and initialize iterator for index.
+    ///
+    /// Same as [`Self::select`] but if `tuple_position` is not empty the
+    /// iterator will start right after tuple with position described by that
+    /// argument.
+    ///
+    /// If `tuple_position` is empty the function is equivalent to [`Self::select`].
+    ///
+    /// `tuple_position` must come from a call to [`Self::tuple_position`] of
+    /// the same space index, otherwise an error will be returned.
+    pub fn select_after_v2<K>(
+        &self,
+        iterator_type: IteratorType,
+        key: &K,
+        tuple_position: &TuplePosition,
+    ) -> Result<IndexIteratorV2, Error>
     where
         K: ToTupleBuffer + ?Sized,
     {
@@ -807,7 +854,7 @@ impl Index {
             return Err(BoxError::last().into());
         }
 
-        Ok(IndexIterator {
+        Ok(IndexIteratorV2 {
             ptr,
             _key_data: key_buf,
         })
@@ -1312,34 +1359,60 @@ impl Metadata<'_> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// IndexIterator
+// IndexIteratorV2
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Index iterator. Can be used with `for` statement.
-pub struct IndexIterator {
+/// Index iterator.
+pub struct IndexIteratorV2 {
     ptr: *mut ffi::BoxIterator,
     _key_data: TupleBuffer,
 }
 
-impl Iterator for IndexIterator {
-    type Item = Tuple;
+impl Iterator for IndexIteratorV2 {
+    type Item = Result<Tuple, BoxError>;
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let mut result_ptr = null_mut();
         if unsafe { ffi::box_iterator_next(self.ptr, &mut result_ptr) } < 0 {
-            return None;
+            return Some(Err(BoxError::last()));
         }
-        Tuple::try_from_ptr(result_ptr)
+        Tuple::try_from_ptr(result_ptr).map(Ok)
     }
 }
 
-impl Drop for IndexIterator {
+impl Drop for IndexIteratorV2 {
     #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_iterator_free(self.ptr) };
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// IndexIterator
+////////////////////////////////////////////////////////////////////////////////
+
+/// Index iterator. Can be used with `for` statement.
+#[deprecated = "See https://git.picodata.io/core/picodata/-/work_items/3319. Use `IndexIteratorV2` instead."]
+pub struct IndexIterator {
+    inner: IndexIteratorV2,
+}
+
+#[allow(deprecated)]
+impl Iterator for IndexIterator {
+    type Item = Tuple;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        // XXX: ignoring the error here for backwards compatibility.
+        // It's fine because the struct is deprecated and nobody is supposed to use this.
+        self.inner.next().and_then(Result::ok)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// tests
+////////////////////////////////////////////////////////////////////////////////
 
 #[cfg(feature = "internal_test")]
 mod tests {
@@ -1779,5 +1852,73 @@ mod tests {
                 .collect::<Vec<_>>();
             assert_eq!(vs, [(100, "two".to_string()), (1, "one".to_string())]);
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn iterator_next_error_memtx() {
+        let space = Space::builder(&crate::temp_space_name!())
+            .space_type(space::SpaceType::DataTemporary)
+            .field(("id", space::FieldType::Unsigned))
+            .create()
+            .unwrap();
+        space.index_builder("pk").create().unwrap();
+        space.insert(&(1,)).unwrap();
+
+        let mut iter = space.select_v2(IteratorType::All, &()).unwrap();
+
+        // For memtx the only way box_iterator_next can fail is the fiber slice
+        // check. Set the slice to 0 and wait out the low resolution clock
+        // (10ms granularity) without yielding, otherwise the slice is reset.
+        crate::lua_state()
+            .exec("require('fiber').set_slice(0)")
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // box_check_slice only does the actual check on every 1000th call
+        // (the counter is global), so keep calling next until it does.
+        let mut error = None;
+        for _ in 0..1000 {
+            if let Some(Err(e)) = iter.next() {
+                error = Some(e);
+                break;
+            }
+        }
+        // Yield to reset the slice.
+        crate::fiber::sleep(std::time::Duration::ZERO);
+
+        let Some(error) = error else {
+            panic!("box_iterator_next didn't fail");
+        };
+        assert_eq!(error.error_type(), "FiberSliceIsExceeded");
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn iterator_next_error_vinyl() {
+        let space = Space::builder(&crate::temp_space_name!())
+            .engine(space::SpaceEngineType::Vinyl)
+            .field(("id", space::FieldType::Unsigned))
+            .create()
+            .unwrap();
+        space.index_builder("pk").create().unwrap();
+
+        // A vinyl iterator is bound to the transaction it was created in.
+        // Using it after the transaction has ended is an error.
+        crate::transaction::begin().unwrap();
+        let mut iter = space.select_v2(IteratorType::All, &()).unwrap();
+        crate::transaction::commit().unwrap();
+
+        let Some(Err(error)) = iter.next() else {
+            panic!("box_iterator_next didn't fail");
+        };
+        assert_eq!(
+            error.error_code(),
+            TarantoolErrorCode::CursorNoTransaction as u32
+        );
+
+        // The iterator is closed after the error.
+        assert!(iter.next().is_none());
+
+        drop(iter);
+        space.drop().unwrap();
     }
 }

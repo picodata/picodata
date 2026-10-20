@@ -51,6 +51,8 @@
   methods and `index::TuplePosition` struct for pagination support.
 - `fiber::async::oneshot::Receiver::is_ready` method which allows to check if
   message is ready without consuming the result.
+- `index::IndexIteratorV2` struct along with `index::Index::{select_v2, select_after_v2}`
+  and `space::Space::select_v2` methods
 
 ### Added (picodata)
 
@@ -97,6 +99,11 @@
 
 - `tuple::KeyDefPart` has a new `sort_order` field. Existing struct literals
   must initialize it; use `None` for ascending order.
+
+### Deprecated
+- Struct `index::IndexIterator` in favor of the new `index::IndexIteratorV2`.
+- Methods `Index::{select, select_after}` and `Space::select` in favor of the new
+  `Index::{select_v2, select_after_v2}` and `Space::select_v2`.
 
 
 # [11.0.0] Mar 19 2026
