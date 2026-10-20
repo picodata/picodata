@@ -97,9 +97,8 @@ crate::define_rpc_request! {
 pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<Response> {
     let node = node::global()?;
     let cluster_name = node.topology_cache.cluster_name;
-    let cluster_uuid = node.topology_cache.cluster_uuid;
     let storage = &node.storage;
-    let guard = node.instances_update.lock();
+    let _guard = node.instances_update.lock();
 
     if req.cluster_name != cluster_name {
         return Err(Error::ClusterNameMismatch {
@@ -143,44 +142,15 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         })?;
 
         if instance_exists {
-            let peer_addresses = node
-                .storage
-                .peer_addresses
-                .iter()?
-                .filter(|peer| {
-                    peer.connection_type.as_system() == Some(traft::SystemConnectionType::Iproto)
-                })
-                .map(|peer| (peer.raft_id, peer.address))
-                .collect();
-
-            let replicas = storage
-                .instances
-                .replicaset_instances(&instance.replicaset_name)
-                .expect("storage should not fail")
-                .filter(|i| !has_states!(i, Expelled -> *))
-                .map(|i| i.raft_id);
-            let mut replication_addresses = storage.peer_addresses.addresses_by_ids(replicas)?;
-            replication_addresses.insert(req.iproto_advertise.clone());
-
-            let topology_ref = node.topology_cache.get();
-            let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
-            let is_master = replicaset.target_master_name == instance.name;
-
-            drop(guard);
+            let response = make_join_response(node, &req, instance)?;
 
             tlog!(
                 Info,
-                "joined instance requested to join again: {instance:?}"
+                "joined instance requested to join again: {:?}",
+                response.instance
             );
 
-            return Ok(Response {
-                instance: Box::new(instance),
-                peer_addresses,
-                box_replication: replication_addresses.into_iter().collect(),
-                is_master,
-                shredding: storage.db_config.shredding()?.expect("should be set"),
-                cluster_uuid: cluster_uuid.into(),
-            });
+            return Ok(response);
         }
 
         let peer_address = traft::PeerAddress {
@@ -277,43 +247,15 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 
         node.main_loop.wakeup();
 
-        // A joined instance needs to communicate with other nodes.
-        // TODO: limit the number of entries sent to reduce response size.
-        let peer_addresses = node
-            .storage
-            .peer_addresses
-            .iter()?
-            .filter(|peer| {
-                peer.connection_type.as_system() == Some(traft::SystemConnectionType::Iproto)
-            })
-            .map(|peer| (peer.raft_id, peer.address))
-            .collect();
-        let replicas = storage
-            .instances
-            .replicaset_instances(&instance.replicaset_name)
-            .expect("storage should not fail")
-            // Ignore expelled instances
-            .filter(|i| !has_states!(i, Expelled -> *))
-            .map(|i| i.raft_id);
-        let mut replication_addresses = storage.peer_addresses.addresses_by_ids(replicas)?;
-        replication_addresses.insert(req.iproto_advertise.clone());
+        let response = make_join_response(node, &req, instance)?;
 
-        let topology_ref = node.topology_cache.get();
-        let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
-        let is_master = replicaset.target_master_name == instance.name;
+        tlog!(
+            Info,
+            "new instance joined the cluster: {:?}",
+            response.instance
+        );
 
-        drop(guard);
-
-        tlog!(Info, "new instance joined the cluster: {instance:?}");
-
-        return Ok(Response {
-            instance: instance.into(),
-            peer_addresses,
-            box_replication: replication_addresses.into_iter().collect(),
-            is_master,
-            shredding: storage.db_config.shredding()?.expect("should be set"),
-            cluster_uuid: cluster_uuid.into(),
-        });
+        return Ok(response);
     }
 }
 
@@ -660,6 +602,63 @@ fn choose_replicaset(
         replicaset: Replicaset,
         instances: Vec<Instance>,
     }
+}
+
+fn make_join_response(
+    node: &'static node::Node,
+    req: &Request,
+    instance: Instance,
+) -> Result<Response> {
+    // A joined instance needs to communicate with other nodes.
+    // TODO: limit the number of entries sent to reduce response size.
+    let mut peer_addresses = vec![];
+    for peer in node.storage.peer_addresses.iter()? {
+        if peer.connection_type.as_system() != Some(traft::SystemConnectionType::Iproto) {
+            continue;
+        }
+        peer_addresses.push((peer.raft_id, peer.address));
+    }
+
+    let mut seen_itself = false;
+    let mut box_replication = vec![];
+    for replica in node
+        .storage
+        .instances
+        .replicaset_instances(&instance.replicaset_name)?
+    {
+        // No need to tell about expelled instances
+        if has_states!(replica, Expelled -> *) {
+            continue;
+        }
+
+        let address = node.storage.peer_addresses.try_get(
+            replica.raft_id,
+            &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+        )?;
+
+        seen_itself = seen_itself || address == req.iproto_advertise;
+
+        box_replication.push(address);
+    }
+    if !seen_itself {
+        box_replication.push(req.iproto_advertise.clone());
+    }
+
+    let topology_ref = node.topology_cache.get();
+    let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
+    let is_master = replicaset.target_master_name == instance.name;
+
+    let cluster_uuid = node.topology_cache.cluster_uuid.into();
+    let shredding = node.storage.db_config.shredding()?.expect("should be set");
+
+    return Ok(Response {
+        instance: Box::new(instance),
+        peer_addresses,
+        box_replication,
+        is_master,
+        shredding,
+        cluster_uuid,
+    });
 }
 
 pub fn compress_join_response(join_response: &Response) -> Result<Vec<u8>> {
