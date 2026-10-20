@@ -118,6 +118,9 @@ pub struct TableDef {
 }
 
 impl TableDef {
+    /// Index (0-based) of field "schema_version" in the _pico_table table format.
+    pub const FIELD_SCHEMA_VERSION: usize = 4;
+
     /// Index (0-based) of field "operable" in the _pico_table table format.
     pub const FIELD_OPERABLE: usize = 5;
 
@@ -3030,6 +3033,7 @@ mod test {
         let format = TableDef::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "TableDef::format");
 
+        assert_eq!(format[TableDef::FIELD_SCHEMA_VERSION].name, "schema_version");
         assert_eq!(format[TableDef::FIELD_OPERABLE].name, "operable");
     }
 

@@ -689,15 +689,7 @@ fn dispatch_bound_statement_impl<'p>(
             if plan.get_relation_node(top_id)?.is_dml() {
                 let storage = &node::global()?.storage;
                 let table = plan.dml_node_table(top_id)?;
-                let table_name = table.name.clone();
-
-                let table_id = storage
-                    .pico_table
-                    .by_name(&table_name)?
-                    .ok_or(traft::error::DoesNotExist::Table(table_name))?
-                    .id;
-
-                cas::check_table_operable(storage, table_id)?;
+                cas::check_table_operable(storage, table.id)?;
             }
 
             Ok::<(), Error>(())

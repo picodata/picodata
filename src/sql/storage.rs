@@ -47,6 +47,7 @@ use sql_protocol::iterators::TupleIterator;
 use std::collections::{hash_map::Entry, HashMap};
 use std::rc::Rc;
 
+use crate::catalog::pico_table::PicoTable;
 use crate::schema::{ADMIN_ID, SPACE_ID_TEMPORARY_MIN};
 use crate::sql::execute::{
     acquire_cached_stmt_or_retry, dml_execute, dql_execute, drop_temp_tables, explain_execute,
@@ -217,6 +218,12 @@ pub(crate) struct StorageCacheEntry {
     motion_ids: Vec<SmolStr>,
 }
 
+fn table_schema_version(pico_table: &PicoTable, id: SpaceId) -> Result<Option<u64>, SbroadError> {
+    with_su(ADMIN_ID, || pico_table.schema_version(id))
+        .flatten()
+        .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {e}")))
+}
+
 /// Build a lightweight eviction closure that defers actual cleanup.
 ///
 /// It only records per-plan retirement metadata under the cache mutex.
@@ -337,21 +344,14 @@ impl StorageCache for PicoStorageCache {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
         })?;
         let pico_table = &node.storage.pico_table;
-        for table_id in schema_info.table_version_map.keys() {
-            let current_version = if let Some(table_def) = with_su(ADMIN_ID, || {
-                pico_table.by_id(*table_id).map_err(|e| {
-                    SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-                })
-            })?? {
-                table_def.schema_version
-            } else {
-                return Err(SbroadError::NotFound(
+        for &table_id in schema_info.table_version_map.keys() {
+            let current_version = table_schema_version(pico_table, table_id)?.ok_or_else(|| {
+                SbroadError::NotFound(
                     Entity::SpaceMetadata,
-                    format_smolstr!("for space: {}", table_id),
-                ));
-            };
-
-            table_version_map.insert(*table_id, current_version);
+                    format_smolstr!("for space: {table_id}"),
+                )
+            })?;
+            table_version_map.insert(table_id, current_version);
         }
 
         for index in schema_info.index_version_map.keys() {
@@ -404,17 +404,12 @@ impl StorageCache for PicoStorageCache {
         })?;
         let pico_table = &node.storage.pico_table;
         for (table_id, cached_version) in &entry.table_versions {
-            let Some(table_def) = with_su(ADMIN_ID, || {
-                pico_table.by_id(*table_id).map_err(|e| {
-                    SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-                })
-            })??
-            else {
+            let Some(schema_version) = table_schema_version(pico_table, *table_id)? else {
                 return Ok(None);
             };
             // The outdated entry will be replaced when `put` is called (that is always
             // called after the cache miss).
-            if *cached_version != table_def.schema_version {
+            if *cached_version != schema_version {
                 return Ok(None);
             }
         }

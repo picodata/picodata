@@ -189,10 +189,10 @@ pub fn get_table_version_by_id(id: SpaceId) -> Result<u64, SbroadError> {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
         })?;
         let storage_tables = &node.storage.pico_table;
-        if let Some(table_def) = storage_tables.by_id(id).map_err(|e| {
+        if let Some(schema_version) = storage_tables.schema_version(id).map_err(|e| {
             SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
         })? {
-            Ok(table_def.schema_version)
+            Ok(schema_version)
         } else {
             Err(SbroadError::NotFound(
                 Entity::SpaceMetadata,
@@ -348,7 +348,7 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
                         format_smolstr!("in version map with name: {}", tbl.name),
                     )
                 })?;
-                let Some(space_def) = pico_table.by_id(tbl.id).map_err(|e| {
+                let Some(schema_version) = pico_table.schema_version(tbl.id).map_err(|e| {
                     SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
                 })?
                 else {
@@ -357,7 +357,7 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
                 // The outdated entry will be replaced when
                 // `put` is called (which is always called
                 // after cache miss).
-                if cached_version != space_def.schema_version {
+                if cached_version != schema_version {
                     return Ok(None);
                 }
             }

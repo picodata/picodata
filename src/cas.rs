@@ -49,13 +49,11 @@ const PROHIBITED_TABLES: &[SpaceId] = &[
 ];
 
 pub fn check_table_operable(storage: &Catalog, space_id: SpaceId) -> traft::Result<()> {
-    if let Some(table) = storage.pico_table.get(space_id)? {
-        if !table.operable {
+    // Decode the whole row only for the error message.
+    if storage.pico_table.is_operable(space_id)? == Some(false) {
+        if let Some(table) = storage.pico_table.get(space_id)? {
             tlog!(Warning, "Table is not operable; skipping DML operation");
-            return Err(Error::TableNotOperable {
-                table: table.name.clone(),
-            }
-            .into());
+            return Err(Error::TableNotOperable { table: table.name }.into());
         }
     }
 
