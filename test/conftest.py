@@ -2174,6 +2174,9 @@ Last governor error is:
             self.call(".proc_raft_transfer_leader", new_leader_id)
             status = self.call(".proc_raft_info")
             assert status["state"] != "Leader", "leadership not yet transferred"
+            # raft-rs steps the old leader down on the transferee's RequestVote,
+            # before the election is won, so also wait until it knows the new leader
+            assert status["leader_id"] == new_leader_id, "new leader not yet known"
 
         Retriable().call(do_transfer)
 
