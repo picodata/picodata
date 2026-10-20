@@ -115,10 +115,6 @@ override PKG_CARGO_FLAGS_dev := --features=debug_tarantool
 override BUILD_PROFILES := dev fast-release release
 $(foreach PROFILE,$(BUILD_PROFILES),$(eval $(call BUILD_TEMPLATE,$(PROFILE))))
 
-# We have to specify target to disable ASan for proc macros, build.rs, etc.
-# See https://github.com/rust-lang/cargo/issues/6375#issuecomment-444900324.
-DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
-
 # SQL crates are tested by test-rs-sql with nextest, so test-rs-picodata
 # excludes them.
 SQL_CRATE_NAMES := \
