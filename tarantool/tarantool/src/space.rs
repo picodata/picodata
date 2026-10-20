@@ -1932,9 +1932,9 @@ mod test {
     #[crate::test(tarantool = "crate")]
     fn sys_space_metadata() {
         let sys_space = Space::from(SystemSpace::Space);
-        for tuple in sys_space.select(IteratorType::All, &()).unwrap() {
+        for tuple in sys_space.select_v2(IteratorType::All, &()).unwrap() {
             // Check space metadata is deserializable from what is actually in _space
-            let _meta: Metadata = tuple.decode().unwrap();
+            let _meta: Metadata = tuple.unwrap().decode().unwrap();
         }
     }
 

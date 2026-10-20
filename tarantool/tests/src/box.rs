@@ -119,8 +119,9 @@ pub fn select() {
     let space = Space::find("test_s2").unwrap();
     let result: Vec<S2Record> = space
         .primary_key()
-        .select(IteratorType::LE, &(5,))
+        .select_v2(IteratorType::LE, &(5,))
         .unwrap()
+        .map(|x| x.unwrap())
         .map(|x| x.decode().unwrap())
         .collect();
     assert_eq!(
@@ -166,8 +167,9 @@ pub fn select() {
 
     let idx = space.index("idx_3").unwrap();
     let result: Vec<S2Record> = idx
-        .select(IteratorType::Eq, &(3,))
+        .select_v2(IteratorType::Eq, &(3,))
         .unwrap()
+        .map(|x| x.unwrap())
         .map(|x| x.decode().unwrap())
         .collect();
     assert_eq!(
@@ -210,8 +212,9 @@ pub fn select_composite_key() {
     let idx = space.index("idx_2").unwrap();
 
     let result: Vec<S2Record> = idx
-        .select(IteratorType::Eq, &(3, 3, 0))
+        .select_v2(IteratorType::Eq, &(3, 3, 0))
         .unwrap()
+        .map(|x| x.unwrap())
         .map(|x| x.decode().unwrap())
         .collect();
     assert_eq!(
@@ -1185,8 +1188,9 @@ pub fn index_parts() {
     space.insert(&("5", 1)).unwrap_err();
 
     let mut iter = index
-        .select(tarantool::index::IteratorType::All, &())
-        .unwrap();
+        .select_v2(tarantool::index::IteratorType::All, &())
+        .unwrap()
+        .map(|x| x.unwrap());
 
     assert_eq!(iter.next().and_then(|t| t.decode().ok()), Some((1, 2, 3)));
     assert_eq!(
@@ -1236,8 +1240,9 @@ pub fn fully_temporary_space() {
     // Inserting obviously works, because the space is data-temporary
     space.put(&(1, 2, 3)).unwrap();
     let row = space
-        .select(IteratorType::All, &())
+        .select_v2(IteratorType::All, &())
         .unwrap()
+        .map(|x| x.unwrap())
         .map(|t| t.decode::<(i32, i32, i32)>().unwrap())
         .next()
         .unwrap();
@@ -1245,7 +1250,7 @@ pub fn fully_temporary_space() {
 
     // Truncating also works
     space.truncate().unwrap();
-    let count = space.select(IteratorType::All, &()).unwrap().count();
+    let count = space.select_v2(IteratorType::All, &()).unwrap().count();
     assert_eq!(count, 0);
 
     // Drop space and index works

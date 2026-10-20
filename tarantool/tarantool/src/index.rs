@@ -1551,9 +1551,9 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn sys_index_metadata() {
         let sys_index = Space::from(SystemSpace::Index);
-        for tuple in sys_index.select(IteratorType::All, &()).unwrap() {
+        for tuple in sys_index.select_v2(IteratorType::All, &()).unwrap() {
             // Check index metadata is deserializable from what is actually in _index
-            let _meta: Metadata = tuple.decode().unwrap();
+            let _meta: Metadata = tuple.unwrap().decode().unwrap();
         }
     }
 
@@ -1604,12 +1604,12 @@ mod tests {
         space.insert(&(4, "one")).unwrap();
         space.insert(&(5, "two")).unwrap();
 
-        let mut iter = index.select(IteratorType::All, &()).unwrap();
+        let mut iter = index.select_v2(IteratorType::All, &()).unwrap();
         // Skip a couple of tuples and then get the position
-        let first_tuple = iter.next().unwrap();
-        let second_tuple = iter.next().unwrap();
+        let first_tuple = iter.next().unwrap().unwrap();
+        let second_tuple = iter.next().unwrap().unwrap();
 
-        let third_tuple = iter.next().unwrap();
+        let third_tuple = iter.next().unwrap().unwrap();
         // In picodata we would call `tuple.data()` instead of `tuple.to_vec()` to avoid that extra allocation
         let after_third = index.tuple_position(&third_tuple.to_vec()).unwrap();
 
@@ -1617,14 +1617,14 @@ mod tests {
         // after the specified tuple)
         {
             let mut iter_after = index
-                .select_after(IteratorType::All, &(), &after_third)
+                .select_after_v2(IteratorType::All, &(), &after_third)
                 .unwrap();
 
-            let tuple = iter_after.next().unwrap();
+            let tuple = iter_after.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (4, "one".to_string()));
 
-            let tuple = iter_after.next().unwrap();
+            let tuple = iter_after.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (5, "two".to_string()));
 
@@ -1633,14 +1633,14 @@ mod tests {
 
         // Sanity check that the original iterator still works
         let _fourth_tuple = iter.next().unwrap();
-        let last_tuple = iter.next().unwrap();
+        let last_tuple = iter.next().unwrap().unwrap();
         assert!(iter.next().is_none());
 
         // Check starting after the last tuple
         let after_last = index.tuple_position(&last_tuple.to_vec()).unwrap();
         {
             let mut iter_after = index
-                .select_after(IteratorType::All, &(), &after_last)
+                .select_after_v2(IteratorType::All, &(), &after_last)
                 .unwrap();
             assert!(iter_after.next().is_none());
         }
@@ -1653,17 +1653,17 @@ mod tests {
         {
             // Look for id = 1, starting after first tuple
             let mut iter = index
-                .select_after(IteratorType::Eq, &[1], &after_first)
+                .select_after_v2(IteratorType::Eq, &[1], &after_first)
                 .unwrap();
             // Not found
             assert!(iter.next().is_none());
 
             // Look for id = 1, starting at the beginning (empty position is effectively start)
             let mut iter = index
-                .select_after(IteratorType::Eq, &[1], &TuplePosition::default())
+                .select_after_v2(IteratorType::Eq, &[1], &TuplePosition::default())
                 .unwrap();
             // Found
-            let tuple = iter.next().unwrap();
+            let tuple = iter.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (1, "foo".to_string()));
         }
@@ -1671,39 +1671,39 @@ mod tests {
         let after_second = index.tuple_position(&second_tuple.to_vec()).unwrap();
         {
             let mut iter = index
-                .select_after(IteratorType::All, &(), &after_second)
+                .select_after_v2(IteratorType::All, &(), &after_second)
                 .unwrap();
 
-            let tuple = iter.next().unwrap();
+            let tuple = iter.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (3, "baz".to_string()));
 
-            let tuple = iter.next().unwrap();
+            let tuple = iter.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (4, "one".to_string()));
 
-            let tuple = iter.next().unwrap();
+            let tuple = iter.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (5, "two".to_string()));
         }
         {
             let mut iter = index
-                .select_after(IteratorType::LE, &[4], &TuplePosition::default())
+                .select_after_v2(IteratorType::LE, &[4], &TuplePosition::default())
                 .unwrap();
 
-            let tuple = iter.next().unwrap();
+            let tuple = iter.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (4, "one".to_string()));
 
-            let tuple = iter.next().unwrap();
+            let tuple = iter.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (3, "baz".to_string()));
 
-            let tuple = iter.next().unwrap();
+            let tuple = iter.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (2, "bar".to_string()));
 
-            let tuple = iter.next().unwrap();
+            let tuple = iter.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (1, "foo".to_string()));
         }
@@ -1714,10 +1714,10 @@ mod tests {
             // iteration, so in this case "after second" tuple actually means
             // "before second"
             let mut iter = index
-                .select_after(IteratorType::LE, &[4], &after_second)
+                .select_after_v2(IteratorType::LE, &[4], &after_second)
                 .unwrap();
 
-            let tuple = iter.next().unwrap();
+            let tuple = iter.next().unwrap().unwrap();
             let v = tuple.decode::<(i32, String)>().unwrap();
             assert_eq!(v, (1, "foo".to_string()));
         }
@@ -1777,10 +1777,10 @@ mod tests {
             let tuple = Tuple::new(&[0]).unwrap();
             let position = index.tuple_position(&tuple.to_vec()).unwrap();
             let iter = index
-                .select_after(IteratorType::All, &(), &position)
+                .select_after_v2(IteratorType::All, &(), &position)
                 .unwrap();
             let vs = iter
-                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .map(|tuple| tuple.unwrap().decode::<(i32, String)>().unwrap())
                 .collect::<Vec<_>>();
             assert_eq!(
                 vs,
@@ -1796,10 +1796,10 @@ mod tests {
             let tuple = Tuple::new(&[1]).unwrap();
             let position = index.tuple_position(&tuple.to_vec()).unwrap();
             let iter = index
-                .select_after(IteratorType::All, &(), &position)
+                .select_after_v2(IteratorType::All, &(), &position)
                 .unwrap();
             let vs = iter
-                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .map(|tuple| tuple.unwrap().decode::<(i32, String)>().unwrap())
                 .collect::<Vec<_>>();
             assert_eq!(vs, [(100, "two".to_string()), (200, "three".to_string())]);
         }
@@ -1808,10 +1808,10 @@ mod tests {
             let tuple = Tuple::new(&[50]).unwrap();
             let position = index.tuple_position(&tuple.to_vec()).unwrap();
             let iter = index
-                .select_after(IteratorType::All, &(), &position)
+                .select_after_v2(IteratorType::All, &(), &position)
                 .unwrap();
             let vs = iter
-                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .map(|tuple| tuple.unwrap().decode::<(i32, String)>().unwrap())
                 .collect::<Vec<_>>();
             assert_eq!(vs, [(100, "two".to_string()), (200, "three".to_string())]);
         }
@@ -1820,10 +1820,10 @@ mod tests {
             let tuple = Tuple::new(&[150]).unwrap();
             let position = index.tuple_position(&tuple.to_vec()).unwrap();
             let iter = index
-                .select_after(IteratorType::All, &(), &position)
+                .select_after_v2(IteratorType::All, &(), &position)
                 .unwrap();
             let vs = iter
-                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .map(|tuple| tuple.unwrap().decode::<(i32, String)>().unwrap())
                 .collect::<Vec<_>>();
             assert_eq!(vs, [(200, "three".to_string())]);
         }
@@ -1832,10 +1832,10 @@ mod tests {
             let tuple = Tuple::new(&[250]).unwrap();
             let position = index.tuple_position(&tuple.to_vec()).unwrap();
             let iter = index
-                .select_after(IteratorType::All, &(), &position)
+                .select_after_v2(IteratorType::All, &(), &position)
                 .unwrap();
             let vs = iter
-                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .map(|tuple| tuple.unwrap().decode::<(i32, String)>().unwrap())
                 .collect::<Vec<_>>();
             assert_eq!(vs, []);
         }
@@ -1845,10 +1845,10 @@ mod tests {
             let tuple = Tuple::new(&[150]).unwrap();
             let position = index.tuple_position(&tuple.to_vec()).unwrap();
             let iter = index
-                .select_after(IteratorType::Req, &(), &position)
+                .select_after_v2(IteratorType::Req, &(), &position)
                 .unwrap();
             let vs = iter
-                .map(|tuple| tuple.decode::<(i32, String)>().unwrap())
+                .map(|tuple| tuple.unwrap().decode::<(i32, String)>().unwrap())
                 .collect::<Vec<_>>();
             assert_eq!(vs, [(100, "two".to_string()), (1, "one".to_string())]);
         }
