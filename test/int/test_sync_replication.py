@@ -2425,6 +2425,104 @@ cluster:
         assert i.eval("return box.info.synchro.queue.len") == 0
 
 
+def test_sync_replication_master_death_with_unreplicated_txn_rf3(cluster: Cluster):
+    """
+    RF=3 sync replicaset: the master dies while its limbo contains a
+    transaction which has reached nobody. The replicas elect a new master
+    without it, and once the old master returns, the transaction is rolled
+    back on it.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        sync_tier:
+            replication_factor: 3
+            can_vote: false
+            replication_mode: sync
+            bucket_count: 30
+"""
+    )
+
+    cluster.deploy(instance_count=3, tier="arbiter")
+    leader = cluster.leader()
+    i1 = cluster.add_instance(wait_online=False, tier="sync_tier")
+    i2 = cluster.add_instance(wait_online=False, tier="sync_tier")
+    i3 = cluster.add_instance(wait_online=False, tier="sync_tier")
+    cluster.wait_online(WAIT_ONLINE_TIMEOUT * 2)
+
+    master_name = i1.replicaset_master_name()
+    master = next(i for i in [i1, i2, i3] if i.name == master_name)
+    replicas = [i for i in [i1, i2, i3] if i.name != master_name]
+
+    # Create table and write initial data replicated to everyone
+    leader.sql('CREATE TABLE t (id INT NOT NULL, val TEXT, PRIMARY KEY (id)) DISTRIBUTED BY (id) IN TIER "sync_tier"')
+    master.sql("INSERT INTO t VALUES (1, 'seen_by_all')")
+
+    def initial_row_replicated_to_all():
+        for i in [master, *replicas]:
+            assert i.eval("return box.space.t:count()") == 1
+
+    Retriable().call(initial_row_replicated_to_all)
+
+    # The replicas stop receiving from the master, so the next write can't
+    # gather the quorum: it reaches nobody and stays in the master's limbo.
+    # The master must not resign for the lack of healthy peers, or it would
+    # reject the write right away.
+    master.eval("box.cfg { election_fencing_mode = 'off' }")
+    for i in replicas:
+        i.eval("box.cfg { replication = {} }")
+    with pytest.raises(TimeoutError):
+        master.sql("INSERT INTO t VALUES (2, 'unreplicated')", timeout=1)
+    assert master.eval("return box.info.synchro.queue.len") == 1
+    for i in replicas:
+        assert i.eval("return box.space.t:count()") == 1
+
+    # The master dies ungracefully, so it never reports going Offline itself.
+    # Speed up the automatic failure detection.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 1")
+    master.kill()
+    cluster.wait_has_states(master, "Offline", "Offline")
+    # Restore the default so the aggressive failure detection doesn't
+    # spuriously mark the survivors Offline while the failover is in progress.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 30")
+
+    # The governor reconfigures the replication between the replicas, and
+    # one of them is elected without the unreplicated write.
+    def switchover_happened():
+        assert replicas[0].replicaset_master_name() != master.name
+
+    Retriable().call(switchover_happened)
+    cluster.wait_governor_status("idle")
+    new_master = Retriable().call(get_master_instance, *replicas)
+    new_master_id = new_master.eval("return box.info.id")
+    assert new_master.replicaset_master_name() == new_master.name
+
+    sql_insert_retried(new_master, "INSERT INTO t VALUES (3, 'after_failover')")
+
+    # The old master returns with the unreplicated write in its limbo. The new
+    # master's PROMOTE rolls it back, and the others skip it when they
+    # replicate from the old master, so nobody's replication is broken.
+    master.start()
+    master.wait_online()
+
+    def old_master_converged():
+        assert master.eval("return box.info.ro")
+        for i in [master, *replicas]:
+            assert i.eval("return box.info.synchro.queue.owner") == new_master_id
+            assert i.eval("return box.info.synchro.queue.len") == 0
+            assert i.eval("return box.space.t:count()") == 2
+            assert i.eval("return box.space.t:get(2)") is None
+            assert i.eval("return pico._check_if_replication_is_broken()") is None
+
+    Retriable().call(old_master_converged)
+
+
 @pytest.mark.flaky(reruns=3)
 def test_sync_replication_promote_lost_election_retargets_to_fallback_rf3(cluster: Cluster):
     """

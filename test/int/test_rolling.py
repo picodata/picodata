@@ -990,3 +990,275 @@ cluster:
     # arbiter tier included.
     for i in [a1, i1, i2]:
         assert i.eval("return box.space._space.is_sync") is True
+
+
+@pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version("26.2.1"),
+        get_or_make_registry().next_version(Version("26.2.1"), skip_on_gap=False),
+    ]
+)
+def test_upgrade_from_26_2_1_elections_on_every_tier(cluster: Cluster, registry: Registry):
+    """
+    Since 26.3 every tier runs elections, whatever its `replication_mode` is.
+    An async tier switches to them once every instance runs the new version,
+    see `ELECTIONS_ON_EVERY_TIER_SINCE`. Until then it works like in 26.2.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+        storage:
+            can_vote: false
+            replication_factor: 2
+        """
+    )
+
+    from_version = Version("26.2.1")
+    from_executable = registry.get(from_version)
+    assert from_executable is not None
+
+    to_version = registry.next_version(from_version)
+    to_executable = registry.get(to_version)
+    assert to_executable is not None
+
+    a1 = cluster.add_instance(wait_online=False, tier="arbiter", executable=from_executable)
+    s1 = cluster.add_instance(wait_online=False, tier="storage", executable=from_executable)
+    s2 = cluster.add_instance(wait_online=False, tier="storage", executable=from_executable)
+    cluster.wait_online()
+
+    master_name = s1.replicaset_master_name()
+    old_master, new_master = (s1, s2) if master_name == s1.name else (s2, s1)
+
+    def check_master(i: Instance, name: str):
+        assert i.replicaset_master_name() == name
+
+    def check_writable(i: Instance):
+        assert not i.eval("return box.info.ro")
+
+    def check_no_elections(i: Instance):
+        assert i.eval("return box.cfg.election_mode") == "off"
+        # Nobody has ever been promoted.
+        assert i.eval("return box.info.synchro.queue.owner") == 0
+
+    def check_elections(i: Instance, quorum: int):
+        assert i.eval("return box.cfg.election_mode") == "manual"
+        assert i.eval("return box.cfg.replication_synchro_quorum") == quorum
+
+    def check_leader(i: Instance):
+        assert i.eval("return box.info.election.state") == "leader"
+        assert not i.eval("return box.info.ro")
+        assert i.eval("return box.info.synchro.queue.owner") == i.eval("return box.info.id")
+
+    def check_follower(i: Instance):
+        assert i.eval("return box.info.election.state") == "follower"
+        assert i.eval("return box.info.ro_reason") == "election"
+
+    a1.sql("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT) DISTRIBUTED BY (id) IN TIER storage")
+    a1.sql("INSERT INTO t VALUES (1, 'before upgrade')")
+
+    def check_row_count(i: Instance, count: int):
+        assert i.eval("return box.space.t:count()") == count
+
+    Retriable().call(check_row_count, new_master, 1)
+
+    #
+    # Upgrade the raft leader, so that the governor runs the new version, and
+    # the replica. The cluster is still on the old version, so the async tiers
+    # don't run elections yet, even on the restarted instances.
+    #
+    a1.change_executable(to_executable)
+    new_master.change_executable(to_executable)
+    assert_version(cluster, from_version, registry)
+
+    for i in [a1, old_master, new_master]:
+        check_no_elections(i)
+    check_writable(old_master)
+    assert new_master.eval("return box.info.ro_reason") == "config"
+
+    #
+    # A failover works like in 26.2: the replica is made writable directly,
+    # not promoted in an election.
+    #
+    old_master.terminate()
+    Retriable().call(check_master, new_master, new_master.name)
+    cluster.wait_governor_status("idle")
+    Retriable().call(check_writable, new_master)
+    check_no_elections(new_master)
+    a1.sql("INSERT INTO t VALUES (2, 'failover during upgrade')")
+
+    #
+    # An instance which joins during the upgrade doesn't run elections either.
+    #
+    # NOTE: It joins the existing replicaset. The first instance of a new
+    # replicaset would create the system tables of the new version on its own,
+    # e.g. `_pico_revoked_jwt`, and then the catalog upgrade would fail to
+    # create them.
+    #
+    # NOTE: The join response lists the old master too, which is down, and
+    # `box.cfg` waits for it for `replication_connect_timeout` (30s) before it
+    # bootstraps the instance. Hence the longer timeout.
+    #
+    s3 = cluster.add_instance(
+        wait_online=True,
+        tier="storage",
+        replicaset_name=new_master.replicaset_name,
+        executable=to_executable,
+        timeout=60,
+    )
+    Retriable().call(check_row_count, s3, 2)
+    check_no_elections(s3)
+    assert s3.eval("return box.info.ro_reason") == "config"
+
+    #
+    # Finish the upgrade. The old master comes back as a replica.
+    #
+    old_master.executable = to_executable
+    old_master.start()
+    old_master.wait_online()
+
+    # NOTE: Needs to be retriable because upgrade happens asynchronously after all instances become Online.
+    Retriable().call(assert_version, cluster, to_version, registry)
+    cluster.wait_governor_status("idle")
+
+    #
+    # Every tier runs elections now, without a restart. The governor tells the
+    # instances to run them when it configures the replication, and the
+    # masters promote themselves.
+    #
+    # The quorum is the majority of the replicaset members: the arbiter
+    # replicaset has a single member, the storage one has 3.
+    for i, quorum in [(a1, 1), (old_master, 2), (new_master, 2), (s3, 2)]:
+        Retriable().call(check_elections, i, quorum)
+    for i in [a1, new_master]:
+        Retriable().call(check_leader, i)
+    for i in [old_master, s3]:
+        Retriable().call(check_follower, i)
+
+    # The catalog upgrade, which needs the writable masters, has finished.
+    assert a1.sql("SELECT op, status, status_description FROM _pico_governor_queue WHERE status != 'done'") == []
+    for i in [a1, old_master, new_master, s3]:
+        assert i.eval("return box.space._space.is_sync") is True
+
+    # DDL needs the synchro quorum of every replicaset.
+    a1.sql("CREATE TABLE t2 (id INTEGER PRIMARY KEY) DISTRIBUTED BY (id) IN TIER storage")
+    a1.sql("INSERT INTO t VALUES (3, 'after upgrade')")
+    Retriable().call(check_row_count, old_master, 3)
+
+    # The replicaset is back to 2 members.
+    cluster.expel(s3, force=True)
+    cluster.wait_has_states(s3, "Expelled", "Expelled")
+    cluster.wait_governor_status("idle")
+    for i in [old_master, new_master]:
+        Retriable().call(check_elections, i, 2)
+    Retriable().call(check_leader, new_master)
+
+    #
+    # A failover is an election now. The replicaset has 2 members, and the
+    # governor breaks the tie: the remaining one is the quorum.
+    #
+    new_master.terminate()
+    Retriable().call(check_master, old_master, old_master.name)
+    cluster.wait_governor_status("idle")
+    Retriable().call(check_elections, old_master, 1)
+    Retriable().call(check_leader, old_master)
+    a1.sql("INSERT INTO t VALUES (4, 'failover after upgrade')")
+
+    # A restarted instance runs elections right away, and the quorum is back.
+    new_master.start()
+    new_master.wait_online()
+    for i in [old_master, new_master]:
+        Retriable().call(check_elections, i, 2)
+    Retriable().call(check_leader, old_master)
+    Retriable().call(check_follower, new_master)
+    Retriable().call(check_row_count, new_master, 4)
+
+    #
+    # An instance which joins after the upgrade runs elections too, and
+    # follows the elected leader. The replicaset has 3 members now.
+    #
+    # NOTE: It joins the existing replicaset. The first instance of a new
+    # replicaset creates the system tables of the new version on its own, e.g.
+    # `_pico_revoked_jwt`, and then fails to replay the `CREATE TABLE` of the
+    # catalog upgrade from the raft log.
+    #
+    s4 = cluster.add_instance(
+        wait_online=True, tier="storage", replicaset_name=old_master.replicaset_name, executable=to_executable
+    )
+    for i in [old_master, new_master, s4]:
+        Retriable().call(check_elections, i, 2)
+    Retriable().call(check_leader, old_master)
+    for i in [new_master, s4]:
+        Retriable().call(check_follower, i)
+    Retriable().call(check_row_count, s4, 4)
+
+
+@pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version("26.2.1"),
+        get_or_make_registry().next_version(Version("26.2.1"), skip_on_gap=False),
+    ]
+)
+def test_upgrade_from_26_2_1_sync_tier_quorum(cluster: Cluster, registry: Registry):
+    """
+    In 26.2 a sync tier runs with the synchro quorum of the replication factor
+    alone. Since 26.3 it's the majority of the replicaset members if there are
+    more of them than the replication factor. Once every instance runs the new
+    version, the governor corrects the quorum, even if nothing else changes in
+    the replicaset then.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            can_vote: true
+        storage:
+            can_vote: false
+            replication_factor: 1
+            replication_mode: sync
+        """
+    )
+
+    from_version = Version("26.2.1")
+    from_executable = registry.get(from_version)
+    assert from_executable is not None
+
+    to_version = registry.next_version(from_version)
+    to_executable = registry.get(to_version)
+    assert to_executable is not None
+
+    a1 = cluster.add_instance(wait_online=False, tier="arbiter", executable=from_executable)
+    s1 = cluster.add_instance(wait_online=False, tier="storage", executable=from_executable)
+    cluster.wait_online()
+    # More members than the replication factor.
+    s2 = cluster.add_instance(
+        wait_online=True, tier="storage", replicaset_name=s1.replicaset_name, executable=from_executable
+    )
+
+    def check_quorum(i: Instance, quorum: int):
+        assert i.eval("return box.cfg.replication_synchro_quorum") == quorum
+
+    for i in [s1, s2]:
+        check_quorum(i, 1)
+
+    cluster.change_executable(to_executable)
+
+    # NOTE: Needs to be retriable because upgrade happens asynchronously after all instances become Online.
+    Retriable().call(assert_version, cluster, to_version, registry)
+    cluster.wait_governor_status("idle")
+
+    # The quorum is the majority of the 2 members, so neither of them can be
+    # elected without the other.
+    for i in [s1, s2]:
+        Retriable().call(check_quorum, i, 2)
+
+    # The replicaset is still writable with both members alive.
+    a1.sql("CREATE TABLE t (id INTEGER PRIMARY KEY) DISTRIBUTED BY (id) IN TIER storage")
+    a1.sql("INSERT INTO t VALUES (1)")

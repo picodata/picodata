@@ -1,4 +1,6 @@
+import os
 import re
+import signal
 import time
 
 import pytest
@@ -541,6 +543,378 @@ def test_master_dead_before_switchover_loses_writes_not_replicated_yet(cluster: 
 
     Retriable().call(check_replicated, i4)
     Retriable().call(check_replicated, i6)
+
+
+def test_master_fenced_on_quorum_loss_promotes_itself_back(cluster: Cluster):
+    # An async tier runs elections too, so its master stops accepting writes
+    # once it loses the connection to the majority of the replicaset. Once the
+    # connection is back, the master promotes itself again: the replicas never
+    # went Offline, so the governor has nothing to do.
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        storage:
+            replication_factor: 3
+            can_vote: false
+"""
+    )
+    leader = cluster.add_instance(wait_online=False, tier="arbiter")
+    i1 = cluster.add_instance(wait_online=False, tier="storage")
+    i2 = cluster.add_instance(wait_online=False, tier="storage")
+    i3 = cluster.add_instance(wait_online=False, tier="storage")
+    cluster.wait_online()
+
+    master_name = i1.replicaset_master_name()
+    master = next(i for i in [i1, i2, i3] if i.name == master_name)
+    replicas = [i for i in [i1, i2, i3] if i.name != master_name]
+    master_id = master.eval("return box.info.id")
+
+    def check_synchro_quorum(*instances: Instance):
+        for i in instances:
+            assert i.eval("return box.cfg.replication_synchro_quorum") == 2
+
+    Retriable().call(check_synchro_quorum, i1, i2, i3)
+
+    def check_leader():
+        assert master.eval("return box.info.election.state") == "leader"
+        assert master.eval("return box.info.ro") is False
+        assert master.eval("return box.info.synchro.queue.owner") == master_id
+
+    # A replication reconfiguration may depose the leader for a moment, until
+    # it promotes itself again.
+    Retriable().call(check_leader)
+
+    master.eval(
+        """
+        box.schema.space.create('mytable')
+        box.space.mytable:create_index('pk')
+        box.space.mytable:insert{1, 'before quorum loss'}
+        """
+    )
+
+    def check_replicated(key: int):
+        for i in replicas:
+            assert i.eval("return box.space.mytable:get(...)", key) is not None
+
+    Retriable().call(check_replicated, 1)
+
+    # The frozen replicas must stay Online: the recovery must not depend on
+    # the governor.
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 60")
+    progress = cluster.wait_governor_status("idle")
+    replica_states = [leader.states(i) for i in replicas]
+    term = master.eval("return box.info.election.term")
+
+    self_promoted = log_crawler(master, "election: self-promotion succeeded")
+
+    for i in replicas:
+        assert i.process
+        os.killpg(i.process.pid, signal.SIGSTOP)
+
+    # The master is fenced: it can't reach the synchro quorum.
+    def check_fenced():
+        assert master.eval("return box.info.ro") is True
+        assert master.eval("return box.info.ro_reason") == "election"
+        assert master.eval("return box.info.election.leader") == 0
+
+    Retriable().call(check_fenced)
+    with pytest.raises(TarantoolError, match="read-only"):
+        master.eval("box.space.mytable:insert{2, 'rejected'}")
+
+    for i in replicas:
+        assert i.process
+        os.killpg(i.process.pid, signal.SIGCONT)
+
+    # The quorum is back, and the master is elected again in a new term.
+    self_promoted.wait_matched()
+    Retriable().call(check_leader)
+    assert master.eval("return box.info.election.term") > term
+    master.eval("box.space.mytable:insert{3, 'after quorum loss'}")
+    Retriable().call(check_replicated, 3)
+    for i in replicas:
+        assert i.eval("return box.info.ro_reason") == "election"
+        assert i.eval("return box.info.election.leader") == master_id
+    assert master.eval("return box.space.mytable:get(2)") is None
+
+    # The governor did nothing: nobody went Offline, and the master stayed the
+    # designated one.
+    assert cluster.wait_governor_status("idle").step_counter == progress.step_counter
+    assert [leader.states(i) for i in replicas] == replica_states
+    assert master.replicaset_master_name() == master.name
+
+
+def assert_synchro_quorum(quorum: int, *instances: Instance):
+    for i in instances:
+        assert i.eval("return box.cfg.replication_synchro_quorum") == quorum, i.name
+
+
+def assert_election_leader(i: Instance):
+    assert i.eval("return box.info.election.state") == "leader"
+    assert i.eval("return box.info.ro") is False
+    assert i.eval("return box.info.synchro.queue.owner") == i.eval("return box.info.id")
+
+
+def test_synchro_quorum_is_majority_of_replicaset_members(cluster: Cluster):
+    # The synchro quorum is the majority of the replicaset members, whatever
+    # the replication factor of an async tier is. An offline member still
+    # counts: it may be cut off rather than dead.
+    cluster.set_service_password("secret")
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        storage:
+            replication_factor: 1
+            can_vote: false
+"""
+    )
+    cluster.add_instance(wait_online=True, tier="arbiter")
+
+    i1 = cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r1")
+    Retriable().call(assert_synchro_quorum, 1, i1)
+    Retriable().call(assert_election_leader, i1)
+
+    i2 = cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r1")
+    Retriable().call(assert_synchro_quorum, 2, i1, i2)
+
+    i3 = cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r1")
+    Retriable().call(assert_synchro_quorum, 2, i1, i2, i3)
+
+    i4 = cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r1")
+    Retriable().call(assert_synchro_quorum, 3, i1, i2, i3, i4)
+
+    # A replication reconfiguration may depose the leader for a moment, until
+    # it promotes itself again.
+    Retriable().call(assert_election_leader, i1)
+
+    i4.terminate()
+    cluster.wait_has_states(i4, "Offline", "Offline")
+    cluster.wait_governor_status("idle")
+    assert_synchro_quorum(3, i1, i2, i3)
+
+    # The live members still make up the quorum.
+    Retriable().call(assert_election_leader, i1)
+    i1.eval(
+        """
+        box.schema.space.create('mytable')
+        box.space.mytable:create_index('pk')
+        """,
+        timeout=5,
+    )
+
+    # An expelled member doesn't count.
+    cluster.expel(i4)
+    cluster.wait_has_states(i4, "Expelled", "Expelled")
+    Retriable().call(assert_synchro_quorum, 2, i1, i2, i3)
+    Retriable().call(assert_election_leader, i1)
+
+
+def test_joining_instance_does_not_count_in_synchro_quorum(cluster: Cluster):
+    # An instance which has never been activated yet isn't a member of the
+    # replicaset for the synchro quorum. It can't vote before it's
+    # replicating, and if it counted, any replication reconfiguration while
+    # it's joining would fence the master.
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        storage:
+            replication_factor: 2
+            can_vote: false
+"""
+    )
+    leader = cluster.add_instance(wait_online=True, tier="arbiter")
+    i1 = cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r1")
+    Retriable().call(assert_synchro_quorum, 1, i1)
+    Retriable().call(assert_election_leader, i1)
+
+    # Registered, but stalls before it starts replicating.
+    i2 = cluster.add_instance(name="joining", wait_online=False, tier="storage", replicaset_name="r1")
+    injection = "STALL_BEFORE_STORAGE_INIT_IN_START_JOIN"
+    stalled = log_crawler(i2, injection)
+    i2.env[f"PICODATA_ERROR_INJECTION_{injection}"] = "1"
+    i2.start()
+    stalled.wait_matched()
+
+    [[target_state]] = leader.sql("SELECT target_state FROM _pico_instance WHERE name = ?", i2.name)
+    assert target_state == ["Offline", 0]
+
+    # The governor reconfigures the replication while the instance is joining.
+    leader.sql("UPDATE _pico_replicaset SET target_config_version = target_config_version + 1 WHERE name = 'r1'")
+
+    def check_replication_configured():
+        [[current, target]] = leader.sql(
+            "SELECT current_config_version, target_config_version FROM _pico_replicaset WHERE name = 'r1'"
+        )
+        assert current == target
+
+    Retriable().call(check_replication_configured)
+
+    # The quorum doesn't count the joining instance, so the master can still
+    # write to the synchronous system spaces.
+    assert_synchro_quorum(1, i1)
+    i1.eval(
+        """
+        box.schema.space.create('mytable')
+        box.space.mytable:create_index('pk')
+        """,
+        timeout=5,
+    )
+
+    # Once it's activated, it counts.
+    i2.wait_online()
+    Retriable().call(assert_synchro_quorum, 2, i1, i2)
+    Retriable().call(assert_election_leader, i1)
+    assert i2.eval("return box.space.mytable ~= nil")
+
+
+def test_restarted_instance_runs_elections_before_replication_is_configured(cluster: Cluster):
+    # On restart an instance runs elections with the synchro quorum computed
+    # from its local storage, before the governor configures the replication.
+    # Otherwise it would start without elections, or with a quorum smaller
+    # than the replicaset's, see `start_discover`.
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        storage:
+            replication_factor: 3
+            can_vote: false
+"""
+    )
+    leader = cluster.add_instance(wait_online=False, tier="arbiter")
+    i1 = cluster.add_instance(wait_online=False, tier="storage")
+    i2 = cluster.add_instance(wait_online=False, tier="storage")
+    i3 = cluster.add_instance(wait_online=False, tier="storage")
+    cluster.wait_online()
+    Retriable().call(assert_synchro_quorum, 2, i1, i2, i3)
+
+    master_name = i1.replicaset_master_name()
+    master = next(i for i in [i1, i2, i3] if i.name == master_name)
+    replica = next(i for i in [i1, i2, i3] if i.name != master_name)
+    Retriable().call(assert_election_leader, master)
+
+    replica.terminate()
+    cluster.wait_has_states(replica, "Offline", "Offline")
+    cluster.wait_governor_status("idle")
+
+    # Keep the governor from configuring the replication of the restarted
+    # instance.
+    injection_hit = log_crawler(leader, "ERROR INJECTION 'BLOCK_GOVERNOR_BEFORE_REPLICATION_CALL': BLOCKING")
+    leader.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_REPLICATION_CALL", True)
+    replica.start()
+    injection_hit.wait_matched()
+
+    assert replica.eval("return box.cfg.election_mode") == "manual"
+    assert_synchro_quorum(2, replica)
+
+    leader.call("pico._inject_error", "BLOCK_GOVERNOR_BEFORE_REPLICATION_CALL", False)
+    replica.wait_online()
+    Retriable().call(assert_synchro_quorum, 2, i1, i2, i3)
+    Retriable().call(assert_election_leader, master)
+    assert replica.eval("return box.info.ro_reason") == "election"
+
+
+def test_master_failover_with_half_of_replicaset_offline(cluster: Cluster):
+    # In an async tier the governor breaks the tie when exactly half of the
+    # replicaset members are offline: the quorum is the majority of the live
+    # half, so the replicaset still fails over. The tie is broken only while
+    # it's exactly half. The replicaset of 2 members is covered by e.g.
+    # `test_master_switchover_during_ddl`, and more than half offline by
+    # `test_master_auto_switchover`.
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        storage:
+            replication_factor: 1
+            can_vote: false
+"""
+    )
+    cluster.add_instance(wait_online=True, tier="arbiter")
+    members = [cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r1") for _ in range(4)]
+    Retriable().call(assert_synchro_quorum, 3, *members)
+
+    master_name = members[0].replicaset_master_name()
+    old_master = next(i for i in members if i.name == master_name)
+    replica = next(i for i in members if i.name != master_name)
+    Retriable().call(assert_election_leader, old_master)
+
+    # Take exactly half of the replicaset down, the master included. The
+    # remaining half has no quorum of the whole replicaset.
+    replica.terminate()
+    cluster.wait_has_states(replica, "Offline", "Offline")
+    cluster.wait_governor_status("idle")
+    old_master.terminate()
+    cluster.wait_has_states(old_master, "Offline", "Offline")
+
+    live = [i for i in members if i not in (old_master, replica)]
+
+    def check_master_changed():
+        assert live[0].replicaset_master_name() != old_master.name
+
+    Retriable().call(check_master_changed)
+    new_master_name = live[0].replicaset_master_name()
+    new_master = next(i for i in live if i.name == new_master_name)
+    last = next(i for i in live if i.name != new_master_name)
+
+    Retriable().call(assert_synchro_quorum, 2, new_master, last)
+    Retriable().call(assert_election_leader, new_master)
+
+    # A write to a synchronous space is confirmed by the live half.
+    new_master.eval(
+        """
+        box.schema.space.create('mytable')
+        box.space.mytable:create_index('pk')
+        box.space.mytable:insert{1, 'written by the live half'}
+        """,
+        timeout=5,
+    )
+
+    # Once the old master is back, it's not a tie anymore: 3 live members
+    # of 4 need the quorum of the whole replicaset.
+    old_master.start()
+    old_master.wait_online()
+    Retriable().call(assert_synchro_quorum, 3, new_master, last, old_master)
+    Retriable().call(assert_election_leader, new_master)
+    assert old_master.eval("return box.info.ro_reason") == "election"
+
+    replica.start()
+    replica.wait_online()
+    Retriable().call(assert_synchro_quorum, 3, *members)
+    Retriable().call(assert_election_leader, new_master)
+
+    def check_replicated(i: Instance):
+        assert i.eval("return box.space.mytable:get(1)") == [1, "written by the live half"]
+
+    for i in members:
+        Retriable().call(check_replicated, i)
 
 
 @pytest.mark.skip_asan("Replication leader transfer timing is unreliable under ASan overhead")

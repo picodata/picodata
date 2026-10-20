@@ -3303,6 +3303,103 @@ cluster:
         assert table_id == space_id
 
 
+def test_replicaset_without_synchro_quorum_blocks_ddl_in_whole_cluster(cluster: Cluster):
+    # The system spaces are synchronous in every tier, async ones included, so
+    # every replicaset master needs the synchro quorum to apply a schema
+    # change. A single replicaset below it blocks DDL in the whole cluster,
+    # even for a table of another tier. DML isn't blocked. The case of a sync
+    # tier whose own table is created is covered by
+    # `test_sync_replication_terminate_replicas_rf3`.
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        blue:
+            replication_factor: 1
+            can_vote: false
+        red:
+            replication_factor: 3
+            can_vote: false
+"""
+    )
+    leader = cluster.add_instance(wait_online=False, tier="arbiter")
+    cluster.add_instance(wait_online=False, tier="blue")
+    red = [cluster.add_instance(wait_online=False, tier="red") for _ in range(3)]
+    cluster.wait_online()
+
+    leader.sql("CREATE TABLE blue_table (id INT PRIMARY KEY) DISTRIBUTED BY (id) IN TIER blue")
+    leader.sql("INSERT INTO blue_table VALUES (1)")
+
+    master_name = red[0].replicaset_master_name()
+    red_master = next(i for i in red if i.name == master_name)
+    red_replicas = [i for i in red if i.name != master_name]
+
+    def check_master_replicates_with(replica: Instance):
+        assert red_master.eval("return box.info.ro") is False
+        replica_id = replica.eval("return box.info.id")
+        assert red_master.eval(
+            """
+            local r = box.info.replication[...]
+            return r ~= nil
+                and r.upstream ~= nil and r.upstream.status == 'follow'
+                and r.downstream ~= nil and r.downstream.status == 'follow'
+            """,
+            replica_id,
+        )
+
+    # Take the red replicaset below its synchro quorum of 2. Its master is
+    # alive, so the governor keeps sending it the schema changes.
+    #
+    # The replication reconfiguration which follows a member's departure may
+    # depose the master for a moment, until it promotes itself again. Let it
+    # settle before the next member leaves, otherwise the master may not
+    # notice that it lost the quorum, see
+    # `test_sync_replication_terminate_replicas_rf3`.
+    for i in red_replicas:
+        Retriable().call(check_master_replicates_with, i)
+        i.terminate()
+        cluster.wait_has_states(i, "Offline", "Offline")
+
+    def check_fenced():
+        assert red_master.eval("return box.info.ro") is True
+        assert red_master.eval("return box.info.ro_reason") == "election"
+
+    Retriable().call(check_fenced)
+
+    with pytest.raises(TimeoutError):
+        leader.sql("CREATE TABLE blue_table_2 (id INT PRIMARY KEY) DISTRIBUTED BY (id) IN TIER blue", timeout=3)
+
+    def table_operable(name: str) -> bool:
+        [[operable]] = leader.sql("SELECT operable FROM _pico_table WHERE name = ?", name)
+        return operable
+
+    assert table_operable("blue_table_2") is False
+
+    leader.sql("INSERT INTO blue_table VALUES (2)")
+    assert leader.sql("SELECT id FROM blue_table ORDER BY id") == [[1], [2]]
+
+    # Once the quorum is back, the master promotes itself, and the schema
+    # change is applied.
+    red_replicas[0].start()
+    red_replicas[0].wait_online()
+
+    def check_ddl_committed():
+        assert table_operable("blue_table_2") is True
+
+    Retriable().call(check_ddl_committed)
+    leader.sql("INSERT INTO blue_table_2 VALUES (1)")
+    assert leader.sql("SELECT id FROM blue_table_2") == [[1]]
+
+    red_replicas[1].start()
+    red_replicas[1].wait_online()
+    cluster.wait_governor_status("idle")
+
+
 def test_vinyl_options_applied_to_indices(cluster: Cluster):
     """
     Verify that vinyl options are applied to indices correctly:
