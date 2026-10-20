@@ -84,7 +84,7 @@ fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<Fiel
     }
 }
 
-pub fn bind(
+fn bind(
     id: ClientId,
     stmt_name: String,
     portal_name: String,
@@ -128,7 +128,7 @@ pub fn bind(
     Ok(())
 }
 
-pub fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteResult> {
+fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteResult> {
     let key = storage::Key(id, name.into());
 
     let router = RouterRuntime::new();
@@ -141,7 +141,7 @@ pub fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteRes
     portal.execute(&router, max_rows as usize)
 }
 
-pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> PgResult<()> {
+fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> PgResult<()> {
     let key = storage::Key(id, name.into());
 
     let router = RouterRuntime::new();
@@ -159,7 +159,7 @@ pub fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> P
     Ok(())
 }
 
-pub fn describe_statement(id: ClientId, name: &str) -> PgResult<StatementDescribe> {
+fn describe_statement(id: ClientId, name: &str) -> PgResult<StatementDescribe> {
     let key = storage::Key(id, name.into());
     let statement: Statement = PG_STATEMENTS
         .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
@@ -168,7 +168,7 @@ pub fn describe_statement(id: ClientId, name: &str) -> PgResult<StatementDescrib
     Ok(statement.describe().clone())
 }
 
-pub fn describe_portal(id: ClientId, name: &str) -> PgResult<PortalDescribe> {
+fn describe_portal(id: ClientId, name: &str) -> PgResult<PortalDescribe> {
     let key = storage::Key(id, name.into());
     let portal: Portal = PG_PORTALS
         .with(|storage| storage.borrow_mut().get(&key).cloned())
@@ -177,27 +177,27 @@ pub fn describe_portal(id: ClientId, name: &str) -> PgResult<PortalDescribe> {
     Ok(portal.describe().clone())
 }
 
-pub fn close_statement(id: ClientId, name: &str) {
+fn close_statement(id: ClientId, name: &str) {
     // Close can't cause an error in PG.
     let key = storage::Key(id, name.into());
     PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(&key));
 }
 
-pub fn close_portal(id: ClientId, name: &str) {
+fn close_portal(id: ClientId, name: &str) {
     // Close can't cause an error in PG.
     let key = storage::Key(id, name.into());
     PG_PORTALS.with(|storage| storage.borrow_mut().remove(&key));
 }
 
-pub fn close_client_statements(id: ClientId) {
+fn close_client_statements(id: ClientId) {
     PG_STATEMENTS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
 }
 
-pub fn close_client_portals(id: ClientId) {
+fn close_client_portals(id: ClientId) {
     PG_PORTALS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
 }
 
-pub fn deallocate_statement(id: ClientId, name: &str) -> PgResult<()> {
+fn deallocate_statement(id: ClientId, name: &str) -> PgResult<()> {
     // In contrast to closing, deallocation can cause an error in PG.
     let key = storage::Key(id, name.into());
     PG_STATEMENTS
