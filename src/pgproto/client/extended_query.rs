@@ -97,7 +97,7 @@ pub fn process_execute_message(
             stream.write_message_noflush(messages::portal_suspended())?;
         }
         ExecuteResult::Empty => {
-            stream.write_message(messages::empty_query_response())?;
+            stream.write_message_noflush(messages::empty_query_response())?;
         }
     }
 

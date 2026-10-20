@@ -11,13 +11,15 @@ pub fn process_query_message(
 ) -> PgResult<()> {
     match backend.simple_query(&query.query)? {
         ExecuteResult::AclOrDdl { tag } => {
-            stream.write_message(messages::command_complete(&tag))?;
+            stream.write_message_noflush(messages::command_complete(&tag))?;
         }
         ExecuteResult::Tcl { tag } => {
-            stream.write_message(messages::command_complete(&tag))?;
+            stream.write_message_noflush(messages::command_complete(&tag))?;
         }
         ExecuteResult::Dml { tag, row_count } => {
-            stream.write_message(messages::command_complete_with_row_count(&tag, row_count))?;
+            stream.write_message_noflush(messages::command_complete_with_row_count(
+                &tag, row_count,
+            ))?;
         }
         ExecuteResult::FinishedDql {
             tag,
@@ -28,10 +30,12 @@ pub fn process_query_message(
             while let Some(row) = rows.encode_next()? {
                 stream.write_message_noflush(messages::data_row(row))?;
             }
-            stream.write_message(messages::command_complete_with_row_count(&tag, row_count))?;
+            stream.write_message_noflush(messages::command_complete_with_row_count(
+                &tag, row_count,
+            ))?;
         }
         ExecuteResult::Empty => {
-            stream.write_message(messages::empty_query_response())?;
+            stream.write_message_noflush(messages::empty_query_response())?;
         }
         ExecuteResult::SuspendedDql { .. } => {
             unreachable!("portal cannot be suspended in simple query")
