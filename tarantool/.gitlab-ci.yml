@@ -335,6 +335,9 @@ test-macos-debug-fork:
   extends: .test
   tags:
     - mac-dev-m1
+  # A normal run takes a couple of minutes. Don't let a hung test hold
+  # the mac runner for the default 2 hours.
+  timeout: 20m
   image:
   variables:
     CACHE_ARCHIVE: /Users/gitlab_runner/shared-storage/tarantool-module/macos-debug-fork-cache.tar
