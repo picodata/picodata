@@ -7,11 +7,11 @@ services:
       PICODATA_ADMIN_PASSWORD: T0psecret
     volumes:
       - $PWD/pico:/data
-      - $PWD/picodata-1-1.conf:/var/lib/picodata/picodata.yaml
+      - $PWD/picodata-1-1.conf:/etc/picodata/config.yaml
     ports:
       - "13301:3301"
       - "18301:8001"
-      - "55432:4327"
+      - "55432:5432"
     build:
       context: ../
       dockerfile: docker/picodata.Dockerfile
@@ -24,7 +24,7 @@ services:
     hostname: picodata-1-2
     volumes:
       - $PWD/pico:/data
-      - $PWD/picodata-1-2.conf:/var/lib/picodata/picodata.yaml
+      - $PWD/picodata-1-2.conf:/etc/picodata/config.yaml
     ports:
       - "13302:3301"
       - "18302:8001"
@@ -35,7 +35,7 @@ services:
     hostname: picodata-2-1
     volumes:
       - $PWD/pico:/data
-      - $PWD/picodata-2-1.conf:/var/lib/picodata/picodata.yaml
+      - $PWD/picodata-2-1.conf:/etc/picodata/config.yaml
     ports:
       - "13303:3301"
       - "18303:8001"
@@ -46,7 +46,7 @@ services:
     hostname: picodata-2-2
     volumes:
       - $PWD/pico:/data
-      - $PWD/picodata-2-2.conf:/var/lib/picodata/picodata.yaml
+      - $PWD/picodata-2-2.conf:/etc/picodata/config.yaml
     ports:
       - "13304:3301"
       - "18304:8001"
