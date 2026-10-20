@@ -6,13 +6,17 @@ ifneq ($(MAKE_JOBSERVER_ARGS),-j1)
 MAKE_JOBSERVER_ARGS :=
 endif
 
+# N from -jN. Empty for a bare -j or no -j: no limit.
+MAKE_JOBS := $(patsubst -j%,%,$(filter -j%, $(MAKEFLAGS)))
+
 # Select appropriate pytest parallelism flags.
-PYTEST_NUMPROCESSES := $(patsubst -j%, --numprocesses=%, $(filter -j%, $(MAKEFLAGS)))
-ifeq ($(PYTEST_NUMPROCESSES),)
-PYTEST_NUMPROCESSES := --numprocesses=auto
-endif
+PYTEST_NUMPROCESSES := --numprocesses=$(or $(MAKE_JOBS),auto)
 
 PYTEST_FLAGS :=
+
+# nextest does not use the make jobserver for test threads, so give it
+# the job count explicitly.
+NEXTEST_THREADS := $(MAKE_JOBS)
 
 # Devs may want to drop this flag using `make LOCKED=`.
 LOCKED := --locked
@@ -170,7 +174,7 @@ install-nextest:
 .PHONY: test-rs-sql
 test-rs-sql:
 	cargo nextest run \
-		$(if $(MAKE_JOBSERVER_ARGS),--test-threads $(MAKE_JOBSERVER_ARGS)) \
+		$(if $(NEXTEST_THREADS),--test-threads $(NEXTEST_THREADS)) \
 		$(subst --profile,--cargo-profile,$(CARGO_FLAGS_EXTRA)) \
 		$(SQL_CRATES)
 	# The `enrich_restrictions` pass is off by default (turning it on crate-wide
@@ -180,7 +184,7 @@ test-rs-sql:
 	# those tests, under their own nextest profile so the report is separate.
 	# Also test bucket discovery and exec plans with enrichment enabled.
 	cargo nextest run \
-		$(if $(MAKE_JOBSERVER_ARGS),--test-threads $(MAKE_JOBSERVER_ARGS)) \
+		$(if $(NEXTEST_THREADS),--test-threads $(NEXTEST_THREADS)) \
 		$(subst --profile,--cargo-profile,$(CARGO_FLAGS_EXTRA)) \
 		--profile sql-enrich \
 		--features enrich_restrictions \
