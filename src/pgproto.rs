@@ -94,8 +94,8 @@ fn get_peer_address(raw: &CoIOStream) -> io::Result<SmolStr> {
 }
 
 fn server_start(context: &'static Context) {
-    // Help DBA diagnose storages by initializing them asap.
-    backend::storage::force_init_portals_and_statements();
+    // Fail at server start, not at the first client, if the storage config is not ready.
+    drop(backend::storage::ClientStorage::new());
 
     while let Ok(raw) = context
         .server

@@ -1,4 +1,4 @@
-from conftest import Postgres
+from conftest import Postgres, Retriable
 import pg8000.native as pg8000  # type: ignore
 import pytest
 import os
@@ -69,3 +69,26 @@ ALTER SYSTEM SET "pg_statement_max" TO <new-limit>',
 
     # test that we can insert a statement in a storage after increasing the limit
     statements.append(conn.prepare(""" insert into "t" values (cast (:p as int)) """))
+
+
+def test_statement_storage_limit_is_shared_by_clients(postgres: Postgres):
+    conn1 = setup_pg8000_env(postgres)
+    conn2 = pg8000.Connection("postgres", password="Passw0rd", host=postgres.host, port=postgres.port)
+
+    max_pg_statements = 4
+    postgres.instance.sql(
+        f"ALTER SYSTEM SET pg_statement_max = {max_pg_statements}",
+        sudo=True,
+    )
+
+    # the first client fills the storage of all clients
+    statements = []
+    for _ in range(max_pg_statements):
+        statements.append(conn1.prepare(""" insert into "t" values (cast (:p as int)) """))
+
+    with pytest.raises(pg8000.Error, match="Statement storage is full"):
+        conn2.prepare(""" insert into "t" values (cast (:p as int)) """)
+
+    # the server frees the statements of a client after it disconnects
+    conn1.close()
+    Retriable().call(lambda: conn2.prepare(""" insert into "t" values (cast (:p as int)) """))

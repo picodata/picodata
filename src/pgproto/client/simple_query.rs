@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 
 pub fn process_query_message(
     stream: &mut PgStream<impl Read + Write>,
-    backend: &Backend,
+    backend: &mut Backend,
     query: Query,
 ) -> PgResult<()> {
     match backend.simple_query(&query.query)? {

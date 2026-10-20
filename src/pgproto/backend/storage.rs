@@ -1,5 +1,4 @@
 use super::{
-    close_client_statements, deallocate_statement,
     describe::{Describe, PortalDescribe, QueryType, StatementDescribe},
     port_rows::{PinnedPort, RowSource},
     result::{ExecuteResult, Rows},
@@ -9,7 +8,6 @@ use crate::sql::router::{get_table_version, RouterRuntime};
 use crate::{audit, schema::ADMIN_ID};
 use crate::{
     pgproto::{
-        client::ClientId,
         error::{PedanticError, PgError, PgErrorCode, PgResult},
         value::FieldFormat,
     },
@@ -23,27 +21,14 @@ use smol_str::{format_smolstr, SmolStr};
 use sql::ir::types::{DerivedType, NestedType, UnrestrictedType as SbroadType};
 use sql_protocol::iterators::ExplainIter;
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{btree_map::Entry, BTreeMap},
     io::Cursor,
-    rc::{Rc, Weak},
+    rc::Rc,
     sync::{Arc, LazyLock},
+    thread::LocalKey,
 };
 use tarantool::session::with_su;
-
-/// Used to store portals in [`PG_PORTALS`] and statements in [`PG_STATEMENTS`].
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Key(pub ClientId, pub Rc<str>);
-
-impl std::fmt::Display for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (id, name) = (self.0, &self.1);
-        f.debug_tuple("")
-            .field(&format_args!("{id}"))
-            .field(&format_args!("{name:?}"))
-            .finish()
-    }
-}
 
 // Object that stores information specific to the portal or statement storage.
 struct StorageContext {
@@ -51,6 +36,13 @@ struct StorageContext {
     capacity_parameter: &'static str,
     capacity: AtomicObserver<usize>,
     dublicate_key_error_code: PgErrorCode,
+    // The capacity limits all clients together, so their storages share the count.
+    total: &'static LocalKey<Cell<usize>>,
+}
+
+thread_local! {
+    static STATEMENTS_TOTAL: Cell<usize> = const { Cell::new(0) };
+    static PORTALS_TOTAL: Cell<usize> = const { Cell::new(0) };
 }
 
 impl StorageContext {
@@ -64,6 +56,7 @@ impl StorageContext {
                 .db_config
                 .observe_pg_portal_max(),
             dublicate_key_error_code: PgErrorCode::DuplicateCursor,
+            total: &PORTALS_TOTAL,
         }
     }
 
@@ -77,6 +70,7 @@ impl StorageContext {
                 .db_config
                 .observe_pg_statement_max(),
             dublicate_key_error_code: PgErrorCode::DuplicatePreparedStatement,
+            total: &STATEMENTS_TOTAL,
         }
     }
 
@@ -85,9 +79,12 @@ impl StorageContext {
     }
 }
 
-/// Storage for Statements and Portals.
+/// Name of a statement or portal.
+pub type Key = Rc<str>;
+
+/// Storage for Statements or Portals of one client.
 /// Essentially a map with custom logic for updates and unnamed elements.
-pub struct PgStorage<S> {
+struct PgStorage<S> {
     map: BTreeMap<Key, S>,
 
     // Context specific to the portal or statement storage.
@@ -102,10 +99,22 @@ impl<S> PgStorage<S> {
         }
     }
 
-    pub fn put(&mut self, key: Key, value: S) -> PgResult<()> {
+    /// Change the map and add the change of its size to the shared count.
+    fn update<R>(&mut self, f: impl FnOnce(&mut BTreeMap<Key, S>) -> R) -> R {
+        let before = self.map.len();
+        let result = f(&mut self.map);
+        let after = self.map.len();
+        self.context
+            .total
+            .with(|total| total.set(total.get() - before + after));
+        result
+    }
+
+    /// Put a value and return the unnamed value that it replaces.
+    fn put(&mut self, name: Key, value: S) -> PgResult<Option<S>> {
         let capacity = self.context.get_capacity();
         let kind = self.context.value_kind;
-        if capacity > 0 && self.len() >= capacity {
+        if capacity > 0 && self.context.total.get() >= capacity {
             let parameter = self.context.capacity_parameter;
             // TODO: it should be configuration_limit_exceeded error
             return Err(PgError::other(format!(
@@ -115,92 +124,138 @@ impl<S> PgStorage<S> {
             )));
         }
 
-        if key.1.is_empty() {
+        if name.is_empty() {
             // Updates are only allowed for unnamed statements and portals.
-            self.map.insert(key, value);
-            return Ok(());
+            return Ok(self.update(|map| map.insert(name, value)));
         }
 
-        match self.map.entry(key) {
+        let code = self.context.dublicate_key_error_code;
+        self.update(|map| match map.entry(name) {
             Entry::Occupied(entry) => {
-                let Key(id, name) = entry.key();
-                let err = PedanticError::new(
-                    self.context.dublicate_key_error_code,
-                    format!("{kind} '{name}' for client {id} already exists"),
-                );
+                let name = entry.key();
+                let err = PedanticError::new(code, format!("{kind} '{name}' already exists"));
                 Err(err.into())
             }
             Entry::Vacant(entry) => {
                 entry.insert(value);
-                Ok(())
+                Ok(None)
             }
-        }
+        })
     }
 
     #[inline(always)]
-    pub fn get(&self, key: &Key) -> Option<&S> {
-        self.map.get(key)
+    fn get(&self, name: &str) -> Option<&S> {
+        self.map.get(name)
     }
 
-    #[inline(always)]
-    pub fn remove(&mut self, key: &Key) -> Option<S> {
-        self.map.remove(key)
+    fn remove(&mut self, name: &str) -> Option<S> {
+        self.update(|map| map.remove(name))
     }
 
-    #[inline(always)]
-    pub fn remove_by_client_id(&mut self, id: ClientId) {
-        self.map.retain(|k, _| k.0 != id)
+    fn retain(&mut self, f: impl FnMut(&Key, &mut S) -> bool) {
+        self.update(|map| map.retain(f))
     }
 
-    #[inline(always)]
-    pub fn len(&self) -> usize {
-        self.map.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
+    fn clear(&mut self) {
+        self.update(|map| map.clear())
     }
 }
 
-type StatementStorage = PgStorage<StatementHolder>;
-
-impl StatementStorage {
-    fn new() -> Self {
-        let context = StorageContext::statements();
-        PgStorage::with_context(context)
+impl<S> Drop for PgStorage<S> {
+    fn drop(&mut self) {
+        let len = self.map.len();
+        self.context
+            .total
+            .with(|total| total.set(total.get() - len));
     }
 }
 
-impl Default for PortalStorage {
+/// Statements and portals of one client.
+pub struct ClientStorage {
+    statements: PgStorage<Statement>,
+    portals: PgStorage<Portal>,
+}
+
+impl Default for ClientStorage {
     fn default() -> Self {
         Self::new()
     }
 }
 
-type PortalStorage = PgStorage<Portal>;
-
-impl PortalStorage {
+impl ClientStorage {
     pub fn new() -> Self {
-        let context = StorageContext::portals();
-        PgStorage::with_context(context)
+        Self {
+            statements: PgStorage::with_context(StorageContext::statements()),
+            portals: PgStorage::with_context(StorageContext::portals()),
+        }
     }
 
-    pub fn remove_portals_by_statement(&mut self, statement: &Statement) {
-        self.map
+    pub fn statement(&self, name: &str) -> PgResult<Statement> {
+        self.statements
+            .get(name)
+            .cloned()
+            .ok_or_else(|| PgError::other(format!("Couldn't find statement '{name}'.")))
+    }
+
+    pub fn portal(&self, name: &str) -> PgResult<Portal> {
+        self.portals
+            .get(name)
+            .cloned()
+            .ok_or_else(|| PgError::other(format!("Couldn't find portal '{name}'.")))
+    }
+
+    pub fn put_statement(&mut self, name: Key, statement: Statement) -> PgResult<()> {
+        if let Some(replaced) = self.statements.put(name, statement)? {
+            self.close_portals_of(&replaced);
+        }
+        Ok(())
+    }
+
+    pub fn put_portal(&mut self, name: Key, portal: Portal) -> PgResult<()> {
+        self.portals.put(name, portal)?;
+        Ok(())
+    }
+
+    /// Close a statement and its portals. It's not an error to close a non-existent statement.
+    /// Return false if there is no such statement.
+    pub fn close_statement(&mut self, name: &str) -> bool {
+        let Some(statement) = self.statements.remove(name) else {
+            return false;
+        };
+        self.close_portals_of(&statement);
+        true
+    }
+
+    /// Close a portal. It's not an error to close a non-existent portal.
+    pub fn close_portal(&mut self, name: &str) {
+        self.portals.remove(name);
+    }
+
+    pub fn close_all_portals(&mut self) {
+        self.portals.clear();
+    }
+
+    /// Same as [`ClientStorage::close_statement`], but in contrast to closing,
+    /// deallocation can cause an error in PG.
+    pub fn deallocate(&mut self, name: &str) -> PgResult<()> {
+        if !self.close_statement(name) {
+            return Err(PgError::other(format!(
+                "prepared statement {name} does not exist."
+            )));
+        }
+        Ok(())
+    }
+
+    /// Close all statements and, as a consequence, all portals.
+    pub fn deallocate_all(&mut self) {
+        self.statements.clear();
+        self.portals.clear();
+    }
+
+    fn close_portals_of(&mut self, statement: &Statement) {
+        self.portals
             .retain(|_, portal| !portal.contains_statement(statement));
     }
-}
-
-// TODO: those shouldn't be global variables; move them to some context (backend?).
-thread_local! {
-    pub static PG_STATEMENTS: RefCell<StatementStorage> = RefCell::new(StatementStorage::new());
-    pub static PG_PORTALS: Rc<RefCell<PortalStorage>> = Rc::new(RefCell::new(PortalStorage::new()));
-}
-
-/// Eagerly initialize storages for prepared statements and portals.
-pub fn force_init_portals_and_statements() {
-    PG_STATEMENTS.with(|_| {});
-    PG_PORTALS.with(|_| {});
 }
 
 pub static PGPROTO_STATEMENTS_OPENED_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
@@ -221,7 +276,7 @@ pub static PGPROTO_STATEMENTS_CLOSED_TOTAL: LazyLock<IntCounter> = LazyLock::new
 
 #[derive(Debug)]
 pub struct StatementInner {
-    key: Key,
+    name: Key,
     statement: sql::PreparedStatement,
     describe: StatementDescribe,
 }
@@ -231,8 +286,8 @@ impl Drop for StatementInner {
         PGPROTO_STATEMENTS_CLOSED_TOTAL.inc();
         tlog!(
             Debug,
-            "dropped statement {} of type {:?}",
-            self.key,
+            "dropped statement {:?} of type {:?}",
+            self.name,
             self.describe.query_type()
         );
     }
@@ -243,7 +298,7 @@ pub struct Statement(Rc<StatementInner>);
 
 impl Statement {
     pub fn new(
-        key: Key,
+        name: Key,
         statement: sql::PreparedStatement,
         specified_param_oids: Vec<u32>,
     ) -> PgResult<Self> {
@@ -254,7 +309,7 @@ impl Statement {
 
         let describe = StatementDescribe::new(describe, param_oids);
         let inner = StatementInner {
-            key,
+            name,
             statement,
             describe,
         };
@@ -262,8 +317,8 @@ impl Statement {
         PGPROTO_STATEMENTS_OPENED_TOTAL.inc();
         tlog!(
             Debug,
-            "created new statement {} of type {:?}",
-            inner.key,
+            "created new statement {:?} of type {:?}",
+            inner.name,
             inner.describe.query_type()
         );
 
@@ -299,50 +354,13 @@ impl Statement {
                     PgErrorCode::InvalidatedPreparedStatement,
                     std::io::Error::other(format!(
                         "prepared statement {} has been invalidated",
-                        self.0.key.1
+                        self.0.name
                     )),
                 )));
             }
         }
 
         Ok(())
-    }
-}
-
-// A wrapper over Statement that closes portals created from it on `Drop`.
-pub struct StatementHolder {
-    statement: Statement,
-    // When the holder drops it also drops some portals from the portal storage, but the
-    // storage may have already been dropped, so must not be accessed.
-    // To handle this, we use this Weak that won't allow us to access a dropped storage.
-    portals: Weak<RefCell<PortalStorage>>,
-}
-
-impl StatementHolder {
-    pub fn new(statement: Statement) -> StatementHolder {
-        let portals = PG_PORTALS.with(Rc::downgrade);
-        Self { statement, portals }
-    }
-
-    pub fn statement(&self) -> Statement {
-        self.statement.clone()
-    }
-}
-
-impl From<Statement> for StatementHolder {
-    fn from(value: Statement) -> Self {
-        Self::new(value)
-    }
-}
-
-impl Drop for StatementHolder {
-    fn drop(&mut self) {
-        // The storage may have already been dropped, so we cannot access PG_PORTALS.
-        if let Some(portals) = self.portals.upgrade() {
-            portals
-                .borrow_mut()
-                .remove_portals_by_statement(&self.statement)
-        }
     }
 }
 
@@ -529,7 +547,7 @@ pub static PGPROTO_PORTALS_CLOSED_TOTAL: LazyLock<IntCounter> = LazyLock::new(||
 });
 
 struct PortalInner {
-    key: Key,
+    name: Key,
     statement: Statement,
     describe: PortalDescribe,
     row_info: Arc<Vec<FieldInfo>>,
@@ -541,8 +559,8 @@ impl Drop for PortalInner {
         PGPROTO_PORTALS_CLOSED_TOTAL.inc();
         tlog!(
             Debug,
-            "dropped portal {} in state {}",
-            self.key,
+            "dropped portal {:?} in state {}",
+            self.name,
             self.state.borrow()
         );
     }
@@ -593,16 +611,8 @@ impl PortalInner {
             QueryType::Explain => PortalState::StreamingRows(RowSource::explain(ExplainIter::new(
                 port.port_c().iter(),
             ))),
+            // Backend::execute_portal deallocates the statements.
             QueryType::Deallocate => {
-                let ir_plan = self.statement.prepared_statement().as_plan();
-                let top_id = ir_plan.get_top()?;
-                let deallocate = ir_plan.get_deallocate_node(top_id)?;
-                let name = deallocate.name.as_ref().map(|name| name.as_str());
-                match name {
-                    Some(name) => deallocate_statement(self.key.0, name)?,
-                    None => close_client_statements(self.key.0),
-                };
-
                 let tag = self.describe.command_tag();
                 PortalState::ResultReady(ExecuteResult::AclOrDdl { tag })
             }
@@ -680,7 +690,7 @@ pub struct Portal(Rc<PortalInner>);
 
 impl Portal {
     pub fn new(
-        key: Key,
+        name: Key,
         statement: Statement,
         output_format: Vec<FieldFormat>,
         bound_statement: sql::BoundStatement,
@@ -690,7 +700,7 @@ impl Portal {
         let row_info = Arc::new(describe.row_info());
         let state = PortalState::NotStarted(bound_statement).into();
         let inner = PortalInner {
-            key,
+            name,
             statement,
             describe,
             row_info,
@@ -698,7 +708,7 @@ impl Portal {
         };
 
         PGPROTO_PORTALS_OPENED_TOTAL.inc();
-        tlog!(Debug, "created new portal {}", inner.key);
+        tlog!(Debug, "created new portal {:?}", inner.name);
 
         Ok(Self(inner.into()))
     }
@@ -711,6 +721,11 @@ impl Portal {
     #[inline(always)]
     pub fn contains_statement(&self, statement: &Statement) -> bool {
         Statement::ptr_eq(&self.0.statement, statement)
+    }
+
+    #[inline(always)]
+    pub fn statement(&self) -> &Statement {
+        &self.0.statement
     }
 
     #[inline(always)]

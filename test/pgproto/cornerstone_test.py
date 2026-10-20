@@ -187,11 +187,11 @@ def test_updates_with_named(pg_client: PgClient):
         distributed by ("val")
     """
     pg_client.parse(name, sql)
-    with pytest.raises(PgError, match=rf"Statement '{name}' for client \d+ already exists"):
+    with pytest.raises(PgError, match=f"Statement '{name}' already exists"):
         pg_client.parse(name, sql)
 
     pg_client.bind(name, name, [])
-    with pytest.raises(PgError, match=rf"Portal '{name}' for client \d+ already exists"):
+    with pytest.raises(PgError, match=f"Portal '{name}' already exists"):
         pg_client.bind(name, name, [])
 
 

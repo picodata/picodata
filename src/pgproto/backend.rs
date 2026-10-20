@@ -1,10 +1,10 @@
 use self::{
-    describe::{PortalDescribe, StatementDescribe},
+    describe::{PortalDescribe, QueryType, StatementDescribe},
     result::ExecuteResult,
-    storage::{Portal, Statement, PG_PORTALS, PG_STATEMENTS},
+    storage::{ClientStorage, Key, Portal, Statement},
 };
 use super::{
-    client::{ClientId, ClientParams},
+    client::ClientParams,
     error::{PgError, PgResult},
     value::PgValue,
 };
@@ -20,7 +20,6 @@ use postgres_types::Oid;
 use smol_str::format_smolstr;
 use sql::ir::value::Value as SbroadValue;
 use sql::PreparedStatement;
-use std::sync::atomic::{AtomicU64, Ordering};
 use storage::param_oid_to_derived_type;
 use tarantool::session::with_su;
 
@@ -84,129 +83,6 @@ fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<Fiel
     }
 }
 
-fn bind(
-    id: ClientId,
-    stmt_name: String,
-    portal_name: String,
-    params: Vec<SbroadValue>,
-    result_format: Vec<FieldFormat>,
-    client_params: &ClientParams,
-) -> PgResult<()> {
-    let statement_key = storage::Key(id, stmt_name.into());
-
-    let statement: Statement = PG_STATEMENTS
-        .with(|storage| {
-            storage
-                .borrow()
-                .get(&statement_key)
-                .map(|holder| holder.statement())
-        })
-        .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", statement_key.1)))?;
-
-    if client_params.statement_invalidation_enabled() {
-        statement.ensure_valid()?;
-    }
-
-    let Some(sql_options) = DYNAMIC_CONFIG.current_sql_options() else {
-        return Err(PgError::other("Not initialized yet"));
-    };
-    let effective_options = client_params.execution_options().unwrap_or(sql_options);
-
-    let bound_statement = statement
-        .prepared_statement()
-        .bind(params, effective_options)?;
-
-    let portal_key = storage::Key(id, portal_name.into());
-    let portal = Portal::new(
-        portal_key.clone(),
-        statement.clone(),
-        result_format,
-        bound_statement,
-    )?;
-    PG_PORTALS.with(|storage| storage.borrow_mut().put(portal_key, portal))?;
-
-    Ok(())
-}
-
-fn execute(id: ClientId, name: String, max_rows: i64) -> PgResult<ExecuteResult> {
-    let key = storage::Key(id, name.into());
-
-    let router = RouterRuntime::new();
-
-    let portal: Portal = PG_PORTALS
-        .with(|storage| storage.borrow_mut().get(&key).cloned())
-        .ok_or_else(|| PgError::other(format!("Couldn't find portal '{}'.", key.1)))?;
-
-    let max_rows = if max_rows <= 0 { i64::MAX } else { max_rows };
-    portal.execute(&router, max_rows as usize)
-}
-
-fn parse(id: ClientId, name: String, query: &str, param_oids: Vec<Oid>) -> PgResult<()> {
-    let key = storage::Key(id, name.into());
-
-    let router = RouterRuntime::new();
-
-    let param_types: Vec<_> = param_oids
-        .iter()
-        .map(|oid| param_oid_to_derived_type(*oid))
-        .collect::<Result<_, _>>()?;
-
-    let prepared_statement = PreparedStatement::parse(&router, query, &param_types)?;
-
-    let statement = Statement::new(key.clone(), prepared_statement, param_oids)?;
-    PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement.into()))?;
-
-    Ok(())
-}
-
-fn describe_statement(id: ClientId, name: &str) -> PgResult<StatementDescribe> {
-    let key = storage::Key(id, name.into());
-    let statement: Statement = PG_STATEMENTS
-        .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
-        .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
-
-    Ok(statement.describe().clone())
-}
-
-fn describe_portal(id: ClientId, name: &str) -> PgResult<PortalDescribe> {
-    let key = storage::Key(id, name.into());
-    let portal: Portal = PG_PORTALS
-        .with(|storage| storage.borrow_mut().get(&key).cloned())
-        .ok_or_else(|| PgError::other(format!("Couldn't find portal '{}'.", key.1)))?;
-
-    Ok(portal.describe().clone())
-}
-
-fn close_statement(id: ClientId, name: &str) {
-    // Close can't cause an error in PG.
-    let key = storage::Key(id, name.into());
-    PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(&key));
-}
-
-fn close_portal(id: ClientId, name: &str) {
-    // Close can't cause an error in PG.
-    let key = storage::Key(id, name.into());
-    PG_PORTALS.with(|storage| storage.borrow_mut().remove(&key));
-}
-
-fn close_client_statements(id: ClientId) {
-    PG_STATEMENTS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
-}
-
-fn close_client_portals(id: ClientId) {
-    PG_PORTALS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
-}
-
-fn deallocate_statement(id: ClientId, name: &str) -> PgResult<()> {
-    // In contrast to closing, deallocation can cause an error in PG.
-    let key = storage::Key(id, name.into());
-    PG_STATEMENTS
-        .with(|storage| storage.borrow_mut().remove(&key))
-        .ok_or_else(|| PgError::other(format!("prepared statement {name} does not exist.")))?;
-
-    Ok(())
-}
-
 /// Return true if the query has only semicolons and whitespace, so that
 /// the SQL parser makes an empty query from it. The whitespace is the same
 /// as in the SQL grammar: " ", "\t", "\n" and "\r\n". Other queries, for
@@ -220,29 +96,16 @@ fn is_empty_query(sql: &str) -> bool {
 
 /// Each postgres client uses its own backend to handle incoming messages.
 pub struct Backend {
-    /// A unique identificator of a postgres client. It is used as a part of a key in the portal
-    /// storage, allowing to store in a single storage portals from many clients.
-    client_id: ClientId,
-
+    storage: ClientStorage,
     params: ClientParams,
 }
 
 impl Backend {
     pub fn new(params: ClientParams) -> Self {
-        /// Generate a unique client id.
-        fn unique_id() -> ClientId {
-            static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
-            ID_COUNTER.fetch_add(1, Ordering::Relaxed)
-        }
-
         Self {
-            client_id: unique_id(),
+            storage: ClientStorage::new(),
             params,
         }
-    }
-
-    pub fn client_id(&self) -> ClientId {
-        self.client_id
     }
 
     /// Execute a simple query. Handler for a Query message.
@@ -252,31 +115,18 @@ impl Backend {
     /// parse + bind + describe + execute and result is returned.
     ///
     /// Note that it closes the unnamed portal and statement even in case of a failure.
-    pub fn simple_query(&self, sql: &str) -> PgResult<ExecuteResult> {
-        let close_unnamed = || {
-            self.close_statement(None);
-            self.close_portal(None);
-        };
+    pub fn simple_query(&mut self, sql: &str) -> PgResult<ExecuteResult> {
+        self.close_unnamed();
 
         // An empty query gets EmptyQueryResponse. Send it without the parse,
         // bind and dispatch of the full pipeline.
         if is_empty_query(sql) {
-            close_unnamed();
             return Ok(ExecuteResult::Empty);
         }
 
-        let do_simple_query = || {
-            let simple_query = || {
-                close_unnamed();
-                self.parse(None, sql, vec![])?;
-                self.bind(None, None, vec![], &[], &[FieldFormat::Text as RawFormat])?;
-                self.execute(None, -1)
-            };
-
-            simple_query().inspect_err(|_| close_unnamed())
-        };
-
-        let result = do_simple_query();
+        let result = self
+            .simple_query_unnamed(sql)
+            .inspect_err(|_| self.close_unnamed());
 
         let parsing_failed = match &result {
             Err(e) => e.is_sbroad_parsing_error(),
@@ -304,46 +154,65 @@ impl Backend {
         result
     }
 
+    fn simple_query_unnamed(&mut self, sql: &str) -> PgResult<ExecuteResult> {
+        let statement = self.parse(None, sql, vec![])?;
+        let portal = self.bind_encoded(
+            statement,
+            "",
+            String::new(),
+            vec![],
+            &[],
+            &[FieldFormat::Text as RawFormat],
+        )?;
+        self.execute_portal(portal, -1)
+    }
+
     /// This function is similar to `simple_query`, but the query can be parameterized.
-    fn execute_query(&self, sql: &str, params: Vec<SbroadValue>) -> PgResult<ExecuteResult> {
-        let close_unnamed = || {
-            self.close_statement(None);
-            self.close_portal(None);
-        };
+    fn execute_query(&mut self, sql: &str, params: Vec<SbroadValue>) -> PgResult<ExecuteResult> {
+        self.close_unnamed();
+        self.execute_query_unnamed(sql, params)
+            .inspect_err(|_| self.close_unnamed())
+    }
 
-        let do_execute_query = || {
-            close_unnamed();
-            self.parse(None, sql, vec![])?;
-            let ncolumns = self.describe_statement(None)?.ncolumns();
-            // TODO: This looks pretty ugly, so refactoring is needed.
-            bind(
-                self.client_id,
-                "".into(),
-                "".into(),
-                params,
-                vec![FieldFormat::Text; ncolumns],
-                &self.params,
-            )?;
-            self.execute(None, -1)
-        };
+    fn execute_query_unnamed(
+        &mut self,
+        sql: &str,
+        params: Vec<SbroadValue>,
+    ) -> PgResult<ExecuteResult> {
+        let statement = self.parse(None, sql, vec![])?;
+        let ncolumns = statement.describe().ncolumns();
+        let portal = self.bind_statement(
+            statement,
+            String::new(),
+            params,
+            vec![FieldFormat::Text; ncolumns],
+        )?;
+        self.execute_portal(portal, -1)
+    }
 
-        do_execute_query().inspect_err(|_| close_unnamed())
+    fn close_unnamed(&mut self) {
+        self.close_statement(None);
+        self.close_portal(None);
+    }
+
+    /// Find a statement by name.
+    pub fn statement(&self, name: Option<&str>) -> PgResult<Statement> {
+        self.storage.statement(name.unwrap_or_default())
     }
 
     /// Handler for a Describe message.
     ///
     /// Describe a statement.
     pub fn describe_statement(&self, name: Option<&str>) -> PgResult<StatementDescribe> {
-        let name = name.unwrap_or_default();
-        describe_statement(self.client_id, name)
+        Ok(self.statement(name)?.describe().clone())
     }
 
     /// Handler for a Describe message.
     ///
     /// Describe a portal.
     pub fn describe_portal(&self, name: Option<&str>) -> PgResult<PortalDescribe> {
-        let name = name.unwrap_or_default();
-        describe_portal(self.client_id, name)
+        let portal = self.storage.portal(name.unwrap_or_default())?;
+        Ok(portal.describe().clone())
     }
 
     /// Handler for a Parse message.
@@ -351,9 +220,25 @@ impl Backend {
     /// Create a statement from a query and store it in the statement storage with the
     /// given name. In case of a conflict the strategy is the same with PG.
     /// The statement lasts until it is explicitly closed.
-    pub fn parse(&self, name: Option<String>, sql: &str, param_oids: Vec<Oid>) -> PgResult<()> {
-        let name = name.unwrap_or_default();
-        parse(self.client_id, name, sql, param_oids)
+    pub fn parse(
+        &mut self,
+        name: Option<String>,
+        sql: &str,
+        param_oids: Vec<Oid>,
+    ) -> PgResult<Statement> {
+        let router = RouterRuntime::new();
+
+        let param_types: Vec<_> = param_oids
+            .iter()
+            .map(|oid| param_oid_to_derived_type(*oid))
+            .collect::<Result<_, _>>()?;
+
+        let prepared_statement = PreparedStatement::parse(&router, sql, &param_types)?;
+
+        let name = name.unwrap_or_default().into();
+        let statement = Statement::new(Key::clone(&name), prepared_statement, param_oids)?;
+        self.storage.put_statement(name, statement.clone())?;
+        Ok(statement)
     }
 
     /// Handler for a Bind message.
@@ -362,74 +247,123 @@ impl Backend {
     /// in the portal storage. In case of a conflict the strategy is the same with PG.
     /// The portal lasts until it is explicitly closed.
     pub fn bind(
-        &self,
+        &mut self,
         statement: Option<String>,
         portal: Option<String>,
         params: Vec<Option<Bytes>>,
         params_format: &[RawFormat],
         result_format: &[RawFormat],
-    ) -> PgResult<()> {
-        let statement = statement.unwrap_or_default();
-        let portal = portal.unwrap_or_default();
+    ) -> PgResult<Portal> {
+        let statement_name = statement.unwrap_or_default();
+        let statement = self.storage.statement(&statement_name)?;
+        self.bind_encoded(
+            statement,
+            &statement_name,
+            portal.unwrap_or_default(),
+            params,
+            params_format,
+            result_format,
+        )
+    }
 
-        let describe = describe_statement(self.client_id, &statement)?;
+    fn bind_encoded(
+        &mut self,
+        statement: Statement,
+        statement_name: &str,
+        portal: String,
+        params: Vec<Option<Bytes>>,
+        params_format: &[RawFormat],
+        result_format: &[RawFormat],
+    ) -> PgResult<Portal> {
+        let describe = statement.describe();
         let params_format = prepare_encoding_format(params_format, params.len())?;
         let result_format = prepare_encoding_format(result_format, describe.ncolumns())?;
-        let params = decode_parameters(params, &describe.param_oids, &params_format, &statement)?;
+        let params =
+            decode_parameters(params, &describe.param_oids, &params_format, statement_name)?;
 
-        bind(
-            self.client_id,
-            statement,
-            portal,
-            params,
-            result_format,
-            &self.params,
-        )
+        self.bind_statement(statement, portal, params, result_format)
+    }
+
+    fn bind_statement(
+        &mut self,
+        statement: Statement,
+        portal: String,
+        params: Vec<SbroadValue>,
+        result_format: Vec<FieldFormat>,
+    ) -> PgResult<Portal> {
+        if self.params.statement_invalidation_enabled() {
+            statement.ensure_valid()?;
+        }
+
+        let Some(sql_options) = DYNAMIC_CONFIG.current_sql_options() else {
+            return Err(PgError::other("Not initialized yet"));
+        };
+        let effective_options = self.params.execution_options().unwrap_or(sql_options);
+
+        let bound_statement = statement
+            .prepared_statement()
+            .bind(params, effective_options)?;
+
+        let name = portal.into();
+        let portal = Portal::new(Key::clone(&name), statement, result_format, bound_statement)?;
+        self.storage.put_portal(name, portal.clone())?;
+        Ok(portal)
     }
 
     /// Handler for an Execute message.
     ///
     /// Take a portal from the storage and retrieve at most max_rows rows from it. In case of
     /// non-dql queries max_rows is ignored and result with no rows is returned.
-    pub fn execute(&self, portal: Option<String>, max_rows: i64) -> PgResult<ExecuteResult> {
-        let name = portal.unwrap_or_default();
-        execute(self.client_id, name, max_rows)
+    pub fn execute(&mut self, portal: Option<String>, max_rows: i64) -> PgResult<ExecuteResult> {
+        let portal = self.storage.portal(portal.as_deref().unwrap_or_default())?;
+        self.execute_portal(portal, max_rows)
+    }
+
+    fn execute_portal(&mut self, portal: Portal, max_rows: i64) -> PgResult<ExecuteResult> {
+        let router = RouterRuntime::new();
+        let max_rows = if max_rows <= 0 { i64::MAX } else { max_rows };
+        let result = portal.execute(&router, max_rows as usize)?;
+        // Not inside the portal: DEALLOCATE can close this portal, and the
+        // portal must not get a mutable borrow of the storage that holds it.
+        if let QueryType::Deallocate = portal.describe().query_type() {
+            self.deallocate(portal.statement())?;
+        }
+        Ok(result)
+    }
+
+    fn deallocate(&mut self, statement: &Statement) -> PgResult<()> {
+        let plan = statement.prepared_statement().as_plan();
+        let deallocate = plan.get_deallocate_node(plan.get_top()?)?;
+        match &deallocate.name {
+            Some(name) => self.storage.deallocate(name),
+            None => {
+                self.storage.deallocate_all();
+                Ok(())
+            }
+        }
     }
 
     /// Handler for a Close message.
     ///
     /// Close a portal. It's not an error to close a non-existent portal.
-    pub fn close_portal(&self, name: Option<&str>) {
-        let name = name.unwrap_or_default();
-        close_portal(self.client_id, name)
+    pub fn close_portal(&mut self, name: Option<&str>) {
+        self.storage.close_portal(name.unwrap_or_default())
     }
 
     /// Handler for a Close message.
     ///
     /// Close a statement. It's not an error to close a non-existent statement.
-    pub fn close_statement(&self, name: Option<&str>) {
-        let name = name.unwrap_or_default();
-        close_statement(self.client_id, name)
+    pub fn close_statement(&mut self, name: Option<&str>) {
+        self.storage.close_statement(name.unwrap_or_default());
     }
 
     /// Close all the client's portals. It should be called at the end of the transaction.
-    pub fn close_all_portals(&self) {
-        close_client_portals(self.client_id)
-    }
-
-    fn on_disconnect(&self) {
-        close_client_statements(self.client_id);
-        close_client_portals(self.client_id);
+    pub fn close_all_portals(&mut self) {
+        self.storage.close_all_portals()
     }
 
     pub fn params(&self) -> &ClientParams {
         &self.params
-    }
-}
-
-impl Drop for Backend {
-    fn drop(&mut self) {
-        self.on_disconnect()
     }
 }
 

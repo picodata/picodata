@@ -1,5 +1,5 @@
 use crate::pgproto::backend::result::ExecuteResult;
-use crate::pgproto::backend::storage::{self, build_prepared_statement_metadata, PG_STATEMENTS};
+use crate::pgproto::backend::storage::build_prepared_statement_metadata;
 use crate::pgproto::backend::Backend;
 use crate::pgproto::error::EncodingError;
 use crate::pgproto::stream::{BeMessage, FeMessage};
@@ -17,10 +17,7 @@ pub fn query_metadata_message(
     name: Option<String>,
     query: &str,
 ) -> PgResult<BeMessage> {
-    let key = storage::Key(backend.client_id(), name.unwrap_or_default().into());
-    let statement = PG_STATEMENTS
-        .with(|storage| storage.borrow().get(&key).map(|holder| holder.statement()))
-        .ok_or_else(|| PgError::other(format!("Couldn't find statement '{}'.", key.1)))?;
+    let statement = backend.statement(name.as_deref())?;
 
     let metadata = build_prepared_statement_metadata(statement.prepared_statement(), query)?;
     let message = serde_json::to_string(&metadata).map_err(EncodingError::new)?;
@@ -30,7 +27,7 @@ pub fn query_metadata_message(
 
 pub fn process_parse_message(
     stream: &mut PgStream<impl Read + Write>,
-    backend: &Backend,
+    backend: &mut Backend,
     parse: Parse,
 ) -> PgResult<()> {
     backend.parse(parse.name.clone(), &parse.query, parse.type_oids)?;
@@ -46,7 +43,7 @@ pub fn process_parse_message(
 
 pub fn process_bind_message(
     stream: &mut PgStream<impl Read + Write>,
-    backend: &Backend,
+    backend: &mut Backend,
     bind: Bind,
 ) -> PgResult<()> {
     backend.bind(
@@ -63,7 +60,7 @@ pub fn process_bind_message(
 
 pub fn process_execute_message(
     stream: &mut PgStream<impl Read + Write>,
-    backend: &Backend,
+    backend: &mut Backend,
     execute: Execute,
 ) -> PgResult<()> {
     match backend.execute(execute.name, execute.max_rows as i64)? {
@@ -159,7 +156,7 @@ pub fn process_describe_message(
 
 pub fn process_close_message(
     stream: &mut PgStream<impl Read + Write>,
-    backend: &Backend,
+    backend: &mut Backend,
     close: Close,
 ) -> PgResult<()> {
     let name = close.name.as_deref();
@@ -177,7 +174,7 @@ pub fn process_close_message(
     Ok(())
 }
 
-pub fn process_sync_message(backend: &Backend) {
+pub fn process_sync_message(backend: &mut Backend) {
     // By default, PG runs in autocommit mode, which means that every statement is ran inside its own transaction.
     // In simple query statement means the query inside a Query message.
     // In extended query statement means everything before a Sync message.
