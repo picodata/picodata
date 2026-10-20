@@ -2,6 +2,9 @@
 use crate::cas;
 use crate::catalog_cache::CatalogCacheRef;
 use crate::governor::batch::LastStepInfo;
+use crate::governor::plan::handle_instances_becoming_online;
+use crate::governor::plan::stage::Plan;
+use crate::governor::plan::stage::ToOnline;
 use crate::governor::ActionKind;
 use crate::governor::GovernorStatus;
 use crate::governor::IterationEnd;
@@ -30,6 +33,7 @@ use crate::storage::Plugins;
 use crate::storage::Properties;
 use crate::storage::PropertyName;
 use crate::storage::SystemTable;
+use crate::storage::LATEST_SYSTEM_CATALOG_VERSION;
 use crate::tier::Tier;
 use crate::tier::TierConfig;
 use crate::tlog;
@@ -2913,4 +2917,65 @@ fn do_governor_loop_alter_plugin_remove_service_from_tier_batching(
     // Log the stats
     let s = pretend_state.get();
     tlog!(Info, "stats: {params:#0.3?}, {s:#0.3?}, {stats:#0.3?}")
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// test_instance_goes_online_only_after_replication_sync
+////////////////////////////////////////////////////////////////////////////////
+
+#[tarantool::test]
+fn test_instance_goes_online_only_after_replication_sync() {
+    let node = node::Node::for_tests();
+    let topology = &node.catalog_cache;
+
+    // Waking up, hasn't synchronized with the replicaset master yet
+    let mut instance = Instance::for_tests();
+    instance.current_state = instance::State::new(StateVariant::Offline, 1);
+    instance.target_state = instance::State::new(StateVariant::Online, 2);
+    instance.sync_incarnation = Some(1);
+
+    let mut tier = Tier::default();
+    tier.name = instance.tier.clone();
+
+    topology.update_instance(None, Some(instance.clone()));
+    topology.update_replicaset(None, Some(Replicaset::with_one_instance(&instance)));
+    topology.update_tier(None, Some(tier));
+
+    let to_online_targets = |catalog_version: &str| {
+        let topology_ref = topology.get();
+        let plan = handle_instances_becoming_online(
+            &mut LastStepInfo::new(),
+            &topology_ref,
+            1,
+            1,
+            Duration::from_secs(1),
+            &SmolStr::new(LATEST_SYSTEM_CATALOG_VERSION),
+            &SmolStr::new(catalog_version),
+            topology.cluster_name,
+            topology.cluster_uuid,
+            10,
+        )
+        .unwrap();
+        match plan {
+            None => vec![],
+            Some(Plan::ToOnline(ToOnline { targets_total, .. })) => targets_total,
+            Some(plan) => panic!("unexpected plan: {plan:?}"),
+        }
+    };
+
+    // Replication sync is a separate governor step, which may not happen
+    // for a while, e.g. if the replicaset master is being switched over
+    assert!(to_online_targets(LATEST_SYSTEM_CATALOG_VERSION).is_empty());
+
+    // The catalog doesn't support replication sync yet, nothing to wait for
+    assert_eq!(to_online_targets("25.1.0"), [instance.name.clone()]);
+
+    let mut synced = instance.clone();
+    synced.sync_incarnation = Some(2);
+    topology.update_instance(Some(instance), Some(synced.clone()));
+
+    assert_eq!(
+        to_online_targets(LATEST_SYSTEM_CATALOG_VERSION),
+        [synced.name]
+    );
 }

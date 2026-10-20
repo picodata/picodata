@@ -573,7 +573,11 @@ pub fn handle_replicaset_master_switchover<'i>(
 /// need that: the instances which have applied the new master's PROMOTE
 /// reject the conflicting writes.
 ///
+/// The instances which wait for it don't go Online, see
+/// [`handle_instances_becoming_online`].
+///
 /// [`update_replication_error`]: crate::governor::update_replication_error
+/// [`handle_instances_becoming_online`]: crate::governor::plan::handle_instances_becoming_online
 pub fn handle_replicaset_sync<'a>(
     topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
@@ -583,14 +587,7 @@ pub fn handle_replicaset_sync<'a>(
     global_catalog_version: &SmolStr,
     rpc_timeout: std::time::Duration,
 ) -> Result<Option<Plan<'a>>> {
-    if !version_is_new_enough(
-        global_catalog_version,
-        &Instance::SYNC_INCARNATION_AVAILABLE_SINCE,
-    )? {
-        // Replication sync involves updating the `sync_incarnation` column
-        // in `_pico_instance` which is only added after upgrade, but this
-        // step could theoretically run before the schema is upgraded, so
-        // we need an explicit version check.
+    if !replication_sync_supported(global_catalog_version)? {
         return Ok(None);
     }
 
@@ -703,6 +700,20 @@ pub fn handle_replicaset_sync<'a>(
     ));
 }
 
+/// Returns `true` if the waking up instances are synchronized before they go
+/// Online, see [`handle_replicaset_sync`].
+///
+/// Replication sync involves updating the `sync_incarnation` column in
+/// `_pico_instance` which is only added after upgrade, but the governor could
+/// theoretically run before the schema is upgraded, so we need an explicit
+/// version check.
+pub fn replication_sync_supported(global_catalog_version: &str) -> Result<bool> {
+    version_is_new_enough(
+        global_catalog_version,
+        &Instance::SYNC_INCARNATION_AVAILABLE_SINCE,
+    )
+}
+
 fn get_replicaset_to_sync<'i>(
     topology_ref: &'i CatalogCacheRef,
 ) -> Option<(&'i Replicaset, Vec<&'i Instance>)> {
@@ -736,7 +747,7 @@ fn get_replicaset_to_sync<'i>(
                 // The master is being switched over. A replicaset which runs
                 // elections may stay this way while the new master can't be
                 // promoted, e.g. it's offline. The laggers are synchronized
-                // with the new master once it is.
+                // with the new master once it is, and stay Offline until then.
                 continue;
             }
             replicaset = Some(found);

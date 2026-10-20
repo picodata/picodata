@@ -701,10 +701,13 @@ cluster:
     # Kill the master too, then bring the whole replicaset back. While the
     # master is down the replica cannot be promoted (it is below the synchro
     # quorum), so the replicaset stays fenced until both instances return and
-    # quorum is restored.
+    # quorum is restored. The replica can't synchronize with a master until
+    # then, so it stays Offline.
     master.terminate()
-    replica.start_and_wait()
+    replica.start()
+    cluster.wait_has_states(replica, "Offline", "Online")
     master.start_and_wait()
+    replica.wait_online()
     cluster.wait_governor_status("idle")
 
     new_master = get_master_instance(i1, i2)

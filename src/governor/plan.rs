@@ -14,6 +14,7 @@ use crate::governor::replication::handle_replicaset_master_switchover;
 use crate::governor::replication::handle_replicaset_sync;
 use crate::governor::replication::handle_replication_config;
 use crate::governor::replication::handle_self_read_only;
+use crate::governor::replication::replication_sync_supported;
 use crate::governor::resharding::handle_resharding;
 use crate::governor::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::has_states;
@@ -1658,11 +1659,20 @@ pub fn handle_instances_becoming_online<'i>(
     let mut targets_total = vec![];
     let mut new_current_state = None;
 
+    let sync_supported = replication_sync_supported(global_catalog_version)?;
+
     //
     // Find all instances which want to become Online
     //
     for instance in topology_ref.all_instances() {
         if !(has_states!(instance, not Online -> Online) || instance.is_reincarnated()) {
+            continue;
+        }
+
+        if sync_supported && instance.replication_sync_needed() {
+            // Must synchronize with the replicaset master first. The governor
+            // step which does it comes earlier, but it skips the replicaset
+            // while its master is being switched over, see `handle_replicaset_sync`.
             continue;
         }
 
