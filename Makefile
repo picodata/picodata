@@ -506,7 +506,7 @@ flaky-finder:
 	echo "*Flaky tests on master ($(DAYS) days)*" > report.txt
 	echo >> report.txt
 	set +o pipefail && ./tools/flaky_finder.py --days $(DAYS) --csv-format | \
-		while read -r row; do awk -F, '{printf "`%s` -> %s ([pipeline](%s))\n", $$1, $$3, $$2}'; done >> report.txt
+		awk -F, '{printf "`%s` -> %s ([pipeline](%s))\n", $$1, $$3, $$2}' >> report.txt
 	echo >> report.txt
 	echo "Edited on _$(shell date)_ by [job]($(CI_JOB_URL))." >> report.txt
 	echo "Sending report update via bot..."
