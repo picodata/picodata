@@ -12,7 +12,7 @@ use serde::Serialize;
 use smol_str::SmolStr;
 use tarantool::index::FieldType as IndexFieldType;
 use tarantool::index::Index;
-use tarantool::index::IndexIterator;
+use tarantool::index::IndexIteratorV2;
 use tarantool::index::IndexType;
 use tarantool::index::IteratorType;
 use tarantool::index::Part;
@@ -169,8 +169,8 @@ impl ToEntryIter<MP_SERDE> for PicoReshardingState {
     type Entry = ReshardingStateRecord;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 

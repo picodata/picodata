@@ -255,7 +255,7 @@ pub mod tests {
             .instances
             .replicaset_instances(replicaset_name)
             .expect("storage should not fail")
-            .map(|i| i.raft_id).collect()
+            .map(|i| i.expect("storage should not fail").raft_id).collect()
     }
 
     fn extract_instance(result: (Instance, bool)) -> Instance {

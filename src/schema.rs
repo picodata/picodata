@@ -1105,28 +1105,28 @@ impl UserDef {
         let tables: Vec<_> = storage
             .pico_table
             .by_owner_id(self.id)?
-            .map(|def| def.name)
-            .collect();
+            .map(|def| def.map(|def| def.name))
+            .collect::<traft::Result<_>>()?;
 
         let routines: Vec<_> = storage
             .routines
             .by_owner_id(self.id)?
-            .map(|def| def.name)
-            .collect();
+            .map(|def| def.map(|def| def.name))
+            .collect::<traft::Result<_>>()?;
 
-        let users: Vec<_> = storage
-            .users
-            .by_owner_id(self.id)?
-            .filter(|def| def.ty == UserMetadataKind::User)
-            .map(|def| def.name)
-            .collect();
-
-        let roles: Vec<_> = storage
-            .users
-            .by_owner_id(self.id)?
-            .filter(|def| def.ty == UserMetadataKind::Role)
-            .map(|def| def.name)
-            .collect();
+        let mut users = vec![];
+        let mut roles = vec![];
+        for user in storage.users.by_owner_id(self.id)? {
+            let user = user?;
+            match user.ty {
+                UserMetadataKind::User => {
+                    users.push(user.name);
+                }
+                UserMetadataKind::Role => {
+                    roles.push(user.name);
+                }
+            }
+        }
 
         if tables.is_empty() && routines.is_empty() && roles.is_empty() && users.is_empty() {
             return Ok(());
@@ -2125,11 +2125,11 @@ impl CreateIndexParams {
         let sys_vindex = Space::from(SystemSpace::VIndex);
         let mut iter = sys_vindex
             .primary_key()
-            .select(IteratorType::LE, &[space.id()])?;
+            .select_v2(IteratorType::LE, &[space.id()])?;
         let Some(tuple) = iter.next() else {
             panic!("no primary key found for space {}", self.space_name);
         };
-        let id: IndexId = tuple.get(1).expect("index id should be present");
+        let id: IndexId = tuple?.get(1).expect("index id should be present");
         Ok(id + 1)
     }
 
@@ -2595,18 +2595,18 @@ pub fn choose_table_id(name: &str, governor_op_id: Option<u64>) -> traft::Result
     let id_range_min = SPACE_ID_INTERNAL_MAX + 1;
     let id_range_max = SPACE_ID_TEMPORARY_MIN;
 
-    let mut iter = sys_space.select(IteratorType::LT, &[id_range_max])?;
+    let mut iter = sys_space.select_v2(IteratorType::LT, &[id_range_max])?;
     let tuple = iter.next().expect("there's always at least system spaces");
-    let mut max_id: SpaceId = tuple
+    let mut max_id: SpaceId = tuple?
         .field(0)
         .expect("space metadata should decode fine")
         .expect("space id should always be present");
 
     let find_next_unused_id = |start: SpaceId| -> Result<SpaceId, Error> {
-        let iter = sys_space.select(IteratorType::GE, &[start])?;
+        let iter = sys_space.select_v2(IteratorType::GE, &[start])?;
         let mut next_id = start;
         for tuple in iter {
-            let id: SpaceId = tuple
+            let id: SpaceId = tuple?
                 .field(0)
                 .expect("space metadata should decode fine")
                 .expect("space id should always be present");

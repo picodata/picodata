@@ -145,7 +145,7 @@ def test_set_via_alter_system(cluster: Cluster):
     # can't specify non existent tier
     with pytest.raises(
         TarantoolError,
-        match="""specified tier \'non_existent\' doesn\'t exist""",
+        match='tier with name "non_existent" not found',
     ):
         instance.sql("ALTER SYSTEM SET memtx_checkpoint_count = 200 FOR TIER non_existent")
 

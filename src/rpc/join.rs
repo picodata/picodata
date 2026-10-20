@@ -499,6 +499,7 @@ fn choose_replicaset(
     let mut all_replicasets = HashSet::new();
 
     for replicaset in storage.replicasets.iter()? {
+        let replicaset = replicaset?;
         all_replicasets.insert(replicaset.name.clone());
 
         if replicaset.tier != tier.name {
@@ -613,6 +614,7 @@ fn make_join_response(
     // TODO: limit the number of entries sent to reduce response size.
     let mut peer_addresses = vec![];
     for peer in node.storage.peer_addresses.iter()? {
+        let peer = peer?;
         if peer.connection_type.as_system() != Some(traft::SystemConnectionType::Iproto) {
             continue;
         }
@@ -626,6 +628,8 @@ fn make_join_response(
         .instances
         .replicaset_instances(&instance.replicaset_name)?
     {
+        let replica = replica?;
+
         // No need to tell about expelled instances
         if has_states!(replica, Expelled -> *) {
             continue;

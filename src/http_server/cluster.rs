@@ -5,7 +5,6 @@ use crate::instance::{Instance, InstanceName, StateVariant};
 use crate::replicaset::{Replicaset, ReplicasetName, ReplicasetState};
 use crate::storage::Catalog;
 use crate::storage::ToEntryIter as _;
-use crate::tier::Tier;
 use crate::traft::network::ConnectionPool;
 use crate::traft::{self, node};
 use crate::util::Uppercase;
@@ -174,7 +173,8 @@ pub(crate) struct ClusterInfo {
 
 fn get_replicasets(storage: &Catalog) -> traft::Result<HashMap<ReplicasetName, Replicaset>> {
     let i = storage.replicasets.iter()?;
-    Ok(i.map(|item| (item.name.clone(), item)).collect())
+    i.map(|item| item.map(|item| (item.name.clone(), item)))
+        .collect()
 }
 
 /// Reads instance addresses from `_pico_peer_address`.
@@ -198,31 +198,37 @@ fn get_peer_addresses(
         .map(|item| (item.raft_id, true))
         .collect();
     use crate::traft::{ConnectionType, SystemConnectionType};
-    let i = storage.peer_addresses.iter()?.filter(|peer| {
-        matches!(
+    let mut peer_addresses = HashMap::<u64, InstanceAddresses>::new();
+    for peer in storage.peer_addresses.iter()? {
+        let peer = peer?;
+        if !matches!(
             peer.connection_type,
             ConnectionType::System(SystemConnectionType::Iproto)
                 | ConnectionType::System(SystemConnectionType::Pgproto)
                 | ConnectionType::System(SystemConnectionType::Http)
-        )
-    });
-    Ok(i.filter(|pa| targets.contains_key(&pa.raft_id))
-        .fold(HashMap::new(), |mut acc, pa| {
-            let addrs = acc.entry(pa.raft_id).or_default();
-            match pa.connection_type {
-                ConnectionType::System(SystemConnectionType::Iproto) => {
-                    addrs.iproto = pa.address.clone()
-                }
-                ConnectionType::System(SystemConnectionType::Pgproto) => {
-                    addrs.pgproto = pa.address.clone()
-                }
-                ConnectionType::System(SystemConnectionType::Http) => {
-                    addrs.http = pa.address.clone()
-                }
-                ConnectionType::Plugin { .. } => {}
-            };
-            acc
-        }))
+        ) {
+            continue;
+        }
+
+        if !targets.contains_key(&peer.raft_id) {
+            continue;
+        }
+
+        let addrs = peer_addresses.entry(peer.raft_id).or_default();
+        match peer.connection_type {
+            ConnectionType::System(SystemConnectionType::Iproto) => {
+                addrs.iproto = peer.address;
+            }
+            ConnectionType::System(SystemConnectionType::Pgproto) => {
+                addrs.pgproto = peer.address;
+            }
+            ConnectionType::System(SystemConnectionType::Http) => {
+                addrs.http = peer.address;
+            }
+            ConnectionType::Plugin { .. } => {}
+        };
+    }
+    Ok(peer_addresses)
 }
 
 /// Get memory info from replicaset leaders via RPC.
@@ -466,21 +472,21 @@ pub(crate) struct TierMemoryInfo {
 fn http_api_memory() -> traft::Result<Vec<TierMemoryInfo>> {
     let storage = Catalog::get();
     let replicasets = get_replicasets_info(storage, true)?;
-    let tiers = storage.tiers.iter()?;
 
-    let mut resp: HashMap<SmolStr, TierMemoryInfo> = tiers
-        .map(|tier: Tier| {
-            (
-                tier.name.clone(),
-                TierMemoryInfo {
-                    name: tier.name,
-                    usable: 0,
-                    used: 0,
-                    replicasets: BTreeSet::new(),
-                },
-            )
-        })
-        .collect();
+    let mut resp = HashMap::new();
+    for tier in storage.tiers.iter()? {
+        let tier = tier?;
+
+        resp.insert(
+            tier.name.clone(),
+            TierMemoryInfo {
+                name: tier.name,
+                usable: 0,
+                used: 0,
+                replicasets: BTreeSet::new(),
+            },
+        );
+    }
 
     for replicaset in replicasets {
         let Some(tier) = resp.get_mut(&replicaset.tier) else {
@@ -508,33 +514,34 @@ fn http_api_memory() -> traft::Result<Vec<TierMemoryInfo>> {
 fn http_api_tiers() -> traft::Result<Vec<TierInfo>> {
     let storage = Catalog::get();
     let replicasets = get_replicasets_info(storage, false)?;
-    let tiers = storage.tiers.iter()?;
 
-    let mut res: HashMap<_, _> = tiers
-        .map(|item: Tier| {
-            (
-                item.name.clone(),
-                TierInfo {
-                    replicasets: Vec::new(),
-                    replicaset_count: 0,
-                    rf: item.replication_factor,
-                    bucket_count: item.bucket_count,
-                    instance_count: 0,
-                    can_vote: item.can_vote,
-                    name: item.name.clone(),
-                    memory: MemoryInfo { usable: 0, used: 0 },
-                    capacity_usage: 0_f64,
-                    services: storage
-                        .services
-                        .get_by_tier(&item.name)
-                        .expect("storage shouldn't fail")
-                        .iter()
-                        .map(|service| service.name.clone())
-                        .collect(),
-                },
-            )
-        })
-        .collect();
+    let mut res = HashMap::new();
+    for tier in storage.tiers.iter()? {
+        let tier = tier?;
+
+        let services = storage
+            .services
+            .get_by_tier(&tier.name)
+            .expect("storage shouldn't fail")
+            .iter()
+            .map(|service| service.name.clone())
+            .collect();
+        res.insert(
+            tier.name.clone(),
+            TierInfo {
+                replicasets: Vec::new(),
+                replicaset_count: 0,
+                rf: tier.replication_factor,
+                bucket_count: tier.bucket_count,
+                instance_count: 0,
+                can_vote: tier.can_vote,
+                name: tier.name,
+                memory: MemoryInfo { usable: 0, used: 0 },
+                capacity_usage: 0_f64,
+                services,
+            },
+        );
+    }
 
     for replicaset in replicasets {
         let Some(tier) = res.get_mut(&replicaset.tier) else {

@@ -59,7 +59,7 @@ use tarantool::index::IndexOptions;
 #[allow(unused_imports)]
 use tarantool::index::Metadata as IndexMetadata;
 use tarantool::index::Part;
-use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType, KeyDefOrder};
+use tarantool::index::{Index, IndexId, IndexIteratorV2, IndexType, IteratorType, KeyDefOrder};
 use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
@@ -864,7 +864,7 @@ impl Indexes {
         &self,
         space_id: SpaceId,
     ) -> tarantool::Result<EntryIter<IndexDef, MP_SERDE>> {
-        let iter = self.space.select(IteratorType::Eq, &[space_id])?;
+        let iter = self.space.select_v2(IteratorType::Eq, &[space_id])?;
         Ok(EntryIter::new(iter))
     }
 }
@@ -873,8 +873,8 @@ impl ToEntryIter<MP_SERDE> for Indexes {
     type Entry = IndexDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -1006,8 +1006,8 @@ impl ToEntryIter<MP_SERDE> for PeerAddresses {
     type Entry = traft::PeerAddress;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -1324,10 +1324,11 @@ impl Instances {
 
     #[inline]
     pub fn all_instances(&self) -> tarantool::Result<Vec<Instance>> {
-        self.space
-            .select(IteratorType::All, &())?
-            .map(|tuple| tuple.decode())
-            .collect()
+        let mut result = vec![];
+        for tuple in self.space.select_v2(IteratorType::All, &())? {
+            result.push(tuple?.decode()?);
+        }
+        Ok(result)
     }
 
     pub fn replicaset_instances(
@@ -1336,7 +1337,7 @@ impl Instances {
     ) -> tarantool::Result<EntryIter<Instance, MP_SERDE>> {
         let iter = self
             .index_replicaset_name
-            .select(IteratorType::Eq, &[replicaset_name])?;
+            .select_v2(IteratorType::Eq, &[replicaset_name])?;
         Ok(EntryIter::new(iter))
     }
 
@@ -1355,8 +1356,8 @@ impl Instances {
 
     pub fn failure_domain_names(&self) -> Result<HashSet<Uppercase>> {
         let mut res = HashSet::with_capacity(16);
-        for tuple in self.space.select(IteratorType::All, &())? {
-            let Some(failure_domain) = tuple.field(Instance::FIELD_FAILURE_DOMAIN)? else {
+        for tuple in self.space.select_v2(IteratorType::All, &())? {
+            let Some(failure_domain) = tuple?.field(Instance::FIELD_FAILURE_DOMAIN)? else {
                 return Err(Error::StorageCorrupted {
                     field: "failure_domain".into(),
                     table: "_pico_instance".into(),
@@ -1375,8 +1376,8 @@ impl ToEntryIter<MP_SERDE> for Instances {
     type Entry = Instance;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -1724,8 +1725,8 @@ impl ToEntryIter<MP_SERDE> for Replicasets {
     type Entry = Replicaset;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -1750,7 +1751,7 @@ pub trait ToEntryIter<const MP: MpImpl> {
     /// Entry should be encoded with the selected `MP` implementation.
     type Entry;
 
-    fn index_iter(&self) -> tarantool::Result<IndexIterator>;
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2>;
 
     #[inline(always)]
     fn iter(&self) -> tarantool::Result<EntryIter<Self::Entry, MP>> {
@@ -1764,12 +1765,12 @@ pub trait ToEntryIter<const MP: MpImpl> {
 /// # Panics
 /// Will panic in case deserialization fails on a given iteration.
 pub struct EntryIter<T, const MP: MpImpl> {
-    iter: IndexIterator,
+    iter: IndexIteratorV2,
     marker: PhantomData<T>,
 }
 
 impl<T, const MP: MpImpl> EntryIter<T, MP> {
-    pub fn new(iter: IndexIterator) -> Self {
+    pub fn new(iter: IndexIteratorV2) -> Self {
         Self {
             iter,
             marker: PhantomData,
@@ -1781,11 +1782,15 @@ impl<T> Iterator for EntryIter<T, MP_SERDE>
 where
     T: DecodeOwned,
 {
-    type Item = T;
+    type Item = Result<T>;
     fn next(&mut self) -> Option<Self::Item> {
         let tuple = self.iter.next()?;
-        let entry = Tuple::decode(&tuple).expect("entry should decode correctly");
-        Some(entry)
+        let tuple = match tuple {
+            Ok(v) => v,
+            Err(e) => return Some(Err(e.into())),
+        };
+        let entry = Tuple::decode(&tuple);
+        Some(entry.map_err(Into::into))
     }
 }
 
@@ -1793,11 +1798,19 @@ impl<T> Iterator for EntryIter<T, MP_CUSTOM>
 where
     for<'de> T: ::tarantool::msgpack::Decode<'de>,
 {
-    type Item = T;
+    type Item = Result<T>;
     fn next(&mut self) -> Option<Self::Item> {
-        let tuple = self.iter.next()?.to_vec();
-        let entry = ::tarantool::msgpack::decode(&tuple).expect("entry should decode correctly");
-        Some(entry)
+        let tuple = self.iter.next()?;
+        let tuple = match tuple {
+            Ok(v) => v,
+            Err(e) => return Some(Err(e.into())),
+        };
+        let entry = match ::tarantool::msgpack::decode(tuple.data()) {
+            Ok(v) => v,
+            Err(e) => return Some(Err(Error::other(e))),
+        };
+
+        Some(Ok(entry))
     }
 }
 
@@ -1909,7 +1922,9 @@ impl Users {
 
     #[inline]
     pub fn by_owner_id(&self, owner_id: UserId) -> tarantool::Result<EntryIter<UserDef, MP_SERDE>> {
-        let iter = self.index_owner_id.select(IteratorType::Eq, &[owner_id])?;
+        let iter = self
+            .index_owner_id
+            .select_v2(IteratorType::Eq, &[owner_id])?;
         Ok(EntryIter::new(iter))
     }
 
@@ -1971,8 +1986,8 @@ impl ToEntryIter<MP_SERDE> for Users {
     type Entry = UserDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -2072,7 +2087,9 @@ impl Privileges {
         &self,
         grantee_id: UserId,
     ) -> tarantool::Result<EntryIter<PrivilegeDef, MP_SERDE>> {
-        let iter = self.primary_key.select(IteratorType::Eq, &[grantee_id])?;
+        let iter = self
+            .primary_key
+            .select_v2(IteratorType::Eq, &[grantee_id])?;
         Ok(EntryIter::new(iter))
     }
 
@@ -2084,7 +2101,7 @@ impl Privileges {
     ) -> tarantool::Result<EntryIter<PrivilegeDef, MP_SERDE>> {
         let iter = self
             .object_idx
-            .select(IteratorType::Eq, &(object_type, object_id))?;
+            .select_v2(IteratorType::Eq, &(object_type, object_id))?;
         Ok(EntryIter::new(iter))
     }
 
@@ -2122,8 +2139,9 @@ impl Privileges {
 
     /// Remove any privilege definitions granted to the given grantee.
     #[inline]
-    pub fn delete_all_by_grantee_id(&self, grantee_id: UserId) -> tarantool::Result<()> {
+    pub fn delete_all_by_grantee_id(&self, grantee_id: UserId) -> Result<()> {
         for priv_def in self.by_grantee_id(grantee_id)? {
+            let priv_def = priv_def?;
             self.delete(
                 priv_def.grantee_id(),
                 &priv_def.object_type(),
@@ -2139,6 +2157,7 @@ impl Privileges {
     pub fn delete_all_by_granted_role(&self, role_id: u32) -> Result<()> {
         // here we failed to deserialize the privilege that has alter on universe
         for priv_def in self.iter()? {
+            let priv_def = priv_def?;
             if priv_def.privilege() == PrivilegeType::Execute
                 && priv_def.object_type() == SchemaObjectType::Role
                 && priv_def.object_id() == Some(role_id)
@@ -2160,8 +2179,9 @@ impl Privileges {
         &self,
         object_type: SchemaObjectType,
         object_id: i64,
-    ) -> tarantool::Result<()> {
+    ) -> Result<()> {
         for priv_def in self.by_object(object_type, object_id)? {
+            let priv_def = priv_def?;
             debug_assert_eq!(priv_def.object_id_raw(), object_id);
             self.delete(
                 priv_def.grantee_id(),
@@ -2178,8 +2198,8 @@ impl ToEntryIter<MP_SERDE> for Privileges {
     type Entry = PrivilegeDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -2254,10 +2274,11 @@ impl Tiers {
 
     #[inline]
     pub fn all_tiers(&self) -> tarantool::Result<Vec<Tier>> {
-        self.space
-            .select(IteratorType::All, &())?
-            .map(|tuple| tuple.decode())
-            .collect()
+        let mut result = vec![];
+        for tuple in self.space.select_v2(IteratorType::All, &())? {
+            result.push(tuple?.decode()?);
+        }
+        Ok(result)
     }
 }
 
@@ -2265,8 +2286,8 @@ impl ToEntryIter<MP_SERDE> for Tiers {
     type Entry = Tier;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -2397,7 +2418,9 @@ impl Routines {
         &self,
         owner_id: UserId,
     ) -> tarantool::Result<EntryIter<RoutineDef, MP_SERDE>> {
-        let iter = self.index_owner_id.select(IteratorType::Eq, &[owner_id])?;
+        let iter = self
+            .index_owner_id
+            .select_v2(IteratorType::Eq, &[owner_id])?;
         Ok(EntryIter::new(iter))
     }
 }
@@ -2406,8 +2429,8 @@ impl ToEntryIter<MP_SERDE> for Routines {
     type Entry = RoutineDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -2502,25 +2525,25 @@ impl Plugins {
     #[inline]
     pub fn get_all_versions(&self, plugin_name: &str) -> tarantool::Result<Vec<PluginDef>> {
         self.space
-            .select(IteratorType::Eq, &(plugin_name,))?
-            .map(|tuple| tuple.decode())
+            .select_v2(IteratorType::Eq, &(plugin_name,))?
+            .map(|tuple| tuple.map_err(Into::into).and_then(|t| t.decode()))
             .collect()
     }
 
     #[inline]
     pub fn get_all(&self) -> tarantool::Result<Vec<PluginDef>> {
         self.space
-            .select(IteratorType::All, &())?
-            .map(|tuple| tuple.decode())
-            .collect::<tarantool::Result<Vec<_>>>()
+            .select_v2(IteratorType::All, &())?
+            .map(|tuple| tuple.map_err(Into::into).and_then(|t| t.decode()))
+            .collect()
     }
 
     #[inline]
     pub fn all_enabled(&self) -> tarantool::Result<Vec<PluginDef>> {
-        let it = self.space.select(IteratorType::All, &())?;
+        let it = self.space.select_v2(IteratorType::All, &())?;
         let mut result = vec![];
         for tuple in it {
-            let def = tuple.decode::<PluginDef>()?;
+            let def = tuple?.decode::<PluginDef>()?;
             if def.enabled {
                 result.push(def);
             }
@@ -2533,8 +2556,8 @@ impl ToEntryIter<MP_SERDE> for Plugins {
     type Entry = PluginDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -2637,11 +2660,11 @@ impl Services {
 
     #[inline]
     pub fn get_by_plugin(&self, ident: &PluginIdentifier) -> tarantool::Result<Vec<ServiceDef>> {
-        let it = self.space.select(IteratorType::Eq, &(&ident.name,))?;
+        let it = self.space.select_v2(IteratorType::Eq, &(&ident.name,))?;
 
         let mut result = vec![];
         for tuple in it {
-            let svc = tuple.decode::<ServiceDef>()?;
+            let svc = tuple?.decode::<ServiceDef>()?;
             if svc.version == ident.version {
                 result.push(svc)
             }
@@ -2651,10 +2674,10 @@ impl Services {
 
     #[inline]
     pub fn get_by_tier(&self, tier_name: &SmolStr) -> tarantool::Result<Vec<ServiceDef>> {
-        let all_services = self.space.select(IteratorType::All, &())?;
+        let all_services = self.space.select_v2(IteratorType::All, &())?;
         let mut result = vec![];
         for tuple in all_services {
-            let svc = tuple.decode::<ServiceDef>()?;
+            let svc = tuple?.decode::<ServiceDef>()?;
             if svc.tiers.contains(tier_name) {
                 result.push(svc)
             }
@@ -2673,8 +2696,8 @@ impl ToEntryIter<MP_SERDE> for Services {
     type Entry = ServiceDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -2760,9 +2783,9 @@ impl ServiceRouteTable {
     pub fn delete_by_plugin(&self, plugin: &PluginIdentifier) -> tarantool::Result<()> {
         let all_routes = self
             .space
-            .select(IteratorType::Eq, &(&plugin.name, &plugin.version))?;
+            .select_v2(IteratorType::Eq, &(&plugin.name, &plugin.version))?;
         for tuple in all_routes {
-            let item = tuple.decode::<ServiceRouteItem>()?;
+            let item = tuple?.decode::<ServiceRouteItem>()?;
             self.space.delete(&(
                 item.plugin_name,
                 item.plugin_version,
@@ -2779,9 +2802,9 @@ impl ServiceRouteTable {
     ) -> tarantool::Result<Vec<ServiceRouteItem>> {
         let mut result = vec![];
 
-        let iter = self.space.select(IteratorType::All, &())?;
+        let iter = self.space.select_v2(IteratorType::All, &())?;
         for tuple in iter {
-            let item: ServiceRouteItem = tuple.decode()?;
+            let item: ServiceRouteItem = tuple?.decode()?;
             if item.instance_name != i {
                 continue;
             }
@@ -2800,9 +2823,9 @@ impl ServiceRouteTable {
 
         let iter = self
             .space
-            .select(IteratorType::All, &(&plugin.name, &plugin.version, service))?;
+            .select_v2(IteratorType::All, &(&plugin.name, &plugin.version, service))?;
         for tuple in iter {
-            let item: ServiceRouteItem = tuple.decode()?;
+            let item: ServiceRouteItem = tuple?.decode()?;
             if item.poison {
                 continue;
             }
@@ -2816,8 +2839,8 @@ impl ToEntryIter<MP_SERDE> for ServiceRouteTable {
     type Entry = ServiceRouteItem;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -2880,8 +2903,8 @@ impl PluginMigrations {
         plugin_name: &str,
     ) -> tarantool::Result<Vec<PluginMigrationRecord>> {
         self.space
-            .select(IteratorType::Eq, &(plugin_name,))?
-            .map(|t| t.decode())
+            .select_v2(IteratorType::Eq, &(plugin_name,))?
+            .map(|tuple| tuple.map_err(Into::into).and_then(|t| t.decode()))
             .collect()
     }
 }
@@ -2983,9 +3006,9 @@ impl PluginConfig {
         // delete an old config first
         let old_cfg_records = self
             .space
-            .select(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
+            .select_v2(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
         for tuple in old_cfg_records {
-            let record: PluginConfigRecord = tuple.decode()?;
+            let record: PluginConfigRecord = tuple?.decode()?;
             self.space.delete(&record.pk())?;
         }
 
@@ -3016,11 +3039,11 @@ impl PluginConfig {
     ) -> tarantool::Result<HashMap<SmolStr, rmpv::Value>> {
         let cfg_records = self
             .space
-            .select(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
+            .select_v2(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
 
         let mut result = HashMap::new();
         for tuple in cfg_records {
-            let cfg_record: PluginConfigRecord = tuple.decode()?;
+            let cfg_record: PluginConfigRecord = tuple?.decode()?;
             result.insert(cfg_record.key, cfg_record.value);
         }
 
@@ -3031,7 +3054,7 @@ impl PluginConfig {
         &self,
         ident: &PluginIdentifier,
     ) -> tarantool::Result<HashMap<SmolStr, SmolStr>> {
-        let cfg_records = self.space.select(
+        let cfg_records = self.space.select_v2(
             IteratorType::Eq,
             &(
                 &ident.name,
@@ -3042,7 +3065,7 @@ impl PluginConfig {
 
         let mut result = HashMap::new();
         for tuple in cfg_records {
-            let cfg_record: MigrationContextRecord = tuple.decode()?;
+            let cfg_record: MigrationContextRecord = tuple?.decode()?;
             result.insert(cfg_record.key, cfg_record.value);
         }
 
@@ -3059,11 +3082,11 @@ impl PluginConfig {
     ) -> tarantool::Result<rmpv::Value> {
         let cfg_records = self
             .space
-            .select(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
+            .select_v2(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
 
         let mut result = vec![];
         for tuple in cfg_records {
-            let cfg_record: PluginConfigRecord = tuple.decode()?;
+            let cfg_record: PluginConfigRecord = tuple?.decode()?;
             result.push((rmpv::Value::from(&*cfg_record.key), cfg_record.value));
         }
 
@@ -3084,10 +3107,10 @@ impl PluginConfig {
         debug_assert!(tarantool::transaction::is_in_transaction());
         let cfg_records = self
             .space
-            .select(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
+            .select_v2(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
 
         for tuple in cfg_records {
-            let record: PluginConfigRecord = tuple.decode()?;
+            let record: PluginConfigRecord = tuple?.decode()?;
             self.space.delete(&record.pk())?;
         }
 
@@ -3123,11 +3146,11 @@ impl PluginConfig {
     ) -> tarantool::Result<HashMap<SmolStr, rmpv::Value>> {
         let cfg_records = self
             .space
-            .select(IteratorType::Eq, &(&ident.name, &ident.version))?;
+            .select_v2(IteratorType::Eq, &(&ident.name, &ident.version))?;
 
         let mut grouped_records = HashMap::new();
         for tuple in cfg_records {
-            let cfg_record: PluginConfigRecord = tuple.decode()?;
+            let cfg_record: PluginConfigRecord = tuple?.decode()?;
             let entry = grouped_records
                 .entry(cfg_record.entity.clone())
                 .or_insert(vec![]);
@@ -3243,7 +3266,7 @@ impl DbConfig {
 
     #[inline(always)]
     pub fn by_key(&self, key: &str) -> tarantool::Result<EntryIter<Tuple, MP_SERDE>> {
-        let iter = self.secondary.select(IteratorType::Eq, &[key])?;
+        let iter = self.secondary.select_v2(IteratorType::Eq, &[key])?;
         Ok(EntryIter::new(iter))
     }
 
@@ -3308,7 +3331,7 @@ impl DbConfig {
     }
 
     #[inline]
-    pub fn shredding(&self) -> tarantool::Result<Option<bool>> {
+    pub fn shredding(&self) -> Result<Option<bool>> {
         // XXX: ideally we would want to also cache this value and eliminate
         // this space lookup. IMO we should hookup `PicodataConfig` to the
         // storage and update the global instance of that struct with values
@@ -3318,7 +3341,7 @@ impl DbConfig {
         // incorrect values for instance.name if it's generated automatically...
         if let Some(shredding) = self.by_key(config::SHREDDING_PARAM_NAME)?.next() {
             Ok(Some(
-                shredding
+                shredding?
                     .field(AlterSystemParameters::FIELD_VALUE)?
                     .expect("field value exists"),
             ))
@@ -3332,8 +3355,8 @@ impl ToEntryIter<MP_SERDE> for DbConfig {
     type Entry = Tuple;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }
 
@@ -3532,7 +3555,7 @@ mod tests {
 
         let box_replication = |replicaset_name: &str| -> Vec<traft::Address> {
             storage.instances.replicaset_instances(replicaset_name).unwrap()
-                .map(|instance| storage_peer_addresses.try_get(instance.raft_id, &traft::ConnectionType::System(traft::SystemConnectionType::Iproto)).unwrap())
+                .map(|instance| storage_peer_addresses.try_get(instance.unwrap().raft_id, &traft::ConnectionType::System(traft::SystemConnectionType::Iproto)).unwrap())
                 .collect::<Vec<_>>()
         };
 
@@ -3657,7 +3680,7 @@ mod tests {
     #[track_caller]
     fn get_number_of_indexes_defined_for_space(space_id: SpaceId) -> usize {
         let sys_index = SystemSpace::Index.as_space();
-        let iter = sys_index.select(IteratorType::Eq, &[space_id]).unwrap();
+        let iter = sys_index.select_v2(IteratorType::Eq, &[space_id]).unwrap();
         return iter.count();
     }
 
@@ -3670,6 +3693,7 @@ mod tests {
         let sys_index = SystemSpace::Index.as_space();
 
         for sys_table in storage.pico_table.iter().unwrap() {
+            let sys_table = sys_table.unwrap();
             //
             // box.space._space
             //
@@ -3695,8 +3719,12 @@ mod tests {
             // Check picodata & tarantool agree on the definition
             assert_eq!(pico_table_def.to_space_metadata().unwrap(), tt_space_def);
 
-            let index_definitions: Vec<_> =
-                storage.indexes.by_space_id(sys_table.id).unwrap().collect();
+            let index_definitions: Vec<_> = storage
+                .indexes
+                .by_space_id(sys_table.id)
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
             assert_eq!(
                 index_definitions.len(),
                 get_number_of_indexes_defined_for_space(sys_table.id),
@@ -3754,6 +3782,7 @@ mod tests {
         let storage = Catalog::for_tests();
 
         for table in storage.pico_table.iter().unwrap() {
+            let table = table.unwrap();
             assert_eq!(
                 SYSTEM_TABLES_ID_RANGE.contains(&table.id),
                 Catalog::system_space_name_by_id(table.id).is_some()

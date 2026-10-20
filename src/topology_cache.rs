@@ -508,6 +508,7 @@ impl TopologyCacheMutable {
 
         let replicasets = storage.replicasets.iter()?;
         for replicaset in replicasets {
+            let replicaset = replicaset?;
             let replicaset_uuid = replicaset.uuid.clone();
             if let Some(instance) = &this_instance {
                 if replicaset_uuid == instance.replicaset_uuid {
@@ -528,6 +529,7 @@ impl TopologyCacheMutable {
 
         let tiers = storage.tiers.iter()?;
         for tier in tiers {
+            let tier = tier?;
             if let Some(instance) = &this_instance {
                 if tier.name == instance.tier {
                     this_tier = Some(tier.clone());
@@ -547,6 +549,7 @@ impl TopologyCacheMutable {
 
         let items = storage.service_route_table.iter()?;
         for item in items {
+            let item = item?;
             service_routes
                 .entry(item.plugin_name)
                 .or_insert_with(HashMap::default)
@@ -563,7 +566,7 @@ impl TopologyCacheMutable {
 
         let items = storage.pico_bucket.iter()?;
         for item in items {
-            buckets.handle_distribution_change(None, Some(item));
+            buckets.handle_distribution_change(None, Some(item?));
         }
 
         //

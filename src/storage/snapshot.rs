@@ -68,6 +68,7 @@ impl Catalog {
         let mut space_indexes = Vec::with_capacity(32);
 
         for table_def in self.pico_table.iter()? {
+            let table_def = table_def?;
             if !matches!(table_def.distribution, Distribution::Global) {
                 continue;
             }
@@ -331,23 +332,30 @@ impl Catalog {
         let mut changed_parameters = Vec::new();
 
         for def in self.pico_table.iter()? {
+            let def = def?;
             old_table_versions.insert(def.id, def.schema_version);
         }
         // Primary key is handled explicitly in space creating/dropping.
         // So we skip it here.
-        for def in self.indexes.iter()?.filter(|x| x.id != 0) {
+        for def in self.indexes.iter()? {
+            let def = def?;
+            if def.id == 0 {
+                continue;
+            }
             old_index_versions.insert((def.table_id, def.id), def.schema_version);
         }
         for def in self.users.iter()? {
+            let def = def?;
             old_user_versions.insert(def.id, def.schema_version);
         }
         for def in self.privileges.iter()? {
+            let def = def?;
             let schema_version = def.schema_version();
             old_priv_versions.insert(def, schema_version);
         }
 
         for parameter in self.db_config.iter()? {
-            old_dynamic_parameters.insert(parameter.to_vec());
+            old_dynamic_parameters.insert(parameter?.to_vec());
         }
 
         // There can be multiple space dumps for a given space in SnapshotData,
@@ -406,7 +414,9 @@ impl Catalog {
             // Primary key is handled explicitly in space creating/dropping.
             // So we skip it here.
             self.apply_schema_changes_on_master(
-                self.indexes.iter()?.filter(|x| x.id != 0),
+                self.indexes
+                    .iter()?
+                    .filter(|x| !matches!(x, Ok(x) if x.id == 0)),
                 &old_index_versions,
             )?;
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
@@ -515,7 +525,7 @@ impl Catalog {
     /// which entities should be dropped and/or recreated.
     fn apply_schema_changes_on_master<T>(
         &self,
-        iter: impl Iterator<Item = T>,
+        iter: impl Iterator<Item = Result<T>>,
         old_versions: &HashMap<T::Key, u64>,
     ) -> Result<()>
     where
@@ -526,6 +536,7 @@ impl Catalog {
         let mut new_defs = Vec::new();
         let mut new_keys = HashSet::new();
         for def in iter {
+            let def = def?;
             new_keys.insert(def.key());
             new_defs.push(def);
         }

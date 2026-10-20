@@ -534,6 +534,7 @@ mod test {
             PicoBucket::with_id(self.space.id())
                 .iter()
                 .unwrap()
+                .map(Result::unwrap)
                 .collect()
         }
     }

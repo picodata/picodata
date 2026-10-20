@@ -6,8 +6,8 @@ use tarantool::transaction::transaction;
 
 pub fn read_local_buckets(start: u64, end: u64) -> Result<Vec<VshardBucketRecord>> {
     let mut res = vec![];
-    for tuple in SPACE_BUCKET.select(IteratorType::GE, &[start])? {
-        let bucket: VshardBucketRecord = tuple.decode()?;
+    for tuple in SPACE_BUCKET.select_v2(IteratorType::GE, &[start])? {
+        let bucket: VshardBucketRecord = tuple?.decode()?;
         if bucket.bucket_id > end {
             break;
         }

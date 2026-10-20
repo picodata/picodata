@@ -87,13 +87,12 @@ pub struct UserMetadata {
 
 impl Encode for UserMetadata {}
 
-fn make_no_such_user(name: &str) -> tarantool::error::Error {
-    tarantool::set_error!(
-        tarantool::error::TarantoolErrorCode::NoSuchUser,
-        "no user named {}",
-        name
-    );
-    tarantool::error::TarantoolError::last().into()
+fn make_no_such_user(name: &str) -> Error {
+    BoxError::new(
+        TarantoolErrorCode::NoSuchUser,
+        format!("no user named {name}"),
+    )
+    .into()
 }
 
 /// Get user by id. If there is no such user the last tarantool error is set to no such user
@@ -228,12 +227,12 @@ fn box_access_check_ddl_as_user(
     object_type: TntSchemaObjectType,
     access: PrivType,
     as_user: UserId,
-) -> tarantool::Result<()> {
+) -> traft::Result<()> {
     let _su = session::su(as_user)?;
-    box_access_check_ddl(object_name, object_id, owner_id, object_type, access)
+    box_access_check_ddl(object_name, object_id, owner_id, object_type, access).map_err(Into::into)
 }
 
-fn access_check_dml(storage: &Catalog, dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
+fn access_check_dml(storage: &Catalog, dml: &Dml, as_user: UserId) -> traft::Result<()> {
     let space_id = dml.table_id();
     if space_id <= SPACE_ID_INTERNAL_MAX && !is_superuser(as_user) {
         let table_name = storage
@@ -249,12 +248,12 @@ fn access_check_dml(storage: &Catalog, dml: &Dml, as_user: UserId) -> tarantool:
     }
 
     let _su = session::su(as_user)?;
-    box_access_check_space(space_id, PrivType::Write)
+    box_access_check_space(space_id, PrivType::Write).map_err(Into::into)
 }
 
 /// This function performs access control checks that are identical to ones performed in
 /// vanilla tarantool in on_replace_dd_space, on_replace_dd_index and on_replace_dd_func respectively
-fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
+fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> traft::Result<()> {
     match ddl {
         op::Ddl::Backup { .. } => {
             // TODO: Check that only admin have access.
@@ -369,7 +368,7 @@ fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> tarant
                     "no such procedure #{}",
                     id
                 );
-                return Err(tarantool::error::TarantoolError::last().into());
+                return Err(BoxError::last().into());
             };
 
             box_access_check_ddl_as_user(
@@ -428,7 +427,7 @@ fn detect_role_grant_cycles(
     granted_role: &UserMetadata,
     priv_def: &PrivilegeDef,
     storage: &Catalog,
-) -> tarantool::Result<()> {
+) -> traft::Result<()> {
     let grantee_id = priv_def.grantee_id();
     let grantee_name = {
         let grantee = user_by_id(grantee_id)?;
@@ -438,6 +437,7 @@ fn detect_role_grant_cycles(
     let role_id_to_grantees_id = {
         let mut hm = HashMap::new();
         for privilege in storage.privileges.iter()? {
+            let privilege = privilege?;
             if privilege.object_type() == PicoSchemaObjectType::Role
                 && privilege.privilege() == PrivilegeType::Execute
             {
@@ -494,7 +494,7 @@ fn access_check_grant_revoke(
     grantor_id: UserId,
     access: PrivType,
     access_name: &str,
-) -> tarantool::Result<()> {
+) -> traft::Result<()> {
     // Note: this is vanilla tarantool user, not picodata one.
     let grantor = user_by_id(grantor_id)?;
     let user_name = &grantor.name;
@@ -525,13 +525,15 @@ fn access_check_grant_revoke(
         };
 
         if let Some(grantee) = grantee {
-            tarantool::set_error!(
-                tarantool::error::TarantoolErrorCode::AccessDenied,
-                "Revoke '{}' from '{}' is not possible",
-                priv_def.privilege(),
-                grantee,
-            );
-            return Err(tarantool::error::TarantoolError::last().into());
+            return Err(BoxError::new(
+                TarantoolErrorCode::AccessDenied,
+                format!(
+                    "Revoke '{}' from '{}' is not possible",
+                    priv_def.privilege(),
+                    grantee
+                ),
+            )
+            .into());
         }
     }
 
@@ -682,7 +684,7 @@ fn access_check_grant_revoke(
     Ok(())
 }
 
-fn access_check_acl(storage: &Catalog, acl: &op::Acl, as_user: UserId) -> tarantool::Result<()> {
+fn access_check_acl(storage: &Catalog, acl: &op::Acl, as_user: UserId) -> traft::Result<()> {
     match acl {
         op::Acl::CreateUser { user_def } => {
             assert_eq!(
@@ -792,11 +794,7 @@ fn access_check_acl(storage: &Catalog, acl: &op::Acl, as_user: UserId) -> tarant
     }
 }
 
-pub(super) fn access_check_op(
-    storage: &Catalog,
-    op: &Op,
-    as_user: UserId,
-) -> tarantool::Result<()> {
+pub(super) fn access_check_op(storage: &Catalog, op: &Op, as_user: UserId) -> traft::Result<()> {
     match op {
         Op::Nop => Ok(()),
         Op::Dml(dml) => {
@@ -1405,7 +1403,7 @@ mod tests {
             .unwrap_err();
             assert_eq!(
                 e.to_string(),
-                format!("box error: AccessDenied: Audit policy access is denied for user '{actor_user_name}'"),
+                format!("AccessDenied: Audit policy access is denied for user '{actor_user_name}'"),
             );
 
             access_check_acl(
@@ -1968,7 +1966,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                "box error: RoleLoop: Granting role Parent to role Child would create a loop"
+                "RoleLoop: Granting role Parent to role Child would create a loop"
             );
         }
     }
@@ -2002,9 +2000,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             e.to_string(),
-            format!(
-                "box error: AccessDenied: Grant Login from '{user_name}' is denied for 'test_user'"
-            )
+            format!("AccessDenied: Grant Login from '{user_name}' is denied for 'test_user'")
         );
 
         let e = access_check_acl(
@@ -2026,9 +2022,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             e.to_string(),
-            format!(
-                "box error: AccessDenied: Revoke Login from '{user_name}' is denied for 'test_user'"
-            )
+            format!("AccessDenied: Revoke Login from '{user_name}' is denied for 'test_user'")
         );
 
         // Owner can grant/revoke login on user

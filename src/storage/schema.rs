@@ -51,6 +51,7 @@ pub fn ddl_meta_space_update_operable(
     storage.pico_table.update_operable(space_id, operable)?;
     let iter = storage.indexes.by_space_id(space_id)?;
     for index in iter {
+        let index = index?;
         storage
             .indexes
             .update_operable(index.table_id, index.id, operable)?;
@@ -67,6 +68,7 @@ pub fn ddl_meta_drop_space(storage: &Catalog, space_id: SpaceId) -> traft::Resul
         .delete_all_by_object(SchemaObjectType::Table, space_id as i64)?;
     let iter = storage.indexes.by_space_id(space_id)?;
     for index in iter {
+        let index = index?;
         storage.indexes.delete(index.table_id, index.id)?;
     }
     storage.pico_table.delete(space_id)?;
@@ -362,10 +364,10 @@ pub fn ddl_drop_function_on_master(func_id: u32) -> traft::Result<Option<TntErro
     let priv_idx: Index = sys_priv
         .index("object")
         .expect("index 'object' not found in space '_priv'");
-    let iter = priv_idx.select(IteratorType::Eq, &("function", func_id))?;
+    let iter = priv_idx.select_v2(IteratorType::Eq, &("function", func_id))?;
     let mut priv_ids = Vec::new();
     for tuple in iter {
-        let grantee: u32 = tuple
+        let grantee: u32 = tuple?
             .field(1)?
             .expect("decoding metadata should never fail");
         priv_ids.push((grantee, "function", func_id));
@@ -499,10 +501,10 @@ pub fn ddl_drop_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntEr
     let sys_truncate = Space::from(SystemSpace::Truncate);
     let sys_priv = Space::from(SystemSpace::Priv);
 
-    let iter = sys_index.select(IteratorType::Eq, &[space_id])?;
+    let iter = sys_index.select_v2(IteratorType::Eq, &[space_id])?;
     let mut index_ids = Vec::with_capacity(4);
     for tuple in iter {
-        let index_id: IndexId = tuple
+        let index_id: IndexId = tuple?
             .field(1)?
             .expect("decoding metadata should never fail");
         // Primary key is handled explicitly.
@@ -514,10 +516,10 @@ pub fn ddl_drop_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntEr
     let priv_idx: Index = sys_priv
         .index("object")
         .expect("index 'object' not found in space '_priv'");
-    let iter = priv_idx.select(IteratorType::Eq, &("space", space_id))?;
+    let iter = priv_idx.select_v2(IteratorType::Eq, &("space", space_id))?;
     let mut priv_ids = Vec::new();
     for tuple in iter {
-        let grantee: u32 = tuple
+        let grantee: u32 = tuple?
             .field(1)?
             .expect("decoding metadata should never fail");
         priv_ids.push((grantee, "space", space_id));

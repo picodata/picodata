@@ -324,13 +324,15 @@ impl VshardConfig {
     ) -> Result<Self, Error> {
         let topology = node.topology_cache.get();
         let db_config = node.alter_system_parameters.borrow();
-        let peer_addresses: HashMap<_, _> = node
-            .storage
-            .peer_addresses
-            .iter()?
-            .filter(|peer| peer.connection_type.as_system() == Some(SystemConnectionType::Iproto))
-            .map(|pa| (pa.raft_id, pa.address))
-            .collect();
+        let mut peer_addresses = HashMap::new();
+        for peer in node.storage.peer_addresses.iter()? {
+            let peer = peer?;
+            if peer.connection_type.as_system() != Some(SystemConnectionType::Iproto) {
+                continue;
+            }
+
+            peer_addresses.insert(peer.raft_id, peer.address);
+        }
 
         let result = Self::new(
             topology,

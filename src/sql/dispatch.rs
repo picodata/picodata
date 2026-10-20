@@ -709,7 +709,9 @@ fn port_write_metadata_impl<'p>(
 /// Get all unlogged tables and check if any of them are present in the plan tables.
 fn plan_has_unlogged_tables(plan: &Plan) -> SqlResult<bool> {
     let unlogged_tables = with_admin_su("getting unlogged tables", || {
-        PicoTable::new().get_unlogged_tables()
+        PicoTable::new().get_unlogged_tables().map_err(|e| {
+            SbroadError::DispatchError(format_smolstr!("failed looking up unlogged tables: {e}"))
+        })
     })?;
 
     for table in unlogged_tables {
@@ -908,7 +910,10 @@ fn local_lref_session_id() -> SqlResult<SmolStr> {
     })
 }
 
-fn with_admin_su<T>(op: &str, f: impl FnOnce() -> tarantool::Result<T>) -> SqlResult<T> {
+fn with_admin_su<T, E>(op: &str, f: impl FnOnce() -> Result<T, E>) -> SqlResult<T>
+where
+    E: std::fmt::Display,
+{
     let result = with_su(ADMIN_ID, f).map_err(|e| {
         SbroadError::DispatchError(format_smolstr!("failed to switch user for {op}: {e}"))
     })?;

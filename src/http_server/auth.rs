@@ -194,8 +194,9 @@ fn authenticate_user(username: &str, password: Option<&str>) -> AuthResult<Vec<S
         .privileges
         .by_grantee_id(user.id)
         .map_err(|e| AuthError::PrivilegesLookup(e.to_string()))?
-        .map(|p| p.privilege().as_str().to_string())
-        .collect::<Vec<String>>();
+        .map(|p| p.map(|p| p.privilege().as_str().to_string()))
+        .collect::<Result<Vec<String>, _>>()
+        .map_err(|e| AuthError::PrivilegesLookup(e.to_string()))?;
 
     if !privileges.contains(&"login".to_string()) {
         return Err(AuthError::InsufficientPrivileges);

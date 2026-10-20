@@ -142,17 +142,11 @@ impl PicoUserAuditPolicy {
     /// Deletes all audit policy associations for a specific user.
     #[inline]
     pub fn delete_by_user(&self, user_id: UserId) -> tarantool::Result<()> {
-        let user_policies: Vec<_> = self
-            .space
-            .select(IteratorType::Eq, &[user_id])?
-            .map(|tuple| {
-                tuple
-                    .decode::<UserAuditPolicyDef>()
-                    .expect("decoding of UserAuditPolicyDef should never fail")
-            })
-            .collect();
-        for UserAuditPolicyDef { policy_id, .. } in user_policies {
-            self.space.delete(&(user_id, policy_id))?;
+        for tuple in self.space.select_v2(IteratorType::Eq, &[user_id])? {
+            let user_policy = tuple?
+                .decode::<UserAuditPolicyDef>()
+                .expect("decoding of UserAuditPolicyDef should never fail");
+            self.space.delete(&(user_id, user_policy.policy_id))?;
         }
         Ok(())
     }

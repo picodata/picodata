@@ -22,7 +22,7 @@ use crate::sql::explain::explain_query;
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::{FullDeleteInfo, StorageRuntime};
 use crate::storage::Catalog;
-use crate::storage::{get_backup_dir_name, DbConfig, SystemTable, ToEntryIter};
+use crate::storage::{get_backup_dir_name, DbConfig, SystemTable};
 use crate::sync::wait_for_index_globally;
 use crate::traft::error::{self, Error};
 use crate::traft::node::Node as TraftNode;
@@ -1418,7 +1418,7 @@ fn acl_ir_node_to_op_or_result(
 
 #[rustfmt::skip]
 fn alter_system_cluster_ir_node_to_op_or_result(
-    storage: &Catalog,
+    node: &TraftNode,
     ty: &AlterSystemType,
     tier_name: Option<&str>,
     current_user: UserId,
@@ -1428,7 +1428,7 @@ fn alter_system_cluster_ir_node_to_op_or_result(
         param_value: &T,
         param_name: &str,
         tier_name: Option<&str>,
-        storage: &Catalog,
+        node: &TraftNode,
         initiator: UserId,
     ) -> traft::Result<Vec<Dml>>
     where
@@ -1438,19 +1438,17 @@ fn alter_system_cluster_ir_node_to_op_or_result(
         let mut dmls = Vec::new();
         if AlterSystemParameters::has_scope_tier(param_name)? {
             if let Some(tier_name) = tier_name {
-                let Some(tier) = storage.tiers.iter()?.find(|tier| tier.name == *tier_name) else {
-                    return Err(Error::other(format!(
-                        "specified tier '{tier_name}' doesn't exist"
-                    )));
-                };
+                // Check tier exists.
+                _ = node.topology_cache.get().tier_by_name(tier_name)?;
 
                 dmls.push(Dml::replace(
                     table,
-                    &(param_name, &tier.name, &param_value),
+                    &(param_name, tier_name, &param_value),
                     initiator,
                 )?);
             } else {
-                for tier in storage.tiers.iter()? {
+                let topology = node.topology_cache.get();
+                for tier in topology.all_tiers() {
                     dmls.push(Dml::replace(
                         table,
                         &(param_name, &tier.name, &param_value),
@@ -1492,10 +1490,10 @@ fn alter_system_cluster_ir_node_to_op_or_result(
                 || param_name == crate::system_parameter_name!(jwt_refresh_token_lifetime)
             {
                 let value = casted_value.integer().expect("unreachable, already casted to unsigned");
-                crate::config::validate_jwt_token_lifetimes(&storage.db_config, param_name, value as u64)?;
+                crate::config::validate_jwt_token_lifetimes(&node.storage.db_config, param_name, value as u64)?;
             }
 
-            ops = make_dmls(&casted_value, param_name, tier_name, storage, current_user)?;
+            ops = make_dmls(&casted_value, param_name, tier_name, node, current_user)?;
         }
         AlterSystemType::AlterSystemReset { param_name } => {
             match param_name {
@@ -1510,15 +1508,15 @@ fn alter_system_cluster_ir_node_to_op_or_result(
                         || param_name == crate::system_parameter_name!(jwt_refresh_token_lifetime)
                     {
                         let value = default_value.as_u64().expect("default is unsigned");
-                        crate::config::validate_jwt_token_lifetimes(&storage.db_config, param_name, value)?;
+                        crate::config::validate_jwt_token_lifetimes(&node.storage.db_config, param_name, value)?;
                     }
 
-                    ops = make_dmls(&default_value, param_name, tier_name, storage, current_user)?;
+                    ops = make_dmls(&default_value, param_name, tier_name, node, current_user)?;
                 }
                 // reset all
                 None => {
-                    let tiers = storage.tiers.iter()?.map(|tier| tier.name).collect::<Vec<_>>();
-                    let tiers = tiers.iter().map(|s| &**s).collect::<Vec<_>>();
+                    let topology = node.topology_cache.get();
+                    let tiers: Vec<_> = topology.all_tiers().map(|tier| &*tier.name).collect();
                     ops = crate::config::get_defaults_for_all_system_parameters(&tiers, false)?;
                 }
             }
@@ -1698,7 +1696,7 @@ fn ddl_ir_node_to_op_or_result(
     match ddl {
         DdlOwned::AlterSystemCluster(AlterSystemCluster { ty, tier_name, .. }) => {
             alter_system_cluster_ir_node_to_op_or_result(
-                storage,
+                node,
                 ty,
                 tier_name.as_deref(),
                 current_user,

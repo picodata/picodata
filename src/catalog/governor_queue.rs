@@ -179,8 +179,12 @@ impl GovernorQueue {
     /// returns an empty vector.
     #[inline]
     pub fn all_operations(&self) -> tarantool::Result<Vec<GovernorOperationDef>> {
-        let iter = self.space.select(IteratorType::All, &())?;
-        iter.map(|tuple| tuple.decode()).collect()
+        let iter = self.space.select_v2(IteratorType::All, &())?;
+        let mut result = vec![];
+        for tuple in iter {
+            result.push(tuple?.decode()?);
+        }
+        Ok(result)
     }
 
     /// Updates operation status.

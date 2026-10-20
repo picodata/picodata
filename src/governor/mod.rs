@@ -122,6 +122,7 @@ impl Loop {
             .peer_addresses
             .iter()
             .unwrap()
+            .map(|v| v.expect("iterating over _pico_peer_address shouldn't fail"))
             .filter(|peer| peer.connection_type.as_system() == Some(SystemConnectionType::Iproto))
             .map(|pa| (pa.raft_id, pa.address))
             .collect();
@@ -158,6 +159,7 @@ impl Loop {
             .pico_table
             .iter()
             .expect("storage should never fail")
+            .map(|v| v.expect("iterating over _pico_table shouldn't fail"))
             .collect();
         let tables: HashMap<_, _> = tables.iter().map(|t| (t.id, t)).collect();
 
@@ -165,12 +167,14 @@ impl Loop {
             .plugins
             .iter()
             .expect("storage should never fail")
+            .map(|v| v.expect("iterating over _pico_plugin shouldn't fail"))
             .map(|plugin_def| (plugin_def.identifier(), plugin_def))
             .collect();
         let all_services: Vec<_> = storage
             .services
             .iter()
             .expect("storage should never fail")
+            .map(|v| v.expect("iterating over _pico_service shouldn't fail"))
             .collect();
         let mut services = HashMap::new();
         for service_def in &all_services {

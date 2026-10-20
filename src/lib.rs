@@ -1043,7 +1043,7 @@ fn reapply_dynamic_parameters(
     current_tier: &str,
 ) -> Result<()> {
     for parameter in storage.db_config.iter()? {
-        apply_alter_system_parameter(parameters, parameter, current_tier)?;
+        apply_alter_system_parameter(parameters, parameter?, current_tier)?;
     }
 
     Ok(())
@@ -1845,6 +1845,7 @@ fn restore_from_backup(config: &PicodataConfig, backup_path: &PathBuf) -> Result
         .collect();
 
     for table_def in storage.pico_table.iter().expect("storage should not fail") {
+        let table_def = table_def.expect("storage should not fail");
         if system_table_defs.contains(&table_def) {
             continue;
         }

@@ -1444,6 +1444,7 @@ impl NodeImpl {
                             .iter()
                             .expect("storage should not fail")
                         {
+                            let table_def = table_def.expect("storage should not fail");
                             ddl_meta_space_update_operable(&self.storage, table_def.id, true)
                                 .expect("storage shouldn't fail");
                         }
@@ -1791,6 +1792,7 @@ impl NodeImpl {
                             .iter()
                             .expect("storage should not fail")
                         {
+                            let table_def = table_def.expect("storage should not fail");
                             ddl_meta_space_update_operable(&self.storage, table_def.id, true)
                                 .expect("storage shouldn't fail");
                         }
@@ -1832,12 +1834,13 @@ impl NodeImpl {
                         let reversed_renames = column_renames.reversed();
 
                         // rollback column renames in indices metadata
-                        for mut index in self
+                        for index in self
                             .storage
                             .indexes
                             .by_space_id(table_id)
                             .expect("storage shouldn't fail")
                         {
+                            let mut index = index.expect("storage shouldn't fail");
                             if reversed_renames.transform_index_columns(&mut index) {
                                 self.storage
                                     .indexes
@@ -2267,6 +2270,7 @@ impl NodeImpl {
                     .iter()
                     .expect("storage should not fail")
                 {
+                    let table_def = table_def.expect("storage should not fail");
                     if system_table_defs.contains(&table_def) {
                         continue;
                     }
@@ -2538,12 +2542,13 @@ impl NodeImpl {
                     .expect("storage shouldn't fail");
 
                 // apply column renames in indices metadata
-                for mut index in self
+                for index in self
                     .storage
                     .indexes
                     .by_space_id(table_id)
                     .expect("storage shouldn't fail")
                 {
+                    let mut index = index.expect("storage shouldn't fail");
                     if column_renames.transform_index_columns(&mut index) {
                         self.storage
                             .indexes

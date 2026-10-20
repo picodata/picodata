@@ -6,7 +6,7 @@ use crate::traft::op::RenameMapping;
 use crate::{column_name, tlog};
 use std::fmt::Debug;
 use tarantool::index::{
-    FieldType as IndexFieldType, Index, IndexIterator, IndexType, IteratorType, Part,
+    FieldType as IndexFieldType, Index, IndexIteratorV2, IndexType, IteratorType, Part,
 };
 use tarantool::session::UserId;
 use tarantool::space::{Space, SpaceId, SpaceType, UpdateOps};
@@ -242,16 +242,19 @@ impl PicoTable {
         &self,
         owner_id: UserId,
     ) -> tarantool::Result<EntryIter<TableDef, MP_CUSTOM>> {
-        let iter = self.index_owner_id.select(IteratorType::Eq, &[owner_id])?;
+        let iter = self
+            .index_owner_id
+            .select_v2(IteratorType::Eq, &[owner_id])?;
         Ok(EntryIter::new(iter))
     }
 
     /// Get `TableDef`s of all unlogged tables
     #[inline]
-    pub fn get_unlogged_tables(&self) -> tarantool::Result<Vec<TableDef>> {
+    pub fn get_unlogged_tables(&self) -> crate::traft::Result<Vec<TableDef>> {
         // A compromise between speed and memory consumption
         let mut result = Vec::with_capacity(16);
         for table_def in self.iter()? {
+            let table_def = table_def?;
             if table_def.is_unlogged() {
                 result.push(table_def);
             }
@@ -260,7 +263,7 @@ impl PicoTable {
     }
 
     /// Truncate all unlogged tables
-    pub fn truncate_unlogged_tables(&self) -> tarantool::Result<()> {
+    pub fn truncate_unlogged_tables(&self) -> crate::traft::Result<()> {
         let unlogged_tables = self.get_unlogged_tables()?;
         if !unlogged_tables.is_empty() {
             tlog!(Info, "began truncating unlogged tables");
@@ -284,7 +287,7 @@ impl ToEntryIter<MP_CUSTOM> for PicoTable {
     type Entry = TableDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
+    fn index_iter(&self) -> tarantool::Result<IndexIteratorV2> {
+        self.space.select_v2(IteratorType::All, &())
     }
 }

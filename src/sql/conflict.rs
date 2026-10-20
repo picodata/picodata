@@ -157,6 +157,13 @@ fn resolve_target_indexes(
     })?;
 
     for index in index_defs {
+        let index = index.map_err(|e| {
+            SbroadError::FailedTo(
+                Action::Get,
+                Some(Entity::Index),
+                format_smolstr!("failed to get indexes for table {}: {e}", table.name),
+            )
+        })?;
         total_indexes += 1;
         let is_primary = index.id == 0;
         if unique_index_matches_target(&index, &target_column_names) {

@@ -349,14 +349,14 @@ impl RaftSpaceAccess {
         high: RaftIndex,
         limit: Option<usize>,
     ) -> tarantool::Result<Vec<traft::Entry>> {
-        let iter = self.space_raft_log.select(IteratorType::GE, &(low,))?;
+        let iter = self.space_raft_log.select_v2(IteratorType::GE, &(low,))?;
         let limit = limit.unwrap_or(usize::MAX);
         // Put a sane threshold on `cap` in case `high` is insanely big
         let cap = limit.min((high - low) as _).min(1024);
         let mut ret = Vec::with_capacity(cap);
 
         for tuple in iter {
-            let row = tuple.decode::<traft::Entry>()?;
+            let row = tuple?.decode::<traft::Entry>()?;
             if row.index >= high {
                 break;
             }
@@ -371,8 +371,8 @@ impl RaftSpaceAccess {
 
     pub fn all_traft_entries(&self) -> tarantool::Result<Vec<traft::Entry>> {
         self.space_raft_log
-            .select(IteratorType::All, &())?
-            .map(|tuple| tuple.decode())
+            .select_v2(IteratorType::All, &())?
+            .map(|tuple| tuple.map_err(Into::into).and_then(|t| t.decode()))
             .collect()
     }
 
@@ -662,13 +662,14 @@ impl RaftSpaceAccess {
         debug_assert!(up_to <= applied + 1, "up_to: {up_to}, applied: {applied}");
 
         // IteratorType::LT means tuples are returned in descending order
-        let mut iter = self.space_raft_log.select(IteratorType::LT, &(up_to,))?;
+        let mut iter = self.space_raft_log.select_v2(IteratorType::LT, &(up_to,))?;
 
         let Some(tuple) = iter.next() else {
             let compacted_index = self.compacted_index()?;
             return Ok(1 + compacted_index);
         };
 
+        let tuple = tuple?;
         let compacted_index = tuple
             .field::<RaftIndex>(Self::FIELD_ENTRY_INDEX)?
             .expect("index is non-nullable");
@@ -681,7 +682,7 @@ impl RaftSpaceAccess {
 
         let mut num_deleted = 1;
         for tuple in iter {
-            let index = tuple
+            let index = tuple?
                 .field::<RaftIndex>(Self::FIELD_ENTRY_INDEX)?
                 .expect("index is non-nullable");
             self.space_raft_log.delete(&(index,))?;

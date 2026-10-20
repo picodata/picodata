@@ -729,6 +729,7 @@ fn add_tuple_cas_keys(
     };
 
     for index_def in storage.indexes.by_space_id(table_id)? {
+        let index_def = index_def?;
         if index_def.id == 0 {
             continue;
         }

@@ -245,7 +245,12 @@ fn update_sys_cluster() -> Result<()> {
     let topology_ref = node.topology_cache.get();
 
     let mut ids_to_delete = Vec::new();
-    for tuple in sys_cluster.select(IteratorType::All, &())? {
+    for tuple in sys_cluster.select_v2(IteratorType::All, &())? {
+        let Ok(tuple) = tuple.map_err(|e| tlog!(Error, "failed to update _cluster: {e}")) else {
+            // We can still handle whatever `ids_to_delete` we already collected.
+            break;
+        };
+
         let instance_id: u32 = tuple.field(0)?.ok_or_else(|| {
             Error::other("failed to decode 'instance_id' field of table _cluster")
         })?;

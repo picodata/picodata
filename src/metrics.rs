@@ -780,12 +780,20 @@ pub fn update_table_metrics() {
     state.next_entries_by_space_id.clear();
 
     let spaces = tarantool::space::SystemSpace::Space.as_space();
-    let Ok(spaces) = spaces.select(tarantool::index::IteratorType::All, &()) else {
+    let Ok(spaces) = spaces.select_v2(tarantool::index::IteratorType::All, &()) else {
         tlog!(Error, "failed collecting table metrics: cannot scan _space");
         return;
     };
 
     for tuple in spaces {
+        let tuple = match tuple {
+            Ok(v) => v,
+            Err(e) => {
+                tlog!(Error, "failed collecting table metrics: {e}");
+                return;
+            }
+        };
+
         let (Ok(Some(space_id)), Ok(Some(table_name)), Ok(Some(engine))) = (
             tuple.field::<u32>(0),
             tuple.field::<&str>(2),
@@ -883,8 +891,8 @@ fn update_table_index_ids_cache(state: &mut TableMetricsState) -> tarantool::Res
 
     let indexes = tarantool::space::SystemSpace::Index.as_space();
     state.index_ids_by_space_id.clear();
-    for tuple in indexes.select(tarantool::index::IteratorType::All, &())? {
-        let metadata = tuple.decode::<tarantool::index::Metadata<'_>>()?;
+    for tuple in indexes.select_v2(tarantool::index::IteratorType::All, &())? {
+        let metadata = tuple?.decode::<tarantool::index::Metadata<'_>>()?;
         state
             .index_ids_by_space_id
             .entry(metadata.space_id)
@@ -897,10 +905,11 @@ fn update_table_index_ids_cache(state: &mut TableMetricsState) -> tarantool::Res
 
 fn table_index_ids_for_space(space_id: u32) -> tarantool::Result<Vec<u32>> {
     let indexes = tarantool::space::SystemSpace::Index.as_space();
-    indexes
-        .select(tarantool::index::IteratorType::Eq, &(space_id,))?
-        .map(|tuple| Ok(tuple.field(1)?.expect("database constraint violation")))
-        .collect()
+    let mut result = vec![];
+    for tuple in indexes.select_v2(tarantool::index::IteratorType::Eq, &(space_id,))? {
+        result.push(tuple?.field(1)?.expect("database constraint violation"));
+    }
+    Ok(result)
 }
 
 fn collect_one_table_metric(

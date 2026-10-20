@@ -89,7 +89,7 @@ crate::define_rpc_request! {
             .replicasets
             .iter()
             .expect("storage should never fail")
-            .collect();
+            .collect::<Result<_>>()?;
         let replicasets: HashMap<_, _> = replicasets
             .iter()
             .map(|rs| (&rs.name, rs))
@@ -98,6 +98,7 @@ crate::define_rpc_request! {
         crate::error_injection!(block "BLOCK_BEFORE_VSHARD_RECONFIGURATION");
 
         for tier in node.storage.tiers.iter().expect("tiers shouldn't fail, at least one tier always exists") {
+            let tier = tier?;
             // Skip vshard configuration for tiers with no buckets (arbiter tiers)
             if !tier.has_buckets() {
                 continue;
