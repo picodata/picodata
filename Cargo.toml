@@ -78,7 +78,6 @@ scopeguard = "1.2"
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 serde_json = { workspace = true }
-serde_repr = "0.1"
 serde_yaml = "0.9"
 sha2 = { version = "0.10", features = ["asm", "oid"] }
 slog = { version = "2.7", features = [
