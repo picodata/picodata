@@ -604,10 +604,16 @@ def test_fixing_broken_replication(cluster: Cluster):
     i2.raft_wait_index(i1.raft_get_index())
     cluster.wait_governor_status("idle")
 
-    # got "duplicate key" conflict, replication is stopped
-    info_replication = i1.eval("return box.info.replication")
-    assert info_replication[2]["upstream"]["status"] == "stopped"
-    assert "Duplicate key exists" in info_replication[2]["upstream"]["message"]
+    # got "duplicate key" conflict, replication is stopped.
+    # box.cfg{replication} returns before the applier reaches a terminal state
+    # (replication_connect_quorum = 0), so the governor may be idle while the
+    # conflicting row is still in flight.
+    def check_replication_stopped():
+        info_replication = i1.eval("return box.info.replication")
+        assert info_replication[2]["upstream"]["status"] == "stopped"
+        assert "Duplicate key exists" in info_replication[2]["upstream"]["message"]
+
+    Retriable().call(check_replication_stopped)
 
     # fix the conflict
     i1.eval("box.schema.func.drop('.my_func')")
@@ -621,9 +627,12 @@ def test_fixing_broken_replication(cluster: Cluster):
     cluster.wait_governor_status("idle")
 
     # it is OK now
-    info_replication = i1.eval("return box.info.replication")
-    assert info_replication[2]["upstream"]["status"] == "follow"
-    assert info_replication[2]["downstream"]["status"] == "follow"
+    def check_replication_status():
+        info_replication = i1.eval("return box.info.replication")
+        assert info_replication[2]["upstream"]["status"] == "follow"
+        assert info_replication[2]["downstream"]["status"] == "follow"
+
+    Retriable().call(check_replication_status)
 
 
 def test_applier_cluster_uuid_mismatch(cluster: Cluster, second_cluster: Cluster):
