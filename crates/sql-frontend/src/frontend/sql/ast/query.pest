@@ -246,13 +246,14 @@ DDL = _{ CreateTable | DropTable | TruncateTable | AlterTable
             Euclid = { ^"euclid" }
             Manhattan = { ^"manhattan" }
         Hint = !{ ^"hint" ~ "=" ~ (True | False) }
-    VinylOptionParam = _{ BloomFpr | PageSize | RangeSize | RunCountPerLevel | RunSizeRatio | CompressionLevel }
+    VinylOptionParam = _{ BloomFpr | PageSize | RangeSize | RunCountPerLevel | RunSizeRatio | CompressionLevel | CompressionDict }
         BloomFpr = !{ ^"bloom_fpr" ~ "=" ~ Decimal }
         PageSize = !{ ^"page_size" ~ "=" ~ Unsigned }
         RangeSize = !{ ^"range_size" ~ "=" ~ Unsigned }
         RunCountPerLevel = !{ ^"run_count_per_level" ~ "=" ~ Unsigned }
         RunSizeRatio = !{ ^"run_size_ratio" ~ "=" ~ Decimal }
         CompressionLevel = !{ ^"compression_level" ~ "=" ~ Integer }
+        CompressionDict = !{ ^"compression_dict" ~ "=" ~ (True | False) }
     DropIndex = ${ ^"drop" ~ W ~ ^"index" ~ W ~ (IfExists ~ W)? ~ (PublicSchema)? ~ Identifier ~ (W ~ WaitApplied)? ~ (W ~ TimeoutOption)? }
     RenameIndex = ${
         ^"alter" ~ W ~ ^"index" ~ W ~ (IfExists ~ W)? ~ Identifier ~ W ~

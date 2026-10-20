@@ -3251,7 +3251,7 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
     - run_size_ratio: 5.0 (default 3.5)
 
     Tests per-index options via WITH clause:
-    - page_size, bloom_fpr, compression_level overrides
+    - page_size, bloom_fpr, compression_level, compression_dict overrides
     """
     custom_page_size = 16384  # 16K
     custom_range_size = 128 * 1024 * 1024  # 128M
@@ -3338,6 +3338,7 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
     secondary_index = i1.call("box.space._index:get", [space_id, 2])
     assert secondary_index is not None, "Secondary index should exist"
     assert_vinyl_opts(secondary_index, "Secondary index")
+    assert i1.eval("return box.space.vinyl_options_test.index.secondary.options.compression_dict") is False
 
     # Test per-index options via CREATE INDEX ... WITH (...)
     # These should override instance-level defaults
@@ -3349,7 +3350,8 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
         f"CREATE INDEX with_custom_opts ON vinyl_options_test (id) "
         f"WITH (page_size = {custom_index_page_size}, "
         f"bloom_fpr = {custom_index_bloom_fpr}, "
-        f"compression_level = {custom_index_compression_level})"
+        f"compression_level = {custom_index_compression_level}, "
+        f"compression_dict = true)"
     )
 
     custom_opts_index = i1.call("box.space._index:get", [space_id, 3])
@@ -3366,6 +3368,7 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
     assert opts.get("compression_level") == custom_index_compression_level, (
         f"Custom compression_level mismatch: expected {custom_index_compression_level}, got {opts}"
     )
+    assert opts.get("compression_dict") is True, f"Custom compression_dict mismatch: got {opts}"
 
     # Verify non-overridden options still use instance defaults
     assert opts.get("range_size") == custom_range_size, (
@@ -3391,7 +3394,8 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
         WITH (
             page_size = {table_page_size},
             bloom_fpr = {table_bloom_fpr},
-            compression_level = {table_compression_level}
+            compression_level = {table_compression_level},
+            compression_dict = true
         )
         DISTRIBUTED BY (id)
         """
@@ -3412,6 +3416,9 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
     assert pk_opts.get("compression_level") == table_compression_level, (
         f"Table pk compression_level mismatch: expected {table_compression_level}, got {pk_opts}"
     )
+    assert pk_opts.get("compression_dict") is True, f"Table pk compression_dict mismatch: got {pk_opts}"
+    pico_pk_opts = i1.call("box.space._pico_index:get", [space_id_with_opts, 0])[4]
+    assert {"compression_dict": True} in pico_pk_opts, f"_pico_index opts mismatch: got {pico_pk_opts}"
 
     # Check bucket_id index also has table-level options
     bucket_with_opts = i1.call("box.space._index:get", [space_id_with_opts, 1])
@@ -3426,6 +3433,7 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
     assert bucket_opts.get("compression_level") == table_compression_level, (
         f"Table bucket_id compression_level mismatch: expected {table_compression_level}, got {bucket_opts}"
     )
+    assert bucket_opts.get("compression_dict") is True, f"Table bucket_id compression_dict mismatch: got {bucket_opts}"
 
     # Verify non-specified options still use instance defaults
     assert pk_opts.get("range_size") == custom_range_size, (
@@ -3448,6 +3456,25 @@ def test_vinyl_options_applied_to_indices(cluster: Cluster):
             """
         )
     assert "table engine memtx does not support option page_size" in str(exc.value)
+
+    with pytest.raises(TarantoolError, match="table engine memtx does not support option compression_dict"):
+        i1.sql(
+            """
+            CREATE TABLE memtx_with_vinyl_opts (
+                id INT NOT NULL,
+                PRIMARY KEY (id)
+            ) USING memtx
+            WITH (compression_dict = true)
+            DISTRIBUTED BY (id)
+            """
+        )
+    i1.sql("CREATE TABLE memtx_table (id INT NOT NULL, PRIMARY KEY (id)) USING memtx DISTRIBUTED BY (id)")
+    with pytest.raises(TarantoolError, match="table engine memtx does not support option compression_dict"):
+        i1.sql("CREATE INDEX memtx_index ON memtx_table (id) WITH (compression_dict = false)")
+
+    # compression_dict takes a boolean only.
+    with pytest.raises(TarantoolError, match="rule parsing error"):
+        i1.sql("CREATE INDEX bad_compression_dict ON vinyl_options_test (data) WITH (compression_dict = 1)")
 
 
 def test_cannot_drop_primary_index(instance: Instance):

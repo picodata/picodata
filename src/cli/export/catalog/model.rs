@@ -141,6 +141,7 @@ pub enum RawIndexOption {
     RunCountPerLevel(u32),
     RunSizeRatio(DecimalLiteral),
     CompressionLevel(i8),
+    CompressionDict(bool),
     Unique(bool),
 }
 
@@ -157,6 +158,7 @@ impl RawIndexOption {
             Self::RunCountPerLevel(value) => ("run_count_per_level", value),
             Self::RunSizeRatio(value) => ("run_size_ratio", value),
             Self::CompressionLevel(value) => ("compression_level", value),
+            Self::CompressionDict(value) => ("compression_dict", value),
             Self::Unique(value) => ("unique", value),
         }
     }
@@ -170,6 +172,7 @@ impl RawIndexOption {
                 | Self::RunCountPerLevel(_)
                 | Self::RunSizeRatio(_)
                 | Self::CompressionLevel(_)
+                | Self::CompressionDict(_)
         )
     }
 }
@@ -190,6 +193,7 @@ fn assert_index_option_shape(original: crate::schema::IndexOption) {
         IndexOption::RunCountPerLevel(count) => RawIndexOption::RunCountPerLevel(count),
         IndexOption::RunSizeRatio(ratio) => RawIndexOption::RunSizeRatio(ratio.to_string().into()),
         IndexOption::CompressionLevel(level) => RawIndexOption::CompressionLevel(level),
+        IndexOption::CompressionDict(enabled) => RawIndexOption::CompressionDict(enabled),
         IndexOption::Unique(unique) => RawIndexOption::Unique(unique),
     };
 }
@@ -407,6 +411,10 @@ mod tests {
             (
                 IndexOption::CompressionLevel(3),
                 RawIndexOption::CompressionLevel(3),
+            ),
+            (
+                IndexOption::CompressionDict(true),
+                RawIndexOption::CompressionDict(true),
             ),
             (IndexOption::Unique(true), RawIndexOption::Unique(true)),
         ];

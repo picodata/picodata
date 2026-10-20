@@ -1616,6 +1616,9 @@ fn build_vinyl_index_options(vinyl_options: &VinylOptions) -> traft::Result<Vec<
     if let Some(compression_level) = vinyl_options.compression_level {
         opts.push(IndexOption::CompressionLevel(compression_level));
     }
+    if let Some(compression_dict) = vinyl_options.compression_dict {
+        opts.push(IndexOption::CompressionDict(compression_dict));
+    }
     Ok(opts)
 }
 

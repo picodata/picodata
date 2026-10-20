@@ -303,6 +303,7 @@ mod tests {
             RawIndexOption::Unique(true),
             RawIndexOption::RunSizeRatio("3.5".into()),
             RawIndexOption::BloomFalsePositiveRate("0.125".into()),
+            RawIndexOption::CompressionDict(true),
         ];
 
         // `unique` belongs to the index, not to the table options.
@@ -313,7 +314,7 @@ mod tests {
             PRIMARY KEY (id)
         )
         USING vinyl
-        WITH (bloom_fpr = 0.125, page_size = 1024, run_size_ratio = 3.5)
+        WITH (bloom_fpr = 0.125, compression_dict = true, page_size = 1024, run_size_ratio = 3.5)
         DISTRIBUTED BY (id) IN TIER default;
         ");
     }

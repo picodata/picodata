@@ -3064,6 +3064,9 @@ pub(in crate::frontend::sql) fn parse_create_index(
                             vinyl_options.compression_level =
                                 Some(parse_option_value(ast, param_node, "compression_level")?)
                         }
+                        Rule::CompressionDict => {
+                            vinyl_options.compression_dict = Some(bool_value(param_node))
+                        }
                         Rule::Dimension => {
                             dimension = Some(parse_option_value(ast, param_node, "dimension")?)
                         }
@@ -3492,6 +3495,10 @@ pub(in crate::frontend::sql) fn parse_create_table(
                         Rule::CompressionLevel => {
                             vinyl_options.compression_level =
                                 Some(parse_option_value(ast, param_node, "compression_level")?);
+                        }
+                        Rule::CompressionDict => {
+                            let value = ast.nodes.get_node(param_node.children[0])?;
+                            vinyl_options.compression_dict = Some(value.rule == Rule::True);
                         }
                         _ => {
                             return Err(SbroadError::Invalid(

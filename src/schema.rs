@@ -392,6 +392,9 @@ pub enum IndexOption {
     /// Vinyl only. Compression level (-7 to 22).
     #[serde(rename = "compression_level")]
     CompressionLevel(i8),
+    /// Vinyl only. Enables ZSTD dictionary-based compression.
+    #[serde(rename = "compression_dict")]
+    CompressionDict(bool),
     /// Specify whether the index is unique. When true, the index cannot contain duplicate values.
     #[serde(rename = "unique")]
     Unique(bool),
@@ -418,6 +421,9 @@ impl IndexOption {
             IndexOption::CompressionLevel(level) => {
                 ("compression_level".into(), Value::Num((*level).into()))
             }
+            IndexOption::CompressionDict(enabled) => {
+                ("compression_dict".into(), Value::Bool(*enabled))
+            }
             IndexOption::Unique(unique) => ("unique".into(), Value::Bool(*unique)),
         }
     }
@@ -431,6 +437,7 @@ impl IndexOption {
                 | IndexOption::RunCountPerLevel(_)
                 | IndexOption::RunSizeRatio(_)
                 | IndexOption::CompressionLevel(_)
+                | IndexOption::CompressionDict(_)
         )
     }
 
@@ -453,6 +460,7 @@ impl IndexOption {
             IndexOption::RunCountPerLevel(_) => "run_count_per_level",
             IndexOption::RunSizeRatio(_) => "run_size_ratio",
             IndexOption::CompressionLevel(_) => "compression_level",
+            IndexOption::CompressionDict(_) => "compression_dict",
             IndexOption::Unique(_) => "unique",
         }
     }
@@ -593,6 +601,7 @@ impl From<IndexDef> for IndexOptions {
                 IndexOption::RunCountPerLevel(count) => opts.run_count_per_level = Some(count),
                 IndexOption::RunSizeRatio(ratio) => opts.run_size_ratio = Some(dec_to_f32(ratio)),
                 IndexOption::CompressionLevel(level) => opts.compression_level = Some(level),
+                IndexOption::CompressionDict(enabled) => opts.compression_dict = Some(enabled),
                 IndexOption::Hint(_) => {
                     // FIXME: `hint` option is disabled in Tarantool module.
                 }

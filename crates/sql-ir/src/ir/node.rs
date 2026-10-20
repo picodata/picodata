@@ -1045,6 +1045,7 @@ pub struct VinylOptions {
     pub run_count_per_level: Option<u32>,
     pub run_size_ratio: Option<Double>,
     pub compression_level: Option<i8>,
+    pub compression_dict: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
