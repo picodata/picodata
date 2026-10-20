@@ -3271,6 +3271,152 @@ fn front_sql_groupby_unresolved_alias_fails_the_statement() {
 }
 
 #[test]
+fn front_sql_groupby_alias_of_subquery() {
+    let input = r#"explain (logical) SELECT (SELECT 1) AS s FROM "t5" GROUP BY s"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::int -> s)
+      group by (gr_expr_1::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (ROW($0) -> gr_expr_1)
+            group by (ROW($0))
+              scan t5
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+    ");
+}
+
+#[test]
+fn front_sql_groupby_alias_of_in_subquery() {
+    let input =
+        r#"explain (logical) SELECT "b" IN (SELECT "a" FROM "t5") AS s FROM "t5" GROUP BY s"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::bool -> s)
+      group by (gr_expr_1::bool)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.b::int in ROW($0) -> gr_expr_1)
+            group by (t5.b::int in ROW($0))
+              scan t5
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t5.a::int -> a)
+            scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_nested_alias_of_subquery() {
+    let input = r#"explain (logical) SELECT "b" IN (SELECT "a" FROM "t5") AS s, count(*) FROM "t5"
+        GROUP BY s, NOT s"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::bool -> s, sum(count_1::int::int)::int::int -> col_1)
+      group by (gr_expr_1::bool, gr_expr_2::bool)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.b::int in ROW($0) -> gr_expr_1, not t5.b::int in ROW($0) -> gr_expr_2, count(*)::int -> count_1)
+            group by (t5.b::int in ROW($0), not t5.b::int in ROW($0))
+              scan t5
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t5.a::int -> a)
+            scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_nested_alias_of_colocated_subquery() {
+    // `a IN` needs no motion over the subquery, while `NOT s` does.
+    let input = r#"explain (logical) SELECT "a" IN (SELECT "a" FROM "t5") AS s, count(*) FROM "t5"
+        GROUP BY s, NOT s"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (gr_expr_1::bool -> s, sum(count_1::int::int)::int::int -> col_1)
+      group by (gr_expr_1::bool, gr_expr_2::bool)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.a::int in ROW($0) -> gr_expr_1, not t5.a::int in ROW($0) -> gr_expr_2, count(*)::int -> count_1)
+            group by (t5.a::int in ROW($0), not t5.a::int in ROW($0))
+              scan t5
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t5.a::int -> a)
+            scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_repeated_alias_of_subquery_with_window() {
+    let input = r#"explain (logical) SELECT "b" IN (SELECT "a" FROM "t5") AS s, count(*) OVER ()
+        FROM "t5" GROUP BY s, s"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (t5.b::int in ROW($0) -> s, count(*) over () -> col_1)
+      group by (t5.b::int in ROW($0), t5.b::int in ROW($0))
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t5.bucket_id::int -> bucket_id, t5.a::int -> a, t5.b::int -> b)
+            scan t5
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t5.a::int -> a)
+            scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_alias_of_subquery_global() {
+    let input = r#"explain (logical) SELECT "a" IN (SELECT "a" FROM "t5") AS s FROM "global_t"
+        GROUP BY s"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (global_t.a::int in ROW($0) -> s)
+      group by (global_t.a::int in ROW($0))
+        scan global_t
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t5.a::int -> a)
+            scan t5
+    ");
+}
+
+#[test]
+fn front_sql_groupby_alias_of_nested_subquery_single_shard() {
+    let input = r#"explain (logical) SELECT "b" IN (
+            SELECT "a" FROM "t5" WHERE "b" IN (SELECT "a" FROM "t5")
+        ) AS s FROM "t5" WHERE "a" = 1 GROUP BY s"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (t5.b::int in ROW($1) -> s)
+      group by (t5.b::int in ROW($1))
+        selection (t5.a::int = 1::int)
+          scan t5
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t5.a::int -> a)
+            scan t5
+    subquery $1:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t5.a::int -> a)
+            selection (t5.b::int in ROW($0))
+              scan t5
+    ");
+}
+
+#[test]
 fn front_sql_groupby_with_aggregates() {
     let input = r#"
         explain (logical) select * from (select "a", "b", sum("c") as "c" from "t" group by "a", "b") as t1

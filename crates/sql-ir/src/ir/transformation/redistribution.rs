@@ -2622,6 +2622,9 @@ impl Plan {
                 }) => {
                     // Picodata for distributed SQL `DISTINCT` operator logic uses GroupBy
                     // For now GroupBy inside Projection (if it is) is USER defined
+                    if let Some(group_by_id) = group_by {
+                        self.adopt_groupby_sq_motions(id, group_by_id)?;
+                    }
                     let strategy = self.resolve_sq_conflicts(id, output)?;
                     let correct_rel_ids = strategy.get_rel_ids();
                     self.insert_motion_nodes(strategy)?;
@@ -2641,6 +2644,9 @@ impl Plan {
                             self.set_rel_distr(id, dist)?;
                         } else {
                             self.set_rel_distr(id, target_dist.clone())?;
+                        }
+                        if let Some(group_by_id) = group_by {
+                            self.share_groupby_subqueries(id, group_by_id)?;
                         }
                         continue;
                     }
@@ -2670,6 +2676,7 @@ impl Plan {
                         if let Some(having_id) = having {
                             self.set_rel_distr(having_id, Distribution::Single)?;
                         }
+                        self.share_groupby_subqueries(id, group_by_id)?;
                         // Nothing else to do here.
                         continue;
                     }
@@ -2686,6 +2693,11 @@ impl Plan {
                         // If we have window functions without aggregates, lets deal with them.
                         let strategy = self.resolve_window_conflicts(id)?;
                         self.insert_motion_nodes(strategy)?;
+                    }
+
+                    // A GroupBy gets here only when it runs on a single node.
+                    if let Some(group_by_id) = group_by {
+                        self.share_groupby_subqueries(id, group_by_id)?;
                     }
 
                     // Just take distribution from projection's child.

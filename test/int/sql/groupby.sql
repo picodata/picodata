@@ -1475,6 +1475,159 @@ SELECT b x, count(*) OVER () FROM gb_alias GROUP BY x, x ORDER BY x;
 1, 2,
 2, 2
 
+-- TEST: test_groupby_subquery_alias-1.1
+-- SQL:
+EXPLAIN SELECT (SELECT 1) AS s FROM gb_alias GROUP BY s;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (gr_expr_1::int -> s)
+  group by (gr_expr_1::int)
+    motion [policy: full, program: ReshardIfNeeded]
+      projection (ROW($0) -> gr_expr_1)
+        group by (ROW($0))
+          scan gb_alias
+subquery $0:
+  scan
+    projection (1::int -> col_1)
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets <= [1-3000]
+
+-- TEST: test_groupby_subquery_alias-1.2
+-- SQL:
+SELECT b IN (SELECT a FROM gb_alias WHERE a < 2) AS s, count(*) FROM gb_alias
+GROUP BY s ORDER BY s;
+-- EXPECTED:
+false, 2,
+true, 4
+
+-- TEST: test_groupby_subquery_alias-1.3
+-- SQL:
+SELECT b IN (SELECT b FROM gb_alias WHERE a IN (SELECT a FROM gb_alias WHERE a < 3)) AS s,
+count(*) OVER () FROM gb_alias GROUP BY s ORDER BY s;
+-- EXPECTED:
+false, 2,
+true, 2
+
+-- TEST: test_groupby_subquery_alias-1.4
+-- SQL:
+WITH c AS (SELECT a FROM gb_alias WHERE a < 2)
+SELECT b IN (SELECT a FROM c) AS s, count(*) FROM gb_alias
+WHERE a IN (SELECT a FROM c) OR a > 10 GROUP BY s ORDER BY s;
+-- EXPECTED:
+false, 1,
+true, 3
+
+-- TEST: test_groupby_subquery_alias-1.5
+-- SQL:
+DROP TABLE IF EXISTS gb_alias_g;
+CREATE TABLE gb_alias_g (a INT PRIMARY KEY, b INT) DISTRIBUTED GLOBALLY;
+INSERT INTO gb_alias_g VALUES (1, 1), (2, 2), (3, 3);
+
+-- TEST: test_groupby_subquery_alias-1.6
+-- SQL:
+SELECT a IN (SELECT b FROM gb_alias) AS s, count(*) FROM gb_alias_g GROUP BY s ORDER BY s;
+-- EXPECTED:
+false, 1,
+true, 2
+
+-- TEST: test_groupby_subquery_alias-1.7
+-- SQL:
+SELECT b IN (SELECT b FROM gb_alias WHERE a IN (SELECT a FROM gb_alias WHERE a < 3)) AS s
+FROM gb_alias WHERE a = 3 GROUP BY s;
+-- EXPECTED:
+false
+
+-- TEST: test_groupby_subquery_alias-1.8
+-- SQL:
+SELECT b IN (SELECT a FROM gb_alias WHERE a < 2) AS s, count(*) FROM gb_alias
+GROUP BY s, NOT s ORDER BY s;
+-- EXPECTED:
+false, 2,
+true, 4
+
+-- TEST: test_groupby_subquery_alias-1.9
+-- SQL:
+SELECT b IN (SELECT a FROM gb_alias WHERE a < 2) AS s, count(*) OVER () FROM gb_alias
+GROUP BY s, s ORDER BY s;
+-- EXPECTED:
+false, 2,
+true, 2
+
+-- TEST: test_groupby_subquery_alias-1.10
+-- SQL:
+SELECT a IN (SELECT a FROM gb_alias WHERE a < 3) AS s, count(*) FROM gb_alias
+GROUP BY s, NOT s ORDER BY s;
+-- EXPECTED:
+false, 4,
+true, 2
+
+-- TEST: test_groupby_subquery_alias-1.11
+-- SQL:
+EXPLAIN SELECT a IN (SELECT a FROM gb_alias WHERE a < 3) AS s, count(*) FROM gb_alias
+GROUP BY s, NOT s;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (gr_expr_1::bool -> s, sum(count_1::int::int)::int::int -> col_1)
+  group by (gr_expr_1::bool, gr_expr_2::bool)
+    motion [policy: full, program: ReshardIfNeeded]
+      projection (gb_alias.a::int in ROW($0) -> gr_expr_1, not gb_alias.a::int in ROW($0) -> gr_expr_2, count(*)::int -> count_1)
+        group by (gb_alias.a::int in ROW($0), not gb_alias.a::int in ROW($0))
+          scan gb_alias
+subquery $0:
+  motion [policy: full, program: ReshardIfNeeded]
+    scan
+      projection (gb_alias.a::int -> a)
+        selection (gb_alias.a::int < 3::int)
+          scan gb_alias
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets <= [1-3000]
+
+-- TEST: test_groupby_subquery_alias-1.12
+-- SQL:
+SELECT a IN (SELECT a FROM gb_alias WHERE a < 3) AS s, count(*) FROM gb_alias
+GROUP BY NOT s, s ORDER BY s;
+-- EXPECTED:
+false, 4,
+true, 2
+
+-- TEST: test_groupby_subquery_alias-1.13
+-- SQL:
+SELECT a IN (SELECT a FROM gb_alias WHERE a < 3) AS s, b, count(*) FROM gb_alias
+GROUP BY s, NOT s, b ORDER BY s, b;
+-- EXPECTED:
+false, 1, 2,
+false, 2, 2,
+true, 1, 2
+
+-- TEST: test_groupby_subquery_alias-1.14
+-- SQL:
+SELECT a IN (SELECT a FROM gb_alias WHERE a < 3) AS s, count(*) FROM gb_alias
+WHERE a = 1 GROUP BY s, NOT s;
+-- EXPECTED:
+true, 1
+
+-- TEST: test_groupby_subquery_alias-1.15
+-- SQL:
+SELECT a IN (SELECT a FROM gb_alias WHERE a < 3) AS s, count(*) OVER () FROM gb_alias
+GROUP BY s, NOT s ORDER BY s;
+-- EXPECTED:
+false, 2,
+true, 2
+
 -- TEST: test_groupby_current_date
 -- SQL:
 SELECT count(*) FROM "arithmetic_space" GROUP BY current_date;

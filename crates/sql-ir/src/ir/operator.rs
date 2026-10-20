@@ -1352,6 +1352,39 @@ impl Plan {
         Ok(sel_id)
     }
 
+    /// Copy the select-list expression behind a GROUP BY alias into a grouping
+    /// expression of `group_by_id`.
+    fn clone_groupby_alias_expr(
+        &mut self,
+        alias_child: NodeId,
+        proj_target_id: NodeId,
+        group_by_id: NodeId,
+        groupby_target_rel: NodeId,
+    ) -> Result<NodeId, SbroadError> {
+        let new_top_id = SubtreeCloner::clone_subtree(self, alias_child)?;
+
+        // Retarget cloned references from Projection/Having to
+        // the GroupBy input. Safe because the column positions
+        // and types are identical (see `fix_groupby_aliases` comment
+        // in `resolve_metadata`).
+        self.replace_target_in_subtree(new_top_id, proj_target_id, groupby_target_rel)?;
+
+        // The subqueries are children of the Projection, but the copy is
+        // evaluated in the GroupBy, so they become children of the GroupBy too.
+        for ref_id in self.get_sq_refs_from_subtree(new_top_id)? {
+            let sq_id = self.get_relational_from_reference_node(ref_id)?;
+            if !self
+                .get_relation_subqueries(group_by_id)?
+                .iter()
+                .any(|id| *id == sq_id)
+            {
+                self.get_mut_relation_node(group_by_id)?.add_sq_child(sq_id);
+            }
+        }
+
+        Ok(new_top_id)
+    }
+
     /// Fix aliases in GroupBy nodes
     ///
     /// Query example:
@@ -1438,18 +1471,12 @@ impl Plan {
                 let mut idx_to_new_child = Vec::with_capacity(gr_aliases.len());
                 for (name, idx) in gr_aliases {
                     if let Some(alias_child) = col_aliases.get(&name) {
-                        let new_top_id = SubtreeCloner::clone_subtree(self, *alias_child)?;
-
-                        // Retarget cloned references from Projection/Having to
-                        // the GroupBy input. Safe because the column positions
-                        // and types are identical (see `fix_groupby_aliases` comment
-                        // in `resolve_metadata`).
-                        self.replace_target_in_subtree(
-                            new_top_id,
+                        let new_top_id = self.clone_groupby_alias_expr(
+                            *alias_child,
                             proj_target_id,
+                            group_by_id,
                             groupby_target_rel,
                         )?;
-
                         idx_to_new_child.push((idx, new_top_id));
                     } else {
                         return Err(SbroadError::NotFound(
@@ -1526,12 +1553,10 @@ impl Plan {
                     ));
 
                     if let Some(target_id) = col_aliases.get(&name) {
-                        let new_top_id = SubtreeCloner::clone_subtree(self, *target_id)?;
-                        // Same retargeting as the top-level alias branch above:
-                        // redirect cloned references to the GroupBy input.
-                        self.replace_target_in_subtree(
-                            new_top_id,
+                        let new_top_id = self.clone_groupby_alias_expr(
+                            *target_id,
                             proj_target_id,
+                            group_by_id,
                             groupby_target_rel,
                         )?;
                         self.replace_expression(parent_id, alias_id, new_top_id)?;

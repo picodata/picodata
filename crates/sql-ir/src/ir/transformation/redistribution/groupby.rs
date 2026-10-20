@@ -8,7 +8,7 @@ use crate::ir::expression::{ColumnPositionMap, Comparator, Position, EXPR_HASH_D
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    GroupBy, Having, NodeId, Projection, Reference, ReferenceTarget, SubQueryReference,
+    GroupBy, Having, Motion, NodeId, Projection, Reference, ReferenceTarget, SubQueryReference,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
@@ -460,6 +460,86 @@ impl Plan {
         self.get_mut_relation_node(rel_id)?.set_subqueries(kept);
 
         Ok(())
+    }
+
+    /// Make the Projection use the GroupBy's motion over a subquery they share,
+    /// so its select-list expression still matches the grouping expression.
+    pub(super) fn adopt_groupby_sq_motions(
+        &mut self,
+        proj_id: NodeId,
+        group_by_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        let gb_sqs = self.get_relation_subqueries(group_by_id)?.to_vec();
+        let proj_sqs = self.get_relation_subqueries(proj_id)?.to_vec();
+        let mut new_sqs = Vec::with_capacity(proj_sqs.len());
+        let mut changed = false;
+        for sq_id in proj_sqs {
+            let mut motion = None;
+            for gb_sq_id in &gb_sqs {
+                if let Relational::Motion(Motion {
+                    child: Some(child), ..
+                }) = self.get_relation_node(*gb_sq_id)?
+                {
+                    if *child == sq_id {
+                        motion = Some(*gb_sq_id);
+                        break;
+                    }
+                }
+            }
+            if let Some(motion_id) = motion {
+                self.replace_target_in_relational(proj_id, sq_id, motion_id)?;
+                new_sqs.push(motion_id);
+                changed = true;
+            }
+            // Window expressions are not retargeted.
+            new_sqs.push(sq_id);
+        }
+        if !changed {
+            return Ok(());
+        }
+        self.set_relational_subqueries(proj_id, new_sqs);
+        self.prune_unreferenced_subqueries(proj_id)
+    }
+
+    /// Without two-stage aggregation, a Projection runs in the same SQL fragment
+    /// as its GroupBy. Point every Projection subquery equal to a GroupBy one
+    /// (e.g. a subquery written out both in the select list and in GROUP BY)
+    /// at the GroupBy's, so that the subquery and its motion run once.
+    pub(super) fn share_groupby_subqueries(
+        &mut self,
+        proj_id: NodeId,
+        group_by_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        let gb_sqs = self.get_relation_subqueries(group_by_id)?.to_vec();
+        if gb_sqs.is_empty() {
+            return Ok(());
+        }
+
+        let proj_sqs = self.get_relation_subqueries(proj_id)?.to_vec();
+        let mut new_sqs = Vec::with_capacity(proj_sqs.len() + gb_sqs.len());
+        for sq_id in proj_sqs {
+            let comparator = Comparator::new_structural(self);
+            let mut equal_gb_sq = None;
+            for gb_sq_id in &gb_sqs {
+                if comparator.are_rel_subtrees_equal(sq_id, *gb_sq_id)? {
+                    equal_gb_sq = Some(*gb_sq_id);
+                    break;
+                }
+            }
+            if let Some(gb_sq_id) = equal_gb_sq {
+                self.replace_target_in_relational(proj_id, sq_id, gb_sq_id)?;
+                if !new_sqs.contains(&gb_sq_id) {
+                    new_sqs.push(gb_sq_id);
+                }
+            }
+            // Window expressions are not retargeted: the pruning below keeps
+            // the subquery while they still use it.
+            if !new_sqs.contains(&sq_id) {
+                new_sqs.push(sq_id);
+            }
+        }
+        self.set_relational_subqueries(proj_id, new_sqs);
+        self.prune_unreferenced_subqueries(proj_id)
     }
 
     /// Fill grouping expression map (see comments next to

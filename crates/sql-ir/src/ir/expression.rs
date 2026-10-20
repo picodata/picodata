@@ -800,7 +800,11 @@ impl<'plan> Comparator<'plan> {
     ///
     /// Scan aliases take no part in the comparison. An alias is a scope-local name
     /// consumed by the frontend during name resolution.
-    fn are_rel_subtrees_equal(&self, lhs: NodeId, rhs: NodeId) -> Result<bool, SbroadError> {
+    pub(crate) fn are_rel_subtrees_equal(
+        &self,
+        lhs: NodeId,
+        rhs: NodeId,
+    ) -> Result<bool, SbroadError> {
         // Besides being a shortcut, this keeps subtrees shared between the compared
         // nodes (e.g. the body of a CTE scanned twice) from being walked again.
         if lhs == rhs {
