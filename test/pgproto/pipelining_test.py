@@ -2,6 +2,11 @@ import psycopg
 from conftest import Postgres
 import pytest
 
+# pg8000 lets us send protocol messages one by one.
+import pg8000.native as pg  # type: ignore
+from pg8000.core import NULL_BYTE, Context  # type: ignore
+from pg8000.exceptions import DatabaseError  # type: ignore
+
 
 def test_pipelined_messages(postgres: Postgres):
     user = "postgres"
@@ -112,3 +117,28 @@ def test_pipeline_restores_after_error(postgres: Postgres):
     cur = conn.execute(" SELECT * FROM test;")
     results = cur.fetchall()
     assert sorted(results) == [(1,), (2,), (3,)]
+
+
+def test_failed_query_in_unsynced_pipeline(postgres: Postgres):
+    user = "postgres"
+    password = "P@ssw0rd"
+
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
+    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
+    conn.run("create table t (id integer not null, primary key (id)) distributed by (id)")
+    # Fail with a timeout and not hang if ReadyForQuery does not come.
+    conn._usock.settimeout(10)
+
+    # Parse, Bind and Execute with no Sync, then a failing Query.
+    # Query ends the extended query, so the server must not wait for Sync
+    # after the error and must send ReadyForQuery.
+    conn.send_PARSE(NULL_BYTE, "insert into t values (1)")
+    conn.send_BIND(NULL_BYTE, ())
+    conn.send_EXECUTE()
+    conn.send_QUERY("select * from no_such_table")
+    conn._sock.flush()
+    with pytest.raises(DatabaseError, match="no_such_table"):
+        conn.handle_messages(Context(None))
+
+    assert conn.run("select * from t") == [[1]]

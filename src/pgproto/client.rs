@@ -118,8 +118,10 @@ impl<S: io::Read + io::Write> PgClient<S> {
         match message {
             FeMessage::Query(query) => {
                 tlog!(Debug, "executing simple query: {}", query.query);
-                simple_query::process_query_message(&mut self.stream, &self.backend, query)?;
+                // Query ends an unsynced extended query even if it fails,
+                // so process_error must not wait for Sync.
                 self.loop_state = MessageLoopState::ReadyForQuery;
+                simple_query::process_query_message(&mut self.stream, &self.backend, query)?;
             }
             FeMessage::Parse(parse) => {
                 tlog!(
