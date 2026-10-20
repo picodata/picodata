@@ -1090,7 +1090,10 @@ docker-compose:
   script:
     - cd docker
     - mkdir --mode=777 pico/
-    - docker-compose up -d --wait
+    # Pull explicitly so that a missing image fails here instead of
+    # silently falling back to a source build without submodules
+    - docker-compose pull
+    - docker-compose up -d --wait --no-build
     - sleep 30 # the cluster does not manage to assemble quickly enough
     - count=$(psql "user=admin host=127.0.0.1 port=55432 password=T0psecret sslmode=disable" -t -A -c "select count(*) from \"_pico_instance\"") && if [[ $count -eq 4 ]] ; then echo "OK"; else echo count=$count; exit 2; fi
   after_script:
