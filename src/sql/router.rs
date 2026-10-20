@@ -28,6 +28,7 @@ use tarantool::time::Instant;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::audit;
@@ -256,7 +257,9 @@ type IsAuditEnabledFunc = fn(&Plan) -> Result<bool, SbroadError>;
 
 #[allow(clippy::module_name_repetitions)]
 pub struct RouterRuntime {
-    metadata: Mutex<RouterMetadata>,
+    /// Each runtime is used by one fiber only, so a `RefCell` is enough. A
+    /// fiber `Mutex` would allocate a latch for each runtime.
+    metadata: RefCell<RouterMetadata>,
     ir_cache: Rc<Mutex<PicoRouterCache>>,
     is_audit_enabled_func: IsAuditEnabledFunc,
 }
@@ -270,7 +273,7 @@ impl RouterRuntime {
     pub fn new() -> Self {
         let metadata = RouterMetadata::default();
         let runtime = PLAN_CACHE.with(|cache| RouterRuntime {
-            metadata: Mutex::new(metadata),
+            metadata: RefCell::new(metadata),
             ir_cache: cache.clone(),
             is_audit_enabled_func: audit::policy::is_dml_audit_enabled_for_user,
         });
@@ -857,10 +860,7 @@ pub struct RouterMetadata {
     pub cache_capacity: usize,
 
     /// Bucket column name.
-    pub sharding_column: String,
-
-    /// IR functions
-    pub functions: HashMap<SmolStr, Function>,
+    pub sharding_column: &'static str,
 }
 
 impl Default for RouterMetadata {
@@ -874,19 +874,24 @@ pub const DEFAULT_QUERY_TIMEOUT: Duration = Duration::from_secs(360);
 impl RouterMetadata {
     #[must_use]
     pub fn new() -> Self {
-        let builtins = get_builtin_functions();
-        let mut functions = HashMap::with_capacity(builtins.len());
-        for f in builtins {
-            functions.insert(f.name.clone(), f.clone());
-        }
-
         RouterMetadata {
             waiting_timeout: DEFAULT_QUERY_TIMEOUT,
             cache_capacity: DEFAULT_CAPACITY,
-            sharding_column: DEFAULT_BUCKET_ID_COLUMN_NAME.to_string(),
-            functions,
+            sharding_column: DEFAULT_BUCKET_ID_COLUMN_NAME,
         }
     }
+}
+
+/// Map of the builtin SQL functions by name. It does not change, so it is
+/// built once and not for each [`RouterMetadata`].
+fn builtin_functions() -> &'static HashMap<SmolStr, Function> {
+    static FUNCTIONS: OnceLock<HashMap<SmolStr, Function>> = OnceLock::new();
+    FUNCTIONS.get_or_init(|| {
+        get_builtin_functions()
+            .iter()
+            .map(|f| (f.name.clone(), f.clone()))
+            .collect()
+    })
 }
 
 impl Metadata for RouterMetadata {
@@ -909,7 +914,7 @@ impl Metadata for RouterMetadata {
     }
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
-        match self.functions.get(fn_name) {
+        match builtin_functions().get(fn_name) {
             Some(v) => Ok(v),
             None => Err(SbroadError::NotFound(
                 Entity::SQLFunction,
@@ -924,7 +929,7 @@ impl Metadata for RouterMetadata {
     }
 
     fn sharding_column(&self) -> &str {
-        self.sharding_column.as_str()
+        self.sharding_column
     }
 
     /// Get sharding key's column names by a space name
