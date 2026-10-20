@@ -19,6 +19,7 @@ pub mod redistribution;
 pub mod restriction;
 mod split_columns;
 
+use crate::ir::PlanKind;
 use ahash::AHashMap;
 use smol_str::format_smolstr;
 
@@ -26,7 +27,7 @@ use super::node::expression::Expression;
 use super::node::relational::{MutRelational, Relational};
 use super::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
 use crate::errors::SbroadError;
-use crate::ir::node::block::{Block, BlockOwned, MutBlock};
+use crate::ir::node::block::{BlockOwned, MutBlock};
 use crate::ir::node::{
     AnonymousBlock, BlockEntriesMut, BoolExpr, Insert, Join, Motion, NodeId, Selection, Values,
 };
@@ -319,13 +320,12 @@ impl Plan {
     /// # Errors
     /// - Invalid options or a failed optimizer pass.
     pub fn optimize_statement(mut self) -> Result<Self, SbroadError> {
-        if self.is_dql_or_dml()? {
+        if self.top_is(PlanKind::DQL | PlanKind::DML)? {
             self.check_raw_options()?;
             self = self.optimize()?;
-        } else if self.is_block()? {
+        } else if self.top_is(PlanKind::BLOCK)? {
             self.check_raw_options()?;
-            let top = self.get_top().expect("must be set");
-            if let Block::Anonymous(_) = self.get_block_node(top)? {
+            if self.top_is(PlanKind::TXN_BLOCK)? {
                 self = self.optimize_block()?;
             }
         }
@@ -354,13 +354,13 @@ impl Plan {
 
         if self.is_empty() {
             // Empty query, do nothing
-        } else if self.is_dql_or_dml()? {
+        } else if self.top_is(PlanKind::DQL | PlanKind::DML)? {
             self.bind_params(params, default_options)?;
             self = self
                 .update_timestamps()?
                 .cast_constants()?
                 .fold_boolean_tree()?;
-        } else if self.is_block()? {
+        } else if self.top_is(PlanKind::BLOCK)? {
             self.bind_params(params, default_options)?;
             // A prepared block plan is cloned per execution and `BlockCache`
             // memoizes the constant ids and pattern hash of the first one,

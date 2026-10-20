@@ -6,6 +6,7 @@ use smol_str::ToSmolStr;
 use sql::errors::SbroadError;
 use sql::ir;
 use sql::ir::value::{DisplayValues, Value};
+use sql::ir::PlanKind;
 use tarantool::session::with_su;
 
 pub type AuditPolicyId = u32;
@@ -41,7 +42,7 @@ pub fn is_dml_audit_enabled_for_user(plan: &ir::Plan) -> Result<bool, SbroadErro
     if !crate::audit::is_enabled() {
         return Ok(false);
     }
-    if !plan.is_dml()? {
+    if !plan.top_is(PlanKind::DML)? {
         return Ok(false);
     }
 

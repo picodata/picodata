@@ -20,6 +20,7 @@ use sql::ir::node::NodeId;
 use sql::ir::options::Forward;
 use sql::ir::value::{MsgPackValue, Value};
 use sql::ir::Plan;
+use sql::ir::PlanKind;
 use sql::utils::MutexLike;
 use tarantool::fiber::Mutex;
 use tarantool::session::with_su;
@@ -519,7 +520,7 @@ impl Router for RouterRuntime {
             .try_current_value()
             .unwrap_or(crate::config::DEFAULT_SQL_LOG);
         // Do not want to log passwords from ACL.
-        Ok(config_enabled && !plan.is_acl()?)
+        Ok(config_enabled && !plan.top_is(PlanKind::ACL)?)
     }
 
     fn get_scheduler_options(&self) -> SchedulerOptions {

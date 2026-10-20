@@ -15,6 +15,7 @@ use sql_ir::ir::bucket::Buckets;
 use sql_ir::ir::node::block::{Block, BlockOwned};
 use sql_ir::ir::node::{AnonymousBlock, BlockEntries, BlockStatement};
 use sql_ir::ir::options::OptionKind;
+use sql_ir::ir::PlanKind;
 use sql_ir::ir::{value::Value, ExplainOptions, Plan};
 use std::fmt::Write as _;
 
@@ -82,7 +83,7 @@ where
             writeln!(&mut buf).unwrap();
         }
 
-        if exec_query.is_block()? {
+        if exec_query.top_is(PlanKind::BLOCK)? {
             let exec_plan = exec_query.get_exec_plan();
             let top_id = exec_plan.get_ir_plan().get_top()?;
             let block = exec_plan.get_ir_plan().get_owned_block_node(top_id)?;

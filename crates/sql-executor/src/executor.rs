@@ -34,6 +34,7 @@ use crate::ir::node::{Insert, Motion, NodeId};
 use crate::ir::options::Forward;
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::value::Value;
+use crate::ir::PlanKind;
 use crate::ir::{Plan, Slices};
 use smol_str::format_smolstr;
 use sql_ir::ir::bucket::BucketSet;
@@ -339,7 +340,7 @@ where
     /// - Failed to get plan top.
     pub fn dispatch<'p>(&mut self, port: &mut impl Port<'p>) -> Result<(), SbroadError> {
         let top_id = self.exec_plan.get_ir_plan().get_top()?;
-        if self.exec_plan.get_ir_plan().is_block()? {
+        if self.exec_plan.get_ir_plan().top_is(PlanKind::BLOCK)? {
             let block = self.exec_plan.get_ir_plan().get_owned_block_node(top_id)?;
             let BlockOwned::Anonymous(block) = block else {
                 unreachable!("plan.is_block() returned true, but top is {block:?}")
@@ -411,22 +412,6 @@ where
         self.exec_plan.get_ir_plan().is_explain()
     }
 
-    pub fn is_block(&self) -> Result<bool, SbroadError> {
-        self.exec_plan.get_ir_plan().is_block()
-    }
-
-    pub fn is_ddl(&self) -> Result<bool, SbroadError> {
-        self.exec_plan.get_ir_plan().is_ddl()
-    }
-
-    pub fn is_acl(&self) -> Result<bool, SbroadError> {
-        self.exec_plan.get_ir_plan().is_acl()
-    }
-
-    pub fn is_tcl(&self) -> Result<bool, SbroadError> {
-        self.exec_plan.get_ir_plan().is_tcl()
-    }
-
     #[cfg(test)]
     pub fn get_motion_id(&self, slice_id: usize, pos_idx: usize) -> NodeId {
         *self
@@ -439,20 +424,21 @@ where
             .unwrap()
     }
 
-    pub fn is_plugin(&self) -> Result<bool, SbroadError> {
-        self.exec_plan.get_ir_plan().is_plugin()
+    /// Returns the kind of the plan, see [`Plan::top_kind`].
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is not a statement.
+    pub fn top_kind(&self) -> Result<PlanKind, SbroadError> {
+        self.exec_plan.get_ir_plan().top_kind()
     }
 
-    pub fn is_backup(&self) -> Result<bool, SbroadError> {
-        self.exec_plan.get_ir_plan().is_backup()
-    }
-
-    pub fn is_deallocate(&self) -> Result<bool, SbroadError> {
-        self.exec_plan.get_ir_plan().is_deallocate()
-    }
-
-    pub fn is_discard(&self) -> Result<bool, SbroadError> {
-        self.exec_plan.get_ir_plan().is_discard()
+    /// Checks that the plan is of one of the `kinds`, see
+    /// [`Plan::top_is`].
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is not a statement.
+    pub fn top_is(&self, kinds: PlanKind) -> Result<bool, SbroadError> {
+        self.exec_plan.get_ir_plan().top_is(kinds)
     }
 
     pub fn is_empty(&self) -> bool {

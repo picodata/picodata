@@ -33,6 +33,7 @@ use crate::version::Version;
 use crate::{audit, schema};
 use crate::{cas, has_states, plugin, tlog};
 use crate::{column_name, tlog_ratelimited};
+use sql::ir::PlanKind;
 
 use ::tarantool::access_control::{
     box_access_check_ddl, box_access_check_space, PrivType, SchemaObjectType as TntSchemaObjectType,
@@ -280,28 +281,22 @@ fn dispatch_bound_statement_impl<'p>(
         port_write_dml_response(port, 0);
         return Ok(());
     }
+    let kind = query.top_kind()?;
 
     if query.is_explain() {
         port.set_type(PortType::DispatchExplain);
-    } else if query.get_exec_plan().get_ir_plan().is_dql()? || query.is_backup()? {
+    } else if kind.intersects(PlanKind::DQL | PlanKind::BACKUP | PlanKind::TXN_BLOCK) {
         port.set_type(PortType::DispatchDql);
-    } else if query.is_block()? {
-        let plan = query.get_exec_plan().get_ir_plan();
-        let top_id = plan.get_top().expect("must be set");
-        let block = plan.get_block_node(top_id)?;
-        if let Block::Anonymous(_) = block {
-            port.set_type(PortType::DispatchDql);
-        }
-    } else {
+    } else if !kind.intersects(PlanKind::CALL) {
         port.set_type(PortType::DispatchDml);
     }
 
-    if query.is_deallocate()? {
+    if kind.intersects(PlanKind::DEALLOCATE) {
         port_write_dml_response(port, 0);
         return Ok(());
     }
 
-    if query.is_tcl()? {
+    if kind.intersects(PlanKind::TCL) {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;
         let tcl = ir_plan.get_tcl_node(top_id)?;
@@ -314,7 +309,7 @@ fn dispatch_bound_statement_impl<'p>(
         return Ok(());
     }
 
-    if query.is_discard()? {
+    if kind.intersects(PlanKind::DISCARD) {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;
         let discard = ir_plan.get_discard_node(top_id)?;
@@ -326,7 +321,7 @@ fn dispatch_bound_statement_impl<'p>(
         return Ok(());
     }
 
-    if query.is_backup()? {
+    if kind.intersects(PlanKind::BACKUP) {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;
         let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
@@ -358,7 +353,7 @@ fn dispatch_bound_statement_impl<'p>(
         write_str(&mut row_mp, s).map_err(Error::other)?;
         port.write_all(row_mp.as_slice()).map_err(Error::other)?;
         Ok(())
-    } else if query.is_ddl()? || query.is_acl()? {
+    } else if kind.intersects(PlanKind::DDL | PlanKind::ACL) {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;
 
@@ -400,7 +395,7 @@ fn dispatch_bound_statement_impl<'p>(
         let row_count = rows_changed(tuple).map_err(Error::other)?;
         port_write_dml_response(port, row_count);
         Ok(())
-    } else if query.is_plugin()? {
+    } else if kind.intersects(PlanKind::PLUGIN) {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;
         let plugin = ir_plan.get_plugin_node(top_id)?;
@@ -574,7 +569,7 @@ fn dispatch_bound_statement_impl<'p>(
             port.add_mp(&explain_serialized);
         }
         Ok(())
-    } else if query.is_block()? {
+    } else if kind.intersects(PlanKind::BLOCK) {
         let code_block = {
             check_routine_privileges(query.get_exec_plan().get_ir_plan())?;
             let ir_plan = query.get_mut_exec_plan().get_mut_ir_plan();

@@ -1,6 +1,7 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::value::Value;
 use crate::ir::Plan;
+use crate::ir::PlanKind;
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
 use sql_protocol::dql_encoder::DQLOptions;
@@ -479,7 +480,7 @@ impl Plan {
     ) -> Result<(), SbroadError> {
         let read_preference_specified =
             !matches!(lowered.read_preference, LoweredOptionValue::Default);
-        if read_preference_specified && !self.is_dql()? {
+        if read_preference_specified && !self.top_is(PlanKind::DQL)? {
             return Err(SbroadError::Invalid(
                 Entity::OptionSpec,
                 Some("read_preference option is supported only for DQL queries".into()),

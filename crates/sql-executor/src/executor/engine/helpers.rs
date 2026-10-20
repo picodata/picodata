@@ -1,3 +1,4 @@
+use crate::ir::PlanKind;
 use crate::{
     backend::sql::{
         ir::block_pattern_key,
@@ -1244,7 +1245,7 @@ pub fn dispatch_impl<'p>(
         return Ok(());
     }
 
-    if plan.get_ir_plan().is_block()? {
+    if plan.get_ir_plan().top_is(PlanKind::BLOCK)? {
         let tier = {
             match plan.get_ir_plan().tier.as_ref() {
                 None => coordinator.get_current_tier_name()?,

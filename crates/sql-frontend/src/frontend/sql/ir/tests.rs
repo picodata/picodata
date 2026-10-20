@@ -8,6 +8,7 @@ use crate::ir::transformation::Stage;
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter};
 use crate::ir::types::{DerivedType, UnrestrictedType as Type};
 use crate::ir::value::Value;
+use crate::ir::PlanKind;
 use crate::ir::{Plan, Positions};
 use itertools::Itertools;
 use pest::Parser;
@@ -4418,8 +4419,11 @@ fn front_discard_parses_ok() {
             Node::Discard(expected),
             "{query}"
         );
-        assert!(plan.is_discard().unwrap(), "{query}");
-        assert!(!plan.is_dql_or_dml().unwrap(), "{query}");
+        assert!(plan.top_is(PlanKind::DISCARD).unwrap(), "{query}");
+        assert!(
+            !plan.top_is(PlanKind::DQL | PlanKind::DML).unwrap(),
+            "{query}"
+        );
     }
 
     let queries_to_check_err = [

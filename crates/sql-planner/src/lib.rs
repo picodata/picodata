@@ -3,6 +3,7 @@
 use crate::errors::SbroadError;
 use crate::executor::engine::{query_id, Router, VersionMap};
 use crate::executor::lru::Cache;
+use crate::ir::PlanKind;
 
 use crate::ir::helpers::RepeatableState;
 use crate::ir::options::Options;
@@ -109,7 +110,7 @@ impl PreparedStatement {
         // queried again
         //
         // EXPLAIN (RAW) queries contain DQL and DML, we don't want them to be cached
-        if (new_plan.is_dql_or_dml()? || new_plan.is_anonymous_block()?)
+        if new_plan.top_is(PlanKind::DQL | PlanKind::DML | PlanKind::TXN_BLOCK)?
             && !new_plan.is_raw_explain()
         {
             cache.put(cache_key, new_plan.clone())?;

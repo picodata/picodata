@@ -750,6 +750,28 @@ bitflags! {
     }
 }
 
+bitflags! {
+    /// Kinds of plans, as given by the top node of a plan. A backup is both
+    /// `DDL` and `BACKUP`.
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub struct PlanKind: u16 {
+        const DQL        = 1;
+        const DML        = 1 << 1;
+        const DDL        = 1 << 2;
+        const ACL        = 1 << 3;
+        const TCL        = 1 << 4;
+        /// A procedure call: `CALL proc(...)`.
+        const CALL       = 1 << 5;
+        /// A transactional block: `DO $$ ... END $$`.
+        const TXN_BLOCK  = 1 << 6;
+        const BLOCK      = Self::CALL.bits() | Self::TXN_BLOCK.bits();
+        const PLUGIN     = 1 << 7;
+        const DEALLOCATE = 1 << 8;
+        const DISCARD    = 1 << 9;
+        const BACKUP     = 1 << 10;
+    }
+}
+
 impl ExplainOptions {
     #[inline(always)]
     pub fn facets() -> Self {
@@ -1525,17 +1547,43 @@ impl Plan {
         Ok(rel_tree.traverse_into_iter(top_id).next().is_some())
     }
 
-    pub fn is_block(&self) -> Result<bool, SbroadError> {
-        let maybe_top_id = self.get_top();
-        let maybe_top = maybe_top_id.and_then(|top_id| self.get_node(top_id));
-        Ok(matches!(maybe_top, Ok(Node::Block(_))))
+    /// Returns the kind of the plan, as given by the top node. An empty
+    /// plan has no kind.
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is not a statement.
+    pub fn top_kind(&self) -> Result<PlanKind, SbroadError> {
+        if self.is_empty() {
+            return Ok(PlanKind::empty());
+        }
+        let top_id = self.get_top()?;
+        Ok(match self.get_node(top_id)? {
+            Node::Relational(rel) if rel.is_dml() => PlanKind::DML,
+            Node::Relational(_) => PlanKind::DQL,
+            Node::Ddl(Ddl::Backup(_)) => PlanKind::DDL | PlanKind::BACKUP,
+            Node::Ddl(_) => PlanKind::DDL,
+            Node::Acl(_) => PlanKind::ACL,
+            Node::Tcl(_) => PlanKind::TCL,
+            Node::Block(Block::CallProcedure(_)) => PlanKind::CALL,
+            Node::Block(Block::Anonymous(_)) => PlanKind::TXN_BLOCK,
+            Node::Plugin(_) => PlanKind::PLUGIN,
+            Node::Deallocate(_) => PlanKind::DEALLOCATE,
+            Node::Discard(_) => PlanKind::DISCARD,
+            top @ (Node::Expression(_) | Node::Invalid(_)) => {
+                return Err(SbroadError::Invalid(
+                    Entity::Node,
+                    Some(format_smolstr!("top node is not a statement: {top:?}")),
+                ))
+            }
+        })
     }
 
-    /// Checks that plan is a transactional block (`DO $$ ... END $$`).
-    pub fn is_anonymous_block(&self) -> Result<bool, SbroadError> {
-        let maybe_top_id = self.get_top();
-        let maybe_top = maybe_top_id.and_then(|top_id| self.get_node(top_id));
-        Ok(matches!(maybe_top, Ok(Node::Block(Block::Anonymous(_)))))
+    /// Checks that the plan is of one of the `kinds`.
+    ///
+    /// # Errors
+    /// - top node doesn't exist in the plan or is not a statement.
+    pub fn top_is(&self, kinds: PlanKind) -> Result<bool, SbroadError> {
+        Ok(self.top_kind()?.intersects(kinds))
     }
 
     /// Checks that plan is a dml query on global table.
@@ -1548,57 +1596,6 @@ impl Plan {
             return Ok(false);
         }
         Ok(self.dml_node_table(top_id)?.is_global())
-    }
-
-    /// Checks that plan is a dml query.
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_dml(&self) -> Result<bool, SbroadError> {
-        if !self.is_dql_or_dml()? {
-            return Ok(false);
-        }
-        let top_id = self.get_top()?;
-        Ok(self.get_relation_node(top_id)?.is_dml())
-    }
-
-    /// Checks that plan is DDL query
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_ddl(&self) -> Result<bool, SbroadError> {
-        let top_id = self.get_top()?;
-        let top = self.get_node(top_id)?;
-        Ok(matches!(top, Node::Ddl(_)))
-    }
-
-    /// Checks that plan is ACL query.
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_acl(&self) -> Result<bool, SbroadError> {
-        let top_id = self.get_top()?;
-        let top = self.get_node(top_id)?;
-        Ok(matches!(top, Node::Acl(_)))
-    }
-
-    /// Checks that plan is TCL query.
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_tcl(&self) -> Result<bool, SbroadError> {
-        let top_id = self.get_top()?;
-        let top = self.get_node(top_id)?;
-        Ok(matches!(top, Node::Tcl(_)))
-    }
-
-    /// Checks that plan is a plugin query.
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_plugin(&self) -> Result<bool, SbroadError> {
-        let top_id = self.get_top()?;
-        Ok(matches!(self.get_node(top_id)?, Node::Plugin(_)))
     }
 
     /// Replace the parser default timeout with the system default
@@ -1623,11 +1620,6 @@ impl Plan {
                 t.us = opts.sql_ddl_timeout_us;
             }
         }
-    }
-
-    pub fn is_backup(&self) -> Result<bool, SbroadError> {
-        let top_id = self.get_top()?;
-        Ok(matches!(self.get_node(top_id)?, Node::Ddl(Ddl::Backup(_))))
     }
 
     /// Checks that top node of the plan is insert.
@@ -1660,55 +1652,6 @@ impl Plan {
         }
 
         Ok(false)
-    }
-
-    /// Checks that plan is a deallocate query.
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_deallocate(&self) -> Result<bool, SbroadError> {
-        let top_id = self.get_top()?;
-        Ok(matches!(self.get_node(top_id)?, Node::Deallocate(_)))
-    }
-
-    /// Checks that plan is a discard query.
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_discard(&self) -> Result<bool, SbroadError> {
-        let top_id = self.get_top()?;
-        Ok(matches!(self.get_node(top_id)?, Node::Discard(_)))
-    }
-
-    /// Checks that plan is a DQL query.
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_dql(&self) -> Result<bool, SbroadError> {
-        Ok(!self.is_empty()
-            && !self.is_ddl()?
-            && !self.is_acl()?
-            && !self.is_plugin()?
-            && !self.is_deallocate()?
-            && !self.is_discard()?
-            && !self.is_tcl()?
-            && !self.is_block()?
-            && !self.is_dml()?)
-    }
-
-    /// Checks that plan is a DQL or DML query.
-    ///
-    /// # Errors
-    /// - top node doesn't exist in the plan or is invalid.
-    pub fn is_dql_or_dml(&self) -> Result<bool, SbroadError> {
-        Ok(!self.is_empty()
-            && !self.is_ddl()?
-            && !self.is_acl()?
-            && !self.is_plugin()?
-            && !self.is_deallocate()?
-            && !self.is_discard()?
-            && !self.is_tcl()?
-            && !self.is_block()?)
     }
 
     /// Set top node of plan
@@ -3193,11 +3136,8 @@ impl Plan {
         }
 
         if !self
-            .is_dql_or_dml()
+            .top_is(PlanKind::DQL | PlanKind::DML | PlanKind::BLOCK)
             .expect("top must be valid when collecting parameter types")
-            && !self
-                .is_block()
-                .expect("top must be valid when collecting parameter types")
         {
             return Vec::new();
         }

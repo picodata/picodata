@@ -8,6 +8,7 @@ use sql_executor::executor::{
 };
 use sql_ir::errors::SbroadError;
 use sql_ir::ir::bucket::BucketSet;
+use sql_ir::ir::PlanKind;
 use sql_ir::ir::{
     bucket::Buckets,
     node::{block::BlockOwned, relational::Relational, Motion, Node, NodeId},
@@ -96,7 +97,7 @@ pub fn bounded_buckets_from_query<R: Router>(
     let bucket_count = vshard.bucket_count();
     let format_options = ir.explain_options.into();
 
-    if ir.is_block()? {
+    if ir.top_is(PlanKind::BLOCK)? {
         let top_id = ir.get_top()?;
         let block = ir.get_owned_block_node(top_id)?;
         let BlockOwned::Anonymous(block) = block else {

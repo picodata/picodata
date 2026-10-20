@@ -8,6 +8,7 @@ use pgwire::{
     messages::data::{FieldDescription, RowDescription},
 };
 use postgres_types::{Oid, Type};
+use sql::ir::PlanKind;
 use sql::{
     errors::{Entity, SbroadError},
     ir::{
@@ -331,7 +332,7 @@ fn pg_type_from_sbroad(sbroad: &DerivedType) -> Type {
 fn dql_output_format(ir: &Plan) -> PgResult<Vec<MetadataColumn>> {
     // Get metadata (column types) from the top node's output tuple.
     let top_id = ir.get_top()?;
-    if ir.is_block()? {
+    if ir.top_is(PlanKind::BLOCK)? {
         let block = ir.get_block_node(top_id)?;
         if let Block::Anonymous(AnonymousBlock { return_columns, .. }) = block {
             let metadata = return_columns
@@ -409,12 +410,11 @@ impl Describe {
             let node = plan.get_node(top)?;
             CommandTag::try_from(&node)?
         };
-        let query_type = if plan.is_block()? && !plan.is_explain() {
-            let top = plan.get_top()?;
-            let block = plan.get_block_node(top)?;
-            match block {
-                Block::Anonymous(_) => QueryType::Dql,
-                Block::CallProcedure(_) => QueryType::Dml,
+        let query_type = if plan.top_is(PlanKind::BLOCK)? && !plan.is_explain() {
+            if plan.top_is(PlanKind::TXN_BLOCK)? {
+                QueryType::Dql
+            } else {
+                QueryType::Dml
             }
         } else {
             command_tag.into()
