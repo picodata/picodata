@@ -119,6 +119,20 @@ $(foreach PROFILE,$(BUILD_PROFILES),$(eval $(call BUILD_TEMPLATE,$(PROFILE))))
 # See https://github.com/rust-lang/cargo/issues/6375#issuecomment-444900324.
 DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 
+# SQL crates are tested by test-rs-sql with nextest, so test-rs-picodata
+# excludes them.
+SQL_CRATE_NAMES := \
+	sql-ast-new-analyzer \
+	sql-ast-new-corpus \
+	sql-ast-new-nodes \
+	sql-ast-new-parser \
+	sql-executor \
+	sql-explain \
+	sql-frontend \
+	sql-ir \
+	sql-planner
+SQL_CRATES := $(addprefix -p ,$(SQL_CRATE_NAMES))
+
 # XXX: make sure we pass proper flags to cargo test so resulting picodata binary can be
 # reused for python tests without recompilation
 # Note: tarantool and tlua are skipped intentionally, no need to run their doc tests in picodata
@@ -126,7 +140,11 @@ DEFAULT_TARGET := $(shell cargo -vV | sed -n 's|host: ||p')
 # memory usage caused by doc tests compilation model. Doc tests are compiled as part of actual test run.
 # So, each parallel thread lanuched by cargo test spawns full blown compiler for each doctest
 # which at the end leads to OOM.
-CARGO_TEST_FLAGS ?= --workspace --exclude sql-planner --exclude sql-ir --exclude sql-executor --exclude sql-explain --exclude sql-frontend --exclude sql-ast-new-nodes --exclude sql-ast-new-parser --exclude sql-ast-new-analyzer --exclude sql-ast-new-corpus --exclude tarantool --exclude tlua
+CARGO_TEST_FLAGS ?= \
+	--workspace \
+	$(addprefix --exclude ,$(SQL_CRATE_NAMES)) \
+	--exclude tarantool \
+	--exclude tlua
 
 .PHONY: test-rs
 test-rs: test-rs-picodata test-rs-sql
@@ -146,10 +164,6 @@ test-rs-picodata:
 	  $(filter-out --workspace, $(CARGO_FLAGS_EXTRA)) \
 	  $(CARGO_TEST_FLAGS) \
 	  --doc -- --test-threads 2
-
-SQL_CRATES = -p sql-ir -p sql-executor -p sql-frontend -p sql-explain \
-            -p sql-planner -p sql-ast-new-nodes -p sql-ast-new-parser \
-            -p sql-ast-new-analyzer -p sql-ast-new-corpus
 
 NEXTEST_VERSION := 0.9.140
 
