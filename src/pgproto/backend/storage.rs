@@ -19,7 +19,6 @@ use crate::{
 use pgwire::api::results::FieldInfo;
 use postgres_types::{Oid, Type as PgType};
 use prometheus::IntCounter;
-use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr};
 use sql::ir::types::{DerivedType, NestedType, UnrestrictedType as SbroadType};
 use sql_protocol::iterators::ExplainIter;
@@ -27,16 +26,10 @@ use std::{
     cell::RefCell,
     collections::{btree_map::Entry, BTreeMap},
     io::Cursor,
-    ops::Bound,
-    os::raw::c_int,
     rc::{Rc, Weak},
     sync::{Arc, LazyLock},
 };
-use tarantool::{
-    proc::{Return, ReturnMsgpack},
-    session::with_su,
-    tuple::FunctionCtx,
-};
+use tarantool::session::with_su;
 
 /// Used to store portals in [`PG_PORTALS`] and statements in [`PG_STATEMENTS`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -96,9 +89,6 @@ impl StorageContext {
 /// Essentially a map with custom logic for updates and unnamed elements.
 pub struct PgStorage<S> {
     map: BTreeMap<Key, S>,
-    // We reuse this empty name in range scans in order to avoid Rc allocations.
-    // Note: see names_by_client_id.
-    empty_name: Rc<str>,
 
     // Context specific to the portal or statement storage.
     context: StorageContext,
@@ -108,7 +98,6 @@ impl<S> PgStorage<S> {
     fn with_context(context: StorageContext) -> Self {
         Self {
             map: BTreeMap::new(),
-            empty_name: Rc::from(String::new()),
             context,
         }
     }
@@ -161,17 +150,6 @@ impl<S> PgStorage<S> {
     #[inline(always)]
     pub fn remove_by_client_id(&mut self, id: ClientId) {
         self.map.retain(|k, _| k.0 != id)
-    }
-
-    pub fn names_by_client_id(&self, id: ClientId) -> Vec<Rc<str>> {
-        let range = (
-            Bound::Included(Key(id, Rc::clone(&self.empty_name))),
-            Bound::Excluded(Key(id + 1, Rc::clone(&self.empty_name))),
-        );
-        self.map
-            .range(range)
-            .map(|(Key(_, name), _)| Rc::clone(name))
-            .collect()
     }
 
     #[inline(always)]
@@ -733,58 +711,6 @@ impl Portal {
     #[inline(always)]
     pub fn execute(&self, runtime: &RouterRuntime, max_rows: usize) -> PgResult<ExecuteResult> {
         self.0.execute(runtime, max_rows)
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct UserStatementNames {
-    // Known statements for the client with the given client id.
-    available: Vec<Rc<str>>,
-    // Total number of statements in the storage (including other clients).
-    total: usize,
-}
-
-impl UserStatementNames {
-    pub fn new(id: ClientId) -> Self {
-        PG_STATEMENTS.with(|storage| {
-            let storage = storage.borrow();
-            Self {
-                available: storage.names_by_client_id(id),
-                total: storage.len(),
-            }
-        })
-    }
-}
-
-impl Return for UserStatementNames {
-    fn ret(self, ctx: FunctionCtx) -> c_int {
-        ReturnMsgpack(self).ret(ctx)
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct UserPortalNames {
-    // Known portals for the client with the given client id.
-    available: Vec<Rc<str>>,
-    // Total number of portals in the storage (including other clients).
-    total: usize,
-}
-
-impl UserPortalNames {
-    pub fn new(id: ClientId) -> Self {
-        PG_PORTALS.with(|storage| {
-            let storage = storage.borrow();
-            Self {
-                available: storage.names_by_client_id(id),
-                total: storage.len(),
-            }
-        })
-    }
-}
-
-impl Return for UserPortalNames {
-    fn ret(self, ctx: FunctionCtx) -> c_int {
-        ReturnMsgpack(self).ret(ctx)
     }
 }
 

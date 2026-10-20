@@ -10,7 +10,6 @@ use pgwire::{
     api::results::{DataRowEncoder, FieldInfo},
     messages::data::{DataRow, RowDescription},
 };
-use sql::ir::value::Value as SbroadValue;
 use std::{io::Cursor, sync::Arc};
 
 /// Rows of a query result on their way to the client.
@@ -71,33 +70,6 @@ impl Rows {
 
     pub fn describe(&self) -> RowDescription {
         RowDescription::new(self.desc.iter().map(Into::into).collect())
-    }
-
-    /// Decode all the remaining rows into sbroad values.
-    ///
-    /// Note: unlike [`Rows::encode_next`], this materializes the whole batch,
-    /// so it's only meant for the internal `.proc_pg_execute` API used in tests.
-    pub fn into_sbroad_values(&mut self) -> PgResult<Vec<Vec<SbroadValue>>> {
-        let Self { desc, source, .. } = self;
-
-        let mut rows = Vec::with_capacity(source.len());
-        while let Some(row) = source.next_row() {
-            let values = match row {
-                Row::ExplainLine(line) => vec![SbroadValue::from(line)],
-                Row::Tuple(msgpack) => {
-                    let mut cursor = row_cursor(msgpack, desc)?;
-                    desc.iter()
-                        .map(|field| {
-                            let value = PgValue::decode_mp(&mut cursor, field.datatype())?;
-                            SbroadValue::try_from(value)
-                        })
-                        .collect::<PgResult<Vec<_>>>()?
-                }
-            };
-            rows.push(values);
-        }
-
-        Ok(rows)
     }
 }
 

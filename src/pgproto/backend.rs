@@ -24,7 +24,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use storage::param_oid_to_derived_type;
 use tarantool::session::with_su;
 
-mod pgproc;
 mod well_known_queries;
 
 pub mod describe;

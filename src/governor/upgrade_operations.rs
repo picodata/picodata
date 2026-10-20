@@ -172,6 +172,7 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
                 "exec_script",
                 InternalScript::InsertJwtTokenLifetimesIntoPicoDbConfig.as_str(),
             ),
+            ("exec_script", InternalScript::DropPgprotoTestProcedures.as_str()),
         ],
     ),
 ];
@@ -296,6 +297,10 @@ tarantool::define_str_enum! {
         /// nothing to backfill, since no manifest could declare `webui:` pages
         /// before this picodata version existed.
         AlterPicoPluginAddWebuiField = "alter_pico_plugin_add_webui_field",
+
+        /// Drop the `pico.pg_*` functions and `.proc_pg_*` procedures from
+        /// `_func`. Only tests used them to access the pgproto statement storage.
+        DropPgprotoTestProcedures = "drop_pgproto_test_procedures",
     }
 }
 
@@ -362,6 +367,9 @@ crate::define_rpc_request! {
 
             InternalScript::AlterPicoPluginAddWebuiField =>
                 execute_alter_pico_plugin_add_webui_field(),
+
+            InternalScript::DropPgprotoTestProcedures =>
+                execute_drop_pgproto_test_procedures(),
         }
     }
 
@@ -598,6 +606,38 @@ fn execute_drop_obsolete_procedures() -> traft::Result<Response> {
         }
         for _, name in ipairs(obsolete) do
             box.schema.func.drop(name, {if_exists = true})
+        end
+        "#,
+    )?;
+    Ok(Response {})
+}
+
+fn execute_drop_pgproto_test_procedures() -> traft::Result<Response> {
+    let node = traft::node::global()?;
+    // Replicas receive the schema changes from their writable replicaset master.
+    if node.is_readonly() {
+        return Ok(Response {});
+    }
+
+    let lua = tarantool::lua_state();
+    lua.exec(
+        r#"
+        local names = {
+            'pg_bind',
+            'pg_close_stmt',
+            'pg_close_portal',
+            'pg_describe_stmt',
+            'pg_describe_portal',
+            'pg_execute',
+            'pg_parse',
+            'pg_statements',
+            'pg_portals',
+            'pg_close_client_stmts',
+            'pg_close_client_portals',
+        }
+        for _, name in ipairs(names) do
+            box.schema.func.drop('pico.' .. name, {if_exists = true})
+            box.schema.func.drop('.proc_' .. name, {if_exists = true})
         end
         "#,
     )?;

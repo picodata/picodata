@@ -277,35 +277,19 @@ fn init_sbroad() {
         };
     }
 
-    preload!("pgproto", "src/sql/pgproto.lua");
     preload!("sbroad", "src/sql/init.lua");
     preload!("sbroad.builtins", "crates/sql-planner/src/builtins.lua");
     preload!("sbroad.dispatch", "src/sql/dispatch.lua");
 
-    for (module, func) in &[
-        ("sbroad", "sql"),
-        ("pgproto", "pg_bind"),
-        ("pgproto", "pg_close_stmt"),
-        ("pgproto", "pg_close_portal"),
-        ("pgproto", "pg_describe_stmt"),
-        ("pgproto", "pg_describe_portal"),
-        ("pgproto", "pg_execute"),
-        ("pgproto", "pg_parse"),
-        ("pgproto", "pg_statements"),
-        ("pgproto", "pg_portals"),
-        ("pgproto", "pg_close_client_stmts"),
-        ("pgproto", "pg_close_client_portals"),
-    ] {
-        let program = format!(
-            r#"
-            _G.pico.{func} = require('{module}').{func};
-            box.schema.func.create('pico.{func}', {{if_not_exists = true}});
-            box.schema.role.grant('public', 'execute', 'function', 'pico.{func}',
-                {{if_not_exists = true}})
-            "#
-        );
-        lua.exec(&program).unwrap();
-    }
+    lua.exec(
+        r#"
+        _G.pico.sql = require('sbroad').sql;
+        box.schema.func.create('pico.sql', {if_not_exists = true});
+        box.schema.role.grant('public', 'execute', 'function', 'pico.sql',
+            {if_not_exists = true})
+        "#,
+    )
+    .unwrap();
 
     lua.exec(r#" require('sbroad.dispatch').init() "#).unwrap();
     init_sbroad_builtins_lua();

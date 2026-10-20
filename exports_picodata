@@ -42,17 +42,6 @@ proc_instance_name
 proc_instance_uuid
 proc_internal_script
 proc_load_plugin_dry_run
-proc_pg_bind
-proc_pg_close_client_portals
-proc_pg_close_client_stmts
-proc_pg_close_portal
-proc_pg_close_stmt
-proc_pg_describe_portal
-proc_pg_describe_stmt
-proc_pg_execute
-proc_pg_parse
-proc_pg_portals
-proc_pg_statements
 proc_picodata_version
 proc_query_metadata
 proc_raft_info
