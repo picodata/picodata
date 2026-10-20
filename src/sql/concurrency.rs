@@ -2,6 +2,7 @@ use crate::config::{DEFAULT_SQL_RUNTIME_CONCURRENCY_MAX, DYNAMIC_CONFIG};
 use crate::limiter::{AcquireResult, ReleaseResult, TicketPool};
 use smol_str::format_smolstr;
 use sql::errors::{Entity, SbroadError};
+use sql::executor::ir::ExecutionPlan;
 use std::cell::OnceCell;
 use tarantool::fiber;
 use uuid::Uuid;
@@ -68,6 +69,13 @@ pub(crate) fn with_sql_runtime_limit<T>(
         };
         Ok(f())
     })
+}
+
+/// Returns the runtime owner key of a local execution plan without
+/// parsing its request id from text.
+#[inline(always)]
+pub(crate) fn plan_owner_key(plan: &ExecutionPlan) -> Uuid {
+    Uuid::from_bytes(*plan.get_request_uuid().as_bytes())
 }
 
 #[inline(always)]

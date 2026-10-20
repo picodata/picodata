@@ -1351,7 +1351,7 @@ pub fn dispatch_impl<'p>(
     };
     let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
     plan.prepare_bucket_filter_for_dispatch(top_id, buckets)?;
-    let frozen_plan = Rc::new(std::mem::take(plan));
+    let frozen_plan = Rc::new(plan.take());
     let dispatch_result = if frozen_plan.get_ir_plan().is_raw_explain() {
         let top = frozen_plan.get_ir_plan().get_relation_node(top_id)?;
         let top_id = if top.is_dml() {

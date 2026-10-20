@@ -118,7 +118,7 @@ impl<'q> AbstractSyntaxTree<'q> {
         M: Metadata,
     {
         if self.is_empty() {
-            return Ok(Plan::empty());
+            return Ok(Plan::new());
         }
 
         let mut plan = Plan::default();

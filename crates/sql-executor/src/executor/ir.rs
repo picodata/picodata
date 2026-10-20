@@ -1,10 +1,11 @@
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use ahash::{AHashMap, AHashSet};
 use itertools::Itertools;
 use smol_str::{format_smolstr, SmolStr};
+use uuid::Uuid;
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::helpers::table_name;
@@ -16,6 +17,7 @@ use crate::executor::vtable::{VirtualTable, VirtualTableMap};
 use crate::executor::Buckets;
 use crate::ir::bucket::BucketSet;
 use crate::ir::columns::RelColumn;
+use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
@@ -80,9 +82,15 @@ impl SerializeAsEmptyState {
 }
 
 /// Wrapper over `Plan` containing `vtables` map.
+/// A map keyed by node ids of the plan. The keys do not come from the
+/// user, so the map uses fixed hash seeds and costs nothing to create.
+type NodeMap<V> = HashMap<NodeId, V, RepeatableState>;
+
 #[derive(Debug, Default, Clone)]
 pub struct ExecutionPlan {
-    request_id: String,
+    request_id: Uuid,
+    /// Text form of `request_id`, formatted on first use.
+    request_id_text: OnceCell<String>,
     /// IR plan contains motions.
     pub(crate) plan: Rc<Plan>,
     /// Virtual tables for `Motion` nodes.
@@ -91,13 +99,13 @@ pub struct ExecutionPlan {
     /// It is calculated via `set_plan_id` during `materialize_motion`.
     pub(crate) plan_id: Option<u64>,
     /// Plan id cache for motion subtrees during the current execution.
-    pub(crate) plan_id_cache: AHashMap<NodeId, u64>,
+    pub(crate) plan_id_cache: NodeMap<u64>,
     /// SQL parameter count cache for motion subtrees during the current execution.
-    plan_id_sql_parameter_count_cache: AHashMap<NodeId, usize>,
+    plan_id_sql_parameter_count_cache: NodeMap<usize>,
     /// SQL parameter count for the currently selected `plan_id`.
     plan_id_sql_parameter_count: Option<usize>,
     /// Delete tuple lengths calculated for sharded updates during execution.
-    update_delete_tuple_lens: AHashMap<NodeId, usize>,
+    update_delete_tuple_lens: NodeMap<usize>,
     /// Read-only bucket predicate overlay for local SQL.
     ///
     /// Used for sharded tables whose primary key starts with `bucket_id`.
@@ -417,7 +425,7 @@ struct SubtreeViewSummary {
 
 #[derive(Debug, Default)]
 struct SubtreeViewCache {
-    inner: Rc<RefCell<AHashMap<NodeId, Rc<SubtreeViewSummary>>>>,
+    inner: Rc<RefCell<NodeMap<Rc<SubtreeViewSummary>>>>,
 }
 
 impl Clone for SubtreeViewCache {
@@ -712,16 +720,38 @@ fn bucket_column_source(plan: &Plan, rel_id: NodeId) -> Result<Option<RelColumn>
 }
 
 impl ExecutionPlan {
+    /// Moves the plan out and leaves an empty placeholder in its place.
+    /// Unlike `std::mem::take()`, it does not allocate an empty IR plan.
+    pub(crate) fn take(&mut self) -> Self {
+        let placeholder = ExecutionPlan {
+            request_id: Uuid::nil(),
+            request_id_text: OnceCell::new(),
+            plan: Plan::empty(),
+            vtables: VirtualTableMap::new(),
+            plan_id: None,
+            plan_id_cache: NodeMap::default(),
+            plan_id_sql_parameter_count_cache: NodeMap::default(),
+            plan_id_sql_parameter_count: None,
+            update_delete_tuple_lens: NodeMap::default(),
+            bucket_filter: None,
+            serialize_as_empty_disabled_motions: HashSet::new(),
+            unlinked_motions: HashSet::new(),
+            subtree_view_cache: SubtreeViewCache::default(),
+        };
+        std::mem::replace(self, placeholder)
+    }
+
     pub fn new(plan: Plan) -> Self {
         ExecutionPlan {
-            request_id: uuid::Uuid::new_v4().to_string(),
+            request_id: Uuid::new_v4(),
+            request_id_text: OnceCell::new(),
             plan: Rc::new(plan),
             vtables: VirtualTableMap::new(),
             plan_id: None,
-            plan_id_cache: AHashMap::new(),
-            plan_id_sql_parameter_count_cache: AHashMap::new(),
+            plan_id_cache: NodeMap::default(),
+            plan_id_sql_parameter_count_cache: NodeMap::default(),
             plan_id_sql_parameter_count: None,
-            update_delete_tuple_lens: AHashMap::new(),
+            update_delete_tuple_lens: NodeMap::default(),
             bucket_filter: None,
             serialize_as_empty_disabled_motions: HashSet::new(),
             unlinked_motions: HashSet::new(),
@@ -743,7 +773,14 @@ impl ExecutionPlan {
 
     #[must_use]
     pub fn get_request_id(&self) -> &str {
-        &self.request_id
+        self.request_id_text
+            .get_or_init(|| self.request_id.to_string())
+    }
+
+    /// Returns the request id without formatting it as text.
+    #[must_use]
+    pub fn get_request_uuid(&self) -> Uuid {
+        self.request_id
     }
 
     /// Freeze this execution plan as a read-only borrow.

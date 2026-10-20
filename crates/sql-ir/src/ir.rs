@@ -1050,11 +1050,6 @@ impl Plan {
     /// Constructor for an empty plan structure.
     #[must_use]
     pub fn new() -> Self {
-        Self::empty()
-    }
-
-    /// Construct an empty plan.
-    pub fn empty() -> Self {
         Self {
             nodes: Nodes {
                 arena32: Vec::new(),
@@ -1081,6 +1076,16 @@ impl Plan {
             facts: None,
             restrictions: None,
         }
+    }
+
+    /// Returns an empty plan shared by all callers in the thread. Unlike
+    /// `new()`, it does not allocate.
+    #[must_use]
+    pub fn empty() -> Rc<Self> {
+        thread_local! {
+            static EMPTY: Rc<Plan> = Rc::new(Plan::new());
+        }
+        EMPTY.with(Rc::clone)
     }
 
     /// Validate options stored in `raw_options` and their usage.

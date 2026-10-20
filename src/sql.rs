@@ -17,7 +17,7 @@ use crate::schema::{
     RoutineDef, RoutineLanguage, RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType,
     ShardingFn, TableOption, UserDef, ADMIN_ID,
 };
-use crate::sql::concurrency::{runtime_owner_key, with_sql_runtime_limit};
+use crate::sql::concurrency::{plan_owner_key, runtime_owner_key, with_sql_runtime_limit};
 use crate::sql::explain::explain_query;
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::{FullDeleteInfo, StorageRuntime};
@@ -655,8 +655,7 @@ fn dispatch_bound_statement_impl<'p>(
                 )
             }
             BlockOwned::Anonymous(AnonymousBlock { .. }) => {
-                let request_id = runtime_owner_key(query.get_exec_plan().get_request_id())
-                    .map_err(Error::Sbroad)?;
+                let request_id = plan_owner_key(query.get_exec_plan());
                 with_sql_runtime_limit(request_id, || query.dispatch(port).map_err(Error::Sbroad))
                     .map_err(Error::Sbroad)?
             }
@@ -679,8 +678,7 @@ fn dispatch_bound_statement_impl<'p>(
         })??;
 
         let is_dml_on_global = plan.is_dml_on_global_table()?;
-        let request_id =
-            runtime_owner_key(query.get_exec_plan().get_request_id()).map_err(Error::Sbroad)?;
+        let request_id = plan_owner_key(query.get_exec_plan());
         with_sql_runtime_limit(request_id, || -> traft::Result<()> {
             if is_dml_on_global {
                 let plan = query.get_exec_plan().get_ir_plan();
