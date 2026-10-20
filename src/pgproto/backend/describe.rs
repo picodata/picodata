@@ -8,7 +8,6 @@ use pgwire::{
     messages::data::{FieldDescription, RowDescription},
 };
 use postgres_types::{Oid, Type};
-use serde::Serialize;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use sql::{
     errors::{Entity, SbroadError},
@@ -23,11 +22,7 @@ use sql::{
         Plan,
     },
 };
-use std::{collections::HashMap, iter::zip, os::raw::c_int};
-use tarantool::{
-    proc::{Return, ReturnMsgpack},
-    tuple::FunctionCtx,
-};
+use std::iter::zip;
 
 #[derive(Debug, Clone, Copy, Deserialize_repr, Serialize_repr)]
 #[repr(u8)]
@@ -322,16 +317,6 @@ pub struct MetadataColumn {
     pub ty: Type,
 }
 
-impl Serialize for MetadataColumn {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let map = HashMap::from([(self.name.clone(), self.ty.to_string())]);
-        map.serialize(serializer)
-    }
-}
-
 impl MetadataColumn {
     pub fn new(name: String, ty: Type) -> Self {
         Self { name, ty }
@@ -408,7 +393,7 @@ fn field_description(name: String, ty: Type, format: FieldFormat) -> FieldDescri
 }
 
 /// Contains a query description used by pgproto.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct Describe {
     pub command_tag: CommandTag,
     pub query_type: QueryType,
@@ -491,15 +476,8 @@ impl Describe {
     }
 }
 
-impl Return for Describe {
-    fn ret(self, ctx: FunctionCtx) -> c_int {
-        ReturnMsgpack(self).ret(ctx)
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct StatementDescribe {
-    #[serde(flatten)]
     pub describe: Describe,
     pub param_oids: Vec<Oid>,
 }
@@ -523,11 +501,9 @@ impl StatementDescribe {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct PortalDescribe {
-    #[serde(flatten)]
     pub describe: Describe,
-    #[serde(serialize_with = "PortalDescribe::serialize_output_format")]
     pub output_format: Vec<FieldFormat>,
 }
 
@@ -537,18 +513,6 @@ impl PortalDescribe {
             describe,
             output_format,
         }
-    }
-
-    fn serialize_output_format<S: serde::Serializer>(
-        output_format: &[FieldFormat],
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeSeq;
-        let mut seq = serializer.serialize_seq(Some(output_format.len()))?;
-        for format in output_format.iter().copied() {
-            seq.serialize_element(&(format as RawFormat))?;
-        }
-        seq.end()
     }
 
     pub fn metadata(&self) -> &[MetadataColumn] {
