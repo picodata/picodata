@@ -19,10 +19,10 @@ use std::{
 #[derive(Clone, Debug)]
 pub struct ClientParams {
     pub username: String,
-    pub options: PartialOptions,
-    pub is_statement_invalidation: bool,
-    pub is_query_metadata: bool,
-    pub _rest: BTreeMap<String, String>,
+    options: PartialOptions,
+    is_statement_invalidation: bool,
+    is_query_metadata: bool,
+    _rest: BTreeMap<String, String>,
     // NB: add more params as needed.
     // Keep in mind that a client is required to send only "user".
 }
