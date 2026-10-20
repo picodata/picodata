@@ -5,7 +5,8 @@ from uuid import UUID
 import pg8000.native as pg8000  # type: ignore
 import psycopg
 import pytest
-from conftest import PgClient, Postgres
+from conftest import Postgres
+from framework.pgwire import PgClient
 from psycopg.types.json import Json, Jsonb
 
 
@@ -908,7 +909,7 @@ def test_gl_1730_via_bindings_varchar(pg_client: PgClient):
 
     id = "100"
     pg_client.parse(id, "select $1", [varchar_oid])
-    pg_client.bind(id, id, ["hello"], [])
+    pg_client.bind(id, id, ["hello"])
     desc = pg_client.describe_stmt(id)
     assert desc["param_oids"] == [varchar_oid]
     res = pg_client.execute(id)["rows"][0]
@@ -916,7 +917,7 @@ def test_gl_1730_via_bindings_varchar(pg_client: PgClient):
 
     id = "200"
     pg_client.parse(id, "select $1", [text_oid])
-    pg_client.bind(id, id, ["hello"], [])
+    pg_client.bind(id, id, ["hello"])
     desc = pg_client.describe_stmt(id)
     assert desc["param_oids"] == [text_oid]
     res = pg_client.execute(id)["rows"][0]
@@ -924,7 +925,7 @@ def test_gl_1730_via_bindings_varchar(pg_client: PgClient):
 
     id = "300"
     pg_client.parse(id, "select $1, $2", [text_oid, varchar_oid])
-    pg_client.bind(id, id, ["hello", "world"], [])
+    pg_client.bind(id, id, ["hello", "world"])
     desc = pg_client.describe_stmt(id)
     assert desc["param_oids"] == [text_oid, varchar_oid]
     res = pg_client.execute(id)["rows"][0]
@@ -932,7 +933,7 @@ def test_gl_1730_via_bindings_varchar(pg_client: PgClient):
 
     id = "400"
     pg_client.parse(id, "select $1, $2", [0, varchar_oid])
-    pg_client.bind(id, id, ["hello", "world"], [])
+    pg_client.bind(id, id, ["hello", "world"])
     desc = pg_client.describe_stmt(id)
     assert desc["param_oids"] == [text_oid, varchar_oid]
     res = pg_client.execute(id)["rows"][0]
@@ -940,7 +941,7 @@ def test_gl_1730_via_bindings_varchar(pg_client: PgClient):
 
     id = "500"
     pg_client.parse(id, "select $1, $2", [varchar_oid, unknown_oid])
-    pg_client.bind(id, id, ["hello", "world"], [])
+    pg_client.bind(id, id, ["hello", "world"])
     desc = pg_client.describe_stmt(id)
     assert desc["param_oids"] == [varchar_oid, text_oid]
     res = pg_client.execute(id)["rows"][0]
@@ -948,7 +949,7 @@ def test_gl_1730_via_bindings_varchar(pg_client: PgClient):
 
     id = "600"
     pg_client.parse(id, "select $1 = $2", [varchar_oid, unknown_oid])
-    pg_client.bind(id, id, ["foobar", "foobar"], [])
+    pg_client.bind(id, id, ["foobar", "foobar"])
     desc = pg_client.describe_stmt(id)
     assert desc["param_oids"] == [varchar_oid, text_oid]
     res = pg_client.execute(id)["rows"][0]
@@ -965,7 +966,7 @@ def test_gl_1730_via_bindings_int_2_4_8(pg_client: PgClient):
     # (at least until we implement int2 & int4 in picodata)
     id = "100"
     pg_client.parse(id, "select $1 = 100", [])
-    pg_client.bind(id, id, [100], [])
+    pg_client.bind(id, id, [100])
     desc = pg_client.describe_stmt(id)
     assert desc["param_oids"] == [int8_oid]
     res = pg_client.execute(id)["rows"][0]
@@ -974,7 +975,7 @@ def test_gl_1730_via_bindings_int_2_4_8(pg_client: PgClient):
     # basic test for int2
     id = "200"
     pg_client.parse(id, "select $1", [int2_oid])
-    pg_client.bind(id, id, [2], [])
+    pg_client.bind(id, id, [2])
     desc = pg_client.describe_stmt(id)
     assert desc["param_oids"] == [int2_oid]
     res = pg_client.execute(id)["rows"][0]
@@ -983,7 +984,7 @@ def test_gl_1730_via_bindings_int_2_4_8(pg_client: PgClient):
     # basic test for int4
     id = "300"
     pg_client.parse(id, "select $1", [int4_oid])
-    pg_client.bind(id, id, [4], [])
+    pg_client.bind(id, id, [4])
     desc = pg_client.describe_stmt(id)
     assert desc["param_oids"] == [int4_oid]
     res = pg_client.execute(id)["rows"][0]
@@ -992,7 +993,7 @@ def test_gl_1730_via_bindings_int_2_4_8(pg_client: PgClient):
     # basic test for int8
     id = "400"
     pg_client.parse(id, "select $1", [int8_oid])
-    pg_client.bind(id, id, [8], [])
+    pg_client.bind(id, id, [8])
     desc = pg_client.describe_stmt(id)
     assert desc["param_oids"] == [int8_oid]
     res = pg_client.execute(id)["rows"][0]

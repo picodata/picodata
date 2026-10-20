@@ -45,6 +45,7 @@ from pathlib import Path
 from framework import ldap
 import logging
 from framework.log import log
+from framework.pgwire import PgClient, PgStorage
 from framework.port_distributor import PortDistributor
 from framework.util.build import copy_testable_plugins
 from framework.registry import get_or_make_registry
@@ -3361,97 +3362,6 @@ def picodata_expel(
         raise CommandFailed(e.stdout, e.stderr) from e
 
 
-class PgStorage:
-    def __init__(self, instance: Instance):
-        self.instance: Instance = instance
-        self.client_ids: list[int] = []
-
-    def statements(self, id: int):
-        return self.instance.call("pico.pg_statements", id)
-
-    def portals(self, id: int):
-        return self.instance.call("pico.pg_portals", id)
-
-    def bind(self, id, *params):
-        return self.instance.call("pico.pg_bind", id, *params)
-
-    def close_stmt(self, id: int, name: str):
-        return self.instance.call("pico.pg_close_stmt", id, name)
-
-    def close_portal(self, id: int, name: str):
-        return self.instance.call("pico.pg_close_portal", id, name)
-
-    def describe_stmt(self, id: int, name: str) -> dict:
-        return self.instance.call("pico.pg_describe_stmt", id, name)
-
-    def describe_portal(self, id: int, name: str) -> dict:
-        return self.instance.call("pico.pg_describe_portal", id, name)
-
-    def execute(self, id: int, name: str, max_rows: int, timeout: Optional[int | float] = None) -> dict:
-        # `pg_execute` runs the statement to completion, so it needs the same
-        # treatment as `Instance.sql`. `Instance.call` would otherwise cap the
-        # socket at DEFAULT_RPC_TIMEOUT while the server keeps waiting for
-        # `sql_ddl_timeout`, making the client the tighter of the two.
-        if timeout is None:
-            timeout = self.instance.default_rpc_timeout
-
-        return self.instance.call("pico.pg_execute", id, name, max_rows, timeout=timeout)
-
-    def flush(self):
-        for id in self.client_ids:
-            for name in self.statements(id)["available"]:
-                self.close_stmt(id, name)
-            for name in self.portals(id)["available"]:
-                self.close_portal(id, name)
-
-    def parse(self, id: int, name: str, sql: str, param_oids: list[int] | None = None) -> int:
-        param_oids = param_oids if param_oids is not None else []
-        return self.instance.call("pico.pg_parse", id, name, sql, param_oids)
-
-    def new_client(self, id: int):
-        self.client_ids.append(id)
-        return PgClient(self, id)
-
-
-@dataclass
-class PgClient:
-    storage: PgStorage
-    id: int
-
-    @property
-    def instance(self) -> Instance:
-        return self.storage.instance
-
-    @property
-    def statements(self):
-        return self.storage.statements(self.id)
-
-    @property
-    def portals(self):
-        return self.storage.portals(self.id)
-
-    def bind(self, *params):
-        return self.storage.bind(self.id, *params)
-
-    def close_stmt(self, name: str):
-        return self.storage.close_stmt(self.id, name)
-
-    def close_portal(self, name: str):
-        return self.storage.close_portal(self.id, name)
-
-    def describe_stmt(self, name: str) -> dict:
-        return self.storage.describe_stmt(self.id, name)
-
-    def describe_portal(self, name: str) -> dict:
-        return self.storage.describe_portal(self.id, name)
-
-    def execute(self, name: str, max_rows: int = -1, timeout: Optional[int | float] = None) -> dict:
-        return self.storage.execute(self.id, name, max_rows, timeout=timeout)
-
-    def parse(self, name: str, sql: str, param_oids: list[int] | None = None) -> int:
-        return self.storage.parse(self.id, name, sql, param_oids)
-
-
 @pytest.fixture(scope="session")
 def cargo_build_fixt(pytestconfig: pytest.Config) -> None:
     enable_webui = pytestconfig.getoption("--with-webui")
@@ -3556,15 +3466,13 @@ def pg_storage(instance: Instance) -> Generator[PgStorage, None, None]:
     """Returns a PG storage on a single instance."""
     storage = PgStorage(instance)
     yield storage
-    storage.flush()
+    storage.close()
 
 
 @pytest.fixture
-def pg_client(instance: Instance) -> Generator[PgClient, None, None]:
+def pg_client(pg_storage: PgStorage) -> PgClient:
     """Returns a PG client on a single instance."""
-    storage = PgStorage(instance)
-    yield storage.new_client(0)
-    storage.flush()
+    return pg_storage.new_client()
 
 
 def pid_alive(pid):
