@@ -309,6 +309,36 @@ def test_empty_queries(postgres: Postgres):
     assert cur.pgresult.status == ExecStatus.EMPTY_QUERY
 
 
+def sql_query_total(postgres: Postgres) -> float:
+    family = postgres.instance.get_metrics().get("pico_sql_query")
+    if family is None:
+        return 0.0
+    return sum(sample.value for sample in family.samples if sample.name == "pico_sql_query_total")
+
+
+# Check that empty queries get EmptyQueryResponse in both protocols without
+# going through the SQL dispatch, which counts each query in a metric.
+def test_empty_queries_are_not_dispatched(postgres: Postgres):
+    user = "admin"
+    password = "P@ssw0rd"
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+
+    conn = postgres.instance.connect_via_pgproto(user=user, password=password)
+    conn.autocommit = True
+
+    before = sql_query_total(postgres)
+    for prepare in (False, True):
+        for query in ["", ";", " ;; ", "\r\n;\t"]:
+            cur = conn.execute(query, prepare=prepare)
+            assert cur.pgresult is not None
+            assert cur.pgresult.status == ExecStatus.EMPTY_QUERY
+    assert sql_query_total(postgres) == before
+
+    # A real query still goes through the dispatch.
+    conn.execute("SELECT 1", prepare=False)
+    assert sql_query_total(postgres) == before + 1
+
+
 def test_deallocate(postgres: Postgres):
     user = "admin"
     password = "P@ssw0rd"

@@ -554,6 +554,11 @@ impl PortalInner {
         router: &RouterRuntime,
         statement: sql::BoundStatement,
     ) -> PgResult<PortalState> {
+        // An empty query has nothing to execute: do not dispatch it.
+        if let QueryType::Empty = self.describe.query_type() {
+            return Ok(PortalState::ResultReady(ExecuteResult::Empty));
+        }
+
         if let QueryType::Dml = self.describe.query_type() {
             if let Some(query) = self.statement.prepared_statement().query_for_audit() {
                 audit::policy::log_dml_for_user(query, statement.params_for_audit());

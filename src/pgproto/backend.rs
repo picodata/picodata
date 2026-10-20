@@ -207,6 +207,17 @@ fn deallocate_statement(id: ClientId, name: &str) -> PgResult<()> {
     Ok(())
 }
 
+/// Return true if the query has only semicolons and whitespace, so that
+/// the SQL parser makes an empty query from it. The whitespace is the same
+/// as in the SQL grammar: " ", "\t", "\n" and "\r\n". Other queries, for
+/// example with "\r" alone, go to the parser, which rejects them.
+fn is_empty_query(sql: &str) -> bool {
+    sql.split("\r\n").all(|part| {
+        part.bytes()
+            .all(|b| matches!(b, b';' | b' ' | b'\t' | b'\n'))
+    })
+}
+
 /// Each postgres client uses its own backend to handle incoming messages.
 pub struct Backend {
     /// A unique identificator of a postgres client. It is used as a part of a key in the portal
@@ -242,12 +253,19 @@ impl Backend {
     ///
     /// Note that it closes the unnamed portal and statement even in case of a failure.
     pub fn simple_query(&self, sql: &str) -> PgResult<ExecuteResult> {
-        let do_simple_query = || {
-            let close_unnamed = || {
-                self.close_statement(None);
-                self.close_portal(None);
-            };
+        let close_unnamed = || {
+            self.close_statement(None);
+            self.close_portal(None);
+        };
 
+        // An empty query gets EmptyQueryResponse. Send it without the parse,
+        // bind and dispatch of the full pipeline.
+        if is_empty_query(sql) {
+            close_unnamed();
+            return Ok(ExecuteResult::Empty);
+        }
+
+        let do_simple_query = || {
             let simple_query = || {
                 close_unnamed();
                 self.parse(None, sql, vec![])?;
@@ -412,5 +430,24 @@ impl Backend {
 impl Drop for Backend {
     fn drop(&mut self) {
         self.on_disconnect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_empty_query;
+
+    // Check that only the whitespace of the SQL grammar and semicolons make
+    // an empty query.
+    #[test]
+    fn empty_query() {
+        for sql in ["", "  ", ";", " ; ", ";;", "\n;\t", "\r\n;\r\n"] {
+            assert!(is_empty_query(sql), "{sql:?}");
+        }
+        for sql in [
+            " ;\r", "\r;", "\x0b;", "\x0c", "-- c", "/* c */;", "x", "; x",
+        ] {
+            assert!(!is_empty_query(sql), "{sql:?}");
+        }
     }
 }
