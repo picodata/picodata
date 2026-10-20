@@ -55,14 +55,13 @@ box.cfg{
             }
         }
     },
-    wal_mode = 'none',
+    wal_mode = 'write',
+    vinyl_dir = tmpdir,
     memtx_dir = tmpdir,
     wal_dir = tmpdir,
 }
 
 log.info("version: " .. box.info.version)
-
-fio.rmtree(tmpdir)
 
 -- Init test database
 box.once('bootstrap_tests', function()
@@ -119,6 +118,15 @@ package.cpath = string.format(
 box.schema.func.create('libtarantool_module_test_runner.entry', { language = 'C' })
 
 local cfg = { filter = arg[1] or "" }
-box.func['libtarantool_module_test_runner.entry']:call{cfg}
+local entry = box.func['libtarantool_module_test_runner.entry']
+local ok, err = pcall(entry.call, entry, {cfg})
+
+log.info("dropping temporary directory " .. tmpdir)
+fio.rmtree(tmpdir)
+
+if not ok then
+    -- Raise the error if the tests failed
+    error(err)
+end
 
 os.exit(0)
