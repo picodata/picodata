@@ -748,16 +748,9 @@ pub fn dispatch_bound_statement<'p>(
     let result =
         dispatch_bound_statement_impl(runtime, statement, override_deadline, governor_op_id, port);
 
-    let tier = &runtime
-        .get_current_tier_name()
-        .map_err(|e| Error::Other(e.into()))?
-        .unwrap_or_else(|| SmolStr::new("unknown_tier"));
-
     let node = node::global()?;
-
-    let raft_id = node.raft_id;
-    let inst = node.storage.instances.get(&raft_id)?;
-    let replicaset_name = &inst.replicaset_name;
+    let tier = node.topology_cache.my_tier_name();
+    let replicaset_name = node.topology_cache.my_replicaset_name();
 
     if result.is_err() {
         metrics::record_sql_query_errors_total(tier, replicaset_name);
