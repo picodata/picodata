@@ -50,7 +50,7 @@ default: ;
 .PHONY: tarantool-patch
 tarantool-patch:
 	if test ! -f tarantool-sys/VERSION || \
-	   test "${VER_TNT}" != "$(cat tarantool-sys/VERSION)"; then \
+	   test "${VER_TNT}" != "$$(cat tarantool-sys/VERSION)"; then \
 		echo "${VER_TNT}" > tarantool-sys/VERSION; \
 	fi
 
