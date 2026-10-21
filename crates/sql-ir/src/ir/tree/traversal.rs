@@ -2,11 +2,12 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::NodeId;
 use crate::ir::{Node, Nodes};
-use smallvec::SmallVec;
 use std::collections::VecDeque;
 
 pub const EXPR_CAPACITY: usize = 64;
 pub const REL_CAPACITY: usize = 32;
+/// The usual depth of a plan tree.
+const STACK_CAPACITY: usize = 16;
 
 pub struct PostOrder<ChildrenFn, T> {
     inner: PostOrderWithFilter<ChildrenFn, fn(T) -> bool, T>,
@@ -125,8 +126,10 @@ pub struct NodePostOrder<'nodes, C, I> {
     children: C,
     /// The path from the root: each node with an iterator over its children
     /// that are not visited yet. It replaces the recursion of `PostOrder`,
-    /// which cannot pause between the calls of `next()`.
-    stack: SmallVec<[(NodeId, Node<'nodes>, I); 16]>,
+    /// which cannot pause between the calls of `next()`. A heap vector is
+    /// cheaper than an inline one here: the frames are large, and an inline
+    /// stack is copied each time the traversal is moved.
+    stack: Vec<(NodeId, Node<'nodes>, I)>,
 }
 
 /// The children of a node for [`NodePostOrder`].
@@ -190,7 +193,7 @@ where
         let mut traversal = Self {
             nodes,
             children,
-            stack: SmallVec::new(),
+            stack: Vec::with_capacity(STACK_CAPACITY),
         };
         traversal.push(root);
         traversal
