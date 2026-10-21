@@ -1,11 +1,14 @@
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{Alias, ArenaType};
+use crate::ir::node::{Alias, ArenaType, NodeId};
 use crate::ir::operator::Bool;
 use crate::ir::relation::{SpaceEngine, Table};
 use crate::ir::test_fixtures::column_user_non_null;
-use crate::ir::tree::traversal::{BreadthFirst, PostOrder, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::tree::traversal::{
+    BreadthFirst, NodeIter, NodePostOrder, PostOrder, EXPR_CAPACITY, REL_CAPACITY,
+};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
+use crate::ir::Node;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
 use rand::random;
@@ -192,6 +195,7 @@ fn selection_subquery_dfs_post() {
     assert_eq!(iter.next(), Some(sq_id));
     assert_eq!(iter.next(), Some(selection_t1_id));
     assert_eq!(iter.next(), None);
+    check_node_post_order(&plan, |node| plan.nodes.rel_iter(node), top);
 
     // Traverse expression nodes in the selection t2 filter
     let dft_post = PostOrder::new(|node| plan.nodes.expr_iter(node, true), EXPR_CAPACITY);
@@ -208,6 +212,7 @@ fn selection_subquery_dfs_post() {
     assert_eq!(iter.next(), Some(c));
     assert_eq!(iter.next(), Some(in_op));
     assert_eq!(iter.next(), None);
+    check_node_post_order(&plan, |node| plan.nodes.expr_iter(node, true), in_op);
 }
 
 #[test]
@@ -281,4 +286,47 @@ fn subtree_dfs_post() {
     assert_eq!(iter.next(), Some(selection_t1_id));
     assert_eq!(iter.next(), Some(proj_id));
     assert_eq!(iter.next(), None);
+    check_node_post_order(&plan, |node| plan.subtree_iter(node), top);
+
+    let missing = plan.nodes.next_id(ArenaType::Arena64);
+    let mut iter = NodePostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), missing);
+    assert!(iter.next().is_none());
+}
+
+/// Check that `NodePostOrder` visits the same nodes as `PostOrder`, gives
+/// the node of each id, and that the typed views select only their kind.
+fn check_node_post_order<F, I>(plan: &Plan, children_fn: F, root: NodeId)
+where
+    F: FnMut(NodeId) -> I + Clone,
+    I: Iterator<Item = NodeId>,
+{
+    let expected = PostOrder::new(children_fn.clone(), plan.nodes.len()).traverse_into_vec(root);
+    let nodes: Vec<_> = NodePostOrder::new(&plan.nodes, children_fn.clone(), root).collect();
+    let ids: Vec<_> = nodes.iter().map(|(id, _)| *id).collect();
+    assert_eq!(ids, expected);
+    for (id, node) in &nodes {
+        assert_eq!(node, &plan.get_node(*id).unwrap());
+    }
+
+    let rel_ids: Vec<_> = NodePostOrder::new(&plan.nodes, children_fn.clone(), root)
+        .relational()
+        .map(|(id, _)| id)
+        .collect();
+    let expected_rel_ids: Vec<_> = nodes
+        .iter()
+        .filter(|(_, node)| matches!(node, Node::Relational(_)))
+        .map(|(id, _)| *id)
+        .collect();
+    assert_eq!(rel_ids, expected_rel_ids);
+
+    let expr_ids: Vec<_> = NodePostOrder::new(&plan.nodes, children_fn, root)
+        .expressions()
+        .map(|(id, _)| id)
+        .collect();
+    let expected_expr_ids: Vec<_> = nodes
+        .iter()
+        .filter(|(_, node)| matches!(node, Node::Expression(_)))
+        .map(|(id, _)| *id)
+        .collect();
+    assert_eq!(expr_ids, expected_expr_ids);
 }
