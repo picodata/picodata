@@ -27,7 +27,7 @@ use crate::ir::operator::UpdateStrategy;
 use crate::ir::relation::SpaceEngine;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::subtree::ExecPlanSubtreeIterator;
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrder, PostOrderWithFilter};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use crate::ir::{Plan, SubtreeViewKey};
@@ -677,14 +677,12 @@ fn bucket_filter_calculate(
     let plan = exec_plan.get_ir_plan();
     let mut relation_name: Option<&SmolStr> = None;
     let mut targets = AHashMap::new();
-    let subtree = PostOrder::new(
+    let subtree = NodePostOrder::new(
+        &plan.nodes,
         |node| exec_plan.effective_exec_plan_subtree_iter(node, Snapshot::Oldest),
-        plan.nodes.len(),
+        top_id,
     );
-    for node_id in subtree.traverse_into_iter(top_id) {
-        let Ok(Node::Relational(rel)) = plan.get_node(node_id) else {
-            continue;
-        };
+    for (node_id, rel) in subtree.relational() {
         if let Some(node_relation_name) = bucket_filter_relation_name(&rel) {
             match relation_name {
                 Some(name) if name != node_relation_name => return Ok(None),
@@ -784,14 +782,15 @@ impl ExecutionPlan {
 
     pub fn has_serialize_as_empty_motion(&self, top_id: NodeId) -> bool {
         let plan = self.get_ir_plan();
-        let motion_filter = |id| plan.is_serialize_as_empty_motion(id, false);
-        let dfs = PostOrderWithFilter::new(
+        NodePostOrder::new(
+            &plan.nodes,
             |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
-            motion_filter,
-            plan.nodes.len(),
-        );
-
-        dfs.traverse_into_iter(top_id).next().is_some()
+            top_id,
+        )
+        .relational()
+        .any(|(id, rel)| {
+            matches!(rel, Relational::Motion(_)) && plan.is_serialize_as_empty_motion(id, false)
+        })
     }
 
     #[must_use]
@@ -820,22 +819,21 @@ impl ExecutionPlan {
         // We are looking for Segment motions since these are the only motion
         // nodes whose bucket index is used for bucket calculation. See
         // https://git.picodata.io/core/picodata/-/blob/b2ef583f174cf8e5e5806ae765ce81c9872deea3/sql-planner/src/execu/bucket_discovery.rs#L248.
-        let motion_filter = |id| {
+        NodePostOrder::new(
+            &plan.nodes,
+            |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
+            top_id,
+        )
+        .relational()
+        .any(|(_, rel)| {
             matches!(
-                plan.get_node(id),
-                Ok(Node::Relational(Relational::Motion(Motion {
+                rel,
+                Relational::Motion(Motion {
                     policy: MotionPolicy::Segment(_),
                     ..
-                })))
+                })
             )
-        };
-        let dfs = PostOrderWithFilter::new(
-            |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
-            motion_filter,
-            plan.nodes.len(),
-        );
-
-        dfs.traverse_into_iter(top_id).next().is_some()
+        })
     }
 
     /// Returns the bucket column attached to `selection_id` by the active

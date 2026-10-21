@@ -7,7 +7,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, Node, NodeId};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
 use crate::ir::tree::relation::RelationalIterator;
-use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter};
 use crate::ir::Plan;
 use ahash::AHashMap;
 use smol_str::format_smolstr;
@@ -93,17 +93,10 @@ impl PlanSerializeAsEmptyExt for Plan {
         }
 
         let mut motions_ref_count: AHashMap<NodeId, usize> = AHashMap::new();
-        let dfs = PostOrderWithFilter::new(
-            |node| self.nodes.rel_iter(node),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Relational(Relational::Motion(_)))
-                )
-            },
-            0,
-        );
-        for motion_id in dfs.traverse_into_iter(top_id) {
+        let motions = NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
+            .relational()
+            .filter(|(_, rel)| matches!(rel, Relational::Motion(_)));
+        for (motion_id, _) in motions {
             motions_ref_count
                 .entry(motion_id)
                 .and_modify(|cnt| *cnt += 1)
@@ -115,17 +108,11 @@ impl PlanSerializeAsEmptyExt for Plan {
         let all_motion_nodes = {
             let mut all_motions = Vec::new();
             for top_id in &top_ids {
-                let dfs = PostOrderWithFilter::new(
-                    |node| self.nodes.rel_iter(node),
-                    |node| {
-                        matches!(
-                            self.get_node(node),
-                            Ok(Node::Relational(Relational::Motion(_)))
-                        )
-                    },
-                    REL_CAPACITY,
-                );
-                all_motions.extend(dfs.traverse_into_iter(*top_id));
+                let motions =
+                    NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), *top_id)
+                        .relational()
+                        .filter_map(|(id, rel)| matches!(rel, Relational::Motion(_)).then_some(id));
+                all_motions.extend(motions);
             }
             all_motions
         };

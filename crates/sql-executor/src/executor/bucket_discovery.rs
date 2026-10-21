@@ -12,12 +12,12 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Constant, Delete, Except, Insert, Intersect, Join, Motion, Node, NodeId, ScanRelation,
-    Selection, Union, UnionAll, Values,
+    Constant, Delete, Except, Insert, Intersect, Join, Motion, NodeId, ScanRelation, Selection,
+    Union, UnionAll, Values,
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 
@@ -160,18 +160,11 @@ where
         };
 
         // We have to ensure that there are no motions below in IR.
-        let dfs = PostOrderWithFilter::new(
-            |x| plan.nodes.rel_iter(x),
-            |id| {
-                matches!(
-                    plan.get_node(id),
-                    Ok(Node::Relational(Relational::Motion(_)))
-                )
-            },
-            REL_CAPACITY,
-        );
         let child = child.expect("MOTION must contain child");
-        if dfs.traverse_into_iter(child).next().is_some() {
+        if NodePostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), child)
+            .relational()
+            .any(|(_, rel)| matches!(rel, Relational::Motion(_)))
+        {
             return Ok(None);
         }
 

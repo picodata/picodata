@@ -16,7 +16,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::tree::traversal::PostOrder;
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::types::CastType;
 use crate::ir::Plan;
@@ -999,11 +999,7 @@ impl<'p> SyntaxPlan<'p> {
     /// - Failed to find a node in the plan.
     #[allow(clippy::too_many_lines)]
     #[allow(unused_variables)]
-    pub fn add_plan_node(&mut self, id: NodeId) {
-        let ir_plan = self.plan.get_ir_plan();
-        let node = ir_plan
-            .get_node(id)
-            .expect("node {id} must exist in the plan");
+    pub fn add_plan_node(&mut self, id: NodeId, node: Node<'_>) {
         match node {
             Node::Deallocate(..)
             | Node::Discard(..)
@@ -1255,13 +1251,13 @@ impl<'p> SyntaxPlan<'p> {
 
     fn expression_subtree_contains_or(&self, expr_id: NodeId) -> bool {
         let plan = self.plan.get_ir_plan();
-        let expr_tree = PostOrder::new(|node| plan.nodes.expr_iter(node, true), plan.nodes.len());
-        expr_tree.traverse_into_iter(expr_id).any(|id| {
-            matches!(
-                plan.get_expression_node(id),
-                Ok(Expression::Bool(BoolExpr { op: Bool::Or, .. }))
-            )
-        })
+        NodePostOrder::new(
+            &plan.nodes,
+            |node| plan.nodes.expr_iter(node, true),
+            expr_id,
+        )
+        .expressions()
+        .any(|(_, expr)| matches!(expr, Expression::Bool(BoolExpr { op: Bool::Or, .. })))
     }
 
     fn add_group_by(&mut self, id: NodeId) {
@@ -2805,11 +2801,11 @@ impl<'p> SyntaxPlan<'p> {
         let ir_plan = plan.get_ir_plan();
 
         // Wrap plan's nodes and preserve their ids.
-        let capacity = ir_plan.nodes.len();
         let mut empty_motion_ids = HashSet::new();
         match snapshot {
             Snapshot::Latest => {
-                let dft_post = PostOrder::new(
+                let dft_post = NodePostOrder::new(
+                    &ir_plan.nodes,
                     |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
                         if plan.is_effective_motion_leaf(node) {
                             Box::new(std::iter::empty())
@@ -2817,12 +2813,10 @@ impl<'p> SyntaxPlan<'p> {
                             Box::new(ir_plan.subtree_iter(node))
                         }
                     },
-                    capacity,
+                    top,
                 );
-                for id in dft_post.traverse_into_iter(top) {
-                    if let Ok(Node::Relational(Relational::Motion(Motion { program, .. }))) =
-                        ir_plan.get_node(id)
-                    {
+                for (id, rel) in dft_post.relational() {
+                    if let Relational::Motion(Motion { program, .. }) = rel {
                         if plan
                             .effective_serialize_as_empty_state(id, program)
                             .is_enabled()
@@ -2833,7 +2827,8 @@ impl<'p> SyntaxPlan<'p> {
                 }
             }
             Snapshot::Oldest => {
-                let dft_post = PostOrder::new(
+                let dft_post = NodePostOrder::new(
+                    &ir_plan.nodes,
                     |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
                         if plan.is_effective_motion_leaf(node) {
                             Box::new(std::iter::empty())
@@ -2841,12 +2836,10 @@ impl<'p> SyntaxPlan<'p> {
                             Box::new(ir_plan.flashback_subtree_iter(node))
                         }
                     },
-                    capacity,
+                    top,
                 );
-                for id in dft_post.traverse_into_iter(top) {
-                    if let Ok(Node::Relational(Relational::Motion(Motion { program, .. }))) =
-                        ir_plan.get_node(id)
-                    {
+                for (id, rel) in dft_post.relational() {
+                    if let Relational::Motion(Motion { program, .. }) = rel {
                         if plan
                             .effective_serialize_as_empty_state(id, program)
                             .is_enabled()
@@ -2859,7 +2852,8 @@ impl<'p> SyntaxPlan<'p> {
         }
         match snapshot {
             Snapshot::Latest => {
-                let dft_post = PostOrder::new(
+                let dft_post = NodePostOrder::new(
+                    &ir_plan.nodes,
                     |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
                         if plan.is_effective_motion_leaf(node) || empty_motion_ids.contains(&node) {
                             Box::new(std::iter::empty())
@@ -2867,11 +2861,11 @@ impl<'p> SyntaxPlan<'p> {
                             Box::new(ir_plan.subtree_iter(node))
                         }
                     },
-                    capacity,
+                    top,
                 );
-                for id in dft_post.traverse_into_iter(top) {
+                for (id, node) in dft_post {
                     // it works only for post-order traversal
-                    sp.add_plan_node(id);
+                    sp.add_plan_node(id, node);
                     let sn_id = sp.nodes.next_id() - 1;
                     if id == top {
                         sp.set_top(sn_id)?;
@@ -2879,7 +2873,8 @@ impl<'p> SyntaxPlan<'p> {
                 }
             }
             Snapshot::Oldest => {
-                let dft_post = PostOrder::new(
+                let dft_post = NodePostOrder::new(
+                    &ir_plan.nodes,
                     |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
                         if plan.is_effective_motion_leaf(node) || empty_motion_ids.contains(&node) {
                             Box::new(std::iter::empty())
@@ -2887,12 +2882,12 @@ impl<'p> SyntaxPlan<'p> {
                             Box::new(ir_plan.flashback_subtree_iter(node))
                         }
                     },
-                    capacity,
+                    top,
                 );
 
-                for id in dft_post.traverse_into_iter(top) {
+                for (id, node) in dft_post {
                     // it works only for post-order traversal
-                    sp.add_plan_node(id);
+                    sp.add_plan_node(id, node);
                     let sn_id = sp.nodes.next_id().saturating_sub(1);
                     if id == top {
                         sp.set_top(sn_id)?;
