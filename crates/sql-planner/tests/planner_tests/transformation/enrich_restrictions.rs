@@ -622,7 +622,7 @@ fn null_const_derives_nothing_but_a_false_marker() {
     let plan = run_enrich(r#"SELECT "a" FROM "t" WHERE "a" = NULL"#, &[]);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = NULL::unknown and false::bool))
+      selection (false::bool)
         scan t
     ");
 }
@@ -636,18 +636,18 @@ fn contradictory_class_derives_nothing_but_a_false_marker() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = 1::int and t.a::int = t.b::int and t.b::int = 2::int and false::bool))
+      selection (false::bool)
         scan t
     ");
 }
 
 #[test]
-fn a_contradictory_filter_keeps_its_clauses_and_gets_a_false_marker() {
-    // Add false while preserving the original contradictory conditions.
+fn a_contradictory_filter_collapses_to_false() {
+    // The contradictory conditions give way to a bare false.
     let plan = run_enrich(r#"SELECT "a" FROM "t" WHERE "a" = 1 AND "a" = 2"#, &[]);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = 1::int and t.a::int = 2::int and false::bool))
+      selection (false::bool)
         scan t
     ");
 }
@@ -658,7 +658,7 @@ fn a_null_slot_equality_gets_a_false_marker() {
     let plan = run_enrich(r#"SELECT "a" FROM "t" WHERE "a" IS NULL AND "a" = 5"#, &[]);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int is null and t.a::int = 5::int and false::bool))
+      selection (false::bool)
         scan t
     ");
 }
@@ -672,7 +672,7 @@ fn a_contradictory_inner_join_condition_gets_a_false_marker() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      join on ((t.a::int = 1::int and t.a::int = 2::int and false::bool))
+      join on (false::bool)
         scan t
         scan t2
     ");
@@ -701,7 +701,7 @@ fn both_or_arms_dead_kills_the_region() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((((t.a::int = 1::int and t.a::int = 2::int) or (t.b::int = 3::int and t.b::int = 4::int)) and false::bool))
+      selection (false::bool)
         scan t
     ");
 }
@@ -716,8 +716,8 @@ fn each_dead_rel_gets_its_own_marker() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      selection ((t2.f::int = 3::int and t2.f::int = 4::int and false::bool))
-        join on ((t.a::int = 1::int and t.a::int = 2::int and false::bool))
+      selection (false::bool)
+        join on (false::bool)
           scan t
           scan t2
     ");
@@ -749,7 +749,7 @@ fn a_cross_filter_contradiction_gets_a_false_marker_at_the_anchor() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      selection ((t.a::int = 1::int and t2.e::int = 2::int and false::bool))
+      selection (false::bool)
         join on (t.a::int = t2.e::int)
           scan t
           scan t2
@@ -772,7 +772,7 @@ fn a_contradiction_inside_a_subquery_stays_inside_it() {
     subquery $0:
       scan
         projection (t2.e::int -> e)
-          selection ((t2.e::int = 1::int and i.a::int = 2::int and false::bool))
+          selection (false::bool)
             join on (t2.e::int = i.a::int)
               scan t2
               scan t -> i
@@ -794,7 +794,7 @@ fn a_dead_filter_on_the_right_of_a_left_join_stays_there() {
         scan t
         scan s
           projection (t2.e::int -> e)
-            selection ((t2.e::int = 1::int and t2.e::int = 2::int and false::bool))
+            selection (false::bool)
               scan t2
     ");
 }
@@ -815,7 +815,7 @@ fn a_contradictory_class_on_the_right_of_a_left_join_stays_there() {
         scan t
         scan s
           projection (t2.e::int -> e)
-            selection ((t2.e::int = 1::int and i.a::int = 2::int and false::bool))
+            selection (false::bool)
               join on (t2.e::int = i.a::int)
                 scan t2
                 scan t -> i
@@ -828,7 +828,7 @@ fn a_dead_filter_stays_below_an_aggregate() {
     let plan = run_enrich(r#"SELECT COUNT(*) FROM "t" WHERE "a" = 1 AND "a" = 2"#, &[]);
     assert_snapshot!(logical(&plan), @r"
     projection (count(*)::int -> col_1)
-      selection ((t.a::int = 1::int and t.a::int = 2::int and false::bool))
+      selection (false::bool)
         scan t
     ");
 }
@@ -842,7 +842,7 @@ fn a_contradictory_class_stays_below_an_aggregate() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (count(*)::int -> col_1)
-      selection ((t.a::int = 1::int and t2.e::int = 2::int and false::bool))
+      selection (false::bool)
         join on (t.a::int = t2.e::int)
           scan t
           scan t2
@@ -2234,7 +2234,7 @@ fn a_contradiction_at_a_left_join_anchor_lands_in_the_source_join_on() {
     projection (l.a::int -> a, count(*)::int -> col_1)
       group by (l.a::int)
         left join on (r.a::int = o.a::int)
-          join on ((l.a::int = r.a::int and false::bool))
+          join on (false::bool)
             scan l
               projection (t.a::int -> a)
                 selection (t.a::int = 1::int)
@@ -2544,32 +2544,32 @@ fn unsupported_equalities_stay_untouched() {
 }
 
 #[test]
-fn a_dead_filter_keeps_every_conjunct() {
-    // `a = 1 AND a = 2` kills the whole filter, so its equality facts and
-    // replaceable sources are discarded: even the unrelated `b = c` stays.
+fn a_dead_filter_drops_every_conjunct() {
+    // `a = 1 AND a = 2` kills the whole filter, so it collapses to a bare
+    // false: even the unrelated `b = c` goes.
     let plan = run_enrich(
         r#"SELECT "a" FROM "t" WHERE "a" = 1 AND "b" = "c" AND "a" = 2"#,
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
-      selection ((t.a::int = 1::int and t.b::int = t.c::int and t.a::int = 2::int and false::bool))
+      selection (false::bool)
         scan t
     ");
 }
 
 #[test]
 fn a_contradictory_class_keeps_its_sources_beside_a_replaced_class() {
-    // The two filters conflict only together: {a, 1, 2} is contradictory and
-    // keeps both sources, while {b, c} is complete and its source gives way to
-    // the derived pair.
+    // The two filters conflict only together: {a, 1, 2} is contradictory, so
+    // the filter it empties collapses to false while the lower one keeps its
+    // source; {b, c} is complete and its source gives way to the derived pair.
     let plan = run_enrich(
         "SELECT * FROM (SELECT a, b, c FROM t WHERE a = 1 AND b = c) s WHERE s.a = 2",
         &[],
     );
     assert_snapshot!(logical(&plan), @r"
     projection (s.a::int -> a, s.b::int -> b, s.c::int -> c)
-      selection ((s.a::int = 2::int and false::bool))
+      selection (false::bool)
         scan s
           projection (t.a::int -> a, t.b::int -> b, t.c::int -> c)
             selection ((t.a::int = 1::int and t.b::int = t.c::int))
@@ -2965,11 +2965,8 @@ fn contradiction_in_an_inner_on_empties_the_motion_input() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
-      join on ((t.a::int = s.b::int and false::bool))
+      join on (false::bool)
         scan t
-          projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
-            selection ((t.c::int = 1::int and t.c::int = 2::int))
-              scan t
         motion [policy: full, program: ReshardIfNeeded]
           projection (s.a::text -> a, s.b::int -> b)
             selection (false::bool)
@@ -2998,7 +2995,7 @@ fn contradictory_class_across_filters_empties_the_motion_input() {
               selection (false::bool)
                 scan s
                   projection (t3.a::text -> a, t3.b::int -> b)
-                    selection ((t3.a::text = 'x'::text and t3.a::text = 'y'::text))
+                    selection (t3.a::text = 'x'::text)
                       scan t3
     ");
 }
@@ -3012,7 +3009,7 @@ fn explicit_false_where_empties_the_motion_input() {
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
-      selection ((false::bool and false::bool))
+      selection (false::bool)
         join on (t.a::int = s.b::int)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
@@ -3035,7 +3032,7 @@ fn explicit_false_where_empties_the_motion_input() {
         motion [policy: full, program: ReshardIfNeeded]
           scan s
             projection (t3.a::text -> a, t3.b::int -> b)
-              selection ((false::bool and false::bool))
+              selection (false::bool)
                 scan t3
     ");
 }
@@ -3054,13 +3051,14 @@ fn false_replaces_param_checks_on_every_motion_input() {
     };
     let empty = query("t.c = 1 AND t.c = 2");
 
-    // Before motions: the parameter check is placed in the tree, yet the
-    // domain records only its `false` for redistribution.
+    // Before motions: the parameter check would land in the emptied top
+    // filter, which collapses to a bare `false`; the domain records only
+    // its `false` for redistribution.
     let plan = sql_to_ir_without_bind(&empty, &[DerivedType::new(UnrestrictedType::Integer)]);
     let top_id = plan.get_top().unwrap();
     let plan = plan.optimize_before(top_id, Stage::AddMotions).unwrap();
     assert!(
-        logical(&plan).contains("$1::int = 1::int"),
+        !logical(&plan).contains("$1::int = 1::int"),
         "{}",
         logical(&plan)
     );
@@ -3074,16 +3072,13 @@ fn false_replaces_param_checks_on_every_motion_input() {
     );
 
     // Both motions, the inner one run first, get a single `false` and no
-    // `$1 = 1`; the domain's own filters keep everything.
+    // `$1 = 1`; the domain's top filter is a bare `false`.
     let plan = optimized_with_int_params(&empty, 1);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, s.a::text -> a, s.b::int -> b)
-      selection (($1::int = 1::int and false::bool))
+      selection (false::bool)
         join on (t.a::int = s.b::int)
           scan t
-            projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
-              selection ((t.c::int = 1::int and t.c::int = 2::int))
-                scan t
           motion [policy: full, program: ReshardIfNeeded]
             projection (s.a::text -> a, s.b::int -> b)
               selection (false::bool)
@@ -3137,11 +3132,9 @@ fn false_stays_within_its_domain() {
         scan t
         motion [policy: full, program: ReshardIfNeeded]
           scan s
-            projection (sum(count_1::int::int)::int::int -> c)
-              motion [policy: full, program: ReshardIfNeeded]
-                projection (count(*)::int -> count_1)
-                  selection ((false::bool and false::bool))
-                    scan t3
+            projection (count(*)::int -> c)
+              selection (false::bool)
+                scan t3
     ");
 
     // A false `ON` of a LEFT JOIN proves no emptiness: the preserved rows
@@ -3173,9 +3166,6 @@ fn false_stays_within_its_domain() {
         selection (false::bool)
           join on (t.a::int = c.b::int)
             scan t
-              projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
-                selection ((t.c::int = 1::int and t.c::int = 2::int))
-                  scan t
             scan cte c($0)
       motion [policy: local, program: SerializeAsEmptyTable(true)]
         projection (c.b::int -> b)

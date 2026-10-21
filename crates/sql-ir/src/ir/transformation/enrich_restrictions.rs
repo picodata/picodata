@@ -339,6 +339,18 @@ impl Plan {
             complete.insert(class_id);
         }
         planned.replaced = self.replaced_sources(facts.source_equalities(), &complete)?;
+        // An emptied filter / ON loses its own conjuncts too: only a bare
+        // `false` makes bucket discovery see the condition as empty.
+        for &(placement, _) in &planned.empty {
+            if let Placement::ExistingSelection(owner) | Placement::InnerJoinOn(owner) = placement {
+                let conjuncts = self.owner_restriction(owner)?.clauses();
+                planned
+                    .replaced
+                    .entry(placement)
+                    .or_default()
+                    .extend(conjuncts.iter().map(RestrictInfo::clause));
+            }
+        }
         Ok(Some(planned))
     }
 
@@ -452,10 +464,11 @@ impl Plan {
         }
         for (placement, domain_node) in empty {
             let false_id = self.add_const(Value::Boolean(false));
-            grouped
-                .entry(placement)
-                .or_default()
-                .push(RestrictInfo::implied(false_id, SmallVec::new()));
+            // `F AND false` is `false`: the placement's other clauses go.
+            grouped.insert(
+                placement,
+                vec![RestrictInfo::implied(false_id, SmallVec::new())],
+            );
             checks.push(PlacedCheck {
                 domain_node,
                 placement,

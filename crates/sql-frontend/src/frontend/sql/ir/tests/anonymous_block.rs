@@ -282,6 +282,22 @@ fn block_query_has_motions_errors() {
 }
 
 #[test]
+fn block_query_union_all_false_branch_has_no_motions() {
+    // Enrichment re-derives `false`; it must stay a bare `false`, or the empty
+    // branch is no longer seen as empty and the UNION ALL needs a Motion.
+    let union = "SELECT a FROM t1 WHERE false UNION ALL SELECT a FROM t1 WHERE a = 'x' AND b = 1";
+    for query in [
+        format!("SELECT count(*) FROM ({union}) s"),
+        format!("SELECT a FROM ({union}) ORDER BY a"),
+        format!("SELECT a FROM ({union}) LIMIT 1"),
+    ] {
+        let plan =
+            sql_to_ir_without_bind(&format!("DO $$ BEGIN RETURN QUERY {query}; END $$"), &[]);
+        plan.optimize_block().unwrap();
+    }
+}
+
+#[test]
 fn delete_in_block_parsing() {
     let ok_cases = [
         "DO $$ BEGIN DELETE FROM t2; END $$",

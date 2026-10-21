@@ -1386,27 +1386,12 @@ fn scalar_aggregate_over_false_under_union_all() {
     let query = r#"explain (logical) SELECT count(*) AS n FROM "t5" WHERE false
         UNION ALL SELECT "a" FROM "t5" WHERE "a" <> 1"#;
     let plan = sql_to_optimized_ir(query, vec![]);
-    #[cfg(not(feature = "enrich_restrictions"))]
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     union all
       motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
         projection (count(*)::int -> n)
           selection (false::bool)
             scan t5
-      projection (t5.a::int -> a)
-        selection (t5.a::int <> 1::int)
-          scan t5
-    ");
-    // Enrichment repeats `false`; the aggregate then runs in two stages.
-    #[cfg(feature = "enrich_restrictions")]
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
-    union all
-      motion [policy: segment([ref(n)]), program: ReshardIfNeeded]
-        projection (sum(count_1::int::int)::int::int -> n)
-          motion [policy: full, program: ReshardIfNeeded]
-            projection (count(*)::int -> count_1)
-              selection ((false::bool and false::bool))
-                scan t5
       projection (t5.a::int -> a)
         selection (t5.a::int <> 1::int)
           scan t5

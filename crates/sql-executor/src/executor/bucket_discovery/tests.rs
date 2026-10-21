@@ -1583,17 +1583,18 @@ mod false_on_motion_inputs {
         assert_eq!(vec![Buckets::All], motion_input_buckets(sql, vec![]));
     }
 
-    /// `count(*)` of an empty input is a row: only the local stage, which
-    /// reads the input, is pruned.
+    /// `count(*)` of an empty input is a row: the bare `false` keeps the
+    /// aggregate one-stage, and dispatch still runs it on one node for empty
+    /// buckets (`emits_row_from_empty_input`).
     #[test]
     fn false_below_count_keeps_the_aggregate_result() {
         let sql = r#"SELECT t."id" FROM "test_space" AS t
             JOIN (SELECT count(*) AS c FROM "test_space_hist" WHERE false) AS s
             ON t."id" = s.c"#;
-        let buckets = motion_input_buckets(sql, vec![]);
-        assert_eq!(2, buckets.len(), "{buckets:?}");
-        assert_eq!(Buckets::new_empty(), buckets[0]);
-        assert_ne!(Buckets::new_empty(), buckets[1]);
+        assert_eq!(
+            vec![Buckets::new_empty()],
+            motion_input_buckets(sql, vec![])
+        );
     }
 
     /// One consumer's contradiction never empties a CTE another one reads.
