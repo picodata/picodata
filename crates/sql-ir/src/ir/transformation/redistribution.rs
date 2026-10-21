@@ -29,7 +29,7 @@ use crate::ir::node::{
     Selection, SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values, Window,
 };
 use crate::ir::transformation::equality_facts::EqualityFacts;
-use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{Node, Plan};
 
@@ -398,20 +398,11 @@ pub fn compare_window_dist(this: &Distribution, other: &Distribution) -> Distrib
 impl Plan {
     /// Get unary NOT expression nodes.
     pub(crate) fn get_not_unary_nodes(&self, top: NodeId) -> Vec<NodeId> {
-        let post_tree = PostOrderWithFilter::new(
-            |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::Unary(UnaryExpr {
-                        op: Unary::Not,
-                        ..
-                    })))
-                )
-            },
-            EXPR_CAPACITY,
-        );
-        post_tree.traverse_into_vec(top)
+        NodePostOrder::new(&self.nodes, |node| self.nodes.expr_iter(node, false), top)
+            .expressions()
+            .filter(|(_, expr)| matches!(expr, Expression::Unary(UnaryExpr { op: Unary::Not, .. })))
+            .map(|(id, _)| id)
+            .collect()
     }
 
     /// Get boolean expressions with at least one row or ref children in the sub-tree.
@@ -422,11 +413,9 @@ impl Plan {
     /// # Errors
     /// - some of the expression nodes are invalid
     pub(crate) fn get_bool_nodes_for_resolve_subquery_conflicts(&self, top: NodeId) -> Vec<NodeId> {
-        let filter_bool_expr_with_row = |node_id| {
+        let filter_bool_expr_with_row = |expr: &Expression| {
             // Append only booleans with row children.
-            let Ok(Node::Expression(Expression::Bool(BoolExpr { left, right, .. }))) =
-                self.get_node(node_id)
-            else {
+            let Expression::Bool(BoolExpr { left, right, .. }) = expr else {
                 return false;
             };
 
@@ -452,12 +441,11 @@ impl Plan {
 
             left_is_row || right_is_row
         };
-        let post_tree = PostOrderWithFilter::new(
-            |node| self.nodes.expr_iter(node, false),
-            filter_bool_expr_with_row,
-            EXPR_CAPACITY,
-        );
-        post_tree.traverse_into_vec(top)
+        NodePostOrder::new(&self.nodes, |node| self.nodes.expr_iter(node, false), top)
+            .expressions()
+            .filter(|(_, expr)| filter_bool_expr_with_row(expr))
+            .map(|(id, _)| id)
+            .collect()
     }
 
     /// Get unary expressions with row children in the sub-tree.
@@ -468,11 +456,9 @@ impl Plan {
     /// # Errors
     /// - some of the expression nodes are invalid
     pub(crate) fn get_unary_nodes_with_row_children(&self, top: NodeId) -> Vec<NodeId> {
-        let filter_unary_expr_with_row = |node_id| {
+        let filter_unary_expr_with_row = |expr: &Expression| {
             // Append only unaries with row children.
-            let Ok(Node::Expression(Expression::Unary(UnaryExpr { child, .. }))) =
-                self.get_node(node_id)
-            else {
+            let Expression::Unary(UnaryExpr { child, .. }) = expr else {
                 return false;
             };
 
@@ -481,12 +467,11 @@ impl Plan {
                 Ok(Node::Expression(Expression::Row(_)))
             )
         };
-        let post_tree = PostOrderWithFilter::new(
-            |node| self.nodes.expr_iter(node, false),
-            filter_unary_expr_with_row,
-            EXPR_CAPACITY,
-        );
-        post_tree.traverse_into_vec(top)
+        NodePostOrder::new(&self.nodes, |node| self.nodes.expr_iter(node, false), top)
+            .expressions()
+            .filter(|(_, expr)| filter_unary_expr_with_row(expr))
+            .map(|(id, _)| id)
+            .collect()
     }
 
     /// Get a single sub-query from the row node.
@@ -508,27 +493,21 @@ impl Plan {
     /// # Errors
     /// - Row node is not of a row type
     pub fn get_sq_ref_ids_from_row_node(&self, row_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
-        let row = self.get_expression_node(row_id)?;
-        let capacity = if let Expression::Row(Row { list, .. }) = row {
-            list.len()
-        } else {
+        if !matches!(self.get_expression_node(row_id)?, Expression::Row(_)) {
             return Err(SbroadError::Invalid(
                 Entity::Node,
                 Some("Node is not a row".into()),
             ));
-        };
-        let post_tree = PostOrderWithFilter::new(
+        }
+        let ref_nodes = NodePostOrder::new(
+            &self.nodes,
             |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::SubQueryReference(_)))
-                )
-            },
-            capacity,
-        );
-        // We don't expect much relational references in a row (5 is a reasonable number).
-        let ref_nodes = post_tree.traverse_into_iter(row_id).collect();
+            row_id,
+        )
+        .expressions()
+        .filter(|(_, expr)| matches!(expr, Expression::SubQueryReference(_)))
+        .map(|(id, _)| id)
+        .collect();
 
         Ok(ref_nodes)
     }
@@ -2822,15 +2801,14 @@ impl Plan {
         // to some leaf node. For motion node this number
         // is the slice index.
         let mut slices: Vec<Vec<NodeId>> = Vec::new();
-        let dfs_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
+        let dfs_tree = NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id);
         // When visiting new node this stack stores
         // all the children of the current node.
         let mut stack = Vec::new();
         // Our plan is a DAG, we must not add the same motion twice
         // to slices.
         let mut visited_motions_ids = AHashSet::with_capacity(REL_CAPACITY);
-        for id in dfs_tree.traverse_into_iter(top_id) {
-            let rel = self.get_relation_node(id)?;
+        for (id, rel) in dfs_tree.relational() {
             let subqueries_len = rel.subqueries().len();
 
             let mut max_motions_in_path = 0;

@@ -31,7 +31,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     IndexExpr, LetVarRef, Parameter, ReferenceAsteriskSource, SubQueryReference,
 };
-use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::{Nodes, Plan};
 use crate::utils::to_user;
 
@@ -2146,31 +2146,22 @@ impl Plan {
         &self,
         row_id: NodeId,
     ) -> Result<HashSet<NodeId, RandomState>, SbroadError> {
-        let row = self.get_expression_node(row_id)?;
-        let capacity = if let Expression::Row(Row { list, .. }) = row {
-            list.len()
-        } else {
+        if !matches!(self.get_expression_node(row_id)?, Expression::Row(_)) {
             return Err(SbroadError::Invalid(
                 Entity::Node,
                 Some("Node is not a row".into()),
             ));
-        };
-        let post_tree = PostOrderWithFilter::new(
+        }
+        let post_tree = NodePostOrder::new(
+            &self.nodes,
             |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::Reference(_))
-                        | Node::Expression(Expression::SubQueryReference(_)))
-                )
-            },
-            capacity,
+            row_id,
         );
         // We don't expect much relational references in a row (5 is a reasonable number).
         let mut rel_nodes: HashSet<NodeId, RandomState> =
             HashSet::with_capacity_and_hasher(5, RandomState::new());
-        for id in post_tree.traverse_into_iter(row_id) {
-            self.get_relational_nodes_from_references_into(id, &mut rel_nodes)?;
+        for (_, expr) in post_tree.expressions() {
+            Self::get_relational_nodes_from_references_into(&expr, &mut rel_nodes);
         }
         Ok(rel_nodes)
     }
@@ -2183,8 +2174,9 @@ impl Plan {
         &self,
         ref_id: NodeId,
     ) -> Result<HashSet<NodeId, RandomState>, SbroadError> {
+        let reference = self.get_expression_node(ref_id)?;
         if !matches!(
-            self.get_expression_node(ref_id)?,
+            reference,
             Expression::Reference(..) | Expression::SubQueryReference(..)
         ) {
             return Err(SbroadError::Invalid(
@@ -2197,17 +2189,15 @@ impl Plan {
         let mut rel_nodes: HashSet<NodeId, RandomState> =
             HashSet::with_capacity_and_hasher(5, RandomState::new());
 
-        self.get_relational_nodes_from_references_into(ref_id, &mut rel_nodes)?;
+        Self::get_relational_nodes_from_references_into(&reference, &mut rel_nodes);
 
         Ok(rel_nodes)
     }
 
     fn get_relational_nodes_from_references_into(
-        &self,
-        ref_id: NodeId,
+        reference: &Expression<'_>,
         rel_nodes: &mut HashSet<NodeId, RandomState>,
-    ) -> Result<(), SbroadError> {
-        let reference = self.get_expression_node(ref_id)?;
+    ) {
         match reference {
             Expression::Reference(Reference { target, .. }) => {
                 rel_nodes.reserve(target.len());
@@ -2220,7 +2210,6 @@ impl Plan {
             }
             _ => {}
         }
-        Ok(())
     }
 
     /// Whether the arguments of the table function scan `scan_id` reference

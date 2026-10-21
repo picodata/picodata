@@ -43,7 +43,7 @@ use crate::ir::relation::Column;
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::equality_facts::EqualityFacts;
 use crate::ir::transformation::restriction::Restrictions;
-use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::undo::TransformationLog;
 use crate::ir::value::Value;
 
@@ -1351,23 +1351,16 @@ impl Plan {
     where
         F: Fn(&ScalarFunction) -> bool,
     {
-        let dfs = PostOrderWithFilter::new(
+        let dfs = NodePostOrder::new(
+            &self.nodes,
             |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::ScalarFunction(_)))
-                )
-            },
-            EXPR_CAPACITY,
+            expr_id,
         );
-        for id in dfs.traverse_into_iter(expr_id) {
+        for (id, expr) in dfs.expressions() {
             if !check_top && id == expr_id {
                 continue;
             }
-            if let Node::Expression(Expression::ScalarFunction(scalar_function)) =
-                self.get_node(id)?
-            {
+            if let Expression::ScalarFunction(scalar_function) = expr {
                 if check_function(scalar_function) {
                     return Ok(true);
                 }
@@ -1559,17 +1552,10 @@ impl Plan {
     /// # Errors
     /// - If relational iterator fails to return a correct node.
     pub fn subtree_contains_values(&self, top_id: NodeId) -> Result<bool, SbroadError> {
-        let rel_tree = PostOrderWithFilter::new(
-            |node| self.nodes.rel_iter(node),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Relational(Relational::Values(_)))
-                )
-            },
-            REL_CAPACITY,
-        );
-        Ok(rel_tree.traverse_into_iter(top_id).next().is_some())
+        let has_values = NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
+            .relational()
+            .any(|(_, rel)| matches!(rel, Relational::Values(_)));
+        Ok(has_values)
     }
 
     /// Returns the kind of the plan, as given by the top node. An empty
@@ -1817,33 +1803,29 @@ impl Plan {
 
     /// Get vec of references from the subtree of the given expression.
     pub fn get_refs_from_subtree(&self, expr_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
-        let dfs = PostOrderWithFilter::new(
+        let ref_ids = NodePostOrder::new(
+            &self.nodes,
             |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::Reference(_)))
-                )
-            },
-            EXPR_CAPACITY,
-        );
-        let ref_ids = dfs.traverse_into_iter(expr_id).collect();
+            expr_id,
+        )
+        .expressions()
+        .filter(|(_, expr)| matches!(expr, Expression::Reference(_)))
+        .map(|(id, _)| id)
+        .collect();
         Ok(ref_ids)
     }
 
     /// Get vec of subquery references from the subtree of the given expression.
     pub fn get_sq_refs_from_subtree(&self, expr_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
-        let dfs = PostOrderWithFilter::new(
+        let ref_ids = NodePostOrder::new(
+            &self.nodes,
             |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::SubQueryReference(_)))
-                )
-            },
-            EXPR_CAPACITY,
-        );
-        let ref_ids = dfs.traverse_into_iter(expr_id).collect();
+            expr_id,
+        )
+        .expressions()
+        .filter(|(_, expr)| matches!(expr, Expression::SubQueryReference(_)))
+        .map(|(id, _)| id)
+        .collect();
         Ok(ref_ids)
     }
 
@@ -3422,8 +3404,8 @@ impl ShardColumnsMap {
     }
 
     fn update_subtree(&mut self, node_id: NodeId, plan: &Plan) -> Result<(), SbroadError> {
-        let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-        for id in dfs.traverse_into_iter(node_id) {
+        let dfs = NodePostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), node_id);
+        for (id, _) in dfs {
             self.update_node(id, plan)?;
             self.invalid_ids.remove(&id);
         }

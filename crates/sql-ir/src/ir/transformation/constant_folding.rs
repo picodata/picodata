@@ -6,7 +6,7 @@ use crate::ir::node::{
     SubQueryReference, UnaryExpr,
 };
 use crate::ir::operator::{Bool, Unary};
-use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::{Trivalent, TrivalentOrdering, Value};
 use crate::ir::Plan;
@@ -210,20 +210,13 @@ impl Plan {
     /// expression subtree under `top_id`.
     fn collect_subquery_refs(&self, top_id: NodeId) -> Result<HashSet<NodeId>, SbroadError> {
         let mut referenced: HashSet<NodeId> = HashSet::new();
-        let sq_dfs = PostOrderWithFilter::new(
+        let sq_dfs = NodePostOrder::new(
+            &self.nodes,
             |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::SubQueryReference(_)))
-                )
-            },
-            EXPR_CAPACITY,
+            top_id,
         );
-        for expr_id in sq_dfs.traverse_into_vec(top_id) {
-            if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) =
-                self.get_expression_node(expr_id)?
-            {
+        for (_, expr) in sq_dfs.expressions() {
+            if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) = expr {
                 referenced.insert(*rel_id);
             }
         }

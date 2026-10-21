@@ -25,7 +25,7 @@ use smol_str::format_smolstr;
 
 use super::node::expression::Expression;
 use super::node::relational::{MutRelational, Relational};
-use super::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
+use super::tree::traversal::{NodeIter, NodePostOrder};
 use crate::errors::SbroadError;
 use crate::ir::node::block::{BlockOwned, MutBlock};
 use crate::ir::node::{
@@ -36,7 +36,7 @@ use crate::ir::options::Options;
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::redistribution::{MotionPolicy, Target};
 use crate::ir::value::Value;
-use crate::ir::{Node, Plan};
+use crate::ir::Plan;
 
 pub type ExprId = NodeId;
 type RelationId = NodeId;
@@ -124,18 +124,12 @@ impl Plan {
         top_id: NodeId,
         f: TransformFunctionOldNew,
     ) -> Result<(), SbroadError> {
-        let ir_tree = PostOrderWithFilter::new(
-            |node| self.nodes.rel_iter(node),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Relational(Relational::Join(_)))
-                        | Ok(Node::Relational(Relational::Selection(_)))
-                )
-            },
-            EXPR_CAPACITY,
-        );
-        let nodes = ir_tree.traverse_into_vec(top_id);
+        let nodes: Vec<NodeId> =
+            NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
+                .relational()
+                .filter(|(_, rel)| matches!(rel, Relational::Join(_) | Relational::Selection(_)))
+                .map(|(id, _)| id)
+                .collect();
         for id in nodes {
             let rel: Relational<'_> = self.get_relation_node(id)?;
             let tree_id = match rel {
@@ -197,27 +191,27 @@ impl Plan {
         // Note, that filter accepts nodes:
         // * On which we'd like to apply transformation
         // * That will contain transformed nodes as children
-        let filter_certain_exprs = |node_id| {
-            matches!(
-                self.get_node(node_id),
-                Ok(Node::Expression(
-                    Expression::Bool(_)
-                        | Expression::Arithmetic(_)
-                        | Expression::Alias(_)
-                        | Expression::Row(_)
-                        | Expression::Cast(_)
-                        | Expression::Case(_)
-                        | Expression::ScalarFunction(_)
-                        | Expression::Unary(_),
-                ))
-            )
-        };
-        let subtree = PostOrderWithFilter::new(
+        let nodes: Vec<NodeId> = NodePostOrder::new(
+            &self.nodes,
             |node_id| self.nodes.expr_iter(node_id, false),
-            filter_certain_exprs,
-            EXPR_CAPACITY,
-        );
-        let nodes = subtree.traverse_into_vec(top_id);
+            top_id,
+        )
+        .expressions()
+        .filter(|(_, expr)| {
+            matches!(
+                expr,
+                Expression::Bool(_)
+                    | Expression::Arithmetic(_)
+                    | Expression::Alias(_)
+                    | Expression::Row(_)
+                    | Expression::Cast(_)
+                    | Expression::Case(_)
+                    | Expression::ScalarFunction(_)
+                    | Expression::Unary(_)
+            )
+        })
+        .map(|(id, _)| id)
+        .collect();
         for bool_id in nodes.iter().copied() {
             let expr = self.get_expression_node(bool_id)?;
             if let Expression::Bool(BoolExpr { op, .. }) = expr {
@@ -660,12 +654,9 @@ impl Plan {
     }
 
     fn subtree_has_motions(&self, top_id: NodeId) -> Result<bool, SbroadError> {
-        let post_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
-        for node in post_tree.traverse_into_iter(top_id) {
-            if let Relational::Motion(_) = self.get_relation_node(node)? {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        let has_motions = NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
+            .relational()
+            .any(|(_, rel)| matches!(rel, Relational::Motion(_)));
+        Ok(has_motions)
     }
 }

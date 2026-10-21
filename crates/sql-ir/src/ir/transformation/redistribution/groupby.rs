@@ -12,8 +12,8 @@ use crate::ir::node::{
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
-use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY};
-use crate::ir::{Node, Plan};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder, EXPR_CAPACITY};
+use crate::ir::Plan;
 use crate::utils::to_user;
 use std::collections::{HashMap, HashSet};
 
@@ -591,32 +591,25 @@ impl Plan {
     fn check_refs_out_of_aggregates(&self, proj: NodeId) -> Result<(), SbroadError> {
         let output = self.get_relational_output(proj)?;
         for col in self.get_row_list(output)? {
-            let dfs = PostOrderWithFilter::new(
+            let first_ref = NodePostOrder::new(
+                &self.nodes,
                 |node| self.nodes.aggregate_iter(node, false),
-                |node| {
-                    matches!(
-                        self.get_node(node),
-                        Ok(Node::Expression(Expression::Reference(_)))
-                    )
-                },
-                EXPR_CAPACITY,
-            );
-            let nodes = dfs.traverse_into_vec(*col);
-            for id in nodes {
-                let n = self.get_expression_node(id)?;
-                if n.is_ref() {
-                    let alias = match self.get_alias_from_reference_node(&n) {
-                        Ok(v) => v.to_smolstr(),
-                        Err(e) => e.to_smolstr(),
-                    };
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some(format_smolstr!(
-                            "found column reference ({}) outside aggregate function",
-                            to_user(alias)
-                        )),
-                    ));
-                }
+                *col,
+            )
+            .expressions()
+            .find(|(_, expr)| expr.is_ref());
+            if let Some((_, n)) = first_ref {
+                let alias = match self.get_alias_from_reference_node(&n) {
+                    Ok(v) => v.to_smolstr(),
+                    Err(e) => e.to_smolstr(),
+                };
+                return Err(SbroadError::Invalid(
+                    Entity::Query,
+                    Some(format_smolstr!(
+                        "found column reference ({}) outside aggregate function",
+                        to_user(alias)
+                    )),
+                ));
             }
         }
 
@@ -628,15 +621,18 @@ impl Plan {
             unreachable!("expected having node");
         };
 
-        let dfs = PostOrder::new(|x| self.nodes.aggregate_iter(x, false), EXPR_CAPACITY);
-        let nodes = dfs.traverse_into_vec(*filter);
-        for id in nodes {
-            if self.get_expression_node(id)?.is_ref() {
-                return Err(SbroadError::Invalid(
-					Entity::Query,
-					Some("HAVING argument must appear in the GROUP BY clause or be used in an aggregate function".into())
-				));
-            }
+        let has_refs = NodePostOrder::new(
+            &self.nodes,
+            |x| self.nodes.aggregate_iter(x, false),
+            *filter,
+        )
+        .expressions()
+        .any(|(_, expr)| expr.is_ref());
+        if has_refs {
+            return Err(SbroadError::Invalid(
+                Entity::Query,
+                Some("HAVING argument must appear in the GROUP BY clause or be used in an aggregate function".into())
+            ));
         }
         Ok(())
     }

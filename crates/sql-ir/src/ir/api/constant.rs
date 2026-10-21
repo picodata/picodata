@@ -1,7 +1,7 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{Constant, Node, NodeId};
-use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::node::{Constant, NodeId};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use crate::ir::{Nodes, Plan};
@@ -65,20 +65,17 @@ impl Plan {
     pub fn get_const_list(&self, top_id: NodeId, snapshot: Snapshot) -> Vec<NodeId> {
         // Here we need to output first so that constants have the right order.
         // Otherwise they will be in reverse order (e.g., $1 $2 $3 becomes $3 $2 $1).
-        let tree = PostOrderWithFilter::new(
+        let constants = NodePostOrder::new(
+            &self.nodes,
             |node| self.exec_plan_subtree_output_first_iter(node, snapshot),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::Constant(_)))
-                )
-            },
-            REL_CAPACITY,
-        );
+            top_id,
+        )
+        .expressions()
+        .filter(|(_, expr)| matches!(expr, Expression::Constant(_)));
 
         let mut set = HashSet::new();
         let mut vec = Vec::new();
-        for node_id in tree.traverse_into_iter(top_id) {
+        for (node_id, _) in constants {
             if !set.contains(&node_id) {
                 vec.push(node_id);
                 set.insert(node_id);

@@ -12,7 +12,7 @@ use crate::ir::node::{
     Update, Values,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
-use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter, EXPR_CAPACITY};
 use crate::ir::types::calculate_unified_types;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -1399,21 +1399,20 @@ impl Plan {
     /// ```
     pub fn fix_groupby_aliases(&mut self) -> Result<(), SbroadError> {
         let top = self.get_top()?;
-        let dft = PostOrderWithFilter::new(
-            |node| self.subtree_iter(node),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Relational(Relational::Projection(Projection {
-                        group_by: Some(_),
-                        ..
-                    })))
-                )
-            },
-            REL_CAPACITY,
-        );
-
-        let nodes = dft.traverse_into_vec(top);
+        let nodes: Vec<NodeId> =
+            NodePostOrder::new(&self.nodes, |node| self.subtree_iter(node), top)
+                .relational()
+                .filter(|(_, rel)| {
+                    matches!(
+                        rel,
+                        Relational::Projection(Projection {
+                            group_by: Some(_),
+                            ..
+                        })
+                    )
+                })
+                .map(|(id, _)| id)
+                .collect();
 
         for proj_id in nodes {
             let group_by_id = self.get_group_by(proj_id)?;
@@ -1516,30 +1515,16 @@ impl Plan {
                 // Any Expression::Alias in gr_expr[i] subtree is the alias from projection.
                 // We retrieve it to replace with corresponding original subtree body.
                 // The parent is needed for `replace_expression`.
-                let filter_alias = |id: NodeId| -> bool {
-                    if !matches!(self.get_node(id), Ok(Node::Expression(_))) {
-                        return false;
-                    }
-
-                    self.nodes.expr_iter(id, false).any(|child| {
-                        matches!(
-                            self.get_node(child),
-                            Ok(Node::Expression(Expression::Alias(_)))
-                        )
-                    })
-                };
-
                 // Fill the `gr_alias_mappings` with alias name mapped to alias itself with its parent
                 for gr_expr_id in gr_exprs {
-                    let dft = PostOrderWithFilter::new(
+                    let exprs = NodePostOrder::new(
+                        &self.nodes,
                         |node| self.nodes.expr_iter(node, false),
-                        filter_alias,
-                        EXPR_CAPACITY,
-                    );
+                        *gr_expr_id,
+                    )
+                    .expressions();
 
-                    let alias_parents = dft.traverse_into_vec(*gr_expr_id);
-
-                    for alias_parent_id in alias_parents {
+                    for (alias_parent_id, _) in exprs {
                         // Add all Expression::Alias nodes among expression children
                         for child in self.nodes.expr_iter(alias_parent_id, false) {
                             if let Ok(Node::Expression(Expression::Alias(Alias { name, .. }))) =
