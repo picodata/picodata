@@ -47,7 +47,7 @@ use crate::ir::node::{
 use crate::ir::operator::{OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::options::{OptionKind, OptionParamValue};
 use crate::ir::relation::{ColumnRole, TableKind};
-use crate::ir::tree::traversal::{PostOrder, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
 use crate::ir::types::{ColumnDefType, DomainType};
 use crate::ir::value::Value;
 use crate::ir::{node::plugin, Plan};
@@ -1134,11 +1134,13 @@ impl AstCore {
                     } else {
                         // Check that at least one reference is met in expression tree.
                         // Otherwise, ordering expression has no sense.
-                        let expr_tree =
-                            PostOrder::new(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
+                        let expr_tree = NodePostOrder::new(
+                            &plan.nodes,
+                            |node| plan.nodes.expr_iter(node, false),
+                            expr_plan_node_id,
+                        );
                         let mut reference_met = false;
-                        for node_id in expr_tree.traverse_into_iter(expr_plan_node_id) {
-							let node = plan.get_expression_node(node_id)?;
+                        for (_, node) in expr_tree.expressions() {
 							match node {
 								Expression::Reference(Reference { target, .. }) => {
 									if !target.is_leaf() {
@@ -1781,9 +1783,9 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         top_id: NodeId,
         plan: &Plan,
     ) -> Result<(), SbroadError> {
-        let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-        for id in dfs.traverse_into_iter(top_id) {
-            match plan.get_relation_node(id)? {
+        let dfs = NodePostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top_id);
+        for (_, rel) in dfs.relational() {
+            match rel {
                 Relational::ScanSubQuery(_) => {
                     return Err(SbroadError::Other(format_smolstr!(
                         "{kind} in transaction cannot have subqueries"

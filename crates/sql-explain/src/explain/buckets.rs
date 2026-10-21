@@ -11,9 +11,9 @@ use sql_ir::ir::bucket::BucketSet;
 use sql_ir::ir::PlanKind;
 use sql_ir::ir::{
     bucket::Buckets,
-    node::{block::BlockOwned, relational::Relational, Motion, Node, NodeId},
+    node::{block::BlockOwned, relational::Relational, Motion, NodeId},
     transformation::redistribution::MotionPolicy,
-    tree::traversal::{PostOrder, REL_CAPACITY},
+    tree::traversal::{NodeIter, NodePostOrder},
     ExplainOptions, Plan,
 };
 use std::fmt::{Display, Write as _};
@@ -128,7 +128,7 @@ pub fn bounded_buckets_from_query<R: Router>(
 
     let top_id = ir.get_top()?;
 
-    let dfs_tree = PostOrder::new(|node| ir.nodes.rel_iter(node), REL_CAPACITY);
+    let dfs_tree = NodePostOrder::new(&ir.nodes, |node| ir.nodes.rel_iter(node), top_id);
     // Stores previously computed results for each
     // child of the current node: weather the child
     // has non-local motion in its subtree.
@@ -157,8 +157,7 @@ pub fn bounded_buckets_from_query<R: Router>(
     // some children have such motions in their subtrees, then
     // such children are to be used for buckets estimation.
     let mut cur_children_without_motions: Vec<NodeId> = Vec::new();
-    for id in dfs_tree.traverse_into_iter(top_id) {
-        let rel = ir.get_relation_node(id)?;
+    for (id, rel) in dfs_tree.relational() {
         let rel_deps_len = rel.children_len() + rel.subqueries().len();
 
         // true if this subtree has non-local motion
@@ -221,14 +220,14 @@ pub fn bounded_buckets_from_query<R: Router>(
 fn can_estimate_buckets(plan: &Plan) -> Result<bool, SbroadError> {
     let top_id = plan.get_top()?;
 
-    let dfs = PostOrder::new(|node| plan.nodes.rel_iter(node), 0);
-    for node in dfs.traverse_into_iter(top_id) {
+    let dfs = NodePostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top_id);
+    for (_, rel) in dfs.relational() {
         let has_segment_motion = matches!(
-            plan.get_node(node),
-            Ok(Node::Relational(Relational::Motion(Motion {
+            rel,
+            Relational::Motion(Motion {
                 policy: MotionPolicy::Segment(_),
                 ..
-            })))
+            })
         );
 
         if has_segment_motion {

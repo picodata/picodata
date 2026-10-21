@@ -7,7 +7,7 @@ use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
     Alias, Constant, GroupBy, Node, NodeId, Reference, ReferenceTarget, ScalarFunction,
 };
-use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
@@ -85,12 +85,13 @@ impl PlanGroupByOrdinalsExt for Plan {
         if !matches!(self.get_node(top)?, Node::Relational(_)) {
             return Ok(());
         }
-        let post_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
-        let nodes = post_tree.traverse_into_vec(top);
-        for id in nodes {
-            if matches!(self.get_relation_node(id)?, Relational::Projection(_)) {
-                self.adjust_grouping_exprs(id)?;
-            }
+        let projections = NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top)
+            .relational()
+            .filter(|(_, rel)| matches!(rel, Relational::Projection(_)))
+            .map(|(id, _)| id)
+            .collect::<Vec<_>>();
+        for id in projections {
+            self.adjust_grouping_exprs(id)?;
         }
         Ok(())
     }
@@ -143,19 +144,13 @@ impl PlanGroupByOrdinalsExt for Plan {
     }
 
     fn check_grouping_expr_subtree(&self, group_expr: NodeId) -> Result<(), SbroadError> {
-        let dfs = PostOrderWithFilter::new(
+        let dfs = NodePostOrder::new(
+            &self.nodes,
             |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::ScalarFunction(_)))
-                )
-            },
-            EXPR_CAPACITY,
+            group_expr,
         );
 
-        for node_id in dfs.traverse_into_iter(group_expr) {
-            let node = self.get_expression_node(node_id)?;
+        for (_, node) in dfs.expressions() {
             if let Expression::ScalarFunction(ScalarFunction {
                 name, is_window, ..
             }) = node

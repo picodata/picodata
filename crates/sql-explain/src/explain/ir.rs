@@ -22,7 +22,7 @@ use sql_ir::ir::operator::{
 use sql_ir::ir::transformation::redistribution::{
     MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Program, Target as IrTarget,
 };
-use sql_ir::ir::tree::traversal::{PostOrder, EXPR_CAPACITY, REL_CAPACITY};
+use sql_ir::ir::tree::traversal::{NodeIter, NodePostOrder};
 use sql_ir::ir::types::{CastType, DerivedType};
 use sql_ir::ir::value::Value;
 use sql_ir::ir::{node, ExplainOptions, Plan};
@@ -499,11 +499,13 @@ impl ColExpr {
         should_fmt: bool,
     ) -> Result<Self, SbroadError> {
         let mut stack = ColExprStack::new(plan, should_fmt);
-        let dft_post = PostOrder::new(|node| plan.nodes.expr_iter(node, false), EXPR_CAPACITY);
+        let dft_post = NodePostOrder::new(
+            &plan.nodes,
+            |node| plan.nodes.expr_iter(node, false),
+            subtree_top,
+        );
 
-        for id in dft_post.traverse_into_iter(subtree_top) {
-            let current_node = plan.get_expression_node(id)?;
-
+        for (id, current_node) in dft_post.expressions() {
             match &current_node {
                 Expression::Window(Window {
                     partition,
@@ -1611,9 +1613,8 @@ impl LogicalExplain {
         let mut known_subqueries = OrderedMap::with_hasher(RepeatableState);
         let mut stack: Vec<ExplainTreePart> = Vec::new();
 
-        let dft_post = PostOrder::new(|node| ir.nodes.rel_iter(node), REL_CAPACITY);
-        for id in dft_post.traverse_into_iter(top_id) {
-            let node = ir.get_relation_node(id)?;
+        let dft_post = NodePostOrder::new(&ir.nodes, |node| ir.nodes.rel_iter(node), top_id);
+        for (id, node) in dft_post.relational() {
             let (current, children) = match &node {
                 Relational::Intersect { .. } => {
                     let right = stack.pop().ok_or_else(|| {

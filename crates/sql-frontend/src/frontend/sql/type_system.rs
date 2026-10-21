@@ -7,7 +7,7 @@ use crate::ir::node::{
     ScalarFunction, SubQueryReference, Trim, UnaryExpr, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
-use crate::ir::tree::traversal::PostOrderWithFilter;
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
 use crate::ir::types::{DerivedType, UnrestrictedType as SbroadType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -671,11 +671,7 @@ fn coerce_scalar_expr(
         // Explicit casts can be the only way to fix coercion errors,
         // so we shouldn't coerce casted values.
         let mut casted_strings = Vec::new();
-        let filter_string_to_be_coerced = |id| {
-            let Ok(expr) = plan.get_expression_node(id) else {
-                return false;
-            };
-
+        let filter_string_to_be_coerced = |(id, expr): &(NodeId, Expression)| {
             match expr {
                 Expression::Cast(Cast { child, .. }) if report.get_cast(child).is_some() => {
                     if let Expression::Constant(Constant {
@@ -689,18 +685,16 @@ fn coerce_scalar_expr(
                 }
                 Expression::Constant(Constant {
                     value: Value::String(_),
-                }) => report.get_cast(&id).is_some(),
+                }) => report.get_cast(id).is_some(),
                 _ => false,
             }
         };
 
-        let post_order = PostOrderWithFilter::new(
-            |node| plan.subtree_iter(node),
-            filter_string_to_be_coerced,
-            0,
-        );
-
-        let strings = post_order.traverse_into_vec(expr_id);
+        let strings = NodePostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), expr_id)
+            .expressions()
+            .filter(filter_string_to_be_coerced)
+            .map(|(id, _)| id)
+            .collect::<Vec<_>>();
 
         // Filter strings literals that require coercion and aren't casted explicitly.
         strings
@@ -744,34 +738,26 @@ fn annotate_composite_types(
     expr_id: NodeId,
     plan: &mut Plan,
 ) -> Result<(), SbroadError> {
-    let is_target = |id| {
-        let Ok(expr) = plan.get_expression_node(id) else {
-            return false;
-        };
-        matches!(
-            expr,
-            Expression::ArrayLiteral(_)
-                | Expression::Index(_)
-                | Expression::Parameter(_)
-                | Expression::ScalarFunction(_)
-                | Expression::Over(_)
-        )
-    };
-
-    let post_order = PostOrderWithFilter::new(|node| plan.subtree_iter(node), is_target, 0);
-    let targets: Vec<_> = post_order.traverse_into_vec(expr_id);
-
     // A window function is analyzed under its `Over` node, so the wrapped function has no
     // entry of its own and takes the window's type. Resolve which node each return type
     // belongs to before taking a mutable borrow of the plan.
+    let mut targets = Vec::new();
     let mut func_types: Vec<(NodeId, Type)> = Vec::new();
-    for id in &targets {
-        let target = match plan.get_expression_node(*id)? {
-            Expression::ScalarFunction(ScalarFunction { is_window, .. }) if !is_window => *id,
-            Expression::Over(Over { stable_func, .. }) => *stable_func,
+    let post_order = NodePostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), expr_id);
+    for (id, expr) in post_order.expressions() {
+        match expr {
+            Expression::ArrayLiteral(_) | Expression::Index(_) | Expression::Parameter(_) => {}
+            Expression::ScalarFunction(ScalarFunction { is_window, .. }) => {
+                if !is_window {
+                    func_types.push((id, report.get_return_type(&id)));
+                }
+            }
+            Expression::Over(Over { stable_func, .. }) => {
+                func_types.push((*stable_func, report.get_return_type(&id)));
+            }
             _ => continue,
-        };
-        func_types.push((target, report.get_return_type(id)));
+        }
+        targets.push(id);
     }
 
     for (id, ty) in func_types {
