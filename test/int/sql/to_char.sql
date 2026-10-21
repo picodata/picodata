@@ -39,6 +39,14 @@ SELECT to_char('2026-01-13T15:04:05Z'::datetime, '%%|%Ey|%OH|%EOm|%E%Y|%q|%3d|%1
 -- EXPECTED:
 '%|26|15|01|%Y|q|3d|10Y|plain text'
 
+-- TEST: to-char-format-end
+-- SQL:
+SELECT to_char('2026-01-13T15:04:05Z'::datetime, 'abc%'),
+       to_char('2026-01-13T15:04:05Z'::datetime, 'abc%3'),
+       to_char('2026-01-13T15:04:05Z'::datetime, 'abc%12');
+-- EXPECTED:
+'abc', 'abc3', 'abc12'
+
 -- TEST: to-char-offset-ms-names
 -- SQL:
 SELECT to_char('2026-01-13T15:04:05.123+03:00'::datetime, '%A %a %B %b %h %p');
