@@ -1221,6 +1221,16 @@ SELECT * FROM (VALUES
 299, '2025-10-18T02:59:59+0300',
 300, '2003-10-18T00:00:00Z',
 
+-- TEST: datetime-formats-to-date-all
+-- SQL:
+SELECT count(*),
+    sum(CASE WHEN to_char(to_date(s, ''), '%Y-%m-%d %H:%M:%S.%f %z')
+        = to_char(CAST(s AS datetime), '%Y-%m-%d 00:00:00.000 %z')
+        THEN 1 ELSE 0 END)
+FROM datetime_formats;
+-- EXPECTED:
+300, 300
+
 -- TEST: datetime-formats-drop
 -- SQL:
 DROP TABLE datetime_formats;
