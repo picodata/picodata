@@ -240,16 +240,23 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     # Make sure i1 is leader.
     cluster.wait_leader_elected()
 
-    # Initiate master switchover.
-    index, _ = cluster.cas(
-        "update",
-        "_pico_replicaset",
-        key=["r99"],
-        ops=[("=", "target_master_name", i5.name)],
-    )
-    cluster.raft_wait_index(index)
+    def switch_master_to(i: Instance):
+        index, _ = cluster.cas(
+            "update",
+            "_pico_replicaset",
+            key=["r99"],
+            ops=[("=", "target_master_name", i.name)],
+        )
+        cluster.raft_wait_index(index)
 
-    master_vclock = get_vclock_without_local(i4)
+    def check_read_only(i: Instance):
+        assert i.eval("return box.info.ro") is True
+
+    def check_writable(i: Instance):
+        assert i.eval("return box.info.ro") is False
+
+    # Initiate master switchover.
+    switch_master_to(i5)
 
     # Wait until governor tries to synchronize i5 with the old master. This
     # will fail until the injected error is disabled.
@@ -258,11 +265,26 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
 
     # The old master is fenced, so that it doesn't accept writes the new one
     # doesn't have. The new one isn't writable until it wins the election.
-    def check_old_master_read_only():
-        assert i4.eval("return box.info.ro") is True
-
-    Retriable().call(check_old_master_read_only)
+    Retriable().call(check_read_only, i4)
     assert i5.eval("return box.info.ro") is True
+
+    # The switchover is abandoned, and the mastership returns to the old
+    # master. Nobody else has been promoted, so it's still the election
+    # leader, and it only has to lift the fence.
+    switch_master_to(i4)
+    cluster.wait_governor_status("idle")
+
+    Retriable().call(check_writable, i4)
+    assert i4.eval("return box.info.election.state") == "leader"
+    i4.eval("box.space.mytable:insert{4, 'after abandoned switchover'}")
+    assert i5.eval("return box.info.ro") is True
+
+    # Initiate master switchover again. The old master is fenced again.
+    switch_master_to(i5)
+    cluster.wait_governor_status("transfer replication leader")
+    Retriable().call(check_read_only, i4)
+
+    master_vclock = get_vclock_without_local(i4)
 
     # Uninject the error, so it's able to synchronize and win the election.
     i5.call("pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", False)
@@ -271,18 +293,254 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     assert i5.replicaset_master_name() == i5.name
     cluster.wait_governor_status("idle")
 
-    # i5 has everything the old master had.
-    assert i5.eval("return box.space.mytable.id") is not None
+    # i5 has everything the old master had, the write made after the
+    # abandoned switchover included.
+    assert i5.eval("return box.space.mytable:get(4)") == [4, "after abandoned switchover"]
     vclock = get_vclock_without_local(i5)
     assert vclock >= master_vclock
 
-    def check_new_master_writable():
-        assert i5.eval("return box.info.ro") is False
-
-    Retriable().call(check_new_master_writable)
+    Retriable().call(check_writable, i5)
 
     # The old master stays read only, now deposed by i5's PROMOTE.
-    Retriable().call(check_old_master_read_only)
+    Retriable().call(check_read_only, i4)
+
+
+def cut_off_replication_from(i: Instance, master: Instance):
+    """Stops `i` from receiving `master`'s writes, see `restore_replication`."""
+    i.eval(
+        """
+        local master_address = ...
+        _G.test_saved_replication = box.cfg.replication
+        local replication = {}
+        for _, peer in ipairs(box.cfg.replication) do
+            local uri = type(peer) == 'table' and (peer.uri or peer[1]) or peer
+            if uri:sub(-#master_address) ~= master_address then
+                table.insert(replication, peer)
+            end
+        end
+        assert(#replication == #box.cfg.replication - 1)
+        box.cfg{replication = replication}
+        """,
+        master.iproto_listen,
+    )
+
+
+def restore_replication(i: Instance):
+    i.eval("box.cfg{replication = _G.test_saved_replication}")
+
+
+def deploy_master_with_write_not_replicated_yet(cluster: Cluster) -> tuple[Instance, Instance, Instance, Instance]:
+    """
+    Deploys the raft leader and the replicaset `r99` of `i4`, `i5`, `i6`,
+    and returns them. The master `i4` acknowledges `mytable[1]`, which the
+    replicas don't receive: they are cut off from it, see `restore_replication`.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        arbiter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        storage:
+            replication_factor: 1
+            can_vote: false
+"""
+    )
+    # This guy is for raft quorum, it's always the raft leader.
+    leader = cluster.add_instance(wait_online=True, tier="arbiter")
+    # These are being tested. The replicaset has 3 members, so its synchro
+    # quorum is 2: the replicas can elect one of them without the master.
+    i4 = cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r99")
+    i5 = cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r99")
+    i6 = cluster.add_instance(wait_online=True, tier="storage", replicaset_name="r99")
+
+    def check_synchro_quorum(*instances: Instance):
+        for i in instances:
+            assert i.eval("return box.cfg.replication_synchro_quorum") == 2
+
+    Retriable().call(check_synchro_quorum, i4, i5, i6)
+
+    def check_writable(i: Instance):
+        assert not i.eval("return box.info.ro")
+
+    assert i4.replicaset_master_name() == i4.name
+    Retriable().call(check_writable, i4)
+
+    # Let the bucket bootstrap stop writing to the master. The tier has a
+    # single replicaset, so there's no rebalancing after it.
+    def check_vshard_bootstrapped():
+        [[bootstrapped]] = leader.sql("SELECT vshard_bootstrapped FROM _pico_tier WHERE name = 'storage'")
+        assert bootstrapped
+
+    Retriable().call(check_vshard_bootstrapped)
+
+    i4.eval(
+        """
+        box.schema.space.create('mytable')
+        box.space.mytable:create_index('pk')
+        """
+    )
+    master_vclock = i4.eval("return box.info.vclock")
+    del master_vclock[0]
+    wait_vclock(i5, master_vclock)
+    wait_vclock(i6, master_vclock)
+
+    # The master acknowledges a write which the replicas don't receive. They
+    # are cut off from it altogether, which makes them unhealthy peers in its
+    # eyes, so it must not resign because of that. As if they were just slow.
+    i4.eval("box.cfg{election_fencing_mode = 'off'}")
+    cut_off_replication_from(i5, i4)
+    cut_off_replication_from(i6, i4)
+    i4.eval("box.space.mytable:insert{1, 'not replicated yet'}")
+    time.sleep(0.5)
+    assert i5.eval("return box.space.mytable:get(1)") is None
+    assert i6.eval("return box.space.mytable:get(1)") is None
+
+    return leader, i4, i5, i6
+
+
+def test_master_switchover_keeps_writes_not_replicated_yet(cluster: Cluster):
+    leader, i4, i5, i6 = deploy_master_with_write_not_replicated_yet(cluster)
+
+    def check_writable(i: Instance):
+        assert not i.eval("return box.info.ro")
+
+    # Initiate master switchover. The replicas could elect i5 on their own.
+    index, _ = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["r99"],
+        ops=[("=", "target_master_name", i5.name)],
+    )
+    cluster.raft_wait_index(index)
+
+    # But i5 is only promoted once it has everything the old master has. The
+    # old master is fenced, so that it doesn't accept any more writes.
+    def check_read_only(*instances: Instance):
+        for i in instances:
+            assert i.eval("return box.info.ro")
+
+    Retriable().call(check_read_only, i4)
+    with pytest.raises(TarantoolError, match="read-only"):
+        i4.eval("box.space.mytable:insert{2, 'rejected'}")
+
+    time.sleep(1)  # Give the governor a chance to promote i5 too early
+    assert i5.eval("return box.info.ro")
+    [[current_master_name]] = leader.sql(""" SELECT current_master_name FROM _pico_replicaset WHERE name = 'r99' """)
+    assert current_master_name == i4.name
+
+    restore_replication(i5)
+    restore_replication(i6)
+
+    assert i5.replicaset_master_name() == i5.name
+    cluster.wait_governor_status("idle")
+    Retriable().call(check_writable, i5)
+
+    # Nothing is lost.
+    assert i5.eval("return box.space.mytable:get(1)") == [1, "not replicated yet"]
+    assert i5.eval("return box.space.mytable:get(2)") is None
+
+    # The old master follows the new one, its replication isn't broken.
+    i5.eval("box.space.mytable:insert{3, 'after switchover'}")
+
+    def check_replicated(i: Instance):
+        assert i.eval("return box.space.mytable:get(3)") == [3, "after switchover"]
+
+    Retriable().call(check_replicated, i4)
+    Retriable().call(check_replicated, i6)
+    Retriable().call(check_read_only, i4, i6)
+    assert i4.eval("return pico._check_if_replication_is_broken()") is None
+
+    # The fence doesn't keep the old master from being promoted again.
+    index, _ = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["r99"],
+        ops=[("=", "target_master_name", i4.name)],
+    )
+    cluster.raft_wait_index(index)
+
+    assert i4.replicaset_master_name() == i4.name
+    cluster.wait_governor_status("idle")
+    Retriable().call(check_writable, i4)
+    i4.eval("box.space.mytable:insert{4, 'after switchback'}")
+    Retriable().call(check_read_only, i5, i6)
+
+
+def test_master_dead_before_switchover_loses_writes_not_replicated_yet(cluster: Cluster):
+    leader, i4, i5, i6 = deploy_master_with_write_not_replicated_yet(cluster)
+    leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 5")
+
+    def check_writable(i: Instance):
+        assert not i.eval("return box.info.ro")
+
+    def check_read_only(*instances: Instance):
+        for i in instances:
+            assert i.eval("return box.info.ro")
+
+    # Initiate master switchover. The old master is fenced.
+    index, _ = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["r99"],
+        ops=[("=", "target_master_name", i5.name)],
+    )
+    cluster.raft_wait_index(index)
+    Retriable().call(check_read_only, i4)
+
+    # The old master crashes before the replicas receive its write. Then
+    # there's nobody to catch up with, and i5 is elected with i6's vote. The
+    # write is lost: that's what asynchronous replication means.
+    i4.kill()
+    cluster.wait_has_states(i4, "Offline", "Offline")
+    assert i5.replicaset_master_name() == i5.name
+    cluster.wait_governor_status("idle")
+    Retriable().call(check_writable, i5)
+    assert i5.eval("return box.space.mytable:get(1)") is None
+    i5.eval("box.space.mytable:insert{2, 'after switchover'}")
+
+    restore_replication(i5)
+    restore_replication(i6)
+
+    # The old master comes back with the lost write, and follows the new
+    # master. It keeps the write: it accepts the new master's PROMOTE, since
+    # an async write isn't in the synchro queue.
+    i4.start()
+    i4.wait_online()
+    Retriable().call(check_read_only, i4)
+    assert i4.eval("return box.space.mytable:get(1)") == [1, "not replicated yet"]
+    assert i4.eval("return box.space.mytable:get(2)") == [2, "after switchover"]
+
+    # But the write is from an old term, so the others reject it, and it
+    # doesn't get to the new master, nor to the replica.
+    i4_id = i4.eval("return box.info.id")
+
+    def check_split_brain(i: Instance):
+        upstream = i.eval("return box.info.replication[...].upstream", i4_id)
+        assert upstream["status"] == "stopped"
+        assert "got an async transaction from an old term" in upstream["message"]
+
+    Retriable().call(check_split_brain, i5)
+    Retriable().call(check_split_brain, i6)
+    for i in [i5, i6]:
+        assert i.eval("return box.space.mytable:get(1)") is None
+
+    # The others aren't affected, though they can't replicate from the old
+    # master either.
+    for i in [i5, i6]:
+        (current_state, _), (target_state, _) = leader.states(i)
+        assert (current_state, target_state) == ("Online", "Online"), i.name
+    Retriable().call(check_writable, i5)
+    i5.eval("box.space.mytable:insert{3, 'after rejoin'}")
+
+    def check_replicated(i: Instance):
+        assert i.eval("return box.space.mytable:get(3)") == [3, "after rejoin"]
+
+    Retriable().call(check_replicated, i4)
+    Retriable().call(check_replicated, i6)
 
 
 @pytest.mark.skip_asan("Replication leader transfer timing is unreliable under ASan overhead")
