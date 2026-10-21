@@ -2804,14 +2804,15 @@ impl<'p> SyntaxPlan<'p> {
         let mut empty_motion_ids = HashSet::new();
         match snapshot {
             Snapshot::Latest => {
-                let dft_post = NodePostOrder::new(
+                let dft_post = NodePostOrder::new_by_node(
                     &ir_plan.nodes,
-                    |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
-                        if plan.is_effective_motion_leaf(node) {
-                            Box::new(std::iter::empty())
-                        } else {
-                            Box::new(ir_plan.subtree_iter(node))
-                        }
+                    |id, node| {
+                        let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
+                        let is_leaf = is_motion && plan.is_effective_motion_leaf(id);
+                        (!is_leaf)
+                            .then(|| ir_plan.subtree_iter_of(node))
+                            .into_iter()
+                            .flatten()
                     },
                     top,
                 );
@@ -2827,14 +2828,15 @@ impl<'p> SyntaxPlan<'p> {
                 }
             }
             Snapshot::Oldest => {
-                let dft_post = NodePostOrder::new(
+                let dft_post = NodePostOrder::new_by_node(
                     &ir_plan.nodes,
-                    |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
-                        if plan.is_effective_motion_leaf(node) {
-                            Box::new(std::iter::empty())
-                        } else {
-                            Box::new(ir_plan.flashback_subtree_iter(node))
-                        }
+                    |id, node| {
+                        let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
+                        let is_leaf = is_motion && plan.is_effective_motion_leaf(id);
+                        (!is_leaf)
+                            .then(|| ir_plan.flashback_subtree_iter_of(node))
+                            .into_iter()
+                            .flatten()
                     },
                     top,
                 );
@@ -2852,14 +2854,16 @@ impl<'p> SyntaxPlan<'p> {
         }
         match snapshot {
             Snapshot::Latest => {
-                let dft_post = NodePostOrder::new(
+                let dft_post = NodePostOrder::new_by_node(
                     &ir_plan.nodes,
-                    |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
-                        if plan.is_effective_motion_leaf(node) || empty_motion_ids.contains(&node) {
-                            Box::new(std::iter::empty())
-                        } else {
-                            Box::new(ir_plan.subtree_iter(node))
-                        }
+                    |id, node| {
+                        let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
+                        let is_leaf = (is_motion && plan.is_effective_motion_leaf(id))
+                            || empty_motion_ids.contains(&id);
+                        (!is_leaf)
+                            .then(|| ir_plan.subtree_iter_of(node))
+                            .into_iter()
+                            .flatten()
                     },
                     top,
                 );
@@ -2873,14 +2877,16 @@ impl<'p> SyntaxPlan<'p> {
                 }
             }
             Snapshot::Oldest => {
-                let dft_post = NodePostOrder::new(
+                let dft_post = NodePostOrder::new_by_node(
                     &ir_plan.nodes,
-                    |node| -> Box<dyn Iterator<Item = NodeId> + '_> {
-                        if plan.is_effective_motion_leaf(node) || empty_motion_ids.contains(&node) {
-                            Box::new(std::iter::empty())
-                        } else {
-                            Box::new(ir_plan.flashback_subtree_iter(node))
-                        }
+                    |id, node| {
+                        let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
+                        let is_leaf = (is_motion && plan.is_effective_motion_leaf(id))
+                            || empty_motion_ids.contains(&id);
+                        (!is_leaf)
+                            .then(|| ir_plan.flashback_subtree_iter_of(node))
+                            .into_iter()
+                            .flatten()
                     },
                     top,
                 );

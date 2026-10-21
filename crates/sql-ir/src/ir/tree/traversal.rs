@@ -120,24 +120,76 @@ where
 /// Each node is taken from the arena only once, so the consumer does not
 /// need to call `Plan::get_node()` again. The traversal is lazy and borrows
 /// the nodes, so the plan cannot change while it runs.
-pub struct NodePostOrder<'nodes, ChildrenFn, I> {
+pub struct NodePostOrder<'nodes, C, I> {
     nodes: &'nodes Nodes,
-    children_fn: ChildrenFn,
+    children: C,
     /// The path from the root: each node with an iterator over its children
     /// that are not visited yet. It replaces the recursion of `PostOrder`,
     /// which cannot pause between the calls of `next()`.
     stack: SmallVec<[(NodeId, Node<'nodes>, I); 16]>,
 }
 
-impl<'nodes, ChildrenFn, I> NodePostOrder<'nodes, ChildrenFn, I>
+/// The children of a node for [`NodePostOrder`].
+pub trait Children<'nodes, I> {
+    fn children(&mut self, id: NodeId, node: &Node<'nodes>) -> I;
+}
+
+/// Children found by the node id. The child iterator gets the node from the
+/// arena again.
+pub struct ById<F>(F);
+
+impl<'nodes, F, I> Children<'nodes, I> for ById<F>
 where
-    ChildrenFn: FnMut(NodeId) -> I,
+    F: FnMut(NodeId) -> I,
+{
+    fn children(&mut self, id: NodeId, _: &Node<'nodes>) -> I {
+        (self.0)(id)
+    }
+}
+
+/// Children found from the node that the traversal already has.
+pub struct ByNode<F>(F);
+
+impl<'nodes, F, I> Children<'nodes, I> for ByNode<F>
+where
+    F: FnMut(NodeId, Node<'nodes>) -> I,
+{
+    fn children(&mut self, id: NodeId, node: &Node<'nodes>) -> I {
+        (self.0)(id, node.clone())
+    }
+}
+
+impl<'nodes, F, I> NodePostOrder<'nodes, ById<F>, I>
+where
+    F: FnMut(NodeId) -> I,
     I: Iterator<Item = NodeId>,
 {
-    pub fn new(nodes: &'nodes Nodes, children_fn: ChildrenFn, root: NodeId) -> Self {
+    pub fn new(nodes: &'nodes Nodes, children_fn: F, root: NodeId) -> Self {
+        Self::with_children(nodes, ById(children_fn), root)
+    }
+}
+
+impl<'nodes, F, I> NodePostOrder<'nodes, ByNode<F>, I>
+where
+    F: FnMut(NodeId, Node<'nodes>) -> I,
+    I: Iterator<Item = NodeId>,
+{
+    /// Give the node to `children_fn`, so that the child iterator does not
+    /// get it from the arena again.
+    pub fn new_by_node(nodes: &'nodes Nodes, children_fn: F, root: NodeId) -> Self {
+        Self::with_children(nodes, ByNode(children_fn), root)
+    }
+}
+
+impl<'nodes, C, I> NodePostOrder<'nodes, C, I>
+where
+    C: Children<'nodes, I>,
+    I: Iterator<Item = NodeId>,
+{
+    fn with_children(nodes: &'nodes Nodes, children: C, root: NodeId) -> Self {
         let mut traversal = Self {
             nodes,
-            children_fn,
+            children,
             stack: SmallVec::new(),
         };
         traversal.push(root);
@@ -148,15 +200,15 @@ where
     /// as the child iterators do.
     fn push(&mut self, id: NodeId) {
         if let Some(node) = self.nodes.get(id) {
-            let children = (self.children_fn)(id);
+            let children = self.children.children(id, &node);
             self.stack.push((id, node, children));
         }
     }
 }
 
-impl<'nodes, ChildrenFn, I> Iterator for NodePostOrder<'nodes, ChildrenFn, I>
+impl<'nodes, C, I> Iterator for NodePostOrder<'nodes, C, I>
 where
-    ChildrenFn: FnMut(NodeId) -> I,
+    C: Children<'nodes, I>,
     I: Iterator<Item = NodeId>,
 {
     type Item = (NodeId, Node<'nodes>);

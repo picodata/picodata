@@ -510,9 +510,9 @@ impl<'plan> SubtreeViewBuilder<'plan> {
         top_id: NodeId,
     ) -> Result<SubtreeViewSummary, SbroadError> {
         let ir_plan = exec_plan.get_ir_plan();
-        let constants = NodePostOrder::new(
+        let constants = NodePostOrder::new_by_node(
             &ir_plan.nodes,
-            |node| exec_plan.effective_sql_subtree_output_first_iter(node, Snapshot::Oldest),
+            |id, node| exec_plan.effective_sql_subtree_iter(id, node, Snapshot::Oldest, true),
             top_id,
         )
         .expressions()
@@ -531,9 +531,9 @@ impl<'plan> SubtreeViewBuilder<'plan> {
         let mut vtable_ids = Vec::new();
         let mut dispatch_flags = SubtreeDispatchFlags::default();
 
-        let subtree = NodePostOrder::new(
+        let subtree = NodePostOrder::new_by_node(
             &ir_plan.nodes,
-            |node| exec_plan.effective_sql_subtree_iter(node, Snapshot::Oldest),
+            |id, node| exec_plan.effective_sql_subtree_iter(id, node, Snapshot::Oldest, false),
             top_id,
         );
         for (node_id, node) in subtree {
@@ -677,9 +677,9 @@ fn bucket_filter_calculate(
     let plan = exec_plan.get_ir_plan();
     let mut relation_name: Option<&SmolStr> = None;
     let mut targets = AHashMap::new();
-    let subtree = NodePostOrder::new(
+    let subtree = NodePostOrder::new_by_node(
         &plan.nodes,
-        |node| exec_plan.effective_exec_plan_subtree_iter(node, Snapshot::Oldest),
+        |id, node| exec_plan.effective_exec_plan_subtree_iter(id, node, Snapshot::Oldest),
         top_id,
     );
     for (node_id, rel) in subtree.relational() {
@@ -1040,16 +1040,20 @@ impl ExecutionPlan {
     }
 
     /// Iterates an execution subtree after materialized motion overlays.
-    pub(crate) fn effective_exec_plan_subtree_iter(
-        &self,
+    pub(crate) fn effective_exec_plan_subtree_iter<'plan>(
+        &'plan self,
         current: NodeId,
+        node: Node<'plan>,
         snapshot: Snapshot,
-    ) -> EffectiveExecPlanSubtreeIterator<'_> {
-        if let Some(output) = self.effective_motion_leaf_output(current) {
-            return EffectiveExecPlanSubtreeIterator::Once(std::iter::once(output));
+    ) -> EffectiveExecPlanSubtreeIterator<'plan> {
+        if let Node::Relational(Relational::Motion(Motion { output, policy, .. })) = node {
+            if self.is_motion_leaf(current, policy) {
+                return EffectiveExecPlanSubtreeIterator::Once(std::iter::once(*output));
+            }
         }
         EffectiveExecPlanSubtreeIterator::Subtree(
-            self.get_ir_plan().exec_plan_subtree_iter(current, snapshot),
+            self.get_ir_plan()
+                .exec_plan_subtree_iter_of(node, snapshot, false),
         )
     }
 
@@ -1057,35 +1061,19 @@ impl ExecutionPlan {
     ///
     /// Unlike execution traversal, this also collapses enabled
     /// `SerializeAsEmptyTable` motions to their output node.
-    pub(crate) fn effective_sql_subtree_iter(
-        &self,
+    pub(crate) fn effective_sql_subtree_iter<'plan>(
+        &'plan self,
         current: NodeId,
-        snapshot: Snapshot,
-    ) -> EffectiveExecPlanSubtreeIterator<'_> {
-        self.effective_sql_subtree_iter_with(current, snapshot, false)
-    }
-
-    fn effective_sql_subtree_output_first_iter(
-        &self,
-        current: NodeId,
-        snapshot: Snapshot,
-    ) -> EffectiveExecPlanSubtreeIterator<'_> {
-        self.effective_sql_subtree_iter_with(current, snapshot, true)
-    }
-
-    fn effective_sql_subtree_iter_with(
-        &self,
-        current: NodeId,
+        node: Node<'plan>,
         snapshot: Snapshot,
         output_first: bool,
-    ) -> EffectiveExecPlanSubtreeIterator<'_> {
-        let ir_plan = self.get_ir_plan();
-        if let Ok(Node::Relational(Relational::Motion(Motion {
+    ) -> EffectiveExecPlanSubtreeIterator<'plan> {
+        if let Node::Relational(Relational::Motion(Motion {
             output,
             policy,
             program,
             ..
-        }))) = ir_plan.get_node(current)
+        })) = node
         {
             if self.is_motion_leaf(current, policy)
                 || self
@@ -1095,12 +1083,11 @@ impl ExecutionPlan {
                 return EffectiveExecPlanSubtreeIterator::Once(std::iter::once(*output));
             }
         }
-        let subtree = if output_first {
-            ir_plan.exec_plan_subtree_output_first_iter(current, snapshot)
-        } else {
-            ir_plan.exec_plan_subtree_iter(current, snapshot)
-        };
-        EffectiveExecPlanSubtreeIterator::Subtree(subtree)
+        EffectiveExecPlanSubtreeIterator::Subtree(self.get_ir_plan().exec_plan_subtree_iter_of(
+            node,
+            snapshot,
+            output_first,
+        ))
     }
 
     /// Returns bucket ids appended to SQL parameters by the active filter.

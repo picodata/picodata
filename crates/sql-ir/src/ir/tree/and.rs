@@ -15,14 +15,14 @@ trait AndTreeIterator<'nodes>: TreeIterator<'nodes> {}
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 pub struct AndIterator<'n> {
-    current: NodeId,
+    node: Option<Node<'n>>,
     child: RefCell<usize>,
     nodes: &'n Nodes,
 }
 
 impl<'nodes> TreeIterator<'nodes> for AndIterator<'nodes> {
-    fn get_current(&self) -> NodeId {
-        self.current
+    fn get_node(&self) -> Option<Node<'nodes>> {
+        self.node.clone()
     }
 
     fn get_child(&self) -> &RefCell<usize> {
@@ -40,7 +40,7 @@ impl<'n> Nodes {
     #[must_use]
     pub fn and_iter(&'n self, current: NodeId) -> AndIterator<'n> {
         AndIterator {
-            current,
+            node: self.get(current),
             child: RefCell::new(0),
             nodes: self,
         }
@@ -80,7 +80,7 @@ impl Iterator for AndIterator<'_> {
 }
 
 fn and_next<'nodes>(iter: &mut impl AndTreeIterator<'nodes>) -> Option<&'nodes NodeId> {
-    let node = iter.get_nodes().get(iter.get_current());
+    let node = iter.get_node();
     if let Some(Node::Expression(Expression::Bool(BoolExpr {
         left, op, right, ..
     }))) = node

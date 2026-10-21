@@ -24,7 +24,7 @@ trait SubtreePlanIterator<'plan>: PlanTreeIterator<'plan> {
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 pub struct SubtreeIterator<'plan> {
-    current: NodeId,
+    node: Option<Node<'plan>>,
     child: RefCell<usize>,
     plan: &'plan Plan,
     motion_output: bool,
@@ -33,8 +33,8 @@ pub struct SubtreeIterator<'plan> {
 }
 
 impl<'nodes> TreeIterator<'nodes> for SubtreeIterator<'nodes> {
-    fn get_current(&self) -> NodeId {
-        self.current
+    fn get_node(&self) -> Option<Node<'nodes>> {
+        self.node.clone()
     }
 
     fn get_child(&self) -> &RefCell<usize> {
@@ -81,7 +81,20 @@ impl<'plan> Plan {
     #[must_use]
     pub fn subtree_iter(&'plan self, current: NodeId) -> SubtreeIterator<'plan> {
         SubtreeIterator {
-            current,
+            node: self.nodes.get(current),
+            child: RefCell::new(0),
+            plan: self,
+            motion_output: false,
+            output_first: true,
+            traverse_subquery: true,
+        }
+    }
+
+    /// [`Self::subtree_iter`] of a node that is already taken from the arena.
+    #[must_use]
+    pub fn subtree_iter_of(&'plan self, node: Node<'plan>) -> SubtreeIterator<'plan> {
+        SubtreeIterator {
+            node: Some(node),
             child: RefCell::new(0),
             plan: self,
             motion_output: false,
@@ -94,7 +107,7 @@ impl<'plan> Plan {
     /// part of the plan).
     pub fn parameter_iter(&'plan self, current: NodeId) -> SubtreeIterator<'plan> {
         SubtreeIterator {
-            current,
+            node: self.nodes.get(current),
             child: RefCell::new(0),
             plan: self,
             motion_output: true,
@@ -107,7 +120,7 @@ impl<'plan> Plan {
     /// shared subqueries: the traversal of the subtree cloner.
     pub fn subtree_iter_except_subquery(&'plan self, current: NodeId) -> SubtreeIterator<'plan> {
         SubtreeIterator {
-            current,
+            node: self.nodes.get(current),
             child: RefCell::new(0),
             plan: self,
             motion_output: true,
@@ -123,14 +136,14 @@ impl<'plan> Plan {
 /// at the moment).
 #[derive(Debug)]
 pub struct FlashbackSubtreeIterator<'plan> {
-    current: NodeId,
+    node: Option<Node<'plan>>,
     child: RefCell<usize>,
     plan: &'plan Plan,
 }
 
 impl<'nodes> TreeIterator<'nodes> for FlashbackSubtreeIterator<'nodes> {
-    fn get_current(&self) -> NodeId {
-        self.current
+    fn get_node(&self) -> Option<Node<'nodes>> {
+        self.node.clone()
     }
 
     fn get_child(&self) -> &RefCell<usize> {
@@ -178,7 +191,21 @@ impl<'plan> Plan {
     #[must_use]
     pub fn flashback_subtree_iter(&'plan self, current: NodeId) -> FlashbackSubtreeIterator<'plan> {
         FlashbackSubtreeIterator {
-            current,
+            node: self.nodes.get(current),
+            child: RefCell::new(0),
+            plan: self,
+        }
+    }
+
+    /// [`Self::flashback_subtree_iter`] of a node that is already taken from
+    /// the arena.
+    #[must_use]
+    pub fn flashback_subtree_iter_of(
+        &'plan self,
+        node: Node<'plan>,
+    ) -> FlashbackSubtreeIterator<'plan> {
+        FlashbackSubtreeIterator {
+            node: Some(node),
             child: RefCell::new(0),
             plan: self,
         }
@@ -188,7 +215,7 @@ impl<'plan> Plan {
 /// An iterator used while copying and execution plan subtree.
 #[derive(Debug)]
 pub struct ExecPlanSubtreeIterator<'plan> {
-    current: NodeId,
+    node: Option<Node<'plan>>,
     child: RefCell<usize>,
     plan: &'plan Plan,
     snapshot_type: Snapshot,
@@ -196,8 +223,8 @@ pub struct ExecPlanSubtreeIterator<'plan> {
 }
 
 impl<'nodes> TreeIterator<'nodes> for ExecPlanSubtreeIterator<'nodes> {
-    fn get_current(&self) -> NodeId {
-        self.current
+    fn get_node(&self) -> Option<Node<'nodes>> {
+        self.node.clone()
     }
 
     fn get_child(&self) -> &RefCell<usize> {
@@ -248,7 +275,7 @@ impl<'plan> Plan {
         snapshot: Snapshot,
     ) -> ExecPlanSubtreeIterator<'plan> {
         ExecPlanSubtreeIterator {
-            current,
+            node: self.nodes.get(current),
             child: RefCell::new(0),
             plan: self,
             snapshot_type: snapshot,
@@ -262,11 +289,30 @@ impl<'plan> Plan {
         snapshot: Snapshot,
     ) -> ExecPlanSubtreeIterator<'plan> {
         ExecPlanSubtreeIterator {
-            current,
+            node: self.nodes.get(current),
             child: RefCell::new(0),
             plan: self,
             snapshot_type: snapshot,
             output_first: true,
+        }
+    }
+
+    /// [`Self::exec_plan_subtree_iter`] or
+    /// [`Self::exec_plan_subtree_output_first_iter`] of a node that is already
+    /// taken from the arena.
+    #[must_use]
+    pub fn exec_plan_subtree_iter_of(
+        &'plan self,
+        node: Node<'plan>,
+        snapshot: Snapshot,
+        output_first: bool,
+    ) -> ExecPlanSubtreeIterator<'plan> {
+        ExecPlanSubtreeIterator {
+            node: Some(node),
+            child: RefCell::new(0),
+            plan: self,
+            snapshot_type: snapshot,
+            output_first,
         }
     }
 }
@@ -276,7 +322,7 @@ fn subtree_next<'plan>(
     iter: &mut impl SubtreePlanIterator<'plan>,
     snapshot: &Snapshot,
 ) -> Option<NodeId> {
-    if let Some(child) = iter.get_nodes().get(iter.get_current()) {
+    if let Some(child) = iter.get_node() {
         return match child {
             Node::Invalid(..)
             | Node::Ddl(..)

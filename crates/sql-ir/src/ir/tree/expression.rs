@@ -16,7 +16,7 @@ trait ExpressionTreeIterator<'nodes>: TreeIterator<'nodes> {
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 pub struct ExpressionIterator<'n> {
-    current: NodeId,
+    node: Option<Node<'n>>,
     child: RefCell<usize>,
     nodes: &'n Nodes,
     make_row_leaf: bool,
@@ -31,7 +31,7 @@ impl<'n> Nodes {
     #[must_use]
     pub fn expr_iter(&'n self, current: NodeId, make_row_leaf: bool) -> ExpressionIterator<'n> {
         ExpressionIterator {
-            current,
+            node: self.get(current),
             child: RefCell::new(0),
             nodes: self,
             make_row_leaf,
@@ -40,10 +40,11 @@ impl<'n> Nodes {
 
     #[must_use]
     pub fn aggregate_iter(&'n self, current: NodeId, make_row_leaf: bool) -> AggregateIterator<'n> {
+        let node = self.get(current);
         let must_stop =
             if let Some(Node::Expression(Expression::ScalarFunction(ScalarFunction {
                 name, ..
-            }))) = self.get(current)
+            }))) = &node
             {
                 Expression::is_aggregate_name(name)
             } else {
@@ -51,7 +52,7 @@ impl<'n> Nodes {
             };
         AggregateIterator {
             inner: ExpressionIterator {
-                current,
+                node,
                 child: RefCell::new(0),
                 nodes: self,
                 make_row_leaf,
@@ -62,8 +63,8 @@ impl<'n> Nodes {
 }
 
 impl<'nodes> TreeIterator<'nodes> for ExpressionIterator<'nodes> {
-    fn get_current(&self) -> NodeId {
-        self.current
+    fn get_node(&self) -> Option<Node<'nodes>> {
+        self.node.clone()
     }
 
     fn get_child(&self) -> &RefCell<usize> {
@@ -102,7 +103,7 @@ impl Iterator for AggregateIterator<'_> {
 
 #[allow(clippy::too_many_lines)]
 fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Option<NodeId> {
-    let node = iter.get_nodes().get(iter.get_current());
+    let node = iter.get_node();
     match node {
         Some(node) => {
             match node {

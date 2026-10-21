@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use super::TreeIterator;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{ArenaType, Limit, NodeId, Projection, ScanCte};
+use crate::ir::node::{Limit, NodeId, Projection, ScanCte};
 use crate::ir::{Node, Nodes};
 
 trait RelationalTreeIterator<'nodes>: TreeIterator<'nodes> {}
@@ -12,7 +12,7 @@ trait RelationalTreeIterator<'nodes>: TreeIterator<'nodes> {}
 /// The iterator returns the next relational node in the plan tree.
 #[derive(Debug)]
 pub struct RelationalIterator<'n> {
-    current: NodeId,
+    node: Option<Node<'n>>,
     child: RefCell<usize>,
     nodes: &'n Nodes,
 }
@@ -21,7 +21,7 @@ impl<'n> Nodes {
     #[must_use]
     pub fn rel_iter(&'n self, current: NodeId) -> RelationalIterator<'n> {
         RelationalIterator {
-            current,
+            node: self.get(current),
             child: RefCell::new(0),
             nodes: self,
         }
@@ -30,7 +30,7 @@ impl<'n> Nodes {
     #[must_use]
     pub fn empty_rel_iter(&'n self) -> RelationalIterator<'n> {
         RelationalIterator {
-            current: self.next_id(ArenaType::Arena64),
+            node: None,
             child: RefCell::new(0),
             nodes: self,
         }
@@ -38,8 +38,8 @@ impl<'n> Nodes {
 }
 
 impl<'nodes> TreeIterator<'nodes> for RelationalIterator<'nodes> {
-    fn get_current(&self) -> NodeId {
-        self.current
+    fn get_node(&self) -> Option<Node<'nodes>> {
+        self.node.clone()
     }
 
     fn get_child(&self) -> &RefCell<usize> {
@@ -62,7 +62,7 @@ impl Iterator for RelationalIterator<'_> {
 }
 
 fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Option<NodeId> {
-    let next = iter.get_nodes().get(iter.get_current());
+    let next = iter.get_node();
     match next {
         Some(node) => match node {
             Node::Relational(rel_node) => match rel_node {

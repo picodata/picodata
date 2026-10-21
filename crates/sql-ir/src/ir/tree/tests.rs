@@ -288,6 +288,16 @@ fn subtree_dfs_post() {
     assert_eq!(iter.next(), None);
     check_node_post_order(&plan, |node| plan.subtree_iter(node), top);
 
+    // Children from the node give the same traversal as children by id.
+    let by_id: Vec<_> = NodePostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), top)
+        .map(|(id, _)| id)
+        .collect();
+    let by_node: Vec<_> =
+        NodePostOrder::new_by_node(&plan.nodes, |_, node| plan.subtree_iter_of(node), top)
+            .map(|(id, _)| id)
+            .collect();
+    assert_eq!(by_node, by_id);
+
     let missing = plan.nodes.next_id(ArenaType::Arena64);
     let mut iter = NodePostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), missing);
     assert!(iter.next().is_none());

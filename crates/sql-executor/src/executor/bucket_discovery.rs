@@ -225,11 +225,11 @@ where
     /// a sharded table or a motion other than a full (replicated) one.
     fn references_buckets(&self, top_id: NodeId) -> Result<bool, SbroadError> {
         let ir_plan = self.exec_plan.get_ir_plan();
-        let tree = NodePostOrder::new(
+        let tree = NodePostOrder::new_by_node(
             &ir_plan.nodes,
-            |node| {
+            |id, node| {
                 self.exec_plan
-                    .effective_exec_plan_subtree_iter(node, Snapshot::Latest)
+                    .effective_exec_plan_subtree_iter(id, node, Snapshot::Latest)
             },
             top_id,
         );
@@ -281,11 +281,11 @@ where
 
         // We use a `exec_plan_subtree_iter()` because we need DNF version of the
         // filter/condition expressions to determine buckets.
-        let tree = NodePostOrder::new(
+        let tree = NodePostOrder::new_by_node(
             &ir_plan.nodes,
-            |node| {
+            |id, node| {
                 self.exec_plan
-                    .effective_exec_plan_subtree_iter(node, Snapshot::Latest)
+                    .effective_exec_plan_subtree_iter(id, node, Snapshot::Latest)
             },
             top_id,
         );

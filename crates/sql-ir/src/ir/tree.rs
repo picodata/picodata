@@ -3,7 +3,7 @@
 use super::{
     node::{expression::Expression, Bound, BoundType, Like, Over, Window},
     operator::{OrderByElement, OrderByEntity},
-    Nodes, Plan,
+    Node, Nodes, Plan,
 };
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, IndexExpr, NodeId, Trim, UnaryExpr,
@@ -11,7 +11,8 @@ use crate::ir::node::{
 use std::cell::RefCell;
 
 trait TreeIterator<'nodes> {
-    fn get_current(&self) -> NodeId;
+    /// The node whose children are iterated, taken from the arena once.
+    fn get_node(&self) -> Option<Node<'nodes>>;
     fn get_child(&self) -> &RefCell<usize>;
     fn get_nodes(&self) -> &'nodes Nodes;
 
