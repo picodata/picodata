@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::Cell;
 
 use super::TreeIterator;
 use crate::ir::node::expression::Expression;
@@ -17,7 +17,7 @@ trait ExpressionTreeIterator<'nodes>: TreeIterator<'nodes> {
 #[derive(Debug)]
 pub struct ExpressionIterator<'n> {
     node: Option<Node<'n>>,
-    child: RefCell<usize>,
+    child: Cell<usize>,
     nodes: &'n Nodes,
     make_row_leaf: bool,
 }
@@ -32,7 +32,7 @@ impl<'n> Nodes {
     pub fn expr_iter(&'n self, current: NodeId, make_row_leaf: bool) -> ExpressionIterator<'n> {
         ExpressionIterator {
             node: self.get(current),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             nodes: self,
             make_row_leaf,
         }
@@ -53,7 +53,7 @@ impl<'n> Nodes {
         AggregateIterator {
             inner: ExpressionIterator {
                 node,
-                child: RefCell::new(0),
+                child: Cell::new(0),
                 nodes: self,
                 make_row_leaf,
             },
@@ -67,7 +67,7 @@ impl<'nodes> TreeIterator<'nodes> for ExpressionIterator<'nodes> {
         self.node.clone()
     }
 
-    fn get_child(&self) -> &RefCell<usize> {
+    fn get_child(&self) -> &Cell<usize> {
         &self.child
     }
 
@@ -119,7 +119,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                         | Expression::Concat { .. } => iter.handle_left_right_children(expr),
                         Expression::Index { .. } => iter.handle_index_iter(expr),
                         Expression::Row(Row { list, .. }) => {
-                            let child_step = *iter.get_child().borrow();
+                            let child_step = iter.get_child().get();
                             let mut is_leaf = false;
 
                             // Check on the first step, if the row contains only leaf nodes.
@@ -145,7 +145,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                             if !is_leaf || !iter.get_make_row_leaf() {
                                 {
                                     let child = list.get(child_step)?;
-                                    *iter.get_child().borrow_mut() += 1;
+                                    iter.advance();
                                     return Some(*child);
                                 }
                             }
@@ -153,19 +153,19 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                             None
                         }
                         Expression::ScalarFunction(ScalarFunction { children, .. }) => {
-                            let child_step = *iter.get_child().borrow();
+                            let child_step = iter.get_child().get();
                             match children.get(child_step) {
                                 None => None,
                                 Some(child) => {
-                                    *iter.get_child().borrow_mut() += 1;
+                                    iter.advance();
                                     Some(*child)
                                 }
                             }
                         }
                         Expression::ArrayLiteral(ArrayLiteral { list, .. }) => {
-                            let child_step = *iter.get_child().borrow();
+                            let child_step = iter.get_child().get();
                             list.get(child_step).map(|child| {
-                                *iter.get_child().borrow_mut() += 1;
+                                iter.advance();
                                 *child
                             })
                         }

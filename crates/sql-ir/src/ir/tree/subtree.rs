@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::Cell;
 
 use super::{PlanTreeIterator, Snapshot, TreeIterator};
 use crate::ir::node::expression::Expression;
@@ -25,7 +25,7 @@ trait SubtreePlanIterator<'plan>: PlanTreeIterator<'plan> {
 #[derive(Debug)]
 pub struct SubtreeIterator<'plan> {
     node: Option<Node<'plan>>,
-    child: RefCell<usize>,
+    child: Cell<usize>,
     plan: &'plan Plan,
     motion_output: bool,
     output_first: bool,
@@ -37,7 +37,7 @@ impl<'nodes> TreeIterator<'nodes> for SubtreeIterator<'nodes> {
         self.node.clone()
     }
 
-    fn get_child(&self) -> &RefCell<usize> {
+    fn get_child(&self) -> &Cell<usize> {
         &self.child
     }
 
@@ -82,7 +82,7 @@ impl<'plan> Plan {
     pub fn subtree_iter(&'plan self, current: NodeId) -> SubtreeIterator<'plan> {
         SubtreeIterator {
             node: self.nodes.get(current),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             plan: self,
             motion_output: false,
             output_first: true,
@@ -95,7 +95,7 @@ impl<'plan> Plan {
     pub fn subtree_iter_of(&'plan self, node: Node<'plan>) -> SubtreeIterator<'plan> {
         SubtreeIterator {
             node: Some(node),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             plan: self,
             motion_output: false,
             output_first: true,
@@ -108,7 +108,7 @@ impl<'plan> Plan {
     pub fn parameter_iter(&'plan self, current: NodeId) -> SubtreeIterator<'plan> {
         SubtreeIterator {
             node: self.nodes.get(current),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             plan: self,
             motion_output: true,
             output_first: false,
@@ -121,7 +121,7 @@ impl<'plan> Plan {
     pub fn subtree_iter_except_subquery(&'plan self, current: NodeId) -> SubtreeIterator<'plan> {
         SubtreeIterator {
             node: self.nodes.get(current),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             plan: self,
             motion_output: true,
             output_first: false,
@@ -137,7 +137,7 @@ impl<'plan> Plan {
 #[derive(Debug)]
 pub struct FlashbackSubtreeIterator<'plan> {
     node: Option<Node<'plan>>,
-    child: RefCell<usize>,
+    child: Cell<usize>,
     plan: &'plan Plan,
 }
 
@@ -146,7 +146,7 @@ impl<'nodes> TreeIterator<'nodes> for FlashbackSubtreeIterator<'nodes> {
         self.node.clone()
     }
 
-    fn get_child(&self) -> &RefCell<usize> {
+    fn get_child(&self) -> &Cell<usize> {
         &self.child
     }
 
@@ -192,7 +192,7 @@ impl<'plan> Plan {
     pub fn flashback_subtree_iter(&'plan self, current: NodeId) -> FlashbackSubtreeIterator<'plan> {
         FlashbackSubtreeIterator {
             node: self.nodes.get(current),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             plan: self,
         }
     }
@@ -206,7 +206,7 @@ impl<'plan> Plan {
     ) -> FlashbackSubtreeIterator<'plan> {
         FlashbackSubtreeIterator {
             node: Some(node),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             plan: self,
         }
     }
@@ -216,7 +216,7 @@ impl<'plan> Plan {
 #[derive(Debug)]
 pub struct ExecPlanSubtreeIterator<'plan> {
     node: Option<Node<'plan>>,
-    child: RefCell<usize>,
+    child: Cell<usize>,
     plan: &'plan Plan,
     snapshot_type: Snapshot,
     output_first: bool,
@@ -227,7 +227,7 @@ impl<'nodes> TreeIterator<'nodes> for ExecPlanSubtreeIterator<'nodes> {
         self.node.clone()
     }
 
-    fn get_child(&self) -> &RefCell<usize> {
+    fn get_child(&self) -> &Cell<usize> {
         &self.child
     }
 
@@ -276,7 +276,7 @@ impl<'plan> Plan {
     ) -> ExecPlanSubtreeIterator<'plan> {
         ExecPlanSubtreeIterator {
             node: self.nodes.get(current),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             plan: self,
             snapshot_type: snapshot,
             output_first: false,
@@ -290,7 +290,7 @@ impl<'plan> Plan {
     ) -> ExecPlanSubtreeIterator<'plan> {
         ExecPlanSubtreeIterator {
             node: self.nodes.get(current),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             plan: self,
             snapshot_type: snapshot,
             output_first: true,
@@ -309,7 +309,7 @@ impl<'plan> Plan {
     ) -> ExecPlanSubtreeIterator<'plan> {
         ExecPlanSubtreeIterator {
             node: Some(node),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             plan: self,
             snapshot_type: snapshot,
             output_first,
@@ -348,11 +348,11 @@ fn subtree_next<'plan>(
                 Expression::Row(Row { list, .. })
                 | Expression::ArrayLiteral(ArrayLiteral { list, .. })
                 | Expression::ScalarFunction(ScalarFunction { children: list, .. }) => {
-                    let child_step = *iter.get_child().borrow();
+                    let child_step = iter.get_child().get();
                     return match list.get(child_step) {
                         None => None,
                         Some(child) => {
-                            *iter.get_child().borrow_mut() += 1;
+                            iter.advance();
                             Some(*child)
                         }
                     };
@@ -368,9 +368,9 @@ fn subtree_next<'plan>(
                     if !iter.need_subquery() {
                         return None;
                     }
-                    let step = *iter.get_child().borrow();
+                    let step = iter.get_child().get();
                     if step == 0 {
-                        *iter.get_child().borrow_mut() += 1;
+                        iter.advance();
                         Some(*rel_id)
                     } else {
                         None
@@ -384,9 +384,9 @@ fn subtree_next<'plan>(
                     condition,
                     ..
                 }) => {
-                    let step = *iter.get_child().borrow();
+                    let step = iter.get_child().get();
 
-                    *iter.get_child().borrow_mut() += 1;
+                    iter.advance();
                     match step {
                         0 => Some(*left),
                         1 => Some(*right),
@@ -409,8 +409,8 @@ fn subtree_next<'plan>(
                 | Relational::ScanCte(_)
                 | Relational::Limit(_)
                 | Relational::Update(_) => {
-                    let step = *iter.get_child().borrow();
-                    *iter.get_child().borrow_mut() += 1;
+                    let step = iter.get_child().get();
+                    iter.advance();
                     let children = r.children();
                     if step < children.len() {
                         return children.get(step).copied();
@@ -422,14 +422,14 @@ fn subtree_next<'plan>(
                 Relational::GroupBy(GroupBy {
                     child, gr_exprs, ..
                 }) => {
-                    let step = *iter.get_child().borrow();
+                    let step = iter.get_child().get();
                     if step == 0 {
-                        *iter.get_child().borrow_mut() += 1;
+                        iter.advance();
                         return Some(*child);
                     }
                     let col_idx = step - 1;
                     if col_idx < gr_exprs.len() {
-                        *iter.get_child().borrow_mut() += 1;
+                        iter.advance();
                         return gr_exprs.get(col_idx).copied();
                     }
                     None
@@ -439,9 +439,9 @@ fn subtree_next<'plan>(
                     order_by_elements,
                     ..
                 }) => {
-                    let step = *iter.get_child().borrow();
+                    let step = iter.get_child().get();
                     if step == 0 {
-                        *iter.get_child().borrow_mut() += 1;
+                        iter.advance();
                         return Some(*child);
                     }
                     let mut col_idx = step - 1;
@@ -449,7 +449,7 @@ fn subtree_next<'plan>(
                         let current_element = order_by_elements
                             .get(col_idx)
                             .expect("Wrong index passed for OrderBy element retrieval.");
-                        *iter.get_child().borrow_mut() += 1;
+                        iter.advance();
                         if let OrderByElement {
                             entity: OrderByEntity::Expression { expr_id },
                             ..
@@ -468,37 +468,37 @@ fn subtree_next<'plan>(
                     ..
                 }) => {
                     if policy.is_local() || iter.need_motion_subtree() {
-                        let step = *iter.get_child().borrow();
+                        let step = iter.get_child().get();
                         let len = child.iter().len();
                         if step < len {
-                            *iter.get_child().borrow_mut() += 1;
+                            iter.advance();
                             return *child;
                         }
                         if iter.need_motion_output() && step == len {
-                            *iter.get_child().borrow_mut() += 1;
+                            iter.advance();
                             return Some(*output);
                         }
                     } else {
                         // A non-local motion whose subtree is not wanted is
                         // represented by its output tuple alone.
-                        let step = *iter.get_child().borrow();
+                        let step = iter.get_child().get();
                         if iter.need_motion_output() && step == 0 {
-                            *iter.get_child().borrow_mut() += 1;
+                            iter.advance();
                             return Some(*output);
                         }
                     }
                     None
                 }
                 Relational::Values(Values { rows, .. }) => {
-                    let step = *iter.get_child().borrow();
-                    *iter.get_child().borrow_mut() += 1;
+                    let step = iter.get_child().get();
+                    iter.advance();
                     rows.get(step).copied()
                 }
                 Relational::SelectWithoutScan(SelectWithoutScan {
                     output, subqueries, ..
                 }) => {
-                    let step = *iter.get_child().borrow();
-                    *iter.get_child().borrow_mut() += 1;
+                    let step = iter.get_child().get();
+                    iter.advance();
 
                     let once_output = std::iter::once(*output);
                     let sub_iter = subqueries.iter().copied();
@@ -517,8 +517,8 @@ fn subtree_next<'plan>(
                     having,
                     ..
                 }) => {
-                    let step = *iter.get_child().borrow();
-                    *iter.get_child().borrow_mut() += 1;
+                    let step = iter.get_child().get();
+                    iter.advance();
                     let mut step_shift: usize = 0;
                     if iter.output_first() {
                         if step == 0 {
@@ -556,9 +556,9 @@ fn subtree_next<'plan>(
                 }
                 Relational::Selection(Selection { child, filter, .. })
                 | Relational::Having(Having { child, filter, .. }) => {
-                    let step = *iter.get_child().borrow();
+                    let step = iter.get_child().get();
 
-                    *iter.get_child().borrow_mut() += 1;
+                    iter.advance();
                     match step {
                         0 => Some(*child),
                         1 => match snapshot {
@@ -571,9 +571,9 @@ fn subtree_next<'plan>(
                     }
                 }
                 Relational::ScanFunction(ScanFunction { function, .. }) => {
-                    let step = *iter.get_child().borrow();
+                    let step = iter.get_child().get();
                     if step == 0 {
-                        *iter.get_child().borrow_mut() += 1;
+                        iter.advance();
                         return Some(*function);
                     }
                     None

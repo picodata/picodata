@@ -8,12 +8,17 @@ use super::{
 use crate::ir::node::{
     Alias, ArithmeticExpr, BoolExpr, Case, Cast, Concat, IndexExpr, NodeId, Trim, UnaryExpr,
 };
-use std::cell::RefCell;
+use std::cell::Cell;
 
 trait TreeIterator<'nodes> {
     /// The node whose children are iterated, taken from the arena once.
     fn get_node(&self) -> Option<Node<'nodes>>;
-    fn get_child(&self) -> &RefCell<usize>;
+    fn get_child(&self) -> &Cell<usize>;
+
+    fn advance(&self) {
+        let child = self.get_child();
+        child.set(child.get() + 1);
+    }
     fn get_nodes(&self) -> &'nodes Nodes;
 
     fn handle_trim(&mut self, expr: Expression) -> Option<NodeId> {
@@ -23,17 +28,17 @@ trait TreeIterator<'nodes> {
         else {
             panic!("Trim expected")
         };
-        let child_step = *self.get_child().borrow();
+        let child_step = self.get_child().get();
         match child_step {
             0 => {
-                *self.get_child().borrow_mut() += 1;
+                self.advance();
                 match pattern {
                     Some(_) => *pattern,
                     None => Some(*target),
                 }
             }
             1 => {
-                *self.get_child().borrow_mut() += 1;
+                self.advance();
                 pattern.as_ref().map(|_| *target)
             }
             _ => None,
@@ -49,14 +54,14 @@ trait TreeIterator<'nodes> {
         else {
             panic!("Like expected")
         };
-        let child_step = *self.get_child().borrow();
+        let child_step = self.get_child().get();
         let res = match child_step {
             0 => Some(*left),
             1 => Some(*right),
             2 => Some(*escape_id),
             _ => None,
         };
-        *self.get_child().borrow_mut() += 1;
+        self.advance();
         res
     }
 
@@ -67,12 +72,12 @@ trait TreeIterator<'nodes> {
         else {
             panic!("Expected expression with left and right children")
         };
-        let child_step = *self.get_child().borrow();
+        let child_step = self.get_child().get();
         if child_step == 0 {
-            *self.get_child().borrow_mut() += 1;
+            self.advance();
             return Some(*left);
         } else if child_step == 1 {
-            *self.get_child().borrow_mut() += 1;
+            self.advance();
             return Some(*right);
         }
         None
@@ -83,14 +88,14 @@ trait TreeIterator<'nodes> {
         let Expression::Index(IndexExpr { child, indexes, .. }) = expr else {
             panic!("Index expression expected")
         };
-        let child_step = *self.get_child().borrow();
+        let child_step = self.get_child().get();
         let res = if child_step == 0 {
             Some(*child)
         } else {
             indexes.get(child_step - 1).copied()
         };
         if res.is_some() {
-            *self.get_child().borrow_mut() += 1;
+            self.advance();
         }
         res
     }
@@ -102,8 +107,8 @@ trait TreeIterator<'nodes> {
         else {
             panic!("Expected expression with single child")
         };
-        let step = *self.get_child().borrow();
-        *self.get_child().borrow_mut() += 1;
+        let step = self.get_child().get();
+        self.advance();
         if step == 0 {
             return Some(*child);
         }
@@ -119,8 +124,8 @@ trait TreeIterator<'nodes> {
         else {
             panic!("Case expression expected");
         };
-        let mut child_step = *self.get_child().borrow();
-        *self.get_child().borrow_mut() += 1;
+        let mut child_step = self.get_child().get();
+        self.advance();
         if let Some(search_expr) = search_expr {
             if child_step == 0 {
                 return Some(*search_expr);
@@ -157,8 +162,8 @@ trait TreeIterator<'nodes> {
             panic!("Expected WINDOW rel node for iteration.")
         };
 
-        let mut step = *self.get_child().borrow();
-        *self.get_child().borrow_mut() += 1;
+        let mut step = self.get_child().get();
+        self.advance();
 
         if let Some(partition) = partition {
             if step < partition.len() {
@@ -177,7 +182,7 @@ trait TreeIterator<'nodes> {
                     return Some(expr_id);
                 }
 
-                *self.get_child().borrow_mut() += 1;
+                self.advance();
                 step += 1;
             }
             step -= ordering.len();
@@ -230,8 +235,8 @@ trait TreeIterator<'nodes> {
         else {
             panic!("Over expression expected");
         };
-        let mut step = *self.get_child().borrow();
-        *self.get_child().borrow_mut() += 1;
+        let mut step = self.get_child().get();
+        self.advance();
 
         if step == 0 {
             return Some(*stable_func);

@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::Cell;
 
 use super::TreeIterator;
 use crate::ir::node::relational::Relational;
@@ -13,7 +13,7 @@ trait RelationalTreeIterator<'nodes>: TreeIterator<'nodes> {}
 #[derive(Debug)]
 pub struct RelationalIterator<'n> {
     node: Option<Node<'n>>,
-    child: RefCell<usize>,
+    child: Cell<usize>,
     nodes: &'n Nodes,
 }
 
@@ -22,7 +22,7 @@ impl<'n> Nodes {
     pub fn rel_iter(&'n self, current: NodeId) -> RelationalIterator<'n> {
         RelationalIterator {
             node: self.get(current),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             nodes: self,
         }
     }
@@ -31,7 +31,7 @@ impl<'n> Nodes {
     pub fn empty_rel_iter(&'n self) -> RelationalIterator<'n> {
         RelationalIterator {
             node: None,
-            child: RefCell::new(0),
+            child: Cell::new(0),
             nodes: self,
         }
     }
@@ -42,7 +42,7 @@ impl<'nodes> TreeIterator<'nodes> for RelationalIterator<'nodes> {
         self.node.clone()
     }
 
-    fn get_child(&self) -> &RefCell<usize> {
+    fn get_child(&self) -> &Cell<usize> {
         &self.child
     }
 
@@ -83,8 +83,8 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                 | Relational::Update { .. }
                 | Relational::ScanFunction { .. }
                 | Relational::Values { .. }) => {
-                    let step = *iter.get_child().borrow();
-                    *iter.get_child().borrow_mut() += 1;
+                    let step = iter.get_child().get();
+                    iter.advance();
                     let children = node.children();
                     if step < children.len() {
                         return children.get(step).copied();
@@ -105,8 +105,8 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                     having,
                     ..
                 }) => {
-                    let step = *iter.get_child().borrow();
-                    *iter.get_child().borrow_mut() += 1;
+                    let step = iter.get_child().get();
+                    iter.advance();
                     let mut step_shift: usize = 0;
                     if having.is_some() {
                         if step == 0 {
@@ -134,9 +134,9 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                 }
                 Relational::ScanCte(ScanCte { child, .. })
                 | Relational::Limit(Limit { child, .. }) => {
-                    let step = *iter.get_child().borrow();
+                    let step = iter.get_child().get();
                     if step == 0 {
-                        *iter.get_child().borrow_mut() += 1;
+                        iter.advance();
                         return Some(child).copied();
                     }
                     None

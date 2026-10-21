@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::Cell;
 
 use super::traversal::NodePostOrder;
 use super::TreeIterator;
@@ -16,7 +16,7 @@ trait AndTreeIterator<'nodes>: TreeIterator<'nodes> {}
 #[derive(Debug)]
 pub struct AndIterator<'n> {
     node: Option<Node<'n>>,
-    child: RefCell<usize>,
+    child: Cell<usize>,
     nodes: &'n Nodes,
 }
 
@@ -25,7 +25,7 @@ impl<'nodes> TreeIterator<'nodes> for AndIterator<'nodes> {
         self.node.clone()
     }
 
-    fn get_child(&self) -> &RefCell<usize> {
+    fn get_child(&self) -> &Cell<usize> {
         &self.child
     }
 
@@ -41,7 +41,7 @@ impl<'n> Nodes {
     pub fn and_iter(&'n self, current: NodeId) -> AndIterator<'n> {
         AndIterator {
             node: self.get(current),
-            child: RefCell::new(0),
+            child: Cell::new(0),
             nodes: self,
         }
     }
@@ -88,12 +88,12 @@ fn and_next<'nodes>(iter: &mut impl AndTreeIterator<'nodes>) -> Option<&'nodes N
         if *op != Bool::And {
             return None;
         }
-        let child_step = *iter.get_child().borrow();
+        let child_step = iter.get_child().get();
         if child_step == 0 {
-            *iter.get_child().borrow_mut() += 1;
+            iter.advance();
             return Some(left);
         } else if child_step == 1 {
-            *iter.get_child().borrow_mut() += 1;
+            iter.advance();
             return Some(right);
         }
         None
