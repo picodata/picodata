@@ -525,7 +525,7 @@ impl<'plan> SubtreeViewBuilder<'plan> {
             }
         }
 
-        let mut node_ids = Vec::new();
+        let mut node_ids = Vec::with_capacity(ir_plan.nodes.len());
         let mut leaf_motions = Vec::new();
         let mut serialize_as_empty = Vec::new();
         let mut vtable_ids = Vec::new();
