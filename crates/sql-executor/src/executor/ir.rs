@@ -27,7 +27,7 @@ use crate::ir::operator::UpdateStrategy;
 use crate::ir::relation::SpaceEngine;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::subtree::ExecPlanSubtreeIterator;
-use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrder, PostOrderWithFilter};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use crate::ir::{Plan, SubtreeViewKey};
@@ -510,59 +510,63 @@ impl<'plan> SubtreeViewBuilder<'plan> {
         top_id: NodeId,
     ) -> Result<SubtreeViewSummary, SbroadError> {
         let ir_plan = exec_plan.get_ir_plan();
-        let subtree = PostOrder::new(
-            |node| exec_plan.effective_sql_subtree_iter(node, Snapshot::Oldest),
-            ir_plan.nodes.len(),
-        );
-        let node_ids = subtree.traverse_into_iter(top_id).collect::<Vec<_>>();
-        let constants = PostOrderWithFilter::new(
+        let constants = NodePostOrder::new(
+            &ir_plan.nodes,
             |node| exec_plan.effective_sql_subtree_output_first_iter(node, Snapshot::Oldest),
-            |node| {
-                matches!(
-                    ir_plan.get_node(node),
-                    Ok(Node::Expression(Expression::Constant(_)))
-                )
-            },
-            ir_plan.nodes.len(),
-        );
+            top_id,
+        )
+        .expressions()
+        .filter(|(_, expr)| matches!(expr, Expression::Constant(_)));
         let mut constant_ids = Vec::new();
         let mut constant_set = HashSet::new();
-        for node_id in constants.traverse_into_iter(top_id) {
+        for (node_id, _) in constants {
             if constant_set.insert(node_id) {
                 constant_ids.push(node_id);
             }
         }
 
+        let mut node_ids = Vec::new();
         let mut leaf_motions = Vec::new();
         let mut serialize_as_empty = Vec::new();
         let mut vtable_ids = Vec::new();
         let mut dispatch_flags = SubtreeDispatchFlags::default();
 
-        for node_id in &node_ids {
-            if exec_plan.is_effective_motion_leaf(*node_id) {
-                leaf_motions.push(*node_id);
-            }
-            if let Ok(Node::Expression(expr)) = ir_plan.get_node(*node_id) {
-                if expr.is_aggregate_fun() {
-                    dispatch_flags.emits_row_from_empty_input = true;
+        let subtree = NodePostOrder::new(
+            &ir_plan.nodes,
+            |node| exec_plan.effective_sql_subtree_iter(node, Snapshot::Oldest),
+            top_id,
+        );
+        for (node_id, node) in subtree {
+            node_ids.push(node_id);
+            match node {
+                Node::Expression(expr) => {
+                    if expr.is_aggregate_fun() {
+                        dispatch_flags.emits_row_from_empty_input = true;
+                    }
                 }
+                Node::Relational(Relational::Motion(Motion {
+                    policy, program, ..
+                })) => {
+                    if exec_plan.is_motion_leaf(node_id, policy) {
+                        leaf_motions.push(node_id);
+                    }
+                    match exec_plan.effective_serialize_as_empty_state(node_id, program) {
+                        SerializeAsEmptyState::Absent => {}
+                        SerializeAsEmptyState::Enabled => {
+                            dispatch_flags.has_customization_opcodes = true;
+                            serialize_as_empty.push((node_id, true));
+                        }
+                        SerializeAsEmptyState::Disabled => {
+                            serialize_as_empty.push((node_id, false))
+                        }
+                    }
+                }
+                _ => {}
             }
-            if let Some(vtable) = exec_plan.get_vtables().get(node_id) {
-                vtable_ids.push(*node_id);
+            if let Some(vtable) = exec_plan.get_vtables().get(&node_id) {
+                vtable_ids.push(node_id);
                 if !vtable.get_bucket_index().is_empty() {
                     dispatch_flags.has_segmented_tables = true;
-                }
-            }
-            if let Node::Relational(Relational::Motion(Motion { program, .. })) =
-                ir_plan.get_node(*node_id)?
-            {
-                match exec_plan.effective_serialize_as_empty_state(*node_id, program) {
-                    SerializeAsEmptyState::Absent => {}
-                    SerializeAsEmptyState::Enabled => {
-                        dispatch_flags.has_customization_opcodes = true;
-                        serialize_as_empty.push((*node_id, true));
-                    }
-                    SerializeAsEmptyState::Disabled => serialize_as_empty.push((*node_id, false)),
                 }
             }
         }
@@ -970,6 +974,13 @@ impl ExecutionPlan {
         self.unlinked_motions.contains(&motion_id)
     }
 
+    /// Returns whether a motion is rendered as a leaf: its subtree is unlinked,
+    /// or it has a materialized non-local virtual table.
+    fn is_motion_leaf(&self, motion_id: NodeId, policy: &MotionPolicy) -> bool {
+        self.is_motion_subtree_unlinked(motion_id)
+            || self.contains_vtable_for_motion(motion_id) && !policy.is_local()
+    }
+
     /// Returns the effective motion child after applying execution overlays.
     ///
     /// `Ok(None)` means the motion is rendered as a leaf because it has a
@@ -989,9 +1000,7 @@ impl ExecutionPlan {
                 Some(format_smolstr!("node ({motion_id:?}) is not motion")),
             ));
         };
-        if self.is_motion_subtree_unlinked(motion_id)
-            || self.contains_vtable_for_motion(motion_id) && !policy.is_local()
-        {
+        if self.is_motion_leaf(motion_id, policy) {
             return Ok(None);
         }
         Ok(*child)
@@ -1006,9 +1015,7 @@ impl ExecutionPlan {
         else {
             return None;
         };
-        if self.is_motion_subtree_unlinked(node_id)
-            || self.contains_vtable_for_motion(node_id) && !policy.is_local()
-        {
+        if self.is_motion_leaf(node_id, policy) {
             return Some(*output);
         }
         None
@@ -1074,21 +1081,22 @@ impl ExecutionPlan {
         snapshot: Snapshot,
         output_first: bool,
     ) -> EffectiveExecPlanSubtreeIterator<'_> {
-        if let Some(output) = self.effective_motion_leaf_output(current) {
-            return EffectiveExecPlanSubtreeIterator::Once(std::iter::once(output));
-        }
+        let ir_plan = self.get_ir_plan();
         if let Ok(Node::Relational(Relational::Motion(Motion {
-            output, program, ..
-        }))) = self.get_ir_plan().get_node(current)
+            output,
+            policy,
+            program,
+            ..
+        }))) = ir_plan.get_node(current)
         {
-            if self
-                .effective_serialize_as_empty_state(current, program)
-                .is_enabled()
+            if self.is_motion_leaf(current, policy)
+                || self
+                    .effective_serialize_as_empty_state(current, program)
+                    .is_enabled()
             {
                 return EffectiveExecPlanSubtreeIterator::Once(std::iter::once(*output));
             }
         }
-        let ir_plan = self.get_ir_plan();
         let subtree = if output_first {
             ir_plan.exec_plan_subtree_output_first_iter(current, snapshot)
         } else {

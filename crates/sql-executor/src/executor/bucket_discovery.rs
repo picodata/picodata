@@ -17,7 +17,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
-use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter, REL_CAPACITY};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 
@@ -232,16 +232,16 @@ where
     /// a sharded table or a motion other than a full (replicated) one.
     fn references_buckets(&self, top_id: NodeId) -> Result<bool, SbroadError> {
         let ir_plan = self.exec_plan.get_ir_plan();
-        let tree = PostOrderWithFilter::new(
+        let tree = NodePostOrder::new(
+            &ir_plan.nodes,
             |node| {
                 self.exec_plan
                     .effective_exec_plan_subtree_iter(node, Snapshot::Latest)
             },
-            |node| matches!(ir_plan.get_node(node), Ok(Node::Relational(..))),
-            REL_CAPACITY,
+            top_id,
         );
-        for node_id in tree.traverse_into_iter(top_id) {
-            let references_buckets = match ir_plan.get_relation_node(node_id)? {
+        for (node_id, rel) in tree.relational() {
+            let references_buckets = match rel {
                 Relational::ScanRelation(ScanRelation { relation, .. }) => !ir_plan
                     .get_relation_or_error(relation.as_str())?
                     .is_global(),
@@ -288,25 +288,24 @@ where
 
         // We use a `exec_plan_subtree_iter()` because we need DNF version of the
         // filter/condition expressions to determine buckets.
-        let tree = PostOrderWithFilter::new(
+        let tree = NodePostOrder::new(
+            &ir_plan.nodes,
             |node| {
                 self.exec_plan
                     .effective_exec_plan_subtree_iter(node, Snapshot::Latest)
             },
-            |node| matches!(ir_plan.get_node(node), Ok(Node::Relational(..))),
-            REL_CAPACITY,
+            top_id,
         );
         let resolver = ExecutorBucketsResolver {
             coordinator: self.coordinator,
             exec_plan: &self.exec_plan,
         };
 
-        for node_id in tree.traverse_into_iter(top_id) {
+        for (node_id, rel) in tree.relational() {
             if self.bucket_map.contains_key(&node_id) {
                 continue;
             }
 
-            let rel = ir_plan.get_relation_node(node_id)?;
             match rel {
                 Relational::ScanRelation(ScanRelation { relation, .. }) => {
                     if ir_plan
