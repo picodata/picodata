@@ -153,6 +153,12 @@ SELECT to_date('', '%Y')::text, to_char(to_date('', '%Y'), '%Z');
 -- ERROR:
 could not parse '' using '%Y' format
 
+-- TEST: to-date-error-long
+-- SQL:
+SELECT to_date('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '%Y');
+-- ERROR:
+could not parse 'a{32}\.\.\.' using '%Y' format
+
 -- TEST: to-date-null-string
 -- SQL:
 SELECT to_date(NULL, '%Y');

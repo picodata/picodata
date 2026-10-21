@@ -614,7 +614,7 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "to_char" ("a"."a"::datetime, '%Y-%m-%d'::text) as "c0",
+  to_char ("a"."a"::datetime, '%Y-%m-%d'::text) as "c0",
   sum ("a"."f"::decimal) as "c1",
   sum ("a"."e"::decimal) as "c2",
   sum ("a"."g"::decimal) as "c3"
@@ -761,7 +761,7 @@ SELECT
 FROM
   (
     SELECT
-      "to_char" (
+      to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%Y-%m-%d'::text
       ) as "c0",
@@ -780,11 +780,11 @@ FROM
     WHERE
       "t0"."cv" = 3023424::int
       and coalesce ("t1"."aw"::int, "t0"."bf"::int) = 0::int
-      and "to_char" (
+      and to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%Y'::text
       )::int = 2023::int
-      and "to_char" (
+      and to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%m'::text
       )::int = 7::int
@@ -972,11 +972,11 @@ FROM
 WHERE
   "t2"."cv" = 3023424::int
   and coalesce ("t4"."aw"::int, "t2"."bf"::int) = 0::int
-  and "to_char" (
+  and to_char (
     coalesce ("t2"."cs"::datetime, "t2"."a"::datetime)::datetime,
     '%Y'::text
   )::int = 2023::int
-  and "to_char" (
+  and to_char (
     coalesce ("t2"."cs"::datetime, "t2"."a"::datetime)::datetime,
     '%m'::text
   )::int = 7::int
@@ -2137,7 +2137,7 @@ SELECT
     or not "t6"."cm" is null THEN "t6"."cn"
     ELSE '0000'::text
   END as "ae",
-  "to_char" ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
+  to_char ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
   CASE
     WHEN not "t6"."co" is null THEN 0::int
     WHEN not "t6"."cm" is null THEN 1::int
@@ -2248,7 +2248,7 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_5092332724665672962_1136"
+      "_tmp_498977131616022081_1136"
   ) as "cte1"
 UNION ALL
 SELECT
@@ -2264,7 +2264,7 @@ FROM
       "t9"."cw",
       coalesce ("t9"."co"::int, "t9"."cm"::int, 0::int) as "ac",
       "t9"."cn" as "ae",
-      "to_char" ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
+      to_char ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
       CASE
         WHEN not "t9"."co" is null THEN 0::int
         ELSE 1::int
@@ -2295,7 +2295,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_5092332724665672962_1136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_498977131616022081_1136 (~1048576 rows)
     [2] SEARCH TABLE n AS t9 USING COVERING INDEX ix_al (cv=?) (~9 rows)
         [2] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [2] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
@@ -3117,23 +3117,23 @@ projection (
 ''
 SELECT
   coalesce ("t1"."cq"::int, "t4"."cq"::int) as "c0",
-  "to_char" (
+  to_char (
     coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
     '%Y'::text
   )::int as "c1",
   (
     (
-      "to_char" (
+      to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%m'::text
       )::int - 1::int
     ) / 3::int + 1::int
   )::int as "c2",
-  "to_char" (
+  to_char (
     coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
     '%m'::text
   )::int as "c3",
-  "to_char" (
+  to_char (
     coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
     '%Y-%m-%d'::text
   ) as "c4",
@@ -3158,7 +3158,7 @@ FROM
 WHERE
   "t0"."cv" = 3023424::int
   and coalesce ("t1"."aw"::int, "t0"."bf"::int) = 0::int
-  and "to_char" (
+  and to_char (
     coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
     '%Y'::text
   )::int in (
@@ -3559,7 +3559,7 @@ FROM
       "cte0"."ag" as "c1",
       "cte0"."r" as "c2",
       "cte0"."s" as "c3",
-      "to_char" ("cte0"."q"::datetime, '%Y-%m-%d'::text) as "c4",
+      to_char ("cte0"."q"::datetime, '%Y-%m-%d'::text) as "c4",
       "cte0"."bn",
       "cte0"."m" as "c6"
     FROM
@@ -3635,7 +3635,7 @@ SELECT
   "cte2"."COL_8" as "cu",
   "cte3"."ci",
   coalesce ("cte3"."y"::decimal, 0.0::decimal) as "y",
-  "to_char" ("cte3"."ch"::datetime, '%Y-%m-%d'::text) as "ch"
+  to_char ("cte3"."ch"::datetime, '%Y-%m-%d'::text) as "ch"
 FROM
   (
     SELECT
@@ -3650,16 +3650,16 @@ FROM
       "COL_8",
       "COL_9"
     FROM
-      "_tmp_6458289239517524612_1136"
+      "_tmp_1896245832992248077_1136"
   ) as "cte2"
   INNER JOIN "r" as "cte3" ON "cte2"."COL_9" = "cte3"."k"
   and "cte2"."COL_0" = "cte3"."cv"
 WHERE
-  "cte3"."o" = "to_date" ('3000-01-01'::text, '%Y-%m-%d'::text)
+  "cte3"."o" = to_date ('3000-01-01'::text, '%Y-%m-%d'::text)
   and "cte3"."an" = 0::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_6458289239517524612_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_1896245832992248077_1136 (~1048576 rows)
         [0] SEARCH TABLE r AS cte3 USING COVERING INDEX ix_bd (cv=? AND k=?) (~7 rows)
 ''
 buckets <= [1-3000]
@@ -5388,7 +5388,7 @@ SELECT
 FROM
   (
     SELECT
-      "to_char" ("t0"."w"::datetime, '%Y-%m-%d'::text)::text as "c0",
+      to_char ("t0"."w"::datetime, '%Y-%m-%d'::text)::text as "c0",
       "t0"."aa"
     FROM
       "m" as "t0"
@@ -5586,7 +5586,7 @@ FROM
     FROM
       (
         SELECT
-          "to_char" ("t0"."w"::datetime, '%Y-%m-%d'::text)::text as "c0",
+          to_char ("t0"."w"::datetime, '%Y-%m-%d'::text)::text as "c0",
           "t0"."aa"
         FROM
           "m" as "t0"
@@ -5817,7 +5817,7 @@ FROM
         WHERE
           "t0"."cv" = 3023424::int
           and not coalesce ("t0"."aq"::bool, false::bool)
-          and "to_char" ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+          and to_char ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
           and "t0"."ar" < '2023-01-01 0:00:00.0 +00:00:00'::datetime
       )
     ORDER BY
@@ -5848,7 +5848,7 @@ FROM
 WHERE
   "t0"."cv" = 3023424::int
   and not coalesce ("t0"."aq"::bool, false::bool)
-  and "to_char" ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+  and to_char ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
   and "t0"."ar" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
   and "t0"."ar" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
 ''
@@ -6007,7 +6007,7 @@ FROM
     SELECT
       "t0"."cu",
       "t0"."d",
-      "to_char" (
+      to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%Y-%m-%d'::text
       )::text as "a"
@@ -6290,7 +6290,7 @@ FROM
             or not "COL_4" is null THEN "COL_5"
             ELSE '0000'::text
           END as "ae",
-          "to_char" ("COL_6"::datetime, '%Y-%m-%d'::text) as "ab",
+          to_char ("COL_6"::datetime, '%Y-%m-%d'::text) as "ab",
           CASE
             WHEN not "COL_7" is null THEN 0::int
             WHEN not "COL_4" is null THEN 1::int
@@ -6302,7 +6302,7 @@ FROM
             ORDER BY
               "COL_0" DESC) as "c9"
         FROM
-          "_tmp_10320311687366327512_1136"
+          "_tmp_3604628600908433116_1136"
       )
     ORDER BY
       "b" DESC
@@ -6313,7 +6313,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_10320311687366327512_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_3604628600908433116_1136 (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 (~1 row)
@@ -6543,7 +6543,7 @@ FROM
                 or not "COL_4" is null THEN "COL_5"
                 ELSE '0000'::text
               END as "ae",
-              "to_char" ("COL_6"::datetime, '%Y-%m-%d'::text) as "ab",
+              to_char ("COL_6"::datetime, '%Y-%m-%d'::text) as "ab",
               CASE
                 WHEN not "COL_7" is null THEN 0::int
                 WHEN not "COL_4" is null THEN 1::int
@@ -6555,7 +6555,7 @@ FROM
                 ORDER BY
                   "COL_0" DESC) as "c11"
             FROM
-              "_tmp_11483270331600713565_1136"
+              "_tmp_8834789361093192006_1136"
           )
         ORDER BY
           "b" DESC
@@ -6563,7 +6563,7 @@ FROM
   ) as "t3"
 ''
 plan:
-    [3] SCAN TABLE _tmp_11483270331600713565_1136 (~1048576 rows)
+    [3] SCAN TABLE _tmp_8834789361093192006_1136 (~1048576 rows)
     [3] USE TEMP B-TREE FOR ORDER BY
     [2] SCAN SUBQUERY 3 (~1 row)
     [1] SCAN SUBQUERY 2 (~1 row)
@@ -6648,7 +6648,7 @@ projection (
 SELECT
   "t0"."d" as "c0",
   "t0"."cu" as "c1",
-  "to_char" (
+  to_char (
     coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
     '%Y-%m-%d'::text
   ) as "c2"
@@ -7262,7 +7262,7 @@ SELECT
     or not "t6"."cm" is null THEN "t6"."cn"
     ELSE '0000'::text
   END as "ae",
-  "to_char" ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
+  to_char ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
   CASE
     WHEN not "t6"."co" is null THEN 0::int
     WHEN not "t6"."cm" is null THEN 1::int
@@ -7373,7 +7373,7 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_5092332724665672962_1136"
+      "_tmp_498977131616022081_1136"
   ) as "cte1"
 UNION ALL
 SELECT
@@ -7389,7 +7389,7 @@ FROM
       "t9"."cw",
       coalesce ("t9"."co"::int, "t9"."cm"::int, 0::int) as "ac",
       "t9"."cn" as "ae",
-      "to_char" ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
+      to_char ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
       CASE
         WHEN not "t9"."co" is null THEN 0::int
         ELSE 1::int
@@ -7420,7 +7420,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_5092332724665672962_1136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_498977131616022081_1136 (~1048576 rows)
     [2] SEARCH TABLE n AS t9 USING COVERING INDEX ix_al (cv=?) (~9 rows)
         [2] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [2] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
@@ -8975,7 +8975,7 @@ subquery $0:
 ''
 SELECT
   "a"."cq" as "c0",
-  "to_char" ("a"."a"::datetime, '%Y-%m-%d'::text) as "c1",
+  to_char ("a"."a"::datetime, '%Y-%m-%d'::text) as "c1",
   sum ("a"."f"::decimal) as "c3",
   sum ("a"."e"::decimal) as "c4",
   0.0::decimal as "c5"
@@ -9009,7 +9009,7 @@ FROM
   (
     SELECT
       coalesce ("t2"."cq"::int, "t4"."cq"::int) as "cq",
-      "to_char" (
+      to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%Y-%m-%d'::text
       ) as "a",
@@ -9032,7 +9032,7 @@ FROM
         "t0"."h" is null
         or "t0"."h" = (-1)::int
       )
-      and "to_char" (
+      and to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%Y'::text
       )::int in (2024::int, 2023::int, 2022::int)
@@ -9654,7 +9654,7 @@ SELECT
 FROM
   (
     SELECT
-      "to_char" ("COL_4"::datetime, '%Y-%m-%d'::text) as "a",
+      to_char ("COL_4"::datetime, '%Y-%m-%d'::text) as "a",
       "COL_5" as "z",
       "COL_6" as "cu",
       "COL_7" as "bj",
@@ -9697,7 +9697,7 @@ FROM
           "COL_5" ASC
       ) as "c9"
     FROM
-      "_tmp_4032040051388636457_1136"
+      "_tmp_9917520293722777796_1136"
     GROUP BY
       "COL_4",
       "COL_7",
@@ -9710,7 +9710,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_4032040051388636457_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_9917520293722777796_1136 (~1048576 rows)
     [2] USE TEMP B-TREE FOR GROUP BY
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
@@ -9819,7 +9819,7 @@ FROM
     FROM
       (
         SELECT
-          "to_char" ("t0"."w"::datetime, '%Y-%m-%d'::text) as "a",
+          to_char ("t0"."w"::datetime, '%Y-%m-%d'::text) as "a",
           "t0"."bj",
           "t0"."cu",
           "t0"."z"
@@ -10147,7 +10147,7 @@ FROM
         WHERE
           "t0"."cv" = 3023424::int
           and not coalesce ("t0"."aq"::bool, false::bool)
-          and "to_char" ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+          and to_char ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
           and "t0"."ar" < '2010-01-01 0:00:00.0 +00:00:00'::datetime
       )
     ORDER BY
@@ -10178,7 +10178,7 @@ FROM
 WHERE
   "t0"."cv" = 3023424::int
   and not coalesce ("t0"."aq"::bool, false::bool)
-  and "to_char" ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+  and to_char ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
   and "t0"."ar" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
   and "t0"."ar" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
 ''
@@ -10535,7 +10535,7 @@ projection (
 ╰────────────────────────────────────────╯
 ''
 SELECT DISTINCT
-  "to_char" (
+  to_char (
     coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
     '%Y'::text
   )::int as "c0",
@@ -10645,7 +10645,7 @@ projection (
 SELECT
   "t1"."cq" as "c0",
   CASE
-    WHEN not min ("t2"."u"::datetime) is null THEN "to_char" (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
+    WHEN not min ("t2"."u"::datetime) is null THEN to_char (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
     ELSE NULL
   END as "c1",
   sum ("t0"."az"::decimal) as "c2"
@@ -11179,7 +11179,7 @@ SELECT
   END as "c12",
   0::int as "c13",
   0::int as "c14",
-  "to_char" (
+  to_char (
     coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
     '%Y-%m-%d'::text
   ) as "c15"
@@ -11688,7 +11688,7 @@ SELECT
     or not "t6"."cm" is null THEN "t6"."cn"
     ELSE '0000'::text
   END as "ae",
-  "to_char" ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
+  to_char ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
   CASE
     WHEN not "t6"."co" is null THEN 0::int
     WHEN not "t6"."cm" is null THEN 1::int
@@ -11799,7 +11799,7 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_5092332724665672962_1136"
+      "_tmp_498977131616022081_1136"
   ) as "cte1"
 UNION ALL
 SELECT
@@ -11815,7 +11815,7 @@ FROM
       "t9"."cw",
       coalesce ("t9"."co"::int, "t9"."cm"::int, 0::int) as "ac",
       "t9"."cn" as "ae",
-      "to_char" ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
+      to_char ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
       CASE
         WHEN not "t9"."co" is null THEN 0::int
         ELSE 1::int
@@ -11846,7 +11846,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_5092332724665672962_1136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_498977131616022081_1136 (~1048576 rows)
     [2] SEARCH TABLE n AS t9 USING COVERING INDEX ix_al (cv=?) (~9 rows)
         [2] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [2] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
@@ -13345,7 +13345,7 @@ subquery $0:
 ''
 SELECT
   "a"."cq" as "c0",
-  "to_char" ("a"."a"::datetime, '%Y-%m-%d'::text) as "c1",
+  to_char ("a"."a"::datetime, '%Y-%m-%d'::text) as "c1",
   sum ("a"."f"::decimal) as "c3",
   sum ("a"."e"::decimal) as "c4",
   0.0::decimal as "c5"
@@ -13379,7 +13379,7 @@ FROM
   (
     SELECT
       coalesce ("t2"."cq"::int, "t4"."cq"::int) as "cq",
-      "to_char" (
+      to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%Y-%m-%d'::text
       ) as "a",
@@ -13402,7 +13402,7 @@ FROM
         "t0"."h" is null
         or "t0"."h" = (-1)::int
       )
-      and "to_char" (
+      and to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%Y'::text
       )::int in (2025::int, 2024::int, 2023::int, 2022::int, 2021::int)
@@ -13869,7 +13869,7 @@ SELECT
     or not "t6"."cm" is null THEN "t6"."cn"
     ELSE '0000'::text
   END as "ae",
-  "to_char" ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
+  to_char ("t6"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
   CASE
     WHEN not "t6"."co" is null THEN 0::int
     WHEN not "t6"."cm" is null THEN 1::int
@@ -13979,7 +13979,7 @@ FROM
       "COL_9",
       "COL_10"
     FROM
-      "_tmp_12210160973438973025_1136"
+      "_tmp_9796954400191738402_1136"
   ) as "cte1"
 UNION ALL
 SELECT
@@ -13995,7 +13995,7 @@ FROM
       "t9"."cw",
       coalesce ("t9"."co"::int, "t9"."cm"::int, 0::int) as "ac",
       "t9"."cn" as "ae",
-      "to_char" ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
+      to_char ("t9"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
       CASE
         WHEN not "t9"."co" is null THEN 0::int
         ELSE 1::int
@@ -14025,7 +14025,7 @@ FROM
   ) as "cte2"
 ''
 plan:
-    [1] SCAN TABLE _tmp_12210160973438973025_1136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_9796954400191738402_1136 (~1048576 rows)
     [2] SEARCH TABLE n AS t9 USING COVERING INDEX ix_al (cv=?) (~9 rows)
         [2] SEARCH TABLE y AS t3 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
             [2] SEARCH TABLE f AS t8 USING PRIMARY KEY (cw=?) (~1 row)
@@ -15187,7 +15187,7 @@ subquery $0:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "to_char" ("a"."a"::datetime, '%Y-%m-%d'::text) as "c0",
+  to_char ("a"."a"::datetime, '%Y-%m-%d'::text) as "c0",
   sum ("a"."f"::decimal) as "c2",
   sum ("a"."e"::decimal) as "c3",
   0::int as "c4"
@@ -15219,7 +15219,7 @@ SELECT
 FROM
   (
     SELECT
-      "to_char" (
+      to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%Y-%m-%d'::text
       ) as "a",
@@ -15241,11 +15241,11 @@ FROM
         "t0"."h" is null
         or "t0"."h" = (-1)::int
       )
-      and "to_char" (
+      and to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%Y'::text
       )::int = 2023::int
-      and "to_char" (
+      and to_char (
         coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
         '%m'::text
       )::int = 9::int
@@ -15423,11 +15423,11 @@ FROM
 WHERE
   "t2"."cv" = 4797271::int
   and coalesce ("t4"."aw"::int, "t2"."bf"::int) in (42::int, 45::int)
-  and "to_char" (
+  and to_char (
     coalesce ("t2"."cs"::datetime, "t2"."a"::datetime)::datetime,
     '%Y'::text
   )::int = 2023::int
-  and "to_char" (
+  and to_char (
     coalesce ("t2"."cs"::datetime, "t2"."a"::datetime)::datetime,
     '%m'::text
   )::int = 9::int
@@ -16061,19 +16061,19 @@ FROM
     FROM
       (
         SELECT
-          "to_char" (
+          to_char (
             coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
             '%Y'::text
           )::int as "bm",
           (
             (
-              "to_char" (
+              to_char (
                 coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
                 '%m'::text
               )::int - 1::int
             ) / 3::int + 1::int
           )::int as "bl",
-          "to_char" (
+          to_char (
             coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
             '%m'::text
           )::int as "bk",
@@ -16102,7 +16102,7 @@ FROM
             "t0"."h" is null
             or "t0"."h" = (-1)::int
           )
-          and "to_char" (
+          and to_char (
             coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
             '%Y'::text
           )::int in (2025::int, 2024::int, 2023::int)
@@ -16322,7 +16322,7 @@ projection (
 SELECT
   "t1"."cq" as "c0",
   CASE
-    WHEN not min ("t2"."u"::datetime) is null THEN "to_char" (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
+    WHEN not min ("t2"."u"::datetime) is null THEN to_char (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
     ELSE NULL
   END as "c1",
   sum ("t0"."az"::decimal) as "c2"
@@ -17054,7 +17054,7 @@ projection (
 ''
 SELECT
   "t1"."cq" as "c0",
-  "to_char" (
+  to_char (
     coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
     '%Y-%m-%d'::text
   ) as "c1",
@@ -17216,7 +17216,7 @@ SELECT
     and "t2"."cw" = 3::int THEN 1::int
     ELSE 0::int
   END as "c4",
-  "to_char" (
+  to_char (
     coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
     '%Y-%m-%d'::text
   ) as "c5",
@@ -17635,7 +17635,7 @@ projection (
 SELECT
   "t1"."cq" as "c0",
   CASE
-    WHEN not min ("t2"."u"::datetime) is null THEN "to_char" (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
+    WHEN not min ("t2"."u"::datetime) is null THEN to_char (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
     ELSE NULL
   END as "c1",
   sum ("t0"."az"::decimal) as "c2"
@@ -18933,7 +18933,7 @@ SELECT
 FROM
   (
     SELECT
-      "to_char" ("d"."a"::datetime, '%Y-%m-%d'::text) as "c0",
+      to_char ("d"."a"::datetime, '%Y-%m-%d'::text) as "c0",
       sum ("d"."f"::decimal) as "c1",
       sum ("d"."e"::decimal) as "c2"
     FROM
@@ -19178,7 +19178,7 @@ projection (
 SELECT
   "t1"."cq" as "c0",
   CASE
-    WHEN not min ("t2"."u"::datetime) is null THEN "to_char" (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
+    WHEN not min ("t2"."u"::datetime) is null THEN to_char (min ("t2"."u"::datetime)::datetime, '%Y-%m-%d'::text)
     ELSE NULL
   END as "c1",
   sum ("t0"."az"::decimal) as "c2"
@@ -20673,7 +20673,7 @@ FROM
             WHEN "cte3"."COL_3" = 5::int THEN 'restructurisation'::text
             ELSE NULL
           END as "c13",
-          "to_char" ("cte3"."COL_4"::datetime, '%Y-%m-%d'::text) as "q",
+          to_char ("cte3"."COL_4"::datetime, '%Y-%m-%d'::text) as "q",
           "cte3"."COL_5" as "ah",
           sum ("cte3"."COL_6"::decimal) as "cp",
           sum ("cte3"."COL_7"::decimal) as "c15",
@@ -20692,7 +20692,7 @@ FROM
               "COL_6",
               "COL_7"
             FROM
-              "_tmp_15189758233677688509_3136"
+              "_tmp_9830702942610065917_3136"
           ) as "cte3"
         GROUP BY
           "cte3"."COL_1",
@@ -20711,7 +20711,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_15189758233677688509_3136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_9830702942610065917_3136 (~1048576 rows)
     [2] USE TEMP B-TREE FOR GROUP BY
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)

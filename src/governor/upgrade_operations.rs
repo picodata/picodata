@@ -173,6 +173,8 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
                 InternalScript::InsertJwtTokenLifetimesIntoPicoDbConfig.as_str(),
             ),
             ("exec_script", InternalScript::DropPgprotoTestProcedures.as_str()),
+            // to_char and to_date became tarantool SQL built-ins.
+            ("exec_script", InternalScript::DropObsoleteProcedures.as_str()),
         ],
     ),
 ];
@@ -603,6 +605,8 @@ fn execute_drop_obsolete_procedures() -> traft::Result<Response> {
             '.proc_runtime_info',
             '.proc_enable_all_plugins',
             '.proc_update_instance',
+            'to_char',
+            'to_date',
         }
         for _, name in ipairs(obsolete) do
             box.schema.func.drop(name, {if_exists = true})

@@ -60,12 +60,12 @@ pub fn get_builtin_functions() -> &'static [Function] {
             Function::new_stable(
                 "to_date".into(),
                 DerivedType::new(UnrestrictedType::Datetime),
-                false,
+                true,
             ),
             Function::new_stable(
                 "to_char".into(),
                 DerivedType::new(UnrestrictedType::String),
-                false,
+                true,
             ),
             Function::new_stable(
                 "substring".into(),

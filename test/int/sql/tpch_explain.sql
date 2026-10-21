@@ -202,7 +202,7 @@ SELECT
 FROM
   "lineitem"
 WHERE
-  "lineitem"."l_shipdate" <= "to_date" ('1998-09-02'::text, '%Y-%m-%d'::text)
+  "lineitem"."l_shipdate" <= to_date ('1998-09-02'::text, '%Y-%m-%d'::text)
 GROUP BY
   "lineitem"."l_returnflag",
   "lineitem"."l_linestatus"
@@ -1162,15 +1162,15 @@ FROM
     SELECT
       "n1"."COL_2" as "supp_nation",
       "n2"."COL_2" as "cust_nation",
-      "to_char" ("lineitem"."COL_11"::datetime, '%Y'::text) as "l_year",
+      to_char ("lineitem"."COL_11"::datetime, '%Y'::text) as "l_year",
       "lineitem"."COL_6" * (1::int - "lineitem"."COL_7") as "volume"
     FROM
       "supplier"
-      INNER JOIN "_tmp_8287534967795779098_0136" as "lineitem" ON true::bool
-      INNER JOIN "_tmp_8287534967795779098_1136" as "orders" ON true::bool
-      INNER JOIN "_tmp_8287534967795779098_2136" as "customer" ON true::bool
-      INNER JOIN "_tmp_8287534967795779098_3136" as "n1" ON true::bool
-      INNER JOIN "_tmp_8287534967795779098_4136" as "n2" ON true::bool
+      INNER JOIN "_tmp_11061541815477260053_0136" as "lineitem" ON true::bool
+      INNER JOIN "_tmp_11061541815477260053_1136" as "orders" ON true::bool
+      INNER JOIN "_tmp_11061541815477260053_2136" as "customer" ON true::bool
+      INNER JOIN "_tmp_11061541815477260053_3136" as "n1" ON true::bool
+      INNER JOIN "_tmp_11061541815477260053_4136" as "n2" ON true::bool
     WHERE
       "supplier"."s_suppkey" = "lineitem"."COL_2"
       and "orders"."COL_0" = "lineitem"."COL_0"
@@ -1192,21 +1192,21 @@ GROUP BY
   "shipping"."l_year"
 ''
 plan:
-    [0] SCAN TABLE _tmp_8287534967795779098_0136 AS lineitem (~917504 rows)
+    [0] SCAN TABLE _tmp_11061541815477260053_0136 AS lineitem (~917504 rows)
         [0] SEARCH TABLE supplier USING PRIMARY KEY (s_suppkey=?) (~1 row)
-            [0] SEARCH TABLE _tmp_8287534967795779098_1136 AS orders 
+            [0] SEARCH TABLE _tmp_11061541815477260053_1136 AS orders 
                  USING EPHEMERAL INDEX 
                  (COL_0=?) 
                  (~20 rows)
-                [0] SEARCH TABLE _tmp_8287534967795779098_2136 AS customer 
+                [0] SEARCH TABLE _tmp_11061541815477260053_2136 AS customer 
                      USING EPHEMERAL INDEX 
                      (COL_0=?) 
                      (~20 rows)
-                    [0] SEARCH TABLE _tmp_8287534967795779098_3136 AS n1 
+                    [0] SEARCH TABLE _tmp_11061541815477260053_3136 AS n1 
                          USING EPHEMERAL INDEX 
                          (COL_0=?) 
                          (~20 rows)
-                        [0] SEARCH TABLE _tmp_8287534967795779098_4136 AS n2 
+                        [0] SEARCH TABLE _tmp_11061541815477260053_4136 AS n2 
                              USING EPHEMERAL INDEX 
                              (COL_0=?) 
                              (~20 rows)
@@ -1607,18 +1607,18 @@ SELECT
 FROM
   (
     SELECT
-      "to_char" ("orders"."COL_5"::datetime, '%Y'::text) as "o_year",
+      to_char ("orders"."COL_5"::datetime, '%Y'::text) as "o_year",
       "lineitem"."COL_6" * (1::int - "lineitem"."COL_7") as "volume",
       "n2"."COL_2" as "nation"
     FROM
       "part"
-      INNER JOIN "_tmp_16404978828759991003_0136" as "supplier" ON true::bool
-      INNER JOIN "_tmp_16404978828759991003_1136" as "lineitem" ON true::bool
-      INNER JOIN "_tmp_16404978828759991003_2136" as "orders" ON true::bool
-      INNER JOIN "_tmp_16404978828759991003_3136" as "customer" ON true::bool
-      INNER JOIN "_tmp_16404978828759991003_4136" as "n1" ON true::bool
-      INNER JOIN "_tmp_16404978828759991003_5136" as "n2" ON true::bool
-      INNER JOIN "_tmp_16404978828759991003_6136" as "region" ON true::bool
+      INNER JOIN "_tmp_9056074462920693492_0136" as "supplier" ON true::bool
+      INNER JOIN "_tmp_9056074462920693492_1136" as "lineitem" ON true::bool
+      INNER JOIN "_tmp_9056074462920693492_2136" as "orders" ON true::bool
+      INNER JOIN "_tmp_9056074462920693492_3136" as "customer" ON true::bool
+      INNER JOIN "_tmp_9056074462920693492_4136" as "n1" ON true::bool
+      INNER JOIN "_tmp_9056074462920693492_5136" as "n2" ON true::bool
+      INNER JOIN "_tmp_9056074462920693492_6136" as "region" ON true::bool
     WHERE
       "part"."p_partkey" = "lineitem"."COL_1"
       and "supplier"."COL_0" = "lineitem"."COL_2"
@@ -1636,29 +1636,29 @@ GROUP BY
   "all_nations"."o_year"
 ''
 plan:
-    [0] SCAN TABLE _tmp_16404978828759991003_1136 AS lineitem (~1048576 rows)
+    [0] SCAN TABLE _tmp_9056074462920693492_1136 AS lineitem (~1048576 rows)
         [0] SEARCH TABLE part USING PRIMARY KEY (p_partkey=?) (~1 row)
-            [0] SEARCH TABLE _tmp_16404978828759991003_0136 AS supplier 
+            [0] SEARCH TABLE _tmp_9056074462920693492_0136 AS supplier 
                  USING EPHEMERAL INDEX 
                  (COL_0=?) 
                  (~20 rows)
-                [0] SEARCH TABLE _tmp_16404978828759991003_2136 AS orders 
+                [0] SEARCH TABLE _tmp_9056074462920693492_2136 AS orders 
                      USING EPHEMERAL INDEX 
                      (COL_0=?) 
                      (~20 rows)
-                    [0] SEARCH TABLE _tmp_16404978828759991003_3136 AS customer 
+                    [0] SEARCH TABLE _tmp_9056074462920693492_3136 AS customer 
                          USING EPHEMERAL INDEX 
                          (COL_0=?) 
                          (~20 rows)
-                        [0] SEARCH TABLE _tmp_16404978828759991003_4136 AS n1 
+                        [0] SEARCH TABLE _tmp_9056074462920693492_4136 AS n1 
                              USING EPHEMERAL INDEX 
                              (COL_0=?) 
                              (~20 rows)
-                            [0] SEARCH TABLE _tmp_16404978828759991003_5136 AS n2 
+                            [0] SEARCH TABLE _tmp_9056074462920693492_5136 AS n2 
                                  USING EPHEMERAL INDEX 
                                  (COL_0=?) 
                                  (~20 rows)
-                                [0] SEARCH TABLE _tmp_16404978828759991003_6136 AS region 
+                                [0] SEARCH TABLE _tmp_9056074462920693492_6136 AS region 
                                      USING EPHEMERAL INDEX 
                                      (COL_2=? AND COL_0=?) 
                                      (~20 rows)

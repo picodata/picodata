@@ -1,5 +1,3 @@
-local dt = require('datetime')
-
 -- Builtin sbroad funcs implemented in LUA
 local builtins = {}
 local module = 'pico'
@@ -48,31 +46,6 @@ builtins._PICO_BUCKET = function(tier)
     end
 
     return result
-end
-
-builtins.TO_DATE = function(s, fmt)
-    if s == nil or fmt == nil then
-        return nil
-    end
-    local opts = {}
-    if fmt ~= '' then
-        opts = { format = fmt }
-    end
-    -- ignore the second returned value
-    local res = dt.parse(s, opts)
-    -- we must return only date part
-    res:set({ hour = 0, min = 0, sec = 0, nsec = 0 })
-    return res
-end
-
-builtins.TO_CHAR = function(date, fmt)
-    local res
-    if date and fmt then
-        res = date:format(fmt)
-    else
-        res = nil
-    end
-    return res
 end
 
 builtins.SUBSTRING_TO_REGEXP = function(string, pattern, expr)
@@ -174,30 +147,6 @@ local function create_functions()
         param_list = { 'string' },
         exports = { 'SQL' },
         is_deterministic = false,
-        if_not_exists = true
-    })
-
-    body = string.format("function(...) return %s.builtins.TO_DATE(...) end",
-        module)
-    box.schema.func.create("to_date", {
-        language = 'LUA',
-        returns = 'datetime',
-        body = body,
-        param_list = { 'string', 'string' },
-        exports = { 'SQL' },
-        is_deterministic = true,
-        if_not_exists = true
-    })
-
-    body = string.format("function(...) return %s.builtins.TO_CHAR(...) end",
-        module)
-    box.schema.func.create("to_char", {
-        language = 'LUA',
-        returns = 'string',
-        body = body,
-        param_list = { 'datetime', 'string' },
-        exports = { 'SQL' },
-        is_deterministic = true,
         if_not_exists = true
     })
 
