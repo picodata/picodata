@@ -98,10 +98,6 @@ pub struct ExecutionPlan {
     vtables: VirtualTableMap,
     /// It is calculated via `set_plan_id` during `materialize_motion`.
     pub(crate) plan_id: Option<u64>,
-    /// Plan id cache for motion subtrees during the current execution.
-    pub(crate) plan_id_cache: NodeMap<u64>,
-    /// SQL parameter count cache for motion subtrees during the current execution.
-    plan_id_sql_parameter_count_cache: NodeMap<usize>,
     /// SQL parameter count for the currently selected `plan_id`.
     plan_id_sql_parameter_count: Option<usize>,
     /// Delete tuple lengths calculated for sharded updates during execution.
@@ -556,8 +552,6 @@ impl ExecutionPlan {
             plan: Plan::empty(),
             vtables: VirtualTableMap::new(),
             plan_id: None,
-            plan_id_cache: NodeMap::default(),
-            plan_id_sql_parameter_count_cache: NodeMap::default(),
             plan_id_sql_parameter_count: None,
             update_delete_tuple_lens: NodeMap::default(),
             bucket_filter: None,
@@ -574,8 +568,6 @@ impl ExecutionPlan {
             plan: Rc::new(plan),
             vtables: VirtualTableMap::new(),
             plan_id: None,
-            plan_id_cache: NodeMap::default(),
-            plan_id_sql_parameter_count_cache: NodeMap::default(),
             plan_id_sql_parameter_count: None,
             update_delete_tuple_lens: NodeMap::default(),
             bucket_filter: None,
@@ -700,26 +692,17 @@ impl ExecutionPlan {
             return;
         }
         self.serialize_as_empty_disabled_motions.clear();
-        self.invalidate_derived_caches();
         self.plan_id = None;
         self.plan_id_sql_parameter_count = None;
     }
 
-    /// Drops everything derived from the IR shape or the virtual table map.
-    fn invalidate_derived_caches(&mut self) {
-        self.plan_id_cache.clear();
-        self.plan_id_sql_parameter_count_cache.clear();
-    }
-
     /// Disables `SerializeAsEmptyTable` for selected motions through an overlay.
     ///
-    /// Cached effective subtree and plan-id metadata is cleared because SQL
-    /// shape can change.
+    /// The selected plan id is cleared because SQL shape can change.
     pub(crate) fn disable_serialize_as_empty_for_motions(
         &mut self,
         motion_ids: impl IntoIterator<Item = NodeId>,
     ) {
-        self.invalidate_derived_caches();
         self.plan_id = None;
         self.plan_id_sql_parameter_count = None;
         self.serialize_as_empty_disabled_motions.extend(motion_ids);
@@ -765,7 +748,6 @@ impl ExecutionPlan {
                 Some(format_smolstr!("node ({motion_id:?}) is not motion")),
             ));
         };
-        self.invalidate_derived_caches();
         self.unlinked_motions.insert(motion_id);
         Ok(())
     }
@@ -1123,10 +1105,10 @@ impl ExecutionPlan {
         Ok(node_id)
     }
 
-    /// Calculates or loads the cached plan id for the effective subtree.
+    /// Calculates the plan id for the effective subtree and selects it.
     ///
-    /// The matching SQL parameter count is cached together with the id so later
-    /// calls can salt cache ids without walking the subtree again.
+    /// The matching SQL parameter count is selected together with the id so
+    /// later calls can salt cache ids.
     ///
     /// The selected `plan_id` and parameter count are valid for the current
     /// effective SQL shape. After calling this method, callers must not mutate
@@ -1137,26 +1119,7 @@ impl ExecutionPlan {
     /// # Errors
     /// - If the subtree plan id or SQL parameter count cannot be calculated.
     pub fn set_plan_id(&mut self, top_id: NodeId) -> Result<u64, SbroadError> {
-        let (plan_id, sql_parameter_count) = if let Some(plan_id) = self.plan_id_cache.get(&top_id)
-        {
-            let sql_parameter_count =
-                if let Some(count) = self.plan_id_sql_parameter_count_cache.get(&top_id) {
-                    *count
-                } else {
-                    let count = self.sql_parameter_count()?;
-                    self.plan_id_sql_parameter_count_cache.insert(top_id, count);
-                    count
-                };
-            (*plan_id, sql_parameter_count)
-        } else {
-            let (plan_id, sql_parameter_count) =
-                self.calculate_plan_id_with_parameter_count(top_id)?;
-            self.plan_id_cache.insert(top_id, plan_id);
-            self.plan_id_sql_parameter_count_cache
-                .insert(top_id, sql_parameter_count);
-            (plan_id, sql_parameter_count)
-        };
-
+        let (plan_id, sql_parameter_count) = self.calculate_plan_id_with_parameter_count(top_id)?;
         self.plan_id = Some(plan_id);
         self.plan_id_sql_parameter_count = Some(sql_parameter_count);
         Ok(plan_id)
@@ -1234,7 +1197,6 @@ impl ExecutionPlan {
 
     #[allow(dead_code)]
     pub fn get_mut_ir_plan(&mut self) -> &mut Plan {
-        self.invalidate_derived_caches();
         Rc::make_mut(&mut self.plan)
     }
 
@@ -1244,12 +1206,10 @@ impl ExecutionPlan {
     }
 
     pub fn get_mut_vtables(&mut self) -> &mut VirtualTableMap {
-        self.invalidate_derived_caches();
         &mut self.vtables
     }
 
     pub fn set_vtables(&mut self, vtables: VirtualTableMap) {
-        self.invalidate_derived_caches();
         self.vtables = vtables;
     }
 

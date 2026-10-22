@@ -1436,9 +1436,9 @@ fn get_top_plan_id(sql: &str, values: Vec<Value>) -> u64 {
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, values).unwrap();
     let mut port = PortMocked::new();
     query.dispatch(&mut port).unwrap();
-    let cache = &query.get_exec_plan().plan_id_cache;
-    assert_eq!(1, cache.len());
-    cache.values().map(|plan_id| *plan_id).next().unwrap()
+    let exec_plan = query.get_exec_plan();
+    assert!(exec_plan.get_vtables().is_empty());
+    exec_plan.plan_id.unwrap()
 }
 
 fn check_subtree_plan_ids_are_equal(
