@@ -506,7 +506,9 @@ test-rs-linux:
 
     - |
       ci-log-section start "check sql benches" Check sql benches
-      make bench-sql-check
+      # Benches only need to compile, so build them with the job's profile
+      # instead of the bench one, which inherits slow fat LTO from release.
+      make bench-sql-check CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE"
       ci-log-section end "check sql benches"
 
     - |

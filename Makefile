@@ -197,6 +197,7 @@ test-rs-sql:
 bench-sql-check:
 	cargo bench \
 		$(MAKE_JOBSERVER_ARGS) \
+		$(CARGO_FLAGS_EXTRA) \
 		$(SQL_CRATES) --no-run
 
 .PHONY: test-py
