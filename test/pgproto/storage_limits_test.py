@@ -92,3 +92,25 @@ def test_statement_storage_limit_is_shared_by_clients(postgres: Postgres):
     # the server frees the statements of a client after it disconnects
     conn1.close()
     Retriable().call(lambda: conn2.prepare(""" insert into "t" values (cast (:p as int)) """))
+
+
+def test_unnamed_statement_replace_in_full_storage(postgres: Postgres):
+    conn = setup_pg8000_env(postgres)
+
+    max_pg_statements = 4
+    postgres.instance.sql(
+        f"ALTER SYSTEM SET pg_statement_max = {max_pg_statements}",
+        sudo=True,
+    )
+
+    # conn.run with a parameter keeps an unnamed statement, the named ones fill the rest
+    conn.run("select cast(:p as int)", p=1)
+    statements = []
+    for _ in range(max_pg_statements - 1):
+        statements.append(conn.prepare(""" insert into "t" values (cast (:p as int)) """))
+
+    with pytest.raises(pg8000.Error, match="Statement storage is full"):
+        conn.prepare(""" insert into "t" values (cast (:p as int)) """)
+
+    # a replace of the unnamed statement does not grow the storage
+    assert conn.run("select cast(:p as int)", p=2) == [[2]]

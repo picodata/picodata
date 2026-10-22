@@ -113,28 +113,26 @@ impl<S> PgStorage<S> {
     /// Put a value and return the unnamed value that it replaces.
     fn put(&mut self, name: Key, value: S) -> PgResult<Option<S>> {
         let capacity = self.context.get_capacity();
+        let total = self.context.total.get();
         let kind = self.context.value_kind;
-        if capacity > 0 && self.context.total.get() >= capacity {
-            let parameter = self.context.capacity_parameter;
-            // TODO: it should be configuration_limit_exceeded error
-            return Err(PgError::other(format!(
-                "{kind} storage is full. Current size limit: {capacity}. \
-                Please, increase storage limit using: \
-                ALTER SYSTEM SET \"{parameter}\" TO <new-limit>",
-            )));
-        }
-
-        if name.is_empty() {
-            // Updates are only allowed for unnamed statements and portals.
-            return Ok(self.update(|map| map.insert(name, value)));
-        }
-
+        let parameter = self.context.capacity_parameter;
         let code = self.context.dublicate_key_error_code;
         self.update(|map| match map.entry(name) {
+            // Updates are only allowed for unnamed statements and portals.
+            // An update does not change the total, so the limit does not apply.
+            Entry::Occupied(mut entry) if entry.key().is_empty() => Ok(Some(entry.insert(value))),
             Entry::Occupied(entry) => {
                 let name = entry.key();
                 let err = PedanticError::new(code, format!("{kind} '{name}' already exists"));
                 Err(err.into())
+            }
+            Entry::Vacant(_) if capacity > 0 && total >= capacity => {
+                // TODO: it should be configuration_limit_exceeded error
+                Err(PgError::other(format!(
+                    "{kind} storage is full. Current size limit: {capacity}. \
+                    Please, increase storage limit using: \
+                    ALTER SYSTEM SET \"{parameter}\" TO <new-limit>",
+                )))
             }
             Entry::Vacant(entry) => {
                 entry.insert(value);
