@@ -1144,6 +1144,10 @@ examples:
 publish-picodata-plugin:
   stage: pack
   dependencies: []
+  # CARGO_REGISTRY_TOKEN is scoped to this environment. If other jobs see it,
+  # sccache adds it to the hash of every rustc call (it hashes all CARGO_*
+  # variables), so Rust compilations cached on master never hit in MRs.
+  environment: crates-io
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
   rules:
@@ -1158,7 +1162,12 @@ publish-picodata-plugin:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
 
   script:
-    - if [ -z "$CARGO_REGISTRY_TOKEN" ]; then echo "Variable CARGO_TOKEN must be available, check that branch is protected" 1>&2 && exit 1; fi
+    - |
+      if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+        echo "Variable CARGO_REGISTRY_TOKEN must be available, check that branch" \
+          "is protected and the variable is scoped to the crates-io environment" 1>&2
+        exit 1
+      fi
     - make publish-picodata-plugin
 
 audit:
