@@ -1,8 +1,41 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1249" height="1335" viewBox="0 0 1249 1335">
-   <defs>
-      <style type="text/css">
-    @namespace "http://www.w3.org/2000/svg";
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1249"
+   height="1571"
+   version="1.1"
+   viewBox="0 0 1249 1571"
+   id="svg166"
+   sodipodi:docname="create_table.svg"
+   inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview166"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.49904519"
+     inkscape:cx="624.19196"
+     inkscape:cy="785.5"
+     inkscape:window-width="1920"
+     inkscape:window-height="987"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg166" />
+  <defs
+     id="defs1">
+    <style
+       type="text/css"
+       id="style1">
+    @namespace &quot;http://www.w3.org/2000/svg&quot;;
     .line                 {fill: none; stroke: #330000; stroke-width: 1;}
     .bold-line            {stroke: #140000; shape-rendering: crispEdges; stroke-width: 2;}
     .thin-line            {stroke: #1F0000; shape-rendering: crispEdges}
@@ -23,631 +56,1705 @@
                             font-weight: normal;
                           }
     rect, circle, polygon {fill: #330000; stroke: #330000;}
-    rect.terminal         {fill: #ff4d4d; stroke: #330000; stroke-width: 1;}
+    rect.terminal         {fill: #FF4D4D; stroke: #330000; stroke-width: 1;}
     rect.nonterminal      {fill: #FF9E9E; stroke: #330000; stroke-width: 1;}
     rect.text             {fill: none; stroke: none;}
     polygon.regexp        {fill: #FFC7C7; stroke: #330000; stroke-width: 1;}
   </style>
-   </defs>
-   <polygon points="9 17 1 13 1 21"/>
-   <polygon points="17 17 9 13 9 21"/>
-   <rect x="31" y="3" width="72" height="32" rx="10"/>
-   <rect x="29"
-         y="1"
-         width="72"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="39" y="21">CREATE</text>
-   <rect x="143" y="35" width="96" height="32" rx="10"/>
-   <rect x="141"
-         y="33"
-         width="96"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="151" y="53">UNLOGGED</text>
-   <rect x="279" y="3" width="62" height="32" rx="10"/>
-   <rect x="277"
-         y="1"
-         width="62"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="287" y="21">TABLE</text>
-   <rect x="381" y="35" width="34" height="32" rx="10"/>
-   <rect x="379"
-         y="33"
-         width="34"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="389" y="53">IF</text>
-   <rect x="435" y="35" width="48" height="32" rx="10"/>
-   <rect x="433"
-         y="33"
-         width="48"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="443" y="53">NOT</text>
-   <rect x="503" y="35" width="70" height="32" rx="10"/>
-   <rect x="501"
-         y="33"
-         width="70"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="511" y="53">EXISTS</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../object"
-      xlink:title="table">
-      <rect x="613" y="3" width="52" height="32"/>
-      <rect x="611" y="1" width="52" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="621" y="21">table</text>
-   </a>
-   <rect x="685" y="3" width="26" height="32" rx="10"/>
-   <rect x="683"
-         y="1"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="693" y="21">(</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../object"
-      xlink:title="column">
-      <rect x="45" y="145" width="64" height="32"/>
-      <rect x="43" y="143" width="64" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="53" y="163">column</text>
-   </a>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="#unrestricted_type"
-      xlink:title="unrestricted_type">
-      <rect x="149" y="145" width="132" height="32"/>
-      <rect x="147" y="143" width="132" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="157" y="163">unrestricted_type</text>
-   </a>
-   <rect x="321" y="177" width="26" height="32" rx="10"/>
-   <rect x="319"
-         y="175"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="329" y="195">[</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../../sql_types#unsigned"
-      xlink:title="unsigned">
-      <rect x="387" y="209" width="78" height="32"/>
-      <rect x="385" y="207" width="78" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="395" y="227">unsigned</text>
-   </a>
-   <rect x="505" y="177" width="26" height="32" rx="10"/>
-   <rect x="503"
-         y="175"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="513" y="195">]</text>
-   <rect x="321" y="253" width="66" height="32" rx="10"/>
-   <rect x="319"
-         y="251"
-         width="66"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="329" y="271">ARRAY</text>
-   <rect x="427" y="285" width="26" height="32" rx="10"/>
-   <rect x="425"
-         y="283"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="435" y="303">[</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../../sql_types#unsigned"
-      xlink:title="unsigned">
-      <rect x="473" y="285" width="78" height="32"/>
-      <rect x="471" y="283" width="78" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="481" y="303">unsigned</text>
-   </a>
-   <rect x="571" y="285" width="26" height="32" rx="10"/>
-   <rect x="569"
-         y="283"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="579" y="303">]</text>
-   <rect x="149" y="329" width="92" height="32" rx="10"/>
-   <rect x="147"
-         y="327"
-         width="92"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="157" y="347">UNSIGNED</text>
-   <rect x="717" y="209" width="48" height="32" rx="10"/>
-   <rect x="715"
-         y="207"
-         width="48"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="725" y="227">NOT</text>
-   <rect x="805" y="177" width="56" height="32" rx="10"/>
-   <rect x="803"
-         y="175"
-         width="56"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="813" y="195">NULL</text>
-   <rect x="921" y="177" width="84" height="32" rx="10"/>
-   <rect x="919"
-         y="175"
-         width="84"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="929" y="195">PRIMARY</text>
-   <rect x="1025" y="177" width="46" height="32" rx="10"/>
-   <rect x="1023"
-         y="175"
-         width="46"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="1033" y="195">KEY</text>
-   <rect x="1111" y="209" width="46" height="32" rx="10"/>
-   <rect x="1109"
-         y="207"
-         width="46"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="1119" y="227">ASC</text>
-   <rect x="1111" y="253" width="56" height="32" rx="10"/>
-   <rect x="1109"
-         y="251"
-         width="56"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="1119" y="271">DESC</text>
-   <rect x="45" y="101" width="24" height="32" rx="10"/>
-   <rect x="43"
-         y="99"
-         width="24"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="53" y="119">,</text>
-   <rect x="189" y="439" width="24" height="32" rx="10"/>
-   <rect x="187"
-         y="437"
-         width="24"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="197" y="457">,</text>
-   <rect x="233" y="439" width="84" height="32" rx="10"/>
-   <rect x="231"
-         y="437"
-         width="84"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="241" y="457">PRIMARY</text>
-   <rect x="337" y="439" width="46" height="32" rx="10"/>
-   <rect x="335"
-         y="437"
-         width="46"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="345" y="457">KEY</text>
-   <rect x="403" y="439" width="26" height="32" rx="10"/>
-   <rect x="401"
-         y="437"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="411" y="457">(</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../../../overview/glossary#bucket"
-      xlink:title="bucket_id">
-      <rect x="469" y="471" width="82" height="32"/>
-      <rect x="467" y="469" width="82" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="477" y="489">bucket_id</text>
-   </a>
-   <rect x="591" y="503" width="46" height="32" rx="10"/>
-   <rect x="589"
-         y="501"
-         width="46"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="599" y="521">ASC</text>
-   <rect x="591" y="547" width="56" height="32" rx="10"/>
-   <rect x="589"
-         y="545"
-         width="56"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="599" y="565">DESC</text>
-   <rect x="687" y="471" width="24" height="32" rx="10"/>
-   <rect x="685"
-         y="469"
-         width="24"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="695" y="489">,</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../object"
-      xlink:title="column">
-      <rect x="771" y="439" width="64" height="32"/>
-      <rect x="769" y="437" width="64" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="779" y="457">column</text>
-   </a>
-   <rect x="875" y="471" width="46" height="32" rx="10"/>
-   <rect x="873"
-         y="469"
-         width="46"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="883" y="489">ASC</text>
-   <rect x="875" y="515" width="56" height="32" rx="10"/>
-   <rect x="873"
-         y="513"
-         width="56"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="883" y="533">DESC</text>
-   <rect x="771" y="395" width="24" height="32" rx="10"/>
-   <rect x="769"
-         y="393"
-         width="24"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="779" y="413">,</text>
-   <rect x="991" y="439" width="26" height="32" rx="10"/>
-   <rect x="989"
-         y="437"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="999" y="457">)</text>
-   <rect x="1057" y="439" width="26" height="32" rx="10"/>
-   <rect x="1055"
-         y="437"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="1065" y="457">)</text>
-   <rect x="188" y="629" width="64" height="32" rx="10"/>
-   <rect x="186"
-         y="627"
-         width="64"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="196" y="647">USING</text>
-   <rect x="292" y="629" width="68" height="32" rx="10"/>
-   <rect x="290"
-         y="627"
-         width="68"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="300" y="647">MEMTX</text>
-   <rect x="292" y="717" width="62" height="32" rx="10"/>
-   <rect x="290"
-         y="715"
-         width="62"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="300" y="735">VINYL</text>
-   <rect x="394" y="717" width="58" height="32" rx="10"/>
-   <rect x="392"
-         y="715"
-         width="58"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="402" y="735">WITH</text>
-   <rect x="472" y="717" width="26" height="32" rx="10"/>
-   <rect x="470"
-         y="715"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="480" y="735">(</text>
-   <rect x="578" y="717" width="106" height="32" rx="10"/>
-   <rect x="576"
-         y="715"
-         width="106"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="586" y="735">BLOOM_FPR</text>
-   <rect x="578" y="761" width="144" height="32" rx="10"/>
-   <rect x="576"
-         y="759"
-         width="144"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="586" y="779">RUN_SIZE_RATIO</text>
-   <rect x="762" y="717" width="30" height="32" rx="10"/>
-   <rect x="760"
-         y="715"
-         width="30"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="770" y="735">=</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../../sql_types#decimal"
-      xlink:title="decimal">
-      <rect x="812" y="717" width="68" height="32"/>
-      <rect x="810" y="715" width="68" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="820" y="735">decimal</text>
-   </a>
-   <rect x="578" y="805" width="96" height="32" rx="10"/>
-   <rect x="576"
-         y="803"
-         width="96"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="586" y="823">PAGE_SIZE</text>
-   <rect x="578" y="849" width="108" height="32" rx="10"/>
-   <rect x="576"
-         y="847"
-         width="108"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="586" y="867">RANGE_SIZE</text>
-   <rect x="578" y="893" width="192" height="32" rx="10"/>
-   <rect x="576"
-         y="891"
-         width="192"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="586" y="911">RUN_COUNT_PER_LEVEL</text>
-   <rect x="810" y="805" width="30" height="32" rx="10"/>
-   <rect x="808"
-         y="803"
-         width="30"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="818" y="823">=</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../../sql_types#unsigned"
-      xlink:title="unsigned">
-      <rect x="860" y="805" width="78" height="32"/>
-      <rect x="858" y="803" width="78" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="868" y="823">unsigned</text>
-   </a>
-   <rect x="558" y="937" width="174" height="32" rx="10"/>
-   <rect x="556"
-         y="935"
-         width="174"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="566" y="955">COMPRESSION_LEVEL</text>
-   <rect x="752" y="937" width="30" height="32" rx="10"/>
-   <rect x="750"
-         y="935"
-         width="30"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="760" y="955">=</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../../sql_types#integer"
-      xlink:title="integer">
-      <rect x="802" y="937" width="64" height="32"/>
-      <rect x="800" y="935" width="64" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="810" y="955">integer</text>
-   </a>
-   <rect x="538" y="673" width="24" height="32" rx="10"/>
-   <rect x="536"
-         y="671"
-         width="24"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="546" y="691">,</text>
-   <rect x="998" y="717" width="26" height="32" rx="10"/>
-   <rect x="996"
-         y="715"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="1006" y="735">)</text>
-   <rect x="298" y="1079" width="114" height="32" rx="10"/>
-   <rect x="296"
-         y="1077"
-         width="114"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="306" y="1097">DISTRIBUTED</text>
-   <rect x="452" y="1079" width="38" height="32" rx="10"/>
-   <rect x="450"
-         y="1077"
-         width="38"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="460" y="1097">BY</text>
-   <rect x="510" y="1079" width="26" height="32" rx="10"/>
-   <rect x="508"
-         y="1077"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="518" y="1097">(</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../object"
-      xlink:title="column">
-      <rect x="576" y="1079" width="64" height="32"/>
-      <rect x="574" y="1077" width="64" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="584" y="1097">column</text>
-   </a>
-   <rect x="576" y="1035" width="24" height="32" rx="10"/>
-   <rect x="574"
-         y="1033"
-         width="24"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="584" y="1053">,</text>
-   <rect x="680" y="1079" width="26" height="32" rx="10"/>
-   <rect x="678"
-         y="1077"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="688" y="1097">)</text>
-   <rect x="746" y="1111" width="36" height="32" rx="10"/>
-   <rect x="744"
-         y="1109"
-         width="36"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="754" y="1129">IN</text>
-   <rect x="802" y="1111" width="52" height="32" rx="10"/>
-   <rect x="800"
-         y="1109"
-         width="52"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="810" y="1129">TIER</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../object"
-      xlink:title="tier">
-      <rect x="874" y="1111" width="40" height="32"/>
-      <rect x="872" y="1109" width="40" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="882" y="1129">tier</text>
-   </a>
-   <rect x="452" y="1155" width="92" height="32" rx="10"/>
-   <rect x="450"
-         y="1153"
-         width="92"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="460" y="1173">GLOBALLY</text>
-   <rect x="429" y="1257" width="58" height="32" rx="10"/>
-   <rect x="427"
-         y="1255"
-         width="58"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="437" y="1275">WAIT</text>
-   <rect x="507" y="1257" width="80" height="32" rx="10"/>
-   <rect x="505"
-         y="1255"
-         width="80"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="515" y="1275">APPLIED</text>
-   <rect x="627" y="1257" width="92" height="32" rx="10"/>
-   <rect x="625"
-         y="1255"
-         width="92"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="635" y="1275">GLOBALLY</text>
-   <rect x="627" y="1301" width="82" height="32" rx="10"/>
-   <rect x="625"
-         y="1299"
-         width="82"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="635" y="1319">LOCALLY</text>
-   <rect x="799" y="1257" width="76" height="32" rx="10"/>
-   <rect x="797"
-         y="1255"
-         width="76"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="807" y="1275">OPTION</text>
-   <rect x="895" y="1257" width="26" height="32" rx="10"/>
-   <rect x="893"
-         y="1255"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="903" y="1275">(</text>
-   <rect x="941" y="1257" width="82" height="32" rx="10"/>
-   <rect x="939"
-         y="1255"
-         width="82"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="949" y="1275">TIMEOUT</text>
-   <rect x="1043" y="1257" width="30" height="32" rx="10"/>
-   <rect x="1041"
-         y="1255"
-         width="30"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="1051" y="1275">=</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../../sql_types#double"
-      xlink:title="double">
-      <rect x="1093" y="1257" width="62" height="32"/>
-      <rect x="1091"
-            y="1255"
-            width="62"
-            height="32"
-            class="nonterminal"/>
-      <text class="nonterminal" x="1101" y="1275">double</text>
-   </a>
-   <rect x="1175" y="1257" width="26" height="32" rx="10"/>
-   <rect x="1173"
-         y="1255"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="1183" y="1275">)</text>
-   <path class="line"
-         d="m17 17 h2 m0 0 h10 m72 0 h10 m20 0 h10 m0 0 h106 m-136 0 h20 m116 0 h20 m-156 0 q10 0 10 10 m136 0 q0 -10 10 -10 m-146 10 v12 m136 0 v-12 m-136 12 q0 10 10 10 m116 0 q10 0 10 -10 m-126 10 h10 m96 0 h10 m20 -32 h10 m62 0 h10 m20 0 h10 m0 0 h202 m-232 0 h20 m212 0 h20 m-252 0 q10 0 10 10 m232 0 q0 -10 10 -10 m-242 10 v12 m232 0 v-12 m-232 12 q0 10 10 10 m212 0 q10 0 10 -10 m-222 10 h10 m34 0 h10 m0 0 h10 m48 0 h10 m0 0 h10 m70 0 h10 m20 -32 h10 m52 0 h10 m0 0 h10 m26 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-730 142 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m64 0 h10 m20 0 h10 m132 0 h10 m20 0 h10 m0 0 h306 m-336 0 h20 m316 0 h20 m-356 0 q10 0 10 10 m336 0 q0 -10 10 -10 m-346 10 v12 m336 0 v-12 m-336 12 q0 10 10 10 m316 0 q10 0 10 -10 m-326 10 h10 m26 0 h10 m20 0 h10 m0 0 h88 m-118 0 h20 m98 0 h20 m-138 0 q10 0 10 10 m118 0 q0 -10 10 -10 m-128 10 v12 m118 0 v-12 m-118 12 q0 10 10 10 m98 0 q10 0 10 -10 m-108 10 h10 m78 0 h10 m20 -32 h10 m26 0 h10 m0 0 h86 m-326 -10 v20 m336 0 v-20 m-336 20 v56 m336 0 v-56 m-336 56 q0 10 10 10 m316 0 q10 0 10 -10 m-326 10 h10 m66 0 h10 m20 0 h10 m0 0 h180 m-210 0 h20 m190 0 h20 m-230 0 q10 0 10 10 m210 0 q0 -10 10 -10 m-220 10 v12 m210 0 v-12 m-210 12 q0 10 10 10 m190 0 q10 0 10 -10 m-200 10 h10 m26 0 h10 m0 0 h10 m78 0 h10 m0 0 h10 m26 0 h10 m-488 -140 h20 m508 0 h20 m-548 0 q10 0 10 10 m528 0 q0 -10 10 -10 m-538 10 v164 m528 0 v-164 m-528 164 q0 10 10 10 m508 0 q10 0 10 -10 m-518 10 h10 m92 0 h10 m0 0 h396 m40 -184 h10 m0 0 h174 m-204 0 h20 m184 0 h20 m-224 0 q10 0 10 10 m204 0 q0 -10 10 -10 m-214 10 v12 m204 0 v-12 m-204 12 q0 10 10 10 m184 0 q10 0 10 -10 m-174 10 h10 m0 0 h58 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v12 m88 0 v-12 m-88 12 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m20 -32 h10 m56 0 h10 m40 -32 h10 m0 0 h276 m-306 0 h20 m286 0 h20 m-326 0 q10 0 10 10 m306 0 q0 -10 10 -10 m-316 10 v12 m306 0 v-12 m-306 12 q0 10 10 10 m286 0 q10 0 10 -10 m-296 10 h10 m84 0 h10 m0 0 h10 m46 0 h10 m20 0 h10 m0 0 h66 m-96 0 h20 m76 0 h20 m-116 0 q10 0 10 10 m96 0 q0 -10 10 -10 m-106 10 v12 m96 0 v-12 m-96 12 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m46 0 h10 m0 0 h10 m-86 -10 v20 m96 0 v-20 m-96 20 v24 m96 0 v-24 m-96 24 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m56 0 h10 m-1162 -108 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m1182 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-1182 0 h10 m24 0 h10 m0 0 h1138 m22 44 l2 0 m2 0 l2 0 m2 0 l2 0 m-1102 294 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m24 0 h10 m0 0 h10 m84 0 h10 m0 0 h10 m46 0 h10 m0 0 h10 m26 0 h10 m20 0 h10 m0 0 h252 m-282 0 h20 m262 0 h20 m-302 0 q10 0 10 10 m282 0 q0 -10 10 -10 m-292 10 v12 m282 0 v-12 m-282 12 q0 10 10 10 m262 0 q10 0 10 -10 m-272 10 h10 m82 0 h10 m20 0 h10 m0 0 h66 m-96 0 h20 m76 0 h20 m-116 0 q10 0 10 10 m96 0 q0 -10 10 -10 m-106 10 v12 m96 0 v-12 m-96 12 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m46 0 h10 m0 0 h10 m-86 -10 v20 m96 0 v-20 m-96 20 v24 m96 0 v-24 m-96 24 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m56 0 h10 m20 -76 h10 m24 0 h10 m40 -32 h10 m64 0 h10 m20 0 h10 m0 0 h66 m-96 0 h20 m76 0 h20 m-116 0 q10 0 10 10 m96 0 q0 -10 10 -10 m-106 10 v12 m96 0 v-12 m-96 12 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m46 0 h10 m0 0 h10 m-86 -10 v20 m96 0 v-20 m-96 20 v24 m96 0 v-24 m-96 24 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m56 0 h10 m-200 -76 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m200 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-200 0 h10 m24 0 h10 m0 0 h156 m20 44 h10 m26 0 h10 m-868 0 h20 m848 0 h20 m-888 0 q10 0 10 10 m868 0 q0 -10 10 -10 m-878 10 v122 m868 0 v-122 m-868 122 q0 10 10 10 m848 0 q10 0 10 -10 m-858 10 h10 m0 0 h838 m20 -142 h10 m26 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-959 190 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m64 0 h10 m20 0 h10 m68 0 h10 m0 0 h684 m-792 0 h20 m772 0 h20 m-812 0 q10 0 10 10 m792 0 q0 -10 10 -10 m-802 10 v68 m792 0 v-68 m-792 68 q0 10 10 10 m772 0 q10 0 10 -10 m-782 10 h10 m62 0 h10 m20 0 h10 m58 0 h10 m0 0 h10 m26 0 h10 m60 0 h10 m106 0 h10 m0 0 h38 m-184 0 h20 m164 0 h20 m-204 0 q10 0 10 10 m184 0 q0 -10 10 -10 m-194 10 v24 m184 0 v-24 m-184 24 q0 10 10 10 m164 0 q10 0 10 -10 m-174 10 h10 m144 0 h10 m20 -44 h10 m30 0 h10 m0 0 h10 m68 0 h10 m0 0 h58 m-420 0 h20 m400 0 h20 m-440 0 q10 0 10 10 m420 0 q0 -10 10 -10 m-430 10 v68 m420 0 v-68 m-420 68 q0 10 10 10 m400 0 q10 0 10 -10 m-390 10 h10 m96 0 h10 m0 0 h96 m-232 0 h20 m212 0 h20 m-252 0 q10 0 10 10 m232 0 q0 -10 10 -10 m-242 10 v24 m232 0 v-24 m-232 24 q0 10 10 10 m212 0 q10 0 10 -10 m-222 10 h10 m108 0 h10 m0 0 h84 m-222 -10 v20 m232 0 v-20 m-232 20 v24 m232 0 v-24 m-232 24 q0 10 10 10 m212 0 q10 0 10 -10 m-222 10 h10 m192 0 h10 m20 -88 h10 m30 0 h10 m0 0 h10 m78 0 h10 m-410 -10 v20 m420 0 v-20 m-420 20 v112 m420 0 v-112 m-420 112 q0 10 10 10 m400 0 q10 0 10 -10 m-410 10 h10 m174 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m64 0 h10 m0 0 h72 m-440 -220 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m440 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-440 0 h10 m24 0 h10 m0 0 h396 m20 44 h10 m26 0 h10 m-670 0 h20 m650 0 h20 m-690 0 q10 0 10 10 m670 0 q0 -10 10 -10 m-680 10 v234 m670 0 v-234 m-670 234 q0 10 10 10 m650 0 q10 0 10 -10 m-660 10 h10 m0 0 h640 m-876 -342 h20 m896 0 h20 m-936 0 q10 0 10 10 m916 0 q0 -10 10 -10 m-926 10 v338 m916 0 v-338 m-916 338 q0 10 10 10 m896 0 q10 0 10 -10 m-906 10 h10 m0 0 h886 m22 -358 l2 0 m2 0 l2 0 m2 0 l2 0 m-850 450 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m114 0 h10 m20 0 h10 m38 0 h10 m0 0 h10 m26 0 h10 m20 0 h10 m64 0 h10 m-104 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m84 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-84 0 h10 m24 0 h10 m0 0 h40 m20 44 h10 m26 0 h10 m20 0 h10 m0 0 h178 m-208 0 h20 m188 0 h20 m-228 0 q10 0 10 10 m208 0 q0 -10 10 -10 m-218 10 v12 m208 0 v-12 m-208 12 q0 10 10 10 m188 0 q10 0 10 -10 m-198 10 h10 m36 0 h10 m0 0 h10 m52 0 h10 m0 0 h10 m40 0 h10 m-502 -32 h20 m502 0 h20 m-542 0 q10 0 10 10 m522 0 q0 -10 10 -10 m-532 10 v56 m522 0 v-56 m-522 56 q0 10 10 10 m502 0 q10 0 10 -10 m-512 10 h10 m92 0 h10 m0 0 h390 m-676 -76 h20 m676 0 h20 m-716 0 q10 0 10 10 m696 0 q0 -10 10 -10 m-706 10 v90 m696 0 v-90 m-696 90 q0 10 10 10 m676 0 q10 0 10 -10 m-686 10 h10 m0 0 h666 m22 -110 l2 0 m2 0 l2 0 m2 0 l2 0 m-609 146 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m0 0 h320 m-350 0 h20 m330 0 h20 m-370 0 q10 0 10 10 m350 0 q0 -10 10 -10 m-360 10 v12 m350 0 v-12 m-350 12 q0 10 10 10 m330 0 q10 0 10 -10 m-340 10 h10 m58 0 h10 m0 0 h10 m80 0 h10 m20 0 h10 m92 0 h10 m-132 0 h20 m112 0 h20 m-152 0 q10 0 10 10 m132 0 q0 -10 10 -10 m-142 10 v24 m132 0 v-24 m-132 24 q0 10 10 10 m112 0 q10 0 10 -10 m-122 10 h10 m82 0 h10 m0 0 h10 m60 -76 h10 m0 0 h412 m-442 0 h20 m422 0 h20 m-462 0 q10 0 10 10 m442 0 q0 -10 10 -10 m-452 10 v12 m442 0 v-12 m-442 12 q0 10 10 10 m422 0 q10 0 10 -10 m-432 10 h10 m76 0 h10 m0 0 h10 m26 0 h10 m0 0 h10 m82 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m62 0 h10 m0 0 h10 m26 0 h10 m23 -32 h-3"/>
-   <polygon points="1239 1239 1247 1235 1247 1243"/>
-   <polygon points="1239 1239 1231 1235 1231 1243"/>
+  </defs>
+  <polygon
+     points="9 17 1 13 1 21"
+     id="polygon1" />
+  <polygon
+     points="17 17 9 13 9 21"
+     id="polygon2" />
+  <rect
+     x="31"
+     y="3"
+     width="72"
+     height="32"
+     rx="10"
+     id="rect2" />
+  <rect
+     x="29"
+     y="1"
+     width="72"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect3" />
+  <text
+     class="terminal"
+     x="39"
+     y="21"
+     id="text3">CREATE</text>
+  <rect
+     x="143"
+     y="35"
+     width="96"
+     height="32"
+     rx="10"
+     id="rect4" />
+  <rect
+     x="141"
+     y="33"
+     width="96"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect5" />
+  <text
+     class="terminal"
+     x="151"
+     y="53"
+     id="text5">UNLOGGED</text>
+  <rect
+     x="279"
+     y="3"
+     width="62"
+     height="32"
+     rx="10"
+     id="rect6" />
+  <rect
+     x="277"
+     y="1"
+     width="62"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect7" />
+  <text
+     class="terminal"
+     x="287"
+     y="21"
+     id="text7">TABLE</text>
+  <rect
+     x="381"
+     y="35"
+     width="34"
+     height="32"
+     rx="10"
+     id="rect8" />
+  <rect
+     x="379"
+     y="33"
+     width="34"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect9" />
+  <text
+     class="terminal"
+     x="389"
+     y="53"
+     id="text9">IF</text>
+  <rect
+     x="435"
+     y="35"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect10" />
+  <rect
+     x="433"
+     y="33"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect11" />
+  <text
+     class="terminal"
+     x="443"
+     y="53"
+     id="text11">NOT</text>
+  <rect
+     x="503"
+     y="35"
+     width="70"
+     height="32"
+     rx="10"
+     id="rect12" />
+  <rect
+     x="501"
+     y="33"
+     width="70"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect13" />
+  <text
+     class="terminal"
+     x="511"
+     y="53"
+     id="text13">EXISTS</text>
+  <a
+     xlink:href="../object"
+     xlink:title="table"
+     id="a15">
+    <rect
+       x="613"
+       y="3"
+       width="52"
+       height="32"
+       id="rect14" />
+    <rect
+       x="611"
+       y="1"
+       width="52"
+       height="32"
+       class="nonterminal"
+       id="rect15" />
+    <text
+       class="nonterminal"
+       x="621"
+       y="21"
+       id="text15">table</text>
+  </a>
+  <rect
+     x="685"
+     y="3"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect16" />
+  <rect
+     x="683"
+     y="1"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect17" />
+  <text
+     class="terminal"
+     x="693"
+     y="21"
+     id="text17">(</text>
+  <a
+     xlink:href="../object"
+     xlink:title="column"
+     id="a19">
+    <rect
+       x="45"
+       y="145"
+       width="64"
+       height="32"
+       id="rect18" />
+    <rect
+       x="43"
+       y="143"
+       width="64"
+       height="32"
+       class="nonterminal"
+       id="rect19" />
+    <text
+       class="nonterminal"
+       x="53"
+       y="163"
+       id="text19">column</text>
+  </a>
+  <a
+     xlink:href="#unrestricted_type"
+     xlink:title="unrestricted_type"
+     id="a21">
+    <rect
+       x="149"
+       y="145"
+       width="132"
+       height="32"
+       id="rect20" />
+    <rect
+       x="147"
+       y="143"
+       width="132"
+       height="32"
+       class="nonterminal"
+       id="rect21" />
+    <text
+       class="nonterminal"
+       x="157"
+       y="163"
+       id="text21">unrestricted_type</text>
+  </a>
+  <rect
+     x="321"
+     y="177"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect22" />
+  <rect
+     x="319"
+     y="175"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect23" />
+  <text
+     class="terminal"
+     x="329"
+     y="195"
+     id="text23">[</text>
+  <a
+     xlink:href="../../sql_types#unsigned"
+     xlink:title="unsigned"
+     id="a25">
+    <rect
+       x="387"
+       y="209"
+       width="78"
+       height="32"
+       id="rect24" />
+    <rect
+       x="385"
+       y="207"
+       width="78"
+       height="32"
+       class="nonterminal"
+       id="rect25" />
+    <text
+       class="nonterminal"
+       x="395"
+       y="227"
+       id="text25">unsigned</text>
+  </a>
+  <rect
+     x="505"
+     y="177"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect26" />
+  <rect
+     x="503"
+     y="175"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect27" />
+  <text
+     class="terminal"
+     x="513"
+     y="195"
+     id="text27">]</text>
+  <rect
+     x="321"
+     y="253"
+     width="66"
+     height="32"
+     rx="10"
+     id="rect28" />
+  <rect
+     x="319"
+     y="251"
+     width="66"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect29" />
+  <text
+     class="terminal"
+     x="329"
+     y="271"
+     id="text29">ARRAY</text>
+  <rect
+     x="427"
+     y="285"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect30" />
+  <rect
+     x="425"
+     y="283"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect31" />
+  <text
+     class="terminal"
+     x="435"
+     y="303"
+     id="text31">[</text>
+  <a
+     xlink:href="../../sql_types#unsigned"
+     xlink:title="unsigned"
+     id="a33">
+    <rect
+       x="473"
+       y="285"
+       width="78"
+       height="32"
+       id="rect32" />
+    <rect
+       x="471"
+       y="283"
+       width="78"
+       height="32"
+       class="nonterminal"
+       id="rect33" />
+    <text
+       class="nonterminal"
+       x="481"
+       y="303"
+       id="text33">unsigned</text>
+  </a>
+  <rect
+     x="571"
+     y="285"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect34" />
+  <rect
+     x="569"
+     y="283"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect35" />
+  <text
+     class="terminal"
+     x="579"
+     y="303"
+     id="text35">]</text>
+  <rect
+     x="149"
+     y="329"
+     width="92"
+     height="32"
+     rx="10"
+     id="rect36" />
+  <rect
+     x="147"
+     y="327"
+     width="92"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect37" />
+  <text
+     class="terminal"
+     x="157"
+     y="347"
+     id="text37">UNSIGNED</text>
+  <rect
+     x="717"
+     y="209"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect38" />
+  <rect
+     x="715"
+     y="207"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect39" />
+  <text
+     class="terminal"
+     x="725"
+     y="227"
+     id="text39">NOT</text>
+  <rect
+     x="805"
+     y="177"
+     width="56"
+     height="32"
+     rx="10"
+     id="rect40" />
+  <rect
+     x="803"
+     y="175"
+     width="56"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect41" />
+  <text
+     class="terminal"
+     x="813"
+     y="195"
+     id="text41">NULL</text>
+  <rect
+     x="921"
+     y="177"
+     width="84"
+     height="32"
+     rx="10"
+     id="rect42" />
+  <rect
+     x="919"
+     y="175"
+     width="84"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect43" />
+  <text
+     class="terminal"
+     x="929"
+     y="195"
+     id="text43">PRIMARY</text>
+  <rect
+     x="1025"
+     y="177"
+     width="46"
+     height="32"
+     rx="10"
+     id="rect44" />
+  <rect
+     x="1023"
+     y="175"
+     width="46"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect45" />
+  <text
+     class="terminal"
+     x="1033"
+     y="195"
+     id="text45">KEY</text>
+  <rect
+     x="1111"
+     y="209"
+     width="46"
+     height="32"
+     rx="10"
+     id="rect46" />
+  <rect
+     x="1109"
+     y="207"
+     width="46"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect47" />
+  <text
+     class="terminal"
+     x="1119"
+     y="227"
+     id="text47">ASC</text>
+  <rect
+     x="1111"
+     y="253"
+     width="56"
+     height="32"
+     rx="10"
+     id="rect48" />
+  <rect
+     x="1109"
+     y="251"
+     width="56"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect49" />
+  <text
+     class="terminal"
+     x="1119"
+     y="271"
+     id="text49">DESC</text>
+  <rect
+     x="45"
+     y="101"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect50" />
+  <rect
+     x="43"
+     y="99"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect51" />
+  <text
+     class="terminal"
+     x="53"
+     y="119"
+     id="text51">,</text>
+  <rect
+     x="212"
+     y="439"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect52" />
+  <rect
+     x="210"
+     y="437"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect53" />
+  <text
+     class="terminal"
+     x="220"
+     y="457"
+     id="text53">,</text>
+  <rect
+     x="256"
+     y="439"
+     width="84"
+     height="32"
+     rx="10"
+     id="rect54" />
+  <rect
+     x="254"
+     y="437"
+     width="84"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect55" />
+  <text
+     class="terminal"
+     x="264"
+     y="457"
+     id="text55">PRIMARY</text>
+  <rect
+     x="360"
+     y="439"
+     width="46"
+     height="32"
+     rx="10"
+     id="rect56" />
+  <rect
+     x="358"
+     y="437"
+     width="46"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect57" />
+  <text
+     class="terminal"
+     x="368"
+     y="457"
+     id="text57">KEY</text>
+  <rect
+     x="426"
+     y="439"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect58" />
+  <rect
+     x="424"
+     y="437"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect59" />
+  <text
+     class="terminal"
+     x="434"
+     y="457"
+     id="text59">(</text>
+  <a
+     xlink:href="../../../overview/glossary#bucket"
+     xlink:title="bucket_id"
+     id="a61">
+    <rect
+       x="492"
+       y="471"
+       width="82"
+       height="32"
+       id="rect60" />
+    <rect
+       x="490"
+       y="469"
+       width="82"
+       height="32"
+       class="nonterminal"
+       id="rect61" />
+    <text
+       class="nonterminal"
+       x="500"
+       y="489"
+       id="text61">bucket_id</text>
+  </a>
+  <rect
+     x="614"
+     y="503"
+     width="46"
+     height="32"
+     rx="10"
+     id="rect62" />
+  <rect
+     x="612"
+     y="501"
+     width="46"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect63" />
+  <text
+     class="terminal"
+     x="622"
+     y="521"
+     id="text63">ASC</text>
+  <rect
+     x="614"
+     y="547"
+     width="56"
+     height="32"
+     rx="10"
+     id="rect64" />
+  <rect
+     x="612"
+     y="545"
+     width="56"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect65" />
+  <text
+     class="terminal"
+     x="622"
+     y="565"
+     id="text65">DESC</text>
+  <rect
+     x="710"
+     y="471"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect66" />
+  <rect
+     x="708"
+     y="469"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect67" />
+  <text
+     class="terminal"
+     x="718"
+     y="489"
+     id="text67">,</text>
+  <a
+     xlink:href="../object"
+     xlink:title="column"
+     id="a69">
+    <rect
+       x="794"
+       y="439"
+       width="64"
+       height="32"
+       id="rect68" />
+    <rect
+       x="792"
+       y="437"
+       width="64"
+       height="32"
+       class="nonterminal"
+       id="rect69" />
+    <text
+       class="nonterminal"
+       x="802"
+       y="457"
+       id="text69">column</text>
+  </a>
+  <rect
+     x="898"
+     y="471"
+     width="46"
+     height="32"
+     rx="10"
+     id="rect70" />
+  <rect
+     x="896"
+     y="469"
+     width="46"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect71" />
+  <text
+     class="terminal"
+     x="906"
+     y="489"
+     id="text71">ASC</text>
+  <rect
+     x="898"
+     y="515"
+     width="56"
+     height="32"
+     rx="10"
+     id="rect72" />
+  <rect
+     x="896"
+     y="513"
+     width="56"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect73" />
+  <text
+     class="terminal"
+     x="906"
+     y="533"
+     id="text73">DESC</text>
+  <rect
+     x="794"
+     y="395"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect74" />
+  <rect
+     x="792"
+     y="393"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect75" />
+  <text
+     class="terminal"
+     x="802"
+     y="413"
+     id="text75">,</text>
+  <rect
+     x="1014"
+     y="439"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect76" />
+  <rect
+     x="1012"
+     y="437"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect77" />
+  <text
+     class="terminal"
+     x="1022"
+     y="457"
+     id="text77">)</text>
+  <rect
+     x="613"
+     y="629"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect78" />
+  <rect
+     x="611"
+     y="627"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect79" />
+  <text
+     class="terminal"
+     x="621"
+     y="647"
+     id="text79">)</text>
+  <rect
+     x="188"
+     y="695"
+     width="64"
+     height="32"
+     rx="10"
+     id="rect80" />
+  <rect
+     x="186"
+     y="693"
+     width="64"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect81" />
+  <text
+     class="terminal"
+     x="196"
+     y="713"
+     id="text81">USING</text>
+  <rect
+     x="292"
+     y="695"
+     width="68"
+     height="32"
+     rx="10"
+     id="rect82" />
+  <rect
+     x="290"
+     y="693"
+     width="68"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect83" />
+  <text
+     class="terminal"
+     x="300"
+     y="713"
+     id="text83">MEMTX</text>
+  <rect
+     x="292"
+     y="783"
+     width="62"
+     height="32"
+     rx="10"
+     id="rect84" />
+  <rect
+     x="290"
+     y="781"
+     width="62"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect85" />
+  <text
+     class="terminal"
+     x="300"
+     y="801"
+     id="text85">VINYL</text>
+  <rect
+     x="394"
+     y="783"
+     width="58"
+     height="32"
+     rx="10"
+     id="rect86" />
+  <rect
+     x="392"
+     y="781"
+     width="58"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect87" />
+  <text
+     class="terminal"
+     x="402"
+     y="801"
+     id="text87">WITH</text>
+  <rect
+     x="472"
+     y="783"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect88" />
+  <rect
+     x="470"
+     y="781"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect89" />
+  <text
+     class="terminal"
+     x="480"
+     y="801"
+     id="text89">(</text>
+  <rect
+     x="578"
+     y="783"
+     width="106"
+     height="32"
+     rx="10"
+     id="rect90" />
+  <rect
+     x="576"
+     y="781"
+     width="106"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect91" />
+  <text
+     class="terminal"
+     x="586"
+     y="801"
+     id="text91">BLOOM_FPR</text>
+  <rect
+     x="578"
+     y="827"
+     width="144"
+     height="32"
+     rx="10"
+     id="rect92" />
+  <rect
+     x="576"
+     y="825"
+     width="144"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect93" />
+  <text
+     class="terminal"
+     x="586"
+     y="845"
+     id="text93">RUN_SIZE_RATIO</text>
+  <rect
+     x="762"
+     y="783"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect94" />
+  <rect
+     x="760"
+     y="781"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect95" />
+  <text
+     class="terminal"
+     x="770"
+     y="801"
+     id="text95">=</text>
+  <a
+     xlink:href="../../sql_types#decimal"
+     xlink:title="decimal"
+     id="a97">
+    <rect
+       x="812"
+       y="783"
+       width="68"
+       height="32"
+       id="rect96" />
+    <rect
+       x="810"
+       y="781"
+       width="68"
+       height="32"
+       class="nonterminal"
+       id="rect97" />
+    <text
+       class="nonterminal"
+       x="820"
+       y="801"
+       id="text97">decimal</text>
+  </a>
+  <rect
+     x="578"
+     y="871"
+     width="96"
+     height="32"
+     rx="10"
+     id="rect98" />
+  <rect
+     x="576"
+     y="869"
+     width="96"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect99" />
+  <text
+     class="terminal"
+     x="586"
+     y="889"
+     id="text99">PAGE_SIZE</text>
+  <rect
+     x="578"
+     y="915"
+     width="108"
+     height="32"
+     rx="10"
+     id="rect100" />
+  <rect
+     x="576"
+     y="913"
+     width="108"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect101" />
+  <text
+     class="terminal"
+     x="586"
+     y="933"
+     id="text101">RANGE_SIZE</text>
+  <rect
+     x="578"
+     y="959"
+     width="192"
+     height="32"
+     rx="10"
+     id="rect102" />
+  <rect
+     x="576"
+     y="957"
+     width="192"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect103" />
+  <text
+     class="terminal"
+     x="586"
+     y="977"
+     id="text103">RUN_COUNT_PER_LEVEL</text>
+  <rect
+     x="810"
+     y="871"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect104" />
+  <rect
+     x="808"
+     y="869"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect105" />
+  <text
+     class="terminal"
+     x="818"
+     y="889"
+     id="text105">=</text>
+  <a
+     xlink:href="../../sql_types#unsigned"
+     xlink:title="unsigned"
+     id="a107">
+    <rect
+       x="860"
+       y="871"
+       width="78"
+       height="32"
+       id="rect106" />
+    <rect
+       x="858"
+       y="869"
+       width="78"
+       height="32"
+       class="nonterminal"
+       id="rect107" />
+    <text
+       class="nonterminal"
+       x="868"
+       y="889"
+       id="text107">unsigned</text>
+  </a>
+  <rect
+     x="558"
+     y="1003"
+     width="174"
+     height="32"
+     rx="10"
+     id="rect108" />
+  <rect
+     x="556"
+     y="1001"
+     width="174"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect109" />
+  <text
+     class="terminal"
+     x="566"
+     y="1021"
+     id="text109">COMPRESSION_LEVEL</text>
+  <rect
+     x="752"
+     y="1003"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect110" />
+  <rect
+     x="750"
+     y="1001"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect111" />
+  <text
+     class="terminal"
+     x="760"
+     y="1021"
+     id="text111">=</text>
+  <a
+     xlink:href="../../sql_types#integer"
+     xlink:title="integer"
+     id="a113">
+    <rect
+       x="802"
+       y="1003"
+       width="64"
+       height="32"
+       id="rect112" />
+    <rect
+       x="800"
+       y="1001"
+       width="64"
+       height="32"
+       class="nonterminal"
+       id="rect113" />
+    <text
+       class="nonterminal"
+       x="810"
+       y="1021"
+       id="text113">integer</text>
+  </a>
+  <rect
+     x="558"
+     y="1047"
+     width="166"
+     height="32"
+     rx="10"
+     id="rect114" />
+  <rect
+     x="556"
+     y="1045"
+     width="166"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect115" />
+  <text
+     class="terminal"
+     x="566"
+     y="1065"
+     id="text115">COMPRESSION_DICT</text>
+  <rect
+     x="744"
+     y="1047"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect116" />
+  <rect
+     x="742"
+     y="1045"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect117" />
+  <text
+     class="terminal"
+     x="752"
+     y="1065"
+     id="text117">=</text>
+  <rect
+     x="814"
+     y="1047"
+     width="56"
+     height="32"
+     rx="10"
+     id="rect118" />
+  <rect
+     x="812"
+     y="1045"
+     width="56"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect119" />
+  <text
+     class="terminal"
+     x="822"
+     y="1065"
+     id="text119">TRUE</text>
+  <rect
+     x="814"
+     y="1091"
+     width="62"
+     height="32"
+     rx="10"
+     id="rect120" />
+  <rect
+     x="812"
+     y="1089"
+     width="62"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect121" />
+  <text
+     class="terminal"
+     x="822"
+     y="1109"
+     id="text121">FALSE</text>
+  <rect
+     x="538"
+     y="739"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect122" />
+  <rect
+     x="536"
+     y="737"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect123" />
+  <text
+     class="terminal"
+     x="546"
+     y="757"
+     id="text123">,</text>
+  <rect
+     x="998"
+     y="783"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect124" />
+  <rect
+     x="996"
+     y="781"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect125" />
+  <text
+     class="terminal"
+     x="1006"
+     y="801"
+     id="text125">)</text>
+  <rect
+     x="298"
+     y="1233"
+     width="114"
+     height="32"
+     rx="10"
+     id="rect126" />
+  <rect
+     x="296"
+     y="1231"
+     width="114"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect127" />
+  <text
+     class="terminal"
+     x="306"
+     y="1251"
+     id="text127">DISTRIBUTED</text>
+  <rect
+     x="452"
+     y="1233"
+     width="38"
+     height="32"
+     rx="10"
+     id="rect128" />
+  <rect
+     x="450"
+     y="1231"
+     width="38"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect129" />
+  <text
+     class="terminal"
+     x="460"
+     y="1251"
+     id="text129">BY</text>
+  <rect
+     x="510"
+     y="1233"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect130" />
+  <rect
+     x="508"
+     y="1231"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect131" />
+  <text
+     class="terminal"
+     x="518"
+     y="1251"
+     id="text131">(</text>
+  <a
+     xlink:href="../object"
+     xlink:title="column"
+     id="a133">
+    <rect
+       x="576"
+       y="1233"
+       width="64"
+       height="32"
+       id="rect132" />
+    <rect
+       x="574"
+       y="1231"
+       width="64"
+       height="32"
+       class="nonterminal"
+       id="rect133" />
+    <text
+       class="nonterminal"
+       x="584"
+       y="1251"
+       id="text133">column</text>
+  </a>
+  <rect
+     x="576"
+     y="1189"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect134" />
+  <rect
+     x="574"
+     y="1187"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect135" />
+  <text
+     class="terminal"
+     x="584"
+     y="1207"
+     id="text135">,</text>
+  <rect
+     x="680"
+     y="1233"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect136" />
+  <rect
+     x="678"
+     y="1231"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect137" />
+  <text
+     class="terminal"
+     x="688"
+     y="1251"
+     id="text137">)</text>
+  <rect
+     x="746"
+     y="1265"
+     width="36"
+     height="32"
+     rx="10"
+     id="rect138" />
+  <rect
+     x="744"
+     y="1263"
+     width="36"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect139" />
+  <text
+     class="terminal"
+     x="754"
+     y="1283"
+     id="text139">IN</text>
+  <rect
+     x="802"
+     y="1265"
+     width="52"
+     height="32"
+     rx="10"
+     id="rect140" />
+  <rect
+     x="800"
+     y="1263"
+     width="52"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect141" />
+  <text
+     class="terminal"
+     x="810"
+     y="1283"
+     id="text141">TIER</text>
+  <a
+     xlink:href="../object"
+     xlink:title="tier"
+     id="a143">
+    <rect
+       x="874"
+       y="1265"
+       width="40"
+       height="32"
+       id="rect142" />
+    <rect
+       x="872"
+       y="1263"
+       width="40"
+       height="32"
+       class="nonterminal"
+       id="rect143" />
+    <text
+       class="nonterminal"
+       x="882"
+       y="1283"
+       id="text143">tier</text>
+  </a>
+  <rect
+     x="452"
+     y="1309"
+     width="92"
+     height="32"
+     rx="10"
+     id="rect144" />
+  <rect
+     x="450"
+     y="1307"
+     width="92"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect145" />
+  <text
+     class="terminal"
+     x="460"
+     y="1327"
+     id="text145">GLOBALLY</text>
+  <rect
+     x="471"
+     y="1407"
+     width="58"
+     height="32"
+     rx="10"
+     id="rect146" />
+  <rect
+     x="469"
+     y="1405"
+     width="58"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect147" />
+  <text
+     class="terminal"
+     x="479"
+     y="1425"
+     id="text147">WAIT</text>
+  <rect
+     x="549"
+     y="1407"
+     width="80"
+     height="32"
+     rx="10"
+     id="rect148" />
+  <rect
+     x="547"
+     y="1405"
+     width="80"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect149" />
+  <text
+     class="terminal"
+     x="557"
+     y="1425"
+     id="text149">APPLIED</text>
+  <rect
+     x="669"
+     y="1407"
+     width="92"
+     height="32"
+     rx="10"
+     id="rect150" />
+  <rect
+     x="667"
+     y="1405"
+     width="92"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect151" />
+  <text
+     class="terminal"
+     x="677"
+     y="1425"
+     id="text151">GLOBALLY</text>
+  <rect
+     x="669"
+     y="1451"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect152" />
+  <rect
+     x="667"
+     y="1449"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect153" />
+  <text
+     class="terminal"
+     x="677"
+     y="1469"
+     id="text153">LOCALLY</text>
+  <rect
+     x="799"
+     y="1537"
+     width="76"
+     height="32"
+     rx="10"
+     id="rect154" />
+  <rect
+     x="797"
+     y="1535"
+     width="76"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect155" />
+  <text
+     class="terminal"
+     x="807"
+     y="1555"
+     id="text155">OPTION</text>
+  <rect
+     x="895"
+     y="1537"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect156" />
+  <rect
+     x="893"
+     y="1535"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect157" />
+  <text
+     class="terminal"
+     x="903"
+     y="1555"
+     id="text157">(</text>
+  <rect
+     x="941"
+     y="1537"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect158" />
+  <rect
+     x="939"
+     y="1535"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect159" />
+  <text
+     class="terminal"
+     x="949"
+     y="1555"
+     id="text159">TIMEOUT</text>
+  <rect
+     x="1043"
+     y="1537"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect160" />
+  <rect
+     x="1041"
+     y="1535"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect161" />
+  <text
+     class="terminal"
+     x="1051"
+     y="1555"
+     id="text161">=</text>
+  <a
+     xlink:href="../../sql_types#double"
+     xlink:title="double"
+     id="a163">
+    <rect
+       x="1093"
+       y="1537"
+       width="62"
+       height="32"
+       id="rect162" />
+    <rect
+       x="1091"
+       y="1535"
+       width="62"
+       height="32"
+       class="nonterminal"
+       id="rect163" />
+    <text
+       class="nonterminal"
+       x="1101"
+       y="1555"
+       id="text163">double</text>
+  </a>
+  <rect
+     x="1175"
+     y="1537"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect164" />
+  <rect
+     x="1173"
+     y="1535"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect165" />
+  <text
+     class="terminal"
+     x="1183"
+     y="1555"
+     id="text165">)</text>
+  <path
+     class="line"
+     d="m17 17 h2 m0 0 h10 m72 0 h10 m20 0 h10 m0 0 h106 m-136 0 h20 m116 0 h20 m-156 0 q10 0 10 10 m136 0 q0 -10 10 -10 m-146 10 v12 m136 0 v-12 m-136 12 q0 10 10 10 m116 0 q10 0 10 -10 m-126 10 h10 m96 0 h10 m20 -32 h10 m62 0 h10 m20 0 h10 m0 0 h202 m-232 0 h20 m212 0 h20 m-252 0 q10 0 10 10 m232 0 q0 -10 10 -10 m-242 10 v12 m232 0 v-12 m-232 12 q0 10 10 10 m212 0 q10 0 10 -10 m-222 10 h10 m34 0 h10 m0 0 h10 m48 0 h10 m0 0 h10 m70 0 h10 m20 -32 h10 m52 0 h10 m0 0 h10 m26 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-730 142 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m64 0 h10 m20 0 h10 m132 0 h10 m20 0 h10 m0 0 h306 m-336 0 h20 m316 0 h20 m-356 0 q10 0 10 10 m336 0 q0 -10 10 -10 m-346 10 v12 m336 0 v-12 m-336 12 q0 10 10 10 m316 0 q10 0 10 -10 m-326 10 h10 m26 0 h10 m20 0 h10 m0 0 h88 m-118 0 h20 m98 0 h20 m-138 0 q10 0 10 10 m118 0 q0 -10 10 -10 m-128 10 v12 m118 0 v-12 m-118 12 q0 10 10 10 m98 0 q10 0 10 -10 m-108 10 h10 m78 0 h10 m20 -32 h10 m26 0 h10 m0 0 h86 m-326 -10 v20 m336 0 v-20 m-336 20 v56 m336 0 v-56 m-336 56 q0 10 10 10 m316 0 q10 0 10 -10 m-326 10 h10 m66 0 h10 m20 0 h10 m0 0 h180 m-210 0 h20 m190 0 h20 m-230 0 q10 0 10 10 m210 0 q0 -10 10 -10 m-220 10 v12 m210 0 v-12 m-210 12 q0 10 10 10 m190 0 q10 0 10 -10 m-200 10 h10 m26 0 h10 m0 0 h10 m78 0 h10 m0 0 h10 m26 0 h10 m-488 -140 h20 m508 0 h20 m-548 0 q10 0 10 10 m528 0 q0 -10 10 -10 m-538 10 v164 m528 0 v-164 m-528 164 q0 10 10 10 m508 0 q10 0 10 -10 m-518 10 h10 m92 0 h10 m0 0 h396 m40 -184 h10 m0 0 h174 m-204 0 h20 m184 0 h20 m-224 0 q10 0 10 10 m204 0 q0 -10 10 -10 m-214 10 v12 m204 0 v-12 m-204 12 q0 10 10 10 m184 0 q10 0 10 -10 m-174 10 h10 m0 0 h58 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v12 m88 0 v-12 m-88 12 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m20 -32 h10 m56 0 h10 m40 -32 h10 m0 0 h276 m-306 0 h20 m286 0 h20 m-326 0 q10 0 10 10 m306 0 q0 -10 10 -10 m-316 10 v12 m306 0 v-12 m-306 12 q0 10 10 10 m286 0 q10 0 10 -10 m-296 10 h10 m84 0 h10 m0 0 h10 m46 0 h10 m20 0 h10 m0 0 h66 m-96 0 h20 m76 0 h20 m-116 0 q10 0 10 10 m96 0 q0 -10 10 -10 m-106 10 v12 m96 0 v-12 m-96 12 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m46 0 h10 m0 0 h10 m-86 -10 v20 m96 0 v-20 m-96 20 v24 m96 0 v-24 m-96 24 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m56 0 h10 m-1162 -108 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m1182 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-1182 0 h10 m24 0 h10 m0 0 h1138 m22 44 l2 0 m2 0 l2 0 m2 0 l2 0 m-1079 294 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m24 0 h10 m0 0 h10 m84 0 h10 m0 0 h10 m46 0 h10 m0 0 h10 m26 0 h10 m20 0 h10 m0 0 h252 m-282 0 h20 m262 0 h20 m-302 0 q10 0 10 10 m282 0 q0 -10 10 -10 m-292 10 v12 m282 0 v-12 m-282 12 q0 10 10 10 m262 0 q10 0 10 -10 m-272 10 h10 m82 0 h10 m20 0 h10 m0 0 h66 m-96 0 h20 m76 0 h20 m-116 0 q10 0 10 10 m96 0 q0 -10 10 -10 m-106 10 v12 m96 0 v-12 m-96 12 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m46 0 h10 m0 0 h10 m-86 -10 v20 m96 0 v-20 m-96 20 v24 m96 0 v-24 m-96 24 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m56 0 h10 m20 -76 h10 m24 0 h10 m40 -32 h10 m64 0 h10 m20 0 h10 m0 0 h66 m-96 0 h20 m76 0 h20 m-116 0 q10 0 10 10 m96 0 q0 -10 10 -10 m-106 10 v12 m96 0 v-12 m-96 12 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m46 0 h10 m0 0 h10 m-86 -10 v20 m96 0 v-20 m-96 20 v24 m96 0 v-24 m-96 24 q0 10 10 10 m76 0 q10 0 10 -10 m-86 10 h10 m56 0 h10 m-200 -76 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m200 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-200 0 h10 m24 0 h10 m0 0 h156 m20 44 h10 m26 0 h10 m-868 0 h20 m848 0 h20 m-888 0 q10 0 10 10 m868 0 q0 -10 10 -10 m-878 10 v122 m868 0 v-122 m-868 122 q0 10 10 10 m848 0 q10 0 10 -10 m-858 10 h10 m0 0 h838 m22 -142 l2 0 m2 0 l2 0 m2 0 l2 0 m-491 190 l2 0 m2 0 l2 0 m2 0 l2 0 m2 0 h10 m26 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-515 66 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m64 0 h10 m20 0 h10 m68 0 h10 m0 0 h684 m-792 0 h20 m772 0 h20 m-812 0 q10 0 10 10 m792 0 q0 -10 10 -10 m-802 10 v68 m792 0 v-68 m-792 68 q0 10 10 10 m772 0 q10 0 10 -10 m-782 10 h10 m62 0 h10 m20 0 h10 m58 0 h10 m0 0 h10 m26 0 h10 m60 0 h10 m106 0 h10 m0 0 h38 m-184 0 h20 m164 0 h20 m-204 0 q10 0 10 10 m184 0 q0 -10 10 -10 m-194 10 v24 m184 0 v-24 m-184 24 q0 10 10 10 m164 0 q10 0 10 -10 m-174 10 h10 m144 0 h10 m20 -44 h10 m30 0 h10 m0 0 h10 m68 0 h10 m0 0 h58 m-420 0 h20 m400 0 h20 m-440 0 q10 0 10 10 m420 0 q0 -10 10 -10 m-430 10 v68 m420 0 v-68 m-420 68 q0 10 10 10 m400 0 q10 0 10 -10 m-390 10 h10 m96 0 h10 m0 0 h96 m-232 0 h20 m212 0 h20 m-252 0 q10 0 10 10 m232 0 q0 -10 10 -10 m-242 10 v24 m232 0 v-24 m-232 24 q0 10 10 10 m212 0 q10 0 10 -10 m-222 10 h10 m108 0 h10 m0 0 h84 m-222 -10 v20 m232 0 v-20 m-232 20 v24 m232 0 v-24 m-232 24 q0 10 10 10 m212 0 q10 0 10 -10 m-222 10 h10 m192 0 h10 m20 -88 h10 m30 0 h10 m0 0 h10 m78 0 h10 m-410 -10 v20 m420 0 v-20 m-420 20 v112 m420 0 v-112 m-420 112 q0 10 10 10 m400 0 q10 0 10 -10 m-410 10 h10 m174 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m64 0 h10 m0 0 h72 m-410 -10 v20 m420 0 v-20 m-420 20 v24 m420 0 v-24 m-420 24 q0 10 10 10 m400 0 q10 0 10 -10 m-410 10 h10 m166 0 h10 m0 0 h10 m30 0 h10 m20 0 h10 m56 0 h10 m0 0 h6 m-102 0 h20 m82 0 h20 m-122 0 q10 0 10 10 m102 0 q0 -10 10 -10 m-112 10 v24 m102 0 v-24 m-102 24 q0 10 10 10 m82 0 q10 0 10 -10 m-92 10 h10 m62 0 h10 m20 -44 h42 m-440 -264 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m440 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-440 0 h10 m24 0 h10 m0 0 h396 m20 44 h10 m26 0 h10 m-670 0 h20 m650 0 h20 m-690 0 q10 0 10 10 m670 0 q0 -10 10 -10 m-680 10 v322 m670 0 v-322 m-670 322 q0 10 10 10 m650 0 q10 0 10 -10 m-660 10 h10 m0 0 h640 m-876 -430 h20 m896 0 h20 m-936 0 q10 0 10 10 m916 0 q0 -10 10 -10 m-926 10 v426 m916 0 v-426 m-916 426 q0 10 10 10 m896 0 q10 0 10 -10 m-906 10 h10 m0 0 h886 m22 -446 l2 0 m2 0 l2 0 m2 0 l2 0 m-850 538 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m114 0 h10 m20 0 h10 m38 0 h10 m0 0 h10 m26 0 h10 m20 0 h10 m64 0 h10 m-104 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m84 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-84 0 h10 m24 0 h10 m0 0 h40 m20 44 h10 m26 0 h10 m20 0 h10 m0 0 h178 m-208 0 h20 m188 0 h20 m-228 0 q10 0 10 10 m208 0 q0 -10 10 -10 m-218 10 v12 m208 0 v-12 m-208 12 q0 10 10 10 m188 0 q10 0 10 -10 m-198 10 h10 m36 0 h10 m0 0 h10 m52 0 h10 m0 0 h10 m40 0 h10 m-502 -32 h20 m502 0 h20 m-542 0 q10 0 10 10 m522 0 q0 -10 10 -10 m-532 10 v56 m522 0 v-56 m-522 56 q0 10 10 10 m502 0 q10 0 10 -10 m-512 10 h10 m92 0 h10 m0 0 h390 m-676 -76 h20 m676 0 h20 m-716 0 q10 0 10 10 m696 0 q0 -10 10 -10 m-706 10 v90 m696 0 v-90 m-696 90 q0 10 10 10 m676 0 q10 0 10 -10 m-686 10 h10 m0 0 h666 m22 -110 l2 0 m2 0 l2 0 m2 0 l2 0 m-567 142 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m0 0 h320 m-350 0 h20 m330 0 h20 m-370 0 q10 0 10 10 m350 0 q0 -10 10 -10 m-360 10 v12 m350 0 v-12 m-350 12 q0 10 10 10 m330 0 q10 0 10 -10 m-340 10 h10 m58 0 h10 m0 0 h10 m80 0 h10 m20 0 h10 m92 0 h10 m-132 0 h20 m112 0 h20 m-152 0 q10 0 10 10 m132 0 q0 -10 10 -10 m-142 10 v24 m132 0 v-24 m-132 24 q0 10 10 10 m112 0 q10 0 10 -10 m-122 10 h10 m82 0 h10 m0 0 h10 m42 -76 l2 0 m2 0 l2 0 m2 0 l2 0 m-66 130 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m0 0 h412 m-442 0 h20 m422 0 h20 m-462 0 q10 0 10 10 m442 0 q0 -10 10 -10 m-452 10 v12 m442 0 v-12 m-442 12 q0 10 10 10 m422 0 q10 0 10 -10 m-432 10 h10 m76 0 h10 m0 0 h10 m26 0 h10 m0 0 h10 m82 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m62 0 h10 m0 0 h10 m26 0 h10 m23 -32 h-3"
+     id="path165" />
+  <polygon
+     points="1239 1519 1247 1515 1247 1523"
+     id="polygon165" />
+  <polygon
+     points="1239 1519 1231 1515 1231 1523"
+     id="polygon166" />
 </svg>
