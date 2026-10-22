@@ -78,6 +78,11 @@ asan-build-dev:
 
 asan-test-rs:
   stage: test
+  # By default the job downloads artifacts of all jobs from earlier stages,
+  # i.e. of asan-build-dev. They contain only picodata and libtestplug.so but
+  # no test binaries, `cargo test` has to build them anyway. So skip the
+  # download.
+  dependencies: []
   cache:
     - <<: *cache_git
       policy: pull

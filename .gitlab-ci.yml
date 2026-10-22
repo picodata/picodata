@@ -558,8 +558,14 @@ test-rs-linux:
     - .test_rules
     - .parallel
   needs:
+    # Only the matching profile, otherwise artifacts of all build-linux
+    # matrix jobs are downloaded.
     - job: build-linux
       artifacts: true
+      parallel:
+        matrix:
+          - BUILD_PROFILE: $[[ matrix.BUILD_PROFILE ]]
+            TARGET: $[[ matrix.TARGET ]]
   variables:
     UPLOAD_TEST_ARTIFACTS: "$[[ inputs.upload-test-artifacts ]]"
   artifacts:
@@ -663,6 +669,12 @@ test-py-not-sql-linux:
   needs:
     - job: build-linux
       artifacts: true
+      parallel:
+        matrix:
+          - BUILD_PROFILE: $[[ matrix.BUILD_PROFILE ]]
+            TARGET: $[[ matrix.TARGET ]]
+    # Rolling binaries come only from this artifact, the
+    # rolling_binaries_cache would be overwritten by it anyway.
     - job: install-rolling-binaries
       artifacts: true
   before_script:
@@ -671,8 +683,6 @@ test-py-not-sql-linux:
     - <<: *cache_git
       policy: pull
     - <<: *py_cache
-      policy: pull
-    - <<: *rolling_binaries_cache
       policy: pull
   script:
     - tools/ensure_checkout.sh
@@ -711,6 +721,10 @@ test-tarantool-sys-linux:
   needs:
     - job: build-linux
       artifacts: true
+      parallel:
+        matrix:
+          - BUILD_PROFILE: $[[ matrix.BUILD_PROFILE ]]
+            TARGET: $[[ matrix.TARGET ]]
   variables:
     KUBERNETES_CPU_REQUEST: 8
     KUBERNETES_MEMORY_REQUEST: "8Gi"
@@ -1127,6 +1141,7 @@ examples:
 
 publish-picodata-plugin:
   stage: pack
+  dependencies: []
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
   rules:
