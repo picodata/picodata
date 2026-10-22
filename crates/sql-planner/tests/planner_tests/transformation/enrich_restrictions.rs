@@ -3177,3 +3177,23 @@ fn false_stays_within_its_domain() {
           scan t3
     ");
 }
+
+#[test]
+fn a_parameter_pinned_inside_a_subquery_stays_inside_it() {
+    // `$1 = 5` holds only inside the subquery: outside it would drop the rows
+    // that NOT EXISTS keeps.
+    let plan = run_enrich(
+        "SELECT * FROM t5 WHERE b = $1 AND NOT EXISTS (SELECT 1 FROM t3_2 WHERE a = $1 AND a = 5)",
+        &[DerivedType::new(UnrestrictedType::Integer)],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t5.a::int -> a, t5.b::int -> b)
+      selection ((not exists ROW($0) and t5.b::int = $1::int))
+        scan t5
+    subquery $0:
+      scan
+        projection (1::int -> col_1)
+          selection (($1::int = 5::int and t3_2.a::int = 5::int))
+            scan t3_2
+    ");
+}

@@ -5,26 +5,53 @@ use std::collections::HashSet;
 use smol_str::SmolStr;
 use tarantool::tuple::FieldType;
 
-use super::{value_to_bucket_id, BucketAlgebra, BucketsResolver};
+use super::{value_to_bucket_id, BucketAlgebra, BucketsResolver, UnboundKeyPart};
 use crate::errors::SbroadError;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::NodeId;
 use crate::ir::value::{MsgPackValue, Value};
 
+/// One column of a [`RoutingKey`].
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum KeyPart {
+    Value {
+        ty: FieldType,
+        bytes: Vec<u8>,
+    },
+    /// An unbound parameter. Equal indexes route alike; another parameter or
+    /// a literal may route apart.
+    Param(u16),
+}
+
+impl KeyPart {
+    fn value(value: &Value) -> Result<Self, SbroadError> {
+        Ok(Self::Value {
+            ty: value.field_type(),
+            bytes: rmp_serde::to_vec(&MsgPackValue::from(value))?,
+        })
+    }
+}
+
 /// The inputs to the router's key hash, compared in full even on hash collisions.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct RoutingKey {
-    types: Vec<FieldType>,
-    bytes: Vec<u8>,
-}
+pub(crate) struct RoutingKey(Vec<KeyPart>);
 
 impl RoutingKey {
     fn new(values: &[&Value]) -> Result<Self, SbroadError> {
-        let tuple: Vec<_> = values.iter().map(|v| MsgPackValue::from(*v)).collect();
-        Ok(Self {
-            types: values.iter().map(|v| v.field_type()).collect(),
-            bytes: rmp_serde::to_vec(&tuple)?,
-        })
+        let parts = values.iter().map(|v| KeyPart::value(v));
+        Ok(Self(parts.collect::<Result<_, _>>()?))
+    }
+
+    fn unbound(parts: &[UnboundKeyPart<'_>]) -> Result<Self, SbroadError> {
+        let parts = parts.iter().map(|part| match part {
+            UnboundKeyPart::Value(value) => KeyPart::value(value),
+            UnboundKeyPart::Param(index) => Ok(KeyPart::Param(*index)),
+        });
+        Ok(Self(parts.collect::<Result<_, _>>()?))
+    }
+
+    fn has_param(&self) -> bool {
+        self.0.iter().any(|part| matches!(part, KeyPart::Param(_)))
     }
 }
 
@@ -66,6 +93,19 @@ impl BucketProof {
 
     pub(crate) fn is_nonempty_filtered(&self) -> bool {
         matches!(self, Self::Filtered { nonempty: true, .. })
+    }
+
+    pub(crate) fn is_single_node_filtered(&self) -> bool {
+        matches!(self, Self::Filtered { .. }) && self.is_single_node()
+    }
+
+    /// Whether both sets are bound to the same parameter key. Unlike a literal
+    /// key, it may select no bucket.
+    pub(crate) fn shares_param_key(&self, other: &Self) -> bool {
+        let (Self::Filtered { keys: a, .. }, Self::Filtered { keys: b, .. }) = (self, other) else {
+            return false;
+        };
+        a.intersection(b).any(RoutingKey::has_param)
     }
 }
 
@@ -195,6 +235,19 @@ impl BucketsResolver for StaticResolver {
             upper: 1,
             nonempty: true,
             keys: HashSet::from_iter([RoutingKey::new(values)?]),
+        })
+    }
+
+    fn buckets_from_unbound_key(
+        &self,
+        parts: &[UnboundKeyPart<'_>],
+        _: Option<&SmolStr>,
+    ) -> Result<BucketProof, SbroadError> {
+        // `$1` may bind to `NULL`, which selects nothing.
+        Ok(BucketProof::Filtered {
+            upper: 1,
+            nonempty: false,
+            keys: HashSet::from_iter([RoutingKey::unbound(parts)?]),
         })
     }
 

@@ -863,72 +863,71 @@ WHERE
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-motion [policy: full, program: RemoveDuplicates]
-  union
-    projection (
-      t0.ay::text -> ay,
-      t0.bg::text -> bg,
-      t0.ah::text -> ah,
-      t1.cx::text -> cx
-    )
-      selection (
-        (
-          t0.cv::int = 3023424::int
-          and t0.aw::int = 0::int
-          and t0.bm::int = 2023::int
-          and t0.bk::int = 7::int
-          and t0.cq::int = 22::int
-        )
+union
+  projection (
+    t0.ay::text -> ay,
+    t0.bg::text -> bg,
+    t0.ah::text -> ah,
+    t1.cx::text -> cx
+  )
+    selection (
+      (
+        t0.cv::int = 3023424::int
+        and t0.aw::int = 0::int
+        and t0.bm::int = 2023::int
+        and t0.bk::int = 7::int
+        and t0.cq::int = 22::int
       )
+    )
+      left join on (
+        ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+      )
+        scan a -> t0 (indexed by ix_b)
+        scan ad -> t1
+  projection (
+    t2.ay::text -> c0,
+    coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+    coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+    t1.cx::text -> c3
+  )
+    selection (
+      (
+        t2.cv::int = 3023424::int
+        and coalesce(t4.aw::int::int, t2.bf::int::int)::int = 0::int
+        and to_char(
+          coalesce(
+            t2.cs::datetime::datetime,
+            t2.a::datetime::datetime
+          )::datetime::datetime,
+          '%Y'::text
+        )::text::int = 2023::int
+        and to_char(
+          coalesce(
+            t2.cs::datetime::datetime,
+            t2.a::datetime::datetime
+          )::datetime::datetime,
+          '%m'::text
+        )::text::int = 7::int
+        and coalesce(t4.cq::int::int, t6.cq::int::int)::int = 22::int
+      )
+    )
+      left join on (t2.cu::int = t6.cu::int)
         left join on (
-          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+          ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
-          scan a -> t0 (indexed by ix_b)
-          scan ad -> t1
-    projection (
-      t2.ay::text -> c0,
-      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
-      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
-      t1.cx::text -> c3
-    )
-      selection (
-        (
-          t2.cv::int = 3023424::int
-          and coalesce(t4.aw::int::int, t2.bf::int::int)::int = 0::int
-          and to_char(
-            coalesce(
-              t2.cs::datetime::datetime,
-              t2.a::datetime::datetime
-            )::datetime::datetime,
-            '%Y'::text
-          )::text::int = 2023::int
-          and to_char(
-            coalesce(
-              t2.cs::datetime::datetime,
-              t2.a::datetime::datetime
-            )::datetime::datetime,
-            '%m'::text
-          )::text::int = 7::int
-          and coalesce(t4.cq::int::int, t6.cq::int::int)::int = 22::int
-        )
-      )
-        left join on (t2.cu::int = t6.cu::int)
-          left join on (
-            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
-          )
-            left join on (t2.cw::int = t5.cw::int)
+          left join on (t2.cw::int = t5.cw::int)
+            left join on (
+              ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+            )
               left join on (
-                ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+                ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
               )
-                left join on (
-                  ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
-                )
-                  scan n -> t2
-                  scan n -> t3
-                scan y -> t4
-              scan f -> t5
-            scan ad -> t1
-          scan h -> t6
+                scan n -> t2
+                scan n -> t3
+              scan y -> t4
+            scan f -> t5
+          scan ad -> t1
+        scan h -> t6
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -1271,61 +1270,60 @@ WHERE
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-motion [policy: full, program: RemoveDuplicates]
-  union
-    projection (
-      t0.ay::text -> ay,
-      t0.bg::text -> bg,
-      t0.ah::text -> ah,
-      t1.cx::text -> cx
-    )
-      selection (
-        (
-          t0.cv::int = 3023424::int
-          and t0.aw::int = 0::int
-          and t0.a::datetime = '2023-07-28 0:00:00.0 +00:00:00'::datetime
-          and t0.cq::int = 22::int
-        )
+union
+  projection (
+    t0.ay::text -> ay,
+    t0.bg::text -> bg,
+    t0.ah::text -> ah,
+    t1.cx::text -> cx
+  )
+    selection (
+      (
+        t0.cv::int = 3023424::int
+        and t0.aw::int = 0::int
+        and t0.a::datetime = '2023-07-28 0:00:00.0 +00:00:00'::datetime
+        and t0.cq::int = 22::int
       )
+    )
+      left join on (
+        ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+      )
+        scan a -> t0 (indexed by ix_c)
+        scan ad -> t1
+  projection (
+    t2.ay::text -> c0,
+    coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+    coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+    t1.cx::text -> c3
+  )
+    selection (
+      (
+        t2.cv::int = 3023424::int
+        and coalesce(t4.aw::int::int, t2.bf::int::int)::int = 0::int
+        and coalesce(
+          t2.cs::datetime::datetime,
+          t2.a::datetime::datetime
+        )::datetime = '2023-07-28 0:00:00.0 +00:00:00'::datetime
+        and coalesce(t4.cq::int::int, t6.cq::int::int)::int = 22::int
+      )
+    )
+      left join on (t2.cu::int = t6.cu::int)
         left join on (
-          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+          ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
-          scan a -> t0 (indexed by ix_c)
-          scan ad -> t1
-    projection (
-      t2.ay::text -> c0,
-      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
-      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
-      t1.cx::text -> c3
-    )
-      selection (
-        (
-          t2.cv::int = 3023424::int
-          and coalesce(t4.aw::int::int, t2.bf::int::int)::int = 0::int
-          and coalesce(
-            t2.cs::datetime::datetime,
-            t2.a::datetime::datetime
-          )::datetime = '2023-07-28 0:00:00.0 +00:00:00'::datetime
-          and coalesce(t4.cq::int::int, t6.cq::int::int)::int = 22::int
-        )
-      )
-        left join on (t2.cu::int = t6.cu::int)
-          left join on (
-            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
-          )
-            left join on (t2.cw::int = t5.cw::int)
+          left join on (t2.cw::int = t5.cw::int)
+            left join on (
+              ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+            )
               left join on (
-                ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+                ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
               )
-                left join on (
-                  ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
-                )
-                  scan n -> t2
-                  scan n -> t3
-                scan y -> t4
-              scan f -> t5
-            scan ad -> t1
-          scan h -> t6
+                scan n -> t2
+                scan n -> t3
+              scan y -> t4
+            scan f -> t5
+          scan ad -> t1
+        scan h -> t6
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -5370,9 +5368,7 @@ subquery $1:
           row_number() over (order by (cte0.c0::text desc) ) -> c4
         )
           group by (cte0.c0::text)
-            motion [policy: full, program: ReshardIfNeeded]
-              projection (cte0.c0::text -> c0, cte0.aa::decimal -> aa)
-                scan cte cte0($0)
+            scan cte cte0($0)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -5381,36 +5377,6 @@ subquery $1:
 ╭────────────────────────────────────────╮
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
-''
-SELECT
-  "cte0"."c0",
-  "cte0"."aa"
-FROM
-  (
-    SELECT
-      to_char ("t0"."w"::datetime, '%Y-%m-%d'::text)::text as "c0",
-      "t0"."aa"
-    FROM
-      "m" as "t0"
-    WHERE
-      "t0"."cv" = 3023424::int
-      and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-      and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
-      and "t0"."aw" = 1::int
-      and "t0"."aa" <> 0::int
-  ) as "cte0"
-''
-plan:
-    [0] SEARCH TABLE m AS t0 
-         USING COVERING INDEX ix_ak 
-         (cv=? AND aw=? AND w>? AND w<?) 
-         (~1 row)
-''
-buckets = [1222]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
 ''
 SELECT
   *
@@ -5425,27 +5391,39 @@ FROM
     FROM
       (
         SELECT
-          "cte0"."COL_0" as "c0",
+          "cte0"."c0",
           sum (
             CASE
-              WHEN "cte0"."COL_1" > 0::int THEN "cte0"."COL_1"
+              WHEN "cte0"."aa" > 0::int THEN "cte0"."aa"
               ELSE 0::int
             END::decimal
           ) as "c1",
           sum (
             CASE
-              WHEN "cte0"."COL_1" < 0::int THEN "cte0"."COL_1"
+              WHEN "cte0"."aa" < 0::int THEN "cte0"."aa"
               ELSE 0::int
             END::decimal
           ) as "c2",
           0::int as "c3",
           row_number () OVER (
             ORDER BY
-              "cte0"."COL_0" DESC) as "c4"
+              "cte0"."c0" DESC) as "c4"
         FROM
-          "_tmp_9581021117656872455_1136" as "cte0"
+          (
+            SELECT
+              to_char ("t0"."w"::datetime, '%Y-%m-%d'::text)::text as "c0",
+              "t0"."aa"
+            FROM
+              "m" as "t0"
+            WHERE
+              "t0"."cv" = 3023424::int
+              and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+              and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+              and "t0"."aw" = 1::int
+              and "t0"."aa" <> 0::int
+          ) as "cte0"
         GROUP BY
-          "cte0"."COL_0"
+          "cte0"."c0"
       )
     ORDER BY
       "c0" DESC
@@ -5456,14 +5434,17 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_9581021117656872455_1136 AS cte0 (~1048576 rows)
+    [2] SEARCH TABLE m AS t0 
+         USING COVERING INDEX ix_ak 
+         (cv=? AND aw=? AND w>? AND w<?) 
+         (~1 row)
     [2] USE TEMP B-TREE FOR GROUP BY
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 (~1 row)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
-buckets = any
+buckets = [1222]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -5667,55 +5648,54 @@ WHERE
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-motion [policy: full, program: RemoveDuplicates]
-  union
-    projection (
-      cte0.ag::int -> ag,
-      cte0.v::int -> v,
-      cte0.bx::decimal -> bx,
-      cte0.bz::decimal -> bz,
-      cte0.ca::decimal -> ca,
-      cte0.cc::decimal -> cc,
-      cte0.cd::decimal -> cd,
-      cte0.ar::datetime -> ar,
-      cte0.cg::decimal -> cg,
-      cte0.ce::decimal -> ce,
-      cte0.i::datetime -> i,
-      cte0.cf::decimal -> cf,
-      cte0.cv::int -> cv,
-      cte0.aq::bool -> aq
-    )
-      scan cte cte0($0)
-    projection (
-      t0.ag::int -> ag,
-      t0.v::int -> v,
-      t0.bx::decimal -> bx,
-      t0.bz::decimal -> bz,
-      t0.ca::decimal -> ca,
-      t0.cc::decimal -> cc,
-      t0.cd::decimal -> cd,
-      t0.ar::datetime -> ar,
-      t0.cg::decimal -> cg,
-      t0.ce::decimal -> ce,
-      t0.i::datetime -> i,
-      t0.cf::decimal -> cf,
-      t0.cv::int -> cv,
-      t0.aq::bool -> aq
-    )
-      selection (
-        (
-          t0.cv::int = 3023424::int
-          and not coalesce(t0.aq::bool::bool, false::bool)::bool
-          and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::text)::text::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
-          and t0.ar::datetime >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-          and t0.ar::datetime <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
-        )
+union
+  projection (
+    cte0.ag::int -> ag,
+    cte0.v::int -> v,
+    cte0.bx::decimal -> bx,
+    cte0.bz::decimal -> bz,
+    cte0.ca::decimal -> ca,
+    cte0.cc::decimal -> cc,
+    cte0.cd::decimal -> cd,
+    cte0.ar::datetime -> ar,
+    cte0.cg::decimal -> cg,
+    cte0.ce::decimal -> ce,
+    cte0.i::datetime -> i,
+    cte0.cf::decimal -> cf,
+    cte0.cv::int -> cv,
+    cte0.aq::bool -> aq
+  )
+    scan cte cte0($0)
+  projection (
+    t0.ag::int -> ag,
+    t0.v::int -> v,
+    t0.bx::decimal -> bx,
+    t0.bz::decimal -> bz,
+    t0.ca::decimal -> ca,
+    t0.cc::decimal -> cc,
+    t0.cd::decimal -> cd,
+    t0.ar::datetime -> ar,
+    t0.cg::decimal -> cg,
+    t0.ce::decimal -> ce,
+    t0.i::datetime -> i,
+    t0.cf::decimal -> cf,
+    t0.cv::int -> cv,
+    t0.aq::bool -> aq
+  )
+    selection (
+      (
+        t0.cv::int = 3023424::int
+        and not coalesce(t0.aq::bool::bool, false::bool)::bool
+        and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::text)::text::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+        and t0.ar::datetime >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+        and t0.ar::datetime <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
       )
-        left join on (
-          ROW(t0.v::int, t0.cv::int) = ROW(t1.ag::int, t1.cv::int)
-        )
-          scan u -> t0
-          scan s -> t1
+    )
+      left join on (
+        ROW(t0.v::int, t0.cv::int) = ROW(t1.ag::int, t1.cv::int)
+      )
+        scan u -> t0
+        scan s -> t1
 subquery $0:
   limit 1
     projection (
@@ -5982,13 +5962,7 @@ subquery $1:
           row_number() over (order by (cte0.a::text desc) ) -> c3
         )
           group by (cte0.cu::int, cte0.a::text)
-            motion [policy: full, program: ReshardIfNeeded]
-              projection (
-                cte0.cu::int -> cu,
-                cte0.d::decimal -> d,
-                cte0.a::text -> a
-              )
-                scan cte cte0($0)
+            scan cte cte0($0)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -5997,44 +5971,6 @@ subquery $1:
 ╭────────────────────────────────────────╮
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
-''
-SELECT
-  "cte0"."cu",
-  "cte0"."d",
-  "cte0"."a"
-FROM
-  (
-    SELECT
-      "t0"."cu",
-      "t0"."d",
-      to_char (
-        coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
-        '%Y-%m-%d'::text
-      )::text as "a"
-    FROM
-      "l" as "t0"
-      LEFT JOIN "l" as "t1" ON "t1"."h" = "t0"."ag"
-      and "t1"."cv" = "t0"."cv"
-    WHERE
-      "t1"."ag" is null
-      and "t0"."cv" = 4797271::int
-      and "t0"."cw" = 1415::int
-      and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-      and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) <= '2025-10-20 0:00:00.0 +00:00:00'::datetime
-      and "t0"."cu" = 1333::int
-      and "t0"."h" is null
-      and coalesce ("t0"."bb"::int, 0::int) <> 1::int
-  ) as "cte0"
-''
-plan:
-    [0] SEARCH TABLE l AS t0 USING COVERING INDEX ix_ab (cv=? AND cw=?) (~6 rows)
-        [0] SEARCH TABLE l AS t1 USING COVERING INDEX ix_v (cv=?) (~8 rows)
-''
-buckets = [874]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
 ''
 SELECT
   *
@@ -6048,17 +5984,38 @@ FROM
     FROM
       (
         SELECT
-          "cte0"."COL_0" as "cu",
-          "cte0"."COL_2" as "a",
-          sum ("cte0"."COL_1"::decimal) as "d",
+          "cte0"."cu",
+          "cte0"."a",
+          sum ("cte0"."d"::decimal) as "d",
           row_number () OVER (
             ORDER BY
-              "cte0"."COL_2" DESC) as "c3"
+              "cte0"."a" DESC) as "c3"
         FROM
-          "_tmp_13552773643487694662_1136" as "cte0"
+          (
+            SELECT
+              "t0"."cu",
+              "t0"."d",
+              to_char (
+                coalesce ("t0"."cs"::datetime, "t0"."a"::datetime)::datetime,
+                '%Y-%m-%d'::text
+              )::text as "a"
+            FROM
+              "l" as "t0"
+              LEFT JOIN "l" as "t1" ON "t1"."h" = "t0"."ag"
+              and "t1"."cv" = "t0"."cv"
+            WHERE
+              "t1"."ag" is null
+              and "t0"."cv" = 4797271::int
+              and "t0"."cw" = 1415::int
+              and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) <= '2025-10-20 0:00:00.0 +00:00:00'::datetime
+              and "t0"."cu" = 1333::int
+              and "t0"."h" is null
+              and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+          ) as "cte0"
         GROUP BY
-          "cte0"."COL_0",
-          "cte0"."COL_2"
+          "cte0"."cu",
+          "cte0"."a"
       )
     ORDER BY
       "a" DESC
@@ -6069,14 +6026,15 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_13552773643487694662_1136 AS cte0 (~1048576 rows)
+    [2] SEARCH TABLE l AS t0 USING COVERING INDEX ix_ab (cv=? AND cw=?) (~6 rows)
+        [2] SEARCH TABLE l AS t1 USING COVERING INDEX ix_v (cv=?) (~8 rows)
     [2] USE TEMP B-TREE FOR GROUP BY
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 (~1 row)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
-buckets = any
+buckets = [874]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -6170,57 +6128,46 @@ limit 10
           order by (b::int desc)
             scan
               projection (
-                ag::int -> b,
-                cw::int,
-                cu::int,
-                coalesce(co::int::int, cm::int::int, 0::int)::int -> ac,
+                t0.ag::int -> b,
+                t0.cw::int -> cw,
+                t0.cu::int -> cu,
+                coalesce(t0.co::int::int, t0.cm::int::int, 0::int)::int -> ac,
                 case 
-                  when not co::int is null or not cm::int is null then cn::text
+                  when not t0.co::int is null or not t0.cm::int is null then t0.cn::text
                   else '0000'::text
                 end -> ae,
-                to_char(cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
+                to_char(t0.cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
                 case 
-                  when not co::int is null then 0::int
-                  when not cm::int is null then 1::int
+                  when not t0.co::int is null then 0::int
+                  when not t0.cm::int is null then 1::int
                   else 2::int
                 end -> ad,
-                d::decimal,
+                t0.d::decimal -> d,
                 0::int -> c8,
-                row_number() over (order by (ag::int desc) ) -> c9
+                row_number() over (order by (t0.ag::int desc) ) -> c9
               )
-                motion [policy: full, program: ReshardIfNeeded]
-                  projection (
-                    t0.ag::int -> ag,
-                    t0.cw::int -> cw,
-                    t0.cu::int -> cu,
-                    t0.d::decimal -> d,
-                    t0.cm::int -> cm,
-                    t0.cn::text -> cn,
-                    t0.cl::datetime -> cl,
-                    t0.co::int -> co
+                selection (
+                  (
+                    t1.ag::int is null
+                    and t0.cv::int = 8397725::int
+                    and t0.cw::int = 1415::int
+                    and coalesce(
+                      t0.cs::datetime::datetime,
+                      t0.a::datetime::datetime
+                    )::datetime = '2024-07-30 0:00:00.0 +00:00:00'::datetime
+                    and t0.cu::int = 1333::int
+                    and t0.h::int is null
+                    and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
                   )
-                    selection (
-                      (
-                        t1.ag::int is null
-                        and t0.cv::int = 8397725::int
-                        and t0.cw::int = 1415::int
-                        and coalesce(
-                          t0.cs::datetime::datetime,
-                          t0.a::datetime::datetime
-                        )::datetime = '2024-07-30 0:00:00.0 +00:00:00'::datetime
-                        and t0.cu::int = 1333::int
-                        and t0.h::int is null
-                        and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
-                      )
+                )
+                  left join on (
+                    (
+                      ROW(t0.cv::int, t0.ag::int) = ROW(t1.cv::int, t1.h::int)
+                      and t1.cv::int = 8397725::int
                     )
-                      left join on (
-                        (
-                          ROW(t0.cv::int, t0.ag::int) = ROW(t1.cv::int, t1.h::int)
-                          and t1.cv::int = 8397725::int
-                        )
-                      )
-                        scan l -> t0
-                        scan l -> t1
+                  )
+                    scan l -> t0
+                    scan l -> t1
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -6229,39 +6176,6 @@ limit 10
 ╭────────────────────────────────────────╮
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."cw",
-  "t0"."cu",
-  "t0"."d",
-  "t0"."cm",
-  "t0"."cn",
-  "t0"."cl",
-  "t0"."co"
-FROM
-  "l" as "t0"
-  LEFT JOIN "l" as "t1" ON "t1"."h" = "t0"."ag"
-  and "t1"."cv" = 8397725::int
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."ag" is null
-  and "t0"."cv" = 8397725::int
-  and "t0"."cw" = 1415::int
-  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2024-07-30 0:00:00.0 +00:00:00'::datetime
-  and "t0"."cu" = 1333::int
-  and "t0"."h" is null
-  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
-''
-plan:
-    [0] SEARCH TABLE l AS t0 USING COVERING INDEX ix_ab (cv=? AND cw=?) (~6 rows)
-        [0] SEARCH TABLE l AS t1 USING COVERING INDEX ix_v (cv=?) (~8 rows)
-''
-buckets = [2739]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
 ''
 SELECT
   *
@@ -6281,28 +6195,39 @@ FROM
     FROM
       (
         SELECT
-          "COL_0" as "b",
-          "COL_1" as "cw",
-          "COL_2" as "cu",
-          coalesce ("COL_7"::int, "COL_4"::int, 0::int) as "ac",
+          "t0"."ag" as "b",
+          "t0"."cw",
+          "t0"."cu",
+          coalesce ("t0"."co"::int, "t0"."cm"::int, 0::int) as "ac",
           CASE
-            WHEN not "COL_7" is null
-            or not "COL_4" is null THEN "COL_5"
+            WHEN not "t0"."co" is null
+            or not "t0"."cm" is null THEN "t0"."cn"
             ELSE '0000'::text
           END as "ae",
-          to_char ("COL_6"::datetime, '%Y-%m-%d'::text) as "ab",
+          to_char ("t0"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
           CASE
-            WHEN not "COL_7" is null THEN 0::int
-            WHEN not "COL_4" is null THEN 1::int
+            WHEN not "t0"."co" is null THEN 0::int
+            WHEN not "t0"."cm" is null THEN 1::int
             ELSE 2::int
           END as "ad",
-          "COL_3" as "d",
+          "t0"."d",
           0::int as "c8",
           row_number () OVER (
             ORDER BY
-              "COL_0" DESC) as "c9"
+              "t0"."ag" DESC) as "c9"
         FROM
-          "_tmp_14705003609386222305_1136"
+          "l" as "t0"
+          LEFT JOIN "l" as "t1" ON "t1"."h" = "t0"."ag"
+          and "t1"."cv" = 8397725::int
+          and "t1"."cv" = "t0"."cv"
+        WHERE
+          "t1"."ag" is null
+          and "t0"."cv" = 8397725::int
+          and "t0"."cw" = 1415::int
+          and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2024-07-30 0:00:00.0 +00:00:00'::datetime
+          and "t0"."cu" = 1333::int
+          and "t0"."h" is null
+          and coalesce ("t0"."bb"::int, 0::int) <> 1::int
       )
     ORDER BY
       "b" DESC
@@ -6313,13 +6238,13 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_14705003609386222305_1136 (~1048576 rows)
-    [2] USE TEMP B-TREE FOR ORDER BY
+    [2] SEARCH TABLE l AS t0 USING COVERING INDEX ix_d (cv=?) (~7 rows)
+        [2] SEARCH TABLE l AS t1 USING COVERING INDEX ix_v (cv=?) (~8 rows)
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 (~1 row)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
-buckets = any
+buckets = [2739]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -6418,57 +6343,46 @@ projection (
           order by (b::int desc)
             scan
               projection (
-                ag::int -> b,
-                cw::int,
-                cu::int,
-                coalesce(co::int::int, cm::int::int, 0::int)::int -> ac,
+                t0.ag::int -> b,
+                t0.cw::int -> cw,
+                t0.cu::int -> cu,
+                coalesce(t0.co::int::int, t0.cm::int::int, 0::int)::int -> ac,
                 case 
-                  when not co::int is null or not cm::int is null then cn::text
+                  when not t0.co::int is null or not t0.cm::int is null then t0.cn::text
                   else '0000'::text
                 end -> ae,
-                to_char(cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
+                to_char(t0.cl::datetime::datetime, '%Y-%m-%d'::text)::text -> ab,
                 case 
-                  when not co::int is null then 0::int
-                  when not cm::int is null then 1::int
+                  when not t0.co::int is null then 0::int
+                  when not t0.cm::int is null then 1::int
                   else 2::int
                 end -> ad,
-                d::decimal,
+                t0.d::decimal -> d,
                 0::int -> c10,
-                row_number() over (order by (ag::int desc) ) -> c11
+                row_number() over (order by (t0.ag::int desc) ) -> c11
               )
-                motion [policy: full, program: ReshardIfNeeded]
-                  projection (
-                    t0.ag::int -> ag,
-                    t0.cw::int -> cw,
-                    t0.cu::int -> cu,
-                    t0.d::decimal -> d,
-                    t0.cm::int -> cm,
-                    t0.cn::text -> cn,
-                    t0.cl::datetime -> cl,
-                    t0.co::int -> co
+                selection (
+                  (
+                    t1.ag::int is null
+                    and t0.cv::int = 8397725::int
+                    and t0.cw::int = 1415::int
+                    and coalesce(
+                      t0.cs::datetime::datetime,
+                      t0.a::datetime::datetime
+                    )::datetime = '2024-07-30 0:00:00.0 +00:00:00'::datetime
+                    and t0.cu::int = 1333::int
+                    and t0.h::int is null
+                    and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
                   )
-                    selection (
-                      (
-                        t1.ag::int is null
-                        and t0.cv::int = 8397725::int
-                        and t0.cw::int = 1415::int
-                        and coalesce(
-                          t0.cs::datetime::datetime,
-                          t0.a::datetime::datetime
-                        )::datetime = '2024-07-30 0:00:00.0 +00:00:00'::datetime
-                        and t0.cu::int = 1333::int
-                        and t0.h::int is null
-                        and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
-                      )
+                )
+                  left join on (
+                    (
+                      ROW(t0.cv::int, t0.ag::int) = ROW(t1.cv::int, t1.h::int)
+                      and t1.cv::int = 8397725::int
                     )
-                      left join on (
-                        (
-                          ROW(t0.cv::int, t0.ag::int) = ROW(t1.cv::int, t1.h::int)
-                          and t1.cv::int = 8397725::int
-                        )
-                      )
-                        scan l -> t0
-                        scan l -> t1
+                  )
+                    scan l -> t0
+                    scan l -> t1
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -6477,39 +6391,6 @@ projection (
 ╭────────────────────────────────────────╮
 │ 1. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
-''
-SELECT
-  "t0"."ag",
-  "t0"."cw",
-  "t0"."cu",
-  "t0"."d",
-  "t0"."cm",
-  "t0"."cn",
-  "t0"."cl",
-  "t0"."co"
-FROM
-  "l" as "t0"
-  LEFT JOIN "l" as "t1" ON "t1"."h" = "t0"."ag"
-  and "t1"."cv" = 8397725::int
-  and "t1"."cv" = "t0"."cv"
-WHERE
-  "t1"."ag" is null
-  and "t0"."cv" = 8397725::int
-  and "t0"."cw" = 1415::int
-  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2024-07-30 0:00:00.0 +00:00:00'::datetime
-  and "t0"."cu" = 1333::int
-  and "t0"."h" is null
-  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
-''
-plan:
-    [0] SEARCH TABLE l AS t0 USING COVERING INDEX ix_ab (cv=? AND cw=?) (~6 rows)
-        [0] SEARCH TABLE l AS t1 USING COVERING INDEX ix_v (cv=?) (~8 rows)
-''
-buckets = [2739]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
 ''
 SELECT
   count (*) as "c0",
@@ -6534,28 +6415,39 @@ FROM
         FROM
           (
             SELECT
-              "COL_0" as "b",
-              "COL_1" as "cw",
-              "COL_2" as "cu",
-              coalesce ("COL_7"::int, "COL_4"::int, 0::int) as "ac",
+              "t0"."ag" as "b",
+              "t0"."cw",
+              "t0"."cu",
+              coalesce ("t0"."co"::int, "t0"."cm"::int, 0::int) as "ac",
               CASE
-                WHEN not "COL_7" is null
-                or not "COL_4" is null THEN "COL_5"
+                WHEN not "t0"."co" is null
+                or not "t0"."cm" is null THEN "t0"."cn"
                 ELSE '0000'::text
               END as "ae",
-              to_char ("COL_6"::datetime, '%Y-%m-%d'::text) as "ab",
+              to_char ("t0"."cl"::datetime, '%Y-%m-%d'::text) as "ab",
               CASE
-                WHEN not "COL_7" is null THEN 0::int
-                WHEN not "COL_4" is null THEN 1::int
+                WHEN not "t0"."co" is null THEN 0::int
+                WHEN not "t0"."cm" is null THEN 1::int
                 ELSE 2::int
               END as "ad",
-              "COL_3" as "d",
+              "t0"."d",
               0::int as "c10",
               row_number () OVER (
                 ORDER BY
-                  "COL_0" DESC) as "c11"
+                  "t0"."ag" DESC) as "c11"
             FROM
-              "_tmp_1533417454465911506_1136"
+              "l" as "t0"
+              LEFT JOIN "l" as "t1" ON "t1"."h" = "t0"."ag"
+              and "t1"."cv" = 8397725::int
+              and "t1"."cv" = "t0"."cv"
+            WHERE
+              "t1"."ag" is null
+              and "t0"."cv" = 8397725::int
+              and "t0"."cw" = 1415::int
+              and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) = '2024-07-30 0:00:00.0 +00:00:00'::datetime
+              and "t0"."cu" = 1333::int
+              and "t0"."h" is null
+              and coalesce ("t0"."bb"::int, 0::int) <> 1::int
           )
         ORDER BY
           "b" DESC
@@ -6563,14 +6455,14 @@ FROM
   ) as "t3"
 ''
 plan:
-    [3] SCAN TABLE _tmp_1533417454465911506_1136 (~1048576 rows)
-    [3] USE TEMP B-TREE FOR ORDER BY
+    [3] SEARCH TABLE l AS t0 USING COVERING INDEX ix_d (cv=?) (~7 rows)
+        [3] SEARCH TABLE l AS t1 USING COVERING INDEX ix_v (cv=?) (~8 rows)
     [2] SCAN SUBQUERY 3 (~1 row)
     [1] SCAN SUBQUERY 2 (~1 row)
     [1] USE TEMP B-TREE FOR ORDER BY
     [0] SCAN SUBQUERY 1 AS t2 (~1 row)
 ''
-buckets = any
+buckets = [2739]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -8689,61 +8581,60 @@ WHERE
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-motion [policy: full, program: RemoveDuplicates]
-  union
-    projection (
-      t0.ay::text -> ay,
-      t0.bg::text -> bg,
-      t0.ah::text -> ah,
-      t1.cx::text -> cx
-    )
-      selection (
-        (
-          t0.cv::int = 3023424::int
-          and t0.aw::int = 11::int
-          and t0.a::datetime = '2022-10-12 0:00:00.0 +00:00:00'::datetime
-          and t0.cq::int = 6::int
-        )
+union
+  projection (
+    t0.ay::text -> ay,
+    t0.bg::text -> bg,
+    t0.ah::text -> ah,
+    t1.cx::text -> cx
+  )
+    selection (
+      (
+        t0.cv::int = 3023424::int
+        and t0.aw::int = 11::int
+        and t0.a::datetime = '2022-10-12 0:00:00.0 +00:00:00'::datetime
+        and t0.cq::int = 6::int
       )
+    )
+      left join on (
+        ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+      )
+        scan a -> t0
+        scan ad -> t1
+  projection (
+    t2.ay::text -> c0,
+    coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+    coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+    t1.cx::text -> c3
+  )
+    selection (
+      (
+        t2.cv::int = 3023424::int
+        and coalesce(t4.aw::int::int, t2.bf::int::int)::int = 11::int
+        and coalesce(
+          t2.cs::datetime::datetime,
+          t2.a::datetime::datetime
+        )::datetime = '2022-10-12 0:00:00.0 +00:00:00'::datetime
+        and coalesce(t4.cq::int::int, t6.cq::int::int)::int = 6::int
+      )
+    )
+      left join on (t2.cu::int = t6.cu::int)
         left join on (
-          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+          ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
-          scan a -> t0
-          scan ad -> t1
-    projection (
-      t2.ay::text -> c0,
-      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
-      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
-      t1.cx::text -> c3
-    )
-      selection (
-        (
-          t2.cv::int = 3023424::int
-          and coalesce(t4.aw::int::int, t2.bf::int::int)::int = 11::int
-          and coalesce(
-            t2.cs::datetime::datetime,
-            t2.a::datetime::datetime
-          )::datetime = '2022-10-12 0:00:00.0 +00:00:00'::datetime
-          and coalesce(t4.cq::int::int, t6.cq::int::int)::int = 6::int
-        )
-      )
-        left join on (t2.cu::int = t6.cu::int)
-          left join on (
-            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
-          )
-            left join on (t2.cw::int = t5.cw::int)
+          left join on (t2.cw::int = t5.cw::int)
+            left join on (
+              ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+            )
               left join on (
-                ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+                ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
               )
-                left join on (
-                  ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
-                )
-                  scan n -> t2
-                  scan n -> t3
-                scan y -> t4
-              scan f -> t5
-            scan ad -> t1
-          scan h -> t6
+                scan n -> t2
+                scan n -> t3
+              scan y -> t4
+            scan f -> t5
+          scan ad -> t1
+        scan h -> t6
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -9129,51 +9020,36 @@ limit 10
       scan cte cte0($0)
 subquery $0:
   projection (
-    z::int,
-    cw::int,
-    ay::text,
-    bg::text,
-    cu::int,
-    aa::decimal -> d,
-    ac::decimal,
-    ad::int,
-    ae::text,
-    ab::datetime,
+    t0.z::int -> z,
+    t0.cw::int -> cw,
+    t0.ay::text -> ay,
+    t0.bg::text -> bg,
+    t0.cu::int -> cu,
+    t0.aa::decimal -> d,
+    t0.ac::decimal -> ac,
+    t0.ad::int -> ad,
+    t0.ae::text -> ae,
+    t0.ab::datetime -> ab,
     0::int -> c10,
-    h::int,
-    cx::text,
+    t0.h::int -> h,
+    t1.cx::text -> cx,
     row_number() over () -> c13
   )
-    motion [policy: full, program: ReshardIfNeeded]
-      projection (
-        t0.z::int -> z,
-        t0.cu::int -> cu,
-        t0.aa::decimal -> aa,
-        t0.ay::text -> ay,
-        t0.bg::text -> bg,
-        t0.cw::int -> cw,
-        t0.ac::decimal -> ac,
-        t0.ae::text -> ae,
-        t0.ab::datetime -> ab,
-        t0.ad::int -> ad,
-        t0.h::int -> h,
-        t1.cx::text -> cx
+    selection (
+      (
+        t0.cv::int = 3023424::int
+        and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
+        and t0.w::datetime = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+        and t0.cu::int = 3465::int
+        and t0.bj::int is null
+        and t0.z::int = 11::int
       )
-        selection (
-          (
-            t0.cv::int = 3023424::int
-            and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
-            and t0.w::datetime = '2024-02-28 0:00:00.0 +00:00:00'::datetime
-            and t0.cu::int = 3465::int
-            and t0.bj::int is null
-            and t0.z::int = 11::int
-          )
-        )
-          left join on (
-            ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
-          )
-            scan m -> t0
-            scan ad -> t1
+    )
+      left join on (
+        ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+      )
+        scan m -> t0
+        scan ad -> t1
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -9184,61 +9060,35 @@ subquery $0:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "t0"."z",
-  "t0"."cu",
-  "t0"."aa",
-  "t0"."ay",
-  "t0"."bg",
-  "t0"."cw",
-  "t0"."ac",
-  "t0"."ae",
-  "t0"."ab",
-  "t0"."ad",
-  "t0"."h",
-  "t1"."cx"
-FROM
-  "m" as "t0"
-  LEFT JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
-  and "t0"."ay" = "t1"."ay"
-WHERE
-  "t0"."cv" = 3023424::int
-  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
-  and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
-  and "t0"."cu" = 3465::int
-  and "t0"."bj" is null
-  and "t0"."z" = 11::int
-''
-plan:
-    [0] SEARCH TABLE m AS t0 USING COVERING INDEX ix_af (cv=? AND w=?) (~6 rows)
-        [0] SEARCH TABLE ad AS t1 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
-''
-buckets = [1222]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT
   *
 FROM
   (
     SELECT
-      "COL_0" as "z",
-      "COL_5" as "cw",
-      "COL_3" as "ay",
-      "COL_4" as "bg",
-      "COL_1" as "cu",
-      "COL_2" as "d",
-      "COL_6" as "ac",
-      "COL_9" as "ad",
-      "COL_7" as "ae",
-      "COL_8" as "ab",
+      "t0"."z",
+      "t0"."cw",
+      "t0"."ay",
+      "t0"."bg",
+      "t0"."cu",
+      "t0"."aa" as "d",
+      "t0"."ac",
+      "t0"."ad",
+      "t0"."ae",
+      "t0"."ab",
       0::int as "c10",
-      "COL_10" as "h",
-      "COL_11" as "cx",
+      "t0"."h",
+      "t1"."cx",
       row_number () OVER () as "c13"
     FROM
-      "_tmp_11331358845081794028_1136"
+      "m" as "t0"
+      LEFT JOIN "ad" as "t1" ON "t0"."cv" = "t1"."cv"
+      and "t0"."ay" = "t1"."ay"
+    WHERE
+      "t0"."cv" = 3023424::int
+      and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+      and "t0"."w" = '2024-02-28 0:00:00.0 +00:00:00'::datetime
+      and "t0"."cu" = 3465::int
+      and "t0"."bj" is null
+      and "t0"."z" = 11::int
   ) as "cte0"
 WHERE
   "cte0"."c13" > 0::int
@@ -9246,11 +9096,12 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_11331358845081794028_1136 (~1048576 rows)
+    [2] SEARCH TABLE m AS t0 USING COVERING INDEX ix_af (cv=? AND w=?) (~6 rows)
+        [2] SEARCH TABLE ad AS t1 USING PRIMARY KEY (cv=? AND ay=?) (~1 row)
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte0 (~1 row)
 ''
-buckets = any
+buckets = [1222]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -9516,85 +9367,63 @@ limit 10
       scan cte cte0($0)
 subquery $0:
   projection (
-    to_char(w::datetime::datetime, '%Y-%m-%d'::text)::text -> a,
-    z::int,
-    cu::int,
-    bj::int,
+    to_char(t0.w::datetime::datetime, '%Y-%m-%d'::text)::text -> a,
+    t0.z::int -> z,
+    t0.cu::int -> cu,
+    t0.bj::int -> bj,
     sum(
       case 
-        when (aa::decimal > 0::int and not ao::bool) then aa::decimal
+        when (t0.aa::decimal > 0::int and not t0.ao::bool) then t0.aa::decimal
         else 0::int
       end::decimal
     )::decimal -> c4,
     sum(
       case 
-        when (aa::decimal < 0::int and not ao::bool) then aa::decimal
+        when (t0.aa::decimal < 0::int and not t0.ao::bool) then t0.aa::decimal
         else 0::int
       end::decimal
     )::decimal -> f,
     sum(
       case 
-        when (aa::decimal > 0::int and ao::bool) then aa::decimal
+        when (t0.aa::decimal > 0::int and t0.ao::bool) then t0.aa::decimal
         else 0::int
       end::decimal
     )::decimal -> g,
     sum(
       case 
-        when aw::int = 2::int then aa::decimal
+        when t0.aw::int = 2::int then t0.aa::decimal
         else 0::int
       end::decimal
     )::decimal -> c7,
     0::int -> c8,
     row_number() over (order by (
-      w::datetime asc,
-      cu::int is null asc,
-      cu::int asc,
-      bj::int is null asc,
-      bj::int asc,
-      z::int is null asc,
-      z::int desc
+      t0.w::datetime asc,
+      t0.cu::int is null asc,
+      t0.cu::int asc,
+      t0.bj::int is null asc,
+      t0.bj::int asc,
+      t0.z::int is null asc,
+      t0.z::int desc
     ) ) -> c9
   )
-    group by (w::datetime, bj::int, cu::int, z::int)
-      motion [policy: full, program: ReshardIfNeeded]
-        projection (
-          t0.ag::int -> ag,
-          t0.cv::int -> cv,
-          t0.cr::int -> cr,
-          t0.bucket_id::int -> bucket_id,
-          t0.w::datetime -> w,
-          t0.z::int -> z,
-          t0.cu::int -> cu,
-          t0.bj::int -> bj,
-          t0.bm::int -> bm,
-          t0.aw::int -> aw,
-          t0.aa::decimal -> aa,
-          t0.ao::bool -> ao,
-          t0.bb::int -> bb,
-          t0.ay::text -> ay,
-          t0.bg::text -> bg,
-          t0.ah::text -> ah,
-          t0.cw::int -> cw,
-          t0.ac::decimal -> ac,
-          t0.ae::text -> ae,
-          t0.ab::datetime -> ab,
-          t0.ad::int -> ad,
-          t0.h::int -> h,
-          t1.cu::int -> cu,
-          t1.cw::int -> cw
+    group by (
+      t0.w::datetime,
+      t0.bj::int,
+      t0.cu::int,
+      t0.z::int
+    )
+      selection (
+        (
+          t0.cv::int = 3023424::int
+          and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
+          and t0.w::datetime >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+          and t0.w::datetime <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+          and t0.aw::int <> 2::int
         )
-          selection (
-            (
-              t0.cv::int = 3023424::int
-              and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
-              and t0.w::datetime >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-              and t0.w::datetime <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
-              and t0.aw::int <> 2::int
-            )
-          )
-            left join on (t0.cu::int = t1.cu::int)
-              scan m -> t0
-              scan g -> t1
+      )
+        left join on (t0.cu::int = t1.cu::int)
+          scan m -> t0
+          scan g -> t1
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -9605,104 +9434,66 @@ subquery $0:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "t0"."ag",
-  "t0"."cv",
-  "t0"."cr",
-  "t0"."bucket_id",
-  "t0"."w",
-  "t0"."z",
-  "t0"."cu",
-  "t0"."bj",
-  "t0"."bm",
-  "t0"."aw",
-  "t0"."aa",
-  "t0"."ao",
-  "t0"."bb",
-  "t0"."ay",
-  "t0"."bg",
-  "t0"."ah",
-  "t0"."cw",
-  "t0"."ac",
-  "t0"."ae",
-  "t0"."ab",
-  "t0"."ad",
-  "t0"."h",
-  "t1"."cu",
-  "t1"."cw"
-FROM
-  "m" as "t0"
-  LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
-WHERE
-  "t0"."cv" = 3023424::int
-  and coalesce ("t0"."bb"::int, 0::int) <> 1::int
-  and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-  and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
-  and "t0"."aw" <> 2::int
-''
-plan:
-    [0] SEARCH TABLE m AS t0 USING COVERING INDEX ix_af (cv=? AND w>? AND w<?) (~1 row)
-        [0] SEARCH TABLE g AS t1 USING PRIMARY KEY (cu=?) (~1 row)
-''
-buckets = [1222]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT
   *
 FROM
   (
     SELECT
-      to_char ("COL_4"::datetime, '%Y-%m-%d'::text) as "a",
-      "COL_5" as "z",
-      "COL_6" as "cu",
-      "COL_7" as "bj",
+      to_char ("t0"."w"::datetime, '%Y-%m-%d'::text) as "a",
+      "t0"."z",
+      "t0"."cu",
+      "t0"."bj",
       sum (
         CASE
-          WHEN "COL_10" > 0::int
-          and not "COL_11" THEN "COL_10"
+          WHEN "t0"."aa" > 0::int
+          and not "t0"."ao" THEN "t0"."aa"
           ELSE 0::int
         END::decimal
       ) as "c4",
       sum (
         CASE
-          WHEN "COL_10" < 0::int
-          and not "COL_11" THEN "COL_10"
+          WHEN "t0"."aa" < 0::int
+          and not "t0"."ao" THEN "t0"."aa"
           ELSE 0::int
         END::decimal
       ) as "f",
       sum (
         CASE
-          WHEN "COL_10" > 0::int
-          and "COL_11" THEN "COL_10"
+          WHEN "t0"."aa" > 0::int
+          and "t0"."ao" THEN "t0"."aa"
           ELSE 0::int
         END::decimal
       ) as "g",
       sum (
         CASE
-          WHEN "COL_9" = 2::int THEN "COL_10"
+          WHEN "t0"."aw" = 2::int THEN "t0"."aa"
           ELSE 0::int
         END::decimal
       ) as "c7",
       0::int as "c8",
       row_number () OVER (
         ORDER BY
-          "COL_4" DESC,
-          "COL_6" is null ASC,
-          "COL_6" ASC,
-          "COL_7" is null ASC,
-          "COL_7" ASC,
-          "COL_5" is null ASC,
-          "COL_5" ASC
+          "t0"."w" DESC,
+          "t0"."cu" is null ASC,
+          "t0"."cu" ASC,
+          "t0"."bj" is null ASC,
+          "t0"."bj" ASC,
+          "t0"."z" is null ASC,
+          "t0"."z" ASC
       ) as "c9"
     FROM
-      "_tmp_4756673980213278866_1136"
+      "m" as "t0"
+      LEFT JOIN "g" as "t1" ON "t0"."cu" = "t1"."cu"
+    WHERE
+      "t0"."cv" = 3023424::int
+      and coalesce ("t0"."bb"::int, 0::int) <> 1::int
+      and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+      and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+      and "t0"."aw" <> 2::int
     GROUP BY
-      "COL_4",
-      "COL_7",
-      "COL_6",
-      "COL_5"
+      "t0"."w",
+      "t0"."bj",
+      "t0"."cu",
+      "t0"."z"
   ) as "cte0"
 WHERE
   "cte0"."c9" > 0::int
@@ -9710,13 +9501,14 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_4756673980213278866_1136 (~1048576 rows)
+    [2] SEARCH TABLE m AS t0 USING COVERING INDEX ix_af (cv=? AND w>? AND w<?) (~1 row)
+        [2] SEARCH TABLE g AS t1 USING PRIMARY KEY (cu=?) (~1 row)
     [2] USE TEMP B-TREE FOR GROUP BY
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte0 (~1 row)
 ''
-buckets = any
+buckets = [1222]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -9997,55 +9789,54 @@ WHERE
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-motion [policy: full, program: RemoveDuplicates]
-  union
-    projection (
-      cte0.ag::int -> ag,
-      cte0.v::int -> v,
-      cte0.bx::decimal -> bx,
-      cte0.bz::decimal -> bz,
-      cte0.ca::decimal -> ca,
-      cte0.cc::decimal -> cc,
-      cte0.cd::decimal -> cd,
-      cte0.ar::datetime -> ar,
-      cte0.cg::decimal -> cg,
-      cte0.ce::decimal -> ce,
-      cte0.i::datetime -> i,
-      cte0.cf::decimal -> cf,
-      cte0.cv::int -> cv,
-      cte0.aq::bool -> aq
-    )
-      scan cte cte0($0)
-    projection (
-      t0.ag::int -> ag,
-      t0.v::int -> v,
-      t0.bx::decimal -> bx,
-      t0.bz::decimal -> bz,
-      t0.ca::decimal -> ca,
-      t0.cc::decimal -> cc,
-      t0.cd::decimal -> cd,
-      t0.ar::datetime -> ar,
-      t0.cg::decimal -> cg,
-      t0.ce::decimal -> ce,
-      t0.i::datetime -> i,
-      t0.cf::decimal -> cf,
-      t0.cv::int -> cv,
-      t0.aq::bool -> aq
-    )
-      selection (
-        (
-          t0.cv::int = 3023424::int
-          and not coalesce(t0.aq::bool::bool, false::bool)::bool
-          and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::text)::text::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
-          and t0.ar::datetime >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-          and t0.ar::datetime <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
-        )
+union
+  projection (
+    cte0.ag::int -> ag,
+    cte0.v::int -> v,
+    cte0.bx::decimal -> bx,
+    cte0.bz::decimal -> bz,
+    cte0.ca::decimal -> ca,
+    cte0.cc::decimal -> cc,
+    cte0.cd::decimal -> cd,
+    cte0.ar::datetime -> ar,
+    cte0.cg::decimal -> cg,
+    cte0.ce::decimal -> ce,
+    cte0.i::datetime -> i,
+    cte0.cf::decimal -> cf,
+    cte0.cv::int -> cv,
+    cte0.aq::bool -> aq
+  )
+    scan cte cte0($0)
+  projection (
+    t0.ag::int -> ag,
+    t0.v::int -> v,
+    t0.bx::decimal -> bx,
+    t0.bz::decimal -> bz,
+    t0.ca::decimal -> ca,
+    t0.cc::decimal -> cc,
+    t0.cd::decimal -> cd,
+    t0.ar::datetime -> ar,
+    t0.cg::decimal -> cg,
+    t0.ce::decimal -> ce,
+    t0.i::datetime -> i,
+    t0.cf::decimal -> cf,
+    t0.cv::int -> cv,
+    t0.aq::bool -> aq
+  )
+    selection (
+      (
+        t0.cv::int = 3023424::int
+        and not coalesce(t0.aq::bool::bool, false::bool)::bool
+        and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::text)::text::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
+        and t0.ar::datetime >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+        and t0.ar::datetime <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
       )
-        left join on (
-          ROW(t0.v::int, t0.cv::int) = ROW(t1.ag::int, t1.cv::int)
-        )
-          scan u -> t0
-          scan s -> t1
+    )
+      left join on (
+        ROW(t0.v::int, t0.cv::int) = ROW(t1.ag::int, t1.cv::int)
+      )
+        scan u -> t0
+        scan s -> t1
 subquery $0:
   limit 1
     projection (
@@ -13047,61 +12838,60 @@ WHERE
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-motion [policy: full, program: RemoveDuplicates]
-  union
-    projection (
-      t0.ay::text -> ay,
-      t0.bg::text -> bg,
-      t0.ah::text -> ah,
-      t1.cx::text -> cx
-    )
-      selection (
-        (
-          t0.cv::int = 4797271::int
-          and t0.aw::int = 3::int
-          and t0.a::datetime = '2023-02-17 0:00:00.0 +00:00:00'::datetime
-          and t0.cq::int = 4::int
-        )
+union
+  projection (
+    t0.ay::text -> ay,
+    t0.bg::text -> bg,
+    t0.ah::text -> ah,
+    t1.cx::text -> cx
+  )
+    selection (
+      (
+        t0.cv::int = 4797271::int
+        and t0.aw::int = 3::int
+        and t0.a::datetime = '2023-02-17 0:00:00.0 +00:00:00'::datetime
+        and t0.cq::int = 4::int
       )
+    )
+      left join on (
+        ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+      )
+        scan a -> t0
+        scan ad -> t1
+  projection (
+    t2.ay::text -> c0,
+    coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+    coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+    t1.cx::text -> c3
+  )
+    selection (
+      (
+        t2.cv::int = 4797271::int
+        and coalesce(t4.aw::int::int, t2.bf::int::int)::int = 3::int
+        and coalesce(
+          t2.cs::datetime::datetime,
+          t2.a::datetime::datetime
+        )::datetime = '2023-02-17 0:00:00.0 +00:00:00'::datetime
+        and coalesce(t4.cq::int::int, t6.cq::int::int)::int = 4::int
+      )
+    )
+      left join on (t2.cu::int = t6.cu::int)
         left join on (
-          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+          ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
-          scan a -> t0
-          scan ad -> t1
-    projection (
-      t2.ay::text -> c0,
-      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
-      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
-      t1.cx::text -> c3
-    )
-      selection (
-        (
-          t2.cv::int = 4797271::int
-          and coalesce(t4.aw::int::int, t2.bf::int::int)::int = 3::int
-          and coalesce(
-            t2.cs::datetime::datetime,
-            t2.a::datetime::datetime
-          )::datetime = '2023-02-17 0:00:00.0 +00:00:00'::datetime
-          and coalesce(t4.cq::int::int, t6.cq::int::int)::int = 4::int
-        )
-      )
-        left join on (t2.cu::int = t6.cu::int)
-          left join on (
-            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
-          )
-            left join on (t2.cw::int = t5.cw::int)
+          left join on (t2.cw::int = t5.cw::int)
+            left join on (
+              ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+            )
               left join on (
-                ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+                ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
               )
-                left join on (
-                  ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
-                )
-                  scan n -> t2
-                  scan n -> t3
-                scan y -> t4
-              scan f -> t5
-            scan ad -> t1
-          scan h -> t6
+                scan n -> t2
+                scan n -> t3
+              scan y -> t4
+            scan f -> t5
+          scan ad -> t1
+        scan h -> t6
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -15317,70 +15107,69 @@ WHERE
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-motion [policy: full, program: RemoveDuplicates]
-  union
-    projection (
-      t0.ay::text -> ay,
-      t0.bg::text -> bg,
-      t0.ah::text -> ah,
-      t1.cx::text -> cx
-    )
-      selection (
-        (
-          t0.cv::int = 4797271::int
-          and t0.aw::int in ROW(42::int, 45::int)
-          and t0.bm::int = 2023::int
-          and t0.bk::int = 9::int
-        )
+union
+  projection (
+    t0.ay::text -> ay,
+    t0.bg::text -> bg,
+    t0.ah::text -> ah,
+    t1.cx::text -> cx
+  )
+    selection (
+      (
+        t0.cv::int = 4797271::int
+        and t0.aw::int in ROW(42::int, 45::int)
+        and t0.bm::int = 2023::int
+        and t0.bk::int = 9::int
       )
+    )
+      left join on (
+        ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+      )
+        scan a -> t0 (indexed by ix_b)
+        scan ad -> t1
+  projection (
+    t2.ay::text -> c0,
+    coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+    coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+    t1.cx::text -> c3
+  )
+    selection (
+      (
+        t2.cv::int = 4797271::int
+        and coalesce(t4.aw::int::int, t2.bf::int::int)::int in ROW(42::int, 45::int)
+        and to_char(
+          coalesce(
+            t2.cs::datetime::datetime,
+            t2.a::datetime::datetime
+          )::datetime::datetime,
+          '%Y'::text
+        )::text::int = 2023::int
+        and to_char(
+          coalesce(
+            t2.cs::datetime::datetime,
+            t2.a::datetime::datetime
+          )::datetime::datetime,
+          '%m'::text
+        )::text::int = 9::int
+      )
+    )
+      left join on (t2.cu::int = t6.cu::int)
         left join on (
-          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+          ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
-          scan a -> t0 (indexed by ix_b)
-          scan ad -> t1
-    projection (
-      t2.ay::text -> c0,
-      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
-      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
-      t1.cx::text -> c3
-    )
-      selection (
-        (
-          t2.cv::int = 4797271::int
-          and coalesce(t4.aw::int::int, t2.bf::int::int)::int in ROW(42::int, 45::int)
-          and to_char(
-            coalesce(
-              t2.cs::datetime::datetime,
-              t2.a::datetime::datetime
-            )::datetime::datetime,
-            '%Y'::text
-          )::text::int = 2023::int
-          and to_char(
-            coalesce(
-              t2.cs::datetime::datetime,
-              t2.a::datetime::datetime
-            )::datetime::datetime,
-            '%m'::text
-          )::text::int = 9::int
-        )
-      )
-        left join on (t2.cu::int = t6.cu::int)
-          left join on (
-            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
-          )
-            left join on (t2.cw::int = t5.cw::int)
+          left join on (t2.cw::int = t5.cw::int)
+            left join on (
+              ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+            )
               left join on (
-                ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+                ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
               )
-                left join on (
-                  ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
-                )
-                  scan n -> t2
-                  scan n -> t3
-                scan y -> t4
-              scan f -> t5
-            scan ad -> t1
-          scan h -> t6
+                scan n -> t2
+                scan n -> t3
+              scan y -> t4
+            scan f -> t5
+          scan ad -> t1
+        scan h -> t6
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -15694,59 +15483,58 @@ WHERE
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-motion [policy: full, program: RemoveDuplicates]
-  union
-    projection (
-      t0.ay::text -> ay,
-      t0.bg::text -> bg,
-      t0.ah::text -> ah,
-      t1.cx::text -> cx
-    )
-      selection (
-        (
-          t0.cv::int = 4797271::int
-          and t0.aw::int in ROW(42::int, 45::int)
-          and t0.a::datetime = '2023-09-25 0:00:00.0 +00:00:00'::datetime
-        )
+union
+  projection (
+    t0.ay::text -> ay,
+    t0.bg::text -> bg,
+    t0.ah::text -> ah,
+    t1.cx::text -> cx
+  )
+    selection (
+      (
+        t0.cv::int = 4797271::int
+        and t0.aw::int in ROW(42::int, 45::int)
+        and t0.a::datetime = '2023-09-25 0:00:00.0 +00:00:00'::datetime
       )
+    )
+      left join on (
+        ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+      )
+        scan a -> t0 (indexed by ix_a)
+        scan ad -> t1
+  projection (
+    t2.ay::text -> c0,
+    coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
+    coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
+    t1.cx::text -> c3
+  )
+    selection (
+      (
+        t2.cv::int = 4797271::int
+        and coalesce(t4.aw::int::int, t2.bf::int::int)::int in ROW(42::int, 45::int)
+        and coalesce(
+          t2.cs::datetime::datetime,
+          t2.a::datetime::datetime
+        )::datetime = '2023-09-25 0:00:00.0 +00:00:00'::datetime
+      )
+    )
+      left join on (t2.cu::int = t6.cu::int)
         left join on (
-          ROW(t0.cv::int, t0.ay::text) = ROW(t1.cv::int, t1.ay::text)
+          ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
         )
-          scan a -> t0 (indexed by ix_a)
-          scan ad -> t1
-    projection (
-      t2.ay::text -> c0,
-      coalesce(t4.bg::text::text, t2.bg::text::text)::text -> c1,
-      coalesce(t4.ah::text::text, t2.ah::text::text)::text -> c2,
-      t1.cx::text -> c3
-    )
-      selection (
-        (
-          t2.cv::int = 4797271::int
-          and coalesce(t4.aw::int::int, t2.bf::int::int)::int in ROW(42::int, 45::int)
-          and coalesce(
-            t2.cs::datetime::datetime,
-            t2.a::datetime::datetime
-          )::datetime = '2023-09-25 0:00:00.0 +00:00:00'::datetime
-        )
-      )
-        left join on (t2.cu::int = t6.cu::int)
-          left join on (
-            ROW(t2.cv::int, t2.ay::text) = ROW(t1.cv::int, t1.ay::text)
-          )
-            left join on (t2.cw::int = t5.cw::int)
+          left join on (t2.cw::int = t5.cw::int)
+            left join on (
+              ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+            )
               left join on (
-                ROW(t2.au::int, t2.cv::int) = ROW(t4.ag::int, t4.cv::int)
+                ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
               )
-                left join on (
-                  ROW(t2.ag::int, t2.cv::int) = ROW(t3.h::int, t3.cv::int)
-                )
-                  scan n -> t2
-                  scan n -> t3
-                scan y -> t4
-              scan f -> t5
-            scan ad -> t1
-          scan h -> t6
+                scan n -> t2
+                scan n -> t3
+              scan y -> t4
+            scan f -> t5
+          scan ad -> t1
+        scan h -> t6
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -20136,19 +19924,7 @@ subquery $1:
           cte0.bv::decimal -> bv,
           row_number() over (order by (cte0.bv::decimal asc) ) -> c9
         )
-          motion [policy: full, program: ReshardIfNeeded]
-            projection (
-              cte0.cq::int -> cq,
-              cte0.aw::int -> aw,
-              cte0.ay::text -> ay,
-              cte0.cu::int -> cu,
-              cte0.bg::text -> bg,
-              cte0.cz::bool -> cz,
-              cte0.aj::text -> aj,
-              cte0.am::int -> am,
-              cte0.bv::decimal -> bv
-            )
-              scan cte cte0($0)
+          scan cte cte0($0)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -20159,101 +19935,67 @@ subquery $1:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "cte0"."cq",
-  "cte0"."aw",
-  "cte0"."ay",
-  "cte0"."cu",
-  "cte0"."bg",
-  "cte0"."cz",
-  "cte0"."aj",
-  "cte0"."am",
-  "cte0"."bv"
-FROM
-  (
-    SELECT
-      "t0"."cq",
-      "t0"."aw",
-      "t0"."ay",
-      "t0"."cu",
-      "t0"."bg",
-      "t1"."cz",
-      "t2"."aj",
-      "t2"."am",
-      coalesce (
-        sum (
-          (
-            "t0"."bx" + "t0"."bz" + "t0"."ca" + "t0"."cd" + "t0"."cc" + "t0"."cg"
-          )::decimal
-        )::decimal,
-        0.0::decimal
-      ) as "bv"
-    FROM
-      "y" as "t0"
-      LEFT JOIN "i" as "t1" ON "t0"."cu" = "t1"."br"
-      LEFT JOIN "ab" as "t2" ON "t0"."cv" = "t2"."cv"
-    WHERE
-      "t0"."cv" = 2466827::int
-      and "t0"."ag" in (126412759::int, 126412766::int, 566228222::int)
-      and "t0"."cq" = 4::int
-    GROUP BY
-      "t0"."cq",
-      "t2"."aj",
-      "t2"."am",
-      "t0"."aw",
-      "t0"."ay",
-      "t0"."cu",
-      "t0"."bg",
-      "t1"."cz"
-  ) as "cte0"
-''
-plan:
-    [0] SEARCH TABLE y AS t0 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
-    [0] EXECUTE LIST SUBQUERY 1
-        [0] SEARCH TABLE i AS t1 USING PRIMARY KEY (br=?) (~1 row)
-            [0] SEARCH TABLE ab AS t2 USING PRIMARY KEY (cv=?) (~1 row)
-    [0] USE TEMP B-TREE FOR GROUP BY
-''
-buckets = [613]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT
   *
 FROM
   (
     SELECT
-      "COL_0" as "cq",
-      "COL_1" as "aw",
-      "COL_2" as "ay",
-      "COL_3" as "cu",
-      "COL_4" as "bg",
-      "COL_5" as "cz",
-      "COL_6" as "aj",
-      "COL_7" as "am",
-      "COL_8" as "bv",
+      "cq",
+      "aw",
+      "ay",
+      "cu",
+      "bg",
+      "cz",
+      "aj",
+      "am",
+      "bv",
       "c9"
     FROM
       (
         SELECT
-          "cte0"."COL_0",
-          "cte0"."COL_1",
-          "cte0"."COL_2",
-          "cte0"."COL_3",
-          "cte0"."COL_4",
-          "cte0"."COL_5",
-          "cte0"."COL_6",
-          "cte0"."COL_7",
-          "cte0"."COL_8",
+          "cte0".*,
           row_number () OVER (
             ORDER BY
-              "cte0"."COL_8" ASC) as "c9"
+              "cte0"."bv" ASC) as "c9"
         FROM
-          "_tmp_1517049134438195281_1136" as "cte0"
+          (
+            SELECT
+              "t0"."cq",
+              "t0"."aw",
+              "t0"."ay",
+              "t0"."cu",
+              "t0"."bg",
+              "t1"."cz",
+              "t2"."aj",
+              "t2"."am",
+              coalesce (
+                sum (
+                  (
+                    "t0"."bx" + "t0"."bz" + "t0"."ca" + "t0"."cd" + "t0"."cc" + "t0"."cg"
+                  )::decimal
+                )::decimal,
+                0.0::decimal
+              ) as "bv"
+            FROM
+              "y" as "t0"
+              LEFT JOIN "i" as "t1" ON "t0"."cu" = "t1"."br"
+              LEFT JOIN "ab" as "t2" ON "t0"."cv" = "t2"."cv"
+            WHERE
+              "t0"."cv" = 2466827::int
+              and "t0"."ag" in (126412759::int, 126412766::int, 566228222::int)
+              and "t0"."cq" = 4::int
+            GROUP BY
+              "t0"."cq",
+              "t2"."aj",
+              "t2"."am",
+              "t0"."aw",
+              "t0"."ay",
+              "t0"."cu",
+              "t0"."bg",
+              "t1"."cz"
+          ) as "cte0"
       )
     ORDER BY
-      "COL_8"
+      "bv"
   ) as "cte1"
 WHERE
   "cte1"."c9" > 0::int
@@ -20261,13 +20003,17 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_1517049134438195281_1136 AS cte0 (~1048576 rows)
+    [2] SEARCH TABLE y AS t0 USING COVERING INDEX ix_i (cv=? AND ag=?) (~8 rows)
+    [2] EXECUTE LIST SUBQUERY 3
+        [2] SEARCH TABLE i AS t1 USING PRIMARY KEY (br=?) (~1 row)
+            [2] SEARCH TABLE ab AS t2 USING PRIMARY KEY (cv=?) (~1 row)
+    [2] USE TEMP B-TREE FOR GROUP BY
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 (~1 row)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
-buckets = any
+buckets = [613]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
@@ -21083,42 +20829,29 @@ limit 20
       scan cte cte0($0)
 subquery $0:
   projection (
-    ba::text,
-    cu::int,
-    cq::int,
-    bo::text -> ay,
-    bp::text,
-    bh::text,
-    bq::datetime,
-    bu::datetime,
-    t::decimal,
-    az::decimal,
+    t0.ba::text -> ba,
+    t0.cu::int -> cu,
+    t1.cq::int -> cq,
+    t0.bo::text -> ay,
+    t0.bp::text -> bp,
+    t0.bh::text -> bh,
+    t0.bq::datetime -> bq,
+    t0.bu::datetime -> bu,
+    t0.t::decimal -> t,
+    t0.az::decimal -> az,
     row_number() over () -> c10
   )
-    motion [policy: full, program: ReshardIfNeeded]
-      projection (
-        t0.bq::datetime -> bq,
-        t0.t::decimal -> t,
-        t0.bo::text -> bo,
-        t0.bh::text -> bh,
-        t0.cu::int -> cu,
-        t0.bu::datetime -> bu,
-        t0.az::decimal -> az,
-        t0.ba::text -> ba,
-        t0.bp::text -> bp,
-        t1.cq::int -> cq
+    selection (
+      (
+        t0.cv::int = 2337497::int
+        and t1.cq::int = 4::int
       )
-        selection (
-          (
-            t0.cv::int = 2337497::int
-            and t1.cq::int = 4::int
-          )
-        )
-          left join on (t0.cu::int = t2.br::int)
-            left join on (t0.cu::int = t1.cu::int)
-              scan aa -> t0
-              scan h -> t1
-            scan i -> t2
+    )
+      left join on (t0.cu::int = t2.br::int)
+        left join on (t0.cu::int = t1.cu::int)
+          scan aa -> t0
+          scan h -> t1
+        scan i -> t2
 ''
 ──────────────────────────────────────────────────────────────────────
  # Raw plan                                                           
@@ -21129,53 +20862,28 @@ subquery $0:
 ╰────────────────────────────────────────╯
 ''
 SELECT
-  "t0"."bq",
-  "t0"."t",
-  "t0"."bo",
-  "t0"."bh",
-  "t0"."cu",
-  "t0"."bu",
-  "t0"."az",
-  "t0"."ba",
-  "t0"."bp",
-  "t1"."cq"
-FROM
-  "aa" as "t0"
-  LEFT JOIN "h" as "t1" ON "t0"."cu" = "t1"."cu"
-  LEFT JOIN "i" as "t2" ON "t0"."cu" = "t2"."br"
-WHERE
-  "t0"."cv" = 2337497::int
-  and "t1"."cq" = 4::int
-''
-plan:
-    [0] SCAN TABLE aa AS t0 (~262144 rows)
-        [0] SEARCH TABLE h AS t1 USING PRIMARY KEY (cu=?) (~1 row)
-            [0] SEARCH TABLE i AS t2 USING PRIMARY KEY (br=?) (~1 row)
-''
-buckets = [926]
-''
-╭───────────────────╮
-│ 2. Query (ROUTER) │
-╰───────────────────╯
-''
-SELECT
   *
 FROM
   (
     SELECT
-      "COL_7" as "ba",
-      "COL_4" as "cu",
-      "COL_9" as "cq",
-      "COL_2" as "ay",
-      "COL_8" as "bp",
-      "COL_3" as "bh",
-      "COL_0" as "bq",
-      "COL_5" as "bu",
-      "COL_1" as "t",
-      "COL_6" as "az",
+      "t0"."ba",
+      "t0"."cu",
+      "t1"."cq",
+      "t0"."bo" as "ay",
+      "t0"."bp",
+      "t0"."bh",
+      "t0"."bq",
+      "t0"."bu",
+      "t0"."t",
+      "t0"."az",
       row_number () OVER () as "c10"
     FROM
-      "_tmp_11708548574111138411_1136"
+      "aa" as "t0"
+      LEFT JOIN "h" as "t1" ON "t0"."cu" = "t1"."cu"
+      LEFT JOIN "i" as "t2" ON "t0"."cu" = "t2"."br"
+    WHERE
+      "t0"."cv" = 2337497::int
+      and "t1"."cq" = 4::int
   ) as "cte0"
 WHERE
   "cte0"."c10" > 0::int
@@ -21183,11 +20891,13 @@ LIMIT
   20
 ''
 plan:
-    [2] SCAN TABLE _tmp_11708548574111138411_1136 (~1048576 rows)
+    [2] SCAN TABLE aa AS t0 (~262144 rows)
+        [2] SEARCH TABLE h AS t1 USING PRIMARY KEY (cu=?) (~1 row)
+            [2] SEARCH TABLE i AS t2 USING PRIMARY KEY (br=?) (~1 row)
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte0 (~1 row)
 ''
-buckets = any
+buckets = [926]
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

@@ -1096,3 +1096,80 @@ fn let_statements_record_whether_they_are_used() {
         )
     );
 }
+
+#[test]
+fn single_bucket_statements_in_blocks() {
+    let ok_cases = [
+        "DO $$ BEGIN \
+            IF EXISTS (SELECT 1 FROM t5 WHERE a = $1) AND (SELECT b FROM t3_2 WHERE a = $1) > 0 \
+            THEN UPDATE t5 SET b = 1 WHERE a = $1; END IF; \
+        END $$",
+        "DO $$ BEGIN \
+            IF (SELECT count(*) FROM t5 WHERE a = $1) > 0 THEN DELETE FROM t5 WHERE a = $1; END IF; \
+        END $$",
+        "DO $$ BEGIN \
+            RETURN QUERY SELECT * FROM t5 WHERE a = $1 AND b IN (SELECT b FROM t3_2 WHERE a = $1); \
+        END $$",
+        "DO $$ BEGIN \
+            RETURN QUERY SELECT c FROM (SELECT (SELECT b FROM t5 WHERE a = $1) AS c) \
+            WHERE c > 0 ORDER BY c; \
+        END $$",
+        "DO $$ BEGIN RETURN QUERY SELECT row_number() OVER (ORDER BY b) FROM t5 WHERE a = $1; END $$",
+        "DO $$ BEGIN \
+            RETURN QUERY SELECT b FROM t5 WHERE a = $1 UNION SELECT b FROM t3_2 WHERE a = $1; \
+        END $$",
+        "DO $$ BEGIN \
+            RETURN QUERY SELECT count(*) FROM t5 WHERE a = $1 \
+            UNION ALL SELECT count(*) FROM t3_2 WHERE a = $1; \
+        END $$",
+        "DO $$ BEGIN \
+            LET x = (SELECT (SELECT b FROM global_t WHERE a = 1) + (SELECT count(*) FROM t5 WHERE a = $1)); \
+            RETURN QUERY SELECT x; \
+        END $$",
+        "DO $$ BEGIN \
+            LET v = (SELECT b FROM t3_2 WHERE a = $1); \
+            UPDATE t5 SET b = v WHERE a = $1; \
+        END $$",
+    ];
+    for block in ok_cases {
+        let mut plan = sql_to_ir_without_bind(block, &[]);
+        if let Err(error) = plan.optimize_block() {
+            panic!("{block}: {error}");
+        }
+    }
+
+    let tail = "cannot run in a transactional block because it requires \
+                cross-shard data movement; restrict by the sharding key, \
+                or move it outside the block";
+    let motion_cases = [
+        "DO $$ BEGIN \
+            IF EXISTS (SELECT 1 FROM t5 WHERE a = $1) AND (SELECT b FROM t3_2 WHERE a = $2) > 0 \
+            THEN RETURN QUERY SELECT 1; END IF; \
+        END $$",
+        "DO $$ BEGIN \
+            IF EXISTS (SELECT 1 FROM t5 WHERE a = $1 AND b IN (SELECT a FROM t3_2)) \
+            THEN RETURN QUERY SELECT 1; END IF; \
+        END $$",
+    ];
+    for block in motion_cases {
+        let mut plan = sql_to_ir_without_bind(block, &[]);
+        let error = plan.optimize_block().unwrap_err().to_string();
+        assert_eq!(
+            error,
+            format!("statement 1.1 (IF condition): {tail}"),
+            "{block}"
+        );
+    }
+
+    // DML in a block cannot have subqueries yet; LET can.
+    let error = expect_sql_to_ir_error(
+        "DO $$ BEGIN UPDATE t5 SET b = (SELECT b FROM t3_2 WHERE a = $1) WHERE a = $1; END $$",
+        &[],
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("UPDATE in transaction cannot have subqueries"),
+        "{error}"
+    );
+}

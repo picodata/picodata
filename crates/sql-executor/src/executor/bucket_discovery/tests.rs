@@ -1675,3 +1675,123 @@ fn join_buckets_left_follow_driving_side_inner_take_union() {
         assert_eq!(expected, discover(&sql, vec![]), "{sql}");
     }
 }
+
+mod pinned_select_without_scan {
+    use super::{discover, single_rel};
+    use crate::executor::engine::mock::RouterRuntimeMock;
+    use crate::executor::engine::Vshard;
+    use crate::executor::ExecutingQuery;
+    use crate::ir::bucket::Buckets;
+    use crate::ir::node::expression::{Expression, MutExpression};
+    use crate::ir::node::relational::Relational;
+    use crate::ir::node::{BoolExpr, Constant, ScanRelation, Selection};
+    use crate::ir::value::Value;
+    use crate::test_helpers::sql_to_optimized_ir;
+    use pretty_assertions::assert_eq;
+
+    fn bucket_of(values: &[i64]) -> Buckets {
+        let coordinator = RouterRuntimeMock::new();
+        let set = values
+            .iter()
+            .map(|v| {
+                coordinator
+                    .determine_bucket_id(&[&Value::from(*v)])
+                    .unwrap()
+            })
+            .collect();
+        Buckets::new_filtered(set)
+    }
+
+    #[test]
+    fn literal_key() {
+        let sql = "SELECT (SELECT count(*) FROM t5 WHERE a = 1) > 0";
+        assert_eq!(bucket_of(&[1]), discover(sql, vec![]));
+    }
+
+    #[test]
+    fn bound_parameter() {
+        let sql = "SELECT (SELECT b FROM t5 WHERE a = $1)";
+        assert_eq!(bucket_of(&[7]), discover(sql, vec![Value::from(7)]));
+    }
+
+    #[test]
+    fn two_subqueries_on_one_parameter() {
+        let sql = "SELECT EXISTS (SELECT 1 FROM t5 WHERE a = $1) \
+                   AND (SELECT b FROM t3_2 WHERE a = $1) > 0";
+        assert_eq!(bucket_of(&[7]), discover(sql, vec![Value::from(7)]));
+    }
+
+    #[test]
+    fn no_bucket_means_any_node() {
+        assert_ne!(bucket_of(&[1]), bucket_of(&[2]));
+        let sql = "SELECT (SELECT b FROM t5 WHERE a = 1 AND a = 2)";
+        assert_eq!(Buckets::Any, discover(sql, vec![]));
+    }
+
+    #[test]
+    fn empty_subquery_next_to_one_bucket() {
+        assert_ne!(bucket_of(&[1]), bucket_of(&[2]));
+        let sql = "SELECT (SELECT count(*) FROM t5 WHERE a = $1 AND a = $2), \
+                   (SELECT b FROM t3_2 WHERE a = $1)";
+        assert_eq!(
+            bucket_of(&[1]),
+            discover(sql, vec![Value::from(1), Value::from(2)])
+        );
+    }
+
+    #[test]
+    fn unpinned_runs_on_any_node() {
+        for sql in ["SELECT (SELECT b FROM global_t WHERE a = 1)", "SELECT 1"] {
+            assert_eq!(Buckets::Any, discover(sql, vec![]), "{sql}");
+        }
+    }
+
+    /// Only a wrong proof pins subqueries to different buckets: fail rather
+    /// than read one of them.
+    #[test]
+    fn several_buckets_fail() {
+        assert_ne!(bucket_of(&[1]), bucket_of(&[2]));
+        let mut plan = sql_to_optimized_ir(
+            "SELECT (SELECT b FROM t5 WHERE a = 1), (SELECT b FROM t3_2 WHERE a = 1)",
+            vec![],
+        );
+        let top = plan.get_top().unwrap();
+        let selection = single_rel(&plan, top, |rel| match rel {
+            Relational::Selection(Selection { child, .. }) => matches!(
+                plan.get_relation_node(*child),
+                Ok(Relational::ScanRelation(ScanRelation { relation, .. })) if relation == "t3_2"
+            ),
+            _ => false,
+        });
+        let Relational::Selection(Selection { filter, .. }) =
+            plan.get_relation_node(selection).unwrap()
+        else {
+            unreachable!()
+        };
+        let Expression::Bool(BoolExpr { right, .. }) = plan.get_expression_node(*filter).unwrap()
+        else {
+            panic!("expected a = 1");
+        };
+        let right = *right;
+        let MutExpression::Constant(Constant { value }) =
+            plan.get_mut_expression_node(right).unwrap()
+        else {
+            panic!("expected a constant");
+        };
+        *value = Value::from(2);
+
+        let coordinator = RouterRuntimeMock::new();
+        let mut query = ExecutingQuery::from_plan(&coordinator, plan).unwrap();
+        let error = query.bucket_discovery(top).unwrap_err();
+        assert!(
+            error.to_string().contains("pinned to one bucket reads"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn colocated_subquery_consumer() {
+        let sql = "SELECT * FROM t5 WHERE a = $1 AND b IN (SELECT b FROM t3_2 WHERE a = $1)";
+        assert_eq!(bucket_of(&[7]), discover(sql, vec![Value::from(7)]));
+    }
+}

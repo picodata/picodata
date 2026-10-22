@@ -12,8 +12,8 @@ use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::{
     Delete, Except, GroupBy, Having, Intersect, Join, Limit, Motion, NodeId, OrderBy, Projection,
-    Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
-    Selection, SubQueryReference, Union, UnionAll, Update,
+    Reference, ReferenceTarget, Row, ScanCte, ScanRelation, ScanSubQuery, Selection,
+    SubQueryReference, Union, UnionAll, Update,
 };
 use crate::ir::transformation::redistribution::{MotionKey, Target};
 
@@ -155,6 +155,11 @@ pub enum Distribution {
     /// The output of relational operator with this distribution
     /// can be located on several storages (maybe zero or one).
     /// Example: projection removes the segment key columns.
+    ///
+    /// On a `SELECT` without `FROM` it marks the node that `add_motions`
+    /// pinned to the bucket of its subqueries (see
+    /// [`Plan::is_pinned_select_without_scan`]). Every other such node is
+    /// `Global`.
     Any,
     /// The output of relational operator with this distribution
     /// can be located on several storages (maybe zero or one).
@@ -502,6 +507,8 @@ impl Plan {
     /// - node is not relational
     /// - output contains broken references
     /// - distribution of some child is not calculated yet
+    /// - distribution of the node is not derived from its output (e.g. a
+    ///   `SELECT` without `FROM`)
     ///
     /// # Panics
     /// - reference has invalid targets
@@ -516,10 +523,7 @@ impl Plan {
             // The arguments that reference the left side of a join are
             // computed together with that side, on the same instance.
             Relational::ScanFunction(_) => Distribution::Global,
-            Relational::Projection(Projection { output, .. })
-            | Relational::SelectWithoutScan(SelectWithoutScan { output, .. }) => {
-                self.distr_from_node(*output)?
-            }
+            Relational::Projection(Projection { output, .. }) => self.distr_from_node(*output)?,
             Relational::Join(Join { left, right, .. }) => {
                 // The columns of the left child are followed by the columns of the right
                 // one, so the keys of the right child move by the width of the left one.
@@ -566,6 +570,9 @@ impl Plan {
             }
             Relational::Insert(_)
             | Relational::Values(_)
+            // `add_motions` sets it: `Any` marks a pinned node, and a row of
+            // constants would derive `Any` too.
+            | Relational::SelectWithoutScan(_)
             | Relational::Motion(Motion { child: None, .. })
             | Relational::Delete(Delete { child: None, .. }) => {
                 return Err(SbroadError::Invalid(
@@ -787,6 +794,21 @@ impl Plan {
                     )),
                 )
             })
+    }
+
+    /// Whether `add_motions` pinned the `SELECT` without `FROM` to the bucket
+    /// of its subqueries. Only that pass sets the distribution of such a node:
+    /// `Any` if pinned, `Global` otherwise.
+    ///
+    /// # Errors
+    /// - node is not relational
+    /// - distribution is not calculated yet
+    pub fn is_pinned_select_without_scan(&self, rel_id: NodeId) -> Result<bool, SbroadError> {
+        let rel = self.get_relation_node(rel_id)?;
+        if !matches!(rel, Relational::SelectWithoutScan(_)) {
+            return Ok(false);
+        }
+        Ok(matches!(self.rel_distr_ref(rel_id)?, Distribution::Any))
     }
 
     /// Sets the distribution of the relational node.

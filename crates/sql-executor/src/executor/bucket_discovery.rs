@@ -1,4 +1,4 @@
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashSet;
 use std::ops::Not;
 
@@ -12,8 +12,8 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Constant, Delete, Except, Insert, Intersect, Join, Motion, NodeId, ScanRelation, Selection,
-    Union, UnionAll, Values,
+    Constant, Delete, Except, Insert, Intersect, Join, Motion, NodeId, ScanRelation,
+    SelectWithoutScan, Selection, Union, UnionAll, Values,
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
@@ -565,8 +565,38 @@ where
                     // We can materialize buckets on any node.
                     self.bucket_map.insert(node_id, Buckets::Any);
                 }
-                Relational::SelectWithoutScan(_) | Relational::ScanFunction(_) => {
+                Relational::ScanFunction(_) => {
                     self.bucket_map.insert(node_id, Buckets::Any);
+                }
+                Relational::SelectWithoutScan(SelectWithoutScan { subqueries, .. }) => {
+                    let mut buckets = Buckets::Any;
+                    // The planner pinned it to the bucket of its subqueries.
+                    // If they read no bucket, it runs on any node.
+                    if ir_plan.is_pinned_select_without_scan(node_id)? {
+                        debug_assert!(
+                            !subqueries.is_empty(),
+                            "pinned SELECT without FROM {node_id} has no subqueries"
+                        );
+                        for sq_id in subqueries {
+                            let sq_buckets = self.bucket_map.get(sq_id).ok_or_else(|| {
+                                SbroadError::FailedTo(
+                                    Action::Retrieve,
+                                    Some(Entity::Buckets),
+                                    "of the subquery from the bucket map.".to_smolstr(),
+                                )
+                            })?;
+                            buckets = buckets.disjunct(sq_buckets);
+                        }
+                        if !buckets.is_single_node() {
+                            return Err(SbroadError::Invalid(
+                                Entity::Buckets,
+                                Some(format_smolstr!(
+                                    "SELECT without FROM pinned to one bucket reads {buckets}"
+                                )),
+                            ));
+                        }
+                    }
+                    self.bucket_map.insert(node_id, buckets);
                 }
             }
         }

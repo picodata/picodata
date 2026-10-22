@@ -5,7 +5,7 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::distribution::Distribution;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::{
-    expression::Expression, BoolExpr, Constant, NodeId, Reference, ReferenceTarget,
+    expression::Expression, BoolExpr, Constant, NodeId, Parameter, Reference, ReferenceTarget,
 };
 use crate::ir::operator::Bool;
 use crate::ir::value::{value_to_decimal_or_error, Trivalent, Value};
@@ -265,6 +265,14 @@ impl BucketAlgebra for Buckets {
     }
 }
 
+/// A sharding-key column fixed by a constant or by a parameter.
+#[derive(Clone, Copy, Debug)]
+pub enum UnboundKeyPart<'v> {
+    Value(&'v Value),
+    /// The index of a parameter.
+    Param(u16),
+}
+
 pub trait BucketsResolver {
     type Buckets: BucketAlgebra;
 
@@ -276,6 +284,16 @@ pub trait BucketsResolver {
         values: &[&Value],
         tier: Option<&SmolStr>,
     ) -> Result<Self::Buckets, SbroadError>;
+
+    /// Buckets of a sharding key fixed by constants and unbound parameters:
+    /// at most one.
+    fn buckets_from_unbound_key(
+        &self,
+        _parts: &[UnboundKeyPart<'_>],
+        _tier: Option<&SmolStr>,
+    ) -> Result<Self::Buckets, SbroadError> {
+        Ok(Self::Buckets::new_at_most_one())
+    }
 
     /// Buckets implied by an explicit `bucket_id = <value>` predicate.
     ///
@@ -522,7 +540,7 @@ impl Plan {
                         }
                     }
 
-                    let mut values: Vec<&Value> = Vec::new();
+                    let mut parts: Vec<UnboundKeyPart> = Vec::new();
                     // The right side is a regular row or subquery which distribution
                     // didn't result in Motion creation (e.g. `"a" in (select "a" from t)`).
                     // So we have a case of `Eq` operator.
@@ -547,9 +565,8 @@ impl Plan {
                         if key.positions.len() > right_columns.len() {
                             continue;
                         }
-                        values.clear();
-                        values.reserve(key.positions.len());
-                        let mut has_parameter = false;
+                        parts.clear();
+                        let mut has_current_user = false;
                         let mut is_fixed_key = true;
                         for position in &key.positions {
                             // Since the sides in the "In" query can be of different lengths,
@@ -570,21 +587,24 @@ impl Plan {
                             let right_column_expr = self.get_expression_node(right_column_id)?;
                             match right_column_expr {
                                 Expression::Constant(_) => {
-                                    values.push(self.as_const_value_ref(right_column_id)?)
+                                    let value = self.as_const_value_ref(right_column_id)?;
+                                    parts.push(UnboundKeyPart::Value(value));
                                 }
                                 // Before `bind_params` we can't get actual value, but the
                                 // query is still single-node if all sharding-key columns are
                                 // fixed by constants or parameters. CURRENT_USER is replaced
                                 // with a constant on bind as well.
-                                Expression::Parameter(_) | Expression::CurrentUser(_) => {
-                                    has_parameter = true;
+                                Expression::Parameter(Parameter { index, .. }) => {
+                                    parts.push(UnboundKeyPart::Param(*index));
+                                }
+                                Expression::CurrentUser(_) => {
+                                    has_current_user = true;
                                 }
                                 _ => {
                                     // Row-dependent expressions on any sharding-key column make
                                     // the whole candidate key unresolved, even if other columns
                                     // are fixed by constants or parameters.
                                     is_fixed_key = false;
-                                    values.clear();
                                     break;
                                 }
                             }
@@ -592,11 +612,29 @@ impl Plan {
                         if !is_fixed_key {
                             continue;
                         }
-                        if has_parameter {
+                        if has_current_user {
                             conjunct_into(&mut buckets, R::Buckets::new_estimated(1));
-                        } else if !values.is_empty() {
-                            let values_buckets = resolver.buckets_from_values(&values, tier)?;
-                            conjunct_into(&mut buckets, values_buckets);
+                            continue;
+                        }
+                        // `None` if some part is a parameter.
+                        let values: Option<Vec<&Value>> = parts
+                            .iter()
+                            .map(|part| match part {
+                                UnboundKeyPart::Value(value) => Some(*value),
+                                UnboundKeyPart::Param(_) => None,
+                            })
+                            .collect();
+                        match values {
+                            None => {
+                                let key_buckets =
+                                    resolver.buckets_from_unbound_key(&parts, tier)?;
+                                conjunct_into(&mut buckets, key_buckets);
+                            }
+                            Some(values) if !values.is_empty() => {
+                                let values_buckets = resolver.buckets_from_values(&values, tier)?;
+                                conjunct_into(&mut buckets, values_buckets);
+                            }
+                            Some(_) => {}
                         }
                     }
                 }

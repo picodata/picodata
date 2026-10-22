@@ -730,5 +730,6 @@ mod groupby_alias;
 mod like;
 mod not_eq;
 mod not_in;
+mod single_bucket;
 mod table_function;
 mod unnamed_subquery;

@@ -1,8 +1,13 @@
 use super::explain;
 use crate::explain::buckets::{buckets_repr, BoundedBuckets, BucketFormatOptions};
+use crate::explain::ExplainExecutingQuery;
 use pretty_assertions::assert_eq;
+use sql_executor::executor::engine::mock::RouterRuntimeMock;
+use sql_executor::executor::ExecutingQuery;
+use sql_executor::test_helpers::ExecutingQueryExt;
 use sql_ir::collection;
 use sql_ir::ir::bucket::Buckets;
+use sql_ir::ir::value::Value;
 
 const PLAIN: BucketFormatOptions = BucketFormatOptions {
     fmt: false,
@@ -368,4 +373,48 @@ fn fmt_leaves_truncated_list_inline() {
         buckets_repr(&ten_wide, bc, PLAIN),
         buckets_repr(&ten_wide, bc, FMT)
     );
+}
+
+// Transactional blocks over one bucket.
+
+fn explain_block(sql: &str, params: Vec<Value>) -> Result<String, String> {
+    let metadata = &RouterRuntimeMock::new();
+    let query = ExecutingQuery::from_text_and_params(metadata, sql, params).unwrap();
+    ExplainExecutingQuery::from(query)
+        .explain()
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn block_statements_on_one_parameter() {
+    let blocks = [
+        "EXPLAIN (BUCKETS) DO $$ BEGIN \
+            IF EXISTS (SELECT 1 FROM t5 WHERE a = $1) AND (SELECT b FROM t3_2 WHERE a = $1) > 0 \
+            THEN UPDATE t5 SET b = 1 WHERE a = $1; END IF; \
+        END $$",
+        "EXPLAIN (BUCKETS) DO $$ BEGIN \
+            RETURN QUERY SELECT * FROM t5 WHERE a = $1 AND b IN (SELECT b FROM t3_2 WHERE a = $1); \
+        END $$",
+        "EXPLAIN (BUCKETS) DO $$ BEGIN \
+            RETURN QUERY SELECT count(*) FROM t5 WHERE a = $1 \
+            UNION ALL SELECT count(*) FROM t3_2 WHERE a = $1; \
+        END $$",
+        "EXPLAIN (BUCKETS) DO $$ BEGIN \
+            LET x = (SELECT (SELECT b FROM global_t WHERE a = 1) + (SELECT count(*) FROM t5 WHERE a = $1)); \
+            RETURN QUERY SELECT x; \
+        END $$",
+    ];
+    for block in blocks {
+        let explain = explain_block(block, vec![Value::from(7)]).unwrap();
+        assert_eq!(explain, "buckets = [2329]", "{block}");
+    }
+}
+
+#[test]
+fn block_condition_and_dml_on_different_buckets() {
+    let block = "EXPLAIN (BUCKETS) DO $$ BEGIN \
+        IF (SELECT count(*) FROM t5 WHERE a = $1) > 0 THEN UPDATE t5 SET b = 1 WHERE a = $2; END IF; \
+    END $$";
+    let error = explain_block(block, vec![Value::from(1), Value::from(2)]).unwrap_err();
+    assert!(error.contains("different buckets"), "{error}");
 }

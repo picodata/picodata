@@ -352,6 +352,13 @@ impl Strategy {
         self.children_policy.insert(child_id, (policy, program));
     }
 
+    /// Leave the children without motions.
+    fn keep_in_place(&mut self, children: &AHashSet<NodeId>) {
+        for child_id in children {
+            self.upsert_child(*child_id, MotionPolicy::None, Program::default());
+        }
+    }
+
     fn upsert_alias_hint(&mut self, child_id: NodeId, alias: SmolStr) {
         self.children_alias_hints.insert(child_id, alias);
     }
@@ -676,14 +683,285 @@ impl Plan {
                     }
                 }
             }
-            Relational::UnionAll(UnionAll { left, right, .. }) => {
+            Relational::UnionAll(UnionAll { left, right, .. })
+            | Relational::Union(Union { left, right, .. }) => {
                 let left = self.single_node_buckets(*left, cache)?;
                 let right = self.single_node_buckets(*right, cache)?;
                 Ok(left.disjunct(&right))
             }
+            // Pinned by `add_motions`: it runs next to its sharded subqueries.
+            Relational::SelectWithoutScan(_) if self.is_pinned_select_without_scan(rel_id)? => {
+                let buckets = self.sharded_subqueries_buckets(rel_id, cache)?;
+                debug_assert!(
+                    buckets.is_some(),
+                    "pinned SELECT without FROM {rel_id} has no sharded subqueries"
+                );
+                Ok(buckets.unwrap_or(BucketProof::Any))
+            }
             Relational::Values(_) | Relational::SelectWithoutScan(_) => Ok(BucketProof::Any),
             _ => Ok(BucketProof::Unknown),
         }
+    }
+
+    /// Subqueries over sharded data: `Segment`, or `Any` for a pinned
+    /// `SELECT` without `FROM`.
+    fn sharded_subqueries(&self, rel_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
+        let mut sharded = Vec::new();
+        for sq in self.get_relation_subqueries(rel_id)?.iter() {
+            if matches!(
+                self.rel_distr_ref(*sq)?,
+                Distribution::Segment { .. } | Distribution::Any
+            ) {
+                sharded.push(*sq);
+            }
+        }
+        Ok(sharded)
+    }
+
+    /// Union of the sharded subqueries' bounds, `None` if there are none.
+    /// Not folded from `Any`: `Any` with a possibly empty set is `Unknown`.
+    fn sharded_subqueries_buckets(
+        &self,
+        rel_id: NodeId,
+        cache: &mut MotionsCache,
+    ) -> Result<Option<BucketProof>, SbroadError> {
+        let mut buckets: Option<BucketProof> = None;
+        for sq in self.sharded_subqueries(rel_id)? {
+            let sq_buckets = self.single_node_buckets(sq, cache)?;
+            buckets = Some(match buckets {
+                Some(buckets) => buckets.disjunct(&sq_buckets),
+                None => sq_buckets,
+            });
+        }
+        Ok(buckets)
+    }
+
+    /// The expressions a relational node computes itself, not its children.
+    fn own_expressions(
+        &self,
+        rel_id: NodeId,
+    ) -> impl Iterator<Item = Result<NodeId, SbroadError>> + '_ {
+        self.subtree_iter(rel_id)
+            .filter_map(move |id| match self.get_node(id) {
+                Ok(Node::Expression(_)) => Some(Ok(id)),
+                Ok(_) => None,
+                Err(e) => Some(Err(e)),
+            })
+    }
+
+    /// Uses of each subquery in the node's own expressions, counted by
+    /// references to its first column (`BETWEEN` uses its operand twice).
+    fn subquery_occurrences(&self, rel_id: NodeId) -> Result<AHashMap<NodeId, usize>, SbroadError> {
+        let mut occurrences = AHashMap::new();
+        for expr_id in self.own_expressions(rel_id) {
+            for ref_id in self.get_sq_refs_from_subtree(expr_id?)? {
+                if let Expression::SubQueryReference(SubQueryReference {
+                    rel_id,
+                    position: 0,
+                    ..
+                }) = self.get_expression_node(ref_id)?
+                {
+                    *occurrences.entry(*rel_id).or_insert(0) += 1;
+                }
+            }
+        }
+        Ok(occurrences)
+    }
+
+    fn has_volatile_expressions(&self, rel_id: NodeId) -> Result<bool, SbroadError> {
+        for expr_id in self.own_expressions(rel_id) {
+            if self.contains_volatile(expr_id?, true)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Whether the subtree, subqueries included, has a motion or a volatile
+    /// function.
+    fn subtree_has_motion_or_volatile(&self, rel_id: NodeId) -> Result<bool, SbroadError> {
+        if self.subtree_has_motions(rel_id)? {
+            return Ok(true);
+        }
+        let tree = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), rel_id);
+        for (id, _) in tree {
+            if self.has_volatile_expressions(id)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Sharded subqueries of `rel_id` that read only the bucket of its input,
+    /// so they need no motion. Conditions:
+    /// - the consumer is a `Selection`, `Projection`, `GroupBy` or `OrderBy`;
+    /// - it is not in `gathered_by_windows`, which run on the router;
+    /// - its input is proven to read one bucket (`Filtered`) and is not
+    ///   global: a global filter that rejects every row is `Filtered` too;
+    /// - the subquery reads that bucket or none;
+    /// - neither the consumer nor its input stage computes a scalar
+    ///   aggregate: it emits a row even with no buckets, on an arbitrary node.
+    ///
+    /// A subquery used twice (`BETWEEN`) runs at each use on that node, like
+    /// a global one.
+    fn colocated_subqueries(
+        &self,
+        rel_id: NodeId,
+        gathered_by_windows: &AHashSet<NodeId>,
+        cache: &mut MotionsCache,
+    ) -> Result<AHashSet<NodeId>, SbroadError> {
+        let mut colocated = AHashSet::new();
+        if gathered_by_windows.contains(&rel_id) || self.get_relation_subqueries(rel_id)?.is_empty()
+        {
+            return Ok(colocated);
+        }
+        let anchor = match self.get_relation_node(rel_id)? {
+            // Not cached: the bounds depend on the subqueries' distributions,
+            // which their motions change.
+            Relational::Selection(_) => self.compute_single_node_buckets(rel_id, cache)?,
+            Relational::Projection(Projection {
+                output,
+                group_by: None,
+                having,
+                ..
+            }) if having.is_some() || self.contains_aggregates(*output, true)? => {
+                return Ok(colocated);
+            }
+            Relational::Projection(_) | Relational::GroupBy(_) | Relational::OrderBy(_) => {
+                self.single_node_buckets(self.get_first_rel_child(rel_id)?, cache)?
+            }
+            _ => return Ok(colocated),
+        };
+        let input = self.get_first_rel_child(rel_id)?;
+        if !anchor.is_single_node_filtered()
+            || matches!(self.rel_distr_ref(input)?, Distribution::Global)
+            || self.has_shard_scalar_aggregate(input, cache)?
+        {
+            return Ok(colocated);
+        }
+        for sq in self.sharded_subqueries(rel_id)? {
+            let sq_buckets = self.single_node_buckets(sq, cache)?;
+            if matches!(sq_buckets, BucketProof::Filtered { .. })
+                && anchor.disjunct(&sq_buckets).is_single_node()
+            {
+                colocated.insert(sq);
+            }
+        }
+        Ok(colocated)
+    }
+
+    /// Nodes that reach the statement root or a subquery root only through a
+    /// `Projection` without windows, `Selection`, `GroupBy`, `Having`,
+    /// `OrderBy`, `Limit`, `ScanSubQuery` or a `ScanCte` used once, none of
+    /// them with subqueries or volatile functions of its own.
+    ///
+    /// Only these may run on their bucket instead of the router (`SELECT`
+    /// without `FROM`, windows, `UNION`, `EXCEPT`). Other parents pick motions
+    /// by the input's distribution: a join or a set operation would move its
+    /// other, larger input; subqueries would ship their virtual tables to the
+    /// storage; volatile functions would run there; a CTE used twice has
+    /// other readers.
+    fn in_place_nodes(
+        &self,
+        top_id: NodeId,
+        nodes: &[NodeId],
+        cte_ref_counts: &AHashMap<NodeId, usize>,
+    ) -> Result<AHashSet<NodeId>, SbroadError> {
+        let mut in_place = AHashSet::new();
+        let mut has_targets = false;
+        for id in nodes {
+            let is_target = match self.get_relation_node(*id)? {
+                Relational::Projection(Projection { windows, .. }) => !windows.is_empty(),
+                rel => matches!(
+                    rel,
+                    Relational::SelectWithoutScan(_) | Relational::Union(_) | Relational::Except(_)
+                ),
+            };
+            if is_target {
+                has_targets = true;
+                break;
+            }
+        }
+        if !has_targets {
+            return Ok(in_place);
+        }
+        let mut roots = vec![top_id];
+        for id in nodes {
+            // `Having` adds no motions over its subqueries, and `Join` adds them
+            // only to direct operands of comparisons, so their subqueries must
+            // stay gathered: in place they would read the nodes of the consumer.
+            if matches!(
+                self.get_relation_node(*id)?,
+                Relational::Join(_) | Relational::Having(_)
+            ) {
+                continue;
+            }
+            roots.extend(self.get_relation_subqueries(*id)?.iter());
+        }
+        for root in roots {
+            let mut id = root;
+            loop {
+                in_place.insert(id);
+                let passes_through = match self.get_relation_node(id)? {
+                    Relational::Projection(Projection { windows, .. }) => windows.is_empty(),
+                    Relational::ScanCte(ScanCte { child, .. }) => {
+                        cte_ref_counts.get(child) == Some(&1)
+                    }
+                    Relational::Selection(_)
+                    | Relational::GroupBy(_)
+                    | Relational::Having(_)
+                    | Relational::OrderBy(_)
+                    | Relational::Limit(_)
+                    | Relational::ScanSubQuery(_) => true,
+                    _ => false,
+                };
+                if !passes_through
+                    || !self.get_relation_subqueries(id)?.is_empty()
+                    || self.has_volatile_expressions(id)?
+                {
+                    break;
+                }
+                id = self.get_first_rel_child(id)?;
+            }
+        }
+        Ok(in_place)
+    }
+
+    /// Whether a `SELECT` without `FROM` can run on the bucket of its
+    /// subqueries instead of the router. Conditions:
+    /// - no subquery is gathered (`Single`): it would be shipped back to the
+    ///   storage;
+    /// - each sharded subquery occurs once, so it is not evaluated twice;
+    /// - the sharded subqueries read one bucket together;
+    /// - neither the output nor a global subquery has volatile functions, and
+    ///   no global subquery has motions: they must stay on the router.
+    fn sws_is_pinnable(
+        &self,
+        id: NodeId,
+        output: NodeId,
+        cache: &mut MotionsCache,
+    ) -> Result<bool, SbroadError> {
+        if self.contains_volatile(output, true)? {
+            return Ok(false);
+        }
+        for sq in self.get_relation_subqueries(id)?.iter() {
+            match self.rel_distr_ref(*sq)? {
+                Distribution::Single => return Ok(false),
+                Distribution::Global if self.subtree_has_motion_or_volatile(*sq)? => {
+                    return Ok(false)
+                }
+                _ => {}
+            }
+        }
+        let occurrences = self.subquery_occurrences(id)?;
+        for sq in self.sharded_subqueries(id)? {
+            if occurrences.get(&sq) != Some(&1) {
+                return Ok(false);
+            }
+        }
+        Ok(self
+            .sharded_subqueries_buckets(id, cache)?
+            .is_some_and(|buckets| buckets.is_single_node_filtered()))
     }
 
     /// Check for join/sq equality on `bucket_id` column:
@@ -1027,7 +1305,14 @@ impl Plan {
         Ok(Distribution::Segment { keys })
     }
 
-    fn resolve_window_conflicts(&mut self, rel_id: NodeId) -> Result<Strategy, SbroadError> {
+    /// With `in_place` (see [`Self::in_place_nodes`]), windows over a
+    /// single-node input run on that node.
+    fn resolve_window_conflicts(
+        &mut self,
+        rel_id: NodeId,
+        in_place: bool,
+        cache: &mut MotionsCache,
+    ) -> Result<Strategy, SbroadError> {
         let rel = self.get_relation_node(rel_id)?;
 
         let Relational::Projection(Projection { windows, .. }) = rel else {
@@ -1060,6 +1345,10 @@ impl Plan {
             strategy.upsert_child(first_child_id, MotionPolicy::None, Program::default());
             return Ok(strategy);
         };
+        if in_place && self.is_single_node_subtree(first_child_id, cache)? {
+            strategy.upsert_child(first_child_id, MotionPolicy::None, Program::default());
+            return Ok(strategy);
+        }
 
         // Collect the distribution of the child.
         let child_dist = self.rel_distr_ref(first_child_id)?.to_owned();
@@ -1927,8 +2216,15 @@ impl Plan {
         Ok(false)
     }
 
+    /// With `in_place` (see [`Self::in_place_nodes`]), inputs on one bucket
+    /// need no motion.
     #[allow(clippy::too_many_lines)]
-    fn resolve_except_conflicts(&mut self, rel_id: NodeId) -> Result<Strategy, SbroadError> {
+    fn resolve_except_conflicts(
+        &mut self,
+        rel_id: NodeId,
+        in_place: bool,
+        cache: &mut MotionsCache,
+    ) -> Result<Strategy, SbroadError> {
         if !matches!(self.get_relation_node(rel_id)?, Relational::Except(_)) {
             return Err(SbroadError::Invalid(
                 Entity::Relational,
@@ -1948,6 +2244,19 @@ impl Plan {
         let right_dist = self.rel_distr_ref(right_id)?;
 
         if self.is_except_on_bucket_id(left_id, right_id)? {
+            return Ok(map);
+        }
+
+        // Both inputs are on one bucket. EXCEPT is routed by its left input,
+        // which must not emit a row from empty input: with no buckets it runs
+        // on an arbitrary node.
+        if in_place
+            && self
+                .single_node_buckets(left_id, cache)?
+                .disjunct(&self.single_node_buckets(right_id, cache)?)
+                .is_single_node_filtered()
+            && !self.has_shard_scalar_aggregate(left_id, cache)?
+        {
             return Ok(map);
         }
 
@@ -2223,6 +2532,10 @@ impl Plan {
 
     /// Whether both branches select the same nonempty bucket. A possibly empty
     /// input cannot pin a scalar aggregate, which emits a row even without input.
+    ///
+    /// Branches on one parameter key may be empty but read no other bucket:
+    /// the union runs on that bucket or, if none, on one node picked for the
+    /// aggregate (`emits_row_from_empty_input`).
     fn union_shares_one_bucket(
         &self,
         left: NodeId,
@@ -2231,9 +2544,9 @@ impl Plan {
     ) -> Result<bool, SbroadError> {
         let left = self.single_node_buckets(left, cache)?;
         let right = self.single_node_buckets(right, cache)?;
-        Ok(left.is_nonempty_filtered()
-            && right.is_nonempty_filtered()
-            && left.disjunct(&right).is_single_node())
+        let pinned = (left.is_nonempty_filtered() && right.is_nonempty_filtered())
+            || left.shares_param_key(&right);
+        Ok(pinned && left.disjunct(&right).is_single_node())
     }
 
     /// Whether the stage computing `rel_id` also computes a scalar aggregate
@@ -2410,6 +2723,23 @@ impl Plan {
                 *cte_ref_counts.entry(*child).or_insert(0) += 1;
             }
         }
+        let in_place = self.in_place_nodes(top_id, &nodes, &cte_ref_counts)?;
+        // Windows outside `in_place` or with volatile functions gather their
+        // input on the router, where their projection and GROUP BY run too.
+        let mut gathered_by_windows = AHashSet::new();
+        for id in &nodes {
+            if let Relational::Projection(Projection {
+                windows, group_by, ..
+            }) = self.get_relation_node(*id)?
+            {
+                if !windows.is_empty()
+                    && (!in_place.contains(id) || self.has_volatile_expressions(*id)?)
+                {
+                    gathered_by_windows.insert(*id);
+                    gathered_by_windows.extend(*group_by);
+                }
+            }
+        }
         // Set of already visited nodes. Used for the case of BETWEEN where two expressions may
         // refer to the same relational node.
         let mut visited = AHashSet::with_capacity(nodes.len());
@@ -2524,9 +2854,12 @@ impl Plan {
                     self.set_rel_distr(id, Distribution::Global)?;
                 }
                 RelOwned::GroupBy(GroupBy { gr_exprs, .. }) => {
-                    let mut correct_nodes = AHashSet::new();
+                    let colocated =
+                        self.colocated_subqueries(id, &gathered_by_windows, &mut cache)?;
+                    let mut correct_nodes = colocated.clone();
                     for gr_expr in gr_exprs {
-                        let gr_expr_strategy = self.resolve_sq_conflicts(id, gr_expr)?;
+                        let mut gr_expr_strategy = self.resolve_sq_conflicts(id, gr_expr)?;
+                        gr_expr_strategy.keep_in_place(&colocated);
                         correct_nodes.extend(gr_expr_strategy.get_rel_ids());
                         self.insert_motion_nodes(gr_expr_strategy)?;
                     }
@@ -2535,7 +2868,10 @@ impl Plan {
                     self.try_dist_from_subqueries(id)?;
                 }
                 RelOwned::Selection(Selection { filter: data, .. }) => {
-                    let strategy = self.resolve_sq_conflicts(id, data)?;
+                    let colocated =
+                        self.colocated_subqueries(id, &gathered_by_windows, &mut cache)?;
+                    let mut strategy = self.resolve_sq_conflicts(id, data)?;
+                    strategy.keep_in_place(&colocated);
                     let correct_rel_ids = strategy.get_rel_ids();
                     self.insert_motion_nodes(strategy)?;
                     self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
@@ -2547,10 +2883,13 @@ impl Plan {
                 }) => {
                     let rel_child_id = self.get_first_rel_child(id)?;
 
-                    let mut correct_rel_ids = AHashSet::new();
+                    let colocated =
+                        self.colocated_subqueries(id, &gathered_by_windows, &mut cache)?;
+                    let mut correct_rel_ids = colocated.clone();
                     for order_by_el in order_by_elements {
                         if let OrderByEntity::Expression { expr_id } = order_by_el.entity {
-                            let strategy = self.resolve_sq_conflicts(id, expr_id)?;
+                            let mut strategy = self.resolve_sq_conflicts(id, expr_id)?;
+                            strategy.keep_in_place(&colocated);
                             correct_rel_ids.extend(strategy.get_rel_ids());
                             self.insert_motion_nodes(strategy)?;
                         }
@@ -2594,7 +2933,10 @@ impl Plan {
                     if let Some(group_by_id) = group_by {
                         self.adopt_groupby_sq_motions(id, group_by_id)?;
                     }
-                    let strategy = self.resolve_sq_conflicts(id, output)?;
+                    let colocated =
+                        self.colocated_subqueries(id, &gathered_by_windows, &mut cache)?;
+                    let mut strategy = self.resolve_sq_conflicts(id, output)?;
+                    strategy.keep_in_place(&colocated);
                     let correct_rel_ids = strategy.get_rel_ids();
                     self.insert_motion_nodes(strategy)?;
                     self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
@@ -2620,7 +2962,16 @@ impl Plan {
                         continue;
                     }
 
-                    if group_by.is_some() && !windows.is_empty() {
+                    let windows_in_place =
+                        !windows.is_empty() && !gathered_by_windows.contains(&id);
+                    // Windows and aggregates over one node run there in one stage.
+                    let single_node_group_by = match group_by {
+                        Some(group_by_id) if windows_in_place => {
+                            self.is_single_node_subtree(group_by_id, &mut cache)?
+                        }
+                        _ => false,
+                    };
+                    if group_by.is_some() && !windows.is_empty() && !single_node_group_by {
                         let Some(group_by_id) = group_by else {
                             unreachable!();
                         };
@@ -2660,7 +3011,8 @@ impl Plan {
 
                     if !windows.is_empty() {
                         // If we have window functions without aggregates, lets deal with them.
-                        let strategy = self.resolve_window_conflicts(id)?;
+                        let strategy =
+                            self.resolve_window_conflicts(id, windows_in_place, &mut cache)?;
                         self.insert_motion_nodes(strategy)?;
                     }
 
@@ -2680,6 +3032,16 @@ impl Plan {
                     self.insert_motion_nodes(strategy)?;
                     self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
                     self.set_rel_distr(id, Distribution::Global)?;
+                }
+                RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. })
+                    if in_place.contains(&id)
+                        && self.sws_is_pinnable(id, output, &mut cache)? =>
+                {
+                    // Runs on the bucket of its subqueries, which need no
+                    // motions. `Any` (others are `Global`) marks it as pinned
+                    // for the proofs and bucket discovery, see
+                    // `is_pinned_select_without_scan`.
+                    self.set_rel_distr(id, Distribution::Any)?;
                 }
                 RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. }) => {
                     let strategy = self.resolve_sq_conflicts(id, output)?;
@@ -2709,20 +3071,39 @@ impl Plan {
                     self.set_rel_output_distribution(id)?;
                 }
                 RelOwned::Except(Except { .. }) => {
-                    let strategy = self.resolve_except_conflicts(id)?;
+                    let strategy =
+                        self.resolve_except_conflicts(id, in_place.contains(&id), &mut cache)?;
                     self.insert_motion_nodes(strategy)?;
                     self.set_rel_output_distribution(id)?;
                 }
                 RelOwned::Union(Union { .. }) => {
                     let strategy = self.resolve_union_conflicts(id, &mut cache)?;
+                    // Both branches are on one bucket: the local UNION removes
+                    // the duplicates. Read the current children: `node` was
+                    // copied before `old_new` and `resolve_union_conflicts`
+                    // relinked them, so its `left` may be a nested UNION
+                    // below its motion.
+                    let moves_nothing = strategy
+                        .children_policy
+                        .values()
+                        .all(|(policy, _)| matches!(policy, MotionPolicy::None));
+                    let local = moves_nothing && in_place.contains(&id) && {
+                        let left = self.get_rel_child(id, 0)?;
+                        let right = self.get_rel_child(id, 1)?;
+                        self.single_node_buckets(left, &mut cache)?
+                            .disjunct(&self.single_node_buckets(right, &mut cache)?)
+                            .is_single_node_filtered()
+                    };
                     self.insert_motion_nodes(strategy)?;
                     self.set_rel_output_distribution(id)?;
-                    let new_top_id = self.add_motion_with_domain_checks(
-                        id,
-                        &MotionPolicy::Full,
-                        Program::new(vec![MotionOpcode::RemoveDuplicates]),
-                    )?;
-                    old_new.insert(id, new_top_id);
+                    if !local {
+                        let new_top_id = self.add_motion_with_domain_checks(
+                            id,
+                            &MotionPolicy::Full,
+                            Program::new(vec![MotionOpcode::RemoveDuplicates]),
+                        )?;
+                        old_new.insert(id, new_top_id);
+                    }
                 }
                 RelOwned::UnionAll(UnionAll { .. }) => {
                     let strategy = self.resolve_union_conflicts(id, &mut cache)?;
@@ -2735,11 +3116,16 @@ impl Plan {
                     if let Some(motion_id) = cte_motions.get(&child) {
                         self.set_relational_children(id, vec![*motion_id]);
                     } else {
-                        let is_single_node = self.is_single_node_subtree(child, &mut cache)?;
+                        // Check the current child, not `child`: the UNION body
+                        // of a reused CTE got its motion through `old_new`
+                        // after `node` was copied. `child` stays the key of
+                        // `cte_ref_counts` and `cte_motions`.
+                        let body_id = self.get_first_rel_child(id)?;
+                        let is_single_node = self.is_single_node_subtree(body_id, &mut cache)?;
                         let is_reused = cte_ref_counts.get(&child).copied().unwrap_or(0) > 1;
                         // Global CTEs still need VALUES and reuse materialization checks.
                         if !is_single_node
-                            || matches!(self.rel_distr_ref(child)?, Distribution::Global)
+                            || matches!(self.rel_distr_ref(body_id)?, Distribution::Global)
                         {
                             let strategy = self.resolve_cte_conflicts(id, is_reused)?;
                             self.insert_motion_nodes(strategy)?;

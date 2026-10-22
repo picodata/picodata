@@ -3098,3 +3098,205 @@ UPDATE tc SET b = 100 WHERE pk = 1;
 DO $$ BEGIN RETURN QUERY SELECT * FROM tc WHERE pk = 1; END $$;
 -- EXPECTED:
 1, 10, 100
+
+-- TEST: single-bucket-init
+-- SQL:
+DROP TABLE IF EXISTS sbb1;
+DROP TABLE IF EXISTS sbb2;
+DROP TABLE IF EXISTS sbbg;
+CREATE TABLE sbb1 (pk INT PRIMARY KEY, v INT);
+CREATE TABLE sbb2 (pk INT PRIMARY KEY, v INT);
+CREATE TABLE sbbg (pk INT PRIMARY KEY, v INT) DISTRIBUTED GLOBALLY;
+INSERT INTO sbb1 VALUES (1, 10), (2, 20);
+INSERT INTO sbb2 VALUES (1, 100), (2, 200);
+INSERT INTO sbbg VALUES (1, 1000);
+
+-- TEST: single-bucket-if-two-subqueries
+-- SQL:
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM sbb1 WHERE pk = $1) AND (SELECT v FROM sbb2 WHERE pk = $1) > 0 THEN
+    UPDATE sbb1 SET v = v + 1 WHERE pk = $1;
+  END IF;
+END $$;
+-- PARAMS:
+1
+
+-- TEST: single-bucket-if-two-subqueries-check
+-- SQL:
+SELECT v FROM sbb1 WHERE pk = 1;
+-- EXPECTED:
+11
+
+-- TEST: single-bucket-if-count
+-- SQL:
+DO $$ BEGIN
+  IF (SELECT count(*) FROM sbb1 WHERE pk = $1) > 0 THEN
+    UPDATE sbb2 SET v = v + 1 WHERE pk = $1;
+  END IF;
+END $$;
+-- PARAMS:
+2
+
+-- TEST: single-bucket-if-count-check
+-- SQL:
+SELECT v FROM sbb2 WHERE pk = 2;
+-- EXPECTED:
+201
+
+-- TEST: single-bucket-if-count-absent-key
+-- SQL:
+DO $$ BEGIN
+  IF (SELECT count(*) FROM sbb1 WHERE pk = $1) > 0 THEN
+    INSERT INTO sbb2 VALUES ($1, 0);
+  END IF;
+END $$;
+-- PARAMS:
+3
+
+-- TEST: single-bucket-if-count-absent-key-check
+-- SQL:
+SELECT count(*) FROM sbb2 WHERE pk = 3;
+-- EXPECTED:
+0
+
+-- TEST: single-bucket-return-query-subquery
+-- SQL:
+DO $$ BEGIN
+  RETURN QUERY SELECT pk, v FROM sbb1 WHERE pk = $1 AND v < (SELECT v FROM sbb2 WHERE pk = $1);
+END $$;
+-- PARAMS:
+1
+-- EXPECTED:
+1, 11
+
+-- TEST: single-bucket-return-query-derived-table
+-- SQL:
+DO $$ BEGIN
+  RETURN QUERY SELECT c FROM (SELECT (SELECT v FROM sbb1 WHERE pk = $1) AS c) WHERE c > 0 ORDER BY c;
+END $$;
+-- PARAMS:
+1
+-- EXPECTED:
+11
+
+-- TEST: single-bucket-return-query-window
+-- SQL:
+DO $$ BEGIN
+  RETURN QUERY SELECT v, row_number() OVER (ORDER BY v) FROM sbb1 WHERE pk = $1;
+END $$;
+-- PARAMS:
+1
+-- EXPECTED:
+11, 1
+
+-- TEST: single-bucket-return-query-union
+-- SQL:
+DO $$ BEGIN
+  RETURN QUERY SELECT v FROM sbb1 WHERE pk = $1 UNION SELECT v FROM sbb2 WHERE pk = $1;
+END $$;
+-- PARAMS:
+1
+-- UNORDERED:
+11, 100
+
+-- TEST: single-bucket-return-query-union-all-of-counts
+-- SQL:
+DO $$ BEGIN
+  RETURN QUERY SELECT count(*) FROM sbb1 WHERE pk = $1 UNION ALL SELECT count(*) FROM sbb2 WHERE pk = $1;
+END $$;
+-- PARAMS:
+1
+-- EXPECTED:
+1, 1
+
+-- TEST: single-bucket-let-global-and-sharded
+-- SQL:
+DO $$ BEGIN
+  LET x = (SELECT (SELECT v FROM sbbg WHERE pk = 1) + (SELECT count(*) FROM sbb1 WHERE pk = $1));
+  RETURN QUERY SELECT x;
+END $$;
+-- PARAMS:
+1
+-- EXPECTED:
+1001
+
+-- TEST: single-bucket-condition-and-dml-on-different-buckets
+-- SQL:
+DO $$ BEGIN
+  IF (SELECT count(*) FROM sbb1 WHERE pk = $1) > 0 THEN
+    UPDATE sbb2 SET v = 0 WHERE pk = $2;
+  END IF;
+END $$;
+-- PARAMS:
+1, 2
+-- ERROR:
+statement 1.1 \(IF condition\) and statement 1.2 \(DML\): different buckets: \[1934\] and \[1410\]
+
+-- TEST: single-bucket-different-parameters
+-- SQL:
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM sbb1 WHERE pk = $1) AND (SELECT v FROM sbb2 WHERE pk = $2) > 0 THEN
+    RETURN QUERY SELECT 1;
+  END IF;
+END $$;
+-- PARAMS:
+1, 1
+-- ERROR:
+statement 1.1 \(IF condition\): cannot run in a transactional block because it requires cross-shard data movement; restrict by the sharding key, or move it outside the block
+
+-- TEST: single-bucket-motion-inside-subquery
+-- SQL:
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM sbb1 WHERE pk = $1 AND v IN (SELECT v FROM sbb2)) THEN
+    RETURN QUERY SELECT 1;
+  END IF;
+END $$;
+-- PARAMS:
+1
+-- ERROR:
+statement 1.1 \(IF condition\): cannot run in a transactional block because it requires cross-shard data movement; restrict by the sharding key, or move it outside the block
+
+-- TEST: single-bucket-having-subquery-on-another-bucket
+-- SQL:
+DO $$ BEGIN
+  RETURN QUERY SELECT v FROM sbb1 WHERE pk = $1 GROUP BY v
+    HAVING v IN (SELECT v FROM sbb2 WHERE pk = $2 UNION SELECT v FROM sbb2 WHERE pk = $2);
+END $$;
+-- PARAMS:
+1, 2
+-- ERROR:
+statement 1 \(RETURN QUERY\): cannot run in a transactional block because it requires cross-shard data movement; restrict by the sharding key, or move it outside the block
+
+-- TEST: single-bucket-join-condition-subquery-on-another-bucket
+-- SQL:
+DO $$ BEGIN
+  RETURN QUERY SELECT sbb1.v FROM sbb1 JOIN sbb2 ON sbb1.pk = sbb2.pk
+    AND sbb1.v < (SELECT (SELECT v FROM sbb2 WHERE pk = $2)) + 0 WHERE sbb1.pk = $1;
+END $$;
+-- PARAMS:
+1, 2
+-- ERROR:
+statement 1 \(RETURN QUERY\): cannot run in a transactional block because it requires cross-shard data movement; restrict by the sharding key, or move it outside the block
+
+-- TEST: single-bucket-dml-with-subquery
+-- SQL:
+DO $$ BEGIN UPDATE sbb1 SET v = (SELECT v FROM sbb2 WHERE pk = $1) WHERE pk = $1; END $$;
+-- PARAMS:
+1
+-- ERROR:
+UPDATE in transaction cannot have subqueries
+
+-- TEST: single-bucket-dml-with-let
+-- SQL:
+DO $$ BEGIN
+  LET w = (SELECT v FROM sbb2 WHERE pk = $1);
+  UPDATE sbb1 SET v = w WHERE pk = $1;
+END $$;
+-- PARAMS:
+1
+
+-- TEST: single-bucket-dml-with-let-check
+-- SQL:
+SELECT v FROM sbb1 WHERE pk = 1;
+-- EXPECTED:
+100

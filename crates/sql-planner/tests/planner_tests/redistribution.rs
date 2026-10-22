@@ -1093,6 +1093,7 @@ mod between;
 mod except;
 mod not_in;
 mod segment;
+mod single_bucket;
 
 /// Enrichment may add a routing predicate that safely narrows these queries.
 /// Their results with either setting are covered by integration tests.
@@ -1599,6 +1600,22 @@ fn motions_cache_matches_recomputation() {
             JOIN (SELECT "a" FROM "t5" WHERE "a" = 1) AS r ON l."a" = r."a"
             UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1
             UNION ALL SELECT "a" FROM "t5" WHERE "a" = 4"#,
+        // Co-located subqueries next to ones that get motions, under a union.
+        r#"SELECT "a" FROM "t5" WHERE "a" = 1
+            AND "b" IN (SELECT "b" FROM "t5" WHERE "a" = 1)
+            AND "b" IN (SELECT "b" FROM "t5" WHERE "a" = 2)
+            UNION ALL SELECT count(*) FROM "t5" WHERE "a" = 1"#,
+        // Pinned SELECTs without FROM under one-row operators and subqueries.
+        r#"SELECT count(*) FROM (SELECT (SELECT (SELECT "b" FROM "t5" WHERE "a" = 1)) AS c)
+            WHERE c > 0
+            UNION ALL SELECT "a" FROM "t5" WHERE "a" = 1
+            AND "b" = (SELECT (SELECT count(*) FROM "t5" WHERE "a" = 1))"#,
+        // Set operations over one shard, local at the root and nested.
+        r#"SELECT count(*) FROM (SELECT "a" FROM "t5" WHERE "a" = 1
+            UNION SELECT "a" FROM "t5" WHERE "a" = 1) AS u"#,
+        r#"SELECT "a" FROM "t5" WHERE "a" = 1 UNION SELECT "a" FROM "t5" WHERE "a" = 1
+            EXCEPT SELECT "a" FROM "t5" WHERE "a" = 1
+            UNION ALL SELECT count(*) FROM "t5" WHERE "a" = 1"#,
     ] {
         let _ = sql_to_optimized_ir(query, vec![]);
     }

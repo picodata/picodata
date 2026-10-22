@@ -877,3 +877,570 @@ SELECT DISTINCT "t0"."b" FROM "t0" WHERE "t0"."a" = 1::int
 plan:
     [0] SCAN TABLE t0 (~262144 rows)
     [0] USE TEMP B-TREE FOR DISTINCT
+
+-- TEST: init-single-bucket
+-- SQL:
+CREATE TABLE sb_t (a INT PRIMARY KEY, b INT);
+CREATE TABLE sb_t2 (a INT PRIMARY KEY, b INT);
+CREATE TABLE sb_g (a INT PRIMARY KEY, b INT) DISTRIBUTED GLOBALLY;
+INSERT INTO sb_t VALUES (1, 10), (2, 20), (3, 30), (4, 40), (5, 5), (7, 7);
+INSERT INTO sb_t2 VALUES (1, 10), (2, 21), (3, 30), (4, 41), (5, 50);
+INSERT INTO sb_g VALUES (1, 100);
+
+-- TEST: param-key-union-all-of-counts
+-- SQL:
+SELECT count(*) FROM sb_t WHERE a = $1 UNION ALL SELECT count(*) FROM sb_t2 WHERE a = $1;
+-- PARAMS:
+1
+-- EXPECTED:
+1, 1
+
+-- TEST: param-key-union-all-of-counts-no-rows
+-- SQL:
+SELECT count(*) FROM sb_t WHERE a = $1 UNION ALL SELECT count(*) FROM sb_t2 WHERE a = $1;
+-- PARAMS:
+100
+-- EXPECTED:
+0, 0
+
+-- TEST: param-key-union-all-of-counts-null
+-- SQL:
+SELECT count(*) FROM sb_t WHERE a = $1 UNION ALL SELECT count(*) FROM sb_t2 WHERE a = $1;
+-- PARAMS:
+null
+-- EXPECTED:
+0, 0
+
+-- TEST: param-key-union-all-of-counts-explain
+-- SQL:
+EXPLAIN SELECT count(*) FROM sb_t WHERE a = $1 UNION ALL SELECT count(*) FROM sb_t2 WHERE a = $1;
+-- PARAMS:
+1
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+union all
+  projection (count(*)::int -> col_1)
+    selection (sb_t.a::int = 1::int)
+      scan sb_t
+  projection (count(*)::int -> col_1)
+    selection (sb_t2.a::int = 1::int)
+      scan sb_t2
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1934]
+
+-- TEST: param-key-join-count
+-- SQL:
+SELECT count(*) FROM (SELECT * FROM sb_t WHERE a = $1) x JOIN (SELECT * FROM sb_t2 WHERE a = $1) y ON true;
+-- PARAMS:
+2
+-- EXPECTED:
+1
+
+-- TEST: colocated-subquery-literal
+-- SQL:
+SELECT a, b FROM sb_t WHERE a = 3 AND b IN (SELECT b FROM sb_t2 WHERE a = 3);
+-- EXPECTED:
+3, 30
+
+-- TEST: colocated-subquery-literal-explain
+-- SQL:
+EXPLAIN SELECT a, b FROM sb_t WHERE a = 3 AND b IN (SELECT b FROM sb_t2 WHERE a = 3);
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (sb_t.a::int -> a, sb_t.b::int -> b)
+  selection ((sb_t.a::int = 3::int and sb_t.b::int in ROW($0)))
+    scan sb_t
+subquery $0:
+  scan
+    projection (sb_t2.b::int -> b)
+      selection (sb_t2.a::int = 3::int)
+        scan sb_t2
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1958]
+
+-- TEST: colocated-subquery-param
+-- SQL:
+SELECT a, b FROM sb_t WHERE a = $1 AND b IN (SELECT b FROM sb_t2 WHERE a = $1);
+-- PARAMS:
+1
+-- EXPECTED:
+1, 10
+
+-- TEST: colocated-subquery-param-no-match
+-- SQL:
+SELECT count(*) FROM (SELECT a FROM sb_t WHERE a = $1 AND b IN (SELECT b FROM sb_t2 WHERE a = $1)) s;
+-- PARAMS:
+2
+-- EXPECTED:
+0
+
+-- TEST: colocated-subquery-select-list
+-- SQL:
+SELECT b, (SELECT b FROM sb_t2 WHERE a = $1) FROM sb_t WHERE a = $1;
+-- PARAMS:
+2
+-- EXPECTED:
+20, 21
+
+-- TEST: colocated-not-exists-reads-nothing
+-- SQL:
+SELECT count(*) FROM (SELECT a FROM sb_t WHERE a = $1 AND NOT EXISTS (SELECT 1 FROM sb_t2 WHERE a = $1 AND a = $2)) s;
+-- PARAMS:
+1, 2
+-- EXPECTED:
+1
+
+-- TEST: colocated-not-exists-reads-the-bucket
+-- SQL:
+SELECT count(*) FROM (SELECT a FROM sb_t WHERE a = $1 AND NOT EXISTS (SELECT 1 FROM sb_t2 WHERE a = $1 AND a = $2)) s;
+-- PARAMS:
+1, 1
+-- EXPECTED:
+0
+
+-- TEST: colocated-subquery-many-rows
+-- SQL:
+SELECT a FROM sb_t WHERE a = 1 AND b = (SELECT b FROM sb_t2 WHERE a = 1 UNION ALL SELECT b FROM sb_t2 WHERE a = 1);
+-- ERROR:
+Expression subquery returned more than 1 row
+
+-- TEST: subquery-param-pin-stays-inside
+-- SQL:
+SELECT count(*) FROM (SELECT a FROM sb_t WHERE b = $1 AND NOT EXISTS (SELECT 1 FROM sb_t2 WHERE a = $1 AND a = 5)) s;
+-- PARAMS:
+7
+-- EXPECTED:
+1
+
+-- TEST: subquery-param-pin-stays-inside-same-value
+-- SQL:
+SELECT count(*) FROM (SELECT a FROM sb_t WHERE b = $1 AND NOT EXISTS (SELECT 1 FROM sb_t2 WHERE a = $1 AND a = 5)) s;
+-- PARAMS:
+5
+-- EXPECTED:
+0
+
+-- TEST: subquery-contradiction-stays-inside
+-- SQL:
+SELECT a FROM sb_t WHERE b = 10 AND NOT EXISTS (SELECT 1 FROM sb_t2 WHERE a = 1 AND a = 2);
+-- EXPECTED:
+1
+
+-- TEST: pinned-sws-literal
+-- SQL:
+SELECT (SELECT count(*) FROM sb_t WHERE a = 1) > 0;
+-- EXPECTED:
+true
+
+-- TEST: pinned-sws-literal-explain
+-- SQL:
+EXPLAIN SELECT (SELECT count(*) FROM sb_t WHERE a = 1) > 0;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (ROW($0) > 0::int -> col_1)
+subquery $0:
+  scan
+    projection (count(*)::int -> col_1)
+      selection (sb_t.a::int = 1::int)
+        scan sb_t
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1934]
+
+-- TEST: pinned-sws-exists-star
+-- SQL:
+SELECT EXISTS (SELECT * FROM sb_t WHERE a = $1);
+-- PARAMS:
+1
+-- EXPECTED:
+true
+
+-- TEST: pinned-sws-exists-star-absent
+-- SQL:
+SELECT EXISTS (SELECT * FROM sb_t WHERE a = $1);
+-- PARAMS:
+100
+-- EXPECTED:
+false
+
+-- TEST: pinned-sws-two-subqueries
+-- SQL:
+SELECT EXISTS (SELECT 1 FROM sb_t WHERE a = $1) AND (SELECT b FROM sb_t2 WHERE a = $1) > 0;
+-- PARAMS:
+1
+-- EXPECTED:
+true
+
+-- TEST: pinned-sws-global-and-sharded
+-- SQL:
+SELECT (SELECT b FROM sb_g WHERE a = 1), (SELECT count(*) FROM sb_t WHERE a = $1);
+-- PARAMS:
+1
+-- EXPECTED:
+100, 1
+
+-- TEST: pinned-sws-chain
+-- SQL:
+SELECT c + 1 FROM (SELECT (SELECT b FROM sb_t WHERE a = $1) AS c) WHERE c > 0 ORDER BY 1;
+-- PARAMS:
+1
+-- EXPECTED:
+11
+
+-- TEST: pinned-sws-chain-explain
+-- SQL:
+EXPLAIN SELECT c + 1 FROM (SELECT (SELECT b FROM sb_t WHERE a = 1) AS c) WHERE c > 0 ORDER BY 1;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (col_1::int)
+  order by (1)
+    scan
+      projection (unnamed_subquery.c::int + 1::int -> col_1)
+        selection (unnamed_subquery.c::int > 0::int)
+          scan unnamed_subquery
+            projection (ROW($0) -> c)
+subquery $0:
+  scan
+    projection (sb_t.b::int -> b)
+      selection (sb_t.a::int = 1::int)
+        scan sb_t
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1934]
+
+-- TEST: pinned-sws-chain-count
+-- SQL:
+SELECT count(*) FROM (SELECT (SELECT b FROM sb_t WHERE a = $1) AS c) WHERE c > 0;
+-- PARAMS:
+1
+-- EXPECTED:
+1
+
+-- TEST: pinned-sws-cte
+-- SQL:
+WITH x AS (SELECT (SELECT b FROM sb_t WHERE a = $1) AS c) SELECT c FROM x;
+-- PARAMS:
+1
+-- EXPECTED:
+10
+
+-- TEST: pinned-sws-no-bucket
+-- SQL:
+SELECT (SELECT b FROM sb_t WHERE a = 1 AND a = 2);
+-- EXPECTED:
+null
+
+-- TEST: pinned-sws-empty-next-to-one-bucket
+-- SQL:
+SELECT (SELECT count(*) FROM sb_t WHERE a = $1 AND a = $2), (SELECT b FROM sb_t2 WHERE a = $1);
+-- PARAMS:
+1, 2
+-- EXPECTED:
+0, 10
+
+-- TEST: window-single-bucket
+-- SQL:
+SELECT b, row_number() OVER (ORDER BY b) FROM sb_t WHERE a = 1;
+-- EXPECTED:
+10, 1
+
+-- TEST: window-single-bucket-explain
+-- SQL:
+EXPLAIN SELECT b, row_number() OVER (ORDER BY b) FROM sb_t WHERE a = 1;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (sb_t.b::int -> b, row_number() over (order by (sb_t.b::int asc) ) -> col_1)
+  selection (sb_t.a::int = 1::int)
+    scan sb_t
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1934]
+
+-- TEST: union-single-bucket
+-- SQL:
+SELECT b FROM sb_t WHERE a = $1 UNION SELECT b FROM sb_t2 WHERE a = $1;
+-- PARAMS:
+1
+-- EXPECTED:
+10
+
+-- TEST: union-single-bucket-explain
+-- SQL:
+EXPLAIN SELECT b FROM sb_t WHERE a = 1 UNION SELECT b FROM sb_t2 WHERE a = 1;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+union
+  projection (sb_t.b::int -> b)
+    selection (sb_t.a::int = 1::int)
+      scan sb_t
+  projection (sb_t2.b::int -> b)
+    selection (sb_t2.a::int = 1::int)
+      scan sb_t2
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [1934]
+
+-- TEST: except-single-bucket
+-- SQL:
+SELECT b FROM sb_t WHERE a = 5 EXCEPT SELECT b FROM sb_t2 WHERE a = 5;
+-- EXPECTED:
+5
+
+-- TEST: except-single-bucket-explain
+-- SQL:
+EXPLAIN SELECT b FROM sb_t WHERE a = 5 EXCEPT SELECT b FROM sb_t2 WHERE a = 5;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+except
+  projection (sb_t.b::int -> b)
+    selection (sb_t.a::int = 5::int)
+      scan sb_t
+  projection (sb_t2.b::int -> b)
+    selection (sb_t2.a::int = 5::int)
+      scan sb_t2
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [219]
+
+-- TEST: colocated-subquery-update
+-- SQL:
+UPDATE sb_t SET b = (SELECT b FROM sb_t2 WHERE a = $1) WHERE a = $1;
+-- PARAMS:
+2
+
+-- TEST: colocated-subquery-update-check
+-- SQL:
+SELECT b FROM sb_t WHERE a = 2;
+-- EXPECTED:
+21
+
+-- TEST: colocated-subquery-update-literal
+-- SQL:
+UPDATE sb_t SET b = (SELECT b FROM sb_t2 WHERE a = 4) WHERE a = 4;
+
+-- TEST: colocated-subquery-update-literal-check
+-- SQL:
+SELECT b FROM sb_t WHERE a = 4;
+-- EXPECTED:
+41
+
+-- TEST: colocated-subquery-update-explain
+-- SQL:
+EXPLAIN UPDATE sb_t SET b = (SELECT b FROM sb_t2 WHERE a = 4) WHERE a = 4;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+update sb_t (b = col_0)
+  motion [policy: local, program: ReshardIfNeeded]
+    projection (ROW($0) -> col_0, sb_t.a::int -> col_1)
+      selection (sb_t.a::int = 4::int)
+        scan sb_t
+subquery $0:
+  scan
+    projection (sb_t2.b::int -> b)
+      selection (sb_t2.a::int = 4::int)
+        scan sb_t2
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [2752]
+
+-- TEST: colocated-subquery-delete
+-- SQL:
+DELETE FROM sb_t WHERE a = $1 AND b IN (SELECT b FROM sb_t2 WHERE a = $1);
+-- PARAMS:
+3
+
+-- TEST: colocated-subquery-delete-check
+-- SQL:
+SELECT count(*) FROM sb_t WHERE a = 3;
+-- EXPECTED:
+0
+
+-- TEST: colocated-subquery-over-empty-scalar-aggregate
+-- SQL:
+SELECT c, (SELECT b FROM sb_t2 WHERE a = $1) FROM (SELECT count(*) AS c FROM sb_t WHERE a = $1 AND a = $2) s;
+-- PARAMS:
+2, 1002
+-- EXPECTED:
+0, 21
+
+-- TEST: colocated-subquery-over-scalar-aggregate-on-another-bucket
+-- SQL:
+SELECT c, (SELECT b FROM sb_t2 WHERE a = 2) FROM (SELECT count(*) AS c FROM sb_t WHERE a = 2 AND bucket_id = 1) s;
+-- EXPECTED:
+0, 21
+
+-- TEST: colocated-filter-over-empty-scalar-aggregate
+-- SQL:
+SELECT count(*) FROM (SELECT c FROM (SELECT count(*) AS c FROM sb_t WHERE a = $1 AND a = $2) s WHERE c < (SELECT b FROM sb_t2 WHERE a = $1)) x;
+-- PARAMS:
+2, 1002
+-- EXPECTED:
+1
+
+-- TEST: except-over-empty-scalar-aggregate
+-- SQL:
+SELECT count(*) FROM (SELECT count(*) AS c FROM sb_t WHERE a = $1 AND a = $2 EXCEPT SELECT b - 21 FROM sb_t2 WHERE a = $1) x;
+-- PARAMS:
+2, 1002
+-- EXPECTED:
+0
+
+-- TEST: colocated-subquery-of-window-with-volatile-function
+-- SQL:
+SELECT pico_instance_uuid() IS NOT NULL, row_number() OVER (ORDER BY b), (SELECT b FROM sb_t2 WHERE a = $1) FROM sb_t WHERE a = $1;
+-- PARAMS:
+2
+-- EXPECTED:
+true, 1, 21
+
+-- TEST: colocated-subquery-of-window-under-join
+-- SQL:
+SELECT w.s FROM (SELECT b, row_number() OVER () AS rn, (SELECT b FROM sb_t2 WHERE a = $1) AS s FROM sb_t WHERE a = $1) w JOIN sb_g ON true;
+-- PARAMS:
+2
+-- EXPECTED:
+21
+
+-- TEST: colocated-subquery-of-grouped-window-under-join
+-- SQL:
+SELECT w.s FROM (SELECT b, (SELECT b FROM sb_t2 WHERE a = $1) AS s, row_number() OVER () AS rn FROM sb_t WHERE a = $1 GROUP BY b) w JOIN sb_g ON true;
+-- PARAMS:
+2
+-- EXPECTED:
+21
+
+-- TEST: colocated-subquery-of-window-in-place
+-- SQL:
+SELECT row_number() OVER (ORDER BY b), (SELECT b FROM sb_t2 WHERE a = $1) FROM sb_t WHERE a = $1;
+-- PARAMS:
+2
+-- EXPECTED:
+1, 21
+
+-- TEST: subquery-of-global-filter-rejecting-all-rows
+-- SQL:
+SELECT count(*) FROM sb_g WHERE a = NULL AND b IN (SELECT b FROM sb_t WHERE a = 1);
+-- EXPECTED:
+0
+
+-- TEST: having-subquery-union-on-another-bucket
+-- SQL:
+SELECT b FROM sb_t WHERE a = 1 GROUP BY b HAVING b IN (SELECT b - 11 FROM sb_t2 WHERE a = $1 UNION SELECT b - 11 FROM sb_t2 WHERE a = $1);
+-- PARAMS:
+2
+-- EXPECTED:
+10
+
+-- TEST: having-subquery-select-without-scan-on-another-bucket
+-- SQL:
+SELECT b FROM sb_t WHERE a = 1 GROUP BY b HAVING b < (SELECT (SELECT b FROM sb_t2 WHERE a = $1));
+-- PARAMS:
+2
+-- EXPECTED:
+10
+
+-- TEST: having-subquery-window-on-another-bucket
+-- SQL:
+SELECT b FROM sb_t WHERE a = 1 GROUP BY b HAVING b / 10 IN (SELECT row_number() OVER () FROM sb_t2 WHERE a = $1);
+-- PARAMS:
+2
+-- EXPECTED:
+10
+
+-- TEST: having-subquery-over-global-table
+-- SQL:
+SELECT a FROM sb_g GROUP BY a HAVING a < (SELECT (SELECT b FROM sb_t2 WHERE a = $1));
+-- PARAMS:
+2
+-- EXPECTED:
+1
+
+-- TEST: join-condition-subquery-select-without-scan-on-another-bucket
+-- SQL:
+SELECT sb_t.a FROM sb_t JOIN sb_t2 ON sb_t.a = sb_t2.a AND sb_t.b < (SELECT (SELECT b FROM sb_t2 WHERE a = $1)) + 0;
+-- PARAMS:
+5
+-- UNORDERED:
+1, 2, 4, 5
+
+-- TEST: join-condition-subquery-union-on-another-bucket
+-- SQL:
+SELECT sb_t.a FROM sb_t JOIN sb_t2 ON sb_t.a = sb_t2.a AND sb_t.b < (SELECT b FROM sb_t2 WHERE a = $1 UNION SELECT b FROM sb_t2 WHERE a = $1) + 0;
+-- PARAMS:
+5
+-- UNORDERED:
+1, 2, 4, 5
+
+-- TEST: join-condition-subquery-window-on-another-bucket
+-- SQL:
+SELECT sb_t.a FROM sb_t JOIN sb_t2 ON sb_t.a = sb_t2.a AND sb_t.b > (SELECT row_number() OVER () FROM sb_t2 WHERE a = $1) + 0;
+-- PARAMS:
+5
+-- UNORDERED:
+1, 2, 4, 5
+
+-- TEST: join-condition-subquery-over-global-tables
+-- SQL:
+SELECT g1.a FROM sb_g g1 JOIN sb_g g2 ON g1.a = g2.a AND g1.b > (SELECT (SELECT b FROM sb_t2 WHERE a = $1)) + 0;
+-- PARAMS:
+5
+-- EXPECTED:
+1
+
+-- TEST: left-join-condition-subquery-with-global-outer
+-- SQL:
+SELECT sb_g.a, sb_t.b FROM sb_g LEFT JOIN sb_t ON sb_g.a = sb_t.a AND sb_t.b IN (SELECT b - 40 FROM sb_t2 WHERE a = $1 UNION SELECT b - 40 FROM sb_t2 WHERE a = $1);
+-- PARAMS:
+5
+-- EXPECTED:
+1, 10
