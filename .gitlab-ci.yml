@@ -458,7 +458,7 @@ build-linux:
         ci-log-section start "coverage-data" prepare coverage data ...
         du -hc --max-depth=1 target
         make coverage-data-merge
-        make coverage-trim-target
+        make coverage-trim-target-for-tests
         du -hc --max-depth=1 target
         ci-log-section end "coverage-data"
       else

@@ -431,6 +431,33 @@ trim-target:
 
 	tools/remove-unless-listed.py target target/keep.list
 
+.PHONY: coverage-trim-target-for-tests
+coverage-trim-target-for-tests: export CARGO_TARGET_DIR = $(TARGET_DIR_COV)
+coverage-trim-target-for-tests:
+	tools/coverage.py run $(MAKE) trim-target-for-tests
+
+# Like `trim-target`, but keeps only what the python and tarantool-sys test jobs
+# need from the coverage build (`coverage-build-dev`, hence `debug`). Test
+# binaries of the crates and build scripts are dropped: they aren't run there,
+# and `test-rs` builds and uploads its own. `CARGO_BUILD_TARGET` is set by
+# `tools/coverage.py run`, so use `coverage-trim-target-for-tests`.
+.PHONY: trim-target-for-tests
+trim-target-for-tests: PROFILE_DIR = $(CARGO_TARGET_DIR)/$(CARGO_BUILD_TARGET)/debug
+trim-target-for-tests:
+	@# Preserve the list itself.
+	echo "target/keep.list" > target/keep.list
+	@# Preserve the binaries the tests run.
+	echo "$(PROFILE_DIR)/picodata" >> target/keep.list
+	echo "$(PROFILE_DIR)/libtestplug.so" >> target/keep.list
+	@# Preserve the tarantool build files needed by test-tarantool-sys.
+	tools/test-tarantool-sys.py files >> target/keep.list
+	@# Preserve `cargo build --timings` statistics.
+	echo "$(CARGO_TARGET_DIR)/cargo-timings/" >> target/keep.list
+	@# Preserve code coverage data (if any).
+	echo "$(CARGO_TARGET_DIR)/coverage/" >> target/keep.list
+
+	tools/remove-unless-listed.py target target/keep.list
+
 .PHONY: clean
 clean:
 	cargo clean || true
