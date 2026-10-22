@@ -733,7 +733,7 @@ fn generate_params_for_block_query(
     plan: &ExecutionPlan,
     query_id: NodeId,
 ) -> Result<Vec<Value>, SbroadError> {
-    let sql_params = plan.block_sql_params(query_id)?;
+    let sql_params = plan.local_sql_params(query_id, Snapshot::Oldest)?;
     let (_, mut params) = sql_params.into_parts();
     if let Relational::Insert(insert) = plan.get_ir_plan().get_relation_node(query_id)? {
         append_iocdu_param_values(plan, insert, &mut params, true)?;
@@ -1043,7 +1043,7 @@ pub fn generate_pattern_with_params_for_block(
         })
     }
 
-    let sql_params = plan.block_sql_params(query_id)?;
+    let sql_params = plan.local_sql_params(query_id, Snapshot::Oldest)?;
     let (constant_ids, params) = sql_params.into_parts();
 
     // TODO: replace with the actual value of `plan_id` when caching is implemented.

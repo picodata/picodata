@@ -5,7 +5,7 @@ use crate::{
         node::{expression::Expression, Cast, Constant, NodeId},
         types::CastType,
         value::Value,
-        Plan,
+        Plan, PlanShapes,
     },
 };
 
@@ -58,21 +58,34 @@ impl Plan {
     /// expressions, enabling bucket filtering and in value rows, enabling local materialization.
     pub fn cast_constants(mut self) -> Result<Self, SbroadError> {
         let cast_ids = find_cast_node_ids_for_cast_constants_opt(&self);
+        let mut kept_constant_cast = false;
         for cast_id in cast_ids {
-            let replace_node = if let Expression::Cast(Cast {
+            let (replace_node, from_constant) = if let Expression::Cast(Cast {
                 child: cast_child,
                 to,
             }) = self.get_expression_node(cast_id)?
             {
-                apply_cast(&self, *cast_child, *to)
-                    .map(|value| Node32::Constant(Constant { value }))
+                (
+                    apply_cast(&self, *cast_child, *to)
+                        .map(|value| Node32::Constant(Constant { value })),
+                    self.get_child_under_cast(*cast_child)
+                        .and_then(|id| self.get_expression_node(id))
+                        .is_ok_and(|expr| expr.is_const()),
+                )
             } else {
-                None
+                (None, false)
             };
 
             if let Some(node) = replace_node {
                 self.nodes.replace32(cast_id, node)?;
+            } else if from_constant {
+                kept_constant_cast = true;
             }
+        }
+        if kept_constant_cast {
+            // Whether a cast keeps its node depends on the bound value, so the
+            // shapes of this plan must not be shared with other executions.
+            self.shapes = PlanShapes::default();
         }
 
         Ok(self)

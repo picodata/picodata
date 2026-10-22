@@ -1,4 +1,4 @@
-use std::cell::{OnceCell, RefCell};
+use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -30,7 +30,7 @@ use crate::ir::tree::subtree::ExecPlanSubtreeIterator;
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
-use crate::ir::{Plan, SubtreeViewKey};
+use crate::ir::{Plan, ShapeVariant, SubtreeShape};
 
 /// Query type (used to parse the returned results).
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -122,8 +122,6 @@ pub struct ExecutionPlan {
     /// Such motions are rendered and traversed as leaves without mutating the IR
     /// motion node.
     unlinked_motions: HashSet<NodeId>,
-    /// Derived cache for effective subtree metadata during this execution.
-    subtree_view_cache: SubtreeViewCache,
 }
 
 /// Read-only execution plan borrow.
@@ -433,198 +431,6 @@ pub struct SubtreeDispatchFlags {
     pub emits_row_from_empty_input: bool,
 }
 
-#[derive(Debug)]
-struct SubtreeViewSummary {
-    key: SubtreeViewKey,
-    constant_ids: Vec<NodeId>,
-    /// Motions inside the subtree that already have a materialized vtable.
-    vtable_ids: Vec<NodeId>,
-    dispatch_flags: SubtreeDispatchFlags,
-}
-
-#[derive(Debug, Default)]
-struct SubtreeViewCache {
-    inner: Rc<RefCell<NodeMap<Rc<SubtreeViewSummary>>>>,
-}
-
-impl Clone for SubtreeViewCache {
-    fn clone(&self) -> Self {
-        Self::default()
-    }
-}
-
-impl SubtreeViewCache {
-    fn get(&self, top_id: NodeId) -> Option<Rc<SubtreeViewSummary>> {
-        self.inner.borrow().get(&top_id).cloned()
-    }
-
-    fn insert(&self, top_id: NodeId, summary: Rc<SubtreeViewSummary>) {
-        self.inner.borrow_mut().insert(top_id, summary);
-    }
-
-    fn clear(&self) {
-        self.inner.borrow_mut().clear();
-    }
-}
-
-impl PartialEq for SubtreeViewCache {
-    fn eq(&self, _other: &Self) -> bool {
-        // The cache stores derived per-execution subtree metadata. Warm and
-        // cold caches must compare equally so `ExecutionPlan` equality reflects
-        // only plan data and execution overlays that affect behavior.
-        true
-    }
-}
-
-impl Eq for SubtreeViewCache {}
-
-/// Builds and caches effective subtree metadata for one execution plan root.
-pub(crate) struct SubtreeViewBuilder<'plan> {
-    exec_plan: &'plan ExecutionPlan,
-    summary: Rc<SubtreeViewSummary>,
-}
-
-impl<'plan> SubtreeViewBuilder<'plan> {
-    /// Returns a builder for `top_id`, reusing cached metadata when available.
-    ///
-    /// # Errors
-    /// - If the effective subtree rooted at `top_id` cannot be traversed.
-    pub(crate) fn new(
-        exec_plan: &'plan ExecutionPlan,
-        top_id: NodeId,
-    ) -> Result<Self, SbroadError> {
-        if let Some(summary) = exec_plan.subtree_view_cache.get(top_id) {
-            return Ok(Self { exec_plan, summary });
-        }
-
-        let summary = Rc::new(Self::build_summary(exec_plan, top_id)?);
-        exec_plan
-            .subtree_view_cache
-            .insert(top_id, Rc::clone(&summary));
-
-        Ok(Self { exec_plan, summary })
-    }
-
-    fn build_summary(
-        exec_plan: &'plan ExecutionPlan,
-        top_id: NodeId,
-    ) -> Result<SubtreeViewSummary, SbroadError> {
-        let ir_plan = exec_plan.get_ir_plan();
-        let constants = PostOrder::new_by_node(
-            &ir_plan.nodes,
-            |id, node| exec_plan.effective_sql_subtree_iter(id, node, Snapshot::Oldest, true),
-            top_id,
-        )
-        .expressions()
-        .filter(|(_, expr)| matches!(expr, Expression::Constant(_)));
-        let mut constant_ids = Vec::new();
-        let mut constant_set = HashSet::new();
-        for (node_id, _) in constants {
-            if constant_set.insert(node_id) {
-                constant_ids.push(node_id);
-            }
-        }
-
-        let mut node_ids = Vec::with_capacity(ir_plan.nodes.len());
-        let mut leaf_motions = Vec::new();
-        let mut serialize_as_empty = Vec::new();
-        let mut vtable_ids = Vec::new();
-        let mut dispatch_flags = SubtreeDispatchFlags::default();
-
-        let subtree = PostOrder::new_by_node(
-            &ir_plan.nodes,
-            |id, node| exec_plan.effective_sql_subtree_iter(id, node, Snapshot::Oldest, false),
-            top_id,
-        );
-        for (node_id, node) in subtree {
-            node_ids.push(node_id);
-            match node {
-                Node::Expression(expr) => {
-                    if expr.is_aggregate_fun() {
-                        dispatch_flags.emits_row_from_empty_input = true;
-                    }
-                }
-                Node::Relational(Relational::Motion(Motion {
-                    policy, program, ..
-                })) => {
-                    if exec_plan.is_motion_leaf(node_id, policy) {
-                        leaf_motions.push(node_id);
-                    }
-                    match exec_plan.effective_serialize_as_empty_state(node_id, program) {
-                        SerializeAsEmptyState::Absent => {}
-                        SerializeAsEmptyState::Enabled => {
-                            dispatch_flags.has_customization_opcodes = true;
-                            serialize_as_empty.push((node_id, true));
-                        }
-                        SerializeAsEmptyState::Disabled => {
-                            serialize_as_empty.push((node_id, false))
-                        }
-                    }
-                }
-                _ => {}
-            }
-            if let Some(vtable) = exec_plan.get_vtables().get(&node_id) {
-                vtable_ids.push(node_id);
-                if !vtable.get_bucket_index().is_empty() {
-                    dispatch_flags.has_segmented_tables = true;
-                }
-            }
-        }
-
-        // Sorting gives the plan id hash a stable order.
-        vtable_ids.sort_unstable_by_key(|node_id| (node_id.offset, node_id.arena_type));
-        vtable_ids.dedup();
-
-        Ok(SubtreeViewSummary {
-            key: SubtreeViewKey {
-                top_id,
-                node_ids,
-                leaf_motions,
-                serialize_as_empty,
-            },
-            constant_ids,
-            vtable_ids,
-            dispatch_flags,
-        })
-    }
-
-    /// Returns the execution plan for which this subtree summary was built.
-    pub(crate) fn exec_plan(&self) -> &'plan ExecutionPlan {
-        self.exec_plan
-    }
-
-    /// Returns the cache key describing the effective subtree shape.
-    pub(crate) fn key(&self) -> &SubtreeViewKey {
-        &self.summary.key
-    }
-
-    /// Returns node ids rendered by the effective SQL subtree.
-    pub(crate) fn node_ids(&self) -> &[NodeId] {
-        &self.summary.key.node_ids
-    }
-
-    /// Returns constant node ids in SQL parameter order.
-    pub(crate) fn constant_ids(&self) -> &[NodeId] {
-        &self.summary.constant_ids
-    }
-
-    /// Returns motions of this subtree paired with their materialized virtual tables.
-    pub(crate) fn vtables(&self) -> impl ExactSizeIterator<Item = (NodeId, &Rc<VirtualTable>)> {
-        let vtables = self.exec_plan.get_vtables();
-        self.summary.vtable_ids.iter().map(move |&node_id| {
-            let vtable = vtables
-                .get(&node_id)
-                .expect("subtree vtable ids are collected from the vtable map");
-            (node_id, vtable)
-        })
-    }
-
-    /// Returns dispatch flags derived for this effective subtree.
-    pub(crate) fn dispatch_flags(&self) -> SubtreeDispatchFlags {
-        self.summary.dispatch_flags
-    }
-}
-
 /// SQL parameter data collected without mutating the IR plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalSqlParams {
@@ -757,7 +563,6 @@ impl ExecutionPlan {
             bucket_filter: None,
             serialize_as_empty_disabled_motions: HashSet::new(),
             unlinked_motions: HashSet::new(),
-            subtree_view_cache: SubtreeViewCache::default(),
         };
         std::mem::replace(self, placeholder)
     }
@@ -776,7 +581,6 @@ impl ExecutionPlan {
             bucket_filter: None,
             serialize_as_empty_disabled_motions: HashSet::new(),
             unlinked_motions: HashSet::new(),
-            subtree_view_cache: SubtreeViewCache::default(),
         }
     }
 
@@ -903,7 +707,6 @@ impl ExecutionPlan {
 
     /// Drops everything derived from the IR shape or the virtual table map.
     fn invalidate_derived_caches(&mut self) {
-        self.subtree_view_cache.clear();
         self.plan_id_cache.clear();
         self.plan_id_sql_parameter_count_cache.clear();
     }
@@ -1090,6 +893,136 @@ impl ExecutionPlan {
         ))
     }
 
+    /// Returns the effective SQL subtree of `top_id`.
+    ///
+    /// The shape is cached in the prepared plan for the current overlays, so
+    /// the executions after the first one do not walk the subtree.
+    ///
+    /// # Errors
+    /// - If the effective subtree cannot be inspected.
+    pub(crate) fn subtree_shape(&self, top_id: NodeId) -> Result<Rc<SubtreeShape>, SbroadError> {
+        let ir_plan = self.get_ir_plan();
+        let shapes = ir_plan.shapes();
+        if let Some(motions) = shapes.motions(top_id) {
+            let variant = self.shape_variant(&motions)?;
+            if let Some(shape) = shapes.get(top_id, &variant) {
+                #[cfg(debug_assertions)]
+                {
+                    let fresh = self.build_subtree_shape(top_id)?;
+                    debug_assert_eq!(
+                        (&shape.node_ids, &shape.constant_ids),
+                        (&fresh.node_ids, &fresh.constant_ids),
+                        "subtree shape changed between executions"
+                    );
+                }
+                return Ok(shape);
+            }
+        }
+        let shape = Rc::new(self.build_subtree_shape(top_id)?);
+        shapes.insert(top_id, Rc::clone(&shape), |motions| {
+            self.shape_variant(motions)
+        })?;
+        Ok(shape)
+    }
+
+    fn shape_variant(&self, motions: &[NodeId]) -> Result<ShapeVariant, SbroadError> {
+        let mut variant = ShapeVariant::default();
+        for &motion_id in motions {
+            let Relational::Motion(Motion {
+                policy, program, ..
+            }) = self.get_ir_plan().get_relation_node(motion_id)?
+            else {
+                continue;
+            };
+            if self.is_motion_leaf(motion_id, policy) {
+                variant.leaf_motions.push(motion_id);
+            }
+            let state = self.effective_serialize_as_empty_state(motion_id, program);
+            if state != SerializeAsEmptyState::Absent {
+                variant
+                    .serialize_as_empty
+                    .push((motion_id, state.is_enabled()));
+            }
+        }
+        Ok(variant)
+    }
+
+    fn build_subtree_shape(&self, top_id: NodeId) -> Result<SubtreeShape, SbroadError> {
+        let ir_plan = self.get_ir_plan();
+        let constants = PostOrder::new_by_node(
+            &ir_plan.nodes,
+            |id, node| self.effective_sql_subtree_iter(id, node, Snapshot::Oldest, true),
+            top_id,
+        )
+        .expressions()
+        .filter(|(_, expr)| matches!(expr, Expression::Constant(_)));
+        let mut constant_ids = Vec::new();
+        let mut constant_set = HashSet::new();
+        for (node_id, _) in constants {
+            if constant_set.insert(node_id) {
+                constant_ids.push(node_id);
+            }
+        }
+
+        let mut node_ids = Vec::with_capacity(ir_plan.nodes.len());
+        let mut motion_ids = Vec::new();
+        let mut has_customization_opcodes = false;
+        let mut emits_row_from_empty_input = false;
+        let subtree = PostOrder::new_by_node(
+            &ir_plan.nodes,
+            |id, node| self.effective_sql_subtree_iter(id, node, Snapshot::Oldest, false),
+            top_id,
+        );
+        for (node_id, node) in subtree {
+            node_ids.push(node_id);
+            match node {
+                Node::Expression(expr) => {
+                    if expr.is_aggregate_fun() {
+                        emits_row_from_empty_input = true;
+                    }
+                }
+                Node::Relational(Relational::Motion(Motion { program, .. })) => {
+                    motion_ids.push(node_id);
+                    if self
+                        .effective_serialize_as_empty_state(node_id, program)
+                        .is_enabled()
+                    {
+                        has_customization_opcodes = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        // The shape stays in the prepared plan, so it must not keep the
+        // capacity reserved for the whole plan.
+        node_ids.shrink_to_fit();
+        let mut sorted_node_ids = node_ids.clone();
+        sorted_node_ids.sort_unstable_by_key(SubtreeShape::order_key);
+
+        Ok(SubtreeShape {
+            node_ids,
+            sorted_node_ids,
+            constant_ids,
+            motion_ids,
+            has_customization_opcodes,
+            emits_row_from_empty_input,
+            hash: OnceCell::new(),
+        })
+    }
+
+    /// Returns the nodes of `shape` that have a virtual table, in the order
+    /// of the plan id.
+    pub(crate) fn subtree_vtable_ids(&self, shape: &SubtreeShape) -> Vec<NodeId> {
+        let mut vtable_ids: Vec<NodeId> = self
+            .vtables
+            .keys()
+            .copied()
+            .filter(|id| shape.contains(*id))
+            .collect();
+        vtable_ids.sort_unstable_by_key(SubtreeShape::order_key);
+        vtable_ids
+    }
+
     /// Returns bucket ids appended to SQL parameters by the active filter.
     pub(crate) fn get_bucket_filter_ids(&self) -> Option<&[u64]> {
         Some(self.bucket_filter.as_ref()?.bucket_ids.as_slice())
@@ -1101,7 +1034,7 @@ impl ExecutionPlan {
     /// - If the plan top or effective subtree cannot be inspected.
     pub(crate) fn sql_parameter_count(&self) -> Result<usize, SbroadError> {
         let top_id = self.get_ir_plan().get_top()?;
-        Ok(SubtreeViewBuilder::new(self, top_id)?.constant_ids().len())
+        Ok(self.subtree_shape(top_id)?.constant_ids.len())
     }
 
     /// Returns the plan-id parameter count plus active bucket-filter parameters.
@@ -1133,60 +1066,9 @@ impl ExecutionPlan {
         snapshot: Snapshot,
     ) -> Result<LocalSqlParams, SbroadError> {
         let constant_ids = match snapshot {
-            Snapshot::Oldest => SubtreeViewBuilder::new(self, top_id)?
-                .constant_ids()
-                .to_vec(),
+            Snapshot::Oldest => self.subtree_shape(top_id)?.constant_ids.clone(),
             Snapshot::Latest => self.get_ir_plan().get_const_list(top_id, snapshot),
         };
-        self.local_sql_params_for_constants(constant_ids)
-    }
-
-    /// Collects constant node ids and SQL parameter values for one block
-    /// statement (`Snapshot::Oldest`).
-    ///
-    /// Constant ids are memoized in the shared block cache (next to the block
-    /// pattern hash), so repeated executions of a cached block plan skip the
-    /// subtree traversal entirely and only read the parameter values.
-    ///
-    /// # Errors
-    /// - Same as `local_sql_params`.
-    pub fn block_sql_params(&self, top_id: NodeId) -> Result<LocalSqlParams, SbroadError> {
-        let cache = self.get_ir_plan().block_cache();
-        let constant_ids = if let Some(cached) = cache.constant_ids(top_id) {
-            #[cfg(debug_assertions)]
-            {
-                let fresh = SubtreeViewBuilder::new(self, top_id)?
-                    .constant_ids()
-                    .to_vec();
-                debug_assert_eq!(
-                    cached.as_ref(),
-                    &fresh,
-                    "constant ids of a block statement changed between executions"
-                );
-            }
-            cached
-        } else {
-            let constant_ids = Rc::new(
-                SubtreeViewBuilder::new(self, top_id)?
-                    .constant_ids()
-                    .to_vec(),
-            );
-            cache.insert_constant_ids(top_id, Rc::clone(&constant_ids));
-            constant_ids
-        };
-        self.local_sql_params_for_constants(constant_ids.as_ref().clone())
-    }
-
-    /// Builds `LocalSqlParams` for already-collected constant node ids,
-    /// appending active bucket-filter values after the IR constants.
-    ///
-    /// # Errors
-    /// - If a collected constant cannot be converted to a parameter value.
-    /// - If the parameter count exceeds the local SQL placeholder limit.
-    fn local_sql_params_for_constants(
-        &self,
-        constant_ids: Vec<NodeId>,
-    ) -> Result<LocalSqlParams, SbroadError> {
         let mut params = Vec::with_capacity(constant_ids.len());
         for (num, const_id) in constant_ids.iter().enumerate() {
             let _: u16 = (num + 1).try_into().map_err(|_| {
@@ -1377,11 +1259,14 @@ impl ExecutionPlan {
         sql_top_id: NodeId,
         plan_id: u64,
     ) -> Result<HashMap<SmolStr, Rc<VirtualTable>>, SbroadError> {
-        let view = SubtreeViewBuilder::new(self, sql_top_id)?;
-        let subtree_vtables = view.vtables();
-        let mut vtables = HashMap::with_capacity(subtree_vtables.len());
-        for (node_id, vtable) in subtree_vtables {
-            vtables.insert(table_name(plan_id, node_id), Rc::clone(vtable));
+        let shape = self.subtree_shape(sql_top_id)?;
+        let vtable_ids = self.subtree_vtable_ids(&shape);
+        let mut vtables = HashMap::with_capacity(vtable_ids.len());
+        for node_id in vtable_ids {
+            vtables.insert(
+                table_name(plan_id, node_id),
+                Rc::clone(&self.vtables[&node_id]),
+            );
         }
         Ok(vtables)
     }
@@ -1499,7 +1384,16 @@ impl ExecutionPlan {
         &self,
         top_id: NodeId,
     ) -> Result<SubtreeDispatchFlags, SbroadError> {
-        Ok(SubtreeViewBuilder::new(self, top_id)?.dispatch_flags())
+        let shape = self.subtree_shape(top_id)?;
+        let has_segmented_tables = self
+            .vtables
+            .iter()
+            .any(|(id, vtable)| shape.contains(*id) && !vtable.get_bucket_index().is_empty());
+        Ok(SubtreeDispatchFlags {
+            has_segmented_tables,
+            has_customization_opcodes: shape.has_customization_opcodes,
+            emits_row_from_empty_input: shape.emits_row_from_empty_input,
+        })
     }
 
     /// Extract policy from motion node

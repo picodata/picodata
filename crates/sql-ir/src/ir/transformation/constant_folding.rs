@@ -9,7 +9,7 @@ use crate::ir::operator::{Bool, Unary};
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::{Trivalent, TrivalentOrdering, Value};
-use crate::ir::Plan;
+use crate::ir::{Plan, PlanShapes};
 use smol_str::format_smolstr;
 use std::collections::{HashMap, HashSet};
 
@@ -232,6 +232,7 @@ impl Plan {
         }
 
         let mut const_map = OldNewFoldingMap::new();
+        let mut folded = false;
 
         for id in node_ids {
             let rel_node = self.get_relation_node(id)?;
@@ -325,6 +326,7 @@ impl Plan {
                 }
             }
 
+            folded |= !const_map.is_empty();
             if let Some(new_filter) = const_map.get(&filter) {
                 match self.get_mut_relation_node(id)? {
                     MutRelational::Join(Join {
@@ -391,6 +393,12 @@ impl Plan {
 
                 const_map.clear();
             }
+        }
+
+        if folded {
+            // The folded nodes depend on the bound values, so the shapes of
+            // this plan must not be shared with other executions.
+            self.shapes = PlanShapes::default();
         }
 
         Ok(self)

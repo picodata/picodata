@@ -9,7 +9,7 @@ use crate::ir::node::{
 };
 use crate::ir::relation::Column;
 use crate::ir::types::{CastType, DerivedType};
-use crate::ir::SubtreeHash;
+use crate::ir::{SubtreeHash, SubtreeShape};
 use ahash::{AHashMap, AHashSet};
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -22,7 +22,7 @@ use tarantool::tuple::{FunctionArgs, Tuple};
 use twox_hash::XxHash3_64;
 
 use crate::errors::{Action, Entity, SbroadError};
-use crate::executor::ir::{DqlSubtree, ExecutionPlan, SqlExecutionView, SubtreeViewBuilder};
+use crate::executor::ir::{DqlSubtree, ExecutionPlan, SqlExecutionView};
 use crate::ir::columns::RelColumn;
 use crate::ir::operator::{ConflictDoUpdate, ConflictStrategy, OrderByEntity, OrderByType};
 use crate::ir::tree::Snapshot;
@@ -615,27 +615,27 @@ fn hash_iocdu_rhs(hasher: &mut XxHash3_64, ir: &Plan, rhs: NodeId) -> Result<(),
 
 /// Key for the router-side cache of rendered block SQL patterns.
 ///
-/// The hash is memoized in the plan's `BlockCache`, which every clone of a
+/// The hash is memoized in the plan's `PlanShapes`, which every clone of a
 /// prepared block plan shares, so repeated executions never rehash the block.
 pub fn block_pattern_key(
     exec_plan: &ExecutionPlan,
     statements: &[BlockStatement<NodeId>],
 ) -> Result<u64, SbroadError> {
-    let cache = exec_plan.get_ir_plan().block_cache();
-    if let Some(hash) = cache.pattern_hash() {
+    let shapes = exec_plan.get_ir_plan().shapes();
+    if let Some(hash) = shapes.block_pattern_hash() {
         return Ok(hash);
     }
     let mut hasher = XxHash3_64::new();
     for entry in BlockEntries::new(statements) {
         entry.with_location(|id, loc| {
             loc.hash(&mut hasher);
-            let sub = SubtreeViewBuilder::new(exec_plan, *id)?.subtree_hash()?;
+            let sub = exec_plan.subtree_hash(&*exec_plan.subtree_shape(*id)?)?;
             hasher.write_u64(sub.hash);
             Ok(())
         })?;
     }
     let hash = hasher.finish();
-    cache.set_pattern_hash(hash);
+    shapes.set_block_pattern_hash(hash);
     Ok(hash)
 }
 
@@ -816,30 +816,28 @@ fn normalize_plan_id_relational(
     Ok(())
 }
 
-impl SubtreeViewBuilder<'_> {
-    fn subtree_hash(&self) -> Result<SubtreeHash, SbroadError> {
-        let cache = self.exec_plan().get_ir_plan().subtree_hash_cache();
-        if let Some(hash) = cache.get(self.key()) {
-            return Ok(hash);
+impl ExecutionPlan {
+    fn subtree_hash(&self, shape: &SubtreeShape) -> Result<SubtreeHash, SbroadError> {
+        if let Some(hash) = shape.hash.get() {
+            return Ok(*hash);
         }
-
-        let hash = self.calculate_subtree_hash()?;
-        cache.insert(self.key().clone(), hash);
+        let hash = self.calculate_subtree_hash(shape)?;
+        let _ = shape.hash.set(hash);
         Ok(hash)
     }
 
-    fn calculate_subtree_hash(&self) -> Result<SubtreeHash, SbroadError> {
-        let ir = self.exec_plan().get_ir_plan();
+    fn calculate_subtree_hash(&self, shape: &SubtreeShape) -> Result<SubtreeHash, SbroadError> {
+        let ir = self.get_ir_plan();
         let mut hasher = XxHash3_64::new();
-        let mut node_positions = self
-            .node_ids()
+        let mut node_positions = shape
+            .node_ids
             .iter()
             .enumerate()
             .map(|(pos, id)| (*id, pos as u32))
             .collect::<AHashMap<_, _>>();
         // Motions rendered as SQL leaves hide their child subtree. References
         // to hidden nodes hash as references to the visible motion leaf.
-        for node_id in self.node_ids() {
+        for node_id in &shape.node_ids {
             let Node::Relational(Relational::Motion(Motion {
                 child: Some(child), ..
             })) = ir.get_node(*node_id)?
@@ -861,7 +859,7 @@ impl SubtreeViewBuilder<'_> {
             }
         }
 
-        for node_id in self.node_ids() {
+        for node_id in &shape.node_ids {
             let node = ir.get_node(*node_id)?;
             hash_plan_id_header(&mut hasher, HashHeaderSalt::Node);
             hash_plan_id_part(&mut hasher, &to_subtree_node_id(*node_id, &node_positions)?)?;
@@ -937,7 +935,7 @@ impl SubtreeViewBuilder<'_> {
 
         Ok(SubtreeHash {
             hash: hasher.finish(),
-            sql_parameter_count: self.constant_ids().len(),
+            sql_parameter_count: shape.constant_ids.len(),
         })
     }
 }
@@ -996,8 +994,8 @@ impl ExecutionPlan {
         &self,
         top_id: NodeId,
     ) -> Result<(u64, usize), SbroadError> {
-        let view = SubtreeViewBuilder::new(self, top_id)?;
-        let subtree_hash = view.subtree_hash()?;
+        let shape = self.subtree_shape(top_id)?;
+        let subtree_hash = self.subtree_hash(&shape)?;
         let mut hasher = XxHash3_64::new();
         hasher.write_u64(subtree_hash.hash);
 
@@ -1006,7 +1004,8 @@ impl ExecutionPlan {
         }
 
         // We need only virtual tables from the subtree.
-        for (node_id, vtable) in view.vtables() {
+        for node_id in self.subtree_vtable_ids(&shape) {
+            let vtable = &self.get_vtables()[&node_id];
             hash_plan_id_header(&mut hasher, HashHeaderSalt::Vtable);
             hash_plan_id_part(&mut hasher, &node_id)?;
             for column in vtable.get_columns() {

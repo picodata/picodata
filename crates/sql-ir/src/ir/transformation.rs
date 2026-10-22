@@ -358,12 +358,10 @@ impl Plan {
                 .fold_boolean_tree()?;
         } else if self.top_is(PlanKind::BLOCK)? {
             self.bind_params(params, default_options)?;
-            // A prepared block plan is cloned per execution and `BlockCache`
-            // memoizes the constant ids and pattern hash of the first one,
-            // so every post-bind pass on a block must overwrite nodes in
-            // place. `fold_boolean_tree` allocates nodes and re-points
-            // filters depending on the bound values; for blocks it runs at
-            // parse time only (`optimize_block`).
+            // A prepared block plan is cloned per execution and keeps the
+            // shapes and the pattern hash of the first one. `fold_boolean_tree`
+            // re-points filters depending on the bound values, which resets
+            // them, so for blocks it runs at parse time only (`optimize_block`).
             self = self.update_timestamps()?.cast_constants()?;
         }
 

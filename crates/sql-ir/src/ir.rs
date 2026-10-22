@@ -843,12 +843,9 @@ pub struct Plan {
     /// Any sharded table must belongs to a single tier,
     /// global tables use `None`.
     pub tier: Option<SmolStr>,
-    /// Derived cache for reusable structural subtree hashes.
-    pub(crate) subtree_hash_cache: SubtreeHashCache,
-    /// Memoized artifacts of a transactional block: its SQL pattern hash and
-    /// the constant node ids of each statement. Both survive across executions
-    /// of a cached block plan.
-    pub(crate) block_cache: BlockCache,
+    /// Effective subtree shapes that survive across executions of a
+    /// prepared plan.
+    pub(crate) shapes: PlanShapes,
     /// Equality facts
     pub facts: Option<EqualityFacts>,
     /// Per-relational-node value restrictions (PG `RestrictInfo` analog).
@@ -861,71 +858,141 @@ pub struct SubtreeHash {
     pub sql_parameter_count: usize,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct SubtreeViewKey {
-    pub top_id: NodeId,
-    pub node_ids: Vec<NodeId>,
+/// The execution overlays that select one shape of a subtree: the state of
+/// the motions that the subtree can reach.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ShapeVariant {
+    /// Motions rendered as leaves.
     pub leaf_motions: Vec<NodeId>,
+    /// Motions with a `SerializeAsEmptyTable` opcode and its effective state.
     pub serialize_as_empty: Vec<(NodeId, bool)>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct SubtreeHashCache {
-    inner: Rc<RefCell<AHashMap<SubtreeViewKey, SubtreeHash>>>,
+/// The effective SQL subtree of a statement top in one [`ShapeVariant`].
+#[derive(Debug)]
+pub struct SubtreeShape {
+    /// Nodes in post order.
+    pub node_ids: Vec<NodeId>,
+    /// `node_ids` sorted by [`SubtreeShape::order_key`], to find the virtual
+    /// tables of the subtree.
+    pub sorted_node_ids: Vec<NodeId>,
+    /// Constants in SQL parameter order.
+    pub constant_ids: Vec<NodeId>,
+    /// Motions among `node_ids`.
+    pub motion_ids: Vec<NodeId>,
+    /// Whether a motion of the subtree has an enabled
+    /// `SerializeAsEmptyTable` opcode.
+    pub has_customization_opcodes: bool,
+    /// Whether the subtree can produce a row even when it reads nothing.
+    pub emits_row_from_empty_input: bool,
+    /// Structural hash, calculated on first use.
+    pub hash: OnceCell<SubtreeHash>,
 }
 
-impl SubtreeHashCache {
-    pub fn get(&self, key: &SubtreeViewKey) -> Option<SubtreeHash> {
-        self.inner.borrow().get(key).copied()
+impl SubtreeShape {
+    /// The order of `sorted_node_ids` and of the virtual tables in the plan id.
+    #[must_use]
+    pub fn order_key(node_id: &NodeId) -> (u32, ArenaType) {
+        (node_id.offset, node_id.arena_type)
     }
 
-    pub fn insert(&self, key: SubtreeViewKey, hash: SubtreeHash) {
-        self.inner.borrow_mut().insert(key, hash);
+    #[must_use]
+    pub fn contains(&self, node_id: NodeId) -> bool {
+        self.sorted_node_ids
+            .binary_search_by_key(&Self::order_key(&node_id), Self::order_key)
+            .is_ok()
     }
 }
 
-/// Memoized artifacts of a transactional block plan that survive across
-/// executions of a cached block: the SQL pattern hash and the constant node
-/// ids of each statement.
+/// Shapes of one statement top.
+#[derive(Debug, Default)]
+struct TopShapes {
+    /// The motions that any cached variant reaches. A variant is identified
+    /// by the state of these motions.
+    motions: Rc<[NodeId]>,
+    variants: Vec<(ShapeVariant, Rc<SubtreeShape>)>,
+}
+
+/// The overlay state follows the same steps on each execution, so a top has
+/// few variants. The limit only bounds the memory if that is not so.
+const MAX_SHAPE_VARIANTS: usize = 16;
+
+/// Effective subtree shapes of a plan and the SQL pattern hash of a block.
 ///
-/// Block statement subtrees carry no motions or vtables, and every pass that
-/// runs on a prepared block plan after it is cached (`bind_params`,
-/// `update_timestamps`, `cast_constants`, `update_current_user`,
-/// `bind_block_insert_buckets`) overwrites nodes in place, so both artifacts
-/// stay valid across executions. Shared across plan clones through the same
-/// `Rc`, so plan clones and `Rc::make_mut` copies keep a warm cache.
+/// Binding and the later passes replace nodes in place, so a shape stays
+/// valid for all executions with the same [`ShapeVariant`]. Shared across
+/// plan clones through the same `Rc`, so each execution of a prepared plan
+/// finds the shapes of the previous ones.
 #[derive(Clone, Debug, Default)]
-pub struct BlockCache {
-    inner: Rc<BlockCacheInner>,
+pub struct PlanShapes {
+    inner: Rc<PlanShapesInner>,
 }
 
 #[derive(Debug, Default)]
-struct BlockCacheInner {
-    /// Hash identifying the SQL pattern of the block. Populated lazily on the
-    /// first call to `block_pattern_key`.
-    pattern_hash: OnceCell<u64>,
-    /// Constant node ids per block statement top, in SQL parameter order.
-    constant_ids: RefCell<AHashMap<NodeId, Rc<Vec<NodeId>>>>,
+struct PlanShapesInner {
+    tops: RefCell<AHashMap<NodeId, TopShapes>>,
+    block_pattern_hash: OnceCell<u64>,
 }
 
-impl BlockCache {
-    pub fn pattern_hash(&self) -> Option<u64> {
-        self.inner.pattern_hash.get().copied()
+impl PlanShapes {
+    /// Returns the motions that identify a variant of `top_id`, or `None`
+    /// when no shape of `top_id` is cached.
+    #[must_use]
+    pub fn motions(&self, top_id: NodeId) -> Option<Rc<[NodeId]>> {
+        let tops = self.inner.tops.borrow();
+        tops.get(&top_id).map(|top| Rc::clone(&top.motions))
     }
 
-    pub fn set_pattern_hash(&self, hash: u64) {
-        let _ = self.inner.pattern_hash.set(hash);
+    #[must_use]
+    pub fn get(&self, top_id: NodeId, variant: &ShapeVariant) -> Option<Rc<SubtreeShape>> {
+        let tops = self.inner.tops.borrow();
+        let top = tops.get(&top_id)?;
+        top.variants
+            .iter()
+            .find(|(cached, _)| cached == variant)
+            .map(|(_, shape)| Rc::clone(shape))
     }
 
-    pub fn constant_ids(&self, top_id: NodeId) -> Option<Rc<Vec<NodeId>>> {
-        self.inner.constant_ids.borrow().get(&top_id).cloned()
+    /// Caches `shape` of `top_id`. `variant_of` gives the variant for the
+    /// motions of the top, which include the motions of `shape`.
+    ///
+    /// # Errors
+    /// - `variant_of` failed.
+    pub fn insert<E>(
+        &self,
+        top_id: NodeId,
+        shape: Rc<SubtreeShape>,
+        variant_of: impl FnOnce(&[NodeId]) -> Result<ShapeVariant, E>,
+    ) -> Result<(), E> {
+        let mut tops = self.inner.tops.borrow_mut();
+        let top = tops.entry(top_id).or_default();
+        let new_motions: Vec<NodeId> = shape
+            .motion_ids
+            .iter()
+            .filter(|id| !top.motions.contains(id))
+            .copied()
+            .collect();
+        if !new_motions.is_empty() {
+            // The cached variants do not identify the state of the new
+            // motions.
+            top.motions = top.motions.iter().copied().chain(new_motions).collect();
+            top.variants.clear();
+        }
+        if top.variants.len() >= MAX_SHAPE_VARIANTS {
+            return Ok(());
+        }
+        let variant = variant_of(&top.motions)?;
+        top.variants.push((variant, shape));
+        Ok(())
     }
 
-    pub fn insert_constant_ids(&self, top_id: NodeId, constant_ids: Rc<Vec<NodeId>>) {
-        self.inner
-            .constant_ids
-            .borrow_mut()
-            .insert(top_id, constant_ids);
+    #[must_use]
+    pub fn block_pattern_hash(&self) -> Option<u64> {
+        self.inner.block_pattern_hash.get().copied()
+    }
+
+    pub fn set_block_pattern_hash(&self, hash: u64) {
+        let _ = self.inner.block_pattern_hash.set(hash);
     }
 }
 
@@ -1100,8 +1167,7 @@ impl Plan {
             index_version_map: HashMap::with_hasher(RepeatableState),
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
-            subtree_hash_cache: SubtreeHashCache::default(),
-            block_cache: BlockCache::default(),
+            shapes: PlanShapes::default(),
             facts: None,
             restrictions: None,
         }
@@ -1216,17 +1282,10 @@ impl Plan {
         &self.undo
     }
 
-    /// Get the cache of reusable structural subtree hashes.
+    /// Get the effective subtree shapes shared by the executions of this plan.
     #[must_use]
-    pub fn subtree_hash_cache(&self) -> &SubtreeHashCache {
-        &self.subtree_hash_cache
-    }
-
-    /// Get the block cache: memoized SQL pattern hash and per-statement
-    /// constant node ids of a transactional block.
-    #[must_use]
-    pub fn block_cache(&self) -> &BlockCache {
-        &self.block_cache
+    pub fn shapes(&self) -> &PlanShapes {
+        &self.shapes
     }
 
     /// Find source relational node from which given reference came.
