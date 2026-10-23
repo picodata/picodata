@@ -13,7 +13,7 @@ use crate::sql::explain::explain_execute_block;
 use crate::sql::lua::{
     bucket_into_rs, dispatch_session_id, escape_bytes, lua_custom_plan_dispatch,
     lua_decode_rs_ibufs, lua_single_plan_dispatch, reference_add, reference_del, reference_use,
-    IbufTable,
+    sql_lua_state, IbufTable,
 };
 use crate::topology_cache::TopologyCacheRef;
 use crate::traft::node;
@@ -66,7 +66,6 @@ use std::time::Duration;
 use tarantool::fiber::Mutex;
 use tarantool::session::with_su;
 use tarantool::time::Instant;
-use tarantool::tlua::LuaThread;
 use tarantool::tuple::{Tuple, TupleBuilder};
 
 pub type SqlResult<T> = Result<T, SbroadError>;
@@ -460,9 +459,8 @@ pub(crate) fn single_plan_dispatch<'p>(
     timeout: Duration,
     tier: Option<&str>,
 ) -> SqlResult<()> {
-    let lua = tarantool::lua_state();
     let deadline = Instant::now_fiber().saturating_add(timeout);
-    let replicasets = replicasets_from_buckets(&lua, buckets, tier, deadline)?;
+    let replicasets = replicasets_from_buckets(buckets, tier, deadline)?;
     let timeout = deadline.duration_since(Instant::now_fiber());
     let query_type = query_type_for_top(&ex_plan, top_id)?;
     match &query_type {
@@ -482,7 +480,6 @@ pub(crate) fn single_plan_dispatch<'p>(
             let do_two_step = replicasets.len() != 1 && is_on_leader;
             single_plan_dispatch_dql(
                 port,
-                &lua,
                 ex_plan,
                 top_id,
                 &replicasets,
@@ -499,7 +496,7 @@ pub(crate) fn single_plan_dispatch<'p>(
                 return Ok(());
             }
 
-            single_plan_dispatch_dml(port, &lua, ex_plan, top_id, &replicasets, timeout, tier)?
+            single_plan_dispatch_dml(port, ex_plan, top_id, &replicasets, timeout, tier)?
         }
     };
     Ok(())
@@ -514,9 +511,8 @@ pub(crate) fn custom_plan_dispatch<'p>(
     timeout: Duration,
     tier: Option<&str>,
 ) -> SqlResult<()> {
-    let lua = tarantool::lua_state();
     let deadline = Instant::now_fiber().saturating_add(timeout);
-    let rs_buckets = buckets_by_replicasets(&lua, buckets, runtime.bucket_count(), tier, timeout)?;
+    let rs_buckets = buckets_by_replicasets(buckets, runtime.bucket_count(), tier, timeout)?;
     let timeout = deadline.duration_since(Instant::now_fiber());
     if rs_buckets.is_empty() {
         return Err(SbroadError::DispatchError(
@@ -549,7 +545,6 @@ pub(crate) fn custom_plan_dispatch<'p>(
             let do_two_step = rs_buckets.len() != 1 && is_on_leader;
             custom_plan_dispatch_dql(
                 port,
-                &lua,
                 ex_plan,
                 top_id,
                 rs_buckets,
@@ -567,7 +562,7 @@ pub(crate) fn custom_plan_dispatch<'p>(
                 return Ok(());
             }
 
-            custom_plan_dispatch_dml(port, &lua, ex_plan, top_id, rs_buckets, timeout, tier)?;
+            custom_plan_dispatch_dml(port, ex_plan, top_id, rs_buckets, timeout, tier)?;
         }
     };
     Ok(())
@@ -593,8 +588,7 @@ pub(crate) fn block_dispatch<'p>(
         )),
         Buckets::Any => execute_block_locally_for_dispatch(port, &metadata, block),
         Buckets::Filtered(_) => {
-            let lua = tarantool::lua_state();
-            let replicasets = replicasets_from_buckets(&lua, buckets, tier, deadline)?;
+            let replicasets = replicasets_from_buckets(buckets, tier, deadline)?;
             let timeout = deadline.duration_since(Instant::now_fiber());
 
             if should_single_rs_dispatch_locally(buckets, tier, &replicasets, "leader")? {
@@ -617,6 +611,7 @@ pub(crate) fn block_dispatch<'p>(
                 .into_tuple()
                 .map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
 
+            let lua = sql_lua_state();
             let lua_table = lua_single_plan_dispatch(
                 &lua,
                 &tuple,
@@ -1113,9 +1108,8 @@ fn query_type_for_top(ex_plan: &ExecutionPlan, top_id: NodeId) -> SqlResult<Quer
     }
 }
 
-fn single_plan_dispatch_dql<'lua, 'p>(
+fn single_plan_dispatch_dql<'p>(
     port: &mut impl Port<'p>,
-    lua: &'lua LuaThread,
     ex_plan: Rc<ExecutionPlan>,
     top_id: NodeId,
     replicasets: &[String],
@@ -1133,8 +1127,9 @@ fn single_plan_dispatch_dql<'lua, 'p>(
 
     crate::error_injection!(block "BLOCK_SQL_DISPATCH_AFTER_PUT_META");
 
+    let lua = sql_lua_state();
     let lua_table = lua_single_plan_dispatch(
-        lua,
+        &lua,
         &tuple,
         replicasets,
         timeout,
@@ -1169,9 +1164,8 @@ pub(crate) fn build_cache_miss_dql_packet(request_id: &str, plan_id: u64) -> Sql
     )
 }
 
-fn custom_plan_dispatch_dql<'lua, 'p>(
+fn custom_plan_dispatch_dql<'p>(
     port: &mut impl Port<'p>,
-    lua: &'lua LuaThread,
     ex_plan: Rc<ExecutionPlan>,
     top_id: NodeId,
     rs_buckets: Vec<(String, Vec<u64>)>,
@@ -1207,8 +1201,9 @@ fn custom_plan_dispatch_dql<'lua, 'p>(
 
     let _guard_extra = put_query_meta(extra_exec_plan)?;
 
+    let lua = sql_lua_state();
     let lua_table = lua_custom_plan_dispatch(
-        lua,
+        &lua,
         &first_args,
         timeout,
         tier,
@@ -1346,7 +1341,6 @@ fn port_append_mp<'p>(port: &mut impl Port<'p>, mp: &[u8], row_len: u32) -> IoRe
 }
 
 pub fn replicasets_from_buckets(
-    lua: &LuaThread,
     buckets: &Buckets,
     tier: Option<&str>,
     deadline: Instant,
@@ -1366,13 +1360,14 @@ pub fn replicasets_from_buckets(
             ))
         }
     };
+    let lua = sql_lua_state();
     let mut replicasets: Vec<Rc<String>> = Vec::new();
     // Make sure that only replicasets owns reference to its Rc elements.
     {
         let mut seen: AHashSet<Rc<String>> = AHashSet::new();
 
         for id in iter {
-            let rs: String = bucket_into_rs(lua, *id, tier, deadline).map_err(|e| {
+            let rs: String = bucket_into_rs(&lua, *id, tier, deadline).map_err(|e| {
                 SbroadError::DispatchError(format_smolstr!(
                     "Failed to get replicaset from bucket {id}: {e}"
                 ))
@@ -1396,7 +1391,6 @@ pub fn replicasets_from_buckets(
 }
 
 fn buckets_by_replicasets(
-    lua: &LuaThread,
     buckets: &Buckets,
     max_buckets: u64,
     tier: Option<&str>,
@@ -1432,10 +1426,11 @@ fn buckets_by_replicasets(
             ))
         }
     };
+    let lua = sql_lua_state();
     let mut map: AHashMap<String, Vec<u64>> = AHashMap::new();
     let deadline = Instant::now_fiber().saturating_add(timeout);
     for id in iter {
-        let rs: String = bucket_into_rs(lua, id, tier, deadline).map_err(|e| {
+        let rs: String = bucket_into_rs(&lua, id, tier, deadline).map_err(|e| {
             SbroadError::DispatchError(format_smolstr!(
                 "Failed to get replicaset from bucket {id}: {e}"
             ))
@@ -1613,9 +1608,8 @@ fn build_dml_request(ex_plan: Rc<ExecutionPlan>, top_id: NodeId) -> SqlResult<Dm
     }
 }
 
-fn single_plan_dispatch_dml<'lua, 'p>(
+fn single_plan_dispatch_dml<'p>(
     port: &mut impl Port<'p>,
-    lua: &'lua LuaThread,
     ex_plan: Rc<ExecutionPlan>,
     top_id: NodeId,
     replicasets: &[String],
@@ -1627,8 +1621,9 @@ fn single_plan_dispatch_dml<'lua, 'p>(
     let (message, new_plan) = build_dml_request(ex_plan, top_id)?.into_message()?;
     let _guard = put_query_meta(new_plan)?;
 
+    let lua = sql_lua_state();
     let lua_table = lua_single_plan_dispatch(
-        lua,
+        &lua,
         message,
         replicasets,
         timeout,
@@ -1642,9 +1637,8 @@ fn single_plan_dispatch_dml<'lua, 'p>(
     Ok(())
 }
 
-fn custom_plan_dispatch_dml<'lua, 'p>(
+fn custom_plan_dispatch_dml<'p>(
     port: &mut impl Port<'p>,
-    lua: &'lua LuaThread,
     ex_plan: Rc<ExecutionPlan>,
     top_id: NodeId,
     rs_buckets: Vec<(String, Vec<u64>)>,
@@ -1662,7 +1656,8 @@ fn custom_plan_dispatch_dml<'lua, 'p>(
     }
     let _guard = put_query_meta(dql_encoder)?;
     let len = args.len();
-    let lua_table = lua_custom_plan_dispatch(lua, args, timeout, tier, read_preference, false)
+    let lua = sql_lua_state();
+    let lua_table = lua_custom_plan_dispatch(&lua, args, timeout, tier, read_preference, false)
         .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     dml_process(port, lua_table, len)?;
     Ok(())

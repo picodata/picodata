@@ -35,7 +35,7 @@ impl Drop for SqlRuntimeLease<'_> {
 
 thread_local!(static SQL_RUNTIME_LIMITER: OnceCell<TicketPool<Uuid>> = const { OnceCell::new() });
 
-fn sql_runtime_concurrency_max() -> u64 {
+pub(crate) fn sql_runtime_concurrency_max() -> u64 {
     DYNAMIC_CONFIG
         .sql_runtime_concurrency_max
         .try_current_value()

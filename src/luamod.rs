@@ -1777,6 +1777,22 @@ pub(crate) fn setup() {
             })
         },
     );
+
+    #[cfg(feature = "error_injection")]
+    luamod_set(
+        &l,
+        "_sql_lua_pool_stats",
+        indoc! {"
+        pico._sql_lua_pool_stats()
+
+        Internal API, see src/sql/lua.rs for the details.
+
+        Returns:
+
+            (table) `{idle = number, busy = number, created = number}`
+        "},
+        tlua::Function::new(crate::sql::lua::sql_lua_pool_stats),
+    );
 }
 
 #[no_mangle]

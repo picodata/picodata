@@ -566,11 +566,10 @@ impl Router for RouterRuntime {
             Buckets::All => Ok(Forward::On),
             Buckets::Any => Ok(Forward::Off),
             Buckets::Filtered(_) => {
-                let lua = tarantool::lua_state();
                 let tier = get_current_tier_name()?;
                 let timeout = DEFAULT_QUERY_TIMEOUT;
                 let deadline = Instant::now_fiber().saturating_add(timeout);
-                let replicasets = replicasets_from_buckets(&lua, buckets, Some(tier), deadline)?;
+                let replicasets = replicasets_from_buckets(buckets, Some(tier), deadline)?;
 
                 let Some(replicaset) = replicasets.first() else {
                     return Ok(Forward::Off);
@@ -628,10 +627,9 @@ pub fn replicasets_by_buckets(buckets: &Buckets) -> Result<Vec<String>, SbroadEr
 
         Ok(replicasets)
     } else {
-        let lua = tarantool::lua_state();
         let timeout = DEFAULT_QUERY_TIMEOUT;
         let deadline = Instant::now_fiber().saturating_add(timeout);
-        replicasets_from_buckets(&lua, buckets, Some(tier), deadline)
+        replicasets_from_buckets(buckets, Some(tier), deadline)
     }
 }
 

@@ -7,14 +7,16 @@ use ::tarantool::tlua;
 use ::tarantool::tlua::ffi as lua;
 use ::tarantool::tlua::ffi::lua_State;
 use ::tarantool::tlua::{
-    CDataOnStack, LuaError, LuaFunction, LuaRead, LuaState, LuaTable, LuaThread, PushGuard,
+    AsLua, CDataOnStack, LuaError, LuaFunction, LuaRead, LuaState, LuaTable, LuaThread, PushGuard,
     PushInto, StringInLua, Void,
 };
 use rmp::decode::{read_array_len, read_int, read_marker, RmpRead};
 use rmp::Marker;
 use sql_protocol::iterators::ExplainIter;
+use std::cell::RefCell;
 use std::fmt::Write;
 use std::io::Cursor;
+use std::ops::Deref;
 use std::os::raw::c_char;
 use std::ptr::NonNull;
 use std::rc::Rc;
@@ -542,6 +544,101 @@ pub(crate) fn lua_decode_rs_ibufs<'lua>(
     Ok(ibufs)
 }
 
+/// The pool never keeps more free Lua threads than this, even when
+/// `sql_runtime_concurrency_max` is set huge to lift the limit.
+const SQL_LUA_POOL_CAPACITY_MAX: u64 = 1024;
+
+/// Free Lua threads the pool keeps between SQL calls into Lua.
+///
+/// `sql_runtime_concurrency_max` bounds concurrent SQL queries, and a query
+/// usually holds one Lua thread at a time, so once warmed up the pool creates
+/// no threads while the busy ones fit in its capacity. The pool does not limit
+/// concurrent calls: without a free thread a call creates one, and a thread
+/// returned to a full pool is dropped, as `tarantool::lua_state()` does.
+fn sql_lua_pool_capacity() -> usize {
+    crate::sql::concurrency::sql_runtime_concurrency_max().min(SQL_LUA_POOL_CAPACITY_MAX) as usize
+}
+
+#[derive(Default)]
+struct SqlLuaPool {
+    idle: Vec<LuaThread>,
+    busy: usize,
+    created: u64,
+}
+
+thread_local! {
+    // SQL and Lua run only in the TX thread.
+    static SQL_LUA_POOL: RefCell<SqlLuaPool> = RefCell::default();
+}
+
+/// A Lua thread for SQL calls into Lua, taken from the pool.
+///
+/// A new Lua thread per call costs an allocation, a registry slot and garbage
+/// for the collector. A fiber keeps its thread while a call yields, so unlike
+/// the main Lua stack, the thread is never shared by two pending calls.
+pub(crate) struct PooledLua(Option<LuaThread>);
+
+impl Deref for PooledLua {
+    type Target = LuaThread;
+
+    fn deref(&self) -> &LuaThread {
+        self.0.as_ref().expect("taken only on drop")
+    }
+}
+
+impl Drop for PooledLua {
+    fn drop(&mut self) {
+        let thread = self.0.take().expect("dropped once");
+        // Values left on the stack mean the thread was used other than through
+        // tlua's `lua_pcall`. A panic needs no check: the picodata panic hook
+        // aborts the process before any unwinding.
+        // SAFETY: the thread is alive, and Lua runs only in the TX thread.
+        let clean = unsafe { lua::lua_gettop(thread.as_lua()) == 0 };
+        let capacity = sql_lua_pool_capacity();
+        // Dropping a thread here is safe: `luaL_unref` runs no Lua code.
+        SQL_LUA_POOL.with_borrow_mut(|pool| {
+            pool.busy -= 1;
+            if clean {
+                pool.idle.push(thread);
+            }
+            // The capacity shrinks when `sql_runtime_concurrency_max` is lowered.
+            pool.idle.truncate(capacity);
+        });
+    }
+}
+
+/// Take a free Lua thread from the pool or create a new one.
+pub(crate) fn sql_lua_state() -> PooledLua {
+    let thread = SQL_LUA_POOL.with_borrow_mut(|pool| {
+        pool.busy += 1;
+        let thread = pool.idle.pop();
+        if thread.is_none() {
+            pool.created += 1;
+        }
+        thread
+    });
+    // Created outside the borrow: `lua_newthread` can run the GC and its finalizers.
+    PooledLua(Some(thread.unwrap_or_else(tarantool::lua_state)))
+}
+
+#[derive(tlua::PushInto)]
+pub(crate) struct SqlLuaPoolStats {
+    /// Free threads in the pool.
+    pub idle: usize,
+    /// Threads taken by calls now.
+    pub busy: usize,
+    /// Threads created since the start.
+    pub created: u64,
+}
+
+pub(crate) fn sql_lua_pool_stats() -> SqlLuaPoolStats {
+    SQL_LUA_POOL.with_borrow(|pool| SqlLuaPoolStats {
+        idle: pool.idle.len(),
+        busy: pool.busy,
+        created: pool.created,
+    })
+}
+
 pub(crate) fn lua_single_plan_dispatch<'lua, T>(
     lua: &'lua LuaThread,
     args: T,
@@ -613,7 +710,7 @@ where
 }
 
 pub(crate) fn dispatch_session_id() -> Result<String> {
-    let lua = tarantool::lua_state();
+    let lua = sql_lua_state();
     let func = dispatch_get_func(&lua, "session_id")?;
     func.call::<String>()
         .map_err(|e| TarantoolError::new(TarantoolErrorCode::ProcLua, format!("{e}")).into())
@@ -684,7 +781,7 @@ fn bucket_into_rs_impl(lua: &LuaThread, bucket_id: u64, tier: Option<&str>) -> R
 }
 
 pub(crate) fn reference_add(rid: i64, sid: &str, timeout: Duration) -> Result<()> {
-    let lua = tarantool::lua_state();
+    let lua = sql_lua_state();
     let func = storage_get_func(&lua, "add")?;
 
     match func.call_with_args::<(Option<bool>, Option<VshardError>), _>((
@@ -708,7 +805,7 @@ pub(crate) fn reference_add(rid: i64, sid: &str, timeout: Duration) -> Result<()
 }
 
 pub(crate) fn reference_use(rid: i64, sid: &str) -> Result<()> {
-    let lua = tarantool::lua_state();
+    let lua = sql_lua_state();
     let func = storage_get_func(&lua, "use")?;
 
     match func.call_with_args::<(Option<bool>, Option<VshardError>), _>((rid, sid)) {
@@ -728,7 +825,7 @@ pub(crate) fn reference_use(rid: i64, sid: &str) -> Result<()> {
 }
 
 pub(crate) fn reference_del(rid: i64, sid: &str) -> Result<()> {
-    let lua = tarantool::lua_state();
+    let lua = sql_lua_state();
     let func = storage_get_func(&lua, "del")?;
 
     match func.call_with_args((rid, sid)) {
@@ -964,5 +1061,93 @@ mod tarantool_tests {
             lua::lua_getfield(l, -1, b"dml\0".as_ptr() as *const c_char);
             assert!(!lua::lua_isnil(l, -1), "dml must exist");
         }
+    }
+
+    #[tarantool::test]
+    fn sql_lua_pool_drops_dirty_thread() {
+        let lua = sql_lua_state();
+        unsafe { lua::lua_pushinteger(lua.as_lua(), 1) };
+        drop(lua);
+        let stats = sql_lua_pool_stats();
+        assert_eq!((stats.busy, stats.idle), (0, 0));
+    }
+
+    #[tarantool::test]
+    fn sql_lua_pool_does_not_limit_concurrent_calls() {
+        let capacity = sql_lua_pool_capacity();
+        let threads: Vec<_> = (0..=capacity).map(|_| sql_lua_state()).collect();
+        let distinct: std::collections::HashSet<_> = threads.iter().map(|l| l.as_lua()).collect();
+        assert_eq!(distinct.len(), capacity + 1);
+        assert_eq!(sql_lua_pool_stats().busy, capacity + 1);
+
+        drop(threads);
+        let stats = sql_lua_pool_stats();
+        assert_eq!((stats.busy, stats.idle), (0, capacity));
+    }
+
+    #[tarantool::test]
+    fn sql_lua_pool_thread_held_across_yield() {
+        crate::tarantool::exec(
+            "rawset(_G, 'sql_lua_pool_sleep', function(x) require('fiber').sleep(0.01) return x end)",
+        )
+        .unwrap();
+        let call = |x: i64| {
+            let lua = sql_lua_state();
+            let f: LuaFunction<_> = lua.get("sql_lua_pool_sleep").unwrap();
+            let res: i64 = f.into_call_with_args(x).unwrap();
+            (res, lua.as_lua() as usize)
+        };
+        // `fiber::start` runs the fiber until it yields inside its Lua call.
+        let first = fiber::start(move || call(1));
+        let second = call(2);
+        let first = first.join();
+        assert_eq!((first.0, second.0), (1, 2));
+        assert_ne!(first.1, second.1);
+    }
+
+    #[tarantool::test]
+    fn sql_lua_pool_reuses_thread_after_errors() {
+        crate::tarantool::exec("rawset(_G, 'sql_lua_pool_fail', function() error('boom') end)")
+            .unwrap();
+        crate::tarantool::exec("rawset(_G, 'sql_lua_pool_text', function() return 'text' end)")
+            .unwrap();
+        let lua = sql_lua_state();
+        let l = lua.as_lua();
+        let f: LuaFunction<_> = lua.get("sql_lua_pool_fail").unwrap();
+        assert!(f.into_call::<()>().is_err());
+        let f: LuaFunction<_> = lua.get("sql_lua_pool_text").unwrap();
+        assert!(
+            f.into_call::<i64>().is_err(),
+            "a string is not read as a number"
+        );
+        drop(lua);
+        assert_eq!(sql_lua_pool_stats().idle, 1);
+
+        let lua = sql_lua_state();
+        assert_eq!(lua.as_lua(), l);
+        let f: LuaFunction<_> = lua.get("sql_lua_pool_text").unwrap();
+        assert_eq!(f.into_call::<String>().unwrap(), "text");
+    }
+
+    #[tarantool::test]
+    fn sql_lua_pool_reuses_thread_after_cancel() {
+        crate::tarantool::exec(
+            "rawset(_G, 'sql_lua_pool_sleep', function(x) require('fiber').sleep(x) return x end)",
+        )
+        .unwrap();
+        let waiting = fiber::start(|| {
+            let lua = sql_lua_state();
+            let f: LuaFunction<_> = lua.get("sql_lua_pool_sleep").unwrap();
+            f.into_call_with_args::<f64, _>(100.0).is_err()
+        });
+        assert_eq!(sql_lua_pool_stats().busy, 1);
+        waiting.cancel();
+        assert!(waiting.join(), "a cancelled fiber's Lua call fails");
+        let stats = sql_lua_pool_stats();
+        assert_eq!((stats.busy, stats.idle), (0, 1));
+
+        let lua = sql_lua_state();
+        let f: LuaFunction<_> = lua.get("sql_lua_pool_sleep").unwrap();
+        assert_eq!(f.into_call_with_args::<f64, _>(0.0).unwrap(), 0.0);
     }
 }
