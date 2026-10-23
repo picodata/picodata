@@ -11,25 +11,37 @@
 //! re-promotes the designated local master when a recovered majority
 //! has no election leader.
 //!
-//! We need the election worker because we must be able to promote the master
-//! after a replication flap (quorum lost, then fencing, then quorum recovery).
-//! The governor cannot react to these changes quickly enough
-//! (`governor_auto_offline_timeout` = 30s by default while fencing timeout is
-//! 4s by default). So we need a separate fiber to do this: an instance
-//! self-promotes.
+//! # Who promotes the master
 //!
-//! Self-promotion is guarded by a Raft index read and the
-//! [`self_promotion_conditions_hold`] predicate. This prevents an old master
-//! with a stale Raft index from self-promoting.
+//! The governor decides which instance is the master, and transfers the
+//! mastership by promoting the new one, see [`proc_replication_promote`].
+//! But the master also loses the election leadership with no decision of the
+//! governor: after a replication flap (quorum lost, then fencing, then quorum
+//! recovery) the replicaset has no leader, and in `manual` election mode
+//! nobody is elected until someone promotes an instance. The governor cannot
+//! react to this quickly enough (`governor_auto_offline_timeout` = 30s by
+//! default while fencing timeout is 4s by default). It may even be unable to:
+//! the raft apply of a read-only master may be stuck at an entry which only a
+//! writable master can apply, and if the governor runs on that very instance,
+//! it waits for the apply, see `handle_self_read_only` in the governor. So the
+//! worker promotes the designated master itself.
 //!
-//! Every promotion goes through [`promote`], which serializes the promotions
-//! requested by the governor and by the election worker.
+//! Every promotion goes through [`promote`], which serializes them. The worker
+//! promotes this instance only while it's the designated master and no
+//! switchover is in progress, so that it doesn't compete with the governor. It
+//! learns that from the local topology after a raft read index, which keeps an
+//! old master with a stale raft index from promoting itself, see
+//! [`promote_self_if_still_needed`]. A master whose raft apply is stuck can't
+//! catch up, so it takes the governor's word for it instead, see
+//! [`note_master_designation`].
+//!
+//! [`proc_replication_promote`]: crate::rpc::replication::proc_replication_promote
 
-use super::{elections_enabled, promote};
+use super::{elections_enabled, enough_live_members_to_win_election, promote};
 use crate::mailbox::Mailbox;
 use crate::replicaset::has_synchro_quorum;
 use crate::rpc::replication::handle_election_leader_change;
-use crate::tarantool::{box_info_election, box_is_ro};
+use crate::tarantool::{box_info_election, box_is_ro, ELECTION_TIMEOUT};
 use crate::tlog;
 use crate::traft;
 use crate::traft::node;
@@ -42,6 +54,16 @@ use tarantool::tlua;
 /// Periodic reconciliation covers leadership loss/recovery which happens
 /// without a subsequent election broadcast.
 const RECONCILE_PERIOD: Duration = Duration::from_secs(1);
+
+/// The reconciliation period while the governor's word that this instance is
+/// the master stands, see [`note_master_designation`]. Right after a
+/// replication reconfiguration the peers are reconnecting, and no election
+/// broadcast tells when they're back.
+const DESIGNATED_RECONCILE_PERIOD: Duration = Duration::from_millis(100);
+
+/// How long the governor's word that this instance is the master stands, see
+/// [`note_master_designation`].
+const GOVERNOR_DESIGNATION_TTL: Duration = ELECTION_TIMEOUT;
 
 /// Bounds how long we wait for a linearized view of `_pico_replicaset`
 /// before falling back on the local one.
@@ -93,8 +115,25 @@ impl BoxElectionEvent {
     }
 }
 
+/// A message to the election worker.
+enum Message {
+    /// A `box.election` broadcast.
+    Election(ElectionEvent),
+    /// The governor has named this instance the master, see
+    /// [`note_master_designation`].
+    MasterDesignated,
+}
+
 thread_local! {
     static WATCHER_STARTED: Cell<bool> = Cell::default();
+
+    /// The mailbox of the election worker. It exists before the worker
+    /// starts, so that the messages sent earlier aren't lost.
+    static MAILBOX: Mailbox<Message> = Mailbox::new();
+
+    /// Until when the governor's word that this instance is the master
+    /// stands, see [`note_master_designation`].
+    static GOVERNOR_DESIGNATION_EXPIRES_AT: Cell<Option<Instant>> = Cell::default();
 }
 
 /// Register the non-yielding election observer and start its worker.
@@ -103,7 +142,7 @@ pub(crate) fn start_synchro_election_watcher() -> traft::Result<()> {
         return Ok(());
     }
 
-    let tx = Mailbox::new();
+    let tx = MAILBOX.with(Mailbox::clone);
     let rx = tx.clone();
 
     let lua = ::tarantool::lua_state();
@@ -111,7 +150,7 @@ pub(crate) fn start_synchro_election_watcher() -> traft::Result<()> {
         "box.watch('box.election', ...)",
         tlua::Function::new(move |_: tlua::Ignore, payload: BoxElectionEvent| {
             if let Some(event) = payload.into_event() {
-                tx.send(event);
+                tx.send(Message::Election(event));
             }
         }),
     )?;
@@ -127,9 +166,45 @@ pub(crate) fn start_synchro_election_watcher() -> traft::Result<()> {
     Ok(())
 }
 
-fn election_worker(mailbox: Mailbox<ElectionEvent>) {
+/// Tells the election worker whether the governor has just named this
+/// instance the replicaset master, see
+/// [`ConfigureReplicationRequest::is_master`].
+///
+/// If it has, the worker promotes this instance as soon as it can, if the
+/// replicaset has no leader. Until [`GOVERNOR_DESIGNATION_TTL`] passes, the
+/// governor's word stands in for the local topology, unless the worker could
+/// linearize the latter, see [`self_promotion_conditions_hold`].
+///
+/// The local topology may lag far behind: e.g. a new replicaset master may
+/// lose the leadership as soon as the second member is activated, because the
+/// replication reconfiguration raises the quorum while the peers are
+/// reconnecting. If it's still catching up the raft log at that moment, it
+/// may stop at an entry which only a writable master can apply, before it
+/// even knows its replicaset. The governor's view is up to date.
+///
+/// [`ConfigureReplicationRequest::is_master`]: crate::rpc::replication::ConfigureReplicationRequest::is_master
+pub(crate) fn note_master_designation(is_master: bool) {
+    if !is_master {
+        GOVERNOR_DESIGNATION_EXPIRES_AT.set(None);
+        return;
+    }
+
+    let expires_at = fiber::clock().saturating_add(GOVERNOR_DESIGNATION_TTL);
+    GOVERNOR_DESIGNATION_EXPIRES_AT.set(Some(expires_at));
+    MAILBOX.with(|mailbox| mailbox.send(Message::MasterDesignated));
+}
+
+/// Returns `true` if the governor's word that this instance is the master
+/// stands, see [`note_master_designation`].
+fn designated_by_governor() -> bool {
+    GOVERNOR_DESIGNATION_EXPIRES_AT
+        .get()
+        .is_some_and(|expires_at| fiber::clock() < expires_at)
+}
+
+fn election_worker(mailbox: Mailbox<Message>) {
     let mut last_processed = None;
-    let mut events = Vec::new();
+    let mut messages = Vec::new();
     let mut retry_promote_at = None;
 
     loop {
@@ -145,9 +220,17 @@ fn election_worker(mailbox: Mailbox<ElectionEvent>) {
         }
 
         let mut latest = None;
-        for event in events.drain(..) {
-            process_election_event(&event, &mut last_processed);
-            latest = Some(event);
+        for message in messages.drain(..) {
+            match message {
+                Message::Election(event) => {
+                    process_election_event(&event, &mut last_processed);
+                    latest = Some(event);
+                }
+                Message::MasterDesignated => {
+                    // A failed self-promotion was decided on older data.
+                    retry_promote_at = None;
+                }
+            }
         }
 
         // A periodic read for state changes which did not produce a new broadcast.
@@ -167,7 +250,12 @@ fn election_worker(mailbox: Mailbox<ElectionEvent>) {
             maybe_promote_self(&event, &mut retry_promote_at);
         }
 
-        events = mailbox.receive_all(RECONCILE_PERIOD);
+        let period = if designated_by_governor() {
+            DESIGNATED_RECONCILE_PERIOD
+        } else {
+            RECONCILE_PERIOD
+        };
+        messages = mailbox.receive_all(period);
     }
 }
 
@@ -206,7 +294,7 @@ fn maybe_promote_self(event: &ElectionEvent, retry_at: &mut Option<Instant>) {
     if retry_at.is_some_and(|retry_at| fiber::clock() < retry_at) {
         return;
     }
-    if !self_promotion_conditions_hold() {
+    if !self_promotion_conditions_hold(false) {
         return;
     }
 
@@ -223,26 +311,36 @@ fn promote_self_if_still_needed(retry_at: &mut Option<Instant>) {
     // linearize first: after a quorum read our view contains every decision
     // which was committed before we asked.
     let applied_before = node.get_index();
-    if node.read_index(SELF_PROMOTE_QUORUM_READ_TIMEOUT).is_err() {
-        // We couldn't catch up. Either the raft leader is unreachable, or our
-        // own apply is stalled - which is what a read-only master with a
-        // pending schema change does (see `NodeImpl::apply_entry`). A stalled
-        // apply is a reason to promote, not to wait: nothing else will unstick
-        // it. A moving applied index means we're merely catching up, so let
-        // the next reconciliation decide with fresh data instead.
-        if node.get_index() != applied_before {
-            return;
+    let linearized = match node.read_index(SELF_PROMOTE_QUORUM_READ_TIMEOUT) {
+        Ok(_) => true,
+        Err(_) => {
+            // We couldn't catch up. Either the raft leader is unreachable, or
+            // our own apply is stalled - which is what a read-only master with
+            // a pending schema change does (see `NodeImpl::apply_entry`). A
+            // stalled apply is a reason to promote, not to wait: nothing else
+            // will unstick it. A moving applied index means we're merely
+            // catching up, so let the next reconciliation decide with fresh
+            // data. Unless the governor has just named this instance the
+            // master: its view is fresh already, while catching up may take
+            // longer than its word stands.
+            if node.get_index() != applied_before && !designated_by_governor() {
+                return;
+            }
+            tlog!(
+                Warning,
+                "election: promoting on an unlinearized view, raft read index failed"
+            );
+            false
         }
-        tlog!(
-            Warning,
-            "election: promoting on an unlinearized view, raft apply is stalled"
-        );
+    };
+
+    if !self_promotion_conditions_hold(linearized) {
+        return;
     }
 
-    let should_promote = self_promotion_conditions_hold()
-        && read_election_event()
-            .map(|event| event.leader == 0 && !event.is_writable_leader())
-            .unwrap_or(false);
+    let should_promote = read_election_event()
+        .map(|event| event.leader == 0 && !event.is_writable_leader())
+        .unwrap_or(false);
 
     if !should_promote {
         return;
@@ -264,7 +362,14 @@ fn promote_self_if_still_needed(retry_at: &mut Option<Instant>) {
     }
 }
 
-fn self_promotion_conditions_hold() -> bool {
+/// Returns `true` if this instance is the designated master, no switchover is
+/// in progress, and enough members are alive to win an election.
+///
+/// This instance is the designated master if the local topology says so. If
+/// the topology isn't `linearized`, the governor's word counts too, see
+/// [`note_master_designation`]. A linearized topology is at least as fresh
+/// as the view of the governor, so then it decides alone.
+fn self_promotion_conditions_hold(linearized: bool) -> bool {
     let Ok(node) = node::global() else {
         return false;
     };
@@ -274,14 +379,28 @@ fn self_promotion_conditions_hold() -> bool {
 
     let my_name = node.catalog_cache.my_instance_name();
     let topology = node.catalog_cache.get();
-    let Ok(replicaset) = topology.replicaset_by_name(node.catalog_cache.my_replicaset_name())
-    else {
-        return false;
-    };
+    let replicaset = topology
+        .replicaset_by_name(node.catalog_cache.my_replicaset_name())
+        .ok();
 
     // Equality of both fields also means no switchover is in progress.
+    let designated_in_topology = replicaset.is_some_and(|replicaset| {
+        replicaset.current_master_name == my_name && replicaset.target_master_name == my_name
+    });
+    if !designated_in_topology && (linearized || !designated_by_governor()) {
+        return false;
+    }
+
+    // The topology from the raft log is checked first: it's up to date most of
+    // the time, while right after a replication reconfiguration, which may
+    // depose the leader, the Tarantool view has no live peers for a moment.
+    //
+    // But after a restart the local topology says that every member, this
+    // instance included, is offline until the instance applies the raft
+    // entries which say otherwise. A master which can't apply them before
+    // it's writable again, e.g. a pending schema change, would never promote
+    // itself, so then the Tarantool view decides.
     let db_config = node.alter_system_parameters.borrow();
-    replicaset.current_master_name == my_name
-        && replicaset.target_master_name == my_name
-        && has_synchro_quorum(replicaset, &topology, &db_config)
+    replicaset.is_some_and(|replicaset| has_synchro_quorum(replicaset, &topology, &db_config))
+        || enough_live_members_to_win_election()
 }

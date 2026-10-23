@@ -68,5 +68,17 @@ function pico._check_if_replication_is_broken()
     return nil
 end
 
+-- See `enough_live_members_to_win_election` in `src/sync_replication/mod.rs`.
+function pico._enough_live_members_to_win_election()
+    local my_id = box.info.id
+    local live = 0
+    for id, peer in pairs(box.info.replication) do
+        if id == my_id or (peer.upstream ~= nil and peer.upstream.status == 'follow') then
+            live = live + 1
+        end
+    end
+    return live >= box.cfg.replication_synchro_quorum
+end
+
 _G.pico = pico
 package.loaded.pico = pico

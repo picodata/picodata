@@ -44,6 +44,7 @@ use crate::luamod::lua_function;
 #[allow(unused_imports)]
 use crate::rpc;
 use crate::sync::wait_vclock;
+use crate::sync_replication::synchro_election_watcher::note_master_designation;
 use crate::sync_replication::{get_this_tier_replication_mode_and_factor, promote};
 use crate::tarantool::{box_ro_reason, box_wait_ro, set_cfg_field, ListenConfig};
 use crate::tlog;
@@ -113,6 +114,7 @@ crate::define_rpc_request! {
             set_cfg_field("election_mode", "manual")?;
             // Effective read-onlyness is supplied by the election role.
             set_cfg_field("read_only", false)?;
+            note_master_designation(req.is_master);
         } else if req.is_master {
             set_read_only(false)?;
         } else {
@@ -140,6 +142,10 @@ crate::define_rpc_request! {
         /// If this is `true` the target replica will become the new `master`.
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-basic-read-only)
         /// for more.
+        ///
+        /// If the replicaset runs elections, the election leader is the
+        /// master, and the target replica only promotes itself if the
+        /// replicaset has no leader, see [`note_master_designation`].
         pub is_master: bool,
         /// URIs of all replicas in the replicaset.
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#confval-replication)

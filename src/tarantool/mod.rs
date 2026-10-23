@@ -796,7 +796,7 @@ fn runtime_election_mode(replication_mode: ReplicationMode) -> ElectionMode {
 
 /// The `box.cfg.election_timeout` synchronous tiers run with, see
 /// [`Cfg::set_replication_parameters`].
-const ELECTION_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const ELECTION_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Tarantool randomizes the duration of an election round by adding up to
 /// `election_timeout * max_shift` to it (see `raft_new_random_election_shift`

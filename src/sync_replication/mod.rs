@@ -1,6 +1,7 @@
 use crate::config::{ElectionMode, PicodataConfig, ReplicationMode, DEFAULT_REPLICATION_MODE};
 use crate::has_states;
 use crate::instance::Instance;
+use crate::luamod::lua_function;
 use crate::tarantool::{
     box_info_election, box_is_ro, box_owns_synchro_queue, box_promote, box_ro_reason, cfg_field,
 };
@@ -106,6 +107,25 @@ where
 /// [`count_replicaset_members`].
 fn is_joining(instance: &Instance) -> bool {
     instance.target_state.incarnation == 0
+}
+
+/// Returns `true` if this instance and the peers it receives replication from
+/// make up the synchro quorum, so it may win an election.
+///
+/// This is the Tarantool view of the replicaset, which unlike the topology
+/// from the raft log is never behind. But right after a replication
+/// reconfiguration the peers are reconnecting for a moment.
+pub fn enough_live_members_to_win_election() -> bool {
+    // `pico._enough_live_members_to_win_election` is defined in `src/luamod.lua`
+    let res =
+        lua_function("_enough_live_members_to_win_election").and_then(|func| Ok(func.into_call()?));
+    match res {
+        Ok(enough) => enough,
+        Err(e) => {
+            crate::tlog!(Warning, "election: failed to count live members: {e}");
+            false
+        }
+    }
 }
 
 thread_local! {
