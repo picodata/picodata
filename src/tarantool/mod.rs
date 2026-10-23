@@ -817,7 +817,9 @@ pub(crate) fn promote_rpc_timeout() -> Duration {
     // for the network.
     const SLACK: Duration = Duration::from_secs(1);
 
-    longest_election_round() + SLACK
+    // The promoted instance also waits until the synchro quorum confirms its
+    // PROMOTE entry, see `PROMOTION_WRITE_TIMEOUT`.
+    longest_election_round() + crate::sync_replication::PROMOTION_WRITE_TIMEOUT + SLACK
 }
 
 /// The longest an election round may take, see [`ELECTION_TIMEOUT_MAX_SHIFT`].
@@ -1317,6 +1319,40 @@ pub fn box_promote() -> Result<(), ::tarantool::error::Error> {
         ));
     }
     Ok(())
+}
+
+/// The subset of `box.info.synchro` we're interested in.
+#[derive(Clone, Debug, LuaRead)]
+struct BoxInfoSynchro {
+    queue: BoxInfoSynchroQueue,
+}
+
+/// The subset of `box.info.synchro.queue` we're interested in.
+#[derive(Clone, Debug, LuaRead)]
+struct BoxInfoSynchroQueue {
+    /// `box.info.id` of the synchro queue owner, 0 if there's none.
+    owner: u32,
+}
+
+/// Returns `true` if this instance owns the synchro queue, that is the synchro
+/// quorum has confirmed the PROMOTE entry of its latest promotion, see
+/// [`crate::sync_replication::promote`].
+///
+/// Reads `box.info` via the lua C api, see [`box_info_election`].
+pub fn box_owns_synchro_queue() -> bool {
+    let lua = lua_state();
+    let Some(box_): Option<LuaTable<_>> = lua.get("box") else {
+        return false;
+    };
+    let Ok(info): Result<LuaTable<_>, _> = box_.try_get("info") else {
+        return false;
+    };
+    let (Ok(id), Ok(synchro)): (Result<u32, _>, Result<BoxInfoSynchro, _>) =
+        (info.try_get("id"), info.try_get("synchro"))
+    else {
+        return false;
+    };
+    synchro.queue.owner == id
 }
 
 /// Runs a lua chunk like `lua.exec` does, but keeps the code of a box error

@@ -11,7 +11,8 @@ use crate::config::DEFAULT_JWT_REFRESH_TOKEN_LIFETIME;
 use crate::config::DEFAULT_REPLICATION_MODE;
 use crate::storage::schema::ddl_change_format_on_master;
 use crate::storage::{DbConfig, Instances, Plugins, Replicasets, SystemTable, Tiers};
-use crate::tarantool::exec_lua_keeping_box_error;
+use crate::sync_replication::elections_enabled;
+use crate::tarantool::{box_owns_synchro_queue, exec_lua_keeping_box_error};
 use crate::tier::DEFAULT_TIER;
 use crate::traft;
 use crate::{system_parameter_name, tlog};
@@ -617,17 +618,29 @@ fn update_governor_common_rpc_timeout_in_pico_db_config() -> traft::Result<Respo
 /// writable yet, for example while it's being promoted in an election. The
 /// governor retries the operation then. Skipping the script would leave the
 /// whole replicaset without the change.
+///
+/// An instance which runs elections is read-only until it owns the synchro
+/// queue, that is until the synchro quorum confirms its PROMOTE, see
+/// [`promote`]. The exception is a queue which had no owner: then the elected
+/// instance is writable before its PROMOTE is written, but a write to the
+/// synchronous system spaces fails with ER_SYNC_QUEUE_UNCLAIMED. So until it
+/// owns the queue it's not writable yet either.
+///
+/// [`promote`]: crate::sync_replication::promote
 fn must_run_on_master() -> traft::Result<bool> {
     let node = traft::node::global()?;
-    if !node.is_readonly() {
+    let writable = !node.is_readonly();
+    if writable && (!elections_enabled() || box_owns_synchro_queue()) {
         return Ok(true);
     }
 
-    let my_name = node.catalog_cache.my_instance_name();
-    let topology_ref = node.catalog_cache.get();
-    let replicaset = topology_ref.this_replicaset();
-    if replicaset.current_master_name != my_name && replicaset.target_master_name != my_name {
-        return Ok(false);
+    if !writable {
+        let my_name = node.catalog_cache.my_instance_name();
+        let topology_ref = node.catalog_cache.get();
+        let replicaset = topology_ref.this_replicaset();
+        if replicaset.current_master_name != my_name && replicaset.target_master_name != my_name {
+            return Ok(false);
+        }
     }
 
     let e = BoxError::new(

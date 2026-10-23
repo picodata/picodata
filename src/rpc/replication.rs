@@ -44,8 +44,8 @@ use crate::luamod::lua_function;
 #[allow(unused_imports)]
 use crate::rpc;
 use crate::sync::wait_vclock;
-use crate::sync_replication::get_this_tier_replication_mode_and_factor;
-use crate::tarantool::{box_promote, box_ro_reason, box_wait_ro, set_cfg_field, ListenConfig};
+use crate::sync_replication::{get_this_tier_replication_mode_and_factor, promote};
+use crate::tarantool::{box_ro_reason, box_wait_ro, set_cfg_field, ListenConfig};
 use crate::tlog;
 use crate::traft::error::Error;
 #[allow(unused_imports)]
@@ -487,9 +487,14 @@ crate::define_rpc_request! {
             });
         }
 
+        // If the election is won, but the PROMOTE entry isn't confirmed in
+        // time, or the leadership is lost right after the election, the error
+        // is propagated, and the governor retries the same target. If the
+        // instance is still the election leader then, the retry only waits for
+        // the confirmation again, otherwise it runs a new election.
         let promote_result = match injected_election_loss() {
             Some(error) => Err(error),
-            None => box_promote(),
+            None => promote(),
         };
 
         if let Err(error) = promote_result {
@@ -507,10 +512,6 @@ crate::define_rpc_request! {
             }
             return Err(error.into());
         }
-
-        if let Some(ro_reason) = box_ro_reason() {
-            return Err(Error::other(format!("instance is still in read only mode after promotion: {ro_reason}")));
-        };
 
         Ok(PromoteResponse::Promoted {
             vclock: Vclock::current().ignore_zero(),
@@ -538,7 +539,7 @@ crate::define_rpc_request! {
     }
 }
 
-/// Pretend `box_promote` ended with a lost election.
+/// Pretend [`promote`] ended with a lost election.
 ///
 /// This is for governor's handling of a lost election can be tested
 /// deterministically.
@@ -560,7 +561,7 @@ enum PromotionErrorDisposition {
     Propagate,
 }
 
-/// Classify an error produced locally by `box_promote`.
+/// Classify an error produced locally by [`promote`].
 ///
 /// Only a lost/stale election becomes a typed outcome. Other retryable
 /// failures remain RPC errors, which preserves the governor's existing

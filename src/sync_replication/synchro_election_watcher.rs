@@ -19,18 +19,15 @@
 //! [`self_promotion_conditions_hold`] predicate. This prevents an old master
 //! with a stale Raft index from self-promoting.
 //!
-//! There are two `box_promote` calls in the code: one from the governor,
-//! one from the election worker (this file). We have a self-promotion
-//! guard here, as described above. In the future we would like to have
-//! a single place that calls `box_promote`: the worker should somehow notify
-//! the governor about the need for promotion.
-//! See <https://git.picodata.io/core/picodata/-/work_items/3100>.
+//! Every promotion goes through [`promote`], which serializes the promotions
+//! requested by the governor and by the election worker.
 
+use super::promote;
 use crate::config::PicodataConfig;
 use crate::mailbox::Mailbox;
 use crate::replicaset::has_synchro_quorum;
 use crate::rpc::replication::handle_election_leader_change;
-use crate::tarantool::{box_info_election, box_is_ro, box_promote};
+use crate::tarantool::{box_info_election, box_is_ro};
 use crate::tlog;
 use crate::traft;
 use crate::traft::node;
@@ -250,7 +247,7 @@ fn promote_self_if_still_needed(retry_at: &mut Option<Instant>) {
         Info,
         "election: designated master has no election leader, promoting self"
     );
-    match box_promote() {
+    match promote() {
         Ok(()) => {
             *retry_at = None;
             tlog!(Info, "election: self-promotion succeeded");
