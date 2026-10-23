@@ -464,15 +464,7 @@ FROM
       "ts2"."COL_3" as "gr_expr_6"
     FROM
       "testing_space"
-      INNER JOIN (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3"
-        FROM
-          "_tmp_4030661933660288186_0136"
-      ) as "ts2" ON true::bool
+      INNER JOIN "_tmp_4030661933660288186_0136" as "ts2" ON true::bool
     GROUP BY
       "testing_space"."id",
       "testing_space"."name",
@@ -488,7 +480,7 @@ LIMIT
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
-        [0] SCAN TABLE _tmp_4030661933660288186_0136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_4030661933660288186_0136 AS ts2 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -513,17 +505,7 @@ FROM
       "COL_4" as "name",
       "COL_5" as "product_units"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5"
-        FROM
-          "_tmp_8093904385098465363_1136"
-      )
+      "_tmp_8093904385098465363_1136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -615,7 +597,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_1879919115115793640_0136" ) GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
+SELECT "COL_0" as "id" FROM "_tmp_1879919115115793640_0136" GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
 ''
 plan:
     [0] SCAN TABLE _tmp_1879919115115793640_0136 (~1048576 rows)
@@ -664,7 +646,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_8118577962894911439_1136" ) GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
+SELECT "COL_0" as "id" FROM "_tmp_8118577962894911439_1136" GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
 ''
 plan:
     [0] SCAN TABLE _tmp_8118577962894911439_1136 (~1048576 rows)
@@ -821,7 +803,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1"::int)::int as "global_rows", sum ("COL_3"::decimal) as "global_units", sum ("COL_2"::decimal) as "local_units" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_11484464996825375076_0136" ) GROUP BY "COL_0" HAVING sum ("COL_2"::decimal) > sum ("COL_3"::decimal) ) ORDER BY "global_units" DESC LIMIT 10
+SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1"::int)::int as "global_rows", sum ("COL_3"::decimal) as "global_units", sum ("COL_2"::decimal) as "local_units" FROM "_tmp_11484464996825375076_0136" GROUP BY "COL_0" HAVING sum ("COL_2"::decimal) > sum ("COL_3"::decimal) ) ORDER BY "global_units" DESC LIMIT 10
 ''
 plan:
     [0] SCAN TABLE _tmp_11484464996825375076_0136 (~1048576 rows)
@@ -865,7 +847,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "name" FROM ( SELECT "COL_0" FROM "_tmp_4296662620284110760_0136" ) ORDER BY "COL_0" LIMIT 1
+SELECT "COL_0" as "name" FROM "_tmp_4296662620284110760_0136" ORDER BY "COL_0" LIMIT 1
 ''
 plan:
     [0] SCAN TABLE _tmp_4296662620284110760_0136 (~1048576 rows)

@@ -99,11 +99,11 @@ plan:
 │ 3. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT "e"."a" as "gr_expr_1", "t2"."COL_2" as "gr_expr_2" FROM "t" as "e" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_1924403061113006734_0136" ) as "t" ON "e"."a" = "t"."COL_2" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_1924403061113006734_1136" ) as "t2" ON true::bool GROUP BY "e"."a", "t2"."COL_2"
+SELECT "e"."a" as "gr_expr_1", "t2"."COL_2" as "gr_expr_2" FROM "t" as "e" INNER JOIN "_tmp_1924403061113006734_0136" as "t" ON "e"."a" = "t"."COL_2" INNER JOIN "_tmp_1924403061113006734_1136" as "t2" ON true::bool GROUP BY "e"."a", "t2"."COL_2"
 ''
 plan:
-    [0] SCAN TABLE _tmp_1924403061113006734_0136 (~1048576 rows)
-        [0] SCAN TABLE _tmp_1924403061113006734_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_1924403061113006734_0136 AS t (~1048576 rows)
+        [0] SCAN TABLE _tmp_1924403061113006734_1136 AS t2 (~1048576 rows)
             [0] SEARCH TABLE t AS e USING PRIMARY KEY (a=?) (~1 row)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
@@ -111,7 +111,7 @@ plan:
 │ 4. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT 4::int as "col_1" FROM ( SELECT "COL_1" as "b", "COL_0" as "a" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_6693516139701489356_2136" ) GROUP BY "COL_0", "COL_1" ) as "f"
+SELECT 4::int as "col_1" FROM ( SELECT "COL_1" as "b", "COL_0" as "a" FROM "_tmp_6693516139701489356_2136" GROUP BY "COL_0", "COL_1" ) as "f"
 ''
 plan:
     [0] SCAN TABLE _tmp_6693516139701489356_2136 (~1048576 rows)

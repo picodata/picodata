@@ -446,3 +446,72 @@ WHERE "SPACE2"."yearquarter" = 4;
 4, 'a',
 4, 'a',
 4, 'a'
+
+-- TEST: left-join-temp-table-under-aggregate-1
+-- SQL:
+DROP TABLE IF EXISTS lc;
+DROP TABLE IF EXISTS lo;
+CREATE TABLE lc (ck int primary key, name string);
+CREATE TABLE lo (ok int primary key, ck int, comment string);
+INSERT INTO lc VALUES (1, 'a'), (2, 'b'), (3, 'c'), (4, 'd');
+INSERT INTO lo VALUES (10, 1, 'x'), (11, 1, 'y'), (12, 2, 'special'), (13, 3, 'z'), (14, 3, 'z'), (15, 3, 'z');
+
+-- TEST: left-join-temp-table-under-aggregate-2
+-- SQL:
+SELECT lc.ck, count(lo.ok) FROM lc LEFT JOIN lo ON lc.ck = lo.ck AND lo.comment <> 'special' GROUP BY lc.ck;
+-- UNORDERED:
+1, 2,
+2, 0,
+3, 3,
+4, 0
+
+-- TEST: left-join-temp-table-under-aggregate-3
+-- SQL:
+EXPLAIN (RAW) SELECT lc.ck, count(lo.ok) FROM lc LEFT JOIN lo ON lc.ck = lo.ck GROUP BY lc.ck;
+-- EXPECTED:
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT "lo"."ok", "lo"."bucket_id", "lo"."ck", "lo"."comment" FROM "lo"
+''
+plan:
+    [0] SCAN TABLE lo (~1048576 rows)
+''
+╭─────────────────────────────────╮
+│ 2. Query (DYN-FILTERED STORAGE) │
+╰─────────────────────────────────╯
+''
+SELECT "lc"."ck" as "gr_expr_1", count ("lo"."COL_0"::int) as "count_1" FROM "lc" LEFT JOIN "_tmp_4937295183226104254_0136" as "lo" ON "lc"."ck" = "lo"."COL_2" GROUP BY "lc"."ck"
+''
+plan:
+    [0] SCAN TABLE lc (~1048576 rows)
+        [0] SCAN TABLE _tmp_4937295183226104254_0136 AS lo (~262144 rows)
+''
+╭───────────────────╮
+│ 3. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT "COL_0" as "ck", sum ("COL_1"::int)::int as "col_1" FROM "_tmp_5155573003670794593_1136" GROUP BY "COL_0"
+''
+plan:
+    [0] SCAN TABLE _tmp_5155573003670794593_1136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+
+-- TEST: join-temp-table-asterisk
+-- SQL:
+SELECT * FROM lc JOIN lo ON lc.ck = lo.ck WHERE lo.ok < 12;
+-- UNORDERED:
+1, 'a', 10, 1, 'x',
+1, 'a', 11, 1, 'y'
+
+-- TEST: order-by-temp-table-asterisk
+-- SQL:
+SELECT * FROM lo ORDER BY ok;
+-- EXPECTED:
+10, 1, 'x',
+11, 1, 'y',
+12, 2, 'special',
+13, 3, 'z',
+14, 3, 'z',
+15, 3, 'z'

@@ -365,7 +365,7 @@ fn exec_plan_subtree_two_stage_groupby_test() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\""
+    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\" FROM \"_tmp_0_0136\" GROUP BY \"COL_1\""
     params: []
     "#);
 }
@@ -408,7 +408,7 @@ fn exec_plan_subtree_two_stage_groupby_test_2() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\", \"COL_2\" as \"sys_op\", \"COL_3\" as \"sysFrom\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\", \"COL_2\", \"COL_3\""
+    pattern: "SELECT \"COL_1\" as \"FIRST_NAME\", \"COL_2\" as \"sys_op\", \"COL_3\" as \"sysFrom\" FROM \"_tmp_0_0136\" GROUP BY \"COL_1\", \"COL_2\", \"COL_3\""
     params: []
     "#);
 }
@@ -459,7 +459,7 @@ fn exec_plan_subtree_aggregates() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_eq!(sql.params, vec![Value::Integer(2), Value::from("o")]);
-    assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", "COL_1" * $1::int + sum ("COL_5"::int)::int as "col_2", sum ("COL_4"::decimal) as "col_3", sum (DISTINCT "COL_2"::decimal) / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", $2::text) as "col_5", sum ("COL_4"::decimal) / sum ("COL_6"::int)::int as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM (SELECT "COL_1","COL_2","COL_3","COL_4","COL_5","COL_6","COL_7","COL_8","COL_9","COL_10" FROM "_tmp_0_0136") GROUP BY "COL_1""#);
+    assert_snapshot!(sql.pattern, @r#"SELECT "COL_1" + "COL_1" as "col_1", "COL_1" * $1::int + sum ("COL_5"::int)::int as "col_2", sum ("COL_4"::decimal) as "col_3", sum (DISTINCT "COL_2"::decimal) / count (DISTINCT "COL_3") as "col_4", group_concat ("COL_7", $2::text) as "col_5", sum ("COL_4"::decimal) / sum ("COL_6"::int)::int as "col_6", total ("COL_10") as "col_7", min ("COL_9") as "col_8", max ("COL_8") as "col_9" FROM "_tmp_0_0136" GROUP BY "COL_1""#);
 }
 
 #[test]
@@ -499,7 +499,7 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT sum (\"COL_2\"::int)::int as \"col_1\", sum (DISTINCT \"COL_1\"::decimal) as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"_tmp_0_0136\")"
+    pattern: "SELECT sum (\"COL_2\"::int)::int as \"col_1\", sum (DISTINCT \"COL_1\"::decimal) as \"col_2\" FROM \"_tmp_0_0136\""
     params: []
     "#);
 }
@@ -529,7 +529,7 @@ fn exec_plan_subquery_under_motion_without_alias() {
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"unnamed_subquery\".*, \"unnamed_subquery_1\".\"COL_1\" as \"sid\" FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"unnamed_subquery_1\" ON $1::bool"
+    pattern: "SELECT \"unnamed_subquery\".*, \"unnamed_subquery_1\".\"COL_1\" as \"sid\" FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN \"_tmp_0_0136\" as \"unnamed_subquery_1\" ON $1::bool"
     params:
       - Boolean: true
     "#);
@@ -559,7 +559,7 @@ fn exec_plan_subquery_under_motion_with_alias() {
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"unnamed_subquery\".*, \"hti\".\"COL_1\" as \"sid\" FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hti\" ON $1::bool"
+    pattern: "SELECT \"unnamed_subquery\".*, \"hti\".\"COL_1\" as \"sid\" FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN \"_tmp_0_0136\" as \"hti\" ON $1::bool"
     params:
       - Boolean: true
     "#);
@@ -651,7 +651,7 @@ fn exec_plan_subtree_count_asterisk() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT sum (\"COL_1\"::int)::int as \"col_1\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
+    pattern: "SELECT sum (\"COL_1\"::int)::int as \"col_1\" FROM \"_tmp_0_0136\""
     params: []
     "#);
 }
@@ -703,7 +703,7 @@ fn exec_plan_subtree_having() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" + \"COL_1\" as \"col_1\", sum (\"COL_3\"::int)::int + count (DISTINCT \"COL_2\") as \"col_2\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") GROUP BY \"COL_1\" HAVING sum (DISTINCT \"COL_2\"::decimal) > $1::int"
+    pattern: "SELECT \"COL_1\" + \"COL_1\" as \"col_1\", sum (\"COL_3\"::int)::int + count (DISTINCT \"COL_2\") as \"col_2\" FROM \"_tmp_0_0136\" GROUP BY \"COL_1\" HAVING sum (DISTINCT \"COL_2\"::decimal) > $1::int"
     params:
       - Integer: 1
     "#);
@@ -756,7 +756,7 @@ fn exec_plan_subtree_having_without_groupby() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT sum (\"COL_2\"::int)::int + count (DISTINCT \"COL_1\") as \"col_1\" FROM (SELECT \"COL_1\",\"COL_2\",\"COL_3\" FROM \"_tmp_0_0136\") HAVING sum (DISTINCT \"COL_1\"::decimal) > $1::int"
+    pattern: "SELECT sum (\"COL_2\"::int)::int + count (DISTINCT \"COL_1\") as \"col_1\" FROM \"_tmp_0_0136\" HAVING sum (DISTINCT \"COL_1\"::decimal) > $1::int"
     params:
       - Integer: 1
     "#);
@@ -1122,7 +1122,7 @@ fn exec_plan_order_by() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
+    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM \"_tmp_0_0136\" as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
     params: []
     "#);
 }
@@ -1343,7 +1343,7 @@ fn exec_plan_order_by_with_subquery() {
     // Check main query
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
+    pattern: "SELECT \"hash_testing\".\"COL_1\" as \"identification_number\" FROM \"_tmp_0_0136\" as \"hash_testing\" ORDER BY \"hash_testing\".\"COL_1\""
     params: []
     "#);
 }
@@ -1416,7 +1416,7 @@ fn exec_plan_order_by_with_join() {
         TEMPLATE,
     );
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"f\".*, \"s\".\"COL_1\" as \"a\" FROM (SELECT \"t\".\"a\" FROM \"t\") as \"f\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"s\" ON $1::bool"
+    pattern: "SELECT \"f\".*, \"s\".\"COL_1\" as \"a\" FROM (SELECT \"t\".\"a\" FROM \"t\") as \"f\" INNER JOIN \"_tmp_0_0136\" as \"s\" ON $1::bool"
     params:
       - Boolean: true
     "#);
@@ -1424,7 +1424,7 @@ fn exec_plan_order_by_with_join() {
     // Check main query.
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT \"COL_1\" as \"a\", \"COL_2\" as \"a\" FROM (SELECT \"COL_1\",\"COL_2\" FROM \"_tmp_0_1136\") ORDER BY 1"
+    pattern: "SELECT \"COL_1\" as \"a\", \"COL_2\" as \"a\" FROM \"_tmp_0_1136\" ORDER BY 1"
     params: []
     "#);
 }
@@ -2261,7 +2261,7 @@ fn exec_plan_motion_input_with_a_param_check() {
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_snapshot!(
         sql.pattern,
-        @r#"SELECT "t"."id" FROM "test_space" as "t" INNER JOIN (SELECT "COL_1" FROM "_tmp_0_0136") as "s" ON "t"."id" = "s"."COL_1" WHERE $1::bool"#,
+        @r#"SELECT "t"."id" FROM "test_space" as "t" INNER JOIN "_tmp_0_0136" as "s" ON "t"."id" = "s"."COL_1" WHERE $1::bool"#,
     );
 }
 

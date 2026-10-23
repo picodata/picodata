@@ -1540,6 +1540,10 @@ where
                 // BETWEEN can refer to the same virtual table multiple times.
                 motions.insert(*motion_id);
             }
+            SyntaxData::VTableScan(motion_id) => {
+                push_identifier(&mut sql, &table_name(plan_id, *motion_id));
+                motions.insert(*motion_id);
+            }
         }
     }
 

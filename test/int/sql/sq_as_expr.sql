@@ -880,7 +880,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_12118456084794715039_0136" ) GROUP BY "COL_0"
+SELECT "COL_0" as "col_1" FROM "_tmp_12118456084794715039_0136" GROUP BY "COL_0"
 ''
 plan:
     [0] SCAN TABLE _tmp_12118456084794715039_0136 (~1048576 rows)
@@ -920,7 +920,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_16030938614314968465_0136" ) GROUP BY "COL_0" HAVING "COL_0" > 3::int
+SELECT "COL_0" as "col_1" FROM "_tmp_16030938614314968465_0136" GROUP BY "COL_0" HAVING "COL_0" > 3::int
 ''
 plan:
     [0] SCAN TABLE _tmp_16030938614314968465_0136 (~1048576 rows)
@@ -973,7 +973,7 @@ buckets <= [1-3000]
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_893366218640271692_2136" ) GROUP BY "COL_0"
+SELECT "COL_0" as "col_1" FROM "_tmp_893366218640271692_2136" GROUP BY "COL_0"
 ''
 plan:
     [0] SCAN TABLE _tmp_893366218640271692_2136 (~1048576 rows)
@@ -1010,10 +1010,10 @@ buckets <= [1-3000]
 │ 2. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT sum ("x"."a"::int) as "sum_1" FROM "gt" as "x" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2" FROM "_tmp_14160769180283890498_0136" ) as "y" ON "x"."a" = "y"."COL_2"
+SELECT sum ("x"."a"::int) as "sum_1" FROM "gt" as "x" INNER JOIN "_tmp_14160769180283890498_0136" as "y" ON "x"."a" = "y"."COL_2"
 ''
 plan:
-    [0] SCAN TABLE _tmp_14160769180283890498_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_14160769180283890498_0136 AS y (~1048576 rows)
         [0] SEARCH TABLE gt AS x USING PRIMARY KEY (a=?) (~1 row)
 ''
 buckets <= [1-3000]
@@ -1022,7 +1022,7 @@ buckets <= [1-3000]
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT sum ("COL_0"::decimal)::int as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_17621510721798107379_1136" )
+SELECT sum ("COL_0"::decimal)::int as "col_1" FROM "_tmp_17621510721798107379_1136"
 ''
 plan:
     [0] SCAN TABLE _tmp_17621510721798107379_1136 (~1048576 rows)
@@ -1049,7 +1049,7 @@ buckets <= [1-3000]
 │ 5. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_18336995983287903966_6136" ) GROUP BY "COL_0"
+SELECT "COL_0" as "col_1" FROM "_tmp_18336995983287903966_6136" GROUP BY "COL_0"
 ''
 plan:
     [0] SCAN TABLE _tmp_18336995983287903966_6136 (~1048576 rows)
@@ -1091,7 +1091,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1", "COL_1" as "col_2" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_554432729347299807_0136" ) GROUP BY "COL_0", "COL_1"
+SELECT "COL_0" as "col_1", "COL_1" as "col_2" FROM "_tmp_554432729347299807_0136" GROUP BY "COL_0", "COL_1"
 ''
 plan:
     [0] SCAN TABLE _tmp_554432729347299807_0136 (~1048576 rows)
@@ -1133,7 +1133,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM ( SELECT "COL_0" FROM "_tmp_12118456084794715039_0136" ) GROUP BY "COL_0"
+SELECT "COL_0" as "col_1" FROM "_tmp_12118456084794715039_0136" GROUP BY "COL_0"
 ''
 plan:
     [0] SCAN TABLE _tmp_12118456084794715039_0136 (~1048576 rows)
@@ -1200,7 +1200,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "name", sum ("COL_1"::decimal)::int as "col_1" FROM ( SELECT "COL_0", "COL_1" FROM "_tmp_5358045835402968887_0136" ) GROUP BY "COL_0"
+SELECT "COL_0" as "name", sum ("COL_1"::decimal)::int as "col_1" FROM "_tmp_5358045835402968887_0136" GROUP BY "COL_0"
 ''
 plan:
     [0] SCAN TABLE _tmp_5358045835402968887_0136 (~1048576 rows)

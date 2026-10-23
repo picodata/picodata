@@ -52,7 +52,7 @@ fn empty_motion1_test() {
     let info = info.get(0).unwrap();
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT * FROM (SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"_tmp_0_0136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = $1::int EXCEPT SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN (SELECT \"COL_1\",\"COL_2\",\"COL_3\",\"COL_4\" FROM \"_tmp_0_1136\") as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = $2::int) as \"Q\""
+      - "SELECT * FROM (SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN \"_tmp_0_0136\" as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = $1::int EXCEPT SELECT \"t\".\"a\", \"t\".\"b\" FROM \"t\" INNER JOIN \"_tmp_0_1136\" as \"t2\" ON \"t\".\"a\" = \"t2\".\"COL_3\" and \"t\".\"b\" = \"t2\".\"COL_4\" WHERE \"t\".\"a\" = $2::int) as \"Q\""
       - - Integer: 0
         - Integer: 1
     "#);
@@ -142,7 +142,7 @@ fn full_motion_of_union_under_union_all_test() {
     - - replicaset_0
       - " select null::int as \"a\" where false UNION ALL SELECT \"t5\".\"a\" FROM \"t5\""
     - - replicaset_1
-      - "SELECT \"COL_1\" as \"a\" FROM (SELECT \"COL_1\" FROM \"_tmp_0_0136\") UNION ALL SELECT \"t5\".\"a\" FROM \"t5\""
+      - "SELECT \"COL_1\" as \"a\" FROM \"_tmp_0_0136\" UNION ALL SELECT \"t5\".\"a\" FROM \"t5\""
     "#);
 }
 

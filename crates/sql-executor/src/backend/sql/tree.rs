@@ -131,6 +131,8 @@ pub enum SyntaxData {
     /// virtual table (the key is a motion node id
     /// pointing to the execution plan's virtual table)
     VTable(NodeId),
+    /// virtual table read as a table in the FROM clause
+    VTableScan(NodeId),
     /// Special empty value that won't be shown on local SQL.
     /// Currently used for "compound" SyntaxNode which goal is to
     /// carry its children. E.g. it's useful when we want to
@@ -526,6 +528,14 @@ impl SyntaxNode {
             right: Vec::new(),
         }
     }
+
+    fn new_vtable_scan(motion_id: NodeId) -> Self {
+        SyntaxNode {
+            data: SyntaxData::VTableScan(motion_id),
+            left: None,
+            right: Vec::new(),
+        }
+    }
 }
 
 /// Storage for the syntax nodes.
@@ -885,8 +895,6 @@ impl<'p> SyntaxPlan<'p> {
                 policy, program, ..
             }) = motion_to_fix_node
             {
-                let mut should_cover_with_parentheses = true;
-
                 let empty_table_state = self
                     .plan
                     .effective_serialize_as_empty_state(motion_to_fix_id, program);
@@ -915,42 +923,50 @@ impl<'p> SyntaxPlan<'p> {
                     .get_ir_plan()
                     .get_node(parent_id)
                     .expect("Motion parent plan node expected.");
-                if let Node::Relational(rel_node) = parent_node {
-                    should_cover_with_parentheses = !matches!(
-                        rel_node,
-                        Relational::Union { .. }
-                            | Relational::UnionAll { .. }
-                            | Relational::Except { .. }
-                            | Relational::Intersect { .. }
-                            | Relational::ScanCte { .. }
-                            | Relational::Limit { .. }
+                // SQLite does not flatten every subquery and scans an unflattened
+                // one without an index, so a FROM source reads the table itself.
+                // See https://sqlite.org/optoverview.html#flattening.
+                let as_table = match parent_node {
+                    // Unaliased temp tables in one join make bare references ambiguous.
+                    Node::Relational(Relational::Join(_)) => vtable_alias.is_some(),
+                    Node::Relational(ref rel) => reads_vtable_as_table(rel),
+                    _ => false,
+                };
+                let as_select = matches!(
+                    parent_node,
+                    Node::Relational(
+                        Relational::Union(_)
+                            | Relational::UnionAll(_)
+                            | Relational::Except(_)
+                            | Relational::Intersect(_)
+                            | Relational::ScanCte(_)
+                            | Relational::Limit(_)
+                    )
+                );
+                if as_select {
+                    assert!(
+                        vtable_alias.is_none(),
+                        "Virtual table under Union/UnionAll/Except/Intersect/CTE/Limit must not have an alias."
                     );
-
-                    if !should_cover_with_parentheses {
-                        assert!(
-                            vtable_alias.is_none(),
-                            "Virtual table under Union/UnionAll/Except/Intersect/CTE/Limit must not have an alias."
-                        );
-                    }
                 }
 
                 let arena = &mut self.nodes;
-                let vtable_sn_node = SyntaxNode::new_vtable(motion_to_fix_id);
-                let fixed_children = if should_cover_with_parentheses {
-                    let mut fixed_children: Vec<usize> = vec![
-                        arena.push_sn_non_plan(SyntaxNode::new_lparen()),
-                        arena.push_sn_non_plan(vtable_sn_node),
-                        arena.push_sn_non_plan(SyntaxNode::new_rparen()),
-                    ];
-                    if let Some(name) = vtable_alias {
-                        assert!(!name.is_empty(), "Virtual table has an empty alias name");
-                        let alias = SyntaxNode::new_alias(name);
-                        fixed_children.push(arena.push_sn_non_plan(alias));
-                    }
-                    fixed_children
+                let mut fixed_children = if as_table {
+                    vec![arena.push_sn_non_plan(SyntaxNode::new_vtable_scan(motion_to_fix_id))]
+                } else if as_select {
+                    vec![arena.push_sn_non_plan(SyntaxNode::new_vtable(motion_to_fix_id))]
                 } else {
-                    vec![arena.push_sn_non_plan(vtable_sn_node)]
+                    vec![
+                        arena.push_sn_non_plan(SyntaxNode::new_lparen()),
+                        arena.push_sn_non_plan(SyntaxNode::new_vtable(motion_to_fix_id)),
+                        arena.push_sn_non_plan(SyntaxNode::new_rparen()),
+                    ]
                 };
+                if let Some(name) = vtable_alias {
+                    assert!(!name.is_empty(), "Virtual table has an empty alias name");
+                    let alias = SyntaxNode::new_alias(name);
+                    fixed_children.push(arena.push_sn_non_plan(alias));
+                }
                 let motion_sn_node = self.nodes.get_mut_sn(sn_id);
                 motion_sn_node.right = fixed_children;
             }
@@ -2433,12 +2449,7 @@ impl<'p> SyntaxPlan<'p> {
                 Ok(Relational::Motion(_)) => {
                     return self.plan.contains_vtable_for_motion(rel_col.rel_id)
                 }
-                Ok(
-                    Relational::Selection(_)
-                    | Relational::Join(_)
-                    | Relational::GroupBy(_)
-                    | Relational::Having(_),
-                ) => {}
+                Ok(rel) if reads_vtable_as_table(&rel) => {}
                 _ => return false,
             }
             let Ok(Some(source)) = plan.column_source(rel_col) else {
@@ -3058,4 +3069,18 @@ impl SyntaxPlan<'_> {
         }
         Ok(())
     }
+}
+
+/// Whether a temp table under `rel` is read as a table in the FROM clause.
+/// A Join also needs the temp table alias.
+fn reads_vtable_as_table(rel: &Relational) -> bool {
+    matches!(
+        rel,
+        Relational::Projection(_)
+            | Relational::Selection(_)
+            | Relational::Join(_)
+            | Relational::GroupBy(_)
+            | Relational::Having(_)
+            | Relational::OrderBy(_)
+    )
 }

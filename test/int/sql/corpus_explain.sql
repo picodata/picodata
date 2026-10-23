@@ -547,18 +547,12 @@ FROM
     WHERE
       "t0"."cv" = 3023424::int
   ) as "t1"
-  LEFT JOIN (
-    SELECT
-      "COL_0"
-    FROM
-      "_tmp_3883115281032213722_0136"
-  ) as "t2" ON true::bool
+  LEFT JOIN "_tmp_3883115281032213722_0136" as "t2" ON true::bool
 ''
 plan:
     [1] SEARCH TABLE z AS t0 USING PRIMARY KEY (cv=?) (~1 row)
-    [2] SCAN TABLE _tmp_3883115281032213722_0136 (~1048576 rows)
     [0] SCAN SUBQUERY 1 AS t1 (~1 row)
-        [0] SCAN SUBQUERY 2 AS t2 (~1 row)
+        [0] SCAN TABLE _tmp_3883115281032213722_0136 AS t2 (~983040 rows)
 ''
 buckets = [1222]
 ''
@@ -2382,26 +2376,7 @@ FROM
         ORDER BY
           "unnamed_join"."COL_1" DESC) as "c11"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5",
-          "COL_6",
-          "COL_7",
-          "COL_8",
-          "COL_9",
-          "COL_10",
-          "COL_11",
-          "COL_12",
-          "COL_13",
-          "COL_14"
-        FROM
-          "_tmp_17091119308357786393_4136"
-      ) as "unnamed_join"
+      "_tmp_17091119308357786393_4136" as "unnamed_join"
   ) as "cte4"
 WHERE
   "cte4"."c11" > 0::int
@@ -2409,7 +2384,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_17091119308357786393_4136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_17091119308357786393_4136 AS unnamed_join (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte4 (~1 row)
@@ -2823,17 +2798,7 @@ FROM
       "COL_4" as "cu",
       "COL_5" as "cx"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5"
-        FROM
-          "_tmp_13508558781324554210_0136"
-      )
+      "_tmp_13508558781324554210_0136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -5478,13 +5443,7 @@ FROM
             ORDER BY
               "cte0"."COL_0" DESC) as "c4"
         FROM
-          (
-            SELECT
-              "COL_0",
-              "COL_1"
-            FROM
-              "_tmp_3708030572845756690_1136"
-          ) as "cte0"
+          "_tmp_3708030572845756690_1136" as "cte0"
         GROUP BY
           "cte0"."COL_0"
       )
@@ -5497,7 +5456,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_3708030572845756690_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_3708030572845756690_1136 AS cte0 (~1048576 rows)
     [2] USE TEMP B-TREE FOR GROUP BY
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
@@ -6096,14 +6055,7 @@ FROM
             ORDER BY
               "cte0"."COL_2" DESC) as "c3"
         FROM
-          (
-            SELECT
-              "COL_0",
-              "COL_1",
-              "COL_2"
-            FROM
-              "_tmp_12018535486545688128_1136"
-          ) as "cte0"
+          "_tmp_12018535486545688128_1136" as "cte0"
         GROUP BY
           "cte0"."COL_0",
           "cte0"."COL_2"
@@ -6117,7 +6069,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_12018535486545688128_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_12018535486545688128_1136 AS cte0 (~1048576 rows)
     [2] USE TEMP B-TREE FOR GROUP BY
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
@@ -6350,19 +6302,7 @@ FROM
             ORDER BY
               "COL_0" DESC) as "c9"
         FROM
-          (
-            SELECT
-              "COL_0",
-              "COL_1",
-              "COL_2",
-              "COL_3",
-              "COL_4",
-              "COL_5",
-              "COL_6",
-              "COL_7"
-            FROM
-              "_tmp_10320311687366327512_1136"
-          )
+          "_tmp_10320311687366327512_1136"
       )
     ORDER BY
       "b" DESC
@@ -6615,19 +6555,7 @@ FROM
                 ORDER BY
                   "COL_0" DESC) as "c11"
             FROM
-              (
-                SELECT
-                  "COL_0",
-                  "COL_1",
-                  "COL_2",
-                  "COL_3",
-                  "COL_4",
-                  "COL_5",
-                  "COL_6",
-                  "COL_7"
-                FROM
-                  "_tmp_11483270331600713565_1136"
-              )
+              "_tmp_11483270331600713565_1136"
           )
         ORDER BY
           "b" DESC
@@ -6872,20 +6800,13 @@ SELECT
   0::int as "c5"
 FROM
   "s" as "t0"
-  LEFT JOIN (
-    SELECT
-      "COL_0",
-      "COL_1"
-    FROM
-      "_tmp_7837470984463317261_0136"
-  ) as "cte1" ON "cte1"."COL_0" = "t0"."ag"
+  LEFT JOIN "_tmp_7837470984463317261_0136" as "cte1" ON "cte1"."COL_0" = "t0"."ag"
 WHERE
   "t0"."cv" = 3023424::int
 ''
 plan:
-    [1] SCAN TABLE _tmp_7837470984463317261_0136 (~1048576 rows)
     [0] SEARCH TABLE s AS t0 USING COVERING INDEX ix_be (cv=?) (~10 rows)
-        [0] SCAN SUBQUERY 1 AS cte1 (~1 row)
+        [0] SCAN TABLE _tmp_7837470984463317261_0136 AS cte1 (~262144 rows)
 ''
 buckets = [1222]
 ''
@@ -7580,26 +7501,7 @@ FROM
         ORDER BY
           "unnamed_join"."COL_1" DESC) as "c11"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5",
-          "COL_6",
-          "COL_7",
-          "COL_8",
-          "COL_9",
-          "COL_10",
-          "COL_11",
-          "COL_12",
-          "COL_13",
-          "COL_14"
-        FROM
-          "_tmp_17091119308357786393_4136"
-      ) as "unnamed_join"
+      "_tmp_17091119308357786393_4136" as "unnamed_join"
   ) as "cte4"
 WHERE
   "cte4"."c11" > 0::int
@@ -7607,7 +7509,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_17091119308357786393_4136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_17091119308357786393_4136 AS unnamed_join (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte4 (~1 row)
@@ -8043,13 +7945,7 @@ SELECT
   sum ("COL_0"::int)::int as "c1",
   sum ("COL_1"::decimal) as "c2"
 FROM
-  (
-    SELECT
-      "COL_0",
-      "COL_1"
-    FROM
-      "_tmp_13121145912930815082_2136"
-  )
+  "_tmp_13121145912930815082_2136"
 ''
 plan:
     [0] SCAN TABLE _tmp_13121145912930815082_2136 (~1048576 rows)
@@ -8463,17 +8359,7 @@ FROM
       "COL_4" as "cu",
       "COL_5" as "cx"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5"
-        FROM
-          "_tmp_13508558781324554210_0136"
-      )
+      "_tmp_13508558781324554210_0136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -9352,23 +9238,7 @@ FROM
       "COL_11" as "cx",
       row_number () OVER () as "c13"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5",
-          "COL_6",
-          "COL_7",
-          "COL_8",
-          "COL_9",
-          "COL_10",
-          "COL_11"
-        FROM
-          "_tmp_2939879774221965089_1136"
-      )
+      "_tmp_2939879774221965089_1136"
   ) as "cte0"
 WHERE
   "cte0"."c13" > 0::int
@@ -9827,35 +9697,7 @@ FROM
           "COL_5" ASC
       ) as "c9"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5",
-          "COL_6",
-          "COL_7",
-          "COL_8",
-          "COL_9",
-          "COL_10",
-          "COL_11",
-          "COL_12",
-          "COL_13",
-          "COL_14",
-          "COL_15",
-          "COL_16",
-          "COL_17",
-          "COL_18",
-          "COL_19",
-          "COL_20",
-          "COL_21",
-          "COL_22",
-          "COL_23"
-        FROM
-          "_tmp_4032040051388636457_1136"
-      )
+      "_tmp_4032040051388636457_1136"
     GROUP BY
       "COL_4",
       "COL_7",
@@ -12085,26 +11927,7 @@ FROM
         ORDER BY
           "unnamed_join"."COL_1" DESC) as "c11"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5",
-          "COL_6",
-          "COL_7",
-          "COL_8",
-          "COL_9",
-          "COL_10",
-          "COL_11",
-          "COL_12",
-          "COL_13",
-          "COL_14"
-        FROM
-          "_tmp_17091119308357786393_4136"
-      ) as "unnamed_join"
+      "_tmp_17091119308357786393_4136" as "unnamed_join"
   ) as "cte4"
 WHERE
   "cte4"."c11" > 0::int
@@ -12112,7 +11935,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_17091119308357786393_4136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_17091119308357786393_4136 AS unnamed_join (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte4 (~1 row)
@@ -12480,13 +12303,7 @@ SELECT
   sum ("COL_0"::int)::int as "c1",
   sum ("COL_1"::decimal) as "c2"
 FROM
-  (
-    SELECT
-      "COL_0",
-      "COL_1"
-    FROM
-      "_tmp_13121145912930815082_2136"
-  )
+  "_tmp_13121145912930815082_2136"
 ''
 plan:
     [0] SCAN TABLE _tmp_13121145912930815082_2136 (~1048576 rows)
@@ -12900,17 +12717,7 @@ FROM
       "COL_4" as "cu",
       "COL_5" as "cx"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5"
-        FROM
-          "_tmp_13508558781324554210_0136"
-      )
+      "_tmp_13508558781324554210_0136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -14299,26 +14106,7 @@ FROM
         ORDER BY
           "unnamed_join"."COL_1" DESC) as "c11"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5",
-          "COL_6",
-          "COL_7",
-          "COL_8",
-          "COL_9",
-          "COL_10",
-          "COL_11",
-          "COL_12",
-          "COL_13",
-          "COL_14"
-        FROM
-          "_tmp_17091119308357786393_4136"
-      ) as "unnamed_join"
+      "_tmp_17091119308357786393_4136" as "unnamed_join"
   ) as "cte4"
 WHERE
   "cte4"."c11" > 0::int
@@ -14326,7 +14114,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_17091119308357786393_4136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_17091119308357786393_4136 AS unnamed_join (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte4 (~1 row)
@@ -14752,13 +14540,7 @@ SELECT
   sum ("COL_0"::int)::int as "c1",
   sum ("COL_1"::decimal) as "c2"
 FROM
-  (
-    SELECT
-      "COL_0",
-      "COL_1"
-    FROM
-      "_tmp_13121145912930815082_2136"
-  )
+  "_tmp_13121145912930815082_2136"
 ''
 plan:
     [0] SCAN TABLE _tmp_13121145912930815082_2136 (~1048576 rows)
@@ -15163,17 +14945,7 @@ FROM
       "COL_4" as "cu",
       "COL_5" as "cx"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5"
-        FROM
-          "_tmp_13508558781324554210_0136"
-      )
+      "_tmp_13508558781324554210_0136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -18424,26 +18196,7 @@ FROM
           "unnamed_join"."COL_1" DESC) as "c11",
       "unnamed_join"."COL_14" as "cx"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5",
-          "COL_6",
-          "COL_7",
-          "COL_8",
-          "COL_9",
-          "COL_10",
-          "COL_11",
-          "COL_12",
-          "COL_13",
-          "COL_14"
-        FROM
-          "_tmp_2380985124844724623_3136"
-      ) as "unnamed_join"
+      "_tmp_2380985124844724623_3136" as "unnamed_join"
   ) as "cte2"
 WHERE
   "cte2"."c11" > 0::int
@@ -18451,7 +18204,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_2380985124844724623_3136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_2380985124844724623_3136 AS unnamed_join (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 AS cte2 (~1 row)
@@ -19096,17 +18849,7 @@ FROM
       "COL_4" as "cu",
       "COL_5" as "cx"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5"
-        FROM
-          "_tmp_6826455715585436808_1136"
-      )
+      "_tmp_6826455715585436808_1136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -20507,20 +20250,7 @@ FROM
             ORDER BY
               "cte0"."COL_8" ASC) as "c9"
         FROM
-          (
-            SELECT
-              "COL_0",
-              "COL_1",
-              "COL_2",
-              "COL_3",
-              "COL_4",
-              "COL_5",
-              "COL_6",
-              "COL_7",
-              "COL_8"
-            FROM
-              "_tmp_8834505955264533567_1136"
-          ) as "cte0"
+          "_tmp_8834505955264533567_1136" as "cte0"
       )
     ORDER BY
       "COL_8"
@@ -20531,7 +20261,7 @@ LIMIT
   10
 ''
 plan:
-    [2] SCAN TABLE _tmp_8834505955264533567_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_8834505955264533567_1136 AS cte0 (~1048576 rows)
     [2] USE TEMP B-TREE FOR ORDER BY
     [1] SCAN SUBQUERY 2 (~1 row)
     [0] SCAN SUBQUERY 1 (~1 row)
@@ -21445,21 +21175,7 @@ FROM
       "COL_6" as "az",
       row_number () OVER () as "c10"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5",
-          "COL_6",
-          "COL_7",
-          "COL_8",
-          "COL_9"
-        FROM
-          "_tmp_9391536498192629513_1136"
-      )
+      "_tmp_9391536498192629513_1136"
   ) as "cte0"
 WHERE
   "cte0"."c10" > 0::int

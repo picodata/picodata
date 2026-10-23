@@ -63,11 +63,11 @@ buckets <= [1-3000]
 │ 2. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3", "gr_expr_4", "gr_expr_5", "gr_expr_6" FROM ( SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2", "t"."c" as "gr_expr_3", "t2"."COL_0" as "gr_expr_4", "t2"."COL_1" as "gr_expr_5", "t2"."COL_2" as "gr_expr_6" FROM "t" INNER JOIN ( SELECT "COL_0", "COL_1", "COL_2", "COL_3" FROM "_tmp_13837325007437510382_0136" ) as "t2" ON true::bool GROUP BY "t"."a", "t"."b", "t"."c", "t2"."COL_0", "t2"."COL_1", "t2"."COL_2" ) ORDER BY 4 LIMIT 5
+SELECT "gr_expr_1", "gr_expr_2", "gr_expr_3", "gr_expr_4", "gr_expr_5", "gr_expr_6" FROM ( SELECT "t"."a" as "gr_expr_1", "t"."b" as "gr_expr_2", "t"."c" as "gr_expr_3", "t2"."COL_0" as "gr_expr_4", "t2"."COL_1" as "gr_expr_5", "t2"."COL_2" as "gr_expr_6" FROM "t" INNER JOIN "_tmp_13837325007437510382_0136" as "t2" ON true::bool GROUP BY "t"."a", "t"."b", "t"."c", "t2"."COL_0", "t2"."COL_1", "t2"."COL_2" ) ORDER BY 4 LIMIT 5
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
-        [0] SCAN TABLE _tmp_13837325007437510382_0136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_13837325007437510382_0136 AS t2 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -77,7 +77,7 @@ buckets <= [1-3000]
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "a", "b", "c", "a", "b", "c" FROM ( SELECT "COL_0" as "a", "COL_1" as "b", "COL_2" as "c", "COL_3" as "a", "COL_4" as "b", "COL_5" as "c" FROM ( SELECT "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5" FROM "_tmp_16710233192470882632_1136" ) GROUP BY "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5" ) ORDER BY 4 LIMIT 5
+SELECT "a", "b", "c", "a", "b", "c" FROM ( SELECT "COL_0" as "a", "COL_1" as "b", "COL_2" as "c", "COL_3" as "a", "COL_4" as "b", "COL_5" as "c" FROM "_tmp_16710233192470882632_1136" GROUP BY "COL_0", "COL_1", "COL_2", "COL_3", "COL_4", "COL_5" ) ORDER BY 4 LIMIT 5
 ''
 plan:
     [0] SCAN TABLE _tmp_16710233192470882632_1136 (~1048576 rows)
@@ -129,14 +129,7 @@ SELECT
   "COL_1" as "b",
   "COL_2" as "c"
 FROM
-  (
-    SELECT
-      "COL_0",
-      "COL_1",
-      "COL_2"
-    FROM
-      "_tmp_7338298567363713282_0136"
-  )
+  "_tmp_7338298567363713282_0136"
 GROUP BY
   "COL_0",
   "COL_1",
@@ -461,7 +454,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "a" FROM ( SELECT "COL_0" as "a" FROM ( SELECT "COL_0" FROM "_tmp_5732783910888726617_0136" ) GROUP BY "COL_0" ) ORDER BY "a" LIMIT 1
+SELECT "a" FROM ( SELECT "COL_0" as "a" FROM "_tmp_5732783910888726617_0136" GROUP BY "COL_0" ) ORDER BY "a" LIMIT 1
 ''
 plan:
     [0] SCAN TABLE _tmp_5732783910888726617_0136 (~1048576 rows)
@@ -538,7 +531,7 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "d", "COL_1" as "d", "COL_2" as "d" FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "_tmp_4692185357459009878_0136" ) ORDER BY 1
+SELECT "COL_0" as "d", "COL_1" as "d", "COL_2" as "d" FROM "_tmp_4692185357459009878_0136" ORDER BY 1
 ''
 plan:
     [0] SCAN TABLE _tmp_4692185357459009878_0136 (~1048576 rows)
@@ -620,7 +613,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "b" FROM ( SELECT "COL_0" FROM "_tmp_6921690176481582373_0136" ) GROUP BY "COL_0"
+SELECT "COL_0" as "b" FROM "_tmp_6921690176481582373_0136" GROUP BY "COL_0"
 ''
 plan:
     [0] SCAN TABLE _tmp_6921690176481582373_0136 (~1048576 rows)
@@ -647,7 +640,7 @@ buckets <= [1-3000]
 │ 4. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "a" FROM ( SELECT "COL_0" FROM "_tmp_17830739505722813435_2136" ) ORDER BY 1 LIMIT 1
+SELECT "COL_0" as "a" FROM "_tmp_17830739505722813435_2136" ORDER BY 1 LIMIT 1
 ''
 plan:
     [0] SCAN TABLE _tmp_17830739505722813435_2136 (~1048576 rows)
@@ -723,12 +716,7 @@ FROM
       "t"."a" as "gr_expr_1"
     FROM
       "t"
-      INNER JOIN (
-        SELECT
-          "COL_0"
-        FROM
-          "_tmp_7878986094843661179_0136"
-      ) as "tt" ON "tt"."COL_0" = "t"."a"
+      INNER JOIN "_tmp_7878986094843661179_0136" as "tt" ON "tt"."COL_0" = "t"."a"
     GROUP BY
       "t"."a"
   )
@@ -739,7 +727,7 @@ LIMIT
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
-        [0] SCAN TABLE _tmp_7878986094843661179_0136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_7878986094843661179_0136 AS tt (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets <= [1-3000]
@@ -755,12 +743,7 @@ FROM
     SELECT
       "COL_0" as "a"
     FROM
-      (
-        SELECT
-          "COL_0"
-        FROM
-          "_tmp_5129733250341639856_1136"
-      )
+      "_tmp_5129733250341639856_1136"
     GROUP BY
       "COL_0"
   )
@@ -1474,7 +1457,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "a", "COL_1" as "b", "COL_2" as "c" FROM ( SELECT "COL_0", "COL_1", "COL_2" FROM "_tmp_870187394725557628_0136" ) ORDER BY 1 LIMIT 1000
+SELECT "COL_0" as "a", "COL_1" as "b", "COL_2" as "c" FROM "_tmp_870187394725557628_0136" ORDER BY 1 LIMIT 1000
 ''
 plan:
     [0] SCAN TABLE _tmp_870187394725557628_0136 (~1048576 rows)
@@ -1587,17 +1570,7 @@ FROM
       "COL_4" as "b",
       "COL_5" as "c"
     FROM
-      (
-        SELECT
-          "COL_0",
-          "COL_1",
-          "COL_2",
-          "COL_3",
-          "COL_4",
-          "COL_5"
-        FROM
-          "_tmp_16621239828356804532_0136"
-      )
+      "_tmp_16621239828356804532_0136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -1756,17 +1729,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT
-  "COL_0" as "a"
-FROM
-  (
-    SELECT
-      "COL_0"
-    FROM
-      "_tmp_10403580428042605821_0136"
-  )
-ORDER BY
-  1
+SELECT "COL_0" as "a" FROM "_tmp_10403580428042605821_0136" ORDER BY 1
 ''
 plan:
     [0] SCAN TABLE _tmp_10403580428042605821_0136 (~1048576 rows)
@@ -1938,17 +1901,7 @@ buckets <= [1-3000]
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT
-  "COL_0" as "d"
-FROM
-  (
-    SELECT
-      "COL_0"
-    FROM
-      "_tmp_9210900698655664490_1136"
-  )
-ORDER BY
-  1
+SELECT "COL_0" as "d" FROM "_tmp_9210900698655664490_1136" ORDER BY 1
 ''
 plan:
     [0] SCAN TABLE _tmp_9210900698655664490_1136 (~1048576 rows)
@@ -2079,15 +2032,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT
-  min ("COL_0") as "col_1"
-FROM
-  (
-    SELECT
-      "COL_0"
-    FROM
-      "_tmp_13737569284422530290_0136"
-  )
+SELECT min ("COL_0") as "col_1" FROM "_tmp_13737569284422530290_0136"
 ''
 plan:
     [0] SEARCH TABLE _tmp_13737569284422530290_0136 USING PRIMARY KEY (~1048576 rows)
@@ -2171,15 +2116,7 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT
-  min ("COL_0") as "col_1"
-FROM
-  (
-    SELECT
-      "COL_0"
-    FROM
-      "_tmp_13737569284422530290_0136"
-  )
+SELECT min ("COL_0") as "col_1" FROM "_tmp_13737569284422530290_0136"
 ''
 plan:
     [0] SEARCH TABLE _tmp_13737569284422530290_0136 USING PRIMARY KEY (~1048576 rows)
