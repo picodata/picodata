@@ -288,6 +288,9 @@ mod tests {
     use super::TaskWaker;
     use crate::cbus::sync;
     use crate::cbus::tests::run_cbus_endpoint;
+    use crate::cbus::tests::sync_lock::{
+        wait_send_counter, BATCHES, MESSAGES_PER_PRODUCER, PRODUCERS, QUEUE_CAP,
+    };
     use crate::cbus::RecvError;
     use crate::fiber;
     use crate::fiber::{check_yield, YieldResult};
@@ -340,8 +343,10 @@ mod tests {
 
         static SEND_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-        let cap = NonZeroUsize::new(10).unwrap();
-        let (tx, rx) = sync::tokio::channel("tokio_single_producer_lock", cap);
+        let (tx, rx) = sync::tokio::channel(
+            "tokio_single_producer_lock",
+            NonZeroUsize::new(QUEUE_CAP).unwrap(),
+        );
 
         let tokio_rt = thread::spawn(move || {
             tokio::runtime::Builder::new_current_thread()
@@ -349,26 +354,23 @@ mod tests {
                 .build()
                 .unwrap()
                 .block_on(async move {
-                    for i in 0..100 {
+                    for i in 0..MESSAGES_PER_PRODUCER {
                         _ = tx.send(i).await;
                         SEND_COUNTER.fetch_add(1, Ordering::SeqCst);
                     }
                 });
         });
 
-        fiber::sleep(Duration::from_millis(100));
-
         let mut recv_results = vec![];
-        for i in 0..10 {
-            // assert that sender write 10 messages on each iteration and sleep
-            assert_eq!(SEND_COUNTER.load(Ordering::SeqCst), (i + 1) * 10);
-            for _ in 0..10 {
+        for i in 0..BATCHES {
+            // assert that the producer writes QUEUE_CAP messages and blocks after
+            wait_send_counter(&SEND_COUNTER, (i + 1) * QUEUE_CAP);
+            for _ in 0..QUEUE_CAP {
                 recv_results.push(rx.receive().unwrap());
             }
-            fiber::sleep(Duration::from_millis(100));
         }
 
-        assert_eq!((0..100).collect::<Vec<_>>(), recv_results);
+        assert_eq!((0..MESSAGES_PER_PRODUCER).collect::<Vec<_>>(), recv_results);
 
         tokio_rt.join().unwrap();
         assert!(fiber::cancel(cbus_fiber_id));
@@ -592,10 +594,11 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     pub fn multiple_producer_lock() {
-        const MESSAGES_PER_PRODUCER: i32 = 100;
         let cbus_fiber_id = run_cbus_endpoint("tokio_multiple_producer_lock");
-        let cap = NonZeroUsize::new(10).unwrap();
-        let (tx, rx) = sync::tokio::channel("tokio_multiple_producer_lock", cap);
+        let (tx, rx) = sync::tokio::channel(
+            "tokio_multiple_producer_lock",
+            NonZeroUsize::new(QUEUE_CAP).unwrap(),
+        );
 
         static SEND_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -607,7 +610,7 @@ mod tests {
                 .block_on(async move {
                     let mut handles = vec![];
 
-                    for _ in 0..3 {
+                    for _ in 0..PRODUCERS {
                         let sender = tx.clone();
                         let jh = tokio::spawn(async move {
                             for i in 0..MESSAGES_PER_PRODUCER {
@@ -624,18 +627,18 @@ mod tests {
                 });
         });
 
-        fiber::sleep(Duration::from_millis(100));
-        for i in 0..10 * 3 {
-            // assert that all threads produce 10 messages and sleep after
-            assert_eq!(SEND_COUNTER.load(Ordering::SeqCst), (i + 1) * 10);
-            for _ in 0..10 {
+        for i in 0..BATCHES * PRODUCERS {
+            // assert that all tasks produce QUEUE_CAP messages and block after
+            wait_send_counter(&SEND_COUNTER, (i + 1) * QUEUE_CAP);
+            for _ in 0..QUEUE_CAP {
                 assert!(rx.receive().is_ok());
             }
-            fiber::sleep(Duration::from_millis(100));
         }
-        assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
 
+        // Join the runtime before checking for disconnection, so that all the
+        // senders are guaranteed to be dropped.
         tokio_rt.join().unwrap();
+        assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
         assert!(fiber::cancel(cbus_fiber_id));
     }
 }

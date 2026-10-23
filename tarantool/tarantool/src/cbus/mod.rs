@@ -254,6 +254,48 @@ mod tests {
             .expect("failed to start the cbus_fiber")
     }
 
+    /// Utilities shared by the cbus::sync channel lock tests.
+    pub(super) mod sync_lock {
+        use crate::fiber;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::Duration;
+
+        /// Capacity of the channel buffer used by the lock tests.
+        pub(in crate::cbus) const QUEUE_CAP: usize = 10;
+        /// How many batches of QUEUE_CAP messages each producer sends.
+        pub(in crate::cbus) const BATCHES: usize = 10;
+        /// Number of producers in the multiple-producer lock test.
+        pub(in crate::cbus) const PRODUCERS: usize = 3;
+        pub(in crate::cbus) const MESSAGES_PER_PRODUCER: i32 = (QUEUE_CAP * BATCHES) as i32;
+
+        /// Generous time limit for the producers to produce a batch of messages.
+        const BATCH_TIMEOUT: Duration = Duration::from_secs(5);
+
+        /// Block the current fiber until `counter` reaches `target`, then check
+        /// that it equals `target` exactly.
+        ///
+        /// The queue capacity bounds the number of outstanding sends, so the
+        /// counter can never get ahead of the number of consumed messages plus
+        /// QUEUE_CAP, it can only lag behind the schedule. Waiting for it instead
+        /// of asserting right after a fixed sleep keeps the tests from flaking
+        /// when a producer thread is descheduled under CI load, while the
+        /// exact-value check still catches a counter overshoot.
+        pub(in crate::cbus) fn wait_send_counter(counter: &AtomicU64, target: usize) {
+            let target = target as u64;
+            let deadline = fiber::clock().saturating_add(BATCH_TIMEOUT);
+            while counter.load(Ordering::SeqCst) < target {
+                assert!(
+                    fiber::clock() < deadline,
+                    "producers didn't produce {} messages in time, counter is {}",
+                    target,
+                    counter.load(Ordering::SeqCst)
+                );
+                fiber::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(counter.load(Ordering::SeqCst), target);
+        }
+    }
+
     #[crate::test(tarantool = "crate")]
     pub fn cbus_send_message_test() {
         static mut TX_THREAD_ID: Option<ThreadId> = None;

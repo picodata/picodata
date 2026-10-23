@@ -305,6 +305,9 @@ impl<T> EndpointReceiver<T> {
 mod tests {
     use crate::cbus::sync;
     use crate::cbus::tests::run_cbus_endpoint;
+    use crate::cbus::tests::sync_lock::{
+        wait_send_counter, BATCHES, MESSAGES_PER_PRODUCER, PRODUCERS, QUEUE_CAP,
+    };
     use crate::cbus::RecvError;
     use crate::fiber;
     use crate::fiber::{check_yield, YieldResult};
@@ -350,28 +353,27 @@ mod tests {
 
         static SEND_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-        let cap = NonZeroUsize::new(10).unwrap();
-        let (tx, rx) = sync::std::channel("std_single_producer_lock", cap);
+        let (tx, rx) = sync::std::channel(
+            "std_single_producer_lock",
+            NonZeroUsize::new(QUEUE_CAP).unwrap(),
+        );
         let thread = thread::spawn(move || {
-            for i in 0..100 {
+            for i in 0..MESSAGES_PER_PRODUCER {
                 _ = tx.send(i);
                 SEND_COUNTER.fetch_add(1, Ordering::SeqCst);
             }
         });
 
-        fiber::sleep(Duration::from_millis(100));
-
         let mut recv_results = vec![];
-        for i in 0..10 {
-            // assert that sender write 10 messages on each iteration and sleep
-            assert_eq!(SEND_COUNTER.load(Ordering::SeqCst), (i + 1) * 10);
-            for _ in 0..10 {
+        for i in 0..BATCHES {
+            // assert that the producer writes QUEUE_CAP messages and blocks after
+            wait_send_counter(&SEND_COUNTER, (i + 1) * QUEUE_CAP);
+            for _ in 0..QUEUE_CAP {
                 recv_results.push(rx.receive().unwrap());
             }
-            fiber::sleep(Duration::from_millis(100));
         }
 
-        assert_eq!((0..100).collect::<Vec<_>>(), recv_results);
+        assert_eq!((0..MESSAGES_PER_PRODUCER).collect::<Vec<_>>(), recv_results);
 
         thread.join().unwrap();
         assert!(fiber::cancel(cbus_fiber_id));
@@ -477,13 +479,14 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     pub fn multiple_producer_lock() {
-        const MESSAGES_PER_PRODUCER: i32 = 100;
         let cbus_fiber_id = run_cbus_endpoint("std_multiple_producer_lock");
 
-        let cap = NonZeroUsize::new(10).unwrap();
-        let (tx, rx) = sync::std::channel("std_multiple_producer_lock", cap);
-
         static SEND_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        let (tx, rx) = sync::std::channel(
+            "std_multiple_producer_lock",
+            NonZeroUsize::new(QUEUE_CAP).unwrap(),
+        );
 
         fn create_producer(sender: sync::std::Sender<i32>) -> JoinHandle<()> {
             thread::spawn(move || {
@@ -498,20 +501,20 @@ mod tests {
         let jh2 = create_producer(tx.clone());
         let jh3 = create_producer(tx);
 
-        fiber::sleep(Duration::from_millis(100));
-        for i in 0..10 * 3 {
-            // assert that all threads produce 10 messages and sleep after
-            assert_eq!(SEND_COUNTER.load(Ordering::SeqCst), (i + 1) * 10);
-            for _ in 0..10 {
+        for i in 0..BATCHES * PRODUCERS {
+            // assert that all threads produce QUEUE_CAP messages and block after
+            wait_send_counter(&SEND_COUNTER, (i + 1) * QUEUE_CAP);
+            for _ in 0..QUEUE_CAP {
                 assert!(matches!(rx.receive(), Ok(_)));
             }
-            fiber::sleep(Duration::from_millis(100));
         }
-        assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
 
+        // Join the producers before checking for disconnection, so that all the
+        // senders are guaranteed to be dropped.
         jh1.join().unwrap();
         jh2.join().unwrap();
         jh3.join().unwrap();
+        assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
         assert!(fiber::cancel(cbus_fiber_id));
     }
 }
