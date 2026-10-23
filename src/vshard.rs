@@ -374,14 +374,17 @@ impl VshardConfig {
                 continue;
             };
 
-            // If a synchronous replicaset is in non-Ready state then it means that
-            // the replicaset is on bootstrap stage, so not all instances of the replicaset
-            // are Online, so there may be no synchro quorum.
-            // Do not set `is_master = true` during this stage.
-            // `is_master = true` causes run of vshard DDL (creation of `_bucket`) that
-            // cannot be run successfully with no synchro quorum.
+            // In a sync tier a replicaset which hasn't gathered its replication
+            // factor may have no synchro quorum, see `synchro_quorum`. Its
+            // master can't configure the vshard storage then: that runs vshard
+            // DDL (creation of `_bucket`), which waits for the quorum forever,
+            // because the system spaces are synchronous. So it has no master
+            // in the config until it's Ready. A replicaset being expelled keeps
+            // its master: its buckets are sent away from it.
             let synchronous_replication = db_config.replication_mode(&r.tier).is_sync();
-            let is_master = (!synchronous_replication || r.state == ReplicasetState::Ready)
+            let is_master = (!synchronous_replication
+                || r.state == ReplicasetState::Ready
+                || r.state == ReplicasetState::ToBeExpelled)
                 && Some(&peer.name) == r.effective_master_name();
 
             let replicaset = sharding

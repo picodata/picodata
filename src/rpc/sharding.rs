@@ -151,8 +151,8 @@ crate::define_rpc_request! {
                 )?;
                 // `vshard.storage.cfg` updates `current_cfg` before it finishes
                 // creating the storage spaces. In particular, the call may fail
-                // with ER_READONLY while a synchronous replicaset is electing its
-                // master. Treat a missing `_bucket` as an incomplete
+                // with ER_READONLY while the replicaset is electing its master.
+                // Treat a missing `_bucket` as an incomplete
                 // configuration so the governor can safely retry the RPC after
                 // the master becomes writable.
                 let storage_is_initialized = Space::find("_bucket").is_some();
@@ -166,16 +166,11 @@ crate::define_rpc_request! {
                     )
                     .map_err(tlua::LuaError::from)?;
 
-                    let synchronous_replication = node.alter_system_parameters.borrow().is_synchronous_replication();
-                    // For synchronous replication it can be that
-                    // we cannot create `_bucket` space on current RPC call.
-                    // We will retry and create this space the next time.
-                    // So, no assert.
-                    if !synchronous_replication {
-                        // We explicitly pass TABLE_ID_BUCKET as id of space _bucket
-                        // in the `config` above, but just to make it explicit here we
-                        // add an assert.
-                        let space = space_by_name("_bucket")?;
+                    // `_bucket` may still be missing here, see above. The
+                    // next call creates it. We explicitly pass TABLE_ID_BUCKET
+                    // as id of space _bucket in the `config` above, but just to
+                    // make it explicit here we add an assert.
+                    if let Ok(space) = space_by_name("_bucket") {
                         assert_eq!(space.id(), TABLE_ID_BUCKET);
                     }
                 }
@@ -241,7 +236,9 @@ pub mod bootstrap {
     use super::*;
 
     crate::define_rpc_request! {
-        /// Calls `vshard.router.bootstrap()` on the specified tier router on the target instance.
+        /// Bootstraps the bucket distribution of the specified tier via its router on the target instance.
+        /// Works like `vshard.router.bootstrap()`, but skips a replicaset which has no master
+        /// yet, see `pico._sharding_bootstrap` in `src/vshard_helpers.lua`.
         /// See [tarantool documentaion](https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/#lua-function.vshard.router.bootstrap)
         /// for more information on vshard router bootstrap process.
         ///
@@ -262,17 +259,17 @@ pub mod bootstrap {
                 assert_eq!(current_instance_tier, req.tier);
             }
 
-            let lua = tarantool::lua_state();
+            // `pico._sharding_bootstrap` is defined in `src/vshard_helpers.lua`
+            let func = crate::luamod::lua_function("_sharding_bootstrap")?;
             let (ok, err): (Option<tlua::True>, Option<BoxError>) =
-                lua.eval_with("return pico.router[...]:bootstrap()", tier_name)
-                    .map_err(tlua::LuaError::from)?;
+                func.into_call_with_args(tier_name.as_str())?;
 
             match (ok, err) {
                 (Some(tlua::True), None) => {}
                 (None, Some(e)) if e.error_code() == VshardErrorCode::NonEmpty as u32 => {}
                 (None, Some(e)) => {
                     return Err(Error::other(format!(
-                        "pico.router[{tier_name}]:bootstrap() failed: {e}"
+                        "pico._sharding_bootstrap({tier_name}) failed: {e}"
                     )));
                 }
                 res => unreachable!("{res:?}"),

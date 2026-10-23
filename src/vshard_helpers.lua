@@ -1,6 +1,8 @@
 local pico = _G.pico
 local fiber = require('fiber')
 local log = require('log')
+local lerror = require('vshard.error')
+local lreplicaset = require('vshard.replicaset')
 
 function pico.get_router_for_tier(tier_name)
     local router = pico.router[tier_name]
@@ -25,6 +27,70 @@ function pico._ddl_map_callrw(tier, timeout, function_name, args)
     end
 end
 
+
+-- Same as `router:bootstrap()`, except that it skips a replicaset which has no
+-- master in the router config and weight 0. Such a replicaset hasn't gathered
+-- its replication factor yet, see `VshardConfig::new`. vshard would fail the
+-- whole bootstrap trying to count its buckets, while it can't have any: the
+-- bootstrap doesn't create buckets on a replicaset with weight 0.
+--
+-- A replicaset without a master but with weight > 0 still fails the bootstrap,
+-- because a previous attempt may have created buckets on it.
+function pico._sharding_bootstrap(tier_name)
+    local router = get_router_for_tier(tier_name)
+
+    local replicasets = {}
+    for id, replicaset in pairs(router.replicasets) do
+        if replicaset.master == nil and replicaset.weight == 0 then
+            log.info('bucket bootstrap skips replicaset "%s" without a master', id)
+        else
+            replicasets[id] = replicaset
+        end
+    end
+
+    -- The governor bootstraps the tier only once it has a Ready replicaset with
+    -- weight > 0, see `get_first_ready_replicaset_in_tier`. Without one no
+    -- buckets would be created, but the tier would be marked as bootstrapped.
+    -- Fail instead, so that the governor retries the bootstrap.
+    local has_master_with_weight = false
+    for _, replicaset in pairs(replicasets) do
+        if replicaset.master ~= nil and replicaset.weight > 0 then
+            has_master_with_weight = true
+            break
+        end
+    end
+    if not has_master_with_weight then
+        error(string.format('tier "%s" has no replicaset with a master and weight > 0', tier_name))
+    end
+
+    for _, replicaset in pairs(replicasets) do
+        local count, err = replicaset:callrw('vshard.storage.buckets_count', {})
+        if count == nil then
+            return nil, err
+        end
+        if count > 0 then
+            return nil, lerror.vshard(lerror.code.NON_EMPTY)
+        end
+    end
+
+    lreplicaset.calculate_etalon_balance(replicasets, router.total_bucket_count)
+    local bucket_id = 1
+    for id, replicaset in pairs(replicasets) do
+        local count = replicaset.etalon_bucket_count
+        if count > 0 then
+            local ok, err = replicaset:callrw('vshard.storage.bucket_force_create',
+                                              {bucket_id, count})
+            if not ok then
+                return nil, err
+            end
+            log.info('Buckets from %d to %d are bootstrapped on "%s"',
+                     bucket_id, bucket_id + count - 1, id)
+            bucket_id = bucket_id + count
+        end
+    end
+
+    return true
+end
 
 function pico._replicaset_priority_list(tier, replicaset_uuid)
     local router = get_router_for_tier(tier)
