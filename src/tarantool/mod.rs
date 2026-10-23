@@ -1715,7 +1715,10 @@ pub fn set_use_system_alloc() {
 }
 
 extern "C" fn use_system_alloc_cb(space_id: u32) -> bool {
-    space_id <= crate::storage::SPACE_ID_INTERNAL_MAX
+    // Id 0 is the id of SQL ephemeral spaces, see `space_def_new_ephemeral`:
+    // https://git.picodata.io/core/tarantool/-/blob/98120bca52ded3be1552a92cccfc02db40645d78/src/box/space_def.c#L195
+    // They can be as large as user data, so they must use the memtx.memory arena.
+    (1..=crate::storage::SPACE_ID_INTERNAL_MAX).contains(&space_id)
 }
 
 #[repr(C)]
