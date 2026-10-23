@@ -386,6 +386,7 @@ thread_local! {
 /// - on losing leadership the unlogged tables are truncated, so that the data
 ///   written while this instance was the master doesn't resurface if it wins
 ///   an election later (e.g. it was fenced on quorum loss and re-promoted);
+/// - on gaining leadership the expelled instances are removed from `_cluster`;
 /// - in both directions plugins are notified via their `on_leader_change`
 ///   callbacks, so they don't retain a stale `is_master` state.
 pub(crate) fn handle_election_leader_change(is_leader: bool) -> Result<()> {
@@ -400,6 +401,13 @@ pub(crate) fn handle_election_leader_change(is_leader: bool) -> Result<()> {
             Info,
             "gained replicaset leadership in a tarantool raft election"
         );
+        // `proc_replication` only cleans `_cluster` up if the instance is the
+        // writable leader at that moment. One which wins the election later,
+        // e.g. a new master which promotes itself, or one which lost the quorum
+        // while its peers were reconnecting, does it here.
+        if let Err(e) = update_sys_cluster() {
+            tlog!(Error, "failed to update _cluster: {e}");
+        }
     } else {
         tlog!(
             Info,
