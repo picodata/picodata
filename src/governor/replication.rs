@@ -560,9 +560,24 @@ pub fn handle_replicaset_master_switchover<'i>(
 // handle_replicaset_sync
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Synchronizes the waking up instances of a replicaset: an instance goes
+/// Online only once it has everything the master had when it was promoted.
+/// If its replication is broken, e.g. it comes back with writes which conflict
+/// with the master's, it never synchronizes, and the error is reported to the
+/// sentinel, see [`update_replication_error`].
+///
+/// In a replicaset which doesn't run elections yet, see
+/// [`tier_runs_elections`], the waking up instances are kept apart from the
+/// rest of the replicaset until they synchronize, see
+/// [`get_replicaset_to_configure`]. A replicaset which runs elections doesn't
+/// need that: the instances which have applied the new master's PROMOTE
+/// reject the conflicting writes.
+///
+/// [`update_replication_error`]: crate::governor::update_replication_error
 pub fn handle_replicaset_sync<'a>(
     topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
+    elections_on_every_tier: bool,
     term: RaftTerm,
     applied: RaftIndex,
     global_catalog_version: &SmolStr,
@@ -579,7 +594,7 @@ pub fn handle_replicaset_sync<'a>(
         return Ok(None);
     }
 
-    let Some((replicaset, targets)) = get_replicaset_to_sync(topology_ref, db_config) else {
+    let Some((replicaset, targets)) = get_replicaset_to_sync(topology_ref) else {
         return Ok(None);
     };
 
@@ -598,20 +613,24 @@ pub fn handle_replicaset_sync<'a>(
 
     let mut bump_dml = vec![];
 
-    // After all laggers have syncrhonized with master we must add them to
-    // the full-mesh configuration (currently they're not in other replicas' upstreams)
-    let bump = get_replicaset_config_version_bump_op(replicaset);
-    bump_dml.push(bump);
-
-    let tier_name = &replicaset.tier;
-    let tier = topology_ref
-        .tier_by_name(tier_name)
-        .expect("tier for instance should exists");
-
-    // Update vshard configuraion so it also knows that new replicas are available
-    if tier.has_buckets() {
-        let bump = Tier::get_vshard_config_version_bump_op(tier)?;
+    // A replicaset which runs elections doesn't keep the laggers apart, so
+    // there's nothing to reconfigure after they synchronize.
+    if !tier_runs_elections(db_config, elections_on_every_tier, &replicaset.tier) {
+        // After all laggers have syncrhonized with master we must add them to
+        // the full-mesh configuration (currently they're not in other replicas' upstreams)
+        let bump = get_replicaset_config_version_bump_op(replicaset);
         bump_dml.push(bump);
+
+        let tier_name = &replicaset.tier;
+        let tier = topology_ref
+            .tier_by_name(tier_name)
+            .expect("tier for instance should exists");
+
+        // Update vshard configuraion so it also knows that new replicas are available
+        if tier.has_buckets() {
+            let bump = Tier::get_vshard_config_version_bump_op(tier)?;
+            bump_dml.push(bump);
+        }
     }
 
     let master = targets.iter().find(|target| target.name == master_name);
@@ -686,7 +705,6 @@ pub fn handle_replicaset_sync<'a>(
 
 fn get_replicaset_to_sync<'i>(
     topology_ref: &'i CatalogCacheRef,
-    db_config: &AlterSystemParameters,
 ) -> Option<(&'i Replicaset, Vec<&'i Instance>)> {
     let mut replicaset: Option<&Replicaset> = None;
     let mut targets = Vec::new();
@@ -714,9 +732,11 @@ fn get_replicaset_to_sync<'i>(
                 warn_or_panic!("replicaset '{replicaset_name}' info not found (needed for instance '{instance_name}')");
                 continue;
             };
-            if db_config.replication_mode(&found.tier).is_sync() {
-                // Sync-tier replicas follow the elected leader on their own;
-                // the governor doesn't orchestrate replication sync for them.
+            if found.effective_master_name().is_none() {
+                // The master is being switched over. A replicaset which runs
+                // elections may stay this way while the new master can't be
+                // promoted, e.g. it's offline. The laggers are synchronized
+                // with the new master once it is.
                 continue;
             }
             replicaset = Some(found);

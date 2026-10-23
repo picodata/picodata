@@ -289,8 +289,7 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // replication sync for waking up instances of asynchronous-replication
-    // tiers (sync-tier replicas follow the elected leader on their own)
+    // replication sync for waking up instances
     //
     // This must be done after
     // - instances have (re)configured replication
@@ -298,6 +297,7 @@ pub(super) fn action_plan<'i>(
     if let Some(plan) = handle_replicaset_sync(
         topology_ref,
         db_config,
+        elections_on_every_tier,
         term,
         applied,
         &global_catalog_version,
@@ -993,10 +993,9 @@ pub mod stage {
             /// Partial update of `_pico_replicaset`. The governor adds the
             /// vclock returned by a successful promotion before constructing
             /// the atomic CAS operation. This vclock will be written as
-            /// `_pico_replicaset.promotion_vclock`. This field is not used
-            /// under synchronous replication. We fill it for debugging
-            /// purposes and to be stay compatible with the asynchronous
-            /// replication code.
+            /// `_pico_replicaset.promotion_vclock`, which the instances waking
+            /// up later must reach before they go Online, see
+            /// [`crate::governor::replication::handle_replicaset_sync`].
             pub replicaset_dml: UpdateOps,
 
             /// Optional operation to bump the version of sharding config.
@@ -1035,6 +1034,7 @@ pub mod stage {
             pub replication_config_version_actualize: cas::Request,
         }
 
+        /// See [`crate::governor::replication::handle_replicaset_sync`].
         pub struct ActualizeMasterSyncIncarnation {
             /// This replicaset is being synchronized. The name is only used for logging.
             pub replicaset_name: ReplicasetName,
@@ -1048,6 +1048,7 @@ pub mod stage {
             pub cas: cas::Request,
         }
 
+        /// See [`crate::governor::replication::handle_replicaset_sync`].
         pub struct ReplicationSync {
             /// This replicaset is being synchronized. The name is only used for logging.
             pub replicaset_name: ReplicasetName,
