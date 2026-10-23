@@ -3107,13 +3107,17 @@ impl NodeImpl {
         have_snapshot: bool,
     ) {
         match (have_hard_state, have_entries, have_snapshot) {
-            (true, true, _) => self.main_loop_status("persisting hard state and entries"),
-            (true, _, true) => self.main_loop_status("persisting hard state and snapshot"),
+            (true, true, true) => {
+                self.main_loop_status("persisting hard state, snapshot and entries")
+            }
+            (true, true, false) => self.main_loop_status("persisting hard state and entries"),
+            (true, false, true) => self.main_loop_status("persisting hard state and snapshot"),
             (true, false, false) => self.main_loop_status("persisting hard state"),
-            (false, true, _) => self.main_loop_status("persisting entries"),
-            (false, _, true) => self.main_loop_status("persisting snapshot"),
-            (..) => {
-                // Raft-rs never gives us both entries and snapshot in the same `Ready` record.
+            (false, true, true) => self.main_loop_status("persisting snapshot and entries"),
+            (false, true, false) => self.main_loop_status("persisting entries"),
+            (false, false, true) => self.main_loop_status("persisting snapshot"),
+            (false, false, false) => {
+                // The caller only calls this if there's something to persist.
                 crate::warn_or_panic!(
                     "impossible case: {have_hard_state} {have_entries} {have_snapshot}"
                 )
@@ -3284,26 +3288,12 @@ impl NodeImpl {
                     new_commit = Some(hard_state.commit);
                 }
 
-                // Persist uncommitted entries in the raft log.
-                if !entries_to_persist.is_empty() {
-                    #[rustfmt::skip]
-                    debug_assert!(raw_snapshot.is_empty(), "can't have both the snapshot & log entries");
-
-                    if needs_sync {
-                        // The same transaction persists the term, the vote
-                        // or the snapshot, so the entries get the durable
-                        // transaction too.
-                        self.raft_storage.persist_entries(entries_to_persist)?;
-                    } else {
-                        self.raft_storage
-                            .persist_entries_replayable(entries_to_persist)?;
-                    }
-                }
-
+                // A ready may have both the snapshot and the entries which
+                // follow it, e.g. if the snapshot was blocked by the
+                // replicaset sync while a new raft leader appended its first
+                // entry. The snapshot goes first: it compacts the log up to its
+                // index, and the entries come after it.
                 if let Some(snapshot) = &snapshot {
-                    #[rustfmt::skip]
-                    debug_assert!(entries_to_persist.is_empty(), "can't have both the snapshot & log entries");
-
                     let meta = &snapshot.metadata;
                     let applied_index = self.raft_storage.applied()?;
                     // If we receive a stale snapshot with snapshot_index less
@@ -3349,6 +3339,19 @@ impl NodeImpl {
                                 .expect("WAL injections need a debug build of tarantool");
                         });
                         received_snapshot = true;
+                    }
+                }
+
+                // Persist uncommitted entries in the raft log.
+                if !entries_to_persist.is_empty() {
+                    if needs_sync {
+                        // The same transaction persists the term, the vote
+                        // or the snapshot, so the entries get the durable
+                        // transaction too.
+                        self.raft_storage.persist_entries(entries_to_persist)?;
+                    } else {
+                        self.raft_storage
+                            .persist_entries_replayable(entries_to_persist)?;
                     }
                 }
 

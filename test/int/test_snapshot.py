@@ -1,6 +1,6 @@
 import time
 
-from conftest import Cluster, log_crawler
+from conftest import Cluster, Retriable, log_crawler
 
 
 _3_SEC = 3
@@ -322,6 +322,112 @@ cluster:
 
     rows = storage_1_2.sql("SELECT * FROM life_is_good")
     assert rows == [[1], [2], [3]]
+
+
+def test_snapshot_and_entries_in_one_raft_ready(cluster: Cluster):
+    """
+    A raft `Ready` may contain both the snapshot and the entries which follow
+    it. A replicaset follower doesn't advance a `Ready` with a snapshot until
+    its local schema catches up with the snapshot's, see
+    `prepare_for_snapshot`, so the snapshot stays unstable in raft-rs, and the
+    entries of a leader's append which follow it are put after it. Here the
+    follower is blocked like that, while a new raft leader appends its first
+    entry right after the snapshot index.
+    """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        voter:
+            replication_factor: 1
+            can_vote: true
+            bucket_count: 0
+        storage:
+            replication_factor: 3
+            can_vote: false
+"""
+    )
+    leader = cluster.add_instance(tier="voter", wait_online=False)
+    new_leader = cluster.add_instance(tier="voter", wait_online=False)
+    storage = [cluster.add_instance(tier="storage", wait_online=False) for _ in range(3)]
+    cluster.wait_online()
+    if cluster.leader() is not leader:
+        leader, new_leader = new_leader, leader
+
+    master_name = storage[0].replicaset_master_name()
+    follower = next(i for i in storage if i.name != master_name)
+
+    # Keep the entries following the snapshot in the follower's log, so that
+    # we can check them.
+    leader.sql("ALTER SYSTEM SET raft_wal_count_max = 1024")
+    # Otherwise the governor notices the replication cut below and restores
+    # it, which lets the follower apply the snapshot right away.
+    leader.sql("ALTER SYSTEM SET governor_check_replication_error = false")
+
+    # The follower stops receiving both the raft log and the master's writes.
+    follower.call("pico._inject_error", "IGNORE_ALL_RAFT_MESSAGES", True)
+    follower.eval("_G.test_saved_replication = box.cfg.replication; box.cfg{replication = {}}")
+
+    # The schema change is confirmed by the master and the other follower, so
+    # the snapshot's schema version is ahead of the follower's local one.
+    # WAIT APPLIED LOCALLY is needed because the follower ignores the raft log.
+    leader.sql("CREATE TABLE t (id INTEGER PRIMARY KEY) DISTRIBUTED GLOBALLY WAIT APPLIED LOCALLY")
+    leader.sql("INSERT INTO t VALUES (1)")
+
+    # The follower can only catch up by a snapshot now.
+    new_leader.raft_wait_index(leader.raft_get_index())
+    leader.raft_compact_log()
+    new_leader.raft_compact_log()
+
+    blocked = log_crawler(follower, "blocked by replicaset sync")
+    persisted_together = log_crawler(follower, "main_loop_status = 'persisting hard state, snapshot and entries'")
+    follower.call("pico._inject_error", "IGNORE_ALL_RAFT_MESSAGES", False)
+    blocked.wait_matched()
+
+    # The snapshot is generated at the leader's applied index, and the cluster
+    # is idle, so that's also the last index of the leader's log.
+    snapshot_index = leader.raft_get_index()
+    assert follower.raft_get_index() < snapshot_index
+
+    # The new leader appends its first entry right after the snapshot index,
+    # and sends it to the follower at once, while it's still blocked.
+    leader.raft_transfer_leadership(new_leader.raft_id)
+    new_term = new_leader.raft_term()
+    assert new_leader.raft_term_by_index(snapshot_index + 1) == new_term
+
+    def follower_knows_new_leader():
+        info = follower.call(".proc_raft_info")
+        assert info["leader_id"] == new_leader.raft_id
+        assert info["term"] == new_term
+
+    Retriable().call(follower_knows_new_leader)
+    assert follower.raft_get_index() < snapshot_index
+    assert not persisted_together.matched
+
+    # Once the follower syncs the schema, a single ready persists the snapshot
+    # and the new leader's entry.
+    follower.eval("box.cfg{replication = _G.test_saved_replication}")
+    persisted_together.wait_matched()
+
+    new_leader.sql("INSERT INTO t VALUES (2)")
+    index = new_leader.raft_get_index()
+    follower.raft_wait_index(index)
+
+    def check_follower_state():
+        # The log is compacted up to the snapshot, and the entry which came
+        # with it is kept.
+        assert follower.raft_first_index() == snapshot_index + 1
+        assert follower.raft_term_by_index(snapshot_index + 1) == new_term
+        assert follower.raft_get_index() >= index
+        assert follower.sql("SELECT id FROM t ORDER BY id") == [[1], [2]]
+
+    Retriable().call(check_follower_state)
+
+    # The state survives a restart.
+    follower.restart()
+    follower.wait_online()
+    Retriable().call(check_follower_state)
 
 
 # TODO: test case which would show if we sent snapshot conf state inconsistent
