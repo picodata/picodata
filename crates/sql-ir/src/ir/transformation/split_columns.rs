@@ -1,7 +1,8 @@
 //! Split the tuples to columns in the expression trees of the plan.
 //!
-//! The transformation splits the tuples in the boolean operators into
-//! the AND-ed chain of the single-column tuples.
+//! The transformation splits the tuples in the equality operators into
+//! the AND-ed chain of the single-column tuples. Other comparisons are
+//! split only for single-column tuples.
 //!
 //! For example:
 //! ```sql
@@ -82,6 +83,11 @@ impl Plan {
                 return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
                     "left and right rows have different number of columns: {left_expr:?}, {right_expr:?}"
                 )));
+            }
+            // Only `=` is an AND of its columns: `(a, b) > (1, 2)` is not
+            // `a > 1 and b > 2`, and `<>` is an OR.
+            if op != Bool::Eq && left_list.len() > 1 {
+                return Ok(top_id);
             }
             // If boolean expression contains a SubQueryReference it should not be splitted
             let left_sq = self.get_sq_ref_ids_from_row_node(left_id)?;

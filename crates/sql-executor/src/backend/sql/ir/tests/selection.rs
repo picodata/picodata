@@ -101,3 +101,23 @@ fn selection_long_in_list_survives_rebuilt_condition() {
         assert!(!output.pattern.contains(" or "), "{}", output.pattern);
     }
 }
+
+#[cfg(feature = "enrich_restrictions")]
+#[test]
+fn selection_tuple_inequality_survives_rebuilt_condition() {
+    // Only `=` splits into an AND of columns: `a > 1 and b > 2` would drop
+    // the row (2, 0) that `(a, b) > (1, 2)` keeps.
+    for op in [">", ">=", "<", "<=", "<>"] {
+        for query in [
+            format!("SELECT a FROM global_t WHERE a = 2 AND (a, b) {op} (1, 2)"),
+            format!("SELECT s.a FROM (SELECT a, b FROM global_t WHERE a > 0) s WHERE (s.a, s.b) {op} (1, 2)"),
+        ] {
+            let output = check_sql_with_snapshot(&query, vec![], Snapshot::Oldest);
+            assert!(
+                output.pattern.contains(&format!("\"b\") {op} (")),
+                "{}",
+                output.pattern
+            );
+        }
+    }
+}

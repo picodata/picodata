@@ -70,11 +70,11 @@ fn split_columns5() {
     let actual_pattern_params = check_transformation(input, vec![], &split_columns);
     assert_eq!(
         actual_pattern_params.params,
-        vec![Value::from(1), Value::from(2), Value::from(2)]
+        vec![Value::from(2), Value::from(1), Value::from(2)]
     );
     insta::assert_snapshot!(
         actual_pattern_params.pattern,
-        @r#"SELECT "t"."a" FROM "t" WHERE "t"."a" < $1::int and $2::int < "t"."b" and "t"."a" > $3::int"#
+        @r#"SELECT "t"."a" FROM "t" WHERE ("t"."a", $1::int) < ($2::int, "t"."b") and "t"."a" > $3::int"#
     );
 }
 

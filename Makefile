@@ -195,7 +195,8 @@ test-rs-sql:
 		-E 'package(sql-planner) & test(/transformation::(enrich|push_down)_restrictions/)' \
 		-E 'package(sql-executor) & test(/executor::bucket_discovery/)' \
 		-E 'package(sql-executor) & test(/executor::tests::exec_plan::exec_plan_motion_input/)' \
-		-E 'package(sql-executor) & test(/selection_long_in_list_survives_rebuilt_condition/)'
+		-E 'package(sql-executor) & test(/selection_long_in_list_survives_rebuilt_condition/)' \
+		-E 'package(sql-executor) & test(/selection_tuple_inequality_survives_rebuilt_condition/)'
 
 .PHONY: bench-sql-check
 bench-sql-check:
