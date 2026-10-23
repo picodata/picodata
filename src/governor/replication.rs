@@ -288,7 +288,7 @@ pub fn handle_sync_master_election_promote<'i>(
 
         let old_master_name = replicaset.current_master_name.clone();
 
-        if !has_synchro_quorum(replicaset, topology_ref) {
+        if !has_synchro_quorum(replicaset, topology_ref, db_config) {
             tlog!(
                 Info,
                 "not promoting {new_master_name} as master of replicaset {}: not enough live members to win the election",

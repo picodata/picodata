@@ -12,7 +12,7 @@ use crate::preemption::vdbe_yield_handler;
 use crate::rpc::join;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::sql::port::{dispatch_dump_mp, PicoPortOwned};
-use crate::sync_replication::get_tier_replication_mode_and_factor;
+use crate::sync_replication::{get_tier_replication_mode_and_factor, synchro_quorum};
 use crate::tlog;
 use crate::traft::{self, error::Error};
 use crate::{config_parameter_path, tls};
@@ -677,7 +677,7 @@ impl Cfg {
         self.election_mode = runtime_election_mode(replication_mode);
 
         if replication_mode.is_sync() {
-            let quorum = replication_factor / 2 + 1;
+            let quorum = synchro_quorum(replication_mode, replication_factor, 0);
             self.user_configured_fields
                 .insert("replication_synchro_quorum".into(), quorum.into());
             self.user_configured_fields.insert(

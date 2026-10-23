@@ -1,8 +1,11 @@
 use crate::config::{ElectionMode, PicodataConfig, ReplicationMode, DEFAULT_REPLICATION_MODE};
+use crate::has_states;
+use crate::instance::Instance;
 use crate::tarantool::{
     box_info_election, box_is_ro, box_owns_synchro_queue, box_promote, box_ro_reason, cfg_field,
 };
 use crate::traft::{error::Error, Result};
+use std::borrow::Borrow;
 use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::{BoxError, Error as TarantoolError, TarantoolErrorCode};
@@ -14,6 +17,95 @@ pub mod synchro_election_watcher;
 /// Returns `true` if this instance runs Tarantool elections.
 pub fn elections_enabled() -> bool {
     cfg_field::<String>("election_mode").is_some_and(|mode| mode != ElectionMode::Off.as_str())
+}
+
+/// Returns the synchro quorum of a replicaset: the majority of its members.
+/// In a `replication_mode = sync` tier it's not less than the majority of the
+/// replication factor.
+///
+/// It's also the election quorum. The replication factor alone isn't enough
+/// once the replicaset has more members than that: e.g. with 2 members in a
+/// tier with `replication_factor = 1` each of them could be elected without
+/// the other, and their histories would diverge.
+///
+/// In a sync tier a replicaset which hasn't gathered its replication factor
+/// yet has the quorum of a full one, so that a write is confirmed by as many
+/// replicas as the replication factor promises. An async tier promises no
+/// such thing, and there the quorum of the replication factor would only make
+/// a replicaset which lacks members unwritable: it couldn't get a master in
+/// the vshard configuration or apply a schema change, and after an expel it
+/// couldn't even take a new member instead of the expelled one.
+///
+/// `member_count` must count the offline instances too, see
+/// [`count_replicaset_members`].
+pub fn synchro_quorum(
+    replication_mode: ReplicationMode,
+    replication_factor: u8,
+    member_count: usize,
+) -> u8 {
+    let size = if replication_mode.is_sync() {
+        member_count.max(replication_factor as usize)
+    } else {
+        member_count
+    };
+    u8::try_from(size / 2 + 1).unwrap_or(u8::MAX)
+}
+
+/// Returns the synchro quorum of a replicaset only `live_count` members of
+/// which may respond, see [`synchro_quorum`].
+///
+/// In an async tier the governor breaks the tie when exactly half of the
+/// members are offline, as it has marked them in the raft log: the quorum is
+/// the majority of the live half. Otherwise a replicaset of 2 members couldn't
+/// fail over to the remaining one. This is safe as long as the offline half
+/// still runs with the quorum of the whole replicaset: then it can't elect a
+/// leader on its own, and a leader among it is fenced. It isn't safe if a
+/// member of that half missed the last quorum change while it had a lowered
+/// one, e.g. it was cut off right when the other half came back. Then both
+/// halves may have a writable leader.
+///
+/// A sync tier doesn't break ties: there the quorum is what makes a write
+/// durable.
+pub fn synchro_quorum_breaking_tie(
+    replication_mode: ReplicationMode,
+    replication_factor: u8,
+    member_count: usize,
+    live_count: usize,
+) -> u8 {
+    if !replication_mode.is_sync() && member_count > 0 && live_count * 2 == member_count {
+        return synchro_quorum(replication_mode, replication_factor, live_count);
+    }
+    synchro_quorum(replication_mode, replication_factor, member_count)
+}
+
+/// Counts the members of a replicaset for [`synchro_quorum`]: every instance
+/// which has joined it, and isn't expelled yet. An offline instance is a
+/// member too: it may still be running, e.g. cut off by a network partition,
+/// and the rest of the replicaset must not be able to elect a leader without
+/// it.
+///
+/// An instance which is still joining, that is it has never been activated
+/// yet, isn't a member: it can't vote before it's replicating, and if it
+/// counted, the master would be fenced as soon as it registers the instance,
+/// so other instances couldn't join. Its activation changes the target state,
+/// so the governor reconfigures the replication and raises the quorum then.
+pub fn count_replicaset_members<I>(instances: impl IntoIterator<Item = I>) -> usize
+where
+    I: Borrow<Instance>,
+{
+    instances
+        .into_iter()
+        .filter(|instance| {
+            let instance = instance.borrow();
+            has_states!(instance, not Expelled -> *) && !is_joining(instance)
+        })
+        .count()
+}
+
+/// Returns `true` if the instance has never been activated yet, see
+/// [`count_replicaset_members`].
+fn is_joining(instance: &Instance) -> bool {
+    instance.target_state.incarnation == 0
 }
 
 thread_local! {
@@ -195,4 +287,74 @@ pub fn get_tier_replication_mode_and_factor(
         tier.replication_factor
             .unwrap_or_else(|| config.cluster.default_replication_factor()),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn synchro_quorum_of_sync_tier_is_majority_of_members_or_replication_factor() {
+        let sync = ReplicationMode::Sync;
+
+        // Not full yet: the quorum of a full replicaset.
+        assert_eq!(synchro_quorum(sync, 3, 1), 2);
+        assert_eq!(synchro_quorum(sync, 2, 1), 2);
+
+        // Full.
+        assert_eq!(synchro_quorum(sync, 1, 1), 1);
+        assert_eq!(synchro_quorum(sync, 2, 2), 2);
+        assert_eq!(synchro_quorum(sync, 3, 3), 2);
+
+        // More members than the replication factor.
+        assert_eq!(synchro_quorum(sync, 1, 2), 2);
+        assert_eq!(synchro_quorum(sync, 1, 3), 2);
+        assert_eq!(synchro_quorum(sync, 3, 4), 3);
+        assert_eq!(synchro_quorum(sync, 3, 5), 3);
+    }
+
+    #[test]
+    fn synchro_quorum_of_async_tier_is_majority_of_members() {
+        let async_ = ReplicationMode::Async;
+
+        // Not full yet, or some members expelled.
+        assert_eq!(synchro_quorum(async_, 3, 1), 1);
+        assert_eq!(synchro_quorum(async_, 2, 1), 1);
+        assert_eq!(synchro_quorum(async_, 3, 2), 2);
+
+        // Full.
+        assert_eq!(synchro_quorum(async_, 1, 1), 1);
+        assert_eq!(synchro_quorum(async_, 2, 2), 2);
+        assert_eq!(synchro_quorum(async_, 3, 3), 2);
+
+        // More members than the replication factor.
+        assert_eq!(synchro_quorum(async_, 1, 2), 2);
+        assert_eq!(synchro_quorum(async_, 1, 3), 2);
+        assert_eq!(synchro_quorum(async_, 3, 4), 3);
+
+        // The members are not known yet, see `Cfg::set_replication_parameters`.
+        assert_eq!(synchro_quorum(async_, 3, 0), 1);
+    }
+
+    #[test]
+    fn synchro_quorum_breaks_tie_in_async_tier() {
+        let async_ = ReplicationMode::Async;
+        let sync = ReplicationMode::Sync;
+
+        // Exactly half of the members are offline.
+        assert_eq!(synchro_quorum_breaking_tie(async_, 2, 2, 1), 1);
+        assert_eq!(synchro_quorum_breaking_tie(async_, 1, 2, 1), 1);
+        assert_eq!(synchro_quorum_breaking_tie(async_, 3, 4, 2), 2);
+        assert_eq!(synchro_quorum_breaking_tie(sync, 2, 2, 1), 2);
+        assert_eq!(synchro_quorum_breaking_tie(sync, 3, 4, 2), 3);
+
+        // Not a tie.
+        assert_eq!(synchro_quorum_breaking_tie(async_, 2, 2, 2), 2);
+        assert_eq!(synchro_quorum_breaking_tie(async_, 2, 2, 0), 2);
+        assert_eq!(synchro_quorum_breaking_tie(async_, 3, 3, 1), 2);
+        assert_eq!(synchro_quorum_breaking_tie(async_, 3, 3, 2), 2);
+        assert_eq!(synchro_quorum_breaking_tie(async_, 3, 4, 1), 3);
+        assert_eq!(synchro_quorum_breaking_tie(async_, 1, 1, 0), 1);
+        assert_eq!(synchro_quorum_breaking_tie(async_, 1, 0, 0), 1);
+    }
 }

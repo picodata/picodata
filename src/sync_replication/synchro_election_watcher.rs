@@ -279,7 +279,8 @@ fn self_promotion_conditions_hold() -> bool {
     };
 
     // Equality of both fields also means no switchover is in progress.
+    let db_config = node.alter_system_parameters.borrow();
     replicaset.current_master_name == my_name
         && replicaset.target_master_name == my_name
-        && has_synchro_quorum(replicaset, &topology)
+        && has_synchro_quorum(replicaset, &topology, &db_config)
 }

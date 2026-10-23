@@ -1,6 +1,8 @@
 use super::instance::InstanceName;
 use crate::catalog_cache::CatalogCacheRef;
+use crate::config::AlterSystemParameters;
 use crate::instance::Instance;
+use crate::sync_replication::{count_replicaset_members, synchro_quorum_breaking_tie};
 use ::tarantool::tuple::Encode;
 use ::tarantool::vclock::Vclock;
 use smol_str::SmolStr;
@@ -212,22 +214,50 @@ impl std::fmt::Display for Replicaset {
     }
 }
 
+/// Returns the synchro quorum of the replicaset, see
+/// [`synchro_quorum_breaking_tie`].
+pub(crate) fn replicaset_synchro_quorum(
+    replicaset: &Replicaset,
+    topology_ref: &CatalogCacheRef,
+    db_config: &AlterSystemParameters,
+) -> crate::traft::Result<u8> {
+    let tier = topology_ref.tier_by_name(&replicaset.tier)?;
+    let members: Vec<&Instance> = topology_ref
+        .all_instances()
+        .filter(|instance| instance.replicaset_name == replicaset.name)
+        .collect();
+    let live_count = members
+        .iter()
+        .filter(|instance| instance.may_respond())
+        .count();
+
+    Ok(synchro_quorum_breaking_tie(
+        db_config.replication_mode(&tier.name),
+        tier.replication_factor,
+        count_replicaset_members(members),
+        live_count,
+    ))
+}
+
 /// Returns whether responsive members form a synchro quorum.
-pub(crate) fn has_synchro_quorum(replicaset: &Replicaset, topology_ref: &CatalogCacheRef) -> bool {
+pub(crate) fn has_synchro_quorum(
+    replicaset: &Replicaset,
+    topology_ref: &CatalogCacheRef,
+    db_config: &AlterSystemParameters,
+) -> bool {
     if replicaset.state == ReplicasetState::NotReady {
         return true;
     }
-    let Ok(tier) = topology_ref.tier_by_name(&replicaset.tier) else {
+    let Ok(synchro_quorum) = replicaset_synchro_quorum(replicaset, topology_ref, db_config) else {
         return false;
     };
-    let synchro_quorum = (tier.replication_factor / 2 + 1) as usize;
 
     let responsive_count = topology_ref
         .all_instances()
         .filter(|instance| instance.replicaset_name == replicaset.name && instance.may_respond())
         .count();
 
-    responsive_count >= synchro_quorum
+    responsive_count >= synchro_quorum as usize
 }
 
 ::tarantool::define_str_enum! {
