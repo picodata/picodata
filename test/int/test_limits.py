@@ -97,15 +97,18 @@ def test_user_limit(cluster: Cluster):
 
 @pytest.mark.timeout(FILL_TIMEOUT)
 def test_user_limit_with_stale_raft_leader(cluster: Cluster):
-    # Two replicasets of two instances.
-    instances = cluster.deploy(instance_count=4, init_replication_factor=2)
+    # Two replicasets of three instances. The replicasets run
+    # elections, so with two instances the master would lose the
+    # quorum and become read-only once i2 stops its replication.
+    instances = cluster.deploy(instance_count=6, init_replication_factor=3)
     voters = instances[0].eval("return box.space._raft_state:get('voters').value")
     rs = {i.name: i.instance_info()["replicaset_name"] for i in instances}
+    ro = {i.name: i.eval("return box.info.ro") for i in instances}
     # i2 is a read-only replica and a voter, i1 is its master,
     # and i3 is the master of the other replicaset.
-    i2 = next(i for i in instances if i.raft_id in voters and i.eval("return box.info.ro"))
-    i1 = next(i for i in instances if i is not i2 and rs[i.name] == rs[i2.name])
-    i3 = next(i for i in instances if rs[i.name] != rs[i2.name] and not i.eval("return box.info.ro"))
+    i2 = next(i for i in instances if i.raft_id in voters and ro[i.name])
+    i1 = next(i for i in instances if rs[i.name] == rs[i2.name] and not ro[i.name])
+    i3 = next(i for i in instances if rs[i.name] != rs[i2.name] and not ro[i.name])
 
     fill_users(i1, MAX_OTHER_USERS - 1)
 

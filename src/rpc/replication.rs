@@ -46,7 +46,8 @@ use crate::rpc;
 use crate::sync::wait_vclock;
 use crate::sync_replication::synchro_election_watcher::note_master_designation;
 use crate::sync_replication::{
-    elections_enabled, fence, get_this_tier_replication_mode_and_factor, promote, unfence,
+    elections_enabled, enable_elections, fence, get_this_tier_replication_mode_and_factor, promote,
+    synchro_quorum, unfence,
 };
 use crate::tarantool::{box_ro_reason, box_wait_ro, set_cfg_field, ListenConfig};
 use crate::tlog;
@@ -59,7 +60,6 @@ use crate::traft::{node, RaftTerm, Result};
 use smol_str::SmolStr;
 use std::cell::Cell;
 use std::time::Duration;
-use tarantool::clock::INFINITY;
 use tarantool::error::{BoxError, Error as TarantoolError, TarantoolErrorCode};
 use tarantool::index::IteratorType;
 use tarantool::space::{Space, SystemSpace};
@@ -108,12 +108,15 @@ crate::define_rpc_request! {
         set_cfg_field("replication", &replication_cfg)?;
 
         let (replication_mode, replication_factor) = get_this_tier_replication_mode_and_factor()?;
-        let synchronous_replication_enabled = replication_mode.is_sync();
-
-        if synchronous_replication_enabled {
-            set_cfg_field("replication_synchro_quorum", replication_factor / 2 + 1)?;
-            set_cfg_field("replication_synchro_timeout", INFINITY.as_secs())?;
-            set_cfg_field("election_mode", "manual")?;
+        // A governor of an older version doesn't send `elections`, but it
+        // still expects a sync tier to run them.
+        if req.elections || replication_mode.is_sync() {
+            // It doesn't send `synchro_quorum` either, and it expects the
+            // quorum of the replication factor.
+            let quorum = req
+                .synchro_quorum
+                .unwrap_or_else(|| synchro_quorum(replication_mode, replication_factor, 0));
+            enable_elections(quorum)?;
             // Effective read-onlyness is supplied by the election role.
             unfence()?;
             note_master_designation(req.is_master);
@@ -153,6 +156,25 @@ crate::define_rpc_request! {
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#confval-replication)
         /// for more.
         pub replicaset_peers: Vec<SmolStr>,
+        /// If this is `true` the target replica must run Tarantool elections,
+        /// see [`ELECTIONS_ON_EVERY_TIER_SINCE`]. A sync tier replica runs
+        /// them regardless of this flag.
+        ///
+        /// Not sent while it's `false`, so that an instance of an older
+        /// version, which doesn't know this field, can still decode the
+        /// request during a rolling upgrade.
+        ///
+        /// [`ELECTIONS_ON_EVERY_TIER_SINCE`]: crate::sync_replication::ELECTIONS_ON_EVERY_TIER_SINCE
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        pub elections: bool,
+        /// The synchro quorum of the replicaset, see [`synchro_quorum`].
+        /// Every member gets the same one, which the governor derives from
+        /// the topology.
+        ///
+        /// Only sent along with `elections`: the request is encoded as an
+        /// array, so a field can't follow a skipped one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub synchro_quorum: Option<u8>,
     }
 
     /// Response to [`ConfigureReplicationRequest`].
@@ -388,7 +410,7 @@ thread_local! {
 }
 
 /// The single idempotent role-transition handler for election-driven
-/// (sync-tier) replicaset leadership changes:
+/// replicaset leadership changes:
 ///
 /// - on losing leadership the unlogged tables are truncated, so that the data
 ///   written while this instance was the master doesn't resurface if it wins
@@ -491,9 +513,8 @@ crate::define_rpc_request! {
 
 crate::define_rpc_request! {
     /// Promotes the target instance to the tarantool raft election leader of
-    /// its replicaset. Only supported for synchronous-replication tiers, where
-    /// replicaset writability is gated by tarantool raft elections
-    /// (`election_mode = 'manual'`).
+    /// its replicaset. Only supported if the instance runs elections
+    /// (`election_mode = 'manual'`), which gate the replicaset writability.
     ///
     /// Initiates an election with this instance as the candidate
     /// (`box.ctl.promote`) and waits for its result (in `manual` mode this is
@@ -517,9 +538,10 @@ crate::define_rpc_request! {
         // of the file for explanation.
         node.status().check_term(req.term)?;
 
-        let (replication_mode, _) = get_this_tier_replication_mode_and_factor()?;
-        if !replication_mode.is_sync() {
-            return Err(Error::other("proc_replication_promote is only supported for synchronous-replication tiers"));
+        if !elections_enabled() {
+            // The governor configures replication before it promotes, so this
+            // is only a stale request. It will be retried.
+            return Err(Error::other("cannot promote an instance which doesn't run elections"));
         }
 
         crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::timeout()));

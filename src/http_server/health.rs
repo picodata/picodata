@@ -219,8 +219,6 @@ fn determine_health_status(
     target_state: StateVariant,
     leader_id: Option<u64>,
     buckets_sending: usize,
-    limbo_owner: u64,
-    synchronous_replication_enabled: bool,
 ) -> (HealthStatusLevel, Vec<SmolStr>) {
     let mut issues = Vec::new();
     let mut level = HealthStatusLevel::Healthy;
@@ -235,13 +233,6 @@ fn determine_health_status(
         level = HealthStatusLevel::Degraded;
         issues.push(format_smolstr!(
             "instance is transitioning Online -> Offline"
-        ));
-    }
-
-    if limbo_owner != 0 && !synchronous_replication_enabled {
-        level = HealthStatusLevel::Degraded;
-        issues.push(format_smolstr!(
-            "limbo is owned by instance {limbo_owner} but synchronous replication is disabled",
         ));
     }
 
@@ -342,18 +333,12 @@ pub(crate) fn http_api_health_status() -> traft::Result<HealthStatus> {
         retrieval_errors.push(format_smolstr!("failed to get limbo owner: {e}"));
         0
     });
-    let synchronous_replication_enabled = node
-        .alter_system_parameters
-        .borrow()
-        .is_synchronous_replication();
 
     let (mut status_level, mut issues) = determine_health_status(
         instance.current_state.variant,
         instance.target_state.variant,
         raft_status.leader_id,
         bucket_status.sending,
-        limbo_owner,
-        synchronous_replication_enabled,
     );
 
     if !retrieval_errors.is_empty() {

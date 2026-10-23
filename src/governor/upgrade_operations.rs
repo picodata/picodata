@@ -626,7 +626,14 @@ fn update_governor_common_rpc_timeout_in_pico_db_config() -> traft::Result<Respo
 /// synchronous system spaces fails with ER_SYNC_QUEUE_UNCLAIMED. So until it
 /// owns the queue it's not writable yet either.
 ///
+/// The queue has no owner in a replicaset of a tier which was async before the
+/// cluster reached [`ELECTIONS_ON_EVERY_TIER_SINCE`]: the governor made its
+/// master writable without a PROMOTE. So the first master elected there after
+/// the upgrade is in this state until its PROMOTE is written, and the upgrade
+/// operations, e.g. [`alter_system_spaces_is_sync`], may run right then.
+///
 /// [`promote`]: crate::sync_replication::promote
+/// [`ELECTIONS_ON_EVERY_TIER_SINCE`]: crate::sync_replication::ELECTIONS_ON_EVERY_TIER_SINCE
 fn must_run_on_master() -> traft::Result<bool> {
     let node = traft::node::global()?;
     let writable = !node.is_readonly();
@@ -773,15 +780,10 @@ fn execute_create_lua_procs() -> traft::Result<Response> {
 }
 
 fn alter_system_spaces_is_sync() -> traft::Result<Response> {
+    // The catalog is upgraded once every instance runs this version, so every
+    // tier runs elections by now, see `ELECTIONS_ON_EVERY_TIER_SINCE`. The
+    // master owns the synchro queue once it's writable.
     if !must_run_on_master()? {
-        return Ok(Response {});
-    }
-    let node = traft::node::global()?;
-    if !node
-        .alter_system_parameters
-        .borrow()
-        .is_synchronous_replication()
-    {
         return Ok(Response {});
     }
 

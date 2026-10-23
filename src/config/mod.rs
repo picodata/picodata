@@ -2876,8 +2876,20 @@ pub struct AlterSystemParameters {
 
     /// Replication mode of a tier: `"async"` (the default) or `"sync"`. When
     /// set to `"sync"`, sharded tables created in the tier use Tarantool's
-    /// `is_sync` flag, and the synchro quorum is automatically configured based
-    /// on the tier's replication factor.
+    /// `is_sync` flag.
+    ///
+    /// Elections and the synchronous system spaces don't depend on it: every
+    /// tier has them, see
+    /// [`crate::sync_replication::ELECTIONS_ON_EVERY_TIER_SINCE`]. But the mode
+    /// changes:
+    /// - the synchro quorum, see [`crate::sync_replication::synchro_quorum`]
+    ///   and [`crate::sync_replication::synchro_quorum_breaking_tie`]. In a
+    ///   sync tier a replicaset which hasn't gathered its replication factor
+    ///   may have no quorum, so until it's Ready it has no master in the
+    ///   vshard configuration and rejects schema changes;
+    /// - the master switchover: in an async tier the new master first catches
+    ///   up with the old one if it's alive, see
+    ///   `handle_replicaset_master_election_promote` in the governor.
     #[introspection(sbroad_type = SbroadType::String)]
     #[introspection(config_default = DEFAULT_REPLICATION_MODE.to_string())]
     #[introspection(scope = tier)]
@@ -3048,20 +3060,6 @@ impl AlterSystemParameters {
             .get(tier_name)
             .map(|t| t.replication_mode)
             .unwrap_or(DEFAULT_REPLICATION_MODE)
-    }
-
-    /// Returns `true` if synchronous replication is enabled for the current
-    /// instance's tier (read from the global `replication_mode` field).
-    pub fn is_synchronous_replication(&self) -> bool {
-        ReplicationMode::from_str(&self.replication_mode)
-            .unwrap_or_default()
-            .is_sync()
-    }
-
-    /// Returns `true` if synchronous replication is enabled on at least one
-    /// tier of the cluster.
-    pub fn cluster_has_synchronous_replication(&self) -> bool {
-        self.per_tier.values().any(|t| t.replication_mode.is_sync())
     }
 }
 

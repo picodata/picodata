@@ -986,6 +986,7 @@ cluster:
 
     cluster.change_executable(to_executable)
 
-    assert a1.eval("return box.space._space.is_sync") is False
-    for i in [i1, i2]:
+    # Since 26.3 the system spaces are synchronous in every tier, the async
+    # arbiter tier included.
+    for i in [a1, i1, i2]:
         assert i.eval("return box.space._space.is_sync") is True

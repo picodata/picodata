@@ -1693,8 +1693,10 @@ cluster:
     i2.create_user(with_name="andy", with_password="Testpa55", with_auth="chap-sha1")
     i2.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
-    read_only = i2.eval("return box.cfg.read_only")
-    assert read_only
+    # The replica is read only because it's an election follower, not because
+    # of box.cfg.read_only.
+    assert i2.eval("return box.info.ro")
+    assert i2.eval("return box.info.ro_reason") == "election"
 
     with i2.connect(timeout=5, user="andy", password="Testpa55") as conn:
         query = conn.sql(
@@ -3208,6 +3210,8 @@ cluster:
         storage_1_1, storage_1_2 = storage_1_2, storage_1_1
 
     storage_1_1.call("pico._inject_error", "EXIT_AFTER_PROC_APPLY_SCHEMA_CHANGE", True)
+
+    # Cut `storage_1_2` off from the master, so that it doesn't receive the DDL.
     storage_1_2.call("pico._inject_error", "BROKEN_REPLICATION", True)
 
     leader.sql("UPDATE _pico_replicaset SET target_config_version = target_config_version + 1 WHERE tier = 'storage'")
@@ -3222,104 +3226,81 @@ cluster:
 
     storage_1_2.call("pico._inject_error", "BROKEN_REPLICATION", False)
 
-    # DDL succeeds because sentinel will detect that `storage_1_1` has crashed
-    # and change it's state to Offline, after which governor will promote
-    # `storage_1_2` to master who will in turn apply the DDL.
+    # Before the replicaset ran elections, the master applied the DDL without
+    # replicating it and crashed due to the injected error. `storage_1_2`
+    # applied the DDL again after the switchover, so the deposed master
+    # couldn't replicate from it until the conflict was fixed manually.
+    #
+    # Now the master loses the synchro quorum of 2 as soon as `storage_1_2`
+    # stops replicating from it, so it becomes read-only.
+    def check_fenced():
+        assert storage_1_1.eval("return box.info.ro") is True
+        assert storage_1_1.eval("return box.info.ro_reason") == "election"
+
+    Retriable().call(check_fenced)
+
     # NOTE: WAIT APPLIED LOCALLY is needed because there's a bug in WAIT APPLIED
     # GLOBALLY logic which makes it so it's blocked by an offline master even
     # after it switched over.
-    leader.sql("CREATE TABLE test (id INT PRIMARY KEY) WAIT APPLIED LOCALLY", timeout=30)
+    with pytest.raises(TimeoutError):
+        leader.sql("CREATE TABLE test (id INT PRIMARY KEY) WAIT APPLIED LOCALLY", timeout=5)
 
-    # Master crashes due to the injected error
-    storage_1_1.wait_process_stopped()
+    def table_operable() -> bool:
+        [[operable]] = leader.sql("SELECT operable FROM _pico_table WHERE name = 'test'")
+        return operable
+
+    assert table_operable() is False
+
+    # The governor keeps retrying the DDL on the master, but it fails with
+    # ER_READONLY, so the DDL doesn't even get into the synchro queue, and the
+    # injected error doesn't fire.
+    storage_1_1.check_process_alive()
+    assert storage_1_1.eval("return box.info.synchro.queue.len") == 0
+    assert storage_1_1.eval("return box.space._space.index.name:get('test')") is None
+
+    # The master is alive, so nobody takes over. Let it crash.
+    storage_1_1.kill()
 
     # Wait until the crashed master is made auto-offline by sentinel.
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")
     reason = target_state_reason(leader, target=storage_1_1)
     assert reason.startswith("No successful RPC for")
 
-    # `storage_1_2` was automatically chosen as new replicaset master
+    # `storage_1_2` is automatically chosen as new replicaset master. Half of
+    # the replicaset is offline, so the governor breaks the tie, and
+    # `storage_1_2` is promoted with the quorum of 1. Then it applies the DDL.
+    def check_ddl_committed():
+        assert table_operable() is True
+
+    Retriable().call(check_ddl_committed)
+
     [[master_name]] = leader.sql("SELECT current_master_name FROM _pico_replicaset WHERE tier = 'storage'")
     assert storage_1_2.name == master_name
 
-    # And governor has successfully applied the DDL
-    counter = cluster.wait_governor_status("idle")
+    cluster.wait_governor_status("idle")
 
-    # Now let's restart the deposed master, it has also applied the DDL, but
-    # failed to replicate it to the replicas. After that `storage_1_2` applied
-    # the DDL in a conflicting manner (there will be a conflicting timestamp in
-    # the system table).
+    # The deposed master has never applied the DDL, so it comes back without
+    # a conflict and receives the DDL from the new master.
     storage_1_1.start()
-
-    # Governor will force `storage_1_1` to synchornize with `storage_1_2`, but
-    # this the replication conflict will prevent this from happening. Governor
-    # will detect the replication error on that instance and will report it to
-    # sentinel, who will change the instance's state back Offline.
-    #
-    # Thus governor will technically finish with it's responsibilities and go
-    # into `idle` state.
-    cluster.wait_governor_status("idle", old_progress=counter)
-
-    # And the instance with broken replication will be Offline
-    cluster.wait_has_states(storage_1_1, "Offline", "Offline")
-    reason = target_state_reason(leader, target=storage_1_1)
-    assert reason.startswith("Replication broken")
-    assert 'Duplicate key exists in unique index "primary" in space "_space"' in reason
-
-    # Let's verify that there is in fact the replication conflict
-    replication = storage_1_1.eval("return box.info.replication")
-    assert isinstance(replication, dict)
-    for k, v in replication.items():
-        up = v.get("upstream")
-        if up:
-            assert up["status"] != "follow", yaml.dump({k: v})
-            assert up["message"].startswith('Duplicate key exists in unique index "primary" in space "_space"')
-
-    # But `storage_1_2` is ok, we have successfully isolated the problem
-    replication = storage_1_2.eval("return box.info.replication")
-    assert isinstance(replication, dict)
-    for k, v in replication.items():
-        up = v.get("upstream")
-        if up:
-            assert up["status"] == "follow", yaml.dump({k: v})
-
-    # Now let's try to fix the replication conflict manually
-    [[table_id]] = storage_1_2.sql("SELECT id FROM _pico_table WHERE name = 'test'")
-    storage_1_1.eval(
-        """
-        local table_id = ...
-        box.cfg { read_only = false }
-        box.space._index:delete({table_id, 1})
-        box.space._index:delete({table_id, 0})
-        box.space._space:delete(table_id)
-        box.cfg { read_only = true }
-        """,
-        table_id,
-    )
-
-    # The broken instance know's it's broken, so it will not try becoming Online
-    # for a while, so as not to bombrad the governor with requests destined to fail.
-    #
-    # But we now know that the conflict is fixed, and it's ok to try joining the
-    # cluster. This is easily achieved by simply restarting the broken instance.
-    storage_1_1.terminate()
-    storage_1_1.start()
-
-    # Now all's well, instance successfully joins
     storage_1_1.wait_online()
-    reason = target_state_reason(leader, target=storage_1_1)
-    # The instance can reach Online either via its own postjoin self-activation
-    # ("wakeup") or via the sentinel's fallback ("auto-online"). Both are valid:
-    # under slow environments (e.g. ASan) the hardcoded 10s postjoin
-    # self-activation wait (src/lib.rs) can expire before the local raft apply
-    # observes the Online state, letting the sentinel win the race.
-    assert reason.startswith("wakeup") or reason.startswith("auto-online")
+
+    def check_replication_follows(instance: Instance):
+        replication = instance.eval("return box.info.replication")
+        assert isinstance(replication, dict)
+        for k, v in replication.items():
+            up = v.get("upstream")
+            if up:
+                assert up["status"] == "follow", yaml.dump({k: v})
+
+    Retriable().call(check_replication_follows, storage_1_1)
+    Retriable().call(check_replication_follows, storage_1_2)
 
     # Sanity check
     [[table_id]] = leader.sql("SELECT id FROM _pico_table WHERE name = 'test'")
-    result = storage_1_1.call("box.execute", 'SELECT "id" FROM "_space" WHERE "name" = \'test\'')
-    [[space_id]] = result["rows"]
-    assert table_id == space_id
+    for instance in [storage_1_1, storage_1_2]:
+        result = instance.call("box.execute", 'SELECT "id" FROM "_space" WHERE "name" = \'test\'')
+        [[space_id]] = result["rows"]
+        assert table_id == space_id
 
 
 def test_vinyl_options_applied_to_indices(cluster: Cluster):

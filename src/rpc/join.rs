@@ -10,6 +10,7 @@ use crate::replicaset::ReplicasetState;
 use crate::schema::ADMIN_ID;
 use crate::storage::SystemTable;
 use crate::storage::{self, Catalog, ToEntryIter as _};
+use crate::sync_replication::elections_on_every_tier;
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::{Dml, Op};
@@ -85,6 +86,17 @@ crate::define_rpc_request! {
         pub is_master: bool,
         pub shredding: bool,
         pub cluster_uuid: String,
+        /// If `true` the joining instance must run Tarantool elections, see
+        /// [`ELECTIONS_ON_EVERY_TIER_SINCE`]. A sync tier instance runs them
+        /// regardless of this flag.
+        ///
+        /// Not sent while it's `false`, so that an instance of an older
+        /// version, which doesn't know this field, can still join during a
+        /// rolling upgrade.
+        ///
+        /// [`ELECTIONS_ON_EVERY_TIER_SINCE`]: crate::sync_replication::ELECTIONS_ON_EVERY_TIER_SINCE
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        pub elections: bool,
     }
 }
 
@@ -142,7 +154,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         })?;
 
         if instance_exists {
-            let response = make_join_response(node, &req, instance)?;
+            let response = make_join_response(node, &req, instance, &global_cluster_version)?;
 
             tlog!(
                 Info,
@@ -247,7 +259,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 
         node.main_loop.wakeup();
 
-        let response = make_join_response(node, &req, instance)?;
+        let response = make_join_response(node, &req, instance, &global_cluster_version)?;
 
         tlog!(
             Info,
@@ -609,6 +621,7 @@ fn make_join_response(
     node: &'static node::Node,
     req: &Request,
     instance: Instance,
+    global_cluster_version: &str,
 ) -> Result<Response> {
     // A joined instance needs to communicate with other nodes.
     // TODO: limit the number of entries sent to reduce response size.
@@ -651,6 +664,7 @@ fn make_join_response(
     let topology_ref = node.catalog_cache.get();
     let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
     let is_master = replicaset.target_master_name == instance.name;
+    let elections = elections_on_every_tier(global_cluster_version)?;
 
     let cluster_uuid = node.catalog_cache.cluster_uuid.into();
     let shredding = node.storage.db_config.shredding()?.expect("should be set");
@@ -662,6 +676,7 @@ fn make_join_response(
         is_master,
         shredding,
         cluster_uuid,
+        elections,
     });
 }
 

@@ -381,6 +381,9 @@ impl VshardConfig {
             // because the system spaces are synchronous. So it has no master
             // in the config until it's Ready. A replicaset being expelled keeps
             // its master: its buckets are sent away from it.
+            //
+            // In an async tier the quorum is the majority of the members the
+            // replicaset has, so it's never out of reach because of that.
             let synchronous_replication = db_config.replication_mode(&r.tier).is_sync();
             let is_master = (!synchronous_replication
                 || r.state == ReplicasetState::Ready

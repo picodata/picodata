@@ -72,10 +72,16 @@ crate::define_rpc_request! {
             );
             return Err(e.into());
         }
-        if node.alter_system_parameters.borrow().is_synchronous_replication() {
+        {
+            // The system spaces are synchronous: in a sync tier a replicaset
+            // which hasn't gathered its replication factor yet may have no
+            // synchro quorum, and the schema change would wait for it forever.
+            // In an async tier the quorum is the majority of the members the
+            // replicaset has, see `synchro_quorum`.
             let topology_ref = node.catalog_cache.get();
             let this_replicaset = topology_ref.this_replicaset();
-            if this_replicaset.state != ReplicasetState::Ready {
+            let replication_mode = node.alter_system_parameters.borrow().replication_mode(&this_replicaset.tier);
+            if replication_mode.is_sync() && this_replicaset.state != ReplicasetState::Ready {
                 return Err(TraftError::other("cannot apply schema change on not-ready replicaset with synchronous replication enabled"))
             }
         }

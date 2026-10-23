@@ -108,8 +108,8 @@ pub(super) fn action_plan<'i>(
 
     let activation_finished = sentinel_status != SentinelStatus::Initial;
 
-    // So far only a tier with `replication_mode = sync` runs elections.
-    let elections_on_every_tier = false;
+    let elections_on_every_tier =
+        crate::sync_replication::elections_on_every_tier(&global_cluster_version)?;
 
     let not_online = |instance: &Instance| {
         has_states!(instance, * -> Offline) || has_states!(instance, * -> Expelled)
@@ -252,7 +252,8 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // replicaset master switchover for replicasets which don't run elections
-    // yet
+    // yet (the cluster is being upgraded from 26.2, see
+    // `ELECTIONS_ON_EVERY_TIER_SINCE`)
     //
     // This must be done after instances have (re)configured replication
     // because master switchover requires synchronizing via tarantool replication.
@@ -747,6 +748,23 @@ pub(super) fn action_plan<'i>(
                 )?);
             }
 
+            // From now on every tier runs elections. The replication
+            // configuration is what tells an instance to start them, and
+            // what brings it the synchro quorum. A sync tier runs them
+            // already, but with the quorum of the replication factor alone,
+            // which is too small if the replicaset has more members than
+            // that.
+            if !elections_on_every_tier
+                && crate::sync_replication::elections_on_every_tier(new_version)?
+            {
+                for replicaset in replicasets.values() {
+                    if replicaset.state == ReplicasetState::Expelled {
+                        continue;
+                    }
+                    ops.push(get_replicaset_config_version_bump_op(replicaset));
+                }
+            }
+
             let op = Op::single_dml_or_batch(ops);
             let predicate = cas::Predicate::new(applied, []);
             let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
@@ -1052,6 +1070,10 @@ pub mod stage {
             pub master_name: Option<InstanceName>,
             /// This is an explicit list of peer addresses.
             pub replicaset_peers: Vec<SmolStr>,
+            /// Value of [`rpc::replication::ConfigureReplicationRequest::elections`].
+            pub elections: bool,
+            /// Value of [`rpc::replication::ConfigureReplicationRequest::synchro_quorum`].
+            pub synchro_quorum: Option<u8>,
             /// Global DML operation which updates `current_config_version` in table `_pico_replicaset` for the given replicaset.
             pub replication_config_version_actualize: cas::Request,
         }

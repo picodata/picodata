@@ -8,7 +8,7 @@ use crate::governor::plan::stage::*;
 use crate::has_states;
 use crate::instance::Instance;
 use crate::instance::InstanceName;
-use crate::replicaset::{has_synchro_quorum, Replicaset};
+use crate::replicaset::{has_synchro_quorum, replicaset_synchro_quorum, Replicaset};
 use crate::rpc;
 use crate::schema::ADMIN_ID;
 use crate::storage;
@@ -29,14 +29,15 @@ use smol_str::SmolStr;
 use std::collections::HashMap;
 use tarantool::space::UpdateOps;
 
-/// Returns `true` if the replicasets of the tier run Tarantool elections:
-/// every tier does if `elections_on_every_tier` is set, otherwise only a tier
-/// with `replication_mode = sync`.
+/// Returns `true` if the replicasets of the tier run Tarantool elections, see
+/// [`ELECTIONS_ON_EVERY_TIER_SINCE`].
 ///
 /// A replicaset which runs elections changes its master only via
 /// [`handle_replicaset_master_election_promote`]. The other replicaset master
 /// handling in this module is only for replicasets which don't run elections
 /// yet.
+///
+/// [`ELECTIONS_ON_EVERY_TIER_SINCE`]: crate::sync_replication::ELECTIONS_ON_EVERY_TIER_SINCE
 pub fn tier_runs_elections(
     db_config: &AlterSystemParameters,
     elections_on_every_tier: bool,
@@ -112,6 +113,21 @@ pub fn handle_replication_config<'i>(
     ) else {
         return Ok(None);
     };
+    // A sync tier instance runs elections regardless of the flag. Not setting
+    // it until every instance is upgraded keeps the request decodable by an
+    // older version, see `ConfigureReplicationRequest::elections`.
+    let elections = elections_on_every_tier;
+    // Only sent along with `elections`, see
+    // `ConfigureReplicationRequest::synchro_quorum`.
+    let synchro_quorum = if elections {
+        Some(replicaset_synchro_quorum(
+            replicaset,
+            topology_ref,
+            db_config,
+        )?)
+    } else {
+        None
+    };
 
     // Targets must not be empty, otherwise we would bump the version
     // without actually calling the RPC.
@@ -142,6 +158,8 @@ pub fn handle_replication_config<'i>(
             targets,
             master_name,
             replicaset_peers,
+            elections,
+            synchro_quorum,
             replication_config_version_actualize,
         }
         .into(),
@@ -442,6 +460,9 @@ pub(super) fn choose_fallback_candidate<'a>(
 /// Handles a master change in a replicaset which doesn't run elections yet,
 /// see [`tier_runs_elections`]. The old master is demoted, and the new one
 /// waits until it has everything the old one had.
+///
+/// TODO: remove in the next release, together with the isolation of the
+/// waking up instances in [`get_replicaset_to_configure`].
 pub fn handle_replicaset_master_switchover<'i>(
     topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,

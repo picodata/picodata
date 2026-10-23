@@ -87,11 +87,13 @@ def test_catchup_by_snapshot(cluster: Cluster):
     assert i3.call("box.space._pico_property:get", "animal") is None
     assert i3.call("box.space._pico_property:get", "tree") == ["tree", "birch"]
 
-    # Sending a snapshot and handling new DML operation
-    # (target_state=Online for i3) are not synchronized.
-    # As a result, the operation may sometimes be included
-    # in the snapshot and sometimes not. Let's check both cases.
-    assert i3.raft_first_index() in (ret + 1, ret + 2)
+    # Sending a snapshot and handling new DML operations
+    # (target_state=Online for i3, then the replication configuration
+    # version, which the governor actualizes without waiting for i3 to
+    # catch up, then the sync incarnation of i3, which is the master of its
+    # replicaset) are not synchronized. As a result, the operations may sometimes be included in
+    # the snapshot and sometimes not. Let's check all the cases.
+    assert ret + 1 <= i3.raft_first_index() <= ret + 4
 
     # There used to be a problem: catching snapshot used to cause
     # inconsistent raft state so the second restart used to panic.

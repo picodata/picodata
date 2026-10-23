@@ -723,6 +723,8 @@ impl Loop {
                 targets,
                 master_name,
                 replicaset_peers,
+                elections,
+                synchro_quorum,
                 replication_config_version_actualize,
             }) => {
                 set_status!("configure replication");
@@ -731,12 +733,18 @@ impl Loop {
                     async {
                         crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_REPLICATION_CALL");
 
+                        // The quorum is only sent along with `elections`, see
+                        // `ConfigureReplicationRequest::synchro_quorum`.
+                        debug_assert!(elections || synchro_quorum.is_none());
+
                         let mut fs = vec![];
                         let mut rpc = rpc::replication::ConfigureReplicationRequest {
                             term,
                             // Is only specified for the master replica
                             is_master: false,
                             replicaset_peers,
+                            elections,
+                            synchro_quorum,
                         };
                         let master_name = master_name.as_ref();
 

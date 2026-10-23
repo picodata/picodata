@@ -348,15 +348,17 @@ def test_sentinel_backoff(cluster: Cluster):
     old_index_of_attempt = Retriable().call(check_sentinel_succeeded_and_is_waiting)
 
     progress = cluster.wait_governor_status("update current sharding configuration")
-    # Governor has performed 4 steps:
+    # Governor has performed 3 steps:
     # - change target_state=Online (also bump config versions)
-    # - configure replication within replicaset (with `victim` isolated from others)
+    # - configure replication within replicaset
     # - synchornize replication on `victim`
-    # - configure replication within replicaset (now with `victim` same as on others)
+    #
+    # The replicaset runs elections, so `victim` isn't isolated from the others
+    # until it synchronizes.
     #
     # This is important, because it shows that there weren't a bunch of
     # redundant state updates (regression test for the original bug report)
-    assert progress.step_counter - old_progress.step_counter == 4
+    assert progress.step_counter - old_progress.step_counter == 3
     old_progress = progress
 
     # Now `victim` is trying to go back Online, but cannot yet, because it's raft loop is broken
@@ -667,29 +669,21 @@ cluster:
     cluster.wait_governor_status("idle", old_progress=counter)
     cluster.wait_has_states(storage_1_1, "Offline", "Offline")
 
-    # Instance is still actually alive, and we can go fix it manually, or
-    # recover the data if needed
+    # Instance is still actually alive, but it can't be fixed in place: it's an
+    # election follower, and the synchro queue belongs to the new master, so
+    # it can't write the fix. It has to be rebootstrapped.
     #
     # Note: `Retriable` is needed because wait_online doesn't work and there's
     # no other good way to syncrhonize
-    Retriable().call(
-        storage_1_1.eval,
-        """
-        box.cfg{read_only = false}
-        box.space.foo:delete(1337)
-        """,
-    )
+    def check_cant_fix_in_place():
+        with pytest.raises(TarantoolError, match="read-only"):
+            storage_1_1.eval("box.space.foo:delete(1337)")
 
-    # Now let's restart the instance so it tries becoming online again and now
-    # succeeds
-    storage_1_1.terminate()
-    storage_1_1.env.pop(f"PICODATA_ERROR_INJECTION_{auto_online_failure}", None)
-    storage_1_1.start()
-    storage_1_1.wait_online()
-    cluster.wait_governor_status("idle")
+    Retriable().call(check_cant_fix_in_place)
 
-    # This guy is also still online obviously
+    # The new master isn't affected
     storage_1_2.wait_online()
+    leader.sql("INSERT INTO foo VALUES (1, 'v3')")
 
 
 def test_non_voter_doesnt_become_leader(cluster: Cluster):

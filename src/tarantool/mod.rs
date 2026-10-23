@@ -3,7 +3,7 @@ pub mod test_util;
 
 use crate::config::WalMode;
 use crate::config::{
-    BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig, ReplicationMode, TlsListenerSettings,
+    BootstrapStrategy, ByteSize, ElectionMode, PicodataConfig, TlsListenerSettings,
 };
 use crate::instance::Instance;
 use crate::introspection::Introspection;
@@ -162,15 +162,9 @@ mod tests {
     }
 
     #[test]
-    fn runtime_election_mode_depends_on_replication_mode() {
-        assert_eq!(
-            runtime_election_mode(ReplicationMode::Sync),
-            ElectionMode::Manual
-        );
-        assert_eq!(
-            runtime_election_mode(ReplicationMode::Async),
-            ElectionMode::Off
-        );
+    fn runtime_election_mode_depends_on_elections() {
+        assert_eq!(runtime_election_mode(true), ElectionMode::Manual);
+        assert_eq!(runtime_election_mode(false), ElectionMode::Off);
     }
 
     #[::tarantool::test]
@@ -503,7 +497,12 @@ impl Cfg {
         };
 
         res.set_core_parameters(config)?;
-        res.set_replication_parameters(config)?;
+        // A sync tier always runs elections. Whether an async tier does
+        // depends on the cluster version, which is not known yet. On restart
+        // it's read from the local storage, on join it comes with the join
+        // response.
+        let (replication_mode, _) = get_tier_replication_mode_and_factor(config)?;
+        res.set_replication_parameters(config, replication_mode.is_sync())?;
         Ok(res)
     }
 
@@ -539,7 +538,10 @@ impl Cfg {
         };
 
         res.set_core_parameters(config)?;
-        res.set_replication_parameters(config)?;
+        // A new cluster runs this version on every instance, so every tier
+        // runs elections. Tarantool promotes the bootstrap leader right in
+        // `box.cfg`, which makes it writable.
+        res.set_replication_parameters(config, true)?;
         Ok(res)
     }
 
@@ -611,7 +613,11 @@ impl Cfg {
         };
 
         res.set_core_parameters(config)?;
-        res.set_replication_parameters(config)?;
+        // The first instance of a new replicaset needs the elections at
+        // `box.cfg` time, because that's when Tarantool promotes the bootstrap
+        // leader.
+        let (replication_mode, _) = get_tier_replication_mode_and_factor(config)?;
+        res.set_replication_parameters(config, resp.elections || replication_mode.is_sync())?;
 
         // This option is required when using `bootstrap_strategy = legacy`.
         //
@@ -669,14 +675,25 @@ impl Cfg {
         Ok(res)
     }
 
-    /// Set the replication parameters this instance's tier runs with:
-    /// the election mode and, on a synchronous tier, the synchro
+    /// Set the replication parameters this instance runs with:
+    /// the election mode and, if it runs elections, the synchro
     /// quorum and timeout.
-    fn set_replication_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
+    fn set_replication_parameters(
+        &mut self,
+        config: &PicodataConfig,
+        elections: bool,
+    ) -> Result<(), Error> {
         let (replication_mode, replication_factor) = get_tier_replication_mode_and_factor(config)?;
-        self.election_mode = runtime_election_mode(replication_mode);
+        self.election_mode = runtime_election_mode(elections);
 
-        if replication_mode.is_sync() {
+        if elections {
+            // The members of the replicaset are not known yet, so this is
+            // the quorum of the replication factor alone in a sync tier, and
+            // 1 in an async one. On restart it's corrected from the local
+            // storage before the instance can be promoted, see
+            // `start_discover`. Otherwise the governor sends the right one
+            // once it configures the replication, which it does before it
+            // promotes anyone.
             let quorum = synchro_quorum(replication_mode, replication_factor, 0);
             self.user_configured_fields
                 .insert("replication_synchro_quorum".into(), quorum.into());
@@ -782,19 +799,18 @@ impl Cfg {
     }
 }
 
-/// The election mode instances of a tier run with:
-/// elections are only used on synchronous-replication tiers. `Manual` means
-/// nobody self-nominates - an instance only becomes the leader (and thus
-/// writable) when `box.ctl.promote` is called on it.
-fn runtime_election_mode(replication_mode: ReplicationMode) -> ElectionMode {
-    if replication_mode.is_sync() {
+/// The election mode an instance runs with. `Manual` means nobody
+/// self-nominates - an instance only becomes the leader (and thus writable)
+/// when `box.ctl.promote` is called on it.
+fn runtime_election_mode(elections: bool) -> ElectionMode {
+    if elections {
         ElectionMode::Manual
     } else {
         ElectionMode::Off
     }
 }
 
-/// The `box.cfg.election_timeout` synchronous tiers run with, see
+/// The `box.cfg.election_timeout` instances run with, see
 /// [`Cfg::set_replication_parameters`].
 pub(crate) const ELECTION_TIMEOUT: Duration = Duration::from_secs(5);
 

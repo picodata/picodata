@@ -1,7 +1,9 @@
 //! Tarantool election integration.
 //!
-//! The watcher starts on every instance, but an instance which doesn't run
-//! elections ignores the election events.
+//! Every tier runs elections, except for an async tier of a cluster in the
+//! middle of a rolling upgrade from 26.2, see
+//! [`super::ELECTIONS_ON_EVERY_TIER_SINCE`]. An instance which doesn't run
+//! elections yet ignores the election events.
 //!
 //! Picodata keeps the designated master in `_pico_replicaset`, while
 //! Tarantool's manual elections are the authority that makes that instance
@@ -215,8 +217,9 @@ fn election_worker(mailbox: Mailbox<Message>) {
         }
 
         if !elections_enabled() {
-            // The leadership is managed by the governor and
-            // `box.cfg.read_only` then.
+            // The governor will switch this instance to elections once the
+            // whole cluster is upgraded. Until then the leadership is managed
+            // by the governor and `box.cfg.read_only`.
             mailbox.receive_all(RECONCILE_PERIOD);
             continue;
         }

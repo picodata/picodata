@@ -1364,8 +1364,7 @@ def test_healthcheck_status_api(cluster: Cluster):
 
     This test validates:
     1. Healthy state with data accuracy (instance info, raft, buckets, cluster)
-    2. Degraded state when limbo_owner != 0
-    3. Unhealthy state when instance is offline (includes degraded reasons)
+    2. Unhealthy state when instance is offline
     """
     i1, i2, i3 = cluster.deploy(instance_count=3)
     http_listen = i1.http_listen
@@ -1426,21 +1425,11 @@ def test_healthcheck_status_api(cluster: Cluster):
     assert body["status"] == "healthy", f"Expected healthy, got: {body['status']}"
     assert len(body.get("issues", [])) == 0, "Expected no issues for healthy status"
 
-    # Validate degraded status (limbo_owner != 0)
-    i1.eval("box.ctl.promote()")
-    time.sleep(0.2)
-
+    # Every tier runs elections, so the master owns the synchro queue, and
+    # that's healthy.
     limbo_owner = i1.eval("return box.info.synchro.queue.owner")
-    assert limbo_owner != 0, "box.ctl.promote() should set limbo_owner"
-
-    with get_authorized(status_url, auth_token) as response:
-        assert response.status == 200
-        body = json.load(response)
-
-    assert body["status"] == "degraded", f"Expected degraded, got: {body['status']}"
+    assert limbo_owner == i1.eval("return box.info.id")
     assert body["limboOwner"] == limbo_owner, f"Expected limboOwner={limbo_owner}, got: {body['limboOwner']}"
-    issues = body.get("issues", [])
-    assert any("limbo" in r.lower() for r in issues), f"Expected limbo issue: {issues}"
 
     # Validate unhealthy status
     # inject SENTINEL_CONNECTION_POOL_CALL_FAILURE to disable instance auto-online
@@ -1469,13 +1458,10 @@ def test_healthcheck_status_api(cluster: Cluster):
         assert response.status == 200
         body = json.load(response)
 
-    # Broken overrides degraded
     assert body["status"] == "broken", f"Expected broken, got: {body['status']}"
     assert body["targetStateReason"] == "status_api_test"
     issues = body.get("issues", [])
-    # Should include both broken and degraded issues
     assert any("offline" in r.lower() for r in issues), f"Expected offline issue: {issues}"
-    assert any("limbo" in r.lower() for r in issues), f"Expected limbo issue: {issues}"
 
     # Cleanup
     i1.call("pico._inject_error", "SENTINEL_CONNECTION_POOL_CALL_FAILURE", False)

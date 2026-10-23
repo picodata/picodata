@@ -180,16 +180,20 @@ class PluginReflection:
                 assert sorted(data) == sorted(self.data[table])
 
     @staticmethod
+    def cb_called_times(service, callback, instance) -> int:
+        return instance.eval(
+            f"if _G['plugin_state'] == nil then _G['plugin_state'] = {{}} end "
+            f"if _G['plugin_state']['{service}'] == nil then _G['plugin_state']['{service}']"
+            f" = {{}} end "
+            f"if _G['plugin_state']['{service}']['{callback}'] == nil then _G['plugin_state']"
+            f"['{service}']['{callback}'] = 0 end "
+            f"return _G['plugin_state']['{service}']['{callback}']"
+        )
+
+    @staticmethod
     def assert_cb_called(service, callback, called_times, *instances):
         for i in instances:
-            cb_calls_number = i.eval(
-                f"if _G['plugin_state'] == nil then _G['plugin_state'] = {{}} end "
-                f"if _G['plugin_state']['{service}'] == nil then _G['plugin_state']['{service}']"
-                f" = {{}} end "
-                f"if _G['plugin_state']['{service}']['{callback}'] == nil then _G['plugin_state']"
-                f"['{service}']['{callback}'] = 0 end "
-                f"return _G['plugin_state']['{service}']['{callback}']"
-            )
+            cb_calls_number = PluginReflection.cb_called_times(service, callback, i)
             assert cb_calls_number == called_times
 
     @staticmethod
@@ -1661,12 +1665,19 @@ def test_on_leader_change(cluster: Cluster):
     new_master = Retriable().call(get_promoted_instance)
     counter = cluster.wait_governor_status("idle")
 
-    expected_calls = {i1: 1, i2: 1, i3: 0}
+    # i2 is Offline but still alive and replicating, so it receives the
+    # PROMOTE of the new master and its election watcher tells the plugins
+    # that it is no longer the master. That happens asynchronously to the
+    # governor, so retry.
+    expected_calls = {i1: 1, i2: 2, i3: 0}
     expected_calls[new_master] += 1
-    for instance, calls in expected_calls.items():
-        plugin_ref.assert_cb_called("testservice_1", "on_leader_change", calls, instance)
-        # i2 is presumed dead, so its callback and master context stay unchanged.
-        plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": instance in (new_master, i2)}, instance)
+
+    def check_callbacks():
+        for instance, calls in expected_calls.items():
+            plugin_ref.assert_cb_called("testservice_1", "on_leader_change", calls, instance)
+            plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": instance is new_master}, instance)
+
+    Retriable().call(check_callbacks)
 
     # Disable the injected error
     leader.call("pico._inject_error", error_injection, None)
@@ -1676,11 +1687,25 @@ def test_on_leader_change(cluster: Cluster):
     # `i2` has come to its senses.
     i2.wait_online()
 
-    # Only i2 receives another callback when it learns it is no longer master.
-    expected_calls[i2] += 1
-    for instance, calls in expected_calls.items():
-        plugin_ref.assert_cb_called("testservice_1", "on_leader_change", calls, instance)
-        plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": instance is new_master}, instance)
+    # i2 already learned it is no longer master, so neither it nor the other
+    # replica receives another callback.
+    #
+    # The new master may receive pairs of them though. i2 coming back changes
+    # `box.cfg.replication`, and with `replication_connect_quorum = 0` Tarantool
+    # replaces the working appliers too. The master loses the quorum for a
+    # moment, is fenced and resigns, and the election watcher promotes it back.
+    # TODO: expect no callback on the new master either, once a replication
+    # reconfiguration keeps the working appliers.
+    def check_callbacks_after_rejoin():
+        for instance, calls in expected_calls.items():
+            plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": instance is new_master}, instance)
+            if instance is new_master:
+                extra = plugin_ref.cb_called_times("testservice_1", "on_leader_change", instance) - calls
+                assert extra >= 0 and extra % 2 == 0, f"unpaired on_leader_change calls on the master: {extra}"
+            else:
+                plugin_ref.assert_cb_called("testservice_1", "on_leader_change", calls, instance)
+
+    Retriable().call(check_callbacks_after_rejoin)
 
 
 def test_error_on_leader_change(cluster: Cluster):

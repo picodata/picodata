@@ -1346,7 +1346,12 @@ fn bootstrap_storage_on_master() -> Result<(Catalog, RaftSpaceAccess)> {
     assert!(!stored_procedures_are_initialized(false)?);
     init_stored_procedures();
 
-    sync_replication::maybe_make_system_spaces_sync()?;
+    // A replicaset which runs elections has synchronous system spaces. The
+    // bootstrap leader is promoted in `box.cfg`, so it owns the synchro queue
+    // already.
+    if sync_replication::elections_enabled() {
+        sync_replication::make_system_spaces_sync()?;
+    }
 
     tlog!(Info, "initialized picodata storage");
 
@@ -1485,6 +1490,55 @@ fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> 
             // Validate that configuration file did not change in a way incompatible
             // with persisted system tables
             config.validate_storage(&storage, &raft_storage)?;
+
+            // The cluster version only grows, so if the local one says every
+            // tier runs elections, they do. If it's stale or not replicated
+            // yet, the governor enables the elections once it configures the
+            // replication. This comes after the validation: the synchro
+            // quorum depends on the replication mode in the config.
+            //
+            // If the elections are already enabled by `box.cfg` (a sync tier),
+            // the quorum still has to be corrected: `box.cfg` doesn't know how
+            // many members the replicaset has, and the instance must not be
+            // elected with a smaller quorum. The election watcher, which may
+            // promote it, starts later in `postjoin`. If the members have
+            // changed while the instance was down, the governor corrects the
+            // quorum again once it configures the replication. Until every
+            // instance is upgraded the governor doesn't send the quorum, and a
+            // sync tier keeps the quorum of the replication factor.
+            let cluster_version: Option<SmolStr> = storage
+                .properties
+                .get(PropertyName::ClusterVersion.as_str())?;
+            let elections_on_every_tier = match cluster_version {
+                Some(v) => sync_replication::elections_on_every_tier(&v)?,
+                None => false,
+            };
+            if elections_on_every_tier {
+                let (replication_mode, _) =
+                    sync_replication::get_tier_replication_mode_and_factor(config)?;
+                // Take the replication factor from `_pico_tier`, not from the
+                // config: without a `cluster.tier` section the config isn't
+                // validated against the storage, and its default replication
+                // factor may differ from the one the tier was bootstrapped
+                // with, e.g. if `--init-replication-factor` was only passed on
+                // the first start.
+                let replication_factor = storage
+                    .tiers
+                    .by_name(my_tier_name)?
+                    .ok_or_else(|| Error::other(format!("tier {my_tier_name} not found")))?
+                    .replication_factor;
+                let replicaset_name = storage.instances.get(&instance_name)?.replicaset_name;
+                let members: Vec<Instance> = storage
+                    .instances
+                    .replicaset_instances(&replicaset_name)?
+                    .collect::<Result<_>>()?;
+                let quorum = sync_replication::synchro_quorum(
+                    replication_mode,
+                    replication_factor,
+                    sync_replication::count_replicaset_members(members),
+                );
+                sync_replication::enable_elections(quorum)?;
+            }
 
             postjoin(
                 config,
@@ -2311,6 +2365,18 @@ fn start_join(
 
     let is_master = !cfg.read_only;
     let (storage, raft_storage) = if is_master {
+        // Tarantool promotes the bootstrap leader in `box.cfg`. But if another
+        // instance joining the same new replicaset bootstrapped it while this
+        // one wasn't up yet, this one joined it and is an election follower.
+        // It's still the master the raft leader has chosen, so it takes the
+        // leadership over before it writes anything.
+        if sync_replication::elections_enabled() && tarantool::box_is_ro() {
+            tlog!(
+                Info,
+                "another instance has bootstrapped the replicaset, promoting self"
+            );
+            sync_replication::promote()?;
+        }
         bootstrap_storage_on_master()?
     } else {
         // In case of read-only replica the storage is initialized by the master

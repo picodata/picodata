@@ -439,17 +439,12 @@ Update(_pico_replicaset, ["default_1"], [["=","target_config_version",1]]),
 Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
 )|
 |  0  | 2  |Update(_pico_replicaset, ["default_1"], [["=","current_config_version",1]])|
-|  0  | 2  |BatchDml(
-Update(_pico_replicaset, ["default_1"], [["=","target_config_version",2]]),
-Update(_pico_tier, ["default"], [["=","target_vshard_config_version",2]]),
-Update(_pico_instance, ["default_1_1"], [["=","sync_incarnation",1]])
-)|
-|  0  | 2  |Update(_pico_replicaset, ["default_1"], [["=","current_config_version",2]])|
+|  0  | 2  |Update(_pico_instance, ["default_1_1"], [["=","sync_incarnation",1]])|
 |  0  | 2  |BatchDml(
 Update(_pico_replicaset, ["default_1"], [["=","weight",1.0], ["=","state","ready"]]),
-Update(_pico_tier, ["default"], [["=","target_vshard_config_version",3]])
+Update(_pico_tier, ["default"], [["=","target_vshard_config_version",2]])
 )|
-|  0  | 2  |Update(_pico_tier, ["default"], [["=","current_vshard_config_version",3]])|
+|  0  | 2  |Update(_pico_tier, ["default"], [["=","current_vshard_config_version",2]])|
 |  0  | 2  |Update(_pico_tier, ["default"], [["=","vshard_bootstrapped",true]])|
 |  0  | 2  |Update(_pico_instance, ["default_1_1"], [["=","current_state",["Online",1]]])|
 +-----+----+--------+
@@ -801,7 +796,7 @@ def test_proc_runtime_info_v2(instance: Instance):
             governor_loop_status="idle",
             # This is a counter which increases each time governor successfully performs a step.
             # This value may change in the future if we add or remove some of those steps.
-            governor_step_counter=8,
+            governor_step_counter=7,
             main_loop_last_entry=dict(
                 index=420,
                 term=2,

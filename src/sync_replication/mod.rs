@@ -4,17 +4,39 @@ use crate::instance::Instance;
 use crate::luamod::lua_function;
 use crate::tarantool::{
     box_info_election, box_is_ro, box_owns_synchro_queue, box_promote, box_ro_reason, cfg_field,
-    set_cfg_field,
+    set_cfg_field, ELECTION_TIMEOUT,
 };
 use crate::traft::{error::Error, Result};
+use crate::version::{version_is_new_enough, Version};
 use std::borrow::Borrow;
 use std::rc::Rc;
 use std::time::Duration;
+use tarantool::clock::INFINITY;
 use tarantool::error::{BoxError, Error as TarantoolError, TarantoolErrorCode};
 use tarantool::fiber;
 use tarantool::transaction::transaction_force_async;
 
 pub mod synchro_election_watcher;
+
+/// Since this version every tier runs Tarantool elections and has
+/// synchronous system spaces, whatever its `replication_mode` is.
+///
+/// The switch happens when `_pico_property.cluster_version` reaches this
+/// version. Until then tiers work like they did in 26.2: only a
+/// `replication_mode = sync` tier runs elections, and in an async tier the
+/// governor makes the master writable directly. This keeps a rolling upgrade
+/// working: a 26.2 instance of an async tier doesn't vote in elections and
+/// rejects a promotion request.
+///
+/// TODO: remove the async tier code paths in the next release, when every
+/// cluster being upgraded already has elections on every tier.
+pub const ELECTIONS_ON_EVERY_TIER_SINCE: Version = Version::new_clean(26, 3, 0);
+
+/// Returns `true` if the cluster runs elections on every tier, see
+/// [`ELECTIONS_ON_EVERY_TIER_SINCE`].
+pub fn elections_on_every_tier(cluster_version: &str) -> Result<bool> {
+    version_is_new_enough(cluster_version, &ELECTIONS_ON_EVERY_TIER_SINCE)
+}
 
 /// Returns `true` if this instance runs Tarantool elections.
 pub fn elections_enabled() -> bool {
@@ -110,6 +132,20 @@ fn is_joining(instance: &Instance) -> bool {
     instance.target_state.incarnation == 0
 }
 
+/// Makes this instance run Tarantool elections. From now on it's writable
+/// only while it's the election leader.
+///
+/// Sets the same parameters as
+/// [`Cfg::set_replication_parameters`](crate::tarantool::Cfg) does at
+/// `box.cfg` time.
+pub fn enable_elections(synchro_quorum: u8) -> Result<()> {
+    set_cfg_field("replication_synchro_quorum", synchro_quorum)?;
+    set_cfg_field("replication_synchro_timeout", INFINITY.as_secs())?;
+    set_cfg_field("election_timeout", ELECTION_TIMEOUT.as_secs_f64())?;
+    set_cfg_field("election_mode", ElectionMode::Manual.as_str())?;
+    Ok(())
+}
+
 /// Returns `true` if this instance and the peers it receives replication from
 /// make up the synchro quorum, so it may win an election.
 ///
@@ -144,7 +180,9 @@ thread_local! {
 /// - the governor, which transfers the mastership, see
 ///   [`proc_replication_promote`];
 /// - the election watcher, which recovers the replicaset master after a
-///   quorum loss, see [`synchro_election_watcher`].
+///   quorum loss, see [`synchro_election_watcher`];
+/// - a master joining a new replicaset which another instance has
+///   bootstrapped, see `start_join`.
 ///
 /// These promotions are serialized. Otherwise tarantool would reject a
 /// concurrent `box_promote` with ER_IN_ANOTHER_PROMOTE, or would return at once
@@ -277,17 +315,6 @@ pub fn make_system_spaces_sync() -> Result<()> {
     })?;
 
     crate::tlog!(Info, "tarantool system spaces are now synchronous");
-    Ok(())
-}
-
-/// Make the tarantool system spaces synchronous if needed
-/// (current tier has `replication_mode = sync` param).
-pub fn maybe_make_system_spaces_sync() -> Result<()> {
-    let (replication_mode, _) = get_this_tier_replication_mode_and_factor()?;
-    if replication_mode.is_sync() {
-        return make_system_spaces_sync();
-    }
-
     Ok(())
 }
 
