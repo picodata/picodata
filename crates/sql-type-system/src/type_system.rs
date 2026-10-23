@@ -148,6 +148,10 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
 
     /// Merge 2 reports.
     pub fn extend(&mut self, other: Self) {
+        if self.types.is_empty() && self.casts.is_empty() && self.params.is_empty() {
+            *self = other;
+            return;
+        }
         self.types.extend(other.types);
         self.casts.extend(other.casts);
         self.params.extend(other.params);
@@ -331,7 +335,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         }
 
         if let Some(report) = self.try_get_cached(expr, desired_type) {
-            return Ok(report.clone());
+            return Ok(report);
         }
 
         let report = self.analyze_expr(expr, desired_type)?;
@@ -1123,8 +1127,10 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             let report = self.analyze(arg.borrow(), desired_type)?;
             types.insert(report.get_type(&arg.borrow().id));
 
-            let report = self.analyze(arg.borrow(), Type::Text)?;
-            types.insert(report.get_type(&arg.borrow().id));
+            if desired_type != Type::Text {
+                let report = self.analyze(arg.borrow(), Type::Text)?;
+                types.insert(report.get_type(&arg.borrow().id));
+            }
         }
 
         // Then, analyze expressions with candidate types as desired.
