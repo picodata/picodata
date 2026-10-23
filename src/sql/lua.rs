@@ -13,7 +13,7 @@ use ::tarantool::tlua::{
 use rmp::decode::{read_array_len, read_int, read_marker, RmpRead};
 use rmp::Marker;
 use sql_protocol::iterators::ExplainIter;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fmt::Write;
 use std::io::Cursor;
 use std::ops::Deref;
@@ -489,12 +489,9 @@ unsafe fn push_metadata_to_lua(l: *mut lua_State, metadata_mp: &[u8]) -> Result<
     Ok(())
 }
 
-pub(crate) type IbufTable<'lua> = LuaTable<PushGuard<DispatchFunction<'lua>>>;
-pub(crate) type DispatchFunction<'lua> =
-    LuaFunction<PushGuard<LuaTable<PushGuard<LuaTable<PushGuard<&'lua LuaThread>>>>>>;
-pub(crate) type StorageFunction<'lua> = LuaFunction<
-    PushGuard<LuaTable<PushGuard<LuaTable<PushGuard<LuaTable<PushGuard<&'lua LuaThread>>>>>>>,
->;
+pub(crate) type IbufTable<'lua> = LuaTable<PushGuard<SqlFunction<'lua>>>;
+/// A pinned Lua function pushed from the registry, see [`sql_lua_function`].
+pub(crate) type SqlFunction<'lua> = LuaFunction<PushGuard<&'lua LuaThread>>;
 
 pub(crate) struct LuaInputBuffer<'lua> {
     // Input buffer pointer.
@@ -653,9 +650,8 @@ where
     T::Err: std::fmt::Debug,
     Void: From<<T as PushInto<*mut lua_State>>::Err>,
 {
-    let name = "single_plan_dispatch";
     let tier = tier.map(|s| s.to_string());
-    let func = dispatch_get_func(lua, name)?;
+    let func = sql_lua_function(lua, SqlLuaFn::SinglePlanDispatch)?;
 
     let call_res = func.into_call_with_args::<LuaTable<_>, _>((
         args,
@@ -688,9 +684,8 @@ where
     T::Err: std::fmt::Debug,
     Void: From<<T as PushInto<*mut lua_State>>::Err>,
 {
-    let name = "custom_plan_dispatch";
     let tier = tier.map(|s| s.to_string());
-    let func = dispatch_get_func(lua, name)?;
+    let func = sql_lua_function(lua, SqlLuaFn::CustomPlanDispatch)?;
 
     let call_res = func.into_call_with_args::<IbufTable, _>((
         args,
@@ -711,7 +706,7 @@ where
 
 pub(crate) fn dispatch_session_id() -> Result<String> {
     let lua = sql_lua_state();
-    let func = dispatch_get_func(&lua, "session_id")?;
+    let func = sql_lua_function(&lua, SqlLuaFn::SessionId)?;
     func.call::<String>()
         .map_err(|e| TarantoolError::new(TarantoolErrorCode::ProcLua, format!("{e}")).into())
 }
@@ -761,8 +756,7 @@ fn is_bucket_route_retriable(error: &BoxError) -> bool {
 }
 
 fn bucket_into_rs_impl(lua: &LuaThread, bucket_id: u64, tier: Option<&str>) -> Result<String> {
-    let name = "bucket_into_rs";
-    let func = dispatch_get_func(lua, name)?;
+    let func = sql_lua_function(lua, SqlLuaFn::BucketIntoRs)?;
 
     match func.call_with_args::<(Option<String>, Option<BoxError>), _>((bucket_id, tier)) {
         Ok((Some(rs), _)) => Ok(rs),
@@ -782,7 +776,7 @@ fn bucket_into_rs_impl(lua: &LuaThread, bucket_id: u64, tier: Option<&str>) -> R
 
 pub(crate) fn reference_add(rid: i64, sid: &str, timeout: Duration) -> Result<()> {
     let lua = sql_lua_state();
-    let func = storage_get_func(&lua, "add")?;
+    let func = sql_lua_function(&lua, SqlLuaFn::RefAdd)?;
 
     match func.call_with_args::<(Option<bool>, Option<VshardError>), _>((
         rid,
@@ -806,7 +800,7 @@ pub(crate) fn reference_add(rid: i64, sid: &str, timeout: Duration) -> Result<()
 
 pub(crate) fn reference_use(rid: i64, sid: &str) -> Result<()> {
     let lua = sql_lua_state();
-    let func = storage_get_func(&lua, "use")?;
+    let func = sql_lua_function(&lua, SqlLuaFn::RefUse)?;
 
     match func.call_with_args::<(Option<bool>, Option<VshardError>), _>((rid, sid)) {
         Ok((Some(_), _)) => Ok(()),
@@ -826,7 +820,7 @@ pub(crate) fn reference_use(rid: i64, sid: &str) -> Result<()> {
 
 pub(crate) fn reference_del(rid: i64, sid: &str) -> Result<()> {
     let lua = sql_lua_state();
-    let func = storage_get_func(&lua, "del")?;
+    let func = sql_lua_function(&lua, SqlLuaFn::RefDel)?;
 
     match func.call_with_args((rid, sid)) {
         Ok(()) => Ok(()),
@@ -858,68 +852,109 @@ impl VshardError {
     }
 }
 
-fn storage_get_func<'lua>(lua: &'lua LuaThread, name: &str) -> Result<StorageFunction<'lua>> {
-    let Some(pico): Option<LuaTable<_>> = lua.get("pico") else {
-        return Err(TarantoolError::new(TarantoolErrorCode::NoSuchModule, "no module pico").into());
-    };
-    let dispatch: LuaTable<_> = match pico.into_get("dispatch") {
-        Ok(table) => table,
-        Err(e) => {
-            return Err(TarantoolError::new(
-                TarantoolErrorCode::NoSuchModule,
-                format!("no module pico.dispatch: {e:?}"),
-            )
-            .into());
-        }
-    };
-    let lref: LuaTable<_> = match dispatch.into_get("lref") {
-        Ok(table) => table,
-        Err(e) => {
-            return Err(TarantoolError::new(
-                TarantoolErrorCode::NoSuchModule,
-                format!("no module pico.dispatch.lref: {e:?}"),
-            )
-            .into());
-        }
-    };
-    let func: StorageFunction = match lref.into_get(name) {
-        Ok(f) => f,
-        Err(e) => {
-            return Err(TarantoolError::new(
-                TarantoolErrorCode::NoSuchFunction,
-                format!("no function '{name}': {e:?}"),
-            )
-            .into());
-        }
-    };
-    Ok(func)
+::tarantool::define_enum_with_introspection! {
+    /// Lua functions that SQL calls, pinned in the Lua registry on the first call.
+    enum SqlLuaFn {
+        SinglePlanDispatch,
+        CustomPlanDispatch,
+        BucketIntoRs,
+        SessionId,
+        RefAdd,
+        RefUse,
+        RefDel,
+    }
 }
 
-fn dispatch_get_func<'lua>(lua: &'lua LuaThread, name: &str) -> Result<DispatchFunction<'lua>> {
-    let Some(pico): Option<LuaTable<_>> = lua.get("pico") else {
-        return Err(TarantoolError::new(TarantoolErrorCode::NoSuchModule, "no module pico").into());
-    };
-    let dispatch: LuaTable<_> = match pico.into_get("dispatch") {
-        Ok(table) => table,
-        Err(e) => {
-            return Err(TarantoolError::new(
-                TarantoolErrorCode::NoSuchModule,
-                format!("no module pico.dispatch: {e:?}"),
-            )
-            .into());
+impl SqlLuaFn {
+    /// The name in `pico.dispatch`, or in `pico.dispatch.lref` for the storage references.
+    fn name(self) -> &'static str {
+        match self {
+            Self::SinglePlanDispatch => "single_plan_dispatch",
+            Self::CustomPlanDispatch => "custom_plan_dispatch",
+            Self::BucketIntoRs => "bucket_into_rs",
+            Self::SessionId => "session_id",
+            Self::RefAdd => "add",
+            Self::RefUse => "use",
+            Self::RefDel => "del",
         }
+    }
+
+    fn in_lref(self) -> bool {
+        matches!(self, Self::RefAdd | Self::RefUse | Self::RefDel)
+    }
+}
+
+thread_local! {
+    /// Registry references to the pinned functions, `LUA_NOREF` until the first call.
+    static SQL_LUA_FUNCTIONS: [Cell<std::ffi::c_int>; SqlLuaFn::MAX as usize + 1] =
+        const { [const { Cell::new(lua::LUA_NOREF) }; SqlLuaFn::MAX as usize + 1] };
+}
+
+/// Push a Lua function that SQL calls. The first call finds it in
+/// `pico.dispatch` and pins it in the Lua registry, later calls skip the lookup.
+///
+/// `pico.dispatch` is set once at startup, and its functions never change. If
+/// one is redefined at runtime anyway, SQL keeps calling the pinned one.
+fn sql_lua_function<'lua>(lua: &'lua LuaThread, f: SqlLuaFn) -> Result<SqlFunction<'lua>> {
+    let l = lua.as_lua();
+    let mut reference = SQL_LUA_FUNCTIONS.with(|refs| refs[f as usize].get());
+    if reference == lua::LUA_NOREF {
+        // The lookup does not yield, so another call could pin `f` meanwhile only
+        // from a Lua finalizer the lookup runs; one registry slot leaks then.
+        reference = pin_sql_lua_function(lua, f)?;
+        SQL_LUA_FUNCTIONS.with(|refs| refs[f as usize].set(reference));
+    }
+    // SAFETY: `reference` pins a function; the guard pops it.
+    let guard = unsafe {
+        lua::lua_rawgeti(l, lua::LUA_REGISTRYINDEX, reference);
+        PushGuard::new(lua, 1)
     };
-    let func: DispatchFunction = match dispatch.into_get(name) {
-        Ok(f) => f,
-        Err(e) => {
-            return Err(TarantoolError::new(
+    LuaFunction::lua_read(guard).map_err(|(_, e)| {
+        TarantoolError::new(
+            TarantoolErrorCode::ProcLua,
+            format!("pinned function '{}': {e}", f.name()),
+        )
+        .into()
+    })
+}
+
+/// Find `f` by the chain `pico.dispatch[.lref].<name>` and pin it in the registry.
+fn pin_sql_lua_function(lua: &LuaThread, f: SqlLuaFn) -> Result<std::ffi::c_int> {
+    fn pin<L: AsLua + std::fmt::Debug>(table: LuaTable<L>, name: &str) -> Result<std::ffi::c_int> {
+        let func: LuaFunction<_> = table.into_get(name).map_err(|e| {
+            TarantoolError::new(
                 TarantoolErrorCode::NoSuchFunction,
                 format!("no function '{name}': {e:?}"),
             )
-            .into());
+        })?;
+        let l = func.as_lua();
+        // SAFETY: the lookup leaves the function on top of the stack. `luaL_ref`
+        // pops its copy, and `func` pops the rest of the chain when dropped.
+        unsafe {
+            lua::lua_pushvalue(l, -1);
+            Ok(lua::luaL_ref(l, lua::LUA_REGISTRYINDEX))
         }
+    }
+
+    let Some(pico): Option<LuaTable<_>> = lua.get("pico") else {
+        return Err(TarantoolError::new(TarantoolErrorCode::NoSuchModule, "no module pico").into());
     };
-    Ok(func)
+    let dispatch: LuaTable<_> = pico.into_get("dispatch").map_err(|e| {
+        TarantoolError::new(
+            TarantoolErrorCode::NoSuchModule,
+            format!("no module pico.dispatch: {e:?}"),
+        )
+    })?;
+    if !f.in_lref() {
+        return pin(dispatch, f.name());
+    }
+    let lref: LuaTable<_> = dispatch.into_get("lref").map_err(|e| {
+        TarantoolError::new(
+            TarantoolErrorCode::NoSuchModule,
+            format!("no module pico.dispatch.lref: {e:?}"),
+        )
+    })?;
+    pin(lref, f.name())
 }
 
 pub(crate) fn escape_bytes(data: &[u8]) -> String {
@@ -1149,5 +1184,42 @@ mod tarantool_tests {
         let lua = sql_lua_state();
         let f: LuaFunction<_> = lua.get("sql_lua_pool_sleep").unwrap();
         assert_eq!(f.into_call_with_args::<f64, _>(0.0).unwrap(), 0.0);
+    }
+
+    const PICO_STUB: &str = "rawset(_G, 'pico', {dispatch = {
+        session_id = function() return 'sid' end,
+        lref = {use = function() return true end},
+    }})";
+
+    #[tarantool::test]
+    fn sql_lua_function_is_called_by_pin() {
+        crate::tarantool::exec(PICO_STUB).unwrap();
+        assert_eq!(dispatch_session_id().unwrap(), "sid");
+        reference_use(1, "sid").unwrap();
+
+        // Pinned functions no longer need `pico.dispatch`.
+        crate::tarantool::exec("rawset(_G, 'pico', nil)").unwrap();
+        assert_eq!(dispatch_session_id().unwrap(), "sid");
+        reference_use(1, "sid").unwrap();
+
+        // Each call left the stack clean, so one thread served them all.
+        let stats = sql_lua_pool_stats();
+        assert_eq!((stats.idle, stats.created), (1, 1));
+    }
+
+    #[tarantool::test]
+    fn sql_lua_function_lookup_failure_is_not_pinned() {
+        crate::tarantool::exec("rawset(_G, 'pico', nil)").unwrap();
+        let err = dispatch_session_id().unwrap_err().to_string();
+        assert!(err.contains("no module pico"), "{err}");
+
+        crate::tarantool::exec(PICO_STUB).unwrap();
+        let err = reference_del(1, "sid").unwrap_err().to_string();
+        assert!(err.contains("no function 'del'"), "{err}");
+        assert_eq!(dispatch_session_id().unwrap(), "sid");
+
+        // Failed lookups left the stack clean too.
+        let stats = sql_lua_pool_stats();
+        assert_eq!((stats.idle, stats.created), (1, 1));
     }
 }
