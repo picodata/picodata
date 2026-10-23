@@ -71,6 +71,9 @@ impl Plan {
                 new_top_id = self.concat_or(new_top_id, new_right_id)?;
             }
 
+            // Per-conjunct link: passes that rebuild a condition restore the
+            // `IN` for the local SQL from it (see `Plan::remember_in_lists`).
+            self.undo.add(top_id, new_top_id);
             return Ok(new_top_id);
         }
         Ok(top_id)

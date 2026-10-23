@@ -13,8 +13,8 @@ use crate::ir::columns::RelColumn;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
-use crate::ir::node::{Constant, Join, NodeId, Selection, SubQueryReference};
-use crate::ir::operator::JoinKind;
+use crate::ir::node::{BoolExpr, Constant, Join, NodeId, Selection, SubQueryReference};
+use crate::ir::operator::{Bool, JoinKind};
 use crate::ir::transformation::restriction::{RestrictInfo, Restriction};
 use crate::ir::tree::traversal::REL_CAPACITY;
 use crate::ir::value::Value;
@@ -218,6 +218,7 @@ impl Plan {
         derived: Vec<RestrictInfo>,
     ) -> Result<NodeId, SbroadError> {
         let filter = self.and_of(derived.iter().map(RestrictInfo::clause).collect())?;
+        self.remember_in_lists(filter)?;
         let new_sel = self.add_select(child, filter)?;
         // `add_select` starts with no subqueries: the filter's own come next.
         self.sync_condition_subqueries(new_sel, filter)?;
@@ -325,7 +326,91 @@ impl Plan {
                 restrictions.extend(owner, derived);
             }
         }
+        self.remember_in_lists(condition)?;
         Ok(condition)
+    }
+
+    /// Link `condition` in the undo log to its form with every conjunct
+    /// expanded from an `IN` turned back into it. The local SQL renders the
+    /// oldest form, and a rebuilt condition otherwise loses the link and shows
+    /// the `OR` chain, which for a long list exceeds the expression tree limit
+    /// of the local engine.
+    ///
+    /// # Errors
+    /// - Reading an expression or building the `AND` fails.
+    fn remember_in_lists(&mut self, condition: NodeId) -> Result<(), SbroadError> {
+        if *self.undo.get_oldest(&condition) != condition {
+            return Ok(());
+        }
+        let conjuncts = self.nodes.and_conjuncts(condition);
+        let mut origins = Vec::with_capacity(conjuncts.len());
+        for conjunct in &conjuncts {
+            origins.push(self.in_origin(*conjunct)?);
+        }
+        if origins != conjuncts {
+            let origin = self.and_of(origins)?;
+            self.undo.add(origin, condition);
+        }
+        Ok(())
+    }
+
+    /// The `IN` that `clause` was expanded from, or `clause` itself. Only an
+    /// `IN` is taken from the undo log, and only if it reads nothing the
+    /// clause does not: other old forms, or an `IN` whose expansion constant
+    /// folding has cut, may reference columns the clause no longer does. Such
+    /// an `IN` is rebuilt from the current expansion instead.
+    ///
+    /// # Errors
+    /// - Reading the old form fails.
+    pub(super) fn in_origin(&mut self, clause: NodeId) -> Result<NodeId, SbroadError> {
+        let oldest = *self.undo.get_oldest(&clause);
+        if !matches!(
+            self.get_expression_node(oldest)?,
+            Expression::Bool(BoolExpr { op: Bool::In, .. })
+        ) {
+            return Ok(clause);
+        }
+        let (old, new) = (self.restrict_info(oldest)?, self.restrict_info(clause)?);
+        let reads_more = old.slots().iter().any(|s| !new.slots().contains(s))
+            || old
+                .subqueries()
+                .iter()
+                .any(|sq| !new.subqueries().contains(sq));
+        if !reads_more {
+            return Ok(oldest);
+        }
+        self.rebuild_in(clause)
+    }
+
+    /// `l IN (r1, .., rn)` for an `OR` chain of `l = ri` sharing one `l` node,
+    /// as `IN` expansion builds and constant folding keeps it; else `clause`.
+    ///
+    /// # Errors
+    /// - Reading the chain or building the `IN` fails.
+    fn rebuild_in(&mut self, clause: NodeId) -> Result<NodeId, SbroadError> {
+        let mut shared_left = None;
+        let mut list = Vec::new();
+        let mut stack = vec![clause];
+        while let Some(id) = stack.pop() {
+            match self.get_expression_node(id)? {
+                Expression::Bool(BoolExpr {
+                    op: Bool::Or,
+                    left,
+                    right,
+                }) => stack.extend([*right, *left]),
+                Expression::Bool(BoolExpr {
+                    op: Bool::Eq,
+                    left,
+                    right,
+                }) if *shared_left.get_or_insert(*left) == *left => list.push(*right),
+                _ => return Ok(clause),
+            }
+        }
+        let Some(left) = shared_left else {
+            return Ok(clause);
+        };
+        let row = self.nodes.add_row(list);
+        self.add_bool(left, Bool::In, row)
     }
 
     /// `owner`'s condition `base` without its `dropped` top-level conjuncts,

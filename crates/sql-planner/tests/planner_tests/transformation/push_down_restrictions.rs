@@ -1273,3 +1273,23 @@ fn function_takes_filter_in_carrier() {
                 scan generate_series(1::int, 10::int) -> g
     ");
 }
+
+// Folding cuts `t.b` out of the `IN` expansion, so the clause reads `t2` only
+// and moves there. The `IN` it came from still reads `t.b`: the moved clause
+// gets one rebuilt from its expansion instead.
+#[test]
+fn folded_in_moves_without_its_origin() {
+    let plan = run_push_down(
+        r#"SELECT * FROM "t" JOIN "t2" ON true WHERE ("t"."b" > 0 AND false) IN ("t2"."f" > 0, "t2"."f" < 0)"#,
+    );
+    assert_snapshot!(logical(&plan), @"
+    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
+      selection (true::bool)
+        join on (true::bool)
+          scan t
+          scan t2
+            projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
+              selection (false::bool in ROW(t2.f::int > 0::int, t2.f::int < 0::int))
+                scan t2
+    ");
+}

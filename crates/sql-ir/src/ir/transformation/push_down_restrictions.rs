@@ -422,7 +422,26 @@ impl Plan {
         clause: NodeId,
         columns: &AHashMap<Slot, Slot>,
     ) -> Result<NodeId, SbroadError> {
-        SubtreeCloner::clone_subtree_with_refs(self, clause, |reference| {
+        let moved = self.relocate_expr(clause, columns)?;
+        // The copy keeps the `IN` it was expanded from for the local SQL.
+        let origin = self.in_origin(clause)?;
+        if origin != clause {
+            let moved_origin = self.relocate_expr(origin, columns)?;
+            self.undo.add(moved_origin, moved);
+        }
+        Ok(moved)
+    }
+
+    /// A copy of the expression `expr` with its columns moved by `columns`.
+    ///
+    /// # Errors
+    /// - A column of `expr` has no entry in `columns`.
+    fn relocate_expr(
+        &mut self,
+        expr: NodeId,
+        columns: &AHashMap<Slot, Slot>,
+    ) -> Result<NodeId, SbroadError> {
+        SubtreeCloner::clone_subtree_with_refs(self, expr, |reference| {
             let Reference {
                 target: ReferenceTarget::Single(target),
                 position,

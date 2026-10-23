@@ -69,3 +69,35 @@ fn selection2() {
       - Boolean: true
     "#);
 }
+
+#[cfg(feature = "enrich_restrictions")]
+#[test]
+fn selection_long_in_list_survives_rebuilt_condition() {
+    // A moved or rebuilt condition must still render the `IN`: its 256-term
+    // `OR` expansion exceeds the expression tree limit of the local engine.
+    let list = (0..256)
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    // Folding cuts `l.b` out of this expansion, so its `IN` is rebuilt.
+    let folded = (0..256)
+        .map(|i| format!("r.a > {i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    // Folding turns `true = (a > i)` into `a > i`: no `IN` can be rebuilt from
+    // that chain, only the logged one serves.
+    let unrebuildable = (0..256)
+        .map(|i| format!("a > {i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    for query in [
+        format!("SELECT a FROM global_t WHERE b = 1 AND a IN ({list})"),
+        format!("SELECT l.a FROM global_t l JOIN global_t r ON l.a = r.a WHERE l.b IN ({list})"),
+        format!("SELECT l.a FROM global_t l JOIN global_t r ON true WHERE (l.b > 0 AND false) IN ({folded})"),
+        format!("SELECT a FROM global_t WHERE b = 1 AND true IN ({unrebuildable})"),
+    ] {
+        let output = check_sql_with_snapshot(&query, vec![], Snapshot::Oldest);
+        assert!(output.pattern.contains(" in ("), "{}", output.pattern);
+        assert!(!output.pattern.contains(" or "), "{}", output.pattern);
+    }
+}

@@ -188,12 +188,14 @@ test-rs-sql:
 		$(subst --profile,--cargo-profile,$(CARGO_FLAGS_EXTRA)) \
 		--profile sql-enrich \
 		--features enrich_restrictions \
-		-p sql-frontend -p sql-planner -p sql-executor \
+		-p sql-ir -p sql-frontend -p sql-planner -p sql-executor \
+		-E 'package(sql-ir) & test(/transformation::push_down_restrictions::tests/)' \
 		-E 'package(sql-frontend) & test(/block_query_union_all_false_branch_has_no_motions/)' \
 		-E 'package(sql-planner) & test(/redistribution::scalar_aggregate_(on_single_shard_join|over_false)_under_union_all/)' \
 		-E 'package(sql-planner) & test(/transformation::(enrich|push_down)_restrictions/)' \
 		-E 'package(sql-executor) & test(/executor::bucket_discovery/)' \
-		-E 'package(sql-executor) & test(/executor::tests::exec_plan::exec_plan_motion_input/)'
+		-E 'package(sql-executor) & test(/executor::tests::exec_plan::exec_plan_motion_input/)' \
+		-E 'package(sql-executor) & test(/selection_long_in_list_survives_rebuilt_condition/)'
 
 .PHONY: bench-sql-check
 bench-sql-check:
