@@ -1,4 +1,7 @@
-//! Tarantool election integration for synchronous-replication tiers.
+//! Tarantool election integration.
+//!
+//! The watcher starts on every instance, but an instance which doesn't run
+//! elections ignores the election events.
 //!
 //! Picodata keeps the designated master in `_pico_replicaset`, while
 //! Tarantool's manual elections are the authority that makes that instance
@@ -22,8 +25,7 @@
 //! Every promotion goes through [`promote`], which serializes the promotions
 //! requested by the governor and by the election worker.
 
-use super::promote;
-use crate::config::PicodataConfig;
+use super::{elections_enabled, promote};
 use crate::mailbox::Mailbox;
 use crate::replicaset::has_synchro_quorum;
 use crate::rpc::replication::handle_election_leader_change;
@@ -96,12 +98,8 @@ thread_local! {
 }
 
 /// Register the non-yielding election observer and start its worker.
-pub(crate) fn start_synchro_election_watcher(config: &PicodataConfig) -> traft::Result<()> {
+pub(crate) fn start_synchro_election_watcher() -> traft::Result<()> {
     if WATCHER_STARTED.get() {
-        return Ok(());
-    }
-    let (replication_mode, _) = super::get_tier_replication_mode_and_factor(config)?;
-    if !replication_mode.is_sync() {
         return Ok(());
     }
 
@@ -137,6 +135,13 @@ fn election_worker(mailbox: Mailbox<ElectionEvent>) {
     loop {
         if fiber::is_cancelled() {
             return;
+        }
+
+        if !elections_enabled() {
+            // The leadership is managed by the governor and
+            // `box.cfg.read_only` then.
+            mailbox.receive_all(RECONCILE_PERIOD);
+            continue;
         }
 
         let mut latest = None;
@@ -263,11 +268,7 @@ fn self_promotion_conditions_hold() -> bool {
     let Ok(node) = node::global() else {
         return false;
     };
-    if !node
-        .alter_system_parameters
-        .borrow()
-        .is_synchronous_replication()
-    {
+    if !elections_enabled() {
         return false;
     }
 

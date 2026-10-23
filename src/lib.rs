@@ -2283,7 +2283,7 @@ fn postjoin(
 
     node.sentinel_loop.on_self_activate();
 
-    synchro_election_watcher::start_synchro_election_watcher(config)?;
+    synchro_election_watcher::start_synchro_election_watcher()?;
 
     Ok(())
 }
