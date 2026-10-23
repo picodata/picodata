@@ -182,7 +182,7 @@ fn exposed_or_output_alias(
     }
 }
 
-fn asterisk_exposed_column_name(
+pub(super) fn asterisk_exposed_column_name(
     view: &(impl SqlExecutionView + ?Sized),
     ir: &Plan,
     col_id: NodeId,

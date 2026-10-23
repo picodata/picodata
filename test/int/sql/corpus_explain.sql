@@ -20494,7 +20494,15 @@ FROM
     FROM
       (
         SELECT
-          "cte0".*,
+          "cte0"."COL_0",
+          "cte0"."COL_1",
+          "cte0"."COL_2",
+          "cte0"."COL_3",
+          "cte0"."COL_4",
+          "cte0"."COL_5",
+          "cte0"."COL_6",
+          "cte0"."COL_7",
+          "cte0"."COL_8",
           row_number () OVER (
             ORDER BY
               "cte0"."COL_8" ASC) as "c9"

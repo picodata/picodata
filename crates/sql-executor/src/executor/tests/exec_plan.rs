@@ -529,7 +529,7 @@ fn exec_plan_subquery_under_motion_without_alias() {
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT * FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"unnamed_subquery_1\" ON $1::bool"
+    pattern: "SELECT \"unnamed_subquery\".*, \"unnamed_subquery_1\".\"COL_1\" as \"sid\" FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"unnamed_subquery_1\" ON $1::bool"
     params:
       - Boolean: true
     "#);
@@ -559,7 +559,7 @@ fn exec_plan_subquery_under_motion_with_alias() {
 
     let sql = get_sql_from_execution_plan(exec_plan, top_id, Snapshot::Oldest, TEMPLATE);
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT * FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hti\" ON $1::bool"
+    pattern: "SELECT \"unnamed_subquery\".*, \"hti\".\"COL_1\" as \"sid\" FROM (SELECT \"test_space\".\"id\" as \"tid\" FROM \"test_space\") as \"unnamed_subquery\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"hti\" ON $1::bool"
     params:
       - Boolean: true
     "#);
@@ -1416,7 +1416,7 @@ fn exec_plan_order_by_with_join() {
         TEMPLATE,
     );
     assert_yaml_snapshot!(sql, @r#"
-    pattern: "SELECT * FROM (SELECT \"t\".\"a\" FROM \"t\") as \"f\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"s\" ON $1::bool"
+    pattern: "SELECT \"f\".*, \"s\".\"COL_1\" as \"a\" FROM (SELECT \"t\".\"a\" FROM \"t\") as \"f\" INNER JOIN (SELECT \"COL_1\" FROM \"_tmp_0_0136\") as \"s\" ON $1::bool"
     params:
       - Boolean: true
     "#);

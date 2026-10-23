@@ -1,3 +1,4 @@
+use super::ir;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::ir::{DqlSubtree, ExecutionPlan, SerializeAsEmptyState, SqlExecutionView};
 use crate::ir::columns::RelColumn;
@@ -2287,7 +2288,7 @@ impl<'p> SyntaxPlan<'p> {
 
         // We don't want to transform asterisks in order not to select "bucket_id"
         // implicitly. That's why we save them as a sequence of references, if system
-        // columns are involved.
+        // or temp table columns are involved.
         let ref_source_node_id = ir_plan
             .get_reference_source_relation(expr_id)
             .expect("Reference must have a source relation");
@@ -2302,6 +2303,9 @@ impl<'p> SyntaxPlan<'p> {
             };
             let key = (ref_source_node_id, name.map(|s| s.to_smolstr()));
             if *asterisk_handler.distribution.get(&key).unwrap_or(&false) {
+                if self.is_temp_table_column(RelColumn::new(ref_source_node_id, position)) {
+                    self.name_as_asterisk(sn_id);
+                }
                 // TODO[2081]: don't hide an error
                 return self.handle_non_asterisk_reference(sn_id, need_comma, asterisk_handler);
             }
@@ -2365,7 +2369,8 @@ impl<'p> SyntaxPlan<'p> {
                         .unwrap()
                         .map(|s| s.to_smolstr());
                     // TODO[2081]: don't hide an error
-                    let value = column.map(|column| column.is_system).unwrap_or(false);
+                    let value = column.map(|column| column.is_system).unwrap_or(false)
+                        || self.is_temp_table_column(RelColumn::new(ref_source_node_id, i));
                     distribution
                         .entry(key)
                         .and_modify(|v| *v |= value)
@@ -2383,6 +2388,64 @@ impl<'p> SyntaxPlan<'p> {
 
                 has_system
             })
+    }
+
+    /// Give the projection column `sn_id` the name a `*` would give it, because
+    /// outer queries refer to it by that name.
+    fn name_as_asterisk(&mut self, sn_id: usize) {
+        let ir_plan = self.plan.get_ir_plan();
+        let SyntaxData::PlanId(alias_id) = self.nodes.get_sn(sn_id).data else {
+            panic!("Projection column must be a plan node");
+        };
+        let Ok(Expression::Alias(Alias { child, .. })) = ir_plan.get_expression_node(alias_id)
+        else {
+            panic!("Projection column must be an alias");
+        };
+        let exposed = ir::asterisk_exposed_column_name(self.plan, ir_plan, alias_id)
+            .expect("Asterisk column must have an exposed name")
+            .expect("Asterisk column must have an asterisk source");
+        let child_name = ir_plan
+            .get_expression_node(*child)
+            .and_then(|expr| self.plan.reference_alias(&expr))
+            .expect("Asterisk column must be a reference");
+        let sn = self.nodes.get_sn(sn_id);
+        let child_sn_id = sn
+            .left
+            .or_else(|| sn.right.first().copied())
+            .expect("Alias syntax node must have a child");
+        let (left, right) = if exposed == child_name {
+            (None, vec![child_sn_id])
+        } else {
+            let alias_sn_id = self.nodes.push_sn_non_plan(SyntaxNode::new_alias(exposed));
+            (Some(child_sn_id), vec![alias_sn_id])
+        };
+        let sn = self.nodes.get_mut_sn(sn_id);
+        sn.left = left;
+        sn.right = right;
+    }
+
+    /// Whether `rel_col` is read from a temp table in the FROM clause. A `*` over
+    /// a temp table also selects its `PK_*` column.
+    fn is_temp_table_column(&self, mut rel_col: RelColumn) -> bool {
+        let plan = self.plan.get_ir_plan();
+        loop {
+            match plan.get_relation_node(rel_col.rel_id) {
+                Ok(Relational::Motion(_)) => {
+                    return self.plan.contains_vtable_for_motion(rel_col.rel_id)
+                }
+                Ok(
+                    Relational::Selection(_)
+                    | Relational::Join(_)
+                    | Relational::GroupBy(_)
+                    | Relational::Having(_),
+                ) => {}
+                _ => return false,
+            }
+            let Ok(Some(source)) = plan.column_source(rel_col) else {
+                return false;
+            };
+            rel_col = source;
+        }
     }
 
     fn process_asterisk_logic(

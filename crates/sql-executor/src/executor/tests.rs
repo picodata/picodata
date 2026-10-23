@@ -261,7 +261,7 @@ WHERE "t3"."id" = 2 AND "t8"."identification_number" = 2"#;
     };
     assert_eq!(1, filtered.len());
     let (sql, params, _, buckets) = filtered.get(0).unwrap();
-    assert_snapshot!(sql, @r#"SELECT * FROM (SELECT "test_space"."id", "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."sys_op" < $1::int and "test_space"."sysFrom" >= $2::int UNION ALL SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME" FROM "test_space_hist" WHERE "test_space_hist"."sysFrom" <= $3::int) as "t3" INNER JOIN (SELECT "COL_1" FROM "_tmp_0_0136") as "t8" ON "t3"."id" = "t8"."COL_1" WHERE "t3"."id" = $4::int and "t8"."COL_1" = $5::int"#);
+    assert_snapshot!(sql, @r#"SELECT "t3".*, "t8"."COL_1" as "identification_number" FROM (SELECT "test_space"."id", "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."sys_op" < $1::int and "test_space"."sysFrom" >= $2::int UNION ALL SELECT "test_space_hist"."id", "test_space_hist"."FIRST_NAME" FROM "test_space_hist" WHERE "test_space_hist"."sysFrom" <= $3::int) as "t3" INNER JOIN (SELECT "COL_1" FROM "_tmp_0_0136") as "t8" ON "t3"."id" = "t8"."COL_1" WHERE "t3"."id" = $4::int and "t8"."COL_1" = $5::int"#);
     assert_eq!(
         params,
         &[
@@ -476,7 +476,7 @@ on q."f" = "t1"."b""#;
     let DispatchInfo::All(sql, params) = info.get(0).unwrap() else {
         panic!("Expected a single dispatch on all replicasets");
     };
-    assert_snapshot!(sql, @r#"SELECT "t1"."a", "t1"."b", "q".* FROM "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "_tmp_0_1136") as "q" ON "q"."COL_1" = "t1"."b""#);
+    assert_snapshot!(sql, @r#"SELECT "t1"."a", "t1"."b", "q"."COL_1" as "f", "q"."COL_2" as "b" FROM "t1" INNER JOIN (SELECT "COL_1","COL_2" FROM "_tmp_0_1136") as "q" ON "q"."COL_1" = "t1"."b""#);
     assert!(params.is_empty());
 }
 
