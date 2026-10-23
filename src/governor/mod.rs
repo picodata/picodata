@@ -542,6 +542,7 @@ impl Loop {
                 replicaset_name,
                 old_master_name,
                 new_master_name,
+                fence_old_master,
                 promote_rpc,
                 mut replicaset_dml,
                 bump_dml,
@@ -553,6 +554,39 @@ impl Loop {
                     Info,
                     "transferring replicaset mastership from {old_master_name} to {new_master_name} via election"
                 );
+
+                if let Some(OldMasterFence {
+                    demote_rpc,
+                    new_master_raft_id,
+                }) = fence_old_master
+                {
+                    governor_substep! {
+                        "fencing old master and synchronizing new master" [
+                            "old_master_name" => %old_master_name,
+                            "new_master_name" => %new_master_name,
+                            "replicaset_name" => %replicaset_name,
+                        ]
+                        async {
+                            tlog!(Info, "calling proc_replication_demote on current master: {old_master_name}");
+                            let vclock = pool
+                                .call(&old_master_name, proc_name!(proc_replication_demote), &demote_rpc, rpc_timeout)
+                                .await?
+                                .vclock;
+
+                            tlog!(Info, "calling proc_replication_sync on target master: {new_master_name}");
+                            let sync_rpc = rpc::replication::ReplicationSyncRequest {
+                                term,
+                                vclock,
+                                timeout: rpc_timeout,
+                            };
+                            let res = pool
+                                .call(&new_master_name, proc_name!(proc_replication_sync), &sync_rpc, rpc_timeout)
+                                .await;
+                            update_replication_error(instance_reachability, new_master_raft_id, res.as_ref().err());
+                            res?;
+                        }
+                    }
+                }
 
                 let mut promote_response = None;
                 governor_substep! {
@@ -567,6 +601,7 @@ impl Loop {
                         // earlier would hide the typed response below, leaving
                         // the governor to retry the same target forever.
                         let promote_timeout = rpc_timeout.max(promote_rpc_timeout());
+                        crate::error_injection!(block "BLOCK_REPLICATION_PROMOTE");
                         let response = pool
                             .call(
                                 &new_master_name,

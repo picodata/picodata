@@ -4,6 +4,7 @@ use crate::instance::Instance;
 use crate::luamod::lua_function;
 use crate::tarantool::{
     box_info_election, box_is_ro, box_owns_synchro_queue, box_promote, box_ro_reason, cfg_field,
+    set_cfg_field,
 };
 use crate::traft::{error::Error, Result};
 use std::borrow::Borrow;
@@ -134,9 +135,9 @@ thread_local! {
 }
 
 /// Makes this instance the election leader of its replicaset which owns the
-/// synchro queue, so it's writable. An election leader can't write to the
-/// synchronous spaces before it owns the queue, see
-/// [`wait_promotion_written`].
+/// synchro queue, so it's writable unless it's fenced, see [`fence`]. An
+/// election leader can't write to the synchronous spaces before it owns the
+/// queue, see [`wait_promotion_written`].
 ///
 /// This is the only place which calls `box_promote`. The promotion is
 /// requested by:
@@ -168,6 +169,23 @@ pub fn promote() -> Result<(), TarantoolError> {
     let _guard = lock.lock();
     box_promote()?;
     wait_promotion_written(PROMOTION_WRITE_TIMEOUT)
+}
+
+/// Keeps this instance from accepting writes, even while it's the election
+/// leader. The governor fences the old master of an async tier before it
+/// transfers the mastership, see [`proc_replication_demote`].
+///
+/// [`proc_replication_demote`]: crate::rpc::replication::proc_replication_demote
+pub fn fence() -> Result<()> {
+    set_cfg_field("read_only", true)?;
+    Ok(())
+}
+
+/// Lifts the [`fence`]. The writability of an instance which runs elections
+/// is then up to its election role.
+pub fn unfence() -> Result<()> {
+    set_cfg_field("read_only", false)?;
+    Ok(())
 }
 
 /// How long [`wait_promotion_written`] waits.

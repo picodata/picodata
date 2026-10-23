@@ -9,7 +9,9 @@
 //! information to a single worker fiber. The worker calls leadership
 //! side effects (notify plugins, truncate of unlogged tables) and
 //! re-promotes the designated local master when a recovered majority
-//! has no election leader.
+//! has no election leader. It also lifts the fence of `box.cfg.read_only`
+//! from the designated master if a switchover fenced it, but was abandoned,
+//! see [`is_fenced_leader`].
 //!
 //! # Who promotes the master
 //!
@@ -37,11 +39,11 @@
 //!
 //! [`proc_replication_promote`]: crate::rpc::replication::proc_replication_promote
 
-use super::{elections_enabled, enough_live_members_to_win_election, promote};
+use super::{elections_enabled, enough_live_members_to_win_election, promote, unfence};
 use crate::mailbox::Mailbox;
 use crate::replicaset::has_synchro_quorum;
 use crate::rpc::replication::handle_election_leader_change;
-use crate::tarantool::{box_info_election, box_is_ro, ELECTION_TIMEOUT};
+use crate::tarantool::{box_info_election, box_is_ro, box_ro_reason, ELECTION_TIMEOUT};
 use crate::tlog;
 use crate::traft;
 use crate::traft::node;
@@ -288,7 +290,10 @@ fn read_election_event() -> traft::Result<ElectionEvent> {
 }
 
 fn maybe_promote_self(event: &ElectionEvent, retry_at: &mut Option<Instant>) {
-    if event.leader != 0 || event.is_writable_leader() {
+    if event.is_writable_leader() {
+        return;
+    }
+    if event.leader != 0 && !is_fenced_leader() {
         return;
     }
     if retry_at.is_some_and(|retry_at| fiber::clock() < retry_at) {
@@ -338,6 +343,19 @@ fn promote_self_if_still_needed(retry_at: &mut Option<Instant>) {
         return;
     }
 
+    if is_fenced_leader() {
+        // The switchover which fenced this instance was abandoned before
+        // anyone else was promoted, e.g. the new master lost the election.
+        tlog!(
+            Info,
+            "election: designated master is fenced by box.cfg.read_only, making self writable"
+        );
+        if let Err(e) = unfence() {
+            tlog!(Warning, "election: failed to make self writable: {e}");
+        }
+        return;
+    }
+
     let should_promote = read_election_event()
         .map(|event| event.leader == 0 && !event.is_writable_leader())
         .unwrap_or(false);
@@ -360,6 +378,18 @@ fn promote_self_if_still_needed(retry_at: &mut Option<Instant>) {
             tlog!(Warning, "election: self-promotion failed: {e}");
         }
     }
+}
+
+/// Returns `true` if this instance is the election leader, but
+/// `box.cfg.read_only` keeps it from accepting writes: it's an old master
+/// fenced by [`proc_replication_demote`].
+///
+/// Under elections a follower is read-only for the "election" reason, and a
+/// leader which doesn't own the synchro queue yet for the "synchro" one.
+///
+/// [`proc_replication_demote`]: crate::rpc::replication::proc_replication_demote
+fn is_fenced_leader() -> bool {
+    box_ro_reason() == Some("config")
 }
 
 /// Returns `true` if this instance is the designated master, no switchover is

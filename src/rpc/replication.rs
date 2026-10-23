@@ -45,7 +45,9 @@ use crate::luamod::lua_function;
 use crate::rpc;
 use crate::sync::wait_vclock;
 use crate::sync_replication::synchro_election_watcher::note_master_designation;
-use crate::sync_replication::{get_this_tier_replication_mode_and_factor, promote};
+use crate::sync_replication::{
+    elections_enabled, fence, get_this_tier_replication_mode_and_factor, promote, unfence,
+};
 use crate::tarantool::{box_ro_reason, box_wait_ro, set_cfg_field, ListenConfig};
 use crate::tlog;
 use crate::traft::error::Error;
@@ -113,7 +115,7 @@ crate::define_rpc_request! {
             set_cfg_field("replication_synchro_timeout", INFINITY.as_secs())?;
             set_cfg_field("election_mode", "manual")?;
             // Effective read-onlyness is supplied by the election role.
-            set_cfg_field("read_only", false)?;
+            unfence()?;
             note_master_designation(req.is_master);
         } else if req.is_master {
             set_read_only(false)?;
@@ -159,13 +161,18 @@ crate::define_rpc_request! {
 
 crate::define_rpc_request! {
     /// Waits until instance synchronizes tarantool replication.
+    ///
+    /// Returns [`ErrorCode::ReplicationBroken`] if the replication is broken,
+    /// see `handle_replicaset_sync`.
     fn proc_replication_sync(req: ReplicationSyncRequest) -> Result<ReplicationSyncResponse> {
         let node = node::global()?;
         // Must not call node.wait_index(...) here. See doc-comments at the top
         // of the file for explanation.
         node.status().check_term(req.term)?;
 
-        debug_assert!(node.is_readonly());
+        // The instance isn't necessarily read-only: the governor may retry a
+        // switchover which has already promoted it, but failed to record
+        // that, see `handle_replicaset_master_election_promote`.
 
         crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::timeout()));
 
@@ -425,20 +432,39 @@ pub(crate) fn handle_election_leader_change(is_leader: bool) -> Result<()> {
 }
 
 crate::define_rpc_request! {
-    /// Demotes the target instance from master to read-only replica.
+    /// Demotes the target instance from master to read-only replica, and
+    /// returns its vclock, which the new master must reach before it's
+    /// promoted.
+    ///
+    /// If the instance runs elections, it stays the election leader, and
+    /// `box.cfg.read_only` keeps it from accepting writes until the new master
+    /// deposes it. Only used for an async tier there, see
+    /// `handle_replicaset_master_election_promote`. The flag is cleared when
+    /// the instance is promoted again, see [`proc_replication_promote`], or by
+    /// the election watcher if the mastership returns to it before anyone else
+    /// is promoted. A replication reconfiguration clears it too, so the
+    /// governor fences the old master again on every attempt of the switchover.
     ///
     /// Returns errors in the following cases:
     /// 1. Lua error during call to `box.cfg`
     /// 2. WAL error while waiting for the writes submitted before the switch
     fn proc_replication_demote(req: DemoteRequest) -> Result<DemoteResponse> {
-        let _ = req;
-
         let node = node::global()?;
         // Must not call node.wait_index(...) here. See doc-comments at the top
         // of the file for explanation.
         node.status().check_term(req.term)?;
 
-        set_read_only(true)?;
+        if elections_enabled() {
+            // The instance is no longer a writable leader, so the election
+            // watcher truncates the unlogged tables and notifies the plugins,
+            // see `handle_election_leader_change`.
+            fence()?;
+            // The governor's earlier word that this instance is the master
+            // must not make the election watcher lift the fence.
+            note_master_designation(false);
+        } else {
+            set_read_only(true)?;
+        }
 
         // Local transactions which called commit before the switch to
         // read-only may still be on their way to WAL. Wait for them, so that
@@ -477,10 +503,14 @@ crate::define_rpc_request! {
     /// is never observed as the typed response and looks like a transport
     /// timeout instead. Winning the election
     /// also claims the synchro txn limbo via the PROMOTE entry, which makes the
-    /// instance writable. Note that the election itself provides the
-    /// "synchronize before promotion" guarantee: a candidate only gets a vote
-    /// from a peer whose vclock is not ahead of the candidate's, so a stale
-    /// target cannot win until it has caught up.
+    /// instance writable.
+    ///
+    /// A candidate only gets a vote from a peer whose vclock is not ahead of
+    /// the candidate's, so it can't win without everything a quorum of
+    /// members has. In a sync tier it means it has every confirmed write. In
+    /// an async tier a write may only be on the old master, which the quorum
+    /// doesn't need, so the governor makes the candidate catch up with the
+    /// old master beforehand, see `handle_replicaset_master_election_promote`.
     fn proc_replication_promote(req: PromoteRequest) -> Result<PromoteResponse> {
         let node = node::global()?;
         // Must not call node.wait_index(...) here. See doc-comments at the top
@@ -493,6 +523,10 @@ crate::define_rpc_request! {
         }
 
         crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::timeout()));
+
+        // The instance may have been fenced as an old master, see
+        // `proc_replication_demote`. Its writability is gated by the election.
+        unfence()?;
 
         if !crate::tarantool::box_is_ro() {
             // Already the writable election leader, nothing to do.

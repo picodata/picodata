@@ -272,8 +272,16 @@ fn get_replicaset_to_configure<'t>(
 /// `manual` mode, so the transfer is performed by promoting the target via
 /// [`rpc::replication::proc_replication_promote`] (`box.ctl.promote`): the
 /// target wins an election with a higher term and the incumbent (if still
-/// alive) is deposed by it, becoming read-only. The election vclock rules
-/// guarantee the target has caught up before it can win.
+/// alive) is deposed by it, becoming read-only.
+///
+/// The election vclock rules only guarantee the target isn't behind the
+/// members which voted for it. In a sync tier that's enough: a confirmed write
+/// is on a quorum of members, and any quorum of voters includes one of them.
+/// In an async tier a write may only be on the old master, and the target can
+/// win without its vote. So if the old master is alive, it's fenced first,
+/// and the target is promoted once it has everything the old master has, see
+/// [`OldMasterFence`]. If the old master is dead, its writes which haven't
+/// been replicated are lost: that's what asynchronous replication means.
 ///
 /// The promotion is only attempted when enough replicaset members are alive
 /// to plausibly win the election. An election below the quorum can never
@@ -346,6 +354,16 @@ pub fn handle_replicaset_master_election_promote<'i>(
             cas::Range::new(storage::Instances::TABLE_ID).eq([&new_master_name]),
         ];
 
+        let old_master_alive = topology_ref
+            .instance_by_name(&old_master_name)
+            .is_ok_and(|old_master| old_master.may_respond());
+        let fence_old_master = (old_master_alive
+            && !db_config.replication_mode(&tier.name).is_sync())
+        .then_some(OldMasterFence {
+            demote_rpc: rpc::replication::DemoteRequest { term },
+            new_master_raft_id: new_master.raft_id,
+        });
+
         let promote_rpc = rpc::replication::PromoteRequest { term };
         let fallback_candidates = deterministic_fallback_candidates(
             replicaset,
@@ -358,6 +376,7 @@ pub fn handle_replicaset_master_election_promote<'i>(
                 replicaset_name,
                 old_master_name,
                 new_master_name,
+                fence_old_master,
                 promote_rpc,
                 replicaset_dml,
                 bump_dml,
@@ -831,7 +850,7 @@ mod tests {
         tier.name = "storage".into();
         tier.replication_factor = 2;
 
-        topology.update_instance(None, Some(old_master));
+        topology.update_instance(None, Some(old_master.clone()));
         topology.update_instance(None, Some(new_master));
         topology.update_replicaset(None, Some(replicaset));
         topology.update_tier(None, Some(tier.clone()));
@@ -862,8 +881,22 @@ mod tests {
                 .is_none()
         );
 
+        // Once every instance is upgraded, an async tier runs elections too.
+        // The old master is alive, so the new one catches up with it first.
+        let election_plan =
+            handle_replicaset_master_election_promote(&topology_ref, &db_config, true, 7).unwrap();
+        let Some(Plan::ReplicasetMasterElectionPromote(election_plan)) = election_plan else {
+            panic!("expected a promote plan");
+        };
+        let Some(fence) = &election_plan.fence_old_master else {
+            panic!("expected the old master to be fenced");
+        };
+        assert_eq!(fence.new_master_raft_id, 2);
+
         tier_config.replication_mode = ReplicationMode::Sync;
-        db_config.per_tier.insert(tier.name.clone(), tier_config);
+        db_config
+            .per_tier
+            .insert(tier.name.clone(), tier_config.clone());
 
         assert!(handle_replicaset_master_switchover(
             &topology_ref,
@@ -879,6 +912,8 @@ mod tests {
         let Some(Plan::ReplicasetMasterElectionPromote(election_plan)) = election_plan else {
             panic!("expected a promote plan");
         };
+        // A confirmed write is on a quorum, so the election is enough.
+        assert!(election_plan.fence_old_master.is_none());
 
         let [vshard_config_version_bump] = &election_plan.bump_dml[..] else {
             panic!("expected a single vshard config bump");
@@ -887,5 +922,21 @@ mod tests {
             vshard_config_version_bump.table_id(),
             storage::Tiers::TABLE_ID
         );
+
+        // An async tier whose old master is dead: there's nothing to catch up with.
+        drop(topology_ref);
+        tier_config.replication_mode = ReplicationMode::Async;
+        db_config.per_tier.insert(tier.name.clone(), tier_config);
+        let mut dead_old_master = old_master.clone();
+        dead_old_master.target_state = State::new(StateVariant::Offline, 13);
+        topology.update_instance(Some(old_master), Some(dead_old_master));
+        let topology_ref = topology.get();
+
+        let election_plan =
+            handle_replicaset_master_election_promote(&topology_ref, &db_config, true, 7).unwrap();
+        let Some(Plan::ReplicasetMasterElectionPromote(election_plan)) = election_plan else {
+            panic!("expected a promote plan");
+        };
+        assert!(election_plan.fence_old_master.is_none());
     }
 }

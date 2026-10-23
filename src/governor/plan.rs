@@ -541,9 +541,10 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // expel instance
-    let target = instances
-        .iter()
-        .find(|instance| has_states!(instance, not Expelled -> Expelled));
+    let target = instances.iter().find(|instance| {
+        has_states!(instance, not Expelled -> Expelled)
+            && !waits_for_master_switchover(instance, replicasets)
+    });
 
     if let Some(instance) = target {
         let instance_name = &instance.name;
@@ -853,6 +854,22 @@ pub mod stage {
         pub uuid: SmolStr,
     }
 
+    /// Makes the new master of an async tier catch up with the old one
+    /// before it's promoted, see
+    /// [`crate::governor::replication::handle_replicaset_master_election_promote`].
+    #[derive(Debug)]
+    pub struct OldMasterFence {
+        /// Request to call [`rpc::replication::proc_replication_demote`] on
+        /// the old master. It stops the old master from accepting writes and
+        /// returns its vclock.
+        pub demote_rpc: rpc::replication::DemoteRequest,
+
+        /// Raft id of the new master, which is sent a
+        /// [`rpc::replication::proc_replication_sync`] request to reach that
+        /// vclock. Only used to report its replication errors.
+        pub new_master_raft_id: RaftId,
+    }
+
     define_plan! {
         pub struct ConfChange {
             pub conf_change: raft::prelude::ConfChangeV2,
@@ -978,15 +995,19 @@ pub mod stage {
             pub replicaset_name: ReplicasetName,
 
             /// This instance is the current master (possibly already dead or
-            /// expelled). It is not demoted explicitly - if it is still
-            /// alive, it will be deposed by the election which the new master
-            /// wins. Name only used for logging.
+            /// expelled). Unless `fence_old_master` is set, it is not demoted
+            /// explicitly - if it is still alive, it will be deposed by the
+            /// election which the new master wins.
             pub old_master_name: InstanceName,
 
             /// This is the new master. It will be sent a
             /// [`rpc::replication::proc_replication_promote`] request to win a
             /// tarantool raft election within the replicaset.
             pub new_master_name: InstanceName,
+
+            /// Set if the old master is alive, and the new master must catch
+            /// up with it before the promotion.
+            pub fence_old_master: Option<OldMasterFence>,
 
             /// Request to call [`rpc::replication::proc_replication_promote`] on the new master.
             pub promote_rpc: rpc::replication::PromoteRequest,
@@ -1448,6 +1469,28 @@ fn get_new_replicaset_master_if_needed<'i>(
     }
 
     None
+}
+
+/// Returns `true` if `instance` is the master of its replicaset, which is
+/// still alive and is being replaced by another one. It must not be expelled
+/// before the new master is promoted: it may have writes the new master hasn't
+/// received yet, e.g. confirmed by the synchro quorum of the live half of the
+/// replicaset, see [`synchro_quorum_breaking_tie`]. A replicaset which runs
+/// elections only switches its master over once the new one is reachable.
+///
+/// A master which isn't alive can't help it anyway, so it's expelled at once.
+///
+/// [`synchro_quorum_breaking_tie`]: crate::sync_replication::synchro_quorum_breaking_tie
+fn waits_for_master_switchover(
+    instance: &Instance,
+    replicasets: &HashMap<&ReplicasetName, &Replicaset>,
+) -> bool {
+    let Some(replicaset) = replicasets.get(&instance.replicaset_name) else {
+        return false;
+    };
+    replicaset.current_master_name == instance.name
+        && replicaset.target_master_name != instance.name
+        && instance.may_respond()
 }
 
 /// A freshly joined master is still the only writable bootstrap source for
