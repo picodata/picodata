@@ -9,11 +9,11 @@ use crate::governor::conf_change::raft_conf_change;
 use crate::governor::ddl::handle_pending_ddl;
 use crate::governor::plugin::handle_plugin_op;
 use crate::governor::queue::handle_governor_queue;
+use crate::governor::replication::handle_replicaset_master_election_promote;
 use crate::governor::replication::handle_replicaset_master_switchover;
 use crate::governor::replication::handle_replicaset_sync;
 use crate::governor::replication::handle_replication_config;
 use crate::governor::replication::handle_self_read_only;
-use crate::governor::replication::handle_sync_master_election_promote;
 use crate::governor::resharding::handle_resharding;
 use crate::governor::sharding::{handle_sharding, handle_sharding_bootstrap};
 use crate::has_states;
@@ -107,6 +107,9 @@ pub(super) fn action_plan<'i>(
 
     let activation_finished = sentinel_status != SentinelStatus::Initial;
 
+    // So far only a tier with `replication_mode = sync` runs elections.
+    let elections_on_every_tier = false;
+
     let not_online = |instance: &Instance| {
         has_states!(instance, * -> Offline) || has_states!(instance, * -> Expelled)
     };
@@ -148,7 +151,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // special case read_only = false for this instance
-    if let Some(plan) = handle_self_read_only(topology_ref, db_config) {
+    if let Some(plan) = handle_self_read_only(topology_ref, db_config, elections_on_every_tier) {
         debug_assert_plan_kind!(plan, Plan::SelfReadOnlyFalse { .. });
 
         return Ok(plan);
@@ -234,21 +237,31 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // configure replication
-    if let Some(plan) = handle_replication_config(topology_ref, db_config, peer_addresses, applied)?
-    {
+    if let Some(plan) = handle_replication_config(
+        topology_ref,
+        db_config,
+        elections_on_every_tier,
+        peer_addresses,
+        applied,
+    )? {
         debug_assert_plan_kind!(plan, Plan::ConfigureReplication { .. });
 
         return Ok(plan);
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // replicaset master switchover for asynchronous-replication tiers
+    // replicaset master switchover for replicasets which don't run elections
+    // yet
     //
     // This must be done after instances have (re)configured replication
     // because master switchover requires synchronizing via tarantool replication.
-    if let Some(plan) =
-        handle_replicaset_master_switchover(topology_ref, db_config, term, rpc_timeout)?
-    {
+    if let Some(plan) = handle_replicaset_master_switchover(
+        topology_ref,
+        db_config,
+        elections_on_every_tier,
+        term,
+        rpc_timeout,
+    )? {
         debug_assert_plan_kind!(
             plan,
             Plan::ReplicasetMasterConsistentSwitchover { .. }
@@ -259,12 +272,17 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // replicaset master switchover for synchronous-replication tiers
+    // replicaset master switchover for replicasets which run elections
     //
-    // In a sync tier replicaset writability is gated by tarantool raft
-    // elections in `manual` mode, so mastership is transferred by promoting
-    // the target via an election.
-    if let Some(plan) = handle_sync_master_election_promote(topology_ref, db_config, term)? {
+    // Replicaset writability is gated by tarantool raft elections in `manual`
+    // mode, so mastership is transferred by promoting the target via an
+    // election.
+    if let Some(plan) = handle_replicaset_master_election_promote(
+        topology_ref,
+        db_config,
+        elections_on_every_tier,
+        term,
+    )? {
         debug_assert_plan_kind!(plan, Plan::ReplicasetMasterElectionPromote { .. });
 
         return Ok(plan);
@@ -877,6 +895,8 @@ pub mod stage {
             pub cas: cas::Request,
         }
 
+        /// Only for a replicaset which doesn't run elections yet, see
+        /// [`crate::governor::replication::handle_replicaset_master_switchover`].
         pub struct ReplicasetMasterFailover {
             /// This replicaset is changing it's master.
             pub replicaset_name: ReplicasetName,
@@ -909,6 +929,8 @@ pub mod stage {
             pub ranges: Vec<cas::Range>,
         }
 
+        /// Only for a replicaset which doesn't run elections yet, see
+        /// [`crate::governor::replication::handle_replicaset_master_switchover`].
         pub struct ReplicasetMasterConsistentSwitchover {
             /// This replicaset is changing it's master.
             pub replicaset_name: ReplicasetName,
@@ -1547,7 +1569,7 @@ pub fn get_replicaset_to_expel<'r>(
         } else {
             // Master of the replicaset is being expelled. Normally this means
             // that this is the last instance in the replicaset (mastership is
-            // always moved away first). In a synchronous-replication tier
+            // always moved away first). In a replicaset which runs elections
             // however the recorded master may be expelled while other members
             // remain: mastership is moved by promoting the target in a
             // tarantool raft election, and if the master died below the

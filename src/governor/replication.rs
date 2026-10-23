@@ -29,6 +29,22 @@ use smol_str::SmolStr;
 use std::collections::HashMap;
 use tarantool::space::UpdateOps;
 
+/// Returns `true` if the replicasets of the tier run Tarantool elections:
+/// every tier does if `elections_on_every_tier` is set, otherwise only a tier
+/// with `replication_mode = sync`.
+///
+/// A replicaset which runs elections changes its master only via
+/// [`handle_replicaset_master_election_promote`]. The other replicaset master
+/// handling in this module is only for replicasets which don't run elections
+/// yet.
+pub fn tier_runs_elections(
+    db_config: &AlterSystemParameters,
+    elections_on_every_tier: bool,
+    tier_name: &str,
+) -> bool {
+    elections_on_every_tier || db_config.replication_mode(tier_name).is_sync()
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // handle_self_read_only
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,6 +52,7 @@ use tarantool::space::UpdateOps;
 pub fn handle_self_read_only<'i>(
     topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
+    elections_on_every_tier: bool,
 ) -> Option<Plan<'i>> {
     if !box_is_ro() {
         return None;
@@ -57,18 +74,17 @@ pub fn handle_self_read_only<'i>(
     // without any RPC and/or global DML. Those will still be performed on the
     // corresponding step.
 
-    let synchronous_replication_enabled = db_config.is_synchronous_replication();
-    // In a sync tier writability of the replicaset is gated by tarantool raft
-    // elections and flipping "read_only" here cannot lift the forced read-only
-    // state of a non-leader. The equivalent self-heal - the designated master
-    // promoting itself back to election leadership - is performed by the
-    // election watcher on the instance itself, no governor step is needed.
-    if synchronous_replication_enabled {
-        return None;
-    }
-
     let this_instance = topology_ref.try_this_instance()?;
     let this_replicaset = topology_ref.try_this_replicaset()?;
+
+    // If the replicaset runs elections, its writability is gated by them, and
+    // flipping "read_only" here cannot lift the forced read-only state of a
+    // non-leader. The equivalent self-heal - the designated master promoting
+    // itself back to election leadership - is performed by the election
+    // watcher on the instance itself, no governor step is needed.
+    if tier_runs_elections(db_config, elections_on_every_tier, &this_replicaset.tier) {
+        return None;
+    }
 
     if this_replicaset.effective_master_name() != Some(&this_instance.name) {
         return None;
@@ -84,12 +100,16 @@ pub fn handle_self_read_only<'i>(
 pub fn handle_replication_config<'i>(
     topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
+    elections_on_every_tier: bool,
     peer_addresses: &'i HashMap<RaftId, SmolStr>,
     applied: RaftIndex,
 ) -> Result<Option<Plan<'i>>> {
-    let Some((replicaset, targets, replicaset_peers)) =
-        get_replicaset_to_configure(topology_ref, db_config, peer_addresses)
-    else {
+    let Some((replicaset, targets, replicaset_peers)) = get_replicaset_to_configure(
+        topology_ref,
+        db_config,
+        elections_on_every_tier,
+        peer_addresses,
+    ) else {
         return Ok(None);
     };
 
@@ -132,6 +152,7 @@ pub fn handle_replication_config<'i>(
 fn get_replicaset_to_configure<'t>(
     topology_ref: &'t CatalogCacheRef,
     db_config: &AlterSystemParameters,
+    elections_on_every_tier: bool,
     peer_addresses: &HashMap<RaftId, SmolStr>,
 ) -> Option<(&'t Replicaset, Vec<(InstanceName, RaftId)>, Vec<SmolStr>)> {
     for replicaset in topology_ref.all_replicasets() {
@@ -140,11 +161,14 @@ fn get_replicaset_to_configure<'t>(
             continue;
         }
 
-        // In a sync tier replicas follow the elected leader and a deposed
-        // master cannot introduce replication conflicts (synchronous
-        // replication + PROMOTE guarantee a linear history), so the
-        // sync-isolation of waking up instances below is not needed.
-        let governor_driven_sync = !db_config.replication_mode(&replicaset.tier).is_sync();
+        // If the replicaset runs elections, replicas follow the elected leader.
+        // Once a replica applies the new leader's PROMOTE, which happens when
+        // the synchro quorum confirms it, tarantool rejects the part of a
+        // deposed master's log which the new leader doesn't have
+        // (ER_SPLIT_BRAIN), so it doesn't spread to the healthy replicas, and
+        // the sync-isolation of waking up instances below is not needed.
+        let governor_driven_sync =
+            !tier_runs_elections(db_config, elections_on_every_tier, &replicaset.tier);
 
         let replicaset_name = &replicaset.name;
         let mut targets = Vec::new();
@@ -234,18 +258,18 @@ fn get_replicaset_to_configure<'t>(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// handle_sync_master_election_promote
+// handle_replicaset_master_election_promote
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Handles a master change in a synchronous-replication tier:
+/// Handles a master change in a replicaset which runs elections:
 /// `target_master_name` != `current_master_name`. This covers both the
 /// voluntary switchover (manual retargeting via CAS, expel of a live master)
 /// and dead-master failover - when the master goes offline the governor
 /// retargets mastership to an online replica and this stage transfers it
 /// there.
 ///
-/// In a sync tier replicaset writability is gated by tarantool raft elections
-/// in `manual` mode, so the transfer is performed by promoting the target via
+/// The replicaset writability is gated by tarantool raft elections in
+/// `manual` mode, so the transfer is performed by promoting the target via
 /// [`rpc::replication::proc_replication_promote`] (`box.ctl.promote`): the
 /// target wins an election with a higher term and the incumbent (if still
 /// alive) is deposed by it, becoming read-only. The election vclock rules
@@ -256,9 +280,10 @@ fn get_replicaset_to_configure<'t>(
 /// succeed, and retrying it forever would wedge the governor loop - the
 /// replicaset must simply stay read-only (fenced) until enough members
 /// return.
-pub fn handle_sync_master_election_promote<'i>(
+pub fn handle_replicaset_master_election_promote<'i>(
     topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
+    elections_on_every_tier: bool,
     term: RaftTerm,
 ) -> Result<Option<Plan<'i>>> {
     for replicaset in topology_ref.all_replicasets() {
@@ -270,7 +295,7 @@ pub fn handle_sync_master_election_promote<'i>(
             warn_or_panic!("No info for tier {}", replicaset.tier);
             continue;
         };
-        if !db_config.replication_mode(&tier.name).is_sync() {
+        if !tier_runs_elections(db_config, elections_on_every_tier, &tier.name) {
             continue;
         }
 
@@ -395,9 +420,13 @@ pub(super) fn choose_fallback_candidate<'a>(
 // handle_replicaset_master_switchover
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Handles a master change in a replicaset which doesn't run elections yet,
+/// see [`tier_runs_elections`]. The old master is demoted, and the new one
+/// waits until it has everything the old one had.
 pub fn handle_replicaset_master_switchover<'i>(
     topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
+    elections_on_every_tier: bool,
     term: RaftTerm,
     rpc_timeout: std::time::Duration,
 ) -> Result<Option<Plan<'i>>> {
@@ -410,9 +439,9 @@ pub fn handle_replicaset_master_switchover<'i>(
             warn_or_panic!("No info for tier {}", replicaset.tier);
             continue;
         };
-        if db_config.replication_mode(&tier.name).is_sync() {
-            // Mastership of sync-tier replicasets is decided by tarantool raft
-            // elections, see handle_sync_master_election_promote.
+        if tier_runs_elections(db_config, elections_on_every_tier, &tier.name) {
+            // Decided by tarantool raft elections, see
+            // handle_replicaset_master_election_promote.
             continue;
         }
 
@@ -787,6 +816,7 @@ mod tests {
         let legacy_plan = handle_replicaset_master_switchover(
             &topology_ref,
             &db_config,
+            false,
             7,
             std::time::Duration::from_secs(1),
         )
@@ -796,7 +826,7 @@ mod tests {
             Some(Plan::ReplicasetMasterConsistentSwitchover { .. })
         ));
         assert!(
-            handle_sync_master_election_promote(&topology_ref, &db_config, 7)
+            handle_replicaset_master_election_promote(&topology_ref, &db_config, false, 7)
                 .unwrap()
                 .is_none()
         );
@@ -807,13 +837,14 @@ mod tests {
         assert!(handle_replicaset_master_switchover(
             &topology_ref,
             &db_config,
+            false,
             7,
             std::time::Duration::from_secs(1),
         )
         .unwrap()
         .is_none());
         let election_plan =
-            handle_sync_master_election_promote(&topology_ref, &db_config, 7).unwrap();
+            handle_replicaset_master_election_promote(&topology_ref, &db_config, false, 7).unwrap();
         let Some(Plan::ReplicasetMasterElectionPromote(election_plan)) = election_plan else {
             panic!("expected a promote plan");
         };
