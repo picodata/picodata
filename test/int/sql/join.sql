@@ -383,3 +383,27 @@ buckets = [1934]
 ──────────────────────────────────────────────────────────────────────
 ''
 buckets <= [1-3000]
+
+-- TEST: cross-join
+-- SQL:
+SELECT t."a", gt."a" FROM t CROSS JOIN gt ORDER BY 1, 2;
+-- EXPECTED:
+1, 1, 1, 2, 4, 1, 4, 2, 7, 1, 7, 2
+
+-- TEST: cross-join-sharded
+-- SQL:
+SELECT count(*) FROM t t1 CROSS JOIN t t2 WHERE t1."a" < t2."a";
+-- EXPECTED:
+3
+
+-- TEST: cross-join-chain
+-- SQL:
+SELECT t1."a", t2."a" FROM t t1 CROSS JOIN gt INNER JOIN t t2 ON t2."a" = t1."a" + 3 WHERE gt."a" = 1 ORDER BY 1;
+-- EXPECTED:
+1, 4, 4, 7
+
+-- TEST: cross-join-with-on
+-- SQL:
+SELECT * FROM t CROSS JOIN gt ON true;
+-- ERROR:
+rule parsing error

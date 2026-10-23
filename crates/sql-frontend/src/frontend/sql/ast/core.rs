@@ -336,14 +336,32 @@ impl AstCore {
     /// Bring join AST to expected kind
     ///
     /// Inner join can be specified as `inner join` or `join` in user query,
-    /// add `inner` to join if the second form was used
+    /// add `inner` to join if the second form was used. `cross join` becomes
+    /// an inner join with the condition `true`.
     pub(in crate::frontend::sql) fn normalize_join_ast(
         &mut self,
         join_id: usize,
     ) -> Result<(), SbroadError> {
         let node = self.nodes.get_node(join_id)?;
         if let Rule::Join = node.rule {
-            if node.children.len() < 3 {
+            let kind_id = *node.children.first().expect("join must have children");
+            if self.nodes.get_node(kind_id)?.rule == Rule::CrossJoinKind {
+                // `a CROSS JOIN b` is `a INNER JOIN b ON true`.
+                let kind = self.nodes.get_mut_node(kind_id)?;
+                kind.rule = Rule::InnerJoinKind;
+                kind.value = Some("inner".into());
+                let true_id = self.nodes.push_node(ParseNode {
+                    children: vec![],
+                    rule: Rule::True,
+                    value: Some("true".into()),
+                });
+                let expr_id = self.nodes.push_node(ParseNode {
+                    children: vec![true_id],
+                    rule: Rule::Expr,
+                    value: None,
+                });
+                self.nodes.get_mut_node(join_id)?.children.push(expr_id);
+            } else if node.children.len() < 3 {
                 let inner_node = ParseNode {
                     children: vec![],
                     rule: Rule::InnerJoinKind,

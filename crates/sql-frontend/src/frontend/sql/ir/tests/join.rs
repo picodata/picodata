@@ -185,3 +185,58 @@ fn join_distinct_table_names() {
         sql_to_ir_without_bind(query, &[]);
     }
 }
+
+// CROSS JOIN is a join with the condition `true`.
+#[test]
+fn cross_join() {
+    let input = r#"explain (logical) SELECT t1."a", t2."e" FROM "t1_2" t1 CROSS JOIN "t2" t2"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (t1.a::int -> a, t2.e::int -> e)
+      join on (true::bool)
+        scan t1_2 -> t1
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
+            scan t2
+    ");
+}
+
+// CROSS JOIN can follow and precede other joins.
+#[test]
+fn cross_join_chain() {
+    let input = r#"explain (logical) SELECT t1."a", t2."e" FROM "t1_2" t1 CROSS JOIN "global_t" g INNER JOIN "t2" t2 ON t2."e" = g."a""#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (t1.a::int -> a, t2.e::int -> e)
+      join on (t2.e::int = g.a::int)
+        join on (true::bool)
+          scan t1_2 -> t1
+          scan global_t -> g
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
+            scan t2
+    ");
+}
+
+// A table can still have the alias `cross`, and CROSS JOIN has no ON clause.
+#[test]
+fn cross_join_parsing() {
+    let input = r#"explain (logical) SELECT cross."a" FROM "t1_2" cross"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (cross.a::int -> a)
+      scan t1_2 -> cross
+    ");
+
+    let err = expect_sql_to_ir_error(r#"SELECT * FROM "t1_2" CROSS JOIN "t2" ON true"#, &[]);
+    insta::assert_snapshot!(err, @r#"
+    rule parsing error:  --> 1:38
+      |
+    1 | SELECT * FROM "t1_2" CROSS JOIN "t2" ON true
+      |                                      ^---
+      |
+      = expected EOI, OrderBy, Limit, UnionOp, ExceptOp, UnionAllOp, Join, DqlOption, or Identifier
+    "#);
+}
