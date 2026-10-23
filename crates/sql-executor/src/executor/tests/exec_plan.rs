@@ -22,7 +22,7 @@ use smol_str::SmolStr;
 use sql_explain::explain::explain_logical;
 use std::rc::Rc;
 
-fn reshard_vtable(
+pub(super) fn reshard_vtable(
     query: &ExecutingQuery<RouterRuntimeMock>,
     motion_id: NodeId,
     virtual_table: &mut VirtualTable,
@@ -36,7 +36,7 @@ fn reshard_vtable(
 
 /// Helper function to generate sql from `exec_plan` from given `top_id` node.
 /// Used for testing.
-fn get_sql_from_execution_plan(
+pub(super) fn get_sql_from_execution_plan(
     exec_plan: &ExecutionPlan,
     top_id: NodeId,
     snapshot: Snapshot,

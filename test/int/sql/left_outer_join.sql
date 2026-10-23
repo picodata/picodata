@@ -482,20 +482,20 @@ plan:
 │ 2. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT "lc"."ck" as "gr_expr_1", count ("lo"."COL_0"::int) as "count_1" FROM "lc" LEFT JOIN "_tmp_4937295183226104254_0136" as "lo" ON "lc"."ck" = "lo"."COL_2" GROUP BY "lc"."ck"
+SELECT "lc"."ck" as "gr_expr_1", count ("lo"."COL_0"::int) as "count_1" FROM "lc" LEFT JOIN "_tmp_13195270573268465082_0136" as "lo" ON "lc"."ck" = "lo"."COL_2" GROUP BY "lc"."ck"
 ''
 plan:
     [0] SCAN TABLE lc (~1048576 rows)
-        [0] SCAN TABLE _tmp_4937295183226104254_0136 AS lo (~262144 rows)
+        [0] SCAN TABLE _tmp_13195270573268465082_0136 AS lo (~262144 rows)
 ''
 ╭───────────────────╮
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "ck", sum ("COL_1"::int)::int as "col_1" FROM "_tmp_5155573003670794593_1136" GROUP BY "COL_0"
+SELECT "COL_0" as "ck", sum ("COL_1"::int)::int as "col_1" FROM "_tmp_9891255462210956980_1136" GROUP BY "COL_0"
 ''
 plan:
-    [0] SCAN TABLE _tmp_5155573003670794593_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_9891255462210956980_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 
 -- TEST: join-temp-table-asterisk

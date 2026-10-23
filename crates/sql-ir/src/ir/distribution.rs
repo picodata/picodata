@@ -512,6 +512,10 @@ impl Plan {
             Relational::ScanRelation(ScanRelation { .. }) => {
                 self.get_dist_from_scan_relation(rel_id)?
             }
+            // Every instance computes the same rows of a table function.
+            // The arguments that reference the left side of a join are
+            // computed together with that side, on the same instance.
+            Relational::ScanFunction(_) => Distribution::Global,
             Relational::Projection(Projection { output, .. })
             | Relational::SelectWithoutScan(SelectWithoutScan { output, .. }) => {
                 self.distr_from_node(*output)?

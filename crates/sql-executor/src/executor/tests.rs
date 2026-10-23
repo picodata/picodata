@@ -730,4 +730,5 @@ mod groupby_alias;
 mod like;
 mod not_eq;
 mod not_in;
+mod table_function;
 mod unnamed_subquery;

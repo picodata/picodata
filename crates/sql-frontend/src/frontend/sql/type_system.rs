@@ -513,6 +513,20 @@ fn default_type_system() -> TypeSystem {
         Function::new_scalar("substring", [Text, Integer, Integer], Text),
         Function::new_scalar("substring", [Text, Text], Text),
         Function::new_scalar("substring", [Text, Text, Text], Text),
+        // Table functions (see `table_function.rs`). The return type is the
+        // type of the `value` column.
+        Function::new_scalar("generate_series", [Integer, Integer], Integer),
+        Function::new_scalar("generate_series", [Integer, Integer, Integer], Integer),
+        Function::new_scalar("generate_series", [Numeric, Numeric], Numeric),
+        Function::new_scalar("generate_series", [Numeric, Numeric, Numeric], Numeric),
+        Function::new_scalar("unnest", [Array(NestedType::Integer)], Integer),
+        Function::new_scalar("unnest", [Array(NestedType::Double)], Double),
+        Function::new_scalar("unnest", [Array(NestedType::Numeric)], Numeric),
+        Function::new_scalar("unnest", [Array(NestedType::Text)], Text),
+        Function::new_scalar("unnest", [Array(NestedType::Boolean)], Boolean),
+        Function::new_scalar("unnest", [Array(NestedType::Datetime)], Datetime),
+        Function::new_scalar("unnest", [Array(NestedType::Uuid)], Uuid),
+        Function::new_scalar("unnest", [Array(NestedType::Map)], Map),
         // Aggregates.
         // - count
         // TODO: consider adding `any` type

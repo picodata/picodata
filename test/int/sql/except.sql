@@ -99,11 +99,11 @@ plan:
 │ 3. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT "e"."a" as "gr_expr_1", "t2"."COL_2" as "gr_expr_2" FROM "t" as "e" INNER JOIN "_tmp_1924403061113006734_0136" as "t" ON "e"."a" = "t"."COL_2" INNER JOIN "_tmp_1924403061113006734_1136" as "t2" ON true::bool GROUP BY "e"."a", "t2"."COL_2"
+SELECT "e"."a" as "gr_expr_1", "t2"."COL_2" as "gr_expr_2" FROM "t" as "e" INNER JOIN "_tmp_1885121119791730747_0136" as "t" ON "e"."a" = "t"."COL_2" INNER JOIN "_tmp_1885121119791730747_1136" as "t2" ON true::bool GROUP BY "e"."a", "t2"."COL_2"
 ''
 plan:
-    [0] SCAN TABLE _tmp_1924403061113006734_0136 AS t (~1048576 rows)
-        [0] SCAN TABLE _tmp_1924403061113006734_1136 AS t2 (~1048576 rows)
+    [0] SCAN TABLE _tmp_1885121119791730747_0136 AS t (~1048576 rows)
+        [0] SCAN TABLE _tmp_1885121119791730747_1136 AS t2 (~1048576 rows)
             [0] SEARCH TABLE t AS e USING PRIMARY KEY (a=?) (~1 row)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
@@ -111,21 +111,21 @@ plan:
 │ 4. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT 4::int as "col_1" FROM ( SELECT "COL_1" as "b", "COL_0" as "a" FROM "_tmp_6693516139701489356_2136" GROUP BY "COL_0", "COL_1" ) as "f"
+SELECT 4::int as "col_1" FROM ( SELECT "COL_1" as "b", "COL_0" as "a" FROM "_tmp_13843048704925907140_2136" GROUP BY "COL_0", "COL_1" ) as "f"
 ''
 plan:
-    [0] SCAN TABLE _tmp_6693516139701489356_2136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13843048704925907140_2136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭────────────────────────────────────────╮
 │ 5. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT ( SELECT "COL_0" FROM "_tmp_12907078961011043392_3136" ) as "col_1" UNION SELECT "t2"."b" FROM "t2"
+SELECT ( SELECT "COL_0" FROM "_tmp_8499739075875961125_3136" ) as "col_1" UNION SELECT "t2"."b" FROM "t2"
 ''
 plan:
     [1] EXECUTE SCALAR SUBQUERY 2
-    [2] SCAN TABLE _tmp_12907078961011043392_3136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_8499739075875961125_3136 (~1048576 rows)
     [3] SCAN TABLE t2 (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 3 USING TEMP B-TREE (UNION)
 ''
@@ -133,11 +133,11 @@ plan:
 │ 6. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT ( SELECT "COL_0" FROM "_tmp_12907078961011043392_3136" ) as "col_1" UNION SELECT "t2"."b" FROM "t2"
+SELECT ( SELECT "COL_0" FROM "_tmp_8499739075875961125_3136" ) as "col_1" UNION SELECT "t2"."b" FROM "t2"
 ''
 plan:
     [1] EXECUTE SCALAR SUBQUERY 2
-    [2] SCAN TABLE _tmp_12907078961011043392_3136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_8499739075875961125_3136 (~1048576 rows)
     [3] SCAN TABLE t2 (~1048576 rows)
     [0] COMPOUND SUBQUERIES 1 AND 3 USING TEMP B-TREE (UNION)
 ''
@@ -156,12 +156,12 @@ plan:
 │ 8. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT ( SELECT "COL_0" FROM "_tmp_513189897998928804_5136" EXCEPT SELECT "COL_0" FROM "_tmp_513189897998928804_12136" ) as "col_1"
+SELECT ( SELECT "COL_0" FROM "_tmp_15091996974104634581_5136" EXCEPT SELECT "COL_0" FROM "_tmp_15091996974104634581_12136" ) as "col_1"
 ''
 plan:
     [0] EXECUTE SCALAR SUBQUERY 1
-    [2] SCAN TABLE _tmp_513189897998928804_5136 (~1048576 rows)
-    [3] SCAN TABLE _tmp_513189897998928804_12136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_15091996974104634581_5136 (~1048576 rows)
+    [3] SCAN TABLE _tmp_15091996974104634581_12136 (~1048576 rows)
     [1] COMPOUND SUBQUERIES 2 AND 3 USING TEMP B-TREE (EXCEPT)
 
 -- TEST: explain-raw-intersect-without-braces

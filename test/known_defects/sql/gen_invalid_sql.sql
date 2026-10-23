@@ -94,10 +94,10 @@ Failed to compile SQL statement: Failed to execute an empty SQL statement
 │ 5. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT 1::int as "col_1" FROM "t" INNER JOIN "_tmp_8236824207247852844_2136" as "a" ON ( SELECT "COL_0" FROM "_tmp_8236824207247852844_3136" )
+SELECT 1::int as "col_1" FROM "t" INNER JOIN "_tmp_1202446835763270938_2136" as "a" ON ( SELECT "COL_0" FROM "_tmp_1202446835763270938_3136" )
 ''
 plan:
     [0] SCAN TABLE t (~1048576 rows)
     [0] EXECUTE SCALAR SUBQUERY 1
-    [1] SCAN TABLE _tmp_8236824207247852844_3136 (~1048576 rows)
-        [0] SCAN TABLE _tmp_8236824207247852844_2136 AS a (~1048576 rows)
+    [1] SCAN TABLE _tmp_1202446835763270938_3136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_1202446835763270938_2136 AS a (~1048576 rows)

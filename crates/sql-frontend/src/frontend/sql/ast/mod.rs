@@ -33,6 +33,7 @@ use crate::frontend::sql::ir::Translation;
 use crate::ir::acl::AlterOption;
 use crate::ir::expression::NewColumnsSource;
 use crate::ir::expression::{ColumnWithScan, ColumnsRetrievalSpec, ExpressionId};
+use crate::ir::function::Function;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
@@ -42,6 +43,7 @@ use crate::ir::node::{
 use crate::ir::operator::JoinKind;
 use crate::ir::options::{OptionKind, OptionSpec};
 use crate::ir::relation::{Column, ColumnRole, Table, TableKind};
+use crate::ir::table_function::find_table_function;
 use crate::ir::transformation::redistribution::ColumnPosition;
 use crate::ir::tree::traversal::PostOrder;
 use crate::ir::value::Value;
@@ -49,8 +51,8 @@ use crate::ir::{ExplainOptions, Plan};
 use tarantool::auth::AuthMethod;
 
 use self::ir_populator::{
-    can_assign, dql_return_columns, parse_bool_expr, parse_scalar_expr, parse_select,
-    parse_values_rows, ExpressionWalker,
+    can_assign, dql_return_columns, parse_bool_expr, parse_expr_no_type_check, parse_scalar_expr,
+    parse_select, parse_values_rows, ExpressionWalker,
 };
 
 // TODO: implement and use `AuthMethod::DEFAULT`
@@ -150,6 +152,7 @@ impl<'q> AbstractSyntaxTree<'q> {
 
         let mut used_aliases = HashSet::new();
         let mut unnamed_subqueries = Vec::new();
+        let lateral_sources = ast.lateral_sources()?;
 
         for id in dft_post.traverse_into_iter(top) {
             let node = ast.nodes.get_node(id)?;
@@ -204,6 +207,17 @@ impl<'q> AbstractSyntaxTree<'q> {
                     &mut unnamed_subqueries,
                 )?,
                 Rule::ScanTable => build_scan_table_ir(ast, id, node, &mut map, &mut plan)?,
+                Rule::ScanFunction => build_scan_function_ir(
+                    ast,
+                    id,
+                    node,
+                    lateral_sources.get(&id).copied(),
+                    &mut map,
+                    &mut type_analyzer,
+                    pairs_map,
+                    &mut worker,
+                    &mut plan,
+                )?,
                 Rule::ScanCteOrTable => {
                     parse_scan_cte_or_table(ast, metadata, id, &mut map, &mut ctes, &mut plan)?;
                 }
@@ -758,6 +772,97 @@ fn build_scan_table_ir(
     let scan_id = plan.add_scan(parse_identifier(ast, *ast_table_id)?.as_str(), None)?;
     map.add(node_id, scan_id);
     Ok(())
+}
+
+/// Build a scan of a table function.
+///
+/// When the function is the right side of a join, `lateral_source` is the
+/// AST id of the left side, and the arguments can reference its columns.
+#[allow(clippy::too_many_arguments)]
+fn build_scan_function_ir<M>(
+    ast: &AstCore,
+    node_id: usize,
+    node: &ParseNode,
+    lateral_source: Option<usize>,
+    map: &mut Translation,
+    type_analyzer: &mut type_system::TypeAnalyzer,
+    pairs_map: &mut ParsingPairsMap,
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+) -> Result<(), SbroadError>
+where
+    M: Metadata,
+{
+    let (name_id, rest) = node
+        .children
+        .split_first()
+        .expect("table function must have a name");
+    let name = parse_identifier(ast, *name_id)?;
+    if find_table_function(&name).is_none() {
+        return Err(SbroadError::Other(format_smolstr!(
+            "table function {} does not exist",
+            to_user(&name)
+        )));
+    }
+
+    let referred_relation_ids = match lateral_source {
+        Some(ast_id) => vec![map.get(ast_id)?],
+        None => Vec::new(),
+    };
+    let param_types = type_system::get_parameter_derived_types(type_analyzer);
+    let mut with_ordinality = false;
+    let mut args = Vec::with_capacity(rest.len());
+    for child_id in rest {
+        match ast.nodes.get_node(*child_id)?.rule {
+            Rule::Expr => {
+                let arg_pair = pairs_map.remove_pair(*child_id);
+                args.push(parse_expr_no_type_check(
+                    Pairs::single(arg_pair),
+                    &param_types,
+                    &referred_relation_ids,
+                    worker,
+                    plan,
+                    false,
+                )?);
+            }
+            Rule::WithOrdinality => with_ordinality = true,
+            rule => panic!("unexpected table function child: {rule:?}"),
+        }
+    }
+
+    let function = Function::new_stable(name, DerivedType::unknown(), true);
+    let call_id = plan.add_stable_function(&function, args, None)?;
+    check_table_function_args(plan, &function.name, call_id)?;
+    type_system::analyze_and_coerce_scalar_expr(
+        type_analyzer,
+        call_id,
+        DerivedType::unknown(),
+        plan,
+        &worker.subquery_replaces,
+    )?;
+
+    let scan_id = plan.add_scan_function(call_id, with_ordinality)?;
+    plan.fix_subquery_rows(worker, scan_id)?;
+    map.add(node_id, scan_id);
+    Ok(())
+}
+
+/// Reject the arguments of the table function call `call_id` that it cannot
+/// compute. The arguments are computed once, or for each row of the left
+/// side of a join, so they cannot contain aggregates or window functions.
+fn check_table_function_args(plan: &Plan, name: &str, call_id: NodeId) -> Result<(), SbroadError> {
+    // A window function contains an aggregate, so it is reported first.
+    let reason = if plan.contains_window_functions(call_id, false)? {
+        "window functions"
+    } else if plan.contains_aggregates(call_id, false)? {
+        "aggregate functions"
+    } else {
+        return Ok(());
+    };
+    Err(SbroadError::Other(format_smolstr!(
+        "{reason} are not supported in the arguments of table function {}",
+        to_user(name)
+    )))
 }
 
 fn build_sub_query_ir<M>(

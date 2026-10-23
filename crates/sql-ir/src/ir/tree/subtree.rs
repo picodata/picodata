@@ -5,7 +5,7 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     ArrayLiteral, GroupBy, Having, Join, Motion, NodeId, OrderBy, Projection, Row, ScalarFunction,
-    SelectWithoutScan, Selection, SubQueryReference, Values,
+    ScanFunction, SelectWithoutScan, Selection, SubQueryReference, Values,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::{Node, Nodes, Plan};
@@ -523,6 +523,14 @@ fn subtree_next<'plan>(
                         },
                         _ => None,
                     }
+                }
+                Relational::ScanFunction(ScanFunction { function, .. }) => {
+                    let step = *iter.get_child().borrow();
+                    if step == 0 {
+                        *iter.get_child().borrow_mut() += 1;
+                        return Some(*function);
+                    }
+                    None
                 }
                 Relational::ScanRelation(_) => None,
             },

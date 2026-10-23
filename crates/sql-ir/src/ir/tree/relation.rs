@@ -81,6 +81,7 @@ fn relational_next<'nodes>(iter: &mut impl RelationalTreeIterator<'nodes>) -> Op
                 | Relational::Union { .. }
                 | Relational::UnionAll { .. }
                 | Relational::Update { .. }
+                | Relational::ScanFunction { .. }
                 | Relational::Values { .. }) => {
                     let step = *iter.get_child().borrow();
                     *iter.get_child().borrow_mut() += 1;

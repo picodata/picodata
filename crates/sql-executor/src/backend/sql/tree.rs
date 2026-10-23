@@ -707,6 +707,7 @@ impl Select {
                 let (plan_node_left, _) = sp.plan_node_or_err(&sn_left.data)?;
                 if let Node::Relational(
                     Relational::ScanRelation(_)
+                    | Relational::ScanFunction(_)
                     | Relational::ScanCte(_)
                     | Relational::ScanSubQuery(_)
                     | Relational::Motion(_),
@@ -1046,6 +1047,7 @@ impl<'p> SyntaxPlan<'p> {
                 | Relational::UnionAll { .. }
                 | Relational::Intersect { .. } => self.add_set_rel(id),
                 Relational::ScanRelation { .. } => self.add_scan_relation(id),
+                Relational::ScanFunction { .. } => self.add_scan_function(id),
                 Relational::SelectWithoutScan { .. } => self.add_select_without_scan(id),
                 Relational::Motion { .. } => self.add_motion(id),
                 Relational::Values { .. } => self.add_values(id),
@@ -1596,6 +1598,31 @@ impl<'p> SyntaxPlan<'p> {
             children.push(arena.push_sn_non_plan(SyntaxNode::new_indexed_by(name)));
         }
 
+        let sn = SyntaxNode::new_pointer(id, None, children);
+        arena.push_sn_plan(sn);
+    }
+
+    /// `func(args) [WITH ORDINALITY] as "name"`. The scan always has a name,
+    /// so that the references to its columns can be qualified.
+    fn add_scan_function(&mut self, id: NodeId) {
+        let (plan, scan) = self.prologue_rel(id);
+        let Relational::ScanFunction(scan) = scan else {
+            panic!("Expected table function scan node");
+        };
+        let name = plan
+            .scan_name(RelColumn::new(id, 0))
+            .expect("table function scan must have a name")
+            .expect("table function scan must have a name")
+            .to_smolstr();
+        let with_ordinality = scan.with_ordinality;
+        let function_sn_id = self.pop_from_stack(scan.function, id);
+
+        let arena = &mut self.nodes;
+        let mut children = vec![function_sn_id];
+        if with_ordinality {
+            children.push(arena.push_sn_non_plan(SyntaxNode::new_inline("WITH ORDINALITY")));
+        }
+        children.push(arena.push_sn_non_plan(SyntaxNode::new_alias(name)));
         let sn = SyntaxNode::new_pointer(id, None, children);
         arena.push_sn_plan(sn);
     }
@@ -2304,7 +2331,9 @@ impl<'p> SyntaxPlan<'p> {
 
         // We don't want to transform asterisks in order not to select "bucket_id"
         // implicitly. That's why we save them as a sequence of references, if system
-        // or temp table columns are involved.
+        // or temp table columns are involved. The columns of a table function
+        // are also expanded, because their names in the local SQL differ from
+        // their names in queries.
         let ref_source_node_id = ir_plan
             .get_reference_source_relation(expr_id)
             .expect("Reference must have a source relation");
@@ -2386,7 +2415,8 @@ impl<'p> SyntaxPlan<'p> {
                         .map(|s| s.to_smolstr());
                     // TODO[2081]: don't hide an error
                     let value = column.map(|column| column.is_system).unwrap_or(false)
-                        || self.is_temp_table_column(RelColumn::new(ref_source_node_id, i));
+                        || self.is_temp_table_column(RelColumn::new(ref_source_node_id, i))
+                        || self.is_function_column(RelColumn::new(ref_source_node_id, i));
                     distribution
                         .entry(key)
                         .and_modify(|v| *v |= value)
@@ -2440,23 +2470,35 @@ impl<'p> SyntaxPlan<'p> {
         sn.right = right;
     }
 
-    /// Whether `rel_col` is read from a temp table in the FROM clause. A `*` over
-    /// a temp table also selects its `PK_*` column.
-    fn is_temp_table_column(&self, mut rel_col: RelColumn) -> bool {
+    /// The node in the FROM clause that `rel_col` is read from, through the
+    /// nodes that pass their input columns through. `None` for a node that
+    /// is not a motion or a table function scan.
+    fn column_leaf(&self, mut rel_col: RelColumn) -> Option<ColumnLeaf> {
         let plan = self.plan.get_ir_plan();
         loop {
             match plan.get_relation_node(rel_col.rel_id) {
-                Ok(Relational::Motion(_)) => {
-                    return self.plan.contains_vtable_for_motion(rel_col.rel_id)
-                }
+                Ok(Relational::Motion(_)) => return Some(ColumnLeaf::Motion(rel_col.rel_id)),
+                Ok(Relational::ScanFunction(_)) => return Some(ColumnLeaf::ScanFunction),
                 Ok(rel) if reads_vtable_as_table(&rel) => {}
-                _ => return false,
+                _ => return None,
             }
-            let Ok(Some(source)) = plan.column_source(rel_col) else {
-                return false;
-            };
-            rel_col = source;
+            rel_col = plan.column_source(rel_col).ok()??;
         }
+    }
+
+    /// Whether `rel_col` is read from a temp table in the FROM clause. A `*` over
+    /// a temp table also selects its `PK_*` column.
+    fn is_temp_table_column(&self, rel_col: RelColumn) -> bool {
+        match self.column_leaf(rel_col) {
+            Some(ColumnLeaf::Motion(motion_id)) => self.plan.contains_vtable_for_motion(motion_id),
+            _ => false,
+        }
+    }
+
+    /// Whether `rel_col` is read from a table function scan in the FROM
+    /// clause.
+    fn is_function_column(&self, rel_col: RelColumn) -> bool {
+        matches!(self.column_leaf(rel_col), Some(ColumnLeaf::ScanFunction))
     }
 
     fn process_asterisk_logic(
@@ -3073,6 +3115,14 @@ impl SyntaxPlan<'_> {
 
 /// Whether a temp table under `rel` is read as a table in the FROM clause.
 /// A Join also needs the temp table alias.
+/// A node in the FROM clause that a column is read from and that the
+/// asterisk expansion treats specially.
+enum ColumnLeaf {
+    /// A motion, which is a temp table when it is materialized.
+    Motion(NodeId),
+    ScanFunction,
+}
+
 fn reads_vtable_as_table(rel: &Relational) -> bool {
     matches!(
         rel,

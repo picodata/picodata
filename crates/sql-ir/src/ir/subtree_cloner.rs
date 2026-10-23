@@ -8,8 +8,8 @@ use crate::ir::node::expression::{ExprOwned, Expression};
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
 use crate::ir::node::{
     Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, Node, NodeAligned,
-    NodeId, OrderBy, Projection, Reference, ReferenceTarget, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, Union, UnionAll, Update, Values,
+    NodeId, OrderBy, Projection, Reference, ReferenceTarget, ScanCte, ScanFunction, ScanRelation,
+    ScanSubQuery, SelectWithoutScan, Selection, Union, UnionAll, Update, Values,
 };
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::MotionOpcode;
@@ -174,15 +174,28 @@ impl SubtreeCloner {
                 distribution: _,
                 filter,
             })
-            | RelOwned::Join(Join {
+            | RelOwned::ScanFunction(ScanFunction {
+                alias: _,
+                function: filter,
+                subqueries: _,
+                with_ordinality: _,
+                distribution: _,
+            }) => {
+                *filter = self.get_new_id(*filter)?;
+            }
+            RelOwned::Join(Join {
                 left: _,
                 right: _,
                 subqueries: _,
-                condition: filter,
+                condition,
                 distribution: _,
                 kind: _,
+                lateral,
             }) => {
-                *filter = self.get_new_id(*filter)?;
+                *condition = self.get_new_id(*condition)?;
+                if let Some(lateral) = lateral {
+                    *lateral = self.get_new_id(*lateral)?;
+                }
             }
             RelOwned::Motion(Motion {
                 alias: _,

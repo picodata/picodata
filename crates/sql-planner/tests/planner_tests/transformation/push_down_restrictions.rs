@@ -1240,3 +1240,38 @@ fn a_conjunct_repeated_through_one_node_is_dropped_once() {
         scan t
     "#);
 }
+
+// A filter on a table function whose arguments reference the other join
+// operand stays above the join: a carrier subquery could not see that
+// operand.
+#[test]
+fn lateral_function_keeps_filter_above_join() {
+    let plan = run_push_down(
+        r#"SELECT g.value FROM "t" JOIN generate_series(1, "t"."c") g ON "t"."a" = g.value WHERE g.value > 1"#,
+    );
+    assert_snapshot!(logical(&plan), @"
+    projection (g.value::int -> value)
+      selection (g.value::int > 1::int)
+        join on (t.a::int = g.value::int)
+          scan t
+          scan generate_series(1::int, t.c::int::int) -> g
+    ");
+}
+
+// A table function without such references gets the carrier like a table.
+#[test]
+fn function_takes_filter_in_carrier() {
+    let plan = run_push_down(
+        r#"SELECT g.value FROM "t" JOIN generate_series(1, 10) g ON "t"."a" = g.value WHERE g.value > 1"#,
+    );
+    assert_snapshot!(logical(&plan), @"
+    projection (g.value::int -> value)
+      selection (true::bool)
+        join on (t.a::int = g.value::int)
+          scan t
+          scan g
+            projection (g.value::int -> value)
+              selection (g.value::int > 1::int)
+                scan generate_series(1::int, 10::int) -> g
+    ");
+}

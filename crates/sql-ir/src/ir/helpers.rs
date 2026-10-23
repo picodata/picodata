@@ -6,8 +6,8 @@ use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::columns::RelColumn;
 use crate::ir::node::{
     Alias, ArrayLiteral, BoolExpr, Case, Constant, GroupBy, Having, Join, Motion, NodeId, OrderBy,
-    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, Selection, SubQueryReference,
-    TimeParameters, Trim, UnaryExpr, Update, Values,
+    Reference, Row, ScanCte, ScanFunction, ScanRelation, ScanSubQuery, Selection,
+    SubQueryReference, TimeParameters, Trim, UnaryExpr, Update, Values,
 };
 use crate::ir::operator::OrderByEntity;
 use crate::ir::tree::traversal::{PostOrder, EXPR_CAPACITY};
@@ -431,6 +431,26 @@ impl Plan {
                             )?;
                         }
                     }
+                    Relational::ScanFunction(ScanFunction {
+                        alias,
+                        function,
+                        with_ordinality,
+                        ..
+                    }) => {
+                        writeln!(buf, "ScanFunction")?;
+                        if let Some(alias) = alias {
+                            writeln_with_tabulation(
+                                buf,
+                                tabulation_number + 1,
+                                format!("Alias: {alias}").as_str(),
+                            )?;
+                        }
+                        if *with_ordinality {
+                            writeln_with_tabulation(buf, tabulation_number + 1, "With ordinality")?;
+                        }
+                        writeln_with_tabulation(buf, tabulation_number + 1, "Function")?;
+                        self.formatted_arena_node(buf, tabulation_number + 1, *function)?;
+                    }
                     Relational::ScanSubQuery(ScanSubQuery { alias, .. }) => {
                         writeln!(buf, "ScanSubQuery")?;
                         if let Some(alias) = alias {
@@ -537,6 +557,7 @@ impl Plan {
                     | Relational::Insert(_)
                     | Relational::Intersect(_)
                     | Relational::ScanSubQuery(_)
+                    | Relational::ScanFunction(_)
                     | Relational::Selection(_)
                     | Relational::SelectWithoutScan(_)
                     | Relational::Values(_)

@@ -212,16 +212,20 @@ impl<'plan> DqlSubtree<'plan> {
         if let Some(alias) = self.materialized_motion_alias(rel_col)? {
             return Ok(alias);
         }
-        if let Some(alias) = self.renamed_output_alias(rel_col, &mut AHashSet::new())? {
+        if let Some(alias) = self.renamed_output_alias(rel_col, &mut AHashSet::new(), false)? {
             return Ok(alias);
         }
         plan.get_alias_from_reference_node(expr)
     }
 
+    /// The name the local SQL gives to the column `rel_col`, when it differs
+    /// from the output alias in the plan. `through_projection` tells that the
+    /// column is read through a projection that expanded it from an asterisk.
     fn renamed_output_alias(
         &self,
         rel_col: RelColumn,
         visited: &mut AHashSet<NodeId>,
+        through_projection: bool,
     ) -> Result<Option<SmolStr>, SbroadError> {
         let RelColumn { rel_id, position } = rel_col;
         if !visited.insert(rel_id) {
@@ -232,19 +236,34 @@ impl<'plan> DqlSubtree<'plan> {
         if position >= plan.columns_len(rel_id)? {
             return Ok(None);
         }
-        if let Relational::Projection(Projection { output, .. }) = plan.get_relation_node(rel_id)? {
-            // Only columns expanded from an asterisk are renamed through a projection.
-            let alias_id = plan.get_row_list(*output)?[position];
-            let Expression::Alias(Alias { child, .. }) = plan.get_expression_node(alias_id)? else {
-                return Ok(None);
-            };
-            let Expression::Reference(Reference {
-                asterisk_source: Some(_),
-                ..
-            }) = plan.get_expression_node(*child)?
-            else {
-                return Ok(None);
-            };
+        let mut through_projection = through_projection;
+        match plan.get_relation_node(rel_id)? {
+            Relational::Projection(Projection { output, .. }) => {
+                // Only columns expanded from an asterisk are renamed through a projection.
+                let alias_id = plan.get_row_list(*output)?[position];
+                let Expression::Alias(Alias { child, .. }) = plan.get_expression_node(alias_id)?
+                else {
+                    return Ok(None);
+                };
+                let Expression::Reference(Reference {
+                    asterisk_source: Some(_),
+                    ..
+                }) = plan.get_expression_node(*child)?
+                else {
+                    return Ok(None);
+                };
+                through_projection = true;
+            }
+            Relational::ScanFunction(scan) => {
+                // The columns of a table function have the tarantool names.
+                // An asterisk over them expands to columns with the names in
+                // queries, so a projection does not rename them.
+                if through_projection {
+                    return Ok(None);
+                }
+                return plan.function_column_local_name(scan, position);
+            }
+            _ => {}
         }
 
         let Some(source) = plan.column_source(rel_col)? else {
@@ -253,7 +272,7 @@ impl<'plan> DqlSubtree<'plan> {
         if let Some(alias) = self.materialized_motion_alias(source)? {
             return Ok(Some(alias));
         }
-        self.renamed_output_alias(source, visited)
+        self.renamed_output_alias(source, visited, through_projection)
     }
 
     fn materialized_motion_alias(

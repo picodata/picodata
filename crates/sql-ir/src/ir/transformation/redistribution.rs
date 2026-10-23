@@ -21,11 +21,12 @@ pub use crate::ir::transformation::Stage;
 use std::io::Write;
 use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
 
+use crate::ir::columns::RelColumn;
 use crate::ir::node::ReferenceTarget::Single;
 use crate::ir::node::{
     BoolExpr, Except, GroupBy, Having, Intersect, Join, Limit, Motion, NodeId, OrderBy, Projection,
-    Reference, Row, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
-    SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values, Window,
+    Reference, Row, ScanCte, ScanFunction, ScanRelation, ScanSubQuery, SelectWithoutScan,
+    Selection, SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values, Window,
 };
 use crate::ir::transformation::equality_facts::EqualityFacts;
 use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
@@ -1163,6 +1164,9 @@ impl Plan {
                         Relational::ScanRelation(ScanRelation {
                             alias, relation, ..
                         }) => alias.clone().or_else(|| Some(relation.clone())),
+                        Relational::ScanFunction(_) => self
+                            .scan_name(RelColumn::new(child_id, 0))?
+                            .map(SmolStr::from),
                         _ => None,
                     };
 
@@ -2702,6 +2706,15 @@ impl Plan {
 
                     // Just take distribution from projection's child.
                     self.set_projection_distribution(id)?;
+                }
+                RelOwned::ScanFunction(ScanFunction { function, .. }) => {
+                    // Every instance must compute the same rows, so the
+                    // subqueries in the arguments are brought to every instance.
+                    let strategy = self.resolve_sq_conflicts(id, function)?;
+                    let correct_rel_ids = strategy.get_rel_ids();
+                    self.insert_motion_nodes(strategy)?;
+                    self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
+                    self.set_rel_distr(id, Distribution::Global)?;
                 }
                 RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. }) => {
                     let strategy = self.resolve_sq_conflicts(id, output)?;

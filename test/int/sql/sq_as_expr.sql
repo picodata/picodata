@@ -880,10 +880,10 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM "_tmp_12118456084794715039_0136" GROUP BY "COL_0"
+SELECT "COL_0" as "col_1" FROM "_tmp_13420526742075487547_0136" GROUP BY "COL_0"
 ''
 plan:
-    [0] SCAN TABLE _tmp_12118456084794715039_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13420526742075487547_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -920,10 +920,10 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM "_tmp_16030938614314968465_0136" GROUP BY "COL_0" HAVING "COL_0" > 3::int
+SELECT "COL_0" as "col_1" FROM "_tmp_16287351882032954897_0136" GROUP BY "COL_0" HAVING "COL_0" > 3::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_16030938614314968465_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_16287351882032954897_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -957,15 +957,15 @@ buckets <= [1-3000]
 │ 2. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."product_units" + ( SELECT "COL_0" FROM "_tmp_7570917020545957695_0136" ) as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."product_units" + ( SELECT "COL_0" FROM "_tmp_7570917020545957695_0136" )
+SELECT "testing_space"."product_units" + ( SELECT "COL_0" FROM "_tmp_4366320446883752717_0136" ) as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."product_units" + ( SELECT "COL_0" FROM "_tmp_4366320446883752717_0136" )
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] EXECUTE SCALAR SUBQUERY 1
-    [1] SCAN TABLE _tmp_7570917020545957695_0136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_4366320446883752717_0136 (~1048576 rows)
     [0] EXECUTE SCALAR SUBQUERY 2
-    [2] SCAN TABLE _tmp_7570917020545957695_0136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_4366320446883752717_0136 (~1048576 rows)
 ''
 buckets <= [1-3000]
 ''
@@ -973,10 +973,10 @@ buckets <= [1-3000]
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM "_tmp_893366218640271692_2136" GROUP BY "COL_0"
+SELECT "COL_0" as "col_1" FROM "_tmp_2273095322400790938_2136" GROUP BY "COL_0"
 ''
 plan:
-    [0] SCAN TABLE _tmp_893366218640271692_2136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_2273095322400790938_2136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -1010,10 +1010,10 @@ buckets <= [1-3000]
 │ 2. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT sum ("x"."a"::int) as "sum_1" FROM "gt" as "x" INNER JOIN "_tmp_14160769180283890498_0136" as "y" ON "x"."a" = "y"."COL_2"
+SELECT sum ("x"."a"::int) as "sum_1" FROM "gt" as "x" INNER JOIN "_tmp_14326985166595190994_0136" as "y" ON "x"."a" = "y"."COL_2"
 ''
 plan:
-    [0] SCAN TABLE _tmp_14160769180283890498_0136 AS y (~1048576 rows)
+    [0] SCAN TABLE _tmp_14326985166595190994_0136 AS y (~1048576 rows)
         [0] SEARCH TABLE gt AS x USING PRIMARY KEY (a=?) (~1 row)
 ''
 buckets <= [1-3000]
@@ -1033,15 +1033,15 @@ buckets = any
 │ 4. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."id" + ( SELECT "COL_0" FROM "_tmp_8936780563984494366_2136" ) as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT "COL_0" FROM "_tmp_8936780563984494366_2136" )
+SELECT "testing_space"."id" + ( SELECT "COL_0" FROM "_tmp_14080165071210472173_2136" ) as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT "COL_0" FROM "_tmp_14080165071210472173_2136" )
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] EXECUTE SCALAR SUBQUERY 1
-    [1] SCAN TABLE _tmp_8936780563984494366_2136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_14080165071210472173_2136 (~1048576 rows)
     [0] EXECUTE SCALAR SUBQUERY 2
-    [2] SCAN TABLE _tmp_8936780563984494366_2136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_14080165071210472173_2136 (~1048576 rows)
 ''
 buckets <= [1-3000]
 ''
@@ -1049,10 +1049,10 @@ buckets <= [1-3000]
 │ 5. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM "_tmp_18336995983287903966_6136" GROUP BY "COL_0"
+SELECT "COL_0" as "col_1" FROM "_tmp_13918903142065644414_6136" GROUP BY "COL_0"
 ''
 plan:
-    [0] SCAN TABLE _tmp_18336995983287903966_6136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13918903142065644414_6136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -1091,10 +1091,10 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1", "COL_1" as "col_2" FROM "_tmp_554432729347299807_0136" GROUP BY "COL_0", "COL_1"
+SELECT "COL_0" as "col_1", "COL_1" as "col_2" FROM "_tmp_7118796103478650340_0136" GROUP BY "COL_0", "COL_1"
 ''
 plan:
-    [0] SCAN TABLE _tmp_554432729347299807_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_7118796103478650340_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -1133,10 +1133,10 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "col_1" FROM "_tmp_12118456084794715039_0136" GROUP BY "COL_0"
+SELECT "COL_0" as "col_1" FROM "_tmp_13420526742075487547_0136" GROUP BY "COL_0"
 ''
 plan:
-    [0] SCAN TABLE _tmp_12118456084794715039_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13420526742075487547_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -1200,10 +1200,10 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "name", sum ("COL_1"::decimal)::int as "col_1" FROM "_tmp_5358045835402968887_0136" GROUP BY "COL_0"
+SELECT "COL_0" as "name", sum ("COL_1"::decimal)::int as "col_1" FROM "_tmp_14291144193367633936_0136" GROUP BY "COL_0"
 ''
 plan:
-    [0] SCAN TABLE _tmp_5358045835402968887_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_14291144193367633936_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any

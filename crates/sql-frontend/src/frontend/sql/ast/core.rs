@@ -327,10 +327,44 @@ impl AstCore {
         if let Some(alias_id) = alias_id {
             return Ok(Some(parse_identifier(self, *alias_id)?));
         }
-        if self.nodes.get_node(source_id)?.rule == Rule::ScanCteOrTable {
-            return Ok(Some(parse_identifier(self, source_id)?));
+        let source = self.nodes.get_node(source_id)?;
+        match source.rule {
+            Rule::ScanCteOrTable => Ok(Some(parse_identifier(self, source_id)?)),
+            Rule::ScanFunction => {
+                let name_id = *source.children.first().expect("function must have a name");
+                Ok(Some(parse_identifier(self, name_id)?))
+            }
+            _ => Ok(None),
         }
-        Ok(None)
+    }
+
+    /// Map each table function on the right side of a join to the left side
+    /// of that join, whose columns its arguments can reference.
+    ///
+    /// Returns `{ ScanFunction id -> left side id }`.
+    pub(in crate::frontend::sql) fn lateral_sources(
+        &self,
+    ) -> Result<HashMap<usize, usize>, SbroadError> {
+        let mut sources = HashMap::new();
+        for node in &self.nodes.arena {
+            if node.rule != Rule::Join {
+                continue;
+            }
+            // Join structure = [left child, kind, right child, condition expr].
+            let (Some(left_id), Some(right_id)) = (node.children.first(), node.children.get(2))
+            else {
+                continue;
+            };
+            let right = self.nodes.get_node(*right_id)?;
+            if right.rule != Rule::Scan {
+                continue;
+            }
+            let source_id = *right.children.first().expect("Scan must have a source");
+            if self.nodes.get_node(source_id)?.rule == Rule::ScanFunction {
+                sources.insert(source_id, *left_id);
+            }
+        }
+        Ok(sources)
     }
 
     /// Bring join AST to expected kind

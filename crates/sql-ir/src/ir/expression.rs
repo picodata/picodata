@@ -16,8 +16,8 @@ use std::hash::{Hash, Hasher};
 
 use super::node::{
     Bound, BoundType, Except, GroupBy, Having, Intersect, Join, Like, Limit, Motion, OrderBy, Over,
-    Projection, ReferenceTarget, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
-    Union, UnionAll, Values, Window,
+    Projection, ReferenceTarget, ScanCte, ScanFunction, ScanRelation, ScanSubQuery,
+    SelectWithoutScan, Selection, Union, UnionAll, Values, Window,
 };
 use super::operator::OrderByEntity;
 use super::types::DerivedType;
@@ -886,6 +886,23 @@ impl<'plan> Comparator<'plan> {
                     return self.are_rel_subtrees_equal(*l_child, *r_child);
                 }
             }
+            Relational::ScanFunction(ScanFunction {
+                function: l_function,
+                with_ordinality: l_with_ordinality,
+                alias: _,
+                subqueries: _,
+                distribution: _,
+            }) => {
+                if let Relational::ScanFunction(ScanFunction {
+                    function: r_function,
+                    with_ordinality: r_with_ordinality,
+                    ..
+                }) = r
+                {
+                    return Ok(l_with_ordinality == r_with_ordinality
+                        && self.are_subtrees_equal(*l_function, *r_function)?);
+                }
+            }
             Relational::Projection(Projection {
                 child: l_child,
                 windows: l_windows,
@@ -1020,6 +1037,7 @@ impl<'plan> Comparator<'plan> {
                 kind: l_kind,
                 subqueries: _,
                 distribution: _,
+                lateral: _,
             }) => {
                 if let Relational::Join(Join {
                     left: r_left,
@@ -2205,6 +2223,21 @@ impl Plan {
         Ok(())
     }
 
+    /// Whether the arguments of the table function scan `scan_id` reference
+    /// the columns of a relation. They can only reference the left side of
+    /// the join whose right side is the scan (see `Join::lateral`).
+    ///
+    /// # Errors
+    /// - `scan_id` is not a relational node.
+    pub fn is_lateral_scan_function(&self, scan_id: NodeId) -> Result<bool, SbroadError> {
+        let Relational::ScanFunction(ScanFunction { function, .. }) =
+            self.get_relation_node(scan_id)?
+        else {
+            return Ok(false);
+        };
+        Ok(!self.get_refs_from_subtree(*function)?.is_empty())
+    }
+
     /// Changes reference targets in relational node fields (output and other fields except children)
     /// rather than making changes in multiple places. This avoids having several
     /// sources that need to be changed and ensures the undo journal is handled properly.
@@ -2223,13 +2256,26 @@ impl Plan {
         // motion can appear after detaching the first version of a node.
         let parent = self.get_relation_node(parent_id)?;
         match parent {
-            Relational::Join(Join { condition, .. }) => {
-                let condition = *condition;
+            Relational::Join(Join {
+                condition, lateral, ..
+            }) => {
+                let (condition, lateral) = (*condition, *lateral);
                 self.replace_target_in_subtree(condition, from, to)?;
                 // TODO(#2009): rethink support with undo
                 let oldest = self.undo.get_oldest(&condition);
                 if *oldest != condition {
                     self.replace_target_in_subtree(*oldest, from, to)?;
+                }
+                // The arguments of the lateral table function reference the
+                // columns of the left side.
+                if let Some(scan_id) = lateral {
+                    let Relational::ScanFunction(ScanFunction { function, .. }) =
+                        self.get_relation_node(scan_id)?
+                    else {
+                        panic!("lateral node {scan_id} of join {parent_id} is not a function scan");
+                    };
+                    let function = *function;
+                    self.replace_target_in_subtree(function, from, to)?;
                 }
             }
             Relational::OrderBy(OrderBy {
@@ -2290,6 +2336,10 @@ impl Plan {
             Relational::Projection(_) => {}
             Relational::ScanRelation(_) => {}
             Relational::ScanSubQuery(_) => {}
+            Relational::ScanFunction(ScanFunction { function, .. }) => {
+                let function = *function;
+                self.replace_target_in_subtree(function, from, to)?;
+            }
             Relational::SelectWithoutScan(_) => {}
             Relational::UnionAll(_) => {}
             Relational::Union(_) => {}

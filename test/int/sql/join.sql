@@ -255,11 +255,11 @@ buckets <= [1-3000]
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "ct1"."a", "ct2"."COL_0" as "b" FROM "ct1" INNER JOIN "_tmp_420925595864221820_0136" as "ct2" ON "ct1"."a" = 1::int and "ct2"."COL_0" = 2::int
+SELECT "ct1"."a", "ct2"."COL_0" as "b" FROM "ct1" INNER JOIN "_tmp_2355149878415326680_0136" as "ct2" ON "ct1"."a" = 1::int and "ct2"."COL_0" = 2::int
 ''
 plan:
     [0] SEARCH TABLE ct1 USING PRIMARY KEY (a=?) (~1 row)
-        [0] SCAN TABLE _tmp_420925595864221820_0136 AS ct2 (~262144 rows)
+        [0] SCAN TABLE _tmp_2355149878415326680_0136 AS ct2 (~262144 rows)
 ''
 buckets = [1934]
 ''
@@ -293,12 +293,12 @@ buckets <= [1-3000]
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "ct1"."a", "ct2"."COL_0" as "b" FROM "ct1" INNER JOIN "_tmp_15129504151034212097_0136" as "ct2" ON "ct1"."a" in (1::int, 3::int) and "ct2"."COL_0" = 2::int
+SELECT "ct1"."a", "ct2"."COL_0" as "b" FROM "ct1" INNER JOIN "_tmp_2176771038568968895_0136" as "ct2" ON "ct1"."a" in (1::int, 3::int) and "ct2"."COL_0" = 2::int
 ''
 plan:
     [0] SEARCH TABLE ct1 USING PRIMARY KEY (a=?) (~2 rows)
     [0] EXECUTE LIST SUBQUERY 1
-        [0] SCAN TABLE _tmp_15129504151034212097_0136 AS ct2 (~262144 rows)
+        [0] SCAN TABLE _tmp_2176771038568968895_0136 AS ct2 (~262144 rows)
 ''
 buckets = [1934, 1958]
 ''
@@ -332,11 +332,11 @@ buckets <= [1-3000]
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "ct2"."b", "ct1"."COL_0" as "a" FROM "ct2" INNER JOIN "_tmp_8428584780562940373_0136" as "ct1" ON "ct1"."COL_0" = 1::int and "ct2"."b" = 2::int
+SELECT "ct2"."b", "ct1"."COL_0" as "a" FROM "ct2" INNER JOIN "_tmp_526313256569828311_0136" as "ct1" ON "ct1"."COL_0" = 1::int and "ct2"."b" = 2::int
 ''
 plan:
     [0] SEARCH TABLE ct2 USING PRIMARY KEY (b=?) (~1 row)
-        [0] SCAN TABLE _tmp_8428584780562940373_0136 AS ct1 (~262144 rows)
+        [0] SCAN TABLE _tmp_526313256569828311_0136 AS ct1 (~262144 rows)
 ''
 buckets = [1410]
 ''
@@ -370,11 +370,11 @@ buckets <= [1-3000]
 │ 2. Query (CONST-FILTERED STORAGE, 1/1) │
 ╰────────────────────────────────────────╯
 ''
-SELECT "ct1"."a", "ct2"."COL_0" as "b" FROM "ct1" INNER JOIN "_tmp_420925595864221820_0136" as "ct2" ON "ct1"."a" = 1::int and "ct2"."COL_0" = 3::int
+SELECT "ct1"."a", "ct2"."COL_0" as "b" FROM "ct1" INNER JOIN "_tmp_2355149878415326680_0136" as "ct2" ON "ct1"."a" = 1::int and "ct2"."COL_0" = 3::int
 ''
 plan:
     [0] SEARCH TABLE ct1 USING PRIMARY KEY (a=?) (~1 row)
-        [0] SCAN TABLE _tmp_420925595864221820_0136 AS ct2 (~262144 rows)
+        [0] SCAN TABLE _tmp_2355149878415326680_0136 AS ct2 (~262144 rows)
 ''
 buckets = [1934]
 ''

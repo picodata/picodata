@@ -573,7 +573,7 @@ where
                     // We can materialize buckets on any node.
                     self.bucket_map.insert(node_id, Buckets::Any);
                 }
-                Relational::SelectWithoutScan(_) => {
+                Relational::SelectWithoutScan(_) | Relational::ScanFunction(_) => {
                     self.bucket_map.insert(node_id, Buckets::Any);
                 }
             }

@@ -69,6 +69,7 @@ pub mod options;
 pub mod relation;
 pub mod sharding_key;
 pub mod subtree_cloner;
+pub mod table_function;
 #[cfg(feature = "mock")]
 pub mod test_fixtures;
 pub mod transformation;
@@ -234,6 +235,9 @@ impl Nodes {
                 Node96::DropPlugin(drop) => Node::Plugin(Plugin::Drop(drop)),
                 Node96::ScanRelation(scan_rel) => {
                     Node::Relational(Relational::ScanRelation(scan_rel))
+                }
+                Node96::ScanFunction(scan_func) => {
+                    Node::Relational(Relational::ScanFunction(scan_func))
                 }
                 Node96::AuditPolicy(audit_policy) => Node::Acl(Acl::AuditPolicy(audit_policy)),
                 Node96::RenameIndex(rename) => Node::Ddl(Ddl::RenameIndex(rename)),
@@ -418,6 +422,9 @@ impl Nodes {
                     Node96::RenameIndex(rename) => MutNode::Ddl(MutDdl::RenameIndex(rename)),
                     Node96::ScanRelation(scan_rel) => {
                         MutNode::Relational(MutRelational::ScanRelation(scan_rel))
+                    }
+                    Node96::ScanFunction(scan_func) => {
+                        MutNode::Relational(MutRelational::ScanFunction(scan_func))
                     }
                 }),
             ArenaType::Arena136 => {
@@ -1270,6 +1277,7 @@ impl Plan {
                 | Relational::Intersect { .. }
                 | Relational::UnionAll { .. }
                 | Relational::Union { .. }
+                | Relational::ScanFunction { .. }
                 | Relational::Values { .. } => return Ok(rel_id),
             }
         }
@@ -1379,6 +1387,23 @@ impl Plan {
     ) -> Result<bool, SbroadError> {
         self.contains_function(expr_id, check_top, |scalar_function| {
             Expression::is_aggregate_name(&scalar_function.name)
+        })
+    }
+
+    /// Check whether given expression contains window functions.
+    /// If `check_top` is false, the root expression node is not
+    /// checked.
+    ///
+    /// # Errors
+    /// - node is not an expression
+    /// - invalid expression tree
+    pub fn contains_window_functions(
+        &self,
+        expr_id: NodeId,
+        check_top: bool,
+    ) -> Result<bool, SbroadError> {
+        self.contains_function(expr_id, check_top, |scalar_function| {
+            scalar_function.is_window
         })
     }
 
@@ -2137,6 +2162,7 @@ impl Plan {
             | Relational::UnionAll { .. }
             | Relational::Update { .. }
             | Relational::Values { .. }
+            | Relational::ScanFunction { .. }
             | Relational::Having { .. }
             | Relational::Limit { .. } => Ok(*top_id),
             Relational::Motion { .. } | Relational::Insert { .. } | Relational::Delete { .. } => {
@@ -3107,6 +3133,7 @@ impl Plan {
                 | Relational::UnionAll(_)
                 | Relational::Except(_)
                 | Relational::ScanRelation(_)
+                | Relational::ScanFunction(_)
                 | Relational::Values(_)
                 | Relational::Intersect(_)
                 | Relational::Selection(_)
@@ -3339,6 +3366,7 @@ impl ShardColumnsMap {
             Relational::Insert(_)
             | Relational::Values(_)
             | Relational::ScanRelation(_)
+            | Relational::ScanFunction(_)
             | Relational::Motion(Motion { child: None, .. })
             | Relational::Delete(Delete { child: None, .. }) => {}
         }

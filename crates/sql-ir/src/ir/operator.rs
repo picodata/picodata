@@ -8,7 +8,8 @@ use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
     Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, LetVarRef, Motion, MutNode,
     NodeId, OrderBy, Projection, Reference, ReferenceAsteriskSource, ReferenceTarget, ScanCte,
-    ScanRelation, ScanSubQuery, Selection, SubQueryReference, Union, UnionAll, Update, Values,
+    ScanFunction, ScanRelation, ScanSubQuery, Selection, SubQueryReference, Union, UnionAll,
+    Update, Values,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY, REL_CAPACITY};
@@ -935,6 +936,7 @@ impl Plan {
     ) -> Result<NodeId, SbroadError> {
         self.get_relation_node(left)?;
         self.get_relation_node(right)?;
+        let lateral = self.is_lateral_scan_function(right)?.then_some(right);
         let join = Join {
             left,
             right,
@@ -942,6 +944,7 @@ impl Plan {
             condition,
             kind,
             distribution: None,
+            lateral,
         };
 
         self.add_relational(join.into())
@@ -1005,6 +1008,9 @@ impl Plan {
                 alias, relation, ..
             }) => alias.clone().or_else(|| Some(relation.clone())),
             Relational::ScanCte(ScanCte { alias, .. }) => Some(alias.clone()),
+            Relational::ScanFunction(_) => self
+                .scan_name(RelColumn::new(child_id, 0))?
+                .map(SmolStr::from),
             Relational::Join(Join { .. }) => Some(self.context_mut().get_unnamed_join_name()),
             _ => None,
         })
@@ -1033,7 +1039,7 @@ impl Plan {
 
         let child_id = if matches!(
             child_rel_node,
-            Relational::ScanRelation(_) | Relational::Join(_)
+            Relational::ScanRelation(_) | Relational::ScanFunction(_) | Relational::Join(_)
         ) {
             self.add_proj(child_id, vec![], &[], false, true)?
         } else {
@@ -1698,6 +1704,26 @@ impl Plan {
         self.add_relational(sq.into())
     }
 
+    /// Adds a scan of a table function.
+    ///
+    /// # Errors
+    /// - `function` is not a call of a table function
+    pub fn add_scan_function(
+        &mut self,
+        function: NodeId,
+        with_ordinality: bool,
+    ) -> Result<NodeId, SbroadError> {
+        let scan = ScanFunction {
+            alias: None,
+            function,
+            subqueries: Vec::new(),
+            with_ordinality,
+            distribution: None,
+        };
+        self.table_function_of(&scan)?;
+        self.add_relational(scan.into())
+    }
+
     /// Normalizes a CTE body before it is exposed via `add_cte_scan`:
     /// ensures the top node is a `Projection` (wrapping non-Projection children
     /// in `ScanSubQuery` + `Projection`) and renames output aliases to match the
@@ -2206,6 +2232,10 @@ impl Plan {
                 self.scan_name(source)
             }
             Relational::ScanCte(ScanCte { alias, .. }) => Ok(Some(alias)),
+            Relational::ScanFunction(scan) => match scan.alias.as_deref() {
+                Some(alias) => Ok(Some(alias)),
+                None => Ok(Some(self.table_function_of(scan)?.0.name)),
+            },
             Relational::ScanSubQuery(ScanSubQuery { alias, .. })
             | Relational::Motion(Motion { alias, .. }) => {
                 if let Some(name) = alias.as_ref() {
@@ -2267,6 +2297,7 @@ impl Plan {
             Relational::Motion(Motion { child: None, .. })
             | Relational::Delete(Delete { child: None, .. })
             | Relational::ScanRelation(_)
+            | Relational::ScanFunction(_)
             | Relational::SelectWithoutScan(_)
             | Relational::Values(_)
             | Relational::Projection(Projection { child: None, .. }) => Children::None,
@@ -2297,6 +2328,7 @@ impl Plan {
             | Relational::Selection(Selection { subqueries, .. })
             | Relational::SelectWithoutScan(SelectWithoutScan { subqueries, .. })
             | Relational::Values(Values { subqueries, .. })
+            | Relational::ScanFunction(ScanFunction { subqueries, .. })
             | Relational::GroupBy(GroupBy { subqueries, .. })
             | Relational::OrderBy(OrderBy { subqueries, .. })
             | Relational::Projection(Projection { subqueries, .. }) => {

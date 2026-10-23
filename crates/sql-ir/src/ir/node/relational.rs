@@ -3,7 +3,7 @@ use smol_str::SmolStr;
 
 use super::{
     ArenaType, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion,
-    NodeAligned, NodeId, OrderBy, Projection, ScanCte, ScanRelation, ScanSubQuery,
+    NodeAligned, NodeId, OrderBy, Projection, ScanCte, ScanFunction, ScanRelation, ScanSubQuery,
     SelectWithoutScan, Selection, Union, UnionAll, Update, Values,
 };
 use crate::{
@@ -27,6 +27,7 @@ pub enum RelOwned {
     Projection(Projection),
     ScanRelation(ScanRelation),
     ScanSubQuery(ScanSubQuery),
+    ScanFunction(ScanFunction),
     Selection(Selection),
     SelectWithoutScan(SelectWithoutScan),
     GroupBy(GroupBy),
@@ -54,6 +55,7 @@ impl From<RelOwned> for NodeAligned {
             RelOwned::Projection(proj) => proj.into(),
             RelOwned::ScanRelation(scan_rel) => scan_rel.into(),
             RelOwned::ScanSubQuery(scan_squery) => scan_squery.into(),
+            RelOwned::ScanFunction(scan_func) => scan_func.into(),
             RelOwned::Selection(selection) => selection.into(),
             RelOwned::SelectWithoutScan(select) => select.into(),
             RelOwned::Union(un) => un.into(),
@@ -90,6 +92,7 @@ impl RelOwned {
             | RelOwned::ScanSubQuery(_) => ArenaType::Arena64,
             RelOwned::Projection(_)
             | RelOwned::ScanRelation(_)
+            | RelOwned::ScanFunction(_)
             | RelOwned::Insert(_)
             | RelOwned::Join(_)
             | RelOwned::GroupBy(_)
@@ -140,6 +143,7 @@ impl RelOwned {
             }
             RelOwned::SelectWithoutScan(SelectWithoutScan { .. })
             | RelOwned::Values(Values { .. })
+            | RelOwned::ScanFunction(ScanFunction { .. })
             | RelOwned::ScanRelation(ScanRelation { .. }) => {
                 assert!(children.is_empty(), "scan must have no children!");
             }
@@ -188,6 +192,7 @@ impl RelOwned {
             RelOwned::Delete(Delete { child: None, .. })
             | RelOwned::Motion(Motion { child: None, .. })
             | RelOwned::ScanRelation(_)
+            | RelOwned::ScanFunction(_)
             | RelOwned::SelectWithoutScan(_)
             | RelOwned::Values(_) => Children::None,
 
@@ -256,6 +261,7 @@ impl RelOwned {
             RelOwned::Delete(Delete { child: None, .. })
             | RelOwned::Motion(Motion { child: None, .. })
             | RelOwned::ScanRelation(_)
+            | RelOwned::ScanFunction(_)
             | RelOwned::SelectWithoutScan(_)
             | RelOwned::Values(_) => MutChildren::None,
             RelOwned::Projection(Projection {
@@ -291,6 +297,9 @@ impl RelOwned {
                 ref mut subqueries, ..
             })
             | RelOwned::Values(Values {
+                ref mut subqueries, ..
+            })
+            | RelOwned::ScanFunction(ScanFunction {
                 ref mut subqueries, ..
             })
             | RelOwned::GroupBy(GroupBy {
@@ -333,6 +342,7 @@ impl RelOwned {
             | RelOwned::Projection(Projection { distribution, .. })
             | RelOwned::ScanRelation(ScanRelation { distribution, .. })
             | RelOwned::ScanSubQuery(ScanSubQuery { distribution, .. })
+            | RelOwned::ScanFunction(ScanFunction { distribution, .. })
             | RelOwned::Selection(Selection { distribution, .. })
             | RelOwned::SelectWithoutScan(SelectWithoutScan { distribution, .. })
             | RelOwned::GroupBy(GroupBy { distribution, .. })
@@ -364,6 +374,7 @@ pub enum Relational<'a> {
     Projection(&'a Projection),
     ScanRelation(&'a ScanRelation),
     ScanSubQuery(&'a ScanSubQuery),
+    ScanFunction(&'a ScanFunction),
     Selection(&'a Selection),
     SelectWithoutScan(&'a SelectWithoutScan),
     GroupBy(&'a GroupBy),
@@ -389,6 +400,7 @@ pub enum MutRelational<'a> {
     Projection(&'a mut Projection),
     ScanRelation(&'a mut ScanRelation),
     ScanSubQuery(&'a mut ScanSubQuery),
+    ScanFunction(&'a mut ScanFunction),
     Selection(&'a mut Selection),
     SelectWithoutScan(&'a mut SelectWithoutScan),
     GroupBy(&'a mut GroupBy),
@@ -428,6 +440,7 @@ impl MutRelational<'_> {
             | MutRelational::Projection(Projection { distribution, .. })
             | MutRelational::ScanRelation(ScanRelation { distribution, .. })
             | MutRelational::ScanSubQuery(ScanSubQuery { distribution, .. })
+            | MutRelational::ScanFunction(ScanFunction { distribution, .. })
             | MutRelational::Selection(Selection { distribution, .. })
             | MutRelational::SelectWithoutScan(SelectWithoutScan { distribution, .. })
             | MutRelational::GroupBy(GroupBy { distribution, .. })
@@ -467,6 +480,7 @@ impl MutRelational<'_> {
             MutRelational::Delete(Delete { child: None, .. })
             | MutRelational::Motion(Motion { child: None, .. })
             | MutRelational::ScanRelation(_)
+            | MutRelational::ScanFunction(_)
             | MutRelational::SelectWithoutScan(_)
             | MutRelational::Values(_) => MutChildren::None,
             MutRelational::Projection(Projection {
@@ -520,6 +534,7 @@ impl MutRelational<'_> {
             }
             MutRelational::SelectWithoutScan(SelectWithoutScan { .. })
             | MutRelational::Values(Values { .. })
+            | MutRelational::ScanFunction(ScanFunction { .. })
             | MutRelational::ScanRelation(ScanRelation { .. }) => {
                 assert!(children.is_empty(), "scan must have no children!");
             }
@@ -563,6 +578,10 @@ impl MutRelational<'_> {
                 subqueries: ref mut old,
                 ..
             })
+            | MutRelational::ScanFunction(ScanFunction {
+                subqueries: ref mut old,
+                ..
+            })
             | MutRelational::OrderBy(OrderBy {
                 subqueries: ref mut old,
                 ..
@@ -591,6 +610,7 @@ impl MutRelational<'_> {
             | MutRelational::Having(Having { subqueries, .. })
             | MutRelational::SelectWithoutScan(SelectWithoutScan { subqueries, .. })
             | MutRelational::Values(Values { subqueries, .. })
+            | MutRelational::ScanFunction(ScanFunction { subqueries, .. })
             | MutRelational::GroupBy(GroupBy { subqueries, .. })
             | MutRelational::OrderBy(OrderBy { subqueries, .. })
             | MutRelational::Projection(Projection { subqueries, .. }) => subqueries.push(sq_id),
@@ -608,7 +628,8 @@ impl MutRelational<'_> {
     pub fn set_scan_name(&mut self, name: Option<SmolStr>) -> Result<(), SbroadError> {
         match self {
             MutRelational::ScanRelation(ScanRelation { ref mut alias, .. })
-            | MutRelational::ScanSubQuery(ScanSubQuery { ref mut alias, .. }) => {
+            | MutRelational::ScanSubQuery(ScanSubQuery { ref mut alias, .. })
+            | MutRelational::ScanFunction(ScanFunction { ref mut alias, .. }) => {
                 *alias = name;
                 Ok(())
             }
@@ -644,6 +665,7 @@ impl<'a> Relational<'a> {
             Relational::Projection(node) => node.distribution.as_deref(),
             Relational::ScanRelation(node) => node.distribution.as_deref(),
             Relational::ScanSubQuery(node) => node.distribution.as_deref(),
+            Relational::ScanFunction(node) => node.distribution.as_deref(),
             Relational::Selection(node) => node.distribution.as_deref(),
             Relational::SelectWithoutScan(node) => node.distribution.as_deref(),
             Relational::GroupBy(node) => node.distribution.as_deref(),
@@ -706,6 +728,7 @@ impl Relational<'_> {
             Relational::Delete(Delete { child: None, .. })
             | Relational::Motion(Motion { child: None, .. })
             | Relational::ScanRelation(_)
+            | Relational::ScanFunction(_)
             | Relational::SelectWithoutScan(SelectWithoutScan { .. })
             | Relational::Values(Values { .. }) => Children::None,
             Relational::Projection(Projection {
@@ -732,6 +755,7 @@ impl Relational<'_> {
             | Relational::Selection(Selection { subqueries, .. })
             | Relational::SelectWithoutScan(SelectWithoutScan { subqueries, .. })
             | Relational::Values(Values { subqueries, .. })
+            | Relational::ScanFunction(ScanFunction { subqueries, .. })
             | Relational::GroupBy(GroupBy { subqueries, .. })
             | Relational::OrderBy(OrderBy { subqueries, .. })
             | Relational::Projection(Projection { subqueries, .. }) => Children::Many(subqueries),
@@ -826,6 +850,7 @@ impl Relational<'_> {
             Relational::ScanCte { .. } => "CTE",
             Relational::ScanRelation { .. } => "Scan",
             Relational::ScanSubQuery { .. } => "Subquery",
+            Relational::ScanFunction { .. } => "FunctionScan",
             Relational::Selection { .. } => "Selection",
             Relational::SelectWithoutScan { .. } => "SelectWithoutScan",
             Relational::GroupBy { .. } => "GroupBy",
@@ -854,6 +879,7 @@ impl Relational<'_> {
             Relational::ScanCte(scan_cte) => RelOwned::ScanCte((*scan_cte).clone()),
             Relational::ScanRelation(scan_rel) => RelOwned::ScanRelation((*scan_rel).clone()),
             Relational::ScanSubQuery(ssubquery) => RelOwned::ScanSubQuery((*ssubquery).clone()),
+            Relational::ScanFunction(scan_func) => RelOwned::ScanFunction((*scan_func).clone()),
             Relational::Selection(sel) => RelOwned::Selection((*sel).clone()),
             Relational::SelectWithoutScan(sel) => RelOwned::SelectWithoutScan((*sel).clone()),
             Relational::Union(un) => RelOwned::Union((*un).clone()),

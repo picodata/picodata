@@ -1740,6 +1740,7 @@ impl<'p> EqualityAnalysis<'p> {
 
             // don't need to analyze these
             Relational::ScanRelation(_)
+            | Relational::ScanFunction(_)
             | Relational::SelectWithoutScan(_)
             | Relational::Values(_)
             | Relational::Delete(Delete { child: None, .. }) => {}
@@ -1768,6 +1769,7 @@ impl<'p> EqualityAnalysis<'p> {
         let is_safe = match rel {
             // Leaf nodes: rows come directly from storage or literals, no transformations.
             Relational::ScanRelation(_)
+            | Relational::ScanFunction(_)
             | Relational::SelectWithoutScan(_)
             | Relational::Values(_) => true,
             // Selection only filters rows without changing their values.

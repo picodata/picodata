@@ -18,10 +18,13 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, Limit, Motion, NodeId,
-    OrderBy, Projection, Reference, ReferenceTarget, ScanCte, ScanRelation, ScanSubQuery,
-    SelectWithoutScan, Selection, Union, UnionAll, Update, Values,
+    OrderBy, Projection, Reference, ReferenceTarget, ScalarFunction, ScanCte, ScanFunction,
+    ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Union, UnionAll, Update, Values,
 };
 use crate::ir::relation::{Column, ColumnRole};
+use crate::ir::table_function::{
+    find_table_function, TableFunction, TableFunctionColumn, TableFunctionColumnType,
+};
 use crate::ir::types::{calculate_unified_types, DerivedType};
 use crate::ir::Plan;
 
@@ -77,6 +80,19 @@ impl<'p> ColumnMeta<'p> {
         }
     }
 
+    /// Column of a table function.
+    fn function_column(column: &'static TableFunctionColumn, call_type: DerivedType) -> Self {
+        let r#type = match column.r#type {
+            TableFunctionColumnType::Fixed(r#type) => DerivedType::new(r#type),
+            TableFunctionColumnType::Call => call_type,
+        };
+        ColumnMeta {
+            name: Cow::Borrowed(column.name),
+            r#type,
+            is_system: false,
+        }
+    }
+
     /// The column name as an owned string, for the callers that keep it
     /// beyond the borrow of the plan it was derived from.
     #[must_use]
@@ -102,6 +118,12 @@ enum ColumnsSource<'p> {
     SetOp { left: NodeId, right: NodeId },
     /// Anonymous columns of the value rows.
     Values { rows: &'p [NodeId] },
+    /// Columns of a table function.
+    Function {
+        function: &'static TableFunction,
+        with_ordinality: bool,
+        call_type: DerivedType,
+    },
     /// No columns at all (`DELETE` without `WHERE`).
     Empty,
 }
@@ -124,6 +146,12 @@ pub enum Columns<'p> {
         types: std::vec::IntoIter<DerivedType>,
         next_pos: usize,
     },
+    Function {
+        function: &'static TableFunction,
+        with_ordinality: bool,
+        call_type: DerivedType,
+        next_pos: usize,
+    },
     Chain {
         left: Box<Columns<'p>>,
         right: Box<Columns<'p>>,
@@ -141,6 +169,12 @@ impl Columns<'_> {
             Columns::Table { columns, .. } => columns.len(),
             Columns::Row { aliases, .. } => aliases.len(),
             Columns::Values { types, .. } => types.len(),
+            Columns::Function {
+                function,
+                with_ordinality,
+                next_pos,
+                ..
+            } => function.result_len(*with_ordinality) - *next_pos,
             Columns::Chain { left, right } => left.remaining() + right.remaining(),
             Columns::Unify { left, .. } => left.remaining(),
             Columns::Empty => 0,
@@ -168,6 +202,16 @@ impl<'p> Iterator for Columns<'p> {
                 let pos = *next_pos;
                 *next_pos += 1;
                 Some(Ok(ColumnMeta::values_column(pos, r#type)))
+            }
+            Columns::Function {
+                function,
+                with_ordinality,
+                call_type,
+                next_pos,
+            } => {
+                let column = function.result_column(*with_ordinality, *next_pos)?;
+                *next_pos += 1;
+                Some(Ok(ColumnMeta::function_column(column, *call_type)))
             }
             Columns::Chain { left, right } => left.next().or_else(|| right.next()),
             Columns::Unify { left, right } => {
@@ -261,6 +305,14 @@ impl Plan {
                     right: *right,
                 },
                 Relational::Values(Values { rows, .. }) => ColumnsSource::Values { rows },
+                Relational::ScanFunction(scan) => {
+                    let (function, call_type) = self.table_function_of(scan)?;
+                    ColumnsSource::Function {
+                        function,
+                        with_ordinality: scan.with_ordinality,
+                        call_type,
+                    }
+                }
             };
             return Ok(source);
         }
@@ -295,6 +347,16 @@ impl Plan {
                 types: self.values_column_types(rows)?.into_iter(),
                 next_pos: 0,
             },
+            ColumnsSource::Function {
+                function,
+                with_ordinality,
+                call_type,
+            } => Columns::Function {
+                function,
+                with_ordinality,
+                call_type,
+                next_pos: 0,
+            },
             ColumnsSource::Empty => Columns::Empty,
         })
     }
@@ -326,6 +388,11 @@ impl Plan {
                 Some(row_id) => self.get_row_list(*row_id)?.len(),
                 None => 0,
             },
+            ColumnsSource::Function {
+                function,
+                with_ordinality,
+                ..
+            } => function.result_len(with_ordinality),
             ColumnsSource::Empty => 0,
         })
     }
@@ -370,6 +437,14 @@ impl Plan {
                 let r#type = self.values_column_type(rel_col, rows)?;
                 Ok(ColumnMeta::values_column(position, r#type))
             }
+            ColumnsSource::Function {
+                function,
+                with_ordinality,
+                call_type,
+            } => function
+                .result_column(with_ordinality, position)
+                .map(|column| ColumnMeta::function_column(column, call_type))
+                .ok_or_else(|| column_not_found(rel_col, function.result_len(with_ordinality))),
             ColumnsSource::Empty => Err(column_not_found(rel_col, 0)),
         }
     }
@@ -397,6 +472,7 @@ impl Plan {
             Relational::ScanRelation(_)
             | Relational::Insert(_)
             | Relational::Values(_)
+            | Relational::ScanFunction(_)
             | Relational::Delete(Delete { child: None, .. }) => {
                 checked(rel_col)?;
                 None
@@ -447,6 +523,49 @@ impl Plan {
             }
         };
         Ok(source)
+    }
+
+    /// The registry entry and the return type of the call of a table
+    /// function scan.
+    ///
+    /// # Errors
+    /// - the call is not a scalar function
+    /// - the function is not in the registry
+    pub fn table_function_of(
+        &self,
+        scan: &ScanFunction,
+    ) -> Result<(&'static TableFunction, DerivedType), SbroadError> {
+        let Expression::ScalarFunction(ScalarFunction {
+            name, func_type, ..
+        }) = self.get_expression_node(scan.function)?
+        else {
+            return Err(SbroadError::Invalid(
+                Entity::Relational,
+                Some(format_smolstr!(
+                    "table function scan {} has no function call",
+                    scan.function
+                )),
+            ));
+        };
+        let function = find_table_function(name)
+            .ok_or_else(|| SbroadError::NotFound(Entity::SQLFunction, format_smolstr!("{name}")))?;
+        Ok((function, *func_type))
+    }
+
+    /// The name tarantool gives to the column at `position` of a table
+    /// function scan. It differs from the name in queries.
+    ///
+    /// # Errors
+    /// - the scan has no table function
+    pub fn function_column_local_name(
+        &self,
+        scan: &ScanFunction,
+        position: usize,
+    ) -> Result<Option<SmolStr>, SbroadError> {
+        let (function, _) = self.table_function_of(scan)?;
+        Ok(function
+            .result_column(scan.with_ordinality, position)
+            .map(|column| SmolStr::new_static(column.local_name)))
     }
 
     fn column_meta_of_alias(&self, alias_id: NodeId) -> Result<ColumnMeta<'_>, SbroadError> {

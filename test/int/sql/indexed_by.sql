@@ -85,11 +85,11 @@ plan:
 │ 2. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "unnamed_subquery".*, "unnamed_subquery_1"."COL_0" as "d" FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > 10::int ) as "unnamed_subquery" INNER JOIN "_tmp_15051660749727515452_0136" as "unnamed_subquery_1" ON true::bool
+SELECT "unnamed_subquery".*, "unnamed_subquery_1"."COL_0" as "d" FROM ( SELECT "t"."a", "t"."b", "t"."c" FROM "t" INDEXED BY "aaa" WHERE "t"."a" > 10::int ) as "unnamed_subquery" INNER JOIN "_tmp_1188005374278615284_0136" as "unnamed_subquery_1" ON true::bool
 ''
 plan:
     [0] SEARCH TABLE t USING COVERING INDEX aaa (a>?) (~262144 rows)
-        [0] SCAN TABLE _tmp_15051660749727515452_0136 AS unnamed_subquery_1 (~1048576 rows)
+        [0] SCAN TABLE _tmp_1188005374278615284_0136 AS unnamed_subquery_1 (~1048576 rows)
 
 -- TEST: indexed-by-7
 -- SQL:

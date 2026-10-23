@@ -358,8 +358,11 @@ Query = { (SelectFull | Values | Insert | Update | Delete) ~ WO ~ DqlOption? }
         Asterisk = ${ (Identifier ~ ".")? ~ "*" }
     WhereClause = _{ ^"where" ~ W ~ Selection }
     Selection = { Expr }
-    Scan = ${ (((PublicSchema)? ~ ScanCteOrTable) | SubQuery) ~ (W ~ (^"as" ~ W)? ~ !(^"indexed" ~ W ~ ^"by" ~ W) ~ !(^"cross" ~ W ~ ^"join" ~ W) ~ Identifier)? ~
+    Scan = ${ (ScanFunction | ((PublicSchema)? ~ ScanCteOrTable) | SubQuery) ~ (W ~ (^"as" ~ W)? ~ !(^"indexed" ~ W ~ ^"by" ~ W) ~ !(^"cross" ~ W ~ ^"join" ~ W) ~ Identifier)? ~
                 IndexedByExpr? }
+        // A table function call. The name is resolved at the stage of `build_ir`.
+        ScanFunction = ${ Identifier ~ WO ~ "(" ~ WO ~ (Expr ~ (WO ~ "," ~ WO ~ Expr)*)? ~ WO ~ ")" ~ (W ~ WithOrdinality)? }
+            WithOrdinality = { ^"with" ~ W ~ ^"ordinality" }
     // `CROSS JOIN` has no condition: it becomes `INNER JOIN ... ON true` in `normalize_join_ast`.
     Join = { (CrossJoinKind ~ W ~ ^"join" ~ W ~ Scan) | ((JoinKind ~ W)? ~ ^"join" ~ W ~ Scan ~ W ~ ^"on" ~ W ~ Expr) }
         CrossJoinKind = { ^"cross" }

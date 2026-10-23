@@ -692,6 +692,11 @@ pub struct Join {
     pub distribution: Option<Box<Distribution>>,
     /// inner or left
     pub kind: JoinKind,
+    /// The table function scan on the right side whose arguments reference
+    /// the columns of the left side (a lateral join). The join keeps the
+    /// dependency explicit: a transformation that replaces the left side
+    /// retargets the arguments without a search of the right subtree.
+    pub lateral: Option<NodeId>,
 }
 
 impl From<Join> for NodeAligned {
@@ -816,6 +821,30 @@ pub struct ScanSubQuery {
 impl From<ScanSubQuery> for NodeAligned {
     fn from(value: ScanSubQuery) -> Self {
         Self::Node64(Node64::ScanSubQuery(value))
+    }
+}
+
+/// A table function in `FROM`, e.g. `generate_series(1, 3)`.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct ScanFunction {
+    /// Scan name.
+    pub alias: Option<SmolStr>,
+    /// The function call (`Expression::ScalarFunction`). Its name is in
+    /// the table function registry (`table_function.rs`), which gives the
+    /// columns. The arguments may reference the columns of the left child of
+    /// the join whose right child is this scan.
+    pub function: NodeId,
+    /// Subqueries in the arguments of the function.
+    pub subqueries: Vec<NodeId>,
+    /// Whether the scan has the ordinality column (`WITH ORDINALITY`).
+    pub with_ordinality: bool,
+    /// Resulting data distribution.
+    pub distribution: Option<Box<Distribution>>,
+}
+
+impl From<ScanFunction> for NodeAligned {
+    fn from(value: ScanFunction) -> Self {
+        Self::Node96(Node96::ScanFunction(value))
     }
 }
 
@@ -2019,6 +2048,7 @@ pub enum Node96 {
     Invalid(Invalid),
     ScalarFunction(ScalarFunction),
     ScanRelation(ScanRelation),
+    ScanFunction(ScanFunction),
     DropProc(DropProc),
     Insert(Insert),
     CreatePlugin(CreatePlugin),
@@ -2057,6 +2087,9 @@ impl Node96 {
             }
             Node96::ScanRelation(scan_relation) => {
                 NodeOwned::Relational(RelOwned::ScanRelation(scan_relation))
+            }
+            Node96::ScanFunction(scan_func) => {
+                NodeOwned::Relational(RelOwned::ScanFunction(scan_func))
             }
         }
     }

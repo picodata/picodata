@@ -5372,6 +5372,7 @@ mod like;
 mod limit;
 mod params;
 mod single;
+mod table_function;
 mod text_literal_parsing;
 mod trim;
 mod union;

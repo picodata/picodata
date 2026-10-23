@@ -299,6 +299,8 @@ fn relation_exposed_column_name(
             };
             exposed_or_output_alias(asterisk_exposed_column_name(view, ir, col_id)?, ir, rel_col)
         }
+        // An asterisk over a table function scan expands to its columns with
+        // their names in queries (see `SyntaxPlan::is_function_column`).
         _ => output_alias_name(ir, rel_col),
     }
 }
@@ -347,6 +349,11 @@ fn sql_column_reference_at(
                     name,
                     qualifier: scan.alias.clone().filter(|alias| !alias.is_empty()),
                 }));
+            }
+            Relational::ScanFunction(scan) => {
+                let name = ir.function_column_local_name(scan, rel_col.position)?;
+                let qualifier = ir.scan_name(rel_col)?.map(SmolStr::from);
+                return Ok(name.map(|name| SqlColumnReference { name, qualifier }));
             }
             _ if is_sql_scope_boundary(&rel_node) => return Ok(None),
             _ => {}
@@ -761,6 +768,9 @@ fn normalize_plan_id_relational(
             for row in &mut values.rows {
                 *row = to_subtree_node_id(*row, node_positions)?;
             }
+        }
+        RelOwned::ScanFunction(scan) => {
+            scan.function = to_subtree_node_id(scan.function, node_positions)?;
         }
         RelOwned::ScanCte(_)
         | RelOwned::Except(_)
@@ -1371,6 +1381,7 @@ where
                             push_identifier(&mut sql, relation)
                         }
                         Relational::ScanSubQuery { .. }
+                        | Relational::ScanFunction { .. }
                         | Relational::ScanCte { .. }
                         | Relational::Motion { .. }
                         | Relational::Limit { .. } => {}

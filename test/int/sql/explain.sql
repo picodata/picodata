@@ -464,7 +464,7 @@ FROM
       "ts2"."COL_3" as "gr_expr_6"
     FROM
       "testing_space"
-      INNER JOIN "_tmp_4030661933660288186_0136" as "ts2" ON true::bool
+      INNER JOIN "_tmp_9647742577698483942_0136" as "ts2" ON true::bool
     GROUP BY
       "testing_space"."id",
       "testing_space"."name",
@@ -480,7 +480,7 @@ LIMIT
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
-        [0] SCAN TABLE _tmp_4030661933660288186_0136 AS ts2 (~1048576 rows)
+        [0] SCAN TABLE _tmp_9647742577698483942_0136 AS ts2 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -505,7 +505,7 @@ FROM
       "COL_4" as "name",
       "COL_5" as "product_units"
     FROM
-      "_tmp_8093904385098465363_1136"
+      "_tmp_6321919970113785243_1136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -520,7 +520,7 @@ LIMIT
   1
 ''
 plan:
-    [0] SCAN TABLE _tmp_8093904385098465363_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_6321919970113785243_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 
@@ -567,12 +567,12 @@ plan:
 │ 2. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."name" in ( SELECT "COL_0" FROM "_tmp_17207640828028701694_0136" )
+SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."name" in ( SELECT "COL_0" FROM "_tmp_9784665502195821441_0136" )
 ''
 plan:
     [0] SCAN TABLE testing_space (~983040 rows)
     [0] EXECUTE LIST SUBQUERY 1
-    [1] SCAN TABLE _tmp_17207640828028701694_0136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_9784665502195821441_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-9
 -- SQL:
@@ -597,22 +597,22 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM "_tmp_1879919115115793640_0136" GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
+SELECT "COL_0" as "id" FROM "_tmp_11085693794112818350_0136" GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_1879919115115793640_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_11085693794112818350_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭─────────────────────────────────╮
 │ 3. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "_tmp_15698261853737091517_1136" )
+SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "_tmp_8806135206306291943_1136" )
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows)
     [0] EXECUTE LIST SUBQUERY 1
-    [1] SCAN TABLE _tmp_15698261853737091517_1136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_8806135206306291943_1136 (~1048576 rows)
 
 -- TEST: test_raw_explain-11
 -- SQL:
@@ -646,22 +646,22 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM "_tmp_8118577962894911439_1136" GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
+SELECT "COL_0" as "id" FROM "_tmp_16896569105585089344_1136" GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_8118577962894911439_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_16896569105585089344_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭─────────────────────────────────╮
 │ 3. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT (-1)::int as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "_tmp_13929232135089140622_2136" )
+SELECT (-1)::int as "col_0", "testing_space"."id" as "col_1" FROM "testing_space" WHERE "testing_space"."id" in ( SELECT "COL_0" FROM "_tmp_6254620641207483098_2136" )
 ''
 plan:
     [0] SEARCH TABLE testing_space USING PRIMARY KEY (id=?) (~24 rows)
     [0] EXECUTE LIST SUBQUERY 1
-    [1] SCAN TABLE _tmp_13929232135089140622_2136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_6254620641207483098_2136 (~1048576 rows)
 
 -- TEST: test_raw_explain-15
 -- SKIP_FOR: 1rsX1
@@ -728,12 +728,12 @@ plan:
 │ 2. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" in ( SELECT "COL_0" FROM "_tmp_3036193916651848693_0136" )
+SELECT "testing_space"."id" as "pk_col_0" FROM "testing_space" WHERE "testing_space"."product_units" in ( SELECT "COL_0" FROM "_tmp_83206163493911367_0136" )
 ''
 plan:
     [0] SCAN TABLE testing_space (~983040 rows)
     [0] EXECUTE LIST SUBQUERY 1
-    [1] SCAN TABLE _tmp_3036193916651848693_0136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_83206163493911367_0136 (~1048576 rows)
 
 -- TEST: test_raw_explain-19
 -- SQL:
@@ -803,10 +803,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1"::int)::int as "global_rows", sum ("COL_3"::decimal) as "global_units", sum ("COL_2"::decimal) as "local_units" FROM "_tmp_11484464996825375076_0136" GROUP BY "COL_0" HAVING sum ("COL_2"::decimal) > sum ("COL_3"::decimal) ) ORDER BY "global_units" DESC LIMIT 10
+SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1"::int)::int as "global_rows", sum ("COL_3"::decimal) as "global_units", sum ("COL_2"::decimal) as "local_units" FROM "_tmp_10120127183721758651_0136" GROUP BY "COL_0" HAVING sum ("COL_2"::decimal) > sum ("COL_3"::decimal) ) ORDER BY "global_units" DESC LIMIT 10
 ''
 plan:
-    [0] SCAN TABLE _tmp_11484464996825375076_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_10120127183721758651_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 
@@ -847,22 +847,22 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "name" FROM "_tmp_4296662620284110760_0136" ORDER BY "COL_0" LIMIT 1
+SELECT "COL_0" as "name" FROM "_tmp_14361050788069210878_0136" ORDER BY "COL_0" LIMIT 1
 ''
 plan:
-    [0] SCAN TABLE _tmp_4296662620284110760_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_14361050788069210878_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
 ╭───────────────────╮
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-VALUES ( ( SELECT 1::int as "col_1"), ( SELECT "COL_0" FROM "_tmp_1700972641187614971_1136" ), 42::int + 67::int )
+VALUES ( ( SELECT 1::int as "col_1"), ( SELECT "COL_0" FROM "_tmp_213116535818412179_1136" ), 42::int + 67::int )
 ''
 plan:
     [0] EXECUTE SCALAR SUBQUERY 1
     [0] EXECUTE SCALAR SUBQUERY 2
-    [2] SCAN TABLE _tmp_1700972641187614971_1136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_213116535818412179_1136 (~1048576 rows)
 
 -- TEST: test_raw_explain-25
 -- SQL:
@@ -1191,11 +1191,11 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT * FROM ( SELECT "COL_0" FROM "_tmp_13849385474960940815_0136" ) as "cte" INNER JOIN ( SELECT "COL_0" FROM "_tmp_13849385474960940815_0136" ) as "t2" ON true::bool
+SELECT * FROM ( SELECT "COL_0" FROM "_tmp_13842208958856449387_0136" ) as "cte" INNER JOIN ( SELECT "COL_0" FROM "_tmp_13842208958856449387_0136" ) as "t2" ON true::bool
 ''
 plan:
-    [0] SCAN TABLE _tmp_13849385474960940815_0136 (~1048576 rows)
-        [0] SCAN TABLE _tmp_13849385474960940815_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13842208958856449387_0136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_13842208958856449387_0136 (~1048576 rows)
 
 -- TEST: explain-insert-with-buckets-setup
 -- SQL:

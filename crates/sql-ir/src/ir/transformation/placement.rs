@@ -460,6 +460,9 @@ impl Plan {
             // A new Selection is supported only on the projection's direct input.
             Relational::Projection(projection) => (projection.child == Some(child))
                 .then_some(Placement::NewSelection { parent, child }),
+            // A lateral table function references the other join operand, which
+            // a subquery cannot see: it stays a direct operand of the join.
+            Relational::Join(Join { lateral, .. }) if *lateral == Some(child) => None,
             // A join / set-op operand must be a named relation: wrap it in a
             // `SELECT *` carrier. Refused over an immediate join, whose two input
             // qualifiers (`l`, `r`) a single carrier alias cannot preserve; the `*`

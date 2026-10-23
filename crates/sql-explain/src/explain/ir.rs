@@ -12,8 +12,8 @@ use sql_ir::ir::node::relational::Relational;
 use sql_ir::ir::node::{
     Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Constant, Delete, Having, IndexExpr,
     Insert, Join, Motion as MotionRel, NodeId, Reference, Row as RowExpr, ScalarFunction, ScanCte,
-    ScanRelation, ScanSubQuery, Selection, SubQueryReference, Timestamp, Trim, UnaryExpr,
-    Update as UpdateRel, Values,
+    ScanFunction, ScanRelation, ScanSubQuery, Selection, SubQueryReference, Timestamp, Trim,
+    UnaryExpr, Update as UpdateRel, Values,
 };
 use sql_ir::ir::node::{Bound, BoundType, Frame, FrameType, Limit, Over, Window};
 use sql_ir::ir::operator::{
@@ -1146,6 +1146,33 @@ impl Display for Scan {
     }
 }
 
+/// `scan func(args) [with ordinality] [-> alias]`
+#[derive(Debug, PartialEq, Clone)]
+struct FunctionScan {
+    name: SmolStr,
+    args: Vec<ColExpr>,
+    with_ordinality: bool,
+    alias: Option<SmolStr>,
+    should_fmt: bool,
+}
+
+impl Display for FunctionScan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The column types are known from the function, so the return type
+        // of the call is not printed.
+        write!(f, "scan {}(", properly_quoted_name(&self.name))?;
+        write_list::<CommaSep>(f, &self.args, self.should_fmt)?;
+        write!(f, ")")?;
+        if self.with_ordinality {
+            write!(f, " with ordinality")?;
+        }
+        if let Some(alias) = &self.alias {
+            write!(f, " -> {}", properly_quoted_name(alias))?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 struct Ref {
     /// Reference to subquery/window index in `FullExplain` parts
@@ -1413,6 +1440,7 @@ enum ExplainNode {
     Insert(SmolStr, SmolStr),
     Cte(SmolStr, Ref),
     Scan(Scan),
+    FunctionScan(FunctionScan),
     SubQuery(SubQuery),
     Motion(Motion),
     Limit(u64),
@@ -1459,6 +1487,7 @@ impl Display for ExplainNode {
                 )?;
             }
             ExplainNode::Scan(scan) => write!(f, "{scan}")?,
+            ExplainNode::FunctionScan(scan) => write!(f, "{scan}")?,
             ExplainNode::SubQuery(subquery) => write!(f, "{subquery}")?,
             ExplainNode::Motion(motion) => write!(f, "{motion}")?,
             ExplainNode::Limit(limit) => write!(f, "limit {limit}")?,
@@ -1692,6 +1721,38 @@ impl LogicalExplain {
                     let scan = Scan::new(relation.clone(), alias.clone(), indexed_by.clone());
 
                     (ExplainNode::Scan(scan), vec![])
+                }
+                Relational::ScanFunction(ScanFunction {
+                    alias,
+                    function,
+                    with_ordinality,
+                    subqueries,
+                    ..
+                }) => {
+                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
+                        &mut stack,
+                        &mut known_subqueries,
+                        subqueries,
+                    );
+                    let ColExpr::ScalarFunction(name, args, _, _, should_fmt) =
+                        ColExpr::new(ir, *function, &sq_ref_map, should_fmt)?
+                    else {
+                        return Err(SbroadError::Invalid(
+                            Entity::Relational,
+                            Some(format_smolstr!(
+                                "table function scan {id} has no function call"
+                            )),
+                        ));
+                    };
+                    let scan = FunctionScan {
+                        name,
+                        args,
+                        with_ordinality: *with_ordinality,
+                        alias: alias.clone(),
+                        should_fmt,
+                    };
+
+                    (ExplainNode::FunctionScan(scan), vec![])
                 }
                 Relational::ScanCte(ScanCte { alias, child, .. }) => {
                     let child_tree = stack.pop().expect("CTE node must have exactly one child");
