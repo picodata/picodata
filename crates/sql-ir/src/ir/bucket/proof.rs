@@ -39,6 +39,11 @@ pub(crate) enum BucketProof {
         nonempty: bool,
         keys: HashSet<RoutingKey, RepeatableState>,
     },
+    /// Either Any or at most `upper` buckets, with no key: a possibly empty
+    /// filtered set united with Any.
+    MaybeAny {
+        upper: usize,
+    },
     /// May include Any: unlike All, this cannot preserve a key through OR.
     Unknown,
 }
@@ -53,7 +58,10 @@ impl BucketProof {
     }
 
     pub(crate) fn is_single_node(&self) -> bool {
-        matches!(self, Self::Any | Self::Filtered { upper: 0..=1, .. })
+        matches!(
+            self,
+            Self::Any | Self::Filtered { upper: 0..=1, .. } | Self::MaybeAny { upper: 0..=1 }
+        )
     }
 
     pub(crate) fn is_nonempty_filtered(&self) -> bool {
@@ -80,7 +88,7 @@ impl BucketAlgebra for BucketProof {
     }
 
     fn conjunct(&self, other: &Self) -> Self {
-        use BucketProof::{All, Any, Filtered, Unknown};
+        use BucketProof::{All, Any, Filtered, MaybeAny, Unknown};
         match (self, other) {
             (Filtered { upper: 0, .. }, _) | (_, Filtered { upper: 0, .. }) => Self::new_empty(),
             (
@@ -99,14 +107,19 @@ impl BucketAlgebra for BucketProof {
                 nonempty: *an && *bn && !ak.is_disjoint(bk),
                 keys: ak.union(bk).cloned().collect(),
             },
-            (Unknown, Filtered { upper, keys, .. }) | (Filtered { upper, keys, .. }, Unknown) => {
-                Filtered {
-                    upper: *upper,
-                    nonempty: false,
-                    keys: keys.clone(),
-                }
-            }
+            (Unknown | MaybeAny { .. }, Filtered { upper, keys, .. })
+            | (Filtered { upper, keys, .. }, Unknown | MaybeAny { .. }) => Filtered {
+                upper: *upper,
+                nonempty: false,
+                keys: keys.clone(),
+            },
             (Unknown, _) | (_, Unknown) => Unknown,
+            (MaybeAny { upper: a }, MaybeAny { upper: b }) => MaybeAny {
+                upper: (*a).max(*b),
+            },
+            (maybe @ MaybeAny { .. }, All | Any) | (All | Any, maybe @ MaybeAny { .. }) => {
+                maybe.clone()
+            }
             (All | Any, filtered @ Filtered { .. }) | (filtered @ Filtered { .. }, All | Any) => {
                 filtered.clone()
             }
@@ -116,7 +129,7 @@ impl BucketAlgebra for BucketProof {
     }
 
     fn disjunct(&self, other: &Self) -> Self {
-        use BucketProof::{All, Any, Filtered, Unknown};
+        use BucketProof::{All, Any, Filtered, MaybeAny, Unknown};
         match (self, other) {
             (All, _) | (_, All) => All,
             (Unknown, _) | (_, Unknown) => Unknown,
@@ -151,7 +164,14 @@ impl BucketAlgebra for BucketProof {
             | (filtered @ Filtered { nonempty: true, .. }, Any) => filtered.clone(),
             // If the filtered set turns out empty, the executor returns Any.
             // Keeping its keys could then incorrectly constrain a later AND.
-            (Any, Filtered { .. }) | (Filtered { .. }, Any) => Unknown,
+            (Any, Filtered { upper, .. }) | (Filtered { upper, .. }, Any) => {
+                MaybeAny { upper: *upper }
+            }
+            (MaybeAny { upper: a }, Filtered { upper: b, .. } | MaybeAny { upper: b })
+            | (Filtered { upper: a, .. }, MaybeAny { upper: b }) => MaybeAny {
+                upper: a.saturating_add(*b),
+            },
+            (maybe @ MaybeAny { .. }, Any) | (Any, maybe @ MaybeAny { .. }) => maybe.clone(),
             (Any, Any) => Any,
         }
     }

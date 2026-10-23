@@ -659,8 +659,10 @@ impl Plan {
                 let left = self.single_node_buckets(join.left, cache)?;
                 let right = self.single_node_buckets(join.right, cache)?;
                 match join.kind {
+                    // The executor routes a left input of Any by the right one:
+                    // a left input that may turn out Any must allow for it too.
                     JoinKind::LeftOuter => Ok(match left {
-                        BucketProof::Any => left.disjunct(&right),
+                        BucketProof::Any | BucketProof::MaybeAny { .. } => left.disjunct(&right),
                         _ => left,
                     }),
                     JoinKind::Inner => {

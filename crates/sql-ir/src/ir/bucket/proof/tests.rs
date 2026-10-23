@@ -13,6 +13,13 @@ fn key(value: i64) -> BucketProof {
 fn check(proof: &BucketProof, actual: &Buckets, mapping: &[u64; 4]) {
     match proof {
         BucketProof::Unknown => (),
+        BucketProof::MaybeAny { upper } => match actual {
+            Buckets::Any => (),
+            Buckets::Filtered(BucketSet::Exact(buckets)) => {
+                assert!(buckets.len() <= *upper, "{proof:?}: {actual:?}")
+            }
+            _ => panic!("{proof:?} does not cover {actual:?}"),
+        },
         BucketProof::All => assert_eq!(actual, &Buckets::All),
         BucketProof::Any => assert_eq!(actual, &Buckets::Any),
         BucketProof::Filtered {
@@ -93,7 +100,8 @@ fn contradictory_keys_keep_common_constraints() {
 fn any_must_not_keep_a_possibly_empty_anchor() {
     let maybe_empty = key(1).conjunct(&key(2));
     let union = BucketProof::Any.disjunct(&maybe_empty);
-    assert_eq!(union, BucketProof::Unknown);
+    assert_eq!(union, BucketProof::MaybeAny { upper: 1 });
+    assert!(union.is_single_node());
     // When 1 and 2 route apart, the executor's union is Any. The subsequent
     // filter selects key 3; it must not inherit keys 1 or 2 from the union.
     let filtered = union.conjunct(&key(3));
@@ -118,6 +126,7 @@ fn unknown_parameters_have_no_shared_key() {
     // A NULL binding turns this union into Any, so a later filter may widen
     // it to both buckets. The parameter's upper bound must not survive.
     let global_join = BucketProof::Any.disjunct(&parameter);
+    assert!(global_join.is_single_node());
     assert!(!global_join
         .conjunct(&key(1).disjunct(&key(2)))
         .is_single_node());

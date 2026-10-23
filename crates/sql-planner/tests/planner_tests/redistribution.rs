@@ -1599,3 +1599,42 @@ fn motions_cache_matches_recomputation() {
         let _ = sql_to_optimized_ir(query, vec![]);
     }
 }
+
+/// The sharding-key filter is pushed below the join with a global table. A
+/// NULL binding empties that side and routes the join to any single node, so
+/// ORDER BY still needs no motion.
+#[cfg(feature = "enrich_restrictions")]
+#[test]
+fn prepared_sharding_key_pushed_below_global_join_stays_single_node() {
+    let query = r#"SELECT * FROM "t5" JOIN "global_t" ON true WHERE "t5"."a" = $1 ORDER BY 1"#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
+
+    assert_eq!(Slices::empty(), *plan.slices());
+}
+
+/// The same bound without enrichment: the filter is already below the join.
+#[test]
+fn prepared_sharding_key_below_global_join_stays_single_node() {
+    let query = r#"SELECT * FROM (SELECT * FROM "t5" WHERE "a" = $1) AS "s"
+        JOIN "global_t" ON true ORDER BY 1"#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
+
+    assert_eq!(Slices::empty(), *plan.slices());
+}
+
+/// A NULL binding empties the filtered input of the join with a global table
+/// and makes it Any. The executor then routes the LEFT JOIN by its right
+/// input, every bucket, so `count(*)` still needs a motion.
+#[test]
+fn prepared_left_join_over_maybe_any_keeps_motion() {
+    let query = r#"SELECT count(*) FROM (
+        SELECT "s"."a" AS "x" FROM (SELECT * FROM "t5" WHERE "a" = $1) AS "s"
+        JOIN "global_t" ON true
+    ) AS "l" LEFT JOIN "t5" AS "r" ON "l"."x" = "r"."a""#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
+
+    assert_ne!(Slices::empty(), *plan.slices());
+}
