@@ -5,6 +5,8 @@ set -euo pipefail
 DIR=$(realpath "${1:-$PWD}")
 # Skip tarantool's own tests (built due to BUILD_TESTING), they take gigabytes.
 PRUNE=(-path '*/build/tarantool-sys/*/test' -prune -o)
+# Skip cargo build scripts. They are not instrumented for coverage.
+PRUNE+=(-path '*/build/*' -name 'build[-_]script[-_]build*' -prune -o)
 {
   find "$DIR" "${PRUNE[@]}" -executable -type f -exec file -i {} + \
     | awk -F: '/application\/x-(pie-)?(executable|sharedlib)/ { print $1 }'
