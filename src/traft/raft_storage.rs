@@ -155,7 +155,7 @@ impl RaftSpaceAccess {
 
     /// Lookup `cluster_name` in `_raft_state` system space.
     ///
-    /// NOTE: you probably instead want to use `node.topology_cache.cluster_name`
+    /// NOTE: you probably instead want to use `node.catalog_cache.cluster_name`
     /// if you have access to [`crate::traft::node::Node`].
     #[inline(always)]
     pub fn cluster_name(&self) -> tarantool::Result<String> {
@@ -166,7 +166,7 @@ impl RaftSpaceAccess {
 
     /// Lookup `cluster_uuid` in `_raft_state` system space.
     ///
-    /// NOTE: you probably instead want to use `node.topology_cache.cluster_uuid`
+    /// NOTE: you probably instead want to use `node.catalog_cache.cluster_uuid`
     /// if you have access to [`crate::traft::node::Node`].
     #[inline(always)]
     pub fn cluster_uuid(&self) -> tarantool::Result<String> {

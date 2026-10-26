@@ -63,8 +63,8 @@ impl Loop {
         }
 
         let node = node::global().expect("just checked it's ok");
-        let cluster_name = node.topology_cache.cluster_name;
-        let cluster_uuid = node.topology_cache.cluster_uuid;
+        let cluster_name = node.catalog_cache.cluster_name;
+        let cluster_uuid = node.catalog_cache.cluster_uuid;
         let my_raft_id = node.raft_id;
         ////////////////////////////////////////////////////////////////////////
         // Awoken during graceful shutdown.
@@ -72,15 +72,15 @@ impl Loop {
         if status.get() == SentinelStatus::ShuttingDown {
             set_action_kind(&mut stats.borrow_mut(), ActionKind::Shutdown, None);
 
-            let my_target_state = node.topology_cache.my_target_state();
+            let my_target_state = node.catalog_cache.my_target_state();
             if my_target_state.variant == Expelled {
                 tlog!(Debug, "instance has been expelled, sentinel out");
                 return ControlFlow::Break(());
             }
 
-            // Topology cache state corresponds to this applied index.
+            // Catalog cache state corresponds to this applied index.
             let index = node.get_index();
-            let instance_name = node.topology_cache.my_instance_name().into();
+            let instance_name = node.catalog_cache.my_instance_name().into();
             let req = rpc::update_instance::Request::new(instance_name, cluster_name, cluster_uuid)
                 .with_target_state(Offline)
                 .with_target_state_reason("shutdown");
@@ -136,7 +136,7 @@ impl Loop {
                 .borrow_mut()
                 .cleanup_applied_index_history(now);
 
-            let topology_ref = node.topology_cache.get();
+            let topology_ref = node.catalog_cache.get();
             let instances = topology_ref.all_instances();
             let unreachables = instance_reachability.borrow().get_unreachables();
             let mut instance_to_downgrade = None;
@@ -165,7 +165,7 @@ impl Loop {
                 return ControlFlow::Continue(());
             };
 
-            // Topology cache state corresponds to this applied index.
+            // Catalog cache state corresponds to this applied index.
             let index = node.get_index();
             set_action_kind(
                 &mut stats.borrow_mut(),
@@ -214,10 +214,10 @@ impl Loop {
         ////////////////////////////////////////////////////////////////////////
         // When running not on leader, check if own target has automatically
         // changed to Offline and try to update it to Online.
-        let my_target_state = node.topology_cache.my_target_state();
+        let my_target_state = node.catalog_cache.my_target_state();
         if my_target_state.variant == Offline {
             crate::error_injection!("FORCE_AUTO_OFFLINE" => |target_name| {
-                if target_name == node.topology_cache.my_instance_name() {
+                if target_name == node.catalog_cache.my_instance_name() {
                     _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
                     return ControlFlow::Continue(());
                 }
@@ -238,9 +238,9 @@ impl Loop {
                         Self::SENTINEL_REPLICATION_BROKEN_WAIT,
                     ))
             {
-                // Topology cache state corresponds to this applied index.
+                // Catalog cache state corresponds to this applied index.
                 let index = node.get_index();
-                let instance_name = node.topology_cache.my_instance_name().into();
+                let instance_name = node.catalog_cache.my_instance_name().into();
 
                 tlog!(Info, "setting own target state Online");
                 let req =

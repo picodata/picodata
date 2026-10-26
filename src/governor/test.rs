@@ -1,5 +1,6 @@
 #![allow(clippy::inconsistent_digit_grouping)]
 use crate::cas;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::governor::batch::LastStepInfo;
 use crate::governor::ActionKind;
 use crate::governor::GovernorStatus;
@@ -32,7 +33,6 @@ use crate::storage::SystemTable;
 use crate::tier::Tier;
 use crate::tier::TierConfig;
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::network;
 use crate::traft::network::RaftIdOrName;
@@ -165,7 +165,7 @@ fn setup_topology(
             learners.push(instance.raft_id);
         }
         node.storage.instances.put(instance).unwrap();
-        node.topology_cache
+        node.catalog_cache
             .update_instance(None, Some(instance.clone()));
     }
 
@@ -177,7 +177,7 @@ fn setup_topology(
         // Callers wants to control the replicaset setup
         for replicaset in replicasets {
             node.storage.replicasets.put(replicaset).unwrap();
-            node.topology_cache
+            node.catalog_cache
                 .update_replicaset(None, Some(replicaset.clone()));
         }
     } else {
@@ -187,8 +187,7 @@ fn setup_topology(
         replicaset.state = ReplicasetState::Ready;
 
         node.storage.replicasets.put(&replicaset).unwrap();
-        node.topology_cache
-            .update_replicaset(None, Some(replicaset));
+        node.catalog_cache.update_replicaset(None, Some(replicaset));
     }
 
     //
@@ -203,7 +202,7 @@ fn setup_topology(
                 .borrow_mut()
                 .per_tier
                 .insert(tier.name.clone(), TierConfig::for_tier(tier));
-            node.topology_cache.update_tier(None, Some(tier.clone()));
+            node.catalog_cache.update_tier(None, Some(tier.clone()));
         }
     } else {
         // Caller wants automatic tier setup
@@ -216,7 +215,7 @@ fn setup_topology(
             .borrow_mut()
             .per_tier
             .insert(tier.name.clone(), TierConfig::for_tier(&tier));
-        node.topology_cache.update_tier(None, Some(tier));
+        node.catalog_cache.update_tier(None, Some(tier));
     }
 
     //
@@ -328,7 +327,7 @@ fn dummy_instance(raft_id: u64) -> Instance {
 }
 
 fn masters_and_replicas(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
 ) -> (HashSet<InstanceName>, HashSet<InstanceName>) {
     let mut masters = HashSet::new();
     let mut replicas = HashSet::new();
@@ -552,10 +551,10 @@ fn do_governor_loop_proc_before_online_batching(params: BatchingRpcTestParameter
         let fail = rng.random_bool(params.p_cas_err);
         if !fail {
             for name in actual_ok_targets {
-                let old_instance = node.topology_cache.clone_instance_by_name(&name).unwrap();
+                let old_instance = node.catalog_cache.clone_instance_by_name(&name).unwrap();
                 let mut new_instance = old_instance.clone();
                 new_instance.current_state.variant = StateVariant::Online;
-                node.topology_cache
+                node.catalog_cache
                     .update_instance(Some(old_instance), Some(new_instance));
 
                 assert!(
@@ -577,7 +576,7 @@ fn do_governor_loop_proc_before_online_batching(params: BatchingRpcTestParameter
     // Make sure all instances were handled
     if ok_so_far.len() != params.num_instances {
         let mut missing = vec![];
-        let topology_ref = node.topology_cache.get();
+        let topology_ref = node.catalog_cache.get();
         for instance in topology_ref.all_instances() {
             if !ok_so_far.contains(&instance.name) {
                 missing.push(instance.clone());
@@ -744,7 +743,7 @@ fn do_governor_loop_proc_sharding_batching(params: BatchingRpcTestParameters) {
 
             // Verify CAS request
             let tier = node
-                .topology_cache
+                .catalog_cache
                 .get()
                 .tier_by_name(&tier.name)
                 .unwrap()
@@ -802,7 +801,7 @@ fn do_governor_loop_proc_sharding_batching(params: BatchingRpcTestParameters) {
 
                 let mut new_tier = tier.clone();
                 new_tier.current_vshard_config_version = current_vshard_config_version;
-                node.topology_cache.update_tier(Some(tier), Some(new_tier));
+                node.catalog_cache.update_tier(Some(tier), Some(new_tier));
                 cas_request_handled = true;
             } else {
                 // It's possible that the CAS request get's dropped due to
@@ -1043,7 +1042,7 @@ fn do_governor_loop_proc_apply_schema_change_batching(params: BatchingRpcTestPar
     }
 
     // Make sure only masters received the RPC
-    let all_masters = replicasets_masters(&node.topology_cache.get());
+    let all_masters = replicasets_masters(&node.catalog_cache.get());
     let all_masters = HashSet::from_iter(all_masters);
     assert_eq!(all_masters, ok_so_far);
 
@@ -1285,7 +1284,7 @@ fn do_governor_loop_truncate_table_batching(params: BatchingRpcTestParameters) {
         .map(|instance| instance.name.clone())
         .collect();
 
-    let all_masters = replicasets_masters(&node.topology_cache.get());
+    let all_masters = replicasets_masters(&node.catalog_cache.get());
     let other_tier_masters: HashSet<_> = all_masters
         .into_iter()
         .filter(|instance| !tier_1_instance_names.contains(instance))
@@ -1506,7 +1505,7 @@ fn do_governor_loop_backup_batching(params: BatchingRpcTestParameters) {
     let mut cas_request_handled = false;
     let mut stats = BatchingRpcTestStats::default();
 
-    let (all_masters, all_replicas) = masters_and_replicas(&node.topology_cache.get());
+    let (all_masters, all_replicas) = masters_and_replicas(&node.catalog_cache.get());
 
     while !pretend_state.get().governor_idle {
         //

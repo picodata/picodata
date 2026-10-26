@@ -49,7 +49,7 @@ pub fn maybe_make_system_spaces_sync() -> Result<()> {
 /// Get replication mode and factor for current instance's tier.
 ///
 /// Get values from config. Use when cannot get values from
-/// topology_cache reliably (no synchronization via `wait_index`).
+/// catalog_cache reliably (no synchronization via `wait_index`).
 pub fn get_this_tier_replication_mode_and_factor() -> Result<(ReplicationMode, u8)> {
     get_tier_replication_mode_and_factor(PicodataConfig::get())
 }

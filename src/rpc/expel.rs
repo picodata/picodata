@@ -26,7 +26,7 @@ crate::define_rpc_request! {
     fn proc_expel(req: Request) -> Result<Response> {
         let node = node::global()?;
 
-        let topology_ref = node.topology_cache.get();
+        let topology_ref = node.catalog_cache.get();
         let instance = topology_ref.instance_by_uuid(&req.instance_uuid)?;
         if has_states!(instance, * -> Expelled) {
             // Idempotency
@@ -61,8 +61,8 @@ crate::define_rpc_request! {
 
         let timeout = req.timeout;
 
-        let cluster_name = node.topology_cache.cluster_name;
-        let cluster_uuid = node.topology_cache.cluster_uuid;
+        let cluster_name = node.catalog_cache.cluster_name;
+        let cluster_uuid = node.catalog_cache.cluster_uuid;
         let req = rpc::update_instance::Request::new(instance.name.clone(), cluster_name, cluster_uuid)
             .with_target_state(Expelled)
             .with_target_state_reason("expel");
@@ -104,7 +104,7 @@ pub mod redirect {
             let node = node::global()?;
             let instance_uuid = &req_to_leader.instance_uuid;
             loop {
-                let topology_ref = node.topology_cache.get();
+                let topology_ref = node.catalog_cache.get();
                 let instance = topology_ref.instance_by_uuid(instance_uuid)?;
                 if has_states!(instance, Expelled -> *) {
                     break

@@ -1,9 +1,9 @@
 //! Remote procedure calls
 
+use crate::catalog_cache::CatalogCacheRef;
 use crate::has_states;
 use crate::instance::InstanceName;
 use crate::static_ref;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::{node, Result};
 use crate::util::relay_connection_config;
@@ -32,7 +32,7 @@ pub mod update_instance;
 
 static mut STATIC_PROCS: Option<HashSet<String>> = None;
 
-pub fn replicasets_masters(topology_ref: &TopologyCacheRef) -> Vec<InstanceName> {
+pub fn replicasets_masters(topology_ref: &CatalogCacheRef) -> Vec<InstanceName> {
     let num_replicasets = topology_ref.all_replicasets().size_hint().1.unwrap_or(0);
     let mut masters = Vec::with_capacity(num_replicasets);
 

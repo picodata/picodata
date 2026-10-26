@@ -1,10 +1,10 @@
+use crate::catalog_cache::CatalogCacheRef;
 use crate::governor::plan::stage::ActionKind;
 use crate::governor::plan::stage::Plan;
 use crate::instance::InstanceName;
 use crate::plugin::PluginOp;
 use crate::tier::Tier;
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use smol_str::format_smolstr;
 use smol_str::SmolStr;
 use std::collections::hash_map::Entry;
@@ -152,18 +152,18 @@ impl LastStepInfo {
     /// here, then the call to `on_next_step` in governor loop will reset the
     /// vshard config versions and the first batch of RPCs will always need to
     /// be resent. I couldn't come up with a better solution unfortunately
-    pub fn update_vshard_config_versions(&mut self, topology_ref: &TopologyCacheRef) {
+    pub fn update_vshard_config_versions(&mut self, topology_ref: &CatalogCacheRef) {
         self.update_tier_versions::<{ Self::VERSION_KIND_VSHARD_CONFIG }>(topology_ref)
     }
 
-    pub fn update_bucket_state_versions(&mut self, topology_ref: &TopologyCacheRef) {
+    pub fn update_bucket_state_versions(&mut self, topology_ref: &CatalogCacheRef) {
         self.update_tier_versions::<{ Self::VERSION_KIND_BUCKET_STATE }>(topology_ref)
     }
 
     const VERSION_KIND_VSHARD_CONFIG: u8 = 0;
     const VERSION_KIND_BUCKET_STATE: u8 = 1;
 
-    fn update_tier_versions<const KIND: u8>(&mut self, topology_ref: &TopologyCacheRef) {
+    fn update_tier_versions<const KIND: u8>(&mut self, topology_ref: &CatalogCacheRef) {
         let mut something_changed = false;
         let mut reason = SmolStr::new_static("<unknown reason>");
 

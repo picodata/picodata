@@ -1,4 +1,5 @@
 use crate::cas;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::governor::backup::handle_backup;
 use crate::governor::batch::get_next_batch;
 use crate::governor::batch::LastStepInfo;
@@ -12,7 +13,6 @@ use crate::rpc::ddl_apply::proc_apply_schema_change;
 use crate::schema::TableDef;
 use crate::schema::ADMIN_ID;
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
 use crate::traft::network::OverrideChannel;
@@ -47,7 +47,7 @@ use tarantool::tuple::Tuple;
 /// - BACKUP operation
 pub fn handle_pending_ddl<'i>(
     last_step_info: &mut LastStepInfo,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     tables: &HashMap<SpaceId, &'i TableDef>,
     pending_ddl: &'i Option<(Ddl, u64)>,
     schema_version: u64,
@@ -144,7 +144,7 @@ pub fn handle_pending_ddl<'i>(
 /// This function is called from [`handle_pending_ddl`]
 fn handle_truncate_table<'i>(
     last_step_info: &mut LastStepInfo,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     tables: &HashMap<SpaceId, &'i TableDef>,
     schema_version: u64,
     pending_schema_version: u64,

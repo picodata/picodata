@@ -1,4 +1,5 @@
 use crate::cas;
+use crate::catalog_cache::CatalogCache;
 use crate::config::AlterSystemParameters;
 use crate::config::AlterSystemParametersRef;
 use crate::instance::InstanceName;
@@ -24,7 +25,6 @@ use crate::simulation::sharded_wal::ShardedWal;
 use crate::simulation::sharded_wal::WalWrite;
 use crate::storage::index_by_ids_unchecked;
 use crate::storage::Catalog;
-use crate::topology_cache::TopologyCache;
 use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::traft::RaftIndex;
@@ -75,7 +75,7 @@ pub struct PretendInstance {
     pub cluster: Weak<PretendCluster>,
 
     pub name: InstanceName,
-    pub topology: TopologyCache,
+    pub topology: CatalogCache,
     pub parameters: AlterSystemParametersRef,
 
     /// This instance's storage: [`SpaceType::Temporary`] versions of all the
@@ -163,7 +163,7 @@ impl PretendInstance {
     pub fn new(
         cluster: Weak<PretendCluster>,
         catalog: Catalog,
-        topology: TopologyCache,
+        topology: CatalogCache,
         sharded_wal: Rc<ShardedWal>,
     ) -> Self {
         let (requested_status_tx, _) = watch::channel((ReshardingStatus::Idle, 0));
@@ -413,7 +413,7 @@ impl PretendInstance {
 ////////////////////////////////////////////////////////////////////////////////
 
 impl Platform for PretendInstance {
-    fn topology_cache(&self) -> &TopologyCache {
+    fn catalog_cache(&self) -> &CatalogCache {
         &self.topology
     }
 

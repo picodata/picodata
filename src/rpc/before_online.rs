@@ -21,7 +21,7 @@ pub(super) fn before_online_inner(req: Request) -> crate::traft::Result<Response
         return Err(e.into());
     }
 
-    let name = node.topology_cache.my_instance_name();
+    let name = node.catalog_cache.my_instance_name();
     tlog!(Info, "instance is Online name={name}");
 
     print_ready_banner(name);

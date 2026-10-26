@@ -58,7 +58,7 @@ pub fn try_acquire(deadline: Instant) -> traft::Result<()> {
             };
 
             let owner_name = existed_lock.instance_name;
-            let topology = node.topology_cache.get();
+            let topology = node.catalog_cache.get();
             let instance = topology.instance_by_name(&owner_name).ok();
             match instance {
                 None => {
@@ -92,7 +92,7 @@ pub fn try_acquire(deadline: Instant) -> traft::Result<()> {
             }
         }
 
-        let topology = node.topology_cache.get();
+        let topology = node.catalog_cache.get();
         let instance = topology.this_instance();
         let new_lock = PluginOp::MigrationLock(PicoPropertyLock::new(instance));
         let dml = Dml::replace(
@@ -132,7 +132,7 @@ pub fn lock_is_acquired_by_us() -> traft::Result<()> {
         }
     };
 
-    let topology = node.topology_cache.get();
+    let topology = node.catalog_cache.get();
     let instance = topology.this_instance();
     let expected_lock = PicoPropertyLock::new(instance);
     if lock != expected_lock {

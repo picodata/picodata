@@ -80,7 +80,7 @@ pub fn get_tier_info(tier_name: &str) -> Result<Tier, SbroadError> {
         SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
     })?;
 
-    let topology_ref = node.topology_cache.get();
+    let topology_ref = node.catalog_cache.get();
     let tier = topology_ref.tier_by_name(tier_name).map_err(|e| {
         SbroadError::FailedTo(
             Action::Get,
@@ -99,7 +99,7 @@ fn get_current_tier_name() -> Result<&'static str, SbroadError> {
     let node = node::global().map_err(|e| {
         SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
     })?;
-    let tier_name = node.topology_cache.my_tier_name();
+    let tier_name = node.catalog_cache.my_tier_name();
 
     Ok(tier_name)
 }
@@ -586,7 +586,7 @@ impl Router for RouterRuntime {
                 }
 
                 let node = node::global().expect("raft node must be initialized");
-                let my_replicaset_name = node.topology_cache.my_replicaset_uuid();
+                let my_replicaset_name = node.catalog_cache.my_replicaset_uuid();
 
                 if my_replicaset_name != replicaset {
                     return Ok(Forward::RoToRw);
@@ -605,8 +605,8 @@ impl Router for RouterRuntime {
 /// Get the number of replicasets in current tier.
 pub(crate) fn get_current_tier_replicasets_num() -> usize {
     let node = node::global().expect("raft node must be initialized");
-    let tier = node.topology_cache.my_tier_name();
-    let topology_ref = node.topology_cache.get();
+    let tier = node.catalog_cache.my_tier_name();
+    let topology_ref = node.catalog_cache.get();
     let replicasets_iter = topology_ref.all_replicasets();
     replicasets_iter
         .filter(|replicaset| replicaset.tier == tier)
@@ -618,7 +618,7 @@ pub fn replicasets_by_buckets(buckets: &Buckets) -> Result<Vec<String>, SbroadEr
 
     if let Buckets::All = buckets {
         let node = node::global().expect("raft node must be initialized");
-        let topology_ref = node.topology_cache.get();
+        let topology_ref = node.catalog_cache.get();
         let replicasets_iter = topology_ref.all_replicasets();
         let replicasets = replicasets_iter
             .filter(|replicaset| replicaset.tier == tier)

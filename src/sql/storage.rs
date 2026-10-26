@@ -875,7 +875,7 @@ impl StorageRuntime {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let node = node::global().expect("node should be initialized at this moment");
-        let topology_ref = node.topology_cache.get();
+        let topology_ref = node.catalog_cache.get();
         let tier = topology_ref.this_tier();
         let cache = STATEMENT_CACHE.with(|cache| {
             cache

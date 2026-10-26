@@ -1,9 +1,9 @@
 //! Picodata synchronization primitives.
 
+use crate::catalog_cache::CatalogCache;
 use crate::instance::InstanceName;
 use crate::rpc::replication::check_if_replication_is_broken;
 use crate::rpc::RequestArgs;
-use crate::topology_cache::TopologyCache;
 use crate::traft::error::Error;
 #[allow(unused_imports)]
 use crate::traft::network::ConnectionPool;
@@ -204,7 +204,7 @@ fn proc_wait_index(target: RaftIndex, timeout: f64) -> traft::Result<(RaftIndex,
 /// Note: The client must ensure that the term remains unchanged, otherwise, the operation on the
 /// index may be changed. It's safe to wait for an index after committing it.
 pub fn wait_for_index_globally(
-    topology: &TopologyCache,
+    topology: &CatalogCache,
     pool: Rc<ConnectionPool>,
     index: RaftIndex,
     deadline: Instant,

@@ -211,7 +211,7 @@ pub fn check_if_replication_is_broken(node: &Node) -> Result<()> {
     let message: StringInLua<_> = values.read(2)?;
 
     let instance_id;
-    let topology_ref = node.topology_cache.get();
+    let topology_ref = node.catalog_cache.get();
     if let Ok(instance) = topology_ref.instance_by_uuid(&instance_uuid) {
         instance_id = &*instance.name;
     } else {
@@ -242,7 +242,7 @@ fn replication_broken(instance_id: &str, status: &str, message: &str) -> BoxErro
 fn update_sys_cluster() -> Result<()> {
     let sys_cluster = Space::from(SystemSpace::Cluster);
     let node = node::global()?;
-    let topology_ref = node.topology_cache.get();
+    let topology_ref = node.catalog_cache.get();
 
     let mut ids_to_delete = Vec::new();
     for tuple in sys_cluster.select_v2(IteratorType::All, &())? {

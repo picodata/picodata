@@ -1,6 +1,6 @@
 use super::instance::InstanceName;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::instance::Instance;
-use crate::topology_cache::TopologyCacheRef;
 use ::tarantool::tuple::Encode;
 use ::tarantool::vclock::Vclock;
 use smol_str::SmolStr;
@@ -213,7 +213,7 @@ impl std::fmt::Display for Replicaset {
 }
 
 /// Returns whether responsive members form a synchro quorum.
-pub(crate) fn has_synchro_quorum(replicaset: &Replicaset, topology_ref: &TopologyCacheRef) -> bool {
+pub(crate) fn has_synchro_quorum(replicaset: &Replicaset, topology_ref: &CatalogCacheRef) -> bool {
     if replicaset.state == ReplicasetState::NotReady {
         return true;
     }

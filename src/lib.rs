@@ -71,6 +71,7 @@ pub mod backoff;
 mod bootstrap_entries;
 pub mod cas;
 pub mod catalog;
+pub mod catalog_cache;
 pub mod cbus;
 pub mod cli;
 mod compatibility;
@@ -120,7 +121,6 @@ pub mod tier;
 pub mod tlog;
 pub mod tls;
 pub mod to_rmpv_named;
-pub mod topology_cache;
 pub mod traft;
 pub mod util;
 pub mod vdbe;
@@ -2226,7 +2226,7 @@ fn postjoin(
     });
 
     loop {
-        let instance = node.topology_cache.get().try_this_instance().cloned();
+        let instance = node.catalog_cache.get().try_this_instance().cloned();
         if let Some(instance) = instance {
             if has_states!(instance, * -> Online) {
                 tlog!(Info, "self-activated successfully");

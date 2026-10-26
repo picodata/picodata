@@ -1,12 +1,12 @@
+use crate::catalog_cache::CatalogCache;
+use crate::catalog_cache::CatalogCacheRef;
+use crate::catalog_cache::ServiceRouteCheck;
 use crate::error_code::ErrorCode;
 use crate::has_states;
 use crate::instance::InstanceName;
 use crate::plugin::{rpc, PluginIdentifier};
 use crate::replicaset::ReplicasetState;
 use crate::tlog;
-use crate::topology_cache::ServiceRouteCheck;
-use crate::topology_cache::TopologyCache;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::network::ConnectionPool;
 use crate::traft::node::Node;
@@ -55,7 +55,7 @@ pub(crate) fn send_rpc_request(
 ) -> Result<&'static [u8], Error> {
     let node = crate::traft::node::global()?;
     let pool = &node.plugin_manager.pool;
-    let topology = &node.topology_cache;
+    let topology = &node.catalog_cache;
 
     let timeout = Duration::from_secs_f64(timeout);
 
@@ -209,7 +209,7 @@ fn resolve_rpc_target(
     service: &str,
     target: &FfiSafeRpcTargetSpecifier,
     node: &Node,
-    topology: &TopologyCache,
+    topology: &CatalogCache,
 ) -> Result<InstanceName, Error> {
     use FfiSafeRpcTargetSpecifier as Target;
 
@@ -269,7 +269,7 @@ fn resolve_rpc_target(
     let replicaset_uuid_owned;
     if let Some((tier_name, bucket_id)) = tier_and_bucket_id {
         // This call must be done here, because this function may yield
-        // but later we take a volatile reference to TopologyCache which can't be held across yields
+        // but later we take a volatile reference to CatalogCache which can't be held across yields
         replicaset_uuid_owned = vshard::get_replicaset_uuid_by_bucket_id(tier_name, bucket_id)?;
         let uuid = &*replicaset_uuid_owned;
         by_bucket_id = Some((tier_name, bucket_id, uuid));
@@ -371,7 +371,7 @@ fn resolve_rpc_target(
 
     #[rustfmt::skip]
     if candidates.is_empty() {
-        // TODO: put service definitions into TopologyCache as well
+        // TODO: put service definitions into CatalogCache as well
         if node.storage.services.get(plugin, service)?.is_none() {
             return Err(BoxError::new(ErrorCode::NoSuchService, format!("service '{plugin}.{service}' not found")).into());
         } else {
@@ -386,7 +386,7 @@ fn resolve_rpc_target(
 }
 
 fn filter_instances_by_state(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     instance_names: &mut Vec<&str>,
 ) -> Result<(), Error> {
     let mut index = 0;
@@ -404,7 +404,7 @@ fn filter_instances_by_state(
 }
 
 fn check_route_to_instance(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     plugin: &PluginIdentifier,
     service: &str,
     instance_name: &str,

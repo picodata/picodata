@@ -1,4 +1,5 @@
 use crate::catalog::pico_bucket::BucketRecord;
+use crate::catalog_cache::CatalogCache;
 use crate::instance::Instance;
 use crate::instance::InstanceName;
 use crate::replicaset::Replicaset;
@@ -16,7 +17,6 @@ use crate::simulation::sharded_wal::WalOutcome;
 use crate::simulation::sharding::spawn_resharding_loop_fiber;
 use crate::storage::Catalog;
 use crate::tier::Tier;
-use crate::topology_cache::TopologyCache;
 use crate::traft::RaftIndex;
 use rand::rngs::StdRng;
 use rand::RngExt;
@@ -147,7 +147,7 @@ impl PretendCluster {
                 catalog.pico_bucket.space.insert(bucket_record).unwrap();
             }
 
-            let topology = TopologyCache::load(
+            let topology = CatalogCache::load(
                 &catalog,
                 this_instance.raft_id,
                 "pretend-cluster",
@@ -230,7 +230,7 @@ impl PretendCluster {
     // instances
     ////////////////////////////////////////////////////////////////////////////
 
-    pub fn add_instance(&self, catalog: Catalog, topology: TopologyCache) {
+    pub fn add_instance(&self, catalog: Catalog, topology: CatalogCache) {
         let sharded_wal = self
             .sharded_wal_of_replicaset(topology.my_replicaset_name())
             .unwrap_or_default();

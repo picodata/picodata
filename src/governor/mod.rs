@@ -108,7 +108,7 @@ impl Loop {
 
         let node = node::global().expect("node is initialized by the time raft_leader is chosen");
         let instance_reachability = &node.instance_reachability;
-        let topology_ref = node.topology_cache.get();
+        let topology_ref = node.catalog_cache.get();
         let db_config = node.alter_system_parameters.borrow();
 
         let raft_op_timeout = db_config.governor_raft_op_timeout();
@@ -139,8 +139,8 @@ impl Loop {
 
         let term = raft_status.get().term;
         let applied = node.get_index();
-        let cluster_name = node.topology_cache.cluster_name;
-        let cluster_uuid = node.topology_cache.cluster_uuid;
+        let cluster_name = node.catalog_cache.cluster_name;
+        let cluster_uuid = node.catalog_cache.cluster_uuid;
         let sentinel_status = node.sentinel_loop.status();
 
         let pending_schema_change = storage
@@ -1311,11 +1311,11 @@ impl Loop {
                         // NOTE: the progress will reset will be reset if governor will switch to do a different step
                         // For example: instance going offline will cause us to re-check that all instances are online
                         if !last_step_info.has_completions() {
-                            let topology_ref = node.topology_cache.get();
+                            let topology_ref = node.catalog_cache.get();
 
                             let check_instance_online = |instance: &InstanceName| -> Option<ErrorInfo> {
-                                // the instance name comes from `handle_backup`, which takes it from topology cache itself
-                                // we should always be able to retrieve the instance back from the topology cache by its name
+                                // the instance name comes from `handle_backup`, which takes it from catalog cache itself
+                                // we should always be able to retrieve the instance back from the catalog cache by its name
                                 let instance = topology_ref.instance_by_name(instance).expect("instance has to exist");
                                 if !instance.may_respond() {
                                     tlog!(Info, "aborting BACKUP because {} won't respond. Its state is {} -> {}", instance.name, instance.current_state, instance.target_state);

@@ -1,3 +1,4 @@
+use crate::catalog_cache::CatalogCacheRef;
 use crate::config::AlterSystemParameters;
 use crate::config::PicodataConfig;
 use crate::instance::InstanceName;
@@ -10,7 +11,6 @@ use crate::sql::router;
 use crate::storage::ToEntryIter as _;
 use crate::storage::{SPACE_ID_INTERNAL_MAX, TABLE_ID_BUCKET};
 use crate::tarantool::ListenConfig;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error as TraftError;
 use crate::traft::error::Error;
 use crate::traft::node;
@@ -151,7 +151,7 @@ pub fn get_replicaset_priority_list(
         // Check if tier exists, return corresponding error in that case
         node::global()
             .expect("initilized by this point")
-            .topology_cache
+            .catalog_cache
             .get()
             .tier_by_name(tier)?;
     }
@@ -178,7 +178,7 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<Sm
         // Check if tier exists, return corresponding error in that case
         node::global()
             .expect("initilized by this point")
-            .topology_cache
+            .catalog_cache
             .get()
             .tier_by_name(tier)?;
     }
@@ -322,7 +322,7 @@ impl VshardConfig {
         tier_name: &str,
         bucket_count: u64,
     ) -> Result<Self, Error> {
-        let topology = node.topology_cache.get();
+        let topology = node.catalog_cache.get();
         let db_config = node.alter_system_parameters.borrow();
         let mut peer_addresses = HashMap::new();
         for peer in node.storage.peer_addresses.iter()? {
@@ -345,7 +345,7 @@ impl VshardConfig {
     }
 
     pub fn new(
-        topology: TopologyCacheRef,
+        topology: CatalogCacheRef,
         db_config: &AlterSystemParameters,
         peer_addresses: &HashMap<RaftId, SmolStr>,
         tier_name: &str,

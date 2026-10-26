@@ -1134,7 +1134,7 @@ fn update_pico_info_uptime() {
 fn my_replicaset() -> &'static str {
     let mut replicaset = "unknown";
     if let Ok(node) = node::global() {
-        replicaset = node.topology_cache.my_replicaset_name();
+        replicaset = node.catalog_cache.my_replicaset_name();
     }
     replicaset
 }
@@ -1143,7 +1143,7 @@ fn my_replicaset() -> &'static str {
 fn my_tier() -> &'static str {
     let mut tier = "unknown";
     if let Ok(node) = node::global() {
-        tier = node.topology_cache.my_tier_name();
+        tier = node.catalog_cache.my_tier_name();
     }
     tier
 }
@@ -1152,7 +1152,7 @@ fn my_tier() -> &'static str {
 fn my_cluster() -> &'static str {
     let mut cluster = "unknown";
     if let Ok(node) = node::global() {
-        cluster = node.topology_cache.cluster_name;
+        cluster = node.catalog_cache.cluster_name;
     }
     cluster
 }

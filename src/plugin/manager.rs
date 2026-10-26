@@ -444,7 +444,7 @@ impl PluginManager {
         // now plugins can be enabled and routing table filled again
         let deadline = fiber::clock().saturating_add(Duration::from_secs(10));
         let check_and_make_op = || {
-            let instance_name = node.topology_cache.my_instance_name();
+            let instance_name = node.catalog_cache.my_instance_name();
             let enabled_plugins = node.storage.plugins.all_enabled()?;
 
             let mut items = Vec::new();
@@ -603,7 +603,7 @@ impl PluginManager {
             // Release the lock
             drop(guard);
 
-            let instance_name = node.topology_cache.my_instance_name();
+            let instance_name = node.catalog_cache.my_instance_name();
             match change_config_result {
                 RResult::ROk(_) => {
                     let current_instance_poisoned = storage
@@ -660,7 +660,7 @@ impl PluginManager {
         let check_and_make_op = || {
             let mut ctx = context_from_node(node);
             let storage = &node.storage;
-            let instance_name = node.topology_cache.my_instance_name();
+            let instance_name = node.catalog_cache.my_instance_name();
             let mut routes_to_replace = vec![];
 
             for (plugin_name, plugin_state) in self.plugins.lock().iter() {
@@ -762,7 +762,7 @@ impl PluginManager {
         let check_and_make_op = || {
             let mut ctx = context_from_node(node);
             let storage = &node.storage;
-            let instance_name = node.topology_cache.my_instance_name();
+            let instance_name = node.catalog_cache.my_instance_name();
             let mut routes_to_replace = vec![];
 
             for (plugin_name, plugin_state) in self.plugins.lock().iter() {

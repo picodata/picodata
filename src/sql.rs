@@ -543,7 +543,7 @@ fn dispatch_bound_statement_impl<'p>(
             let node = node::global()?;
             let index = node.get_index();
             let res = wait_for_index_globally(
-                &node.topology_cache,
+                &node.catalog_cache,
                 Rc::clone(&node.pool),
                 index,
                 deadline,
@@ -717,8 +717,8 @@ pub fn dispatch_bound_statement<'p>(
         dispatch_bound_statement_impl(runtime, statement, override_deadline, governor_op_id, port);
 
     let node = node::global()?;
-    let tier = node.topology_cache.my_tier_name();
-    let replicaset_name = node.topology_cache.my_replicaset_name();
+    let tier = node.catalog_cache.my_tier_name();
+    let replicaset_name = node.catalog_cache.my_replicaset_name();
 
     if result.is_err() {
         metrics::record_sql_query_errors_total(tier, replicaset_name);
@@ -1442,7 +1442,7 @@ fn alter_system_cluster_ir_node_to_op_or_result(
         if AlterSystemParameters::has_scope_tier(param_name)? {
             if let Some(tier_name) = tier_name {
                 // Check tier exists.
-                _ = node.topology_cache.get().tier_by_name(tier_name)?;
+                _ = node.catalog_cache.get().tier_by_name(tier_name)?;
 
                 dmls.push(Dml::replace(
                     table,
@@ -1450,7 +1450,7 @@ fn alter_system_cluster_ir_node_to_op_or_result(
                     initiator,
                 )?);
             } else {
-                let topology = node.topology_cache.get();
+                let topology = node.catalog_cache.get();
                 for tier in topology.all_tiers() {
                     dmls.push(Dml::replace(
                         table,
@@ -1518,7 +1518,7 @@ fn alter_system_cluster_ir_node_to_op_or_result(
                 }
                 // reset all
                 None => {
-                    let topology = node.topology_cache.get();
+                    let topology = node.catalog_cache.get();
                     let tiers: Vec<_> = topology.all_tiers().map(|tier| &*tier.name).collect();
                     ops = crate::config::get_defaults_for_all_system_parameters(&tiers, false)?;
                 }
@@ -1745,10 +1745,10 @@ fn ddl_ir_node_to_op_or_result(
             // Build index options from vinyl options.
             let index_opts = build_vinyl_index_options(vinyl_options)?;
 
-            let topology_cache = node.topology_cache.get();
+            let catalog_cache = node.catalog_cache.get();
 
             let id = schema::choose_table_id(name, governor_op_id)?;
-            let tier = schema::choose_table_tier(tier.as_deref(), &topology_cache)?;
+            let tier = schema::choose_table_tier(tier.as_deref(), &catalog_cache)?;
 
             // If this is a sharded table in a sync tier, add the Synchronous option.
             if matches!(distribution, DistributionParam::Sharded) {
@@ -1788,7 +1788,7 @@ fn ddl_ir_node_to_op_or_result(
                 }
             }
 
-            params.validate_tier(&topology_cache)?;
+            params.validate_tier(&catalog_cache)?;
             params.check_primary_key(storage)?;
             let ddl = params.into_ddl()?;
             Ok(Continue(Op::DdlPrepare {
@@ -2579,7 +2579,7 @@ fn check_ddl_applied(
 fn ensure_ddl_allowed_in_cluster(node: &TraftNode, ir_node: &NodeOwned) -> traft::Result<()> {
     match ir_node {
         NodeOwned::Ddl(ref ddl) if !ddl.is_drop_operation() => {
-            let topology_ref = node.topology_cache.get();
+            let topology_ref = node.catalog_cache.get();
             let mut not_expelled_instances = topology_ref
                 .all_instances()
                 .filter(|instance| !has_states!(instance, Expelled -> *));
@@ -2811,7 +2811,7 @@ pub(crate) fn reenterable_schema_change_request(
 
             if wait_applied_globally {
                 wait_for_index_globally(
-                    &node.topology_cache,
+                    &node.catalog_cache,
                     Rc::clone(&node.pool),
                     commit_index,
                     deadline,
@@ -2827,22 +2827,22 @@ pub(crate) fn reenterable_schema_change_request(
         }
 
         if !matches!(op, Op::DdlPrepare { .. }) && wait_applied_globally {
-            wait_for_index_globally(&node.topology_cache, Rc::clone(&node.pool), index, deadline)
+            wait_for_index_globally(&node.catalog_cache, Rc::clone(&node.pool), index, deadline)
                 .map_err(|_| {
-                if matches!(op, Op::Acl(_)) {
-                    Error::Other(
-                        "acl operation committed, but failed to receive \
+                    if matches!(op, Op::Acl(_)) {
+                        Error::Other(
+                            "acl operation committed, but failed to receive \
                          acknowledgements from all instances"
-                            .into(),
-                    )
-                } else {
-                    Error::Other(
-                        "alter system operation committed, but failed to receive \
+                                .into(),
+                        )
+                    } else {
+                        Error::Other(
+                            "alter system operation committed, but failed to receive \
                          acknowledgements from all instances"
-                            .into(),
-                    )
-                }
-            })?;
+                                .into(),
+                        )
+                    }
+                })?;
         }
 
         let tuple = match op {
@@ -3003,10 +3003,10 @@ fn should_wait_box_rw() -> bool {
     let Ok(node) = node::global() else {
         return true;
     };
-    let Some(name) = node.topology_cache.my_instance_name.get() else {
+    let Some(name) = node.catalog_cache.my_instance_name.get() else {
         return true;
     };
-    let topology = node.topology_cache.get();
+    let topology = node.catalog_cache.get();
     let Some(rs) = topology.try_this_replicaset() else {
         return true;
     };

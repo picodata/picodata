@@ -274,9 +274,9 @@ fn self_promotion_conditions_hold() -> bool {
         return false;
     }
 
-    let my_name = node.topology_cache.my_instance_name();
-    let topology = node.topology_cache.get();
-    let Ok(replicaset) = topology.replicaset_by_name(node.topology_cache.my_replicaset_name())
+    let my_name = node.catalog_cache.my_instance_name();
+    let topology = node.catalog_cache.get();
+    let Ok(replicaset) = topology.replicaset_by_name(node.catalog_cache.my_replicaset_name())
     else {
         return false;
     };

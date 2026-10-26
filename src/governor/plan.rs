@@ -1,5 +1,6 @@
 use crate::cas;
 use crate::catalog::governor_queue::GovernorOperationDef;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::column_name;
 use crate::config::AlterSystemParameters;
 use crate::governor::batch::get_next_batch_for_to_online;
@@ -33,7 +34,6 @@ use crate::storage::{PropertyName, SystemTable};
 use crate::sync::GetVclockRpc;
 use crate::tier::Tier;
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::{Error, IdOfInstance};
 #[allow(unused_imports)]
 use crate::traft::op::PluginRaftOp;
@@ -67,7 +67,7 @@ pub(super) fn action_plan<'i>(
     cluster_name: &'static str,
     cluster_uuid: &'static str,
     sentinel_status: SentinelStatus,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
     instances: &'i [Instance],
     peer_addresses: &'i HashMap<RaftId, SmolStr>,
@@ -667,7 +667,7 @@ pub(super) fn action_plan<'i>(
 
         // FIXME: everytime governor does an iteration we parse each instance's
         // version from string. We should instead store the parsed version in
-        // Instance which goes into topology cache.
+        // Instance which goes into catalog cache.
         // Same with global_cluster_version, global_catalog_version etc.
         let instance_version = &instance.picodata_version;
         match crate::compatibility::compare_picodata_versions(
@@ -1622,7 +1622,7 @@ pub fn get_replicaset_being_expelled<'r>(
 
 pub fn handle_instances_becoming_online<'i>(
     last_step_info: &mut LastStepInfo,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     term: RaftTerm,
     applied: RaftIndex,
     rpc_timeout: Duration,

@@ -1,5 +1,6 @@
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
+use crate::catalog_cache::CatalogChange;
 use crate::simulation::instance::PretendInstance;
 use crate::storage::do_dml_on_space;
 use crate::storage::Catalog;
@@ -8,7 +9,6 @@ use crate::storage::Replicasets;
 use crate::storage::ServiceRouteTable;
 use crate::storage::SystemTable;
 use crate::storage::Tiers;
-use crate::topology_cache::TopologyChange;
 use crate::traft::op::Dml;
 use tarantool::space::Space;
 use tarantool::space::SpaceId;
@@ -55,17 +55,17 @@ pub fn create_pretend_space<T: SystemTable>(instance_name: &str) -> SpaceId {
 }
 
 /// Apply the `dml` to the given instance's pretend storage and update
-/// instance's topology cache.
+/// instance's catalog cache.
 pub fn apply_dml(instance: &PretendInstance, dml: &Dml) {
     let table_id = dml.table_id();
     let space = catalog_space_by_id(&instance.catalog, table_id);
     let (old, new) =
         do_dml_on_space(space, dml, true).expect("simulation: committed DML must apply");
 
-    let decoded = TopologyChange::decode(table_id, old.as_ref(), new.as_ref())
+    let decoded = CatalogChange::decode(table_id, old.as_ref(), new.as_ref())
         .expect("simulation: a committed DML must decode");
     let Some(decoded) = decoded else {
-        panic!("simulation: table #{table_id} isn't cached by the TopologyCache");
+        panic!("simulation: table #{table_id} isn't cached by the CatalogCache");
     };
 
     instance.topology.update(decoded);

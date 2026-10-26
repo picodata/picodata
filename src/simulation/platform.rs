@@ -2,13 +2,13 @@
 //! simulated code behind a trait, so that multiple isolated instances can be
 //! run in one process for the purpose of simulation testing.
 
+use crate::catalog_cache::CatalogCache;
 use crate::config::AlterSystemParametersRef;
 use crate::resharding_loop;
 use crate::resharding_loop::local_bucket;
 use crate::resharding_loop::ReshardingStatus;
 use crate::storage::index_by_ids_unchecked;
 use crate::tarantool::box_schema_version;
-use crate::topology_cache::TopologyCache;
 use crate::traft::node;
 use crate::traft::op::Dml;
 use crate::traft::RaftIndex;
@@ -37,10 +37,10 @@ pub trait Platform {
     // accessors
     //
 
-    /// Read only access to current instance's topology cache.
+    /// Read only access to current instance's catalog cache.
     ///
-    /// Real implementation redirects to [`node::Node::topology_cache`].
-    fn topology_cache(&self) -> &TopologyCache;
+    /// Real implementation redirects to [`node::Node::catalog_cache`].
+    fn catalog_cache(&self) -> &CatalogCache;
 
     /// Read only access to current instance's _pico_db_config cache.
     ///
@@ -157,8 +157,8 @@ pub trait Platform {
 /// Production implementation of [`Platform`].
 /// See also module-level doc-comments.
 impl Platform for node::Node {
-    fn topology_cache(&self) -> &TopologyCache {
-        &self.topology_cache
+    fn catalog_cache(&self) -> &CatalogCache {
+        &self.catalog_cache
     }
 
     fn alter_system_parameters(&self) -> &AlterSystemParametersRef {

@@ -1,6 +1,6 @@
+use crate::catalog_cache::CatalogCacheRef;
 use crate::simulation::platform::Platform;
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use crate::vshard::VshardBucketRecord;
 use crate::vshard::VshardBucketState;
 use crate::Result;
@@ -9,7 +9,7 @@ use smol_str::SmolStr;
 
 pub fn log_bucket_changes(
     changes: &[VshardBucketRecord],
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
 ) -> Result<()> {
     let mut iter = changes.iter().cloned();
 
@@ -38,7 +38,7 @@ pub fn log_bucket_changes(
 }
 
 pub fn inspect_space_bucket(platform: &impl Platform) -> Result<()> {
-    let topology_ref = platform.topology_cache().get();
+    let topology_ref = platform.catalog_cache().get();
     let mut iter = read_all_local_buckets(platform)?.into_iter();
 
     let Some(bucket) = iter.next() else {
@@ -73,7 +73,7 @@ pub fn inspect_vshard_bucket_range(
     prefix: &str,
     bucket: &VshardBucketRecord,
     end: u64,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
 ) -> Result<()> {
     let start = bucket.bucket_id;
     let range = if start == end {

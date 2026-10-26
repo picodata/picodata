@@ -16,7 +16,7 @@
 //! possible to test this way.
 //!
 //! Whenever possible actual code is used instead of modeling it:
-//! the CAS conflict checks, DML application, topology_cache updates.
+//! the CAS conflict checks, DML application, catalog_cache updates.
 //!
 //! Modeled systems are kept as realistic as possible: sharded replication
 //! requires first a successful modeled write to disk along with

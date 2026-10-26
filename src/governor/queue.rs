@@ -2,6 +2,7 @@ use crate::cas;
 use crate::catalog::governor_queue::{
     GovernorOpFormat, GovernorOpKind, GovernorOpStatus, GovernorOperationDef, GovernorQueue,
 };
+use crate::catalog_cache::CatalogCacheRef;
 use crate::column_name;
 use crate::governor::{
     upgrade_operations::CATALOG_UPGRADE_LIST, FinishCatalogUpgrade, InsertUpgradeOperation, Plan,
@@ -11,7 +12,6 @@ use crate::rpc;
 use crate::schema::ADMIN_ID;
 use crate::storage::{Properties, PropertyName, SystemTable};
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{RaftIndex, Result};
 use crate::version::Version;
@@ -24,7 +24,7 @@ const MIN_PICODATA_VERSION_WITH_G_QUEUE: Version = Version::new_clean(25, 3, 0);
 
 /// Handles operations from `_pico_governor_queue` table.
 pub(super) fn handle_governor_queue<'i>(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     governor_operations: &'i [GovernorOperationDef],
     global_cluster_version: &str,
     pending_catalog_version: Option<SmolStr>,
@@ -85,7 +85,7 @@ pub(super) fn handle_governor_queue<'i>(
 
 /// Handles system catalog upgrade to version `pending_catalog_version`.
 fn handle_catalog_upgrade<'i>(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     governor_operations: &'i [GovernorOperationDef],
     pending_catalog_version: SmolStr,
     current_catalog_version: SmolStr,
@@ -143,7 +143,7 @@ fn handle_catalog_upgrade<'i>(
 ///
 /// Returns one of governor's plans to run the operation.
 fn run_governor_operation<'i>(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     op: &'i GovernorOperationDef,
     applied: RaftIndex,
     rpc_timeout: Duration,

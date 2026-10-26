@@ -435,7 +435,7 @@ fn http_api_cluster() -> traft::Result<ClusterInfo> {
             });
     }
 
-    let cluster_name = node::global()?.topology_cache.cluster_name;
+    let cluster_name = node::global()?.catalog_cache.cluster_name;
 
     let res = ClusterInfo {
         capacity_usage: get_capacity_usage(mem_info.usable, mem_info.used),

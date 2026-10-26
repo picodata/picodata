@@ -49,7 +49,7 @@ extern "C" fn pico_ffi_rpc_version() -> RTuple!(*const u8, usize) {
 #[no_mangle]
 extern "C" fn pico_ffi_cluster_uuid() -> RResult<RString, ()> {
     let node = node::global().expect("node must be already initialized");
-    ROk(RString::from(node.topology_cache.cluster_uuid))
+    ROk(RString::from(node.catalog_cache.cluster_uuid))
 }
 
 impl From<StateVariant> for types::StateVariant {

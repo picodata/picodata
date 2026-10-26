@@ -82,7 +82,7 @@ pub(crate) fn http_api_health_startup() -> HealthCheckResult {
     check_instance_ready()?;
 
     // Additional startup condition: replicaset must be ready
-    let topology = node.topology_cache.get();
+    let topology = node.catalog_cache.get();
     let replicaset = topology
         .try_this_replicaset()
         .ok_or_else(|| HealthCheckError(SmolStr::new_static("replicaset unavailable")))?;
@@ -101,7 +101,7 @@ pub(crate) fn http_api_health_startup() -> HealthCheckResult {
 fn check_instance_ready() -> Result<(), HealthCheckError> {
     let node = node::global().map_err(|e| HealthCheckError(format_smolstr!("not inited: {e}")))?;
 
-    let current_state = node.topology_cache.my_current_state();
+    let current_state = node.catalog_cache.my_current_state();
     if current_state.variant != StateVariant::Online {
         return Err(HealthCheckError(format_smolstr!(
             "state is {}",
@@ -276,7 +276,7 @@ pub(crate) fn http_api_health_status() -> traft::Result<HealthStatus> {
     // Once node is available, all topology data should be present.
     let node = node::global()?;
     let storage = crate::storage::Catalog::get();
-    let topology = node.topology_cache.get();
+    let topology = node.catalog_cache.get();
 
     // Use try_* methods to avoid panics if data is not yet available
     // This can happen if health status is queried before instance startup completion
@@ -323,7 +323,7 @@ pub(crate) fn http_api_health_status() -> traft::Result<HealthStatus> {
 
     let uptime_seconds = unsafe { tarantool_uptime() } as u64;
 
-    let cluster_uuid: &'static str = node.topology_cache.cluster_uuid;
+    let cluster_uuid: &'static str = node.catalog_cache.cluster_uuid;
     let cluster_version = storage.properties.cluster_version().unwrap_or_else(|e| {
         retrieval_errors.push(format_smolstr!("failed to get cluster version: {e}"));
         SmolStr::default()

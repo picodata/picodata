@@ -2,6 +2,7 @@ use super::plan::{get_first_ready_replicaset_in_tier, maybe_responding};
 use super::SleepDueToBackoff;
 use super::{Plan, ShardingBoot, UpdateCurrentVshardConfig};
 use crate::cas;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::column_name;
 use crate::config::AlterSystemParameters;
 use crate::governor::batch::get_next_batch;
@@ -12,7 +13,6 @@ use crate::rpc;
 use crate::schema::ADMIN_ID;
 use crate::storage::{SystemTable, Tiers};
 use crate::tier::Tier;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::op::Dml;
 use crate::traft::{RaftIndex, RaftTerm, Result};
 use std::collections::HashMap;
@@ -30,7 +30,7 @@ pub(super) fn handle_sharding<'i>(
     applied: RaftIndex,
     instances: &'i [Instance],
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     timeout: std::time::Duration,
     batch_size: usize,
 ) -> Result<Option<Plan<'i>>> {

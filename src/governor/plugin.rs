@@ -1,3 +1,4 @@
+use crate::catalog_cache::CatalogCacheRef;
 use crate::column_name;
 use crate::governor::batch::get_next_batch;
 use crate::governor::batch::LastStepInfo;
@@ -17,7 +18,6 @@ use crate::schema::ADMIN_ID;
 use crate::storage;
 use crate::storage::PropertyName;
 use crate::storage::SystemTable;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::op::Dml;
 use crate::traft::op::Op;
 use crate::traft::RaftIndex;
@@ -38,7 +38,7 @@ use tarantool::space::UpdateOps;
 pub fn handle_plugin_op<'i>(
     plugin_op: Option<&'i PluginOp>,
     last_step_info: &mut LastStepInfo,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     services: &HashMap<PluginIdentifier, Vec<&ServiceDef>>,
     term: RaftTerm,
@@ -132,7 +132,7 @@ pub fn handle_create_plugin<'i>(
     inherit_entities: &HashMap<SmolStr, Value>,
     inherit_topology: &HashMap<SmolStr, Vec<SmolStr>>,
     last_step_info: &mut LastStepInfo,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     term: RaftTerm,
     applied: RaftIndex,
@@ -237,7 +237,7 @@ pub fn handle_enable_plugin<'i>(
     plugin: PluginIdentifier,
     on_start_timeout: Duration,
     last_step_info: &mut LastStepInfo,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     services: &HashMap<PluginIdentifier, Vec<&ServiceDef>>,
     term: RaftTerm,
     applied: RaftIndex,
@@ -336,7 +336,7 @@ pub fn handle_alter_service_tiers<'i>(
     tier: &SmolStr,
     kind: TopologyUpdateOpKind,
     last_step_info: &mut LastStepInfo,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     services: &HashMap<PluginIdentifier, Vec<&ServiceDef>>,
     term: RaftTerm,

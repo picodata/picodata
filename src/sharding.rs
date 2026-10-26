@@ -26,7 +26,7 @@ impl BucketsInfo {
         self.buckets_info_by_tier_name.values()
     }
 
-    /// Should only be called when updating [`crate::topology_cache::TopologyCache`].
+    /// Should only be called when updating [`crate::catalog_cache::CatalogCache`].
     pub fn set_total_bucket_count(&mut self, tier_name: &str, count: u64) {
         let tier_name = SmolStr::new(tier_name);
         let buckets = self
@@ -36,7 +36,7 @@ impl BucketsInfo {
         buckets.total_count = count;
     }
 
-    /// Should only be called when updating [`crate::topology_cache::TopologyCache`].
+    /// Should only be called when updating [`crate::catalog_cache::CatalogCache`].
     pub fn handle_new_replicaset(&mut self, replicaset: &Replicaset) {
         let tier_name = SmolStr::new(&replicaset.tier);
         let buckets = self
@@ -46,7 +46,7 @@ impl BucketsInfo {
         buckets.add_replicaset(&replicaset.name);
     }
 
-    /// Should only be called when updating [`crate::topology_cache::TopologyCache`].
+    /// Should only be called when updating [`crate::catalog_cache::CatalogCache`].
     pub fn handle_distribution_change(
         &mut self,
         old: Option<BucketRecord>,

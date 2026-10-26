@@ -62,7 +62,7 @@ pub async fn do_action(
             let (start, end) = range.into_inner();
             tlog!(Debug, "resharding_loop_status = '{action_kind}' (_bucket update {start}..{end} {from_state:?} -> '{to_state}')");
 
-            debug::log_bucket_changes(&changes, &platform.topology_cache().get())?; // TODO(resharding): remove from final implementation
+            debug::log_bucket_changes(&changes, &platform.catalog_cache().get())?; // TODO(resharding): remove from final implementation
 
             platform.write_local_buckets(changes)?;
 
@@ -78,7 +78,7 @@ pub async fn do_action(
 
             // Wait for vshard discovery to complete before bumping version
             // This ensures route_map is up-to-date on this instance
-            let tier_name = platform.topology_cache().my_tier_name();
+            let tier_name = platform.catalog_cache().my_tier_name();
             platform.wait_router_discovery_complete(tier_name, cas_timeout)?;
 
             platform.do_cas(applied, version_bump.into_iter().collect(), cas_timeout)?;

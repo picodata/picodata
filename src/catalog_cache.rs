@@ -34,10 +34,10 @@ use tarantool::space::SpaceId;
 use tarantool::tuple::DecodeOwned;
 use tarantool::tuple::Tuple;
 
-pub type TopologyCacheRef<'a> = NoYieldsRef<'a, TopologyCacheMutable>;
+pub type CatalogCacheRef<'a> = NoYieldsRef<'a, CatalogCacheMutable>;
 
 ////////////////////////////////////////////////////////////////////////////////
-// TopologyCache
+// CatalogCache
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Stores deserialized info from system table like _pico_instance,
@@ -46,13 +46,13 @@ pub type TopologyCacheRef<'a> = NoYieldsRef<'a, TopologyCacheMutable>;
 /// are handled, the data is updated correspondingly.
 ///
 /// Doesn't implement `Clone` by design, must be wrapped in an `Rc`.
-pub struct TopologyCache {
+pub struct CatalogCache {
     /// Stores topology data which may change during run time.
     ///
     /// This data is volatile, so must be guarded by `NoYieldsRefCell`. Other
     /// data in this struct is immutable, so it's safe to hold references to it
     /// across yields.
-    inner: NoYieldsRefCell<TopologyCacheMutable>,
+    inner: NoYieldsRefCell<CatalogCacheMutable>,
 
     /// Cluster name is always known and never changes, so it can be cached here.
     pub cluster_name: &'static str,
@@ -79,7 +79,7 @@ pub struct TopologyCache {
     pub my_tier_name: OnceCell<SmolStr>,
 }
 
-impl TopologyCache {
+impl CatalogCache {
     /// Initializes the cache by loading all of the contents from _pico_instance
     /// and _pico_replicaset system tables.
     pub fn load(
@@ -88,7 +88,7 @@ impl TopologyCache {
         cluster_name: &'static str,
         cluster_uuid: &'static str,
     ) -> Result<Self> {
-        let inner = TopologyCacheMutable::load(storage, my_raft_id)?;
+        let inner = CatalogCacheMutable::load(storage, my_raft_id)?;
 
         let my_instance_name = OnceCell::new();
         let my_instance_uuid = OnceCell::new();
@@ -134,14 +134,14 @@ impl TopologyCache {
     pub fn full_reload(&self, storage: &Catalog) -> Result<()> {
         let mut inner = self.inner.borrow_mut();
         // Drop the old data and replace it with new loaded from the storage
-        *inner = TopologyCacheMutable::load(storage, self.my_raft_id)?;
+        *inner = CatalogCacheMutable::load(storage, self.my_raft_id)?;
         Ok(())
     }
 
     /// Returns an instance of the struct for use in tests.
     pub fn for_tests() -> Self {
         let instance = Instance::for_tests();
-        let inner = TopologyCacheMutable::for_tests(instance.raft_id);
+        let inner = CatalogCacheMutable::for_tests(instance.raft_id);
         Self {
             cluster_name: "test",
             cluster_uuid: "d345edf8-4bbf-45eb-b067-f52f8659f074",
@@ -168,7 +168,7 @@ impl TopologyCache {
     /// access to the immutable info of current instance.
     #[inline(always)]
     #[track_caller]
-    pub fn get(&self) -> NoYieldsRef<'_, TopologyCacheMutable> {
+    pub fn get(&self) -> NoYieldsRef<'_, CatalogCacheMutable> {
         self.inner.borrow()
     }
 
@@ -178,7 +178,7 @@ impl TopologyCache {
     /// ```
     /// `topology_ref` will be alive till the end of the block. Which may have yields and cache
     /// reference cant be hold across yields.
-    pub fn with<R>(&self, f: impl FnOnce(NoYieldsRef<'_, TopologyCacheMutable>) -> R) -> R {
+    pub fn with<R>(&self, f: impl FnOnce(NoYieldsRef<'_, CatalogCacheMutable>) -> R) -> R {
         f(self.inner.borrow())
     }
 
@@ -269,14 +269,14 @@ impl TopologyCache {
     /// This function should only be called from [`NodeImpl::handle_dml_entry`].
     ///
     /// [`NodeImpl::handle_dml_entry`]: crate::traft::node::NodeImpl::handle_dml_entry
-    pub(crate) fn update(&self, change: TopologyChange) {
+    pub(crate) fn update(&self, change: CatalogChange) {
         match change {
-            TopologyChange::Instance { old, new } => self.update_instance(old, new),
-            TopologyChange::Replicaset { old, new } => self.update_replicaset(old, new),
-            TopologyChange::Tier { old, new } => self.update_tier(old, new),
-            TopologyChange::ServiceRoute { old, new } => self.update_service_route(old, new),
-            TopologyChange::BucketRecord { old, new } => self.update_bucket_record(old, new),
-            TopologyChange::ReshardingStateRecord { old, new } => {
+            CatalogChange::Instance { old, new } => self.update_instance(old, new),
+            CatalogChange::Replicaset { old, new } => self.update_replicaset(old, new),
+            CatalogChange::Tier { old, new } => self.update_tier(old, new),
+            CatalogChange::ServiceRoute { old, new } => self.update_service_route(old, new),
+            CatalogChange::BucketRecord { old, new } => self.update_bucket_record(old, new),
+            CatalogChange::ReshardingStateRecord { old, new } => {
                 self.update_resharding_state_record(old, new)
             }
         }
@@ -366,9 +366,9 @@ impl TopologyCache {
     }
 }
 
-impl std::fmt::Debug for TopologyCache {
+impl std::fmt::Debug for CatalogCache {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut t = f.debug_struct("TopologyCache");
+        let mut t = f.debug_struct("CatalogCache");
         t.field("cluster_name", &self.cluster_name)
             .field("cluster_uuid", &self.cluster_uuid)
             .field("my_raft_id", &self.my_raft_id);
@@ -393,7 +393,7 @@ impl std::fmt::Debug for TopologyCache {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// TopologyCacheMutable
+// CatalogCacheMutable
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Stores topology info which may change during execution. Because the data is
@@ -401,7 +401,7 @@ impl std::fmt::Debug for TopologyCache {
 /// `fiber::Mutex` also works, but may lead to deadlocks and it's better to
 /// just never hold such references across yields, which is enforced by NoYieldsRefCell.
 #[derive(Default)]
-pub struct TopologyCacheMutable {
+pub struct CatalogCacheMutable {
     /// Raft id is always known and never changes.
     my_raft_id: RaftId,
 
@@ -471,7 +471,7 @@ pub struct TopologyCacheMutable {
     buckets: BucketsInfo,
 }
 
-impl TopologyCacheMutable {
+impl CatalogCacheMutable {
     pub fn load(storage: &Catalog, my_raft_id: RaftId) -> Result<Self> {
         let mut this_instance = None;
         let mut this_replicaset = None;
@@ -1009,14 +1009,14 @@ impl TopologyCacheMutable {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// TopologyChange
+// CatalogChange
 ////////////////////////////////////////////////////////////////////////////////
 
 /// The `old`/`new` pair of an applied DML operation to one of the topology
 /// system tables.
 ///
-/// Used in [`TopologyCache::update`].
-pub(crate) enum TopologyChange {
+/// Used in [`CatalogCache::update`].
+pub(crate) enum CatalogChange {
     Instance {
         old: Option<Instance>,
         new: Option<Instance>,
@@ -1043,7 +1043,7 @@ pub(crate) enum TopologyChange {
     },
 }
 
-impl TopologyChange {
+impl CatalogChange {
     pub(crate) fn decode(
         table_id: SpaceId,
         old: Option<&Tuple>,
@@ -1083,7 +1083,7 @@ impl TopologyChange {
 // miscellaneous
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Value of this type is returned from [`TopologyCacheMutable::check_service_route`].
+/// Value of this type is returned from [`CatalogCacheMutable::check_service_route`].
 pub enum ServiceRouteCheck {
     Ok,
     RoutePoisoned,
@@ -1147,8 +1147,8 @@ mod tests {
         let routing_item = ServiceRouteItem::new_healthy(instance.into(), &plugin, service);
         let _ = storage.service_route_table.put(&routing_item);
 
-        let topology_cache = TopologyCache::load(&storage, 1, "name", "uuid").unwrap();
-        let topology_ref = topology_cache.get();
+        let catalog_cache = CatalogCache::load(&storage, 1, "name", "uuid").unwrap();
+        let topology_ref = catalog_cache.get();
 
         let actual_res = topology_ref.check_service_route(
             &plugin.name,

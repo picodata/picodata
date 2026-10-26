@@ -192,7 +192,7 @@ impl Request {
 #[inline(always)]
 pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) -> Result<()> {
     let node = node::global()?;
-    let cluster_uuid = node.topology_cache.cluster_uuid;
+    let cluster_uuid = node.catalog_cache.cluster_uuid;
     let storage = &node.storage;
     let guard = node.instances_update.lock();
 
@@ -219,7 +219,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
         let instance = storage.instances.get(&req.instance_name)?;
 
         if let Some(new_version) = req.picodata_version.as_ref() {
-            let topology_ref = node.topology_cache.get();
+            let topology_ref = node.catalog_cache.get();
             let instances = topology_ref.all_instances();
             ensure_no_more_than_two_minor_versions(
                 instances
@@ -556,7 +556,7 @@ pub fn update_our_target_state_to_online(
             ));
         }
 
-        let instance = node.topology_cache.get().try_this_instance().cloned();
+        let instance = node.catalog_cache.get().try_this_instance().cloned();
         let Some(instance) = instance else {
             // This can happen if for example a snapshot arrives
             // and we truncate _pico_instance (read uncommitted btw).
@@ -574,8 +574,8 @@ pub fn update_our_target_state_to_online(
             .into());
         }
 
-        let cluster_name = node.topology_cache.cluster_name;
-        let cluster_uuid = node.topology_cache.cluster_uuid;
+        let cluster_name = node.catalog_cache.cluster_name;
+        let cluster_uuid = node.catalog_cache.cluster_uuid;
         // Use the leader_id as reported by the raft loop as the main source of truth
         let mut leader_id = node.status().leader_id;
 
@@ -640,7 +640,7 @@ pub fn update_our_target_state_to_online(
             );
 
             let mut i_can_vote = false;
-            if let Some(tier) = node.topology_cache.get().try_this_tier() {
+            if let Some(tier) = node.catalog_cache.get().try_this_tier() {
                 i_can_vote = tier.can_vote;
             }
 

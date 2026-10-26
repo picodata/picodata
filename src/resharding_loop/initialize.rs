@@ -1,5 +1,6 @@
 use crate::catalog::pico_bucket::BucketIdRange;
 use crate::catalog::pico_bucket::BucketState;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::replicaset::Replicaset;
 use crate::resharding_loop::action::ReshardingAction;
 use crate::resharding_loop::action::*;
@@ -7,7 +8,6 @@ use crate::resharding_loop::bucket_version::make_actualization_dmls;
 use crate::resharding_loop::find_sharded_bucket_updates::find_sharded_bucket_updates;
 use crate::simulation::platform::Platform;
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use crate::vshard::VshardBucketState as VBS;
 use crate::Result;
 
@@ -18,7 +18,7 @@ use crate::Result;
 pub fn initialize_sharded_states(
     platform: &impl Platform,
     this_replicaset: &Replicaset,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
 ) -> Result<ReshardingAction> {
     let bucket_ranges = &topology_ref.buckets_info(&this_replicaset.tier)?.ranges;
 

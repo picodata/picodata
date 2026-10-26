@@ -1,3 +1,4 @@
+use crate::catalog_cache::CatalogCacheRef;
 use crate::governor::batch::get_next_batch;
 use crate::governor::batch::LastStepInfo;
 #[allow(unused_imports)]
@@ -13,7 +14,6 @@ use crate::rpc::ddl_backup::proc_apply_backup;
 use crate::rpc::ddl_backup::proc_backup_abort_clear;
 use crate::storage::get_backup_dir_name;
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::ConnectionPool;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
@@ -33,7 +33,7 @@ use std::time::Duration;
 /// This function is called from [`handle_pending_ddl`]
 pub fn handle_backup<'i>(
     last_step_info: &mut LastStepInfo,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     pending_schema_version: u64,
     timestamp: i64,
     term: RaftTerm,

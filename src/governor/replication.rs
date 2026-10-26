@@ -1,4 +1,5 @@
 use crate::cas;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::column_name;
 use crate::config::AlterSystemParameters;
 use crate::governor::plan::get_replicaset_config_version_bump_op;
@@ -16,7 +17,6 @@ use crate::sync::GetVclockRpc;
 use crate::tarantool::box_is_ro;
 use crate::tier::Tier;
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::op::Dml;
 use crate::traft::op::Op;
 use crate::traft::RaftId;
@@ -34,7 +34,7 @@ use tarantool::space::UpdateOps;
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn handle_self_read_only<'i>(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
 ) -> Option<Plan<'i>> {
     if !box_is_ro() {
@@ -82,7 +82,7 @@ pub fn handle_self_read_only<'i>(
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn handle_replication_config<'i>(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
     peer_addresses: &'i HashMap<RaftId, SmolStr>,
     applied: RaftIndex,
@@ -130,7 +130,7 @@ pub fn handle_replication_config<'i>(
 
 #[allow(clippy::type_complexity)]
 fn get_replicaset_to_configure<'t>(
-    topology_ref: &'t TopologyCacheRef,
+    topology_ref: &'t CatalogCacheRef,
     db_config: &AlterSystemParameters,
     peer_addresses: &HashMap<RaftId, SmolStr>,
 ) -> Option<(&'t Replicaset, Vec<(InstanceName, RaftId)>, Vec<SmolStr>)> {
@@ -257,7 +257,7 @@ fn get_replicaset_to_configure<'t>(
 /// replicaset must simply stay read-only (fenced) until enough members
 /// return.
 pub fn handle_sync_master_election_promote<'i>(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
     term: RaftTerm,
 ) -> Result<Option<Plan<'i>>> {
@@ -396,7 +396,7 @@ pub(super) fn choose_fallback_candidate<'a>(
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn handle_replicaset_master_switchover<'i>(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
     term: RaftTerm,
     rpc_timeout: std::time::Duration,
@@ -532,7 +532,7 @@ pub fn handle_replicaset_master_switchover<'i>(
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn handle_replicaset_sync<'a>(
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
     term: RaftTerm,
     applied: RaftIndex,
@@ -656,7 +656,7 @@ pub fn handle_replicaset_sync<'a>(
 }
 
 fn get_replicaset_to_sync<'i>(
-    topology_ref: &'i TopologyCacheRef,
+    topology_ref: &'i CatalogCacheRef,
     db_config: &AlterSystemParameters,
 ) -> Option<(&'i Replicaset, Vec<&'i Instance>)> {
     let mut replicaset: Option<&Replicaset> = None;
@@ -708,10 +708,10 @@ fn get_replicaset_to_sync<'i>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::catalog_cache::CatalogCache;
     use crate::config::ReplicationMode;
     use crate::instance::{State, StateVariant};
     use crate::tier::TierConfig;
-    use crate::topology_cache::TopologyCache;
 
     #[test]
     fn fallback_candidates_rotate_deterministically_and_prefer_reported_leader() {
@@ -745,7 +745,7 @@ mod tests {
 
     #[test]
     fn master_switchover_plan_depends_on_replication_mode() {
-        let topology = TopologyCache::for_tests();
+        let topology = CatalogCache::for_tests();
 
         let mut old_master = Instance::for_tests();
         old_master.name = "i1".into();

@@ -12,8 +12,8 @@ impl TopologyContext {
     /// Return topology context for current instance.
     pub fn current() -> Self {
         let node = node::global().expect("node must be already initialized");
-        let instance_name = node.topology_cache.my_instance_name().into();
-        let instance_tier = node.topology_cache.my_tier_name().into();
+        let instance_name = node.catalog_cache.my_instance_name().into();
+        let instance_tier = node.catalog_cache.my_tier_name().into();
 
         Self {
             instance_name,

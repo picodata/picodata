@@ -1,6 +1,7 @@
 use crate::cas;
 use crate::catalog::pico_bucket::BucketRecord;
 use crate::catalog::pico_bucket::PicoBucket;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::column_name;
 use crate::config::AlterSystemParameters;
 use crate::governor::batch::get_next_batch;
@@ -18,7 +19,6 @@ use crate::storage;
 use crate::storage::SystemTable;
 use crate::tier::Tier;
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::op::Dml;
 use crate::traft::op::Op;
 #[allow(unused_imports)]
@@ -42,7 +42,7 @@ pub fn handle_resharding<'i>(
     last_step_info: &mut LastStepInfo,
     term: RaftTerm,
     applied: RaftIndex,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
     rpc_timeout: Duration,
 ) -> Result<Option<Plan<'i>>> {
@@ -78,7 +78,7 @@ pub fn handle_resharding<'i>(
 
 fn get_bucket_version_actualizations(
     applied: RaftIndex,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
 ) -> Result<Option<(SmolStr, cas::Request)>> {
     'next_tier: for tier in topology_ref.all_tiers() {
@@ -122,7 +122,7 @@ fn get_bucket_version_actualizations(
 
 pub fn get_resharding_state_changes<'i>(
     applied: RaftIndex,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
 ) -> Result<Option<Plan<'i>>> {
     for info in topology_ref.all_buckets_infos() {
@@ -171,7 +171,7 @@ fn make_initial_distribution<'i>(
     applied: RaftIndex,
     tier: &Tier,
     info: &TierBucketsInfo,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
 ) -> Result<Option<Plan<'i>>> {
     debug_assert_eq!(tier.current_bucket_state_version, 0);
     debug_assert_eq!(tier.target_bucket_state_version, 0);
@@ -228,7 +228,7 @@ fn state_changes_for_initial_distribution(
     end: u64,
     need_more_buckets: &[(&SmolStr, u64)],
     tier: &Tier,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
 ) -> Result<Vec<Dml>> {
     debug_assert!(end >= start, "{end} >= {start}");
     let mut dmls = Vec::new();
@@ -289,7 +289,7 @@ struct BucketDistributionImbalance<'a> {
 
 fn compute_bucket_distribution_imbalance<'t>(
     info: &'t TierBucketsInfo,
-    topology_ref: &'t TopologyCacheRef,
+    topology_ref: &'t CatalogCacheRef,
 ) -> Result<Option<BucketDistributionImbalance<'t>>> {
     let mut res = BucketDistributionImbalance::default();
     let mut bucket_count_by_target_replicaset_name_sorted =
@@ -371,7 +371,7 @@ fn get_resharding_rpc_requests<'i>(
     last_step_info: &mut LastStepInfo,
     term: RaftTerm,
     applied: RaftIndex,
-    topology_ref: &TopologyCacheRef,
+    topology_ref: &CatalogCacheRef,
     db_config: &AlterSystemParameters,
     rpc_timeout: Duration,
 ) -> Result<Option<Plan<'i>>> {
@@ -476,8 +476,8 @@ fn get_resharding_rpc_requests<'i>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::catalog_cache::CatalogCache;
     use crate::instance::Instance;
-    use crate::topology_cache::TopologyCache;
     use rand::RngExt;
     use rand::SeedableRng;
     use smol_str::format_smolstr;
@@ -551,7 +551,7 @@ mod tests {
         // Setup a pretend topology based on provided current distribution
         //
 
-        let topology = Rc::new(TopologyCache::for_tests());
+        let topology = Rc::new(CatalogCache::for_tests());
 
         let tier = test_tier("storage", total_bucket_count);
         topology.update_tier(None, Some(tier.clone()));

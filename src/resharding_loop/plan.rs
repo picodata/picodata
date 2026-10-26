@@ -38,11 +38,11 @@ pub fn plan_resharding_action(
         .into());
     }
 
-    let topology_cache = platform.topology_cache();
-    let my_instance_name = topology_cache.my_instance_name();
-    let topology_ref = topology_cache.get();
+    let catalog_cache = platform.catalog_cache();
+    let my_instance_name = catalog_cache.my_instance_name();
+    let topology_ref = catalog_cache.get();
     let this_replicaset = topology_ref.this_replicaset();
-    let i_am_replicaset_master = topology_cache.with(|topology_ref| {
+    let i_am_replicaset_master = catalog_cache.with(|topology_ref| {
         topology_ref
             .this_replicaset()
             .effective_master_name()

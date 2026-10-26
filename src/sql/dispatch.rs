@@ -6,6 +6,7 @@ use super::execute::{
 use super::port::PicoPortOwned;
 use super::storage::{FullDeleteInfo, StorageRuntime};
 use crate::catalog::pico_table::PicoTable;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::config::{DEFAULT_SQL_PREEMPTION, DYNAMIC_CONFIG};
 use crate::metrics::{observe_sql_local_query_duration, record_sql_local_query_total};
 use crate::schema::ADMIN_ID;
@@ -15,7 +16,6 @@ use crate::sql::lua::{
     lua_decode_rs_ibufs, lua_single_plan_dispatch, reference_add, reference_del, reference_use,
     sql_lua_state, IbufTable,
 };
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::node;
 use crate::util::MpValueAsJson;
 use ahash::{AHashMap, AHashSet};
@@ -757,16 +757,16 @@ fn should_dispatch_locally(
     read_preference: &str,
 ) -> SqlResult<bool> {
     let node = node::global().map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
-    if tier.is_some_and(|tier_name| tier_name != node.topology_cache.my_tier_name()) {
+    if tier.is_some_and(|tier_name| tier_name != node.catalog_cache.my_tier_name()) {
         return Ok(false);
     }
 
-    if replicaset_uuid != node.topology_cache.my_replicaset_uuid() {
+    if replicaset_uuid != node.catalog_cache.my_replicaset_uuid() {
         return Ok(false);
     }
 
     let is_replica = node.is_readonly();
-    let topology_ref = node.topology_cache.get();
+    let topology_ref = node.catalog_cache.get();
     Ok(local_dispatch_matches_read_preference(
         &topology_ref,
         is_replica,
@@ -781,20 +781,20 @@ fn should_all_buckets_dispatch_locally(
     read_preference: &str,
 ) -> SqlResult<bool> {
     let node = node::global().map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
-    let target_tier = tier.unwrap_or_else(|| node.topology_cache.my_tier_name());
-    if target_tier != node.topology_cache.my_tier_name() {
+    let target_tier = tier.unwrap_or_else(|| node.catalog_cache.my_tier_name());
+    if target_tier != node.catalog_cache.my_tier_name() {
         return Ok(false);
     }
 
-    // NOTE: topology_cache may be slightly stale relative to the actual vshard
+    // NOTE: catalog_cache may be slightly stale relative to the actual vshard
     // bucket distribution. During rebalancing (e.g. cluster just scaled from 1
     // to 2 RS), the cache can still report 1 replicaset while some buckets have
     // already moved. In that case this function incorrectly returns true and the
     // query is executed locally with incomplete data. This is an accepted
-    // trade-off: the window is small and bounded by the topology cache refresh
+    // trade-off: the window is small and bounded by the catalog cache refresh
     // interval, and the same inconsistency would be caught on the next request.
     let is_replica = node.is_readonly();
-    let topology_ref = node.topology_cache.get();
+    let topology_ref = node.catalog_cache.get();
     let mut tier_replicasets = topology_ref
         .all_replicasets()
         .filter(|rs| rs.tier == target_tier);
@@ -844,7 +844,7 @@ fn should_single_rs_buckets_dispatch_locally(
 ) -> SqlResult<bool> {
     // Buckets::All means the query covers the entire cluster. Enumerating all
     // buckets via rs_buckets would require O(max_buckets) Lua calls just to
-    // discover whether there is a single RS — we use the topology cache instead,
+    // discover whether there is a single RS — we use the catalog cache instead,
     // matching the behaviour of should_single_rs_dispatch_locally.
     if matches!(buckets, Buckets::All) {
         return should_all_buckets_dispatch_locally(tier, read_preference);
@@ -862,7 +862,7 @@ fn should_single_rs_buckets_dispatch_locally(
 
 #[inline]
 fn local_dispatch_matches_read_preference(
-    topology_ref: &TopologyCacheRef<'_>,
+    topology_ref: &CatalogCacheRef<'_>,
     is_replica: bool,
     replicaset_uuid: &str,
     read_preference: &str,

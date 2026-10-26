@@ -13,6 +13,8 @@ use crate::catalog::pico_bucket::index_of_bucket_id_column;
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
+use crate::catalog_cache::CatalogCache;
+use crate::catalog_cache::CatalogChange;
 use crate::config::apply_alter_system_parameter;
 use crate::config::AlterSystemParametersRef;
 use crate::error_code::ErrorCode;
@@ -52,8 +54,6 @@ use crate::storage::ToEntryIter;
 use crate::storage::{self, Catalog, PropertyName, SystemTable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
-use crate::topology_cache::TopologyCache;
-use crate::topology_cache::TopologyChange;
 use crate::traft;
 use crate::traft::error::box_error_eq;
 use crate::traft::error::to_error_other;
@@ -189,7 +189,7 @@ pub struct Node {
 
     node_impl: Rc<Mutex<NodeImpl>>,
     pub(crate) storage: Catalog,
-    pub(crate) topology_cache: Rc<TopologyCache>,
+    pub(crate) catalog_cache: Rc<CatalogCache>,
     pub(crate) raft_storage: RaftSpaceAccess,
     pub(crate) main_loop: MainLoop,
     pub(crate) governor_loop: governor::Loop,
@@ -276,7 +276,7 @@ impl Node {
             instance_reachability.clone(),
             main_loop_info.clone(),
         )?;
-        let topology_cache = node_impl.topology_cache.clone();
+        let catalog_cache = node_impl.catalog_cache.clone();
 
         let raft_id = node_impl.raft_id();
         let status = node_impl.status.subscribe();
@@ -331,7 +331,7 @@ impl Node {
             resharding_loop,
             pool,
             node_impl,
-            topology_cache,
+            catalog_cache,
             storage,
             raft_storage,
             status,
@@ -612,7 +612,7 @@ pub(crate) struct NodeImpl {
     pub read_state_wakers: HashMap<LogicalClockInstant, oneshot::Sender<RaftIndex>>,
     joint_state_latch: KVCell<RaftIndex, oneshot::Sender<Result<(), RaftError>>>,
     storage: Catalog,
-    topology_cache: Rc<TopologyCache>,
+    catalog_cache: Rc<CatalogCache>,
     alter_system_parameters: AlterSystemParametersRef,
     raft_storage: RaftSpaceAccess,
     pool: Rc<ConnectionPool>,
@@ -712,7 +712,7 @@ impl NodeImpl {
         let cluster_uuid = raft_storage.cluster_uuid()?;
         let cluster_uuid = Box::leak(cluster_uuid.into_boxed_str());
 
-        let topology_cache = Rc::new(TopologyCache::load(
+        let catalog_cache = Rc::new(CatalogCache::load(
             &storage,
             raft_id,
             cluster_name,
@@ -724,7 +724,7 @@ impl NodeImpl {
             read_state_wakers: Default::default(),
             joint_state_latch: KVCell::new(),
             storage,
-            topology_cache,
+            catalog_cache,
             alter_system_parameters,
             raft_storage,
             instance_reachability,
@@ -770,7 +770,7 @@ impl NodeImpl {
             return;
         }
 
-        let ready = self.topology_cache.with(|topology| {
+        let ready = self.catalog_cache.with(|topology| {
             let Some(this) = topology.try_this_instance() else {
                 return false;
             };
@@ -1122,7 +1122,7 @@ impl NodeImpl {
                 crate::error_injection!(block "BLOCK_BEFORE_APPLYING_DYNAMIC_CONFIG");
             }
 
-            let current_tier = self.topology_cache.my_tier_name();
+            let current_tier = self.catalog_cache.my_tier_name();
             // currently only parameters from _pico_db_config processed outside of transaction (here)
             for AppliedDml { table, new_tuple } in dmls {
                 debug_assert!(table == DbConfig::TABLE_ID);
@@ -1134,7 +1134,7 @@ impl NodeImpl {
             }
 
             crate::error_injection!("BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE" => {
-                if self.topology_cache.my_target_state().variant == crate::instance::StateVariant::Offline {
+                if self.catalog_cache.my_target_state().variant == crate::instance::StateVariant::Offline {
                     crate::error_injection!(block "BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE");
                 }
             });
@@ -1209,7 +1209,7 @@ impl NodeImpl {
         let table_id = op.table_id();
         let initiator = op.initiator();
 
-        // In order to implement the audit log events as well as topology_cache
+        // In order to implement the audit log events as well as catalog_cache
         // we have to compare tuples from certain system spaces before and after
         // a DML operation.
         //
@@ -1237,11 +1237,11 @@ impl NodeImpl {
         // This means that after current fiber yields other fibers can read
         // uncommitted data from spaces.
         //
-        // This means that things like `TopologyCache` - a coherent in-memory
+        // This means that things like `CatalogCache` - a coherent in-memory
         // cache for system tables, we must do something like:
-        // - on_replace: TopologyCache::update(old, new)
+        // - on_replace: CatalogCache::update(old, new)
         // - on_replace: set on_rollback trigger
-        // - on_rollback: TopologyCache::update(new, old)
+        // - on_rollback: CatalogCache::update(new, old)
         //
         // Other things like `do_audit_logging_for_instance_update` or
         // `try_notify_startup_complete` should probably not happen before actual
@@ -1277,21 +1277,21 @@ impl NodeImpl {
             }));
         }
 
-        let res = TopologyChange::decode(table_id, old.as_ref(), new.as_ref());
+        let res = CatalogChange::decode(table_id, old.as_ref(), new.as_ref());
         let change = match res {
             Ok(None) => {
-                // Not a table the topology cache knows anything about.
+                // Not a table the catalog cache knows anything about.
                 return Ok(None);
             }
             Ok(Some(v)) => v,
             Err(e) => {
                 return Err(storage_corrupted(format!(
-                    "TopologyCache::update failed: {e}"
+                    "CatalogCache::update failed: {e}"
                 )));
             }
         };
 
-        if let TopologyChange::Instance { old, new } = &change {
+        if let CatalogChange::Instance { old, new } = &change {
             // Handle insert, replace, update in _pico_instance
             if let Some(new) = new {
                 let initiator_def = user_by_id(initiator).expect("user must exist");
@@ -1312,7 +1312,7 @@ impl NodeImpl {
                 .update_instance(old.as_ref(), new.as_ref());
         }
 
-        self.topology_cache.update(change);
+        self.catalog_cache.update(change);
 
         if matches!(
             table_id,
@@ -1408,7 +1408,7 @@ impl NodeImpl {
                             &ddl,
                             v_pending,
                             true,
-                            self.topology_cache.my_tier_name(),
+                            self.catalog_cache.my_tier_name(),
                         );
                         match res {
                             Err(rpc::ddl_apply::Error::Other(err)) => {
@@ -3176,19 +3176,19 @@ impl NodeImpl {
             }
 
             if received_snapshot {
-                // Need to reload the whole topology cache. We could be more
+                // Need to reload the whole catalog cache. We could be more
                 // clever about it and only update the records which changed,
                 // but at the moment this would require doing a full scan and
                 // comparing each record, which is no better than full reload.
                 // A better solution would be to store a raft index in each
                 // tuple of each global table, then we would only need to check
                 // if the index changed, but we don't have that..
-                self.topology_cache
+                self.catalog_cache
                     .full_reload(&self.storage)
                     .expect("schema upgrade not supported yet");
 
                 // we need to refresh instance_state metric after snapshot application
-                self.topology_cache.with(|topology_ref| {
+                self.catalog_cache.with(|topology_ref| {
                     for instance in topology_ref.all_instances() {
                         metrics::record_instance_state(
                             &instance.tier,
@@ -3198,7 +3198,7 @@ impl NodeImpl {
                     }
                 });
 
-                let current_tier = self.topology_cache.my_tier_name();
+                let current_tier = self.catalog_cache.my_tier_name();
 
                 // apply changed dynamic parameters
                 for changed_parameter in changed_parameters {
@@ -3583,7 +3583,7 @@ impl MainLoop {
             }
         }
 
-        if let Some(me) = node_impl.topology_cache.get().try_this_instance() {
+        if let Some(me) = node_impl.catalog_cache.get().try_this_instance() {
             // Postpone the exit until the deletion of our row from `_cluster`
             // is replicated to us, so that the following restart has to deal
             // with an instance which isn't registered in `_cluster`.
@@ -3938,10 +3938,10 @@ mod tests {
         let replicaset = make_replicaset(&instance, ReplicasetState::Ready);
 
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_instance(None, Some(instance));
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_replicaset(None, Some(replicaset));
 
         // leader_id is None by default
@@ -3970,10 +3970,10 @@ mod tests {
         let replicaset = make_replicaset(&instance, ReplicasetState::Ready);
 
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_instance(None, Some(instance));
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_replicaset(None, Some(replicaset));
 
         node_impl.try_notify_startup_complete();
@@ -3999,10 +3999,10 @@ mod tests {
         let replicaset = make_replicaset(&instance, ReplicasetState::NotReady);
 
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_instance(None, Some(instance));
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_replicaset(None, Some(replicaset));
 
         node_impl.try_notify_startup_complete();
@@ -4028,10 +4028,10 @@ mod tests {
         let replicaset = make_replicaset(&instance, ReplicasetState::Ready);
 
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_instance(None, Some(instance));
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_replicaset(None, Some(replicaset));
 
         node_impl.try_notify_startup_complete();
@@ -4054,10 +4054,10 @@ mod tests {
         let replicaset = make_replicaset(&instance, ReplicasetState::Ready);
 
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_instance(None, Some(instance));
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_replicaset(None, Some(replicaset));
 
         assert!(!node_impl.startup_complete.get());
@@ -4089,10 +4089,10 @@ mod tests {
         let replicaset = make_replicaset(&instance_offline, ReplicasetState::Ready);
 
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_instance(None, Some(instance_offline.clone()));
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_replicaset(None, Some(replicaset));
 
         assert!(!node_impl.startup_complete.get());
@@ -4100,7 +4100,7 @@ mod tests {
         // Simulate instance state change to Online
         let instance_online = make_instance(node.raft_id(), StateVariant::Online);
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_instance(Some(instance_offline), Some(instance_online));
         node_impl.try_notify_startup_complete();
 
@@ -4126,10 +4126,10 @@ mod tests {
         let replicaset_not_ready = make_replicaset(&instance, ReplicasetState::NotReady);
 
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_instance(None, Some(instance.clone()));
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_replicaset(None, Some(replicaset_not_ready.clone()));
 
         assert!(!node_impl.startup_complete.get());
@@ -4137,7 +4137,7 @@ mod tests {
         // Simulate replicaset state change to Ready
         let replicaset_ready = make_replicaset(&instance, ReplicasetState::Ready);
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_replicaset(Some(replicaset_not_ready), Some(replicaset_ready));
         node_impl.try_notify_startup_complete();
 
@@ -4162,10 +4162,10 @@ mod tests {
         let replicaset = make_replicaset(&instance_online, ReplicasetState::Ready);
 
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_instance(None, Some(instance_online.clone()));
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_replicaset(None, Some(replicaset));
 
         node_impl.try_notify_startup_complete();
@@ -4174,7 +4174,7 @@ mod tests {
         // Change conditions - instance goes Offline
         let instance_offline = make_instance(node.raft_id(), StateVariant::Offline);
         node_impl
-            .topology_cache
+            .catalog_cache
             .update_instance(Some(instance_online), Some(instance_offline));
 
         assert!(

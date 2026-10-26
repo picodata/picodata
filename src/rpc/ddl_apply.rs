@@ -73,7 +73,7 @@ crate::define_rpc_request! {
             return Err(e.into());
         }
         if node.alter_system_parameters.borrow().is_synchronous_replication() {
-            let topology_ref = node.topology_cache.get();
+            let topology_ref = node.catalog_cache.get();
             let this_replicaset = topology_ref.this_replicaset();
             if this_replicaset.state != ReplicasetState::Ready {
                 return Err(TraftError::other("cannot apply schema change on not-ready replicaset with synchronous replication enabled"))
@@ -99,7 +99,7 @@ crate::define_rpc_request! {
         let ddl = storage.properties.pending_schema_change()?
             .ok_or_else(|| TraftError::other("pending schema change not found"))?;
 
-        let my_tier_name = node.topology_cache.my_tier_name();
+        let my_tier_name = node.catalog_cache.my_tier_name();
 
         let res = transaction(|| apply_schema_change(storage, &ddl, pending_schema_version, false, my_tier_name));
         match res {

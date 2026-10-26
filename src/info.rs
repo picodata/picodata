@@ -350,17 +350,17 @@ impl InstanceInfo {
                 // _pico_instance is keyed by name. While an instance replays
                 // the raft log its own record is transiently replaced by its
                 // predecessor's, so resolving self by name may describe a
-                // different instance. `TopologyCache` tracks the current
+                // different instance. `CatalogCache` tracks the current
                 // instance by raft_id, which is never reused.
                 //
                 // Reading from the cache performs no access check. That is
                 // intentional: the same record is readable by any
                 // authenticated user through _pico_instance, on which the
                 // `public` role holds read.
-                let topology_ref = node.topology_cache.get();
+                let topology_ref = node.catalog_cache.get();
                 let Some(this_instance) = topology_ref.try_this_instance() else {
                     return Err(Error::NoSuchInstance(IdOfInstance::RaftId(
-                        node.topology_cache.my_raft_id,
+                        node.catalog_cache.my_raft_id,
                     )));
                 };
                 instance = this_instance.clone();
@@ -379,8 +379,8 @@ impl InstanceInfo {
             )?
             .unwrap_or_else(|| "<unknown>".into());
 
-        let cluster_name = node.topology_cache.cluster_name.into();
-        let cluster_uuid = node.topology_cache.cluster_uuid.into();
+        let cluster_name = node.catalog_cache.cluster_name.into();
+        let cluster_uuid = node.catalog_cache.cluster_uuid.into();
 
         Ok(InstanceInfo {
             raft_id: instance.raft_id,
@@ -523,7 +523,7 @@ pub fn proc_raft_leader_uuid() -> Result<SmolStr, Error> {
 #[proc]
 pub fn proc_instance_uuid() -> Result<SmolStr, Error> {
     let node = node::global()?;
-    Ok(node.topology_cache.my_instance_uuid().into())
+    Ok(node.catalog_cache.my_instance_uuid().into())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -533,7 +533,7 @@ pub fn proc_instance_uuid() -> Result<SmolStr, Error> {
 #[proc]
 fn proc_instance_name(uuid: SmolStr) -> Result<Option<SmolStr>, Error> {
     let node = node::global()?;
-    let cache = node.topology_cache.get();
+    let cache = node.catalog_cache.get();
     match cache.instance_by_uuid(&uuid) {
         Ok(instance) => Ok(Some(instance.name.clone().into())),
         Err(traft::error::Error::NoSuchInstance(_)) => Ok(None),
@@ -548,7 +548,7 @@ fn proc_instance_name(uuid: SmolStr) -> Result<Option<SmolStr>, Error> {
 #[proc]
 fn proc_replicaset_name(uuid: SmolStr) -> Result<Option<SmolStr>, Error> {
     let node = node::global()?;
-    let cache = node.topology_cache.get();
+    let cache = node.catalog_cache.get();
     match cache.instance_by_uuid(&uuid) {
         Ok(instance) => Ok(Some(instance.replicaset_name.clone().into())),
         Err(traft::error::Error::NoSuchInstance(_)) => Ok(None),
@@ -563,7 +563,7 @@ fn proc_replicaset_name(uuid: SmolStr) -> Result<Option<SmolStr>, Error> {
 #[proc]
 fn proc_tier_name(uuid: SmolStr) -> Result<Option<SmolStr>, Error> {
     let node = node::global()?;
-    let cache = node.topology_cache.get();
+    let cache = node.catalog_cache.get();
     match cache.instance_by_uuid(&uuid) {
         Ok(instance) => Ok(Some(instance.tier.clone())),
         Err(traft::error::Error::NoSuchInstance(_)) => Ok(None),
@@ -602,14 +602,14 @@ fn impl_proc_instance_dir() -> Result<Option<String>, Error> {
 fn proc_instance_dir(uuid: SmolStr) -> Result<Option<String>, Error> {
     let node = node::global()?;
     let requested_uuid = uuid.to_string();
-    let my_uuid = node.topology_cache.my_instance_uuid();
+    let my_uuid = node.catalog_cache.my_instance_uuid();
 
     let is_local = requested_uuid == my_uuid;
     if is_local {
         return impl_proc_instance_dir();
     }
 
-    let topology_ref = node.topology_cache.get();
+    let topology_ref = node.catalog_cache.get();
     if let Ok(instance) = topology_ref.instance_by_uuid(&requested_uuid) {
         let future = async {
             node.pool
@@ -658,14 +658,14 @@ fn impl_proc_config_file() -> Result<Option<String>, Error> {
 fn proc_config_file(uuid: SmolStr) -> Result<Option<String>, Error> {
     let node = node::global()?;
     let requested_uuid = uuid.to_string();
-    let my_uuid = node.topology_cache.my_instance_uuid();
+    let my_uuid = node.catalog_cache.my_instance_uuid();
 
     let is_local = requested_uuid == my_uuid;
     if is_local {
         return impl_proc_config_file();
     }
 
-    let topology_ref = node.topology_cache.get();
+    let topology_ref = node.catalog_cache.get();
     if let Ok(instance) = topology_ref.instance_by_uuid(&requested_uuid) {
         let future = async {
             node.pool
@@ -931,7 +931,7 @@ pub fn proc_get_vshard_config(tier_name: Option<SmolStr>) -> Result<RawByteBuf, 
     let tier_name = if let Some(tier_name) = tier_name {
         tier_name
     } else {
-        node.topology_cache.my_tier_name().into()
+        node.catalog_cache.my_tier_name().into()
     };
     let Some(tier) = node.storage.tiers.by_name(&tier_name)? else {
         return Err(Error::NoSuchTier(tier_name));
@@ -949,7 +949,7 @@ pub fn proc_get_vshard_config(tier_name: Option<SmolStr>) -> Result<RawByteBuf, 
 #[proc]
 pub fn proc_instance_health_status(uuid: SmolStr) -> Result<Option<HealthStatus>, Error> {
     let node = node::global()?;
-    let cache = node.topology_cache.get();
+    let cache = node.catalog_cache.get();
     let me = cache.this_instance();
     match cache.instance_by_uuid(&uuid) {
         Ok(instance) if instance == me => {

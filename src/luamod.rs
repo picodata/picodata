@@ -187,7 +187,7 @@ pub(crate) fn setup() {
         "},
         tlua::Function::new(move || -> traft::Result<_> {
             let node = node::global()?;
-            let tier = node.topology_cache.my_tier_name();
+            let tier = node.catalog_cache.my_tier_name();
             let Some(tier) = node.storage.tiers.by_name(tier)? else {
                 return Err(Error::NoSuchTier(tier.into()));
             };

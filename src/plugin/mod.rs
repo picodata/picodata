@@ -495,7 +495,7 @@ pub fn build_service_routes_replace_dml(items: &[ServiceRouteItem]) -> Op {
     // assert that instances update only self-owned information
     debug_assert!({
         let node = node::global().expect("node must be already initialized");
-        let instance_name = node.topology_cache.my_instance_name();
+        let instance_name = node.catalog_cache.my_instance_name();
         items.iter().all(|key| key.instance_name == instance_name)
     });
     Op::BatchDml { ops }
@@ -506,7 +506,7 @@ pub fn remove_routes(timeout: Duration) -> traft::Result<()> {
     let deadline = fiber::clock().saturating_add(timeout);
     let node = node::global()?;
     let check_and_make_op = || {
-        let instance_name = node.topology_cache.my_instance_name();
+        let instance_name = node.catalog_cache.my_instance_name();
 
         // clear all routes handled by this instances
         let instance_routes = node

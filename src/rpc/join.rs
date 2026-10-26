@@ -96,7 +96,7 @@ crate::define_rpc_request! {
 // wait_* fns also need to be async.
 pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<Response> {
     let node = node::global()?;
-    let cluster_name = node.topology_cache.cluster_name;
+    let cluster_name = node.catalog_cache.cluster_name;
     let storage = &node.storage;
     let _guard = node.instances_update.lock();
 
@@ -129,7 +129,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             &req.uuid,
         )?;
 
-        node.topology_cache.with(|topology| {
+        node.catalog_cache.with(|topology| {
             crate::compatibility::ensure_no_more_than_two_minor_versions(
                 topology
                     .all_instances()
@@ -460,7 +460,7 @@ pub fn build_instance(
 }
 
 /// Choose [`InstanceName`] based on `tier name`.
-// TODO: use `TopologyCache` instead of `Catalog`
+// TODO: use `CatalogCache` instead of `Catalog`
 fn choose_instance_name(storage: &Catalog, replicaset_name: ReplicasetName) -> InstanceName {
     let mut instance_number_in_replicaset = 1;
     loop {
@@ -648,11 +648,11 @@ fn make_join_response(
         box_replication.push(req.iproto_advertise.clone());
     }
 
-    let topology_ref = node.topology_cache.get();
+    let topology_ref = node.catalog_cache.get();
     let replicaset = topology_ref.replicaset_by_uuid(&instance.replicaset_uuid)?;
     let is_master = replicaset.target_master_name == instance.name;
 
-    let cluster_uuid = node.topology_cache.cluster_uuid.into();
+    let cluster_uuid = node.catalog_cache.cluster_uuid.into();
     let shredding = node.storage.db_config.shredding()?.expect("should be set");
 
     return Ok(Response {

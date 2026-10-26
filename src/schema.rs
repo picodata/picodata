@@ -1,6 +1,7 @@
 use crate::access_control::UserMetadataKind;
 use crate::cas;
 use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::config::DEFAULT_USERNAME;
 use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
@@ -8,7 +9,6 @@ use crate::plugin::PluginIdentifier;
 use crate::plugin::ServiceId;
 use crate::storage::*;
 use crate::tlog;
-use crate::topology_cache::TopologyCacheRef;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
 use crate::traft::op::{Ddl, Op};
@@ -2362,9 +2362,9 @@ impl CreateTableParams {
     /// 3) specified tier contains at least one instance
     ///
     /// Checks occur only in case of a sharded table.
-    pub fn validate_tier(&self, topology_cache: &TopologyCacheRef) -> traft::Result<()> {
+    pub fn validate_tier(&self, catalog_cache: &CatalogCacheRef) -> traft::Result<()> {
         if self.distribution == DistributionParam::Sharded {
-            let Ok(tier) = topology_cache.tier_by_name(&self.tier) else {
+            let Ok(tier) = catalog_cache.tier_by_name(&self.tier) else {
                 return Err(CreateTableError::UnexistingTier {
                     tier_name: self.tier.to_string(),
                 }
@@ -2378,7 +2378,7 @@ impl CreateTableParams {
                 .into());
             }
 
-            let tier_is_not_empty = topology_cache
+            let tier_is_not_empty = catalog_cache
                 .all_instances()
                 .any(|instance| instance.tier == self.tier);
 
@@ -2635,17 +2635,17 @@ pub fn choose_table_id(name: &str, governor_op_id: Option<u64>) -> traft::Result
     Ok(id)
 }
 
-/// Chooses the tier to create the table on based on the user-supplied value and the default tier in the topology cache
+/// Chooses the tier to create the table on based on the user-supplied value and the default tier in the catalog cache
 pub fn choose_table_tier(
     specified_tier: Option<&str>,
-    topology_cache: &TopologyCacheRef,
+    catalog_cache: &CatalogCacheRef,
 ) -> traft::Result<SmolStr> {
     match specified_tier {
         // explicitly specified by user
         Some(tier) => Ok(tier.to_smolstr()),
         None => {
             // unspecified, should use the default tier
-            if let Some(name) = topology_cache.default_tier_name() {
+            if let Some(name) = catalog_cache.default_tier_name() {
                 Ok(name.clone())
             } else {
                 // this should not happen unless user executes DML on _pico_tier

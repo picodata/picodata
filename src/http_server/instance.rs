@@ -39,9 +39,9 @@ pub(crate) struct InstanceResponse {
 
 fn http_api_instance_detail(uuid: String) -> ApiResult<InstanceResponse> {
     let node = node::global().map_err(traft::error::Error::from)?;
-    let my_uuid = node.topology_cache.my_instance_uuid();
+    let my_uuid = node.catalog_cache.my_instance_uuid();
 
-    let topology = node.topology_cache.get();
+    let topology = node.catalog_cache.get();
     let instance = match topology.instance_by_uuid(&uuid) {
         Ok(i) => i.clone(),
         Err(traft::error::Error::NoSuchInstance(_)) => {

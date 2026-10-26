@@ -389,13 +389,13 @@ fn execute_alter_pico_tier_add_is_default() -> traft::Result<Response> {
     let node = traft::node::global()?;
 
     // Preliminary check before schema change performing.
-    let topology_cache_ref = node.topology_cache.get();
-    let mut default_tier_name = topology_cache_ref
+    let catalog_cache_ref = node.catalog_cache.get();
+    let mut default_tier_name = catalog_cache_ref
         .tier_by_name(DEFAULT_TIER)
         .ok()
         .map(|t| &t.name);
-    if default_tier_name.is_none() && topology_cache_ref.all_tiers().count() == 1 {
-        default_tier_name = Some(&topology_cache_ref.this_tier().name);
+    if default_tier_name.is_none() && catalog_cache_ref.all_tiers().count() == 1 {
+        default_tier_name = Some(&catalog_cache_ref.this_tier().name);
     }
     if let Some(name) = default_tier_name {
         tlog!(Info, "successfully determined the default tier: `{name}`");
@@ -404,7 +404,7 @@ fn execute_alter_pico_tier_add_is_default() -> traft::Result<Response> {
             "cannot determine the default tier while altering _pico_tier",
         ));
     };
-    drop(topology_cache_ref);
+    drop(catalog_cache_ref);
 
     actualize_system_table_format::<Tiers>()?;
 
@@ -454,7 +454,7 @@ fn insert_experimental_sharding_implementation_into_pico_db_config() -> traft::R
     // `("experimental_sharding_implementation", tier.name, false)` into
     // _pico_db_config
     transaction::transaction_force_async(|| -> traft::Result<()> {
-        let topology_ref = node.topology_cache.get();
+        let topology_ref = node.catalog_cache.get();
         for tier in topology_ref.all_tiers() {
             node.storage.db_config.replace(
                 system_parameter_name!(experimental_sharding_implementation),
@@ -478,7 +478,7 @@ fn insert_replication_mode_into_pico_db_config() -> traft::Result<Response> {
     // guess the default; persisting it keeps the catalog explicit and
     // consistent with freshly bootstrapped clusters.
     transaction::transaction_force_async(|| -> traft::Result<()> {
-        let topology_ref = node.topology_cache.get();
+        let topology_ref = node.catalog_cache.get();
         for tier in topology_ref.all_tiers() {
             node.storage.db_config.replace(
                 system_parameter_name!(replication_mode),
@@ -496,7 +496,7 @@ fn insert_replication_mode_into_pico_db_config() -> traft::Result<Response> {
 fn insert_wal_mode_into_pico_db_config() -> traft::Result<Response> {
     let node = traft::node::global()?;
     transaction::transaction(|| -> traft::Result<()> {
-        let topology = node.topology_cache.get();
+        let topology = node.catalog_cache.get();
         for tier in topology.all_tiers() {
             node.storage.db_config.replace(
                 system_parameter_name!(wal_mode),
@@ -539,7 +539,7 @@ fn replace_global_parameter(name: &str, value: &impl serde::Serialize) -> traft:
     apply_alter_system_parameter(
         &node.alter_system_parameters,
         tuple,
-        node.topology_cache.my_tier_name(),
+        node.catalog_cache.my_tier_name(),
     )?;
 
     Ok(())
