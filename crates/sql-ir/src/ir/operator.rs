@@ -482,7 +482,7 @@ impl From<&UpdateStrategy> for UpdateType {
     }
 }
 
-#[derive(Copy, Clone, Deserialize, Debug, PartialEq, Eq, Hash, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum OrderByEntity {
     Expression { expr_id: NodeId },
     Index { value: usize },
@@ -503,7 +503,7 @@ impl Display for OrderByType {
     }
 }
 
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct OrderByElement {
     pub entity: OrderByEntity,
     pub order_type: Option<OrderByType>,

@@ -1,9 +1,9 @@
 use super::{NodeAligned, NodeOwned};
 use crate::ir::{Entity, Node, Node32, NodeId, Plan, SbroadError};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use smol_str::format_smolstr;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum Tcl {
     Begin,
     Commit,

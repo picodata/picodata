@@ -20,14 +20,14 @@ use crate::ir::tree::traversal::PostOrder;
 use crate::ir::tree::Snapshot;
 use crate::ir::types::CastType;
 use crate::ir::Plan;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::mem::take;
 
 /// Payload of the syntax tree node.
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum SyntaxData {
     /// "as \"alias_name\""
     Alias(SmolStr),
@@ -151,7 +151,7 @@ impl AsRef<SyntaxData> for SyntaxData {
 ///
 /// In order to understand the process of `left` (and `right`) fields filling
 /// see `add_plan_node` function.
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SyntaxNode {
     /// Payload
     pub(crate) data: SyntaxData,
@@ -539,7 +539,7 @@ impl SyntaxNode {
 }
 
 /// Storage for the syntax nodes.
-#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct SyntaxNodes {
     /// Syntax node tree (positions in the vector act like identifiers).
     pub(crate) arena: Vec<SyntaxNode>,
@@ -2956,7 +2956,7 @@ impl<'p> SyntaxPlan<'p> {
 }
 
 /// Wrapper over `SyntaxNode` `arena` that is used for converting it to SQL.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
 pub struct OrderedSyntaxNodes {
     arena: Vec<SyntaxNode>,
     /// Indices of nodes from `arena`. During the conversion to SQL the order of nodes from

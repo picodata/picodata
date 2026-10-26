@@ -168,7 +168,7 @@ pub type ColumnPosition = usize;
 
 /// Single instruction to execute during virtual table tinkering.
 /// See `Program` structure description.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum MotionOpcode {
     /// Set `primary_key` field of virtual table to the given argument.
     PrimaryKey(Vec<ColumnPosition>),
@@ -260,7 +260,7 @@ impl BoolOp {
 /// The idea is that such logic is met among several cases and that we can operate those opcodes
 /// instead of rewriting this logic everytime.
 /// See the description of each command in `MotionOpcode` enum.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Program(pub Vec<MotionOpcode>);
 
 impl Default for Program {

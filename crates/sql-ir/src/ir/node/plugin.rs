@@ -2,7 +2,7 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::node::{Node136, Node232, Node96, NodeAligned};
 use crate::ir::options::Timeout;
 use crate::ir::{Node, NodeId, Plan};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr};
 
 #[must_use]
@@ -10,7 +10,7 @@ pub fn get_default_timeout() -> Timeout {
     Timeout::default_ddl()
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct MigrateToOpts {
     pub timeout: Timeout,
     pub rollback_timeout: Timeout,
@@ -25,19 +25,19 @@ impl Default for MigrateToOpts {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, PartialOrd, Ord)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, PartialOrd, Ord)]
 pub struct SettingsPair {
     pub key: SmolStr,
     pub value: SmolStr,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, PartialOrd, Ord)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, PartialOrd, Ord)]
 pub struct ServiceSettings {
     pub name: SmolStr,
     pub pairs: Vec<SettingsPair>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct CreatePlugin {
     pub name: SmolStr,
     pub version: SmolStr,
@@ -52,7 +52,7 @@ impl From<CreatePlugin> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct EnablePlugin {
     pub name: SmolStr,
     pub version: SmolStr,
@@ -66,7 +66,7 @@ impl From<EnablePlugin> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DisablePlugin {
     pub name: SmolStr,
     pub version: SmolStr,
@@ -80,7 +80,7 @@ impl From<DisablePlugin> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DropPlugin {
     pub name: SmolStr,
     pub version: SmolStr,
@@ -96,7 +96,7 @@ impl From<DropPlugin> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct MigrateTo {
     pub name: SmolStr,
     pub version: SmolStr,
@@ -110,7 +110,7 @@ impl From<MigrateTo> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct AppendServiceToTier {
     pub plugin_name: SmolStr,
     pub version: SmolStr,
@@ -126,7 +126,7 @@ impl From<AppendServiceToTier> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct RemoveServiceFromTier {
     pub plugin_name: SmolStr,
     pub version: SmolStr,
@@ -142,7 +142,7 @@ impl From<RemoveServiceFromTier> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ChangeConfig {
     pub plugin_name: SmolStr,
     pub version: SmolStr,
@@ -259,7 +259,7 @@ impl Plugin<'_> {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum PluginOwned {
     /// Create a new plugin.
     Create(CreatePlugin),

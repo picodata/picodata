@@ -1,12 +1,12 @@
 use super::{Node32, NodeAligned, NodeOwned};
 use crate::ir::{Entity, Node, NodeId, Plan, SbroadError};
 use crate::utils::to_user;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use smol_str::format_smolstr;
 use std::str::FromStr;
 
 /// Node-local target reset by `DISCARD`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Discard {
     /// `DISCARD CACHE <cache>`: flush the given node-local cache.
     Cache(DiscardCache),
@@ -15,14 +15,14 @@ pub enum Discard {
 }
 
 /// Node-local domain reset by `DISCARD`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum DiscardDomain {
     /// Every cache listed in [`DiscardCache`].
     Cache,
 }
 
 /// Node-local cache flushed by `DISCARD CACHE`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum DiscardCache {
     /// Storage statement cache.
     SqlStmt,

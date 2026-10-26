@@ -1,6 +1,6 @@
 //! Undo transformation module.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::ir::node::NodeId;
@@ -8,7 +8,7 @@ use crate::ir::node::NodeId;
 /// Transformation log keep the history of the plan subtree modifications.
 /// When we modify the plan subtree, we add a new entry to the log, where
 /// the key is a new subtree top node and the value is the previous version.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct TransformationLog {
     log: HashMap<NodeId, NodeId>,
 }

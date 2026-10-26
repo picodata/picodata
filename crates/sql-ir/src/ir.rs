@@ -123,7 +123,7 @@ impl PartialEq for ColumnsLenMemo {
 impl Eq for ColumnsLenMemo {}
 
 /// Plan nodes storage.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Nodes {
     /// The positions in the arrays act like pointers, so it is possible
     /// only to add nodes to the plan, but never remove them.
@@ -683,7 +683,7 @@ impl Nodes {
 
 /// One level of `Slices`.
 /// Element of `slice` vec is a `motion_id` to execute.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Slice {
     pub slice: Vec<NodeId>,
 }
@@ -708,7 +708,7 @@ impl Slice {
 
 /// Vec of `motion_id` levels (see `slices` field of `Plan` structure for more information).
 /// Element of `slices` vec is one level containing several `motion_id`s to execute.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Slices {
     pub slices: Vec<Slice>,
 }

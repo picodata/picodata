@@ -106,7 +106,7 @@ impl Default for NodeId {
 /// Expression name.
 ///
 /// Example: `42 as a`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Alias {
     /// Alias name.
     pub name: SmolStr,
@@ -123,7 +123,7 @@ impl From<Alias> for NodeAligned {
 /// Binary expression returning boolean result.
 ///
 /// Example: `a > 42`, `b in (select c from ...)`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct BoolExpr {
     /// Left branch expression node index in the plan node arena.
     pub left: NodeId,
@@ -142,7 +142,7 @@ impl From<BoolExpr> for NodeAligned {
 /// Binary expression returning row result.
 ///
 /// Example: `a + b > 42`, `a + b < c + 1`, `1 + 2 != 2 * 2`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ArithmeticExpr {
     /// Left branch expression node index in the plan node arena.
     pub left: NodeId,
@@ -161,7 +161,7 @@ impl From<ArithmeticExpr> for NodeAligned {
 /// Type cast expression.
 ///
 /// Example: `cast(a as text)`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Cast {
     /// Target expression that must be casted to another type.
     pub child: NodeId,
@@ -178,7 +178,7 @@ impl From<Cast> for NodeAligned {
 /// Index expression.
 ///
 /// Example: `x[10]`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct IndexExpr {
     /// Target expression we're going to take an element of.
     pub child: NodeId,
@@ -197,7 +197,7 @@ impl From<IndexExpr> for NodeAligned {
 /// String concatenation expression.
 ///
 /// Example: `a || 'hello'`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Concat {
     /// Left expression node id.
     pub left: NodeId,
@@ -214,7 +214,7 @@ impl From<Concat> for NodeAligned {
 /// Constant expressions.
 ///
 /// Example: `42`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Constant {
     /// Contained value (boolean, number, string or null)
     pub value: Value,
@@ -227,7 +227,7 @@ impl From<Constant> for NodeAligned {
 }
 
 /// Helper structure for cases of references generated from asterisk.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Hash)]
 pub struct ReferenceAsteriskSource {
     /// None                -> generated from simple asterisk: `select * from t`
     /// Some(relation_name) -> generated from table asterisk: `select t.* from t`
@@ -248,7 +248,7 @@ impl ReferenceAsteriskSource {
 /// Like expressions.
 ///
 /// Example: `a like b escape '\'`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Like {
     /// Left child id
     pub left: NodeId,
@@ -264,7 +264,7 @@ impl From<Like> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum ReferenceTarget {
     /// The reference points at nothing (a placeholder).
     Leaf,
@@ -335,7 +335,7 @@ impl ReferenceTarget {
 /// - relational node (containing this reference)
 /// - target(s) in the relational nodes list of children
 /// - column position in the child(ren) output tuple
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct Reference {
     /// Target node
     pub target: ReferenceTarget,
@@ -357,7 +357,7 @@ impl From<Reference> for NodeAligned {
 }
 
 /// Reference to the position in the incoming tuple(s) for subquery.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct SubQueryReference {
     /// Relational node
     pub rel_id: NodeId,
@@ -381,7 +381,7 @@ impl From<SubQueryReference> for NodeAligned {
 ///
 ///
 ///  Example: (a, b, 1).
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Row {
     /// A list of the alias expression node indexes in the plan node arena.
     pub list: Vec<NodeId>,
@@ -397,7 +397,7 @@ impl From<Row> for NodeAligned {
 ///
 /// Represents `ARRAY[expr, expr, ...]` in SQL.
 /// Element types are derived by the type system; nested arrays are rejected.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ArrayLiteral {
     /// Element expressions in declaration order.
     pub list: Vec<NodeId>,
@@ -413,7 +413,7 @@ impl From<ArrayLiteral> for NodeAligned {
 
 /// Example: `bucket_id("1")` (the number of buckets can be
 /// changed only after restarting the cluster).
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct ScalarFunction {
     /// Function name.
     pub name: SmolStr,
@@ -440,7 +440,7 @@ impl From<ScalarFunction> for NodeAligned {
 }
 
 /// Trim expression.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Trim {
     /// Trim kind.
     pub kind: Option<TrimKind>,
@@ -457,7 +457,7 @@ impl From<Trim> for NodeAligned {
 }
 
 /// Unary expression returning boolean result.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct UnaryExpr {
     /// Unary operator.
     pub op: operator::Unary,
@@ -471,7 +471,7 @@ impl From<UnaryExpr> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Case {
     pub search_expr: Option<NodeId>,
     pub when_blocks: Vec<(NodeId, NodeId)>,
@@ -484,7 +484,7 @@ impl From<Case> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Parameter {
     pub param_type: DerivedType,
     // index of parameter (starting with 1)
@@ -526,7 +526,7 @@ impl From<LetVarRef> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct CountAsterisk {}
 
 impl From<CountAsterisk> for NodeAligned {
@@ -535,7 +535,7 @@ impl From<CountAsterisk> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct TimeParameters {
     /// Number of digits to round the seconds to
     pub precision: usize,
@@ -544,7 +544,7 @@ pub struct TimeParameters {
 }
 
 /// Node representing SQL functions for retrieving time
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum Timestamp {
     /// `CURRENT_DATE`
     Date,
@@ -560,7 +560,7 @@ impl From<Timestamp> for NodeAligned {
 
 /// Node representing the `CURRENT_USER` SQL function.
 /// It is replaced with the name of the effective user on execute.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct CurrentUser {}
 
 impl From<CurrentUser> for NodeAligned {
@@ -569,7 +569,7 @@ impl From<CurrentUser> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ScanCte {
     /// CTE's name.
     pub alias: SmolStr,
@@ -584,7 +584,7 @@ impl From<ScanCte> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Except {
     /// Left child id
     pub left: NodeId,
@@ -600,7 +600,7 @@ impl From<Except> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Delete {
     /// Relation name.
     pub relation: SmolStr,
@@ -617,7 +617,7 @@ impl From<Delete> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Insert {
     /// Relation name.
     pub relation: SmolStr,
@@ -637,7 +637,7 @@ impl From<Insert> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Intersect {
     pub left: NodeId,
     pub right: NodeId,
@@ -651,7 +651,7 @@ impl From<Intersect> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Update {
     /// Relation name.
     pub relation: SmolStr,
@@ -678,7 +678,7 @@ impl From<Update> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Join {
     /// Left and right children ids of join
     pub left: NodeId,
@@ -705,7 +705,7 @@ impl From<Join> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Limit {
     /// Resulting data distribution.
     pub distribution: Option<Box<Distribution>>,
@@ -723,7 +723,7 @@ impl From<Limit> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Motion {
     // Scan name.
     pub alias: Option<SmolStr>,
@@ -751,7 +751,7 @@ impl From<Motion> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Projection {
     /// Child node index
     pub child: Option<NodeId>,
@@ -775,7 +775,7 @@ impl From<Projection> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SelectWithoutScan {
     /// Subqueries, which are dependencies
     pub subqueries: Vec<NodeId>,
@@ -791,7 +791,7 @@ impl From<SelectWithoutScan> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ScanRelation {
     // Scan name.
     pub alias: Option<SmolStr>,
@@ -809,7 +809,7 @@ impl From<ScanRelation> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ScanSubQuery {
     /// SubQuery name.
     pub alias: Option<SmolStr>,
@@ -825,7 +825,7 @@ impl From<ScanSubQuery> for NodeAligned {
 }
 
 /// A table function in `FROM`, e.g. `generate_series(1, 3)`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ScanFunction {
     /// Scan name.
     pub alias: Option<SmolStr>,
@@ -848,7 +848,7 @@ impl From<ScanFunction> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Selection {
     /// Child node index
     pub child: NodeId,
@@ -866,7 +866,7 @@ impl From<Selection> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct GroupBy {
     /// Child is a
     /// * Scan in case it's local GroupBy
@@ -885,7 +885,7 @@ impl From<GroupBy> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Having {
     pub child: NodeId,
     pub subqueries: Vec<NodeId>,
@@ -900,7 +900,7 @@ impl From<Having> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct OrderBy {
     pub child: NodeId,
     pub subqueries: Vec<NodeId>,
@@ -915,7 +915,7 @@ impl From<OrderBy> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct UnionAll {
     /// Left child id
     pub left: NodeId,
@@ -931,7 +931,7 @@ impl From<UnionAll> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Values {
     /// Resulting data distribution.
     pub distribution: Option<Box<Distribution>>,
@@ -951,7 +951,7 @@ impl From<Values> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct DropRole {
     pub name: SmolStr,
     pub if_exists: bool,
@@ -965,7 +965,7 @@ impl From<DropRole> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct DropUser {
     pub name: SmolStr,
     pub if_exists: bool,
@@ -979,7 +979,7 @@ impl From<DropUser> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CreateRole {
     pub name: SmolStr,
     pub if_not_exists: bool,
@@ -993,7 +993,7 @@ impl From<CreateRole> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CreateUser {
     pub name: SmolStr,
     pub password: SmolStr,
@@ -1009,7 +1009,7 @@ impl From<CreateUser> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct AlterUser {
     pub name: SmolStr,
     pub alter_option: AlterOption,
@@ -1023,7 +1023,7 @@ impl From<AlterUser> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct GrantPrivilege {
     pub grant_type: GrantRevokeType,
     pub grantee_name: SmolStr,
@@ -1037,7 +1037,7 @@ impl From<GrantPrivilege> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct RevokePrivilege {
     pub revoke_type: GrantRevokeType,
     pub grantee_name: SmolStr,
@@ -1051,7 +1051,7 @@ impl From<RevokePrivilege> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct AuditPolicy {
     pub policy_name: SmolStr,
     pub audit_option: AuditPolicyOption,
@@ -1066,7 +1066,7 @@ impl From<AuditPolicy> for NodeAligned {
 }
 
 /// Vinyl-specific index options for LSM tree configuration.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct VinylOptions {
     pub bloom_fpr: Option<Double>,
     pub page_size: Option<u32>,
@@ -1077,7 +1077,7 @@ pub struct VinylOptions {
     pub compression_dict: Option<bool>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CreateTable {
     pub name: SmolStr,
     pub format: Vec<ColumnDef>,
@@ -1100,7 +1100,7 @@ pub struct CreateTable {
     pub vinyl_options: VinylOptions,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct AlterTable {
     pub name: SmolStr,
     pub wait_applied_globally: bool,
@@ -1114,13 +1114,13 @@ impl From<AlterTable> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum AlterTableOp {
     AlterColumn(Vec<AlterColumn>),
     RenameTable { new_table_name: SmolStr },
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum AlterColumn {
     Add {
         column: ColumnDef,
@@ -1138,7 +1138,7 @@ impl From<CreateTable> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct DropTable {
     pub name: SmolStr,
     pub if_exists: bool,
@@ -1152,7 +1152,7 @@ impl From<DropTable> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Backup {
     pub wait_applied_globally: bool,
     pub timeout: Timeout,
@@ -1164,7 +1164,7 @@ impl From<Backup> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct TruncateTable {
     pub name: SmolStr,
     pub wait_applied_globally: bool,
@@ -1177,7 +1177,7 @@ impl From<TruncateTable> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CreateProc {
     pub name: SmolStr,
     pub params: Vec<ParamDef>,
@@ -1194,7 +1194,7 @@ impl From<CreateProc> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct DropProc {
     pub name: SmolStr,
     pub params: Option<Vec<ParamDef>>,
@@ -1209,7 +1209,7 @@ impl From<DropProc> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct RenameRoutine {
     pub old_name: SmolStr,
     pub new_name: SmolStr,
@@ -1224,7 +1224,7 @@ impl From<RenameRoutine> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CreateIndex {
     pub name: SmolStr,
     pub table_name: SmolStr,
@@ -1246,7 +1246,7 @@ impl From<CreateIndex> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct RenameIndex {
     pub old_name: SmolStr,
     pub new_name: SmolStr,
@@ -1261,7 +1261,7 @@ impl From<RenameIndex> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum FrameType {
     Range,
     Rows,
@@ -1276,7 +1276,7 @@ impl Display for FrameType {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum BoundType {
     PrecedingUnbounded,
     PrecedingOffset(NodeId),
@@ -1297,7 +1297,7 @@ impl BoundType {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum Bound {
     Single(BoundType),
     Between(BoundType, BoundType),
@@ -1312,13 +1312,13 @@ impl Bound {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct Frame {
     pub ty: FrameType,
     pub bound: Bound,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Window {
     pub partition: Option<Vec<NodeId>>,
     pub ordering: Option<Vec<OrderByElement>>,
@@ -1331,7 +1331,7 @@ impl From<Window> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 
 pub struct Over {
     pub stable_func: NodeId,
@@ -1345,7 +1345,7 @@ impl From<Over> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct DropIndex {
     pub name: SmolStr,
     pub if_exists: bool,
@@ -1359,19 +1359,19 @@ impl From<DropIndex> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SetParam {
     pub scope_type: SetParamScopeType,
     pub param_value: SetParamValue,
     pub timeout: Timeout,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum AlterSystem {
     Cluster(AlterSystemCluster),
     Local(AlterSystemLocal),
 }
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct AlterSystemCluster {
     pub ty: AlterSystemType,
     /// In case of None, ALTER is supposed
@@ -1381,7 +1381,7 @@ pub struct AlterSystemCluster {
     pub timeout: Timeout,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct AlterSystemLocal {
     pub ty: AlterSystemType,
 }
@@ -1405,7 +1405,7 @@ impl From<AlterSystemLocal> for NodeAligned {
 }
 
 // TODO: Fill with actual values.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SetTransaction {
     pub timeout: Timeout,
 }
@@ -1416,7 +1416,7 @@ impl From<SetTransaction> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Invalid;
 
 impl From<Invalid> for NodeAligned {
@@ -1426,7 +1426,7 @@ impl From<Invalid> for NodeAligned {
 }
 
 /// Procedure body.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct CallProcedure {
     /// The name of the procedure.
     pub name: SmolStr,
@@ -1858,7 +1858,7 @@ impl_block_entries!(BlockEntriesMut -> BlockEntryMut, iter_mut);
 ///     UPDATE t SET a = a - 1, b = b + 1 WHERE pk = 1;
 /// END $$;
 /// ```
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct AnonymousBlock {
     /// Block statements planned and executed in order.
     /// Each statement contains a node id of a corresponding subquery.
@@ -1874,7 +1874,7 @@ impl From<AnonymousBlock> for NodeAligned {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Union {
     /// Left child id
     pub left: NodeId,
@@ -1891,7 +1891,7 @@ impl From<Union> for NodeAligned {
 }
 
 #[allow(clippy::module_name_repetitions)]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum Node32 {
     Invalid(Invalid),
     Union(Union),
@@ -1974,7 +1974,7 @@ impl Node32 {
 }
 
 #[allow(clippy::module_name_repetitions)]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum Node64 {
     ScanCte(ScanCte),
     Case(Case),
@@ -2037,7 +2037,7 @@ impl Node64 {
 }
 
 #[allow(clippy::module_name_repetitions)]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum Node96 {
     AnonymousBlock(AnonymousBlock),
     Projection(Projection),
@@ -2105,7 +2105,7 @@ const _: () = assert!(std::mem::size_of::<Node136>() <= 112);
 const _: () = assert!(std::mem::size_of::<Node232>() <= 208);
 
 #[allow(clippy::module_name_repetitions)]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum Node136 {
     Invalid(Invalid),
     CreateUser(CreateUser),
@@ -2156,7 +2156,7 @@ impl Node136 {
 }
 
 #[allow(clippy::module_name_repetitions, clippy::large_enum_variant)]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum Node232 {
     Invalid(Invalid),
     CreateTable(CreateTable),

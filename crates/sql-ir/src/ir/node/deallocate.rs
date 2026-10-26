@@ -1,12 +1,12 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::NodeAligned;
 use crate::ir::{Node, NodeId, Plan};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr};
 
 use super::{Node32, NodeOwned};
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Deallocate {
     pub name: Option<SmolStr>,
 }
