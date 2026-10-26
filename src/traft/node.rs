@@ -1373,6 +1373,14 @@ impl NodeImpl {
 
                 self.apply_op_ddl_prepare(ddl, schema_version, governor_op_id)
                     .expect("storage should not fail");
+
+                // The commit of this transaction waits for the WAL until the
+                // test lifts the delay (needs a debug build of tarantool).
+                crate::error_injection!("DELAY_WAL_AFTER_APPLYING_DDL_PREPARE" => {
+                    ::tarantool::lua_state()
+                        .exec("box.error.injection.set('ERRINJ_WAL_DELAY', true)")
+                        .expect("WAL injections need a debug build of tarantool");
+                });
             }
             Op::DdlCommit => {
                 let v_local = local_schema_version().expect("storage should not fail");
