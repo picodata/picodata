@@ -811,6 +811,10 @@ impl<'q> Cast<'q, Analyzed> {
         Self { child, ty, syntax }
     }
 
+    pub fn into_parts(self) -> (Box<Expr<'q, Analyzed>>, CastType, CastSyntax) {
+        (self.child, self.ty, self.syntax)
+    }
+
     pub fn parts_mut(&mut self) -> (&mut Box<Expr<'q, Analyzed>>, &mut CastType, &mut CastSyntax) {
         (&mut self.child, &mut self.ty, &mut self.syntax)
     }

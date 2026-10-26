@@ -26,7 +26,8 @@ use sql_ast_new_nodes::expr::{
 use sql_ast_new_nodes::multiset::{Cte, MultisetInner, MultisetStmt};
 use sql_ast_new_nodes::select::{ProjectionExpr, SelectStmt};
 use sql_ast_new_nodes::table_expression::{
-    AnalyzedCteOrTable, From, FromEntry, GroupBy, OrdrByGrpByElem, TableFactor, TableFactorInner,
+    AnalyzedCteOrTable, BoundVar, From, FromEntry, GroupBy, JoinKind, JoinedTable, OrdrByGrpByElem,
+    TableFactor, TableFactorInner,
 };
 use sql_ast_new_nodes::{Analyzed, Ident, Node, SqlOption};
 
@@ -35,7 +36,7 @@ use sql_ast_new_nodes::AbstractSyntaxTree;
 use sql_ir::ir::index::Index;
 use sql_ir::ir::node::expression::MutExpression;
 use sql_ir::ir::node::{BoolExpr, CountAsterisk, NodeId, ReferenceTarget, ScalarFunction};
-use sql_ir::ir::operator::{Bool, Unary};
+use sql_ir::ir::operator::{Bool, JoinKind as IrJoinKind, Unary};
 use sql_ir::ir::subtree_cloner::SubtreeCloner;
 use sql_ir::ir::types::CastType;
 use sql_ir::ir::value::Value;
@@ -69,19 +70,36 @@ pub(crate) trait NodeTranslator<'q> {
 }
 
 pub(crate) struct Ctx<'q> {
-    /// Scope aware CTEs. Outer index is depth.
-    ctes: Vec<Vec<NodeId>>,
+    /// One frame per statement depth.
+    frames: Vec<Frame>,
     /// Select list of the statement in progress, parked while GROUP BY
     /// translates the items its ordinals name.
     proj_exprs: Vec<ProjExpr<'q>>,
 }
 
+/// Translation state of one statement depth.
+#[derive(Default)]
+struct Frame {
+    /// CTEs visible at this depth, by position.
+    ctes: Vec<NodeId>,
+    /// Column offset of each FROM entry already folded into the join chain.
+    offsets: Vec<usize>,
+    /// The table being joined while its ON/USING condition translates.
+    pending: Option<NodeId>,
+}
+
 impl Ctx<'_> {
     fn empty() -> Self {
         Self {
-            ctes: Vec::new(),
+            frames: Vec::new(),
             proj_exprs: Vec::new(),
         }
+    }
+
+    fn frame_mut(&mut self) -> AstResult<&mut Frame> {
+        self.frames
+            .last_mut()
+            .ok_or_else(|| internal_err(format_smolstr!("expected actual statement frame")))
     }
 }
 
@@ -144,17 +162,16 @@ impl<'q> NodeTranslator<'q> for MultisetStmt<'q, Analyzed> {
         // Split the whole statement into parts and handle them separately.
         let (ctes, inner, _order_by, _limit) = self.into_parts();
 
-        ctx.ctes.push(Vec::new());
+        // Initialize scope we are entering
+        ctx.frames.push(Frame::default());
+
         for cte in ctes.into() {
+            // Translate CTE and save its root in the actual scope.
             let cte_id = cte.translate(ir, ctx)?;
+            ctx.frame_mut()?.ctes.push(cte_id);
 
             // CTE inner nodes should not leak.
             ir.reset_top();
-
-            ctx.ctes
-                .last_mut()
-                .ok_or_else(|| internal_err(format_smolstr!("expected actual CTEs scope")))?
-                .push(cte_id);
         }
 
         // Handle each variant of statement inner body.
@@ -164,8 +181,10 @@ impl<'q> NodeTranslator<'q> for MultisetStmt<'q, Analyzed> {
             MultisetInner::Operation(_operation) => todo!(),
         };
 
-        // Drop CTEs from scope we are leaving.
-        ctx.ctes.pop();
+        // TODO: translate `ORDER BY`, `LIMIT`
+
+        // Drop the scope we are leaving.
+        ctx.frames.pop();
 
         Ok(())
     }
@@ -336,6 +355,7 @@ impl<'q> NodeTranslator<'q> for From<'q, Analyzed> {
     type ResType = ();
 
     fn translate(self, ir: &mut Plan, ctx: &mut Ctx<'q>) -> AstResult<Self::ResType> {
+        ctx.frame_mut()?.offsets.clear();
         for entry in self.into_entries() {
             entry.translate(ir, ctx)?;
         }
@@ -355,11 +375,89 @@ impl<'q> NodeTranslator<'q> for FromEntry<'q, Analyzed> {
             // depth, indexed by entry — and resolve references against that
             // table instead of the tree. That is what lets a future
             // by-value translation consume FROM entries as it goes.
-            Self::TableFactor(tbl) => tbl.translate(ir, ctx),
-            Self::JoinedTable(_) => Err(unsupported_err(format_smolstr!(
-                "queries with JOIN clause are not supported"
-            ))),
+            Self::TableFactor(tbl) => {
+                tbl.translate(ir, ctx)?;
+                // The leading entry opens the join chain.
+                ctx.frame_mut()?.offsets.push(0);
+                Ok(())
+            }
+            Self::JoinedTable(joined) => joined.translate(ir, ctx),
         }
+    }
+}
+
+impl<'q> NodeTranslator<'q> for JoinedTable<'q, Analyzed> {
+    type ResType = ();
+
+    fn translate(self, ir: &mut Plan, ctx: &mut Ctx<'q>) -> AstResult<Self::ResType> {
+        let (tbl, kind, condition, using_cols) = self.into_parts();
+        let is_cross = matches!(kind, JoinKind::Cross);
+        let kind = match kind {
+            JoinKind::Inner | JoinKind::Cross => IrJoinKind::Inner,
+            JoinKind::Left => IrJoinKind::LeftOuter,
+        };
+
+        let left = ir.get_top()?;
+
+        // Translate entry to be joined.
+        tbl.translate(ir, ctx)?;
+        let right = ir.get_top()?;
+
+        // The condition reads the left chain through the top and the joined
+        // table through `pending`.
+        ir.set_top(left)?;
+        ctx.frame_mut()?.pending = Some(right);
+
+        let condition = match condition {
+            Some(cond) => cond.translate(ir, ctx)?,
+            // `USING (c1, c2)` is `ON l.c1 = r.c1 AND l.c2 = r.c2`.
+            None => {
+                let mut cond = None;
+                for using in using_cols {
+                    let (l, r) = using.parts();
+                    // shortcut: differently typed columns need casts, lift once Cast translation lands.
+                    if l.data_type() != r.data_type() {
+                        return Err(unsupported_err(format_smolstr!(
+                            "JOIN/USING over differently typed columns is not supported"
+                        )));
+                    }
+
+                    // Translate both vars and bind them via equality.
+                    let l_id = l.translate(ir, ctx)?;
+                    let r_id = r.translate(ir, ctx)?;
+                    let eq = ir.add_cond(l_id, Bool::Eq, r_id)?;
+
+                    // Chain with `ON` exprs the equality with left and joined table vars.
+                    cond = Some(match cond {
+                        Some(cond) => ir.add_cond(cond, Bool::And, eq)?,
+                        None => eq,
+                    });
+                }
+                match cond {
+                    Some(cond) => cond,
+                    // `a CROSS JOIN b` is `a INNER JOIN b ON true`, as in the old pipeline.
+                    None if is_cross => ir.add_const(Value::Boolean(true)),
+                    None => {
+                        return Err(internal_err(format_smolstr!(
+                            "expected JOIN/ON or JOIN/USING"
+                        )))
+                    }
+                }
+            }
+        };
+
+        let frame = ctx.frame_mut()?;
+        frame.pending = None;
+
+        // Save the offset of joined table columns.
+        frame.offsets.push(ir.columns_len(left)?);
+
+        // All nodes we depend on have just been translated. Just add join node into IR.
+        let join_id = ir.add_join(left, right, condition, kind)?;
+
+        // Now IR top is newly created join.
+        ir.set_top(join_id)?;
+        Ok(())
     }
 }
 
@@ -371,9 +469,9 @@ impl<'q> NodeTranslator<'q> for TableFactor<'q, Analyzed> {
             TableFactorInner::CteOrTable(cte_or_tbl) => match cte_or_tbl {
                 AnalyzedCteOrTable::Cte { name, cte } => {
                     let body_id = *ctx
-                        .ctes
+                        .frames
                         .get(cte.depth)
-                        .and_then(|frame| frame.get(cte.offset))
+                        .and_then(|frame| frame.ctes.get(cte.offset))
                         .ok_or_else(|| internal_err(format_smolstr!("expected to find CTE")))?;
 
                     let scan_id = ir.add_cte_scan(
@@ -419,6 +517,46 @@ impl<'q> NodeTranslator<'q> for TableFactor<'q, Analyzed> {
             }
         }
         Ok(())
+    }
+}
+
+impl<'q> NodeTranslator<'q> for BoundVar {
+    type ResType = NodeId;
+
+    fn translate(self, ir: &mut Plan, ctx: &mut Ctx<'q>) -> AstResult<Self::ResType> {
+        if self.depth + 1 != ctx.frames.len() {
+            return Err(unsupported_err(format_smolstr!(
+                "correlated subqueries are not supported"
+            )));
+        }
+
+        // Entries folded into the join chain are read through the top,
+        // the table being joined directly.
+        let frame = ctx.frame_mut()?;
+        let (target, position) = match frame.offsets.get(self.entry) {
+            Some(offset) => {
+                let top = ir.get_top().map_err(|_| {
+                    internal_err(format_smolstr!(
+                        "expected tuple source for bound column reference"
+                    ))
+                })?;
+                (top, offset + self.column_pos)
+            }
+            None => {
+                let pending = frame.pending.ok_or_else(|| {
+                    internal_err(format_smolstr!("expected the table being joined"))
+                })?;
+                (pending, self.column_pos)
+            }
+        };
+
+        Ok(ir.nodes.add_ref(
+            ReferenceTarget::Single(target),
+            position,
+            self.data_type(),
+            None,
+            false,
+        ))
     }
 }
 
@@ -489,28 +627,19 @@ impl<'q> NodeTranslator<'q> for Expr<'q, Analyzed> {
                     UnaryOp::Plus | UnaryOp::Minus => todo!(),
                 }
             }
-            ExprInner::Var(var) => {
-                // TODO: handle references on JOIN output
-                if var.depth + 1 != ctx.ctes.len() {
-                    return Err(unsupported_err(format_smolstr!(
-                        "correlated subqueries are not supported"
-                    )));
+            ExprInner::Var(var) => var.translate(ir, ctx),
+            ExprInner::Cast(cast) => {
+                // An identity cast (the analyzer wraps a bare USING-merged column
+                // in one) adds nothing to the plan.
+                // shortcut: explicit identity casts are elided too, revisit with full Cast translation.
+                let is_identity = cast.identity_child().is_some();
+                let (child, ty, _) = cast.into_parts();
+                let child_id = child.translate(ir, ctx)?;
+                if is_identity {
+                    Ok(child_id)
+                } else {
+                    Ok(ir.add_cast(child_id, ty)?)
                 }
-
-                // Now we primitively bind reference to the last added relational node.
-                let target = ir.get_top().map_err(|_| {
-                    internal_err(format_smolstr!(
-                        "expected tuple source for bound column reference"
-                    ))
-                })?;
-
-                Ok(ir.nodes.add_ref(
-                    ReferenceTarget::Single(target),
-                    var.column_pos,
-                    var.data_type(),
-                    None,
-                    false,
-                ))
             }
             ExprInner::Literal(lit) => {
                 let value = Value::try_from(lit)?;
@@ -559,7 +688,6 @@ impl<'q> NodeTranslator<'q> for Expr<'q, Analyzed> {
             // ExprInner::Array(_) => "Array",
             // ExprInner::WindowFunction(_) => "WindowFunction",
             // ExprInner::Parameter(_) => "Parameter",
-            // ExprInner::Cast(_) => "Cast",
             // ExprInner::Like(_) => "Like",
             // ExprInner::Similar(_) => "Similar",
             // ExprInner::Between(_) => "Between",

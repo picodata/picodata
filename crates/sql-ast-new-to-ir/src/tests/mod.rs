@@ -602,6 +602,30 @@ fn aggregate_argument_is_cast() {
     assert!(new_arena(query, &catalog()).contains("Cast [to = int]"));
 }
 
+/// An aggregate under a cast keeps its own type: the final stage reads it.
+#[test]
+fn aggregate_under_cast() {
+    use sql_ir::ir::node::{Node96, ScalarFunction};
+
+    let meta = catalog();
+    for query in [
+        "SELECT CAST(sum(c) AS int) AS x FROM t1",
+        "SELECT CAST(count(*) AS text) AS x FROM t1",
+        // An implicit cast: the old pipeline leaves `count(*)` uncast.
+        "SELECT a AS a FROM t1 GROUP BY a HAVING count(*) > min(c)",
+    ] {
+        if !query.contains("HAVING") {
+            assert_same_as_old(query);
+        }
+        let mut ir = analyzed(query, &[], &meta).translate().unwrap();
+        assert!(ir.nodes.iter96_with_ids().all(|(_, node)| !matches!(
+            node,
+            Node96::ScalarFunction(ScalarFunction { func_type, .. }) if func_type.get().is_none()
+        )));
+        ir.optimize().unwrap();
+    }
+}
+
 #[test]
 fn count_distinct() {
     assert_same_as_old("SELECT count(DISTINCT a) AS c FROM t1");
@@ -656,4 +680,117 @@ fn where_group_by_having() {
 #[test]
 fn distinct_with_group_by() {
     assert_same_as_old("SELECT DISTINCT a AS a FROM t1 GROUP BY a");
+}
+
+// --------------------------------- JOIN ---------------------------------
+
+#[test]
+fn join_on() {
+    for query in [
+        "SELECT t1.a AS a, t2.c AS c FROM t1 JOIN t2 ON t1.a = t2.c",
+        "SELECT t1.a AS a, t2.c AS c FROM t1 LEFT JOIN t2 ON t1.a = t2.c",
+        "SELECT t3.a AS a FROM t3 JOIN t4 ON true",
+        "SELECT x.a AS a, y.b AS b FROM t3 AS x JOIN t4 AS y ON x.a = y.a",
+        // The right-nested AND is rotated the way the old pipeline does it.
+        "SELECT t1.a AS a FROM t1 JOIN t2 ON t1.a = t2.c AND (t1.b = t2.c AND t2.d = t1.e)",
+    ] {
+        assert_same_as_old(query);
+    }
+}
+
+/// The second ON reads the chain built so far through the first join; WHERE
+/// and the select list read the whole chain.
+#[test]
+fn join_chain() {
+    assert_same_as_old(
+        "SELECT t1.a AS a, t3.b AS b FROM t1 JOIN t2 ON t1.a = t2.c JOIN t3 ON t3.a = t2.c \
+         WHERE t2.c = 1 AND t3.a = 2",
+    );
+}
+
+/// The old pipeline turns CROSS JOIN into `INNER JOIN ... ON true`.
+#[test]
+fn join_cross() {
+    for query in [
+        "SELECT t1.a AS a, t2.c AS c FROM t1 CROSS JOIN t2",
+        "SELECT t1.a AS a FROM t1 CROSS JOIN t2 JOIN t3 ON t3.a = t2.c",
+    ] {
+        assert_same_as_old(query);
+    }
+}
+
+#[test]
+fn join_cte() {
+    assert_same_as_old(
+        "WITH c AS (SELECT c AS c FROM t2) SELECT t1.a AS a FROM t1 JOIN c ON t1.a = c.c",
+    );
+}
+
+#[test]
+fn join_grouped() {
+    assert_same_as_old(
+        "SELECT t1.a AS a, count(*) AS n FROM t1 JOIN t2 ON t1.a = t2.c \
+         GROUP BY t1.a HAVING count(*) > 1",
+    );
+}
+
+/// The old grammar has no USING, so the oracle is the equivalent ON query.
+/// A bare reference to the merged column arrives as an identity cast, which
+/// translation elides.
+#[test]
+fn join_using() {
+    let meta = catalog();
+    for (using, on) in [
+        (
+            "SELECT a AS a FROM t3 JOIN t4 USING (a)",
+            "SELECT t3.a AS a FROM t3 JOIN t4 ON t3.a = t4.a",
+        ),
+        (
+            "SELECT t3.a AS a FROM t3 LEFT JOIN t4 USING (a, b)",
+            "SELECT t3.a AS a FROM t3 LEFT JOIN t4 ON t3.a = t4.a AND t3.b = t4.b",
+        ),
+    ] {
+        assert_same_as_old(on);
+        pretty_assertions::assert_eq!(
+            normalized(&new_arena(using, &meta)),
+            normalized(&new_arena(on, &meta))
+        );
+    }
+}
+
+/// USING over differently typed columns waits for Cast translation.
+#[test]
+fn join_using_mixed_types_unsupported() {
+    let meta = catalog();
+    assert!(
+        analyzed("SELECT 1 AS x FROM t1 JOIN t2 USING (a)", &[], &meta)
+            .translate()
+            .is_err()
+    );
+}
+
+/// Old pipeline defect: `build_join_condition_ir` (sql-frontend `ast/mod.rs`)
+/// parses ON like any boolean expression, so an aggregate or a window function
+/// lands in the join condition. PostgreSQL and the new analyzer reject both.
+#[test]
+fn join_on_aggregate_or_window_diverges_from_old() {
+    let meta = catalog();
+    for (query, old_marker) in [
+        (
+            "SELECT t1.a AS a FROM t1 JOIN t2 ON sum(t1.a) = t2.c",
+            "ScalarFunction [name = sum",
+        ),
+        (
+            "SELECT t1.a AS a FROM t1 JOIN t2 ON row_number() OVER () = t2.c",
+            "expression: Over",
+        ),
+    ] {
+        let err = AbstractSyntaxTree::new(query)
+            .expect("expected to build AST")
+            .analyze(&meta, &[])
+            .err()
+            .expect("expected the analyzer to reject the condition");
+        assert!(err.to_string().contains("JOIN conditions"), "{err}");
+        assert!(old_arena(query, &meta).contains(old_marker));
+    }
 }

@@ -488,7 +488,7 @@ impl<'q> AstState<'q> for Analyzed {
     /// `::type` is postfix-cast syntax, so compound expressions are wrapped in parentheses exactly
     /// like an explicit postfix cast (`(1 + 2)::int`). A cast root is left as-is to avoid a
     /// redundant `x::t::t`.
-    /// For the same reason a cast's immediate child carries no type, so only the cast itself states the type.
+    /// For the same reason a cast renders its immediate child bare, so only the cast itself states the type.
     fn fmt_expr<'a>(
         expr: &'a Expr<'q, Self>,
         f: &mut Formatter<'_>,

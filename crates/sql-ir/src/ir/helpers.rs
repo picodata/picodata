@@ -429,8 +429,10 @@ impl Plan {
                             )?;
                         }
                     }
-                    Relational::Join(Join { condition, .. }) => {
-                        writeln!(buf, "InnerJoin")?;
+                    Relational::Join(Join {
+                        condition, kind, ..
+                    }) => {
+                        writeln!(buf, "Join [kind = {kind}]")?;
                         writeln_with_tabulation(buf, tabulation_number + 1, "Condition:")?;
                         self.formatted_arena_node(buf, tabulation_number + 2, *condition)?;
                     }

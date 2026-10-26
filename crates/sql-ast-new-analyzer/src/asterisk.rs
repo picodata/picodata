@@ -147,7 +147,7 @@ fn resolve_unqualified_asterisk<'q, S: Scope<'q> + ?Sized>(
         .filter_map(FromEntry::joined)
         .flat_map(|entry| &entry.using_cols)
     {
-        let (left, joined) = using.parts_ref();
+        let (left, joined) = using.parts();
         reduced_columns.insert(joined);
         if reduced_columns.insert(left) {
             let id = type_system.inc_expr_id();

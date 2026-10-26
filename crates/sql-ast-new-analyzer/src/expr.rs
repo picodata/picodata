@@ -1285,10 +1285,6 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
                     // The child's type is similar to CAST type.
                     // So we can get rid of the entire CAST node.
                     *self = std::mem::take(child);
-                } else {
-                    // The child's eventual type is stated by the CAST itself.
-                    // Keeping it would render a second `::type` suffix under the cast.
-                    child.parts_mut().1.data_type = DerivedType::unknown();
                 }
             }
             // `Expr::analyze` and this whitelist must accept the same
@@ -1300,17 +1296,8 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
             }
         };
 
-        let ts_cast = type_report.get_cast(&curr_id);
-        if let Some(d_type) = ts_cast {
-            // A text literal is folded into the target type here.
-            // Only what could not be folded still needs a CAST wrapper.
-            if !coerce_text_literal(self, d_type)? {
-                add_cast(self, d_type)?;
-            }
-        }
-
         let (inner, meta) = self.parts_mut();
-        meta.data_type = match ts_cast.or_else(|| type_report.try_get_type(&curr_id)) {
+        meta.data_type = match type_report.try_get_return_type(&curr_id) {
             None => match inner {
                 // Subqueries type themselves during their own analysis.
                 // A row has no type of its own (there is no tuple type) —
@@ -1325,6 +1312,15 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
             },
             Some(ty) => ty.into(),
         };
+
+        if let Some(d_type) = type_report.get_cast(&curr_id) {
+            // A text literal is folded into the target type here.
+            // Only what could not be folded still needs a CAST wrapper.
+            if !coerce_text_literal(self, d_type)? {
+                add_cast(self, d_type)?;
+            }
+            self.meta_mut().data_type = d_type.into();
+        }
 
         Ok(())
     }
@@ -1350,11 +1346,7 @@ fn add_cast(expr: &mut Expr<'_, Analyzed>, d_type: Type) -> AstResult<()> {
 
     if let ExprInner::Cast(cast) = inner {
         let (child, _, _) = cast.parts_mut();
-        *child.as_mut() = Expr::from_parts(
-            original_inner,
-            std::mem::take(meta), /* filled node id, but empty data type */
-                                  // AnalyzedExprMeta::default(), /* empty because of CAST */
-        );
+        *child.as_mut() = Expr::from_parts(original_inner, std::mem::take(meta));
     }
 
     Ok(())

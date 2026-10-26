@@ -388,19 +388,29 @@ impl<'q, State: AstState<'q>> Render<'q, State> for Cast<'q, State> {
     where
         'q: 'a,
     {
+        // The child is rendered bare, without its state decoration: only the
+        // cast states the type, a typed child would read as a chained cast.
+        let child = self.child.inner_ref();
         match self.syntax {
             CastSyntax::Call => {
                 f.write_str("CAST(")?;
-                self.child.render(f, scope)?;
+                child.render(f, scope)?;
                 write!(f, " AS {})", CastTypeSql(self.ty))
             }
             CastSyntax::Postfix => {
-                write_operand(f, scope, &self.child, Precedence::Postfix, OperandPos::Left)?;
+                let precedence = self.child.precedence();
+                if needs_parentheses(precedence, Precedence::Postfix, OperandPos::Left) {
+                    f.write_str("(")?;
+                    child.render(f, scope)?;
+                    f.write_str(")")?;
+                } else {
+                    child.render(f, scope)?;
+                }
                 write!(f, "::{}", CastTypeSql(self.ty))
             }
             CastSyntax::TypedLiteral => {
                 write!(f, "{} ", CastTypeSql(self.ty))?;
-                self.child.render(f, scope)
+                child.render(f, scope)
             }
         }
     }

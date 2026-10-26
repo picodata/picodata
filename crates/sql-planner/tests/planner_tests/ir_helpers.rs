@@ -122,7 +122,7 @@ fn simple_join() {
     				Column type: int
     ---------------------------------------------
     ---------------------------------------------
-    [id: 896] relation: InnerJoin
+    [id: 896] relation: Join [kind = inner]
     	Condition:
     		[id: 232] expression: Bool [op: =]
     			Left child

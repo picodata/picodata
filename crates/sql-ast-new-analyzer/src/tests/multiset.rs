@@ -243,7 +243,7 @@ fn correct_cast_int_to_decimal() {
 fn get_cast_from_report_for_homogenours_types() {
     insta::assert_snapshot!(
         analyzed("SELECT * FROM (SELECT 1::int AS x UNION SELECT 2::double) q", &[]),
-        @"SELECT q.x::double FROM ((SELECT CAST(1::int AS double) AS x) UNION (SELECT CAST(2 AS double))) AS q"
+        @"SELECT q.x::double FROM ((SELECT CAST(1 AS double) AS x) UNION (SELECT CAST(2 AS double))) AS q"
     )
 }
 

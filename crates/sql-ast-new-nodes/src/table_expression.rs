@@ -1014,7 +1014,7 @@ impl BoundJoinUsingVar {
         self.joined.column_pos
     }
 
-    pub fn parts_ref(&self) -> (BoundVar, BoundVar) {
+    pub fn parts(&self) -> (BoundVar, BoundVar) {
         (self.left, self.joined)
     }
 
