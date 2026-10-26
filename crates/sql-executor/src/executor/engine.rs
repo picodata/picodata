@@ -200,7 +200,8 @@ pub trait StorageCache {
         motion_ids: Vec<SmolStr>,
     ) -> Result<(), SbroadError>;
 
-    /// Get the prepared statement and corresponding temporary-table lock from cache.
+    /// Get the prepared statement from cache, with its temporary-table lock when
+    /// the plan has temporary tables.
     /// If the schema version for some virtual table (corresponding to some Motion)
     /// has been changed, `None` is returned.
     #[allow(clippy::ptr_arg)]
@@ -214,11 +215,12 @@ pub trait StorageCache {
 pub type CachedStmt = Rc<SharedStmt>;
 pub struct CachedStmtRef<L> {
     pub stmt: CachedStmt,
-    pub table_lock: L,
+    /// `None` when the plan has no temporary tables: executions take no lock.
+    pub table_lock: Option<L>,
 }
 
 impl<L> CachedStmtRef<L> {
-    pub fn new(stmt: CachedStmt, table_lock: L) -> Self {
+    pub fn new(stmt: CachedStmt, table_lock: Option<L>) -> Self {
         Self { stmt, table_lock }
     }
 }

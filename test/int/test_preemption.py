@@ -822,6 +822,80 @@ def test_sql_same_plan_waiter_resumes_after_owner_release(cluster: Cluster):
     assert i1.sql("select count(*) from t2") == [[0]]
 
 
+@pytest.mark.parametrize("cached", [True, False])
+def test_sql_same_plan_without_temp_tables_runs_concurrently(cluster: Cluster, cached: bool):
+    """
+    A plan without temp tables shares nothing between its executions, so a
+    second execution must not wait for the first one to finish, also when
+    both of them miss the statement cache.
+    """
+    (i1,) = cluster.deploy(instance_count=1, init_replication_factor=1)
+    cluster.wait_until_buckets_balanced()
+
+    enable_preemption(i1, True, 0, 1)
+
+    i1.sql("create table t (a int primary key, b int)")
+    values = ",".join(f"({i}, {i})" for i in range(100))
+    i1.sql(f"insert into t values {values}")
+
+    query = "select a, b from t where a >= 0"
+    explain = i1.sql(f"explain {query}")
+    assert not any("motion" in line for line in explain), explain
+    expected = [[i, i] for i in range(100)]
+    assert sorted(i1.sql(query)) == expected
+    if not cached:
+        i1.sql("discard cache sql_stmt")
+
+    install_sql_cancel_helper(i1)
+
+    second_rows: list[Any] | None = None
+    second_error: Exception | None = None
+    second_thread: threading.Thread | None = None
+
+    try:
+        first_blocked = log_crawler(i1, "ERROR INJECTION 'BLOCK_SQL_PREEMPTION_BEFORE_YIELD': BLOCKING")
+        i1.call("pico._inject_error", "BLOCK_SQL_PREEMPTION_BEFORE_YIELD", True)
+        assert start_sql_cancel_query(i1, query) is not None
+        first_blocked.wait_matched()
+        if not cached:
+            # The second execution misses the cache while the first one runs.
+            i1.sql("discard cache sql_stmt")
+
+        lock_waits_before = int(total_samples(i1.get_metrics(), "pico_sql_temp_table_lock_waits"))
+        second_blocked = log_crawler(i1, "ERROR INJECTION 'BLOCK_SQL_PREEMPTION_BEFORE_YIELD': BLOCKING")
+
+        def run_second() -> None:
+            nonlocal second_error, second_rows
+            try:
+                second_rows = i1.sql(query, timeout=30)
+            except Exception as err:
+                second_error = err
+
+        second_thread = threading.Thread(target=run_second)
+        second_thread.start()
+
+        # The second execution reaches the VDBE while the first one is still in it.
+        second_blocked.wait_matched()
+        assert int(total_samples(i1.get_metrics(), "pico_sql_temp_table_lock_waits")) == lock_waits_before
+
+        i1.call("pico._inject_error", "BLOCK_SQL_PREEMPTION_BEFORE_YIELD", False)
+
+        state = wait_sql_cancel_query(i1)
+        assert state["ok"] is True, state["err"]
+
+        second_thread.join(timeout=30)
+        assert not second_thread.is_alive()
+        assert second_error is None
+        assert second_rows is not None
+        assert sorted(second_rows) == expected
+
+    finally:
+        i1.call("pico._inject_error", "BLOCK_SQL_PREEMPTION_BEFORE_YIELD", False)
+        if second_thread is not None:
+            second_thread.join(timeout=5)
+        cleanup_sql_cancel_helper(i1)
+
+
 def test_dql_schema_version_bump(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=1)
     cluster.wait_until_buckets_balanced()

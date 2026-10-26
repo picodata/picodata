@@ -407,10 +407,8 @@ impl StorageCache for PicoStorageCache {
             }
         }
 
-        Ok(Some(CachedStmtRef::new(
-            Rc::clone(&entry.stmt),
-            Rc::clone(&entry.table_lock),
-        )))
+        let table_lock = (!entry.motion_ids.is_empty()).then(|| Rc::clone(&entry.table_lock));
+        Ok(Some(CachedStmtRef::new(Rc::clone(&entry.stmt), table_lock)))
     }
 
     fn get_or_create_lock(&mut self, plan_id: u64) -> Self::LockRef {
@@ -792,11 +790,12 @@ impl Vshard for StorageRuntime {
         );
 
         use sql::executor::vdbe::ExecutionInsight::*;
-        if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(self, plan_id)? {
+        if let Some((stmt, _table_lease)) = acquire_cached_stmt_or_retry(self, plan_id)? {
             // Transaction rollbacks are very expensive in Tarantool, so we're going to
             // avoid transactions for DQL queries. We can achieve atomicity by truncating
-            // temporary tables. Isolation is guaranteed by a lock tied to plan_id.
-            match stmt_execute(&cached.stmt, &info, port)? {
+            // temporary tables. Isolation is guaranteed by a lock tied to plan_id
+            // when the plan has temporary tables.
+            match stmt_execute(&stmt, &info, port)? {
                 Nothing => report_storage_cache_hit("dql", "local"),
                 BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
                 StaleStmt => report_storage_cache_miss("dql", "local", "stale"),

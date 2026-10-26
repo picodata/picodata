@@ -3,7 +3,7 @@ use crate::metrics::{
 };
 use crate::preemption::scheduler_options;
 use crate::sql::explain::ExplainQuery;
-use crate::sql::lock::{lock_temp_table, TempTableLease, TempTableLockRef};
+use crate::sql::lock::{lock_temp_table, try_lock_temp_table, TempTableLease, TempTableLockRef};
 use crate::sql::router::{get_index_version_by_pk, get_table_version_by_id, VersionMap};
 use crate::sql::storage::{
     ExpandedLocalExecutionInfo, ExpandedPlanInfo, FullDeleteInfo, LocalExecutionInfo, PlanInfo,
@@ -21,7 +21,7 @@ use sql::executor::engine::helpers::{
     build_insert_args, write_shared_update_args, TupleBuilderCommand, TupleBuilderPattern,
 };
 use sql::executor::engine::protocol::{DqlProtocol, ExecutionCacheMissData};
-use sql::executor::engine::{CachedStmtRef, QueryCache, StorageCache, Vshard};
+use sql::executor::engine::{CachedStmt, CachedStmtRef, QueryCache, StorageCache, Vshard};
 use sql::executor::preemption::Scheduler;
 use sql::executor::protocol::SchemaInfo;
 use sql::executor::result::ConsumerResult;
@@ -274,7 +274,7 @@ impl ExpandedPlanInfo for ProtocolCacheMissExecution<'_> {
     }
 }
 
-// must be executed under lock
+// a plan with temporary tables must be executed under its plan lock
 pub fn stmt_execute<'p, 'b>(
     stmt: &SharedStmt,
     info: &impl PlanInfo,
@@ -339,6 +339,12 @@ impl PlanGuard {
             lease: Some(lease),
         }
     }
+
+    /// Keep the guard only for a plan with temporary tables: other executions
+    /// of a plan without them must not queue behind this one.
+    fn for_temp_tables<L>(self, cached: &CachedStmtRef<L>) -> Option<Self> {
+        cached.table_lock.is_some().then_some(self)
+    }
 }
 
 impl Drop for PlanGuard {
@@ -363,16 +369,33 @@ where
 pub(crate) fn acquire_cached_stmt_or_retry<R: QueryCache>(
     runtime: &R,
     plan_id: u64,
-) -> Result<Option<(CachedStmtRef<TempTableLockRef>, PlanGuard)>, SbroadError>
+) -> Result<Option<(CachedStmt, Option<PlanGuard>)>, SbroadError>
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
+    let cached = {
+        let mut cache_guarded = runtime.cache().lock();
+        cache_guarded.get(&plan_id)?
+    };
+    if let Some(cached) = cached {
+        let Some(table_lock) = cached.table_lock else {
+            return Ok(Some((cached.stmt, None)));
+        };
+        // A free lock is taken without a yield, so the entry just read is current.
+        if let Some(lease) = try_lock_temp_table(&table_lock) {
+            return Ok(Some((cached.stmt, Some(PlanGuard::new(plan_id, lease)))));
+        }
+    }
+
     let plan_guard = acquire_plan_guard(runtime, plan_id)?;
     let cached = {
         let mut cache_guarded = runtime.cache().lock();
         cache_guarded.get(&plan_id)?
     };
-    Ok(cached.map(|cached| (cached, plan_guard)))
+    Ok(cached.map(|cached| {
+        let plan_guard = plan_guard.for_temp_tables(&cached);
+        (cached.stmt, plan_guard)
+    }))
 }
 
 /// Handle a cache miss for a DQL query.
@@ -432,8 +455,8 @@ where
         index_versions.insert(pk, version);
     }
 
-    if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(runtime, plan_id)? {
-        match stmt_execute(&cached.stmt, info, port)? {
+    if let Some((stmt, _table_lease)) = acquire_cached_stmt_or_retry(runtime, plan_id)? {
+        match stmt_execute(&stmt, info, port)? {
             Nothing => report_storage_cache_hit("dql", "2nd"),
             BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
@@ -470,7 +493,7 @@ pub fn sql_execute<'a, 'p, R: QueryCache>(
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    let _plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
+    let plan_guard = acquire_plan_guard(runtime, miss_info.plan_id())?;
 
     // Re-check cache after acquiring the plan lock to avoid duplicate
     // temporary table creation on concurrent cache misses for the same plan.
@@ -479,6 +502,7 @@ where
         cache_guarded.get(&miss_info.plan_id())?
     };
     if let Some(cached) = cached {
+        let _plan_guard = plan_guard.for_temp_tables(&cached);
         return stmt_execute(&cached.stmt, info, port);
     }
 
@@ -513,6 +537,8 @@ where
     };
     // Process any evictions that were deferred while the cache mutex was held.
     crate::sql::storage::process_deferred_evictions()?;
+    // The plan is published, so a plan without temporary tables runs unlocked.
+    let _plan_guard = plan_guard.for_temp_tables(&cached);
     stmt_execute(&cached.stmt, info, port)
 }
 
@@ -535,8 +561,8 @@ where
     P: Port<'p>,
     FMiss: FnOnce(&R, &I, &mut P) -> Result<(), SbroadError>,
 {
-    if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(runtime, plan_id)? {
-        match stmt_execute(&cached.stmt, info, port)? {
+    if let Some((stmt, _table_lease)) = acquire_cached_stmt_or_retry(runtime, plan_id)? {
+        match stmt_execute(&stmt, info, port)? {
             Nothing => report_storage_cache_hit("dql", rpc_type),
             BusyStmt => report_storage_cache_miss("dql", rpc_type, "busy"),
             StaleStmt => report_storage_cache_miss("dql", rpc_type, "stale"),
@@ -1711,8 +1737,8 @@ pub fn full_delete_execute<'p, 'ip, R: Vshard + QueryCache>(
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(runtime, info.plan_id())? {
-        stmt_execute(&cached.stmt, info, port)?;
+    if let Some((stmt, _table_lease)) = acquire_cached_stmt_or_retry(runtime, info.plan_id())? {
+        stmt_execute(&stmt, info, port)?;
     } else {
         sql_execute::<R>(runtime, info, info, port)?;
     }
