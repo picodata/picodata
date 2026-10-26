@@ -11,7 +11,7 @@ use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::{
     helpers::{sharding_key_from_map, sharding_key_from_tuple, vshard::get_random_bucket},
-    Router, Vshard,
+    CachedStmt, Router, Vshard,
 };
 use crate::executor::hash::bucket_id_by_tuple;
 use crate::executor::ir::ExecutionPlan;
@@ -100,7 +100,7 @@ impl Port<'_> for PortMocked {
 
     fn process_txn(
         &mut self,
-        _stmt: &mut SqlStmt,
+        _stmt: &CachedStmt,
         _params: &[&Value],
         _vdbe_max_steps: u64,
     ) -> Result<ExecutionInsight, SbroadError>

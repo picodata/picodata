@@ -940,8 +940,7 @@ impl StorageRuntime {
 
         let maybe_cached = { self.cache.lock().get(&key)? };
         if let Some(cached) = maybe_cached {
-            let mut stmt = cached.stmt.lock();
-            match port.process_txn(&mut stmt, &merged, block.vdbe_max_steps)? {
+            match port.process_txn(&cached.stmt, &merged, block.vdbe_max_steps)? {
                 Nothing => report_storage_cache_hit("txn", "local"),
                 BusyStmt => report_storage_cache_miss("txn", "local", "busy"),
                 StaleStmt => report_storage_cache_miss("txn", "local", "stale"),
@@ -957,8 +956,7 @@ impl StorageRuntime {
                 cache.get(&key)?.expect("just inserted")
             };
             process_deferred_evictions()?;
-            let mut stmt = cached.stmt.lock();
-            match port.process_txn(&mut stmt, &merged, block.vdbe_max_steps)? {
+            match port.process_txn(&cached.stmt, &merged, block.vdbe_max_steps)? {
                 Nothing => report_storage_cache_miss("txn", "local", "true"),
                 BusyStmt => report_storage_cache_miss("txn", "local", "busy"),
                 StaleStmt => report_storage_cache_miss("txn", "local", "stale"),

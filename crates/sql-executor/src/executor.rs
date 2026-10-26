@@ -23,7 +23,7 @@
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
 use crate::errors::{Entity, SbroadError};
-use crate::executor::engine::{Router, Vshard};
+use crate::executor::engine::{CachedStmt, Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
 use crate::ir::bucket::Buckets;
@@ -101,7 +101,7 @@ pub trait Port<'p>: io::Write {
     /// busy statement is recompiled and counts as a miss).
     fn process_txn(
         &mut self,
-        stmt: &mut SqlStmt,
+        stmt: &CachedStmt,
         params: &[&Value],
         vdbe_max_steps: u64,
     ) -> Result<ExecutionInsight, SbroadError>
