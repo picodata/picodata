@@ -1,4 +1,5 @@
 use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
+use crate::catalog_cache::CatalogCache;
 use crate::cli::run::PICODATA_COOKIE;
 use crate::config::InstanceConfig;
 use crate::schema::{fields_to_format, Distribution, PrivilegeType, SchemaObjectType};
@@ -47,14 +48,17 @@ pub fn ddl_meta_space_update_operable(
     storage: &Catalog,
     space_id: SpaceId,
     operable: bool,
+    cache: &CatalogCache,
 ) -> traft::Result<()> {
-    storage.pico_table.update_operable(space_id, operable)?;
+    storage
+        .pico_table
+        .update_operable(space_id, operable, cache)?;
     let iter = storage.indexes.by_space_id(space_id)?;
     for index in iter {
         let index = index?;
         storage
             .indexes
-            .update_operable(index.table_id, index.id, operable)?;
+            .update_operable(index.table_id, index.id, operable, cache)?;
     }
     Ok(())
 }
@@ -62,16 +66,20 @@ pub fn ddl_meta_space_update_operable(
 /// Deletes the picodata internal metadata for a space with id `space_id`.
 ///
 /// This function is called when applying the different ddl operations.
-pub fn ddl_meta_drop_space(storage: &Catalog, space_id: SpaceId) -> traft::Result<()> {
+pub fn ddl_meta_drop_space(
+    storage: &Catalog,
+    space_id: SpaceId,
+    cache: &CatalogCache,
+) -> traft::Result<()> {
     storage
         .privileges
         .delete_all_by_object(SchemaObjectType::Table, space_id as i64)?;
     let iter = storage.indexes.by_space_id(space_id)?;
     for index in iter {
         let index = index?;
-        storage.indexes.delete(index.table_id, index.id)?;
+        storage.indexes.delete(index.table_id, index.id, cache)?;
     }
-    storage.pico_table.delete(space_id)?;
+    storage.pico_table.delete(space_id, cache)?;
     Ok(())
 }
 
@@ -555,12 +563,16 @@ pub fn ddl_drop_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntEr
 // function was implemented, as it requires the least amount of boilerplate and
 // error forwarding code. But this signature is not intuitive, so maybe there's
 // room for improvement.
-pub fn ddl_truncate_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntError>> {
+pub fn ddl_truncate_space_on_master(
+    space_id: SpaceId,
+    cache: &CatalogCache,
+) -> traft::Result<Option<TntError>> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
     let space = space_by_id_unchecked(space_id);
 
     let res = (|| -> tarantool::Result<()> {
         space.truncate()?;
+        cache.truncate(space_id);
 
         Ok(())
     })();

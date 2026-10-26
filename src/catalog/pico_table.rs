@@ -1,3 +1,4 @@
+use crate::catalog_cache::CatalogCache;
 use crate::schema::{IndexDef, IndexOption, TableDef, INITIAL_SCHEMA_VERSION};
 use crate::storage::{
     index_by_ids_unchecked, space_by_id_unchecked, EntryIter, SystemTable, ToEntryIter, MP_CUSTOM,
@@ -98,11 +99,11 @@ impl PicoTable {
     }
 
     #[inline(always)]
-    pub fn rename(&self, id: u32, new_name: &str) -> tarantool::Result<()> {
+    pub fn rename(&self, id: u32, new_name: &str, cache: &CatalogCache) -> tarantool::Result<()> {
         // We can't use UpdateOps as we use custom encoding
         let mut table_def = self.get(id)?.expect("should exist");
         table_def.name = new_name.into();
-        self.put(&table_def)?;
+        self.put(&table_def, cache)?;
         Ok(())
     }
 
@@ -117,29 +118,43 @@ impl PicoTable {
         Ok(Some(table_def))
     }
 
+    // The write methods pass the stored row to the catalog cache, see
+    // `crate::catalog::cache`.
+
     #[inline]
-    pub fn put(&self, table_def: &TableDef) -> tarantool::Result<()> {
+    pub fn put(&self, table_def: &TableDef, cache: &CatalogCache) -> tarantool::Result<()> {
         use ::tarantool::msgpack;
 
-        self.space
+        let tuple = self
+            .space
             .replace(RawBytes::new(&msgpack::encode(table_def)))?;
+        cache.put_table(&tuple);
         Ok(())
     }
 
     #[inline]
-    pub fn insert(&self, table_def: &TableDef) -> tarantool::Result<()> {
+    pub fn insert(&self, table_def: &TableDef, cache: &CatalogCache) -> tarantool::Result<()> {
         use ::tarantool::msgpack;
 
-        self.space
+        let tuple = self
+            .space
             .insert(RawBytes::new(&msgpack::encode(table_def)))?;
+        cache.put_table(&tuple);
         Ok(())
     }
 
     #[inline]
-    pub fn update_operable(&self, id: SpaceId, operable: bool) -> tarantool::Result<()> {
+    pub fn update_operable(
+        &self,
+        id: SpaceId,
+        operable: bool,
+        cache: &CatalogCache,
+    ) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(column_name!(TableDef, operable), operable)?;
-        self.space.update(&[id], ops)?;
+        if let Some(tuple) = self.space.update(&[id], ops)? {
+            cache.put_table(&tuple);
+        }
         Ok(())
     }
 
@@ -149,13 +164,14 @@ impl PicoTable {
         id: SpaceId,
         format: &[tarantool::space::Field],
         column_renames: &RenameMapping,
+        cache: &CatalogCache,
     ) -> tarantool::Result<()> {
         // We can't use UpdateOps as we use custom encoding
         let mut table_def = self.get(id)?.expect("should exist");
         // apply renames to the distribution
         column_renames.transform_distribution_columns(&mut table_def.distribution);
         table_def.format = format.to_vec();
-        self.put(&table_def)?;
+        self.put(&table_def, cache)?;
         Ok(())
     }
 
@@ -168,26 +184,37 @@ impl PicoTable {
     ///
     /// ```no_run
     /// # use tarantool::space::SpaceId;
+    /// # fn example(cache: &picodata::catalog_cache::CatalogCache) {
     /// let tables = picodata::catalog::pico_table::PicoTable::new();
     ///
     /// let table_id = 28;
     /// let new_schema_version = 42;
     ///
     /// tables
-    ///     .update_schema_version(table_id, new_schema_version)
+    ///     .update_schema_version(table_id, new_schema_version, cache)
     ///     .expect("updating schema_version failed");
+    /// # }
     /// ```
     #[inline]
-    pub fn update_schema_version(&self, id: SpaceId, schema_version: u64) -> tarantool::Result<()> {
+    pub fn update_schema_version(
+        &self,
+        id: SpaceId,
+        schema_version: u64,
+        cache: &CatalogCache,
+    ) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(column_name!(TableDef, schema_version), schema_version)?;
-        self.space.update(&[id], ops)?;
+        if let Some(tuple) = self.space.update(&[id], ops)? {
+            cache.put_table(&tuple);
+        }
         Ok(())
     }
 
     #[inline]
-    pub fn delete(&self, id: SpaceId) -> tarantool::Result<Option<Tuple>> {
-        self.space.delete(&[id])
+    pub fn delete(&self, id: SpaceId, cache: &CatalogCache) -> tarantool::Result<Option<Tuple>> {
+        let res = self.space.delete(&[id])?;
+        cache.remove_table(id);
+        Ok(res)
     }
 
     #[inline]

@@ -682,15 +682,26 @@ fn actualize_system_table_format<T: SystemTable>() -> traft::Result<()> {
         transaction::transaction(|| ddl_change_format_on_master(table_id, &expected_format))?;
     }
 
-    transaction::transaction_force_async(|| -> traft::Result<()> {
+    let res = transaction::transaction_force_async(|| -> traft::Result<()> {
         let rename_mapping = traft::op::RenameMappingBuilder::new().build();
         node.storage
             .pico_table
-            .update_format(table_id, &expected_format, &rename_mapping)
+            .update_format(
+                table_id,
+                &expected_format,
+                &rename_mapping,
+                &node.catalog_cache,
+            )
             .expect("storage shouldn't fail");
 
+        crate::error_injection!("FAIL_SYSTEM_TABLE_FORMAT_UPDATE" => return Err(traft::error::Error::other("injected error")));
         Ok(())
-    })?;
+    });
+    if res.is_err() {
+        // The catalog cache got the new format, the table rolled back.
+        node.catalog_cache.full_reload(&node.storage)?;
+    }
+    res?;
 
     Ok(())
 }
@@ -722,4 +733,33 @@ fn alter_system_spaces_is_sync() -> traft::Result<Response> {
 
     crate::sync_replication::make_system_spaces_sync()?;
     Ok(Response {})
+}
+
+#[cfg(feature = "error_injection")]
+mod tests {
+    use super::*;
+    use crate::traft::op::RenameMappingBuilder;
+
+    #[::tarantool::test]
+    fn failed_format_update_reloads_catalog_cache() {
+        let node = traft::node::Node::for_tests();
+        // `_pico_tier` as in an older catalog version.
+        let mut old_format = Tiers::format();
+        old_format.pop();
+        let renames = RenameMappingBuilder::new().build();
+        let id = Tiers::TABLE_ID;
+        let cache = &node.catalog_cache;
+        (node.storage.pico_table)
+            .update_format(id, &old_format, &renames, cache)
+            .unwrap();
+
+        crate::error_injection::enable("FAIL_SYSTEM_TABLE_FORMAT_UPDATE", "1");
+        let res = actualize_system_table_format::<Tiers>();
+        crate::error_injection::disable("FAIL_SYSTEM_TABLE_FORMAT_UPDATE");
+
+        // The table rolled back the new format, and so did the cache.
+        assert!(res.is_err());
+        assert_eq!(cache.get().table(id).unwrap().format, old_format);
+        assert_eq!(cache.find_mismatch(&node.storage).unwrap(), None);
+    }
 }

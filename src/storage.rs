@@ -4,6 +4,7 @@ use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::pico_table::PicoTable;
 use crate::catalog::user_audit_policy::PicoUserAuditPolicy;
+use crate::catalog_cache::CatalogCache;
 use crate::config::observer::AtomicObserver;
 use crate::config::{self, AlterSystemParameters};
 use crate::failure_domain::FailureDomain;
@@ -65,6 +66,7 @@ use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
 use tarantool::tlua;
+use tarantool::tuple::RawBytes;
 use tarantool::tuple::ToTupleBuffer;
 use tarantool::tuple::Tuple;
 use tarantool::tuple::TupleBuffer;
@@ -409,11 +411,17 @@ impl Catalog {
             return storage.clone();
         }
 
-        // Add system tables
+        // Add system tables. There is no catalog cache yet, the caches made
+        // later load these rows.
         for (table, index_defs) in crate::schema::system_table_definitions() {
-            storage.pico_table.put(&table).unwrap();
+            let table = ::tarantool::msgpack::encode(&table);
+            storage
+                .pico_table
+                .space
+                .replace(RawBytes::new(&table))
+                .unwrap();
             for index in index_defs {
-                storage.indexes.put(&index).unwrap();
+                storage.indexes.space.replace(&index).unwrap();
             }
         }
 
@@ -797,15 +805,20 @@ impl Indexes {
         tuple.as_ref().map(Tuple::decode).transpose()
     }
 
+    // The write methods pass the stored row to the catalog cache, see
+    // `crate::catalog::cache`.
+
     #[inline]
-    pub fn put(&self, index_def: &IndexDef) -> tarantool::Result<()> {
-        self.space.replace(index_def)?;
+    pub fn put(&self, index_def: &IndexDef, cache: &CatalogCache) -> tarantool::Result<()> {
+        let tuple = self.space.replace(index_def)?;
+        cache.put_index(&tuple);
         Ok(())
     }
 
     #[inline]
-    pub fn insert(&self, index_def: &IndexDef) -> tarantool::Result<()> {
-        self.space.insert(index_def)?;
+    pub fn insert(&self, index_def: &IndexDef, cache: &CatalogCache) -> tarantool::Result<()> {
+        let tuple = self.space.insert(index_def)?;
+        cache.put_index(&tuple);
         Ok(())
     }
 
@@ -816,11 +829,11 @@ impl Indexes {
         space_id: SpaceId,
         index_id: IndexId,
         schema_version: u64,
+        cache: &CatalogCache,
     ) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(column_name!(IndexDef, schema_version), schema_version)?;
-        self.space.update(&(space_id, index_id), ops)?;
-        Ok(())
+        self.update(space_id, index_id, ops, cache)
     }
 
     #[inline]
@@ -829,16 +842,23 @@ impl Indexes {
         space_id: SpaceId,
         index_id: IndexId,
         operable: bool,
+        cache: &CatalogCache,
     ) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(column_name!(IndexDef, operable), operable)?;
-        self.space.update(&(space_id, index_id), ops)?;
-        Ok(())
+        self.update(space_id, index_id, ops, cache)
     }
 
     #[inline]
-    pub fn delete(&self, space_id: SpaceId, index_id: IndexId) -> tarantool::Result<Option<Tuple>> {
-        self.space.delete(&[space_id, index_id])
+    pub fn delete(
+        &self,
+        space_id: SpaceId,
+        index_id: IndexId,
+        cache: &CatalogCache,
+    ) -> tarantool::Result<Option<Tuple>> {
+        let res = self.space.delete(&[space_id, index_id])?;
+        cache.remove_index(space_id, index_id);
+        Ok(res)
     }
 
     #[inline]
@@ -847,10 +867,23 @@ impl Indexes {
         space_id: SpaceId,
         index_id: IndexId,
         new_name: &str,
+        cache: &CatalogCache,
     ) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(column_name!(IndexDef, name), new_name)?;
-        self.space.update(&(space_id, index_id), ops)?;
+        self.update(space_id, index_id, ops, cache)
+    }
+
+    fn update(
+        &self,
+        space_id: SpaceId,
+        index_id: IndexId,
+        ops: UpdateOps,
+        cache: &CatalogCache,
+    ) -> tarantool::Result<()> {
+        if let Some(tuple) = self.space.update(&(space_id, index_id), ops)? {
+            cache.put_index(&tuple);
+        }
         Ok(())
     }
 

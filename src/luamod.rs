@@ -1793,6 +1793,25 @@ pub(crate) fn setup() {
         "},
         tlua::Function::new(crate::sql::lua::sql_lua_pool_stats),
     );
+
+    #[cfg(debug_assertions)]
+    luamod_set(
+        &l,
+        "_catalog_cache_check",
+        indoc! {"
+        pico._catalog_cache_check()
+
+        Internal API for tests, exists only in debug builds. Raises an error
+        if the catalog cache differs from _pico_table and _pico_index.
+        "},
+        tlua::function0(|| -> traft::Result<()> {
+            let node = traft::node::global()?;
+            match node.catalog_cache.find_mismatch(&node.storage)? {
+                Some(mismatch) => Err(traft::error::Error::other(mismatch)),
+                None => Ok(()),
+            }
+        }),
+    );
 }
 
 #[no_mangle]

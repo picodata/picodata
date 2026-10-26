@@ -929,6 +929,7 @@ impl std::fmt::Display for SnapshotPosition {
 
 mod tests {
     use super::*;
+    use crate::catalog_cache::CatalogCache;
     use crate::config::PicodataConfig;
     use crate::instance::Instance;
     use crate::replicaset::Replicaset;
@@ -942,6 +943,7 @@ mod tests {
     #[::tarantool::test]
     fn apply_snapshot_data() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
 
         let mut data = SnapshotData {
             schema_version: 0,
@@ -991,6 +993,10 @@ mod tests {
             println!("{e}");
             panic!();
         }
+        // The snapshot rewrote `_pico_table` and `_pico_index` bypassing the
+        // cache, the node reloads it in the same transaction.
+        cache.full_reload(&storage).unwrap();
+        assert_eq!(cache.find_mismatch(&storage).unwrap(), None);
 
         assert_eq!(storage.instances.space.len().unwrap(), 1);
         let instance = storage.instances.get(&1).unwrap();

@@ -1171,7 +1171,10 @@ fn do_governor_loop_truncate_table_batching(params: BatchingRpcTestParameters) {
         initiator: ADMIN_ID,
     };
 
-    node.storage.pico_table.put(&table_def).unwrap();
+    node.storage
+        .pico_table
+        .put(&table_def, &node.catalog_cache)
+        .unwrap();
     node.storage
         .properties
         .put(PropertyName::PendingSchemaChange, &ddl)

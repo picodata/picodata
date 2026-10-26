@@ -14,6 +14,7 @@
 #![warn(clippy::or_fun_call)]
 
 use crate::address::HttpAddress;
+use crate::catalog_cache::CatalogCache;
 use crate::instance::Instance;
 use crate::instance::StateVariant::*;
 use crate::rpc::join::compress_join_response;
@@ -1846,13 +1847,22 @@ fn restore_from_backup(config: &PicodataConfig, backup_path: &PathBuf) -> Result
         .map(|(td, _)| td)
         .collect();
 
+    // Writes to the catalog need a catalog cache. Nobody reads this one, the
+    // process exits after the restore.
+    let raft_id = raft_storage
+        .raft_id()?
+        .expect("raft_id should be set on restore");
+    let cluster_name = Box::leak(raft_storage.cluster_name()?.into_boxed_str());
+    let cluster_uuid = Box::leak(raft_storage.cluster_uuid()?.into_boxed_str());
+    let cache = CatalogCache::load(&storage, raft_id, cluster_name, cluster_uuid)?;
+
     for table_def in storage.pico_table.iter().expect("storage should not fail") {
         let table_def = table_def.expect("storage should not fail");
         if system_table_defs.contains(&table_def) {
             continue;
         }
 
-        ddl_meta_space_update_operable(&storage, table_def.id, true)
+        ddl_meta_space_update_operable(&storage, table_def.id, true, &cache)
             .expect("storage shouldn't fail");
     }
 

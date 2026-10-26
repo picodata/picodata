@@ -1,4 +1,5 @@
 use crate::catalog::governor_queue::GovernorOpFormat;
+use crate::catalog_cache::CatalogCache;
 use crate::op::Ddl;
 use crate::replicaset::ReplicasetState;
 use crate::storage::schema::ddl_change_format_on_master;
@@ -101,7 +102,7 @@ crate::define_rpc_request! {
 
         let my_tier_name = node.catalog_cache.my_tier_name();
 
-        let res = transaction(|| apply_schema_change(storage, &ddl, pending_schema_version, false, my_tier_name));
+        let res = transaction(|| apply_schema_change(storage, &ddl, pending_schema_version, false, my_tier_name, &node.catalog_cache));
         match res {
             Ok(()) => {}
             Err(TransactionError::RolledBack(Error::Aborted(err))) => {
@@ -175,6 +176,7 @@ pub fn apply_schema_change(
     version: u64,
     is_commit: bool,
     my_tier_name: &str,
+    cache: &CatalogCache,
 ) -> Result<(), Error> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
@@ -272,7 +274,7 @@ pub fn apply_schema_change(
             };
 
             if should_apply {
-                let res = ddl_truncate_space_on_master(id).map_err(Error::Other)?;
+                let res = ddl_truncate_space_on_master(id, cache).map_err(Error::Other)?;
                 if let Some(e) = res {
                     return Err(Error::Other(e.into()));
                 }

@@ -13,6 +13,7 @@ use crate::catalog::pico_bucket::index_of_bucket_id_column;
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
+use crate::catalog::pico_table::PicoTable;
 use crate::catalog_cache::CatalogCache;
 use crate::catalog_cache::CatalogChange;
 use crate::config::apply_alter_system_parameter;
@@ -1062,6 +1063,9 @@ impl NodeImpl {
 
             self.main_loop_info.borrow_mut().last_entry = Some(entry.clone());
 
+            let check_catalog_cache =
+                cfg!(debug_assertions) && catalog::cache::may_change_catalog(&entry);
+
             let mut apply_entry_result = EntryApplied(vec![]);
             // Make asynchronous intentionally because do not want to block
             // raft state and global system tables modification due to
@@ -1109,6 +1113,10 @@ impl NodeImpl {
 
                 Ok(())
             })?;
+
+            if check_catalog_cache {
+                self.catalog_cache.assert_consistent(&self.storage);
+            }
 
             let dmls = match apply_entry_result {
                 EntryApplied(v) => v,
@@ -1259,6 +1267,8 @@ impl NodeImpl {
                 | PicoBucket::TABLE_ID
                 | PicoReshardingState::TABLE_ID
                 | storage::ServiceRouteTable::TABLE_ID
+                | PicoTable::TABLE_ID
+                | storage::Indexes::TABLE_ID
         );
 
         let res = self.storage.do_dml_inner(op, need_old);
@@ -1409,6 +1419,7 @@ impl NodeImpl {
                             v_pending,
                             true,
                             self.catalog_cache.my_tier_name(),
+                            &self.catalog_cache,
                         );
                         match res {
                             Err(rpc::ddl_apply::Error::Other(err)) => {
@@ -1445,8 +1456,13 @@ impl NodeImpl {
                             .expect("storage should not fail")
                         {
                             let table_def = table_def.expect("storage should not fail");
-                            ddl_meta_space_update_operable(&self.storage, table_def.id, true)
-                                .expect("storage shouldn't fail");
+                            ddl_meta_space_update_operable(
+                                &self.storage,
+                                table_def.id,
+                                true,
+                                &self.catalog_cache,
+                            )
+                            .expect("storage shouldn't fail");
                         }
 
                         self.storage
@@ -1458,8 +1474,13 @@ impl NodeImpl {
                     Ddl::CreateTable {
                         id, name, owner, ..
                     } => {
-                        ddl_meta_space_update_operable(&self.storage, id, true)
-                            .expect("storage shouldn't fail");
+                        ddl_meta_space_update_operable(
+                            &self.storage,
+                            id,
+                            true,
+                            &self.catalog_cache,
+                        )
+                        .expect("storage shouldn't fail");
 
                         let initiator_def = user_by_id(owner).expect("user must exist");
 
@@ -1475,7 +1496,8 @@ impl NodeImpl {
                     Ddl::DropTable { id, initiator } => {
                         let space_raw = self.storage.pico_table.get(id);
                         let space = space_raw.ok().flatten().expect("failed to get space");
-                        ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
+                        ddl_meta_drop_space(&self.storage, id, &self.catalog_cache)
+                            .expect("storage shouldn't fail");
 
                         let initiator_def = user_by_id(initiator).expect("user must exist");
 
@@ -1494,15 +1516,21 @@ impl NodeImpl {
                         // directly, because global tables are implemented as
                         // tarantool local tables.
                         if ddl.is_truncate_on_global_table(&self.storage) {
-                            let abort_reason = ddl_truncate_space_on_master(id)
-                                .expect("truncating a local space shouldn't fail");
+                            let abort_reason =
+                                ddl_truncate_space_on_master(id, &self.catalog_cache)
+                                    .expect("truncating a local space shouldn't fail");
                             if let Some(e) = abort_reason {
                                 crate::warn_or_panic!("global table truncate failed: {e}");
                             }
                         }
 
-                        ddl_meta_space_update_operable(&self.storage, id, true)
-                            .expect("storage shouldn't fail");
+                        ddl_meta_space_update_operable(
+                            &self.storage,
+                            id,
+                            true,
+                            &self.catalog_cache,
+                        )
+                        .expect("storage shouldn't fail");
 
                         let initiator_def = user_by_id(initiator).expect("user must exist");
 
@@ -1528,11 +1556,11 @@ impl NodeImpl {
                     } => {
                         self.storage
                             .pico_table
-                            .update_operable(table_id, true)
+                            .update_operable(table_id, true, &self.catalog_cache)
                             .expect("storage shouldn't fail");
                         self.storage
                             .pico_table
-                            .update_schema_version(table_id, schema_version)
+                            .update_schema_version(table_id, schema_version, &self.catalog_cache)
                             .expect("storage shouldn't fail");
 
                         let initiator_def = user_by_id(initiator_id).expect("user must exist");
@@ -1552,13 +1580,18 @@ impl NodeImpl {
                         schema_version,
                         ..
                     } => {
-                        ddl_meta_space_update_operable(&self.storage, table_id, true)
-                            .expect("storage shouldn't fail");
+                        ddl_meta_space_update_operable(
+                            &self.storage,
+                            table_id,
+                            true,
+                            &self.catalog_cache,
+                        )
+                        .expect("storage shouldn't fail");
                         // TODO: it would be nice to fuse the update of `operable` field with the update of `schema_version`
                         // this needs some API design though
                         self.storage
                             .pico_table
-                            .update_schema_version(table_id, schema_version)
+                            .update_schema_version(table_id, schema_version, &self.catalog_cache)
                             .expect("storage shouldn't fail");
 
                         let initiator_def = user_by_id(initiator_id).expect("user must exist");
@@ -1642,12 +1675,13 @@ impl NodeImpl {
                     } => {
                         self.storage
                             .indexes
-                            .update_operable(space_id, index_id, true)
+                            .update_operable(space_id, index_id, true, &self.catalog_cache)
                             .expect("storage shouldn't fail");
                         update_table_schema_version_after_index_ddl(
                             &self.storage,
                             space_id,
                             v_pending,
+                            &self.catalog_cache,
                         )
                         .expect("storage shouldn't fail");
 
@@ -1672,12 +1706,13 @@ impl NodeImpl {
                         let name = &index.name;
                         self.storage
                             .indexes
-                            .delete(space_id, index_id)
+                            .delete(space_id, index_id, &self.catalog_cache)
                             .expect("storage shouldn't fail");
                         update_table_schema_version_after_index_ddl(
                             &self.storage,
                             space_id,
                             v_pending,
+                            &self.catalog_cache,
                         )
                         .expect("storage shouldn't fail");
                         let initiator_def = user_by_id(initiator).expect("user must exist");
@@ -1702,16 +1737,22 @@ impl NodeImpl {
                     } => {
                         self.storage
                             .indexes
-                            .update_operable(space_id, index_id, true)
+                            .update_operable(space_id, index_id, true, &self.catalog_cache)
                             .expect("storage shouldn't fail");
                         self.storage
                             .indexes
-                            .update_schema_version(space_id, index_id, schema_version)
+                            .update_schema_version(
+                                space_id,
+                                index_id,
+                                schema_version,
+                                &self.catalog_cache,
+                            )
                             .expect("storage shouldn't fail");
                         update_table_schema_version_after_index_ddl(
                             &self.storage,
                             space_id,
                             v_pending,
+                            &self.catalog_cache,
                         )
                         .expect("storage shouldn't fail");
 
@@ -1793,18 +1834,29 @@ impl NodeImpl {
                             .expect("storage should not fail")
                         {
                             let table_def = table_def.expect("storage should not fail");
-                            ddl_meta_space_update_operable(&self.storage, table_def.id, true)
-                                .expect("storage shouldn't fail");
+                            ddl_meta_space_update_operable(
+                                &self.storage,
+                                table_def.id,
+                                true,
+                                &self.catalog_cache,
+                            )
+                            .expect("storage shouldn't fail");
                         }
                     }
 
                     Ddl::CreateTable { id, .. } => {
-                        ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
+                        ddl_meta_drop_space(&self.storage, id, &self.catalog_cache)
+                            .expect("storage shouldn't fail");
                     }
 
                     Ddl::DropTable { id, .. } => {
-                        ddl_meta_space_update_operable(&self.storage, id, true)
-                            .expect("storage shouldn't fail");
+                        ddl_meta_space_update_operable(
+                            &self.storage,
+                            id,
+                            true,
+                            &self.catalog_cache,
+                        )
+                        .expect("storage shouldn't fail");
                     }
 
                     Ddl::RenameTable {
@@ -1812,11 +1864,11 @@ impl NodeImpl {
                     } => {
                         self.storage
                             .pico_table
-                            .rename(table_id, old_name.as_str())
+                            .rename(table_id, old_name.as_str(), &self.catalog_cache)
                             .expect("storage shouldn't fail");
                         self.storage
                             .pico_table
-                            .update_operable(table_id, true)
+                            .update_operable(table_id, true, &self.catalog_cache)
                             .expect("storage shouldn't fail");
                     }
 
@@ -1829,8 +1881,13 @@ impl NodeImpl {
                         ref column_renames,
                         ..
                     } => {
-                        ddl_meta_space_update_operable(&self.storage, table_id, true)
-                            .expect("storage shouldn't fail");
+                        ddl_meta_space_update_operable(
+                            &self.storage,
+                            table_id,
+                            true,
+                            &self.catalog_cache,
+                        )
+                        .expect("storage shouldn't fail");
                         let reversed_renames = column_renames.reversed();
 
                         // rollback column renames in indices metadata
@@ -1844,14 +1901,19 @@ impl NodeImpl {
                             if reversed_renames.transform_index_columns(&mut index) {
                                 self.storage
                                     .indexes
-                                    .put(&index)
+                                    .put(&index, &self.catalog_cache)
                                     .expect("storage shouldn't fail");
                             }
                         }
 
                         self.storage
                             .pico_table
-                            .update_format(table_id, old_format, &reversed_renames)
+                            .update_format(
+                                table_id,
+                                old_format,
+                                &reversed_renames,
+                                &self.catalog_cache,
+                            )
                             .expect("storage shouldn't fail");
                     }
                     Ddl::CreateProcedure { id, .. } => {
@@ -1891,7 +1953,7 @@ impl NodeImpl {
                     } => {
                         self.storage
                             .indexes
-                            .delete(space_id, index_id)
+                            .delete(space_id, index_id, &self.catalog_cache)
                             .expect("storage shouldn't fail");
                     }
 
@@ -1900,7 +1962,7 @@ impl NodeImpl {
                     } => {
                         self.storage
                             .indexes
-                            .update_operable(space_id, index_id, true)
+                            .update_operable(space_id, index_id, true, &self.catalog_cache)
                             .expect("storage shouldn't fail");
                     }
                     Ddl::RenameIndex {
@@ -1911,11 +1973,11 @@ impl NodeImpl {
                     } => {
                         self.storage
                             .indexes
-                            .rename(space_id, index_id, &old_name)
+                            .rename(space_id, index_id, &old_name, &self.catalog_cache)
                             .expect("storage shouldn't fail");
                         self.storage
                             .indexes
-                            .update_operable(space_id, index_id, true)
+                            .update_operable(space_id, index_id, true, &self.catalog_cache)
                             .expect("storage shouldn't fail");
                     }
                 }
@@ -2274,8 +2336,13 @@ impl NodeImpl {
                     if system_table_defs.contains(&table_def) {
                         continue;
                     }
-                    ddl_meta_space_update_operable(&self.storage, table_def.id, false)
-                        .expect("storage shouldn't fail");
+                    ddl_meta_space_update_operable(
+                        &self.storage,
+                        table_def.id,
+                        false,
+                        &self.catalog_cache,
+                    )
+                    .expect("storage shouldn't fail");
                 }
             }
             Ddl::CreateTable {
@@ -2360,7 +2427,10 @@ impl NodeImpl {
                     operable: false,
                     schema_version,
                 };
-                let res = self.storage.indexes.insert(&primary_key_def);
+                let res = self
+                    .storage
+                    .indexes
+                    .insert(&primary_key_def, &self.catalog_cache);
                 if let Err(e) = res {
                     // Ignore the error for now, let governor deal with it.
                     tlog!(
@@ -2408,7 +2478,10 @@ impl NodeImpl {
                     description: "".into(),
                     opts,
                 };
-                let res = self.storage.pico_table.insert(&table_def);
+                let res = self
+                    .storage
+                    .pico_table
+                    .insert(&table_def, &self.catalog_cache);
                 if let Err(e) = res {
                     // Ignore the error for now, let governor deal with it.
                     tlog!(Warning, "failed creating table '{}': {e}", table_def.name);
@@ -2435,7 +2508,7 @@ impl NodeImpl {
                 };
                 self.storage
                     .indexes
-                    .insert(&index_def)
+                    .insert(&index_def, &self.catalog_cache)
                     .expect("storage shouldn't fail");
             }
             Ddl::RenameIndex {
@@ -2446,15 +2519,15 @@ impl NodeImpl {
             } => {
                 self.storage
                     .indexes
-                    .rename(space_id, index_id, &new_name)
+                    .rename(space_id, index_id, &new_name, &self.catalog_cache)
                     .expect("index existence must have been checked before commit");
                 self.storage
                     .indexes
-                    .update_operable(space_id, index_id, false)
+                    .update_operable(space_id, index_id, false, &self.catalog_cache)
                     .expect("storage shouldn't fail");
             }
             Ddl::DropTable { id, .. } => {
-                ddl_meta_space_update_operable(&self.storage, id, false)
+                ddl_meta_space_update_operable(&self.storage, id, false, &self.catalog_cache)
                     .expect("storage shouldn't fail");
             }
             Ddl::RenameTable {
@@ -2462,16 +2535,16 @@ impl NodeImpl {
             } => {
                 self.storage
                     .pico_table
-                    .rename(table_id, new_name.as_str())
+                    .rename(table_id, new_name.as_str(), &self.catalog_cache)
                     .expect("table existence must have been checked before commit");
 
                 self.storage
                     .pico_table
-                    .update_operable(table_id, false)
+                    .update_operable(table_id, false, &self.catalog_cache)
                     .expect("storage shouldn't fail");
             }
             Ddl::TruncateTable { id, .. } => {
-                ddl_meta_space_update_operable(&self.storage, id, false)
+                ddl_meta_space_update_operable(&self.storage, id, false, &self.catalog_cache)
                     .expect("storage shouldn't fail");
             }
             Ddl::DropIndex {
@@ -2479,7 +2552,7 @@ impl NodeImpl {
             } => {
                 self.storage
                     .indexes
-                    .update_operable(space_id, index_id, false)
+                    .update_operable(space_id, index_id, false, &self.catalog_cache)
                     .expect("storage shouldn't fail");
             }
             Ddl::CreateProcedure {
@@ -2538,7 +2611,7 @@ impl NodeImpl {
             } => {
                 self.storage
                     .pico_table
-                    .update_format(table_id, &new_format, &column_renames)
+                    .update_format(table_id, &new_format, &column_renames, &self.catalog_cache)
                     .expect("storage shouldn't fail");
 
                 // apply column renames in indices metadata
@@ -2552,14 +2625,14 @@ impl NodeImpl {
                     if column_renames.transform_index_columns(&mut index) {
                         self.storage
                             .indexes
-                            .put(&index)
+                            .put(&index, &self.catalog_cache)
                             .expect("storage shouldn't fail");
                     }
                 }
 
                 self.storage
                     .pico_table
-                    .update_operable(table_id, false)
+                    .update_operable(table_id, false, &self.catalog_cache)
                     .expect("storage shouldn't fail");
             }
         }
@@ -3147,7 +3220,27 @@ impl NodeImpl {
                         changed_parameters = self
                             .storage
                             .apply_snapshot_data(&snapshot.data, is_master)?;
+                        // Reload in the same transaction, so that the cache
+                        // changes together with the tables, before the WAL
+                        // write. We could be more clever about it and only
+                        // update the records which changed, but at the moment
+                        // this would require doing a full scan and comparing
+                        // each record, which is no better than full reload. A
+                        // better solution would be to store a raft index in
+                        // each tuple of each global table, then we would only
+                        // need to check if the index changed, but we don't
+                        // have that..
+                        self.catalog_cache.full_reload(&self.storage)?;
                         new_applied = Some(meta.index);
+
+                        // The commit of this transaction waits for the WAL
+                        // until the test lifts the delay (needs a debug build
+                        // of tarantool).
+                        crate::error_injection!("DELAY_WAL_AFTER_APPLYING_SNAPSHOT" => {
+                            ::tarantool::lua_state()
+                                .exec("box.error.injection.set('ERRINJ_WAL_DELAY', true)")
+                                .expect("WAL injections need a debug build of tarantool");
+                        });
                         received_snapshot = true;
                     }
                 }
@@ -3176,16 +3269,9 @@ impl NodeImpl {
             }
 
             if received_snapshot {
-                // Need to reload the whole catalog cache. We could be more
-                // clever about it and only update the records which changed,
-                // but at the moment this would require doing a full scan and
-                // comparing each record, which is no better than full reload.
-                // A better solution would be to store a raft index in each
-                // tuple of each global table, then we would only need to check
-                // if the index changed, but we don't have that..
-                self.catalog_cache
-                    .full_reload(&self.storage)
-                    .expect("schema upgrade not supported yet");
+                if cfg!(debug_assertions) {
+                    self.catalog_cache.assert_consistent(&self.storage);
+                }
 
                 // we need to refresh instance_state metric after snapshot application
                 self.catalog_cache.with(|topology_ref| {
@@ -3476,10 +3562,11 @@ fn update_table_schema_version_after_index_ddl(
     storage: &Catalog,
     table_id: SpaceId,
     schema_version: u64,
+    cache: &CatalogCache,
 ) -> tarantool::Result<()> {
     storage
         .pico_table
-        .update_schema_version(table_id, schema_version)
+        .update_schema_version(table_id, schema_version, cache)
 }
 
 #[inline]
@@ -3915,17 +4002,109 @@ mod tests {
     #[::tarantool::test]
     fn update_table_schema_version_after_index_ddl_bumps_table_version() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = TableDef {
             id: 901_001,
             schema_version: 7,
             ..TableDef::for_tests()
         };
-        storage.pico_table.put(&table).unwrap();
+        storage.pico_table.put(&table, &cache).unwrap();
 
-        update_table_schema_version_after_index_ddl(&storage, table.id, 42).unwrap();
+        update_table_schema_version_after_index_ddl(&storage, table.id, 42, &cache).unwrap();
 
         let updated = storage.pico_table.by_id(table.id).unwrap().unwrap();
         assert_eq!(updated.schema_version, 42);
+    }
+
+    #[::tarantool::test]
+    fn dml_into_catalog_updates_cache() {
+        use crate::schema::ADMIN_ID;
+        use sql::ir::operator::ConflictStrategy;
+        use tarantool::space::UpdateOps;
+        use tarantool::tuple::ToTupleBuffer;
+
+        let node = Node::for_tests();
+        let node_impl = node.node_impl();
+        let cache = &node.catalog_cache;
+        let apply = |dml: Dml| {
+            node_impl.handle_dml_entry(&dml).unwrap();
+            cache.assert_consistent(&node.storage);
+        };
+        let id = 901_002;
+        let table = TableDef {
+            id,
+            name: "catalog_cache_dml".into(),
+            ..TableDef::for_tests()
+        };
+        let index = IndexDef {
+            table_id: id,
+            id: 0,
+            name: "catalog_cache_dml_pk".into(),
+            ..IndexDef::for_tests()
+        };
+        let encoded = || ::tarantool::msgpack::encode(&table);
+        fn disable(table_id: SpaceId, key: &impl ToTupleBuffer) -> Dml {
+            let mut ops = UpdateOps::new();
+            ops.assign("operable", false).unwrap();
+            Dml::update(table_id, key, ops, crate::schema::ADMIN_ID).unwrap()
+        }
+
+        apply(Dml::insert_raw(PicoTable::TABLE_ID, encoded(), ADMIN_ID).unwrap());
+        apply(Dml::insert(storage::Indexes::TABLE_ID, &index, ADMIN_ID).unwrap());
+        assert!(cache.get().table(id).is_some());
+        assert!(cache.get().index(id, 0).is_some());
+
+        apply(disable(PicoTable::TABLE_ID, &[id]));
+        assert!(!cache.get().table(id).unwrap().operable);
+        apply(disable(storage::Indexes::TABLE_ID, &[id, 0]));
+        assert!(!cache.get().index(id, 0).unwrap().operable);
+
+        // Neither a missing key nor a skipped insert changes anything.
+        apply(disable(PicoTable::TABLE_ID, &[id + 1]));
+        let skipped = Dml::insert_with_on_conflict(
+            storage::Indexes::TABLE_ID,
+            &index,
+            ADMIN_ID,
+            ConflictStrategy::DoNothing,
+        );
+        apply(skipped.unwrap());
+        assert!(!cache.get().index(id, 0).unwrap().operable);
+
+        apply(Dml::delete(storage::Indexes::TABLE_ID, &[id, 0], ADMIN_ID, None).unwrap());
+        assert!(cache.get().index(id, 0).is_none());
+        apply(Dml::delete(PicoTable::TABLE_ID, &[id], ADMIN_ID, None).unwrap());
+        assert!(cache.get().table(id).is_none());
+    }
+
+    /// An error would make the raft loop retry the entry forever, while its
+    /// row is already in the table.
+    #[::tarantool::test]
+    fn undecodable_dml_into_catalog_panics() {
+        use crate::schema::ADMIN_ID;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use tarantool::space::SpaceEngineType;
+
+        let node = Node::for_tests();
+        let node_impl = node.node_impl();
+        let id = 901_003;
+        let table = TableDef {
+            id,
+            name: "catalog_cache_undecodable".into(),
+            engine: SpaceEngineType::Memtx,
+            ..TableDef::for_tests()
+        };
+        // The engine is just a string for tarantool, but not for `TableDef`.
+        let mut row = ::tarantool::msgpack::encode(&table);
+        let engine = row.windows(5).position(|w| w == b"memtx").unwrap();
+        row[engine..engine + 5].copy_from_slice(b"memty");
+        let dml = Dml::insert_raw(PicoTable::TABLE_ID, row, ADMIN_ID).unwrap();
+
+        // The hook set by picodata aborts the process.
+        let _ = std::panic::take_hook();
+        let res = catch_unwind(AssertUnwindSafe(|| node_impl.handle_dml_entry(&dml)));
+        let panic = res.unwrap_err();
+        let msg = panic.downcast_ref::<String>().unwrap();
+        assert!(msg.contains("_pico_table row with id 901003"), "{msg}");
     }
 
     #[::tarantool::test]

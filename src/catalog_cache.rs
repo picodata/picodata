@@ -1,15 +1,22 @@
 #![allow(unused_parens)]
+use crate::catalog::cache;
+use crate::catalog::cache::IndexCache;
+use crate::catalog::cache::TableCache;
 use crate::catalog::pico_bucket::BucketRecord;
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::pico_resharding_state::ReshardingStateRecord;
+use crate::catalog::pico_table::PicoTable;
 use crate::instance::Instance;
 use crate::instance::State;
 use crate::replicaset::Replicaset;
+use crate::schema::IndexDef;
 use crate::schema::ServiceRouteItem;
+use crate::schema::TableDef;
 use crate::sharding::BucketsInfo;
 use crate::sharding::TierBucketsInfo;
 use crate::storage::Catalog;
+use crate::storage::Indexes;
 use crate::storage::Instances;
 use crate::storage::Replicasets;
 use crate::storage::ServiceRouteTable;
@@ -30,6 +37,7 @@ use std::cell::OnceCell;
 use std::collections::HashMap;
 use tarantool::fiber::safety::NoYieldsRef;
 use tarantool::fiber::safety::NoYieldsRefCell;
+use tarantool::index::IndexId;
 use tarantool::space::SpaceId;
 use tarantool::tuple::DecodeOwned;
 use tarantool::tuple::Tuple;
@@ -44,6 +52,9 @@ pub type CatalogCacheRef<'a> = NoYieldsRef<'a, CatalogCacheMutable>;
 /// _pico_replicaset, etc. The data in this struct is automatically kept up to
 /// date in [`NodeImpl::advance`]: whenever new raft entries or raft snapshots
 /// are handled, the data is updated correspondingly.
+///
+/// The definitions from _pico_table and _pico_index are also changed by the
+/// code which writes these tables, see [`crate::catalog::cache`].
 ///
 /// Doesn't implement `Clone` by design, must be wrapped in an `Rc`.
 pub struct CatalogCache {
@@ -80,8 +91,8 @@ pub struct CatalogCache {
 }
 
 impl CatalogCache {
-    /// Initializes the cache by loading all of the contents from _pico_instance
-    /// and _pico_replicaset system tables.
+    /// Initializes the cache by loading all of the contents from _pico_instance,
+    /// _pico_replicaset, _pico_table, _pico_index and other system tables.
     pub fn load(
         storage: &Catalog,
         my_raft_id: RaftId,
@@ -130,12 +141,78 @@ impl CatalogCache {
 
     /// Drop all cached data and load it all again from the storage.
     ///
-    /// This is called from [`NodeImpl::advance`] after receiving a snapshot.
+    /// This is called from [`NodeImpl::advance`] in the transaction which
+    /// applies a snapshot, and after a rolled back transaction which wrote to
+    /// `_pico_table` or `_pico_index` outside raft.
     pub fn full_reload(&self, storage: &Catalog) -> Result<()> {
         let mut inner = self.inner.borrow_mut();
         // Drop the old data and replace it with new loaded from the storage
         *inner = CatalogCacheMutable::load(storage, self.my_raft_id)?;
         Ok(())
+    }
+
+    /// A row of `_pico_table` returned by tarantool after a write.
+    pub fn put_table(&self, tuple: &Tuple) {
+        self.inner.borrow_mut().table.put(tuple);
+    }
+
+    /// The row with `id` was deleted from `_pico_table`.
+    pub fn remove_table(&self, id: SpaceId) {
+        self.inner.borrow_mut().table.set(id, None);
+    }
+
+    /// A row of `_pico_index` returned by tarantool after a write.
+    pub fn put_index(&self, tuple: &Tuple) {
+        self.inner.borrow_mut().index.put(tuple);
+    }
+
+    /// The row with key `(table_id, id)` was deleted from `_pico_index`.
+    pub fn remove_index(&self, table_id: SpaceId, id: IndexId) {
+        self.inner.borrow_mut().index.set((table_id, id), None);
+    }
+
+    /// Space `space_id` was truncated.
+    pub fn truncate(&self, space_id: SpaceId) {
+        let mut inner = self.inner.borrow_mut();
+        if space_id == PicoTable::TABLE_ID {
+            inner.table = Default::default();
+        } else if space_id == Indexes::TABLE_ID {
+            inner.index = Default::default();
+        }
+    }
+
+    /// Returns a description of the first difference between the definitions
+    /// in the cache and `_pico_table`, `_pico_index` of `storage`, if any.
+    pub fn find_mismatch(&self, storage: &Catalog) -> Result<Option<String>> {
+        let table = TableCache::load(storage)?;
+        let index = IndexCache::load(storage)?;
+        let inner = self.inner.borrow();
+        Ok(inner
+            .table
+            .diff(&table)
+            .or_else(|| inner.index.diff(&index)))
+    }
+
+    /// Panics if the definitions in the cache differ from the tables. Used in
+    /// debug builds.
+    pub fn assert_consistent(&self, storage: &Catalog) {
+        let mismatch = self.find_mismatch(storage);
+        if let Some(mismatch) = mismatch.expect("reading the catalog shouldn't fail") {
+            panic!("{mismatch}");
+        }
+    }
+
+    /// Returns an instance of the struct for use in tests, with the table and
+    /// index definitions of `storage`. Needs tarantool, unlike
+    /// [`Self::for_tests`].
+    pub fn for_tests_from(storage: &Catalog) -> Self {
+        let res = Self::for_tests();
+        {
+            let mut inner = res.inner.borrow_mut();
+            inner.table = TableCache::load(storage).expect("storage shouldn't fail");
+            inner.index = IndexCache::load(storage).expect("storage shouldn't fail");
+        }
+        res
     }
 
     /// Returns an instance of the struct for use in tests.
@@ -279,6 +356,8 @@ impl CatalogCache {
             CatalogChange::ReshardingStateRecord { old, new } => {
                 self.update_resharding_state_record(old, new)
             }
+            CatalogChange::Table { id, new } => self.inner.borrow_mut().table.set(id, new),
+            CatalogChange::Index { key, new } => self.inner.borrow_mut().index.set(key, new),
         }
     }
 
@@ -396,8 +475,9 @@ impl std::fmt::Debug for CatalogCache {
 // CatalogCacheMutable
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Stores topology info which may change during execution. Because the data is
-/// volatile, access to it from separate fibers must be guarded by a [`NoYieldsRefCell`].
+/// Stores topology info and table and index definitions which may change
+/// during execution. Because the data is volatile, access to it from separate
+/// fibers must be guarded by a [`NoYieldsRefCell`].
 /// `fiber::Mutex` also works, but may lead to deadlocks and it's better to
 /// just never hold such references across yields, which is enforced by NoYieldsRefCell.
 #[derive(Default)]
@@ -469,6 +549,12 @@ pub struct CatalogCacheMutable {
 
     /// Sharding buckets distribution info.
     buckets: BucketsInfo,
+
+    /// Definitions from _pico_table.
+    table: TableCache,
+
+    /// Definitions from _pico_index.
+    index: IndexCache,
 }
 
 impl CatalogCacheMutable {
@@ -592,6 +678,8 @@ impl CatalogCacheMutable {
             default_tier_name,
             service_routes,
             buckets,
+            table: TableCache::load(storage)?,
+            index: IndexCache::load(storage)?,
         })
     }
 
@@ -600,6 +688,32 @@ impl CatalogCacheMutable {
         let mut res = Self::default();
         res.my_raft_id = my_raft_id;
         res
+    }
+
+    #[inline]
+    pub fn table(&self, id: SpaceId) -> Option<&TableDef> {
+        self.table.get(id)
+    }
+
+    #[inline]
+    pub fn table_by_name(&self, name: &str) -> Option<&TableDef> {
+        self.table.get_by_name(name)
+    }
+
+    #[inline]
+    pub fn index(&self, table_id: SpaceId, id: IndexId) -> Option<&IndexDef> {
+        self.index.get(table_id, id)
+    }
+
+    #[inline]
+    pub fn index_by_name(&self, name: &str) -> Option<&IndexDef> {
+        self.index.get_by_name(name)
+    }
+
+    /// Indexes of table `table_id` ordered by index id.
+    #[inline]
+    pub fn indexes_of(&self, table_id: SpaceId) -> impl Iterator<Item = &IndexDef> {
+        self.index.of_table(table_id)
     }
 
     /// Return info about the currently running instance.
@@ -1041,6 +1155,13 @@ pub(crate) enum CatalogChange {
         old: Option<ReshardingStateRecord>,
         new: Option<ReshardingStateRecord>,
     },
+    /// The definition of table `id` is now `new`.
+    Table { id: SpaceId, new: Option<TableDef> },
+    /// The definition of index `key` is now `new`.
+    Index {
+        key: (SpaceId, IndexId),
+        new: Option<IndexDef>,
+    },
 }
 
 impl CatalogChange {
@@ -1073,6 +1194,17 @@ impl CatalogChange {
             PicoReshardingState::TABLE_ID => {
                 let (old, new) = decode_pair(old, new)?;
                 Ok(Some(Self::ReshardingStateRecord { old, new }))
+            }
+            // Unlike the tables above, a row which can't be decoded panics with
+            // the table and the key: `NodeImpl::handle_dml_entry` would turn an
+            // error into retrying the entry forever.
+            PicoTable::TABLE_ID => {
+                let change = cache::table_change(old, new);
+                Ok(change.map(|(id, new)| Self::Table { id, new }))
+            }
+            Indexes::TABLE_ID => {
+                let change = cache::index_change(old, new);
+                Ok(change.map(|(key, new)| Self::Index { key, new }))
             }
             _ => return Ok(None),
         }

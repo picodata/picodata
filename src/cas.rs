@@ -1791,6 +1791,7 @@ mod tests {
     use tarantool::tuple::ToTupleBuffer;
 
     use crate::catalog::pico_table::PicoTable;
+    use crate::catalog_cache::CatalogCache;
     use crate::schema::{Distribution, IndexDef, IndexOption, TableDef, ADMIN_ID};
     use crate::storage::{Catalog, Properties, PropertyName};
     use crate::traft::op::DdlBuilder;
@@ -1800,6 +1801,7 @@ mod tests {
     #[::tarantool::test]
     fn ddl() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests();
 
         let t = |op: &Op, range: Range| -> std::result::Result<(), Error> {
             check_predicate(2, op, &predicates_from_ranges([range]), &storage)
@@ -1862,7 +1864,7 @@ mod tests {
 
         // drop_space
         // `DropTable` needs `TableDef` to get space name
-        storage.pico_table.insert(&table_def).unwrap();
+        storage.pico_table.insert(&table_def, &cache).unwrap();
         t(&drop_space, Range::new(props).eq(&pending_schema_change)).unwrap_err();
         t(&drop_space, Range::new(props).eq(&pending_schema_version)).unwrap_err();
         t(&drop_space, Range::new(props).eq(("another_key",))).unwrap();
@@ -2032,11 +2034,12 @@ mod tests {
     #[::tarantool::test]
     fn cas_extracts_unique_keys_from_table_metadata() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests();
         let mut table = TableDef::for_tests();
         table.id = 50_001;
         table.name = "cas_keys_test".into();
         table.schema_version = 77;
-        storage.pico_table.put(&table).unwrap();
+        storage.pico_table.put(&table, &cache).unwrap();
 
         let index = IndexDef {
             table_id: table.id,
@@ -2048,7 +2051,7 @@ mod tests {
             operable: true,
             schema_version: table.schema_version,
         };
-        storage.indexes.put(&index).unwrap();
+        storage.indexes.put(&index, &cache).unwrap();
         let duplicate_index = IndexDef {
             table_id: table.id,
             id: 2,
@@ -2059,7 +2062,7 @@ mod tests {
             operable: true,
             schema_version: table.schema_version,
         };
-        storage.indexes.put(&duplicate_index).unwrap();
+        storage.indexes.put(&duplicate_index, &cache).unwrap();
 
         let tuple = Tuple::new(&(7,)).unwrap();
         let mut cas = DmlCas::default();
@@ -2080,19 +2083,20 @@ mod tests {
             assert_eq!(key.key, (7,).to_tuple_buffer().unwrap());
         }
 
-        storage.indexes.delete(table.id, index.id).unwrap();
+        storage.indexes.delete(table.id, index.id, &cache).unwrap();
         storage
             .indexes
-            .delete(table.id, duplicate_index.id)
+            .delete(table.id, duplicate_index.id, &cache)
             .unwrap();
-        storage.pico_table.delete(table.id).unwrap();
+        storage.pico_table.delete(table.id, &cache).unwrap();
     }
 
     #[::tarantool::test]
     fn cas_adds_candidate_unique_keys_for_insert() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests();
         let table = 50_007;
-        put_unique_secondary_index(&storage, table, 10, 1);
+        put_unique_secondary_index(&storage, &cache, table, 10, 1);
 
         let op = Op::Dml(Dml::Insert {
             table,
@@ -2116,6 +2120,7 @@ mod tests {
     #[::tarantool::test]
     fn cas_candidate_key_error_adds_conservative_predicate() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests();
         let table_id = 50_016;
         let mut table = TableDef::for_tests();
         table.id = table_id;
@@ -2125,7 +2130,7 @@ mod tests {
             Field::from(("id", SpaceFieldType::Unsigned)).is_nullable(false),
             Field::from(("u", SpaceFieldType::Unsigned)).is_nullable(false),
         ];
-        storage.pico_table.put(&table).unwrap();
+        storage.pico_table.put(&table, &cache).unwrap();
 
         let index = IndexDef {
             table_id,
@@ -2137,7 +2142,7 @@ mod tests {
             operable: true,
             schema_version: table.schema_version,
         };
-        storage.indexes.put(&index).unwrap();
+        storage.indexes.put(&index, &cache).unwrap();
 
         let op = Op::Dml(Dml::Insert {
             table: table_id,
@@ -2154,8 +2159,8 @@ mod tests {
             .0
             .contains(&CasPredicate::TableFullChange(table_id)));
 
-        storage.indexes.delete(table_id, index.id).unwrap();
-        storage.pico_table.delete(table_id).unwrap();
+        storage.indexes.delete(table_id, index.id, &cache).unwrap();
+        storage.pico_table.delete(table_id, &cache).unwrap();
     }
 
     #[::tarantool::test]
@@ -2216,6 +2221,7 @@ mod tests {
     #[::tarantool::test]
     fn cas_prepare_error_update_unique_conflict_checks_tail_conservatively() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests();
         let table_id = 50_015;
         let space_name = format!("cas_update_error_{table_id}");
 
@@ -2259,7 +2265,7 @@ mod tests {
             Field::from(("id", SpaceFieldType::Unsigned)).is_nullable(false),
             Field::from(("u", SpaceFieldType::Unsigned)).is_nullable(false),
         ];
-        storage.pico_table.put(&table).unwrap();
+        storage.pico_table.put(&table, &cache).unwrap();
 
         let index = IndexDef {
             table_id,
@@ -2271,7 +2277,7 @@ mod tests {
             operable: true,
             schema_version: table.schema_version,
         };
-        storage.indexes.put(&index).unwrap();
+        storage.indexes.put(&index, &cache).unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign(1, 10_u64).unwrap();
@@ -2302,16 +2308,17 @@ mod tests {
         add_prepare_error_cas_predicates(&op, &mut predicates);
         check_predicate(42, &tail_entry, &predicates, &storage).unwrap_err();
 
-        storage.indexes.delete(table_id, index.id).unwrap();
-        storage.pico_table.delete(table_id).unwrap();
+        storage.indexes.delete(table_id, index.id, &cache).unwrap();
+        storage.pico_table.delete(table_id, &cache).unwrap();
         space.drop().unwrap();
     }
 
     #[::tarantool::test]
     fn cas_records_unique_keys_for_inoperable_unique_index() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests();
         let table = 50_009;
-        put_unique_secondary_index_with_operable(&storage, table, 10, 1, false);
+        put_unique_secondary_index_with_operable(&storage, &cache, table, 10, 1, false);
 
         let tuple = Tuple::new(&(10,)).unwrap();
         let mut cas = DmlCas::default();
@@ -2326,6 +2333,7 @@ mod tests {
     #[::tarantool::test]
     fn cas_records_unique_keys_for_do_nothing_insert() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests();
         let table_id = 50_008;
         let space_name = format!("cas_do_nothing_{table_id}");
 
@@ -2368,7 +2376,7 @@ mod tests {
             Field::from(("id", SpaceFieldType::Unsigned)).is_nullable(false),
             Field::from(("name", SpaceFieldType::String)).is_nullable(false),
         ];
-        storage.pico_table.put(&table).unwrap();
+        storage.pico_table.put(&table, &cache).unwrap();
 
         let index = IndexDef {
             table_id,
@@ -2380,7 +2388,7 @@ mod tests {
             operable: true,
             schema_version: table.schema_version,
         };
-        storage.indexes.put(&index).unwrap();
+        storage.indexes.put(&index, &cache).unwrap();
 
         let dml = Dml::Insert {
             table: table_id,
@@ -2408,16 +2416,17 @@ mod tests {
             }
         );
 
-        storage.indexes.delete(table_id, index.id).unwrap();
-        storage.pico_table.delete(table_id).unwrap();
+        storage.indexes.delete(table_id, index.id, &cache).unwrap();
+        storage.pico_table.delete(table_id, &cache).unwrap();
         space.drop().unwrap();
     }
 
     #[::tarantool::test]
     fn cas_conflicts_on_same_unique_key() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests();
         let table = 50_002;
-        put_unique_secondary_index(&storage, table, 10, 1);
+        put_unique_secondary_index(&storage, &cache, table, 10, 1);
 
         let entry = Dml::Update {
             table,
@@ -2441,8 +2450,9 @@ mod tests {
     #[::tarantool::test]
     fn cas_allows_different_unique_key() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests();
         let table = 50_003;
-        put_unique_secondary_index(&storage, table, 10, 1);
+        put_unique_secondary_index(&storage, &cache, table, 10, 1);
 
         let entry = Dml::Update {
             table,
@@ -2626,12 +2636,14 @@ mod tests {
 
     fn put_unique_secondary_index(
         storage: &Catalog,
+        cache: &CatalogCache,
         table_id: SpaceId,
         table_schema_version: u64,
         index_id: IndexId,
     ) {
         put_unique_secondary_index_with_operable(
             storage,
+            cache,
             table_id,
             table_schema_version,
             index_id,
@@ -2641,6 +2653,7 @@ mod tests {
 
     fn put_unique_secondary_index_with_operable(
         storage: &Catalog,
+        cache: &CatalogCache,
         table_id: SpaceId,
         table_schema_version: u64,
         index_id: IndexId,
@@ -2650,7 +2663,7 @@ mod tests {
         table.id = table_id;
         table.name = format!("cas_keys_test_{table_id}").into();
         table.schema_version = table_schema_version;
-        storage.pico_table.put(&table).unwrap();
+        storage.pico_table.put(&table, cache).unwrap();
 
         let index = IndexDef {
             table_id,
@@ -2662,7 +2675,7 @@ mod tests {
             operable,
             schema_version: table_schema_version,
         };
-        storage.indexes.put(&index).unwrap();
+        storage.indexes.put(&index, cache).unwrap();
     }
 
     fn dml_cas(table_schema_version: u64, index_id: IndexId, value: u64) -> Option<DmlCas> {
