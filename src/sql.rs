@@ -661,16 +661,11 @@ fn dispatch_bound_statement_impl<'p>(
 
         let plan = query.get_exec_plan().get_ir_plan();
         // check if table is operable
-        with_su(ADMIN_ID, || {
-            let top_id = plan.get_top()?;
-            if plan.get_relation_node(top_id)?.is_dml() {
-                let storage = &node::global()?.storage;
-                let table = plan.dml_node_table(top_id)?;
-                cas::check_table_operable(storage, table.id)?;
-            }
-
-            Ok::<(), Error>(())
-        })??;
+        let top_id = plan.get_top()?;
+        if plan.get_relation_node(top_id)?.is_dml() {
+            let cache = &node::global()?.catalog_cache;
+            cas::check_table_operable(cache, plan.dml_node_table(top_id)?.id)?;
+        }
 
         let is_dml_on_global = plan.is_dml_on_global_table()?;
         let request_id = plan_owner_key(query.get_exec_plan());
@@ -3226,8 +3221,14 @@ fn create_dml_ops(
     let table = plan.dml_node_table(top)?;
     let table_name = &table.name;
     let childen = plan.children(top);
-    let space = Space::find(table_name.as_str())
-        .ok_or_else(|| Error::other(format!("failed to find table with name: {table_name}")))?;
+    let table_id = (node::global()?
+        .catalog_cache
+        .get()
+        .table_by_name(table_name))
+    .map(|table| table.id)
+    .ok_or_else(|| Error::other(format!("failed to find table with name: {table_name}")))?;
+    // SAFETY: a table in the catalog is a tarantool space with the same id.
+    let space = unsafe { Space::from_id_unchecked(table_id) };
     if childen.is_empty() {
         // If children are empty, there's delete without filter and
         // there's no need to generate tuples.

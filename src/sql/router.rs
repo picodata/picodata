@@ -34,9 +34,10 @@ use std::time::Duration;
 
 use crate::audit;
 use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
+use crate::catalog_cache::CatalogCacheRef;
 use crate::preemption::scheduler_options;
 use crate::schema::{Distribution, ShardingFn, TableDef, ADMIN_ID};
-use crate::storage::{self, Catalog};
+use crate::storage;
 
 use sql::executor::engine::Metadata;
 use sql::executor::Port;
@@ -117,6 +118,15 @@ impl Tier {
     }
 }
 
+/// The catalog cache of this instance. Don't yield and don't write to the
+/// catalog while holding the reference, see [`crate::catalog::cache`].
+pub(crate) fn catalog_cache() -> Result<CatalogCacheRef<'static>, SbroadError> {
+    let node = node::global().map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+    })?;
+    Ok(node.catalog_cache.get())
+}
+
 /// Get schema version of given index.
 ///
 /// # Arguments:
@@ -126,25 +136,14 @@ impl Tier {
 /// # Errors:
 /// - errors on access to system table
 pub fn get_index_version_by_pk(space_id: u32, index_id: u32) -> Result<u64, SbroadError> {
-    with_su(ADMIN_ID, || -> Result<u64, SbroadError> {
-        let node = node::global().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-        })?;
-        let indexes = &node.storage.indexes;
-        let index = indexes.get(space_id, index_id).map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("index_def: {}", e))
-        })?;
-
-        let Some(index) = index else {
-            return Err(SbroadError::NotFound(
-                Entity::Index,
-                format_smolstr!("with id: {}", index_id),
-            ));
-        };
-
-        Ok(index.schema_version)
-    })
-    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))?
+    let cache = catalog_cache()?;
+    let Some(index) = cache.index(space_id, index_id) else {
+        return Err(SbroadError::NotFound(
+            Entity::Index,
+            format_smolstr!("with id: {}", index_id),
+        ));
+    };
+    Ok(index.schema_version)
 }
 
 /// Get the schema version for the given table.
@@ -158,23 +157,14 @@ pub fn get_index_version_by_pk(space_id: u32, index_id: u32) -> Result<u64, Sbro
 /// - errors on access to system table
 /// - table with given name not found
 pub fn get_table_version(table_name: &str) -> Result<u64, SbroadError> {
-    with_su(ADMIN_ID, || -> Result<u64, SbroadError> {
-        let node = node::global().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-        })?;
-        let pico_table = &node.storage.pico_table;
-        if let Some(table_def) = pico_table.by_name(table_name).map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-        })? {
-            Ok(table_def.schema_version)
-        } else {
-            Err(SbroadError::NotFound(
-                Entity::SpaceMetadata,
-                format_smolstr!("for table: {}", table_name),
-            ))
-        }
-    })
-    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))?
+    let cache = catalog_cache()?;
+    let Some(table_def) = cache.table_by_name(table_name) else {
+        return Err(SbroadError::NotFound(
+            Entity::SpaceMetadata,
+            format_smolstr!("for table: {}", table_name),
+        ));
+    };
+    Ok(table_def.schema_version)
 }
 
 /// Get the schema version for the given table.
@@ -186,33 +176,23 @@ pub fn get_table_version(table_name: &str) -> Result<u64, SbroadError> {
 /// - errors on access to system table
 /// - table with given id not found
 pub fn get_table_version_by_id(id: SpaceId) -> Result<u64, SbroadError> {
-    with_su(ADMIN_ID, || -> Result<u64, SbroadError> {
-        let node = node::global().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-        })?;
-        let storage_tables = &node.storage.pico_table;
-        if let Some(schema_version) = storage_tables.schema_version(id).map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-        })? {
-            Ok(schema_version)
-        } else {
-            Err(SbroadError::NotFound(
-                Entity::SpaceMetadata,
-                format_smolstr!("for table: {}", id),
-            ))
-        }
-    })
-    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))?
+    let cache = catalog_cache()?;
+    let Some(table_def) = cache.table(id) else {
+        return Err(SbroadError::NotFound(
+            Entity::SpaceMetadata,
+            format_smolstr!("for table: {}", id),
+        ));
+    };
+    Ok(table_def.schema_version)
 }
 
 pub fn get_index_id(index_name: &str, table_name: &str) -> Result<u32, SbroadError> {
-    let storage = Catalog::try_get(false).expect("storage should be initialized");
-    let index = storage
-        .indexes
-        .by_name(index_name)?
+    let catalog = catalog_cache()?;
+    let index = catalog
+        .index_by_name(index_name)
         .ok_or_else(|| SbroadError::NotFound(Entity::Index, index_name.to_smolstr()))?;
 
-    let table = storage.pico_table.by_id(index.table_id)?.ok_or_else(|| {
+    let table = catalog.table(index.table_id).ok_or_else(|| {
         SbroadError::NotFound(Entity::Table, format_smolstr!("with id {}", index.table_id))
     })?;
 
@@ -235,23 +215,14 @@ pub fn get_index_id(index_name: &str, table_name: &str) -> Result<u32, SbroadErr
 /// - errors on access to system table
 /// - table with given id not found
 pub fn get_table_name_and_version(id: SpaceId) -> Result<(SmolStr, u64), SbroadError> {
-    with_su(ADMIN_ID, || -> Result<(SmolStr, u64), SbroadError> {
-        let node = node::global().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-        })?;
-        let storage_tables = &node.storage.pico_table;
-        if let Some(table_def) = storage_tables.by_id(id).map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-        })? {
-            Ok((table_def.name, table_def.schema_version))
-        } else {
-            Err(SbroadError::NotFound(
-                Entity::SpaceMetadata,
-                format_smolstr!("for table: {}", id),
-            ))
-        }
-    })
-    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))?
+    let cache = catalog_cache()?;
+    let Some(table_def) = cache.table(id) else {
+        return Err(SbroadError::NotFound(
+            Entity::SpaceMetadata,
+            format_smolstr!("for table: {}", id),
+        ));
+    };
+    Ok((table_def.name.clone(), table_def.schema_version))
 }
 
 type IsAuditEnabledFunc = fn(&Plan) -> Result<bool, SbroadError>;
@@ -338,10 +309,7 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
                 return Ok(None);
             };
             // check Plan's tables have up to date schema
-            let node = node::global().map_err(|e| {
-                SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-            })?;
-            let pico_table = &node.storage.pico_table;
+            let catalog = catalog_cache()?;
             for tbl in ir.relations.tables.values() {
                 if tbl.is_system() {
                     continue;
@@ -352,10 +320,7 @@ impl Cache<SmolStr, Rc<Plan>> for PicoRouterCache {
                         format_smolstr!("in version map with name: {}", tbl.name),
                     )
                 })?;
-                let Some(schema_version) = pico_table.schema_version(tbl.id).map_err(|e| {
-                    SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
-                })?
-                else {
+                let Some(schema_version) = catalog.table(tbl.id).map(|t| t.schema_version) else {
                     return Ok(None);
                 };
                 // The outdated entry will be replaced when
@@ -896,15 +861,10 @@ fn builtin_functions() -> &'static HashMap<SmolStr, Function> {
 impl Metadata for RouterMetadata {
     #[allow(dead_code)]
     fn table(&self, table_name: &str) -> Result<Table, SbroadError> {
-        let name = table_name.to_smolstr();
-        let storage = Catalog::try_get(false).expect("storage should be initialized");
-
-        // // Get the space columns and engine of the space from global metatable.
-        let table = storage
-            .pico_table
-            .by_name(&name)?
-            .ok_or_else(|| SbroadError::NotFound(Entity::Space, name.to_smolstr()))?;
-
+        let catalog = catalog_cache()?;
+        let table = catalog
+            .table_by_name(table_name)
+            .ok_or_else(|| SbroadError::NotFound(Entity::Space, table_name.to_smolstr()))?;
         table_from_def(table)
     }
 
@@ -944,26 +904,18 @@ impl Metadata for RouterMetadata {
 }
 
 pub(crate) fn table_by_id(table_id: SpaceId) -> Result<Table, SbroadError> {
-    with_su(ADMIN_ID, || -> Result<Table, SbroadError> {
-        let node = node::global().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-        })?;
-        let table = node.storage.pico_table.by_id(table_id).map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {}", e))
-        })?;
-        let table = table.ok_or_else(|| {
-            SbroadError::NotFound(
-                Entity::SpaceMetadata,
-                format_smolstr!("for table: {table_id}"),
-            )
-        })?;
-        table_from_def(table)
-    })
-    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))?
+    let catalog = catalog_cache()?;
+    let table = catalog.table(table_id).ok_or_else(|| {
+        SbroadError::NotFound(
+            Entity::SpaceMetadata,
+            format_smolstr!("for table: {table_id}"),
+        )
+    })?;
+    table_from_def(table)
 }
 
 #[allow(clippy::too_many_lines)]
-fn table_from_def(table: TableDef) -> Result<Table, SbroadError> {
+fn table_from_def(table: &TableDef) -> Result<Table, SbroadError> {
     let name = table.name.clone();
     let engine = table.engine;
     let is_sharded = matches!(table.distribution, Distribution::ShardedImplicitly { .. });
@@ -986,7 +938,7 @@ fn table_from_def(table: TableDef) -> Result<Table, SbroadError> {
         columns.push(column);
     }
 
-    let pk_cols = space_pk_columns(&name, &columns)?;
+    let pk_cols = primary_key_columns(table, &columns)?;
     let pk_cols_str: &[&str] = &pk_cols.iter().map(SmolStr::as_str).collect::<Vec<_>>();
 
     let is_system_table = storage::SYSTEM_TABLES_ID_RANGE.contains(&table.id);
@@ -997,14 +949,14 @@ fn table_from_def(table: TableDef) -> Result<Table, SbroadError> {
     // Try to find the sharding columns of the space in "_pico_table".
     // If nothing found then the space is local and we can't query it with
     // distributed SQL.
-    match table.distribution {
+    match &table.distribution {
         Distribution::Global => Table::new_global(table.id, &name, columns, pk_cols_str),
         Distribution::ShardedImplicitly {
             sharding_key,
             sharding_fn,
             tier: tier_name,
         } => {
-            if !matches!(sharding_fn, ShardingFn::Murmur3) {
+            if !matches!(*sharding_fn, ShardingFn::Murmur3) {
                 return Err(SbroadError::NotImplemented(
                     Entity::Distribution,
                     format_smolstr!("by hash function {sharding_fn}"),
@@ -1039,6 +991,21 @@ fn table_from_def(table: TableDef) -> Result<Table, SbroadError> {
     }
 }
 
+/// Primary key columns from the catalog cache. Without the primary index in the
+/// cache (e.g. after `_pico_index` is truncated) falls back to tarantool.
+fn primary_key_columns(table: &TableDef, columns: &[Column]) -> Result<Vec<SmolStr>, SbroadError> {
+    if let Some(pk) = catalog_cache()?.index(table.id, 0) {
+        return Ok(pk
+            .parts
+            .iter()
+            .map(|part| part.field.to_smolstr())
+            .collect());
+    }
+    // Reading `_space` and `_index` needs privileges.
+    with_su(ADMIN_ID, || space_pk_columns(&table.name, columns))
+        .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {e}")))?
+}
+
 fn bucket_dispatch<'p>(
     port: &mut impl Port<'p>,
     runtime: &impl Vshard,
@@ -1067,4 +1034,107 @@ fn bucket_dispatch<'p>(
         custom_plan_dispatch(port, runtime, ex_plan, top_id, buckets, timeout, tier)?;
     }
     Ok(())
+}
+
+mod tests {
+    use super::*;
+    use crate::schema::{IndexDef, TableDef};
+    use crate::storage::SystemTable as _;
+
+    /// The router reads the catalog cache of the node, so tests write through it.
+    fn node() -> &'static node::Node {
+        let node = node::Node::for_tests();
+        // Metrics of the router cache need the tier and the replicaset of this
+        // instance.
+        _ = node.catalog_cache.my_tier_name.set("default".into());
+        _ = node.catalog_cache.my_replicaset_name.set("r1".into());
+        node
+    }
+
+    #[::tarantool::test]
+    fn versions_follow_catalog() {
+        let node = node();
+        let (storage, cache) = (&node.storage, &node.catalog_cache);
+        let table = TableDef::for_tests();
+        let index = IndexDef::for_tests();
+        storage.pico_table.put(&table, cache).unwrap();
+        storage.indexes.put(&index, cache).unwrap();
+        assert_eq!(get_table_version(&table.name).unwrap(), 420);
+
+        storage
+            .pico_table
+            .update_schema_version(table.id, 421, cache)
+            .unwrap();
+        storage
+            .indexes
+            .update_schema_version(index.table_id, index.id, 422, cache)
+            .unwrap();
+        assert_eq!(get_table_version(&table.name).unwrap(), 421);
+        assert_eq!(get_table_version_by_id(table.id).unwrap(), 421);
+        assert_eq!(
+            get_table_name_and_version(table.id).unwrap(),
+            (table.name.clone(), 421)
+        );
+        assert_eq!(
+            get_index_version_by_pk(index.table_id, index.id).unwrap(),
+            422
+        );
+    }
+
+    #[::tarantool::test]
+    fn plan_cache_misses_on_index_version() {
+        use sql::ir::index::Index;
+        use sql::ir::Plan;
+
+        let node = node();
+        let (storage, catalog_cache) = (&node.storage, &node.catalog_cache);
+        let index = IndexDef::for_tests();
+        storage.indexes.put(&index, catalog_cache).unwrap();
+
+        // A plan using only the index, so the table versions can't hide the
+        // index version check.
+        let mut plan = Plan::new();
+        plan.indexes
+            .insert(index.name.clone(), Index::from(index.table_id, index.id));
+        plan.index_version_map
+            .insert([index.table_id, index.id], index.schema_version);
+
+        let mut cache = PicoRouterCache::new(10).unwrap();
+        let key = SmolStr::from("query");
+        cache.put(key.clone(), Rc::new(plan)).unwrap();
+        assert!(cache.get(&key).unwrap().is_some());
+
+        storage
+            .indexes
+            .update_schema_version(
+                index.table_id,
+                index.id,
+                index.schema_version + 1,
+                catalog_cache,
+            )
+            .unwrap();
+        assert!(cache.get(&key).unwrap().is_none());
+    }
+
+    #[::tarantool::test]
+    fn primary_key_from_catalog_cache() {
+        let node = node();
+        let pk_names = |table: &Table| -> Vec<SmolStr> {
+            (table.primary_key.positions.iter())
+                .map(|&i| table.columns[i].name.clone())
+                .collect()
+        };
+
+        for (def, _) in crate::schema::system_table_definitions() {
+            let table = table_by_id(def.id).unwrap();
+            let expected = space_pk_columns(&def.name, &table.columns).unwrap();
+            assert_eq!(pk_names(&table), expected, "{}", def.name);
+        }
+
+        // Without the primary index in the cache the key comes from tarantool.
+        let id = storage::Properties::TABLE_ID;
+        (node.storage.indexes.delete(id, 0, &node.catalog_cache)).unwrap();
+        let table = table_by_id(id).unwrap();
+        assert_eq!(pk_names(&table), ["key"]);
+    }
 }

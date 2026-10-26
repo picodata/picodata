@@ -1,4 +1,5 @@
 use crate::cas;
+use crate::catalog_cache::CatalogCache;
 use crate::schema::ADMIN_ID;
 use crate::simulation::cluster::PretendCluster;
 #[allow(unused_imports)]
@@ -124,6 +125,7 @@ pub fn check_cas_predicate(
     request: &cas::Request,
     raft_log: &PretendRaftLog,
     storage: &Catalog,
+    cache: &CatalogCache,
 ) -> Result<()> {
     let mut predicates = cas::CasPredicates::default();
     predicates.extend_ranges(request.predicate.ranges.iter().cloned());
@@ -132,7 +134,7 @@ pub fn check_cas_predicate(
     let requested = request.predicate.index;
     for entry in raft_log.entries_from(requested + 1) {
         let entry_op = Op::single_dml_or_batch(entry.dmls.to_vec());
-        cas::check_predicate(entry.index, &entry_op, &predicates, storage)?;
+        cas::check_predicate(entry.index, &entry_op, &predicates, storage, cache)?;
     }
 
     Ok(())
@@ -197,6 +199,7 @@ pub fn decide_cas_request(
         &pretend_cas_request(request.index, &request.dmls),
         &cluster.raft_log,
         &storage.catalog,
+        &storage.topology,
     );
     match res {
         Err(Error::Cas(cas::Error::ConflictFound { conflict_index })) => {
@@ -225,6 +228,7 @@ mod tests {
     #[::tarantool::test]
     fn test_check_cas_predicate() {
         let catalog = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&catalog);
         let raft_log = PretendRaftLog::new();
 
         let committed = BucketRecord::new_active("storage".into(), 1, 100, "r1".into());
@@ -233,11 +237,17 @@ mod tests {
 
         // A proposal which has already seen that entry doesn't check it at all.
         let dmls = [PicoBucket::dml_delete(&committed.primary_key())];
-        check_cas_predicate(&pretend_cas_request(applied, &dmls), &raft_log, &catalog).unwrap();
+        check_cas_predicate(
+            &pretend_cas_request(applied, &dmls),
+            &raft_log,
+            &catalog,
+            &cache,
+        )
+        .unwrap();
 
         // One made before it and touching the same row conflicts with it, ...
-        let err =
-            check_cas_predicate(&pretend_cas_request(0, &dmls), &raft_log, &catalog).unwrap_err();
+        let err = check_cas_predicate(&pretend_cas_request(0, &dmls), &raft_log, &catalog, &cache)
+            .unwrap_err();
         let Error::Cas(cas::Error::ConflictFound { conflict_index }) = err else {
             panic!("expected a CAS conflict, got {err}");
         };
@@ -245,6 +255,6 @@ mod tests {
 
         // ... one touching a different row doesn't.
         let dmls = [PicoBucket::dml_delete(&other.primary_key())];
-        check_cas_predicate(&pretend_cas_request(0, &dmls), &raft_log, &catalog).unwrap();
+        check_cas_predicate(&pretend_cas_request(0, &dmls), &raft_log, &catalog, &cache).unwrap();
     }
 }

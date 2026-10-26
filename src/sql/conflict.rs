@@ -3,9 +3,9 @@
 //! This module resolves explicit conflict targets to concrete unique indexes
 //! and executes the local insert-or-update flow used by transactional blocks.
 
-use crate::schema::{IndexDef, IndexOption, ADMIN_ID};
-use crate::sql::router::{get_table_version_by_id, table_by_id};
-use crate::storage::{index_by_ids_unchecked, Catalog};
+use crate::schema::{IndexDef, IndexOption};
+use crate::sql::router::{catalog_cache, get_table_version_by_id, table_by_id};
+use crate::storage::index_by_ids_unchecked;
 use ahash::{AHashMap, AHashSet};
 use smol_str::{format_smolstr, SmolStr};
 use sql::errors::{Action, Entity, SbroadError};
@@ -17,7 +17,6 @@ use std::ffi::{CStr, CString};
 use tarantool::error::{Error as TntError, TarantoolErrorCode};
 use tarantool::index::Index;
 use tarantool::msgpack::MARKER_NULL;
-use tarantool::session::with_su;
 use tarantool::space::{Space, UpdateOps};
 use tarantool::tuple::{FieldType, KeyDef, KeyDefPart, RawBytes, Tuple, TupleBuffer};
 
@@ -56,11 +55,8 @@ pub(crate) fn prepare_do_update_from_catalog(
     update: &BlockConflictDoUpdate,
 ) -> Result<DoUpdateRouteTemplate> {
     validate_table_version(table_id, expected_table_version)?;
-    let route = with_su(ADMIN_ID, || -> Result<_> {
-        let table = table_by_id(table_id)?;
-        resolve_target_indexes(Catalog::get(), &table, &update.target)
-    })
-    .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("with_su: {}", e)))??;
+    let table = table_by_id(table_id)?;
+    let route = resolve_target_indexes(&table, &update.target)?;
     validate_table_version(table_id, expected_table_version)?;
     Ok(route)
 }
@@ -137,36 +133,18 @@ fn do_update_error(
     SbroadError::FailedTo(action, Some(entity), format_smolstr!("{error}"))
 }
 
-fn resolve_target_indexes(
-    storage: &Catalog,
-    table: &Table,
-    target: &ConflictTarget,
-) -> Result<DoUpdateRouteTemplate> {
+fn resolve_target_indexes(table: &Table, target: &ConflictTarget) -> Result<DoUpdateRouteTemplate> {
     let target_column_names = collect_column_names(table, target.columns())?;
     let field_positions = collect_column_positions(table);
     let mut indexes = Vec::new();
     let mut primary_index = None;
     let mut total_indexes = 0usize;
 
-    let index_defs = storage.indexes.by_space_id(table.id).map_err(|e| {
-        SbroadError::FailedTo(
-            Action::Get,
-            Some(Entity::Index),
-            format_smolstr!("failed to get indexes for table {}: {e}", table.name),
-        )
-    })?;
-
-    for index in index_defs {
-        let index = index.map_err(|e| {
-            SbroadError::FailedTo(
-                Action::Get,
-                Some(Entity::Index),
-                format_smolstr!("failed to get indexes for table {}: {e}", table.name),
-            )
-        })?;
+    let catalog = catalog_cache()?;
+    for index in catalog.indexes_of(table.id) {
         total_indexes += 1;
         let is_primary = index.id == 0;
-        if unique_index_matches_target(&index, &target_column_names) {
+        if unique_index_matches_target(index, &target_column_names) {
             indexes.push(index);
         } else if is_primary {
             primary_index = Some(index);

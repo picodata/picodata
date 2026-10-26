@@ -5,7 +5,6 @@ use super::execute::{
 };
 use super::port::PicoPortOwned;
 use super::storage::{FullDeleteInfo, StorageRuntime};
-use crate::catalog::pico_table::PicoTable;
 use crate::catalog_cache::CatalogCacheRef;
 use crate::config::{DEFAULT_SQL_PREEMPTION, DYNAMIC_CONFIG};
 use crate::metrics::{observe_sql_local_query_duration, record_sql_local_query_total};
@@ -16,6 +15,7 @@ use crate::sql::lua::{
     lua_decode_rs_ibufs, lua_single_plan_dispatch, reference_add, reference_del, reference_use,
     sql_lua_state, IbufTable,
 };
+use crate::sql::router::catalog_cache;
 use crate::traft::node;
 use crate::util::MpValueAsJson;
 use ahash::{AHashMap, AHashSet};
@@ -703,19 +703,11 @@ fn port_write_metadata_impl<'p>(
 
 /// Get all unlogged tables and check if any of them are present in the plan tables.
 fn plan_has_unlogged_tables(plan: &Plan) -> SqlResult<bool> {
-    let unlogged_tables = with_admin_su("getting unlogged tables", || {
-        PicoTable::new().get_unlogged_tables().map_err(|e| {
-            SbroadError::DispatchError(format_smolstr!("failed looking up unlogged tables: {e}"))
-        })
-    })?;
-
-    for table in unlogged_tables {
-        if plan.relations.tables.contains_key(&table.name) {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
+    let catalog = catalog_cache()?;
+    let res = (plan.relations.tables.keys())
+        .filter_map(|name| catalog.table_by_name(name))
+        .any(|table| table.is_unlogged());
+    Ok(res)
 }
 
 /// If `sql_preemption` is enabled, `read_preference` should be equal to `leader`.

@@ -4,13 +4,13 @@
 
 use crate::sql::dispatch::port_write_metadata_for_top;
 use crate::sql::router::{
-    calculate_bucket_id, get_index_version_by_pk, get_table_name_and_version, get_table_version,
-    get_table_version_by_id, replicasets_by_buckets, VersionMap,
+    calculate_bucket_id, catalog_cache, get_index_version_by_pk, get_table_name_and_version,
+    get_table_version, get_table_version_by_id, replicasets_by_buckets, VersionMap,
 };
 use crate::traft::node;
 use serde::{Deserialize, Serialize};
 use sql::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
-use sql::errors::{Action, Entity, SbroadError};
+use sql::errors::{Entity, SbroadError};
 use sql::executor::engine::helpers::vshard::disable_serialize_as_empty_for_subtree;
 use sql::executor::engine::helpers::{
     set_block_pattern_cache_hooks, table_name, vshard::get_random_bucket, BlockPatternCacheHooks,
@@ -47,8 +47,7 @@ use sql_protocol::iterators::TupleIterator;
 use std::collections::{hash_map::Entry, HashMap};
 use std::rc::Rc;
 
-use crate::catalog::pico_table::PicoTable;
-use crate::schema::{ADMIN_ID, SPACE_ID_TEMPORARY_MIN};
+use crate::schema::SPACE_ID_TEMPORARY_MIN;
 use crate::sql::execute::{
     acquire_cached_stmt_or_retry, dml_execute, dql_execute, drop_temp_tables, explain_execute,
     sql_execute, stmt_execute, LazyVirtualTableEncoder, LendingTupleIterator,
@@ -63,7 +62,6 @@ use sql::executor::engine::{block_vdbe_key, BlockExecData};
 use sql::executor::result::MetadataColumn;
 use tarantool::fiber::Mutex;
 use tarantool::msgpack;
-use tarantool::session::with_su;
 use tarantool::space::SpaceId;
 
 thread_local!(
@@ -218,12 +216,6 @@ pub(crate) struct StorageCacheEntry {
     motion_ids: Vec<SmolStr>,
 }
 
-fn table_schema_version(pico_table: &PicoTable, id: SpaceId) -> Result<Option<u64>, SbroadError> {
-    with_su(ADMIN_ID, || pico_table.schema_version(id))
-        .flatten()
-        .map_err(|e| SbroadError::FailedTo(Action::Get, None, format_smolstr!("table_def: {e}")))
-}
-
 /// Build a lightweight eviction closure that defers actual cleanup.
 ///
 /// It only records per-plan retirement metadata under the cache mutex.
@@ -340,19 +332,17 @@ impl StorageCache for PicoStorageCache {
             HashMap::with_capacity_and_hasher(schema_info.table_version_map.len(), RepeatableState);
         let mut index_version_map =
             HashMap::with_capacity_and_hasher(schema_info.index_version_map.len(), RepeatableState);
-        let node = node::global().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-        })?;
-        let pico_table = &node.storage.pico_table;
-        for &table_id in schema_info.table_version_map.keys() {
-            let current_version = table_schema_version(pico_table, table_id)?.ok_or_else(|| {
-                SbroadError::NotFound(
+        let catalog = catalog_cache()?;
+        for table_id in schema_info.table_version_map.keys() {
+            let Some(table_def) = catalog.table(*table_id) else {
+                return Err(SbroadError::NotFound(
                     Entity::SpaceMetadata,
-                    format_smolstr!("for space: {table_id}"),
-                )
-            })?;
-            table_version_map.insert(table_id, current_version);
+                    format_smolstr!("for space: {}", table_id),
+                ));
+            };
+            table_version_map.insert(*table_id, table_def.schema_version);
         }
+        drop(catalog);
 
         for index in schema_info.index_version_map.keys() {
             let current_version = get_index_version_by_pk(index[0], index[1])?;
@@ -399,12 +389,9 @@ impl StorageCache for PicoStorageCache {
             return Ok(None);
         };
         // check Plan's tables have up to date schema
-        let node = node::global().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
-        })?;
-        let pico_table = &node.storage.pico_table;
+        let catalog = catalog_cache()?;
         for (table_id, cached_version) in &entry.table_versions {
-            let Some(schema_version) = table_schema_version(pico_table, *table_id)? else {
+            let Some(schema_version) = catalog.table(*table_id).map(|t| t.schema_version) else {
                 return Ok(None);
             };
             // The outdated entry will be replaced when `put` is called (that is always

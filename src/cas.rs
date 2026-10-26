@@ -1,11 +1,12 @@
 use crate::access_control;
+use crate::catalog_cache::CatalogCache;
 use crate::config;
 use crate::error_code::ErrorCode;
 use crate::mailbox::Mailbox;
 use crate::metrics;
 use crate::proc_name;
-use crate::schema::IndexOption;
 use crate::schema::PICO_SERVICE_ID;
+use crate::schema::{IndexOption, TableDef};
 use crate::static_ref;
 use crate::storage;
 use crate::storage::Catalog;
@@ -50,15 +51,22 @@ const PROHIBITED_TABLES: &[SpaceId] = &[
     storage::Routines::TABLE_ID,
 ];
 
-pub fn check_table_operable(storage: &Catalog, space_id: SpaceId) -> traft::Result<()> {
-    // Decode the whole row only for the error message.
-    if storage.pico_table.is_operable(space_id)? == Some(false) {
-        if let Some(table) = storage.pico_table.get(space_id)? {
-            tlog!(Warning, "Table is not operable; skipping DML operation");
-            return Err(Error::TableNotOperable { table: table.name }.into());
-        }
+pub fn check_table_operable(cache: &CatalogCache, space_id: SpaceId) -> traft::Result<()> {
+    match cache.get().table(space_id) {
+        Some(table) => check_operable(table),
+        None => Ok(()),
     }
+}
 
+/// Fails if a DDL operation on the table is in progress.
+pub fn check_operable(table: &TableDef) -> traft::Result<()> {
+    if !table.operable {
+        tlog!(Warning, "Table is not operable; skipping DML operation");
+        return Err(Error::TableNotOperable {
+            table: table.name.clone(),
+        }
+        .into());
+    }
     Ok(())
 }
 
@@ -304,6 +312,7 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
     let node = node::global()?;
     let raft_storage = &node.raft_storage;
     let storage = &node.storage;
+    let cache = &node.catalog_cache;
     let cluster_name = node.catalog_cache.cluster_name;
 
     if req.cluster_name != cluster_name {
@@ -384,12 +393,12 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
 
     match &req.op {
         Op::Dml(dml) => {
-            check_table_operable(storage, dml.table_id())?;
+            check_table_operable(cache, dml.table_id())?;
             check_dml_prohibited(storage, dml)?;
         }
         Op::BatchDml { ops: dmls } => {
             for dml in dmls {
-                check_table_operable(storage, dml.table_id())?;
+                check_table_operable(cache, dml.table_id())?;
                 check_dml_prohibited(storage, dml)?;
             }
         }
@@ -403,7 +412,7 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
     predicates.extend_ranges(req.predicate.ranges.iter().cloned());
     predicates.extend_ranges(Range::for_op(&req.op)?);
 
-    let (proposal, res_row_count) = match prepare_proposal(storage, &req.op) {
+    let (proposal, res_row_count) = match prepare_proposal(storage, cache, &req.op) {
         Ok(prepared) => prepared,
         Err(err) => {
             // Proposal preparation reads the leader's current storage state.
@@ -417,12 +426,13 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
             // best-effort Insert/Replace candidate keys, then add conservative
             // same-table predicates for Update/Delete, whose secondary keys
             // cannot be computed after proposal preparation has failed.
-            add_candidate_cas_keys(storage, &req.op, &mut predicates);
+            add_candidate_cas_keys(cache, &req.op, &mut predicates);
             add_prepare_error_cas_predicates(&req.op, &mut predicates);
             check_raft_tail(
                 &node_impl,
                 raft_storage,
                 storage,
+                cache,
                 requested,
                 last,
                 status.term,
@@ -440,6 +450,7 @@ fn proc_cas_v2_local(req: &Request) -> Result<Response> {
         &node_impl,
         raft_storage,
         storage,
+        cache,
         requested,
         last,
         status.term,
@@ -473,6 +484,7 @@ fn check_raft_tail(
     node_impl: &node::NodeImpl,
     raft_storage: &traft::RaftSpaceAccess,
     storage: &Catalog,
+    cache: &CatalogCache,
     requested: RaftIndex,
     last: RaftIndex,
     term: RaftTerm,
@@ -523,7 +535,7 @@ fn check_raft_tail(
             debug_assert_eq!(entry.term, term);
             let entry_index = entry.index;
             let Some(op) = entry.into_op() else { continue };
-            check_predicate(entry_index, &op, predicates, storage)?;
+            check_predicate(entry_index, &op, predicates, storage, cache)?;
         }
     }
 
@@ -542,13 +554,13 @@ fn check_raft_tail(
         let EntryContext::Op(op) = cx else {
             continue;
         };
-        check_predicate(entry.index, &op, predicates, storage)?;
+        check_predicate(entry.index, &op, predicates, storage, cache)?;
     }
 
     Ok(())
 }
 
-fn prepare_proposal(storage: &Catalog, op: &Op) -> Result<(Op, ResRowCount)> {
+fn prepare_proposal(storage: &Catalog, cache: &CatalogCache, op: &Op) -> Result<(Op, ResRowCount)> {
     let mut proposal = op.clone();
 
     // Performs preliminary checks on an operation so that it will not fail when applied.
@@ -561,7 +573,7 @@ fn prepare_proposal(storage: &Catalog, op: &Op) -> Result<(Op, ResRowCount)> {
             // At the same time compute CAS conflict data from trusted local
             // storage state. Any CAS data that arrived in the request is discarded.
             transaction::begin()?;
-            let res = prepare_dml_proposal(storage, dml);
+            let res = prepare_dml_proposal(storage, cache, dml);
             transaction::rollback().expect("can't fail");
 
             let (res, cas) = res?;
@@ -582,7 +594,7 @@ fn prepare_proposal(storage: &Catalog, op: &Op) -> Result<(Op, ResRowCount)> {
             transaction::begin()?;
             let res = (|| -> Result<()> {
                 for dml in ops {
-                    let (res, cas) = prepare_dml_proposal(storage, dml)?;
+                    let (res, cas) = prepare_dml_proposal(storage, cache, dml)?;
                     // Do not reuse CAS data from the request. It is internal
                     // raft metadata and must be computed from trusted local
                     // storage while preparing the proposal.
@@ -612,7 +624,11 @@ fn prepare_proposal(storage: &Catalog, op: &Op) -> Result<(Op, ResRowCount)> {
     Ok((proposal, res_row_count))
 }
 
-fn prepare_dml_proposal(storage: &Catalog, dml: &Dml) -> Result<(Option<Tuple>, DmlCas)> {
+fn prepare_dml_proposal(
+    storage: &Catalog,
+    cache: &CatalogCache,
+    dml: &Dml,
+) -> Result<(Option<Tuple>, DmlCas)> {
     let table_id = dml.table_id();
     let new_candidate = match dml {
         Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. } => Some(Tuple::new(tuple)?),
@@ -635,24 +651,24 @@ fn prepare_dml_proposal(storage: &Catalog, dml: &Dml) -> Result<(Option<Tuple>, 
 
     let mut cas = DmlCas::default();
     if table_full_change {
-        mark_table_full_change(storage, table_id, &mut cas)?;
+        mark_table_full_change(cache, table_id, &mut cas)?;
     }
     if let Some(old) = &old {
-        add_tuple_cas_keys(storage, table_id, &mut cas, old)?;
+        add_tuple_cas_keys(cache, table_id, &mut cas, old)?;
     }
     if let Some(new_candidate) = &new_candidate {
         // Insert DoNothing may return None, but the no-op still depends on the
         // conflicting unique key staying present until this entry is applied.
-        add_tuple_cas_keys(storage, table_id, &mut cas, new_candidate)?;
+        add_tuple_cas_keys(cache, table_id, &mut cas, new_candidate)?;
     }
     if let Some(new) = &res {
-        add_tuple_cas_keys(storage, table_id, &mut cas, new)?;
+        add_tuple_cas_keys(cache, table_id, &mut cas, new)?;
     }
 
     Ok((res, cas))
 }
 
-fn add_candidate_cas_keys(storage: &Catalog, op: &Op, predicates: &mut CasPredicates) {
+fn add_candidate_cas_keys(cache: &CatalogCache, op: &Op, predicates: &mut CasPredicates) {
     let Some(dmls) = op.dmls() else {
         return;
     };
@@ -675,7 +691,7 @@ fn add_candidate_cas_keys(storage: &Catalog, op: &Op, predicates: &mut CasPredic
             continue;
         };
         let mut cas = DmlCas::default();
-        if add_tuple_cas_keys(storage, table, &mut cas, &tuple).is_ok() {
+        if add_tuple_cas_keys(cache, table, &mut cas, &tuple).is_ok() {
             predicates.extend_table_dml_cas(table, &cas);
         } else {
             predicates.add(CasPredicate::TableFullChange(table));
@@ -724,8 +740,8 @@ fn old_tuple_for_dml(dml: &Dml) -> Result<Option<Tuple>> {
     }
 }
 
-fn mark_table_full_change(storage: &Catalog, table_id: SpaceId, cas: &mut DmlCas) -> Result<()> {
-    if let Some(table) = storage.pico_table.get(table_id)? {
+fn mark_table_full_change(cache: &CatalogCache, table_id: SpaceId, cas: &mut DmlCas) -> Result<()> {
+    if let Some(table) = cache.get().table(table_id) {
         cas.table_schema_version = table.schema_version;
     }
     cas.table_full_change = true;
@@ -733,17 +749,17 @@ fn mark_table_full_change(storage: &Catalog, table_id: SpaceId, cas: &mut DmlCas
 }
 
 fn add_tuple_cas_keys(
-    storage: &Catalog,
+    cache: &CatalogCache,
     table_id: SpaceId,
     cas: &mut DmlCas,
     tuple: &Tuple,
 ) -> Result<()> {
-    let Some(table_def) = storage.pico_table.get(table_id)? else {
+    let catalog = cache.get();
+    let Some(table_def) = catalog.table(table_id) else {
         return Ok(());
     };
 
-    for index_def in storage.indexes.by_space_id(table_id)? {
-        let index_def = index_def?;
+    for index_def in catalog.indexes_of(table_id) {
         if index_def.id == 0 {
             continue;
         }
@@ -757,7 +773,7 @@ fn add_tuple_cas_keys(
 
         // Inoperable unique indexes still matter while DropIndex/RenameIndex
         // is pending: their DDL entry must conflict with stale CAS requests.
-        let metadata = index_def.to_index_metadata(&table_def);
+        let metadata = index_def.to_index_metadata(table_def);
         let key_def = metadata.to_key_def(KeyDefOrder::Natural);
         let key = key_def.extract_key(tuple)?;
         let unique_key = CasKey {
@@ -1002,18 +1018,19 @@ pub(crate) fn check_predicate(
     entry_op: &Op,
     predicates: &CasPredicates,
     storage: &Catalog,
+    cache: &CatalogCache,
 ) -> std::result::Result<(), Error> {
     if predicates.is_empty() {
         return Ok(());
     }
 
     match entry_op {
-        Op::Dml(dml) => check_dml_predicates(entry_index, dml, predicates, storage)?,
+        Op::Dml(dml) => check_dml_predicates(entry_index, dml, predicates, cache)?,
         Op::BatchDml { ops } => {
             // TODO: remove O(n*n) complexity,
             // use a hashtable for dml/predicate lookup?
             for dml in ops {
-                check_dml_predicates(entry_index, dml, predicates, storage)?;
+                check_dml_predicates(entry_index, dml, predicates, cache)?;
             }
         }
         Op::DdlPrepare { ddl, .. } => {
@@ -1128,7 +1145,7 @@ fn check_dml_predicates(
     entry_index: RaftIndex,
     dml: &Dml,
     predicates: &CasPredicates,
-    storage: &Catalog,
+    cache: &CatalogCache,
 ) -> std::result::Result<(), Error> {
     let table = dml.table_id();
     if !predicates.contains_table(table) {
@@ -1157,7 +1174,7 @@ fn check_dml_predicates(
                     *table_schema_version,
                     *index_id,
                     key,
-                    storage,
+                    cache,
                 )?;
             }
             CasPredicate::TableFullChange(_)
@@ -1205,7 +1222,7 @@ fn check_unique_key_dml_predicate(
     table_schema_version: u64,
     index_id: IndexId,
     predicate_key: &TupleBuffer,
-    storage: &Catalog,
+    cache: &CatalogCache,
 ) -> std::result::Result<(), Error> {
     let table = dml.table_id();
     if let Some(cas) = dml.cas() {
@@ -1216,16 +1233,17 @@ fn check_unique_key_dml_predicate(
         if cas.unique_keys.iter().any(|key| key.index_id == index_id) {
             // Missing metadata means the predicate and the in-flight entry were
             // built against different schema state, so conflict conservatively.
-            let Some(table_def) = storage.pico_table.get(table)? else {
-                return Err(Error::ConflictFound(entry_index));
+            let key_def = {
+                let catalog = cache.get();
+                let (Some(table_def), Some(index_def)) =
+                    (catalog.table(table), catalog.index(table, index_id))
+                else {
+                    return Err(Error::ConflictFound(entry_index));
+                };
+                index_def
+                    .to_index_metadata(table_def)
+                    .to_key_def_for_key(KeyDefOrder::Natural)
             };
-            let Some(index_def) = storage.indexes.get(table, index_id)? else {
-                return Err(Error::ConflictFound(entry_index));
-            };
-
-            let key_def = index_def
-                .to_index_metadata(&table_def)
-                .to_key_def_for_key(KeyDefOrder::Natural);
             let predicate_key = Tuple::new(predicate_key)?;
             for key in cas
                 .unique_keys
@@ -1256,16 +1274,17 @@ fn check_unique_key_dml_predicate(
             let tuple = Tuple::new(tuple)?;
             // Missing metadata means the predicate and the in-flight entry were
             // built against different schema state, so conflict conservatively.
-            let Some(table_def) = storage.pico_table.get(table)? else {
-                return Err(Error::ConflictFound(entry_index));
+            let key_def = {
+                let catalog = cache.get();
+                let (Some(table_def), Some(index_def)) =
+                    (catalog.table(table), catalog.index(table, index_id))
+                else {
+                    return Err(Error::ConflictFound(entry_index));
+                };
+                index_def
+                    .to_index_metadata(table_def)
+                    .to_key_def(KeyDefOrder::Natural)
             };
-            let Some(index_def) = storage.indexes.get(table, index_id)? else {
-                return Err(Error::ConflictFound(entry_index));
-            };
-
-            let key_def = index_def
-                .to_index_metadata(&table_def)
-                .to_key_def(KeyDefOrder::Natural);
             if key_def.compare_with_key(&tuple, predicate_key).is_eq() {
                 return Err(Error::ConflictFound(entry_index));
             }
@@ -1469,8 +1488,11 @@ impl PartialEq for Range {
 impl Range {
     pub fn from_lua_args(range: RangeInLua) -> traft::Result<Self> {
         let node = traft::node::global()?;
-        let table = if let Some(table) = node.storage.pico_table.by_name(&range.table)? {
-            table.id
+        let table_id = (node.catalog_cache.get())
+            .table_by_name(&range.table)
+            .map(|table| table.id);
+        let table = if let Some(id) = table_id {
+            id
         } else if let Some(table) = Space::find(&range.table) {
             table.id()
         } else {
@@ -1801,10 +1823,10 @@ mod tests {
     #[::tarantool::test]
     fn ddl() {
         let storage = Catalog::for_tests();
-        let cache = CatalogCache::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
 
         let t = |op: &Op, range: Range| -> std::result::Result<(), Error> {
-            check_predicate(2, op, &predicates_from_ranges([range]), &storage)
+            check_predicate(2, op, &predicates_from_ranges([range]), &storage, &cache)
         };
 
         let builder = DdlBuilder::with_schema_version(1);
@@ -1925,6 +1947,7 @@ mod tests {
         let key = (12,).to_tuple_buffer().unwrap();
         let tuple = (12, "twelve").to_tuple_buffer().unwrap();
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
 
         let test = |op: &Dml, range: Range| {
             check_predicate(
@@ -1932,6 +1955,7 @@ mod tests {
                 &Op::Dml(op.clone()),
                 &predicates_from_ranges([range]),
                 &storage,
+                &cache,
             )
         };
 
@@ -2034,7 +2058,7 @@ mod tests {
     #[::tarantool::test]
     fn cas_extracts_unique_keys_from_table_metadata() {
         let storage = Catalog::for_tests();
-        let cache = CatalogCache::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let mut table = TableDef::for_tests();
         table.id = 50_001;
         table.name = "cas_keys_test".into();
@@ -2066,7 +2090,7 @@ mod tests {
 
         let tuple = Tuple::new(&(7,)).unwrap();
         let mut cas = DmlCas::default();
-        add_tuple_cas_keys(&storage, table.id, &mut cas, &tuple).unwrap();
+        add_tuple_cas_keys(&cache, table.id, &mut cas, &tuple).unwrap();
 
         assert_eq!(cas.table_schema_version, table.schema_version);
         assert!(!cas.table_full_change);
@@ -2094,7 +2118,7 @@ mod tests {
     #[::tarantool::test]
     fn cas_adds_candidate_unique_keys_for_insert() {
         let storage = Catalog::for_tests();
-        let cache = CatalogCache::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = 50_007;
         put_unique_secondary_index(&storage, &cache, table, 10, 1);
 
@@ -2107,7 +2131,7 @@ mod tests {
         });
         let mut predicates = CasPredicates::default();
 
-        add_candidate_cas_keys(&storage, &op, &mut predicates);
+        add_candidate_cas_keys(&cache, &op, &mut predicates);
 
         assert!(predicates.0.contains(&CasPredicate::UniqueKey {
             table,
@@ -2120,7 +2144,7 @@ mod tests {
     #[::tarantool::test]
     fn cas_candidate_key_error_adds_conservative_predicate() {
         let storage = Catalog::for_tests();
-        let cache = CatalogCache::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table_id = 50_016;
         let mut table = TableDef::for_tests();
         table.id = table_id;
@@ -2153,7 +2177,7 @@ mod tests {
         });
         let mut predicates = CasPredicates::default();
 
-        add_candidate_cas_keys(&storage, &op, &mut predicates);
+        add_candidate_cas_keys(&cache, &op, &mut predicates);
 
         assert!(predicates
             .0
@@ -2166,6 +2190,7 @@ mod tests {
     #[::tarantool::test]
     fn cas_prepare_error_adds_conservative_predicates_for_update_delete() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let update_table = 50_012;
         let delete_table = 50_013;
         let insert_table = 50_014;
@@ -2215,13 +2240,13 @@ mod tests {
             conflict_strategy: ConflictStrategy::DoFail,
             cas: None,
         };
-        check_predicate(42, &Op::Dml(entry), &predicates, &storage).unwrap_err();
+        check_predicate(42, &Op::Dml(entry), &predicates, &storage, &cache).unwrap_err();
     }
 
     #[::tarantool::test]
     fn cas_prepare_error_update_unique_conflict_checks_tail_conservatively() {
         let storage = Catalog::for_tests();
-        let cache = CatalogCache::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table_id = 50_015;
         let space_name = format!("cas_update_error_{table_id}");
 
@@ -2299,14 +2324,14 @@ mod tests {
             conflict_strategy: ConflictStrategy::DoFail,
             cas: dml_cas(table.schema_version, index.id, 10),
         });
-        check_predicate(42, &tail_entry, &predicates, &storage).unwrap();
+        check_predicate(42, &tail_entry, &predicates, &storage, &cache).unwrap();
 
-        let prepare_res = prepare_proposal(&storage, &op);
+        let prepare_res = prepare_proposal(&storage, &cache, &op);
         assert!(prepare_res.is_err());
 
-        add_candidate_cas_keys(&storage, &op, &mut predicates);
+        add_candidate_cas_keys(&cache, &op, &mut predicates);
         add_prepare_error_cas_predicates(&op, &mut predicates);
-        check_predicate(42, &tail_entry, &predicates, &storage).unwrap_err();
+        check_predicate(42, &tail_entry, &predicates, &storage, &cache).unwrap_err();
 
         storage.indexes.delete(table_id, index.id, &cache).unwrap();
         storage.pico_table.delete(table_id, &cache).unwrap();
@@ -2316,13 +2341,13 @@ mod tests {
     #[::tarantool::test]
     fn cas_records_unique_keys_for_inoperable_unique_index() {
         let storage = Catalog::for_tests();
-        let cache = CatalogCache::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = 50_009;
         put_unique_secondary_index_with_operable(&storage, &cache, table, 10, 1, false);
 
         let tuple = Tuple::new(&(10,)).unwrap();
         let mut cas = DmlCas::default();
-        add_tuple_cas_keys(&storage, table, &mut cas, &tuple).unwrap();
+        add_tuple_cas_keys(&cache, table, &mut cas, &tuple).unwrap();
 
         assert!(cas.unique_keys.contains(&CasKey {
             index_id: 1,
@@ -2333,7 +2358,7 @@ mod tests {
     #[::tarantool::test]
     fn cas_records_unique_keys_for_do_nothing_insert() {
         let storage = Catalog::for_tests();
-        let cache = CatalogCache::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table_id = 50_008;
         let space_name = format!("cas_do_nothing_{table_id}");
 
@@ -2399,7 +2424,7 @@ mod tests {
         };
 
         transaction::begin().unwrap();
-        let res = prepare_dml_proposal(&storage, &dml);
+        let res = prepare_dml_proposal(&storage, &cache, &dml);
         transaction::rollback().unwrap();
 
         let (res, cas) = res.unwrap();
@@ -2424,7 +2449,7 @@ mod tests {
     #[::tarantool::test]
     fn cas_conflicts_on_same_unique_key() {
         let storage = Catalog::for_tests();
-        let cache = CatalogCache::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = 50_002;
         put_unique_secondary_index(&storage, &cache, table, 10, 1);
 
@@ -2444,13 +2469,13 @@ mod tests {
         };
         let predicates = predicates_from_op(&Op::Dml(request));
 
-        check_predicate(42, &Op::Dml(entry), &predicates, &storage).unwrap_err();
+        check_predicate(42, &Op::Dml(entry), &predicates, &storage, &cache).unwrap_err();
     }
 
     #[::tarantool::test]
     fn cas_allows_different_unique_key() {
         let storage = Catalog::for_tests();
-        let cache = CatalogCache::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = 50_003;
         put_unique_secondary_index(&storage, &cache, table, 10, 1);
 
@@ -2470,12 +2495,13 @@ mod tests {
         };
         let predicates = predicates_from_op(&Op::Dml(request));
 
-        check_predicate(42, &Op::Dml(entry), &predicates, &storage).unwrap();
+        check_predicate(42, &Op::Dml(entry), &predicates, &storage, &cache).unwrap();
     }
 
     #[::tarantool::test]
     fn cas_conflicts_on_unique_key_schema_version_mismatch() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = 50_006;
 
         let entry = Dml::Update {
@@ -2494,12 +2520,13 @@ mod tests {
         };
         let predicates = predicates_from_op(&Op::Dml(request));
 
-        check_predicate(42, &Op::Dml(entry), &predicates, &storage).unwrap_err();
+        check_predicate(42, &Op::Dml(entry), &predicates, &storage, &cache).unwrap_err();
     }
 
     #[::tarantool::test]
     fn cas_conflicts_with_old_update_without_cas() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = 50_004;
 
         let entry = Dml::Update {
@@ -2518,12 +2545,13 @@ mod tests {
         };
         let predicates = predicates_from_op(&Op::Dml(request));
 
-        check_predicate(42, &Op::Dml(entry), &predicates, &storage).unwrap_err();
+        check_predicate(42, &Op::Dml(entry), &predicates, &storage, &cache).unwrap_err();
     }
 
     #[::tarantool::test]
     fn cas_conflicts_with_old_replace_without_cas() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = 50_010;
 
         let entry = Dml::Replace {
@@ -2541,12 +2569,13 @@ mod tests {
         };
         let predicates = predicates_from_op(&Op::Dml(request));
 
-        check_predicate(42, &Op::Dml(entry), &predicates, &storage).unwrap_err();
+        check_predicate(42, &Op::Dml(entry), &predicates, &storage, &cache).unwrap_err();
     }
 
     #[::tarantool::test]
     fn cas_conflicts_with_old_do_replace_insert_without_cas() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = 50_011;
 
         let entry = Dml::Insert {
@@ -2565,12 +2594,13 @@ mod tests {
         };
         let predicates = predicates_from_op(&Op::Dml(request));
 
-        check_predicate(42, &Op::Dml(entry), &predicates, &storage).unwrap_err();
+        check_predicate(42, &Op::Dml(entry), &predicates, &storage, &cache).unwrap_err();
     }
 
     #[::tarantool::test]
     fn cas_conflicts_with_index_ddl_on_same_table() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = 50_005;
         let request = Dml::Update {
             table,
@@ -2601,13 +2631,14 @@ mod tests {
             initiator: ADMIN_ID,
         });
 
-        check_predicate(42, &same_table_ddl, &predicates, &storage).unwrap_err();
-        check_predicate(42, &other_table_ddl, &predicates, &storage).unwrap();
+        check_predicate(42, &same_table_ddl, &predicates, &storage, &cache).unwrap_err();
+        check_predicate(42, &other_table_ddl, &predicates, &storage, &cache).unwrap();
     }
 
     #[::tarantool::test]
     fn cas_full_table_change_conflicts_with_same_table_dml() {
         let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
         let table = PicoTable::TABLE_ID;
         let entry = Dml::Insert {
             table,
@@ -2619,7 +2650,7 @@ mod tests {
         let mut predicates = CasPredicates::default();
         predicates.add(CasPredicate::TableFullChange(table));
 
-        check_predicate(42, &Op::Dml(entry), &predicates, &storage).unwrap_err();
+        check_predicate(42, &Op::Dml(entry), &predicates, &storage, &cache).unwrap_err();
     }
 
     fn predicates_from_ranges(ranges: impl IntoIterator<Item = Range>) -> CasPredicates {

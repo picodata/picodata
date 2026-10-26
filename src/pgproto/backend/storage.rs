@@ -3,9 +3,9 @@ use super::{
     port_rows::{PinnedPort, RowSource},
     result::{ExecuteResult, Rows},
 };
+use crate::audit;
 use crate::config::observer::AtomicObserver;
 use crate::sql::router::{get_table_version, RouterRuntime};
-use crate::{audit, schema::ADMIN_ID};
 use crate::{
     pgproto::{
         error::{PedanticError, PgError, PgErrorCode, PgResult},
@@ -28,7 +28,6 @@ use std::{
     sync::{Arc, LazyLock},
     thread::LocalKey,
 };
-use tarantool::session::with_su;
 
 // Object that stores information specific to the portal or statement storage.
 struct StorageContext {
@@ -341,7 +340,7 @@ impl Statement {
     pub fn ensure_valid(&self) -> PgResult<()> {
         let stmt_plan = self.prepared_statement().as_plan();
         for table in stmt_plan.relations.tables.values() {
-            let actual_version = with_su(ADMIN_ID, || get_table_version(&table.name))??;
+            let actual_version = get_table_version(&table.name)?;
             let cached_version = stmt_plan
                 .table_version_map
                 .get(&table.id)

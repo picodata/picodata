@@ -53,7 +53,7 @@ impl PreparedStatement {
         // FIXME: converting the hash to string is suboptimal, we could use a newtype over `[u8; HASH_LEN]` directly
         let cache_key = query_id(query_text, param_types);
 
-        if let Some(cached_plan) = router.with_admin_su(|| cache.get(&cache_key))?? {
+        if let Some(cached_plan) = cache.get(&cache_key)? {
             let query_for_audit = if router.is_audit_enabled(cached_plan)? {
                 Some(query_text.to_string())
             } else {
