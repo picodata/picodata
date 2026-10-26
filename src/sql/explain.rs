@@ -4,7 +4,7 @@ use crate::vdbe::explain::RawExplainProvider;
 use smol_str::{format_smolstr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::{BlockExecData, BlockQuery, BlockRuntimeHook};
-use sql::executor::vdbe::{SqlError, SqlStmt};
+use sql::executor::vdbe::{SharedStmt, SqlError, SqlStmt};
 use sql::executor::ExecutingQuery;
 use sql::executor::Port;
 use sql::explain::buckets::BoundedBuckets;
@@ -266,11 +266,11 @@ impl<'a> ExplainQuery<'a> {
         };
 
         let tuples = match compile_result {
-            Ok(mut stmt) => {
+            Ok(stmt) => {
                 let mut tmp_port = PicoPortOwned::new();
                 // `0` is passed since it should always be possible to execute
                 // EXPLAIN(RAW).
-                tmp_port.process_stmt(&mut stmt, params, 0)?;
+                tmp_port.process_stmt(&SharedStmt::new(stmt), params, 0)?;
 
                 let tuples = decode_vdbe_plan(&tmp_port)?;
                 Ok(tuples)

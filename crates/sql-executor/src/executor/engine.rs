@@ -31,9 +31,8 @@ use super::preemption::SchedulerOptions;
 use super::Port;
 
 use super::result::MetadataColumn;
-use crate::executor::vdbe::SqlStmt;
+use crate::executor::vdbe::{SharedStmt, SqlStmt};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use tarantool::fiber::Mutex;
 use tarantool::space::SpaceId;
 
 pub mod helpers;
@@ -212,7 +211,7 @@ pub trait StorageCache {
     fn get_or_create_lock(&mut self, plan_id: u64) -> Self::LockRef;
 }
 
-pub type CachedStmt = Rc<Mutex<SqlStmt>>;
+pub type CachedStmt = Rc<SharedStmt>;
 pub struct CachedStmtRef<L> {
     pub stmt: CachedStmt,
     pub table_lock: L,

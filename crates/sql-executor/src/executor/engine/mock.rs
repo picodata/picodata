@@ -11,7 +11,7 @@ use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::{
     helpers::{sharding_key_from_map, sharding_key_from_tuple, vshard::get_random_bucket},
-    CachedStmt, Router, Vshard,
+    Router, Vshard,
 };
 use crate::executor::hash::bucket_id_by_tuple;
 use crate::executor::ir::ExecutionPlan;
@@ -39,7 +39,7 @@ use super::helpers::vshard::prepare_rs_to_ir_map;
 use super::helpers::{dispatch_impl, table_name};
 use super::{get_builtin_functions, BlockExecData, Metadata, QueryCache};
 use crate::executor::result::MetadataColumn;
-use crate::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
+use crate::executor::vdbe::{ExecutionInsight, SharedStmt, SqlError};
 
 pub const TEMPLATE: u64 = 0;
 
@@ -79,7 +79,7 @@ impl Port<'_> for PortMocked {
 
     fn process_stmt(
         &mut self,
-        _stmt: &mut SqlStmt,
+        _stmt: &SharedStmt,
         _params: &[Value],
         _max_vdbe: u64,
     ) -> Result<ExecutionInsight, SqlError>
@@ -91,7 +91,7 @@ impl Port<'_> for PortMocked {
 
     fn process_stmt_with_raw_params(
         &mut self,
-        _stmt: &mut SqlStmt,
+        _stmt: &SharedStmt,
         _params: &[u8],
         _max_vdbe: u64,
     ) -> Result<ExecutionInsight, SqlError> {
@@ -100,7 +100,7 @@ impl Port<'_> for PortMocked {
 
     fn process_txn(
         &mut self,
-        _stmt: &CachedStmt,
+        _stmt: &SharedStmt,
         _params: &[&Value],
         _vdbe_max_steps: u64,
     ) -> Result<ExecutionInsight, SbroadError>

@@ -34,7 +34,7 @@ use crate::metrics::{
     record_storage_cache_statement_evicted, report_storage_cache_hit, report_storage_cache_miss,
 };
 use smol_str::{format_smolstr, SmolStr};
-use sql::executor::vdbe::SqlStmt;
+use sql::executor::vdbe::{SharedStmt, SqlStmt};
 use sql::executor::vtable::{VirtualTable, VirtualTableTupleEncoder};
 use sql::explain::executor::MotionInfo;
 use sql::ir::node::NodeId;
@@ -351,7 +351,7 @@ impl StorageCache for PicoStorageCache {
 
         let table_lock = self.get_or_create_table_lock(plan_id);
         let mem_added = stmt.estimated_size();
-        let stmt = Rc::new(Mutex::new(stmt));
+        let stmt = Rc::new(SharedStmt::new(stmt));
 
         // When the schema version changes, we can replace the value based on
         // an existing `plan_id`. In this case, we do not want to call
@@ -796,8 +796,7 @@ impl Vshard for StorageRuntime {
             // Transaction rollbacks are very expensive in Tarantool, so we're going to
             // avoid transactions for DQL queries. We can achieve atomicity by truncating
             // temporary tables. Isolation is guaranteed by a lock tied to plan_id.
-            let mut stmt_guard = cached.stmt.lock();
-            match stmt_execute(&mut stmt_guard, &info, port)? {
+            match stmt_execute(&cached.stmt, &info, port)? {
                 Nothing => report_storage_cache_hit("dql", "local"),
                 BusyStmt => report_storage_cache_miss("dql", "local", "busy"),
                 StaleStmt => report_storage_cache_miss("dql", "local", "stale"),

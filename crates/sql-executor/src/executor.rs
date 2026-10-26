@@ -23,7 +23,7 @@
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
 use crate::errors::{Entity, SbroadError};
-use crate::executor::engine::{CachedStmt, Router, Vshard};
+use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
 use crate::ir::bucket::Buckets;
@@ -43,7 +43,7 @@ use std::collections::HashMap;
 use std::io;
 use std::rc::Rc;
 use tarantool::msgpack;
-use vdbe::{SqlError, SqlStmt};
+use vdbe::{SharedStmt, SqlError};
 
 pub mod bucket_discovery;
 pub mod engine;
@@ -74,7 +74,7 @@ pub trait Port<'p>: io::Write {
 
     fn process_stmt(
         &mut self,
-        stmt: &mut SqlStmt,
+        stmt: &SharedStmt,
         params: &[Value],
         max_vdbe: u64,
     ) -> Result<ExecutionInsight, SqlError>
@@ -83,7 +83,7 @@ pub trait Port<'p>: io::Write {
 
     fn process_stmt_with_raw_params(
         &mut self,
-        stmt: &mut SqlStmt,
+        stmt: &SharedStmt,
         params: &[u8],
         max_vdbe: u64,
     ) -> Result<ExecutionInsight, SqlError>;
@@ -101,7 +101,7 @@ pub trait Port<'p>: io::Write {
     /// busy statement is recompiled and counts as a miss).
     fn process_txn(
         &mut self,
-        stmt: &CachedStmt,
+        stmt: &SharedStmt,
         params: &[&Value],
         vdbe_max_steps: u64,
     ) -> Result<ExecutionInsight, SbroadError>

@@ -4,7 +4,6 @@ use crate::sql::lua::{
 };
 use rmp::decode::{read_array_len, read_int};
 use rmp::encode::write_bool;
-use sql::executor::engine::CachedStmt;
 use sql::executor::{Port as SqlPort, PortType as SqlPortType};
 use sql_protocol::encode::{
     dispatch_write_dml_response, dispatch_write_dql_response, dispatch_write_explain_response,
@@ -17,7 +16,7 @@ use tarantool::ffi::sql::{obuf_append, Obuf, Port, PortC, PortVTable};
 
 use super::lua::escape_bytes;
 use sql::errors::SbroadError;
-use sql::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
+use sql::executor::vdbe::{ExecutionInsight, SharedStmt, SqlError};
 use sql::ir::value::Value;
 
 /// The response of dump_mp callback is used in the IPROTO body
@@ -168,7 +167,7 @@ impl SqlPort<'_> for PicoPortOwned {
 
     fn process_stmt(
         &mut self,
-        stmt: &mut SqlStmt,
+        stmt: &SharedStmt,
         params: &[Value],
         max_vdbe: u64,
     ) -> Result<ExecutionInsight, SqlError>
@@ -180,7 +179,7 @@ impl SqlPort<'_> for PicoPortOwned {
 
     fn process_stmt_with_raw_params(
         &mut self,
-        stmt: &mut SqlStmt,
+        stmt: &SharedStmt,
         params: &[u8],
         max_vdbe: u64,
     ) -> Result<ExecutionInsight, SqlError> {
@@ -209,7 +208,7 @@ impl SqlPort<'_> for PicoPortOwned {
 
     fn process_txn(
         &mut self,
-        stmt: &CachedStmt,
+        stmt: &SharedStmt,
         params: &[&Value],
         vdbe_max_steps: u64,
     ) -> Result<ExecutionInsight, SbroadError> {
@@ -219,14 +218,12 @@ impl SqlPort<'_> for PicoPortOwned {
 
 fn execute_block_in_txn(
     port: &mut PortC,
-    stmt: &CachedStmt,
+    stmt: &SharedStmt,
     params: &[&Value],
     vdbe_max_steps: u64,
 ) -> Result<ExecutionInsight, SbroadError> {
     let insight = tarantool::transaction::transaction(|| {
-        // The guard is dropped before the commit waits for the WAL.
-        stmt.lock()
-            .execute(params, vdbe_max_steps, port)
+        stmt.execute(params, vdbe_max_steps, port)
             .map_err(SbroadError::from)
     })?;
     Ok(insight)
@@ -260,7 +257,7 @@ impl<'p> SqlPort<'p> for PicoPortC<'p> {
 
     fn process_stmt(
         &mut self,
-        stmt: &mut SqlStmt,
+        stmt: &SharedStmt,
         params: &[Value],
         max_vdbe: u64,
     ) -> Result<ExecutionInsight, SqlError>
@@ -272,7 +269,7 @@ impl<'p> SqlPort<'p> for PicoPortC<'p> {
 
     fn process_stmt_with_raw_params(
         &mut self,
-        stmt: &mut SqlStmt,
+        stmt: &SharedStmt,
         params: &[u8],
         max_vdbe: u64,
     ) -> Result<ExecutionInsight, SqlError> {
@@ -300,7 +297,7 @@ impl<'p> SqlPort<'p> for PicoPortC<'p> {
 
     fn process_txn(
         &mut self,
-        stmt: &CachedStmt,
+        stmt: &SharedStmt,
         params: &[&Value],
         vdbe_max_steps: u64,
     ) -> Result<ExecutionInsight, SbroadError> {

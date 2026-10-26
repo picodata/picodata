@@ -9,10 +9,12 @@ use crate::{
 use smol_str::{format_smolstr, ToSmolStr};
 use std::{
     borrow::Cow,
+    cell::RefCell,
     ffi::{c_char, c_int, c_void, CStr},
     fmt,
     mem::ManuallyDrop,
     ptr::{self, NonNull},
+    rc::Rc,
 };
 use tarantool::ffi::sql::PortC;
 use tarantool::{
@@ -82,7 +84,8 @@ type SqlResult<T> = Result<T, SqlError>;
 ///
 /// Payloads are kept alive until statement finalization because VDBE opcodes
 /// can store raw pointers into them. `before_execute` lets a payload reset
-/// per-run state while the caller holds exclusive access to the statement.
+/// per-run state. The hooks run before the VDBE becomes busy and after it is
+/// reset, so they must not yield: another fiber could run the same statement.
 pub trait VdbeOwnedPayload {
     fn before_execute(&mut self) {}
 
@@ -127,7 +130,8 @@ pub struct RawStmt {
     // inserting/removing it from the statement cache and avoid extra computation.
     size_estimate: usize,
     // Opaque payloads that must live until the very end of statement drop.
-    owned_payloads: ManuallyDrop<Vec<Box<dyn VdbeOwnedPayload>>>,
+    // Borrowed only around the hooks, never across the VDBE run that yields.
+    owned_payloads: ManuallyDrop<RefCell<Vec<Box<dyn VdbeOwnedPayload>>>>,
 }
 
 impl fmt::Debug for RawStmt {
@@ -135,7 +139,7 @@ impl fmt::Debug for RawStmt {
         f.debug_struct("RawStmt")
             .field("ptr", &self.ptr)
             .field("size_estimate", &self.size_estimate)
-            .field("owned_payloads_len", &self.owned_payloads.len())
+            .field("owned_payloads_len", &self.owned_payloads.borrow().len())
             .finish()
     }
 }
@@ -166,7 +170,7 @@ impl RawStmt {
         Self {
             ptr: NonNull::new(ptr).expect("non-null vdbe ptr"),
             size_estimate: size,
-            owned_payloads: ManuallyDrop::new(Vec::new()),
+            owned_payloads: ManuallyDrop::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -176,11 +180,11 @@ impl RawStmt {
     /// embedded into the underlying VDBE remain valid until statement finalization
     /// completes. Payloads are dropped at the very end of `RawStmt::drop`.
     fn add_owned_payload(&mut self, payload: Box<dyn VdbeOwnedPayload>) {
-        self.owned_payloads.push(payload);
+        self.owned_payloads.get_mut().push(payload);
     }
 
     fn execute_raw(
-        &mut self,
+        &self,
         param_data: &[u8],
         sql_vdbe_opcode_max: u64,
         port: &mut PortC,
@@ -188,7 +192,7 @@ impl RawStmt {
         debug_assert!(
             tarantool::msgpack::skip_value(&mut std::io::Cursor::new(&param_data)).is_ok()
         );
-        for payload in self.owned_payloads.iter_mut() {
+        for payload in self.owned_payloads.borrow_mut().iter_mut() {
             payload.before_execute();
         }
         // SAFETY: Safe as all arguments are valid.
@@ -206,7 +210,7 @@ impl RawStmt {
         } else {
             None
         };
-        for payload in self.owned_payloads.iter_mut() {
+        for payload in self.owned_payloads.borrow_mut().iter_mut() {
             payload.after_execute();
         }
         if let Some(error) = execute_error {
@@ -215,7 +219,7 @@ impl RawStmt {
         Ok(())
     }
 
-    /// Check if statement is currently executed by another thread.
+    /// Check if statement is currently executed by another fiber.
     fn is_busy(&self) -> bool {
         // SAFETY: Safe as it is asserted that ptr is not null in `wrap_stmt_ptr`.
         unsafe { sql_stmt_busy(self.ptr.as_ptr()) }
@@ -353,55 +357,23 @@ impl SqlStmt {
         }
     }
 
-    /// Execute statement with given parameters into a port, recompiling first
-    /// if it is busy or its schema version is stale. Recompilation is
-    /// variant-specific (see [`recompile`](Self::recompile)), so an assembled
-    /// block VDBE refreshes itself just like a regular statement does.
-    pub fn execute<P: AsRef<Value>>(
-        &mut self,
-        params: &[P],
-        opcode_max: u64,
-        port: &mut PortC,
-    ) -> SqlResult<ExecutionInsight> {
-        let encoded: Vec<EncodedValue> = params
-            .iter()
-            .map(|p| EncodedValue::from(p.as_ref()))
-            .collect();
-        let param_data =
-            Cow::from(rmp_serde::to_vec(&encoded).map_err(SqlError::FailedToEncodeStmtParams)?);
-        self.execute_with_raw_params(param_data.iter().as_slice(), opcode_max, port)
+    /// Decide what to run instead of this statement when it is busy or its
+    /// schema version is stale.
+    fn refresh(&self) -> SqlResult<Refresh> {
+        if self.raw().is_busy() {
+            Ok(Refresh::Busy(self.recompile()?))
+        } else if !self.raw().is_schema_version_valid() {
+            Ok(Refresh::Stale(self.recompile()?))
+        } else {
+            Ok(Refresh::Fresh)
+        }
     }
 
-    pub fn execute_with_raw_params(
-        &mut self,
-        params: &[u8],
-        opcode_max: u64,
-        port: &mut PortC,
-    ) -> SqlResult<ExecutionInsight> {
-        if self.raw().is_busy() {
-            // Compile and execute a new statement that is not busy.
-            let mut stmt = self.recompile()?;
-            debug_assert!(!stmt.raw().is_busy());
-            stmt.execute_with_raw_params(params, opcode_max, port)?;
-            return Ok(ExecutionInsight::BusyStmt);
-        }
-
-        let is_version_stale = !self.raw().is_schema_version_valid();
-        if is_version_stale {
-            // Recompile this statement with current version.
-            *self = self.recompile()?;
-            debug_assert!(self.raw().is_schema_version_valid());
-        }
-
+    fn run(&self, params: &[u8], opcode_max: u64, port: &mut PortC) -> SqlResult<()> {
         with_su(ADMIN_ID, || {
-            self.raw_mut().execute_raw(params, opcode_max, port)
+            self.raw().execute_raw(params, opcode_max, port)
         })
-        .expect("must be able to su into admin")?;
-
-        match is_version_stale {
-            true => Ok(ExecutionInsight::StaleStmt),
-            false => Ok(ExecutionInsight::Nothing),
-        }
+        .expect("must be able to su into admin")
     }
 
     /// Get the query string used for compiling this statement.
@@ -421,5 +393,73 @@ impl SqlStmt {
     /// Callers that need the typed `*mut Vdbe` cast it themselves.
     pub fn as_ptr(&self) -> *mut c_void {
         self.raw().ptr.as_ptr()
+    }
+}
+
+/// What to run instead of a statement, see [`SqlStmt::refresh`].
+enum Refresh {
+    Fresh,
+    /// The statement is in use by another execution: a private copy.
+    Busy(SqlStmt),
+    /// The statement is compiled for an old schema: its replacement.
+    Stale(SqlStmt),
+}
+
+/// A statement that concurrent executions share without a lock. An execution
+/// does not wait for a busy statement: it runs a private copy.
+#[derive(Debug)]
+pub struct SharedStmt {
+    // Replaced when its schema version is stale. Each execution holds its own
+    // reference, so a replaced statement stays alive until its execution ends.
+    stmt: RefCell<Rc<SqlStmt>>,
+}
+
+impl SharedStmt {
+    pub fn new(stmt: SqlStmt) -> Self {
+        Self {
+            stmt: RefCell::new(Rc::new(stmt)),
+        }
+    }
+
+    /// Execute statement with given parameters into a port, recompiling first
+    /// if it is busy or its schema version is stale (see [`SqlStmt::refresh`]).
+    pub fn execute<P: AsRef<Value>>(
+        &self,
+        params: &[P],
+        opcode_max: u64,
+        port: &mut PortC,
+    ) -> SqlResult<ExecutionInsight> {
+        let encoded: Vec<EncodedValue> = params
+            .iter()
+            .map(|p| EncodedValue::from(p.as_ref()))
+            .collect();
+        let param_data =
+            Cow::from(rmp_serde::to_vec(&encoded).map_err(SqlError::FailedToEncodeStmtParams)?);
+        self.execute_with_raw_params(param_data.iter().as_slice(), opcode_max, port)
+    }
+
+    pub fn execute_with_raw_params(
+        &self,
+        params: &[u8],
+        opcode_max: u64,
+        port: &mut PortC,
+    ) -> SqlResult<ExecutionInsight> {
+        let mut stmt = Rc::clone(&self.stmt.borrow());
+        let insight = match stmt.refresh()? {
+            Refresh::Fresh => ExecutionInsight::Nothing,
+            Refresh::Busy(copy) => {
+                stmt = Rc::new(copy);
+                ExecutionInsight::BusyStmt
+            }
+            Refresh::Stale(new) => {
+                // Store the replacement before the run yields, so that
+                // concurrent executions do not recompile it again.
+                stmt = Rc::new(new);
+                *self.stmt.borrow_mut() = Rc::clone(&stmt);
+                ExecutionInsight::StaleStmt
+            }
+        };
+        stmt.run(params, opcode_max, port)?;
+        Ok(insight)
     }
 }

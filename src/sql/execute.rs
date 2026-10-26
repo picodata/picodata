@@ -26,7 +26,7 @@ use sql::executor::preemption::Scheduler;
 use sql::executor::protocol::SchemaInfo;
 use sql::executor::result::ConsumerResult;
 use sql::executor::vdbe::ExecutionInsight::{BusyStmt, Nothing, StaleStmt};
-use sql::executor::vdbe::{ExecutionInsight, SqlError, SqlStmt};
+use sql::executor::vdbe::{ExecutionInsight, SharedStmt, SqlError, SqlStmt};
 use sql::executor::vtable::{
     vtable_indexed_column_name, VTableTuple, VirtualTable, VirtualTableTupleEncoder,
 };
@@ -276,7 +276,7 @@ impl ExpandedPlanInfo for ProtocolCacheMissExecution<'_> {
 
 // must be executed under lock
 pub fn stmt_execute<'p, 'b>(
-    stmt: &mut SqlStmt,
+    stmt: &SharedStmt,
     info: &impl PlanInfo,
     port: &mut impl Port<'p>,
 ) -> Result<ExecutionInsight, SbroadError> {
@@ -433,8 +433,7 @@ where
     }
 
     if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(runtime, plan_id)? {
-        let mut stmt_guard = cached.stmt.lock();
-        match stmt_execute(&mut stmt_guard, info, port)? {
+        match stmt_execute(&cached.stmt, info, port)? {
             Nothing => report_storage_cache_hit("dql", "2nd"),
             BusyStmt => report_storage_cache_miss("dql", "2nd", "busy"),
             StaleStmt => report_storage_cache_miss("dql", "2nd", "stale"),
@@ -480,8 +479,7 @@ where
         cache_guarded.get(&miss_info.plan_id())?
     };
     if let Some(cached) = cached {
-        let mut stmt_guard = cached.stmt.lock();
-        return stmt_execute(&mut stmt_guard, info, port);
+        return stmt_execute(&cached.stmt, info, port);
     }
 
     let metadata = miss_info.vtable_metadata();
@@ -515,8 +513,7 @@ where
     };
     // Process any evictions that were deferred while the cache mutex was held.
     crate::sql::storage::process_deferred_evictions()?;
-    let mut stmt_guard = cached.stmt.lock();
-    stmt_execute(&mut stmt_guard, info, port)
+    stmt_execute(&cached.stmt, info, port)
 }
 
 /// Execute a DQL query on storage.
@@ -539,8 +536,7 @@ where
     FMiss: FnOnce(&R, &I, &mut P) -> Result<(), SbroadError>,
 {
     if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(runtime, plan_id)? {
-        let mut stmt_guard = cached.stmt.lock();
-        match stmt_execute(&mut stmt_guard, info, port)? {
+        match stmt_execute(&cached.stmt, info, port)? {
             Nothing => report_storage_cache_hit("dql", rpc_type),
             BusyStmt => report_storage_cache_miss("dql", rpc_type, "busy"),
             StaleStmt => report_storage_cache_miss("dql", rpc_type, "stale"),
@@ -1716,8 +1712,7 @@ where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
     if let Some((cached, _table_lease)) = acquire_cached_stmt_or_retry(runtime, info.plan_id())? {
-        let mut stmt_guard = cached.stmt.lock();
-        stmt_execute(&mut stmt_guard, info, port)?;
+        stmt_execute(&cached.stmt, info, port)?;
     } else {
         sql_execute::<R>(runtime, info, info, port)?;
     }
