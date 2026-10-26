@@ -19,11 +19,13 @@
 
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
-use sql_ast_new_nodes::error::{ast_invariant_err, AstErr, AstResult};
+use sql_ast_new_nodes::error::{ast_err, ast_invariant_err, AstErr, AstResult};
 use sql_ast_new_nodes::expr::{
     BinaryOp, BooleanOp, CmpOp, Expr, ExprInner, FunctionCallArgs, ResolvedFn, UnaryOp,
 };
-use sql_ast_new_nodes::multiset::{Cte, MultisetInner, MultisetStmt};
+use sql_ast_new_nodes::multiset::{
+    Cte, MultisetInner, MultisetStmt, OpDupElimination, Operation, OperationKind,
+};
 use sql_ast_new_nodes::select::{ProjectionExpr, SelectStmt};
 use sql_ast_new_nodes::table_expression::{
     AnalyzedCteOrTable, BoundVar, From, FromEntry, GroupBy, JoinKind, JoinedTable, OrdrByGrpByElem,
@@ -43,9 +45,9 @@ use sql_ir::ir::value::Value;
 use sql_ir::ir::Plan;
 use sql_ir::utils::get_unnamed_column_alias;
 
-/// Error for unsupported by IR functionality.
+/// A valid query the translator does not support yet (a limitation, not a bug).
 pub(crate) fn unsupported_err(msg: SmolStr) -> AstErr {
-    ast_invariant_err(msg)
+    ast_err(msg)
 }
 
 /// Internal error caused by broken invariants.
@@ -160,7 +162,14 @@ impl<'q> NodeTranslator<'q> for MultisetStmt<'q, Analyzed> {
         debug_assert!(ir.get_top().is_err());
 
         // Split the whole statement into parts and handle them separately.
-        let (ctes, inner, _order_by, _limit) = self.into_parts();
+        let (ctes, inner, order_by, limit) = self.into_parts();
+
+        // shortcut: reject rather than drop ORDER BY/LIMIT, lift once they are translated.
+        if order_by.is_some() || limit.is_some() {
+            return Err(unsupported_err(format_smolstr!(
+                "ORDER BY and LIMIT are not supported"
+            )));
+        }
 
         // Initialize scope we are entering
         ctx.frames.push(Frame::default());
@@ -178,10 +187,8 @@ impl<'q> NodeTranslator<'q> for MultisetStmt<'q, Analyzed> {
         match inner {
             MultisetInner::Select(stmt) => stmt.translate(ir, ctx)?,
             MultisetInner::Values(_values) => todo!(),
-            MultisetInner::Operation(_operation) => todo!(),
+            MultisetInner::Operation(operation) => operation.translate(ir, ctx)?,
         };
-
-        // TODO: translate `ORDER BY`, `LIMIT`
 
         // Drop the scope we are leaving.
         ctx.frames.pop();
@@ -207,6 +214,49 @@ impl<'q> NodeTranslator<'q> for Cte<'q, Analyzed> {
         )?;
 
         Ok(cte_id)
+    }
+}
+
+impl<'q> NodeTranslator<'q> for Operation<'q, Analyzed> {
+    type ResType = ();
+
+    fn translate(self, ir: &mut Plan, ctx: &mut Ctx<'q>) -> AstResult<Self::ResType> {
+        let Operation {
+            left,
+            op,
+            dup_elimination,
+            right,
+        } = self;
+
+        left.translate(ir, ctx)?;
+        let left_id = ir.get_top()?;
+
+        // Each operand is a statement translated from an empty top.
+        ir.reset_top();
+        right.translate(ir, ctx)?;
+        let right_id = ir.get_top()?;
+
+        let op_id = match (op, dup_elimination) {
+            (OperationKind::Union, dup) => {
+                ir.add_union(left_id, right_id, dup == OpDupElimination::Distinct)?
+            }
+            (OperationKind::Except, OpDupElimination::Distinct) => {
+                ir.add_except(left_id, right_id)?
+            }
+            (OperationKind::Except, OpDupElimination::All) => {
+                return Err(unsupported_err(format_smolstr!(
+                    "EXCEPT ALL is not supported"
+                )))
+            }
+            (OperationKind::Intersect, _) => {
+                return Err(unsupported_err(format_smolstr!(
+                    "INTERSECT is not supported"
+                )))
+            }
+        };
+
+        ir.set_top(op_id)?;
+        Ok(())
     }
 }
 

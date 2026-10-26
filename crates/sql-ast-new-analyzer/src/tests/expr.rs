@@ -916,7 +916,7 @@ fn in_cast_subquery_arg() {
 fn in_no_cast_subquery_arg() {
     insta::assert_snapshot!(
         analyzed("SELECT 1.5 IN (SELECT 1 UNION SELECT 2.0)", &[]),
-        @"SELECT (1.5::decimal IN ((SELECT CAST(1 AS decimal)) UNION (SELECT 2.0::decimal))::decimal)::bool"
+        @"SELECT (1.5::decimal IN ((SELECT 1::int) UNION (SELECT 2.0::decimal))::decimal)::bool"
     );
 }
 

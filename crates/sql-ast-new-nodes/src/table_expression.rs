@@ -1040,6 +1040,8 @@ pub enum AttributeView<'q, 'ast> {
     /// body derives its own `column1..columnN` columns) the same way it
     /// renames a projection.
     Column(&'ast Column, Option<&'ast str>),
+    /// A set operation column: unified type of its operands, left operand's name.
+    SetOp(DerivedType, Option<&'ast str>),
 }
 
 impl<'ast> AttributeView<'_, 'ast> {
@@ -1047,6 +1049,7 @@ impl<'ast> AttributeView<'_, 'ast> {
         match self {
             Self::Expr(proj_expr, _) => proj_expr.data_type(),
             Self::Column(col, _) => col.r#type,
+            Self::SetOp(ty, _) => *ty,
         }
     }
 
@@ -1054,7 +1057,7 @@ impl<'ast> AttributeView<'_, 'ast> {
     /// else the column's own; [`None`] for an anonymous projection.
     pub fn name(&self) -> Option<&'ast str> {
         match self {
-            Self::Expr(_, name) => *name,
+            Self::Expr(_, name) | Self::SetOp(_, name) => *name,
             Self::Column(col, rename) => rename.or(Some(col.name.as_str())),
         }
     }

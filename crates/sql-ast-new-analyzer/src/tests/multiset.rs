@@ -206,7 +206,14 @@ fn set_operation_castable_literals() {
 #[test]
 fn set_operation_castable_columns() {
     let query = "SELECT * FROM (SELECT 1 a) UNION (SELECT 1.5 a)";
-    insta::assert_snapshot!(analyzed(query, &[]), @"(SELECT CAST(a AS decimal) FROM (SELECT 1::int AS a)) UNION (SELECT 1.5::decimal AS a)");
+    insta::assert_snapshot!(analyzed(query, &[]), @"(SELECT a::int FROM (SELECT 1::int AS a)) UNION (SELECT 1.5::decimal AS a)");
+}
+
+/// Each level reports the operands it unifies.
+#[test]
+fn set_operation_types_mismatch() {
+    let query = "SELECT a FROM t1 UNION SELECT a FROM t1 EXCEPT SELECT true";
+    insta::assert_snapshot!(analyze_error(query, &[]), @"EXCEPT types int and bool cannot be matched");
 }
 
 /// The literal is read as the branch's `int` right here, the way Postgres
@@ -221,29 +228,129 @@ fn set_operation_uncastable_columns() {
     );
 }
 
+/// The inner UNION compares ints: the cast to double sits above it, in the plan.
 #[test]
-fn incorrect_cast_int_to_double_is_ok() {
+fn inner_set_operation_is_not_cast_to_double() {
     insta::assert_snapshot!(
         analyzed("(SELECT 9007199254740992 UNION SELECT 9007199254740993) UNION ALL SELECT
     0::double", &[]),
-        @"((SELECT CAST(9007199254740992 AS double)) UNION (SELECT CAST(9007199254740993 AS double))) UNION ALL (SELECT CAST(0 AS double))"
+        @"((SELECT 9007199254740992::int) UNION (SELECT 9007199254740993::int)) UNION ALL (SELECT CAST(0 AS double))"
     );
 }
 
 #[test]
-fn correct_cast_int_to_decimal() {
+fn inner_set_operation_is_not_cast_to_decimal() {
     insta::assert_snapshot!(
         analyzed("(SELECT 9007199254740992 UNION SELECT 9007199254740993) UNION ALL SELECT
     0::decimal", &[]),
-        @"((SELECT CAST(9007199254740992 AS decimal)) UNION (SELECT CAST(9007199254740993 AS decimal))) UNION ALL (SELECT CAST(0 AS decimal))"
+        @"((SELECT 9007199254740992::int) UNION (SELECT 9007199254740993::int)) UNION ALL (SELECT CAST(0 AS decimal))"
     );
+}
+
+/// An untyped operand takes the type of its own level, not the outer one's.
+#[test]
+fn inner_set_operation_literal_takes_inner_type() {
+    for (query, expected) in [
+        (
+            "(SELECT 9007199254740992 UNION SELECT '9007199254740993') UNION ALL SELECT 0::double",
+            "((SELECT 9007199254740992::int) UNION (SELECT 9007199254740993::int)) UNION ALL (SELECT CAST(0 AS double))",
+        ),
+        (
+            "(SELECT 9007199254740992 UNION VALUES (9007199254740993)) UNION ALL SELECT 0::double",
+            "((SELECT 9007199254740992::int) UNION (VALUES (9007199254740993::int))) UNION ALL (SELECT CAST(0 AS double))",
+        ),
+    ] {
+        assert_eq!(analyzed(query, &[]), expected, "{query}");
+    }
+}
+
+/// Two untyped operands make their level text, as in PostgreSQL, so a typed
+/// level above cannot match it. A VALUES column is typed by its own rows.
+#[test]
+fn untyped_set_operation_level_is_text() {
+    for (query, expected) in [
+        (
+            "SELECT '01' AS x UNION SELECT '1' UNION ALL SELECT a FROM t3",
+            "UNION types text and int cannot be matched",
+        ),
+        (
+            "(SELECT $1 UNION SELECT NULL) UNION SELECT a FROM t1",
+            "UNION types text and int cannot be matched",
+        ),
+        (
+            "SELECT 1 EXCEPT (SELECT '1' UNION SELECT '1')",
+            "EXCEPT types int and text cannot be matched",
+        ),
+        (
+            "SELECT 1 UNION VALUES ('1')",
+            "UNION types int and text cannot be matched",
+        ),
+    ] {
+        assert_eq!(analyze_error(query, &[]), expected, "{query}");
+    }
+}
+
+/// An untyped operand takes the type of the level directly above it, not of
+/// the first typed level inside a parenthesized operand next to it.
+#[test]
+fn untyped_operand_takes_type_of_own_level() {
+    for (query, expected) in [
+        (
+            "SELECT '1.5' UNION ((SELECT 1 UNION SELECT 2) UNION SELECT 2.5)",
+            "(SELECT 1.5::decimal) UNION (((SELECT 1::int) UNION (SELECT 2::int)) UNION (SELECT 2.5::decimal))",
+        ),
+        (
+            "SELECT $1 UNION ((SELECT a FROM t1 UNION SELECT b FROM t1) UNION SELECT c FROM t1)",
+            "(SELECT $1::double) UNION (((SELECT t1.a::int FROM t1) UNION (SELECT t1.b::int FROM t1)) UNION (SELECT t1.c::double FROM t1))",
+        ),
+    ] {
+        assert_eq!(analyzed(query, &[]), expected, "{query}");
+    }
+}
+
+/// A parameter the client typed is a typed operand: the inner UNION compares
+/// ints, and the cast to double sits above it.
+#[test]
+fn typed_parameter_is_not_cast_inside_operand() {
+    use sql_ir::ir::types::{DerivedType, UnrestrictedType};
+
+    let int = DerivedType::new(UnrestrictedType::Integer);
+    assert_eq!(
+        analyzed(
+            "(SELECT $1 UNION SELECT $2) UNION ALL SELECT 0::double",
+            &[int, int]
+        ),
+        "((SELECT $1::int) UNION (SELECT $2::int)) UNION ALL (SELECT CAST(0 AS double))"
+    );
+}
+
+/// The common type is not pushed into an operand: it would run below the
+/// operand's DISTINCT, GROUP BY or aggregate.
+#[test]
+fn set_operation_operand_expressions_keep_own_type() {
+    for (query, expected) in [
+        (
+            "SELECT DISTINCT a + 0 FROM t1 UNION ALL SELECT c FROM t1",
+            "(SELECT DISTINCT (t1.a::int + 0::int)::int FROM t1) UNION ALL (SELECT t1.c::double FROM t1)",
+        ),
+        (
+            "SELECT sum(a) FROM t1 UNION ALL SELECT c FROM t1",
+            "(SELECT sum(t1.a::int)::decimal FROM t1) UNION ALL (SELECT t1.c::double FROM t1)",
+        ),
+        (
+            "SELECT a + b FROM t1 GROUP BY a + b UNION ALL SELECT c FROM t1",
+            "(SELECT (t1.a::int + t1.b::int)::int FROM t1 GROUP BY (t1.a::int + t1.b::int)::int) UNION ALL (SELECT t1.c::double FROM t1)",
+        ),
+    ] {
+        assert_eq!(analyzed(query, &[]), expected, "{query}");
+    }
 }
 
 #[test]
 fn get_cast_from_report_for_homogenours_types() {
     insta::assert_snapshot!(
         analyzed("SELECT * FROM (SELECT 1::int AS x UNION SELECT 2::double) q", &[]),
-        @"SELECT q.x::double FROM ((SELECT CAST(1 AS double) AS x) UNION (SELECT CAST(2 AS double))) AS q"
+        @"SELECT q.x::double FROM ((SELECT 1::int AS x) UNION (SELECT CAST(2 AS double))) AS q"
     )
 }
 
@@ -773,7 +880,7 @@ fn values_cte_column_count_mismatch() {
 fn values_union_select() {
     insta::assert_snapshot!(
         analyzed("VALUES (1) UNION SELECT 2.5", &[]),
-        @"(VALUES (CAST(1 AS decimal))) UNION (SELECT 2.5::decimal)"
+        @"(VALUES (1::int)) UNION (SELECT 2.5::decimal)"
     );
 }
 
@@ -789,6 +896,14 @@ fn values_union_order_by_name() {
 fn values_union_column_count_mismatch() {
     insta::assert_snapshot!(
         analyze_error("VALUES (1) UNION SELECT 1, 2", &[]),
+        @"semantic error: operands of UNION operation have different number of columns"
+    );
+}
+
+#[test]
+fn union_chain_column_count_mismatch() {
+    insta::assert_snapshot!(
+        analyze_error("SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3, 4", &[]),
         @"semantic error: operands of UNION operation have different number of columns"
     );
 }

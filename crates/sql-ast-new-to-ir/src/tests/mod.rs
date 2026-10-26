@@ -794,3 +794,99 @@ fn join_on_aggregate_or_window_diverges_from_old() {
         assert!(old_arena(query, &meta).contains(old_marker));
     }
 }
+
+// ---------------------------- SET OPERATIONS ----------------------------
+
+#[test]
+fn set_operations() {
+    for query in [
+        "SELECT a AS a FROM t1 UNION SELECT a AS a FROM t3",
+        "SELECT a AS a FROM t1 UNION ALL SELECT a AS a FROM t3",
+        "SELECT a AS a FROM t1 EXCEPT SELECT a AS a FROM t3",
+        "SELECT a AS a FROM t1 EXCEPT DISTINCT SELECT a AS a FROM t3",
+        // Left-associative: `(t1 UNION ALL t3) EXCEPT t4`.
+        "SELECT a AS a FROM t1 UNION ALL SELECT a AS a FROM t3 EXCEPT SELECT a AS a FROM t4",
+        "SELECT a AS a FROM t1 WHERE b = 1 UNION SELECT a AS a FROM t3 WHERE a = 2",
+    ] {
+        assert_same_as_old(query);
+    }
+}
+
+#[test]
+fn set_operation_with_cte() {
+    assert_same_as_old(
+        "WITH c AS (SELECT a AS a FROM t1) SELECT a AS a FROM c UNION SELECT a AS a FROM c",
+    );
+    // A non-projection CTE body is wrapped into a subquery to rename its columns.
+    assert_same_as_old(
+        "WITH c (x) AS (SELECT a AS a FROM t1 UNION SELECT a AS a FROM t3) SELECT x AS x FROM c",
+    );
+}
+
+#[test]
+fn set_operation_unsupported() {
+    let meta = catalog();
+    for (query, err) in [
+        (
+            "SELECT a AS a FROM t1 INTERSECT SELECT a AS a FROM t3",
+            "INTERSECT is not supported",
+        ),
+        (
+            "SELECT a AS a FROM t1 EXCEPT ALL SELECT a AS a FROM t3",
+            "EXCEPT ALL is not supported",
+        ),
+    ] {
+        let res = analyzed(query, &[], &meta).translate();
+        assert_eq!(res.err().unwrap().to_string(), err, "{query}");
+    }
+}
+
+/// The old grammar does not parse a WITH in an operand; the inner `c` wins there,
+/// so the plan reaches its body (the only `b` alias).
+#[test]
+fn set_operation_operand_with_own_with() {
+    let arena = new_arena(
+        "WITH c AS (SELECT a AS a FROM t1) SELECT a AS a FROM c \
+         UNION ALL (WITH c AS (SELECT b AS b FROM t1) SELECT b AS y FROM c)",
+        &catalog(),
+    );
+    assert_eq!(arena.matches("relation: ScanCte").count(), 2);
+    assert!(arena.contains("Alias [name = b]"));
+}
+
+/// ORDER BY and LIMIT are not translated yet, so they must not be dropped silently.
+#[test]
+fn order_by_and_limit_unsupported() {
+    let meta = catalog();
+    for query in [
+        "SELECT a AS a FROM t1 LIMIT 1",
+        "SELECT a AS a FROM t1 ORDER BY 1",
+        "SELECT a AS a FROM t1 UNION SELECT a AS a FROM t3 LIMIT 1",
+        "SELECT a AS a FROM t1 UNION SELECT a AS a FROM t3 ORDER BY 1",
+        "(SELECT a AS a FROM t1 LIMIT 1) UNION ALL SELECT a AS a FROM t3",
+    ] {
+        assert!(analyzed(query, &[], &meta).translate().is_err(), "{query}");
+    }
+}
+
+/// Operands keep their own types: the plan unifies them at the set operation
+/// node, above an operand's DISTINCT or GROUP BY.
+#[test]
+fn set_operation_mixed_types() {
+    for query in [
+        "SELECT a AS a FROM t1 UNION SELECT c AS c FROM t1",
+        "SELECT DISTINCT a AS a FROM t1 UNION ALL SELECT c AS c FROM t1",
+        "SELECT a AS a FROM t1 GROUP BY 1 UNION ALL SELECT c AS c FROM t1",
+        "SELECT a AS a FROM t1 UNION SELECT a AS a FROM t3 UNION ALL SELECT c AS c FROM t1",
+        "SELECT a AS a FROM t1 EXCEPT SELECT d AS d FROM t1",
+        "SELECT 1 AS x UNION SELECT c AS x FROM t1",
+        // No cast below the operand's DISTINCT, aggregate or GROUP BY.
+        "SELECT DISTINCT a + 0 AS x FROM t1 UNION ALL SELECT c AS c FROM t1",
+        "SELECT sum(a) AS s FROM t1 UNION ALL SELECT c AS c FROM t1",
+        "SELECT a + b AS x FROM t1 GROUP BY a + b UNION ALL SELECT c AS c FROM t1",
+        // A reference to the unified column has the unified type.
+        "WITH q AS (SELECT a AS x FROM t1 UNION SELECT c AS x FROM t1) SELECT x AS x FROM q",
+    ] {
+        assert_same_as_old(query);
+    }
+}

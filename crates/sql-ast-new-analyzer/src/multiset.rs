@@ -3,8 +3,8 @@
 //!
 //! This is the layer the [`Binder`]/[`TypeDeriver`] split exists for. A set
 //! operation types its branches *together* — one output column takes a single
-//! type across every operand — so the whole tree is bound first and types are
-//! derived once, at its root. The walk flips
+//! type across every operand, unified level by level — so the whole tree is
+//! bound first and types are derived once, at its root. The walk flips
 //! [`postderive`](crate::TypeSystemCtx::postderive) on the way in to
 //! hold derivation back until the tree is complete; a statement that is not an
 //! operation derives its types right away.
@@ -16,12 +16,12 @@
 use smol_str::format_smolstr;
 
 use sql_ast_new_nodes::error::AstResult;
-use sql_ast_new_nodes::expr::{ExprInner, ValuesRow};
+use sql_ast_new_nodes::expr::{Expr, ExprInner, LiteralKind, ValuesRow};
 use sql_ast_new_nodes::multiset::{
     Cte, Ctes, MultisetInner, MultisetStmt, Operation, OrderBy, OrderByElement, ValuesStmt,
 };
 use sql_ast_new_nodes::scope::FrameView;
-use sql_ast_new_nodes::select::SelectStmt;
+use sql_ast_new_nodes::select::{ProjectionExpr, SelectStmt};
 use sql_ast_new_nodes::table_expression::OrdrByGrpByElem;
 use sql_ast_new_nodes::window::NamedWindows;
 use sql_ast_new_nodes::{Analyzed, NamedEntity, Raw};
@@ -32,7 +32,8 @@ use sql_type_system::expr::Type as TypeSystemType;
 
 use crate::{
     analyze_err, duplicated_name, frame::Stage, frame::Stmt, semantic_err, Analyzer, AnalyzerCtx,
-    AstTypeReport, Binder, ExprTypeDeriver, FinishingScope, TypeDeriver, TypeSystem,
+    AstTypeExpr, AstTypeExprKind, AstTypeReport, Binder, ExprTypeDeriver, FinishingScope,
+    TypeDeriver, TypeSystem,
 };
 
 impl<'q> Analyzer<'q> for MultisetStmt<'q, Raw> {
@@ -253,7 +254,7 @@ impl TypeDeriver for MultisetStmt<'_, Analyzed> {
         // because usually former ones represont more complex type requirements.
 
         // Transpose statements projection elements in order to
-        // derive them as homogeneous expressions.
+        // type each column across the operands, see `level_type`.
         // For instance in query `SELECT 1, 2 UNION SELECT '1', '2'`
         // Original `proj_exprs` is `[[1, 2], ['1', '2']]`
         // we transform them into `[[1, '1'], [2, '2']]`
@@ -261,20 +262,14 @@ impl TypeDeriver for MultisetStmt<'_, Analyzed> {
         // so its rows unify column by column under the same rule.
         let proj = type_system.take_transposed_projs();
 
-        // How the failed unification names its clause. A set operation over
-        // VALUES flattens the rows into the branch groups, so a mismatch
-        // between two rows of one VALUES branch is reported as the operation's
-        // — a divergence from PostgreSQL, which unifies each VALUES first.
-        let homogeneous_ctx = match inner {
-            MultisetInner::Values(_) => "VALUES",
-            MultisetInner::Select(_) => "SELECT",
-            MultisetInner::Operation(oper) => oper.op.as_str(),
-        };
-
-        for attrs in proj {
-            type_system
-                .analyzer
-                .analyze_homogeneous_exprs(homogeneous_ctx, &attrs, None)?;
+        for (col, attrs) in proj.iter().enumerate() {
+            let mut pending = Vec::new();
+            // Only a lone SELECT item can stay untyped up to here.
+            if level_type(inner, col, &mut attrs.iter(), &mut pending, type_system)?.is_none() {
+                type_system
+                    .analyzer
+                    .analyze_homogeneous_exprs("SELECT", &pending, None)?;
+            }
         }
 
         // Adjust expressions inside statement types according to type system report.
@@ -536,6 +531,93 @@ fn output_name_pos(names: &[Option<&str>], name: &str) -> Option<Option<usize>> 
         .map(|(pos, _)| pos);
     let first = matches.next()?;
     Some(matches.next().is_none().then_some(first))
+}
+
+/// Type column `col` of the set operation tree `inner` level by level, as
+/// PostgreSQL does: an operation unifies the types of its two operands only.
+///
+/// `leaves` yields the column's items of the SELECT operands and VALUES rows
+/// in order. A SELECT item is typed on its own, as in the old pipeline, and the
+/// plan unifies the operands at the set operation node: the common type pushed
+/// into an operand would run below its DISTINCT, GROUP BY or aggregate. The
+/// operands of a level are unified through typed placeholders for the same reason.
+///
+/// Like PostgreSQL's unknown literals, a SELECT operand's text literal, NULL or
+/// parameter without a client type goes to `pending` of the level directly
+/// above and takes its type; two such operands make the level text. A VALUES
+/// column is typed by its own rows. [`None`] for such a SELECT item.
+fn level_type<'e>(
+    inner: &MultisetInner<'_, Analyzed>,
+    col: usize,
+    leaves: &mut impl Iterator<Item = &'e AstTypeExpr>,
+    pending: &mut Vec<&'e AstTypeExpr>,
+    type_system: &mut TypeSystem,
+) -> AstResult<Option<TypeSystemType>> {
+    let mut next_leaf = || {
+        leaves
+            .next()
+            .ok_or_else(|| analyze_err(format_smolstr!("set operation operand item is missing")))
+    };
+    match inner {
+        MultisetInner::Select(select) => {
+            let item = next_leaf()?;
+            let expr = select
+                .select_list()
+                .0
+                .get(col)
+                .map(ProjectionExpr::expr_ref);
+            let params = type_system.analyzer.get_parameter_types();
+            if expr.is_some_and(|expr| expr.id() == item.id() && is_untyped(expr, params)) {
+                pending.push(item);
+                return Ok(None);
+            }
+            type_system.analyzer.analyze(item, None)?;
+            Ok(Some(type_system.analyzer.get_report().get_type(&item.id())))
+        }
+        MultisetInner::Values(values) => {
+            let items = (0..values.parts_ref().0.len())
+                .map(|_| next_leaf())
+                .collect::<AstResult<Vec<_>>>()?;
+            // The rows of one VALUES unify among themselves, untyped ones into text.
+            Ok(Some(
+                type_system
+                    .analyzer
+                    .analyze_homogeneous_exprs("VALUES", &items, None)?,
+            ))
+        }
+        MultisetInner::Operation(operation) => {
+            // This level's own list: an untyped operand never reaches a level higher up.
+            let pending = &mut Vec::new();
+            let left = level_type(&operation.left.inner, col, leaves, pending, type_system)?;
+            let right = level_type(&operation.right.inner, col, leaves, pending, type_system)?;
+            let placeholders: Vec<_> = [left, right]
+                .into_iter()
+                .flatten()
+                .map(|ty| {
+                    AstTypeExpr::new(type_system.inc_expr_id(), AstTypeExprKind::Reference(ty))
+                })
+                .collect();
+            let args: Vec<_> = placeholders.iter().chain(pending.drain(..)).collect();
+            Ok(Some(type_system.analyzer.analyze_homogeneous_exprs(
+                operation.op.as_str(),
+                &args,
+                None,
+            )?))
+        }
+    }
+}
+
+/// An item whose type comes from the set operation it is in.
+fn is_untyped(expr: &Expr<'_, Analyzed>, params: &[Option<TypeSystemType>]) -> bool {
+    match expr.inner_ref() {
+        ExprInner::Literal(lit) => matches!(lit.kind, LiteralKind::Text | LiteralKind::Null),
+        ExprInner::Parameter(param) => params
+            .get(usize::from(param.0) - 1)
+            .copied()
+            .flatten()
+            .is_none(),
+        _ => false,
+    }
 }
 
 /// Analyze a subquery: a nested statement, and therefore a boundary for

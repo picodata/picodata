@@ -73,6 +73,7 @@ use crate::table_expression::{
     AttributeView, From as FromClause, OrdrByGrpByElem, UniqueColumnRoute,
 };
 use crate::{Analyzed, AstState, Ident, NamedEntity, Raw};
+use sql_ir::ir::columns::unify_types;
 use sql_ir::ir::relation::Column;
 use sql_ir::ir::types::DerivedType;
 
@@ -150,7 +151,17 @@ impl<'q> MultisetStmt<'q, Analyzed> {
         match &self.inner {
             MultisetInner::Select(stmt) => Ok(stmt.result_types()),
             MultisetInner::Values(values) => Ok(values.result_types()),
-            MultisetInner::Operation(operation) => Ok(operation.left.result_types()?),
+            // Operands keep their own types; the plan unifies them at the set operation node.
+            MultisetInner::Operation(operation) => {
+                let right = operation.right.result_types()?;
+                operation
+                    .left
+                    .result_types()?
+                    .into_iter()
+                    .zip(right)
+                    .map(|(left, right)| Ok(unify_types(left, right)?))
+                    .collect()
+            }
         }
     }
 
@@ -158,7 +169,9 @@ impl<'q> MultisetStmt<'q, Analyzed> {
         match &self.inner {
             MultisetInner::Select(stmt) => Ok(stmt.result_columns_cnt()),
             MultisetInner::Values(values) => Ok(values.result_columns_cnt()),
-            MultisetInner::Operation(operation) => operation.left.result_columns_cnt(),
+            // Bind has checked both sides are equal; `right` is a leaf of a
+            // left-deep chain, while `left` is the rest of it.
+            MultisetInner::Operation(operation) => operation.right.result_columns_cnt(),
         }
     }
 
@@ -192,7 +205,12 @@ impl<'q> MultisetStmt<'q, Analyzed> {
     pub fn attribute(&self, pos: usize) -> Option<AttributeView<'q, '_>> {
         match &self.inner {
             MultisetInner::Select(stmt) => stmt.attribute(pos),
-            MultisetInner::Operation(operation) => operation.left.attribute(pos),
+            MultisetInner::Operation(operation) => {
+                let left = operation.left.attribute(pos)?;
+                let right = operation.right.attribute(pos)?;
+                let ty = unify_types(left.data_type(), right.data_type()).ok()?;
+                Some(AttributeView::SetOp(ty, left.name()))
+            }
             MultisetInner::Values(values) => values.attribute(pos),
         }
     }
@@ -636,6 +654,7 @@ impl<'q> Cte<'q, Analyzed> {
             match attr {
                 AttributeView::Expr(proj_expr, _) => AttributeView::Expr(proj_expr, name),
                 AttributeView::Column(col, _) => AttributeView::Column(col, name),
+                AttributeView::SetOp(ty, _) => AttributeView::SetOp(ty, name),
             }
         })
     }
@@ -736,6 +755,11 @@ impl<'q> ValuesStmt<'q, Analyzed> {
     #[allow(clippy::type_complexity)]
     pub fn parts_mut(&mut self) -> (&mut Vec<ValuesRow<'q, Analyzed>>, &mut Vec<Column>) {
         (&mut self.rows, &mut self.columns)
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn parts_ref(&self) -> (&Vec<ValuesRow<'q, Analyzed>>, &Vec<Column>) {
+        (&self.rows, &self.columns)
     }
 
     /// Output column types, one per derived column.

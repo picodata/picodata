@@ -230,7 +230,8 @@ fn unify_columns<'p>(
     })
 }
 
-fn unify_types(left: DerivedType, right: DerivedType) -> Result<DerivedType, SbroadError> {
+/// The type of a set operation column built from `left` and `right` operand columns.
+pub fn unify_types(left: DerivedType, right: DerivedType) -> Result<DerivedType, SbroadError> {
     let unified = calculate_unified_types([left, right].into_iter().map(std::iter::once))?;
     Ok(unified
         .first()

@@ -545,7 +545,7 @@ fn join_using_merged_type_correlated_reference() {
 #[test]
 fn join_using_merged_type_under_set_operation() {
     let query = "SELECT a FROM (SELECT 1 a) x INNER JOIN (SELECT 1.5 a) y USING (a) UNION SELECT 2";
-    insta::assert_snapshot!(analyzed(query, &[]), @"(SELECT CAST(x.a AS decimal) FROM (SELECT 1::int AS a) AS x INNER JOIN (SELECT 1.5::decimal AS a) AS y USING (a)) UNION (SELECT CAST(2 AS decimal))");
+    insta::assert_snapshot!(analyzed(query, &[]), @"(SELECT CAST(x.a AS decimal) FROM (SELECT 1::int AS a) AS x INNER JOIN (SELECT 1.5::decimal AS a) AS y USING (a)) UNION (SELECT 2::int)");
 }
 
 /// Grouping by the merged column does not group the column it merges.

@@ -1003,10 +1003,9 @@ fn bind_exists<'q, M: Metadata>(
     let (is_not, subquery) = exists.into_parts();
     let analyzed_subquery = analyze_subquery(*subquery, meta)?;
     // The engine's EXISTS only checks that its child is a
-    // subquery and reports boolean; result types are deliberately
-    // not queried — `result_types()` fails for set-operation
-    // bodies, and EXISTS over a UNION must work. No single-column
-    // restriction. `NOT` does not affect typing.
+    // subquery and reports boolean, so the subquery's result types
+    // are not needed. No single-column restriction. `NOT` does not
+    // affect typing.
     let synthetic_id = meta.type_system.inc_expr_id();
     let subquery_t_expr = AstTypeExpr::new(synthetic_id, AstTypeExprKind::Subquery(Vec::new()));
     Ok((
