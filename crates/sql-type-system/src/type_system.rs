@@ -899,27 +899,30 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         // taking into account the costs and the desired type.
 
         // Start with overloads returning desired type.
-        let mut best_matches = select_best_overloads(&resolved_overloads, Some(desired_type));
-        if best_matches.len() == 1 {
-            let (func, report) = best_matches.pop().unwrap();
+        let best_matches = select_best_overloads(&resolved_overloads, Some(desired_type));
+        if let [idx] = best_matches[..] {
+            let (func, report) = resolved_overloads.swap_remove(idx);
             return Ok(Some((func.return_type, report)));
         }
 
         // If the previous step didn't succeed, ignore desired type.
-        let mut best_matches = select_best_overloads(&resolved_overloads, None);
-        if best_matches.len() == 1 {
-            let (func, report) = best_matches.pop().unwrap();
+        let best_matches = select_best_overloads(&resolved_overloads, None);
+        if let [idx] = best_matches[..] {
+            let (func, report) = resolved_overloads.swap_remove(idx);
             return Ok(Some((func.return_type, report)));
         }
 
         // In case of ambiguity, select overload that returns a type that can be coerced
         // to other return types. By choosing the "weakest" type we allow the caller to coerce it
         // to a more suitable.
-        for (func, report) in &best_matches {
-            let return_type = func.return_type;
-            let mut other_types = best_matches.iter().map(|(f, _)| f.return_type);
+        for &idx in &best_matches {
+            let return_type = resolved_overloads[idx].0.return_type;
+            let mut other_types = best_matches
+                .iter()
+                .map(|&other| resolved_overloads[other].0.return_type);
             if other_types.all(|other| self.can_coerce(return_type, other)) {
-                return Ok(Some((return_type, report.clone())));
+                let (_, report) = resolved_overloads.swap_remove(idx);
+                return Ok(Some((return_type, report)));
             }
         }
 
@@ -1168,11 +1171,9 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             return Ok(Some(candidates.pop().unwrap()));
         }
 
-        for candidate in &candidates {
-            if candidate.0 == desired_type {
-                // TODO: ensure that there is only one such candidate
-                return Ok(Some(candidate.clone()));
-            }
+        if let Some(idx) = candidates.iter().position(|(ty, _)| *ty == desired_type) {
+            // TODO: ensure that there is only one such candidate
+            return Ok(Some(candidates.swap_remove(idx)));
         }
 
         // In case of ambiguity, try to find a type that can be coerced to other types.
@@ -1181,12 +1182,13 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         // This also helps to resolve expressions like `COALESCE(1.5::double, 2.5)` where
         // `double` expressions and `numeric` literals are mixed to `double` type, similar to
         // PostgreSQL.
-        for (ty, report) in &candidates {
+        let weakest = candidates.iter().position(|(ty, _)| {
             let mut other_types = candidates.iter().map(|(t, _)| t);
-            if other_types.all(|other| self.can_coerce(*ty, *other)) {
-                // TODO: ensure that there is only one such candidate
-                return Ok(Some((*ty, report.clone())));
-            }
+            other_types.all(|other| self.can_coerce(*ty, *other))
+        });
+        if let Some(idx) = weakest {
+            // TODO: ensure that there is only one such candidate
+            return Ok(Some(candidates.swap_remove(idx)));
         }
 
         Ok(None)
@@ -1223,14 +1225,14 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     }
 }
 
-/// Select overloads that have the lowest cost, i.e. require less coercions.
-fn select_best_overloads<'a, Id: Hash + Eq + Clone>(
-    candidates: &[(&'a Function, TypeReport<Id>)],
+/// Select indices of overloads that have the lowest cost, i.e. require less coercions.
+fn select_best_overloads<Id: Hash + Eq + Clone>(
+    candidates: &[(&Function, TypeReport<Id>)],
     required_type: Option<Type>,
-) -> Vec<(&'a Function, TypeReport<Id>)> {
+) -> Vec<usize> {
     let mut min_cost = usize::MAX;
     let mut best_matches = Vec::new();
-    for (func, report) in candidates {
+    for (idx, (func, report)) in candidates.iter().enumerate() {
         if let Some(reqired_type) = required_type {
             if func.return_type != reqired_type {
                 continue;
@@ -1240,11 +1242,11 @@ fn select_best_overloads<'a, Id: Hash + Eq + Clone>(
         use std::cmp::Ordering;
         match report.cost().cmp(&min_cost) {
             Ordering::Less => {
-                best_matches = vec![(*func, report.clone())];
+                best_matches = vec![idx];
                 min_cost = report.cost();
             }
             Ordering::Equal => {
-                best_matches.push((*func, report.clone()));
+                best_matches.push(idx);
             }
             Ordering::Greater => (),
         }
