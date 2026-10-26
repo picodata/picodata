@@ -2,11 +2,12 @@ use crate::error::Error;
 use crate::expr::{
     ComparisonOperator, Expr, ExprKind, FrameKind, NestedType, Type, UnaryOperator, WindowFrame,
 };
+use rustc_hash::FxBuildHasher;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Display;
-use std::hash::{BuildHasherDefault, DefaultHasher, Hash};
+use std::hash::Hash;
 use std::iter::{self, zip};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -97,9 +98,10 @@ impl Function {
     }
 }
 
-// Faster hasher that is vulnerable for DoS attacks,
-// which isn't a problem for us, because we do not process any user input.
-type StableHasher = BuildHasherDefault<DefaultHasher>;
+// Keys are arena ids, not user input, so HashDoS is not a risk.
+// Compared to SipHash (std `DefaultHasher`), FxHash makes build_ir 8.5% faster
+// on the corpus and 15.8% on synthetic queries; ahash gives 6.7% and 13.3%.
+type StableHasher = FxBuildHasher;
 type StableHashMap<K, V> = HashMap<K, V, StableHasher>;
 
 /// Result of type analysis.

@@ -5,6 +5,7 @@ edition.workspace = true
 license-file.workspace = true
 
 [dependencies]
+rustc-hash = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
 

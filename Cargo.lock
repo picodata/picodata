@@ -4070,6 +4070,7 @@ name = "sql-type-system"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "rustc-hash 2.1.2",
  "smallvec",
  "thiserror 2.0.18",
 ]
