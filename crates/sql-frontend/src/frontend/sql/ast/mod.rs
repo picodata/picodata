@@ -800,12 +800,12 @@ where
         .split_first()
         .expect("table function must have a name");
     let name = parse_identifier(ast, *name_id)?;
-    if find_table_function(&name).is_none() {
+    let Some(table_function) = find_table_function(&name) else {
         return Err(SbroadError::Other(format_smolstr!(
             "table function {} does not exist",
             to_user(&name)
         )));
-    }
+    };
 
     let referred_relation_ids = match lateral_source {
         Some(ast_id) => vec![map.get(ast_id)?],
@@ -844,9 +844,17 @@ where
         plan,
         &worker.subquery_replaces,
     )?;
-    check_series_args(plan, type_analyzer, &function.name, &args)?;
 
-    let scan_id = plan.add_scan_function(call_id, with_ordinality)?;
+    check_series_args(plan, type_analyzer, &function.name, &args)?;
+    let Expression::ScalarFunction(ScalarFunction { func_type, .. }) =
+        plan.get_expression_node(call_id)?
+    else {
+        unreachable!("a table function is a scalar function call");
+    };
+    let report = type_analyzer.get_report();
+    let column_types =
+        table_function.column_types(*func_type, args.iter().map(|arg| report.get_type(arg)));
+    let scan_id = plan.add_scan_function(call_id, column_types, with_ordinality)?;
     plan.fix_subquery_rows(worker, scan_id)?;
     map.add(node_id, scan_id);
     Ok(())

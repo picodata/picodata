@@ -7,9 +7,9 @@ use crate::ir::columns::RelColumn;
 use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
     Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, LetVarRef, Motion, MutNode,
-    NodeId, OrderBy, Projection, Reference, ReferenceAsteriskSource, ReferenceTarget, ScanCte,
-    ScanFunction, ScanRelation, ScanSubQuery, Selection, SubQueryReference, Union, UnionAll,
-    Update, Values,
+    NodeId, OrderBy, Projection, Reference, ReferenceAsteriskSource, ReferenceTarget,
+    ScalarFunction, ScanCte, ScanFunction, ScanRelation, ScanSubQuery, Selection,
+    SubQueryReference, Union, UnionAll, Update, Values,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
@@ -1696,18 +1696,24 @@ impl Plan {
     pub fn add_scan_function(
         &mut self,
         function: NodeId,
+        column_types: Vec<DerivedType>,
         with_ordinality: bool,
     ) -> Result<NodeId, SbroadError> {
         let scan = ScanFunction {
             alias: None,
             function,
             subqueries: Vec::new(),
+            column_types: column_types.into_boxed_slice(),
             with_ordinality,
             distribution: None,
         };
         debug_assert!(
-            self.table_function_of(&scan).is_ok(),
-            "the caller checks the table function registry"
+            matches!(
+                (self.table_function_of(&scan), self.get_expression_node(function)),
+                (Ok(call), Ok(Expression::ScalarFunction(ScalarFunction { children, .. })))
+                    if call.function.column_count(children.len()) == scan.column_types.len()
+            ),
+            "the caller checks the table function registry and types every column"
         );
         self.add_relational(scan.into())
     }
@@ -2222,7 +2228,7 @@ impl Plan {
             Relational::ScanCte(ScanCte { alias, .. }) => Ok(Some(alias)),
             Relational::ScanFunction(scan) => match scan.alias.as_deref() {
                 Some(alias) => Ok(Some(alias)),
-                None => Ok(Some(self.table_function_of(scan)?.0.name)),
+                None => Ok(Some(self.table_function_of(scan)?.function.name)),
             },
             Relational::ScanSubQuery(ScanSubQuery { alias, .. })
             | Relational::Motion(Motion { alias, .. }) => {

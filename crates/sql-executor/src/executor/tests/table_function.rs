@@ -47,6 +47,23 @@ fn with_ordinality_sql() {
     "#);
 }
 
+// unnest of several arrays goes to tarantool as it is. Its columns have
+// the tarantool names VALUE_1, VALUE_2 in the local SQL.
+#[test]
+fn unnest_of_several_arrays_sql() {
+    let info = dispatched(
+        r#"SELECT u.value_2, u.ordinality
+           FROM unnest(ARRAY[1, 2], ARRAY['a']) WITH ORDINALITY u
+           WHERE u.value_1 = 2"#,
+    );
+    assert_snapshot!(info, @r#"
+    Any [Integer(1), Integer(2), String("a"), Integer(2)]
+    SELECT "u"."VALUE_2"::text as "value_2", "u"."ORDINALITY" as "ordinality"
+    FROM unnest ([ $1::int, $2::int ], [ $3::text ]) WITH ORDINALITY as "u"
+    WHERE "u"."VALUE_1"::int = $4::int
+    "#);
+}
+
 // The columns of a table function have the tarantool names in the local SQL.
 // Tarantool does not know the type of the elements of an array column, so
 // the elements are cast to the type that the planner gives them.
@@ -254,5 +271,29 @@ fn cte_over_function_sql() {
     INNER JOIN (SELECT "COL_1"
     FROM "_tmp_0_0136") as "c2"
     ON "c1"."COL_1" = "c2"."COL_1"
+    "#);
+}
+
+// A CTE over unnest of several arrays reads the numbered tarantool names of
+// its columns, and the virtual table has a column for each array.
+#[test]
+fn cte_over_unnest_of_several_arrays_sql() {
+    let (first, second) = get_two_stage_sql(
+        r#"WITH c AS (SELECT * FROM unnest(ARRAY[1], ARRAY[2]))
+           SELECT * FROM c c1 JOIN c c2 ON c1.value_1 = c2.value_2"#,
+        2,
+        None,
+    );
+    assert_snapshot!(first, @r#"
+    SELECT "unnest"."VALUE_1"::int as "value_1", "unnest"."VALUE_2"::int as "value_2"
+    FROM unnest ([ $1::int ], [ $2::int ]) as "unnest"
+    "#);
+    assert_snapshot!(second, @r#"
+    SELECT *
+    FROM (SELECT "COL_1","COL_2"
+    FROM "_tmp_0_0136") as "c1"
+    INNER JOIN (SELECT "COL_1","COL_2"
+    FROM "_tmp_0_0136") as "c2"
+    ON "c1"."COL_1" = "c2"."COL_2"
     "#);
 }

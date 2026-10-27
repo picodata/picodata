@@ -233,6 +233,50 @@ fn unnest_of_unknown_type_defaults_to_text() {
     );
 }
 
+// unnest of several arrays is one scan with a column for each array, with
+// the element type of the array.
+#[test]
+fn unnest_of_several_arrays() {
+    insta::assert_snapshot!(
+        explain("SELECT * FROM unnest(ARRAY[1, 2], ARRAY['a'], NULL) WITH ORDINALITY", vec![]),
+        @"
+    projection (unnest.value_1::int -> value_1, unnest.value_2::text -> value_2, unnest.value_3::text -> value_3, unnest.ordinality::int -> ordinality)
+      scan unnest(ARRAY[1::int, 2::int], ARRAY['a'::text], NULL::unknown) with ordinality
+    "
+    );
+
+    // The arrays can come from the left side of a join.
+    insta::assert_snapshot!(explain(
+        r#"SELECT u.value_2 FROM "arr_t" JOIN unnest("arr_t"."b", "arr_t"."b") u ON u.value_1 > 1"#,
+        vec![],
+    ), @"
+    projection (u.value_2::int -> value_2)
+      join on (u.value_1::int > 1::int)
+        scan arr_t
+        scan unnest(arr_t.b::int[], arr_t.b::int[]) -> u
+    ");
+}
+
+// An array of unnest of several arrays can come from a subquery, which is
+// moved to every instance as for any argument.
+#[test]
+fn unnest_of_several_arrays_from_subquery() {
+    insta::assert_snapshot!(explain(
+        r#"SELECT u.value_1, u.value_2
+           FROM unnest((SELECT "b" FROM "arr_t" WHERE "a" = 1), ARRAY['x']) u"#,
+        vec![],
+    ), @"
+    projection (u.value_1::int -> value_1, u.value_2::text -> value_2)
+      scan unnest(ROW($0), ARRAY['x'::text]) -> u
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (arr_t.b::int[] -> b)
+            selection (arr_t.a::int = 1::int)
+              scan arr_t
+    ");
+}
+
 // The errors for wrong calls.
 #[test]
 fn errors() {
@@ -260,15 +304,21 @@ fn errors() {
              JOIN generate_series(s.d, 3) g ON true",
             "could not resolve function overload for generate_series(double, numeric)",
         ),
-        // unnest gives the element type of its argument, so the argument
-        // must be one array.
+        // unnest gives the element type of each argument, so every
+        // argument must be an array.
         (
             "SELECT * FROM unnest(1)",
             "could not resolve function overload for unnest(int)",
         ),
         (
-            "SELECT * FROM unnest(ARRAY[1], ARRAY[2])",
-            "could not resolve function overload for unnest(int[], int[])",
+            "SELECT * FROM unnest(ARRAY[1], 2)",
+            "could not resolve function overload for unnest(int[], int)",
+        ),
+        // The columns of several arrays are numbered, so there is no
+        // column `value`.
+        (
+            "SELECT value FROM unnest(ARRAY[1], ARRAY[2])",
+            r#"column with name "value" not found"#,
         ),
         (
             "SELECT * FROM generate_series(1, count(*))",
@@ -328,5 +378,13 @@ fn errors() {
     assert_eq!(
         err.to_string(),
         "could not resolve function overload for generate_series(double, numeric)"
+    );
+
+    // Tarantool takes at most 127 arguments of a function.
+    let sql = format!("SELECT * FROM unnest({})", vec!["ARRAY[1]"; 128].join(", "));
+    let err = expect_sql_to_ir_error(&sql, &[]);
+    assert_eq!(
+        err.to_string(),
+        "unnest takes at most 127 arguments, got 128"
     );
 }

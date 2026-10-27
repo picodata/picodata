@@ -636,36 +636,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 report.report(&expr.id, ty);
                 Ok(report)
             }
-            ExprKind::Unnest(ref args) => {
-                let [array] = args.as_slice() else {
-                    return Err(self.could_not_resolve_function_overload_error(
-                        FunctionKind::Scalar,
-                        "unnest",
-                        args,
-                    ));
-                };
-
-                // The desired type is the element type of the array. An array
-                // is not an element, and `any` cannot be an element of a
-                // desired array, so the argument then gets the default hint:
-                // an argument of unknown type, as `unnest($1)` or `unnest(NULL)`,
-                // is `text[]`. PostgreSQL rejects it instead.
-                let desired_type = match NestedType::try_from(desired_type) {
-                    Ok(nested) if nested != NestedType::Any => Type::Array(nested),
-                    _ => Type::Array(NestedType::Text),
-                };
-
-                let mut report = self.analyze(array, desired_type)?;
-                let Type::Array(nested) = report.get_type(&array.id) else {
-                    return Err(self.could_not_resolve_function_overload_error(
-                        FunctionKind::Scalar,
-                        "unnest",
-                        args,
-                    ));
-                };
-                report.report(&expr.id, Type::from(nested));
-                Ok(report)
-            }
+            ExprKind::Unnest(ref args) => self.analyze_unnest(expr, args, desired_type),
             ExprKind::Coalesce(ref args) => {
                 let (ty, mut report) =
                     self.analyze_homogeneous_exprs("COALESCE", args, desired_type)?;
@@ -781,6 +752,81 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 Err(Error::RowValueMisused)
             }
             ExprKind::Array(args) => self.analyze_array_literal(&expr.id, args, desired_type),
+        }
+    }
+
+    /// Analyze the call `expr` of `unnest`: one or more arrays. The call has
+    /// the element type of the first array.
+    fn analyze_unnest(
+        &mut self,
+        expr: &Expr<Id>,
+        args: &[Expr<Id>],
+        desired_type: Type,
+    ) -> Result<TypeReport<Id>, Error> {
+        // Tarantool passes at most this many arguments to a function
+        // (`SQL_MAX_FUNCTION_ARG`) and would reject the call on a storage.
+        const MAX_ARGS: usize = 127;
+        if args.len() > MAX_ARGS {
+            return Err(Error::TooManyArguments("unnest", MAX_ARGS, args.len()));
+        }
+
+        let mut report = TypeReport::new();
+        let mut nested_types = vec![None; args.len()];
+        // An untyped parameter takes the type that another argument gives
+        // it, as `$1` in `unnest($1::int[], $1)`, so the other arguments go
+        // first.
+        let (params, others): (Vec<_>, Vec<_>) = args
+            .iter()
+            .enumerate()
+            .partition(|(_, array)| self.untyped_parameter(array).is_some());
+        for (pos, array) in others.into_iter().chain(params) {
+            nested_types[pos] = self.analyze_unnest_argument(array, desired_type, &mut report)?;
+        }
+        let first = nested_types.first().copied().flatten();
+        let Some(first) = first.filter(|_| nested_types.iter().all(Option::is_some)) else {
+            return Err(self.could_not_resolve_function_overload_error(
+                FunctionKind::Scalar,
+                "unnest",
+                args,
+            ));
+        };
+        report.report(&expr.id, Type::from(first));
+        Ok(report)
+    }
+
+    /// Analyze an array argument of `unnest` and give its element type, or
+    /// `None` for an argument that is not an array. The desired type is the
+    /// element type of the array, or, for an untyped parameter, the type
+    /// that the other arguments in `report` give it.
+    fn analyze_unnest_argument(
+        &mut self,
+        array: &Expr<Id>,
+        desired_type: Type,
+        report: &mut TypeReport<Id>,
+    ) -> Result<Option<NestedType>, Error> {
+        let param_type = self.untyped_parameter(array).and_then(|idx| {
+            let (_, ty) = report.params.iter().find(|(i, _)| *i == idx)?;
+            Some(*ty)
+        });
+        let desired_type = match (param_type, NestedType::try_from(desired_type)) {
+            (Some(param_type), _) => param_type,
+            (None, Ok(nested)) if nested != NestedType::Any => Type::Array(nested),
+            _ => Type::Array(NestedType::Text),
+        };
+        let array_report = self.analyze(array, desired_type)?;
+        let array_type = array_report.get_type(&array.id);
+        report.extend(array_report);
+        Ok(match array_type {
+            Type::Array(nested) => Some(nested),
+            _ => None,
+        })
+    }
+
+    /// The index of `expr` if it is a parameter without a type yet.
+    fn untyped_parameter(&self, expr: &Expr<Id>) -> Option<u16> {
+        match expr.kind {
+            ExprKind::Parameter(idx) if self.get_parameter_type(idx).is_none() => Some(idx),
+            _ => None,
         }
     }
 

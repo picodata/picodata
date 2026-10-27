@@ -33,7 +33,7 @@ scan_table  ::= (table ('AS'? name)? ('INDEXED' 'BY' index)?)
 scan        ::= (table ('AS'? name)? ('INDEXED BY' index)? | '(' dql ')' ('AS'? name)? | table_function ('AS'? name)? )
 table_function ::= generate_series | unnest
 generate_series ::= 'GENERATE_SERIES' '(' expression ',' expression (',' expression)? ')' ('WITH' 'ORDINALITY')?
-unnest      ::= 'UNNEST' '(' expression ')' ('WITH' 'ORDINALITY')?
+unnest      ::= 'UNNEST' '(' expression (',' expression)* ')' ('WITH' 'ORDINALITY')?
 expression  ::= (('NOT'* (
                     (table '.')? column
                     | abs

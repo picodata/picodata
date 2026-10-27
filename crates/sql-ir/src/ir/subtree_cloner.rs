@@ -178,6 +178,7 @@ impl SubtreeCloner {
                 alias: _,
                 function: filter,
                 subqueries: _,
+                column_types: _,
                 with_ordinality: _,
                 distribution: _,
             }) => {

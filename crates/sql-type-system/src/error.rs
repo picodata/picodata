@@ -112,6 +112,9 @@ pub enum Error {
     #[error("nested arrays are not supported")]
     NestedArraysAreNotSupported,
 
+    #[error("{0} takes at most {1} arguments, got {2}")]
+    TooManyArguments(&'static str, usize, usize),
+
     #[error("{0}")]
     Other(String),
 }

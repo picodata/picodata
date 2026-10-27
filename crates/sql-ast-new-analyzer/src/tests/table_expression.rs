@@ -109,6 +109,22 @@ fn table_function_name() {
     insta::assert_snapshot!(analyzed(query, &[]), @"SELECT unnest.value::text FROM unnest(ARRAY['a'::text, 'b'::text]::text[])");
 }
 
+/// unnest of several arrays has a column for each array, with the type of its
+/// elements, and `ordinality` last. NULL and an untyped parameter are `text[]`.
+#[test]
+fn table_function_several_arrays() {
+    let query = "SELECT * FROM unnest(ARRAY[1], ARRAY['a'], NULL, $1) WITH ORDINALITY u";
+    insta::assert_snapshot!(analyzed(query, &[DerivedType::unknown()]), @"SELECT u.value_1::int, u.value_2::text, u.value_3::text, u.value_4::text, u.ordinality::int FROM unnest(ARRAY[1::int]::int[], ARRAY['a'::text]::text[], NULL::text[], $1::text[]) WITH ORDINALITY AS u");
+}
+
+/// An untyped parameter in several arrays takes the type that another array
+/// gives it.
+#[test]
+fn table_function_repeated_parameter() {
+    let query = "SELECT * FROM unnest($1, $1::int[])";
+    insta::assert_snapshot!(analyzed(query, &[DerivedType::unknown()]), @"SELECT unnest.value_1::int, unnest.value_2::int FROM unnest($1::int[], $1::int[])");
+}
+
 /// The arguments of a joined function see the FROM entries before it.
 #[test]
 fn table_function_lateral() {
@@ -132,7 +148,8 @@ fn table_function_errors() {
         "SELECT * FROM unnest(ARRAY[(SELECT pico_instance_uuid())])",
         "SELECT * FROM generate_series(1, t3.a) CROSS JOIN t3",
         "SELECT * FROM unnest(1)",
-        "SELECT * FROM unnest(ARRAY[1], ARRAY[2])",
+        "SELECT * FROM unnest(ARRAY[1], 2)",
+        "SELECT value FROM unnest(ARRAY[1], ARRAY[2])",
         "SELECT unnest(ARRAY[1, 2])",
         "SELECT * FROM generate_series(1, unnest(ARRAY[2]))",
     ]
@@ -143,6 +160,9 @@ fn table_function_errors() {
     let double = [DerivedType::new(UnrestrictedType::Double)];
     let query = "SELECT * FROM generate_series($1, 3)";
     errors.push(analyze_error(query, &double));
+    // Tarantool takes at most 127 arguments of a function.
+    let query = format!("SELECT * FROM unnest({})", vec!["ARRAY[1]"; 128].join(", "));
+    errors.push(analyze_error(&query, &[]));
     insta::assert_snapshot!(errors.join("\n"), @r#"
     semantic error: table function "no_such_function" does not exist
     could not resolve function overload for generate_series(int)
@@ -153,10 +173,12 @@ fn table_function_errors() {
     semantic error: volatile functions are not allowed in functions in FROM
     semantic error: cannot resolve column reference 't3.a'
     could not resolve function overload for unnest(int)
-    could not resolve function overload for unnest(int[], int[])
+    could not resolve function overload for unnest(int[], int)
+    semantic error: cannot resolve column reference 'value'
     semantic error: table function "unnest" can only be used in FROM
     semantic error: table function "unnest" can only be used in FROM
     could not resolve function overload for generate_series(double, numeric)
+    unnest takes at most 127 arguments, got 128
     "#);
 }
 

@@ -358,6 +358,125 @@ ORDER BY 1;
 -- EXPECTED:
 1, true, 2, false
 
+-- TEST: unnest-of-several-arrays
+-- SQL:
+SELECT * FROM unnest(ARRAY[1, 2, 3], ARRAY['a', 'b']) WITH ORDINALITY ORDER BY 3;
+-- EXPECTED:
+1, 'a', 1,
+2, 'b', 2,
+3, None, 3
+
+-- TEST: unnest-of-null-and-array
+-- SQL:
+SELECT * FROM unnest(NULL, ARRAY[true]);
+-- EXPECTED:
+None, True
+
+-- TEST: unnest-of-several-arrays-arithmetic
+-- SQL:
+SELECT u.value_1, u.value_1 + u.value_2 FROM unnest(ARRAY[1, 2], ARRAY[10]) u ORDER BY 1;
+-- EXPECTED:
+1, 11,
+2, None
+
+-- TEST: unnest-of-several-arrays-and-parameter
+-- SQL:
+SELECT * FROM unnest(ARRAY[1, 2], $1) ORDER BY 1;
+-- PARAMS:
+['x']
+-- EXPECTED:
+1, 'x',
+2, None
+
+-- TEST: unnest-of-a-repeated-parameter
+-- SQL:
+SELECT * FROM unnest($1::int[], $1) ORDER BY 1;
+-- PARAMS:
+[1, 2]
+-- EXPECTED:
+1, 1,
+2, 2
+
+-- TEST: lateral-unnest-of-several-arrays
+-- SQL:
+SELECT t.id, u.value_1, u.value_2, u.ordinality
+FROM t CROSS JOIN unnest(t.arr, ARRAY[1]) WITH ORDINALITY u
+ORDER BY 1, 4;
+-- EXPECTED:
+1, 10, 1, 1,
+1, 20, None, 2,
+2, None, 1, 1,
+3, None, 1, 1,
+4, 30, 1, 1
+
+-- TEST: lateral-left-join-unnest-of-several-arrays
+-- SQL:
+SELECT t.id, u.value_1, u.value_2, u.ordinality
+FROM t LEFT JOIN unnest(t.arr, ARRAY[5]) WITH ORDINALITY u ON u.value_1 > 10
+ORDER BY 1;
+-- EXPECTED:
+1, 20, None, 2,
+2, None, None, None,
+3, None, None, None,
+4, 30, 5, 1
+
+-- TEST: unnest-of-several-arrays-longer-second
+-- SQL:
+SELECT * FROM unnest(ARRAY[1], ARRAY['a', 'b', 'c']) ORDER BY 2;
+-- EXPECTED:
+1, 'a',
+None, 'b',
+None, 'c'
+
+-- TEST: unnest-of-several-empty-arrays
+-- SQL:
+SELECT * FROM unnest(ARRAY[], NULL);
+-- EXPECTED:
+
+-- TEST: join-of-unnests-of-several-arrays-by-ordinality
+-- SQL:
+SELECT a.value_1, a.value_2, b.value_2
+FROM unnest(ARRAY[1, 2, 3], ARRAY['a', 'b']) WITH ORDINALITY a
+JOIN unnest(ARRAY[10, 20], ARRAY['x', 'y', 'z']) WITH ORDINALITY b
+  ON a.ordinality = b.ordinality;
+-- UNORDERED:
+1, 'a', 'x',
+2, 'b', 'y',
+3, None, 'z'
+
+-- TEST: subquery-in-arguments-of-unnest-of-several-arrays
+-- SQL:
+SELECT * FROM unnest((SELECT arr FROM t WHERE id = 1), ARRAY['a']) ORDER BY 1;
+-- EXPECTED:
+10, 'a',
+20, None
+
+-- TEST: unnest-of-several-arrays-in-subquery-filter
+-- SQL:
+SELECT id FROM t
+WHERE id IN (SELECT value_2 FROM unnest(ARRAY['a', 'b'], ARRAY[1, 4]))
+ORDER BY 1;
+-- EXPECTED:
+1, 4
+
+-- TEST: insert-from-unnest-of-several-arrays
+-- SQL:
+CREATE TABLE pairs (id INT PRIMARY KEY, name TEXT);
+INSERT INTO pairs SELECT value_1, value_2 FROM unnest(ARRAY[1, 2], ARRAY['a']);
+
+-- TEST: select-inserted-from-unnest-of-several-arrays
+-- SQL:
+SELECT * FROM pairs ORDER BY 1;
+-- EXPECTED:
+1, 'a',
+2, None
+
+-- TEST: unnest-of-several-arrays-has-no-value-column
+-- SQL:
+SELECT value FROM unnest(ARRAY[1], ARRAY[2]);
+-- ERROR:
+column with name "value" not found
+
 -- TEST: lateral-reference-to-the-right
 -- SQL:
 SELECT * FROM generate_series(1, t.n) g JOIN t ON true;
@@ -375,11 +494,11 @@ table function "no_such_function" does not exist
 SELECT * FROM unnest(NULL);
 -- EXPECTED:
 
--- TEST: unnest-of-two-arrays
+-- TEST: unnest-of-non-array-argument
 -- SQL:
-SELECT * FROM unnest(ARRAY[1], ARRAY[2]);
+SELECT * FROM unnest(ARRAY[1], 2);
 -- ERROR:
-could not resolve function overload for unnest\(int\[\], int\[\]\)
+could not resolve function overload for unnest\(int\[\], int\)
 
 -- TEST: unnest-of-empty-array
 -- SQL:

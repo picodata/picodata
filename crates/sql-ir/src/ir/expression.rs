@@ -891,6 +891,7 @@ impl<'plan> Comparator<'plan> {
                 with_ordinality: l_with_ordinality,
                 alias: _,
                 subqueries: _,
+                column_types: _,
                 distribution: _,
             }) => {
                 if let Relational::ScanFunction(ScanFunction {

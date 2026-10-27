@@ -9,6 +9,7 @@ def test_table_function_column_names(cluster: Cluster):
 
     queries = [
         ("SELECT * FROM generate_series(1, 2) WITH ORDINALITY", ["value", "ordinality"]),
+        ("SELECT * FROM unnest(ARRAY[1], ARRAY['a']) WITH ORDINALITY", ["value_1", "value_2", "ordinality"]),
         ("SELECT g.value FROM generate_series(1, 2) g", ["value"]),
         ("SELECT * FROM (SELECT * FROM generate_series(1, 2)) s", ["value"]),
         ("SELECT value, count(*) FROM generate_series(1, 2) GROUP BY value", ["value", "col_1"]),

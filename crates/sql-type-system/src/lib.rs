@@ -1108,23 +1108,117 @@ mod tests {
         assert_eq!(analyzer.get_report().get_type(&e.id), Integer);
     }
 
-    // unnest takes one array. The error names the arguments as for any
-    // overload.
+    // unnest takes one or more arrays and has the element type of the
+    // first. Each argument gets the analysis of the argument of unnest, so
+    // an argument of unknown type is `text[]`.
     #[test]
-    fn unnest_takes_one_array() {
+    fn unnest_of_several_arrays() {
         let type_system = default_type_system();
 
-        let args = vec![array(vec![lit(Integer)]), array(vec![lit(Text)])];
+        let args = vec![
+            array(vec![lit(Integer)]),
+            reference(arr(NestedType::Boolean)),
+            param("$1"),
+            null(),
+        ];
+        let arg_ids: Vec<_> = args.iter().map(|arg| arg.id).collect();
         let e = expr(ExprKind::Unnest(args));
         let mut analyzer = TypeAnalyzer::new(&type_system);
-        let err = analyzer.analyze(&e, None).unwrap_err();
+        analyzer.analyze(&e, None).unwrap();
+        let report = analyzer.get_report();
+        assert_eq!(report.get_type(&e.id), Integer);
+        let arg_types: Vec<_> = arg_ids.iter().map(|id| report.get_type(id)).collect();
         assert_eq!(
-            err,
-            Error::could_not_resolve_overload(
-                FunctionKind::Scalar,
-                "unnest",
-                vec![Some(arr(NestedType::Integer)), Some(arr(NestedType::Text))]
-            )
+            arg_types,
+            [
+                arr(NestedType::Integer),
+                arr(NestedType::Boolean),
+                arr(NestedType::Text),
+                arr(NestedType::Text),
+            ]
+        );
+        assert_eq!(
+            analyzer.get_parameter_types(),
+            [Some(arr(NestedType::Text))]
+        );
+
+        // Every argument is an array, wherever a non-array is. The error
+        // names the arguments as for any overload.
+        for (args, argtypes) in [
+            (vec![], vec![]),
+            (
+                vec![array(vec![lit(Integer)]), lit(Integer)],
+                vec![Some(arr(NestedType::Integer)), Some(Integer)],
+            ),
+            (
+                vec![reference(Integer), array(vec![lit(Integer)])],
+                vec![Some(Integer), Some(arr(NestedType::Integer))],
+            ),
+        ] {
+            let e = expr(ExprKind::Unnest(args));
+            let mut analyzer = TypeAnalyzer::new(&type_system);
+            let err = analyzer.analyze(&e, None).unwrap_err();
+            assert_eq!(
+                err,
+                Error::could_not_resolve_overload(FunctionKind::Scalar, "unnest", argtypes)
+            );
+        }
+    }
+
+    // An untyped parameter in several arguments of unnest takes the type
+    // that another argument gives it, wherever that argument is.
+    #[test]
+    fn unnest_of_a_repeated_parameter() {
+        let type_system = default_type_system();
+
+        for typed_first in [true, false] {
+            let mut args = vec![cast(param("$1"), arr(NestedType::Integer)), param("$1")];
+            if !typed_first {
+                args.reverse();
+            }
+            let arg_ids: Vec<_> = args.iter().map(|arg| arg.id).collect();
+            let e = expr(ExprKind::Unnest(args));
+            let mut analyzer = TypeAnalyzer::new(&type_system);
+            analyzer.analyze(&e, None).unwrap();
+            let report = analyzer.get_report();
+            assert_eq!(report.get_type(&e.id), Integer);
+            for id in &arg_ids {
+                assert_eq!(report.get_type(id), arr(NestedType::Integer));
+            }
+            assert_eq!(
+                analyzer.get_parameter_types(),
+                [Some(arr(NestedType::Integer))]
+            );
+        }
+
+        // Without a type from another argument, the parameter is `text[]`.
+        let e = expr(ExprKind::Unnest(vec![param("$1"), param("$1")]));
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        assert_eq!(
+            analyzer.get_parameter_types(),
+            [Some(arr(NestedType::Text))]
+        );
+    }
+
+    // Tarantool takes at most 127 arguments of a function, so unnest of
+    // more arrays fails at planning rather than on a storage.
+    #[test]
+    fn unnest_of_too_many_arrays() {
+        let type_system = default_type_system();
+
+        let arrays = |count| (0..count).map(|_| array(vec![lit(Integer)])).collect();
+        let e = expr(ExprKind::Unnest(arrays(127)));
+        TypeAnalyzer::new(&type_system).analyze(&e, None).unwrap();
+
+        let e = expr(ExprKind::Unnest(arrays(128)));
+        let err = TypeAnalyzer::new(&type_system)
+            .analyze(&e, None)
+            .unwrap_err();
+        assert_eq!(err, Error::TooManyArguments("unnest", 127, 128));
+        assert_eq!(
+            err.to_string(),
+            "unnest takes at most 127 arguments, got 128"
         );
     }
 

@@ -36,8 +36,8 @@ use sql_ast_new_nodes::table_expression::{
 use sql_ast_new_nodes::{Analyzed, Ident, NamedEntity, Raw};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::relation::{Column, ColumnRole};
-use sql_ir::ir::table_function::{find_table_function, TableFunctionColumnType};
-use sql_ir::ir::types::{DerivedType, UnrestrictedType};
+use sql_ir::ir::table_function::{find_table_function, TableFunctionCall};
+use sql_ir::ir::types::UnrestrictedType;
 use sql_type_system::error::Error as TypeSystemError;
 use sql_type_system::expr::Type as TypeSystemType;
 use sql_type_system::type_system::FunctionKind;
@@ -197,11 +197,14 @@ fn bind_table_function<'q, M: Metadata>(
     let report = meta.type_system.analyzer.get_report();
     let param_types = meta.type_system.analyzer.get_parameter_types();
 
-    // PostgreSQL has no series of doubles. The type system coerces a double
-    // to decimal, so an argument has the type it had before the coercion:
-    // its own type, or the type that a client gave a parameter.
+    let mut arg_types = Vec::new();
     if let ExprInner::FunctionCall(fn_call) = &mut call.inner {
         if let (_, FunctionCallArgs::Exprs { exprs, .. }) = fn_call.parts_mut() {
+            arg_types = exprs.iter().map(|arg| report.get_type(&arg.id())).collect();
+            // PostgreSQL has no series of doubles. The type system coerces a
+            // double to decimal, so an argument has the type it had before
+            // the coercion: its own type, or the type that a client gave a
+            // parameter.
             let types: Vec<_> = exprs
                 .iter()
                 .map(|arg| match &arg.inner {
@@ -223,14 +226,17 @@ fn bind_table_function<'q, M: Metadata>(
     }
     call.derive_types(report)?;
 
-    let columns = (0..registered.result_len(func.with_ordinality))
-        .filter_map(|pos| registered.result_column(func.with_ordinality, pos))
-        .map(|column| {
-            let r#type = match column.r#type {
-                TableFunctionColumnType::Fixed(r#type) => DerivedType::new(r#type),
-                TableFunctionColumnType::Call => call.data_type(),
-            };
-            Column::new(column.name, r#type, ColumnRole::User, true)
+    let column_types = registered.column_types(call.data_type(), arg_types);
+    let registered_call = TableFunctionCall {
+        function: registered,
+        column_types: &column_types,
+        with_ordinality: func.with_ordinality,
+    };
+    let columns = (0..registered_call.result_len())
+        .filter_map(|pos| {
+            let column = registered_call.result_column(pos)?;
+            let r#type = registered_call.column_type(pos);
+            Some(Column::new(&column.name, r#type, ColumnRole::User, true))
         })
         .collect();
 

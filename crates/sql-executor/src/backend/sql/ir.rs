@@ -360,9 +360,8 @@ fn sql_column_reference_at(
                 }));
             }
             Relational::ScanFunction(scan) => {
-                let (function, _) = ir.table_function_of(scan)?;
-                let Some(column) = function.result_column(scan.with_ordinality, rel_col.position)
-                else {
+                let call = ir.table_function_of(scan)?;
+                let Some(column) = call.result_column(rel_col.position) else {
                     return Ok(None);
                 };
                 let cast = if column.cast_in_local_sql {
@@ -375,7 +374,7 @@ fn sql_column_reference_at(
                     None
                 };
                 return Ok(Some(SqlColumnReference {
-                    name: SmolStr::new_static(column.local_name),
+                    name: SmolStr::new(column.local_name),
                     qualifier: ir.scan_name(rel_col)?.map(SmolStr::from),
                     cast,
                 }));

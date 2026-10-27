@@ -836,6 +836,9 @@ pub struct ScanFunction {
     pub function: NodeId,
     /// Subqueries in the arguments of the function.
     pub subqueries: Vec<NodeId>,
+    /// The types of the columns of the function, without the ordinality
+    /// column. The frontend takes them from the type analysis of the call.
+    pub column_types: Box<[DerivedType]>,
     /// Whether the scan has the ordinality column (`WITH ORDINALITY`).
     pub with_ordinality: bool,
     /// Resulting data distribution.
