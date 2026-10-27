@@ -2425,8 +2425,7 @@ impl<'p> SyntaxPlan<'p> {
                         .map(|s| s.to_smolstr());
                     // TODO[2081]: don't hide an error
                     let value = column.map(|column| column.is_system).unwrap_or(false)
-                        || self.is_temp_table_column(RelColumn::new(ref_source_node_id, i))
-                        || self.is_function_column(RelColumn::new(ref_source_node_id, i));
+                        || self.asterisk_lists_columns(RelColumn::new(ref_source_node_id, i));
                     distribution
                         .entry(key)
                         .and_modify(|v| *v |= value)
@@ -2499,16 +2498,26 @@ impl<'p> SyntaxPlan<'p> {
     /// Whether `rel_col` is read from a temp table in the FROM clause. A `*` over
     /// a temp table also selects its `PK_*` column.
     fn is_temp_table_column(&self, rel_col: RelColumn) -> bool {
-        match self.column_leaf(rel_col) {
-            Some(ColumnLeaf::Motion(motion_id)) => self.plan.contains_vtable_for_motion(motion_id),
-            _ => false,
-        }
+        self.leaf_is_temp_table(self.column_leaf(rel_col))
+    }
+
+    /// Whether `leaf` is a temp table: a motion that is materialized.
+    fn leaf_is_temp_table(&self, leaf: Option<ColumnLeaf>) -> bool {
+        matches!(leaf, Some(ColumnLeaf::Motion(motion_id)) if self.plan.contains_vtable_for_motion(motion_id))
     }
 
     /// Whether `rel_col` is read from a table function scan in the FROM
     /// clause.
     fn is_function_column(&self, rel_col: RelColumn) -> bool {
         matches!(self.column_leaf(rel_col), Some(ColumnLeaf::ScanFunction))
+    }
+
+    /// Whether a `*` over the FROM entry of `rel_col` lists the columns
+    /// instead of a bare `*`: a temp table has the `PK_*` columns, and
+    /// a table function has other column names in tarantool.
+    fn asterisk_lists_columns(&self, rel_col: RelColumn) -> bool {
+        let leaf = self.column_leaf(rel_col);
+        matches!(leaf, Some(ColumnLeaf::ScanFunction)) || self.leaf_is_temp_table(leaf)
     }
 
     fn process_asterisk_logic(
