@@ -13,6 +13,7 @@ use crate::ir::node::{
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
 use crate::ir::tree::traversal::{NodeIter, PostOrder, EXPR_CAPACITY};
+use crate::ir::types::UnrestrictedType;
 use crate::ir::Plan;
 use crate::utils::to_user;
 use std::collections::{HashMap, HashSet};
@@ -1005,10 +1006,16 @@ impl Plan {
             let col_type = self.get_expression_node(*expr_id)?.calculate_type(self)?;
             if let Some(col_type) = col_type.get() {
                 if !col_type.is_scalar() {
+                    // A value of type any, as an element of `_pico_table.format`,
+                    // can be cast to its actual type.
+                    let hint = match col_type {
+                        UnrestrictedType::Any => ", cast it to the actual type",
+                        _ => "",
+                    };
                     return Err(SbroadError::Invalid(
                         Entity::Type,
                         Some(format_smolstr!(
-                            "add_final_groupby: GroupBy expr ({expr_id:?}) is not scalar ({col_type})!"
+                            "GROUP BY and DISTINCT cannot use a value of type {col_type}{hint}"
                         )),
                     ));
                 }

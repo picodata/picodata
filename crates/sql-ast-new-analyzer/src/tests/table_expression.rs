@@ -117,8 +117,9 @@ fn table_function_lateral() {
     insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t3.a::int, g.value::int FROM t3 CROSS JOIN generate_series(1::int, t3.a::int) AS g LEFT OUTER JOIN generate_series(g.value::int, 3::int) AS h ON true::bool");
 }
 
-/// A function on the left side of a join cannot see the right side, and
-/// PostgreSQL has no series of doubles.
+/// A function on the left side of a join cannot see the right side,
+/// PostgreSQL has no series of doubles, and a table function is a source
+/// in FROM only.
 #[test]
 fn table_function_errors() {
     let mut errors: Vec<_> = [
@@ -130,6 +131,10 @@ fn table_function_errors() {
         "SELECT * FROM unnest(ARRAY[pico_instance_uuid()])",
         "SELECT * FROM unnest(ARRAY[(SELECT pico_instance_uuid())])",
         "SELECT * FROM generate_series(1, t3.a) CROSS JOIN t3",
+        "SELECT * FROM unnest(1)",
+        "SELECT * FROM unnest(ARRAY[1], ARRAY[2])",
+        "SELECT unnest(ARRAY[1, 2])",
+        "SELECT * FROM generate_series(1, unnest(ARRAY[2]))",
     ]
     .into_iter()
     .map(|query| analyze_error(query, &[]))
@@ -147,6 +152,10 @@ fn table_function_errors() {
     semantic error: volatile functions are not allowed in functions in FROM
     semantic error: volatile functions are not allowed in functions in FROM
     semantic error: cannot resolve column reference 't3.a'
+    could not resolve function overload for unnest(int)
+    could not resolve function overload for unnest(int[], int[])
+    semantic error: table function "unnest" can only be used in FROM
+    semantic error: table function "unnest" can only be used in FROM
     could not resolve function overload for generate_series(double, numeric)
     "#);
 }

@@ -158,6 +158,14 @@ mod tests {
         })
     }
 
+    fn unnest(array: Expr) -> Expr {
+        expr(ExprKind::Unnest(vec![array]))
+    }
+
+    fn reference(ty: Type) -> Expr {
+        expr(ExprKind::Reference(ty))
+    }
+
     fn default_type_system() -> TypeSystem {
         let functions = vec![
             Function::new_operator("+", [Type::Integer, Type::Integer], Type::Integer),
@@ -1015,6 +1023,128 @@ mod tests {
             analyzer.get_report().get_type(&e.id),
             arr(NestedType::Integer)
         );
+    }
+
+    // unnest gives the element type of its argument, also for an untyped array,
+    // which no overload could take.
+    #[test]
+    fn unnest_gives_the_element_type() {
+        let type_system = default_type_system();
+
+        for (array_type, element_type) in [
+            (arr(NestedType::Integer), Integer),
+            (arr(NestedType::Map), Map),
+            (arr(NestedType::Any), Any),
+        ] {
+            let e = unnest(reference(array_type));
+            let mut analyzer = TypeAnalyzer::new(&type_system);
+            analyzer.analyze(&e, None).unwrap();
+            assert_eq!(analyzer.get_report().get_type(&e.id), element_type);
+        }
+
+        let e = unnest(array(vec![lit(Integer), lit(Integer)]));
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        assert_eq!(analyzer.get_report().get_type(&e.id), Integer);
+    }
+
+    // The desired type of unnest is the element type of its argument.
+    #[test]
+    fn unnest_desired_type_is_the_element_type() {
+        let type_system = default_type_system();
+
+        let arr_expr = array(vec![]);
+        let arr_id = arr_expr.id;
+        let e = unnest(arr_expr);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, Some(Double)).unwrap();
+        let report = analyzer.get_report();
+        assert_eq!(report.get_type(&e.id), Double);
+        assert_eq!(report.get_type(&arr_id), arr(NestedType::Double));
+
+        // An array is not an element type, so the argument gets the default.
+        let arr_expr = array(vec![]);
+        let arr_id = arr_expr.id;
+        let e = unnest(arr_expr);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer
+            .analyze(&e, Some(arr(NestedType::Integer)))
+            .unwrap();
+        let report = analyzer.get_report();
+        assert_eq!(report.get_type(&e.id), Text);
+        assert_eq!(report.get_type(&arr_id), arr(NestedType::Text));
+    }
+
+    // unnest of a value without a type of its own takes the default: the
+    // value is `text[]` and the elements are text. This covers NULL, a
+    // parameter, a text literal and an empty array. A parameter keeps the
+    // type that the client gives it.
+    #[test]
+    fn unnest_of_an_unknown_type_defaults_to_text() {
+        let type_system = default_type_system();
+
+        for arg in [null(), param("$1"), lit(Text), array(vec![])] {
+            let arg_id = arg.id;
+            let e = unnest(arg);
+            let mut analyzer = TypeAnalyzer::new(&type_system);
+            analyzer.analyze(&e, None).unwrap();
+            let report = analyzer.get_report();
+            assert_eq!(report.get_type(&e.id), Text);
+            assert_eq!(report.get_type(&arg_id), arr(NestedType::Text));
+        }
+
+        let e = unnest(param("$1"));
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        assert_eq!(
+            analyzer.get_parameter_types(),
+            [Some(arr(NestedType::Text))]
+        );
+
+        let e = unnest(param("$1"));
+        let mut analyzer =
+            TypeAnalyzer::new(&type_system).with_parameters(vec![Some(arr(NestedType::Integer))]);
+        analyzer.analyze(&e, None).unwrap();
+        assert_eq!(analyzer.get_report().get_type(&e.id), Integer);
+    }
+
+    // unnest takes one array. The error names the arguments as for any
+    // overload.
+    #[test]
+    fn unnest_takes_one_array() {
+        let type_system = default_type_system();
+
+        let args = vec![array(vec![lit(Integer)]), array(vec![lit(Text)])];
+        let e = expr(ExprKind::Unnest(args));
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        let err = analyzer.analyze(&e, None).unwrap_err();
+        assert_eq!(
+            err,
+            Error::could_not_resolve_overload(
+                FunctionKind::Scalar,
+                "unnest",
+                vec![Some(arr(NestedType::Integer)), Some(arr(NestedType::Text))]
+            )
+        );
+    }
+
+    // unnest of a value that is not an array is an error.
+    #[test]
+    fn unnest_of_a_non_array() {
+        let type_system = default_type_system();
+
+        for (e, argtypes) in [
+            (unnest(lit(Integer)), vec![Some(Integer)]),
+            (unnest(reference(Any)), vec![Some(Any)]),
+            (unnest(reference(Map)), vec![Some(Map)]),
+        ] {
+            let mut analyzer = TypeAnalyzer::new(&type_system);
+            let err = analyzer.analyze(&e, None).unwrap_err();
+            assert_eq!(
+                err,
+                Error::could_not_resolve_overload(FunctionKind::Scalar, "unnest", argtypes)
+            );
+        }
     }
 
     #[test]

@@ -1,4 +1,6 @@
-use sql_executor::test_helpers::{expect_sql_to_ir_error, sql_to_optimized_ir};
+use sql_executor::test_helpers::{
+    expect_sql_to_ir_error, sql_to_ir_without_bind, sql_to_optimized_ir,
+};
 use sql_explain::explain::explain_logical;
 use sql_ir::ir::types::{DerivedType, UnrestrictedType};
 use sql_ir::ir::value::Value;
@@ -203,6 +205,34 @@ fn subquery_in_arguments_of_lateral_function() {
     ");
 }
 
+// A value without a type of its own is an array of text, as any value of
+// unknown type is text: a parameter without a type from the client, NULL
+// and a text literal.
+#[test]
+fn unnest_of_unknown_type_defaults_to_text() {
+    let plan = sql_to_ir_without_bind(
+        "explain (logical) SELECT * FROM unnest($1)",
+        &[DerivedType::unknown()],
+    );
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"
+    projection (unnest.value::text -> value)
+      scan unnest($1::text[])
+    ");
+
+    insta::assert_snapshot!(explain("SELECT * FROM unnest(NULL)", vec![]), @"
+    projection (unnest.value::text -> value)
+      scan unnest(NULL::unknown)
+    ");
+
+    // A text literal is `text[]` too, but picodata cannot convert text to
+    // an array, as `SELECT '{a,b}'::text[]` cannot either.
+    let err = expect_sql_to_ir_error("SELECT * FROM unnest('{a,b}')", &[]);
+    assert_eq!(
+        err.to_string(),
+        "failed to parse '{a,b}' as a value of type text[], consider using explicit type casts"
+    );
+}
+
 // The errors for wrong calls.
 #[test]
 fn errors() {
@@ -229,6 +259,16 @@ fn errors() {
             "SELECT * FROM (SELECT 1.5::double AS d) s \
              JOIN generate_series(s.d, 3) g ON true",
             "could not resolve function overload for generate_series(double, numeric)",
+        ),
+        // unnest gives the element type of its argument, so the argument
+        // must be one array.
+        (
+            "SELECT * FROM unnest(1)",
+            "could not resolve function overload for unnest(int)",
+        ),
+        (
+            "SELECT * FROM unnest(ARRAY[1], ARRAY[2])",
+            "could not resolve function overload for unnest(int[], int[])",
         ),
         (
             "SELECT * FROM generate_series(1, count(*))",

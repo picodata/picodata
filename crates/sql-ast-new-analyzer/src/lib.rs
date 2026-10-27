@@ -350,6 +350,11 @@ pub(crate) struct BinderCtx<'q> {
 
     /// Target tuple source for ORDER BY
     stmt_body: Option<MultisetInner<'q, Analyzed>>,
+
+    /// True while [`bind_table_function`](crate::table_expression) binds
+    /// the call of a table function in FROM. The call takes the flag, so
+    /// that a table function in its arguments is rejected as anywhere else.
+    pub(crate) binding_table_function: bool,
 }
 
 const EMPTY_FRAME_STACK_ERR: &str = "expected non-empty stack of statement frames";

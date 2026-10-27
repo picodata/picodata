@@ -1355,6 +1355,29 @@ fn front_sql_groupby_invalid() {
     assert_eq!(true, res.is_err());
 }
 
+// A grouping key of a sharded table is moved between instances, so it must
+// have a scalar type.
+#[test]
+fn front_sql_groupby_not_scalar() {
+    let metadata = &RouterConfigurationMock::new();
+    for (input, params, err) in [
+        (
+            r#"select distinct "b" from "arr_t""#,
+            vec![],
+            "invalid type: GROUP BY and DISTINCT cannot use a value of type int[]",
+        ),
+        (
+            r#"select "a" from "arr_t" group by "a", $1"#,
+            vec![DerivedType::new(Type::Any)],
+            "invalid type: GROUP BY and DISTINCT cannot use a value of type any, \
+             cast it to the actual type",
+        ),
+    ] {
+        let plan = transform_into_plan(input, &params, metadata).unwrap();
+        assert_eq!(plan.optimize().unwrap_err().to_string(), err, "{input}");
+    }
+}
+
 #[test]
 fn front_sql_distinct_invalid() {
     let input = r#"select "b", bucket_id(distinct cast("a" as string)) from "t" group by "b", bucket_id(distinct cast("a" as string))"#;

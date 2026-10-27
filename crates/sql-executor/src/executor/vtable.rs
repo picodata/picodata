@@ -662,7 +662,17 @@ impl VirtualTable {
 impl Write for VirtualTable {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
         // Decode a single tuple encoded as msgpack array and append to the virtual table
-        let mut tuple: Vec<Value> = tarantool::msgpack::decode(buf).map_err(IoError::other)?;
+        let mut tuple: Vec<Value> = tarantool::msgpack::decode(buf).map_err(|e| {
+            // `Value` has no map, as in `_pico_table.format`. Name it instead of
+            // the decoder internals.
+            match rmpv::decode::read_value(&mut &buf[..]) {
+                Ok(value) if contains_map(&value) => IoError::other(
+                    "a map cannot be sent between instances, select its fields \
+                     instead, for example value['name']::text",
+                ),
+                _ => IoError::other(e),
+            }
+        })?;
         // When msgpack has been formed from Lua dump callback in the executor's
         // port, its last NULLs are omitted. We need to add them back.
         if tuple.len() < self.columns.len() {
@@ -688,6 +698,14 @@ impl Write for VirtualTable {
 
     fn flush(&mut self) -> IoResult<()> {
         Ok(())
+    }
+}
+
+fn contains_map(value: &rmpv::Value) -> bool {
+    match value {
+        rmpv::Value::Map(_) => true,
+        rmpv::Value::Array(values) => values.iter().any(contains_map),
+        _ => false,
     }
 }
 

@@ -547,3 +547,27 @@ fn vtable_values_types_casting_two_columns_numerical() {
 
     assert_eq!(actual_vtable, expected_vtable)
 }
+
+// A map, even inside an array, is named in the error instead of the decoder.
+#[test]
+fn vtable_write_map() {
+    let mut vtable = VirtualTable::new();
+    vtable.add_column(vcolumn_integer_user_non_null());
+    vtable.add_column(VTableColumn {
+        r#type: DerivedType::new(UnrestrictedType::Any),
+        role: ColumnRole::User,
+        is_nullable: true,
+    });
+    let value = rmpv::Value::Array(vec![rmpv::Value::Map(vec![(
+        rmpv::Value::from("name"),
+        rmpv::Value::from("id"),
+    )])]);
+    let mut tuple = Vec::new();
+    rmpv::encode::write_value(&mut tuple, &rmpv::Value::Array(vec![1.into(), value])).unwrap();
+    let err = vtable.write(&tuple).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "a map cannot be sent between instances, select its fields \
+         instead, for example value['name']::text"
+    );
+}

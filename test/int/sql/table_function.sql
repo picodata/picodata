@@ -281,6 +281,83 @@ ORDER BY 1;
 -- EXPECTED:
 2, 2, 3, 3
 
+-- TEST: unnest-of-untyped-array
+-- SQL:
+select
+    name as "table",
+    value['name']::text as "column",
+    value['field_type']::text as "type"
+from _pico_table cross join unnest(_pico_table.format)
+where name = '_pico_table'
+order by "table", "column";
+-- EXPECTED:
+'_pico_table', 'description', 'string',
+'_pico_table', 'distribution', 'map',
+'_pico_table', 'engine', 'string',
+'_pico_table', 'format', 'array',
+'_pico_table', 'id', 'unsigned',
+'_pico_table', 'name', 'string',
+'_pico_table', 'operable', 'boolean',
+'_pico_table', 'opts', 'array',
+'_pico_table', 'owner', 'unsigned',
+'_pico_table', 'schema_version', 'unsigned'
+
+-- TEST: index-parts-with-ordinality
+-- SQL:
+SELECT i.name, p.ordinality, p.value[1]::text
+FROM _pico_index i CROSS JOIN unnest(i.parts) WITH ORDINALITY p
+WHERE i.table_id = (SELECT id FROM _pico_table WHERE name = '_pico_index')
+ORDER BY 1, 2;
+-- EXPECTED:
+'_pico_index_id', 1, 'table_id',
+'_pico_index_id', 2, 'id',
+'_pico_index_name', 1, 'name'
+
+-- TEST: filter-on-untyped-map-element
+-- SQL:
+SELECT i.name
+FROM _pico_index i CROSS JOIN unnest(i.opts) o
+WHERE i.table_id = (SELECT id FROM _pico_table WHERE name = '_pico_table')
+  AND o.value['unique']::bool
+ORDER BY 1;
+-- EXPECTED:
+'_pico_table_id', '_pico_table_name'
+
+-- TEST: untyped-elements-of-mixed-types
+-- SQL:
+SELECT ordinality, value
+FROM _pico_instance CROSS JOIN unnest(current_state) WITH ORDINALITY
+WHERE name = 'default_1_1'
+ORDER BY 1;
+-- EXPECTED:
+1, 'Online', 2, 1
+
+-- TEST: unnest-of-null-array-gives-no-rows
+-- SQL:
+SELECT u.name, a.value::text
+FROM _pico_user u CROSS JOIN unnest(u.auth) WITH ORDINALITY a
+WHERE a.ordinality = 1 AND u.name IN ('admin', 'guest', 'pico_service', 'public')
+ORDER BY 1;
+-- EXPECTED:
+'admin', 'md5',
+'guest', 'md5',
+'pico_service', 'chap-sha1'
+
+-- TEST: untyped-element-needs-a-cast
+-- SQL:
+SELECT value = 1 FROM _pico_instance CROSS JOIN unnest(current_state);
+-- ERROR:
+unexpected expression of type any, explicit cast to the actual type is required
+
+-- TEST: untyped-element-with-a-cast
+-- SQL:
+SELECT ordinality, value::text = 'Online'
+FROM _pico_instance CROSS JOIN unnest(current_state) WITH ORDINALITY
+WHERE name = 'default_1_1'
+ORDER BY 1;
+-- EXPECTED:
+1, true, 2, false
+
 -- TEST: lateral-reference-to-the-right
 -- SQL:
 SELECT * FROM generate_series(1, t.n) g JOIN t ON true;
@@ -292,6 +369,23 @@ could not resolve reference "t"
 SELECT * FROM no_such_function(1);
 -- ERROR:
 table function "no_such_function" does not exist
+
+-- TEST: unnest-of-null
+-- SQL:
+SELECT * FROM unnest(NULL);
+-- EXPECTED:
+
+-- TEST: unnest-of-two-arrays
+-- SQL:
+SELECT * FROM unnest(ARRAY[1], ARRAY[2]);
+-- ERROR:
+could not resolve function overload for unnest\(int\[\], int\[\]\)
+
+-- TEST: unnest-of-empty-array
+-- SQL:
+SELECT * FROM unnest(ARRAY[]);
+-- EXPECTED:
+
 
 -- TEST: volatile-function-in-arguments
 -- SQL:

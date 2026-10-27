@@ -630,6 +630,36 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 report.report(&expr.id, ty);
                 Ok(report)
             }
+            ExprKind::Unnest(ref args) => {
+                let [array] = args.as_slice() else {
+                    return Err(self.could_not_resolve_function_overload_error(
+                        FunctionKind::Scalar,
+                        "unnest",
+                        args,
+                    ));
+                };
+
+                // The desired type is the element type of the array. An array
+                // is not an element, and `any` cannot be an element of a
+                // desired array, so the argument then gets the default hint:
+                // an argument of unknown type, as `unnest($1)` or `unnest(NULL)`,
+                // is `text[]`. PostgreSQL rejects it instead.
+                let desired_type = match NestedType::try_from(desired_type) {
+                    Ok(nested) if nested != NestedType::Any => Type::Array(nested),
+                    _ => Type::Array(NestedType::Text),
+                };
+
+                let mut report = self.analyze(array, desired_type)?;
+                let Type::Array(nested) = report.get_type(&array.id) else {
+                    return Err(self.could_not_resolve_function_overload_error(
+                        FunctionKind::Scalar,
+                        "unnest",
+                        args,
+                    ));
+                };
+                report.report(&expr.id, Type::from(nested));
+                Ok(report)
+            }
             ExprKind::Coalesce(ref args) => {
                 let (ty, mut report) =
                     self.analyze_homogeneous_exprs("COALESCE", args, desired_type)?;

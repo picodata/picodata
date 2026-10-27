@@ -238,6 +238,11 @@ pub enum ExprKind<Id> {
         source: Box<Expr<Id>>,
         keys: Vec<Expr<Id>>,
     },
+    /// The `unnest` table function with its arguments. Like the index operator,
+    /// it gives the element type of its array argument, so it is not an
+    /// overloaded function. One array is supported.
+    /// Examples: `unnest(ARRAY[1, 2])`, `unnest(a)`.
+    Unnest(Vec<Expr<Id>>),
     /// Comparison expression.
     /// Examples: `1 = b`, (1,2) in (values (1,2))`, `(1,2) = (1,2)`
     Comparison(ComparisonOperator, Box<Expr<Id>>, Box<Expr<Id>>),

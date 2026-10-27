@@ -35,6 +35,7 @@ use sql_ast_new_nodes::expr::{
 use sql_ast_new_nodes::table_expression::{BoundJoinUsingVar, BoundVar, ColumnRoute};
 use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, AstNodeId, Raw};
 use sql_ir::ir::metadata::Metadata;
+use sql_ir::ir::table_function::find_table_function;
 use sql_ir::ir::types::{CastType, DerivedType, UnrestrictedType};
 
 use super::{AnalyzerCtx, AstTypeExpr, AstTypeExprKind, AstTypeReport, TypeSystem};
@@ -546,6 +547,18 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
             ExprInner::FunctionCall(call) => {
                 let (name, args) = call.into_parts();
 
+                // A table function gives rows, so it is a source in FROM
+                // only. The binding of that call sets the flag; a call in an
+                // expression, also in the arguments of a table function, is
+                // an error.
+                let is_table_function = std::mem::take(&mut meta.binder.binding_table_function);
+                if !is_table_function && find_table_function(name.as_str()).is_some() {
+                    return Err(semantic_err(format_smolstr!(
+                        r#"table function "{}" can only be used in FROM"#,
+                        name.as_str()
+                    )));
+                }
+
                 let is_aggr_func = AggregateKind::from_name(name.as_str()).is_some();
 
                 // A window-only function without OVER.
@@ -606,12 +619,14 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                             .collect::<AstResult<(Vec<_>, Vec<_>)>>()?;
 
                         // COALESCE and JSON_EXTRACT_PATH are not registry
-                        // functions: they map to dedicated type-expression
-                        // kinds (old-pipeline parity). DISTINCT does not
-                        // affect typing and stays in the node.
+                        // functions, and UNNEST is a table function: they
+                        // map to dedicated type-expression kinds
+                        // (old-pipeline parity). DISTINCT does not affect
+                        // typing and stays in the node.
                         let t_expr_kind = match name.as_str() {
                             "coalesce" => AstTypeExprKind::Coalesce(arg_t_exprs),
                             "json_extract_path" => AstTypeExprKind::JsonExtractPath(arg_t_exprs),
+                            "unnest" => AstTypeExprKind::Unnest(arg_t_exprs),
                             _ => AstTypeExprKind::Function(name.as_str().to_string(), arg_t_exprs),
                         };
                         (

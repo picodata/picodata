@@ -177,7 +177,10 @@ fn bind_table_function<'q, M: Metadata>(
         Stage::FunctionInFrom,
     );
     meta.binder.push_frame(frame);
-    let (mut call, t_expr) = func.call.bind(meta)?;
+    meta.binder.binding_table_function = true;
+    let bound = func.call.bind(meta);
+    meta.binder.binding_table_function = false;
+    let (mut call, t_expr) = bound?;
     meta.binder.curr_from = meta
         .binder
         .pop_frame(Some(
