@@ -762,6 +762,7 @@ fn normalize_plan_id_relational(
         RelOwned::Join(join) => {
             join.condition = *ir.undo().get_oldest(&join.condition);
             join.condition = to_subtree_node_id(join.condition, node_positions)?;
+            normalize_plan_id_optional_node_id(&mut join.lateral, node_positions)?;
         }
         RelOwned::Projection(projection) => {
             for window in &mut projection.windows {

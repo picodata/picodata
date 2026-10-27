@@ -1621,6 +1621,20 @@ fn subtree_plan_id_12() {
     )
 }
 
+/// The unused CTE shifts the node ids of the lateral join, which give the
+/// same local SQL.
+#[test]
+fn subtree_plan_id_lateral_join() {
+    check_subtree_plan_ids_are_equal(
+        "SELECT b.value FROM generate_series(1, 2) a
+         JOIN generate_series(1, a.value) b ON true",
+        vec![],
+        "WITH c AS (SELECT abs(1)) SELECT b.value FROM generate_series(1, 2) a
+         JOIN generate_series(1, a.value) b ON true",
+        vec![],
+    )
+}
+
 /// The window of a scan-less CTE must not leak into the next projection.
 #[test]
 fn plan_id_with_window_in_scanless_cte() {
