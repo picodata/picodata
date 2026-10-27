@@ -207,9 +207,28 @@ pub struct TypeSystem {
 }
 
 impl TypeSystem {
+    /// # Panics
+    /// - An overload takes or returns `any` or `array(any)`. Overload resolution
+    ///   passes a parameter type down as the desired type, and `any` cannot be a
+    ///   desired type, so such an overload fails every call of its name. An
+    ///   expression that gives `any` is a dedicated `ExprKind`, as `[]` and
+    ///   `unnest` are.
     pub fn new(functions_list: Vec<Function>) -> Self {
         let mut functions = StableHashMap::default();
         for function in functions_list {
+            assert!(
+                !function.return_type.contains_any()
+                    && !function.args_types.iter().any(|ty| ty.contains_any()),
+                "overload {}({}) -> {} takes or returns any; use a dedicated ExprKind",
+                function.name,
+                function
+                    .args_types
+                    .iter()
+                    .map(Type::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                function.return_type,
+            );
             functions
                 .entry(function.name.clone())
                 .or_insert_with(Vec::new)

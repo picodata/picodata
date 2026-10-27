@@ -192,6 +192,26 @@ mod tests {
         TypeSystem::new(functions)
     }
 
+    // An overload cannot take `any` or `array(any)`: resolution passes the
+    // parameter type down as the desired type, which rejects `any`.
+    #[test]
+    #[should_panic(expected = "overload f(text, array) -> text takes or returns any")]
+    fn overload_cannot_take_any() {
+        TypeSystem::new(vec![Function::new_scalar(
+            "f",
+            [Type::Text, Type::Array(NestedType::Any)],
+            Type::Text,
+        )]);
+    }
+
+    // An overload cannot return `any` either: a result of type `any` belongs
+    // to a dedicated expression kind.
+    #[test]
+    #[should_panic(expected = "overload f(text) -> any takes or returns any")]
+    fn overload_cannot_return_any() {
+        TypeSystem::new(vec![Function::new_scalar("f", [Type::Text], Type::Any)]);
+    }
+
     #[test]
     fn simple_tests() {
         let type_system = default_type_system();

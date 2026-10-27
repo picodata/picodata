@@ -105,6 +105,12 @@ pub enum Type {
 }
 
 impl Type {
+    /// Whether the type is `any` or contains it, as `array(any)` does. Such a
+    /// type cannot be a desired type, see the comment to `Type::Any`.
+    pub fn contains_any(self) -> bool {
+        matches!(self, Type::Any | Type::Array(NestedType::Any))
+    }
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Type::Integer => "int",
