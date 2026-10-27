@@ -681,6 +681,8 @@ fn start_webui() {
                 pico.httpd:route({path = '/', method = 'GET'}, handler);
                 pico.httpd:route({path = '/nodes*path', method = 'GET'}, handler);
                 pico.httpd:route({path = '/login*path', method = 'GET'}, handler);
+                -- add slash before *path to avoid shadowing /plugin-ui/<static-assets URI>
+                pico.httpd:route({path = '/plugin/*path', method = 'GET'}, handler);
             end
             pico.httpd:route({path = '/' .. filename, method = 'GET'}, handler);
         end",

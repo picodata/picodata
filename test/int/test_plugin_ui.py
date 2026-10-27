@@ -311,3 +311,43 @@ def test_plugin_ui_static_assets_version_upgrade_keeps_old_route_until_disabled(
         v2_body = response.read().decode()
     assert f"{_PLUGIN_VERSION_2} dashboard" in v2_body
     assert v2_body != v1_body
+
+
+# ---------------------------------- GET /plugin/<plugin>/<slug> -------------------------------------
+
+
+def test_plugin_ui_page_deep_link_serves_index_html(cluster: Cluster):
+    """
+    Reloading the browser on a plugin page hits the server directly,
+    so `/plugin/*` must fall back to the Web UI's `index.html`.
+    """
+    init_dummy_plugin_with_webui(cluster, _PLUGIN, _PLUGIN_VERSION_1)
+    i1 = cluster.add_instance(wait_online=True)
+    i1.sql(f"CREATE PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1}")
+    i1.sql(f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION_1} ENABLE")
+
+    set_jwt_enabled(i1, True)
+
+    with urlopen(f"http://{i1.http_listen}/") as response:
+        index_html = response.read()
+
+    # The page is served without a token: auth is enforced by the client
+    # router and the API, not by the HTML shell. Unknown pages get it too,
+    # the client then renders its own "page unavailable" message.
+    for path in [
+        f"/plugin/{_PLUGIN}/dashboard",
+        f"/plugin/{_PLUGIN}/public",
+        "/plugin/no_such_plugin/no_such_page",
+    ]:
+        with urlopen(f"http://{i1.http_listen}{path}") as response:
+            assert response.status == 200
+            assert response.headers.get("content-type") == "text/html"
+            assert response.read() == index_html
+
+    # The fallback must not shadow the plugin's static assets.
+    with urlopen(asset_url(i1, _PLUGIN, _PLUGIN_VERSION_1, "dashboard.js")) as response:
+        assert response.headers.get("content-type") == "application/javascript"
+
+    with pytest.raises(HTTPError) as e:
+        urlopen(asset_url(i1, _PLUGIN, _PLUGIN_VERSION_1, "no-such-file.js"))
+    assert e.value.code == 404
