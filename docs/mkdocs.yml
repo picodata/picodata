@@ -185,6 +185,9 @@ nav:
           - Оконные:
               - reference/sql/last_value.md
               - reference/sql/row_number.md
+          - Табличные:
+              - reference/sql/generate_series.md
+              - reference/sql/unnest.md
           - Выражения и операторы:
               - reference/sql/case.md
               - reference/sql/cast.md

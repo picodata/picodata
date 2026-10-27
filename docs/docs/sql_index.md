@@ -74,6 +74,7 @@ article.md-typeset.md-typeset ul {
 * [CREATE ROLE](reference/sql/create_role.md)
 * [CREATE TABLE](reference/sql/create_table.md)
 * [CREATE USER](reference/sql/create_user.md)
+* [CROSS JOIN](reference/sql/join.md#cross_join)
 * [CTE](reference/sql/with.md)
 * [CURRENT_DATE](reference/sql/current_date.md)
 * [CURRENT_TIMESTAMP](reference/sql/current_timestamp.md)
@@ -112,6 +113,7 @@ article.md-typeset.md-typeset ul {
 
 <b>G</b>
 
+* [GENERATE_SERIES](reference/sql/generate_series.md)
 * [GRANT](reference/sql/grant.md)
 * [GROUP BY](reference/sql/select.md#filter_and_group)
 * [GROUP_CONCAT](reference/sql/group_concat.md)
@@ -205,6 +207,7 @@ article.md-typeset.md-typeset ul {
 
 * [UNION](reference/sql/select.md#params)
 * [UNION ALL](reference/sql/select.md#params)
+* [UNNEST](reference/sql/unnest.md)
 * [UNSIGNED](reference/sql_types.md#unsigned)
 * [UPDATE](reference/sql/update.md)
 * [UPPER](reference/sql/lower.md)

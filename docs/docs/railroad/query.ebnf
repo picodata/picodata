@@ -20,7 +20,7 @@ with        ::= 'WITH'
 select      ::= 'SELECT' 'DISTINCT'? projection (',' projection)* from?
                 ('LIMIT' (unsigned | 'ALL' | 'NULL'))?
 from        ::= 'FROM' scan
-                (( 'INNER' | 'LEFT' 'OUTER'? )? 'JOIN' scan 'ON' expression)*
+                (( 'INNER' | 'LEFT' 'OUTER'? )? 'JOIN' scan 'ON' expression | 'CROSS' 'JOIN' scan)*
                 ('WHERE' expression)?
                 ('GROUP' 'BY' expression (',' expression)*)?
                 ('HAVING' expression)?
@@ -30,7 +30,10 @@ from        ::= 'FROM' scan
                 ('LIMIT' (unsigned | 'ALL' | 'NULL'))?
 projection  ::= (table '.')? '*' | expression (('AS')? name)? | aggregate | window (('AS')? name)?
 scan_table  ::= (table ('AS'? name)? ('INDEXED' 'BY' index)?)
-scan        ::= (table ('AS'? name)? ('INDEXED BY' index)? | '(' dql ')' ('AS'? name)? )
+scan        ::= (table ('AS'? name)? ('INDEXED BY' index)? | '(' dql ')' ('AS'? name)? | table_function ('AS'? name)? )
+table_function ::= generate_series | unnest
+generate_series ::= 'GENERATE_SERIES' '(' expression ',' expression (',' expression)? ')' ('WITH' 'ORDINALITY')?
+unnest      ::= 'UNNEST' '(' expression ')' ('WITH' 'ORDINALITY')?
 expression  ::= (('NOT'* (
                     (table '.')? column
                     | abs
