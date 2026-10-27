@@ -292,3 +292,16 @@ could not resolve reference "t"
 SELECT * FROM no_such_function(1);
 -- ERROR:
 table function "no_such_function" does not exist
+
+-- TEST: volatile-function-in-arguments
+-- SQL:
+SELECT * FROM unnest(ARRAY[pico_instance_uuid()]);
+-- ERROR:
+volatile functions are not allowed in functions in FROM
+
+-- TEST: volatile-function-in-subquery-of-arguments
+-- SQL:
+SELECT t.id, u.value
+FROM t CROSS JOIN unnest(ARRAY[(SELECT pico_instance_uuid())]) u;
+-- ERROR:
+volatile functions are not allowed in functions in FROM

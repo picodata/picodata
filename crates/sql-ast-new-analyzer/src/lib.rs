@@ -128,6 +128,7 @@ use sql_ast_new_nodes::{
 
 use frame::{GroupingKeyMark, Stage, Stmt};
 
+use sql_ir::ir::function::get_real_function_name;
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::relation::Table;
 use sql_ir::ir::types::DerivedType;
@@ -201,6 +202,15 @@ impl<'q, M: Metadata> AnalyzerCtx<'q, M> {
 
     pub(crate) fn table(&self, name: &str) -> AstResult<Table> {
         self.metadata.table(name).map_err(AstErr::from)
+    }
+
+    /// Whether the function `name` is volatile. An unknown function is not:
+    /// the type analysis reports it.
+    pub(crate) fn is_volatile_function(&self, name: &str) -> bool {
+        let name = get_real_function_name(name).unwrap_or(name);
+        self.metadata
+            .function(name)
+            .is_ok_and(|function| function.is_volatile())
     }
 }
 

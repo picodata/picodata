@@ -232,8 +232,40 @@ fn errors() {
         ),
         (
             "SELECT * FROM generate_series(1, count(*))",
-            "aggregate functions are not supported in the arguments \
-             of table function \"generate_series\"",
+            "aggregate functions are not allowed in functions in FROM",
+        ),
+        // Every instance computes the same rows of a function. A volatile
+        // function is found below an array, a scalar function, a cast and
+        // a CASE.
+        (
+            "SELECT * FROM unnest(ARRAY[pico_instance_uuid()])",
+            "volatile functions are not allowed in functions in FROM",
+        ),
+        (
+            "SELECT * FROM unnest(ARRAY[func(pico_instance_uuid())])",
+            "volatile functions are not allowed in functions in FROM",
+        ),
+        (
+            "SELECT * FROM generate_series(1, pico_instance_uuid()::int)",
+            "volatile functions are not allowed in functions in FROM",
+        ),
+        (
+            "SELECT * FROM generate_series(1, CASE WHEN true THEN pico_instance_uuid()::int ELSE 2 END)",
+            "volatile functions are not allowed in functions in FROM",
+        ),
+        // A subquery without tables is computed on every instance too.
+        (
+            "SELECT * FROM unnest(ARRAY[(SELECT pico_instance_uuid())])",
+            "volatile functions are not allowed in functions in FROM",
+        ),
+        (
+            r#"SELECT * FROM unnest(ARRAY[(SELECT pico_instance_uuid() FROM "t")])"#,
+            "volatile functions are not allowed in functions in FROM",
+        ),
+        // An aggregate is reported before a volatile function.
+        (
+            "SELECT * FROM generate_series(count(*), pico_instance_uuid()::int)",
+            "aggregate functions are not allowed in functions in FROM",
         ),
         // A function on the left side of a join cannot reference the right
         // side.

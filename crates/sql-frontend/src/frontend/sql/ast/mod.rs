@@ -36,20 +36,20 @@ use crate::frontend::sql::ir::Translation;
 
 use crate::ir::acl::AlterOption;
 use crate::ir::expression::NewColumnsSource;
-use crate::ir::expression::{ColumnWithScan, ColumnsRetrievalSpec, ExpressionId};
+use crate::ir::expression::{ColumnWithScan, ColumnsRetrievalSpec, ExpressionId, VolatilityType};
 use crate::ir::function::Function;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
     AlterSystem, AlterUser, CreateRole, CreateUser, DropRole, DropUser, GrantPrivilege,
-    NodeAligned, NodeId, RevokePrivilege, ScanRelation, SetTransaction,
+    NodeAligned, NodeId, RevokePrivilege, ScalarFunction, ScanRelation, SetTransaction,
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::options::{OptionKind, OptionSpec};
 use crate::ir::relation::{Column, ColumnRole, Table, TableKind};
 use crate::ir::table_function::find_table_function;
 use crate::ir::transformation::redistribution::ColumnPosition;
-use crate::ir::tree::traversal::{Arena, PostOrder};
+use crate::ir::tree::traversal::{Arena, NodeIter, PostOrder};
 use crate::ir::value::Value;
 use crate::ir::{ExplainOptions, Plan};
 use tarantool::auth::AuthMethod;
@@ -818,13 +818,15 @@ where
         match ast.nodes.get_node(*child_id)?.rule {
             Rule::Expr => {
                 let arg_pair = pairs_map.remove_pair(*child_id);
+                // A volatile function is rejected by check_table_function_args
+                // with a message about table functions.
                 args.push(parse_expr_no_type_check(
                     Pairs::single(arg_pair),
                     &param_types,
                     &referred_relation_ids,
                     worker,
                     plan,
-                    false,
+                    true,
                 )?);
             }
             Rule::WithOrdinality => with_ordinality = true,
@@ -834,7 +836,7 @@ where
 
     let function = Function::new_stable(name, DerivedType::unknown(), true);
     let call_id = plan.add_stable_function(&function, args.clone(), None)?;
-    check_table_function_args(plan, &function.name, call_id)?;
+    check_table_function_args(plan, call_id)?;
     type_system::analyze_and_coerce_scalar_expr(
         type_analyzer,
         call_id,
@@ -853,18 +855,34 @@ where
 /// Reject the arguments of the table function call `call_id` that it cannot
 /// compute. The arguments are computed once, or for each row of the left
 /// side of a join, so they cannot contain aggregates or window functions.
-fn check_table_function_args(plan: &Plan, name: &str, call_id: NodeId) -> Result<(), SbroadError> {
+/// Every instance computes the same rows of a table function, so the
+/// arguments cannot contain volatile functions either, not even in a
+/// subquery: a subquery without tables is computed on every instance.
+fn check_table_function_args(plan: &Plan, call_id: NodeId) -> Result<(), SbroadError> {
+    let has_volatile = PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), call_id)
+        .expressions()
+        .any(|(_, expr)| {
+            matches!(
+                expr,
+                Expression::ScalarFunction(ScalarFunction {
+                    volatility_type: VolatilityType::Volatile,
+                    ..
+                })
+            )
+        });
     // A window function contains an aggregate, so it is reported first.
     let reason = if plan.contains_window_functions(call_id, false)? {
         "window functions"
     } else if plan.contains_aggregates(call_id, false)? {
         "aggregate functions"
+    } else if has_volatile {
+        "volatile functions"
     } else {
         return Ok(());
     };
+    // PostgreSQL words the rejection of aggregates this way.
     Err(SbroadError::Other(format_smolstr!(
-        "{reason} are not supported in the arguments of table function {}",
-        to_user(name)
+        "{reason} are not allowed in functions in FROM"
     )))
 }
 

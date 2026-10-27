@@ -127,6 +127,8 @@ fn table_function_errors() {
         "SELECT * FROM generate_series(1, 2.5::double)",
         "SELECT * FROM t3 CROSS JOIN generate_series(1, count(*))",
         "SELECT * FROM t3 CROSS JOIN generate_series(1, row_number() OVER ())",
+        "SELECT * FROM unnest(ARRAY[pico_instance_uuid()])",
+        "SELECT * FROM unnest(ARRAY[(SELECT pico_instance_uuid())])",
         "SELECT * FROM generate_series(1, t3.a) CROSS JOIN t3",
     ]
     .into_iter()
@@ -142,6 +144,8 @@ fn table_function_errors() {
     could not resolve function overload for generate_series(numeric, double)
     semantic error: aggregate functions are not allowed in functions in FROM
     semantic error: window functions are not allowed in functions in FROM
+    semantic error: volatile functions are not allowed in functions in FROM
+    semantic error: volatile functions are not allowed in functions in FROM
     semantic error: cannot resolve column reference 't3.a'
     could not resolve function overload for generate_series(double, numeric)
     "#);

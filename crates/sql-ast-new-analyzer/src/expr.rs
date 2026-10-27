@@ -23,7 +23,7 @@ use crate::multiset::analyze_subquery;
 use crate::window::{bind_win_fn, derive_window_function_types};
 use crate::{
     analyze_err, semantic_err, texpr_from_attribute, texpr_from_derived_type, Binder,
-    ExprTypeDeriver, Stmt,
+    ExprTypeDeriver, Stage, Stmt,
 };
 use sql_ast_new_nodes::error::{AstErr, AstResult};
 use sql_ast_new_nodes::expr::{
@@ -558,6 +558,20 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                     return Err(semantic_err(format_smolstr!(
                         "window function {} requires an OVER clause",
                         name.as_str()
+                    )));
+                }
+
+                // Every instance computes the same rows of a table function, so
+                // its arguments cannot call a volatile function, not even in a
+                // subquery: a subquery without tables is computed on every instance.
+                let in_function_in_from = meta
+                    .binder
+                    .frames
+                    .iter()
+                    .any(|frame| matches!(frame.stage, Stage::FunctionInFrom));
+                if in_function_in_from && meta.is_volatile_function(name.as_str()) {
+                    return Err(semantic_err(format_smolstr!(
+                        "volatile functions are not allowed in functions in FROM"
                     )));
                 }
 
