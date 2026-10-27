@@ -3079,16 +3079,17 @@ impl SyntaxPlan<'_> {
     }
 }
 
-/// Whether a temp table under `rel` is read as a table in the FROM clause.
-/// A Join also needs the temp table alias.
 /// A node in the FROM clause that a column is read from and that the
 /// asterisk expansion treats specially.
 enum ColumnLeaf {
     /// A motion, which is a temp table when it is materialized.
     Motion(NodeId),
+    /// A table function scan, whose columns have other names in tarantool.
     ScanFunction,
 }
 
+/// Whether a temp table under `rel` is read as a table in the FROM clause.
+/// A Join also needs the temp table alias.
 fn reads_vtable_as_table(rel: &Relational) -> bool {
     matches!(
         rel,
