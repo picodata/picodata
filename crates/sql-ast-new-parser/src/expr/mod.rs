@@ -490,7 +490,7 @@ fn parse_identifier<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawEx
     }
 }
 
-fn parse_function_invocation<'q>(
+pub(crate) fn parse_function_invocation<'q>(
     name: &'q str,
     pair: Pair<'q, Rule>,
     ctx: &ParseCtx,

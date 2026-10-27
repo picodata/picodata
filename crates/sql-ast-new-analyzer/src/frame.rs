@@ -249,6 +249,8 @@ pub(crate) enum Stage {
     OrderBy,
     /// `VALUES` statement.
     Values,
+    /// The arguments of a table function in FROM.
+    FunctionInFrom,
 }
 
 impl Stage {
@@ -266,6 +268,7 @@ impl Stage {
             Self::WindowFrameOffset(FrameType::Rows) => Some("window ROWS"),
             Self::WindowFrameOffset(FrameType::Range) => Some("window RANGE"),
             Self::Values => Some("VALUES"),
+            Self::FunctionInFrom => Some("functions in FROM"),
         }
     }
 
@@ -281,6 +284,7 @@ impl Stage {
             Self::WindowDef | Self::WindowFrameOffset(_) => Some("window definitions"),
             Self::WindowFilter => Some("FILTER"),
             Self::Values => Some("VALUES"),
+            Self::FunctionInFrom => Some("functions in FROM"),
         }
     }
 

@@ -63,9 +63,12 @@ SelectStmt = ${ SelectList ~ (W ~ TableExpression)? }
     From = ${ ^"from" ~ W ~ TableFactor ~ (W ~ JoinedTable)* }
         TableFactor = ${ TupleSource ~ (W ~ IndexedByExpr)? }
         TupleSource = _{
-            (((PublicSchema)? ~ CteOrTable) | SubQuery)
+            (TableFunction | ((PublicSchema)? ~ CteOrTable) | SubQuery)
             ~ (W ~ (^"as" ~ W)? ~ !(^"indexed" ~ W ~ ^"by" ~ W) ~ Identifier)?
         }
+        // A function call in FROM, like `generate_series(1, 3) WITH ORDINALITY`.
+        TableFunction = ${ Identifier ~ WO ~ FunctionInvocationContinuation ~ (W ~ WithOrdinality)? }
+            WithOrdinality = { ^"with" ~ W ~ ^"ordinality" ~ KwEnd }
         SubQuery = _{ LParen ~ MultisetStmt ~ RParen }
 
         JoinedTable = ${

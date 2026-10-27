@@ -24,7 +24,7 @@ use sql_ast_new_nodes::table_expression::{
     AnalyzedCteOrTable, AttributeView, BoundVar, From, FromEntry, TableFactor, TableFactorInner,
 };
 use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, NamedEntity};
-use sql_ir::ir::relation::{ColumnRole, Table};
+use sql_ir::ir::relation::{Column, ColumnRole};
 
 use super::TypeSystem;
 
@@ -208,6 +208,7 @@ impl<'q> ResolveAsterisk<'q> for TableFactorInner<'q, Analyzed> {
         match self {
             Self::CteOrTable(cte_or_table) => cte_or_table.resolve_asterisk(asterisk_resolver),
             Self::SubQuery(stmt) => asterisk_resolver.resolve_from_subquery(stmt),
+            Self::Function(func) => asterisk_resolver.resolve_from_columns(&func.columns),
         }
     }
 }
@@ -219,7 +220,7 @@ impl<'q> ResolveAsterisk<'q> for AnalyzedCteOrTable<'q> {
     ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
         match self {
             Self::Cte(cte) => asterisk_resolver.resolve_from_cte(cte),
-            Self::Table(table) => asterisk_resolver.resolve_from_table(table),
+            Self::Table(table) => asterisk_resolver.resolve_from_columns(&table.columns),
         }
     }
 }
@@ -295,13 +296,13 @@ impl<'q, 'ast> AsteriskResolver<'q, 'ast> {
         Ok(proj_exprs)
     }
 
-    fn resolve_from_table(
+    /// Expand the user columns of a table or of a table function.
+    fn resolve_from_columns(
         self,
-        table: &'ast Table,
+        columns: &'ast [Column],
     ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
         let mut proj_exprs = vec![];
-        for (column_pos, column) in table
-            .columns
+        for (column_pos, column) in columns
             .iter()
             .enumerate()
             .filter(|(_, col)| matches!(col.role, ColumnRole::User))

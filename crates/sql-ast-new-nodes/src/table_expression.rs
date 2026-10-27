@@ -418,6 +418,9 @@ impl<'q> TableFactor<'q, Analyzed> {
             // An unaliased FROM-subquery can never satisfy a qualifier because
             // qualification goes through the alias, handled by the factor.
             TableFactorInner::SubQuery(stmt) => stmt.column_route(column_name, exclude_positions),
+            TableFactorInner::Function(func) => {
+                columns_route(&func.columns, column_name, exclude_positions)
+            }
         }
     }
 
@@ -425,13 +428,17 @@ impl<'q> TableFactor<'q, Analyzed> {
         match &self.inner {
             TableFactorInner::CteOrTable(cte_or_table) => cte_or_table.attribute(column_pos),
             TableFactorInner::SubQuery(stmt) => stmt.attribute(column_pos),
+            TableFactorInner::Function(func) => func
+                .columns
+                .get(column_pos)
+                .map(|col| AttributeView::Column(col, None)),
         }
     }
 
     pub fn table(&self) -> Option<&Table> {
         match &self.inner {
             TableFactorInner::CteOrTable(cte_or_tbl) => cte_or_tbl.table(),
-            TableFactorInner::SubQuery(_) => None,
+            TableFactorInner::SubQuery(_) | TableFactorInner::Function(_) => None,
         }
     }
 }
@@ -453,6 +460,7 @@ pub enum TableFactorInner<'q, State: AstState<'q>> {
     /// Table name or analyzed entity
     CteOrTable(State::CteOrTableT),
     SubQuery(Box<MultisetStmt<'q, State>>),
+    Function(TableFunction<'q, State>),
 }
 
 impl<'q, State: AstState<'q>> NamedEntity for TableFactorInner<'q, State> {
@@ -460,6 +468,7 @@ impl<'q, State: AstState<'q>> NamedEntity for TableFactorInner<'q, State> {
         match self {
             Self::CteOrTable(cte_or_table) => cte_or_table.name(),
             Self::SubQuery(_) => None,
+            Self::Function(func) => func.name(),
         }
     }
 }
@@ -469,7 +478,38 @@ impl<'q, State: AstState<'q>> Display for TableFactorInner<'q, State> {
         match self {
             TableFactorInner::CteOrTable(src) => write!(f, "{src}"),
             TableFactorInner::SubQuery(src) => write!(f, "({src})"),
+            TableFactorInner::Function(src) => write!(f, "{src}"),
         }
+    }
+}
+
+/// A table function in FROM, like `generate_series(1, 3) WITH ORDINALITY`.
+pub struct TableFunction<'q, State: AstState<'q>> {
+    /// The function call. Its type is the type of the `value` column.
+    pub call: Expr<'q, State>,
+    pub with_ordinality: bool,
+    /// The result columns. The analyzer fills them.
+    pub columns: Vec<Column>,
+}
+
+impl<'q, State: AstState<'q>> NamedEntity for TableFunction<'q, State> {
+    /// A function scan without an alias has the name of the function.
+    fn name(&self) -> Option<&str> {
+        match &self.call.inner {
+            ExprInner::FunctionCall(call) => Some(call.name()),
+            _ => None,
+        }
+    }
+}
+
+impl<'q, State: AstState<'q>> Display for TableFunction<'q, State> {
+    /// The call is written without its type, so that the rendering parses.
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "{}", self.call.inner)?;
+        if self.with_ordinality {
+            write!(f, " WITH ORDINALITY")?;
+        }
+        Ok(())
     }
 }
 
@@ -674,27 +714,9 @@ impl<'q> AnalyzedCteOrTable<'q> {
             }
         };
 
-        let lookup_table = |table: &Table, exclude_positions: Option<&[usize]>| {
-            table
-                .columns
-                .iter()
-                .enumerate()
-                .find(|(pos, col)| {
-                    !exclude_positions
-                        .as_ref()
-                        .is_some_and(|positions| positions.contains(pos))
-                        && matches!(col.role, ColumnRole::User)
-                        && col.name == column_name
-                })
-                .map(|(pos, _)| pos)
-        };
-
         match self {
             Self::Cte(cte) => lookup_cte(cte, exclude_positions),
-            Self::Table(table) => lookup_table(table, exclude_positions).map_or(
-                UniqueColumnRoute::ColumnMissing,
-                UniqueColumnRoute::Resolved,
-            ),
+            Self::Table(table) => columns_route(&table.columns, column_name, exclude_positions),
         }
     }
 
@@ -714,6 +736,26 @@ impl<'q> AnalyzedCteOrTable<'q> {
             Self::Table(tbl) => Some(tbl),
         }
     }
+}
+
+/// Position of the user column `column_name` among `columns`. Other columns
+/// are invisible to SQL name resolution.
+fn columns_route(
+    columns: &[Column],
+    column_name: &str,
+    exclude_positions: Option<&[usize]>,
+) -> UniqueColumnRoute<usize> {
+    columns
+        .iter()
+        .enumerate()
+        .find(|(pos, col)| {
+            !exclude_positions.is_some_and(|positions| positions.contains(pos))
+                && matches!(col.role, ColumnRole::User)
+                && col.name == column_name
+        })
+        .map_or(UniqueColumnRoute::ColumnMissing, |(pos, _)| {
+            UniqueColumnRoute::Resolved(pos)
+        })
 }
 
 impl NamedEntity for AnalyzedCteOrTable<'_> {
@@ -982,6 +1024,9 @@ mod structural_eq {
             match (self, other) {
                 (Self::CteOrTable(x), Self::CteOrTable(y)) => x.eq_with(y, scope),
                 (Self::SubQuery(x), Self::SubQuery(y)) => x.eq_with(y, scope),
+                (Self::Function(x), Self::Function(y)) => {
+                    x.with_ordinality == y.with_ordinality && x.call.eq_with(&y.call, scope)
+                }
                 _mismatched_shapes => false,
             }
         }

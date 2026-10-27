@@ -16,21 +16,28 @@
 //! back afterwards.
 //!
 //! Picodata has no LATERAL, so a joined table itself is bound with `curr_from`
-//! taken away: a subquery in it cannot reference its siblings.
+//! taken away: a subquery in it cannot reference its siblings. A table
+//! function is the exception: as in PostgreSQL, its arguments see the entries
+//! bound before it.
 
 use std::rc::Rc;
 
-use smol_str::format_smolstr;
+use smol_str::{format_smolstr, SmolStr};
 
 use sql_ast_new_nodes::error::AstResult;
-use sql_ast_new_nodes::expr::{Expr, ExprInner, RawVar};
+use sql_ast_new_nodes::expr::{Expr, ExprInner, FunctionCallArgs, RawVar};
 use sql_ast_new_nodes::table_expression::{
     AnalyzedCteOrTable, BoundJoinUsingVar, ColumnRoute, From, FromEntry, GroupBy, JoinKind,
-    JoinUsingColumn, JoinedTable, OrdrByGrpByElem, TableFactor, TableFactorInner,
+    JoinUsingColumn, JoinedTable, OrdrByGrpByElem, TableFactor, TableFactorInner, TableFunction,
 };
 use sql_ast_new_nodes::{Analyzed, NamedEntity, Raw};
 use sql_ir::ir::metadata::Metadata;
-use sql_ir::ir::types::UnrestrictedType;
+use sql_ir::ir::relation::{Column, ColumnRole};
+use sql_ir::ir::table_function::{find_table_function, TableFunctionColumnType};
+use sql_ir::ir::types::{DerivedType, UnrestrictedType};
+use sql_type_system::error::Error as TypeSystemError;
+use sql_type_system::expr::Type as TypeSystemType;
+use sql_type_system::type_system::FunctionKind;
 
 use crate::expr::bind_var;
 use crate::multiset::analyze_subquery;
@@ -145,9 +152,86 @@ impl<'q> Binder<'q> for TableFactor<'q, Raw> {
                 let analyzed_stmt = analyze_subquery(*stmt, meta)?;
                 TableFactorInner::<'q, Analyzed>::SubQuery(Box::new(analyzed_stmt))
             }
+            TableFactorInner::Function(func) => {
+                TableFactorInner::Function(bind_table_function(func, meta)?)
+            }
         };
         Ok(Self::BoundNode::from_parts(inner, alias, indexed_by))
     }
+}
+
+/// Bind a table function. Its arguments see the FROM entries bound before it.
+fn bind_table_function<'q, M: Metadata>(
+    func: TableFunction<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<TableFunction<'q, Analyzed>> {
+    let name = SmolStr::from(func.name().unwrap_or_default());
+    let Some(registered) = find_table_function(&name) else {
+        return Err(semantic_err(format_smolstr!(
+            r#"table function "{name}" does not exist"#
+        )));
+    };
+
+    let frame = Stmt::new(
+        std::mem::take(&mut meta.binder.curr_from),
+        Stage::FunctionInFrom,
+    );
+    meta.binder.push_frame(frame);
+    let (mut call, t_expr) = func.call.bind(meta)?;
+    meta.binder.curr_from = meta
+        .binder
+        .pop_frame(Some(
+            "Expected the same statement frame after the analysis of a function in FROM",
+        ))?
+        .from;
+
+    // The types of the columns are needed before the statement is typed.
+    meta.type_system.analyzer.analyze(&t_expr, None)?;
+    let report = meta.type_system.analyzer.get_report();
+    let param_types = meta.type_system.analyzer.get_parameter_types();
+
+    // PostgreSQL has no series of doubles. The type system coerces a double
+    // to decimal, so an argument has the type it had before the coercion:
+    // its own type, or the type that a client gave a parameter.
+    if let ExprInner::FunctionCall(fn_call) = &mut call.inner {
+        if let (_, FunctionCallArgs::Exprs { exprs, .. }) = fn_call.parts_mut() {
+            let types: Vec<_> = exprs
+                .iter()
+                .map(|arg| match &arg.inner {
+                    ExprInner::Parameter(param) => {
+                        param_types.get(usize::from(param.0) - 1).copied().flatten()
+                    }
+                    _ => report.try_get_return_type(&arg.id()),
+                })
+                .collect();
+            if name == "generate_series" && types.contains(&Some(TypeSystemType::Double)) {
+                let err = TypeSystemError::could_not_resolve_overload(
+                    FunctionKind::Scalar,
+                    name.as_str(),
+                    types,
+                );
+                return Err(err.into());
+            }
+        }
+    }
+    call.derive_types(report)?;
+
+    let columns = (0..registered.result_len(func.with_ordinality))
+        .filter_map(|pos| registered.result_column(func.with_ordinality, pos))
+        .map(|column| {
+            let r#type = match column.r#type {
+                TableFunctionColumnType::Fixed(r#type) => DerivedType::new(r#type),
+                TableFunctionColumnType::Call => call.data_type(),
+            };
+            Column::new(column.name, r#type, ColumnRole::User, true)
+        })
+        .collect();
+
+    Ok(TableFunction {
+        call,
+        with_ordinality: func.with_ordinality,
+        columns,
+    })
 }
 
 impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
@@ -162,11 +246,17 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
             )));
         }
 
-        // Picodata does not support LATERAL yet.
-        // It means column references in joined table cannot be resolved against previous FROM clauses with on same level.
-        let preserved_from = std::mem::take(&mut meta.binder.curr_from);
-        let analyzed_tbl = Rc::new(tbl.bind(meta)?);
-        meta.binder.curr_from = preserved_from;
+        // Picodata does not support LATERAL yet, so a joined table cannot
+        // reference the FROM entries before it. A table function is the
+        // exception: as in PostgreSQL, its arguments see them.
+        let analyzed_tbl = if matches!(tbl.inner, TableFactorInner::Function(_)) {
+            Rc::new(tbl.bind(meta)?)
+        } else {
+            let preserved_from = std::mem::take(&mut meta.binder.curr_from);
+            let analyzed_tbl = Rc::new(tbl.bind(meta)?);
+            meta.binder.curr_from = preserved_from;
+            analyzed_tbl
+        };
 
         // Add analyzed table factor of joined table in order to resolve join condition against it.
         meta.binder

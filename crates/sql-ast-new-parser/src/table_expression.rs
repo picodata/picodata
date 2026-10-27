@@ -3,7 +3,7 @@
 use pest::iterators::Pair;
 use smol_str::format_smolstr;
 
-use crate::expr::parse_expr;
+use crate::expr::{parse_expr, parse_function_invocation};
 use crate::multiset::parse_multiset;
 use crate::window::parse_named_window;
 use crate::{parser_err, syntax_err, AstResult};
@@ -12,7 +12,7 @@ use sql_ast_new_grammar::Rule;
 use sql_ast_new_nodes::expr::{Expr, ExprInner, Literal, LiteralKind, RawVar, UnaryOp};
 use sql_ast_new_nodes::table_expression::{
     From, FromEntry, GroupBy, JoinKind, JoinUsingColumn, JoinedTable, OrdrByGrpByElem,
-    TableExpression, TableFactor, TableFactorInner,
+    TableExpression, TableFactor, TableFactorInner, TableFunction,
 };
 use sql_ast_new_nodes::window::NamedWindows;
 use sql_ast_new_nodes::{Ident, Raw};
@@ -128,6 +128,9 @@ fn parse_table_factor<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Tab
                     pair, ctx,
                 )?)));
             }
+            Rule::TableFunction => {
+                inner = Some(TableFactorInner::Function(parse_table_function(pair, ctx)?));
+            }
             Rule::Identifier => {
                 if indexed_by.is_some() {
                     return Err(syntax_err(format_smolstr!(
@@ -142,6 +145,7 @@ fn parse_table_factor<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Tab
                         Rule::IndexedByExpr,
                         Rule::CteOrTable,
                         Rule::MultisetStmt,
+                        Rule::TableFunction,
                         Rule::Identifier,
                     ]),
                     &pair,
@@ -150,12 +154,37 @@ fn parse_table_factor<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Tab
         }
     }
 
+    if indexed_by.is_some() && matches!(inner, Some(TableFactorInner::Function(_))) {
+        return Err(syntax_err(format_smolstr!(
+            "cannot use INDEXED BY with a table function"
+        )));
+    }
+
     Ok(TableFactor {
         inner: inner.ok_or_else(|| {
             parser_err(format_smolstr!("grammar guarantees a table factor source"))
         })?,
         alias,
         indexed_by,
+    })
+}
+
+fn parse_table_function<'q>(
+    pair: Pair<'q, Rule>,
+    ctx: &ParseCtx,
+) -> AstResult<TableFunction<'q, Raw>> {
+    debug_assert_eq!(pair.as_rule(), Rule::TableFunction);
+
+    let mut pairs = pair.into_inner();
+    let (Some(name), Some(args)) = (pairs.next(), pairs.next()) else {
+        return Err(parser_err(format_smolstr!(
+            "grammar guarantees a name and arguments of a table function"
+        )));
+    };
+    Ok(TableFunction {
+        call: parse_function_invocation(name.as_str(), args, ctx)?,
+        with_ordinality: pairs.next().is_some(),
+        columns: Vec::new(),
     })
 }
 
@@ -474,6 +503,22 @@ mod tests {
             err.to_string(),
             @"syntax error: cannot use join using condition with `CROSS JOIN`"
         );
+    }
+
+    #[test]
+    fn table_functions() {
+        let query = r#"FROM generate_series(1, 3) WITH ORDINALITY AS g
+            CROSS JOIN unnest(g.arr) u"#;
+        insta::assert_snapshot!(render_table_expr(query), @"FROM generate_series(1, 3) WITH ORDINALITY AS g CROSS JOIN unnest(g.arr) AS u");
+    }
+
+    #[test]
+    fn table_function_indexed_by_fails() {
+        let query = r#"FROM generate_series(1, 3) g INDEXED BY i"#;
+        let err = parse_table_expr(query)
+            .err()
+            .expect("expected failed parsing");
+        insta::assert_snapshot!(err.to_string(), @"syntax error: cannot use INDEXED BY with a table function");
     }
 
     #[test]

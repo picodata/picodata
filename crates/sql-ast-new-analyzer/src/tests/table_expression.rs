@@ -26,6 +26,7 @@
 //! can see, and what it must not.
 
 use super::{analyze_error, analyzed};
+use sql_ir::ir::types::{DerivedType, UnrestrictedType};
 
 // ------------- Table factors -------------
 
@@ -90,6 +91,60 @@ fn cross_join() {
 fn join_invalid_condition_expr_data_type() {
     let query = "SELECT * FROM t3 INNER JOIN t5 ON t3.a";
     insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: argument of JOIN/ON must be type boolean, not type int");
+}
+
+// ------------- Table functions -------------
+
+/// The column `value` has the type of the call, and `ordinality` is `int`.
+#[test]
+fn table_function() {
+    let query = "SELECT * FROM generate_series(1, 2.5) WITH ORDINALITY g";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT g.value::decimal, g.ordinality::int FROM generate_series(CAST(1 AS decimal), 2.5::decimal) WITH ORDINALITY AS g");
+}
+
+/// A function without an alias has the name of the function.
+#[test]
+fn table_function_name() {
+    let query = "SELECT unnest.value FROM unnest(ARRAY['a', 'b'])";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT unnest.value::text FROM unnest(ARRAY['a'::text, 'b'::text]::text[])");
+}
+
+/// The arguments of a joined function see the FROM entries before it.
+#[test]
+fn table_function_lateral() {
+    let query = "SELECT t3.a, g.value FROM t3 CROSS JOIN generate_series(1, t3.a) g
+        LEFT JOIN generate_series(g.value, 3) h ON true";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t3.a::int, g.value::int FROM t3 CROSS JOIN generate_series(1::int, t3.a::int) AS g LEFT OUTER JOIN generate_series(g.value::int, 3::int) AS h ON true::bool");
+}
+
+/// A function on the left side of a join cannot see the right side, and
+/// PostgreSQL has no series of doubles.
+#[test]
+fn table_function_errors() {
+    let mut errors: Vec<_> = [
+        "SELECT * FROM no_such_function(1)",
+        "SELECT * FROM generate_series(1)",
+        "SELECT * FROM generate_series(1, 2.5::double)",
+        "SELECT * FROM t3 CROSS JOIN generate_series(1, count(*))",
+        "SELECT * FROM t3 CROSS JOIN generate_series(1, row_number() OVER ())",
+        "SELECT * FROM generate_series(1, t3.a) CROSS JOIN t3",
+    ]
+    .into_iter()
+    .map(|query| analyze_error(query, &[]))
+    .collect();
+    // A parameter has the type that a client gives it.
+    let double = [DerivedType::new(UnrestrictedType::Double)];
+    let query = "SELECT * FROM generate_series($1, 3)";
+    errors.push(analyze_error(query, &double));
+    insta::assert_snapshot!(errors.join("\n"), @r#"
+    semantic error: table function "no_such_function" does not exist
+    could not resolve function overload for generate_series(int)
+    could not resolve function overload for generate_series(numeric, double)
+    semantic error: aggregate functions are not allowed in functions in FROM
+    semantic error: window functions are not allowed in functions in FROM
+    semantic error: cannot resolve column reference 't3.a'
+    could not resolve function overload for generate_series(double, numeric)
+    "#);
 }
 
 // ------------- USING -------------

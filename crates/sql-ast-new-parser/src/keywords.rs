@@ -288,6 +288,13 @@ const SYNTAX_KEYWORDS: &[SyntaxKeyword] = &[
         glued_reads_as: Parses::Not,
     },
     SyntaxKeyword {
+        covers: &["ordinality"],
+        used: "SELECT a FROM f(1) WITH ORDINALITY",
+        renders: Parses::As("SELECT a FROM f(1) WITH ORDINALITY"),
+        glued: "SELECT a FROM f(1) WITH ORDINALITYx",
+        glued_reads_as: Parses::Not,
+    },
+    SyntaxKeyword {
         covers: &["values"],
         used: "VALUES (1)",
         renders: Parses::As("VALUES (1)"),
