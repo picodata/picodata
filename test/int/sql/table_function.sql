@@ -28,6 +28,12 @@ SELECT g.value FROM generate_series(1.5, 3) AS g;
 -- EXPECTED:
 Decimal('1.5'), Decimal('2.5')
 
+-- TEST: generate-series-double
+-- SQL:
+SELECT * FROM generate_series(1, 2.5::double);
+-- ERROR:
+could not resolve function overload for generate_series\(numeric, double\)
+
 -- TEST: generate-series-ordinality
 -- SQL:
 SELECT * FROM generate_series(5, 7) WITH ORDINALITY;

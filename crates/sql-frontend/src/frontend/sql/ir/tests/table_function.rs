@@ -1,5 +1,6 @@
 use sql_executor::test_helpers::{expect_sql_to_ir_error, sql_to_optimized_ir};
 use sql_explain::explain::explain_logical;
+use sql_ir::ir::types::{DerivedType, UnrestrictedType};
 use sql_ir::ir::value::Value;
 
 #[track_caller]
@@ -45,6 +46,15 @@ fn generate_series_parameters() {
     ), @"
     projection (generate_series.value::int -> value)
       scan generate_series(1::int, 3::int)
+    ");
+}
+
+// An argument can be any expression of a suitable type.
+#[test]
+fn generate_series_expression_argument() {
+    insta::assert_snapshot!(explain("SELECT * FROM generate_series(1, abs(3) + 1)", vec![]), @"
+    projection (generate_series.value::int -> value)
+      scan generate_series(1::int, (abs(3::int)::int + 1::int)::int)
     ");
 }
 
@@ -189,6 +199,19 @@ fn errors() {
             "SELECT * FROM generate_series(1)",
             "could not resolve function overload for generate_series(int)",
         ),
+        // PostgreSQL has no series of doubles.
+        (
+            "SELECT * FROM generate_series(1.5::double, 3)",
+            "could not resolve function overload for generate_series(double, numeric)",
+        ),
+        (
+            "SELECT * FROM generate_series(1, 3, 0.5::double)",
+            "could not resolve function overload for generate_series(numeric, numeric, double)",
+        ),
+        (
+            "SELECT * FROM (SELECT 1.5::double AS d) s JOIN generate_series(s.d, 3) g ON true",
+            "could not resolve function overload for generate_series(double, numeric)",
+        ),
         (
             "SELECT * FROM generate_series(1, count(*))",
             r#"aggregate functions are not supported in the arguments of table function "generate_series""#,
@@ -207,4 +230,11 @@ fn errors() {
     ] {
         assert_eq!(expect_sql_to_ir_error(sql, &[]).to_string(), err, "{sql}");
     }
+
+    // A parameter has the type that a client gives it.
+    let double = [DerivedType::new(UnrestrictedType::Double)];
+    assert_eq!(
+        expect_sql_to_ir_error("SELECT * FROM generate_series($1, 3)", &double).to_string(),
+        "could not resolve function overload for generate_series(double, numeric)"
+    );
 }

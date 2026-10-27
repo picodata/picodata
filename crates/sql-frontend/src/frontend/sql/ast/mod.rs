@@ -13,6 +13,7 @@ use self::core::*;
 
 use crate::frontend::sql::type_system;
 
+use crate::ir::node::expression::Expression;
 use crate::ir::node::tcl::Tcl;
 
 use crate::ir::index::Index;
@@ -22,6 +23,9 @@ use ::core::panic;
 use itertools::Itertools;
 use pest::iterators::{Pair, Pairs};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql_type_system::error::Error as TypeSystemError;
+use sql_type_system::expr::Type as TypeSystemType;
+use sql_type_system::type_system::FunctionKind;
 use std::collections::{HashMap, HashSet};
 
 use crate::errors::{Action, Entity, SbroadError};
@@ -831,7 +835,7 @@ where
     }
 
     let function = Function::new_stable(name, DerivedType::unknown(), true);
-    let call_id = plan.add_stable_function(&function, args, None)?;
+    let call_id = plan.add_stable_function(&function, args.clone(), None)?;
     check_table_function_args(plan, &function.name, call_id)?;
     type_system::analyze_and_coerce_scalar_expr(
         type_analyzer,
@@ -840,6 +844,7 @@ where
         plan,
         &worker.subquery_replaces,
     )?;
+    check_series_args(plan, type_analyzer, &function.name, &args)?;
 
     let scan_id = plan.add_scan_function(call_id, with_ordinality)?;
     plan.fix_subquery_rows(worker, scan_id)?;
@@ -863,6 +868,37 @@ fn check_table_function_args(plan: &Plan, name: &str, call_id: NodeId) -> Result
         "{reason} are not supported in the arguments of table function {}",
         to_user(name)
     )))
+}
+
+/// Reject a double argument of `generate_series`, as PostgreSQL does. The
+/// type system coerces a double to decimal, so an argument has the type it
+/// had before the coercion: its own type, or the type of a parameter.
+fn check_series_args(
+    plan: &Plan,
+    type_analyzer: &type_system::TypeAnalyzer,
+    name: &str,
+    args: &[NodeId],
+) -> Result<(), SbroadError> {
+    if name != "generate_series" {
+        return Ok(());
+    }
+    let report = type_analyzer.get_report();
+    let param_types = type_analyzer.get_parameter_types();
+    let mut types = Vec::with_capacity(args.len());
+    for arg in args {
+        let r#type = match plan.get_expression_node(*arg)? {
+            Expression::Parameter(param) => {
+                param_types.get(param.index as usize - 1).copied().flatten()
+            }
+            _ => report.try_get_return_type(arg),
+        };
+        types.push(r#type);
+    }
+    if types.contains(&Some(TypeSystemType::Double)) {
+        let err = TypeSystemError::could_not_resolve_overload(FunctionKind::Scalar, name, types);
+        return Err(err.into());
+    }
+    Ok(())
 }
 
 fn build_sub_query_ir<M>(

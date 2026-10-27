@@ -173,6 +173,11 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
         self.types[id]
     }
 
+    /// Try to get the type an expression produces, ignoring any coercion a parent applied to it.
+    pub fn try_get_return_type(&self, id: &Id) -> Option<Type> {
+        self.types.get(id).copied()
+    }
+
     /// Report expression type.
     fn report(&mut self, id: &Id, ty: Type) {
         self.types.insert(id.clone(), ty);
