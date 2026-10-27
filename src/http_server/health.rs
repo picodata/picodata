@@ -161,7 +161,7 @@ struct ClusterStatus {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HealthStatus {
     status: HealthStatusLevel,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     issues: Vec<SmolStr>,
     timestamp: u64,
     uptime_seconds: u64,

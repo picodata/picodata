@@ -609,22 +609,29 @@ fn proc_instance_dir(uuid: SmolStr) -> Result<Option<String>, Error> {
         return impl_proc_instance_dir();
     }
 
-    let topology_ref = node.catalog_cache.get();
-    if let Ok(instance) = topology_ref.instance_by_uuid(&requested_uuid) {
-        let future = async {
-            node.pool
-                .call_raw(
-                    &instance.name,
-                    crate::proc_name!(proc_instance_dir),
-                    &(uuid,),
-                    REDIRECT_RPC_TIMEOUT,
-                )
-                .await
-        };
-        Ok(fiber::block_on(future)?)
-    } else {
-        Ok(None)
-    }
+    let Some(instance_name) = remote_instance_name(node, &requested_uuid) else {
+        return Ok(None);
+    };
+    let future = async {
+        node.pool
+            .call_raw(
+                &instance_name,
+                crate::proc_name!(proc_instance_dir),
+                &(uuid,),
+                REDIRECT_RPC_TIMEOUT,
+            )
+            .await
+    };
+    fiber::block_on(future)
+}
+
+/// The name of the instance to redirect the request to. The catalog cache
+/// must not stay borrowed while the fiber waits for the reply: applying a raft
+/// entry in the meantime would fail to update the cache.
+fn remote_instance_name(node: &node::Node, uuid: &str) -> Option<InstanceName> {
+    let cache = node.catalog_cache.get();
+    let instance = cache.instance_by_uuid(uuid).ok()?;
+    Some(instance.name.clone())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -665,22 +672,20 @@ fn proc_config_file(uuid: SmolStr) -> Result<Option<String>, Error> {
         return impl_proc_config_file();
     }
 
-    let topology_ref = node.catalog_cache.get();
-    if let Ok(instance) = topology_ref.instance_by_uuid(&requested_uuid) {
-        let future = async {
-            node.pool
-                .call_raw(
-                    &instance.name,
-                    crate::proc_name!(proc_config_file),
-                    &(uuid,),
-                    REDIRECT_RPC_TIMEOUT,
-                )
-                .await
-        };
-        Ok(fiber::block_on(future)?)
-    } else {
-        Ok(None)
-    }
+    let Some(instance_name) = remote_instance_name(node, &requested_uuid) else {
+        return Ok(None);
+    };
+    let future = async {
+        node.pool
+            .call_raw(
+                &instance_name,
+                crate::proc_name!(proc_config_file),
+                &(uuid,),
+                REDIRECT_RPC_TIMEOUT,
+            )
+            .await
+    };
+    fiber::block_on(future)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -949,29 +954,25 @@ pub fn proc_get_vshard_config(tier_name: Option<SmolStr>) -> Result<RawByteBuf, 
 #[proc]
 pub fn proc_instance_health_status(uuid: SmolStr) -> Result<Option<HealthStatus>, Error> {
     let node = node::global()?;
-    let cache = node.catalog_cache.get();
-    let me = cache.this_instance();
-    match cache.instance_by_uuid(&uuid) {
-        Ok(instance) if instance == me => {
-            let status = crate::http_server::http_api_health_status()?;
-            Ok(Some(status))
-        }
-        Ok(instance) => {
-            let future = async {
-                node.pool
-                    .call_raw(
-                        &instance.name,
-                        crate::proc_name!(proc_instance_health_status),
-                        &(uuid,),
-                        REDIRECT_RPC_TIMEOUT,
-                    )
-                    .await
-            };
-            Ok(fiber::block_on(future)?)
-        }
-        Err(Error::NoSuchInstance(_)) => Ok(None),
-        Err(error) => Err(error),
+    if uuid == node.catalog_cache.my_instance_uuid() {
+        let status = crate::http_server::http_api_health_status()?;
+        return Ok(Some(status));
     }
+
+    let Some(instance_name) = remote_instance_name(node, &uuid) else {
+        return Ok(None);
+    };
+    let future = async {
+        node.pool
+            .call_raw(
+                &instance_name,
+                crate::proc_name!(proc_instance_health_status),
+                &(uuid,),
+                REDIRECT_RPC_TIMEOUT,
+            )
+            .await
+    };
+    fiber::block_on(future)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

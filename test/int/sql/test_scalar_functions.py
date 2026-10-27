@@ -377,6 +377,18 @@ def test_scalar_function_common(
     )
 
 
+def test_scalar_function_of_other_instance(cluster: Cluster):
+    # i1 redirects the request to i2. It used to keep the catalog cache
+    # borrowed while waiting for the reply.
+    i1, i2 = cluster.deploy(instance_count=2)
+    uuid = i2.uuid()
+
+    assert i1.sql(f"SELECT pico_instance_dir('{uuid}')") == [[str(i2.instance_dir)]]
+    assert i1.sql(f"SELECT pico_config_file_path('{uuid}')") == [[i2.config_path or None]]
+    [[status]] = i1.sql(f"SELECT pico_instance_health_status('{uuid}')")
+    assert status["name"] == i2.name
+
+
 def test_scalar_function_version(cluster: Cluster):
     current_path = pathlib.Path(os.getcwd())
     git_version = git.Git(current_path).describe()
