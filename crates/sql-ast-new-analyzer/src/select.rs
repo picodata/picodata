@@ -28,6 +28,7 @@ use sql_ast_new_nodes::window::NamedWindows;
 use sql_ast_new_nodes::{Analyzed, Ident, Raw};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::types::UnrestrictedType;
+use sql_ir::utils::get_unnamed_column_alias;
 
 use crate::asterisk::{missing_from_entry_error, ResolveFromAsterisk};
 use crate::{
@@ -226,6 +227,10 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
         // indexes — so both are tracked, and the mapping between them is
         // recorded for the GROUP BY binding that runs next.
         let mut expanded_pos = 0;
+        // Items without a name of their own are named `col_N`, as in the old pipeline.
+        let mut unnamed_cnt = 0;
+        // Numbers the asterisks of this list, as the old pipeline does.
+        let mut asterisk_id = 0;
 
         for (raw_pos, select_expr) in expr_list.0.into_iter().enumerate() {
             meta.binder
@@ -247,6 +252,7 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
                         .find_map(|(lvl, Stmt { from, .. })| {
                             from.resolve_asterisk(
                                 t_name.as_ref().map(Ident::as_str),
+                                asterisk_id,
                                 lvl,
                                 &mut meta.type_system,
                                 &meta.binder,
@@ -310,6 +316,7 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
                         .exprs_mut()
                         .0
                         .extend(resolved);
+                    asterisk_id += 1;
                 }
                 SelectListElem::Expr(proj_expr) => {
                     let (expr, alias) = proj_expr.into_parts();
@@ -351,7 +358,13 @@ impl<'q> Binder<'q> for SelectList<'q, Raw> {
                         .figure_colname(&|var: &BoundVar| {
                             meta.binder.attribute(*var).and_then(|attr| attr.name())
                         })
-                        .map(Ident::normalized);
+                        .map(Ident::normalized)
+                        .or_else(|| {
+                            alias.is_none().then(|| {
+                                unnamed_cnt += 1;
+                                Ident::normalized(&get_unnamed_column_alias(unnamed_cnt))
+                            })
+                        });
                     let bound_proj_expr =
                         ProjectionExpr::from_parts(bound_expr, alias, inferred_name);
 

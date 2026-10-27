@@ -2128,13 +2128,8 @@ impl Plan {
     }
 
     pub fn set_relational_subqueries(&mut self, rel_id: NodeId, subqueries: Vec<NodeId>) {
-        if let MutNode::Relational(ref mut rel) =
-            self.get_mut_node(rel_id).expect("Rel node must be valid.")
-        {
-            rel.set_subqueries(subqueries);
-        } else {
-            panic!("Expected relational node for {rel_id}.");
-        }
+        self.set_subqueries(rel_id, subqueries)
+            .expect("Rel node must be valid.");
     }
 
     /// Get relational Scan name that the given output column (`Expression::Alias`)

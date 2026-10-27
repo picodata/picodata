@@ -37,8 +37,9 @@ use crate::ir::node::{
     Alias, ArenaType, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat, Constant, Delete,
     Except, GroupBy, Having, IndexExpr, Insert, Intersect, Join, Limit, Motion, MutNode, Node,
     Node136, Node232, Node32, Node64, Node96, NodeId, NodeOwned, OrderBy, Projection, Reference,
-    ReferenceTarget, Row, ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan,
-    Selection, SubQueryReference, Trim, UnaryExpr, Union, UnionAll, Update,
+    ReferenceAsteriskSource, ReferenceTarget, Row, ScalarFunction, ScanCte, ScanRelation,
+    ScanSubQuery, SelectWithoutScan, Selection, SubQueryReference, Trim, UnaryExpr, Union,
+    UnionAll, Update,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity};
 use crate::ir::relation::Column;
@@ -111,6 +112,7 @@ const _: () = assert!(std::mem::size_of::<Result<MutNode, SbroadError>>() == 24)
 /// mutation therefore goes through a `&mut self` method of `Nodes`, and each
 /// of those drops the memo. Pushing a node needs no invalidation, since the
 /// arena is append-only and a fresh id cannot be memoized yet.
+/// [`Plan::set_subqueries`] keeps the memo: a count never reads subqueries.
 ///
 /// The memo is derived state: it is skipped by serialization and ignored by
 /// equality.
@@ -1755,6 +1757,45 @@ impl Plan {
         self.nodes
             .get_relation(node_id)
             .ok_or_else(|| relation_node_error(&self.nodes, node_id))
+    }
+
+    /// Replaces the subqueries of the relational node `rel_id`, keeping the
+    /// [`ColumnsLenMemo`]: a column count never reads subqueries.
+    ///
+    /// # Errors
+    /// - node doesn't exist in the plan
+    /// - node is not a relational type
+    pub fn set_subqueries(&mut self, rel_id: NodeId, subqueries: Vec<NodeId>) -> RegResult<()> {
+        let memo = std::mem::take(&mut self.nodes.columns_len_memo);
+        let res = self
+            .get_mut_relation_node(rel_id)
+            .map(|mut rel| rel.set_subqueries(subqueries));
+        self.nodes.columns_len_memo = memo;
+        res
+    }
+
+    /// Marks the reference `ref_id` as an item of `star`, keeping the
+    /// [`ColumnsLenMemo`]: a column count never reads the mark.
+    ///
+    /// # Errors
+    /// - node doesn't exist in the plan
+    /// - node is not a reference
+    pub fn set_asterisk_source(
+        &mut self,
+        ref_id: NodeId,
+        star: ReferenceAsteriskSource,
+    ) -> RegResult<()> {
+        let memo = std::mem::take(&mut self.nodes.columns_len_memo);
+        let res = match self.get_mut_expression_node(ref_id) {
+            Ok(MutExpression::Reference(reference)) => {
+                reference.asterisk_source = Some(star);
+                Ok(())
+            }
+            Ok(_) => Err(node_is_not("asterisk item is not a column reference")),
+            Err(e) => Err(e),
+        };
+        self.nodes.columns_len_memo = memo;
+        res
     }
 
     /// Get mutable relation type node

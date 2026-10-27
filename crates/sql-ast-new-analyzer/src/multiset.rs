@@ -263,6 +263,13 @@ impl TypeDeriver for MultisetStmt<'_, Analyzed> {
         let proj = type_system.take_transposed_projs();
 
         for (col, attrs) in proj.iter().enumerate() {
+            // A lone item has nothing to unify with, so it is typed on its own as in
+            // the old pipeline: unification would re-analyze an `any` or `array(any)`
+            // column with its own type as the desired one, which the type system refuses.
+            if let [attr] = attrs.as_slice() {
+                type_system.analyzer.analyze(attr, None)?;
+                continue;
+            }
             let mut pending = Vec::new();
             // Only a lone SELECT item can stay untyped up to here.
             if level_type(inner, col, &mut attrs.iter(), &mut pending, type_system)?.is_none() {

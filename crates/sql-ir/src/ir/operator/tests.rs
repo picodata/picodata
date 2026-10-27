@@ -4,7 +4,7 @@ use crate::ir::distribution::{Distribution, Key};
 use crate::ir::expression::ColumnWithScan;
 use crate::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
 use crate::ir::test_fixtures::{column_user_non_null, sharding_column};
-use crate::ir::types::UnrestrictedType;
+use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
@@ -131,6 +131,75 @@ fn selection() {
 
     // Correct Selection operator
     plan.add_select(scan_id, gt_id).unwrap();
+}
+
+#[test]
+fn set_subqueries_keeps_columns_len_memo() {
+    let mut plan = Plan::default();
+    let t = Table::new_sharded(
+        random(),
+        "t",
+        vec![column_user_non_null(
+            SmolStr::from("a"),
+            UnrestrictedType::Boolean,
+        )],
+        &["a"],
+        &["a"],
+        SpaceEngine::Memtx,
+    )
+    .unwrap();
+    plan.add_rel(t);
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
+    let filter_id = plan.add_const(Value::Boolean(true));
+    let select_id = plan.add_select(scan_id, filter_id).unwrap();
+
+    plan.columns_len(select_id).unwrap();
+    plan.set_subqueries(select_id, vec![]).unwrap();
+    // A UNION chain reads the count of its left side once per operand.
+    assert_eq!(plan.nodes.columns_len_memo().get(select_id), Some(1));
+
+    plan.get_mut_relation_node(select_id).unwrap();
+    assert_eq!(plan.nodes.columns_len_memo().get(select_id), None);
+}
+
+#[test]
+fn set_asterisk_source_keeps_columns_len_memo() {
+    let mut plan = Plan::default();
+    let t = Table::new_sharded(
+        random(),
+        "t",
+        vec![column_user_non_null(
+            SmolStr::from("a"),
+            UnrestrictedType::Boolean,
+        )],
+        &["a"],
+        &["a"],
+        SpaceEngine::Memtx,
+    )
+    .unwrap();
+    plan.add_rel(t);
+    let scan_id = plan.add_scan("t".into(), None, None).unwrap();
+    let ref_id = plan.nodes.add_ref(
+        ReferenceTarget::Single(scan_id),
+        0,
+        DerivedType::new(UnrestrictedType::Boolean),
+        None,
+        false,
+    );
+    let const_id = plan.add_const(Value::Boolean(true));
+    let star = ReferenceAsteriskSource::new(None, 0);
+
+    let len = plan.columns_len(scan_id).unwrap();
+    plan.set_asterisk_source(ref_id, star.clone()).unwrap();
+    // A UNION chain of `SELECT *` marks references once per operand.
+    assert_eq!(plan.nodes.columns_len_memo().get(scan_id), Some(len));
+    let Expression::Reference(reference) = plan.get_expression_node(ref_id).unwrap() else {
+        panic!("expected a reference");
+    };
+    assert_eq!(reference.asterisk_source, Some(star.clone()));
+
+    assert!(plan.set_asterisk_source(const_id, star).is_err());
+    assert_eq!(plan.nodes.columns_len_memo().get(scan_id), Some(len));
 }
 
 #[test]

@@ -6,8 +6,13 @@ use sql_frontend::frontend::sql::transform_into_plan_old;
 
 use sql_frontend::frontend::sql::Ast;
 use sql_ir::ir::metadata::Metadata;
+use sql_ir::ir::node::expression::Expression;
+use sql_ir::ir::node::relational::Relational;
+use sql_ir::ir::node::{Projection, ReferenceAsteriskSource};
 use sql_ir::ir::relation::{ColumnRole, SpaceEngine};
+use sql_ir::ir::tree::traversal::PostOrder;
 use sql_ir::ir::types::{DerivedType, UnrestrictedType};
+use sql_ir::ir::Plan;
 
 use super::{AnalyzedAst, AstTranslator};
 
@@ -360,15 +365,128 @@ fn normalized(arena: &str) -> String {
     .into_owned()
 }
 
-/// The new pipeline must build the same plan as the old one. Plain column
-/// items carry explicit aliases: unaliased ones are named `col_N` by the new
-/// pipeline but after the column by the old one.
+/// Asterisk marks of every projection's output columns, in post-order:
+/// `formatted_arena` does not print them.
+fn star_tags(plan: &Plan) -> Vec<Vec<Option<ReferenceAsteriskSource>>> {
+    let top = plan.get_top().expect("expected plan top");
+    PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top)
+        .filter_map(|(id, _)| match plan.get_relation_node(id) {
+            Ok(Relational::Projection(Projection { output, .. })) => Some(*output),
+            _ => None,
+        })
+        .map(|output| {
+            let cols = plan.get_row_list(output).expect("expected output row");
+            cols.iter()
+                .map(|&col| {
+                    let child = plan.get_child_under_alias(col).expect("expected alias");
+                    match plan.get_expression_node(child) {
+                        Ok(Expression::Reference(r)) => r.asterisk_source.clone(),
+                        _ => None,
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn new_star_tags(query: &str) -> Vec<Vec<Option<ReferenceAsteriskSource>>> {
+    let meta = catalog();
+    let plan = analyzed(query, &[], &meta)
+        .translate()
+        .expect("expected to translate AST into IR plan");
+    star_tags(&plan)
+}
+
+/// The new pipeline must build the same plan as the old one.
 fn assert_same_as_old(query: &str) {
     let meta = catalog();
     pretty_assertions::assert_eq!(
         normalized(&new_arena(query, &meta)),
         normalized(&old_arena(query, &meta))
     );
+    let old = transform_into_plan_old(query, &[], &meta).expect("expected old plan");
+    pretty_assertions::assert_eq!(new_star_tags(query), star_tags(&old), "asterisk marks");
+}
+
+/// An unaliased item is named after the column it reads, otherwise `col_N`
+/// counted over the unnamed items only.
+#[test]
+fn unaliased_items() {
+    for query in [
+        "SELECT a FROM t1",
+        "SELECT * FROM t1",
+        "SELECT t1.* FROM t1",
+        "SELECT a, a + 1, b, 2 FROM t1",
+        "SELECT 1, 2",
+        "SELECT * FROM (SELECT 1, a FROM t1)",
+        "SELECT x FROM (SELECT a AS x FROM t1)",
+        "SELECT a FROM t1 GROUP BY a",
+        "SELECT a FROM t1 GROUP BY 1",
+    ] {
+        assert_same_as_old(query);
+    }
+}
+
+/// Columns from `*` / `t.*` are marked like the old pipeline marks them: the
+/// storage SQL writes the `*` back, which reads duplicate names by position.
+#[test]
+fn asterisk_tags() {
+    for query in [
+        "SELECT * FROM t1",
+        "SELECT t1.* FROM t1",
+        "SELECT *, * FROM t1",
+        "SELECT a, *, t1.* FROM t1",
+        "SELECT * FROM t1 JOIN t2 ON true",
+        "SELECT t2.* FROM t1 JOIN t2 ON true",
+        "SELECT * FROM (SELECT * FROM t1)",
+        "WITH c AS (SELECT a FROM t1) SELECT * FROM c",
+        "SELECT * FROM t1 GROUP BY 1, 2, 3, 4, 5, 6, 7",
+        "SELECT * FROM t1 GROUP BY a, b, c, d, e, f, g",
+    ] {
+        assert_same_as_old(query);
+    }
+}
+
+/// A `*` over a USING merge is not the FROM clause's column list, so none of
+/// it is marked: one `*` in the storage SQL would bring back the merged-away
+/// column. `t.*` is not affected by the merge. Old has no USING.
+#[test]
+fn asterisk_tags_using() {
+    let tags = new_star_tags("SELECT * FROM t1 JOIN t1 AS x USING (a)");
+    assert!(tags.iter().flatten().all(Option::is_none), "{tags:?}");
+
+    let tags = new_star_tags("SELECT t1.* FROM t1 JOIN t1 AS x USING (a)");
+    let t1 = Some(ReferenceAsteriskSource::new(Some("t1".into()), 0));
+    assert_eq!(tags, vec![vec![t1; 7]]);
+}
+
+/// PostgreSQL names a call after the function, a cast and CASE after their
+/// operand; old names them `col_N`.
+#[test]
+fn item_names_diverge_from_old() {
+    let meta = catalog();
+    let alias = regex::Regex::new(r"Alias \[name = (\w+)\]").unwrap();
+    let names = |arena: &str| {
+        let names: Vec<_> = alias
+            .captures_iter(arena)
+            .map(|c| c[1].to_owned())
+            .collect();
+        names.join(" ")
+    };
+    for (query, new_names, old_names) in [
+        ("SELECT count(*) FROM t1", "count", "col_1"),
+        ("SELECT CAST(a AS text) FROM t1", "a", "col_1"),
+        ("SELECT count(*), 1 FROM t1", "count col_1", "col_1 col_2"),
+        // Inner item, then the outer one reading it.
+        (
+            "SELECT * FROM (SELECT count(*) FROM t1)",
+            "count count",
+            "col_1 col_1",
+        ),
+    ] {
+        assert_eq!(names(&new_arena(query, &meta)), new_names, "{query}");
+        assert_eq!(names(&old_arena(query, &meta)), old_names, "{query}");
+    }
 }
 
 #[test]
@@ -412,18 +530,14 @@ fn cte_body_without_from_after_other_cte() {
     );
 }
 
-// A FROM subquery gets no `ScanSubQuery` yet, so the cases below cannot be
-// compared with the old pipeline; they check which body the scan reads.
-
 #[test]
 fn cte_referenced_from_subquery() {
-    let arena = new_arena(
+    assert_same_as_old(
         "WITH c AS (SELECT a AS a FROM t1) SELECT a AS a FROM (SELECT a AS a FROM c)",
-        &catalog(),
     );
-    assert_eq!(arena.matches("relation: ScanCte").count(), 1);
-    assert!(arena.contains("Relation: t1"));
 }
+
+// The old pipeline rejects the cases below; they check which body the scan reads.
 
 #[test]
 fn cte_shadowed_by_nested_with() {
@@ -713,6 +827,7 @@ fn join_chain() {
 fn join_cross() {
     for query in [
         "SELECT t1.a AS a, t2.c AS c FROM t1 CROSS JOIN t2",
+        "SELECT * FROM t1 CROSS JOIN t2",
         "SELECT t1.a AS a FROM t1 CROSS JOIN t2 JOIN t3 ON t3.a = t2.c",
     ] {
         assert_same_as_old(query);
@@ -889,4 +1004,113 @@ fn set_operation_mixed_types() {
     ] {
         assert_same_as_old(query);
     }
+}
+
+// ------------------------------ SUBQUERIES ------------------------------
+
+#[test]
+fn from_subquery() {
+    for query in [
+        "SELECT x AS x FROM (SELECT a AS x FROM t1) AS s",
+        "SELECT s.x AS x FROM (SELECT a AS x FROM t1) AS s WHERE s.x > 1",
+        "SELECT a AS a FROM (SELECT a AS a FROM t1)",
+        // Unnamed subqueries are named in scan order, inner first.
+        "SELECT a AS a FROM (SELECT a AS a FROM (SELECT a AS a FROM t1))",
+        "SELECT x AS x FROM (SELECT a AS x FROM t1) JOIN (SELECT a AS y FROM t3) ON x = y",
+        "SELECT t1.a AS a FROM t1 JOIN (SELECT a AS a FROM t3) AS s ON t1.a = s.a",
+    ] {
+        assert_same_as_old(query);
+    }
+}
+
+/// An unnamed subquery skips names the query uses, wherever they appear.
+#[test]
+fn unnamed_subquery_skips_used_aliases() {
+    for query in [
+        "SELECT x AS x FROM (SELECT a AS x FROM t1) AS unnamed_subquery JOIN (SELECT a AS y FROM t3) ON x = y",
+        "SELECT x AS x FROM (SELECT a AS x FROM t1) JOIN (SELECT a AS y FROM t3) AS unnamed_subquery ON x = y",
+        "SELECT a AS a FROM (SELECT a AS a FROM (SELECT a AS a FROM t1)) AS unnamed_subquery",
+        "SELECT x AS x FROM (SELECT a AS x FROM t1) JOIN (SELECT a AS y FROM t3) AS unnamed_subquery_1 ON x = y \
+         JOIN (SELECT a AS z FROM t4) ON x = z",
+        "SELECT x AS x FROM (SELECT a AS x FROM t1) JOIN t3 AS unnamed_subquery ON x = unnamed_subquery.a",
+        "WITH unnamed_subquery AS (SELECT a AS y FROM t3) \
+         SELECT x AS x FROM (SELECT a AS x FROM t1) JOIN unnamed_subquery AS u ON x = u.y",
+    ] {
+        assert_same_as_old(query);
+    }
+
+    let mut meta = catalog();
+    meta.add_sharded(
+        "unnamed_subquery",
+        &[("a", UnrestrictedType::Integer, false)],
+        &["a"],
+        &["a"],
+    );
+    let query = "SELECT x AS x FROM (SELECT a AS x FROM t1) JOIN unnamed_subquery ON x = unnamed_subquery.a";
+    pretty_assertions::assert_eq!(
+        normalized(&new_arena(query, &meta)),
+        normalized(&old_arena(query, &meta))
+    );
+}
+
+/// The optimizer names a motion over a join from the same set.
+#[test]
+fn unnamed_join_skips_used_aliases() {
+    let meta = catalog();
+    let query =
+        "WITH c AS (SELECT a AS a FROM t3) SELECT unnamed_join.a AS a FROM c AS unnamed_join \
+                 LEFT JOIN t1 ON unnamed_join.a = t1.a LEFT JOIN c AS d ON unnamed_join.a = d.a";
+    let optimized = |mut ir: Plan| ir.optimize().unwrap().formatted_arena().unwrap();
+    let new = optimized(analyzed(query, &[], &meta).translate().unwrap());
+    let old = optimized(transform_into_plan_old(query, &[], &meta).unwrap());
+    assert!(new.contains("alias = unnamed_join_1]"));
+    pretty_assertions::assert_eq!(normalized(&new), normalized(&old));
+}
+
+#[test]
+fn expression_subquery() {
+    for query in [
+        "SELECT a AS a FROM t1 WHERE a IN (SELECT a AS a FROM t3)",
+        "SELECT a AS a FROM t1 WHERE a NOT IN (SELECT a AS a FROM t3)",
+        "SELECT a AS a FROM t1 WHERE EXISTS (SELECT a AS a, b AS b FROM t3)",
+        "SELECT a AS a FROM t1 WHERE NOT EXISTS (SELECT a AS a FROM t3)",
+        "SELECT a AS a FROM t1 WHERE a = (SELECT a AS a FROM t3)",
+        "SELECT a AS a FROM t1 WHERE a > (SELECT max(a) AS m FROM t3)",
+        // The owner lists subqueries in expression order.
+        "SELECT a AS a FROM t1 WHERE a IN (SELECT a AS a FROM t3) AND b IN (SELECT a AS a FROM t4)",
+        "SELECT a AS a FROM t1 GROUP BY a, (SELECT a AS a FROM t3)",
+        "SELECT a AS a FROM t1 GROUP BY a HAVING a IN (SELECT a AS a FROM t3)",
+        "SELECT (SELECT a AS a FROM t3) AS x FROM t1",
+        "SELECT (SELECT 1 AS y) AS x",
+        "SELECT t1.a AS a FROM t1 JOIN t3 ON t1.a IN (SELECT a AS a FROM t4)",
+        "SELECT x AS x FROM (SELECT a AS x FROM t1 WHERE a IN (SELECT a AS a FROM t3))",
+        "SELECT a AS a FROM t1 WHERE a IN (SELECT a AS a FROM t3 WHERE a IN (SELECT a AS a FROM t4))",
+    ] {
+        assert_same_as_old(query);
+    }
+}
+
+#[test]
+fn expression_subquery_unsupported() {
+    let meta = catalog();
+    for query in [
+        // Correlated: the old pipeline rejects it too.
+        "SELECT a AS a FROM t1 WHERE EXISTS (SELECT a AS a FROM t3 WHERE t3.a = t1.a)",
+        // The analyzer casts the subquery to the common type.
+        "SELECT a AS a FROM t1 WHERE c IN (SELECT a AS a FROM t3)",
+        // The old pipeline groups by the constant `1` instead.
+        "SELECT (SELECT 1 AS y) AS x FROM t1 GROUP BY 1",
+    ] {
+        assert!(analyzed(query, &[], &meta).translate().is_err(), "{query}");
+    }
+}
+
+/// The analyzer casts a scalar subquery to the common type; the old pipeline
+/// compares as is.
+#[test]
+fn scalar_subquery_mixed_types_diverges_from_old() {
+    let meta = catalog();
+    let query = "SELECT a AS a FROM t1 WHERE c = (SELECT a AS a FROM t3)";
+    assert!(new_arena(query, &meta).contains("Cast [to = double]"));
+    assert!(!old_arena(query, &meta).contains("Cast"));
 }

@@ -62,7 +62,7 @@ fn cte_preferrable_over_table() {
 fn subquery_with_nested_cte_table_expr() {
     let query =
         "WITH cte1 AS (SELECT 1) SELECT * FROM (WITH cte2 AS (SELECT 2) SELECT * FROM cte2) AS t";
-    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte1 AS (SELECT 1::int) SELECT ?column?::int FROM (WITH cte2 AS (SELECT 2::int) SELECT ?column?::int FROM cte2) AS t");
+    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte1 AS (SELECT 1::int) SELECT t.col_1::int FROM (WITH cte2 AS (SELECT 2::int) SELECT cte2.col_1::int FROM cte2) AS t");
 }
 
 // ------------- Columns a CTE exposes -------------

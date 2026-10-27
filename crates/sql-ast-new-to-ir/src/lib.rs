@@ -17,6 +17,8 @@
 )]
 #![allow(rustdoc::private_intra_doc_links)]
 
+use std::collections::HashSet;
+
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use sql_ast_new_nodes::error::{ast_err, ast_invariant_err, AstErr, AstResult};
@@ -35,15 +37,17 @@ use sql_ast_new_nodes::{Analyzed, Ident, Node, SqlOption};
 
 use sql_ast_new_nodes::AbstractSyntaxTree;
 
+use sql_ir::ir::aliases::AliasGenerator;
 use sql_ir::ir::index::Index;
 use sql_ir::ir::node::expression::MutExpression;
-use sql_ir::ir::node::{BoolExpr, CountAsterisk, NodeId, ReferenceTarget, ScalarFunction};
+use sql_ir::ir::node::{
+    BoolExpr, CountAsterisk, NodeId, ReferenceAsteriskSource, ReferenceTarget, ScalarFunction,
+};
 use sql_ir::ir::operator::{Bool, JoinKind as IrJoinKind, Unary};
 use sql_ir::ir::subtree_cloner::SubtreeCloner;
 use sql_ir::ir::types::CastType;
 use sql_ir::ir::value::Value;
 use sql_ir::ir::Plan;
-use sql_ir::utils::get_unnamed_column_alias;
 
 /// A valid query the translator does not support yet (a limitation, not a bug).
 pub(crate) fn unsupported_err(msg: SmolStr) -> AstErr {
@@ -77,6 +81,10 @@ pub(crate) struct Ctx<'q> {
     /// Select list of the statement in progress, parked while GROUP BY
     /// translates the items its ordinals name.
     proj_exprs: Vec<ProjExpr<'q>>,
+    /// FROM aliases and CTE names of the whole query.
+    used_aliases: HashSet<SmolStr>,
+    /// Unaliased FROM subqueries, named once every alias is known.
+    unnamed_subqueries: Vec<NodeId>,
 }
 
 /// Translation state of one statement depth.
@@ -88,6 +96,8 @@ struct Frame {
     offsets: Vec<usize>,
     /// The table being joined while its ON/USING condition translates.
     pending: Option<NodeId>,
+    /// Expression subqueries waiting for the relational node that owns them.
+    subqueries: Vec<NodeId>,
 }
 
 impl Ctx<'_> {
@@ -95,6 +105,8 @@ impl Ctx<'_> {
         Self {
             frames: Vec::new(),
             proj_exprs: Vec::new(),
+            used_aliases: HashSet::new(),
+            unnamed_subqueries: Vec::new(),
         }
     }
 
@@ -103,13 +115,24 @@ impl Ctx<'_> {
             .last_mut()
             .ok_or_else(|| internal_err(format_smolstr!("expected actual statement frame")))
     }
+
+    fn take_subqueries(&mut self) -> AstResult<Vec<NodeId>> {
+        Ok(std::mem::take(&mut self.frame_mut()?.subqueries))
+    }
+
+    /// Hands the subqueries of just translated expressions to their owner.
+    fn attach_subqueries(&mut self, ir: &mut Plan, owner: NodeId) -> AstResult<()> {
+        let subqueries = self.take_subqueries()?;
+        ir.set_subqueries(owner, subqueries)?;
+        Ok(())
+    }
 }
 
 /// Select list item while GROUP BY may still consume it.
 enum ProjExpr<'q> {
     Orig(ProjectionExpr<'q, Analyzed>),
     /// Translated as a GROUP BY key; the select list clones its subtree.
-    Translated(NodeId, Option<Ident>),
+    Translated(NodeId, Option<Ident>, Option<ReferenceAsteriskSource>),
 }
 
 /// Lets `mem::take` pull an item out of [`Ctx::proj_exprs`].
@@ -124,6 +147,14 @@ impl<'q> AstTranslator<'q> for AnalyzedAst<'q> {
         let mut ir = Plan::new();
         let mut ctx = Ctx::empty();
         self.root.translate(&mut ir, &mut ctx)?;
+
+        // A generated name must not clash with any name of the query, as in the old pipeline.
+        ctx.used_aliases.extend(ir.relations.tables.keys().cloned());
+        let mut aliases = AliasGenerator::new(ctx.used_aliases);
+        for id in ctx.unnamed_subqueries {
+            let name = aliases.subquery_alias(&ir);
+            ir.get_mut_relation_node(id)?.set_scan_name(Some(name))?;
+        }
         Ok(ir)
     }
 }
@@ -135,7 +166,8 @@ impl<'q> NodeTranslator<'q> for Node<'q, Analyzed> {
         match self {
             Node::Empty => return Err(internal_err(format_smolstr!("expected non-empty tree"))),
             Node::DqlStmt(dql_stmt) => {
-                dql_stmt.stmt.translate(ir, ctx)?;
+                let root = dql_stmt.stmt.translate(ir, ctx)?;
+                ir.set_top(root)?;
                 if let Some(option) = dql_stmt.option {
                     option.translate(ir, ctx)?;
                 }
@@ -155,11 +187,12 @@ impl<'q> NodeTranslator<'q> for SqlOption {
 }
 
 impl<'q> NodeTranslator<'q> for MultisetStmt<'q, Analyzed> {
-    type ResType = ();
+    /// Root of the statement; the caller's top is left as it was.
+    type ResType = NodeId;
 
     fn translate(self, ir: &mut Plan, ctx: &mut Ctx<'q>) -> AstResult<Self::ResType> {
-        // Expect no top.
-        debug_assert!(ir.get_top().is_err());
+        // The statement is translated from an empty top.
+        let saved_top = ir.reset_top();
 
         // Split the whole statement into parts and handle them separately.
         let (ctes, inner, order_by, limit) = self.into_parts();
@@ -178,9 +211,6 @@ impl<'q> NodeTranslator<'q> for MultisetStmt<'q, Analyzed> {
             // Translate CTE and save its root in the actual scope.
             let cte_id = cte.translate(ir, ctx)?;
             ctx.frame_mut()?.ctes.push(cte_id);
-
-            // CTE inner nodes should not leak.
-            ir.reset_top();
         }
 
         // Handle each variant of statement inner body.
@@ -190,10 +220,17 @@ impl<'q> NodeTranslator<'q> for MultisetStmt<'q, Analyzed> {
             MultisetInner::Operation(operation) => operation.translate(ir, ctx)?,
         };
 
-        // Drop the scope we are leaving.
-        ctx.frames.pop();
+        // Drop the scope we are leaving; each of its subqueries has an owner.
+        let frame = ctx.frames.pop();
+        debug_assert!(frame.is_some_and(|frame| frame.subqueries.is_empty()));
 
-        Ok(())
+        let root = ir
+            .reset_top()
+            .ok_or_else(|| internal_err(format_smolstr!("expected statement root")))?;
+        if let Some(top) = saved_top {
+            ir.set_top(top)?;
+        }
+        Ok(root)
     }
 }
 
@@ -202,18 +239,34 @@ impl<'q> NodeTranslator<'q> for Cte<'q, Analyzed> {
 
     fn translate(self, ir: &mut Plan, ctx: &mut Ctx<'q>) -> AstResult<Self::ResType> {
         let (name, columns, body) = self.into_parts();
+        ctx.used_aliases.insert(name.as_str().into());
 
         // Translate CTE body
-        body.translate(ir, ctx)?;
+        let body_id = body.translate(ir, ctx)?;
 
         // Align CTE body with its output column aliases
         let cte_id = ir.transform_cte_columns(
-            ir.get_top()?,
+            body_id,
             name.take(),
             columns.into_iter().map(Ident::take).collect(),
         )?;
 
         Ok(cte_id)
+    }
+}
+
+/// A statement nested in an expression.
+struct ExprSubQuery<'q>(Box<MultisetStmt<'q, Analyzed>>);
+
+impl<'q> NodeTranslator<'q> for ExprSubQuery<'q> {
+    /// Row of references to the subquery columns.
+    type ResType = NodeId;
+
+    fn translate(self, ir: &mut Plan, ctx: &mut Ctx<'q>) -> AstResult<Self::ResType> {
+        let root = self.0.translate(ir, ctx)?;
+        let sq_id = ir.add_sub_query(root, None)?;
+        ctx.frame_mut()?.subqueries.push(sq_id);
+        Ok(ir.add_row_from_subquery(sq_id)?)
     }
 }
 
@@ -228,13 +281,8 @@ impl<'q> NodeTranslator<'q> for Operation<'q, Analyzed> {
             right,
         } = self;
 
-        left.translate(ir, ctx)?;
-        let left_id = ir.get_top()?;
-
-        // Each operand is a statement translated from an empty top.
-        ir.reset_top();
-        right.translate(ir, ctx)?;
-        let right_id = ir.get_top()?;
+        let left_id = left.translate(ir, ctx)?;
+        let right_id = right.translate(ir, ctx)?;
 
         let op_id = match (op, dup_elimination) {
             (OperationKind::Union, dup) => {
@@ -277,6 +325,7 @@ impl<'q> NodeTranslator<'q> for SelectStmt<'q, Analyzed> {
             if let Some(filter) = filter {
                 let filter_id = filter.translate(ir, ctx)?;
                 let select_id = ir.add_select(ir.get_top()?, filter_id)?;
+                ctx.attach_subqueries(ir, select_id)?;
                 ir.set_top(select_id)?;
             }
 
@@ -291,6 +340,7 @@ impl<'q> NodeTranslator<'q> for SelectStmt<'q, Analyzed> {
             if let Some(having) = having {
                 let filter_id = having.translate(ir, ctx)?;
                 let having_id = ir.add_having(ir.get_top()?, filter_id)?;
+                ctx.attach_subqueries(ir, having_id)?;
                 ir.set_top(having_id)?;
             }
 
@@ -302,19 +352,15 @@ impl<'q> NodeTranslator<'q> for SelectStmt<'q, Analyzed> {
         // Add IR nodes for each expression in SELECT list.
         let mut out_vars = Vec::with_capacity(proj_exprs.len());
 
-        // Track columns without aliases.
-        // For queries `SELECT col_1 FROM (SELECT 1 as col_1, 2)`
-        // `col_1` reference is ambiguous. It will be fixed some day.
-        let mut noname_col_cnt = 0;
         for proj_expr in proj_exprs {
-            // TODO: save subqueries used in SELECT list
-            // TODO: keep saved top when diving into branches setting their own IR plan top node.
-            let (expr_id, alias) = match proj_expr {
+            let (expr_id, name, star) = match proj_expr {
                 ProjExpr::Orig(proj) => {
-                    let (expr, alias) = proj.into_parts();
-                    (expr.translate(ir, ctx)?, alias)
+                    let name = proj.output_name().map(Ident::normalized);
+                    let star = proj.asterisk_source().cloned();
+                    let (expr, _) = proj.into_parts();
+                    (expr.translate(ir, ctx)?, name, star)
                 }
-                ProjExpr::Translated(key_id, alias) => {
+                ProjExpr::Translated(key_id, name, star) => {
                     // The key reads the GroupBy child; its projected copy reads the top.
                     let expr_id = SubtreeCloner::clone_subtree(ir, key_id)?;
                     let grby_child = grby_child.ok_or_else(|| {
@@ -322,28 +368,32 @@ impl<'q> NodeTranslator<'q> for SelectStmt<'q, Analyzed> {
                     })?;
                     let top_id = ir.get_top()?;
                     ir.replace_target_in_subtree(expr_id, grby_child, top_id)?;
-                    (expr_id, alias)
+                    (expr_id, name, star)
                 }
             };
 
-            let alias_id = if let Some(alias) = alias {
-                ir.nodes.add_alias(alias.as_str(), expr_id)?
-            } else {
-                noname_col_cnt += 1;
-                ir.nodes
-                    .add_alias(get_unnamed_column_alias(noname_col_cnt).as_str(), expr_id)?
-            };
+            // Every item of a marked asterisk must be a marked reference: the
+            // storage SQL writes one `*` for them, which brings back any item
+            // left unmarked.
+            if let Some(star) = star {
+                ir.set_asterisk_source(expr_id, star)?;
+            }
 
-            out_vars.push(alias_id);
+            // The analyzer names every item.
+            let name = name.ok_or_else(|| internal_err(format_smolstr!("expected item name")))?;
+            out_vars.push(ir.nodes.add_alias(name.as_str(), expr_id)?);
         }
 
         let top_id = if let Ok(src_rel) = ir.get_top() {
             // Add projection node over some tuple source.
             let output = ir.nodes.add_row(out_vars);
-            ir.add_projection(src_rel, output, vec![], vec![], is_distinct)?
+            let subqueries = ctx.take_subqueries()?;
+            ir.add_projection(src_rel, output, subqueries, vec![], is_distinct)?
         } else {
             // No tuple source add SelectWithoutScan
-            ir.add_select_without_scan(out_vars)?
+            let select_id = ir.add_select_without_scan(out_vars)?;
+            ctx.attach_subqueries(ir, select_id)?;
+            select_id
         };
 
         ir.set_top(top_id)?;
@@ -365,6 +415,7 @@ impl<'q> NodeTranslator<'q> for GroupBy<'q, Analyzed> {
         }
 
         let grby_id = ir.add_groupby(ir.get_top()?, &keys)?;
+        ctx.attach_subqueries(ir, grby_id)?;
         ir.set_top(grby_id)?;
         Ok(())
     }
@@ -387,14 +438,24 @@ impl<'q> NodeTranslator<'q> for OrdrByGrpByElem<'q, Analyzed> {
         })?;
         match std::mem::take(proj_entry) {
             ProjExpr::Orig(proj) => {
-                let (expr, alias) = proj.into_parts();
+                let name = proj.output_name().map(Ident::normalized);
+                let star = proj.asterisk_source().cloned();
+                let (expr, _) = proj.into_parts();
+                let sq_cnt = ctx.frame_mut()?.subqueries.len();
                 let key_id = expr.translate(ir, ctx)?;
-                ctx.proj_exprs[pos] = ProjExpr::Translated(key_id, alias);
+                // shortcut: the select-list copy of the key would read a subquery
+                // owned by GroupBy, lift once the copy reads the key instead.
+                if ctx.frame_mut()?.subqueries.len() != sq_cnt {
+                    return Err(unsupported_err(format_smolstr!(
+                        "GROUP BY ordinal of an item with a subquery is not supported"
+                    )));
+                }
+                ctx.proj_exprs[pos] = ProjExpr::Translated(key_id, name, star);
                 Ok(key_id)
             }
             // Repeated ordinal: group by a copy of the key.
-            ProjExpr::Translated(key_id, alias) => {
-                ctx.proj_exprs[pos] = ProjExpr::Translated(key_id, alias);
+            ProjExpr::Translated(key_id, name, star) => {
+                ctx.proj_exprs[pos] = ProjExpr::Translated(key_id, name, star);
                 Ok(SubtreeCloner::clone_subtree(ir, key_id)?)
             }
         }
@@ -504,6 +565,7 @@ impl<'q> NodeTranslator<'q> for JoinedTable<'q, Analyzed> {
 
         // All nodes we depend on have just been translated. Just add join node into IR.
         let join_id = ir.add_join(left, right, condition, kind)?;
+        ctx.attach_subqueries(ir, join_id)?;
 
         // Now IR top is newly created join.
         ir.set_top(join_id)?;
@@ -515,6 +577,9 @@ impl<'q> NodeTranslator<'q> for TableFactor<'q, Analyzed> {
     type ResType = ();
 
     fn translate(self, ir: &mut Plan, ctx: &mut Ctx<'q>) -> AstResult<Self::ResType> {
+        if let Some(alias) = &self.alias {
+            ctx.used_aliases.insert(alias.as_str().into());
+        }
         match self.inner {
             TableFactorInner::CteOrTable(cte_or_tbl) => match cte_or_tbl {
                 AnalyzedCteOrTable::Cte { name, cte } => {
@@ -559,7 +624,15 @@ impl<'q> NodeTranslator<'q> for TableFactor<'q, Analyzed> {
                     ir.set_top(scan_id)?;
                 }
             },
-            TableFactorInner::SubQuery(sq) => sq.translate(ir, ctx)?,
+            TableFactorInner::SubQuery(sq) => {
+                let root = sq.translate(ir, ctx)?;
+                let unnamed = self.alias.is_none();
+                let scan_id = ir.add_sub_query(root, self.alias.map(Ident::take))?;
+                if unnamed {
+                    ctx.unnamed_subqueries.push(scan_id);
+                }
+                ir.set_top(scan_id)?;
+            }
             TableFactorInner::Function(_) => {
                 return Err(unsupported_err(format_smolstr!(
                     "table functions are not supported"
@@ -733,7 +806,34 @@ impl<'q> NodeTranslator<'q> for Expr<'q, Analyzed> {
                 ir.cast_fn_args(fn_id, &targets)?;
                 Ok(fn_id)
             }
-            // ExprInner::SubQuery(_) => "SubQuery",
+            ExprInner::SubQuery(sq) => ExprSubQuery(sq).translate(ir, ctx),
+            ExprInner::Exists(exists) => {
+                let (is_not, sq) = exists.into_parts();
+                let row = ExprSubQuery(sq).translate(ir, ctx)?;
+                let exists_id = ir.add_unary(Unary::Exists, row)?;
+                Ok(if is_not {
+                    ir.add_unary(Unary::Not, exists_id)?
+                } else {
+                    exists_id
+                })
+            }
+            ExprInner::In(in_expr) => {
+                let (is_not, left, rhs) = in_expr.into_parts();
+                // shortcut: CAST(row) is no IN list, lift once the cast moves into the subquery.
+                if matches!(rhs.inner_ref(), ExprInner::Cast(_)) {
+                    return Err(unsupported_err(format_smolstr!(
+                        "IN over a differently typed subquery is not supported"
+                    )));
+                }
+                let left = left.translate(ir, ctx)?;
+                let rhs = rhs.translate(ir, ctx)?;
+                let in_id = ir.add_cond(left, Bool::In, rhs)?;
+                Ok(if is_not {
+                    ir.add_unary(Unary::Not, in_id)?
+                } else {
+                    in_id
+                })
+            }
             // ExprInner::Row(_) => "Row",
             // ExprInner::Array(_) => "Array",
             // ExprInner::WindowFunction(_) => "WindowFunction",
@@ -741,13 +841,11 @@ impl<'q> NodeTranslator<'q> for Expr<'q, Analyzed> {
             // ExprInner::Like(_) => "Like",
             // ExprInner::Similar(_) => "Similar",
             // ExprInner::Between(_) => "Between",
-            // ExprInner::In(_) => "In",
             // ExprInner::Is(_) => "Is",
             // ExprInner::Index(_) => "Index",
             // ExprInner::Trim(_) => "Trim",
             // ExprInner::Substring(_) => "Substring",
             // ExprInner::Case(_) => "Case",
-            // ExprInner::Exists(_) => "Exists",
             // ExprInner::TimeFunction(_) => "TimeFunction",
             other => todo!("{}", other.kind_name()),
         }

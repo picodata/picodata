@@ -22,6 +22,7 @@ use crate::table_expression::{
 };
 use crate::window::NamedWindows;
 use crate::{Analyzed, AnalyzedExprMeta, AstNodeId, AstState, Ident, NamedEntity, Raw};
+use sql_ir::ir::node::ReferenceAsteriskSource;
 use sql_ir::ir::types::DerivedType;
 
 pub struct SelectStmt<'q, State: AstState<'q>> {
@@ -417,6 +418,9 @@ pub struct ProjectionExpr<'q, State: AstState<'q>> {
     /// The name the expression suggests on its own, derived by the analyzer;
     /// see [`AstState::ProjNameT`].
     inferred_name: State::ProjNameT,
+    /// The `*` / `t.*` this item was expanded from; the storage SQL writes the
+    /// `*` back, the only way to read duplicate column names by position.
+    asterisk_source: Option<ReferenceAsteriskSource>,
 }
 
 impl<'q, State: AstState<'q>> Render<'q, State> for ProjectionExpr<'q, State> {
@@ -441,6 +445,7 @@ impl<'q, State: AstState<'q>> ProjectionExpr<'q, State> {
             expr,
             alias,
             inferred_name: State::ProjNameT::default(),
+            asterisk_source: None,
         }
     }
 
@@ -477,18 +482,30 @@ impl<'q> ProjectionExpr<'q, Analyzed> {
             expr,
             alias,
             inferred_name,
+            asterisk_source: None,
         }
     }
 
-    pub fn from_bound_var(var: BoundVar, expr_id: AstNodeId, name: Option<Ident>) -> Self {
-        ProjectionExpr::from_parts(
+    pub fn from_bound_var(
+        var: BoundVar,
+        expr_id: AstNodeId,
+        name: Option<Ident>,
+        asterisk_source: Option<ReferenceAsteriskSource>,
+    ) -> Self {
+        let mut proj = ProjectionExpr::from_parts(
             Expr::from_parts(
                 ExprInner::<'q, Analyzed>::Var(var),
                 AnalyzedExprMeta::new(DerivedType::unknown(), expr_id),
             ),
             None,
             name,
-        )
+        );
+        proj.asterisk_source = asterisk_source;
+        proj
+    }
+
+    pub fn asterisk_source(&self) -> Option<&ReferenceAsteriskSource> {
+        self.asterisk_source.as_ref()
     }
 
     /// The name this projection exposes: its explicit alias, or the name the

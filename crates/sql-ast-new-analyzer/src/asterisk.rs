@@ -25,6 +25,7 @@ use sql_ast_new_nodes::table_expression::{
     AnalyzedCteOrTable, AttributeView, BoundVar, From, FromEntry, TableFactor, TableFactorInner,
 };
 use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, Ident, NamedEntity};
+use sql_ir::ir::node::ReferenceAsteriskSource;
 use sql_ir::ir::relation::{Column, ColumnRole};
 use sql_ir::ir::types::DerivedType;
 
@@ -39,10 +40,12 @@ pub(crate) fn missing_from_entry_error(t_name: &str) -> AstErr {
 /// Asterisk resolver.
 pub(crate) trait ResolveFromAsterisk<'q> {
     /// `depth` is the frame this FROM clause belongs to: what the
-    /// manufactured column references record.
+    /// manufactured column references record. `asterisk_id` numbers the
+    /// asterisks of one select list.
     fn resolve_asterisk<S: Scope<'q> + ?Sized>(
         &self,
         qualifier: Option<&str>,
+        asterisk_id: usize,
         depth: Depth,
         type_system: &mut TypeSystem,
         scope: &S,
@@ -83,6 +86,7 @@ impl<'q> ResolveFromAsterisk<'q> for From<'q, Analyzed> {
     fn resolve_asterisk<S: Scope<'q> + ?Sized>(
         &self,
         qualifier: Option<&str>,
+        asterisk_id: usize,
         depth: Depth,
         type_system: &mut TypeSystem,
         scope: &S,
@@ -92,6 +96,7 @@ impl<'q> ResolveFromAsterisk<'q> for From<'q, Analyzed> {
             return Some(resolve_unqualified_asterisk(
                 self,
                 depth,
+                asterisk_id,
                 type_system,
                 scope,
             ));
@@ -110,6 +115,10 @@ impl<'q> ResolveFromAsterisk<'q> for From<'q, Analyzed> {
                     type_system,
                     &HashSet::new(),
                     scope,
+                    Some(ReferenceAsteriskSource::new(
+                        Some(t_name.into()),
+                        asterisk_id,
+                    )),
                 ))
             })
     }
@@ -132,9 +141,14 @@ impl<'q> ResolveFromAsterisk<'q> for From<'q, Analyzed> {
 ///
 /// Both merged columns are then withheld from the per-entry expansion, so a
 /// name merged along a chain of joins is emitted exactly once.
+///
+/// Such an expansion is not the FROM clause's own column list, so it is not
+/// marked as an asterisk at all: the storage SQL writes a marked expansion
+/// back as one `*`, which would bring the withheld columns back.
 fn resolve_unqualified_asterisk<'q, S: Scope<'q> + ?Sized>(
     from: &From<'q, Analyzed>,
     depth: Depth,
+    asterisk_id: usize,
     type_system: &mut TypeSystem,
     scope: &S,
 ) -> AstResult<Vec<ProjectionExpr<'q, Analyzed>>> {
@@ -172,6 +186,9 @@ fn resolve_unqualified_asterisk<'q, S: Scope<'q> + ?Sized>(
         }
     }
 
+    let tag = reduced_columns
+        .is_empty()
+        .then(|| ReferenceAsteriskSource::new(None, asterisk_id));
     for (entry_pos, entry) in from.entries().iter().enumerate() {
         let resolved = entry.resolve_asterisk(AsteriskResolver::new(
             depth,
@@ -180,6 +197,7 @@ fn resolve_unqualified_asterisk<'q, S: Scope<'q> + ?Sized>(
             type_system,
             &reduced_columns,
             scope,
+            tag.clone(),
         ))?;
         total_proj.extend(resolved);
     }
@@ -253,6 +271,8 @@ impl<'q> ResolveAsterisk<'q> for AnalyzedCteOrTable {
 ///
 /// `reduced_vars` names the columns a `USING` merge has already emitted once,
 /// up front. It is empty for a qualified asterisk.
+///
+/// `tag` marks every expanded item; see [`ProjectionExpr::asterisk_source`].
 struct AsteriskResolver<'q, 'ast, S: Scope<'q> + ?Sized> {
     depth: Depth,
     entry: usize,
@@ -260,6 +280,7 @@ struct AsteriskResolver<'q, 'ast, S: Scope<'q> + ?Sized> {
     type_system: &'ast mut TypeSystem,
     reduced_vars: &'ast HashSet<BoundVar>,
     scope: &'ast S,
+    tag: Option<ReferenceAsteriskSource>,
 }
 
 const SUBQUERY_DISPLAY_PREFIX: usize = 32;
@@ -268,10 +289,11 @@ fn proj_expr<'q>(
     ts: &mut TypeSystem,
     attr: AttributeView<'q, '_>,
     var: BoundVar,
+    tag: Option<ReferenceAsteriskSource>,
 ) -> ProjectionExpr<'q, Analyzed> {
     let name = attr.name().map(Ident::normalized);
     let t_expr = texpr_from_attribute(attr, ts.inc_expr_id());
-    let proj_expr = ProjectionExpr::from_bound_var(var, t_expr.id(), name);
+    let proj_expr = ProjectionExpr::from_bound_var(var, t_expr.id(), name, tag);
     ts.add_proj_elem(t_expr);
     proj_expr
 }
@@ -284,6 +306,7 @@ impl<'q, 'ast, S: Scope<'q> + ?Sized> AsteriskResolver<'q, 'ast, S> {
         type_system: &'ast mut TypeSystem,
         reduced_vars: &'ast HashSet<BoundVar>,
         scope: &'ast S,
+        tag: Option<ReferenceAsteriskSource>,
     ) -> Self {
         Self {
             depth,
@@ -292,6 +315,7 @@ impl<'q, 'ast, S: Scope<'q> + ?Sized> AsteriskResolver<'q, 'ast, S> {
             type_system,
             reduced_vars,
             scope,
+            tag,
         }
     }
 
@@ -324,7 +348,7 @@ impl<'q, 'ast, S: Scope<'q> + ?Sized> AsteriskResolver<'q, 'ast, S> {
                 continue;
             }
 
-            proj_exprs.push(proj_expr(self.type_system, attr, var));
+            proj_exprs.push(proj_expr(self.type_system, attr, var, self.tag.clone()));
         }
         Ok(proj_exprs)
     }
@@ -348,6 +372,7 @@ impl<'q, 'ast, S: Scope<'q> + ?Sized> AsteriskResolver<'q, 'ast, S> {
                 self.type_system,
                 AttributeView::Column(column, None),
                 var,
+                self.tag.clone(),
             ));
         }
         Ok(proj_exprs)
@@ -379,7 +404,7 @@ impl<'q, 'ast, S: Scope<'q> + ?Sized> AsteriskResolver<'q, 'ast, S> {
                 continue;
             }
 
-            proj_exprs.push(proj_expr(self.type_system, attr, var));
+            proj_exprs.push(proj_expr(self.type_system, attr, var, self.tag.clone()));
         }
         Ok(proj_exprs)
     }

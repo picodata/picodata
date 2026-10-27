@@ -18,8 +18,11 @@
 //! one another.
 
 use super::{analyze_error, analyzed};
+use sql_ast_new_corpus::MockCatalog;
+use sql_ast_new_nodes::rendering::normalize_whitespace;
 use sql_ast_new_nodes::AbstractSyntaxTree;
 use sql_frontend::frontend::sql::Ast;
+use sql_ir::ir::types::{NestedType, UnrestrictedType};
 
 // ------------- Unqualified -------------
 
@@ -27,6 +30,27 @@ use sql_frontend::frontend::sql::Ast;
 fn asterisk_from_table() {
     let query = "SELECT * FROM t1";
     insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t1.a::int, t1.b::int, t1.c::double, t1.d::decimal, t1.e::text, t1.f::text, t1.g::bool FROM t1");
+}
+
+/// `any` and `array(any)` cannot be a desired type, so a select list that
+/// passed its columns' own types back as one failed `SELECT * FROM _pico_table`.
+#[test]
+fn asterisk_over_any_typed_columns() {
+    let mut catalog = MockCatalog::new();
+    catalog.add_global(
+        "t",
+        &[
+            ("id", UnrestrictedType::Integer, false),
+            ("format", UnrestrictedType::Array(NestedType::Any), false),
+            ("opts", UnrestrictedType::Any, true),
+        ],
+        &["id"],
+    );
+    let analyzed = AbstractSyntaxTree::new("SELECT * FROM t")
+        .expect("expected to build AST")
+        .analyze(&catalog, &[])
+        .expect("expected to analyze AST");
+    insta::assert_snapshot!(normalize_whitespace(&analyzed.to_string()), @"SELECT t.id::int, t.format::text[], t.opts FROM t");
 }
 
 #[test]
@@ -131,7 +155,7 @@ fn asterisk_from_cte_with_anon_column() {
 #[test]
 fn asterisk_from_cte_with_anon_columns() {
     let query = "WITH cte AS (SELECT 1, 2) SELECT * FROM cte";
-    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte AS (SELECT 1::int, 2::int) SELECT ?column?::int, ?column?::int FROM cte");
+    insta::assert_snapshot!(analyzed(query, &[]), @"WITH cte AS (SELECT 1::int, 2::int) SELECT cte.col_1::int, cte.col_2::int FROM cte");
 }
 
 #[test]
