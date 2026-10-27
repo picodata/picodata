@@ -1688,10 +1688,11 @@ impl Plan {
         self.add_relational(sq.into())
     }
 
-    /// Adds a scan of a table function.
+    /// Adds a scan of a table function. The caller checks that `function`
+    /// calls a function of the table function registry.
     ///
     /// # Errors
-    /// - `function` is not a call of a table function
+    /// - failed to update the shard columns info
     pub fn add_scan_function(
         &mut self,
         function: NodeId,
@@ -1704,7 +1705,10 @@ impl Plan {
             with_ordinality,
             distribution: None,
         };
-        self.table_function_of(&scan)?;
+        debug_assert!(
+            self.table_function_of(&scan).is_ok(),
+            "the caller checks the table function registry"
+        );
         self.add_relational(scan.into())
     }
 
