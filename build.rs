@@ -325,6 +325,13 @@ fn generate_vdbe_bindings(box_flags: Vec<String>) {
 
     let bindings = bindgen::builder()
         .clang_args(&box_flags)
+        // Clang gives the libc functions it knows as builtins (`malloc`,
+        // `realloc`, `calloc`, ...) its own `__size_t` type instead of the
+        // `size_t` from the header. Bindgen then emits `c_ulong` for them,
+        // and rustc reports `suspicious_runtime_symbol_definitions` because
+        // the signatures do not match the ones the standard library uses.
+        // Without builtins clang keeps `size_t`, which bindgen maps to `usize`.
+        .clang_arg("-fno-builtin")
         .prepend_enum_name(false)
         .default_macro_constant_type(bindgen::MacroTypeVariation::Signed)
         .default_enum_style(bindgen::EnumVariation::Consts)
