@@ -1829,6 +1829,25 @@ impl Plan {
         Ok(ref_ids)
     }
 
+    /// Get vec of references and subquery references from the subtree of the given expression.
+    pub fn get_all_refs_from_subtree(&self, expr_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
+        let ref_ids = PostOrder::new(
+            &self.nodes,
+            |node| self.nodes.expr_iter(node, false),
+            expr_id,
+        )
+        .expressions()
+        .filter(|(_, expr)| {
+            matches!(
+                expr,
+                Expression::Reference(_) | Expression::SubQueryReference(_)
+            )
+        })
+        .map(|(id, _)| id)
+        .collect();
+        Ok(ref_ids)
+    }
+
     /// Gets list of `Row` children ids
     ///
     /// # Errors
@@ -2683,12 +2702,7 @@ impl Plan {
         position_mapping: &[usize],
     ) -> Result<NodeId, SbroadError> {
         let expr_id = SubtreeCloner::clone_subtree(self, expr_id)?;
-        let references: Vec<NodeId> =
-            PostOrder::new(&self.nodes, |x| self.nodes.expr_iter(x, false), expr_id)
-                .expressions()
-                .filter(|(_, expr)| matches!(expr, Expression::Reference(_)))
-                .map(|(id, _)| id)
-                .collect();
+        let references = self.get_refs_from_subtree(expr_id)?;
 
         for ref_id in references {
             let current_position = match self.get_expression_node(ref_id)? {

@@ -188,17 +188,7 @@ impl Iterator for FlashbackSubtreeIterator<'_> {
 }
 
 impl<'plan> Plan {
-    #[must_use]
-    pub fn flashback_subtree_iter(&'plan self, current: NodeId) -> FlashbackSubtreeIterator<'plan> {
-        FlashbackSubtreeIterator {
-            node: self.nodes.get(current),
-            child: Cell::new(0),
-            plan: self,
-        }
-    }
-
-    /// [`Self::flashback_subtree_iter`] of a node that is already taken from
-    /// the arena.
+    /// [`Self::subtree_iter_of`] over the oldest snapshot.
     #[must_use]
     pub fn flashback_subtree_iter_of(
         &'plan self,

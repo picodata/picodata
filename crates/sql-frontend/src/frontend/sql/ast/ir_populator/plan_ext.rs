@@ -85,6 +85,7 @@ impl PlanGroupByOrdinalsExt for Plan {
         if !matches!(self.get_node(top)?, Node::Relational(_)) {
             return Ok(());
         }
+        // Collect first: the loop below changes the plan, which the traversal borrows.
         let projections = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top)
             .relational()
             .filter(|(_, rel)| matches!(rel, Relational::Projection(_)))

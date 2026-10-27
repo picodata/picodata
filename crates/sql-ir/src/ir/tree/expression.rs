@@ -123,7 +123,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
                             let mut is_leaf = false;
 
                             // Check on the first step, if the row contains only leaf nodes.
-                            if child_step == 0 {
+                            if child_step == 0 && iter.get_make_row_leaf() {
                                 is_leaf = true;
                                 for col in list {
                                     if !matches!(
@@ -142,7 +142,7 @@ fn expression_next<'nodes>(iter: &mut impl ExpressionTreeIterator<'nodes>) -> Op
 
                             // If the row contains only leaf nodes (or we don't want to go deeper
                             // into the row tree for some reasons), skip traversal.
-                            if !is_leaf || !iter.get_make_row_leaf() {
+                            if !is_leaf {
                                 {
                                     let child = list.get(child_step)?;
                                     iter.advance();

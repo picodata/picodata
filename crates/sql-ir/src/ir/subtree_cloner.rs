@@ -335,6 +335,7 @@ impl SubtreeCloner {
     ) -> Result<NodeId, SbroadError> {
         // We don't copy the subquery's children because otherwise it would create a new subquery.
         // All references would then point to the same subquery.
+        // Collect first: the loop below changes the plan, which the traversal borrows.
         let nodes: Vec<NodeId> = PostOrder::new(
             &plan.nodes,
             |x| plan.subtree_iter_except_subquery(x),

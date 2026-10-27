@@ -46,35 +46,38 @@ pub trait PlanSerializeAsEmptyExt {
     ) -> Result<Option<SerializeAsEmptyInfo>, SbroadError>;
 }
 
-impl PlanSerializeAsEmptyExt for Plan {
-    // return true if given node is Motion containing seriliaze as empty
-    // opcode. If `check_enabled` is true checks that the opcode is enabled.
-    fn is_serialize_as_empty_motion(&self, node_id: NodeId, check_enabled: bool) -> bool {
-        if let Ok(Node::Relational(Relational::Motion(Motion { program, .. }))) =
-            self.get_node(node_id)
+// return true if given node is Motion containing seriliaze as empty
+// opcode. If `check_enabled` is true checks that the opcode is enabled.
+fn is_serialize_as_empty_motion_node(node: &Node, check_enabled: bool) -> bool {
+    if let Node::Relational(Relational::Motion(Motion { program, .. })) = node {
+        if let Some(op) = program
+            .0
+            .iter()
+            .find(|op| matches!(op, MotionOpcode::SerializeAsEmptyTable(_)))
         {
-            if let Some(op) = program
-                .0
-                .iter()
-                .find(|op| matches!(op, MotionOpcode::SerializeAsEmptyTable(_)))
-            {
-                return !check_enabled || matches!(op, MotionOpcode::SerializeAsEmptyTable(true));
-            };
-        }
-        false
+            return !check_enabled || matches!(op, MotionOpcode::SerializeAsEmptyTable(true));
+        };
+    }
+    false
+}
+
+impl PlanSerializeAsEmptyExt for Plan {
+    fn is_serialize_as_empty_motion(&self, node_id: NodeId, check_enabled: bool) -> bool {
+        self.get_node(node_id)
+            .is_ok_and(|node| is_serialize_as_empty_motion_node(&node, check_enabled))
     }
 
     fn collect_top_ids(&self, top_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
-        let iter_children = |node_id| {
+        let iter_children = |node_id, node: Node| {
             // do not traverse subtree with this child
-            if self.is_serialize_as_empty_motion(node_id, true) {
+            if is_serialize_as_empty_motion_node(&node, true) {
                 return self.nodes.empty_rel_iter();
             }
             self.nodes.rel_iter(node_id)
         };
-        let top_ids = PostOrder::new(&self.nodes, iter_children, top_id)
+        let top_ids = PostOrder::new_by_node(&self.nodes, iter_children, top_id)
+            .filter(|(_, node)| is_serialize_as_empty_motion_node(node, true))
             .map(|(id, _)| id)
-            .filter(|id| self.is_serialize_as_empty_motion(*id, true))
             .collect();
         Ok(top_ids)
     }
@@ -107,7 +110,8 @@ impl PlanSerializeAsEmptyExt for Plan {
                 let motions =
                     PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), *top_id)
                         .relational()
-                        .filter_map(|(id, rel)| matches!(rel, Relational::Motion(_)).then_some(id));
+                        .filter(|(_, rel)| matches!(rel, Relational::Motion(_)))
+                        .map(|(id, _)| id);
                 all_motions.extend(motions);
             }
             all_motions

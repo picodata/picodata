@@ -2796,6 +2796,21 @@ impl<'p> SyntaxPlan<'p> {
         Self::new_for_view(plan, plan.sql_top_id(), snapshot)
     }
 
+    /// The nodes must come in post-order.
+    fn add_plan_subtree<'n>(
+        &mut self,
+        nodes: impl Iterator<Item = (NodeId, Node<'n>)>,
+        top: NodeId,
+    ) -> Result<(), SbroadError> {
+        for (id, node) in nodes {
+            self.add_plan_node(id, node);
+            if id == top {
+                self.set_top(self.nodes.next_id() - 1)?;
+            }
+        }
+        Ok(())
+    }
+
     fn new_for_view(
         plan: &'p dyn SqlExecutionView,
         top: NodeId,
@@ -2805,106 +2820,46 @@ impl<'p> SyntaxPlan<'p> {
         sp.snapshot = snapshot;
         let ir_plan = plan.get_ir_plan();
 
-        // Wrap plan's nodes and preserve their ids.
-        let mut empty_motion_ids = HashSet::new();
-        match snapshot {
-            Snapshot::Latest => {
-                let dft_post = PostOrder::new_by_node(
-                    &ir_plan.nodes,
-                    |id, node| {
-                        let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
-                        let is_leaf = is_motion && plan.is_effective_motion_leaf(id);
-                        (!is_leaf)
-                            .then(|| ir_plan.subtree_iter_of(node))
-                            .into_iter()
-                            .flatten()
-                    },
-                    top,
-                );
-                for (id, rel) in dft_post.relational() {
-                    if let Relational::Motion(Motion { program, .. }) = rel {
-                        if plan
-                            .effective_serialize_as_empty_state(id, program)
-                            .is_enabled()
-                        {
-                            empty_motion_ids.insert(id);
-                        }
-                    }
-                }
+        // A motion is a leaf when its subtree is already materialized or is
+        // serialized as an empty table.
+        let is_leaf = |id, node: &Node| match node {
+            Node::Relational(Relational::Motion(Motion { program, .. })) => {
+                plan.is_effective_motion_leaf(id)
+                    || plan
+                        .effective_serialize_as_empty_state(id, program)
+                        .is_enabled()
             }
-            Snapshot::Oldest => {
-                let dft_post = PostOrder::new_by_node(
-                    &ir_plan.nodes,
-                    |id, node| {
-                        let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
-                        let is_leaf = is_motion && plan.is_effective_motion_leaf(id);
-                        (!is_leaf)
-                            .then(|| ir_plan.flashback_subtree_iter_of(node))
-                            .into_iter()
-                            .flatten()
-                    },
-                    top,
-                );
-                for (id, rel) in dft_post.relational() {
-                    if let Relational::Motion(Motion { program, .. }) = rel {
-                        if plan
-                            .effective_serialize_as_empty_state(id, program)
-                            .is_enabled()
-                        {
-                            empty_motion_ids.insert(id);
-                        }
-                    }
-                }
-            }
-        }
-        match snapshot {
-            Snapshot::Latest => {
-                let dft_post = PostOrder::new_by_node(
-                    &ir_plan.nodes,
-                    |id, node| {
-                        let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
-                        let is_leaf = (is_motion && plan.is_effective_motion_leaf(id))
-                            || empty_motion_ids.contains(&id);
-                        (!is_leaf)
-                            .then(|| ir_plan.subtree_iter_of(node))
-                            .into_iter()
-                            .flatten()
-                    },
-                    top,
-                );
-                for (id, node) in dft_post {
-                    // it works only for post-order traversal
-                    sp.add_plan_node(id, node);
-                    let sn_id = sp.nodes.next_id() - 1;
-                    if id == top {
-                        sp.set_top(sn_id)?;
-                    }
-                }
-            }
-            Snapshot::Oldest => {
-                let dft_post = PostOrder::new_by_node(
-                    &ir_plan.nodes,
-                    |id, node| {
-                        let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
-                        let is_leaf = (is_motion && plan.is_effective_motion_leaf(id))
-                            || empty_motion_ids.contains(&id);
-                        (!is_leaf)
-                            .then(|| ir_plan.flashback_subtree_iter_of(node))
-                            .into_iter()
-                            .flatten()
-                    },
-                    top,
-                );
+            _ => false,
+        };
 
-                for (id, node) in dft_post {
-                    // it works only for post-order traversal
-                    sp.add_plan_node(id, node);
-                    let sn_id = sp.nodes.next_id().saturating_sub(1);
-                    if id == top {
-                        sp.set_top(sn_id)?;
-                    }
-                }
-            }
+        // Wrap plan's nodes and preserve their ids.
+        match snapshot {
+            Snapshot::Latest => sp.add_plan_subtree(
+                PostOrder::new_by_node(
+                    &ir_plan.nodes,
+                    |id, node| {
+                        (!is_leaf(id, &node))
+                            .then(|| ir_plan.subtree_iter_of(node))
+                            .into_iter()
+                            .flatten()
+                    },
+                    top,
+                ),
+                top,
+            )?,
+            Snapshot::Oldest => sp.add_plan_subtree(
+                PostOrder::new_by_node(
+                    &ir_plan.nodes,
+                    |id, node| {
+                        (!is_leaf(id, &node))
+                            .then(|| ir_plan.flashback_subtree_iter_of(node))
+                            .into_iter()
+                            .flatten()
+                    },
+                    top,
+                ),
+                top,
+            )?,
         }
         sp.move_proj_under_scan()?;
         Ok(sp)

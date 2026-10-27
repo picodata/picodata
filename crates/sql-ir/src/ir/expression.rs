@@ -2344,20 +2344,7 @@ impl Plan {
         from_id: NodeId,
         to_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let references: Vec<NodeId> = PostOrder::new(
-            &self.nodes,
-            |node| self.nodes.expr_iter(node, false),
-            node_id,
-        )
-        .expressions()
-        .filter(|(_, expr)| {
-            matches!(
-                expr,
-                Expression::Reference(_) | Expression::SubQueryReference(_)
-            )
-        })
-        .map(|(id, _)| id)
-        .collect();
+        let references = self.get_all_refs_from_subtree(node_id)?;
         for id in references {
             match self.get_mut_expression_node(id)? {
                 MutExpression::Reference(Reference { target, .. }) => match target {
@@ -2387,15 +2374,7 @@ impl Plan {
         expr_id: NodeId,
         rel_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let references: Vec<NodeId> = PostOrder::new(
-            &self.nodes,
-            |node| self.nodes.expr_iter(node, false),
-            expr_id,
-        )
-        .expressions()
-        .filter(|(_, expr)| matches!(expr, Expression::Reference(..)))
-        .map(|(id, _)| id)
-        .collect();
+        let references = self.get_refs_from_subtree(expr_id)?;
         for id in references {
             let node = self.get_mut_expression_node(id)?;
             if let MutExpression::Reference(Reference { target, .. }) = node {

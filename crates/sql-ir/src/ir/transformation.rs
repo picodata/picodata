@@ -124,6 +124,7 @@ impl Plan {
         top_id: NodeId,
         f: TransformFunctionOldNew,
     ) -> Result<(), SbroadError> {
+        // Collect first: the loop below changes the plan, which the traversal borrows.
         let nodes: Vec<NodeId> =
             PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
                 .relational()
@@ -191,6 +192,7 @@ impl Plan {
         // Note, that filter accepts nodes:
         // * On which we'd like to apply transformation
         // * That will contain transformed nodes as children
+        // Collect first: the loop below changes the plan, which the traversal borrows.
         let nodes: Vec<NodeId> = PostOrder::new(
             &self.nodes,
             |node_id| self.nodes.expr_iter(node_id, false),

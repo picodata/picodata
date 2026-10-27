@@ -84,6 +84,7 @@ impl Plan {
 
     pub fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
         let top_id = self.get_top()?;
+        // Collect first: the loop below changes the plan, which the traversal borrows.
         let ref_nodes: Vec<NodeId> =
             PostOrder::new(&self.nodes, |node| self.parameter_iter(node), top_id)
                 .expressions()

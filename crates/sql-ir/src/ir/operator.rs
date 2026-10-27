@@ -1163,23 +1163,6 @@ impl Plan {
         is_distinct: bool,
         needs_shard_col: bool,
     ) -> Result<(NodeId, Option<HashMap<usize, usize>>), SbroadError> {
-        let get_leaf_refs = |expr_id: NodeId| -> Vec<NodeId> {
-            PostOrder::new(
-                &self.nodes,
-                |node| self.nodes.expr_iter(node, false),
-                expr_id,
-            )
-            .expressions()
-            .filter(|(_, expr)| {
-                matches!(
-                    expr,
-                    Expression::Reference(_) | Expression::SubQueryReference(_)
-                )
-            })
-            .map(|(id, _)| id)
-            .collect()
-        };
-
         fn collect_columns(
             plan: &Plan,
             leaf_refs: &[NodeId],
@@ -1239,7 +1222,7 @@ impl Plan {
 
         let (output, col_pos_transforms) = match self.get_relation_node(parent_rel_id)? {
             Relational::Projection(Projection { output, .. }) => {
-                let leaf_refs = get_leaf_refs(*output);
+                let leaf_refs = self.get_all_refs_from_subtree(*output)?;
 
                 let necessary_col_indices: SmallVec<[usize; Self::REF_CAPACITY]> =
                     collect_columns(self, &leaf_refs);
@@ -1401,6 +1384,7 @@ impl Plan {
     /// ```
     pub fn fix_groupby_aliases(&mut self) -> Result<(), SbroadError> {
         let top = self.get_top()?;
+        // Collect first: the loop below changes the plan, which the traversal borrows.
         let nodes: Vec<NodeId> = PostOrder::new(&self.nodes, |node| self.subtree_iter(node), top)
             .relational()
             .filter(|(_, rel)| {

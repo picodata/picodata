@@ -240,6 +240,7 @@ impl Plan {
                 Relational::Join(Join { condition, .. }) => *condition,
                 _ => unreachable!("expected Selection or Join node"),
             };
+            // Collect first: the loop below changes the plan, which the traversal borrows.
             let op_nodes: Vec<NodeId> = PostOrder::new(
                 &self.nodes,
                 |node| self.nodes.expr_iter(node, false),

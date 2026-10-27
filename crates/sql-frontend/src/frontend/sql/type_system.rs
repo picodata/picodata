@@ -690,6 +690,7 @@ fn coerce_scalar_expr(
             }
         };
 
+        // Collect first: a string comes before its parent `Cast`, which puts it into `casted_strings`.
         let strings = PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), expr_id)
             .expressions()
             .filter(filter_string_to_be_coerced)

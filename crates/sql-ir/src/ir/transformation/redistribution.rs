@@ -499,17 +499,7 @@ impl Plan {
                 Some("Node is not a row".into()),
             ));
         }
-        let ref_nodes = PostOrder::new(
-            &self.nodes,
-            |node| self.nodes.expr_iter(node, false),
-            row_id,
-        )
-        .expressions()
-        .filter(|(_, expr)| matches!(expr, Expression::SubQueryReference(_)))
-        .map(|(id, _)| id)
-        .collect();
-
-        Ok(ref_nodes)
+        self.get_sq_refs_from_subtree(row_id)
     }
 
     /// Get a single sub-query from among the list of relational nodes.
@@ -2410,6 +2400,7 @@ impl Plan {
         type CteChildId = ChildId;
         type MotionId = ChildId;
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);
+        // Collect first: the loops below read the ids two times and change the plan.
         let nodes: Vec<NodeId> =
             PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
                 .map(|(id, _)| id)

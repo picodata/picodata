@@ -72,6 +72,7 @@ fn call_expr_tree_not_push_down(
     // the previous tree.
     let remember_old_top_id = SubtreeCloner::clone_subtree(plan, top_id)?;
 
+    // Collect first: the loop below changes the plan, which the traversal borrows.
     let nodes: Vec<NodeId> = PostOrder::new(
         &plan.nodes,
         |node| plan.nodes.expr_iter(node, false),
