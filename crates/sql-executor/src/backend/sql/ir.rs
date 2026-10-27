@@ -8,7 +8,7 @@ use crate::ir::node::{
     ScanRelation, SubQueryReference, Update,
 };
 use crate::ir::relation::Column;
-use crate::ir::types::DerivedType;
+use crate::ir::types::{CastType, DerivedType};
 use crate::ir::SubtreeHash;
 use ahash::{AHashMap, AHashSet};
 use serde::{Deserialize, Serialize};
@@ -134,6 +134,8 @@ fn push_identifier(sql: &mut String, identifier: &str) {
 struct SqlColumnReference {
     name: SmolStr,
     qualifier: Option<SmolStr>,
+    /// See `TableFunctionColumn::cast_in_local_sql`.
+    cast: Option<CastType>,
 }
 
 fn push_sql_column_reference(sql: &mut String, column: &SqlColumnReference) {
@@ -142,6 +144,10 @@ fn push_sql_column_reference(sql: &mut String, column: &SqlColumnReference) {
         sql.push('.');
     }
     push_identifier(sql, &column.name);
+    if let Some(cast) = &column.cast {
+        sql.push_str("::");
+        sql.push_str(&cast.to_smolstr());
+    }
 }
 
 fn reference_target(ir: &Plan, ref_id: NodeId) -> Result<Option<RelColumn>, SbroadError> {
@@ -322,6 +328,7 @@ fn sql_column_reference_at(
                     return Ok(Some(SqlColumnReference {
                         name,
                         qualifier: None,
+                        cast: None,
                     }));
                 }
                 if let Some(vtable) = view.get_vtables().get(&rel_col.rel_id) {
@@ -339,6 +346,7 @@ fn sql_column_reference_at(
                 return Ok(name.map(|name| SqlColumnReference {
                     name,
                     qualifier: Some(scan.alias.clone()),
+                    cast: None,
                 }));
             }
             Relational::ScanSubQuery(scan) => {
@@ -348,12 +356,29 @@ fn sql_column_reference_at(
                 return Ok(name.map(|name| SqlColumnReference {
                     name,
                     qualifier: scan.alias.clone().filter(|alias| !alias.is_empty()),
+                    cast: None,
                 }));
             }
             Relational::ScanFunction(scan) => {
-                let name = ir.function_column_local_name(scan, rel_col.position)?;
-                let qualifier = ir.scan_name(rel_col)?.map(SmolStr::from);
-                return Ok(name.map(|name| SqlColumnReference { name, qualifier }));
+                let (function, _) = ir.table_function_of(scan)?;
+                let Some(column) = function.result_column(scan.with_ordinality, rel_col.position)
+                else {
+                    return Ok(None);
+                };
+                let cast = if column.cast_in_local_sql {
+                    ir.column_at(rel_col)?
+                        .r#type
+                        .get()
+                        .filter(|ty| ty.is_scalar())
+                        .map_or(Ok(None), |ty| CastType::try_from(&ty).map(Some))?
+                } else {
+                    None
+                };
+                return Ok(Some(SqlColumnReference {
+                    name: SmolStr::new_static(column.local_name),
+                    qualifier: ir.scan_name(rel_col)?.map(SmolStr::from),
+                    cast,
+                }));
             }
             _ if is_sql_scope_boundary(&rel_node) => return Ok(None),
             _ => {}
@@ -397,6 +422,7 @@ fn sql_column_reference_from_vtable(
     Ok(SqlColumnReference {
         name: vtable_column_name(vtable, rel_col)?,
         qualifier: vtable.get_alias().cloned(),
+        cast: None,
     })
 }
 

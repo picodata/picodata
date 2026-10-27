@@ -1750,12 +1750,17 @@ impl<'p> SyntaxPlan<'p> {
         let child_sn_id = self.pop_expr_from_stack(child, id);
         let plan = self.plan.get_ir_plan();
         // Do not generate an alias in SQL when a column has exactly the same name.
+        // A column of a table function keeps the alias: the local SQL can cast
+        // the column, and the cast has no name.
         let child_expr = plan
             .get_expression_node(child)
             .expect("alias child expression");
-        if let Expression::Reference(_) = child_expr {
+        if let Expression::Reference(Reference { position, .. }) = child_expr {
             let alias = self.plan.reference_alias(&child_expr).expect("alias name");
-            if alias == name {
+            let function_column = plan
+                .get_reference_source_relation(child)
+                .is_ok_and(|rel_id| self.is_function_column(RelColumn::new(rel_id, *position)));
+            if alias == name && !function_column {
                 let sn = SyntaxNode::new_pointer(id, None, vec![child_sn_id]);
                 self.nodes.push_sn_plan(sn);
                 return;

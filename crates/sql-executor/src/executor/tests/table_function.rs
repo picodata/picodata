@@ -30,6 +30,8 @@ fn with_ordinality_sql() {
 }
 
 // The columns of a table function have the tarantool names in the local SQL.
+// Tarantool does not know the type of the elements of an array column, so
+// the elements are cast to the type that the planner gives them.
 #[test]
 fn lateral_join_sql() {
     let info = get_broadcast(
@@ -37,8 +39,22 @@ fn lateral_join_sql() {
     );
     assert_yaml_snapshot!(info, @r#"
     All:
-      - "SELECT \"u\".\"VALUE\" as \"value\", \"u\".\"ORDINALITY\" as \"ordinality\" FROM \"arr_t\" INNER JOIN unnest (\"arr_t\".\"b\") WITH ORDINALITY as \"u\" ON \"u\".\"VALUE\" > $1::int"
+      - "SELECT \"u\".\"VALUE\"::int as \"value\", \"u\".\"ORDINALITY\" as \"ordinality\" FROM \"arr_t\" INNER JOIN unnest (\"arr_t\".\"b\") WITH ORDINALITY as \"u\" ON \"u\".\"VALUE\"::int > $1::int"
       - - Integer: 1
+    "#);
+}
+
+// The alias of a cast column stays, though it is the local name of the column.
+#[test]
+fn alias_of_cast_column_sql() {
+    let info = get_broadcast(
+        r#"SELECT s."VALUE" FROM (SELECT u.value AS "VALUE" FROM unnest(ARRAY[1, 2]) u) s"#,
+    );
+    assert_yaml_snapshot!(info, @r#"
+    Any:
+      - "SELECT \"s\".\"VALUE\" FROM (SELECT \"u\".\"VALUE\"::int as \"VALUE\" FROM unnest ([ $1::int, $2::int ]) as \"u\") as \"s\""
+      - - Integer: 1
+        - Integer: 2
     "#);
 }
 

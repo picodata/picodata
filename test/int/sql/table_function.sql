@@ -90,6 +90,26 @@ SELECT t.id, u.value, u.ordinality FROM t JOIN unnest(t.arr) WITH ORDINALITY u O
 -- EXPECTED:
 1, 10, 1, 1, 20, 2, 4, 30, 1
 
+-- TEST: lateral-unnest-arithmetic
+-- SQL:
+SELECT u.value + 1 FROM t JOIN unnest(t.arr) u ON true ORDER BY 1;
+-- EXPECTED:
+11, 21, 31
+
+-- TEST: unnest-alias-of-local-name
+-- SQL:
+SELECT s."VALUE"
+FROM (SELECT u.value AS "VALUE" FROM t JOIN unnest(t.arr) u ON true) s
+ORDER BY 1;
+-- EXPECTED:
+10, 20, 30
+
+-- TEST: lateral-unnest-arithmetic-in-filter
+-- SQL:
+SELECT t.id FROM t JOIN unnest(t.arr) u ON u.value * 2 > 30 ORDER BY 1;
+-- EXPECTED:
+1, 4
+
 -- TEST: lateral-function-chain
 -- SQL:
 SELECT a.value AS a, b.value AS b FROM generate_series(1, 3) a JOIN generate_series(a.value, 3) b ON true ORDER BY 1, 2;

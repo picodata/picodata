@@ -25,6 +25,9 @@ pub struct TableFunctionColumn {
     /// The column name in the local SQL that tarantool executes.
     pub local_name: &'static str,
     pub r#type: TableFunctionColumnType,
+    /// Tarantool may not know the type of the column, so the local SQL casts
+    /// it to the type that the planner gives it.
+    pub cast_in_local_sql: bool,
 }
 
 /// A table function.
@@ -42,22 +45,31 @@ pub const ORDINALITY_COLUMN: TableFunctionColumn = TableFunctionColumn {
     name: "ordinality",
     local_name: "ORDINALITY",
     r#type: TableFunctionColumnType::Fixed(UnrestrictedType::Integer),
+    cast_in_local_sql: false,
 };
 
-const VALUE_COLUMN: TableFunctionColumn = TableFunctionColumn {
+const SERIES_VALUE_COLUMN: TableFunctionColumn = TableFunctionColumn {
     name: "value",
     local_name: "VALUE",
     r#type: TableFunctionColumnType::Call,
+    cast_in_local_sql: false,
+};
+
+// Tarantool knows the type of the elements only for an array literal. For
+// a column or a parameter the type is ANY, and arithmetic rejects ANY.
+const UNNEST_VALUE_COLUMN: TableFunctionColumn = TableFunctionColumn {
+    cast_in_local_sql: true,
+    ..SERIES_VALUE_COLUMN
 };
 
 const TABLE_FUNCTIONS: &[TableFunction] = &[
     TableFunction {
         name: "generate_series",
-        columns: &[VALUE_COLUMN],
+        columns: &[SERIES_VALUE_COLUMN],
     },
     TableFunction {
         name: "unnest",
-        columns: &[VALUE_COLUMN],
+        columns: &[UNNEST_VALUE_COLUMN],
     },
     // Tarantool also has JSON_EACH. Its values have the tarantool JSON type,
     // which picodata cannot send to clients yet.
