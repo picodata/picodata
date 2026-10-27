@@ -707,9 +707,10 @@ def test_map(postgres: Postgres):
 
 
 def test_map_with_msgpack_extensions(postgres: Postgres):
-    """Msgpack extension values nested in a map/any column have no json
-    counterpart, so they must be rendered as strings, not as the raw
-    `[tag, [bytes]]` msgpack extension form."""
+    """Msgpack extension values nested in a map/any column must be rendered the
+    way postgres renders the matching type inside json - a decimal as a number,
+    a uuid or a datetime as a string - not as the raw `[tag, [bytes]]` msgpack
+    extension form."""
     user = "postgres"
     password = "P@ssw0rd"
     i1 = postgres.instance
@@ -718,8 +719,8 @@ def test_map_with_msgpack_extensions(postgres: Postgres):
     i1.sql("CREATE TABLE t (id INT PRIMARY KEY, j JSON) DISTRIBUTED GLOBALLY")
     i1.sql(f'GRANT READ ON TABLE "t" TO "{user}"', sudo=True)
 
-    # Decimals, uuids & datetimes can't be spelled inside a json literal, so
-    # put them into the map via lua.
+    # Decimals, uuids & datetimes can't be written in a json literal, so put
+    # them into the map via lua.
     i1.eval(
         """
         box.space.t:replace{1, {
@@ -733,8 +734,13 @@ def test_map_with_msgpack_extensions(postgres: Postgres):
         """
     )
 
+    # Note: `dec` arrives as a json number, which the client parses into a float.
+    # An exact decimal needs either a json parser that builds decimals, e.g.
+    # psycopg's `set_json_loads(partial(json.loads, parse_float=Decimal))`, or a
+    # cast of the single value to DECIMAL, which then goes out as numeric
+    # rather than json, see the end of the test.
     expected = {
-        "dec": "0.001",
+        "dec": 0.001,
         "uid": "00112233-4455-6677-8899-aabbccddeeff",
         "dt": "2024-01-02T03:04:05Z",
         "plain": 42,

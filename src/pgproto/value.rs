@@ -1076,17 +1076,104 @@ mod json_ext_tests {
     }
 
     #[::tarantool::test]
-    fn json_decimal_ext_is_rendered_as_string() {
+    fn json_decimal_ext_is_rendered_as_number() {
         // This is what `CREATE INDEX .. WITH (bloom_fpr = 0.001)` puts into
-        // `_pico_index.opts`.
+        // `_pico_index.opts`. A json number, same as postgres's
+        // `to_json(0.001::numeric)`.
         let decimal = tarantool::decimal::Decimal::from_str("0.001").unwrap();
-        check(&tarantool::msgpack::encode(&decimal), r#""0.001""#);
+        check(&tarantool::msgpack::encode(&decimal), "0.001");
+
+        // Every digit must survive: this one has more of them than an `f64`
+        // could hold, so it also proves we don't use `f64` path here.
+        let decimal = tarantool::decimal::Decimal::from_str("12345678901234567890.1200").unwrap();
+        check(
+            &tarantool::msgpack::encode(&decimal),
+            "12345678901234567890.1200",
+        );
 
         // A decimal with no fractional part is stored as a plain integer, so it
         // was not broken - ensure it still works as expected.
         let mut mp = Vec::new();
         rmp::encode::write_uint(&mut mp, 42).unwrap();
         check(&mp, "42");
+    }
+
+    #[::tarantool::test]
+    fn json_decimal_zero_is_a_valid_number() {
+        // Tarantool prints a zero with a positive exponent with leading zeros,
+        // `1e5 * 0` as `000000`, which is not a json number. Postgres writes a
+        // numeric zero keeping its fractional digits and dropping its sign.
+        for (input, expected) in [
+            ("0e5", "0"),
+            ("0e37", "0"),
+            ("-0e3", "0"),
+            ("0", "0"),
+            ("0.00", "0.00"),
+            ("-0.0", "0.0"),
+        ] {
+            let decimal = tarantool::decimal::Decimal::from_str(input).unwrap();
+            check(&tarantool::msgpack::encode(&decimal), expected);
+        }
+    }
+
+    #[::tarantool::test]
+    fn json_decimal_positive_exponent_and_sign() {
+        for (input, expected) in [("1e5", "100000"), ("-1.5", "-1.5"), ("-0.001", "-0.001")] {
+            let decimal = tarantool::decimal::Decimal::from_str(input).unwrap();
+            check(&tarantool::msgpack::encode(&decimal), expected);
+        }
+    }
+
+    #[::tarantool::test]
+    fn json_ext_map_key_is_rendered_as_string() {
+        // A json key must be a string, so a decimal key is quoted, same as
+        // postgres's `json_build_object(1.5::numeric, 'x')` gives `{"1.5" : "x"}`.
+        let datetime: tarantool::datetime::Datetime =
+            time::OffsetDateTime::from_unix_timestamp(1_704_164_645)
+                .unwrap()
+                .into();
+        let keys = [
+            (
+                tarantool::msgpack::encode(&tarantool::decimal::Decimal::from_str("1.5").unwrap()),
+                r#""1.5""#,
+            ),
+            (
+                tarantool::msgpack::encode(&tarantool::decimal::Decimal::from_str("0e5").unwrap()),
+                r#""0""#,
+            ),
+            (
+                tarantool::msgpack::encode(
+                    &tarantool::uuid::Uuid::from_str("00112233-4455-6677-8899-aabbccddeeff")
+                        .unwrap(),
+                ),
+                r#""00112233-4455-6677-8899-aabbccddeeff""#,
+            ),
+            (
+                tarantool::msgpack::encode(&datetime),
+                r#""2024-01-02T03:04:05Z""#,
+            ),
+            // An unknown and a malformed extension keep their raw form.
+            (ext_mp(42, &[1, 2, 3]), r#""[42,[1,2,3]]""#),
+            (
+                ext_mp(tarantool::ffi::decimal::MP_DECIMAL, &[0xff, 0xff]),
+                r#""[1,[255,255]]""#,
+            ),
+        ];
+
+        for (key_mp, expected) in keys {
+            let mut mp = Vec::new();
+            rmp::encode::write_map_len(&mut mp, 1).unwrap();
+            mp.extend_from_slice(&key_mp);
+            rmp::encode::write_str(&mut mp, "x").unwrap();
+            assert_eq!(json_wire_text(&mp), format!(r#"{{{expected}:"x"}}"#));
+        }
+    }
+
+    fn ext_mp(tag: i8, payload: &[u8]) -> Vec<u8> {
+        let mut mp = Vec::new();
+        rmp::encode::write_ext_meta(&mut mp, payload.len() as u32, tag).unwrap();
+        mp.extend_from_slice(payload);
+        mp
     }
 
     #[::tarantool::test]
@@ -1113,11 +1200,7 @@ mod json_ext_tests {
     #[::tarantool::test]
     fn json_unknown_ext_keeps_its_raw_form() {
         // Check we print original value for unknown ext type
-        let mut mp = Vec::new();
-        rmp::encode::write_ext_meta(&mut mp, 3, 42).unwrap();
-        mp.extend_from_slice(&[1, 2, 3]);
-
-        check(&mp, "[42,[1,2,3]]");
+        check(&ext_mp(42, &[1, 2, 3]), "[42,[1,2,3]]");
     }
 
     #[::tarantool::test]
@@ -1132,10 +1215,7 @@ mod json_ext_tests {
         ];
 
         for (tag, payload, expected) in cases {
-            let mut mp = Vec::new();
-            rmp::encode::write_ext_meta(&mut mp, payload.len() as u32, tag).unwrap();
-            mp.extend_from_slice(payload);
-            check(&mp, expected);
+            check(&ext_mp(tag, payload), expected);
         }
     }
 

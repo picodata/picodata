@@ -87,8 +87,11 @@ def test_wire_uncast_any_element(postgres: Postgres, binary):
 
 def test_wire_vinyl_index_opts(postgres: Postgres, binary):
     # `bloom_fpr` is stored as a msgpack DECIMAL extension nested in the
-    # `array(any)` column `_pico_index.opts`. It has no json counterpart, so it
-    # must come out as a string rather than the raw `[tag, [bytes]]` form.
+    # `array(any)` column `_pico_index.opts`. It must come out as a json number,
+    # the way postgres renders a numeric, instead of the raw `[tag, [bytes]]`
+    # form. The client parses a json number into a float, which can't
+    # distinguish between `0.0010` and `0.001`, so the unit tests in
+    # `src/pgproto/value.rs` check the exact digits.
     conn = _setup(postgres)
     i1 = postgres.instance
     i1.sql(
@@ -105,21 +108,19 @@ def test_wire_vinyl_index_opts(postgres: Postgres, binary):
         (
             [
                 {"unique": True},
-                {"bloom_fpr": "0.001"},
+                {"bloom_fpr": 0.001},
                 {"page_size": 4096},
-                {"run_size_ratio": "3.5"},
+                {"run_size_ratio": 3.5},
             ],
         )
     ]
     assert _fetchall(conn, "SELECT opts FROM _pico_index WHERE name = 'i_vinyl'", binary) == [
-        ([{"unique": False}, {"bloom_fpr": "0.023"}],)
+        ([{"unique": False}, {"bloom_fpr": 0.023}],)
     ]
 
     # A single element of an untyped array is of type any, which is encoded as
     # json just the same.
-    assert _fetchall(conn, "SELECT opts[2]['bloom_fpr'] FROM _pico_index WHERE name = 'i_vinyl'", binary) == [
-        ("0.023",)
-    ]
+    assert _fetchall(conn, "SELECT opts[2]['bloom_fpr'] FROM _pico_index WHERE name = 'i_vinyl'", binary) == [(0.023,)]
 
     # An explicit cast still gives the value's own type.
     assert _fetchall(

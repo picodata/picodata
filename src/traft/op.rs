@@ -458,10 +458,17 @@ impl std::fmt::Display for Op {
                         let mut map = serializer.serialize_map(Some(m.len()))?;
                         let threshold = TRUNCATION_THRESHOLD_FOR_MAP;
                         for (k, v) in m.iter().take(threshold) {
-                            map.serialize_entry(
-                                &ValueWithTruncations(k),
-                                &ValueWithTruncations(v),
-                            )?;
+                            // Json keys are always strings. `ValueWithTruncations`
+                            // would write a decimal key as a number, which is not
+                            // accepted by serde_json, so extension keys go through
+                            // `MpKeyAsJson`, which writes them as strings.
+                            match k {
+                                Value::Ext(..) => {
+                                    map.serialize_key(&crate::util::MpKeyAsJson(k))?
+                                }
+                                _ => map.serialize_key(&ValueWithTruncations(k))?,
+                            }
+                            map.serialize_value(&ValueWithTruncations(v))?;
                         }
                         if m.len() > threshold {
                             map.serialize_entry(
@@ -471,12 +478,11 @@ impl std::fmt::Display for Op {
                         }
                         map.end()
                     }
-                    // Decimals, uuids & datetimes have no json counterpart, so
-                    // render them as strings instead of rmpv's `[tag, [bytes]]`.
-                    Value::Ext(tag, bytes) => match crate::util::mp_ext_to_string(*tag, bytes) {
-                        Some(text) => serializer.serialize_str(&text),
-                        None => self.0.serialize(serializer),
-                    },
+                    // Decimals, uuids & datetimes need special treatment, rmpv would
+                    // render them as `[tag, [bytes]]`. There is nothing to
+                    // truncate in any of them, so route them unchanged to MpValueAsJson.
+                    // Unknown extensions take the same route and aren't truncated.
+                    Value::Ext(..) => crate::util::MpValueAsJson(self.0).serialize(serializer),
                     other => other.serialize(serializer),
                 }
             }
@@ -1695,5 +1701,31 @@ mod tests {
         entries
             .iter()
             .any(|(key, _)| key.as_str().is_some_and(|key| key == "cas"))
+    }
+}
+
+/// Note: unlike the module above these run under `picodata test` (see
+/// `test/inner.rs`), because decoding a decimal needs tarantool's own symbols,
+/// which a plain `cargo test` harness doesn't link.
+mod display_tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[::tarantool::test]
+    fn dml_with_decimal_map_key_is_displayed_as_json() {
+        // A json key must be a string, so a decimal key is quoted, while a
+        // decimal value stays a number.
+        let key = tarantool::decimal::Decimal::from_str("1.5").unwrap();
+        let value = tarantool::decimal::Decimal::from_str("0e5").unwrap();
+
+        let mut mp = Vec::new();
+        rmp::encode::write_array_len(&mut mp, 1).unwrap();
+        rmp::encode::write_map_len(&mut mp, 1).unwrap();
+        mp.extend_from_slice(&tarantool::msgpack::encode(&key));
+        mp.extend_from_slice(&tarantool::msgpack::encode(&value));
+        let tuple = TupleBuffer::try_from_vec(mp).unwrap();
+
+        let op = Op::Dml(Dml::insert(12345_u32, &tuple, crate::schema::ADMIN_ID).unwrap());
+        assert_eq!(op.to_string(), r#"Insert(12345, [{"1.5":0}])"#);
     }
 }

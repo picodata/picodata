@@ -123,7 +123,7 @@ mod tests {
         index.options = vec![
             RawIndexOption::PageSize(1024),
             RawIndexOption::Unique(true),
-            RawIndexOption::BloomFalsePositiveRate("0.125".into()),
+            RawIndexOption::BloomFalsePositiveRate("0.125".parse().unwrap()),
             RawIndexOption::Hint(true),
         ];
 

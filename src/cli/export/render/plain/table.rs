@@ -302,8 +302,8 @@ mod tests {
         primary_key.options = vec![
             RawIndexOption::PageSize(1024),
             RawIndexOption::Unique(true),
-            RawIndexOption::RunSizeRatio("3.5".into()),
-            RawIndexOption::BloomFalsePositiveRate("0.125".into()),
+            RawIndexOption::RunSizeRatio("3.5".parse().unwrap()),
+            RawIndexOption::BloomFalsePositiveRate("0.125".parse().unwrap()),
             RawIndexOption::CompressionDict(true),
         ];
 

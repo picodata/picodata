@@ -994,12 +994,33 @@ pub fn check_msgpack_matches_type(
 // msgpack extensions as json
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Render a tarantool msgpack extension value as a string.
+/// How a tarantool msgpack extension value is written into json.
+enum MpExtAsJson {
+    /// Written as a json number. Json numbers technically can carry arbitrary
+    /// precision, so every digit is written directly, same as postgres does for a numeric:
+    ///
+    ///     postgres=# SELECT to_json(0.001::numeric);
+    ///     0.001
+    Number(String),
+    /// Written as a json string, because json has no standard type to represent the value.
+    Text(String),
+}
+
+impl MpExtAsJson {
+    #[inline(always)]
+    fn into_inner(self) -> String {
+        match self {
+            Self::Number(text) | Self::Text(text) => text,
+        }
+    }
+}
+
+/// Render a tarantool msgpack extension value into json taking Postgres semantics into account.
 ///
 /// Returns `None` if the extension type is unknown, or if the payload
 /// is malformed. Callers are expected to fall back to the original value in that
 /// case, so we give original payload for possible troubleshooting - see [`MpValueAsJson`].
-pub fn mp_ext_to_string(tag: i8, data: &[u8]) -> Option<String> {
+fn mp_ext_to_json(tag: i8, data: &[u8]) -> Option<MpExtAsJson> {
     use tarantool::ffi;
     use tarantool::msgpack::ExtStruct;
     use time::format_description::well_known::Rfc3339;
@@ -1008,30 +1029,54 @@ pub fn mp_ext_to_string(tag: i8, data: &[u8]) -> Option<String> {
     match tag {
         ffi::decimal::MP_DECIMAL => tarantool::decimal::Decimal::try_from(ext)
             .ok()
-            .map(|v| v.to_string()),
+            .map(|v| MpExtAsJson::Number(decimal_to_json(v))),
         ffi::uuid::MP_UUID => tarantool::uuid::Uuid::try_from(ext)
             .ok()
-            .map(|v| v.to_string()),
+            .map(|v| MpExtAsJson::Text(v.to_string())),
         ffi::datetime::MP_DATETIME => tarantool::datetime::Datetime::try_from(ext)
             .ok()
             // Note: rfc3339, same as tarantool's own datetime tostring.
             // Postgres renders a timestamptz inside json in a similar way.
-            // It spells zero offset as `+00:00` instead of `Z`, but both conform to the rfc:
+            // It writes zero offset as `+00:00` instead of `Z`, but both conform to the rfc:
             //     postgres=# SELECT to_json(TIMESTAMPTZ '2024-01-02 03:04:05+00');
             //     "2024-01-02T03:04:05+00:00"
-            .and_then(|v| v.into_inner().format(&Rfc3339).ok()),
+            .and_then(|v| v.into_inner().format(&Rfc3339).ok())
+            .map(MpExtAsJson::Text),
         _ => None,
     }
 }
 
-/// Serializes an [`rmpv::Value`] similar to `serde_json`, except that
-/// tarantool extension values (decimal, uuid, datetime) are rendered as strings
-/// instead of rmpv's raw `[tag, [bytes]]` fallback.
+/// Convert tarantool `Decimal` to a valid json text representation.
 ///
-/// Json has no type for any of those, so a string is the only representation
-/// which doesn't lose information. Extension types we don't know about keep the
-/// `[tag, [bytes]]` form, to allow troubleshooting which would be difficult
-/// if we swallowed the data.
+/// Note: tarantool's text of a decimal is already a valid json number, with one
+/// exception. Tarantool prints decimals without an exponent, so a zero with a
+/// positive exponent, `1e5 * 0`, comes out as `000000`, and json forbids
+/// leading zeros. NaN and infinity, which are not supported by the json standard
+/// can't occur because tarantool restricts that. A zero is written the same way
+/// as in postgres, keeping its fractional digits and dropping its sign:
+///
+///     postgres=# SELECT to_json('1e5'::numeric * 0);  -- 0
+///     postgres=# SELECT to_json('-0e3'::numeric);     -- 0
+///     postgres=# SELECT to_json('0.00'::numeric);     -- 0.00
+fn decimal_to_json(v: tarantool::decimal::Decimal) -> String {
+    if v != tarantool::decimal::Decimal::zero() {
+        return v.to_string();
+    }
+    match v.scale() {
+        0 => "0".into(),
+        scale => format!("0.{}", "0".repeat(scale as usize)),
+    }
+}
+
+/// Serializes an [`rmpv::Value`] similar to `serde_json`, except that tarantool
+/// extension values are rendered the way postgres renders the matching type
+/// inside json - a decimal as a number, a uuid or a datetime as a string -
+/// instead of rmpv's raw `[tag, [bytes]]` fallback. An extension used as a map
+/// key is always written as a string, since json keys are always strings, see
+/// `MpKeyAsJson`.
+///
+/// Extension types we don't know about keep the `[tag, [bytes]]` form, to allow
+/// troubleshooting which would be difficult if we swallowed the data.
 #[derive(Debug)]
 pub struct MpValueAsJson<'a>(pub &'a rmpv::Value);
 
@@ -1039,6 +1084,7 @@ impl serde::Serialize for MpValueAsJson<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use rmpv::Value;
         use serde::ser::{SerializeMap, SerializeSeq};
+        use serde_json::value::RawValue;
 
         match self.0 {
             Value::Array(items) => {
@@ -1051,17 +1097,53 @@ impl serde::Serialize for MpValueAsJson<'_> {
             Value::Map(entries) => {
                 let mut map = serializer.serialize_map(Some(entries.len()))?;
                 for (key, value) in entries {
-                    map.serialize_entry(&Self(key), &Self(value))?;
+                    map.serialize_entry(&MpKeyAsJson(key), &Self(value))?;
                 }
                 map.end()
             }
-            Value::Ext(tag, data) => match mp_ext_to_string(*tag, data) {
-                Some(text) => serializer.serialize_str(&text),
+            Value::Ext(tag, data) => match mp_ext_to_json(*tag, data) {
+                // `RawValue` writes the digits as is, keeping all 38 significant
+                // digits a tarantool decimal supports.
+                Some(MpExtAsJson::Number(text)) => match RawValue::from_string(text) {
+                    Ok(number) => number.serialize(serializer),
+                    // Unreachable, see the note in `decimal_to_json`. In case of a failure write
+                    // the raw `[tag, [bytes]]` form instead of failing to serialize the whole value.
+                    Err(e) => {
+                        crate::warn_or_panic!("decimal {data:?} is not a valid json number: {e}");
+                        self.0.serialize(serializer)
+                    }
+                },
+                Some(MpExtAsJson::Text(text)) => serializer.serialize_str(&text),
                 None => self.0.serialize(serializer),
             },
             // Everything else is serialized by rmpv itself, so that string
             // escaping, number formatting & error handling stay exactly the same.
             other => other.serialize(serializer),
+        }
+    }
+}
+
+/// Serializes a map key the way [`MpValueAsJson`] serializes a value, except
+/// that an extension is always written as a string, since json keys are always
+/// strings. A decimal key is quoted the way postgres quotes a numeric one:
+///
+///     postgres=# SELECT json_build_object(1.5::numeric, 'x');
+///     {"1.5" : "x"}
+pub(crate) struct MpKeyAsJson<'a>(pub &'a rmpv::Value);
+
+impl serde::Serialize for MpKeyAsJson<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self.0 {
+            rmpv::Value::Ext(tag, data) => match mp_ext_to_json(*tag, data) {
+                Some(json) => serializer.serialize_str(&json.into_inner()),
+                // An unknown or malformed extension keeps its raw `[tag, [bytes]]`
+                // form, but as a string, since serde_json rejects any other key.
+                None => {
+                    let raw = serde_json::to_string(self.0).map_err(serde::ser::Error::custom)?;
+                    serializer.serialize_str(&raw)
+                }
+            },
+            key => MpValueAsJson(key).serialize(serializer),
         }
     }
 }

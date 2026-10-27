@@ -7,8 +7,9 @@
 //! while these types read a different structure using serde.
 //! One structure cannot satisfy both requirements:
 //!
-//! * `Decimal` is an extension of msgpack, and pgproto converts it to a string;
-//!   `schema::IndexOption`, however, expects a packed pair and throws an error in this case;
+//! * `Decimal` is an extension of msgpack, and pgproto converts it to a json
+//!   number; `schema::IndexOption`, however, expects `Decimal`'s serde form
+//!   and fails to deserialize a number;
 //! * `_pico_table` is encoded using a derived msgpack format that wraps the value in a
 //!   single-element array (`{“unlogged”: [true]}`), whereas `schema::TableOption` reads `{“unlogged”: true}`;
 //! * `Distribution` is serialized as `{“kind”: ...}` for the Raft log,
@@ -19,6 +20,7 @@
 //! by the `assert_*_shape` assertions listed below, which halt compilation when a variant is added,
 //! as well as by tests that encode the catalog type and decode the result here.
 
+use rust_decimal::Decimal;
 use serde::Deserialize;
 use smol_str::SmolStr;
 use tarantool::index::{Part, RtreeIndexDistanceType};
@@ -131,15 +133,16 @@ fn assert_table_option_shape(original: crate::schema::TableOption) {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RawIndexOption {
-    #[serde(rename = "bloom_fpr")]
-    BloomFalsePositiveRate(DecimalLiteral),
+    #[serde(rename = "bloom_fpr", deserialize_with = "decimal_from_json")]
+    BloomFalsePositiveRate(Decimal),
     Dimension(u8),
     Distance(RtreeIndexDistanceType),
     Hint(bool),
     PageSize(u32),
     RangeSize(u32),
     RunCountPerLevel(u32),
-    RunSizeRatio(DecimalLiteral),
+    #[serde(deserialize_with = "decimal_from_json")]
+    RunSizeRatio(Decimal),
     CompressionLevel(i8),
     CompressionDict(bool),
     Unique(bool),
@@ -147,19 +150,19 @@ pub enum RawIndexOption {
 
 impl RawIndexOption {
     /// The option name and its value, ready for use in a `WITH (...)` clause.
-    pub fn as_pair(&self) -> (&'static str, &dyn std::fmt::Display) {
+    pub fn as_pair(&self) -> (&'static str, String) {
         match self {
-            Self::BloomFalsePositiveRate(value) => ("bloom_fpr", value),
-            Self::Dimension(value) => ("dimension", value),
-            Self::Distance(value) => ("distance", value),
-            Self::Hint(value) => ("hint", value),
-            Self::PageSize(value) => ("page_size", value),
-            Self::RangeSize(value) => ("range_size", value),
-            Self::RunCountPerLevel(value) => ("run_count_per_level", value),
-            Self::RunSizeRatio(value) => ("run_size_ratio", value),
-            Self::CompressionLevel(value) => ("compression_level", value),
-            Self::CompressionDict(value) => ("compression_dict", value),
-            Self::Unique(value) => ("unique", value),
+            Self::BloomFalsePositiveRate(value) => ("bloom_fpr", decimal_literal(value)),
+            Self::Dimension(value) => ("dimension", value.to_string()),
+            Self::Distance(value) => ("distance", value.to_string()),
+            Self::Hint(value) => ("hint", value.to_string()),
+            Self::PageSize(value) => ("page_size", value.to_string()),
+            Self::RangeSize(value) => ("range_size", value.to_string()),
+            Self::RunCountPerLevel(value) => ("run_count_per_level", value.to_string()),
+            Self::RunSizeRatio(value) => ("run_size_ratio", decimal_literal(value)),
+            Self::CompressionLevel(value) => ("compression_level", value.to_string()),
+            Self::CompressionDict(value) => ("compression_dict", value.to_string()),
+            Self::Unique(value) => ("unique", value.to_string()),
         }
     }
 
@@ -183,7 +186,7 @@ fn assert_index_option_shape(original: crate::schema::IndexOption) {
     use crate::schema::IndexOption;
     let _: RawIndexOption = match original {
         IndexOption::BloomFalsePositiveRate(rate) => {
-            RawIndexOption::BloomFalsePositiveRate(rate.to_string().into())
+            RawIndexOption::BloomFalsePositiveRate(rate.to_string().parse().unwrap())
         }
         IndexOption::Dimension(dimension) => RawIndexOption::Dimension(dimension),
         IndexOption::Distance(distance) => RawIndexOption::Distance(distance),
@@ -191,7 +194,9 @@ fn assert_index_option_shape(original: crate::schema::IndexOption) {
         IndexOption::PageSize(size) => RawIndexOption::PageSize(size),
         IndexOption::RangeSize(size) => RawIndexOption::RangeSize(size),
         IndexOption::RunCountPerLevel(count) => RawIndexOption::RunCountPerLevel(count),
-        IndexOption::RunSizeRatio(ratio) => RawIndexOption::RunSizeRatio(ratio.to_string().into()),
+        IndexOption::RunSizeRatio(ratio) => {
+            RawIndexOption::RunSizeRatio(ratio.to_string().parse().unwrap())
+        }
         IndexOption::CompressionLevel(level) => RawIndexOption::CompressionLevel(level),
         IndexOption::CompressionDict(enabled) => RawIndexOption::CompressionDict(enabled),
         IndexOption::Unique(unique) => RawIndexOption::Unique(unique),
@@ -202,42 +207,46 @@ fn assert_index_option_shape(original: crate::schema::IndexOption) {
 // Decimal
 ////////////////////////////////////////////////////////////////////////////////
 
-/// TODO: pgproto is going to send a number instead of a string. See: <https://git.picodata.io/core/picodata/-/work_items/3245>
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(transparent)]
-pub struct DecimalLiteral(String);
+/// Reads a decimal option value that pgproto sent as a json number.
+///
+/// The number text is handed over through `serde_json::value::RawValue`:
+/// `serde_json::Value` would parse it into an `f64` and lose digits beyond
+/// float precision. [`Decimal`] then parses it, which validates the value.
+///
+/// Note: a value wider than [`Decimal`]'s 28 significant digits fails to
+/// decode, though tarantool itself holds up to 38. Real option values are far
+/// shorter.
+fn decimal_from_json<'de, D>(deserializer: D) -> Result<Decimal, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde_json::value::RawValue;
 
-impl From<String> for DecimalLiteral {
-    fn from(literal: String) -> Self {
-        Self(literal)
-    }
+    let json = Box::<RawValue>::deserialize(deserializer)?;
+    Decimal::from_str_exact(json.get()).map_err(serde::de::Error::custom)
 }
 
-impl From<&str> for DecimalLiteral {
-    fn from(literal: &str) -> Self {
-        Self(literal.to_owned())
-    }
-}
-
-/// A decimal keeps no trailing zeros and the grammar's `Decimal` rejects it.
-impl std::fmt::Display for DecimalLiteral {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.0)?;
-        if !self.0.contains('.') {
-            formatter.write_str(".0")?;
-        }
-        Ok(())
+/// The grammar's decimal literal rejects a value without a point, so `2`
+/// comes out as `2.0`.
+fn decimal_literal(value: &Decimal) -> String {
+    if value.scale() == 0 {
+        format!("{value:.1}")
+    } else {
+        value.to_string()
     }
 }
 
 /// TODO: share this with pgproto instead of repeating its path around the conversion.
-fn convert_like_pgproto(msgpack: &[u8]) -> serde_json::Value {
+///
+/// Returns json text rather than a `serde_json::Value`: the latter would parse
+/// a decimal number into an `f64` and lose digits beyond float precision.
+fn convert_like_pgproto(msgpack: &[u8]) -> String {
     let value = rmpv::decode::read_value(&mut &msgpack[..]).expect("valid msgpack");
-    serde_json::to_value(crate::util::MpValueAsJson(&value)).expect("pgproto renders it as json")
+    serde_json::to_string(&crate::util::MpValueAsJson(&value)).expect("pgproto renders it as json")
 }
 
 /// How `_pico_index` columns are encoded: rmp-serde.
-fn encode_via_rmp_serde<T: tarantool::tuple::Encode>(value: &T) -> serde_json::Value {
+fn encode_via_rmp_serde<T: tarantool::tuple::Encode>(value: &T) -> String {
     let mut buffer = Vec::new();
     value.encode(&mut buffer).expect("encodes");
     convert_like_pgproto(&buffer)
@@ -255,11 +264,11 @@ mod decimal_tests {
         let cases = [
             (
                 IndexOption::BloomFalsePositiveRate(rate),
-                RawIndexOption::BloomFalsePositiveRate("0.05".into()),
+                RawIndexOption::BloomFalsePositiveRate("0.05".parse().unwrap()),
             ),
             (
                 IndexOption::RunSizeRatio(rate),
-                RawIndexOption::RunSizeRatio("0.05".into()),
+                RawIndexOption::RunSizeRatio("0.05".parse().unwrap()),
             ),
         ];
 
@@ -267,10 +276,10 @@ mod decimal_tests {
             let (name, value) = raw.as_pair();
             assert_eq!(name, original.type_name());
             assert_eq!(raw.is_vinyl(), original.is_vinyl(), "{name}");
-            assert_eq!(value.to_string(), rate.to_string(), "{name}");
+            assert_eq!(value, rate.to_string(), "{name}");
 
             let pgproto_json = encode_via_rmp_serde(&vec![original]);
-            let decoded: Vec<RawIndexOption> = serde_json::from_value(pgproto_json.clone())
+            let decoded: Vec<RawIndexOption> = serde_json::from_str(&pgproto_json)
                 .unwrap_or_else(|error| panic!("{pgproto_json} should decode: {error}"));
             assert_eq!(decoded, vec![raw]);
         }
@@ -282,10 +291,31 @@ mod decimal_tests {
         assert_eq!(ratio.to_string(), "2");
 
         let pgproto_json = encode_via_rmp_serde(&vec![IndexOption::RunSizeRatio(ratio)]);
-        let decoded: Vec<RawIndexOption> = serde_json::from_value(pgproto_json.clone())
+        let decoded: Vec<RawIndexOption> = serde_json::from_str(&pgproto_json)
             .unwrap_or_else(|error| panic!("{pgproto_json} should decode: {error}"));
-        assert_eq!(decoded, vec![RawIndexOption::RunSizeRatio("2".into())]);
-        assert_eq!(decoded[0].as_pair().1.to_string(), "2.0");
+        assert_eq!(
+            decoded,
+            vec![RawIndexOption::RunSizeRatio("2".parse().unwrap())]
+        );
+        assert_eq!(decoded[0].as_pair().1, "2.0");
+    }
+
+    #[::tarantool::test]
+    fn every_decimal_digit_survives_decoding() {
+        // All 28 significant digits rust_decimal holds. A wider value, though
+        // legal in the catalog, fails to decode, see `decimal_from_json`.
+        let literal = "12345678901234567890.12345678";
+        let ratio: Decimal = literal.parse().expect("a decimal literal");
+
+        let pgproto_json = encode_via_rmp_serde(&vec![IndexOption::RunSizeRatio(ratio)]);
+        assert!(pgproto_json.contains(literal), "{pgproto_json}");
+
+        let decoded: Vec<RawIndexOption> = serde_json::from_str(&pgproto_json)
+            .unwrap_or_else(|error| panic!("{pgproto_json} should decode: {error}"));
+        assert_eq!(
+            decoded,
+            vec![RawIndexOption::RunSizeRatio(literal.parse().unwrap())]
+        );
     }
 }
 
@@ -298,7 +328,8 @@ mod tests {
 
     /// How `_pico_table` columns are encoded.
     fn encode_via_msgpack_derive<T: tarantool::msgpack::Encode>(value: &T) -> serde_json::Value {
-        convert_like_pgproto(&tarantool::msgpack::encode(value))
+        let json = convert_like_pgproto(&tarantool::msgpack::encode(value));
+        serde_json::from_str(&json).expect("pgproto renders valid json")
     }
 
     /// Encodes the catalog type in the same way as its own table does,
@@ -312,6 +343,14 @@ mod tests {
         let decoded: R = serde_json::from_value(pgproto_json.clone())
             .unwrap_or_else(|error| panic!("{pgproto_json} should decode: {error}"));
         assert_eq!(decoded, expected);
+    }
+
+    #[test]
+    fn an_exponent_form_number_is_rejected() {
+        // The decimal parser rejects the exponent form, as does the SQL
+        // grammar for a decimal literal. Pgproto never sends one: tarantool
+        // prints decimals positionally.
+        assert!(serde_json::from_str::<RawIndexOption>(r#"{"run_size_ratio":1e5}"#).is_err());
     }
 
     #[test]
@@ -369,7 +408,7 @@ mod tests {
     /// `_pico_index` is encoded with rmp-serde, which does not wrap.
     #[test]
     fn an_index_option_goes_from_pico_index_to_us() {
-        let pgproto_json = json!([{"unique": true}, {"page_size": 1024}]);
+        let pgproto_json = json!([{"unique": true}, {"page_size": 1024}]).to_string();
         assert_eq!(
             encode_via_rmp_serde(&vec![
                 IndexOption::Unique(true),
@@ -378,8 +417,8 @@ mod tests {
             pgproto_json
         );
 
-        let decoded: Vec<RawIndexOption> = serde_json::from_value(pgproto_json.clone())
-            .unwrap_or_else(|error| {
+        let decoded: Vec<RawIndexOption> =
+            serde_json::from_str(&pgproto_json).unwrap_or_else(|error| {
                 panic!("{pgproto_json} should decode: {error}");
             });
         assert_eq!(
@@ -433,18 +472,16 @@ mod tests {
     }
 
     #[test]
-    fn a_decimal_arrives_as_a_string_holding_its_literal() {
-        let decoded: Vec<RawIndexOption> = serde_json::from_value(json!([
-            {"bloom_fpr": "0.001"},
-            {"run_size_ratio": "12345.6789"},
-        ]))
-        .expect("decodes");
+    fn a_decimal_arrives_as_a_number_holding_its_literal() {
+        let decoded: Vec<RawIndexOption> =
+            serde_json::from_str(r#"[{"bloom_fpr":0.001},{"run_size_ratio":12345.67890}]"#)
+                .expect("decodes");
 
         assert_eq!(
             decoded,
             vec![
-                RawIndexOption::BloomFalsePositiveRate("0.001".into()),
-                RawIndexOption::RunSizeRatio("12345.6789".into()),
+                RawIndexOption::BloomFalsePositiveRate("0.001".parse().unwrap()),
+                RawIndexOption::RunSizeRatio("12345.67890".parse().unwrap()),
             ]
         );
     }
@@ -452,14 +489,13 @@ mod tests {
     #[test]
     fn a_whole_decimal_is_written_with_a_point() {
         let decoded: Vec<RawIndexOption> =
-            serde_json::from_value(json!([{"run_size_ratio": "2"}, {"bloom_fpr": "100"}]))
-                .expect("decodes");
+            serde_json::from_str(r#"[{"run_size_ratio":2},{"bloom_fpr":100}]"#).expect("decodes");
 
         assert_eq!(
             decoded,
             vec![
-                RawIndexOption::RunSizeRatio("2".into()),
-                RawIndexOption::BloomFalsePositiveRate("100".into()),
+                RawIndexOption::RunSizeRatio("2".parse().unwrap()),
+                RawIndexOption::BloomFalsePositiveRate("100".parse().unwrap()),
             ]
         );
         let written: Vec<String> = decoded
@@ -470,9 +506,10 @@ mod tests {
     }
 
     #[test]
-    fn a_decimal_that_is_not_a_string_is_rejected() {
-        serde_json::from_value::<RawIndexOption>(json!({"bloom_fpr": [1, [2, 28]]}))
-            .expect_err("only a literal is accepted");
+    fn a_decimal_that_is_not_a_number_is_rejected() {
+        for json in [r#"{"bloom_fpr":"0.001"}"#, r#"{"bloom_fpr":true}"#] {
+            serde_json::from_str::<RawIndexOption>(json).expect_err("only a number is accepted");
+        }
     }
 
     #[test]
