@@ -355,7 +355,7 @@ const SYNTAX_KEYWORDS: &[SyntaxKeyword] = &[
     SyntaxKeyword {
         covers: &["cross"],
         used: "SELECT a FROM t CROSS JOIN u",
-        renders: Parses::Not,
+        renders: Parses::As("SELECT a FROM t CROSS JOIN u"),
         glued: "SELECT a FROM t CROSSx JOIN u",
         glued_reads_as: Parses::Not,
     },

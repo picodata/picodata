@@ -79,6 +79,13 @@ fn left_join_multiple_definition_same_tbl_factor() {
     insta::assert_snapshot!(analyze_error(query, &[]), @r#"semantic error: table "t1" specified more than once"#);
 }
 
+/// CROSS JOIN has no condition, and the later joins see both of its sides.
+#[test]
+fn cross_join() {
+    let query = "SELECT * FROM t3 CROSS JOIN t4 INNER JOIN t5 ON t4.a = t5.c";
+    insta::assert_snapshot!(analyzed(query, &[]), @"SELECT t3.a::int, t3.b::text, t4.a::int, t4.b::text, t5.c::int, t5.d::text FROM t3 CROSS JOIN t4 INNER JOIN t5 ON (t4.a::int = t5.c::int)::bool");
+}
+
 #[test]
 fn join_invalid_condition_expr_data_type() {
     let query = "SELECT * FROM t3 INNER JOIN t5 ON t3.a";

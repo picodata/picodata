@@ -25,8 +25,8 @@ use smol_str::format_smolstr;
 use sql_ast_new_nodes::error::AstResult;
 use sql_ast_new_nodes::expr::{Expr, ExprInner, RawVar};
 use sql_ast_new_nodes::table_expression::{
-    AnalyzedCteOrTable, BoundJoinUsingVar, ColumnRoute, From, FromEntry, GroupBy, JoinUsingColumn,
-    JoinedTable, OrdrByGrpByElem, TableFactor, TableFactorInner,
+    AnalyzedCteOrTable, BoundJoinUsingVar, ColumnRoute, From, FromEntry, GroupBy, JoinKind,
+    JoinUsingColumn, JoinedTable, OrdrByGrpByElem, TableFactor, TableFactorInner,
 };
 use sql_ast_new_nodes::{Analyzed, NamedEntity, Raw};
 use sql_ir::ir::metadata::Metadata;
@@ -173,11 +173,12 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
             .curr_from
             .add_entry(FromEntry::TableFactor(analyzed_tbl));
 
-        // Rely on grammar allowing exactly one of JOIN/ON and JOIN/USING.
-        // CROSS JOIN is not supported yet.
+        // Rely on the parser allowing exactly one of JOIN/ON and JOIN/USING,
+        // or none of them for CROSS JOIN.
         debug_assert!(
             (condition.is_some() && using_cols.is_empty())
                 || (condition.is_none() && !using_cols.is_empty())
+                || (kind == JoinKind::Cross && condition.is_none() && using_cols.is_empty())
         );
 
         let analyzed_cond = match condition {
