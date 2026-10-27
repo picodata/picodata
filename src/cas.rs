@@ -2716,8 +2716,9 @@ mod tests {
         let storage = Catalog::for_tests();
         let sys_user = Space::from(SystemSpace::User);
         let tarantool_users = || -> Vec<(UserId, SmolStr, String)> {
-            let iter = sys_user.select(IteratorType::All, &()).unwrap();
-            iter.map(|t| (t.get(0).unwrap(), t.get(2).unwrap(), t.get(3).unwrap()))
+            let iter = sys_user.select_v2(IteratorType::All, &()).unwrap();
+            iter.map(|t| t.unwrap())
+                .map(|t| (t.get(0).unwrap(), t.get(2).unwrap(), t.get(3).unwrap()))
                 .collect()
         };
         let user_count = || {

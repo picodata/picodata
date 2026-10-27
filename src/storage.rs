@@ -1939,10 +1939,16 @@ impl Users {
     /// versions, so a token is kept for each of them, see
     /// [`crate::cas::check_user_limit`].
     pub fn free_reserved_ids(&self) -> tarantool::Result<u32> {
-        let used = self
+        let iter = self
             .index_id
-            .select(IteratorType::LE, &[PICO_SERVICE_ID])?
-            .count() as u32;
+            .select_v2(IteratorType::LE, &[PICO_SERVICE_ID])?;
+
+        let mut used = 0;
+        for tuple in iter {
+            tuple?;
+            used += 1;
+        }
+
         Ok(PICO_SERVICE_ID + 1 - used)
     }
 
@@ -3676,11 +3682,15 @@ mod tests {
         }
     }
 
+    // Note: clippy warns about a suspicious map -> count chain, but it makes
+    // sense here, because we want to panic if iterator returns error at any
+    // point during our count
+    #[allow(clippy::suspicious_map)]
     #[track_caller]
     fn get_number_of_indexes_defined_for_space(space_id: SpaceId) -> usize {
         let sys_index = SystemSpace::Index.as_space();
         let iter = sys_index.select_v2(IteratorType::Eq, &[space_id]).unwrap();
-        return iter.count();
+        return iter.map(|t| t.unwrap()).count();
     }
 
     #[::tarantool::test]
