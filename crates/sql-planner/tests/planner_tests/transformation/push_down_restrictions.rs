@@ -10,7 +10,7 @@ use sql::ir::node::{
     Join, Node, NodeId, Projection, ScalarFunction, ScanRelation, Selection, SubQueryReference,
 };
 use sql::ir::transformation::Stage;
-use sql::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
+use sql::ir::tree::traversal::{NodeIter, PostOrder};
 use sql::ir::types::{DerivedType, UnrestrictedType};
 use sql::ir::Plan;
 
@@ -1004,17 +1004,15 @@ fn an_unmovable_conjunct_pins_its_component_and_nothing_else() {
     else {
         unreachable!();
     };
-    let calls = PostOrderWithFilter::new(
+    let calls: Vec<NodeId> = PostOrder::new(
+        &plan.nodes,
         |node| plan.nodes.expr_iter(node, false),
-        |node| {
-            matches!(
-                plan.get_node(node),
-                Ok(Node::Expression(Expression::ScalarFunction(_)))
-            )
-        },
-        EXPR_CAPACITY,
+        *filter,
     )
-    .traverse_into_vec(*filter);
+    .expressions()
+    .filter(|(_, expr)| matches!(expr, Expression::ScalarFunction(_)))
+    .map(|(id, _)| id)
+    .collect();
     let mut marked = 0;
     for call in calls {
         if let MutExpression::ScalarFunction(ScalarFunction {

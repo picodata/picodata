@@ -47,7 +47,7 @@ use crate::ir::node::{
 use crate::ir::operator::{OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::options::{OptionKind, OptionParamValue};
 use crate::ir::relation::{ColumnRole, TableKind};
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::types::{ColumnDefType, DomainType};
 use crate::ir::value::Value;
 use crate::ir::{node::plugin, Plan};
@@ -1134,7 +1134,7 @@ impl AstCore {
                     } else {
                         // Check that at least one reference is met in expression tree.
                         // Otherwise, ordering expression has no sense.
-                        let expr_tree = NodePostOrder::new(
+                        let expr_tree = PostOrder::new(
                             &plan.nodes,
                             |node| plan.nodes.expr_iter(node, false),
                             expr_plan_node_id,
@@ -1783,7 +1783,7 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         top_id: NodeId,
         plan: &Plan,
     ) -> Result<(), SbroadError> {
-        let dfs = NodePostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top_id);
+        let dfs = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top_id);
         for (_, rel) in dfs.relational() {
             match rel {
                 Relational::ScanSubQuery(_) => {

@@ -29,7 +29,7 @@ use crate::ir::node::{
     Selection, SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values, Window,
 };
 use crate::ir::transformation::equality_facts::EqualityFacts;
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrder, REL_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{Node, Plan};
 
@@ -398,7 +398,7 @@ pub fn compare_window_dist(this: &Distribution, other: &Distribution) -> Distrib
 impl Plan {
     /// Get unary NOT expression nodes.
     pub(crate) fn get_not_unary_nodes(&self, top: NodeId) -> Vec<NodeId> {
-        NodePostOrder::new(&self.nodes, |node| self.nodes.expr_iter(node, false), top)
+        PostOrder::new(&self.nodes, |node| self.nodes.expr_iter(node, false), top)
             .expressions()
             .filter(|(_, expr)| matches!(expr, Expression::Unary(UnaryExpr { op: Unary::Not, .. })))
             .map(|(id, _)| id)
@@ -441,7 +441,7 @@ impl Plan {
 
             left_is_row || right_is_row
         };
-        NodePostOrder::new(&self.nodes, |node| self.nodes.expr_iter(node, false), top)
+        PostOrder::new(&self.nodes, |node| self.nodes.expr_iter(node, false), top)
             .expressions()
             .filter(|(_, expr)| filter_bool_expr_with_row(expr))
             .map(|(id, _)| id)
@@ -467,7 +467,7 @@ impl Plan {
                 Ok(Node::Expression(Expression::Row(_)))
             )
         };
-        NodePostOrder::new(&self.nodes, |node| self.nodes.expr_iter(node, false), top)
+        PostOrder::new(&self.nodes, |node| self.nodes.expr_iter(node, false), top)
             .expressions()
             .filter(|(_, expr)| filter_unary_expr_with_row(expr))
             .map(|(id, _)| id)
@@ -499,7 +499,7 @@ impl Plan {
                 Some("Node is not a row".into()),
             ));
         }
-        let ref_nodes = NodePostOrder::new(
+        let ref_nodes = PostOrder::new(
             &self.nodes,
             |node| self.nodes.expr_iter(node, false),
             row_id,
@@ -2410,8 +2410,10 @@ impl Plan {
         type CteChildId = ChildId;
         type MotionId = ChildId;
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);
-        let post_tree = PostOrder::new(|node| self.nodes.rel_iter(node), REL_CAPACITY);
-        let nodes = post_tree.traverse_into_vec(top_id);
+        let nodes: Vec<NodeId> =
+            PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
+                .map(|(id, _)| id)
+                .collect();
         self.check_motion_inputs_analyzed(&nodes)?;
         let mut cte_ref_counts: AHashMap<CteChildId, usize> = AHashMap::with_capacity(CTE_CAPACITY);
         let mut counted_cte_refs = AHashSet::with_capacity(nodes.len());
@@ -2801,7 +2803,7 @@ impl Plan {
         // to some leaf node. For motion node this number
         // is the slice index.
         let mut slices: Vec<Vec<NodeId>> = Vec::new();
-        let dfs_tree = NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id);
+        let dfs_tree = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id);
         // When visiting new node this stack stores
         // all the children of the current node.
         let mut stack = Vec::new();

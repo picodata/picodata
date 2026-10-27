@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use super::traversal::NodePostOrder;
+use super::traversal::PostOrder;
 use super::TreeIterator;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{BoolExpr, NodeId};
@@ -59,7 +59,7 @@ impl<'n> Nodes {
             }
             Some(_) => return vec![top],
         }
-        NodePostOrder::new(self, |node| self.and_iter(node), top)
+        PostOrder::new(self, |node| self.and_iter(node), top)
             .filter(|(_, node)| {
                 !matches!(
                     node,

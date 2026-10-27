@@ -3,9 +3,7 @@ use crate::ir::node::{Alias, ArenaType, NodeId};
 use crate::ir::operator::Bool;
 use crate::ir::relation::{SpaceEngine, Table};
 use crate::ir::test_fixtures::column_user_non_null;
-use crate::ir::tree::traversal::{
-    BreadthFirst, NodeIter, NodePostOrder, PostOrder, EXPR_CAPACITY, REL_CAPACITY,
-};
+use crate::ir::tree::traversal::{BreadthFirst, NodeIter, PostOrder, EXPR_CAPACITY};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
 use crate::ir::Node;
@@ -102,8 +100,8 @@ fn relational_post() {
     let top = plan.get_top().unwrap();
 
     // Traverse the tree
-    let dft_post = PostOrder::new(|node| plan.nodes.rel_iter(node), REL_CAPACITY);
-    let mut iter = dft_post.traverse_into_iter(top);
+    let mut iter =
+        PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top).map(|(id, _)| id);
     assert_eq!(iter.next(), Some(scan_t1_id));
     assert_eq!(iter.next(), Some(scan_t2_id));
     assert_eq!(iter.next(), Some(selection_id));
@@ -186,8 +184,8 @@ fn selection_subquery_dfs_post() {
     let top = plan.get_top().unwrap();
 
     // Traverse relational nodes in the plan tree
-    let dft_post = PostOrder::new(|node| plan.nodes.rel_iter(node), REL_CAPACITY);
-    let mut iter = dft_post.traverse_into_iter(top);
+    let mut iter =
+        PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top).map(|(id, _)| id);
     assert_eq!(iter.next(), Some(scan_t1_id));
     assert_eq!(iter.next(), Some(scan_t2_id));
     assert_eq!(iter.next(), Some(selection_t2_id));
@@ -198,16 +196,16 @@ fn selection_subquery_dfs_post() {
     check_node_post_order(&plan, |node| plan.nodes.rel_iter(node), top);
 
     // Traverse expression nodes in the selection t2 filter
-    let dft_post = PostOrder::new(|node| plan.nodes.expr_iter(node, true), EXPR_CAPACITY);
-    let mut iter = dft_post.traverse_into_iter(eq_op);
+    let mut iter = PostOrder::new(&plan.nodes, |node| plan.nodes.expr_iter(node, true), eq_op)
+        .map(|(id, _)| id);
     assert_eq!(iter.next(), Some(b));
     assert_eq!(iter.next(), Some(const1));
     assert_eq!(iter.next(), Some(eq_op));
     assert_eq!(iter.next(), None);
 
     // Traverse expression nodes in the selection t1 filter
-    let dft_post = PostOrder::new(|node| plan.nodes.expr_iter(node, true), EXPR_CAPACITY);
-    let mut iter = dft_post.traverse_into_iter(in_op);
+    let mut iter = PostOrder::new(&plan.nodes, |node| plan.nodes.expr_iter(node, true), in_op)
+        .map(|(id, _)| id);
     assert_eq!(iter.next(), Some(a));
     assert_eq!(iter.next(), Some(c));
     assert_eq!(iter.next(), Some(in_op));
@@ -273,8 +271,8 @@ fn subtree_dfs_post() {
     };
 
     // Traverse relational nodes in the plan tree
-    let dft_post = PostOrder::new(|node| plan.subtree_iter(node), plan.nodes.len());
-    let mut iter = dft_post.traverse_into_iter(top);
+    let mut iter =
+        PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), top).map(|(id, _)| id);
     assert_eq!(iter.next(), Some(*c_ref_id));
     assert_eq!(iter.next(), Some(*alias_id));
     assert_eq!(iter.next(), Some(proj_row_id));
@@ -289,36 +287,33 @@ fn subtree_dfs_post() {
     check_node_post_order(&plan, |node| plan.subtree_iter(node), top);
 
     // Children from the node give the same traversal as children by id.
-    let by_id: Vec<_> = NodePostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), top)
+    let by_id: Vec<_> = PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), top)
         .map(|(id, _)| id)
         .collect();
     let by_node: Vec<_> =
-        NodePostOrder::new_by_node(&plan.nodes, |_, node| plan.subtree_iter_of(node), top)
+        PostOrder::new_by_node(&plan.nodes, |_, node| plan.subtree_iter_of(node), top)
             .map(|(id, _)| id)
             .collect();
     assert_eq!(by_node, by_id);
 
     let missing = plan.nodes.next_id(ArenaType::Arena64);
-    let mut iter = NodePostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), missing);
+    let mut iter = PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), missing);
     assert!(iter.next().is_none());
 }
 
-/// Check that `NodePostOrder` visits the same nodes as `PostOrder`, gives
-/// the node of each id, and that the typed views select only their kind.
+/// Check that `PostOrder` gives the node of each id, and that the typed
+/// views select only their kind.
 fn check_node_post_order<F, I>(plan: &Plan, children_fn: F, root: NodeId)
 where
     F: FnMut(NodeId) -> I + Clone,
     I: Iterator<Item = NodeId>,
 {
-    let expected = PostOrder::new(children_fn.clone(), plan.nodes.len()).traverse_into_vec(root);
-    let nodes: Vec<_> = NodePostOrder::new(&plan.nodes, children_fn.clone(), root).collect();
-    let ids: Vec<_> = nodes.iter().map(|(id, _)| *id).collect();
-    assert_eq!(ids, expected);
+    let nodes: Vec<_> = PostOrder::new(&plan.nodes, children_fn.clone(), root).collect();
     for (id, node) in &nodes {
         assert_eq!(node, &plan.get_node(*id).unwrap());
     }
 
-    let rel_ids: Vec<_> = NodePostOrder::new(&plan.nodes, children_fn.clone(), root)
+    let rel_ids: Vec<_> = PostOrder::new(&plan.nodes, children_fn.clone(), root)
         .relational()
         .map(|(id, _)| id)
         .collect();
@@ -329,7 +324,7 @@ where
         .collect();
     assert_eq!(rel_ids, expected_rel_ids);
 
-    let expr_ids: Vec<_> = NodePostOrder::new(&plan.nodes, children_fn, root)
+    let expr_ids: Vec<_> = PostOrder::new(&plan.nodes, children_fn, root)
         .expressions()
         .map(|(id, _)| id)
         .collect();

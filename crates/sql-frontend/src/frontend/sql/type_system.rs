@@ -7,7 +7,7 @@ use crate::ir::node::{
     ScalarFunction, SubQueryReference, Trim, UnaryExpr, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::types::{DerivedType, UnrestrictedType as SbroadType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -690,7 +690,7 @@ fn coerce_scalar_expr(
             }
         };
 
-        let strings = NodePostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), expr_id)
+        let strings = PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), expr_id)
             .expressions()
             .filter(filter_string_to_be_coerced)
             .map(|(id, _)| id)
@@ -743,7 +743,7 @@ fn annotate_composite_types(
     // belongs to before taking a mutable borrow of the plan.
     let mut targets = Vec::new();
     let mut func_types: Vec<(NodeId, Type)> = Vec::new();
-    let post_order = NodePostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), expr_id);
+    let post_order = PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), expr_id);
     for (id, expr) in post_order.expressions() {
         match expr {
             Expression::ArrayLiteral(_) | Expression::Index(_) | Expression::Parameter(_) => {}

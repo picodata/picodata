@@ -331,13 +331,17 @@ impl SubtreeCloner {
         &mut self,
         plan: &mut Plan,
         top_id: NodeId,
-        capacity: usize,
         mut map_reference: impl FnMut(&mut Reference) -> Result<(), SbroadError>,
     ) -> Result<NodeId, SbroadError> {
         // We don't copy the subquery's children because otherwise it would create a new subquery.
         // All references would then point to the same subquery.
-        let dfs = PostOrder::new(|x| plan.subtree_iter_except_subquery(x), capacity);
-        let nodes = dfs.traverse_into_vec(top_id);
+        let nodes: Vec<NodeId> = PostOrder::new(
+            &plan.nodes,
+            |x| plan.subtree_iter_except_subquery(x),
+            top_id,
+        )
+        .map(|(id, _)| id)
+        .collect();
         let mut invalid_refs = Vec::new();
         for id in nodes {
             if self.old_new_map.contains_key(&id) {
@@ -436,7 +440,7 @@ impl SubtreeCloner {
         map_reference: impl FnMut(&mut Reference) -> Result<(), SbroadError>,
     ) -> Result<NodeId, SbroadError> {
         let mut helper = Self::new(EXPR_CAPACITY);
-        helper.clone(plan, top_id, EXPR_CAPACITY, map_reference)
+        helper.clone(plan, top_id, map_reference)
     }
 }
 

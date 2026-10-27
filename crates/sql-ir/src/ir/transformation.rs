@@ -25,7 +25,7 @@ use smol_str::format_smolstr;
 
 use super::node::expression::Expression;
 use super::node::relational::{MutRelational, Relational};
-use super::tree::traversal::{NodeIter, NodePostOrder};
+use super::tree::traversal::{NodeIter, PostOrder};
 use crate::errors::SbroadError;
 use crate::ir::node::block::{BlockOwned, MutBlock};
 use crate::ir::node::{
@@ -125,7 +125,7 @@ impl Plan {
         f: TransformFunctionOldNew,
     ) -> Result<(), SbroadError> {
         let nodes: Vec<NodeId> =
-            NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
+            PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
                 .relational()
                 .filter(|(_, rel)| matches!(rel, Relational::Join(_) | Relational::Selection(_)))
                 .map(|(id, _)| id)
@@ -191,7 +191,7 @@ impl Plan {
         // Note, that filter accepts nodes:
         // * On which we'd like to apply transformation
         // * That will contain transformed nodes as children
-        let nodes: Vec<NodeId> = NodePostOrder::new(
+        let nodes: Vec<NodeId> = PostOrder::new(
             &self.nodes,
             |node_id| self.nodes.expr_iter(node_id, false),
             top_id,
@@ -654,7 +654,7 @@ impl Plan {
     }
 
     fn subtree_has_motions(&self, top_id: NodeId) -> Result<bool, SbroadError> {
-        let has_motions = NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
+        let has_motions = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
             .relational()
             .any(|(_, rel)| matches!(rel, Relational::Motion(_)));
         Ok(has_motions)

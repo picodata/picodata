@@ -9,75 +9,6 @@ pub const REL_CAPACITY: usize = 32;
 /// The usual depth of a plan tree.
 const STACK_CAPACITY: usize = 16;
 
-pub struct PostOrder<ChildrenFn, T> {
-    inner: PostOrderWithFilter<ChildrenFn, fn(T) -> bool, T>,
-}
-
-impl<ChildrenFn, T> PostOrder<ChildrenFn, T> {
-    pub fn new(children_fn: ChildrenFn, capacity: usize) -> Self {
-        Self {
-            inner: PostOrderWithFilter::new(children_fn, |_| true, capacity),
-        }
-    }
-}
-
-impl<ChildrenFn, I, T> PostOrder<ChildrenFn, T>
-where
-    ChildrenFn: FnMut(T) -> I,
-    I: Iterator<Item = T>,
-    T: Copy,
-{
-    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = T> {
-        self.traverse_into_vec(root).into_iter()
-    }
-
-    pub fn traverse_into_vec(self, root: T) -> Vec<T> {
-        self.inner.traverse_into_vec(root)
-    }
-}
-
-pub struct PostOrderWithFilter<ChildrenFn, FilterFn, T> {
-    children_fn: ChildrenFn,
-    filter_fn: FilterFn,
-    nodes: Vec<T>,
-}
-
-impl<ChildrenFn, FilterFn, T> PostOrderWithFilter<ChildrenFn, FilterFn, T> {
-    pub fn new(children_fn: ChildrenFn, filter_fn: FilterFn, capacity: usize) -> Self {
-        Self {
-            children_fn,
-            filter_fn,
-            nodes: Vec::with_capacity(capacity),
-        }
-    }
-}
-
-impl<ChildrenFn, FilterFn, I, T> PostOrderWithFilter<ChildrenFn, FilterFn, T>
-where
-    ChildrenFn: FnMut(T) -> I,
-    FilterFn: FnMut(T) -> bool,
-    I: Iterator<Item = T>,
-    T: Copy,
-{
-    fn traverse(&mut self, root: T) {
-        for child in (self.children_fn)(root) {
-            self.traverse(child);
-        }
-        if (self.filter_fn)(root) {
-            self.nodes.push(root);
-        }
-    }
-
-    pub fn traverse_into_iter(self, root: T) -> impl Iterator<Item = T> {
-        self.traverse_into_vec(root).into_iter()
-    }
-
-    pub fn traverse_into_vec(mut self, root: T) -> Vec<T> {
-        self.traverse(root);
-        self.nodes
-    }
-}
-
 pub struct BreadthFirst<ChildrenFn, T> {
     children_fn: ChildrenFn,
     queue: VecDeque<T>,
@@ -116,36 +47,56 @@ where
     }
 }
 
+/// A tree arena that [`PostOrder`] takes the nodes from.
+pub trait Arena: Copy {
+    type Id: Copy;
+    type Node;
+
+    /// `None` skips the node with its subtree.
+    fn node(self, id: Self::Id) -> Option<Self::Node>;
+}
+
+impl<'nodes> Arena for &'nodes Nodes {
+    type Id = NodeId;
+    type Node = Node<'nodes>;
+
+    #[inline]
+    fn node(self, id: NodeId) -> Option<Node<'nodes>> {
+        self.get(id)
+    }
+}
+
 /// Post-order traversal that yields each node with its id.
 ///
 /// Each node is taken from the arena only once, so the consumer does not
-/// need to call `Plan::get_node()` again. The traversal is lazy and borrows
-/// the nodes, so the plan cannot change while it runs.
-pub struct NodePostOrder<'nodes, C, I> {
-    nodes: &'nodes Nodes,
+/// need to get it again. The traversal is lazy and borrows the arena, so the
+/// tree cannot change while it runs.
+pub struct PostOrder<A: Arena, C, I> {
+    arena: A,
     children: C,
     /// The path from the root: each node with an iterator over its children
-    /// that are not visited yet. It replaces the recursion of `PostOrder`,
-    /// which cannot pause between the calls of `next()`. A heap vector is
-    /// cheaper than an inline one here: the frames are large, and an inline
-    /// stack is copied each time the traversal is moved.
-    stack: Vec<(NodeId, Node<'nodes>, I)>,
+    /// that are not visited yet. It replaces recursion, which cannot pause
+    /// between the calls of `next()`. A heap vector is cheaper than an inline
+    /// one here: the frames are large, and an inline stack is copied each
+    /// time the traversal is moved.
+    stack: Vec<(A::Id, A::Node, I)>,
 }
 
-/// The children of a node for [`NodePostOrder`].
-pub trait Children<'nodes, I> {
-    fn children(&mut self, id: NodeId, node: &Node<'nodes>) -> I;
+/// The children of a node for [`PostOrder`].
+pub trait Children<A: Arena, I> {
+    fn children(&mut self, id: A::Id, node: &A::Node) -> I;
 }
 
 /// Children found by the node id. The child iterator gets the node from the
 /// arena again.
 pub struct ById<F>(F);
 
-impl<'nodes, F, I> Children<'nodes, I> for ById<F>
+impl<A, F, I> Children<A, I> for ById<F>
 where
-    F: FnMut(NodeId) -> I,
+    A: Arena,
+    F: FnMut(A::Id) -> I,
 {
-    fn children(&mut self, id: NodeId, _: &Node<'nodes>) -> I {
+    fn children(&mut self, id: A::Id, _: &A::Node) -> I {
         (self.0)(id)
     }
 }
@@ -153,45 +104,51 @@ where
 /// Children found from the node that the traversal already has.
 pub struct ByNode<F>(F);
 
-impl<'nodes, F, I> Children<'nodes, I> for ByNode<F>
+impl<A, F, I> Children<A, I> for ByNode<F>
 where
-    F: FnMut(NodeId, Node<'nodes>) -> I,
+    A: Arena,
+    A::Node: Clone,
+    F: FnMut(A::Id, A::Node) -> I,
 {
-    fn children(&mut self, id: NodeId, node: &Node<'nodes>) -> I {
+    fn children(&mut self, id: A::Id, node: &A::Node) -> I {
         (self.0)(id, node.clone())
     }
 }
 
-impl<'nodes, F, I> NodePostOrder<'nodes, ById<F>, I>
+impl<A, F, I> PostOrder<A, ById<F>, I>
 where
-    F: FnMut(NodeId) -> I,
-    I: Iterator<Item = NodeId>,
+    A: Arena,
+    F: FnMut(A::Id) -> I,
+    I: Iterator<Item = A::Id>,
 {
-    pub fn new(nodes: &'nodes Nodes, children_fn: F, root: NodeId) -> Self {
-        Self::with_children(nodes, ById(children_fn), root)
+    pub fn new(arena: A, children_fn: F, root: A::Id) -> Self {
+        Self::with_children(arena, ById(children_fn), root)
     }
 }
 
-impl<'nodes, F, I> NodePostOrder<'nodes, ByNode<F>, I>
+impl<A, F, I> PostOrder<A, ByNode<F>, I>
 where
-    F: FnMut(NodeId, Node<'nodes>) -> I,
-    I: Iterator<Item = NodeId>,
+    A: Arena,
+    A::Node: Clone,
+    F: FnMut(A::Id, A::Node) -> I,
+    I: Iterator<Item = A::Id>,
 {
     /// Give the node to `children_fn`, so that the child iterator does not
     /// get it from the arena again.
-    pub fn new_by_node(nodes: &'nodes Nodes, children_fn: F, root: NodeId) -> Self {
-        Self::with_children(nodes, ByNode(children_fn), root)
+    pub fn new_by_node(arena: A, children_fn: F, root: A::Id) -> Self {
+        Self::with_children(arena, ByNode(children_fn), root)
     }
 }
 
-impl<'nodes, C, I> NodePostOrder<'nodes, C, I>
+impl<A, C, I> PostOrder<A, C, I>
 where
-    C: Children<'nodes, I>,
-    I: Iterator<Item = NodeId>,
+    A: Arena,
+    C: Children<A, I>,
+    I: Iterator<Item = A::Id>,
 {
-    fn with_children(nodes: &'nodes Nodes, children: C, root: NodeId) -> Self {
+    fn with_children(arena: A, children: C, root: A::Id) -> Self {
         let mut traversal = Self {
-            nodes,
+            arena,
             children,
             stack: Vec::with_capacity(STACK_CAPACITY),
         };
@@ -201,20 +158,21 @@ where
 
     /// A node that is absent from the arena is skipped with its subtree,
     /// as the child iterators do.
-    fn push(&mut self, id: NodeId) {
-        if let Some(node) = self.nodes.get(id) {
+    fn push(&mut self, id: A::Id) {
+        if let Some(node) = self.arena.node(id) {
             let children = self.children.children(id, &node);
             self.stack.push((id, node, children));
         }
     }
 }
 
-impl<'nodes, C, I> Iterator for NodePostOrder<'nodes, C, I>
+impl<A, C, I> Iterator for PostOrder<A, C, I>
 where
-    C: Children<'nodes, I>,
-    I: Iterator<Item = NodeId>,
+    A: Arena,
+    C: Children<A, I>,
+    I: Iterator<Item = A::Id>,
 {
-    type Item = (NodeId, Node<'nodes>);
+    type Item = (A::Id, A::Node);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

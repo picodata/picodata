@@ -1,7 +1,7 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
 use crate::ir::node::{Constant, NodeId};
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use crate::ir::{Nodes, Plan};
@@ -65,7 +65,7 @@ impl Plan {
     pub fn get_const_list(&self, top_id: NodeId, snapshot: Snapshot) -> Vec<NodeId> {
         // Here we need to output first so that constants have the right order.
         // Otherwise they will be in reverse order (e.g., $1 $2 $3 becomes $3 $2 $1).
-        let constants = NodePostOrder::new(
+        let constants = PostOrder::new(
             &self.nodes,
             |node| self.exec_plan_subtree_output_first_iter(node, snapshot),
             top_id,

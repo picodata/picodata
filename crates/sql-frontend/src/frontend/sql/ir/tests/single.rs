@@ -4,7 +4,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::Join;
 use crate::ir::node::{Motion, NodeId};
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
-use crate::ir::tree::traversal::{PostOrder, REL_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::Plan;
 use sql_executor::test_helpers::sql_to_optimized_ir;
 
@@ -75,13 +75,10 @@ fn check_join_motions(
     sq_policies: Option<Vec<Policy>>,
 ) {
     let plan = sql_to_optimized_ir(sql, vec![]);
-    let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-    let join_id = dfs
-        .traverse_into_iter(plan.get_top().unwrap())
-        .find(|id| -> bool {
-            let rel = plan.get_relation_node(*id).unwrap();
-            matches!(rel, Relational::Join(_))
-        })
+    let top = plan.get_top().unwrap();
+    let (join_id, _) = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .find(|(_, rel)| matches!(rel, Relational::Join(_)))
         .unwrap();
     let Relational::Join(Join {
         left,

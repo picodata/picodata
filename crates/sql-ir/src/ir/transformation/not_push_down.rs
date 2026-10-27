@@ -10,9 +10,9 @@ use crate::ir::node::{BoolExpr, Cast, Constant, NodeId, Row, UnaryExpr};
 use crate::ir::operator::{Bool, Unary};
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::OldNewTransformationMap;
-use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::value::Value;
-use crate::ir::{Node, Plan};
+use crate::ir::Plan;
 use smol_str::{format_smolstr, SmolStr};
 
 use super::TransformationOldNewPair;
@@ -72,19 +72,20 @@ fn call_expr_tree_not_push_down(
     // the previous tree.
     let remember_old_top_id = SubtreeCloner::clone_subtree(plan, top_id)?;
 
-    let subtree = PostOrderWithFilter::new(
+    let nodes: Vec<NodeId> = PostOrder::new(
+        &plan.nodes,
         |node| plan.nodes.expr_iter(node, false),
-        |node| {
-            matches!(
-                plan.get_node(node),
-                Ok(Node::Expression(
-                    Expression::Bool(_) | Expression::Row(_) | Expression::Cast(_)
-                ))
-            )
-        },
-        EXPR_CAPACITY,
-    );
-    let nodes = subtree.traverse_into_vec(new_top_id);
+        new_top_id,
+    )
+    .expressions()
+    .filter(|(_, expr)| {
+        matches!(
+            expr,
+            Expression::Bool(_) | Expression::Row(_) | Expression::Cast(_)
+        )
+    })
+    .map(|(id, _)| id)
+    .collect();
     for id in nodes {
         let expr = plan.get_mut_expression_node(id)?;
         match expr {

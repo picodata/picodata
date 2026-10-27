@@ -12,7 +12,7 @@ use crate::ir::node::{
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, PostOrder, EXPR_CAPACITY};
 use crate::ir::Plan;
 use crate::utils::to_user;
 use std::collections::{HashMap, HashSet};
@@ -591,7 +591,7 @@ impl Plan {
     fn check_refs_out_of_aggregates(&self, proj: NodeId) -> Result<(), SbroadError> {
         let output = self.get_relational_output(proj)?;
         for col in self.get_row_list(output)? {
-            let first_ref = NodePostOrder::new(
+            let first_ref = PostOrder::new(
                 &self.nodes,
                 |node| self.nodes.aggregate_iter(node, false),
                 *col,
@@ -621,7 +621,7 @@ impl Plan {
             unreachable!("expected having node");
         };
 
-        let has_refs = NodePostOrder::new(
+        let has_refs = PostOrder::new(
             &self.nodes,
             |x| self.nodes.aggregate_iter(x, false),
             *filter,

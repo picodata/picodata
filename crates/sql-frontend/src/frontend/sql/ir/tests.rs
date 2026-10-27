@@ -5,7 +5,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{NodeId, ReferenceTarget};
 use crate::ir::options::Options;
 use crate::ir::transformation::Stage;
-use crate::ir::tree::traversal::{PostOrder, PostOrderWithFilter};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::types::{DerivedType, UnrestrictedType as Type};
 use crate::ir::value::Value;
 use crate::ir::PlanKind;
@@ -842,9 +842,8 @@ fn track_shard_col_pos() {
     "#;
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
-    let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), 10);
-    for node_id in dfs.traverse_into_iter(top) {
-        let node = plan.get_relation_node(node_id).unwrap();
+    let dfs = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top);
+    for (node_id, node) in dfs.relational() {
         match node {
             Relational::ScanRelation(_) | Relational::Selection(_) => {
                 assert_eq!(
@@ -869,9 +868,8 @@ fn track_shard_col_pos() {
     "#;
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
-    let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), 10);
-    for node_id in dfs.traverse_into_iter(top) {
-        let node = plan.get_relation_node(node_id).unwrap();
+    let dfs = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top);
+    for (node_id, node) in dfs.relational() {
         if let Relational::Join(_) = node {
             assert_eq!(
                 [Some(4_usize), Some(5_usize)],
@@ -891,9 +889,8 @@ fn track_shard_col_pos() {
     "#;
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
-    let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), 10);
-    for node_id in dfs.traverse_into_iter(top) {
-        let node = plan.get_relation_node(node_id).unwrap();
+    let dfs = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top);
+    for (node_id, node) in dfs.relational() {
         if let Relational::Join(_) = node {
             assert_eq!(
                 [Some(4_usize), None],
@@ -947,12 +944,11 @@ fn track_shard_col_pos_dropped_above_motion() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
 
-    let dfs = PostOrderWithFilter::new(
-        |x| plan.nodes.rel_iter(x),
-        |x| matches!(plan.get_relation_node(x), Ok(Relational::Join(_))),
-        10,
-    );
-    let joins = dfs.traverse_into_vec(top);
+    let joins: Vec<NodeId> = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .filter(|(_, rel)| matches!(rel, Relational::Join(_)))
+        .map(|(id, _)| id)
+        .collect();
     assert!(!joins.is_empty(), "expected a join in the optimized plan");
     for join_id in joins {
         assert_eq!(get_positions(&plan, join_id), None);
@@ -967,12 +963,11 @@ fn track_shard_col_pos_dropped_above_motion() {
     let plan = sql_to_optimized_ir(input, vec![]);
     let top = plan.get_top().unwrap();
 
-    let dfs = PostOrderWithFilter::new(
-        |x| plan.nodes.rel_iter(x),
-        |x| matches!(plan.get_relation_node(x), Ok(Relational::UnionAll(_))),
-        10,
-    );
-    let unions = dfs.traverse_into_vec(top);
+    let unions: Vec<NodeId> = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .filter(|(_, rel)| matches!(rel, Relational::UnionAll(_)))
+        .map(|(id, _)| id)
+        .collect();
     assert!(
         !unions.is_empty(),
         "expected a union all in the optimized plan"
@@ -3242,12 +3237,12 @@ fn front_sql_groupby_single_alias_inside_expression() {
 fn front_sql_groupby_unresolved_alias_fails_the_statement() {
     let mut plan = sql_to_ir_without_bind(r#"SELECT "b" x FROM "t1" GROUP BY x"#, &[]);
     let top = plan.get_top().unwrap();
-    let dfs = PostOrderWithFilter::new(
-        |x| plan.nodes.rel_iter(x),
-        |x| matches!(plan.get_relation_node(x), Ok(Relational::GroupBy(_))),
-        10,
-    );
-    let [group_by_id] = dfs.traverse_into_vec(top)[..] else {
+    let group_by_ids: Vec<NodeId> = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .filter(|(_, rel)| matches!(rel, Relational::GroupBy(_)))
+        .map(|(id, _)| id)
+        .collect();
+    let [group_by_id] = group_by_ids[..] else {
         panic!("expected one GroupBy");
     };
 

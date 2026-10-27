@@ -2,11 +2,11 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    ArenaType, BoolExpr, Constant, Join, Node, Node64, Node96, NodeId, Selection,
-    SubQueryReference, UnaryExpr,
+    ArenaType, BoolExpr, Constant, Join, Node64, Node96, NodeId, Selection, SubQueryReference,
+    UnaryExpr,
 };
 use crate::ir::operator::{Bool, Unary};
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::{Trivalent, TrivalentOrdering, Value};
 use crate::ir::Plan;
@@ -210,7 +210,7 @@ impl Plan {
     /// expression subtree under `top_id`.
     fn collect_subquery_refs(&self, top_id: NodeId) -> Result<HashSet<NodeId>, SbroadError> {
         let mut referenced: HashSet<NodeId> = HashSet::new();
-        let sq_dfs = NodePostOrder::new(
+        let sq_dfs = PostOrder::new(
             &self.nodes,
             |node| self.nodes.expr_iter(node, false),
             top_id,
@@ -240,17 +240,15 @@ impl Plan {
                 Relational::Join(Join { condition, .. }) => *condition,
                 _ => unreachable!("expected Selection or Join node"),
             };
-            let dfs = PostOrderWithFilter::new(
+            let op_nodes: Vec<NodeId> = PostOrder::new(
+                &self.nodes,
                 |node| self.nodes.expr_iter(node, false),
-                |node| {
-                    matches!(
-                        self.get_node(node),
-                        Ok(Node::Expression(Expression::Bool(_) | Expression::Unary(_)))
-                    )
-                },
-                EXPR_CAPACITY,
-            );
-            let op_nodes = dfs.traverse_into_vec(filter);
+                filter,
+            )
+            .expressions()
+            .filter(|(_, expr)| matches!(expr, Expression::Bool(_) | Expression::Unary(_)))
+            .map(|(id, _)| id)
+            .collect();
 
             // TODO: there is a problem with folding other structures, like cast.
             // CAST(true AND a = 1 AS boolean) wouldn't be folded to CAST(a = 1 AS boolean)

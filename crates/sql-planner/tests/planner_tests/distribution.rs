@@ -9,7 +9,7 @@ use sql::ir::distribution::*;
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::relational::Relational;
 use sql::ir::relation::{SpaceEngine, Table};
-use sql::ir::tree::traversal::{PostOrder, REL_CAPACITY};
+use sql::ir::tree::traversal::{NodeIter, PostOrder};
 use sql::ir::types::UnrestrictedType as Type;
 use sql::ir::Plan;
 use std::collections::HashSet;
@@ -73,17 +73,11 @@ fn projection_any_dist_for_expr() {
     ");
 
     // check that local Projection has Distribution::Any
-    let local_proj_id = {
-        let dfs = PostOrder::new(|x| plan.nodes.rel_iter(x), REL_CAPACITY);
-        dfs.traverse_into_iter(plan.get_top().unwrap())
-            .find(|id| {
-                matches!(
-                    plan.get_relation_node(*id).unwrap(),
-                    Relational::Projection(_)
-                )
-            })
-            .unwrap()
-    };
+    let top = plan.get_top().unwrap();
+    let (local_proj_id, _) = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .find(|(_, rel)| matches!(rel, Relational::Projection(_)))
+        .unwrap();
     assert_eq!(
         plan.rel_distr_ref(local_proj_id).unwrap(),
         &Distribution::Any

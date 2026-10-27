@@ -16,7 +16,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrder};
+use crate::ir::tree::traversal::{Arena, NodeIter, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::types::CastType;
 use crate::ir::Plan;
@@ -590,6 +590,15 @@ fn syntax_next<'nodes>(iter: &mut SyntaxIterator<'nodes>) -> Option<&'nodes usiz
             None
         }
         None => None,
+    }
+}
+
+impl<'nodes> Arena for &'nodes SyntaxNodes {
+    type Id = usize;
+    type Node = &'nodes SyntaxNode;
+
+    fn node(self, id: usize) -> Option<&'nodes SyntaxNode> {
+        Some(self.get_sn(id))
     }
 }
 
@@ -1251,7 +1260,7 @@ impl<'p> SyntaxPlan<'p> {
 
     fn expression_subtree_contains_or(&self, expr_id: NodeId) -> bool {
         let plan = self.plan.get_ir_plan();
-        NodePostOrder::new(
+        PostOrder::new(
             &plan.nodes,
             |node| plan.nodes.expr_iter(node, true),
             expr_id,
@@ -2720,12 +2729,8 @@ impl<'p> SyntaxPlan<'p> {
     fn gather_selects(&self) -> Result<Vec<Select>, SbroadError> {
         let mut selects: Vec<Select> = Vec::new();
         let top = self.get_top()?;
-        let dfs = PostOrder::new(
-            |node| self.nodes.iter(node),
-            self.plan.get_ir_plan().nodes.len(),
-        );
-        for pos in dfs.traverse_into_iter(top) {
-            let node = self.nodes.get_sn(pos);
+        let dfs = PostOrder::new(&self.nodes, |node| self.nodes.iter(node), top);
+        for (pos, node) in dfs {
             if pos == top {
                 let select = Select::new(self, None, None, pos)?;
                 if let Some(s) = select {
@@ -2804,7 +2809,7 @@ impl<'p> SyntaxPlan<'p> {
         let mut empty_motion_ids = HashSet::new();
         match snapshot {
             Snapshot::Latest => {
-                let dft_post = NodePostOrder::new_by_node(
+                let dft_post = PostOrder::new_by_node(
                     &ir_plan.nodes,
                     |id, node| {
                         let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
@@ -2828,7 +2833,7 @@ impl<'p> SyntaxPlan<'p> {
                 }
             }
             Snapshot::Oldest => {
-                let dft_post = NodePostOrder::new_by_node(
+                let dft_post = PostOrder::new_by_node(
                     &ir_plan.nodes,
                     |id, node| {
                         let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
@@ -2854,7 +2859,7 @@ impl<'p> SyntaxPlan<'p> {
         }
         match snapshot {
             Snapshot::Latest => {
-                let dft_post = NodePostOrder::new_by_node(
+                let dft_post = PostOrder::new_by_node(
                     &ir_plan.nodes,
                     |id, node| {
                         let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));
@@ -2877,7 +2882,7 @@ impl<'p> SyntaxPlan<'p> {
                 }
             }
             Snapshot::Oldest => {
-                let dft_post = NodePostOrder::new_by_node(
+                let dft_post = PostOrder::new_by_node(
                     &ir_plan.nodes,
                     |id, node| {
                         let is_motion = matches!(node, Node::Relational(Relational::Motion(_)));

@@ -31,7 +31,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{
     IndexExpr, LetVarRef, Parameter, ReferenceAsteriskSource, SubQueryReference,
 };
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::{Nodes, Plan};
 use crate::utils::to_user;
 
@@ -2152,7 +2152,7 @@ impl Plan {
                 Some("Node is not a row".into()),
             ));
         }
-        let post_tree = NodePostOrder::new(
+        let post_tree = PostOrder::new(
             &self.nodes,
             |node| self.nodes.expr_iter(node, false),
             row_id,
@@ -2344,18 +2344,20 @@ impl Plan {
         from_id: NodeId,
         to_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let subtree = PostOrderWithFilter::new(
+        let references: Vec<NodeId> = PostOrder::new(
+            &self.nodes,
             |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::Reference(_))
-                        | Node::Expression(Expression::SubQueryReference(_)))
-                )
-            },
-            EXPR_CAPACITY,
-        );
-        let references = subtree.traverse_into_vec(node_id);
+            node_id,
+        )
+        .expressions()
+        .filter(|(_, expr)| {
+            matches!(
+                expr,
+                Expression::Reference(_) | Expression::SubQueryReference(_)
+            )
+        })
+        .map(|(id, _)| id)
+        .collect();
         for id in references {
             match self.get_mut_expression_node(id)? {
                 MutExpression::Reference(Reference { target, .. }) => match target {
@@ -2385,17 +2387,15 @@ impl Plan {
         expr_id: NodeId,
         rel_id: NodeId,
     ) -> Result<(), SbroadError> {
-        let subtree = PostOrderWithFilter::new(
+        let references: Vec<NodeId> = PostOrder::new(
+            &self.nodes,
             |node| self.nodes.expr_iter(node, false),
-            |node| {
-                matches!(
-                    self.get_node(node),
-                    Ok(Node::Expression(Expression::Reference(..)))
-                )
-            },
-            EXPR_CAPACITY,
-        );
-        let references = subtree.traverse_into_vec(expr_id);
+            expr_id,
+        )
+        .expressions()
+        .filter(|(_, expr)| matches!(expr, Expression::Reference(..)))
+        .map(|(id, _)| id)
+        .collect();
         for id in references {
             let node = self.get_mut_expression_node(id)?;
             if let MutExpression::Reference(Reference { target, .. }) = node {

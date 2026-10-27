@@ -13,7 +13,7 @@ use sql_ir::ir::{
     bucket::Buckets,
     node::{block::BlockOwned, relational::Relational, Motion, NodeId},
     transformation::redistribution::MotionPolicy,
-    tree::traversal::{NodeIter, NodePostOrder},
+    tree::traversal::{NodeIter, PostOrder},
     ExplainOptions, Plan,
 };
 use std::fmt::{Display, Write as _};
@@ -128,7 +128,7 @@ pub fn bounded_buckets_from_query<R: Router>(
 
     let top_id = ir.get_top()?;
 
-    let dfs_tree = NodePostOrder::new(&ir.nodes, |node| ir.nodes.rel_iter(node), top_id);
+    let dfs_tree = PostOrder::new(&ir.nodes, |node| ir.nodes.rel_iter(node), top_id);
     // Stores previously computed results for each
     // child of the current node: weather the child
     // has non-local motion in its subtree.
@@ -220,7 +220,7 @@ pub fn bounded_buckets_from_query<R: Router>(
 fn can_estimate_buckets(plan: &Plan) -> Result<bool, SbroadError> {
     let top_id = plan.get_top()?;
 
-    let dfs = NodePostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top_id);
+    let dfs = PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top_id);
     for (_, rel) in dfs.relational() {
         let has_segment_motion = matches!(
             rel,

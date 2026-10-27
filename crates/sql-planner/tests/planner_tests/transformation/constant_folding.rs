@@ -416,8 +416,7 @@ fn test_bool_folding20() {
 #[test]
 fn test_bool_folding21() {
     use sql::ir::node::relational::Relational;
-    use sql::ir::node::Node;
-    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+    use sql::ir::tree::traversal::{NodeIter, PostOrder};
 
     let query = r#"explain (logical) SELECT * from t WHERE true OR a IN (SELECT a FROM t)"#;
 
@@ -434,20 +433,13 @@ fn test_bool_folding21() {
         scan t
     ");
 
-    let dfs = PostOrderWithFilter::new(
-        |x| plan.nodes.rel_iter(x),
-        |node| {
-            matches!(
-                plan.get_node(node),
-                Ok(Node::Relational(Relational::Selection(_)))
-            )
-        },
-        REL_CAPACITY,
-    );
-    let sel_id = dfs.traverse_into_iter(top).next().expect("selection node");
-    let Relational::Selection(sel) = plan.get_relation_node(sel_id).unwrap() else {
-        unreachable!()
-    };
+    let sel = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .find_map(|(_, rel)| match rel {
+            Relational::Selection(sel) => Some(sel),
+            _ => None,
+        })
+        .expect("selection node");
     assert!(
         sel.subqueries.is_empty(),
         "expected orphan subquery to be detached, got {:?}",
@@ -458,8 +450,7 @@ fn test_bool_folding21() {
 #[test]
 fn test_bool_folding22() {
     use sql::ir::node::relational::Relational;
-    use sql::ir::node::Node;
-    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+    use sql::ir::tree::traversal::{NodeIter, PostOrder};
 
     // The outer AND does not fold to a constant, but the (`false AND ...`)
     // branch collapses and takes its subquery with it. The remaining
@@ -483,20 +474,13 @@ fn test_bool_folding22() {
     ");
     let top = plan.get_top().unwrap();
 
-    let dfs = PostOrderWithFilter::new(
-        |x| plan.nodes.rel_iter(x),
-        |node| {
-            matches!(
-                plan.get_node(node),
-                Ok(Node::Relational(Relational::Selection(_)))
-            )
-        },
-        REL_CAPACITY,
-    );
-    let sel_id = dfs.traverse_into_iter(top).next().expect("selection node");
-    let Relational::Selection(sel) = plan.get_relation_node(sel_id).unwrap() else {
-        unreachable!()
-    };
+    let sel = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .find_map(|(_, rel)| match rel {
+            Relational::Selection(sel) => Some(sel),
+            _ => None,
+        })
+        .expect("selection node");
     // Only the surviving `a IN (SELECT a FROM t)` subquery must remain;
     // the `b IN (SELECT b FROM t)` was wiped with the collapsed `false AND ...`.
     assert_eq!(
@@ -510,8 +494,7 @@ fn test_bool_folding22() {
 #[test]
 fn test_bool_folding23() {
     use sql::ir::node::relational::Relational;
-    use sql::ir::node::Node;
-    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+    use sql::ir::tree::traversal::{NodeIter, PostOrder};
 
     // Same orphan-subquery scenario, but for a Join condition.
     let query = r#"explain (logical)
@@ -530,20 +513,13 @@ fn test_bool_folding23() {
     ");
     let top = plan.get_top().unwrap();
 
-    let dfs = PostOrderWithFilter::new(
-        |x| plan.nodes.rel_iter(x),
-        |node| {
-            matches!(
-                plan.get_node(node),
-                Ok(Node::Relational(Relational::Join(_)))
-            )
-        },
-        REL_CAPACITY,
-    );
-    let join_id = dfs.traverse_into_iter(top).next().expect("join node");
-    let Relational::Join(join) = plan.get_relation_node(join_id).unwrap() else {
-        unreachable!()
-    };
+    let join = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .find_map(|(_, rel)| match rel {
+            Relational::Join(join) => Some(join),
+            _ => None,
+        })
+        .expect("join node");
     assert!(
         join.subqueries.is_empty(),
         "expected orphan subquery to be detached from join, got {:?}",
@@ -554,8 +530,7 @@ fn test_bool_folding23() {
 #[test]
 fn test_bool_folding24() {
     use sql::ir::node::relational::Relational;
-    use sql::ir::node::Node;
-    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+    use sql::ir::tree::traversal::{NodeIter, PostOrder};
 
     // The outer AND in the join condition does not fold, but the
     // `false AND (t.b IN (sq2))` branch collapses and takes its
@@ -583,20 +558,13 @@ fn test_bool_folding24() {
     ");
     let top = plan.get_top().unwrap();
 
-    let dfs = PostOrderWithFilter::new(
-        |x| plan.nodes.rel_iter(x),
-        |node| {
-            matches!(
-                plan.get_node(node),
-                Ok(Node::Relational(Relational::Join(_)))
-            )
-        },
-        REL_CAPACITY,
-    );
-    let join_id = dfs.traverse_into_iter(top).next().expect("join node");
-    let Relational::Join(join) = plan.get_relation_node(join_id).unwrap() else {
-        unreachable!()
-    };
+    let join = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .find_map(|(_, rel)| match rel {
+            Relational::Join(join) => Some(join),
+            _ => None,
+        })
+        .expect("join node");
     assert_eq!(
         join.subqueries.len(),
         1,
@@ -690,8 +658,7 @@ fn test_bool_folding28() {
 #[test]
 fn test_bool_folding29() {
     use sql::ir::node::relational::Relational;
-    use sql::ir::node::Node;
-    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+    use sql::ir::tree::traversal::{NodeIter, PostOrder};
 
     // `NOT` makes the not push down pass store a pre-transformation
     // snapshot of the filter in the undo log, `<=` shields the filter root
@@ -712,20 +679,13 @@ fn test_bool_folding29() {
     ");
     let top = plan.get_top().unwrap();
 
-    let dfs = PostOrderWithFilter::new(
-        |x| plan.nodes.rel_iter(x),
-        |node| {
-            matches!(
-                plan.get_node(node),
-                Ok(Node::Relational(Relational::Selection(_)))
-            )
-        },
-        REL_CAPACITY,
-    );
-    let sel_id = dfs.traverse_into_iter(top).next().expect("selection node");
-    let Relational::Selection(sel) = plan.get_relation_node(sel_id).unwrap() else {
-        unreachable!()
-    };
+    let sel = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .find_map(|(_, rel)| match rel {
+            Relational::Selection(sel) => Some(sel),
+            _ => None,
+        })
+        .expect("selection node");
     assert!(
         sel.subqueries.is_empty(),
         "expected orphan subquery to be detached, got {:?}",
@@ -736,8 +696,7 @@ fn test_bool_folding29() {
 #[test]
 fn test_bool_folding30() {
     use sql::ir::node::relational::Relational;
-    use sql::ir::node::Node;
-    use sql::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+    use sql::ir::tree::traversal::{NodeIter, PostOrder};
 
     // Same desync as in `test_bool_folding29`, reached the other way: the
     // IN list holds no subquery, so it is expanded into a chain of
@@ -756,20 +715,13 @@ fn test_bool_folding30() {
     ");
     let top = plan.get_top().unwrap();
 
-    let dfs = PostOrderWithFilter::new(
-        |x| plan.nodes.rel_iter(x),
-        |node| {
-            matches!(
-                plan.get_node(node),
-                Ok(Node::Relational(Relational::Selection(_)))
-            )
-        },
-        REL_CAPACITY,
-    );
-    let sel_id = dfs.traverse_into_iter(top).next().expect("selection node");
-    let Relational::Selection(sel) = plan.get_relation_node(sel_id).unwrap() else {
-        unreachable!()
-    };
+    let sel = PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), top)
+        .relational()
+        .find_map(|(_, rel)| match rel {
+            Relational::Selection(sel) => Some(sel),
+            _ => None,
+        })
+        .expect("selection node");
     assert!(
         sel.subqueries.is_empty(),
         "expected orphan subquery to be detached, got {:?}",

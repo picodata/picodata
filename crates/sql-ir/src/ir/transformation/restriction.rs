@@ -19,7 +19,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{Join, NodeId, Reference, Selection, SubQueryReference};
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::equality_facts::Slot;
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::Plan;
 
 /// One restriction clause: the source conjunct node, the column sources
@@ -149,7 +149,7 @@ struct RestrictionBuilder<'p> {
 impl<'p> RestrictionBuilder<'p> {
     fn build(plan: &'p Plan, top_id: NodeId) -> Result<Restrictions, SbroadError> {
         let builder = RestrictionBuilder { plan };
-        let ir_tree = NodePostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top_id);
+        let ir_tree = PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top_id);
 
         let mut by_rel = HashMap::new();
         for (rel_id, rel) in ir_tree.relational() {
@@ -202,7 +202,7 @@ impl<'p> RestrictionBuilder<'p> {
         let mut subqueries: SmallVec<[NodeId; 1]> = SmallVec::new();
         // One walk for both kinds. Like `get_refs_from_subtree`, it stays in
         // the expression tree and never enters a subquery's relations.
-        let dfs = NodePostOrder::new(
+        let dfs = PostOrder::new(
             &self.plan.nodes,
             |node| self.plan.nodes.expr_iter(node, false),
             clause,

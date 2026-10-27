@@ -82,11 +82,10 @@ use super::{ExprId, TransformationOldNewPair};
 /// Upper bound on the number of DNF chains produced by [`Plan::get_dnf_chains`].
 ///
 /// For expressions of the form `(a OR b) AND (c OR d) AND ...`, DNF generates an exponential
-/// number of disjunctions. This constant limits that number. The size of the stack frame for
-/// `PostOrderWithFilter::traverse` is 232 bytes at the time of writing this comment
-/// (release build) and 280 bytes (debug build). The size of the fiber stack is 512 KB.
-/// We leave a gap of x4 bytes and obtain an estimate for the constant:
-/// `512 * 1024 / 232 / 4 = 565 ~= 512`.
+/// number of disjunctions. This constant limits that number, so that the plan size and the
+/// transformation time stay bounded. The chains are joined into a left-deep OR, so the tree
+/// height also grows with their number. Recursive code over the tree (for example, `Display`
+/// of the EXPLAIN expressions) puts a frame on the 512 KB fiber stack for each level.
 const MAX_DNF_CHAINS: usize = 512;
 
 /// A chain of the trivalents (boolean or NULL expressions) concatenated by AND.

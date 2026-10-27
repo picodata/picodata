@@ -22,7 +22,7 @@ use sql_ir::ir::operator::{
 use sql_ir::ir::transformation::redistribution::{
     MotionKey as IrMotionKey, MotionPolicy as IrMotionPolicy, Program, Target as IrTarget,
 };
-use sql_ir::ir::tree::traversal::{NodeIter, NodePostOrder};
+use sql_ir::ir::tree::traversal::{NodeIter, PostOrder};
 use sql_ir::ir::types::{CastType, DerivedType};
 use sql_ir::ir::value::Value;
 use sql_ir::ir::{node, ExplainOptions, Plan};
@@ -499,7 +499,7 @@ impl ColExpr {
         should_fmt: bool,
     ) -> Result<Self, SbroadError> {
         let mut stack = ColExprStack::new(plan, should_fmt);
-        let dft_post = NodePostOrder::new(
+        let dft_post = PostOrder::new(
             &plan.nodes,
             |node| plan.nodes.expr_iter(node, false),
             subtree_top,
@@ -1613,7 +1613,7 @@ impl LogicalExplain {
         let mut known_subqueries = OrderedMap::with_hasher(RepeatableState);
         let mut stack: Vec<ExplainTreePart> = Vec::new();
 
-        let dft_post = NodePostOrder::new(&ir.nodes, |node| ir.nodes.rel_iter(node), top_id);
+        let dft_post = PostOrder::new(&ir.nodes, |node| ir.nodes.rel_iter(node), top_id);
         for (id, node) in dft_post.relational() {
             let (current, children) = match &node {
                 Relational::Intersect { .. } => {

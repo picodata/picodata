@@ -10,7 +10,7 @@ use crate::ir::node::{
     SubQueryReference, TimeParameters, Trim, UnaryExpr, Update, Values,
 };
 use crate::ir::operator::OrderByEntity;
-use crate::ir::tree::traversal::NodePostOrder;
+use crate::ir::tree::traversal::PostOrder;
 use crate::ir::{Node, Plan};
 use std::collections::hash_map::DefaultHasher;
 use std::fmt::Write;
@@ -641,7 +641,7 @@ impl Plan {
     /// # Errors
     /// Fail to format one of the relational node.
     pub fn formatted_arena_subtree(&self, node_id: NodeId) -> Result<String, SbroadError> {
-        let ir_tree = NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), node_id);
+        let ir_tree = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), node_id);
 
         let mut buf = String::new();
         for (id, _) in ir_tree {

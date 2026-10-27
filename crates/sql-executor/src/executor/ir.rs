@@ -27,7 +27,7 @@ use crate::ir::operator::UpdateStrategy;
 use crate::ir::relation::SpaceEngine;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::subtree::ExecPlanSubtreeIterator;
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 use crate::ir::{Plan, SubtreeViewKey};
@@ -510,7 +510,7 @@ impl<'plan> SubtreeViewBuilder<'plan> {
         top_id: NodeId,
     ) -> Result<SubtreeViewSummary, SbroadError> {
         let ir_plan = exec_plan.get_ir_plan();
-        let constants = NodePostOrder::new_by_node(
+        let constants = PostOrder::new_by_node(
             &ir_plan.nodes,
             |id, node| exec_plan.effective_sql_subtree_iter(id, node, Snapshot::Oldest, true),
             top_id,
@@ -531,7 +531,7 @@ impl<'plan> SubtreeViewBuilder<'plan> {
         let mut vtable_ids = Vec::new();
         let mut dispatch_flags = SubtreeDispatchFlags::default();
 
-        let subtree = NodePostOrder::new_by_node(
+        let subtree = PostOrder::new_by_node(
             &ir_plan.nodes,
             |id, node| exec_plan.effective_sql_subtree_iter(id, node, Snapshot::Oldest, false),
             top_id,
@@ -677,7 +677,7 @@ fn bucket_filter_calculate(
     let plan = exec_plan.get_ir_plan();
     let mut relation_name: Option<&SmolStr> = None;
     let mut targets = AHashMap::new();
-    let subtree = NodePostOrder::new_by_node(
+    let subtree = PostOrder::new_by_node(
         &plan.nodes,
         |id, node| exec_plan.effective_exec_plan_subtree_iter(id, node, Snapshot::Oldest),
         top_id,
@@ -782,7 +782,7 @@ impl ExecutionPlan {
 
     pub fn has_serialize_as_empty_motion(&self, top_id: NodeId) -> bool {
         let plan = self.get_ir_plan();
-        NodePostOrder::new(
+        PostOrder::new(
             &plan.nodes,
             |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
             top_id,
@@ -819,7 +819,7 @@ impl ExecutionPlan {
         // We are looking for Segment motions since these are the only motion
         // nodes whose bucket index is used for bucket calculation. See
         // https://git.picodata.io/core/picodata/-/blob/b2ef583f174cf8e5e5806ae765ce81c9872deea3/sql-planner/src/execu/bucket_discovery.rs#L248.
-        NodePostOrder::new(
+        PostOrder::new(
             &plan.nodes,
             |node| plan.exec_plan_subtree_iter(node, Snapshot::Oldest),
             top_id,

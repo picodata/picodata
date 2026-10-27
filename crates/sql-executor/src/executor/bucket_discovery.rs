@@ -17,7 +17,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::value::Value;
 
@@ -161,7 +161,7 @@ where
 
         // We have to ensure that there are no motions below in IR.
         let child = child.expect("MOTION must contain child");
-        if NodePostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), child)
+        if PostOrder::new(&plan.nodes, |x| plan.nodes.rel_iter(x), child)
             .relational()
             .any(|(_, rel)| matches!(rel, Relational::Motion(_)))
         {
@@ -225,7 +225,7 @@ where
     /// a sharded table or a motion other than a full (replicated) one.
     fn references_buckets(&self, top_id: NodeId) -> Result<bool, SbroadError> {
         let ir_plan = self.exec_plan.get_ir_plan();
-        let tree = NodePostOrder::new_by_node(
+        let tree = PostOrder::new_by_node(
             &ir_plan.nodes,
             |id, node| {
                 self.exec_plan
@@ -281,7 +281,7 @@ where
 
         // We use a `exec_plan_subtree_iter()` because we need DNF version of the
         // filter/condition expressions to determine buckets.
-        let tree = NodePostOrder::new_by_node(
+        let tree = PostOrder::new_by_node(
             &ir_plan.nodes,
             |id, node| {
                 self.exec_plan

@@ -6,12 +6,11 @@ use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, Node, NodeId};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
-use crate::ir::tree::relation::RelationalIterator;
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::Plan;
 use ahash::AHashMap;
 use smol_str::format_smolstr;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 tarantool::define_str_enum! {
     #[derive(Default)]
@@ -66,21 +65,18 @@ impl PlanSerializeAsEmptyExt for Plan {
     }
 
     fn collect_top_ids(&self, top_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
-        let mut stop_nodes: HashSet<NodeId> = HashSet::new();
-        let iter_children = |node_id| -> RelationalIterator<'_> {
-            if self.is_serialize_as_empty_motion(node_id, true) {
-                stop_nodes.insert(node_id);
-            }
+        let iter_children = |node_id| {
             // do not traverse subtree with this child
-            if stop_nodes.contains(&node_id) {
+            if self.is_serialize_as_empty_motion(node_id, true) {
                 return self.nodes.empty_rel_iter();
             }
             self.nodes.rel_iter(node_id)
         };
-        let filter_empty_motion = |node| self.is_serialize_as_empty_motion(node, true);
-        let dfs = PostOrderWithFilter::new(iter_children, filter_empty_motion, 4);
-
-        Ok(dfs.traverse_into_iter(top_id).collect())
+        let top_ids = PostOrder::new(&self.nodes, iter_children, top_id)
+            .map(|(id, _)| id)
+            .filter(|id| self.is_serialize_as_empty_motion(*id, true))
+            .collect();
+        Ok(top_ids)
     }
 
     fn serialize_as_empty_info(
@@ -93,7 +89,7 @@ impl PlanSerializeAsEmptyExt for Plan {
         }
 
         let mut motions_ref_count: AHashMap<NodeId, usize> = AHashMap::new();
-        let motions = NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
+        let motions = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
             .relational()
             .filter(|(_, rel)| matches!(rel, Relational::Motion(_)));
         for (motion_id, _) in motions {
@@ -109,7 +105,7 @@ impl PlanSerializeAsEmptyExt for Plan {
             let mut all_motions = Vec::new();
             for top_id in &top_ids {
                 let motions =
-                    NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), *top_id)
+                    PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), *top_id)
                         .relational()
                         .filter_map(|(id, rel)| matches!(rel, Relational::Motion(_)).then_some(id));
                 all_motions.extend(motions);

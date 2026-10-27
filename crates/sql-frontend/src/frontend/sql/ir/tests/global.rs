@@ -1,7 +1,7 @@
 use crate::ir::distribution::Distribution;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Node, NodeId};
-use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+use crate::ir::tree::traversal::PostOrder;
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use pretty_assertions::assert_eq;
@@ -27,11 +27,12 @@ impl From<&Distribution> for DistMock {
     }
 }
 
-fn collect_relational(plan: &Plan, predicate: impl FnMut(NodeId) -> bool) -> Vec<NodeId> {
-    let rel_tree =
-        PostOrderWithFilter::new(|node| plan.nodes.rel_iter(node), predicate, REL_CAPACITY);
-    let nodes = rel_tree.traverse_into_vec(plan.get_top().unwrap());
-    nodes
+fn collect_relational(plan: &Plan, mut predicate: impl FnMut(NodeId) -> bool) -> Vec<NodeId> {
+    let top = plan.get_top().unwrap();
+    PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top)
+        .map(|(id, _)| id)
+        .filter(|id| predicate(*id))
+        .collect()
 }
 
 fn check_distributions(plan: &Plan, nodes: &[NodeId], expected_distributions: &[DistMock]) {

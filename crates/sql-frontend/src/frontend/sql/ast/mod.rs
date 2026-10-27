@@ -49,7 +49,7 @@ use crate::ir::options::{OptionKind, OptionSpec};
 use crate::ir::relation::{Column, ColumnRole, Table, TableKind};
 use crate::ir::table_function::find_table_function;
 use crate::ir::transformation::redistribution::ColumnPosition;
-use crate::ir::tree::traversal::PostOrder;
+use crate::ir::tree::traversal::{Arena, PostOrder};
 use crate::ir::value::Value;
 use crate::ir::{ExplainOptions, Plan};
 use tarantool::auth::AuthMethod;
@@ -142,8 +142,7 @@ impl<'q> AbstractSyntaxTree<'q> {
         let Some(top) = ast.top else {
             return Err(SbroadError::Invalid(Entity::AST, None));
         };
-        let capacity = ast.nodes.arena.len();
-        let dft_post = PostOrder::new(|node| ast.nodes.ast_iter(node), capacity);
+        let dft_post = PostOrder::new(&ast.nodes, |node| ast.nodes.ast_iter(node), top);
         // Map of { ast `ParseNode` id -> plan `Node` id }.
         let mut map = Translation::with_capacity(ast.nodes.next_id());
         let mut worker =
@@ -158,8 +157,7 @@ impl<'q> AbstractSyntaxTree<'q> {
         let mut unnamed_subqueries = Vec::new();
         let lateral_sources = ast.lateral_sources()?;
 
-        for id in dft_post.traverse_into_iter(top) {
-            let node = ast.nodes.get_node(id)?;
+        for (id, node) in dft_post {
             match &node.rule {
                 // DQL: relation construction, SELECT stages, and VALUES.
                 Rule::SelectFull => parse_select_full(
@@ -2321,6 +2319,19 @@ impl ParseNode {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParseNodes {
     pub(crate) arena: Vec<ParseNode>,
+}
+
+impl<'nodes> Arena for &'nodes ParseNodes {
+    type Id = usize;
+    type Node = &'nodes ParseNode;
+
+    fn node(self, id: usize) -> Option<&'nodes ParseNode> {
+        let node = self
+            .arena
+            .get(id)
+            .unwrap_or_else(|| panic!("AST node with id {id} must exist"));
+        Some(node)
+    }
 }
 
 impl Default for ParseNodes {

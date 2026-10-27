@@ -12,7 +12,7 @@ use crate::ir::node::{
     Update, Values,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder, PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::types::calculate_unified_types;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -1164,18 +1164,20 @@ impl Plan {
         needs_shard_col: bool,
     ) -> Result<(NodeId, Option<HashMap<usize, usize>>), SbroadError> {
         let get_leaf_refs = |expr_id: NodeId| -> Vec<NodeId> {
-            let post_tree = PostOrderWithFilter::new(
+            PostOrder::new(
+                &self.nodes,
                 |node| self.nodes.expr_iter(node, false),
-                |node| {
-                    matches!(
-                        self.get_node(node),
-                        Ok(Node::Expression(Expression::Reference(_))
-                            | Node::Expression(Expression::SubQueryReference(_)))
-                    )
-                },
-                EXPR_CAPACITY,
-            );
-            post_tree.traverse_into_vec(expr_id)
+                expr_id,
+            )
+            .expressions()
+            .filter(|(_, expr)| {
+                matches!(
+                    expr,
+                    Expression::Reference(_) | Expression::SubQueryReference(_)
+                )
+            })
+            .map(|(id, _)| id)
+            .collect()
         };
 
         fn collect_columns(
@@ -1399,20 +1401,19 @@ impl Plan {
     /// ```
     pub fn fix_groupby_aliases(&mut self) -> Result<(), SbroadError> {
         let top = self.get_top()?;
-        let nodes: Vec<NodeId> =
-            NodePostOrder::new(&self.nodes, |node| self.subtree_iter(node), top)
-                .relational()
-                .filter(|(_, rel)| {
-                    matches!(
-                        rel,
-                        Relational::Projection(Projection {
-                            group_by: Some(_),
-                            ..
-                        })
-                    )
-                })
-                .map(|(id, _)| id)
-                .collect();
+        let nodes: Vec<NodeId> = PostOrder::new(&self.nodes, |node| self.subtree_iter(node), top)
+            .relational()
+            .filter(|(_, rel)| {
+                matches!(
+                    rel,
+                    Relational::Projection(Projection {
+                        group_by: Some(_),
+                        ..
+                    })
+                )
+            })
+            .map(|(id, _)| id)
+            .collect();
 
         for proj_id in nodes {
             let group_by_id = self.get_group_by(proj_id)?;
@@ -1517,7 +1518,7 @@ impl Plan {
                 // The parent is needed for `replace_expression`.
                 // Fill the `gr_alias_mappings` with alias name mapped to alias itself with its parent
                 for gr_expr_id in gr_exprs {
-                    let exprs = NodePostOrder::new(
+                    let exprs = PostOrder::new(
                         &self.nodes,
                         |node| self.nodes.expr_iter(node, false),
                         *gr_expr_id,
@@ -1574,20 +1575,22 @@ impl Plan {
             // A grouping expression never holds a leaf reference.
             let gr_exprs = self.get_grouping_exprs(group_by_id)?;
             for gr_expr_id in gr_exprs {
-                let dft = PostOrderWithFilter::new(
+                let has_leaf_refs = PostOrder::new(
+                    &self.nodes,
                     |node| self.nodes.expr_iter(node, false),
-                    |node| {
-                        matches!(
-                            self.get_node(node),
-                            Ok(Node::Expression(Expression::Reference(Reference {
-                                target: ReferenceTarget::Leaf,
-                                ..
-                            })))
-                        )
-                    },
-                    EXPR_CAPACITY,
-                );
-                if !dft.traverse_into_vec(*gr_expr_id).is_empty() {
+                    *gr_expr_id,
+                )
+                .expressions()
+                .any(|(_, expr)| {
+                    matches!(
+                        expr,
+                        Expression::Reference(Reference {
+                            target: ReferenceTarget::Leaf,
+                            ..
+                        })
+                    )
+                });
+                if has_leaf_refs {
                     return Err(SbroadError::Invalid(
                         Entity::Expression,
                         Some("unresolved alias in GROUP BY".into()),

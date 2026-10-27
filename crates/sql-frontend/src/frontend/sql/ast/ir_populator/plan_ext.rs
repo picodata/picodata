@@ -7,7 +7,7 @@ use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
     Alias, Constant, GroupBy, Node, NodeId, Reference, ReferenceTarget, ScalarFunction,
 };
-use crate::ir::tree::traversal::{NodeIter, NodePostOrder};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
@@ -85,7 +85,7 @@ impl PlanGroupByOrdinalsExt for Plan {
         if !matches!(self.get_node(top)?, Node::Relational(_)) {
             return Ok(());
         }
-        let projections = NodePostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top)
+        let projections = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top)
             .relational()
             .filter(|(_, rel)| matches!(rel, Relational::Projection(_)))
             .map(|(id, _)| id)
@@ -144,7 +144,7 @@ impl PlanGroupByOrdinalsExt for Plan {
     }
 
     fn check_grouping_expr_subtree(&self, group_expr: NodeId) -> Result<(), SbroadError> {
-        let dfs = NodePostOrder::new(
+        let dfs = PostOrder::new(
             &self.nodes,
             |node| self.nodes.expr_iter(node, false),
             group_expr,

@@ -987,17 +987,13 @@ fn single_rel(
     top: crate::ir::node::NodeId,
     is_wanted: impl Fn(&crate::ir::node::relational::Relational) -> bool,
 ) -> crate::ir::node::NodeId {
-    use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+    use crate::ir::tree::traversal::{NodeIter, PostOrder};
 
-    let tree = PostOrderWithFilter::new(
-        |node| plan.nodes.rel_iter(node),
-        |node| {
-            plan.get_relation_node(node)
-                .is_ok_and(|rel| is_wanted(&rel))
-        },
-        REL_CAPACITY,
-    );
-    let found = tree.traverse_into_vec(top);
+    let found: Vec<_> = PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top)
+        .relational()
+        .filter(|(_, rel)| is_wanted(rel))
+        .map(|(id, _)| id)
+        .collect();
     assert_eq!(1, found.len(), "expected exactly one matching node");
     found[0]
 }
@@ -1334,19 +1330,14 @@ fn unbound_motion_input_buckets(sql: &str) -> Vec<Buckets> {
 
 fn motion_input_buckets_of(mut query: ExecutingQuery<'_, RouterRuntimeMock>) -> Vec<Buckets> {
     use crate::ir::node::relational::Relational;
-    use crate::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+    use crate::ir::tree::traversal::{NodeIter, PostOrder};
 
     let plan = query.get_exec_plan().get_ir_plan();
     let top = plan.get_top().unwrap();
-    let tree = PostOrderWithFilter::new(
-        |node| plan.nodes.rel_iter(node),
-        |node| matches!(plan.get_relation_node(node), Ok(Relational::Motion(_))),
-        REL_CAPACITY,
-    );
-    let roots: Vec<_> = tree
-        .traverse_into_vec(top)
-        .into_iter()
-        .map(|motion| plan.get_motion_subtree_root(motion).unwrap())
+    let roots: Vec<_> = PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top)
+        .relational()
+        .filter(|(_, rel)| matches!(rel, Relational::Motion(_)))
+        .map(|(motion, _)| plan.get_motion_subtree_root(motion).unwrap())
         .collect();
     roots
         .into_iter()

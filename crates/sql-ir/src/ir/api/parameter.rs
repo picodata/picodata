@@ -3,7 +3,7 @@ use crate::ir::expression::{FunctionFeature, Substring};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::{Constant, MutNode, Node96, NodeId, Parameter, ScalarFunction, Timestamp};
 use crate::ir::node::{Node32, TimeParameters};
-use crate::ir::tree::traversal::{PostOrderWithFilter, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::{Node, Plan};
@@ -83,20 +83,13 @@ impl Plan {
     }
 
     pub fn recalculate_ref_types(&mut self) -> Result<(), SbroadError> {
-        let ref_nodes = {
-            let tree = PostOrderWithFilter::new(
-                |node| self.parameter_iter(node),
-                |node| {
-                    matches!(
-                        self.get_node(node),
-                        Ok(Node::Expression(Expression::Reference(_)))
-                    )
-                },
-                EXPR_CAPACITY,
-            );
-            let top_id = self.get_top()?;
-            tree.traverse_into_vec(top_id)
-        };
+        let top_id = self.get_top()?;
+        let ref_nodes: Vec<NodeId> =
+            PostOrder::new(&self.nodes, |node| self.parameter_iter(node), top_id)
+                .expressions()
+                .filter(|(_, expr)| matches!(expr, Expression::Reference(_)))
+                .map(|(id, _)| id)
+                .collect();
 
         for id in &ref_nodes {
             // Before binding, references that referred to
