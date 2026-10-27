@@ -3,7 +3,11 @@
 -- TEST: init
 -- SQL:
 CREATE TABLE t (id INT PRIMARY KEY, n INT, arr INT ARRAY);
-INSERT INTO t VALUES (1, 2, ARRAY[10, 20]), (2, 0, ARRAY[]), (3, 1, NULL), (4, 3, ARRAY[30]);
+INSERT INTO t VALUES
+  (1, 2, ARRAY[10, 20]),
+  (2, 0, ARRAY[]),
+  (3, 1, NULL),
+  (4, 3, ARRAY[30]);
 
 -- TEST: generate-series
 -- SQL:
@@ -86,13 +90,19 @@ SELECT t.id, g.value FROM t JOIN generate_series(1, t.n) g ON true ORDER BY 1, 2
 
 -- TEST: lateral-generate-series-left-join
 -- SQL:
-SELECT t.id, g.value FROM t LEFT JOIN generate_series(1, t.n) g ON g.value > 1 ORDER BY 1, 2;
+SELECT t.id, g.value
+FROM t
+LEFT JOIN generate_series(1, t.n) g ON g.value > 1
+ORDER BY 1, 2;
 -- EXPECTED:
 1, 2, 2, None, 3, None, 4, 2, 4, 3
 
 -- TEST: lateral-unnest
 -- SQL:
-SELECT t.id, u.value, u.ordinality FROM t JOIN unnest(t.arr) WITH ORDINALITY u ON true ORDER BY 1, 3;
+SELECT t.id, u.value, u.ordinality
+FROM t
+JOIN unnest(t.arr) WITH ORDINALITY u ON true
+ORDER BY 1, 3;
 -- EXPECTED:
 1, 10, 1, 1, 20, 2, 4, 30, 1
 
@@ -118,7 +128,10 @@ SELECT t.id FROM t JOIN unnest(t.arr) u ON u.value * 2 > 30 ORDER BY 1;
 
 -- TEST: lateral-function-chain
 -- SQL:
-SELECT a.value AS a, b.value AS b FROM generate_series(1, 3) a JOIN generate_series(a.value, 3) b ON true ORDER BY 1, 2;
+SELECT a.value AS a, b.value AS b
+FROM generate_series(1, 3) a
+JOIN generate_series(a.value, 3) b ON true
+ORDER BY 1, 2;
 -- EXPECTED:
 1, 1, 1, 2, 1, 3, 2, 2, 2, 3, 3, 3
 
@@ -130,31 +143,49 @@ SELECT count(*), sum(g.value) FROM t JOIN generate_series(1, t.n) g ON true;
 
 -- TEST: lateral-group-by
 -- SQL:
-SELECT g.value, count(*) FROM t JOIN generate_series(1, t.n) g ON true GROUP BY g.value ORDER BY 1;
+SELECT g.value, count(*)
+FROM t
+JOIN generate_series(1, t.n) g ON true
+GROUP BY g.value
+ORDER BY 1;
 -- EXPECTED:
 1, 3, 2, 2, 3, 1
 
 -- TEST: lateral-sharding-key-filter
 -- SQL:
-SELECT g.value FROM t JOIN generate_series(1, t.n) g ON true WHERE t.id = 4 AND g.value > 1 ORDER BY 1;
+SELECT g.value
+FROM t
+JOIN generate_series(1, t.n) g ON true
+WHERE t.id = 4 AND g.value > 1
+ORDER BY 1;
 -- EXPECTED:
 2, 3
 
 -- TEST: lateral-after-motion
 -- SQL:
-SELECT s.id, g.value FROM (SELECT id, n FROM t ORDER BY id LIMIT 1) s JOIN generate_series(1, s.n) g ON true ORDER BY 2;
+SELECT s.id, g.value
+FROM (SELECT id, n FROM t ORDER BY id LIMIT 1) s
+JOIN generate_series(1, s.n) g ON true
+ORDER BY 2;
 -- EXPECTED:
 1, 1, 1, 2
 
 -- TEST: lateral-values
 -- SQL:
-SELECT v."COLUMN_1", g.value FROM (VALUES (2), (1)) v JOIN generate_series(1, v."COLUMN_1") g ON true ORDER BY 1, 2;
+SELECT v."COLUMN_1", g.value
+FROM (VALUES (2), (1)) v
+JOIN generate_series(1, v."COLUMN_1") g ON true
+ORDER BY 1, 2;
 -- EXPECTED:
 1, 1, 2, 1, 2, 2
 
 -- TEST: lateral-cte
 -- SQL:
-WITH c AS (SELECT n FROM t WHERE id = 1) SELECT g.value FROM c JOIN generate_series(1, c.n) g ON true ORDER BY 1;
+WITH c AS (SELECT n FROM t WHERE id = 1)
+SELECT g.value
+FROM c
+JOIN generate_series(1, c.n) g ON true
+ORDER BY 1;
 -- EXPECTED:
 1, 2
 
@@ -166,13 +197,21 @@ SELECT * FROM generate_series(1, (SELECT max(n) FROM t));
 
 -- TEST: subquery-in-arguments-of-lateral-function
 -- SQL:
-SELECT t.id, g.value FROM t JOIN generate_series(t.n, (SELECT max(n) FROM t)) g ON true WHERE t.id < 3 ORDER BY 1, 2;
+SELECT t.id, g.value
+FROM t
+JOIN generate_series(t.n, (SELECT max(n) FROM t)) g ON true
+WHERE t.id < 3
+ORDER BY 1, 2;
 -- EXPECTED:
 1, 2, 1, 3, 2, 0, 2, 1, 2, 2, 2, 3
 
 -- TEST: lateral-cross-join
 -- SQL:
-SELECT t.id, g.value FROM t CROSS JOIN generate_series(t.id, 5) g WHERE t.id IN (1, 4) ORDER BY 1, 2;
+SELECT t.id, g.value
+FROM t
+CROSS JOIN generate_series(t.id, 5) g
+WHERE t.id IN (1, 4)
+ORDER BY 1, 2;
 -- EXPECTED:
 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 4, 4, 4, 5
 
@@ -202,7 +241,11 @@ SELECT * FROM t JOIN unnest(t.arr) WITH ORDINALITY u ON true WHERE t.id = 1 ORDE
 
 -- TEST: asterisk-over-lateral-join-with-subquery
 -- SQL:
-SELECT * FROM t JOIN generate_series(1, (SELECT max(n) FROM t)) g ON true WHERE t.id = 1 ORDER BY 4;
+SELECT *
+FROM t
+JOIN generate_series(1, (SELECT max(n) FROM t)) g ON true
+WHERE t.id = 1
+ORDER BY 4;
 -- EXPECTED:
 1, 2, [10, 20], 1, 1, 2, [10, 20], 2, 1, 2, [10, 20], 3
 
@@ -220,13 +263,21 @@ SELECT count(*) FROM generate_series(1, 3) g LEFT JOIN t ON g.value = t.id;
 
 -- TEST: cte-over-asterisk
 -- SQL:
-WITH c AS (SELECT * FROM generate_series(1, 3)) SELECT c1.value, c2.value FROM c c1 JOIN c c2 ON c1.value = c2.value ORDER BY 1;
+WITH c AS (SELECT * FROM generate_series(1, 3))
+SELECT c1.value, c2.value
+FROM c c1
+JOIN c c2 ON c1.value = c2.value
+ORDER BY 1;
 -- EXPECTED:
 1, 1, 2, 2, 3, 3
 
 -- TEST: self-join-of-functions
 -- SQL:
-SELECT * FROM generate_series(1, 3) g JOIN generate_series(1, 3) h ON g.value = h.value WHERE h.value > 1 ORDER BY 1;
+SELECT *
+FROM generate_series(1, 3) g
+JOIN generate_series(1, 3) h ON g.value = h.value
+WHERE h.value > 1
+ORDER BY 1;
 -- EXPECTED:
 2, 2, 3, 3
 

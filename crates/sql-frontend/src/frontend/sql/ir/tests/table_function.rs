@@ -21,7 +21,10 @@ fn generate_series_in_from() {
 // The alias names the scan, and the columns keep their names.
 #[test]
 fn generate_series_with_alias_and_step() {
-    insta::assert_snapshot!(explain("SELECT g.value FROM generate_series(1, 10, 3) AS g", vec![]), @"
+    insta::assert_snapshot!(explain(
+        "SELECT g.value FROM generate_series(1, 10, 3) AS g",
+        vec![],
+    ), @"
     projection (g.value::int -> value)
       scan generate_series(1::int, 10::int, 3::int) -> g
     ");
@@ -31,7 +34,10 @@ fn generate_series_with_alias_and_step() {
 // the ordinality column.
 #[test]
 fn generate_series_decimal_with_ordinality() {
-    insta::assert_snapshot!(explain("SELECT * FROM generate_series(1.5, 3) WITH ORDINALITY g", vec![]), @"
+    insta::assert_snapshot!(explain(
+        "SELECT * FROM generate_series(1.5, 3) WITH ORDINALITY g",
+        vec![],
+    ), @"
     projection (g.value::decimal -> value, g.ordinality::int -> ordinality)
       scan generate_series(1.5::decimal, 3::decimal) with ordinality -> g
     ");
@@ -52,7 +58,10 @@ fn generate_series_parameters() {
 // An argument can be any expression of a suitable type.
 #[test]
 fn generate_series_expression_argument() {
-    insta::assert_snapshot!(explain("SELECT * FROM generate_series(1, abs(3) + 1)", vec![]), @"
+    insta::assert_snapshot!(explain(
+        "SELECT * FROM generate_series(1, abs(3) + 1)",
+        vec![],
+    ), @"
     projection (generate_series.value::int -> value)
       scan generate_series(1::int, (abs(3::int)::int + 1::int)::int)
     ");
@@ -72,10 +81,11 @@ fn unnest_array_literal() {
 #[test]
 fn lateral_reference_to_sharded_table() {
     insta::assert_snapshot!(explain(
-        r#"SELECT * FROM "arr_t" JOIN unnest("arr_t"."b") WITH ORDINALITY u ON u.value > 1"#,
+        r#"SELECT "arr_t"."a", u.value, u.ordinality
+           FROM "arr_t" JOIN unnest("arr_t"."b") WITH ORDINALITY u ON u.value > 1"#,
         vec![],
     ), @"
-    projection (arr_t.a::int -> a, arr_t.b::int[] -> b, u.value::int -> value, u.ordinality::int -> ordinality)
+    projection (arr_t.a::int -> a, u.value::int -> value, u.ordinality::int -> ordinality)
       join on (u.value::int > 1::int)
         scan arr_t
         scan unnest(arr_t.b::int[]) with ordinality -> u
@@ -87,10 +97,11 @@ fn lateral_reference_to_sharded_table() {
 #[test]
 fn lateral_left_join() {
     insta::assert_snapshot!(explain(
-        r#"SELECT * FROM "t" LEFT JOIN generate_series("t"."a", 3) g ON g.value > "t"."b""#,
+        r#"SELECT "t"."a", g.value
+           FROM "t" LEFT JOIN generate_series("t"."a", 3) g ON g.value > "t"."b""#,
         vec![],
     ), @"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, g.value::int -> value)
+    projection (t.a::int -> a, g.value::int -> value)
       left join on (g.value::int > t.b::int)
         scan t
         scan generate_series(t.a::int::int, 3::int) -> g
@@ -102,10 +113,12 @@ fn lateral_left_join() {
 #[test]
 fn lateral_reference_to_several_sources() {
     insta::assert_snapshot!(explain(
-        r#"SELECT * FROM "t" JOIN generate_series(1, 3) g ON g.value = "t"."a" JOIN generate_series(g.value, "t"."b") h ON true"#,
+        r#"SELECT "t"."a", h.value FROM "t"
+           JOIN generate_series(1, 3) g ON g.value = "t"."a"
+           JOIN generate_series(g.value, "t"."b") h ON true"#,
         vec![],
     ), @"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, g.value::int -> value, h.value::int -> value)
+    projection (t.a::int -> a, h.value::int -> value)
       join on (true::bool)
         join on (g.value::int = t.a::int)
           scan t
@@ -119,17 +132,19 @@ fn lateral_reference_to_several_sources() {
 #[test]
 fn lateral_cross_join() {
     insta::assert_snapshot!(explain(
-        r#"SELECT * FROM "arr_t" CROSS JOIN unnest("arr_t"."b") u INNER JOIN "t2" ON "t2"."e" = u.value"#,
+        r#"SELECT "arr_t"."a", u.value FROM "arr_t"
+           CROSS JOIN unnest("arr_t"."b") u
+           INNER JOIN "t3" ON "t3"."b" = u.value"#,
         vec![],
     ), @"
-    projection (arr_t.a::int -> a, arr_t.b::int[] -> b, u.value::int -> value, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      join on (t2.e::int = u.value::int)
+    projection (arr_t.a::int -> a, u.value::int -> value)
+      join on (t3.b::int = u.value::int)
         join on (true::bool)
           scan arr_t
           scan unnest(arr_t.b::int[]) -> u
         motion [policy: full, program: ReshardIfNeeded]
-          projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
-            scan t2
+          projection (t3.bucket_id::int -> bucket_id, t3.a::text -> a, t3.b::int -> b)
+            scan t3
     ");
 }
 
@@ -174,10 +189,11 @@ fn subquery_in_arguments() {
 #[test]
 fn subquery_in_arguments_of_lateral_function() {
     insta::assert_snapshot!(explain(
-        r#"SELECT * FROM "t" JOIN generate_series("t"."a", (SELECT 3)) g ON true"#,
+        r#"SELECT "t"."a", g.value
+           FROM "t" JOIN generate_series("t"."a", (SELECT 3)) g ON true"#,
         vec![],
     ), @"
-    projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, g.value::int -> value)
+    projection (t.a::int -> a, g.value::int -> value)
       join on (true::bool)
         scan t
         scan generate_series(t.a::int::int, ROW($0)::int) -> g
@@ -206,15 +222,18 @@ fn errors() {
         ),
         (
             "SELECT * FROM generate_series(1, 3, 0.5::double)",
-            "could not resolve function overload for generate_series(numeric, numeric, double)",
+            "could not resolve function overload \
+             for generate_series(numeric, numeric, double)",
         ),
         (
-            "SELECT * FROM (SELECT 1.5::double AS d) s JOIN generate_series(s.d, 3) g ON true",
+            "SELECT * FROM (SELECT 1.5::double AS d) s \
+             JOIN generate_series(s.d, 3) g ON true",
             "could not resolve function overload for generate_series(double, numeric)",
         ),
         (
             "SELECT * FROM generate_series(1, count(*))",
-            r#"aggregate functions are not supported in the arguments of table function "generate_series""#,
+            "aggregate functions are not supported in the arguments \
+             of table function \"generate_series\"",
         ),
         // A function on the left side of a join cannot reference the right
         // side.
@@ -233,8 +252,9 @@ fn errors() {
 
     // A parameter has the type that a client gives it.
     let double = [DerivedType::new(UnrestrictedType::Double)];
+    let err = expect_sql_to_ir_error("SELECT * FROM generate_series($1, 3)", &double);
     assert_eq!(
-        expect_sql_to_ir_error("SELECT * FROM generate_series($1, 3)", &double).to_string(),
+        err.to_string(),
         "could not resolve function overload for generate_series(double, numeric)"
     );
 }
