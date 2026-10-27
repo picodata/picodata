@@ -1002,18 +1002,30 @@ impl Plan {
     /// # Errors
     /// - `child_id` is not a relational node.
     pub fn motion_alias(&mut self, child_id: NodeId) -> Result<Option<SmolStr>, SbroadError> {
-        Ok(match self.get_relation_node(child_id)? {
-            Relational::ScanSubQuery(ScanSubQuery { alias, .. }) => alias.clone(),
-            Relational::ScanRelation(ScanRelation {
-                alias, relation, ..
-            }) => alias.clone().or_else(|| Some(relation.clone())),
-            Relational::ScanCte(ScanCte { alias, .. }) => Some(alias.clone()),
-            Relational::ScanFunction(_) => self
-                .scan_name(RelColumn::new(child_id, 0))?
-                .map(SmolStr::from),
-            Relational::Join(Join { .. }) => Some(self.context_mut().get_unnamed_join_name()),
-            _ => None,
-        })
+        if let Relational::Join(_) = self.get_relation_node(child_id)? {
+            return Ok(Some(self.context_mut().get_unnamed_join_name()));
+        }
+        self.scan_alias(child_id)
+    }
+
+    /// The alias of a scan node, or `None` for a node that is not a scan.
+    ///
+    /// # Errors
+    /// - `node_id` is not a relational node.
+    pub fn scan_alias(&self, node_id: NodeId) -> Result<Option<SmolStr>, SbroadError> {
+        let is_scan = matches!(
+            self.get_relation_node(node_id)?,
+            Relational::ScanRelation(_)
+                | Relational::ScanSubQuery(_)
+                | Relational::ScanCte(_)
+                | Relational::ScanFunction(_)
+        );
+        if !is_scan {
+            return Ok(None);
+        }
+        Ok(self
+            .scan_name(RelColumn::new(node_id, 0))?
+            .map(SmolStr::from))
     }
 
     /// Add a Motion with an explicit alias. The child must not be a Motion.

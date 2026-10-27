@@ -21,7 +21,6 @@ pub use crate::ir::transformation::Stage;
 use std::io::Write;
 use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError};
 
-use crate::ir::columns::RelColumn;
 use crate::ir::node::ReferenceTarget::Single;
 use crate::ir::node::{
     BoolExpr, Except, GroupBy, Having, Intersect, Join, Limit, Motion, NodeId, OrderBy, Projection,
@@ -1125,19 +1124,7 @@ impl Plan {
             match policy {
                 MotionPolicy::Full | MotionPolicy::Segment(_) => {
                     // Capture the alias of the wrapped child before mutating the plan.
-                    let wrapped_alias = match self.get_relation_node(child_id)? {
-                        Relational::ScanCte(ScanCte { alias, .. }) => Some(alias.clone()),
-                        Relational::ScanSubQuery(ScanSubQuery { alias: Some(a), .. }) => {
-                            Some(a.clone())
-                        }
-                        Relational::ScanRelation(ScanRelation {
-                            alias, relation, ..
-                        }) => alias.clone().or_else(|| Some(relation.clone())),
-                        Relational::ScanFunction(_) => self
-                            .scan_name(RelColumn::new(child_id, 0))?
-                            .map(SmolStr::from),
-                        _ => None,
-                    };
+                    let wrapped_alias = self.scan_alias(child_id)?;
 
                     let (proj_id, col_pos_transforms) =
                         self.add_proj_with_col_reduction(parent_id, child_id, false, true)?;
