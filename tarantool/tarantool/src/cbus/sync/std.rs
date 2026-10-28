@@ -238,6 +238,9 @@ impl<T> Sender<T> {
                 return Ok(());
             };
             msg = not_accepted_msg;
+            // Drop the waker while the lock is held, so that the receiver
+            // always releases the last reference (see `arc_guard`).
+            drop(waker);
             drop(crit_section);
             self.thread_waker.wait(&self.inner.chan.disconnected);
         }
@@ -440,6 +443,35 @@ mod tests {
         });
 
         assert!(matches!(rx.receive(), Ok(1)));
+        drop(rx);
+
+        thread.join().unwrap();
+        assert!(fiber::cancel(cbus_fiber_id));
+    }
+
+    #[crate::test(tarantool = "crate")]
+    pub fn drop_rx_while_producer_blocked() {
+        // Drop the receiver while a producer is blocked on a full buffer.
+        // Previously, the producer kept a strong reference to the cord waker
+        // during the wait. Thus the producer thread released the last
+        // reference and the `fiber::Cond` was deleted outside the tx thread,
+        // which caused a segfault.
+
+        let cbus_fiber_id = run_cbus_endpoint("std_drop_rx_while_producer_blocked");
+        let cap = NonZeroUsize::new(1).unwrap();
+        let (tx, rx) = sync::std::channel("std_drop_rx_while_producer_blocked", cap);
+
+        let thread = thread::spawn(move || {
+            assert!(tx.send(1).is_ok());
+            // The buffer is full, so this call blocks until the receiver is dropped.
+            assert!(tx.send(2).is_err());
+        });
+
+        let deadline = fiber::clock().saturating_add(Duration::from_secs(5));
+        while rx.thread_waker.list.is_empty() {
+            assert!(fiber::clock() < deadline, "producer didn't block in time");
+            fiber::sleep(Duration::from_millis(10));
+        }
         drop(rx);
 
         thread.join().unwrap();

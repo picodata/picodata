@@ -82,6 +82,8 @@
   tokio 1.54.0 and later this happened regularly with several producers.
 - `cbus::sync::tokio::Sender::send` no longer hangs forever when the receiver
   is dropped while `send` waits for free space in the buffer.
+- `cbus::sync::std::Sender::send` no longer causes a segfault when the
+  receiver is dropped while `send` waits for free space in the buffer.
 
 ### Breaking
 
