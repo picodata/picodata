@@ -16,9 +16,9 @@
 //!
 //! # Rendering
 //! Operator binding strength is described once, as a precedence ladder.
-//! The Pratt parser in `parsing/expr/mod.rs` consumes it to build trees, and the
-//! [`Display`](std::fmt::Display) impls consume it to decide where parentheses have to be
-//! re-inserted. A rendered expression therefore re-parses into the tree it came
+//! The Pratt parser in `sql-ast-new-parser/src/expr/mod.rs` consumes it to build
+//! trees, and the [`Render`](crate::rendering::Render) impls consume it to decide
+//! where parentheses have to be re-inserted. A rendered expression therefore re-parses into the tree it came
 //! from.
 //!
 //!

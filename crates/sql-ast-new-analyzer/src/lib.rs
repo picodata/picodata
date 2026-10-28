@@ -36,9 +36,9 @@
 //!
 //!
 //! # Name resolution
-//! Resolution is driven by the two scope stacks in [`BinderCtx`]. A statement pushes
-//! its frames on entry (WITH entries onto the CTE stack, the analyzed FROM
-//! onto the FROM stack) and pops them on exit, and lookups scan
+//! Resolution is driven by the stack of statement frames in [`BinderCtx`]. A
+//! statement pushes its frame on entry, fills it with its WITH entries and
+//! then its analyzed FROM, and pops it on exit, and lookups scan
 //! innermost-outward. That one rule yields the scoping semantics: a CTE
 //! shadows a same-named table, and a subquery may reference columns of any
 //! enclosing query (correlation).
@@ -429,9 +429,10 @@ impl<'q> BinderCtx<'q> {
     }
 
     pub(crate) fn depth(&self) -> AstResult<usize> {
-        self.frames.len().checked_sub(1).ok_or_else(|| {
-            analyze_err(format_smolstr!("aggregate call outside of any query level"))
-        })
+        self.frames
+            .len()
+            .checked_sub(1)
+            .ok_or_else(|| analyze_err(format_smolstr!("{EMPTY_FRAME_STACK_ERR}")))
     }
 
     /// The aggregate calls a reference resolving to `lvl` is visible to.
@@ -680,13 +681,13 @@ impl<'q> BinderCtx<'q> {
 /// So the very same pair of calls is legal or illegal depending on
 /// what the two of them read.
 ///
-/// Levels are held here as absolute *levels* — the index in `from_frames` of
+/// Levels are held here as absolute *levels* — the index in `frames` of
 /// the query level a reference resolves to, not hops up from the call that
 /// observed it. An index means the same thing to every call that can see it,
 /// which is what lets each of the two fields below be a single number.
 #[derive(Default)]
 pub(crate) struct AggrCtx {
-    /// The index in `from_frames` of the level the call itself is written at.
+    /// The index in `frames` of the level the call itself is written at.
     pub(crate) depth: usize,
     /// The deepest level, no deeper than [`Self::depth`], that a column read in
     /// the arguments resolves to. [`None`] until such a column is met.

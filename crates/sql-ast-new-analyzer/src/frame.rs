@@ -35,7 +35,7 @@ use crate::{analyze_err, semantic_err, AstTypeExpr};
 use sql_ir::ir::types::DerivedType;
 
 pub(crate) struct Stmt<'q> {
-    /// WITH clause of current frame. Empty in case of `VALUES`.
+    /// WITH clause of current frame; a `VALUES` statement may declare one too.
     pub(crate) ctes: Ctes<'q, Analyzed>,
     /// FROM clause of current frame. Empty in case of `VALUES`.
     pub(crate) from: From<'q, Analyzed>,
@@ -65,11 +65,13 @@ pub(crate) const MISSING_BOUND_SELECT_LIST_ERR: &str = "missing bound SELECT in 
 const MISSING_GROUP_BY_ERR: &str = "missing GROUP BY in current frame";
 
 impl<'q> Stmt<'q> {
-    pub(crate) fn new(from: From<'q, Analyzed>, stage: Stage) -> Self {
+    /// A frame for a statement about to be bound: nothing resolved yet, and
+    /// the stage its select list starts in.
+    pub(crate) fn new() -> Self {
         Self {
             ctes: Ctes::default(),
-            from,
-            stage,
+            from: From::empty(),
+            stage: Stage::Projection,
             sel_lst: None,
             bound_grby: None,
             grby_ctx: GroupByCtx::default(),

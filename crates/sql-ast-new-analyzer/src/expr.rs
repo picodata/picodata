@@ -165,7 +165,7 @@ pub(crate) fn bind_var<M: Metadata>(
 /// The bound variable a routing outcome at `depth` stands for,
 /// or the user-facing error it amounts to.
 /// The column's type is read right here, while the scope is at hand.
-/// A source the scope cannot read is reported as an unresolvable reference.
+/// A routed position the scope cannot read is an analyzer bug, not a user error.
 pub(crate) fn var_from_route<'q, S: Scope<'q> + ?Sized>(
     depth: Depth,
     column_route: ColumnRoute<(usize, usize)>,
@@ -179,7 +179,11 @@ pub(crate) fn var_from_route<'q, S: Scope<'q> + ?Sized>(
             let data_type = scope
                 .attribute(probe)
                 .map(|attr| attr.data_type())
-                .ok_or_else(|| cannot_resolve_err(var))?;
+                .ok_or_else(|| {
+                    analyze_err(format_smolstr!(
+                        "column reference '{var}' routed to {probe:?} outside the scope"
+                    ))
+                })?;
             Ok(BoundVar::new(depth, entry, column_pos, data_type))
         }
         ColumnRoute::Ambiguous => Err(semantic_err(format_smolstr!(

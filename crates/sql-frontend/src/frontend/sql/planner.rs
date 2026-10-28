@@ -10,6 +10,11 @@ use crate::frontend::sql::ast_new::AnalyzedAst;
 // of the shape rather than as live imports; everything below comes from
 // `sql-ast-new-nodes`.
 //
+// Column and CTE references in the analyzed tree are positions in enclosing
+// statements, so the populator has to keep the stack of statements it is in,
+// one `FrameView` each, and read references through `scope::Scope`, as
+// rendering does.
+//
 // // Ast state
 // use sql_ast_new_nodes::Analyzed;
 //

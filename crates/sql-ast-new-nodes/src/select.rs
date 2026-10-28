@@ -340,8 +340,8 @@ impl<'q> SelectListExprs<'q, Analyzed> {
         Self(elems)
     }
 
-    /// Var behind the `pos`-th select list projection, counting from 1 -
-    /// the numbering GROUP BY positions use.
+    /// Var behind the `pos`-th select list projection, counting from 0 -
+    /// the parser stores GROUP BY positions zero-based.
     pub(crate) fn var_ref(&self, pos: usize) -> Option<&BoundVar> {
         self.0.get(pos).and_then(ProjectionExpr::var_ref)
     }

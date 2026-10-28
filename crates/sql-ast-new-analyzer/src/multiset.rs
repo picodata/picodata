@@ -22,7 +22,7 @@ use sql_ast_new_nodes::multiset::{
 };
 use sql_ast_new_nodes::scope::FrameView;
 use sql_ast_new_nodes::select::SelectStmt;
-use sql_ast_new_nodes::table_expression::{From, OrdrByGrpByElem};
+use sql_ast_new_nodes::table_expression::OrdrByGrpByElem;
 use sql_ast_new_nodes::window::NamedWindows;
 use sql_ast_new_nodes::{Analyzed, NamedEntity, Raw};
 use sql_ir::ir::metadata::Metadata;
@@ -66,8 +66,7 @@ impl<'q> Binder<'q> for MultisetStmt<'q, Raw> {
         let (ctes, inner, order_by, limit) = self.into_parts();
 
         // Push new statement frame into context stack.
-        meta.binder
-            .push_frame(Stmt::new(From::empty(), Stage::Projection));
+        meta.binder.push_frame(Stmt::new());
 
         // WITH clause is opaque boundary for analysis (binding + type derivation).
         ctes.analyze(meta)?;

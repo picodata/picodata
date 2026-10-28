@@ -6,7 +6,7 @@
 //! re-parse into the same tree is for this module to put them back — which is
 //! what makes a rendering snapshot a test of tree *shape*.
 //!
-//! The tiers below mirror `EXPR_PRATT_PARSER` in `parsing/expr/mod.rs`.
+//! The tiers below mirror `EXPR_PRATT_PARSER` in `sql-ast-new-parser/src/expr/mod.rs`.
 //! The two must stay in sync, and the precedence tests are what enforces it.
 
 use std::fmt::{Display, Error, Formatter};
@@ -131,7 +131,7 @@ impl<'q, State: AstState<'q>> Render<'q, State> for ExprInner<'q, State> {
 /// Sections follow the operator-precedence table above.
 ///
 /// The derived [`Ord`] follows declaration order.
-/// The tiers mirror `EXPR_PRATT_PARSER` in `parsing/expr/mod.rs`.
+/// The tiers mirror `EXPR_PRATT_PARSER` in `sql-ast-new-parser/src/expr/mod.rs`.
 #[allow(private_interfaces)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {

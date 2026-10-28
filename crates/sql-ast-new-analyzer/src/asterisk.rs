@@ -360,9 +360,14 @@ impl<'q, 'ast, S: Scope<'q> + ?Sized> AsteriskResolver<'q, 'ast, S> {
         let mut proj_exprs = vec![];
         for column_pos in 0..stmt.result_columns_cnt()? {
             let attr = stmt.attribute(column_pos).ok_or_else(|| {
+                // The subquery is nested in the statement at `depth`, which is
+                // not the innermost one for `t.*` naming an outer relation.
+                let scope = (0..=self.depth)
+                    .map_while(|depth| self.scope.frame(depth))
+                    .collect();
                 semantic_err(format_smolstr!(
                     "cannot get attribute from subquery '({})' result",
-                    Rendered::<'_, 'q, Analyzed, _>::new(stmt, self.scope.render_scope())
+                    Rendered::<'_, 'q, Analyzed, _>::new(stmt, scope)
                         .to_string()
                         .chars()
                         .take(SUBQUERY_DISPLAY_PREFIX)
