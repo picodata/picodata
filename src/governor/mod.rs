@@ -279,7 +279,16 @@ impl Loop {
             }
         );
         last_step_info.on_next_step(&plan);
-        governor_status.send_modify(|s| s.last_step_kind = Some(plan.kind()));
+
+        let csw = fiber::csw();
+        let action_kind = plan.kind();
+        governor_status.send_modify(|s| {
+            // Guard against infinite loops
+            if let Some((last_action, last_csw)) = s.last_step_kind {
+                debug_assert_ne!((last_action, last_csw), (action_kind, csw));
+            }
+            s.last_step_kind = Some((action_kind, csw));
+        });
 
         // NOTE: this is a macro, because borrow checker is hot garbage
         macro_rules! set_status {
@@ -324,6 +333,7 @@ impl Loop {
                         "timeout" => %PrettyDuration(timeout)
                     ]
                     async {
+                        waker.mark_seen();
                         sleep_timeout = Some(timeout);
                     }
                 }
@@ -2116,7 +2126,10 @@ pub struct GovernorStatus {
     /// Is set by governor to explain the reason why it has yielded.
     pub governor_loop_status: &'static str,
 
-    pub last_step_kind: Option<ActionKind>,
+    /// The kind of last action performed by governor along with the
+    /// [`fiber::csw()`] value at the moment that action was planned.
+    /// The csw if stored for debugging purpses.
+    pub last_step_kind: Option<(ActionKind, u64)>,
 
     /// If the last governor step ended with an error, this is the corresponding
     /// error value.

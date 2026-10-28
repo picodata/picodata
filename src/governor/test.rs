@@ -120,7 +120,7 @@ fn spawn_pretend_governor_loop(mut state: State) -> Rc<Cell<PretendGovernorLoopS
                     }
 
                     // Break out of the loop if governor is finished
-                    if status.last_step_kind == Some(ActionKind::GoIdle) {
+                    if let Some((ActionKind::GoIdle, _)) = status.last_step_kind {
                         s.governor_idle = true;
                         pretend_state.set(s);
                         break;
