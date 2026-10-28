@@ -630,3 +630,52 @@ cluster:
         ["storage_3", 1, 1500, "active", "storage_3_1", None],
         ["storage_3", 1501, 3000, "active", "storage_3_2", None],
     ]
+
+
+def test_await_resharding_when_leader_applies_late(cluster: Cluster):
+    # A replicaset master replies to proc_resharding after it applies its own
+    # CAS request for current_bucket_state_version. The raft leader can apply
+    # the same entry later. Between these two events the governor must not
+    # stop the leader's tx thread.
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        default:
+        storage:
+            can_vote: false
+            replication_factor: 1
+            experimental_sharding_implementation: true
+"""
+    )
+    leader = cluster.add_instance(tier="default", wait_online=True)
+
+    block = "BLOCK_INITIAL_BUCKET_DISTRIBUTION"
+    leader.call("pico._inject_error", block, True)
+
+    storage = cluster.add_instance(tier="storage", wait_online=False)
+    storage.start()
+
+    def check_ready():
+        rows = leader.sql("SELECT state FROM _pico_replicaset WHERE tier = 'storage'")
+        assert rows == [["ready"]]
+
+    Retriable().call(check_ready)
+
+    # The leader sleeps before it applies each raft entry. Thus the master
+    # applies its CAS request and replies before the leader applies it.
+    leader.call("pico._inject_error", "DELAY_BEFORE_APPLYING_RAFT_ENTRY", "3")
+    leader.call("pico._inject_error", block, False)
+
+    def check_actualized():
+        rows = leader.sql(
+            "SELECT current_bucket_state_version, target_bucket_state_version FROM _pico_replicaset WHERE tier = 'storage'",
+            timeout=30,
+        )
+        assert rows == [[1, 1]]
+
+    Retriable().call(check_actualized)
+
+    leader.call("pico._inject_error", "DELAY_BEFORE_APPLYING_RAFT_ENTRY", False)
+    cluster.wait_online()
