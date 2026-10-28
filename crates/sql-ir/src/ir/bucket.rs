@@ -6,8 +6,9 @@ use crate::ir::distribution::Distribution;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::{
     expression::Expression, BoolExpr, Constant, NodeId, Parameter, Reference, ReferenceTarget,
+    UnaryExpr,
 };
-use crate::ir::operator::Bool;
+use crate::ir::operator::{Bool, Unary};
 use crate::ir::value::{value_to_decimal_or_error, Trivalent, Value};
 use crate::ir::{Plan, Positions};
 use serde::{Deserialize, Serialize};
@@ -476,6 +477,29 @@ impl Plan {
         let mut buckets = None;
         let tier = self.tier.as_ref();
         let expr = self.get_expression_node(expr_id)?;
+
+        // As a conjunct, `x IS TRUE` holds exactly when `x` does, and
+        // `x IS FALSE` exactly when `x = false`.
+        if let Expression::Unary(UnaryExpr {
+            op: op @ (Unary::IsTrue | Unary::IsFalse),
+            child,
+        }) = expr
+        {
+            if !self.get_expression_node(*child)?.is_ref() {
+                return match op {
+                    Unary::IsTrue => self.get_buckets_from_expr(*child, resolver),
+                    _ => Ok(None),
+                };
+            }
+            if let Distribution::Segment { keys } = self.get_distribution(*child)? {
+                if keys.iter().any(|key| key.positions.len() == 1) {
+                    let value = Value::Boolean(*op == Unary::IsTrue);
+                    let values_buckets = resolver.buckets_from_values(&[&value], tier)?;
+                    conjunct_into(&mut buckets, values_buckets);
+                }
+            }
+            return Ok(buckets);
+        }
 
         if let Expression::Bool(BoolExpr {
             op: Bool::Eq,

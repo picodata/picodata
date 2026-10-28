@@ -772,6 +772,42 @@ fn bool_eq_true_on_sharding_key() {
     assert_eq!(Buckets::new_filtered(expected), buckets);
 }
 
+#[test]
+fn bool_is_true_false_on_sharding_key() {
+    let coordinator = RouterRuntimeMock::new();
+    for (query, value) in [
+        (r#"select * from bool_sharded where b is true"#, true),
+        (r#"select * from bool_sharded where b is false"#, false),
+        (
+            r#"select * from bool_sharded where b is true is true and payload = 1"#,
+            true,
+        ),
+        (
+            r#"select * from bool_sharded where (b = false) is true"#,
+            false,
+        ),
+    ] {
+        let bucket_id = coordinator
+            .determine_bucket_id(&[&Value::Boolean(value)])
+            .unwrap();
+        let expected: HashSet<_, _> = vec![bucket_id].into_iter().collect();
+        assert_eq!(
+            Buckets::new_filtered(expected),
+            buckets_of(query),
+            "{query}"
+        );
+    }
+
+    // A NULL key passes these filters as well, so they cannot be routed.
+    for query in [
+        r#"select * from bool_sharded where b is not true"#,
+        r#"select * from bool_sharded where b is not false"#,
+        r#"select * from bool_sharded where (b = true) is false"#,
+    ] {
+        assert_eq!(Buckets::All, buckets_of(query), "{query}");
+    }
+}
+
 /// Buckets for a query text against the mock router.
 fn buckets_of(query: &str) -> Buckets {
     buckets_of_with_params(query, vec![])

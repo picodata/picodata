@@ -172,6 +172,10 @@ pub enum Unary {
     Not,
     /// `is null`
     IsNull,
+    /// `is true`
+    IsTrue,
+    /// `is false`
+    IsFalse,
     /// `exists`
     Exists,
 }
@@ -184,6 +188,8 @@ impl Unary {
     pub fn from(s: &str) -> Result<Self, SbroadError> {
         match s.to_lowercase().as_str() {
             "is null" => Ok(Unary::IsNull),
+            "is true" => Ok(Unary::IsTrue),
+            "is false" => Ok(Unary::IsFalse),
             "exists" => Ok(Unary::Exists),
             _ => Err(SbroadError::Invalid(
                 Entity::Operator,
@@ -200,6 +206,8 @@ impl Display for Unary {
         let op = match &self {
             Unary::Not => "not",
             Unary::IsNull => "is null",
+            Unary::IsTrue => "is true",
+            Unary::IsFalse => "is false",
             Unary::Exists => "exists",
         };
 

@@ -287,7 +287,9 @@ impl Plan {
                         self.push_down_not_for_expression(*child, NotState::on(Some(expr_id)), map)?
                     }
                 }
-                Unary::IsNull | Unary::Exists => self.cover_with_not(expr_id, &not_state)?,
+                Unary::IsNull | Unary::IsTrue | Unary::IsFalse | Unary::Exists => {
+                    self.cover_with_not(expr_id, &not_state)?
+                }
             },
             _ => {
                 if let NotState::On { .. } = not_state {

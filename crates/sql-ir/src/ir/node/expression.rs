@@ -599,9 +599,9 @@ impl Expression<'_> {
                 op: Unary::Exists, ..
             }) => false,
 
-            // `a IS NULL`
+            // `a IS NULL`, `a IS TRUE`, `a IS FALSE`
             | Expression::Unary(UnaryExpr {
-                op: Unary::IsNull, ..
+                op: Unary::IsNull | Unary::IsTrue | Unary::IsFalse, ..
             })
             // `NOT a`
             | Expression::Unary(UnaryExpr {
@@ -659,7 +659,8 @@ impl Expression<'_> {
             Expression::Unary(UnaryExpr { op: Unary::Not, .. }) => 3,
 
             Expression::Unary(UnaryExpr {
-                op: Unary::IsNull, ..
+                op: Unary::IsNull | Unary::IsTrue | Unary::IsFalse,
+                ..
             }) => 4,
 
             // PG binds IN, BETWEEN and LIKE tighter than comparisons. Tarantool

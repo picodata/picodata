@@ -329,22 +329,22 @@ fn front_sql19() {
 fn front_sql_is_true() {
     let input = r#"explain (logical) select true is true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (true::bool = true::bool -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (true::bool is true -> col_1)");
 
     let input = r#"explain (logical) select true is not true"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (not true::bool = true::bool -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (not true::bool is true -> col_1)");
 }
 
 #[test]
 fn front_sql_is_false() {
     let input = r#"explain (logical) select true is false"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (true::bool = false::bool -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (true::bool is false -> col_1)");
 
     let input = r#"explain (logical) select true is not false"#;
     let plan = sql_to_optimized_ir(input, vec![]);
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (not true::bool = false::bool -> col_1)");
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection (not true::bool is false -> col_1)");
 }
 
 #[test]

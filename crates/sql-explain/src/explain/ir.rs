@@ -709,7 +709,9 @@ impl ColExpr {
                     let op_name = op.to_smolstr();
                     let expr = match op {
                         Unary::Not | Unary::Exists => ColExpr::PrefixOp(op_name, child),
-                        Unary::IsNull => ColExpr::SuffixOp(child, op_name),
+                        Unary::IsNull | Unary::IsTrue | Unary::IsFalse => {
+                            ColExpr::SuffixOp(child, op_name)
+                        }
                     };
                     stack.push((expr, id));
                 }

@@ -81,6 +81,21 @@ fn handle_isnull(val: &Value) -> Result<Option<Value>, SbroadError> {
     Ok(res)
 }
 
+fn handle_is_bool(val: &Value, expected: bool) -> Result<Option<Value>, SbroadError> {
+    let res = match val {
+        Value::Boolean(bool_value) => Some(Value::Boolean(*bool_value == expected)),
+        Value::Null => Some(Value::Boolean(false)),
+        _ => {
+            return Err(SbroadError::Invalid(
+                Entity::Plan,
+                Some(format_smolstr!("{val} expected to be BOOLEAN or NULL")),
+            ));
+        }
+    };
+
+    Ok(res)
+}
+
 fn collect_join_and_selection_nodes(plan: &Plan) -> Vec<NodeId> {
     let selections = plan
         .nodes
@@ -100,6 +115,8 @@ impl Plan {
         let res = match op {
             Unary::Not => handle_not(val)?,
             Unary::IsNull => handle_isnull(val)?,
+            Unary::IsTrue => handle_is_bool(val, true)?,
+            Unary::IsFalse => handle_is_bool(val, false)?,
             _ => None,
         };
 

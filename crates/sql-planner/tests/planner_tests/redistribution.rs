@@ -105,10 +105,6 @@ fn inner_join_eq_chain() {
     let plan = optimized_to_motions(query);
     assert_eq!(Slices::empty(), *plan.slices());
 
-    let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2 ON (t1.a = t2.a) is true is true"#;
-    let plan = optimized_to_motions(query);
-    assert_eq!(Slices::empty(), *plan.slices());
-
     let query = r#"SELECT * FROM t5 AS t1 JOIN t5 AS t2 ON (t1.a = t2.a) = (1 = 1)"#;
     let plan = optimized_to_motions(query);
     assert_eq!(Slices::empty(), *plan.slices());

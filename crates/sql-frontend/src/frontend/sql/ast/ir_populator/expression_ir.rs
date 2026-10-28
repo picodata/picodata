@@ -9,7 +9,6 @@ use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::{BoolExpr, Node, NodeId, Trim};
 use crate::ir::operator::{Arithmetic, Bool, Unary};
 use crate::ir::types::CastType;
-use crate::ir::value::Value;
 use crate::ir::Plan;
 
 use super::ExpressionWalker;
@@ -456,13 +455,12 @@ impl ParseExpression {
                 value,
             } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
-                let op_id = match value {
-                    None => plan.add_unary(Unary::IsNull, child_plan_id)?,
-                    Some(b) => {
-                        let right_operand = plan.add_const(Value::Boolean(*b));
-                        plan.add_bool(child_plan_id, Bool::Eq, right_operand)?
-                    }
+                let op = match value {
+                    None => Unary::IsNull,
+                    Some(true) => Unary::IsTrue,
+                    Some(false) => Unary::IsFalse,
                 };
+                let op_id = plan.add_unary(op, child_plan_id)?;
                 if *is_not {
                     plan.add_unary(Unary::Not, op_id)?
                 } else {

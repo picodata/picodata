@@ -345,6 +345,8 @@ pub fn to_type_expr(
             let op = match op {
                 Unary::Not => UnaryOperator::Not,
                 Unary::IsNull => UnaryOperator::IsNull,
+                Unary::IsTrue => UnaryOperator::IsTrue,
+                Unary::IsFalse => UnaryOperator::IsFalse,
                 Unary::Exists => UnaryOperator::Exists,
             };
             let child = to_type_expr(*child, plan, subquery_map)?;

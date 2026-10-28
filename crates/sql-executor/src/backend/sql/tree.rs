@@ -2667,7 +2667,7 @@ impl<'p> SyntaxPlan<'p> {
         let child_sn_id = self.pop_expr_from_stack(child_id, id);
 
         let children = match op {
-            Unary::IsNull => vec![child_sn_id, operator_node_id],
+            Unary::IsNull | Unary::IsTrue | Unary::IsFalse => vec![child_sn_id, operator_node_id],
             Unary::Exists | Unary::Not => vec![operator_node_id, child_sn_id],
         };
         let sn = SyntaxNode::new_pointer(id, None, children);
