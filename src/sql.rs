@@ -109,6 +109,7 @@ pub mod conflict;
 pub mod dispatch;
 pub mod execute;
 pub mod explain;
+pub mod functions;
 pub mod lock;
 pub mod lua;
 pub mod port;

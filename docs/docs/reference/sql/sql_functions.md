@@ -32,9 +32,12 @@
 | [PICO_INSTANCE_UUID](pico_instance_uuid.md) | UUID текущего инстанса в текстовом виде |
 | [PICO_LOG_LEVEL](pico_log_level.md) | Текущий уровень журналирования инстанса в текстовом виде |
 | [PICO_LOG_LEVEL_MAP](pico_log_level_map.md) | Соответствие названий уровней журналирования их числовым значениям в формате JSON |
+| [PICO_NUM_PRETTY](pico_num_pretty.md) | Число в виде короткой строки с суффиксом `k`, `M`, `G` и так далее, как в `llvm-cov` |
 | [PICO_RAFT_LEADER_ID](pico_raft_leader_id.md) | Идентификатор лидера raft-группы |
 | [PICO_RAFT_LEADER_UUID](pico_raft_leader_uuid.md) | UUID лидера raft-группы в текстовом виде |
 | [PICO_REPLICASET_NAME](pico_replicaset_name.md) | Имя репликасета инстанса по его UUID |
+| [PICO_SIZE_PRETTY](pico_size_pretty.md) | Размер в байтах в виде строки с единицей измерения, как `pg_size_pretty` в PostgreSQL |
+| [PICO_SQL_PRETTY](pico_sql_pretty.md) | Текст SQL-запроса, отформатированный так же, как в `EXPLAIN (RAW, FMT)` |
 | [PICO_TIER_NAME](pico_tier_name.md) | Имя тира инстанса по его UUID |
 | [ROW_NUMBER](row_number.md) | Номер строки в разделе окна, начиная с единицы |
 | [STRING_AGG](string_agg.md) | Другое имя `GROUP_CONCAT` для совместимости с PostgreSQL |

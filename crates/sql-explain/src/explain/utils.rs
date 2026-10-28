@@ -1,6 +1,9 @@
 use smallvec::SmallVec;
 use smol_str::SmolStr;
 use sql_ir::ir::node::{BlockEntryKind, IfBranch, StatementLocation};
+use sqlparser::dialect::GenericDialect;
+use sqlparser::keywords::Keyword;
+use sqlparser::tokenizer::{Token, Tokenizer, Whitespace};
 use std::fmt;
 use std::fmt::Write as _;
 
@@ -10,6 +13,35 @@ pub fn format_sql(explain: &str, params: &[impl ToString], should_fmt: bool) -> 
     let sql = explain
         .strip_prefix("EXPLAIN QUERY PLAN ")
         .unwrap_or(explain);
+    format_query(sql, params, should_fmt)
+}
+
+/// Formats the query `sql` as `EXPLAIN (RAW)` does, with the values `params`
+/// in place of `$1`, `$2` and so on. A query is on one line, unless
+/// `should_fmt` is set and the query is at least [`LINE_WIDTH`] long: then
+/// each clause starts a new line and its items are indented.
+///
+/// The formatter does not parse SQL, and some text it changes: a line comment
+/// takes the rest of a single line, and a backslash in a string literal is
+/// an escape for it. When the formatted text has other tokens than `sql`,
+/// the function gives `sql` unchanged.
+///
+/// The formatter takes quadratic time or memory on some text, and a query can
+/// come from a user without privileges. Queries exceeding the limits below
+/// stay unchanged.
+pub fn format_query(sql: &str, params: &[impl ToString], should_fmt: bool) -> String {
+    if exceeds_text_limits(sql) {
+        return sql.to_owned();
+    }
+    let Ok(before) = Tokenizer::new(&GenericDialect, sql)
+        .with_unescape(false)
+        .tokenize()
+    else {
+        return sql.to_owned();
+    };
+    if exceeds_nesting_limit(&before) {
+        return sql.to_owned();
+    }
 
     let mut fmt_options = sqlformat::FormatOptions::<'_> {
         joins_as_top_level: true,
@@ -22,6 +54,32 @@ pub fn format_sql(explain: &str, params: &[impl ToString], should_fmt: bool) -> 
         fmt_options.inline = false;
     }
 
+    // The values are not SQL text of the query, so the tokens are compared
+    // before they replace the placeholders.
+    let formatted = sqlformat::format(sql, &sqlformat::QueryParams::None, &fmt_options);
+    let Ok(after) = Tokenizer::new(&GenericDialect, &formatted)
+        .with_unescape(false)
+        .tokenize()
+    else {
+        return sql.to_owned();
+    };
+    let significant = |token: &Token| {
+        !matches!(
+            token,
+            Token::Whitespace(Whitespace::Space | Whitespace::Newline | Whitespace::Tab)
+        )
+    };
+    if !before
+        .into_iter()
+        .filter(significant)
+        .eq(after.into_iter().filter(significant))
+    {
+        return sql.to_owned();
+    }
+    if params.is_empty() {
+        return formatted;
+    }
+
     // A value replaces `$N` as text, and `::` binds tighter than the
     // unary minus: `$1::int` with -1 reads `(-1)::int`, not `-(1::int)`.
     let mut params: Vec<String> = params.iter().map(ToString::to_string).collect();
@@ -29,6 +87,48 @@ pub fn format_sql(explain: &str, params: &[impl ToString], should_fmt: bool) -> 
     let indexed_params = sqlformat::QueryParams::Indexed(params);
 
     sqlformat::format(sql, &indexed_params, &fmt_options)
+}
+
+/// How long a query may be to be formatted. For each keyword the formatter
+/// copies the rest of the query, whatever its shape: 1 MB of keywords takes 2 s,
+/// and that time grows with the square of the length.
+const MAX_FMT_LEN: usize = 64 * 1024;
+
+/// How many levels of nesting a query may have to be formatted. The formatter
+/// indents each line by its level and looks through a block from each of its
+/// parentheses, so without the limit 64 KB of parentheses take 5 GB.
+const MAX_FMT_NESTING: usize = 64;
+
+/// How long a word of a query may be to be formatted. For each token the
+/// formatter copies the next few words: without spaces, that is the rest of the
+/// query, and 1 MB of `a,a,a` takes minutes. A longer string literal is on the
+/// safe side: it is left as it is too, though it is only one token.
+const MAX_FMT_WORD_LEN: usize = 1024;
+
+fn exceeds_text_limits(sql: &str) -> bool {
+    sql.len() > MAX_FMT_LEN
+        || sql
+            .split_whitespace()
+            .any(|word| word.len() > MAX_FMT_WORD_LEN)
+}
+
+fn exceeds_nesting_limit(tokens: &[Token]) -> bool {
+    let mut level = 0_usize;
+    for token in tokens {
+        let keyword = match token {
+            Token::Word(word) => word.keyword,
+            _ => Keyword::NoKeyword,
+        };
+        if token == &Token::LParen || keyword == Keyword::CASE {
+            level += 1;
+            if level > MAX_FMT_NESTING {
+                return true;
+            }
+        } else if token == &Token::RParen || keyword == Keyword::END {
+            level = level.saturating_sub(1);
+        }
+    }
+    false
 }
 
 /// Puts the negative values of the placeholders `$N` that `::` follows

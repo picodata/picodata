@@ -182,6 +182,10 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("sql", RevokedJwt::SQL_CREATE),
             ("sql", "ALTER INDEX \"535_pkey\" RENAME TO _pico_revoked_jwt_pkey"),
             ("sql", RevokedJwt::SQL_CREATE_INDEX),
+            // pico_size_pretty, pico_num_pretty and pico_sql_pretty.
+            ("proc_name", "proc_size_pretty"),
+            ("proc_name", "proc_num_pretty"),
+            ("proc_name", "proc_sql_pretty"),
         ],
     ),
 ];

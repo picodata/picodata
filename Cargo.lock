@@ -3981,6 +3981,7 @@ dependencies = [
  "sql-explain",
  "sql-ir",
  "sqlformat",
+ "sqlparser",
  "tarantool",
 ]
 

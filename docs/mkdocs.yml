@@ -144,8 +144,11 @@ nav:
           - Скалярные:
               - Числовые:
                   - reference/sql/abs.md
+                  - reference/sql/pico_num_pretty.md
+                  - reference/sql/pico_size_pretty.md
               - Строковые:
                   - reference/sql/lower.md
+                  - reference/sql/pico_sql_pretty.md
                   - reference/sql/substr.md
                   - reference/sql/substring.md
                   - reference/sql/trim.md

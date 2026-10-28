@@ -16,6 +16,7 @@ rmp = { workspace = true }
 smallvec = { workspace = true }
 smol_str = { workspace = true }
 sqlformat = { workspace = true }
+sqlparser = { workspace = true }
 sql-executor = { path = "../sql-executor" }
 sql-ir = { path = "../sql-ir" }
 tarantool = { workspace = true }

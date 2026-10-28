@@ -74,3 +74,6 @@ proc_wait_index
 proc_wait_vclock
 proc_log_level
 proc_log_level_map
+proc_size_pretty
+proc_num_pretty
+proc_sql_pretty

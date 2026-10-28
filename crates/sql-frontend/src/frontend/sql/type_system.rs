@@ -566,6 +566,9 @@ fn scalar_functions() -> Vec<Function> {
     use sql_type_system::expr::NestedType;
     use sql_type_system::expr::Type::*;
 
+    let size_pretty = get_real_function_name("pico_size_pretty").expect("shouldn't fail");
+    let num_pretty = get_real_function_name("pico_num_pretty").expect("shouldn't fail");
+    let sql_pretty = get_real_function_name("pico_sql_pretty").expect("shouldn't fail");
     vec![
         // Functions.
         Function::new_scalar(
@@ -625,6 +628,11 @@ fn scalar_functions() -> Vec<Function> {
             Array(NestedType::Map),
         ),
         Function::new_scalar("_pico_bucket", [Text], Array(NestedType::Map)),
+        Function::new_scalar(size_pretty, [Integer], Text),
+        Function::new_scalar(size_pretty, [Numeric], Text),
+        Function::new_scalar(num_pretty, [Integer], Text),
+        Function::new_scalar(num_pretty, [Numeric], Text),
+        Function::new_scalar(sql_pretty, [Text], Text),
         Function::new_scalar("like", [Text, Text, Text], Boolean),
         Function::new_scalar("trim", [Text], Text),
         Function::new_scalar("trim", [Text, Text], Text),

@@ -406,6 +406,24 @@ pub const FUNCTION_NAME_MAPPINGS: &[FunctionNameMapping] = &[
         tarantool_symbol: ".proc_log_level_map",
         parameter_list: &[],
     },
+    FunctionNameMapping {
+        sql: "pico_size_pretty",
+        rust_procedure: "proc_size_pretty",
+        tarantool_symbol: ".proc_size_pretty",
+        parameter_list: &["number"],
+    },
+    FunctionNameMapping {
+        sql: "pico_num_pretty",
+        rust_procedure: "proc_num_pretty",
+        tarantool_symbol: ".proc_num_pretty",
+        parameter_list: &["number"],
+    },
+    FunctionNameMapping {
+        sql: "pico_sql_pretty",
+        rust_procedure: "proc_sql_pretty",
+        tarantool_symbol: ".proc_sql_pretty",
+        parameter_list: &["string"],
+    },
 ];
 
 /// Maps normalized name to real procedure name in tarantool.
