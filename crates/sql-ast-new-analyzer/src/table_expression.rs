@@ -234,9 +234,9 @@ fn bind_table_function<'q, M: Metadata>(
     };
     let columns = (0..registered_call.result_len())
         .filter_map(|pos| {
-            let column = registered_call.result_column(pos)?;
+            let name = registered_call.column_name(pos)?;
             let r#type = registered_call.column_type(pos);
-            Some(Column::new(&column.name, r#type, ColumnRole::User, true))
+            Some(Column::new(&name, r#type, ColumnRole::User, true))
         })
         .collect();
 

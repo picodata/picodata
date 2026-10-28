@@ -22,7 +22,7 @@ use crate::ir::node::{
     ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, Union, UnionAll, Update, Values,
 };
 use crate::ir::relation::{Column, ColumnRole};
-use crate::ir::table_function::{find_table_function, ResultColumn, TableFunctionCall};
+use crate::ir::table_function::{find_table_function, TableFunctionCall};
 use crate::ir::types::{calculate_unified_types, DerivedType};
 use crate::ir::Plan;
 
@@ -79,9 +79,9 @@ impl<'p> ColumnMeta<'p> {
     }
 
     /// Column of a table function.
-    fn function_column(column: ResultColumn, r#type: DerivedType) -> Self {
+    fn function_column(name: Cow<'static, str>, r#type: DerivedType) -> Self {
         ColumnMeta {
-            name: column.name,
+            name,
             r#type,
             is_system: false,
         }
@@ -187,10 +187,10 @@ impl<'p> Iterator for Columns<'p> {
                 Some(Ok(ColumnMeta::values_column(pos, r#type)))
             }
             Columns::Function { call, next_pos } => {
-                let column = call.result_column(*next_pos)?;
+                let name = call.column_name(*next_pos)?;
                 let r#type = call.column_type(*next_pos);
                 *next_pos += 1;
-                Some(Ok(ColumnMeta::function_column(column, r#type)))
+                Some(Ok(ColumnMeta::function_column(name, r#type)))
             }
             Columns::Chain { left, right } => left.next().or_else(|| right.next()),
             Columns::Unify { left, right } => {
@@ -399,8 +399,8 @@ impl Plan {
                 Ok(ColumnMeta::values_column(position, r#type))
             }
             ColumnsSource::Function { call } => call
-                .result_column(position)
-                .map(|column| ColumnMeta::function_column(column, call.column_type(position)))
+                .column_name(position)
+                .map(|name| ColumnMeta::function_column(name, call.column_type(position)))
                 .ok_or_else(|| column_not_found(rel_col, call.result_len())),
             ColumnsSource::Empty => Err(column_not_found(rel_col, 0)),
         }
@@ -522,9 +522,7 @@ impl Plan {
         position: usize,
     ) -> Result<Option<SmolStr>, SbroadError> {
         let call = self.table_function_of(scan)?;
-        Ok(call
-            .result_column(position)
-            .map(|column| SmolStr::new(column.local_name)))
+        Ok(call.local_name(position))
     }
 
     fn column_meta_of_alias(&self, alias_id: NodeId) -> Result<ColumnMeta<'_>, SbroadError> {

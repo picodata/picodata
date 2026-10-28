@@ -8,6 +8,7 @@
 
 use std::borrow::Cow;
 
+use smol_str::{format_smolstr, SmolStr};
 use sql_type_system::expr::Type as TypeSystemType;
 
 use crate::ir::types::{DerivedType, UnrestrictedType};
@@ -91,35 +92,6 @@ pub fn find_table_function(name: &str) -> Option<&'static TableFunction> {
     TABLE_FUNCTIONS.iter().find(|func| func.name == name)
 }
 
-/// A column of the result of a call of a table function.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResultColumn {
-    /// The column name in queries.
-    pub name: Cow<'static, str>,
-    /// The column name in the local SQL that tarantool executes.
-    pub local_name: Cow<'static, str>,
-    /// See [`TableFunctionColumn::cast_in_local_sql`].
-    pub cast_in_local_sql: bool,
-}
-
-impl ResultColumn {
-    /// The column with the names of `column`, numbered with `number`.
-    fn new(column: &TableFunctionColumn, number: Option<usize>) -> Self {
-        let (name, local_name) = match number {
-            Some(number) => (
-                Cow::Owned(format!("{}_{number}", column.name)),
-                Cow::Owned(format!("{}_{number}", column.local_name)),
-            ),
-            None => (Cow::Borrowed(column.name), Cow::Borrowed(column.local_name)),
-        };
-        ResultColumn {
-            name,
-            local_name,
-            cast_in_local_sql: column.cast_in_local_sql,
-        }
-    }
-}
-
 impl TableFunction {
     /// The number of columns of a call with `arg_count` arguments, without
     /// the ordinality column.
@@ -175,21 +147,53 @@ impl TableFunctionCall<'_> {
         self.column_types.len() + usize::from(self.with_ordinality)
     }
 
-    /// The result column at `position`, with the ordinality column last if
-    /// it is requested.
-    #[must_use]
-    pub fn result_column(&self, position: usize) -> Option<ResultColumn> {
+    /// The registry column at `position`, with the ordinality column last
+    /// if it is requested, and the number that the names of the column get.
+    /// A call with several arguments numbers the columns of the template
+    /// from 1, as `value_1`.
+    fn column_at(&self, position: usize) -> Option<(&'static TableFunctionColumn, Option<usize>)> {
         let count = self.column_types.len();
+        let function: &'static TableFunction = self.function;
         if position < count {
-            return Some(match self.function.columns {
-                TableFunctionColumns::Fixed(columns) => ResultColumn::new(&columns[position], None),
+            return Some(match &function.columns {
+                TableFunctionColumns::Fixed(columns) => (&columns[position], None),
                 TableFunctionColumns::PerArgument(template) => {
-                    ResultColumn::new(&template, (count > 1).then_some(position + 1))
+                    (template, (count > 1).then_some(position + 1))
                 }
             });
         }
-        (self.with_ordinality && position == count)
-            .then(|| ResultColumn::new(&ORDINALITY_COLUMN, None))
+        (self.with_ordinality && position == count).then_some((&ORDINALITY_COLUMN, None))
+    }
+
+    /// The name in queries of the result column at `position`. Only a
+    /// numbered name is allocated.
+    #[must_use]
+    pub fn column_name(&self, position: usize) -> Option<Cow<'static, str>> {
+        let (column, number) = self.column_at(position)?;
+        Some(match number {
+            Some(number) => Cow::Owned(format!("{}_{number}", column.name)),
+            None => Cow::Borrowed(column.name),
+        })
+    }
+
+    /// The name in the local SQL that tarantool executes of the result
+    /// column at `position`. A numbered name is short and stays inline in
+    /// the `SmolStr`.
+    #[must_use]
+    pub fn local_name(&self, position: usize) -> Option<SmolStr> {
+        let (column, number) = self.column_at(position)?;
+        Some(match number {
+            Some(number) => format_smolstr!("{}_{number}", column.local_name),
+            None => SmolStr::new_static(column.local_name),
+        })
+    }
+
+    /// Whether the local SQL casts the result column at `position`. See
+    /// [`TableFunctionColumn::cast_in_local_sql`].
+    #[must_use]
+    pub fn cast_in_local_sql(&self, position: usize) -> bool {
+        self.column_at(position)
+            .is_some_and(|(column, _)| column.cast_in_local_sql)
     }
 
     /// The type of the result column at `position`.
