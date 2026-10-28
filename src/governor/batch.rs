@@ -29,6 +29,13 @@ pub struct LastStepInfo {
     ok_instances: HashSet<InstanceName>,
     err_instances: HashMap<InstanceName, ErrorTracker>,
     all_instances: HashSet<InstanceName>,
+
+    /// Back-off for the case when all the RPC targets have responded Ok, but
+    /// the step's precondition still holds.
+    ///
+    /// See also how [`crate::governor::AwaitResharding`] is handled.
+    pub awaiting_apply: Option<ErrorTracker>,
+
     target_vshard_config_versions: HashMap<SmolStr, u64>,
     target_bucket_state_versions: HashMap<SmolStr, u64>,
 
@@ -85,6 +92,7 @@ impl LastStepInfo {
         self.ok_instances.clear();
         self.err_instances.clear();
         self.all_instances.clear();
+        self.awaiting_apply = None;
     }
 
     pub fn on_ok_instance(&mut self, instance_name: InstanceName) {
@@ -97,6 +105,14 @@ impl LastStepInfo {
             .entry(instance_name.clone())
             .and_modify(ErrorTracker::on_error)
             .or_insert_with(ErrorTracker::new)
+    }
+
+    pub fn on_awaiting_apply(&mut self) {
+        if let Some(awaiting_apply) = &mut self.awaiting_apply {
+            awaiting_apply.on_error()
+        } else {
+            self.awaiting_apply = Some(ErrorTracker::new())
+        }
     }
 
     /// Returns true if there are any recorded RPC completions (either successful or not)
@@ -352,7 +368,7 @@ impl ErrorTracker {
         self.current_timeout = new_timeout.min(Self::BACKOFF_TIMEOUT_MAX);
     }
 
-    fn next_try(&self) -> Instant {
+    pub fn next_try(&self) -> Instant {
         self.last_try + self.current_timeout
     }
 }

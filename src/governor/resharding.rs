@@ -29,6 +29,7 @@ use crate::traft::Result;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::time::Duration;
+use tarantool::fiber;
 use tarantool::space::UpdateOps;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -431,6 +432,25 @@ fn get_resharding_rpc_requests<'i>(
             return Ok(Some(SleepDueToBackoff::new(next_try, step_kind).into()));
         }
     };
+
+    if targets_batch.is_empty() {
+        // All masters have responded Ok so governor is just waiting for the
+        // `_pico_replicaset.current_bucket_state_version` bump DMLs to be
+        // applied in raft_main_loop.
+        //
+        // Let's just go into backoff. Governor will be awoken when those DMLs
+        // are applied.
+        if let Some(awaiting_apply) = &last_step_info.awaiting_apply {
+            let next_try = awaiting_apply.next_try();
+            if next_try > fiber::clock() {
+                return Ok(Some(SleepDueToBackoff::new(next_try, step_kind).into()));
+            } else {
+                // Fall through, do an idle action attempt just to bump the
+                // backoff multiplier, so that next time we go into
+                // SleepDueToBackoff with a higher timeout.
+            }
+        }
+    }
 
     let rpc = rpc::sharding::ReshardingRequest {
         term,

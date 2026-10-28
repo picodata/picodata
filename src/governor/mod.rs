@@ -973,7 +973,22 @@ impl Loop {
                     return IterationEnd::Continue;
                 }
 
-                tlog!(Info, "resharding finished");
+                // Every master responded Ok. Now the governor just waits for
+                // them to do their CAS requests which bump the respective
+                // `_pico_replicaset.current_bucket_state_version` values.
+                //
+                // The governor has nothing else to do but wait. But the
+                // preconditions for the `AwaitResharding` step will hold until
+                // governor's raft_main_loop applied those version bump DMLs. So
+                // we must make sure governor doesn't get deadlocked doing
+                // `AwaitResharding` with empty batches.
+                //
+                // This is what the `on_awaiting_apply` is for.
+                //
+                // NOTE that this is not needed for other governor steps because
+                // those do a CAS request after all RPCs targets responded Ok.
+                last_step_info.on_awaiting_apply();
+
                 // Governor will update _pico_tier.current_bucket_state_version on a following step
             }
 
@@ -984,6 +999,8 @@ impl Loop {
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+
+                        tlog!(Info, "resharding finished");
                     }
                 }
             }
