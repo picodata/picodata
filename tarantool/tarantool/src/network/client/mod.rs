@@ -892,6 +892,14 @@ mod tests {
             let ((len,),): ((u32,),) = t.decode().unwrap();
             assert_eq!(len, N + 17);
         }
+
+        // The server releases the big input buffer after the connection is
+        // closed. In debug builds this takes a long time, because the buffer
+        // is filled with a poison value first. Wait until the server handles
+        // requests again, so that the next tests don't time out.
+        drop(client);
+        let client = test_client().await;
+        client.call("test_stored_proc", &(1, 2)).await.unwrap();
     }
 
     #[crate::test(tarantool = "crate")]
