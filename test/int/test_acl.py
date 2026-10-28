@@ -86,6 +86,30 @@ def test_max_login_attempts(cluster: Cluster):
     assert c
 
 
+def test_sql_inside_session_su(cluster: Cluster):
+    i1 = cluster.add_instance()
+    i1.sql(""" CREATE USER "alice" WITH PASSWORD 'T0psecret' USING chap-sha1 """)
+    i1.sql(""" CREATE TABLE "secret" ("id" INT PRIMARY KEY) DISTRIBUTED GLOBALLY """)
+
+    # The session user is pico_service, the effective one is alice.
+    sql_as_alice = """
+        local query = ...
+        return box.session.su('alice', function()
+            local res, err = pico.sql(query)
+            return {rows = res and res.rows, err = err and tostring(err)}
+        end)
+    """
+
+    # The first run misses the plan cache, the second one hits it,
+    # both must run as alice.
+    for _ in range(2):
+        res = i1.eval(sql_as_alice, "SELECT CURRENT_USER")
+        assert res == {"rows": [["alice"]]}
+
+        res = i1.eval(sql_as_alice, """ SELECT * FROM "secret" """)
+        assert "Read access to space 'secret' is denied for user 'alice'" in res["err"]
+
+
 def test_acl_basic(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
 

@@ -328,8 +328,6 @@ pub trait Router: QueryCache {
     /// Get the metadata provider (tables, functions, etc.).
     fn metadata(&self) -> &impl MutexLike<Self::MetadataProvider>;
 
-    fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError>;
-
     /// Get the name of the user whose privileges the query is executed with.
     ///
     /// It is called on execute, only for the statements that contain `CURRENT_USER`.

@@ -111,3 +111,27 @@ pub fn user_id_by_name() {
     assert_eq!(session::user_id_by_name("guest").unwrap(), GUEST_UID);
     assert_eq!(session::user_id_by_name("admin").unwrap(), ADMIN_UID);
 }
+
+#[cfg(feature = "picodata")]
+#[tarantool::test]
+pub fn effective_user_name() {
+    assert_eq!(session::user_name().unwrap(), "admin");
+    assert_eq!(session::effective_user_name().unwrap(), "admin");
+
+    // Unlike `session::su`, `box.session.su(user, func)` switches only the
+    // effective user.
+    let lua = tarantool::lua_state();
+    let (session_user, effective_user): (String, String) = lua
+        .eval_with(
+            "return box.session.su('guest', ...)",
+            tarantool::tlua::function0(|| {
+                (
+                    session::user_name().unwrap(),
+                    session::effective_user_name().unwrap(),
+                )
+            }),
+        )
+        .unwrap();
+    assert_eq!(session_user, "admin");
+    assert_eq!(effective_user, "guest");
+}

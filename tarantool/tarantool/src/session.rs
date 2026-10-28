@@ -92,8 +92,8 @@ mod picodata {
     use crate::{
         error::{Error, TarantoolError},
         ffi::tarantool::{
-            box_effective_user_id, box_session_su, box_session_user_id, box_session_user_name,
-            box_user_id_by_name,
+            box_effective_user_id, box_effective_user_name, box_session_su, box_session_user_id,
+            box_session_user_name, box_user_id_by_name,
         },
     };
 
@@ -140,11 +140,25 @@ mod picodata {
         Ok(uid)
     }
 
+    /// Get the name of the session user. It differs from the effective user
+    /// inside `box.session.su(user, func)`, see [`effective_user_name`].
     #[inline]
     pub fn user_name() -> Result<String, Error> {
         // SAFETY: absence of session and the user are handled in the C code, so the output of this
-        // function is always valid. It might be NULL, but this case is handled on the next line
-        let user_ptr = unsafe { box_session_user_name() };
+        // function is always valid. It might be NULL, but this case is handled in `user_name_from_ptr`
+        user_name_from_ptr(unsafe { box_session_user_name() })
+    }
+
+    /// Get the name of the effective user, i.e. the one whose privileges are
+    /// checked.
+    #[inline]
+    pub fn effective_user_name() -> Result<String, Error> {
+        // SAFETY: absence of the user is handled in the C code, so the output of this function is
+        // always valid. It might be NULL, but this case is handled in `user_name_from_ptr`
+        user_name_from_ptr(unsafe { box_effective_user_name() })
+    }
+
+    fn user_name_from_ptr(user_ptr: *const std::ffi::c_char) -> Result<String, Error> {
         if user_ptr.is_null() {
             return Err(Error::Tarantool(TarantoolError::last()));
         }

@@ -71,7 +71,7 @@ impl PreparedStatement {
             });
         }
 
-        let new_plan = router.with_admin_su(|| -> Result<Plan, SbroadError> {
+        let new_plan = {
             let metadata = router.metadata().lock();
 
             let mut plan = frontend::sql::transform_into_plan(query_text, param_types, &*metadata)?;
@@ -101,8 +101,8 @@ impl PreparedStatement {
             }
 
             plan.optimize_statement()?;
-            Ok(plan)
-        })??;
+            plan
+        };
 
         let new_plan = Rc::new(new_plan);
 

@@ -400,17 +400,11 @@ impl Router for RouterRuntime {
         &self.metadata
     }
 
-    fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError> {
-        with_su(ADMIN_ID, f).map_err(|e| e.into())
-    }
-
-    /// Tarantool only provides the name of the session user, which may differ
-    /// from the effective one (e.g. inside `box.session.su(user, func)`).
-    /// But the query parsing switches to admin with `session::with_su`,
-    /// which resets the effective user to the session one on return.
-    /// So by the time of execution both of them are the same.
+    /// The effective user, not the same as session user: they differ inside
+    /// `box.session.su(user, func)`, and privileges are checked for the
+    /// effective user.
     fn get_user_name() -> Result<String, SbroadError> {
-        Ok(tarantool::session::user_name()?)
+        Ok(tarantool::session::effective_user_name()?)
     }
 
     fn new_port<'p>(&self) -> impl Port<'p> {

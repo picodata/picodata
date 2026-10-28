@@ -64,6 +64,8 @@
   follows physical index order, while `KeyDefOrder::Natural` ignores it.
 - `tuple::KeyDef::hash_key_raw` calculates the hash of a raw MsgPack key
   without creating a tuple.
+- `session::effective_user_name` returns the name of the effective user,
+  which differs from `session::user_name` inside `box.session.su(user, func)`.
 
 ### Fixed
 

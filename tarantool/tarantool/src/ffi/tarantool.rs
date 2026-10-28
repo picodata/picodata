@@ -1517,6 +1517,7 @@ extern "C" {
     pub fn box_session_user_id(uid: *mut u32) -> c_int;
     pub fn box_session_user_name() -> *const c_char;
     pub fn box_effective_user_id() -> u32;
+    pub fn box_effective_user_name() -> *const c_char;
     pub fn box_session_su(uid: u32) -> c_int;
     pub fn box_user_id_by_name(
         name: *const c_char,

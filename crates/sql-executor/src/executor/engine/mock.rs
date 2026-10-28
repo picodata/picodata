@@ -1498,10 +1498,6 @@ impl Router for RouterRuntimeMock {
         &self.metadata
     }
 
-    fn with_admin_su<T>(&self, f: impl FnOnce() -> T) -> Result<T, SbroadError> {
-        Ok(f())
-    }
-
     /// Unit tests run without tarantool, so a fixed user name is used.
     fn get_user_name() -> Result<String, SbroadError> {
         Ok("admin".to_string())
