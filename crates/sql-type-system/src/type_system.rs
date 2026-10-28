@@ -98,6 +98,20 @@ impl Function {
     }
 }
 
+/// The signature of the overload: `name(arg, ...) -> return`.
+impl Display for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}(", self.name)?;
+        for (i, ty) in self.args_types.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{ty}")?;
+        }
+        write!(f, ") -> {}", self.return_type)
+    }
+}
+
 // Keys are arena ids, not user input, so HashDoS is not a risk.
 // Compared to SipHash (std `DefaultHasher`), FxHash makes build_ir 8.5% faster
 // on the corpus and 15.8% on synthetic queries; ahash gives 6.7% and 13.3%.
@@ -219,15 +233,7 @@ impl TypeSystem {
             assert!(
                 !function.return_type.contains_any()
                     && !function.args_types.iter().any(|ty| ty.contains_any()),
-                "overload {}({}) -> {} takes or returns any; use a dedicated ExprKind",
-                function.name,
-                function
-                    .args_types
-                    .iter()
-                    .map(Type::as_str)
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                function.return_type,
+                "overload {function} takes or returns any; use a dedicated ExprKind",
             );
             functions
                 .entry(function.name.clone())
