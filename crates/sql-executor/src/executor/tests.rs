@@ -53,6 +53,30 @@ fn shard_query() {
 }
 
 #[test]
+fn bind_folds_bound_parameters() {
+    // The prepared plan cannot fold `$1 = 1`: the bind-time fold does,
+    // which leaves `"id" = $2` and routes the query to one bucket.
+    let sql = r#"SELECT "FIRST_NAME" FROM "test_space" WHERE "id" = $2 OR $1 = 1"#;
+    let coordinator = RouterRuntimeMock::new();
+
+    let mut port = PortMocked::new();
+    let params = vec![Value::from(0), Value::from(2)];
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, params).unwrap();
+    query.dispatch(&mut port).unwrap();
+
+    let info = port.decode();
+    let DispatchInfo::Filtered(filtered) = info.first().unwrap() else {
+        panic!("Expected a custom plan dispatch");
+    };
+    let (sql, params, _, buckets) = filtered.first().unwrap();
+    assert_snapshot!(sql, @r#"SELECT "test_space"."FIRST_NAME" FROM "test_space" WHERE "test_space"."id" = $1::int"#);
+    let param = Value::from(2);
+    let bucket = coordinator.determine_bucket_id(&[&param]).unwrap();
+    assert_eq!(params, &[param]);
+    assert_eq!(buckets, &[bucket]);
+}
+
+#[test]
 fn shard_union_query() {
     let sql = r#"SELECT *
     FROM

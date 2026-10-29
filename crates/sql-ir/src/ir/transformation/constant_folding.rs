@@ -2,8 +2,8 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    ArenaType, BoolExpr, Constant, Join, Node64, Node96, NodeId, Selection, SubQueryReference,
-    UnaryExpr,
+    ArenaType, BoolExpr, Constant, Join, Node32, Node64, Node96, NodeId, Selection,
+    SubQueryReference, UnaryExpr,
 };
 use crate::ir::operator::{Bool, Unary};
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
@@ -223,7 +223,42 @@ impl Plan {
         Ok(referenced)
     }
 
+    /// Whether some boolean or unary node has the constant operands that
+    /// `fold_boolean_tree` folds. Without one the fold changes nothing: it
+    /// folds such nodes first, and others only through their folded children.
+    /// A missing operand counts as constant, so the fold reports the error.
+    fn has_foldable_node(&self) -> bool {
+        let is_const = |id: NodeId| {
+            self.get_expression_node(id)
+                .map_or(true, |expr| matches!(expr, Expression::Constant(_)))
+        };
+        let is_bool_const = |id: NodeId| {
+            self.get_expression_node(id).map_or(true, |expr| {
+                matches!(
+                    expr,
+                    Expression::Constant(Constant {
+                        value: Value::Boolean(_)
+                    })
+                )
+            })
+        };
+        self.nodes.iter32().any(|node| match node {
+            Node32::Bool(BoolExpr { left, right, .. }) => {
+                (is_const(*left) && is_const(*right))
+                    || is_bool_const(*left)
+                    || is_bool_const(*right)
+            }
+            Node32::Unary(UnaryExpr { child, .. }) => is_const(*child),
+            _ => false,
+        })
+    }
+
     pub fn fold_boolean_tree(&mut self) -> Result<&mut Self, SbroadError> {
+        // A cheap scan: after binding, most filters compare columns to parameters.
+        if !self.has_foldable_node() {
+            return Ok(self);
+        }
+
         let node_ids = collect_join_and_selection_nodes(self);
 
         // Early return, there is no relational nodes with filters that benefit from folding.
