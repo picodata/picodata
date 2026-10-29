@@ -31,7 +31,7 @@ use std::{
 use tarantool::index::{IndexType, RtreeIndexDistanceType, SortOrder};
 
 use crate::errors::Entity::AST;
-use crate::errors::{Entity, SbroadError};
+use crate::errors::{Entity, SbroadError, SbroadErrorInner};
 use crate::frontend::sql::{error, insert_conflict};
 use crate::ir::metadata::Metadata;
 use crate::utils::{normalize_ident, to_user};
@@ -234,7 +234,7 @@ impl AstCore {
             }
 
             if has_tnt_params && has_pg_params {
-                return Err(SbroadError::UseOfBothParamsStyles);
+                return Err(SbroadError::UseOfBothParamsStyles());
             }
 
             for parse_child in stack_node.pair.into_inner() {
@@ -4172,7 +4172,7 @@ where
 
             Ok(())
         }
-        Err(SbroadError::NotFound(..)) => Err(SbroadError::NotFound(
+        Err(e) if matches!(e.kind(), SbroadErrorInner::NotFound(..)) => Err(SbroadError::NotFound(
             Entity::Table,
             format_smolstr!("with name {}", to_user(scan_name)),
         )),
@@ -4407,8 +4407,8 @@ pub(in crate::frontend::sql) fn parse_insert_source<M: Metadata>(
                 worker,
                 plan,
             )
-            .map_err(|err| match err {
-                SbroadError::TypeSystemError(
+            .map_err(|err| match err.kind() {
+                SbroadErrorInner::TypeSystemError(
                     TypeSystemError::DesiredTypesCannotBeMatchedWithExprs(types, exprs),
                 ) => SbroadError::Invalid(
                     Entity::Query,
@@ -4416,7 +4416,7 @@ pub(in crate::frontend::sql) fn parse_insert_source<M: Metadata>(
                         "INSERT expects {types} columns, got {exprs}"
                     )),
                 ),
-                other => other,
+                _ => err,
             })?;
 
             let values_id = plan.add_values(values_rows_ids)?;

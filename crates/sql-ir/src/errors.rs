@@ -326,7 +326,7 @@ impl std::error::Error for TypeError {}
 
 /// Types of error
 #[derive(Debug, PartialEq)]
-pub enum SbroadError {
+pub enum SbroadErrorInner {
     /// DoSkip is a special case of an error - nothing bad had happened, the target node doesn't contain
     /// anything interesting for us, skip it without any serious error.
     DoSkip,
@@ -373,7 +373,68 @@ pub enum SbroadError {
     Other(SmolStr),
 }
 
+/// The error of the SQL crates.
+///
+/// The kind is on the heap, so `Result<T, SbroadError>` is only one pointer
+/// larger than `T`. In debug builds each `?` keeps several copies of the
+/// result on the stack, so a large inline error makes the stack frames big.
+#[derive(Debug, PartialEq)]
+pub struct SbroadError(Box<SbroadErrorInner>);
+
+const _: () = assert!(std::mem::size_of::<SbroadError>() == 8);
+
+/// Makes a constructor with the name and the fields of each variant,
+/// so that `SbroadError::Invalid(..)` builds the boxed error.
+macro_rules! kind_constructors {
+    ($($variant:ident($($arg:ident: $ty:ty),+);)+) => {
+        $(
+            #[allow(non_snake_case)]
+            pub fn $variant($($arg: $ty),+) -> Self {
+                SbroadErrorInner::$variant($($arg),+).into()
+            }
+        )+
+    };
+    ($($variant:ident;)+) => {
+        $(
+            #[allow(non_snake_case)]
+            pub fn $variant() -> Self {
+                SbroadErrorInner::$variant.into()
+            }
+        )+
+    };
+}
+
 impl SbroadError {
+    kind_constructors! {
+        DuplicatedValue(s: SmolStr);
+        FailedTo(a: Action, e: Option<Entity>, s: SmolStr);
+        Invalid(e: Entity, s: Option<SmolStr>);
+        NotFound(e: Entity, s: SmolStr);
+        NotImplemented(e: Entity, s: SmolStr);
+        ParsingError(e: Entity, s: SmolStr);
+        UnexpectedNumberOfValues(s: SmolStr);
+        TypeError(e: TypeError);
+        TypeSystemError(e: TypeSystemError);
+        Unsupported(e: Entity, s: Option<SmolStr>);
+        GlobalDml(s: SmolStr);
+        DispatchError(s: SmolStr);
+        ExecutionError(s: SmolStr);
+        ProtocolError(e: ProtocolError);
+        VdbeError(s: SmolStr);
+        TaggedExecutionError(idx: usize, s: SmolStr);
+        Other(s: SmolStr);
+    }
+    kind_constructors! {
+        DoSkip;
+        FiberCancelled;
+        OutdatedStorageSchema;
+        UseOfBothParamsStyles;
+    }
+
+    pub fn kind(&self) -> &SbroadErrorInner {
+        &self.0
+    }
+
     pub fn other(msg: impl Into<SmolStr>) -> Self {
         Self::Other(msg.into())
     }
@@ -387,52 +448,64 @@ impl SbroadError {
     }
 }
 
+impl From<SbroadErrorInner> for SbroadError {
+    fn from(kind: SbroadErrorInner) -> Self {
+        Self(Box::new(kind))
+    }
+}
+
 impl fmt::Display for SbroadError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl fmt::Display for SbroadErrorInner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let p: SmolStr = match self {
-            SbroadError::DoSkip => DO_SKIP.to_smolstr(),
-            SbroadError::DuplicatedValue(s) => format_smolstr!("duplicated value: {s}"),
-            SbroadError::FailedTo(a, e, s) => match e {
+            SbroadErrorInner::DoSkip => DO_SKIP.to_smolstr(),
+            SbroadErrorInner::DuplicatedValue(s) => format_smolstr!("duplicated value: {s}"),
+            SbroadErrorInner::FailedTo(a, e, s) => match e {
                 Some(entity) => format_smolstr!("failed to {a} {entity}: {s}"),
                 None => format_smolstr!("failed to {a} {s}"),
             },
-            SbroadError::GlobalDml(s) => format_smolstr!("dml operation on global tbl: {s}"),
-            SbroadError::Invalid(e, s) => match s {
+            SbroadErrorInner::GlobalDml(s) => format_smolstr!("dml operation on global tbl: {s}"),
+            SbroadErrorInner::Invalid(e, s) => match s {
                 Some(msg) => format_smolstr!("invalid {e}: {msg}"),
                 None => format_smolstr!("invalid {e}"),
             },
-            SbroadError::NotFound(e, s) => format_smolstr!("{e} {s} not found"),
-            SbroadError::NotImplemented(e, s) => format_smolstr!("{e} {s} not implemented"),
-            SbroadError::ParsingError(e, s) => format_smolstr!("{e} parsing error: {s}"),
-            SbroadError::Unsupported(e, s) => match s {
+            SbroadErrorInner::NotFound(e, s) => format_smolstr!("{e} {s} not found"),
+            SbroadErrorInner::NotImplemented(e, s) => format_smolstr!("{e} {s} not implemented"),
+            SbroadErrorInner::ParsingError(e, s) => format_smolstr!("{e} parsing error: {s}"),
+            SbroadErrorInner::Unsupported(e, s) => match s {
                 Some(msg) => format_smolstr!("unsupported {e}: {msg}"),
                 None => format_smolstr!("unsupported {e}"),
             },
-            SbroadError::UnexpectedNumberOfValues(s) => {
+            SbroadErrorInner::UnexpectedNumberOfValues(s) => {
                 format_smolstr!("unexpected number of values: {s}")
             }
-            SbroadError::LuaError(e) => e.clone(),
-            SbroadError::UseOfBothParamsStyles => {
+            SbroadErrorInner::LuaError(e) => e.clone(),
+            SbroadErrorInner::UseOfBothParamsStyles => {
                 "invalid parameters usage. Got $n and ? parameters in one query!".into()
             }
-            SbroadError::FiberCancelled => "fiber is cancelled".into(),
-            SbroadError::OutdatedStorageSchema => {
+            SbroadErrorInner::FiberCancelled => "fiber is cancelled".into(),
+            SbroadErrorInner::OutdatedStorageSchema => {
                 "storage schema version different from router".into()
             }
-            SbroadError::TypeError(err) => {
+            SbroadErrorInner::TypeError(err) => {
                 format_smolstr!("{err}")
             }
-            SbroadError::TypeSystemError(err) => {
+            SbroadErrorInner::TypeSystemError(err) => {
                 format_smolstr!("{err}")
             }
-            SbroadError::ProtocolError(err) => {
+            SbroadErrorInner::ProtocolError(err) => {
                 format_smolstr!("{err}")
             }
-            SbroadError::ExecutionError(s)
-            | SbroadError::DispatchError(s)
-            | SbroadError::Other(s)
-            | SbroadError::VdbeError(s) => s.clone(),
-            SbroadError::TaggedExecutionError(idx, err) => {
+            SbroadErrorInner::ExecutionError(s)
+            | SbroadErrorInner::DispatchError(s)
+            | SbroadErrorInner::Other(s)
+            | SbroadErrorInner::VdbeError(s) => s.clone(),
+            SbroadErrorInner::TaggedExecutionError(idx, err) => {
                 format_smolstr!("Query {idx} from EXPLAIN (RAW): {err}")
             }
         };
@@ -446,7 +519,7 @@ impl std::error::Error for SbroadError {}
 impl<E: fmt::Display> From<TransactionError<E>> for SbroadError {
     fn from(error: TransactionError<E>) -> Self {
         match error {
-            TransactionError::FiberCancelled => SbroadError::FiberCancelled,
+            TransactionError::FiberCancelled => SbroadError::FiberCancelled(),
             other => SbroadError::Invalid(Entity::Transaction, Some(format_smolstr!("{other}"))),
         }
     }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::errors::SbroadErrorInner;
 use insta::assert_yaml_snapshot;
 use pretty_assertions::assert_eq;
 use smol_str::ToSmolStr;
@@ -508,7 +509,10 @@ fn array_tuple_cast_coerces_elements() {
     let err = Value::Integer(7)
         .cast(UnrestrictedType::Array(NestedType::Any))
         .unwrap_err();
-    assert!(matches!(err, SbroadError::Invalid(Entity::Value, _)));
+    assert!(matches!(
+        err.kind(),
+        SbroadErrorInner::Invalid(Entity::Value, _)
+    ));
 }
 
 #[test]
@@ -604,7 +608,10 @@ fn cast_array_nulls_empty_and_delegates() {
     let err = Value::Integer(7)
         .cast_array(NestedType::Integer)
         .unwrap_err();
-    assert!(matches!(err, SbroadError::Invalid(Entity::Value, _)));
+    assert!(matches!(
+        err.kind(),
+        SbroadErrorInner::Invalid(Entity::Value, _)
+    ));
 }
 
 #[test]

@@ -442,7 +442,7 @@ where
     for schema in table_schema_info {
         let (table, version) = schema?;
         if version != get_table_version_by_id(table)? {
-            return Err(SbroadError::OutdatedStorageSchema);
+            return Err(SbroadError::OutdatedStorageSchema());
         }
         table_versions.insert(table, version);
     }
@@ -450,7 +450,7 @@ where
     for index_schema in index_schema_info {
         let (pk, version) = index_schema?;
         if version != get_index_version_by_pk(pk[0], pk[1])? {
-            return Err(SbroadError::OutdatedStorageSchema);
+            return Err(SbroadError::OutdatedStorageSchema());
         }
         index_versions.insert(pk, version);
     }
@@ -589,14 +589,14 @@ where
     for schema in table_schema_info {
         let (table, version) = schema?;
         if version != get_table_version_by_id(table)? {
-            return Err(SbroadError::OutdatedStorageSchema);
+            return Err(SbroadError::OutdatedStorageSchema());
         }
     }
 
     for index_schema in index_schema_info {
         let (pk, version) = index_schema?;
         if version != get_index_version_by_pk(pk[0], pk[1])? {
-            return Err(SbroadError::OutdatedStorageSchema);
+            return Err(SbroadError::OutdatedStorageSchema());
         }
     }
 
@@ -681,13 +681,13 @@ where
 fn validate_dql_source_schema(dql: &impl DQLDataSource) -> Result<(), SbroadError> {
     for (table, version) in dql.get_table_schema_info() {
         if version != get_table_version_by_id(table)? {
-            return Err(SbroadError::OutdatedStorageSchema);
+            return Err(SbroadError::OutdatedStorageSchema());
         }
     }
 
     for (pk, version) in dql.get_index_schema_info() {
         if version != get_index_version_by_pk(pk[0], pk[1])? {
-            return Err(SbroadError::OutdatedStorageSchema);
+            return Err(SbroadError::OutdatedStorageSchema());
         }
     }
 
@@ -1050,7 +1050,7 @@ fn ensure_target_space<R: QueryCache>(
     version: u64,
 ) -> Result<Space, SbroadError> {
     if runtime.get_table_version_by_id(table_id)? != version {
-        return Err(SbroadError::OutdatedStorageSchema);
+        return Err(SbroadError::OutdatedStorageSchema());
     }
 
     // SAFETY: `table_id` already exists. Checked by `get_table_version_by_id`.
@@ -1507,7 +1507,7 @@ where
     let version = protocol_get!(iter, InsertResult::TableVersion);
 
     if runtime.get_table_version_by_id(space_id)? != version {
-        return Err(SbroadError::OutdatedStorageSchema);
+        return Err(SbroadError::OutdatedStorageSchema());
     }
 
     // SAFETY: space_id already exists. Checked by get_table_version_by_id
@@ -1557,7 +1557,7 @@ where
     let version = protocol_get!(iter, UpdateSharedKeyResult::TableVersion);
 
     if runtime.get_table_version_by_id(table_id)? != version {
-        return Err(SbroadError::OutdatedStorageSchema);
+        return Err(SbroadError::OutdatedStorageSchema());
     }
 
     // SAFETY: space_id already exists. Checked by get_table_version_by_id
@@ -1704,7 +1704,7 @@ where
     let (table_name, current_version) = runtime.get_table_name_and_version(table_id)?;
 
     if current_version != version {
-        return Err(SbroadError::OutdatedStorageSchema);
+        return Err(SbroadError::OutdatedStorageSchema());
     }
 
     let plan_id = protocol_get!(iter, DeleteFullResult::PlanId);

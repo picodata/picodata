@@ -22,7 +22,7 @@
 //!    - builds a virtual table with query results that correspond to the original motion.
 //! 5. Repeats step 3 till we are done with motion layers.
 //! 6. Executes the final IR top subtree and returns the final result to the user.
-use crate::errors::{Entity, SbroadError};
+use crate::errors::{Entity, SbroadError, SbroadErrorInner};
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::vdbe::ExecutionInsight;
@@ -270,9 +270,9 @@ where
     ) -> Result<(), SbroadError> {
         let mut vtab_count = 0;
         self.materialize_subtree_impl(slices, port, &mut vtab_count)
-            .map_err(|err| match err {
-                SbroadError::ExecutionError(err) | SbroadError::VdbeError(err) => {
-                    SbroadError::TaggedExecutionError(vtab_count, err)
+            .map_err(|err| match err.kind() {
+                SbroadErrorInner::ExecutionError(msg) | SbroadErrorInner::VdbeError(msg) => {
+                    SbroadError::TaggedExecutionError(vtab_count, msg.clone())
                 }
                 _ => err,
             })
@@ -398,9 +398,9 @@ where
         let query_num = self.exec_plan.get_vtables().len();
         self.coordinator
             .dispatch(&mut self.exec_plan, top_id, &buckets, port)
-            .map_err(|err| match err {
-                SbroadError::ExecutionError(err) | SbroadError::VdbeError(err) => {
-                    SbroadError::TaggedExecutionError(query_num + 1, err)
+            .map_err(|err| match err.kind() {
+                SbroadErrorInner::ExecutionError(msg) | SbroadErrorInner::VdbeError(msg) => {
+                    SbroadError::TaggedExecutionError(query_num + 1, msg.clone())
                 }
                 _ => err,
             })?;

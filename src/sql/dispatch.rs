@@ -1010,7 +1010,7 @@ fn execute_full_delete_locally<'p>(
     let runtime = StorageRuntime::new();
     let (table_name, current_version) = runtime.get_table_name_and_version(core.space_id)?;
     if current_version != core.space_version {
-        return Err(SbroadError::OutdatedStorageSchema);
+        return Err(SbroadError::OutdatedStorageSchema());
     }
 
     let table_versions =

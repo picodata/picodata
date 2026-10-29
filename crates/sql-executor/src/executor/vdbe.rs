@@ -66,7 +66,7 @@ pub enum SqlError {
 impl From<SqlError> for SbroadError {
     fn from(value: SqlError) -> Self {
         match value {
-            SqlError::OutdatedStorageSchema => Self::OutdatedStorageSchema,
+            SqlError::OutdatedStorageSchema => SbroadError::OutdatedStorageSchema(),
             SqlError::FailedToExecuteStmt(e)
                 if e.error_code() == TarantoolErrorCode::ExceededVdbeMaxSteps as u32 =>
             {

@@ -954,14 +954,14 @@ impl StorageRuntime {
     pub(crate) fn validate_block_schema(&self, block: &BlockExecData) -> Result<(), SbroadError> {
         for (table_id, version) in &block.table_versions {
             if self.get_table_version_by_id(*table_id)? != *version {
-                return Err(SbroadError::OutdatedStorageSchema);
+                return Err(SbroadError::OutdatedStorageSchema());
             }
         }
 
         for (ids, version) in &block.index_versions {
             let (table_id, index_id) = (ids[0], ids[1]);
             if self.get_index_version_by_pk(table_id, index_id)? != *version {
-                return Err(SbroadError::OutdatedStorageSchema);
+                return Err(SbroadError::OutdatedStorageSchema());
             }
         }
 

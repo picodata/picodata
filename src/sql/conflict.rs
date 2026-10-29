@@ -63,7 +63,7 @@ pub(crate) fn prepare_do_update_from_catalog(
 
 fn validate_table_version(table_id: u32, expected_table_version: u64) -> Result<()> {
     if get_table_version_by_id(table_id)? != expected_table_version {
-        return Err(SbroadError::OutdatedStorageSchema);
+        return Err(SbroadError::OutdatedStorageSchema());
     }
     Ok(())
 }
@@ -155,10 +155,10 @@ fn resolve_target_indexes(table: &Table, target: &ConflictTarget) -> Result<DoUp
         && !indexes.iter().any(|index| index.id == 0)
     {
         let Some(primary) = primary_index else {
-            return Err(SbroadError::OutdatedStorageSchema);
+            return Err(SbroadError::OutdatedStorageSchema());
         };
         if !primary.operable || !is_unique_index(&primary.opts) {
-            return Err(SbroadError::OutdatedStorageSchema);
+            return Err(SbroadError::OutdatedStorageSchema());
         }
         indexes.push(primary);
     }
@@ -235,7 +235,7 @@ fn build_index_context(
         .iter()
         .map(|part| {
             let Some(field_no) = field_positions.get(part.field.as_str()) else {
-                return Err(SbroadError::OutdatedStorageSchema);
+                return Err(SbroadError::OutdatedStorageSchema());
             };
             let is_nullable = part.is_nullable.unwrap_or(false);
             if is_nullable && part.path.is_none() {

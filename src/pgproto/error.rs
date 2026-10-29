@@ -261,11 +261,11 @@ impl PgError {
 
     pub fn is_sbroad_parsing_error(&self) -> bool {
         use crate::traft::error::Error;
-        use sql::errors::SbroadError;
+        use sql::errors::SbroadErrorInner;
 
         if let Self::PicodataError(e) = self {
-            if let Error::Sbroad(SbroadError::ParsingError(..)) = **e {
-                return true;
+            if let Error::Sbroad(e) = &**e {
+                return matches!(e.kind(), SbroadErrorInner::ParsingError(..));
             }
         }
 

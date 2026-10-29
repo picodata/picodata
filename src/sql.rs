@@ -55,7 +55,7 @@ use rmp::decode::{read_array_len, read_bin_len, read_str_len};
 use rmp::encode::{write_bin, write_str, write_uint};
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use sql::errors::{Entity, SbroadError};
+use sql::errors::{Entity, SbroadError, SbroadErrorInner};
 use sql::executor::engine::helpers::{
     build_delete_args, build_insert_args, build_update_args, flush_block_pattern_cache,
     init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
@@ -727,8 +727,11 @@ pub fn dispatch_bound_statement<'p>(
 }
 
 fn err_for_tnt_console(e: traft::error::Error) -> traft::error::Error {
-    match e {
-        Error::Sbroad(SbroadError::ParsingError(_, message)) if message.contains('\n') => {
+    let Error::Sbroad(sbroad) = &e else {
+        return e;
+    };
+    match sbroad.kind() {
+        SbroadErrorInner::ParsingError(_, message) if message.contains('\n') => {
             // Tweak the error message so that tarantool's yaml handler
             // prints it in human-readable form
             //
@@ -748,7 +751,7 @@ fn err_for_tnt_console(e: traft::error::Error) -> traft::error::Error {
             buffer.push('\n');
             BoxError::new(TarantoolErrorCode::SqlUnrecognizedSyntax, buffer).into()
         }
-        e => e,
+        _ => e,
     }
 }
 

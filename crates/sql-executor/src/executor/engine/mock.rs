@@ -155,7 +155,7 @@ impl Metadata for RouterConfigurationMock {
     }
 
     fn get_index_id(&self, _index_name: &str, _table_name: &str) -> Result<u32, SbroadError> {
-        Err(SbroadError::DoSkip)
+        Err(SbroadError::DoSkip())
     }
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
@@ -1245,19 +1245,19 @@ impl QueryCache for RouterRuntimeMock {
     }
 
     fn get_table_version(&self, _: &str) -> Result<u64, SbroadError> {
-        Err(SbroadError::DoSkip)
+        Err(SbroadError::DoSkip())
     }
 
     fn get_index_version_by_pk(&self, _: u32, _: u32) -> Result<u64, SbroadError> {
-        Err(SbroadError::DoSkip)
+        Err(SbroadError::DoSkip())
     }
 
     fn get_table_version_by_id(&self, _: SpaceId) -> Result<u64, SbroadError> {
-        Err(SbroadError::DoSkip)
+        Err(SbroadError::DoSkip())
     }
 
     fn get_table_name_and_version(&self, _: SpaceId) -> Result<(SmolStr, u64), SbroadError> {
-        Err(SbroadError::DoSkip)
+        Err(SbroadError::DoSkip())
     }
 }
 

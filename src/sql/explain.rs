@@ -142,7 +142,7 @@ pub fn explain_query(query: ExecutingQuery<'_, RouterRuntime>) -> Result<String,
 
 pub(crate) fn block_compile_error(error: SqlError) -> SbroadError {
     match error {
-        SqlError::OutdatedStorageSchema => SbroadError::OutdatedStorageSchema,
+        SqlError::OutdatedStorageSchema => SbroadError::OutdatedStorageSchema(),
         error => SbroadError::FailedTo(Action::Build, Some(Entity::Query), error.to_smolstr()),
     }
 }

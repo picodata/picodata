@@ -11,7 +11,7 @@ use crate::sql::conflict::{
 };
 use ahash::AHashSet;
 use smol_str::{format_smolstr, SmolStr};
-use sql::errors::SbroadError;
+use sql::errors::{SbroadError, SbroadErrorInner};
 use sql::executor::engine::{BlockRuntimeHook, VersionMap};
 use sql::executor::vdbe::{SqlError, VdbeOwnedPayload};
 use sql::ir::operator::{ConflictUpdateOp, ConflictUpdateValue};
@@ -382,9 +382,9 @@ pub(super) fn attach_idx_insert_hook(
 }
 
 fn prepare_iocdu_error(error: SbroadError) -> SqlError {
-    match error {
-        SbroadError::OutdatedStorageSchema => SqlError::OutdatedStorageSchema,
-        error => reassemble_iocdu_error(error),
+    match error.kind() {
+        SbroadErrorInner::OutdatedStorageSchema => SqlError::OutdatedStorageSchema,
+        _ => reassemble_iocdu_error(error),
     }
 }
 
