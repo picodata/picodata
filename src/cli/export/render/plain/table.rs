@@ -1,10 +1,11 @@
 use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::cli::export::catalog::model::{RawDistribution, RawIndex, RawTable, RawTableOption};
-use crate::cli::export::render::plain::ident::{quote_ident, render_comment};
+use crate::cli::export::render::plain::ident::render_comment;
 use crate::cli::export::render::plain::index::{render_options, render_parts};
 use crate::cli::export::render::plain::types::render_sql_type;
 use crate::cli::export::ExportError;
 use crate::schema::ShardingFn;
+use sql::frontend::sql::ast::quote_ident;
 
 pub(super) fn render(table: &RawTable, primary_key: &RawIndex) -> Result<String, ExportError> {
     let distribution = render_distribution(table)?;

@@ -1,7 +1,7 @@
 use tarantool::index::{Part, SortOrder};
 
 use crate::cli::export::catalog::model::{RawIndex, RawIndexOption};
-use crate::cli::export::render::plain::ident::quote_ident;
+use sql::frontend::sql::ast::quote_ident;
 
 pub(super) fn render(index: &RawIndex, table_name: &str) -> String {
     let unique = if index.options.contains(&RawIndexOption::Unique(true)) {
