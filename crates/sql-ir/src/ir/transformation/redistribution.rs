@@ -1177,6 +1177,10 @@ impl Plan {
         expr_id: NodeId,
     ) -> Result<Strategy, SbroadError> {
         let mut strategy = Strategy::new(rel_id);
+        // Every policy below is set for a subquery of `rel_id` (see `get_sq_from_rel`).
+        if self.get_relation_subqueries(rel_id)?.is_empty() {
+            return Ok(strategy);
+        }
 
         let not_nodes = self.get_not_unary_nodes(expr_id);
         let mut not_nodes_children = HashSet::with_capacity(not_nodes.len());
