@@ -806,7 +806,7 @@ impl Indexes {
     }
 
     // The write methods pass the stored row to the catalog cache, see
-    // `crate::catalog::cache`.
+    // `crate::catalog_cache`.
 
     #[inline]
     pub fn put(&self, index_def: &IndexDef, cache: &CatalogCache) -> tarantool::Result<()> {

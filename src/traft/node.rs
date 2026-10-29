@@ -1064,7 +1064,7 @@ impl NodeImpl {
             self.main_loop_info.borrow_mut().last_entry = Some(entry.clone());
 
             let check_catalog_cache =
-                cfg!(debug_assertions) && catalog::cache::may_change_catalog(&entry);
+                cfg!(debug_assertions) && crate::catalog_cache::may_change_catalog(&entry);
 
             let mut apply_entry_result = EntryApplied(vec![]);
             // Make asynchronous intentionally because do not want to block

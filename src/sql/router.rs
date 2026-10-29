@@ -119,7 +119,7 @@ impl Tier {
 }
 
 /// The catalog cache of this instance. Don't yield and don't write to the
-/// catalog while holding the reference, see [`crate::catalog::cache`].
+/// catalog while holding the reference, see [`crate::catalog_cache`].
 pub(crate) fn catalog_cache() -> Result<CatalogCacheRef<'static>, SbroadError> {
     let node = node::global().map_err(|e| {
         SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))

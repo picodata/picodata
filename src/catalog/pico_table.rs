@@ -119,7 +119,7 @@ impl PicoTable {
     }
 
     // The write methods pass the stored row to the catalog cache, see
-    // `crate::catalog::cache`.
+    // `crate::catalog_cache`.
 
     #[inline]
     pub fn put(&self, table_def: &TableDef, cache: &CatalogCache) -> tarantool::Result<()> {

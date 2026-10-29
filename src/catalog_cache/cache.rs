@@ -1,10 +1,8 @@
 #![allow(unused_parens)]
-use crate::catalog::cache;
-use crate::catalog::cache::IndexCache;
-use crate::catalog::cache::TableCache;
+use super::change::CatalogChange;
+use super::index::IndexCache;
+use super::table::TableCache;
 use crate::catalog::pico_bucket::BucketRecord;
-use crate::catalog::pico_bucket::PicoBucket;
-use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::pico_resharding_state::ReshardingStateRecord;
 use crate::catalog::pico_table::PicoTable;
 use crate::instance::Instance;
@@ -17,11 +15,7 @@ use crate::sharding::BucketsInfo;
 use crate::sharding::TierBucketsInfo;
 use crate::storage::Catalog;
 use crate::storage::Indexes;
-use crate::storage::Instances;
-use crate::storage::Replicasets;
-use crate::storage::ServiceRouteTable;
 use crate::storage::SystemTable as _;
-use crate::storage::Tiers;
 use crate::storage::ToEntryIter;
 use crate::tier::Tier;
 #[allow(unused_imports)]
@@ -39,10 +33,7 @@ use tarantool::fiber::safety::NoYieldsRef;
 use tarantool::fiber::safety::NoYieldsRefCell;
 use tarantool::index::IndexId;
 use tarantool::space::SpaceId;
-use tarantool::tuple::DecodeOwned;
 use tarantool::tuple::Tuple;
-
-pub type CatalogCacheRef<'a> = NoYieldsRef<'a, CatalogCacheMutable>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // CatalogCache
@@ -54,7 +45,7 @@ pub type CatalogCacheRef<'a> = NoYieldsRef<'a, CatalogCacheMutable>;
 /// are handled, the data is updated correspondingly.
 ///
 /// The definitions from _pico_table and _pico_index are also changed by the
-/// code which writes these tables, see [`crate::catalog::cache`].
+/// code which writes these tables, see the module documentation.
 ///
 /// Doesn't implement `Clone` by design, must be wrapped in an `Rc`.
 pub struct CatalogCache {
@@ -1123,95 +1114,6 @@ impl CatalogCacheMutable {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// CatalogChange
-////////////////////////////////////////////////////////////////////////////////
-
-/// The `old`/`new` pair of an applied DML operation to one of the topology
-/// system tables.
-///
-/// Used in [`CatalogCache::update`].
-pub(crate) enum CatalogChange {
-    Instance {
-        old: Option<Instance>,
-        new: Option<Instance>,
-    },
-    Replicaset {
-        old: Option<Replicaset>,
-        new: Option<Replicaset>,
-    },
-    Tier {
-        old: Option<Tier>,
-        new: Option<Tier>,
-    },
-    ServiceRoute {
-        old: Option<ServiceRouteItem>,
-        new: Option<ServiceRouteItem>,
-    },
-    BucketRecord {
-        old: Option<BucketRecord>,
-        new: Option<BucketRecord>,
-    },
-    ReshardingStateRecord {
-        old: Option<ReshardingStateRecord>,
-        new: Option<ReshardingStateRecord>,
-    },
-    /// The definition of table `id` is now `new`.
-    Table { id: SpaceId, new: Option<TableDef> },
-    /// The definition of index `key` is now `new`.
-    Index {
-        key: (SpaceId, IndexId),
-        new: Option<IndexDef>,
-    },
-}
-
-impl CatalogChange {
-    pub(crate) fn decode(
-        table_id: SpaceId,
-        old: Option<&Tuple>,
-        new: Option<&Tuple>,
-    ) -> Result<Option<Self>> {
-        match table_id {
-            Instances::TABLE_ID => {
-                let (old, new) = decode_pair(old, new)?;
-                Ok(Some(Self::Instance { old, new }))
-            }
-            Replicasets::TABLE_ID => {
-                let (old, new) = decode_pair(old, new)?;
-                Ok(Some(Self::Replicaset { old, new }))
-            }
-            Tiers::TABLE_ID => {
-                let (old, new) = decode_pair(old, new)?;
-                Ok(Some(Self::Tier { old, new }))
-            }
-            ServiceRouteTable::TABLE_ID => {
-                let (old, new) = decode_pair(old, new)?;
-                Ok(Some(Self::ServiceRoute { old, new }))
-            }
-            PicoBucket::TABLE_ID => {
-                let (old, new) = decode_pair(old, new)?;
-                Ok(Some(Self::BucketRecord { old, new }))
-            }
-            PicoReshardingState::TABLE_ID => {
-                let (old, new) = decode_pair(old, new)?;
-                Ok(Some(Self::ReshardingStateRecord { old, new }))
-            }
-            // Unlike the tables above, a row which can't be decoded panics with
-            // the table and the key: `NodeImpl::handle_dml_entry` would turn an
-            // error into retrying the entry forever.
-            PicoTable::TABLE_ID => {
-                let change = cache::table_change(old, new);
-                Ok(change.map(|(id, new)| Self::Table { id, new }))
-            }
-            Indexes::TABLE_ID => {
-                let change = cache::index_change(old, new);
-                Ok(change.map(|(key, new)| Self::Index { key, new }))
-            }
-            _ => return Ok(None),
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // miscellaneous
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1253,15 +1155,6 @@ where
     }
 }
 
-fn decode_pair<T: DecodeOwned>(
-    old: Option<&Tuple>,
-    new: Option<&Tuple>,
-) -> Result<(Option<T>, Option<T>)> {
-    let old = old.map(|t| t.decode()).transpose()?;
-    let new = new.map(|t| t.decode()).transpose()?;
-    Ok((old, new))
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // tests
 ////////////////////////////////////////////////////////////////////////////////
@@ -1269,6 +1162,7 @@ fn decode_pair<T: DecodeOwned>(
 mod tests {
     use super::*;
     use crate::plugin::PluginIdentifier;
+    use tarantool::tuple::RawBytes;
 
     #[::tarantool::test]
     fn test_check_route_to_instance() {
@@ -1289,5 +1183,209 @@ mod tests {
             &routing_item.instance_name,
         );
         assert!(matches!(actual_res, ServiceRouteCheck::Ok));
+    }
+    fn table(id: SpaceId, name: &str, schema_version: u64) -> TableDef {
+        TableDef {
+            id,
+            name: name.into(),
+            schema_version,
+            ..TableDef::for_tests()
+        }
+    }
+
+    fn index(table_id: SpaceId, id: IndexId, name: &str) -> IndexDef {
+        IndexDef {
+            table_id,
+            id,
+            name: name.into(),
+            ..IndexDef::for_tests()
+        }
+    }
+
+    #[::tarantool::test]
+    fn load_contains_system_tables() {
+        let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
+
+        let cached = cache.get();
+        for (table, indexes) in crate::schema::system_table_definitions() {
+            assert_eq!(cached.table(table.id), Some(&table));
+            assert_eq!(cached.table_by_name(&table.name), Some(&table));
+            for index in indexes {
+                assert_eq!(cached.index(index.table_id, index.id), Some(&index));
+                assert_eq!(cached.index_by_name(&index.name), Some(&index));
+            }
+        }
+        drop(cached);
+        assert_eq!(cache.find_mismatch(&storage).unwrap(), None);
+    }
+
+    /// Each instance of the cache is changed only by the writes passed to it,
+    /// e.g. each pretend instance of the simulation has its own.
+    #[::tarantool::test]
+    fn caches_are_independent() {
+        let storage = Catalog::for_tests();
+        let written = CatalogCache::for_tests_from(&storage);
+        let other = CatalogCache::for_tests_from(&storage);
+        let id = 70006;
+
+        let encoded = tarantool::msgpack::encode(&table(id, "catalog_cache_own", 1));
+        let tuple = storage
+            .pico_table
+            .space
+            .insert(RawBytes::new(&encoded))
+            .unwrap();
+        written.put_table(&tuple);
+        assert!(written.get().table(id).is_some());
+        assert!(other.get().table(id).is_none());
+        assert_eq!(written.find_mismatch(&storage).unwrap(), None);
+
+        storage.pico_table.space.delete(&[id]).unwrap();
+        written.remove_table(id);
+        assert_eq!(written.find_mismatch(&storage).unwrap(), None);
+        assert_eq!(other.find_mismatch(&storage).unwrap(), None);
+    }
+
+    #[::tarantool::test]
+    fn write_methods_update_cache() {
+        use crate::traft::op::RenameMappingBuilder;
+        use tarantool::index::{Part, SortOrder};
+        use tarantool::space::{Field, FieldType};
+
+        let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
+        let cached_table = |id| cache.get().table(id).cloned();
+        let id = 70001;
+        let def = table(id, "catalog_cache_methods", 1);
+
+        storage.pico_table.insert(&def, &cache).unwrap();
+        assert_eq!(cached_table(id), Some(def.clone()));
+        cache.assert_consistent(&storage);
+
+        storage
+            .pico_table
+            .update_operable(id, false, &cache)
+            .unwrap();
+        assert!(!cached_table(id).unwrap().operable);
+        cache.assert_consistent(&storage);
+
+        (storage.pico_table.update_schema_version(id, 2, &cache)).unwrap();
+        assert_eq!(cached_table(id).unwrap().schema_version, 2);
+        cache.assert_consistent(&storage);
+
+        (storage
+            .pico_table
+            .rename(id, "catalog_cache_renamed", &cache))
+        .unwrap();
+        assert!(cache.get().table_by_name("catalog_cache_methods").is_none());
+        let renamed = cache
+            .get()
+            .table_by_name("catalog_cache_renamed")
+            .map(|t| t.id);
+        assert_eq!(renamed, Some(id));
+        cache.assert_consistent(&storage);
+
+        let format = vec![Field::from(("a", FieldType::Unsigned))];
+        let renames = RenameMappingBuilder::new().build();
+        (storage
+            .pico_table
+            .update_format(id, &format, &renames, &cache))
+        .unwrap();
+        assert_eq!(cached_table(id).unwrap().format, format);
+        cache.assert_consistent(&storage);
+
+        storage.pico_table.put(&def, &cache).unwrap();
+        assert_eq!(cached_table(id), Some(def));
+        cache.assert_consistent(&storage);
+
+        // The ascending order is dropped when the row is encoded, so the stored
+        // definition differs from the one passed in.
+        let mut pk = index(id, 0, "catalog_cache_methods_pk");
+        pk.parts = vec![Part {
+            sort_order: Some(SortOrder::Asc),
+            ..Part::field("a")
+        }];
+        storage.indexes.insert(&pk, &cache).unwrap();
+        cache.assert_consistent(&storage);
+
+        (storage.indexes.update_operable(id, 0, false, &cache)).unwrap();
+        assert!(!cache.get().index(id, 0).unwrap().operable);
+        cache.assert_consistent(&storage);
+
+        (storage.indexes.update_schema_version(id, 0, 2, &cache)).unwrap();
+        assert_eq!(cache.get().index(id, 0).unwrap().schema_version, 2);
+        cache.assert_consistent(&storage);
+
+        (storage
+            .indexes
+            .rename(id, 0, "catalog_cache_pk_renamed", &cache))
+        .unwrap();
+        assert!(cache
+            .get()
+            .index_by_name("catalog_cache_methods_pk")
+            .is_none());
+        assert!(cache
+            .get()
+            .index_by_name("catalog_cache_pk_renamed")
+            .is_some());
+        cache.assert_consistent(&storage);
+
+        storage.indexes.put(&pk, &cache).unwrap();
+        assert!(cache
+            .get()
+            .index_by_name("catalog_cache_methods_pk")
+            .is_some());
+        cache.assert_consistent(&storage);
+
+        storage.indexes.delete(id, 0, &cache).unwrap();
+        assert!(cache.get().index(id, 0).is_none());
+        storage.pico_table.delete(id, &cache).unwrap();
+        assert_eq!(cached_table(id), None);
+        cache.assert_consistent(&storage);
+    }
+
+    #[::tarantool::test]
+    fn writes_in_transaction() {
+        use tarantool::transaction::transaction;
+
+        let storage = Catalog::for_tests();
+        let cache = CatalogCache::for_tests_from(&storage);
+        let cached_table = |id| cache.get().table(id).cloned();
+        let id = 70002;
+        let taken_id = 70003;
+        let missing_id = 70004;
+        let def = table(id, "catalog_cache_txn", 1);
+        storage.pico_table.insert(&def, &cache).unwrap();
+
+        // The cache changes together with the table, before the commit.
+        transaction(|| -> tarantool::Result<()> {
+            storage.pico_table.update_operable(id, false, &cache)?;
+            assert!(!cached_table(id).unwrap().operable);
+            Ok(())
+        })
+        .unwrap();
+        cache.assert_consistent(&storage);
+
+        // A rejected write changes nothing, an earlier one stays.
+        transaction(|| -> tarantool::Result<()> {
+            storage.pico_table.update_schema_version(id, 7, &cache)?;
+            let taken = table(taken_id, PicoTable::TABLE_NAME, 1);
+            assert!(storage.pico_table.insert(&taken, &cache).is_err());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(cached_table(id).unwrap().schema_version, 7);
+        assert_eq!(cached_table(taken_id), None);
+        cache.assert_consistent(&storage);
+
+        // An update of a missing row changes nothing.
+        (storage
+            .pico_table
+            .update_operable(missing_id, false, &cache))
+        .unwrap();
+        assert_eq!(cached_table(missing_id), None);
+
+        storage.pico_table.delete(id, &cache).unwrap();
+        cache.assert_consistent(&storage);
     }
 }
