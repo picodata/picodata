@@ -6,7 +6,10 @@ import {
   getPluginUiAssetBase,
   getPluginUiPagePath,
 } from "shared/entity/pluginUi/utils";
-import { usePluginUiTranslations } from "shared/entity/pluginUi/translations";
+import {
+  PLUGIN_UI_TITLE_KEY,
+  usePluginUiTranslations,
+} from "shared/entity/pluginUi/translations";
 import { useLsState } from "shared/localStorage/hooks/useLsState";
 
 import {
@@ -42,18 +45,17 @@ export function PluginNavGroup({
     schema: z.boolean(),
     defaultValue: false,
   });
-  const title = usePluginUiTranslations(
-    plugin,
-    pages[0].version,
-    pages.map((page) => page.title)
-  );
+  const title = usePluginUiTranslations(plugin, pages[0].version, [
+    PLUGIN_UI_TITLE_KEY,
+    ...pages.map((page) => page.title),
+  ]);
   return (
     <PluginGroup
       open={isOpen}
       onToggle={(event) => setIsOpen(event.currentTarget.open)}
     >
       <PluginSummary>
-        <NavLinkText>{plugin}</NavLinkText>
+        <NavLinkText>{title(PLUGIN_UI_TITLE_KEY, plugin)}</NavLinkText>
       </PluginSummary>
       <PluginPages>
         {pages.map((page) => {

@@ -21,6 +21,6 @@ export function usePluginUiTranslations(
       (current.isError ||
         (current.isSuccess && titles.some((title) => !current.data?.[title]))),
   });
-  return (title: string) =>
-    current.data?.[title] || fallback.data?.[title] || title;
+  return (title: string, defaultValue = title) =>
+    current.data?.[title] || fallback.data?.[title] || defaultValue;
 }
